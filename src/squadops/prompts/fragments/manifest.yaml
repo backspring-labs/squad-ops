@@ -90,13 +90,13 @@ fragments:
   layer: task_type
   roles:
   - dev
-  sha256: 3a4b8b05523ab8680ff40beab23c285714d4df1f8bb07555c6d168b67238e44e
+  sha256: de06f415956b3c9e4831ccf02ce66b8857128f710d8bd448d69dcbd5a2fa776c
 - fragment_id: task_type.qa.propose_plan_tasks
   path: shared/task_type/task_type.qa.propose_plan_tasks.md
   layer: task_type
   roles:
   - qa
-  sha256: 41f1ebd5833c4bdbefa3166cc642839a7d64e2dccc944af52b55ab79f19759dd
+  sha256: d046d5122a97d4a796b941663a95761a32a40bde666f6d8502ca96c38dc3938c
 - fragment_id: task_type.strategy.propose_plan_guidance
   path: shared/task_type/task_type.strategy.propose_plan_guidance.md
   layer: task_type
@@ -114,7 +114,7 @@ fragments:
   layer: task_type
   roles:
   - lead
-  sha256: f48c8ccf5dcbfd79be59d65b3311d627619ce424ec29760923b15e9b40cabc0b
+  sha256: 7a2fdf406c5f5e9f804b55db6598c6325264fd81865d6c4ed8e3db02cc8f2ead
 - fragment_id: task_type.governance.prepare_plan_authoring_brief
   path: shared/task_type/task_type.governance.prepare_plan_authoring_brief.md
   layer: task_type
@@ -181,4 +181,4 @@ fragments:
   roles:
   - data
   sha256: fd44a28f65e449c6320b5ee5f1d8121013a03c7baa757965334c4e19c7904779
-manifest_hash: 407dcf5122d1616edf97c48206ad98d5dd3e8415be885064d537aa3285d39179
+manifest_hash: 1e437f01448d3d3e9ba4753a1e8a9421e72af0250cd756b4ae418fd17cf5b251

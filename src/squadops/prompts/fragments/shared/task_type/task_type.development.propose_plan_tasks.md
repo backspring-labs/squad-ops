@@ -69,7 +69,11 @@ informational only. The user prompt lists the vocabulary with examples
 - `import_present` for module/symbol wiring
 - `regex_match` for code pattern presence
 - `endpoint_defined` for HTTP route presence
-- `command_exit_zero` for static checkers (argv-only safelist)
+- `command_exit_zero` for static checkers (argv-only safelist). The command
+  runs in the container of the role that executes the task — only author
+  commands whose binary exists there. Dev-role containers carry the Python
+  toolchain ONLY (`python`, `ruff`); `node`/`npm` exist only in the QA
+  container. A missing binary is skipped, not failed — it verifies nothing.
 - `count_at_least` for glob match counts
 
 ### Output shape

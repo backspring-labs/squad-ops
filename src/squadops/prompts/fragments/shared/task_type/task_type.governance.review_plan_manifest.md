@@ -31,7 +31,11 @@ entry the build pipeline machine-evaluates against produced artifacts; a
 prose entry like ``"User model exists"`` is informational only and cannot
 block validation. The user prompt enumerates the typed-check vocabulary
 with examples — use it. Treat the safelist for ``command_exit_zero`` as
-the universe; anything outside it errors at evaluation time.
+the universe; anything outside it errors at evaluation time. Also reject
+any ``command_exit_zero`` whose binary is absent from the executing
+role's container (Node tooling lives ONLY in the QA container; dev-role
+tasks may use Python tooling only) — such a check is skipped at
+evaluation time and verifies nothing.
 
 ### Identifier discipline
 
