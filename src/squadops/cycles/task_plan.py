@@ -223,6 +223,15 @@ _KNOWN_WORKLOAD_TYPES = {
 # Task types that are build steps (for routing_reason metadata)
 _BUILD_TASK_TYPES = {s[0] for s in BUILD_TASK_STEPS} | {s[0] for s in BUILDER_ASSEMBLY_TASK_STEPS}
 
+# Workload-invariant tail (#439): assembly and verification are workload-owned.
+# Plan substitution may replace dev work but must never descope these — a
+# dev-only manifest that dropped them completed green with no build subject
+# (every required check `subject_missing` → blocked_unverified).
+# Canonical execution order of the workload-invariant tail: assembly, then
+# verification. Verification must be the last word on the deliverable (#458).
+_WORKLOAD_INVARIANT_TAIL_ORDER = ("builder.assemble", "qa.test")
+_WORKLOAD_INVARIANT_TASK_TYPES = frozenset(_WORKLOAD_INVARIANT_TAIL_ORDER)
+
 # Builder-role (SIP-0071) capability namespace. A run is a *builder deliverable*
 # run — subject to the profile-level ``required_files`` completeness gate
 # (#291) — iff its plan contains a ``builder.*`` task. This is deliberately
@@ -528,5 +537,23 @@ def _replace_build_steps_with_plan(
     }
     non_build_steps = [s for s in steps if s[0] not in static_build_types]
 
-    # Append plan tasks (PlanTask objects, not tuples)
-    return non_build_steps + list(plan.tasks)
+    # Re-append the workload-invariant tail (#439): assembly/verification
+    # steps survive substitution unless the plan authored its own task of
+    # that type (which then stands in).
+    #
+    # Ordering is workload-owned, not plan-owned (#458): plan-authored
+    # invariant tasks keep their titles/criteria but move to the tail in
+    # canonical order, after every mutation-producing task — otherwise an
+    # assembly (or assembly repair) can postdate all test evidence.
+    plan_task_types = {t.task_type for t in plan.tasks}
+    plan_body = [t for t in plan.tasks if t.task_type not in _WORKLOAD_INVARIANT_TASK_TYPES]
+
+    invariant_tail: list = []
+    for task_type in _WORKLOAD_INVARIANT_TAIL_ORDER:
+        if task_type in plan_task_types:
+            invariant_tail.extend(t for t in plan.tasks if t.task_type == task_type)
+        else:
+            invariant_tail.extend(s for s in steps if s[0] == task_type)
+
+    # Append plan tasks (PlanTask objects, not tuples), then the tail
+    return non_build_steps + plan_body + invariant_tail

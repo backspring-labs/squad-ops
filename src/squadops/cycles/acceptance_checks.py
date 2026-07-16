@@ -370,7 +370,15 @@ class ImportPresentCheck(BaseCheck):
                 # `from .errors import X` → ImportFrom(module='errors', level=1).
                 prefix = "." * node.level
                 effective_module = prefix + (node.module or "")
-                if effective_module == target_module:
+                # #441: a dotless spec follows author intent — `module: errors`
+                # accepts `from .errors import X` at any level. A dotted spec
+                # stays exact (`.errors` still rejects `backend.errors`).
+                dotless_match = (
+                    not target_module.startswith(".")
+                    and node.level > 0
+                    and (node.module or "") == target_module
+                )
+                if effective_module == target_module or dotless_match:
                     module_imported = True
                     if target_symbol is None:
                         symbol_imported = True

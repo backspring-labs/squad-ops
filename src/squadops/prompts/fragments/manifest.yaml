@@ -85,6 +85,12 @@ fragments:
   roles:
   - qa
   sha256: 51e353106e276a8486f9f01d1755830d7ad531cc891bc6f30525e08232286d5e
+- fragment_id: task_type.qa.test
+  path: shared/task_type/task_type.qa.test.md
+  layer: task_type
+  roles:
+  - qa
+  sha256: 93b862c5e1482750e3f6ee8e31b59ffd862b7b9ebac07c774de2da89ceb74262
 - fragment_id: task_type.development.propose_plan_tasks
   path: shared/task_type/task_type.development.propose_plan_tasks.md
   layer: task_type
@@ -181,4 +187,4 @@ fragments:
   roles:
   - data
   sha256: fd44a28f65e449c6320b5ee5f1d8121013a03c7baa757965334c4e19c7904779
-manifest_hash: 1e437f01448d3d3e9ba4753a1e8a9421e72af0250cd756b4ae418fd17cf5b251
+manifest_hash: 5e995a5792d88e0a16ab0675fc1879eca15b5d473e711fe60d7e28548a919314

@@ -357,19 +357,43 @@ class CorrectionRunner:
             elif task_type == "governance.correction_decision":
                 decision_outputs = step_outputs
 
-        # 4. Read correction_path
-        correction_path = decision_outputs.get("correction_path", "abort")
+        # 4. Read correction_path — bounded by the deterministic policy guard
+        # (#447): `continue` may not discard a required check that executed
+        # and failed while this chain's repair slot is unspent. The model's
+        # original rationale stays intact in the decision artifact; the
+        # override is disclosed in the event payload below.
+        from squadops.cycles.correction_policy import resolve_correction_path
+
+        resolution = resolve_correction_path(
+            decision_outputs.get("correction_path", "abort"),
+            failure_evidence,
+            cycle.applied_defaults,
+        )
+        correction_path = resolution.path
+        if resolution.overridden_from:
+            logger.warning(
+                "correction_policy_override: %s -> patch (executed-failed required checks: %s)",
+                resolution.overridden_from,
+                ", ".join(resolution.failed_required_checks),
+            )
 
         # 5. Emit CORRECTION_DECIDED
+        decided_payload: dict[str, Any] = {
+            "correction_path": correction_path,
+            "decision_rationale": decision_outputs.get("decision_rationale", ""),
+        }
+        if resolution.overridden_from:
+            decided_payload["policy_override"] = {
+                "from": resolution.overridden_from,
+                "reason": "executed_failed_required_checks",
+                "checks": list(resolution.failed_required_checks),
+            }
         self._event_bus.emit(
             EventType.CORRECTION_DECIDED,
             entity_type="run",
             entity_id=run_id,
             context={"cycle_id": cycle.cycle_id, "run_id": run_id},
-            payload={
-                "correction_path": correction_path,
-                "decision_rationale": decision_outputs.get("decision_rationale", ""),
-            },
+            payload=decided_payload,
         )
 
         # 6. Store plan delta as artifact
@@ -506,4 +530,104 @@ class CorrectionRunner:
 
         return CorrectionProtocolResult(
             correction_path=correction_path, repair_artifacts=repair_artifacts
+        )
+
+    # Artifact types a qa.test task emits *about* its run, not *into* its
+    # workspace — excluded from re-execution so the repaired suite matches
+    # the original workspace composition (#456).
+    _NON_WORKSPACE_ARTIFACT_TYPES = frozenset({"test_report", "typed_check_evaluation"})
+
+    async def reexecute_repaired_suite(
+        self,
+        run_id: str,
+        cycle: Cycle,
+        envelope: TaskEnvelope,
+        patched_artifacts: list[dict[str, Any]],
+        correction_attempts: int,
+        *,
+        prior_outputs: dict[str, Any],
+        all_artifact_refs: list[str],
+        stored_artifacts: list[tuple[str, ArtifactRef]],
+        completed_task_ids: list[str],
+        plan_delta_refs: list[str],
+        profile: Any = None,
+        flow_run_id: str | None = None,
+    ) -> TaskResult | None:
+        """Re-execute a repaired qa.test suite in the QA agent's environment (#456).
+
+        Patch verification (#389) covers typed criteria only; a qa.test failure's
+        real evidence is behavioral (``tests_pass`` is synthesized from the
+        task's executed ``test_result``). A repaired suite that is never re-run
+        leaves the pre-repair failure as the check's final state — the
+        run_8c14a430ad1c false-red. This dispatches the failed task's own
+        task_type back to the QA agent in execute-only mode (``retest_files``
+        set, no generation): same workspace, same runner, honestly fresh
+        evidence for §6.5 final-state resolution to supersede with.
+
+        Returns the retest ``TaskResult`` (its Prefect task_run, events,
+        artifacts and checkpoint are handled by ``_dispatch_protocol_step``),
+        or ``None`` when no runnable suite files survive the patch overlay.
+        """
+        from uuid import uuid4
+
+        retest_files = [
+            {"filename": art["name"], "content": art.get("content", "")}
+            for art in patched_artifacts
+            if isinstance(art, dict)
+            and isinstance(art.get("name"), str)
+            and art.get("type") not in self._NON_WORKSPACE_ARTIFACT_TYPES
+        ]
+        if not retest_files:
+            return None
+
+        failed_inputs = envelope.inputs or {}
+        if not failed_inputs.get("artifact_contents") and "artifact_vault" not in failed_inputs:
+            # No workspace to test against — the handler would reject the
+            # envelope at input validation anyway (the 3.11 instant-fail).
+            # Skip the doomed dispatch; the caller falls back to re-dispatch.
+            logger.warning(
+                "retest for %s skipped: failed envelope carries no workspace "
+                "(artifact_contents/artifact_vault) — was the enriched envelope threaded?",
+                envelope.task_id,
+            )
+            return None
+
+        resolved = resolve_agent_config("qa", profile)
+        retest_inputs: dict[str, Any] = {
+            "prd": cycle.prd_ref,
+            "resolved_config": failed_inputs.get("resolved_config", {}),
+            "artifact_contents": failed_inputs.get("artifact_contents", {}),
+            "retest_files": retest_files,
+            "agent_model": resolved.model,
+            "agent_config_overrides": resolved.config_overrides,
+            "subtask_focus": failed_inputs.get("subtask_focus"),
+            "expected_artifacts": failed_inputs.get("expected_artifacts", []),
+            "acceptance_criteria": failed_inputs.get("acceptance_criteria", []),
+        }
+
+        retest_envelope = TaskEnvelope(
+            task_id=f"retest-{run_id[:12]}-{correction_attempts:02d}-{envelope.task_type}",
+            agent_id=resolved.agent_id,
+            cycle_id=cycle.cycle_id,
+            pulse_id=uuid4().hex,
+            project_id=cycle.project_id,
+            task_type=envelope.task_type,
+            correlation_id=uuid4().hex,
+            causation_id=envelope.task_id,
+            trace_id=uuid4().hex,
+            span_id=uuid4().hex,
+            inputs=retest_inputs,
+            metadata={"role": "qa", "retest": True},
+        )
+
+        return await self._dispatch_protocol_step(
+            retest_envelope,
+            run_id,
+            cycle,
+            flow_run_id,
+            prior_outputs=prior_outputs,
+            all_artifact_refs=all_artifact_refs,
+            stored_artifacts=stored_artifacts,
+            completed_task_ids=completed_task_ids,
+            plan_delta_refs=plan_delta_refs,
         )

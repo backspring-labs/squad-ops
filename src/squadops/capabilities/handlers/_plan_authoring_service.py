@@ -170,6 +170,16 @@ async def produce_plan(
         "Anything else (notably `python -c`, `python -m pip`, shell strings) errors at evaluation time — "
         "treat the safelist as the universe.\n"
         "- Per-command timeout is bounded; do not author long-running builds as acceptance checks.\n\n"
+        "**Check-selection hierarchy — behavioral > structural > textual:**\n"
+        "- Prefer checks that execute or parse code (`command_exit_zero`, `endpoint_defined`, "
+        "`import_present`, `field_present`) over `regex_match`. Executing verifies what the "
+        "code DOES; a regex only verifies how it is written.\n"
+        "- `regex_match` patterns MUST NOT depend on stylistic choices the developer is free "
+        "to vary: quote style, whitespace, attribute order, import aliasing. Example: "
+        "`pattern: to='/runs/` fails correct JSX that uses double quotes — write a "
+        "quote-agnostic class (`to=[\"']/runs/`) or assert the outcome behaviorally instead.\n"
+        "- A regex that asserts how code is written rather than what it must do should be "
+        "`severity: info` or prose, never a blocking `error`.\n\n"
         '**When in doubt, prefer typed checks over prose.** Prose like "User model exists" '
         "is a good candidate to typed-encode as `field_present` against the actual class.\n"
     )

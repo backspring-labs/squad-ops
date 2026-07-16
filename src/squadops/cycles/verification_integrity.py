@@ -468,22 +468,31 @@ def aggregate_cycle_outcome(
     Side-effect free — the ``CycleOutcome`` is constructible **only** here (AC#11),
     so no path can silently discard not-executed results.
 
-    **Verdict precedence** mirrors the run-level rule (§6.2) so the
-    incomplete-evidence signal is never hidden behind a product failure:
+    **Verdict (#444, §10 amendment — was worst-of-run-verdicts):** derived from
+    per-check reconciliation across the run sequence (``run_summaries`` arrive in
+    run_number order — registry contract). Later **executed** evidence supersedes
+    earlier not-executed rows for the same check; a framing run's inherent
+    ``subject_missing`` rows no longer veto the implementation run's real results
+    (under worst-of-runs, no multi-workload cycle could ever roll up better than
+    ``blocked_unverified``):
 
-      - any run ``blocked_unverified`` → cycle ``blocked_unverified``;
-      - else any run ``rejected`` → cycle ``rejected``;
+      - any required check with no executed evidence in any run — or any run
+        that went adverse *without* reconcilable evidence rows (#388 abort) —
+        → cycle ``blocked_unverified``;
+      - else any check whose final executed state is failed → ``rejected``;
       - else ``accepted``.
 
-    The cycle verdict is the worst of the per-run verdicts — each run verdict
-    already folded in its own required-unmet/failure state, so requiredness is not
-    re-derived here. An empty cycle (no runs) rolls up to ``accepted`` (zero runs =
+    An executed failure is superseded only by a later execution, never by
+    non-evidence — the incomplete-evidence signal still cannot hide behind a
+    product failure. An empty cycle (no runs) rolls up to ``accepted`` (zero runs =
     zero adverse evidence — the inert default, matching the run-level empty case).
 
-    **Evidence lists union** across the cycle's runs: framing and implementation
-    runs are distinct evidence contexts, so everything executed / failed /
-    not-executed is disclosed (a check that failed in one run and passed in another
-    is honestly in *both* lists — runs are not collapsed), deduped to first-seen.
+    **Evidence lists**: ``verified``/``failed`` remain full unions across runs
+    (a check that failed in one run and passed in another is honestly in *both*
+    lists), deduped to first-seen. Cycle-scope ``unverified`` keeps only rows
+    never superseded by a later execution — per-run summaries remain the durable
+    full-disclosure record, and ``required_unmet`` (derived from ``unverified``)
+    therefore reflects reconciled reality.
 
     ``waived`` (§6.5 operator) and ``inert`` (§9 chronic) are recorded **above** the
     evidence and passed through unchanged — a waiver never mutates a result and
@@ -492,22 +501,46 @@ def aggregate_cycle_outcome(
     """
     verified: list[str] = []
     failed: list[str] = []
-    unverified: list[UnverifiedCheck] = []
-    any_blocked = False
-    any_rejected = False
+    # #444 (§10 amendment): per-check reconciliation across the run sequence.
+    # ``run_summaries`` arrive in run_number order (registry contract), so the
+    # LAST executed word per check wins: later executed evidence (verified or
+    # failed) supersedes earlier not-executed rows for the same check_id. A
+    # framing run's inherent subject_missing rows no longer outvote the
+    # implementation run's real evidence — without this, no multi-workload
+    # cycle could ever roll up better than blocked_unverified. An executed
+    # failure is only superseded by a later execution, never by non-evidence.
+    executed_final: dict[str, bool] = {}  # check_id → passed? (last executed wins)
+    last_not_executed: dict[str, UnverifiedCheck] = {}
+    any_opaque_blocked = False  # adverse verdict with no unverified rows (#388 abort)
+    any_opaque_rejected = False  # adverse verdict with no failed rows
 
     for s in run_summaries:
         verified.extend(s.verified)
         failed.extend(s.failed)
-        unverified.extend(s.unverified)
-        if s.verdict is RunVerdict.BLOCKED_UNVERIFIED:
-            any_blocked = True
-        elif s.verdict is RunVerdict.REJECTED:
-            any_rejected = True
+        for cid in s.verified:
+            executed_final[cid] = True
+        for cid in s.failed:
+            executed_final[cid] = False
+        for u in s.unverified:
+            last_not_executed[u.check_id] = u
+        # A run that went adverse without contributing reconcilable evidence
+        # (e.g. aborted before verification, #388) can't be superseded — there
+        # is nothing to supersede it with. Its verdict stands at cycle scope.
+        if s.verdict is RunVerdict.BLOCKED_UNVERIFIED and not s.unverified:
+            any_opaque_blocked = True
+        elif s.verdict is RunVerdict.REJECTED and not s.failed:
+            any_opaque_rejected = True
 
-    if any_blocked:
+    # Disclosure: verified/failed remain full unions (nothing hidden); the
+    # cycle-scope ``unverified`` keeps only rows never superseded by a later
+    # execution — per-run summaries remain the durable full disclosure record.
+    unverified: list[UnverifiedCheck] = [
+        u for cid, u in last_not_executed.items() if cid not in executed_final
+    ]
+
+    if any(u.required for u in unverified) or any_opaque_blocked:
         verdict = RunVerdict.BLOCKED_UNVERIFIED
-    elif any_rejected:
+    elif any(not passed for passed in executed_final.values()) or any_opaque_rejected:
         verdict = RunVerdict.REJECTED
     else:
         verdict = RunVerdict.ACCEPTED
