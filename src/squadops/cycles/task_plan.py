@@ -223,6 +223,12 @@ _KNOWN_WORKLOAD_TYPES = {
 # Task types that are build steps (for routing_reason metadata)
 _BUILD_TASK_TYPES = {s[0] for s in BUILD_TASK_STEPS} | {s[0] for s in BUILDER_ASSEMBLY_TASK_STEPS}
 
+# Workload-invariant tail (#439): assembly and verification are workload-owned.
+# Plan substitution may replace dev work but must never descope these — a
+# dev-only manifest that dropped them completed green with no build subject
+# (every required check `subject_missing` → blocked_unverified).
+_WORKLOAD_INVARIANT_TASK_TYPES = frozenset({"builder.assemble", "qa.test"})
+
 # Builder-role (SIP-0071) capability namespace. A run is a *builder deliverable*
 # run — subject to the profile-level ``required_files`` completeness gate
 # (#291) — iff its plan contains a ``builder.*`` task. This is deliberately
@@ -528,5 +534,13 @@ def _replace_build_steps_with_plan(
     }
     non_build_steps = [s for s in steps if s[0] not in static_build_types]
 
-    # Append plan tasks (PlanTask objects, not tuples)
-    return non_build_steps + list(plan.tasks)
+    # Re-append the workload-invariant tail (#439): assembly/verification
+    # steps survive substitution unless the plan authored its own task of
+    # that type (which then stands in).
+    plan_task_types = {t.task_type for t in plan.tasks}
+    invariant_tail = [
+        s for s in steps if s[0] in _WORKLOAD_INVARIANT_TASK_TYPES and s[0] not in plan_task_types
+    ]
+
+    # Append plan tasks (PlanTask objects, not tuples), then the tail
+    return non_build_steps + list(plan.tasks) + invariant_tail

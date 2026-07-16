@@ -303,3 +303,167 @@ class TestGenerateTaskPlanWithManifest:
         # Only planning steps, no build steps at all
         assert len(envelopes) == 5
         assert all("subtask_focus" not in e.inputs for e in envelopes)
+
+
+# ---------------------------------------------------------------------------
+# Workload-invariant tail preservation (#439)
+# ---------------------------------------------------------------------------
+
+DEV_ONLY_MANIFEST_YAML = """\
+version: 1
+project_id: group_run
+cycle_id: cyc_test
+prd_hash: abc123
+tasks:
+  - task_index: 0
+    task_type: development.develop
+    role: dev
+    focus: "Backend routes"
+    description: "Fill route stubs"
+    expected_artifacts: ["backend/routes.py"]
+    depends_on: []
+  - task_index: 1
+    task_type: development.develop
+    role: dev
+    focus: "Frontend views"
+    description: "Fill view stubs"
+    expected_artifacts: ["frontend/src/views/RunsListView.jsx"]
+    depends_on: []
+summary:
+  total_dev_tasks: 2
+  total_qa_tasks: 0
+  total_tasks: 2
+  estimated_layers: [backend, frontend]
+"""
+
+BUILDER_MANIFEST_YAML = """\
+version: 1
+project_id: group_run
+cycle_id: cyc_test
+prd_hash: abc123
+tasks:
+  - task_index: 0
+    task_type: development.develop
+    role: dev
+    focus: "Backend routes"
+    description: "Fill route stubs"
+    expected_artifacts: ["backend/routes.py"]
+    depends_on: []
+  - task_index: 1
+    task_type: builder.assemble
+    role: builder
+    focus: "Package deliverable"
+    description: "Assemble qa_handoff.md"
+    expected_artifacts: ["qa_handoff.md"]
+    depends_on: [0]
+summary:
+  total_dev_tasks: 1
+  total_builder_tasks: 1
+  total_qa_tasks: 0
+  total_tasks: 2
+  estimated_layers: [backend]
+"""
+
+
+def _make_builder_profile() -> SquadProfile:
+    profile = _make_profile()
+    return SquadProfile(
+        profile_id="full",
+        name="Full Squad",
+        description="Test profile",
+        version=1,
+        agents=[
+            *profile.agents,
+            AgentProfileEntry(agent_id="bob", role="builder", model="test", enabled=True),
+        ],
+        created_at=NOW,
+    )
+
+
+class TestWorkloadInvariantTail:
+    """#439: a dev-only manifest must not descope assembly/verification.
+
+    Attempt 3 of the Phase-0.5 spike (cyc_62c30fcc91a3) authored a 4-dev-task
+    manifest; substitution dropped builder.assemble AND qa.test, the run
+    completed with no build subject, and every required check reported
+    subject_missing (blocked_unverified) — while the deliverable was in fact
+    functional. The tail is workload-owned, not plan-optional.
+    """
+
+    def test_implementation_workload_dev_only_plan_keeps_tail(self):
+        """The attempt-3 reproduction: implementation workload + builder squad."""
+        manifest = ImplementationPlan.from_yaml(DEV_ONLY_MANIFEST_YAML)
+        run = _make_run(workload_type="implementation")
+        cycle = _make_cycle(
+            applied_defaults={
+                "plan_tasks": True,
+                "build_tasks": True,
+                "build_profile": "fullstack_fastapi_react",
+            }
+        )
+        envelopes = generate_task_plan(cycle, run, _make_builder_profile(), plan=manifest)
+
+        types = [e.task_type for e in envelopes]
+        assert types == [
+            "governance.define_done",
+            "development.develop",
+            "development.develop",
+            "builder.assemble",
+            "qa.test",
+        ]
+
+    def test_tail_agents_resolve_to_builder_and_qa_roles(self):
+        manifest = ImplementationPlan.from_yaml(DEV_ONLY_MANIFEST_YAML)
+        run = _make_run(workload_type="implementation")
+        cycle = _make_cycle(
+            applied_defaults={
+                "plan_tasks": True,
+                "build_tasks": True,
+                "build_profile": "fullstack_fastapi_react",
+            }
+        )
+        envelopes = generate_task_plan(cycle, run, _make_builder_profile(), plan=manifest)
+
+        tail = {e.task_type: e.agent_id for e in envelopes[-2:]}
+        assert tail == {"builder.assemble": "bob", "qa.test": "eve"}
+
+    def test_plan_authored_builder_task_stands_in_no_duplicate(self):
+        """A manifest that authors its own builder.assemble replaces the static
+        one; only the missing qa.test is re-appended."""
+        manifest = ImplementationPlan.from_yaml(BUILDER_MANIFEST_YAML)
+        run = _make_run(workload_type="implementation")
+        cycle = _make_cycle(
+            applied_defaults={
+                "plan_tasks": True,
+                "build_tasks": True,
+                "build_profile": "fullstack_fastapi_react",
+            }
+        )
+        envelopes = generate_task_plan(cycle, run, _make_builder_profile(), plan=manifest)
+
+        types = [e.task_type for e in envelopes]
+        assert types.count("builder.assemble") == 1
+        assert types[-1] == "qa.test"
+        # The surviving builder task is the plan's (manifest -m namespace id)
+        builder_env = next(e for e in envelopes if e.task_type == "builder.assemble")
+        assert "-m001-" in builder_env.task_id
+
+    def test_legacy_path_non_builder_profile_keeps_qa_test(self):
+        """Legacy flags path, no builder role: dev-only plan still ends in qa.test."""
+        manifest = ImplementationPlan.from_yaml(DEV_ONLY_MANIFEST_YAML)
+        envelopes = generate_task_plan(_make_cycle(), _make_run(), _make_profile(), plan=manifest)
+
+        types = [e.task_type for e in envelopes]
+        assert types[-1] == "qa.test"
+        assert types.count("qa.test") == 1
+        assert "builder.assemble" not in types  # no builder role, no builder step
+
+    def test_plan_with_qa_task_unchanged_from_before(self):
+        """Existing behavior guard: a manifest that already carries qa.test gets
+        no extra tail (the original MANIFEST_YAML shape)."""
+        manifest = ImplementationPlan.from_yaml(MANIFEST_YAML)
+        envelopes = generate_task_plan(_make_cycle(), _make_run(), _make_profile(), plan=manifest)
+
+        types = [e.task_type for e in envelopes]
+        assert len(envelopes) == 9
+        assert types.count("qa.test") == 1
