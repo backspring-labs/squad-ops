@@ -1720,3 +1720,206 @@ class TestCorrectionRunnerStandalone:
 
         assert protocol_result.correction_path == "continue"
         assert protocol_result.repair_artifacts == []
+
+
+class TestReexecuteRepairedSuite:
+    """#456: the repaired-suite retest — the correction loop's source of fresh
+    behavioral evidence. Wrong routing, a polluted file set, or a missing
+    workspace makes the retest execute something other than 'the repaired
+    suite against the original workspace', which is worse than not retesting."""
+
+    def _make_runner(self, responder):
+        from adapters.cycles.correction_runner import CorrectionRunner
+
+        class _PassthroughDispatcher:
+            def __init__(self):
+                self.dispatched = []
+
+            async def dispatch_task(self, envelope, run_id, **_kwargs):
+                self.dispatched.append(envelope)
+                return responder(envelope)
+
+            async def create_task_run_if_enabled(self, _flow_run_id, _envelope):
+                return None
+
+        dispatcher = _PassthroughDispatcher()
+        runner = CorrectionRunner(
+            cycle_registry=AsyncMock(),
+            artifact_vault=AsyncMock(),
+            event_bus=MagicMock(),
+            task_dispatcher=dispatcher,
+            store_artifact=AsyncMock(),
+        )
+        return runner, dispatcher
+
+    def _failed_qa_envelope(self):
+        from squadops.tasks.models import TaskEnvelope
+
+        return TaskEnvelope(
+            task_id="task-run_001-m004-qa.test",
+            agent_id="eve",
+            cycle_id="cyc_001",
+            pulse_id="p",
+            project_id="hello_squad",
+            task_type="qa.test",
+            correlation_id="corr",
+            causation_id=None,
+            trace_id="t",
+            span_id="s",
+            inputs={
+                "resolved_config": {"dev_capability": "fullstack_fastapi_react"},
+                "artifact_contents": {"backend/main.py": "app = None\n"},
+                "subtask_focus": "Backend API Tests",
+                "expected_artifacts": ["tests/test_api.py"],
+                "acceptance_criteria": ["tests pass"],
+            },
+            metadata={"role": "qa"},
+        )
+
+    def _profile(self):
+        return SquadProfile(
+            profile_id="full",
+            name="Full",
+            description="d",
+            version=1,
+            agents=(AgentProfileEntry(agent_id="eve", role="qa", model="qwen", enabled=True),),
+            created_at=NOW,
+        )
+
+    def _cycle(self):
+        return Cycle(
+            cycle_id="cyc_001",
+            project_id="hello_squad",
+            created_at=NOW,
+            created_by="system",
+            prd_ref="prd_123",
+            squad_profile_id="full",
+            squad_profile_snapshot_ref="sha256:abc",
+            task_flow_policy=TaskFlowPolicy(mode="sequential"),
+            build_strategy="fresh",
+        )
+
+    def _state_kwargs(self):
+        return {
+            "prior_outputs": {},
+            "all_artifact_refs": [],
+            "stored_artifacts": [],
+            "completed_task_ids": [],
+            "plan_delta_refs": [],
+        }
+
+    async def test_retest_envelope_reruns_failed_task_in_qa_environment(self):
+        """Bug caught: retest routed to the wrong agent/task_type would produce
+        evidence from a different environment than the original run's."""
+        runner, dispatcher = self._make_runner(
+            lambda env: TaskResult(task_id=env.task_id, status="SUCCEEDED", outputs={})
+        )
+        patched = [
+            {"name": "tests/test_api.py", "content": "def test_x():\n    assert 1\n"},
+            {"name": "test_report.md", "content": "old report", "type": "test_report"},
+            {
+                "name": "typed_check_evaluation.json",
+                "content": "{}",
+                "type": "typed_check_evaluation",
+            },
+        ]
+
+        result = await runner.reexecute_repaired_suite(
+            "run_001",
+            self._cycle(),
+            self._failed_qa_envelope(),
+            patched,
+            1,
+            profile=self._profile(),
+            **self._state_kwargs(),
+        )
+
+        assert result is not None and result.status == "SUCCEEDED"
+        (env,) = dispatcher.dispatched
+        assert env.task_type == "qa.test"
+        assert env.agent_id == "eve"
+        assert env.task_id == "retest-run_001-01-qa.test"
+        assert env.causation_id == "task-run_001-m004-qa.test"
+        assert env.metadata["retest"] is True
+
+    async def test_retest_inputs_carry_suite_and_original_workspace(self):
+        """Bug caught: report/evaluation artifacts leaking into the suite, or
+        the workspace missing — the retest would run the wrong thing."""
+        runner, dispatcher = self._make_runner(
+            lambda env: TaskResult(task_id=env.task_id, status="SUCCEEDED", outputs={})
+        )
+        patched = [
+            {"name": "tests/test_api.py", "content": "repaired", "type": "test"},
+            {"name": "test_report.md", "content": "old report", "type": "test_report"},
+            {
+                "name": "typed_check_evaluation.json",
+                "content": "{}",
+                "type": "typed_check_evaluation",
+            },
+        ]
+
+        await runner.reexecute_repaired_suite(
+            "run_001",
+            self._cycle(),
+            self._failed_qa_envelope(),
+            patched,
+            0,
+            profile=self._profile(),
+            **self._state_kwargs(),
+        )
+
+        (env,) = dispatcher.dispatched
+        names = [f["filename"] for f in env.inputs["retest_files"]]
+        assert names == ["tests/test_api.py"]
+        assert env.inputs["retest_files"][0]["content"] == "repaired"
+        # Original workspace travels with the retest.
+        assert env.inputs["artifact_contents"] == {"backend/main.py": "app = None\n"}
+        assert env.inputs["resolved_config"]["dev_capability"] == "fullstack_fastapi_react"
+
+    async def test_no_usable_suite_returns_none_without_dispatch(self):
+        """Bug caught: dispatching a retest with zero files — it would 'pass'
+        vacuously (pytest collects nothing) and false-green the patch."""
+        runner, dispatcher = self._make_runner(
+            lambda env: TaskResult(task_id=env.task_id, status="SUCCEEDED", outputs={})
+        )
+        patched = [{"name": "test_report.md", "content": "r", "type": "test_report"}]
+
+        result = await runner.reexecute_repaired_suite(
+            "run_001",
+            self._cycle(),
+            self._failed_qa_envelope(),
+            patched,
+            0,
+            profile=self._profile(),
+            **self._state_kwargs(),
+        )
+
+        assert result is None
+        assert dispatcher.dispatched == []
+
+    async def test_workspaceless_envelope_never_dispatches(self):
+        """3.11 reproduction: a retest built without artifact_contents fails
+        eve's input validation in 300ms and burns a fallback re-roll — the
+        runner must refuse the doomed dispatch and return None instead."""
+        import dataclasses
+
+        runner, dispatcher = self._make_runner(
+            lambda env: TaskResult(task_id=env.task_id, status="SUCCEEDED", outputs={})
+        )
+        bare = dataclasses.replace(
+            self._failed_qa_envelope(),
+            inputs={"resolved_config": {}, "acceptance_criteria": []},
+        )
+
+        result = await runner.reexecute_repaired_suite(
+            "run_001",
+            self._cycle(),
+            bare,
+            [{"name": "tests/test_api.py", "content": "repaired", "type": "test"}],
+            0,
+            profile=self._profile(),
+            **self._state_kwargs(),
+        )
+
+        assert result is None
+        assert dispatcher.dispatched == []

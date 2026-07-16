@@ -954,6 +954,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             async def _route_outcome(
                 result,
                 _envelope=envelope,
+                _enriched=enriched,
                 _consecutive_failures=consecutive_failures,
                 _holder=_last_failed_result,
             ):
@@ -961,6 +962,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 action = await self._handle_task_outcome(
                     result=result,
                     envelope=_envelope,
+                    enriched_envelope=_enriched,
                     cycle=cycle,
                     run_id=run_id,
                     task_attempt_counts=task_attempt_counts,
@@ -1328,8 +1330,13 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         profile: Any = None,
         flow_run_id: str | None = None,
         patched_result_holder: dict[str, Any] | None = None,
+        enriched_envelope: TaskEnvelope | None = None,
     ) -> str:
         """Route a failed task outcome. Returns an action string.
+
+        ``enriched_envelope`` is the dispatch-time envelope carrying the
+        materialized workspace (``artifact_contents``) — the base ``envelope``
+        never has it (#456 retest plumbing; the 3.11 instant-fail).
 
         Returns:
             "continue" — re-dispatch the same task (caller's while loop retries it):
@@ -1423,7 +1430,21 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             # until max_correction_attempts exhausts (guard above) →
             # _ExecutionError → the run fails honestly instead of false-completing.
             action = await self._try_accept_patch(
-                envelope, result, protocol.repair_artifacts, patched_result_holder
+                envelope,
+                result,
+                protocol.repair_artifacts,
+                patched_result_holder,
+                run_id=run_id,
+                cycle=cycle,
+                correction_attempts=attempt,
+                enriched_envelope=enriched_envelope,
+                prior_outputs=prior_outputs,
+                all_artifact_refs=all_artifact_refs,
+                stored_artifacts=stored_artifacts,
+                completed_task_ids=completed_task_ids,
+                plan_delta_refs=plan_delta_refs,
+                profile=profile,
+                flow_run_id=flow_run_id,
             )
             return action
         elif correction_path == "continue":
@@ -1438,6 +1459,18 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         result: TaskResult,
         repair_artifacts: list[dict[str, Any]],
         patched_result_holder: dict[str, Any] | None,
+        *,
+        run_id: str = "",
+        cycle: Cycle | None = None,
+        correction_attempts: int = 0,
+        prior_outputs: dict[str, Any] | None = None,
+        all_artifact_refs: list[str] | None = None,
+        stored_artifacts: list[tuple[str, ArtifactRef]] | None = None,
+        completed_task_ids: list[str] | None = None,
+        plan_delta_refs: list[str] | None = None,
+        profile: Any = None,
+        flow_run_id: str | None = None,
+        enriched_envelope: TaskEnvelope | None = None,
     ) -> str:
         """Behaviorally verify a patch (#389); return "accept_patch" or "continue".
 
@@ -1446,6 +1479,16 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         corrected result. Any non-pass (failed, unverifiable, no repair
         artifacts, no holder) falls back to the pre-#389 re-dispatch path —
         conservative by construction, never a false accept.
+
+        #456: typed criteria are necessary but not sufficient when the failed
+        task carries behavioral evidence — ``tests_pass`` is synthesized from
+        the task's executed ``test_result``, so a patched result that keeps the
+        stale pre-repair ``test_result`` records the failure as the check's
+        final state no matter what the typed rows say. When the failed outputs
+        carry a ``test_result``, the repaired suite is re-executed in the QA
+        agent's environment (via the correction runner) and the corrected
+        result takes the retest's fresh behavioral evidence. A retest that
+        fails — or can't run — falls back to "continue", same as a typed miss.
         """
         if not repair_artifacts or patched_result_holder is None:
             return "continue"
@@ -1474,13 +1517,66 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             return "continue"
 
         corrected_outputs = dict(result.outputs or {})
+
+        # #456: behavioral-evidence-backed task — re-execute the repaired
+        # suite before accepting; fresh test_result supersedes the stale one.
+        retest_rows: list[dict[str, Any]] = []
+        if isinstance(corrected_outputs.get("test_result"), dict):
+            if cycle is None:
+                logger.warning(
+                    "patch_verification task=%s carries test_result but no retest "
+                    "context — falling back to re-dispatch",
+                    envelope.task_id,
+                )
+                return "continue"
+            # The retest needs the dispatch-time workspace: artifact_contents
+            # is added by _enrich_envelope and never exists on the base
+            # envelope (3.11: the retest instant-failed input validation
+            # because it was built from the un-enriched envelope).
+            retest_result = await self._correction_runner.reexecute_repaired_suite(
+                run_id,
+                cycle,
+                enriched_envelope if enriched_envelope is not None else envelope,
+                patched_artifacts,
+                correction_attempts,
+                prior_outputs=prior_outputs if prior_outputs is not None else {},
+                all_artifact_refs=all_artifact_refs if all_artifact_refs is not None else [],
+                stored_artifacts=stored_artifacts if stored_artifacts is not None else [],
+                completed_task_ids=completed_task_ids if completed_task_ids is not None else [],
+                plan_delta_refs=plan_delta_refs if plan_delta_refs is not None else [],
+                profile=profile,
+                flow_run_id=flow_run_id,
+            )
+            retest_outputs = (retest_result.outputs or {}) if retest_result else {}
+            fresh_test_result = retest_outputs.get("test_result")
+            retest_passed = (
+                retest_result is not None
+                and retest_result.status == "SUCCEEDED"
+                and isinstance(fresh_test_result, dict)
+                and fresh_test_result.get("tests_passed") is True
+            )
+            logger.info(
+                "patch_retest task=%s status=%s passed=%s",
+                envelope.task_id,
+                retest_result.status if retest_result else "not_dispatched",
+                retest_passed,
+            )
+            if not retest_passed:
+                return "continue"
+            corrected_outputs["test_result"] = fresh_test_result
+            retest_validation = retest_outputs.get("validation_result")
+            if isinstance(retest_validation, dict):
+                retest_rows = [
+                    row for row in retest_validation.get("checks", []) if isinstance(row, dict)
+                ]
+
         corrected_outputs["artifacts"] = patched_artifacts
         prior_validation = corrected_outputs.get("validation_result")
         corrected_outputs["validation_result"] = {
             **(prior_validation if isinstance(prior_validation, dict) else {}),
             "passed": True,
             "patch_verified": True,
-            "checks": [r.to_check_row() for r in verification.checks],
+            "checks": [r.to_check_row() for r in verification.checks] + retest_rows,
         }
         corrected_outputs.pop("outcome_class", None)
         patched_result_holder["patched_result"] = dataclasses.replace(
