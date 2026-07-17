@@ -11,9 +11,9 @@ updated_at: '2026-07-16T21:34:29.685072Z'
 ## Status
 Accepted
 
-**Targets:** v1.4 arc (Lane M), sequenced immediately after SIP-Contract-First-Build-Scaffolding's expander — this SIP extends the expander's output; the two ship as one contract surface. Implements the durable half of #465; #464's mechanical vocabulary guard remains as the universal fallback net.
+**Targets:** v1.4 arc (Lane M), sequenced immediately after SIP-0099 (Contract-First Build Scaffolding)'s expander — this SIP extends the expander's output; the two ship as one contract surface. Implements the durable half of #465; #464's mechanical vocabulary guard remains as the universal fallback net.
 **Builds on:** SIP-0092 (typed acceptance vocabulary + `TypedCheck`), SIP-0096 (verification evidence integrity), the #419/#420 typed-acceptance seam, the Phase-0.5 fill-only spike (attempts 3.5–3.14, the evidence base below).
-**Coordinates with:** SIP-Contract-First-Build-Scaffolding (skeleton emission — this SIP adds *how the skeleton's fill is verified* to the same emission), SIP-Externalized-Build-Sandbox (the contract's behavioral probes become the sandbox's probe script; ordering-as-data-dependency and uniform-check-environment notes from #458/#462 land here), the objective→PRD rung (blocked until the PRD sheds its embedded technical contract — §6.6 unblocks it).
+**Coordinates with:** SIP-0099 Contract-First Build Scaffolding (skeleton emission — this SIP adds *how the skeleton's fill is verified* to the same emission), SIP-Externalized-Build-Sandbox (the contract's behavioral probes become the sandbox's probe script; ordering-as-data-dependency and uniform-check-environment notes from #458/#462 land here), the objective→PRD rung (blocked until the PRD sheds its embedded technical contract — §6.6 unblocks it).
 **Motivating cases:** #465 (filed from attempt 3.10), plus the full criteria-lottery record: 3.9 (`cyc_323a1e35bee5`), 3.10 (`cyc_d7327f521f64`), 3.13 (`cyc_3f3132c8f675`), 3.14 (`cyc_ff5e1ecc839f`).
 
 ---

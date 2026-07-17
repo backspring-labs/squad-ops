@@ -11,8 +11,8 @@ and readiness couplings. Sequencing is expressed as couplings and exit criteria,
 calendar dates.
 
 **SIP:** `sips/accepted/SIP-0098-Verification-Contracts-Contract-Owned-Acceptance.md`
-**Sibling SIP:** `sips/proposed/SIP-Contract-First-Build-Scaffolding.md` — SIP-0098 extends
-its expander's output; the two ship as one contract surface (see Couplings).
+**Sibling SIP:** `sips/accepted/SIP-0099-Contract-First-Build-Scaffolding.md` — SIP-0098
+extends its expander's output; the two ship as one contract surface (see Couplings).
 **Arc:** v1.4 (even minor, feature release), Lane M Scaffold headline surface.
 **Evidence base:** Phase-0.5 spike attempts 3.5–3.14; the criteria-lottery record in SIP-0098 §2.
 
@@ -75,9 +75,11 @@ strength — is exactly what 98.5 exists to measure.
 
 ## Readiness couplings (sequencing, not dates)
 
-1. **SIP-Contract-First-Build-Scaffolding must be accepted before 98.2 starts.** It is
-   currently `proposed`; its expander and skeleton-CI gate are the surfaces 98.2 emits into.
-   98.1 has no such dependency and can start immediately once this plan is approved.
+1. **SIP-0099's skeleton-CI gate must land before 98.2 starts.** SIP-0099 (Contract-First
+   Build Scaffolding) is accepted alongside this SIP, but its *implementation* — expander
+   productionization + the Mac-owned skeleton CI gate — is the surface 98.2 emits into and
+   needs its own plan doc (Mac-lane owned) before it begins. 98.1 has no such dependency
+   and can start immediately once this plan is approved.
 2. **#433 and #434 land before 98.5.** Both are Spark-box reliability items
    (log-forwarding/restart integrity); a five-roll baseline on a box that can lose evidence
    mid-roll is not a baseline. The UPS question (Spark hard-halt history) should be resolved
@@ -127,7 +129,7 @@ proving it. There is no feature flag anywhere (house rule; SIP-0098 principle 5)
   defect class expressible at schema level (env mismatch via `requires`, broken regexes,
   source-file regexes).
 
-### 98.2 — Expander emission + CI gates (Mac; after scaffolding SIP acceptance)
+### 98.2 — Expander emission + CI gates (Mac; after SIP-0099's skeleton-CI gate lands)
 
 - Expander emits `verification_contract.yaml` alongside the skeleton + interface manifest
   (sibling artifacts; contract binds `interface_manifest_hash`). Emission code lives with
