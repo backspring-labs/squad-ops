@@ -75,10 +75,10 @@ strength — is exactly what 98.5 exists to measure.
 
 ## Readiness couplings (sequencing, not dates)
 
-1. **SIP-0099's skeleton-CI gate must land before 98.2 starts.** SIP-0099 (Contract-First
-   Build Scaffolding) is accepted alongside this SIP, but its *implementation* — expander
-   productionization + the Mac-owned skeleton CI gate — is the surface 98.2 emits into and
-   needs its own plan doc (Mac-lane owned) before it begins. 98.1 has no such dependency
+1. **SIP-0099's skeleton-CI gate (phase 99.1) must land before 98.2 starts.** SIP-0099
+   (Contract-First Build Scaffolding) is accepted alongside this SIP; its implementation is
+   planned in `docs/plans/SIP-0099-contract-first-build-scaffolding-plan.md`, which also
+   pins the recommended interleaving of the two plans' phases. 98.1 has no such dependency
    and can start immediately once this plan is approved.
 2. **#433 and #434 land before 98.5.** Both are Spark-box reliability items
    (log-forwarding/restart integrity); a five-roll baseline on a box that can lose evidence
