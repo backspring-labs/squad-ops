@@ -1,13 +1,15 @@
 ---
 title: Contract-First Build Scaffolding
-status: proposed
+status: accepted
 author: jladd
 created_at: '2026-07-10T00:00:00Z'
+sip_number: 99
+updated_at: '2026-07-16T21:41:06.985776Z'
 ---
-# SIP: Contract-First Build Scaffolding
+# SIP-0099: Contract-First Build Scaffolding
 
 ## Status
-Proposed
+Accepted
 
 **Targets:** **v1.4 headline (Lane M)** per the revised 1.4 arc (2026-07-14; was: unslotted candidate). Sequenced after SIP-0096's honest-red layer lands (this SIP relies on behavioral acceptance to prove the scaffold works).
 **Acceptance gate (arc rev 2, Mac-lane review):** acceptance is gated on the
