@@ -155,6 +155,19 @@ class BuildProfile:
             f"{qa_block}"
         )
 
+    def expand(self, manifest: object) -> list[dict[str, str]]:
+        """Materialize the walking skeleton for ``manifest`` (SIP-0099 §4).
+
+        Thin dispatch: the profile is the seam the executor calls (phase 99.3), while
+        all template logic stays in the pure ``scaffold`` module so it keeps no port /
+        NoOp / factory. ``scaffold.expand`` owns the stack→expander registry and raises
+        if ``manifest.stack`` has no expander, so profiles without a scaffold need no
+        special-casing here. Lazily imported to keep ``scaffold`` a leaf sibling.
+        """
+        from squadops.capabilities.scaffold import expand as _expand
+
+        return _expand(manifest)
+
 
 # ---------------------------------------------------------------------------
 # V1 profile registry

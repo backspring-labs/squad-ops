@@ -23,10 +23,19 @@ components exist, wire together, build, and boot, but their bodies are stubs.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass, field
 from typing import Any
 
 import yaml
+
+# Schema v1 is frozen (SIP-0099 phase 99.1): the shape below is the canonical
+# interface-manifest contract the fullstack_fastapi_react expander was proven against
+# in the Phase-0.5 spike. A manifest declaring any other version/kind is rejected at
+# parse time rather than silently mis-expanded — a future v2 gets its own expander.
+INTERFACE_MANIFEST_VERSION = 1
+INTERFACE_MANIFEST_KIND = "interface_manifest"
 
 # --------------------------------------------------------------------------- schema
 
@@ -132,12 +141,24 @@ class InterfaceManifest:
         if missing:
             raise ValueError(f"interface manifest missing required keys: {missing}")
 
+        version = int(data["version"])
+        if version != INTERFACE_MANIFEST_VERSION:
+            raise ValueError(
+                f"unsupported interface manifest version {version}; "
+                f"this expander is schema v{INTERFACE_MANIFEST_VERSION}"
+            )
+        kind = str(data["kind"])
+        if kind != INTERFACE_MANIFEST_KIND:
+            raise ValueError(
+                f"interface manifest kind must be {INTERFACE_MANIFEST_KIND!r}, got {kind!r}"
+            )
+
         entities = tuple(_parse_entity(e) for e in data.get("entities", []))
         api = _parse_api(data.get("api", {}) or {})
         frontend = _parse_frontend(data.get("frontend", {}) or {})
         return cls(
-            version=int(data["version"]),
-            kind=str(data["kind"]),
+            version=version,
+            kind=kind,
             project_id=str(data["project_id"]),
             stack=str(data["stack"]),
             source_prd=str(data.get("source_prd", "")),
@@ -147,6 +168,82 @@ class InterfaceManifest:
             frontend=frontend,
             persistence=str(data.get("persistence", "in_memory")),
         )
+
+    def _canonical(self) -> dict[str, Any]:
+        """Deterministic structural projection for hashing — every field the expander
+        reads to produce the skeleton, and nothing else. Provenance (``source_prd``,
+        ``scope``) is excluded: the expander ignores it, so a provenance-only edit must
+        not spuriously move the hash and invalidate the verification contract bound to
+        it (SIP-0098 §10 drift). ``project_id`` IS included — it is substituted into the
+        emitted package name and app title, so it changes the skeleton."""
+        return {
+            "version": self.version,
+            "kind": self.kind,
+            "project_id": self.project_id,
+            "stack": self.stack,
+            "persistence": self.persistence,
+            "entities": [
+                {
+                    "name": e.name,
+                    "fields": [
+                        {
+                            "name": f.name,
+                            "type": f.type,
+                            "required": f.required,
+                            "generated": f.generated,
+                            "default": f.default,
+                            "has_default": f.has_default,
+                        }
+                        for f in e.fields
+                    ],
+                }
+                for e in self.entities
+            ],
+            "api": {
+                "base_path": self.api.base_path,
+                "request_shapes": [
+                    {"name": s.name, "required": list(s.required), "optional": list(s.optional)}
+                    for s in self.api.request_shapes
+                ],
+                "endpoints": [
+                    {
+                        "method": ep.method,
+                        "path": ep.path,
+                        "summary": ep.summary,
+                        "request": ep.request,
+                        "response": ep.response,
+                        "errors": list(ep.errors),
+                    }
+                    for ep in self.api.endpoints
+                ],
+                "error_contract": (
+                    {
+                        "shape": self.api.error_contract.shape,
+                        "codes": [
+                            {"code": c.code, "http": c.http} for c in self.api.error_contract.codes
+                        ],
+                    }
+                    if self.api.error_contract
+                    else None
+                ),
+            },
+            "frontend": {
+                "framework": self.frontend.framework,
+                "language": self.frontend.language,
+                "api_client": self.frontend.api_client,
+                "routes": [
+                    {"path": r.path, "view": r.view, "purpose": r.purpose}
+                    for r in self.frontend.routes
+                ],
+            },
+        }
+
+    def content_hash(self) -> str:
+        """Stable sha256 identifying the skeleton this manifest expands to. SIP-0098's
+        verification contract binds ``skeleton.interface_manifest_hash`` to this value,
+        so drift between a contract and the skeleton it verifies becomes detectable."""
+        canonical = json.dumps(self._canonical(), sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def _parse_entity(raw: dict[str, Any]) -> Entity:

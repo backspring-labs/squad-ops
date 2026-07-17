@@ -9,21 +9,36 @@ CI/local gate; these guard the expander logic itself.
 
 from __future__ import annotations
 
+import importlib.util
 from pathlib import Path
 
 import pytest
+import yaml
 
+from squadops.capabilities.handlers.build_profiles import get_profile
 from squadops.capabilities.scaffold import InterfaceManifest, expand
 
 pytestmark = [pytest.mark.domain_capabilities]
 
-_MANIFEST_PATH = (
-    Path(__file__).resolve().parents[3] / "examples" / "03_group_run" / "interface_manifest.yaml"
-)
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_MANIFEST_PATH = _REPO_ROOT / "examples" / "03_group_run" / "interface_manifest.yaml"
 
 
 def _group_run_manifest() -> InterfaceManifest:
     return InterfaceManifest.from_yaml(_MANIFEST_PATH.read_text(encoding="utf-8"))
+
+
+def _raw_manifest() -> dict:
+    return yaml.safe_load(_MANIFEST_PATH.read_text(encoding="utf-8"))
+
+
+def _load_materialize_module():
+    """Import scripts/dev/materialize_skeleton.py by path (scripts/ is not a package)."""
+    path = _REPO_ROOT / "scripts" / "dev" / "materialize_skeleton.py"
+    spec = importlib.util.spec_from_file_location("materialize_skeleton", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
 
 
 def _by_name(files: list[dict[str, str]]) -> dict[str, str]:
@@ -170,3 +185,91 @@ def test_expand_emits_api_client_prefixing_api():
     assert "body.error" in api  # unwraps the pinned envelope
     assert "class ApiError extends Error" in api
     assert "apiFetch from '../api.js'" in files["frontend/src/views/RunsListView.jsx"]
+
+
+# --------------------------------------------------------------------------- #
+# 99.1 canonicalization: schema v1 freeze, content hash, profile seam
+# --------------------------------------------------------------------------- #
+
+
+def test_content_hash_is_sha256_hex():
+    # SIP-0098's contract linter requires interface_manifest_hash to be a 64-char
+    # sha256 hex digest; this proves the hash 99.1 produces satisfies that shape,
+    # so the two phases interlock at 98.2's binding.
+    h = _group_run_manifest().content_hash()
+    assert len(h) == 64
+    assert all(c in "0123456789abcdef" for c in h)
+
+
+def test_content_hash_is_order_independent_for_mapping_keys():
+    raw = _raw_manifest()
+    reordered = {k: raw[k] for k in reversed(list(raw))}  # same content, keys reversed
+    assert (
+        InterfaceManifest.from_dict(reordered).content_hash()
+        == InterfaceManifest.from_dict(raw).content_hash()
+    )
+
+
+def test_content_hash_ignores_provenance_but_tracks_interface():
+    h = _group_run_manifest().content_hash()
+
+    # provenance-only edits must NOT move the hash — else a re-pointed PRD would
+    # spuriously invalidate the verification contract bound to it (SIP-0098 §10).
+    prov = dict(_raw_manifest(), source_prd="totally/different.md", scope="rewritten")
+    assert InterfaceManifest.from_dict(prov).content_hash() == h
+
+    # an interface change DOES move it, so real drift is detectable, not masked.
+    changed = _raw_manifest()
+    changed["api"]["endpoints"].append({"method": "DELETE", "path": "/runs/{id}"})
+    assert InterfaceManifest.from_dict(changed).content_hash() != h
+
+
+def test_from_dict_rejects_unsupported_version():
+    raw = dict(_raw_manifest(), version=2)
+    with pytest.raises(ValueError, match="unsupported interface manifest version"):
+        InterfaceManifest.from_dict(raw)
+
+
+def test_from_dict_rejects_wrong_kind():
+    raw = dict(_raw_manifest(), kind="pcr_manifest")
+    with pytest.raises(ValueError, match="kind must be"):
+        InterfaceManifest.from_dict(raw)
+
+
+def test_build_profile_expand_delegates_to_scaffold():
+    # The profile is the executor's seam (99.3); it must add no transformation of
+    # its own — a byte-for-byte match with the pure expander.
+    m = _group_run_manifest()
+    via_profile = get_profile("fullstack_fastapi_react").expand(m)
+    assert via_profile == expand(m)
+    assert {f["name"] for f in via_profile} >= {"backend/main.py", "frontend/src/App.jsx"}
+
+
+def test_build_profile_expand_surfaces_unknown_stack():
+    bad = InterfaceManifest.from_dict(
+        {"version": 1, "kind": "interface_manifest", "project_id": "x", "stack": "cobol_cics"}
+    )
+    with pytest.raises(ValueError, match="no scaffold expander"):
+        get_profile("fullstack_fastapi_react").expand(bad)
+
+
+def test_materialize_writes_every_expanded_file(tmp_path):
+    mod = _load_materialize_module()
+    count = mod.materialize(_MANIFEST_PATH, tmp_path)
+
+    expected = {f["name"] for f in expand(_group_run_manifest())}
+    written = {str(p.relative_to(tmp_path)) for p in tmp_path.rglob("*") if p.is_file()}
+    assert written == expected
+    assert count == len(expected)
+    # content lands verbatim (spot-check the wired entrypoint)
+    assert "app.include_router(router)" in (tmp_path / "backend" / "main.py").read_text()
+
+
+def test_materialize_refuses_path_traversal(tmp_path, monkeypatch):
+    # Defense-in-depth: even if a future expander emitted an escaping name, the
+    # materializer must refuse to write outside the target root.
+    mod = _load_materialize_module()
+    monkeypatch.setattr(mod, "expand", lambda _m: [{"name": "../escape.txt", "content": "x"}])
+    with pytest.raises(ValueError, match="refusing to write outside"):
+        mod.materialize(_MANIFEST_PATH, tmp_path)
+    assert not (tmp_path.parent / "escape.txt").exists()
