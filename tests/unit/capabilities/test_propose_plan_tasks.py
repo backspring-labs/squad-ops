@@ -475,3 +475,39 @@ class TestPromptRegistryIntegration:
         failure = ProposalFailure.from_yaml(artifact["content"])
         assert failure.failure_reason == "llm_error"
         assert "request_renderer" in failure.details
+
+
+@pytest.mark.parametrize(
+    ("handler_cls", "template_id"),
+    [
+        (DevelopmentProposePlanTasksHandler, "request.development_propose_plan_tasks"),
+        (QaProposePlanTasksHandler, "request.qa_propose_plan_tasks"),
+        (StrategyProposePlanGuidanceHandler, "request.strategy_propose_plan_guidance"),
+    ],
+)
+def test_proposer_provides_every_required_template_variable(handler_cls, template_id):
+    # #484: the strategy template requires `guidance_id`, which the handler never provided
+    # -> TemplateMissingVariableError crashed every multi-role cycle before the merge.
+    # Guard the whole proposer family: each handler must supply every variable its template
+    # declares required, or the renderer raises at render time.
+    import re
+    from pathlib import Path
+
+    import yaml
+
+    template_path = (
+        Path(__file__).resolve().parents[3]
+        / "src"
+        / "squadops"
+        / "prompts"
+        / "request_templates"
+        / f"{template_id}.md"
+    )
+    frontmatter = re.match(
+        r"^---\s*\n(.*?)\n---", template_path.read_text(encoding="utf-8"), re.DOTALL
+    )
+    required = set((yaml.safe_load(frontmatter.group(1)) or {}).get("required_variables", []))
+
+    provided = set(handler_cls()._build_render_variables("PRD", None, {}))
+    missing = required - provided
+    assert not missing, f"{handler_cls.__name__} misses required template vars: {sorted(missing)}"
