@@ -72,10 +72,14 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Install squadops (expander import only)
+      - name: Install squadops
         run: |
           python -m pip install --upgrade pip
           pip install -e .
+          # Importing the expander triggers the squadops package __init__ chain
+          # (pydantic et al.); SquadOps pins its runtime deps here, not in pyproject,
+          # so mirror the test job's install rather than `pip install -e .` alone.
+          pip install -r tests/requirements.txt -c ci-constraints.txt
 
       - name: Expand the group_run skeleton from its interface manifest
         run: |
