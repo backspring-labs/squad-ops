@@ -19,6 +19,7 @@ from squadops.api.routes.cycles.mapping import compute_workload_progress, run_to
 from squadops.auth.models import Scope
 from squadops.cycles.lifecycle import compute_config_hash, resolve_cycle_status
 from squadops.cycles.models import (
+    Cycle,
     CycleError,
     CycleStatus,
     GateDecision,
@@ -33,6 +34,34 @@ from squadops.cycles.models import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/cycles/{cycle_id}/runs", tags=["runs"])
+
+
+def _resolve_retry_workload_type(cycle: Cycle, existing_runs: list[Run]) -> str | None:
+    """Positional workload resolution for retry-created runs (#433).
+
+    Mirrors the executor's ``_starting_workload_index`` semantics (D14: runs
+    map positionally to workloads): the new run's index among the cycle's
+    non-cancelled runs selects its ``workload_sequence`` entry — the same
+    resolution ``cycles create`` applies at position 0 (#26). Legacy cycles
+    (no sequence) keep ``None``. An out-of-bounds position is rejected rather
+    than falling back to a ``None``-typed run, which on a multi-workload
+    cycle silently produces the legacy plan shape with no artifact seeding.
+    To re-attempt a failed workload at the same position, cancel the failed
+    run first (or pass ``workload_type`` explicitly).
+    """
+    workload_sequence = cycle.applied_defaults.get("workload_sequence", [])
+    if not workload_sequence:
+        return None
+    non_cancelled = [r for r in existing_runs if r.status != RunStatus.CANCELLED.value]
+    position = len(non_cancelled)
+    if position >= len(workload_sequence):
+        raise ValidationError(
+            f"Cannot resolve workload_type for retry: the new run would occupy "
+            f"position {position} but workload_sequence has {len(workload_sequence)} "
+            f"entries. Cancel the run being retried first, or pass workload_type "
+            f"explicitly."
+        )
+    return workload_sequence[position]["type"]
 
 
 @router.post("", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
@@ -55,6 +84,9 @@ async def create_run(
         cycle = await registry.get_cycle(cycle_id)
         existing_runs = await registry.list_runs(cycle_id)
         run_number = len(existing_runs) + 1
+
+        if validated_wt is None:
+            validated_wt = _resolve_retry_workload_type(cycle, existing_runs)
 
         config_hash = compute_config_hash(cycle.applied_defaults, cycle.execution_overrides)
 
