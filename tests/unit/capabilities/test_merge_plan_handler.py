@@ -707,6 +707,52 @@ async def test_handler_emits_both_artifacts_on_multi_role_merge():
     assert decisions.authoring_mode == "multi_role"
 
 
+async def test_handler_emits_interface_manifest_when_a_proposer_supplies_it():
+    # SIP-0099 99.2: a proposer's outcome carrying interface_manifest_yaml makes the
+    # merger emit a THIRD sibling artifact, verbatim — the merger does not validate it.
+    ctx = _make_merger_context()
+    handler = GovernanceMergePlanHandler()
+    interface_yaml = (
+        "version: 1\nkind: interface_manifest\nproject_id: group_run\n"
+        "stack: fullstack_fastapi_react\n"
+    )
+
+    inputs = {
+        "prd": "PRD",
+        "resolved_config": {"plan_authoring_contributors": ["development", "qa"]},
+        "prior_outputs": {
+            "lead": {"brief_outcome": {"status": "success", "yaml_content": _BRIEF_YAML}},
+            "dev": {
+                "proposal_outcome": {
+                    "status": "success",
+                    "proposing_role": "development",
+                    "yaml_content": _DEV_PROPOSAL_YAML,
+                    "interface_manifest_yaml": interface_yaml,
+                },
+            },
+            "qa": {
+                "proposal_outcome": {
+                    "status": "success",
+                    "proposing_role": "qa",
+                    "yaml_content": _QA_PROPOSAL_YAML,
+                },
+            },
+        },
+    }
+
+    result = await handler.handle(ctx, inputs)
+    assert result.success is True
+    artifacts = {a["name"]: a for a in result.outputs["artifacts"]}
+    assert set(artifacts) == {
+        "implementation_plan.yaml",
+        "merge_decisions.yaml",
+        "interface_manifest.yaml",
+    }
+    iface = artifacts["interface_manifest.yaml"]
+    assert iface["type"] == "interface_manifest"
+    assert iface["content"] == interface_yaml  # carried verbatim
+
+
 async def test_handler_fails_loudly_when_brief_missing():
     """The brief is mandatory upstream context. Missing brief = wiring
     bug, not a recoverable runtime condition. Surface explicitly."""

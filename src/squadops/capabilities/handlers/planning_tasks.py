@@ -812,7 +812,10 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
         context: ExecutionContext,
         inputs: dict[str, Any],
     ) -> HandlerResult:
-        from squadops.capabilities.handlers._plan_authoring import retry_yaml_call
+        from squadops.capabilities.handlers._plan_authoring import (
+            extract_interface_manifest_yaml,
+            retry_yaml_call,
+        )
 
         start_time = time.perf_counter()
 
@@ -854,6 +857,11 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
         def parse_and_validate(yaml_or_none: str | None) -> tuple[Any | None, str | None]:
             return self._parse_and_validate(yaml_or_none, expected_brief_id)
 
+        captured: dict[str, str] = {}
+
+        def _capture_content(content: str) -> None:
+            captured["content"] = content
+
         parsed, last_yaml, last_error = await retry_yaml_call(
             llm=context.ports.llm,
             chat_kwargs=chat_kwargs,
@@ -862,6 +870,7 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
             parse_and_validate=parse_and_validate,
             max_attempts=max_attempts,
             handler_name=self._handler_name,
+            on_success_content=_capture_content,
         )
 
         if parsed is None:
@@ -873,7 +882,13 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
                 last_error or "exhausted retry budget without parseable output",
             )
 
-        return self._build_success_result(start_time, inputs, last_yaml or "")
+        # SIP-0099 99.2: a framing proposer may emit interface_manifest.yaml alongside
+        # its proposed_plan_tasks.yaml; carry the raw block for the merger (data-driven —
+        # absent = today's behavior).
+        interface_manifest_yaml = extract_interface_manifest_yaml(captured.get("content", ""))
+        return self._build_success_result(
+            start_time, inputs, last_yaml or "", interface_manifest_yaml
+        )
 
     def _classify_failure(self, last_error: str | None, last_yaml: str | None) -> str:
         """Map the retry loop's last error to a ProposalFailure failure_reason."""
@@ -893,7 +908,22 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
         start_time: float,
         inputs: dict[str, Any],
         yaml_content: str,
+        interface_manifest_yaml: str | None = None,
     ) -> HandlerResult:
+        # The merger consumes this via prior_outputs (PR 93.3). The cycle
+        # executor strips "artifacts" from prior_outputs by design, so we
+        # surface the YAML content under a non-artifacts key the merger
+        # reads by role.
+        proposal_outcome: dict[str, Any] = {
+            "status": "success",
+            "proposing_role": self._proposer_role,
+            "yaml_content": yaml_content,
+            "artifact_name": self._success_artifact_name,
+        }
+        # SIP-0099 99.2: carry the raw interface manifest for the merger, only when the
+        # proposer emitted one (no key = no interface manifest = today's behavior).
+        if interface_manifest_yaml:
+            proposal_outcome["interface_manifest_yaml"] = interface_manifest_yaml
         outputs = {
             "summary": f"[{self._role}] proposal produced for {self._capability_id}",
             "role": self._role,
@@ -905,16 +935,7 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
                     "type": self._success_artifact_type,
                 },
             ],
-            # The merger consumes this via prior_outputs (PR 93.3). The cycle
-            # executor strips "artifacts" from prior_outputs by design, so we
-            # surface the YAML content under a non-artifacts key the merger
-            # reads by role.
-            "proposal_outcome": {
-                "status": "success",
-                "proposing_role": self._proposer_role,
-                "yaml_content": yaml_content,
-                "artifact_name": self._success_artifact_name,
-            },
+            "proposal_outcome": proposal_outcome,
         }
         duration_ms = (time.perf_counter() - start_time) * 1000
         evidence = HandlerEvidence.create(
@@ -1267,7 +1288,20 @@ class GovernanceMergePlanHandler(_CycleTaskHandler):
             plan_yaml=emit_plan_yaml(plan),
             decisions_yaml=emit_merge_decisions_yaml(decisions),
             authoring_mode=decisions.authoring_mode,
+            interface_manifest_yaml=self._read_interface_manifest(prior_outputs),
         )
+
+    @staticmethod
+    def _read_interface_manifest(prior_outputs: dict[str, Any]) -> str | None:
+        """Raw ``interface_manifest.yaml`` a framing proposer emitted (dev preferred, qa
+        fallback), or ``None`` (SIP-0099 99.2). Data-driven: absence = today's behavior,
+        no flag."""
+        for role_key in ("dev", "qa"):
+            outcome = (prior_outputs.get(role_key) or {}).get("proposal_outcome") or {}
+            raw = outcome.get("interface_manifest_yaml")
+            if raw:
+                return raw
+        return None
 
     def _parse_proposal_outcome(
         self,
@@ -1392,6 +1426,9 @@ class GovernanceMergePlanHandler(_CycleTaskHandler):
             plan_yaml=emit_plan_yaml(plan),
             decisions_yaml=emit_merge_decisions_yaml(decisions),
             authoring_mode="sole_author",
+            # sole-author path: the interface manifest, if any, rides produce_plan's
+            # return (SIP-0099 99.2).
+            interface_manifest_yaml=manifest.get("interface_manifest_yaml"),
         )
 
     def _build_planning_content_from_framing(
@@ -1422,24 +1459,41 @@ class GovernanceMergePlanHandler(_CycleTaskHandler):
         plan_yaml: str,
         decisions_yaml: str,
         authoring_mode: str,
+        interface_manifest_yaml: str | None = None,
     ) -> HandlerResult:
+        artifacts: list[dict[str, Any]] = [
+            {
+                "name": "implementation_plan.yaml",
+                "content": plan_yaml,
+                "media_type": "text/yaml",
+                "type": "control_implementation_plan",
+            },
+            {
+                "name": "merge_decisions.yaml",
+                "content": decisions_yaml,
+                "media_type": "text/yaml",
+                "type": "merge_decisions",
+            },
+        ]
+        # SIP-0099 99.2: the framing-authored interface manifest rides alongside the plan
+        # as a sibling artifact — surfaced in the gate package for operator review and
+        # loaded by the executor (99.3). Emitted only when a proposer/sole-author authored
+        # one; absent → the artifact set is byte-identical to today. The merger does NOT
+        # validate it — that is net-b's job (dispatched_flow_executor), keeping emission
+        # and validation cleanly separated.
+        if interface_manifest_yaml:
+            artifacts.append(
+                {
+                    "name": "interface_manifest.yaml",
+                    "content": interface_manifest_yaml,
+                    "media_type": "text/yaml",
+                    "type": "interface_manifest",
+                }
+            )
         outputs = {
             "summary": f"[{self._role}] merged plan produced ({authoring_mode})",
             "role": self._role,
-            "artifacts": [
-                {
-                    "name": "implementation_plan.yaml",
-                    "content": plan_yaml,
-                    "media_type": "text/yaml",
-                    "type": "control_implementation_plan",
-                },
-                {
-                    "name": "merge_decisions.yaml",
-                    "content": decisions_yaml,
-                    "media_type": "text/yaml",
-                    "type": "merge_decisions",
-                },
-            ],
+            "artifacts": artifacts,
             # Surfaced for review_plan's sign-off and the gate package.
             "merge_outcome": {
                 "authoring_mode": authoring_mode,

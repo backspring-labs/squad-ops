@@ -2085,13 +2085,16 @@ class DispatchedFlowExecutor(FlowExecutionPort):
 
         from squadops.cycles.implementation_plan import ImplementationPlan
 
+        errors: list[str] = []
+        interface_content: str | None = None
         for ref_id in tuple(run.artifact_refs or ()):
             try:
                 ref, content_bytes = await self._artifact_vault.retrieve(ref_id)
             except Exception:
                 continue
+            artifact_type = getattr(ref, "artifact_type", None)
             if ref.filename == "implementation_plan.yaml" or (
-                getattr(ref, "artifact_type", None) == "control_implementation_plan"
+                artifact_type == "control_implementation_plan"
             ):
                 try:
                     plan = ImplementationPlan.from_yaml(content_bytes.decode(errors="replace"))
@@ -2103,9 +2106,33 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                         gate_name,
                         exc_info=True,
                     )
-                    return []
-                return plan.validate_criteria_scope()
-        return []
+                else:
+                    errors.extend(plan.validate_criteria_scope())
+            elif ref.filename == "interface_manifest.yaml" or artifact_type == "interface_manifest":
+                interface_content = content_bytes.decode(errors="replace")
+
+        # SIP-0099 99.2: a framing-emitted interface manifest is validated here — this is
+        # its ONLY net (the dispatch-time net in cycles/task_plan.py stays scaffold-free to
+        # preserve the cycles→capabilities layering). Errors join the same returned list,
+        # so they flow into the identical system:plan_validation REJECTED recording.
+        # Absent manifest → no-op = today's behavior (byte-identical for plan-only cycles).
+        if interface_content is not None:
+            errors.extend(self._validate_interface_manifest(interface_content))
+        return errors
+
+    @staticmethod
+    def _validate_interface_manifest(content: str) -> list[str]:
+        """Parse + lint a framing-emitted interface manifest, returning errors prefixed
+        for the REJECTED gate note (SIP-0099 99.2). ``scaffold`` is imported lazily —
+        the adapter layer may depend on capabilities, and this keeps the module import
+        light and the dependency out of the cycles domain."""
+        from squadops.capabilities.scaffold import InterfaceManifest
+
+        try:
+            manifest = InterfaceManifest.from_yaml(content)
+        except Exception as exc:  # noqa: BLE001 — untrusted LLM output: any parse/shape failure is one rejection, never a crash
+            return [f"interface_manifest: unparseable ({exc})"]
+        return [f"interface_manifest: {e}" for e in manifest.lint()]
 
     async def _reject_unsatisfiable_plan_at_gate(
         self,
