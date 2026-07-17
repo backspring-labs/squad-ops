@@ -51,6 +51,11 @@ extend-exclude = [
     "docs",
     "htmlcov",
     "scripts/dev/migrations",
+    # Reference fills are checked-in sample *application* code (skeleton + fill), not
+    # squad-ops source: their `backend` package is first-party to the generated app, so
+    # squad-ops's isort/lint config does not apply. The contract gate materializes and
+    # runs them; that is their gate, not ruff (SIP-0098 phase 98.2).
+    "tests/fixtures/reference_fills",
 ]
 
 [tool.ruff.lint]

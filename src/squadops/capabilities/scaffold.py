@@ -333,6 +333,23 @@ def expand(manifest: InterfaceManifest) -> list[dict[str, str]]:
     return expander(manifest)
 
 
+def fill_slot_paths(manifest: InterfaceManifest) -> tuple[str, ...]:
+    """Workspace-relative paths of the *fill slots* — the files the dev agent fills
+    bodies into. Everything else ``expand`` emits is frozen (scaffold-owned): the
+    SIP-0098 verification contract pins those by hash and hangs per-file criteria only
+    on these slots. Same stack dispatch as ``expand``; raises for an unknown stack.
+
+    (fullstack_fastapi_react: the route bodies + one component per declared route. As
+    more stacks land in 99.4 they carry their own slot map alongside their expander.)
+    """
+    if manifest.stack not in _EXPANDERS:
+        raise ValueError(
+            f"no scaffold expander for stack {manifest.stack!r}; available: {sorted(_EXPANDERS)}"
+        )
+    views = tuple(f"frontend/src/views/{r.view}.jsx" for r in manifest.frontend.routes)
+    return ("backend/routes.py", *dict.fromkeys(views))
+
+
 # ------------------------------------------------- fullstack_fastapi_react templates
 
 _PY_PRIMITIVES = {"string": "str", "integer": "int", "number": "float", "boolean": "bool"}
@@ -420,6 +437,16 @@ def _routes_source(manifest: InterfaceManifest) -> str:
             if base in known_models:
                 referenced.add(base)
     import_line = f"from .models import {', '.join(sorted(referenced))}" if referenced else ""
+    # The fill raises ApiError for the declared error codes, so the seam import is wired
+    # into the frozen stub — that makes import_present(ApiError) a valid *interface*
+    # criterion (it must pass on the bare skeleton, SIP-0098 §6.2), and the fill dev just
+    # calls the already-imported symbol.
+    errors_import = "from .errors import ApiError" if manifest.api.error_contract else ""
+    import_block = "\n".join(
+        ln
+        for ln in ("from fastapi import APIRouter, HTTPException", import_line, errors_import)
+        if ln
+    )
     error_codes = [
         c.code for c in (manifest.api.error_contract.codes if manifest.api.error_contract else ())
     ]
@@ -438,9 +465,7 @@ def _routes_source(manifest: InterfaceManifest) -> str:
         codes_hint,
         '"""',
         "",
-        "from fastapi import APIRouter, HTTPException",
-        "",
-        import_line,
+        import_block,
         "",
         "router = APIRouter()",
         "",
@@ -642,7 +667,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 """
 
 _API_JS = """// Scaffold-owned API client — the /api base path and error-envelope unwrapping
-// are interface wiring, fixed here. Views call apiFetch('/runs'); the /api prefix
+// are interface wiring, fixed here. Views call apiFetch('/path'); the /api prefix
 // routes through the Vite dev proxy to the backend. A response carrying the pinned
 // {"error": {code, message}} envelope is thrown as ApiError.
 export class ApiError extends Error {
