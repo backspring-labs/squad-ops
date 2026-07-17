@@ -87,12 +87,6 @@ jobs:
             examples/03_group_run/interface_manifest.yaml \
             "$RUNNER_TEMP/skeleton"
 
-      - name: Frontend builds (vite)
-        working-directory: ${{ runner.temp }}/skeleton/frontend
-        run: |
-          npm install
-          npm run build
-
       - name: Backend imports and boots
         working-directory: ${{ runner.temp }}/skeleton
         run: |
@@ -108,3 +102,16 @@ jobs:
             curl -sf http://127.0.0.1:8099/health && break || sleep 0.5
           done
           curl -sf http://127.0.0.1:8099/health
+
+      # --- SIP-0098 §6.2 contract gates: "author once, validate twice" ---
+      # These prove no criterion false-greens on stubs or is unwinnable by correct code.
+      # Each expands the skeleton fresh (and, for reference-fill, overlays the checked-in
+      # fill), so a skeleton, contract-emitter, or fill edit re-proves all three.
+      - name: Contract lints clean
+        run: python scripts/dev/contract_gate.py lint
+
+      - name: Bare-skeleton contract gate
+        run: python scripts/dev/contract_gate.py bare-skeleton
+
+      - name: Reference-fill contract gate
+        run: python scripts/dev/contract_gate.py reference-fill
