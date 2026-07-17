@@ -19,11 +19,23 @@ import yaml
 
 from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 from squadops.capabilities.handlers._plan_authoring import extract_interface_manifest_yaml
+from squadops.capabilities.handlers.planning_tasks import (
+    DevelopmentProposePlanTasksHandler,
+    QaProposePlanTasksHandler,
+)
+from squadops.capabilities.scaffold import InterfaceManifest, is_scaffoldable_stack
 
 pytestmark = [pytest.mark.domain_capabilities]
 
-_MANIFEST_PATH = (
-    Path(__file__).resolve().parents[3] / "examples" / "03_group_run" / "interface_manifest.yaml"
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_MANIFEST_PATH = _REPO_ROOT / "examples" / "03_group_run" / "interface_manifest.yaml"
+_APPENDIX_PATH = (
+    _REPO_ROOT
+    / "src"
+    / "squadops"
+    / "prompts"
+    / "request_templates"
+    / "request.development_interface_manifest_appendix.md"
 )
 
 
@@ -139,3 +151,54 @@ async def test_net_b_no_manifest_is_todays_behavior():
         run, cycle, "progress_plan_review"
     )
     assert errors == []
+
+
+# --------------------------------------------------------------------------- #
+# Slice B: the conditional scaffold_section injection (dev-only, scaffoldable-only)
+# --------------------------------------------------------------------------- #
+
+
+async def test_scaffold_section_rendered_for_dev_on_scaffoldable_stack():
+    handler = DevelopmentProposePlanTasksHandler()
+    renderer = AsyncMock()
+    renderer.render.return_value = MagicMock(content="INTERFACE MANIFEST INSTRUCTION")
+
+    out = await handler._scaffold_section(
+        renderer, {"resolved_config": {"build_profile": "fullstack_fastapi_react"}}
+    )
+
+    assert out == "INTERFACE MANIFEST INSTRUCTION"
+    renderer.render.assert_awaited_once_with(
+        "request.development_interface_manifest_appendix", {"stack": "fullstack_fastapi_react"}
+    )
+
+
+async def test_scaffold_section_empty_and_unrendered_for_non_scaffoldable_stack():
+    handler = DevelopmentProposePlanTasksHandler()
+    renderer = AsyncMock()
+    out = await handler._scaffold_section(
+        renderer, {"resolved_config": {"build_profile": "django_htmx"}}
+    )
+    assert out == ""
+    renderer.render.assert_not_awaited()  # never told to author a manifest it can't scaffold
+
+
+async def test_scaffold_section_empty_for_non_dev_proposer():
+    # qa proposes tests, not the interface — only dev owns the interface section
+    handler = QaProposePlanTasksHandler()
+    renderer = AsyncMock()
+    out = await handler._scaffold_section(
+        renderer, {"resolved_config": {"build_profile": "fullstack_fastapi_react"}}
+    )
+    assert out == ""
+    renderer.render.assert_not_awaited()
+
+
+def test_appendix_example_manifest_is_itself_valid_and_scaffoldable():
+    # the schema example we teach the LLM must itself parse, lint clean, and be
+    # scaffoldable — otherwise a squad copying it faithfully still gets rejected
+    example = extract_interface_manifest_yaml(_APPENDIX_PATH.read_text(encoding="utf-8"))
+    assert example is not None
+    manifest = InterfaceManifest.from_yaml(example)
+    assert manifest.lint() == []
+    assert is_scaffoldable_stack(manifest.stack)

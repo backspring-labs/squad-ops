@@ -807,6 +807,27 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
             "typed_acceptance_vocabulary": render_typed_acceptance_vocabulary(),
         }
 
+    async def _scaffold_section(self, renderer: Any, inputs: dict[str, Any]) -> str:
+        """The interface-manifest instruction, or "" (SIP-0099 99.2 Slice B).
+
+        Non-empty ONLY for the dev proposer on a scaffoldable stack — dev owns the
+        interface section, and a non-scaffoldable cycle must not be asked to emit a
+        manifest that plan validation would reject. The instruction text lives in a
+        managed prompt asset (``request.development_interface_manifest_appendix``), not
+        inline here (CLAUDE.md #448)."""
+        from squadops.capabilities.scaffold import is_scaffoldable_stack
+
+        if self._proposer_role != "development":
+            return ""
+        resolved_config = inputs.get("resolved_config") or {}
+        stack = str(resolved_config.get("build_profile") or "")
+        if not is_scaffoldable_stack(stack):
+            return ""
+        rendered = await renderer.render(
+            "request.development_interface_manifest_appendix", {"stack": stack}
+        )
+        return rendered.content
+
     async def handle(
         self,
         context: ExecutionContext,
@@ -839,6 +860,14 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
             )
 
         variables = self._build_render_variables(prd, prior_outputs, inputs)
+        # SIP-0099 99.2 (Slice B): on a scaffoldable stack, the dev proposer is asked to
+        # ALSO author an interface manifest. Data-driven — a non-scaffoldable cycle gets
+        # "" and stays on today's path — and the instruction lives in a managed prompt
+        # asset, not an inline literal (CLAUDE.md #448). Only set when non-empty so qa/
+        # strategy renders don't log an unknown-variable warning.
+        scaffold_section = await self._scaffold_section(renderer, inputs)
+        if scaffold_section:
+            variables["scaffold_section"] = scaffold_section
         rendered = await renderer.render(self._request_template_id, variables)
         user_prompt = rendered.content
 

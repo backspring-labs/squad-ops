@@ -391,6 +391,14 @@ def fill_slot_paths(manifest: InterfaceManifest) -> tuple[str, ...]:
     return ("backend/routes.py", *dict.fromkeys(views))
 
 
+def is_scaffoldable_stack(stack: str) -> bool:
+    """True when ``stack`` has a registered walking-skeleton expander — i.e. a cycle on
+    this stack can be scaffolded. The data-driven gate for the framing instruction
+    (SIP-0099 99.2): only scaffoldable cycles are asked to author an interface manifest,
+    so a non-scaffoldable stack never emits one that plan validation would then reject."""
+    return bool(stack) and stack in _EXPANDERS
+
+
 # ------------------------------------------------- fullstack_fastapi_react templates
 
 _PY_PRIMITIVES = {"string": "str", "integer": "int", "number": "float", "boolean": "bool"}
