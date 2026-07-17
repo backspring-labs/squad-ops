@@ -50,3 +50,61 @@ jobs:
       # format sweep landed in #196, so the format check is now gated here.
       - name: Regression suite (ruff check + format + test-quality lint + pytest)
         run: bash scripts/dev/run_regression_tests.sh
+
+  skeleton-gate:
+    # SIP-0099 acceptance surface: the deterministic expander must materialize a
+    # walking skeleton that BUILDS and BOOTS with zero manual intervention, on plain
+    # runners (x86_64 here vs aarch64 dev — acceptable; plain toolchains, no GPU/
+    # agents). SIP-0098 phase 98.2 hangs its lint / bare-skeleton / reference-fill
+    # contract jobs off this same gate, so a skeleton or template edit re-proves both.
+    name: scaffold skeleton gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install squadops
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          # Importing the expander triggers the squadops package __init__ chain
+          # (pydantic et al.); SquadOps pins its runtime deps here, not in pyproject,
+          # so mirror the test job's install rather than `pip install -e .` alone.
+          pip install -r tests/requirements.txt -c ci-constraints.txt
+
+      - name: Expand the group_run skeleton from its interface manifest
+        run: |
+          python scripts/dev/materialize_skeleton.py \
+            examples/03_group_run/interface_manifest.yaml \
+            "$RUNNER_TEMP/skeleton"
+
+      - name: Frontend builds (vite)
+        working-directory: ${{ runner.temp }}/skeleton/frontend
+        run: |
+          npm install
+          npm run build
+
+      - name: Backend imports and boots
+        working-directory: ${{ runner.temp }}/skeleton
+        run: |
+          pip install -r backend/requirements.txt
+          # imports clean and the wired /health route is present
+          python -c "from backend.main import app; \
+            assert any(getattr(r, 'path', None) == '/health' for r in app.routes), 'no /health route'"
+          # actually boots: start uvicorn, probe /health, stop
+          python -m uvicorn backend.main:app --host 127.0.0.1 --port 8099 &
+          UVPID=$!
+          trap 'kill $UVPID 2>/dev/null || true' EXIT
+          for _ in $(seq 1 40); do
+            curl -sf http://127.0.0.1:8099/health && break || sleep 0.5
+          done
+          curl -sf http://127.0.0.1:8099/health
