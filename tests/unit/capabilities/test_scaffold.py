@@ -276,3 +276,49 @@ def test_materialize_refuses_path_traversal(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="refusing to write outside"):
         mod.materialize(_MANIFEST_PATH, tmp_path)
     assert not (tmp_path.parent / "escape.txt").exists()
+
+
+# --------------------------------------------------------------------------- #
+# 99.2: InterfaceManifest.lint — the malformed/incomplete net for framing emissions
+# --------------------------------------------------------------------------- #
+
+
+def test_lint_accepts_the_group_run_manifest():
+    assert _group_run_manifest().lint() == []
+
+
+def test_lint_rejects_manifest_with_no_endpoints():
+    raw = _raw_manifest()
+    raw["api"]["endpoints"] = []
+    assert any("at least one endpoint" in e for e in InterfaceManifest.from_dict(raw).lint())
+
+
+def test_lint_rejects_endpoint_with_undeclared_request_shape():
+    raw = _raw_manifest()
+    raw["api"]["endpoints"][1]["request"] = "NopeShape"  # POST /runs
+    errors = InterfaceManifest.from_dict(raw).lint()
+    assert any("request 'NopeShape' is not a declared request_shape" in e for e in errors)
+
+
+def test_lint_rejects_response_naming_an_undeclared_entity():
+    raw = _raw_manifest()
+    raw["api"]["endpoints"][1]["response"] = "RunEvnt"  # typo of RunEvent
+    errors = InterfaceManifest.from_dict(raw).lint()
+    assert any("response references undeclared entity 'RunEvnt'" in e for e in errors)
+
+
+def test_lint_rejects_route_without_view():
+    raw = _raw_manifest()
+    raw["frontend"]["routes"][0]["view"] = ""
+    assert any("view is required" in e for e in InterfaceManifest.from_dict(raw).lint())
+
+
+def test_lint_rejects_unscaffoldable_stack_and_empty_manifest():
+    # a bare manifest with an unknown stack: flagged for both the missing expander and
+    # the absent endpoints (framing produced something unusable)
+    m = InterfaceManifest.from_dict(
+        {"version": 1, "kind": "interface_manifest", "project_id": "x", "stack": "cobol_cics"}
+    )
+    errors = m.lint()
+    assert any("no scaffold expander" in e for e in errors)
+    assert any("at least one endpoint" in e for e in errors)
