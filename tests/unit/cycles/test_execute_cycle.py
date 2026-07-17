@@ -328,6 +328,106 @@ class TestResumeMidSequence:
         assert completed_types == ["implementation", "wrapup"]
 
 
+class TestForwardingRebuildOnEntry:
+    """#434: a mid-sequence entry rebuilds forwarding from durable state.
+
+    Forwarding overrides used to exist only in the memory of the running
+    execute_cycle loop — a post-crash retry started workload N with
+    forwarding_overrides=None, so the implementation run never received the
+    framing run's promoted artifacts (including the gate-approved plan) and
+    silently fell back to static task steps.
+    """
+
+    def _artifact(self, artifact_id: str, artifact_type: str, minute: int) -> ArtifactRef:
+        return ArtifactRef(
+            artifact_id=artifact_id,
+            project_id="proj_001",
+            artifact_type=artifact_type,
+            filename=f"{artifact_id}.txt",
+            content_hash="h",
+            size_bytes=10,
+            media_type="text/plain",
+            created_at=datetime(2026, 1, 15, 12, minute, 0, tzinfo=UTC),
+            promotion_status="promoted",
+        )
+
+    async def test_post_crash_retry_forwards_prior_workload_artifacts(
+        self, executor, mock_registry
+    ):
+        # The incident shape (cyc_9d775e1aebeb): framing completed + promoted,
+        # process died, bad retry cancelled, fresh retry at position 1.
+        cycle = _make_cycle(workload_sequence=[{"type": "framing"}, {"type": "implementation"}])
+        mock_registry.get_cycle.return_value = cycle
+
+        run1 = _make_run("run_001", 1, "completed", "framing")
+        run2 = _make_run("run_002", 2, "cancelled", None)
+        run3 = _make_run("run_003", 3, "completed", "implementation")
+        executor._starting_workload_index = AsyncMock(return_value=1)
+        mock_registry.list_runs.return_value = [run1, run2, run3]
+        mock_registry.get_run.return_value = run3
+
+        plan_artifact = self._artifact("art_plan", "control_implementation_plan", minute=0)
+        code_artifact = self._artifact("art_code", "code", minute=1)
+        executor._artifact_vault.list_artifacts.return_value = [plan_artifact, code_artifact]
+
+        await executor.execute_cycle("cyc_001", "run_003")
+
+        executor._artifact_vault.list_artifacts.assert_awaited_once_with(
+            run_id="run_001", promotion_status="promoted"
+        )
+        forwarded = executor.execute_run.call_args_list[0][1]["forwarding_overrides"]
+        assert forwarded["prior_workload_artifact_refs"] == ["art_plan", "art_code"]
+        # framing → plan refs carry only document/plan types, not code
+        assert forwarded["plan_artifact_refs"] == ["art_plan"]
+
+    async def test_fresh_start_does_not_rebuild(self, executor, mock_registry):
+        # Rebuild must never fire at position 0 — a fresh cycle has no prior
+        # workload, and forwarding starts empty exactly as before #434.
+        cycle = _make_cycle(workload_sequence=[{"type": "framing"}, {"type": "implementation"}])
+        mock_registry.get_cycle.return_value = cycle
+        run1 = _make_run("run_001", 1, "failed", "framing")
+        mock_registry.get_run.return_value = run1
+        mock_registry.list_runs.return_value = [run1]
+
+        await executor.execute_cycle("cyc_001", "run_001")
+
+        assert executor.execute_run.call_args_list[0][1]["forwarding_overrides"] is None
+        executor._artifact_vault.list_artifacts.assert_not_awaited()
+
+    async def test_prior_run_not_completed_degrades_to_no_forwarding(self, executor, mock_registry):
+        # A failed prior workload has nothing trustworthy to forward — the
+        # resumed run executes without overrides instead of crashing or
+        # forwarding a failed run's leftovers.
+        cycle = _make_cycle(workload_sequence=[{"type": "framing"}, {"type": "implementation"}])
+        mock_registry.get_cycle.return_value = cycle
+        run1 = _make_run("run_001", 1, "failed", "framing")
+        run2 = _make_run("run_002", 2, "completed", "implementation")
+        executor._starting_workload_index = AsyncMock(return_value=1)
+        mock_registry.list_runs.return_value = [run1, run2]
+        mock_registry.get_run.return_value = run2
+
+        await executor.execute_cycle("cyc_001", "run_002")
+
+        assert executor.execute_run.call_args_list[0][1]["forwarding_overrides"] is None
+        executor._artifact_vault.list_artifacts.assert_not_awaited()
+
+    async def test_missing_prior_run_degrades_to_no_forwarding(self, executor, mock_registry):
+        # Defensive: an index pointing past the known runs (registry drift)
+        # must degrade, not IndexError inside the orchestration loop.
+        cycle = _make_cycle(workload_sequence=[{"type": "framing"}, {"type": "implementation"}])
+        mock_registry.get_cycle.return_value = cycle
+        run2 = _make_run("run_002", 2, "completed", "implementation")
+        executor._starting_workload_index = AsyncMock(return_value=2)
+        mock_registry.list_runs.return_value = [run2]
+        mock_registry.get_run.return_value = run2
+
+        await executor.execute_cycle("cyc_001", "run_002")
+
+        # start_index 2 on a 2-entry sequence: loop body never runs, but the
+        # rebuild guard must not blow up resolving position 1 of a 1-run list.
+        executor._artifact_vault.list_artifacts.assert_not_awaited()
+
+
 # ---------------------------------------------------------------------------
 # Failed/cancelled run stops orchestration
 # ---------------------------------------------------------------------------

@@ -481,6 +481,13 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # into each run invocation, not executor state. Built at the end of
         # workload i, consumed by workload i+1's execute_run.
         forwarding_overrides: dict | None = None
+        if start_index > 0:
+            # #434: a mid-sequence entry (post-crash retry, #257 resume) has no
+            # threaded value — rebuild it from durable state so the resumed
+            # path forwards exactly what the uninterrupted loop would have.
+            forwarding_overrides = await self._rebuild_forwarding_overrides_on_entry(
+                cycle, cycle_id, start_index
+            )
         for i in range(start_index, len(workload_sequence)):
             workload_entry = workload_sequence[i]
             await self.execute_run(
@@ -710,6 +717,51 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 if decision.gate_name == gate_name:
                     return decision
             await asyncio.sleep(poll_interval)
+
+    async def _rebuild_forwarding_overrides_on_entry(
+        self,
+        cycle: Cycle,
+        cycle_id: str,
+        start_index: int,
+    ) -> dict | None:
+        """Reconstruct forwarding for a mid-sequence entry (#434).
+
+        Forwarding overrides live only in the memory of the running loop
+        (SIP-0097 §6.6), so they died with the orchestrating process — a
+        post-crash retry or #257 mid-sequence resume started workload N
+        without workload N-1's promoted outputs (including the gate-approved
+        implementation plan) and silently fell back to static task steps
+        (RC-4). Every input is durable (vault promotions, run records), and
+        the live transition builds fresh from them at each hop — there is no
+        cross-workload accumulation — so rebuilding from the completed run at
+        ``start_index - 1`` yields exactly the value the uninterrupted loop
+        would have threaded. A missing or non-completed prior run degrades to
+        no forwarding (logged), matching pre-#434 behavior.
+        """
+        all_runs = await self._cycle_registry.list_runs(cycle_id)
+        non_cancelled = sorted(
+            (r for r in all_runs if r.status != RunStatus.CANCELLED.value),
+            key=lambda r: r.run_number,
+        )
+        prior_position = start_index - 1
+        if prior_position >= len(non_cancelled):
+            logger.warning(
+                "Cannot rebuild forwarding for cycle %s: no run at workload position %d",
+                cycle_id,
+                prior_position,
+            )
+            return None
+        prior_run = non_cancelled[prior_position]
+        if prior_run.status != RunStatus.COMPLETED.value:
+            logger.warning(
+                "Cannot rebuild forwarding for cycle %s: prior workload run %s is %r,"
+                " not completed",
+                cycle_id,
+                prior_run.run_id,
+                prior_run.status,
+            )
+            return None
+        return await self._build_forwarding_overrides(cycle, prior_run)
 
     async def _build_forwarding_overrides(
         self,
