@@ -1246,12 +1246,14 @@ class TestInterWorkloadGatePlanValidation:
         )
         return ref, yaml_text.encode()
 
-    async def test_source_regex_plan_rejected_before_gate_awaiting(
+    async def test_source_regex_plan_rejected_as_recorded_gate_decision(
         self, executor, mock_registry, mock_event_bus
     ):
-        """The 3.10 shape through the REAL path: framing completes carrying a
-        source-regex plan → the sequence must fail before the operator is
-        asked to review, and no implementation run may be created."""
+        """The 3.10 shape through the REAL path, with #473 semantics: framing
+        completes carrying a source-regex plan → a system REJECTED gate
+        decision is recorded (visible state, not a silent orchestrator death
+        — the 3.13 stall), the operator is never asked to review, no
+        implementation run is created, and execute_cycle returns cleanly."""
         cycle = self._cycle_with_gate()
         mock_registry.get_cycle.return_value = cycle
 
@@ -1260,14 +1262,18 @@ class TestInterWorkloadGatePlanValidation:
         mock_registry.get_run.return_value = run1
         executor._artifact_vault.retrieve.return_value = self._plan_ref(_PLAN_YAML_SOURCE_REGEX_WL)
 
-        with pytest.raises(Exception) as exc_info:
-            await executor.execute_cycle("cyc_001", "run_001")
+        await executor.execute_cycle("cyc_001", "run_001")  # must NOT raise
 
-        assert "RunDetailView.jsx" in str(exc_info.value)
-        assert "#464" in str(exc_info.value)
+        mock_registry.record_gate_decision.assert_awaited_once()
+        _, decision = mock_registry.record_gate_decision.await_args.args
+        assert decision.decision == GateDecisionValue.REJECTED.value
+        assert decision.decided_by == "system:plan_validation"
+        assert "RunDetailView.jsx" in (decision.notes or "")
+        assert "#464" in (decision.notes or "")
         mock_registry.create_run.assert_not_called()
         emit_types = _emit_types(mock_event_bus)
         assert EventType.WORKLOAD_GATE_AWAITING not in emit_types
+        assert EventType.GATE_DECIDED in emit_types
 
     async def test_document_regex_plan_gates_normally(
         self, executor, mock_registry, mock_event_bus

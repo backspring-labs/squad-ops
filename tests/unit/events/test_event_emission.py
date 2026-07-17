@@ -129,13 +129,19 @@ class TestExecutorEmissionPoints:
             "WORKLOAD_COMPLETED",
             "WORKLOAD_GATE_AWAITING",
             "WORKLOAD_ADVANCED",
+            "GATE_DECIDED",
         ],
     )
     def test_executor_emits(self, attr: str, executor_refs: set[str]) -> None:
         assert attr in executor_refs
 
-    def test_executor_has_12_types(self, executor_refs: set[str]) -> None:
-        """12 = the former 17 minus the five PULSE_* types, which moved to
+    def test_executor_has_13_types(self, executor_refs: set[str]) -> None:
+        """13 = the post-slice-5 twelve plus GATE_DECIDED (#473): the
+        inter-workload pre-gate validation records a system REJECTED gate
+        decision and emits GATE_DECIDED, so a mechanically rejected plan is
+        visible state instead of a silent orchestrator death.
+
+        The twelve: the former 17 minus the five PULSE_* types, which moved to
         the PulseBoundaryRunner with the pulse path (SIP-0097 slice 4; slice
         3 had moved CORRECTION_INITIATED/DECIDED/COMPLETED to the
         CorrectionRunner). CHECKPOINT_CREATED and TASK_DISPATCHED/
@@ -146,7 +152,7 @@ class TestExecutorEmissionPoints:
         FAILED emits to TaskDispatcher, but the fan-out path still
         references all three TASK_* types here, so the count is unchanged.)
         """
-        assert len(executor_refs) == 12
+        assert len(executor_refs) == 13
 
 
 class TestRunCompletionEmissionPoints:
@@ -320,9 +326,9 @@ class TestEmitCallSitePayloadFields:
         assert with_payload >= 35
 
     def test_total_emit_call_count(self) -> None:
-        """Sanity check: 17 executor + 7 correction-runner +
-        8 pulse-boundary-runner + 2 task-dispatcher + 7 route = 41 total
-        emit calls.
+        """Sanity check: 18 executor + 7 correction-runner +
+        8 pulse-boundary-runner + 2 task-dispatcher + 7 route = 42 total
+        emit calls (#473 added the pre-gate rejection's GATE_DECIDED emit).
 
         SIP-0097 slice 2c collapsed execute_run's five per-exception-class
         terminal emits into one emit driven by the RunCompletion terminal
@@ -335,4 +341,4 @@ class TestEmitCallSitePayloadFields:
         total = 0
         for path in _ALL_EMISSION_FILES:
             total += len(self._extract_emit_calls(path))
-        assert total == 41
+        assert total == 42
