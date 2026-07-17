@@ -171,8 +171,11 @@ def test_expand_renders_pinned_error_contract():
     assert "from .errors import register_error_handlers" in main
     assert "register_error_handlers(app)" in main
 
-    # route stubs steer the fill dev at ApiError with the real codes
-    assert "raise ApiError(code, message) from .errors" in files["backend/routes.py"]
+    # route stubs steer the fill dev at ApiError with the real codes, and the seam
+    # import is wired into the frozen stub so import_present(ApiError) is valid interface
+    routes = files["backend/routes.py"]
+    assert "from .errors import ApiError" in routes
+    assert "raise ApiError(code, message) from .errors" in routes
 
 
 def test_expand_emits_api_client_prefixing_api():
