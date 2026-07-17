@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import quote
 
 import typer
 
@@ -135,6 +136,14 @@ def retry_run(
     ctx: typer.Context,
     project_id: str = typer.Argument(...),
     cycle_id: str = typer.Argument(...),
+    workload_type: str | None = typer.Option(
+        None,
+        "--workload-type",
+        help=(
+            "Explicit workload for the new run; by default the server resolves "
+            "it positionally from the cycle's workload_sequence (#433)"
+        ),
+    ),
 ):
     """Create a new run (retry) for a cycle and enqueue it for execution.
 
@@ -145,7 +154,10 @@ def retry_run(
 
     try:
         client = _get_client(ctx)
-        data = client.post(f"/api/v1/projects/{project_id}/cycles/{cycle_id}/runs")
+        path = f"/api/v1/projects/{project_id}/cycles/{cycle_id}/runs"
+        if workload_type:
+            path += f"?workload_type={quote(workload_type)}"
+        data = client.post(path)
         client.close()
     except CLIError as e:
         print_error(str(e))

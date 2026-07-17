@@ -5,6 +5,7 @@ Covers ACs 5, 8, 9, 10, 14, 21.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
@@ -192,3 +193,100 @@ class TestCreateRunWorkloadType:
         assert resp.status_code == 200
         body = resp.json()
         assert body["workload_type"] == "framing"
+
+
+_MULTI_WORKLOAD_CYCLE = replace(
+    _CYCLE,
+    applied_defaults={
+        "workload_sequence": [
+            {"type": "framing", "workload_ref": "planning_workload"},
+            {"type": "implementation", "workload_ref": "implementation_workload"},
+        ]
+    },
+)
+
+
+def _existing_run(run_number: int, status: str, workload_type: str | None = None) -> Run:
+    return Run(
+        run_id=f"run_{run_number:03d}",
+        cycle_id="cyc_001",
+        run_number=run_number,
+        status=status,
+        initiated_by="api",
+        resolved_config_hash="h",
+        workload_type=workload_type,
+    )
+
+
+class TestCreateRunPositionalResolution:
+    """#433: an unspecified workload_type resolves positionally (D14), never
+    silently to None on a multi-workload cycle."""
+
+    def test_retry_resolves_next_workload_positionally(self, client, mock_cycle_registry):
+        # The incident shape: framing completed, retry meant for implementation.
+        mock_cycle_registry.get_cycle.return_value = _MULTI_WORKLOAD_CYCLE
+        mock_cycle_registry.list_runs.return_value = [
+            _existing_run(1, "completed", "framing"),
+        ]
+        resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/runs")
+        assert resp.status_code == 200
+        assert resp.json()["workload_type"] == "implementation"
+
+    def test_cancelled_runs_do_not_advance_position(self, client, mock_cycle_registry):
+        mock_cycle_registry.get_cycle.return_value = _MULTI_WORKLOAD_CYCLE
+        mock_cycle_registry.list_runs.return_value = [
+            _existing_run(1, "completed", "framing"),
+            _existing_run(2, "cancelled", "implementation"),
+        ]
+        resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/runs")
+        assert resp.status_code == 200
+        assert resp.json()["workload_type"] == "implementation"
+
+    def test_all_prior_runs_cancelled_resolves_position_zero(self, client, mock_cycle_registry):
+        mock_cycle_registry.get_cycle.return_value = _MULTI_WORKLOAD_CYCLE
+        mock_cycle_registry.list_runs.return_value = [
+            _existing_run(1, "cancelled", "framing"),
+            _existing_run(2, "cancelled", None),
+        ]
+        resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/runs")
+        assert resp.status_code == 200
+        assert resp.json()["workload_type"] == "framing"
+
+    def test_out_of_bounds_position_rejected(self, client, mock_cycle_registry):
+        # Sequence exhausted: rejecting beats a silent None-typed run (the
+        # legacy plan shape + no artifact seeding).
+        mock_cycle_registry.get_cycle.return_value = _MULTI_WORKLOAD_CYCLE
+        mock_cycle_registry.list_runs.return_value = [
+            _existing_run(1, "completed", "framing"),
+            _existing_run(2, "failed", "implementation"),
+        ]
+        resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/runs")
+        assert resp.status_code == 422
+        error = resp.json()["detail"]["error"]
+        assert error["code"] == "VALIDATION_ERROR"
+        assert "Cancel the run being retried" in error["message"]
+
+    def test_explicit_workload_type_bypasses_resolution(self, client, mock_cycle_registry):
+        # Same exhausted-sequence state as above: an explicit param must win.
+        mock_cycle_registry.get_cycle.return_value = _MULTI_WORKLOAD_CYCLE
+        mock_cycle_registry.list_runs.return_value = [
+            _existing_run(1, "completed", "framing"),
+            _existing_run(2, "failed", "implementation"),
+        ]
+        resp = client.post(
+            "/api/v1/projects/hello_squad/cycles/cyc_001/runs?workload_type=implementation"
+        )
+        assert resp.status_code == 200
+        assert resp.json()["workload_type"] == "implementation"
+
+    def test_legacy_cycle_with_runs_stays_none(self, client, mock_cycle_registry):
+        # No workload_sequence: legacy cycles must keep the None type that
+        # selects their legacy plan path, regardless of run count.
+        mock_cycle_registry.list_runs.return_value = [
+            _existing_run(1, "completed"),
+            _existing_run(2, "failed"),
+            _existing_run(3, "completed"),
+        ]
+        resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/runs")
+        assert resp.status_code == 200
+        assert resp.json()["workload_type"] is None
