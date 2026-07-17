@@ -667,7 +667,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 """
 
 _API_JS = """// Scaffold-owned API client — the /api base path and error-envelope unwrapping
-// are interface wiring, fixed here. Views call apiFetch('/runs'); the /api prefix
+// are interface wiring, fixed here. Views call apiFetch('/path'); the /api prefix
 // routes through the Vite dev proxy to the backend. A response carrying the pinned
 // {"error": {code, message}} envelope is thrown as ApiError.
 export class ApiError extends Error {
