@@ -649,3 +649,29 @@ class TestGenerateTaskPlanBindMode:
         plan = ImplementationPlan.from_yaml(MANIFEST_YAML)
         envelopes = generate_task_plan(_make_cycle(), _make_run(), _make_profile(), plan=plan)
         assert len(envelopes) == 9
+
+    def test_dispatch_resolves_refs_into_acceptance_criteria(self):
+        # 98.3 slice C: the bound ref materializes into the dispatched envelope's
+        # acceptance_criteria as a TypedCheck stamped with the contract id + file.
+        from squadops.cycles.implementation_plan import TypedCheck
+
+        plan = ImplementationPlan.from_yaml(_BIND_MANIFEST_YAML)
+        envelopes = generate_task_plan(
+            _make_cycle(), _make_run(), _make_profile(), plan=plan, contract=_models_contract()
+        )
+        models_env = next(e for e in envelopes if e.inputs.get("subtask_focus") == "Backend models")
+        typed = [c for c in models_env.inputs["acceptance_criteria"] if isinstance(c, TypedCheck)]
+        assert [c.id for c in typed] == ["vc-models-base"]
+        assert typed[0].check == "import_present"
+        assert typed[0].params["file"] == "backend/models.py"
+
+    def test_dispatch_author_mode_leaves_criteria_untouched(self):
+        # no contract -> the envelope carries only the plan's authored criteria (a prose
+        # string here), never a resolved TypedCheck.
+        from squadops.cycles.implementation_plan import TypedCheck
+
+        plan = ImplementationPlan.from_yaml(MANIFEST_YAML)
+        envelopes = generate_task_plan(_make_cycle(), _make_run(), _make_profile(), plan=plan)
+        models_env = next(e for e in envelopes if e.inputs.get("subtask_focus") == "Backend models")
+        assert models_env.inputs["acceptance_criteria"] == ["Models exist"]
+        assert not any(isinstance(c, TypedCheck) for c in models_env.inputs["acceptance_criteria"])

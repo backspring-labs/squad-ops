@@ -23,7 +23,7 @@ from squadops.capabilities.handlers.build_profiles import (
     ROUTING_FALLBACK_NO_BUILDER,
 )
 from squadops.cycles.agent_config import resolve_agent_config
-from squadops.cycles.implementation_plan import ImplementationPlan
+from squadops.cycles.implementation_plan import ImplementationPlan, resolve_contract_refs
 from squadops.cycles.models import (
     REQUIRED_PLAN_ROLES,
     WORKLOAD_REQUIRED_ROLES,
@@ -488,7 +488,14 @@ def generate_task_plan(
             inputs["subtask_description"] = plan_task.description
             inputs["expected_artifacts"] = plan_task.expected_artifacts
             inputs["subtask_index"] = plan_task.task_index
-            inputs["acceptance_criteria"] = plan_task.acceptance_criteria
+            acceptance = list(plan_task.acceptance_criteria)
+            # SIP-0098 98.3: in bind mode, resolve the task's criteria_refs into
+            # TypedChecks (stamped with contract ids) and merge them in. The plan
+            # binds by id, dispatch materializes — evaluation is unchanged. Author
+            # mode (no contract / no refs) leaves acceptance_criteria as authored.
+            if contract is not None and plan_task.criteria_refs:
+                acceptance.extend(resolve_contract_refs(plan_task.criteria_refs, contract))
+            inputs["acceptance_criteria"] = acceptance
 
         envelope = TaskEnvelope(
             task_id=task_id,

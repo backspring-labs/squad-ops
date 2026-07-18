@@ -355,6 +355,9 @@ class _CycleTaskHandler(CapabilityHandler):
                     # implementation_plan (legacy monolithic flow).
                     "task_index": inputs.get("subtask_index"),
                     "check_index": check_index,
+                    # SIP-0098 98.3: the contract criterion id when this check was
+                    # resolved from a bind-mode criteria_ref; None for authored checks.
+                    "criterion_id": criterion.id or None,
                 }
                 checks.append(check_record)
 

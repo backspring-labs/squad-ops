@@ -417,6 +417,41 @@ class ImplementationPlan:
         return result
 
 
+def resolve_contract_refs(
+    criteria_refs: list[str], contract: VerificationContract
+) -> list[TypedCheck]:
+    """Resolve bind-mode ``criteria_refs`` into ``TypedCheck``s (SIP-0098 §6.3 dispatch).
+
+    The #420 enrichment seam for contract binding: each ref names a contract
+    criterion; this builds the executable ``TypedCheck`` for it, stamped with the
+    stable criterion ``id`` and its target file (the contract's owning ``fill_files``
+    key — contract criteria imply the file rather than inlining it). The resulting
+    checks are merged into the dispatched task's ``acceptance_criteria`` so evaluation,
+    correction, and retest operate on them unchanged.
+
+    Only ``interface``/``implementation`` criteria (the typed-acceptance vocabulary)
+    materialize here; a ref to a behavioral framework check (``frontend_build`` /
+    ``tests_pass``) is skipped — those run through the qa/build handlers, not the
+    typed-acceptance path (98.4). An unresolvable ref is skipped too: plan validation
+    already rejects it (``validate_criteria_refs``), so this stays a pure materializer.
+    """
+    index = contract.criterion_index()
+    checks: list[TypedCheck] = []
+    for ref in criteria_refs:
+        entry = index.get(ref)
+        if entry is None:
+            continue
+        criterion, owning_path = entry
+        if criterion.check not in CHECK_SPECS:
+            continue  # behavioral check bound by ref — materialized elsewhere (98.4)
+        spec = CHECK_SPECS[criterion.check]
+        params = dict(criterion.params)
+        if owning_path and ("file" in spec.required_params or "file" in spec.path_params):
+            params.setdefault("file", owning_path)
+        checks.append(TypedCheck(check=criterion.check, params=params, id=criterion.id))
+    return checks
+
+
 def _check_dependency_dag(tasks: list[PlanTask]) -> None:
     """Validate that task dependencies form a DAG (no cycles).
 

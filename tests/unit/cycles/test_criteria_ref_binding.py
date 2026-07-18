@@ -18,8 +18,10 @@ from squadops.cycles.implementation_plan import (
     ImplementationPlan,
     TypedCheck,
     _serialize_acceptance_criterion,
+    resolve_contract_refs,
 )
 from squadops.cycles.verification_contract import VerificationContract
+from squadops.cycles.verification_normalize import normalize_task_checks
 
 pytestmark = [pytest.mark.domain_capabilities]
 
@@ -278,3 +280,67 @@ def test_task_not_touching_covered_files_imposes_no_binding():
     # a task producing only an uncovered artifact needs no refs at all
     plan = ImplementationPlan.from_yaml(_plan_yaml(artifacts="[backend/helpers.py]"))
     assert plan.validate_criteria_refs(_contract()) == []
+
+
+# --------------------------------------------------------------------------- #
+# Dispatch enrichment: resolve_contract_refs (criteria_refs -> TypedCheck)
+# --------------------------------------------------------------------------- #
+
+
+def test_resolve_contract_refs_builds_typed_checks_with_id_and_file():
+    c = _contract()
+    checks = resolve_contract_refs(list(c.required_ref_ids_for("backend/routes.py")), c)
+    by_id = {tc.id: tc for tc in checks}
+    assert set(by_id) == {"vc-routes-endpoints", "vc-routes-apierror", "vc-routes-compiles"}
+    # file-targeting checks get the owning fill path stamped as their `file` param
+    assert by_id["vc-routes-endpoints"].check == "endpoint_defined"
+    assert by_id["vc-routes-endpoints"].params["file"] == "backend/routes.py"
+    assert by_id["vc-routes-apierror"].params["file"] == "backend/routes.py"
+    # command_exit_zero targets via argv, not a file param — no file injected
+    assert "file" not in by_id["vc-routes-compiles"].params
+    assert by_id["vc-routes-compiles"].params["argv"][:3] == ["python", "-m", "py_compile"]
+
+
+def test_resolve_contract_refs_skips_behavioral_and_unresolvable():
+    c = _contract()
+    # vc-frontend-builds is a behavioral framework check (materialized by the qa/build
+    # handlers, not the typed-acceptance seam); an unknown id resolves to nothing.
+    assert resolve_contract_refs(["vc-frontend-builds", "nope"], c) == []
+
+
+def test_resolved_check_survives_wire_and_reaches_check_result():
+    # resolve -> asdict wire row -> split re-parse keeps the id; and a produced
+    # evidence row carrying that id normalizes onto CheckResult.criterion_id.
+    import dataclasses
+
+    c = _contract()
+    tc = resolve_contract_refs(["vc-routes-apierror"], c)[0]
+    reparsed = split_acceptance_criteria([dataclasses.asdict(tc)]).typed[0]
+    assert reparsed.id == "vc-routes-apierror"
+
+    outputs = {
+        "validation_result": {
+            "checks": [
+                {
+                    "check": "acceptance:import_present",
+                    "status": "passed",
+                    "criterion_id": "vc-routes-apierror",
+                }
+            ]
+        }
+    }
+    results = normalize_task_checks(outputs, subject="task-routes")
+    assert [(r.check_id, r.criterion_id) for r in results] == [
+        ("acceptance:import_present", "vc-routes-apierror")
+    ]
+
+
+def test_author_mode_check_result_has_no_criterion_id():
+    # a row without a criterion_id (author mode / framework check) normalizes to None
+    outputs = {
+        "validation_result": {
+            "checks": [{"check": "acceptance:endpoint_defined", "status": "passed"}]
+        }
+    }
+    results = normalize_task_checks(outputs, subject="t")
+    assert results[0].criterion_id is None
