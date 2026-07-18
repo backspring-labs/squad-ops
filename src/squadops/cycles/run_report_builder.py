@@ -138,7 +138,12 @@ def _build_verification_lines(summary: RunVerificationSummary) -> list[str]:
         n, m = summary.criteria_coverage
         lines.append(f"Contract criteria: {n}/{m} executed-and-passed")
     if summary.failed:
-        lines.append(f"Failed: {', '.join(summary.failed)}")
+        # #500: reasons inline when the aggregation carried them, so a failed
+        # probe is classifiable from the report alone (bare-name fallback kept
+        # for summaries reconstructed from pre-#500 storage).
+        reasons = {f.check_id: f.reason for f in summary.failed_detail if f.reason}
+        rendered = [f"{c} ({reasons[c]})" if c in reasons else c for c in summary.failed]
+        lines.append(f"Failed: {', '.join(rendered)}")
     if summary.unverified:
         lines.append("")
         lines.append("### Unverified (not executed)")

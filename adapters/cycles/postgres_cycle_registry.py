@@ -37,6 +37,7 @@ from squadops.cycles.models import (
 )
 from squadops.cycles.pulse_models import PulseVerificationRecord
 from squadops.cycles.verification_integrity import (
+    FailedCheck,
     RunVerdict,
     RunVerificationSummary,
     UnverifiedCheck,
@@ -593,6 +594,11 @@ def _verification_summary_to_dict(summary: RunVerificationSummary) -> dict:
         "verdict": summary.verdict.value,
         "verified": list(summary.verified),
         "failed": list(summary.failed),
+        # #500: failed entries disclose their reasons, same as unverified always has.
+        "failed_detail": [
+            {"check_id": f.check_id, "reason": f.reason, "required": f.required}
+            for f in summary.failed_detail
+        ],
         "unverified": [
             {"check_id": u.check_id, "reason": u.reason, "required": u.required}
             for u in summary.unverified
@@ -600,6 +606,11 @@ def _verification_summary_to_dict(summary: RunVerificationSummary) -> dict:
         "required_unmet": list(summary.required_unmet),
         "executed_count": summary.executed_count,
         "passed_count": summary.passed_count,
+        # SIP-0098 98.4 criterion coverage — was omitted here, so stored summaries
+        # reconstructed to 0/0 coverage and any roll-up counting yield from
+        # Postgres (rather than the in-memory summary) undercounted (#500).
+        "criteria_verified": list(summary.criteria_verified),
+        "criteria_total": list(summary.criteria_total),
     }
 
 
@@ -612,6 +623,10 @@ def _verification_summary_from_dict(d: dict) -> RunVerificationSummary:
         verdict=RunVerdict(d["verdict"]),
         verified=tuple(d.get("verified", [])),
         failed=tuple(d.get("failed", [])),
+        failed_detail=tuple(
+            FailedCheck(check_id=f["check_id"], reason=f["reason"], required=bool(f["required"]))
+            for f in d.get("failed_detail", [])
+        ),
         unverified=tuple(
             UnverifiedCheck(
                 check_id=u["check_id"], reason=u["reason"], required=bool(u["required"])
@@ -621,4 +636,6 @@ def _verification_summary_from_dict(d: dict) -> RunVerificationSummary:
         required_unmet=tuple(d.get("required_unmet", [])),
         executed_count=int(d.get("executed_count", 0)),
         passed_count=int(d.get("passed_count", 0)),
+        criteria_verified=tuple(d.get("criteria_verified", [])),
+        criteria_total=tuple(d.get("criteria_total", [])),
     )

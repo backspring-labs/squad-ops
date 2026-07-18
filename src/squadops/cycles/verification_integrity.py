@@ -184,6 +184,21 @@ class UnverifiedCheck:
 
 
 @dataclass(frozen=True)
+class FailedCheck:
+    """An executed-and-failed result with its producer's reason (#500).
+
+    ``unverified`` entries always carried their reasons; ``failed`` entries were
+    bare names, so a failed contract probe left no classifiable detail in
+    evidence (the 422-vs-200 had to be manually reproduced). ``reason`` may be
+    empty — a producer that reports failure without one — but is never dropped
+    when supplied."""
+
+    check_id: str
+    reason: str
+    required: bool
+
+
+@dataclass(frozen=True)
 class RunVerificationSummary:
     """Per-run verification roll-up — the honest evidence contract (§6.2, §10).
 
@@ -206,6 +221,10 @@ class RunVerificationSummary:
     # green iff every covered criterion passed. Empty in author mode (no criterion ids).
     criteria_verified: tuple[str, ...] = ()
     criteria_total: tuple[str, ...] = ()
+    # #500: per-failure reasons for the ``failed`` list — same disclosure the
+    # ``unverified`` entries always had. Default-empty so pre-#500 stored
+    # summaries reconstruct unchanged.
+    failed_detail: tuple[FailedCheck, ...] = ()
 
     @property
     def pass_rate(self) -> float:
@@ -410,6 +429,7 @@ def aggregate_verification(
     required = frozenset(required_check_ids)
     verified: list[str] = []
     failed: list[str] = []
+    failed_detail: list[FailedCheck] = []
     unverified: list[UnverifiedCheck] = []
     seen_ids: set[str] = set()
     # SIP-0098 98.4: contract-criterion coverage, keyed on CheckResult.criterion_id.
@@ -426,6 +446,13 @@ def aggregate_verification(
             verified.append(r.check_id)
         elif family is EvidenceFamily.EXECUTED_FAILED:
             failed.append(r.check_id)
+            failed_detail.append(
+                FailedCheck(
+                    check_id=r.check_id,
+                    reason=r.reason or "",
+                    required=r.check_id in required,
+                )
+            )
         else:  # NOT_EXECUTED — non-creditable, always disclosed
             unverified.append(
                 UnverifiedCheck(
@@ -477,6 +504,7 @@ def aggregate_verification(
         passed_count=passed_count,
         criteria_verified=tuple(sorted(criteria_passed - criteria_adverse)),
         criteria_total=tuple(sorted(criteria_passed | criteria_adverse)),
+        failed_detail=tuple(failed_detail),
     )
 
 
