@@ -567,3 +567,51 @@ class TestCycleOutcomeReconciliation:
         outcome = aggregate_cycle_outcome([r1, r2])
         assert outcome.verdict is RunVerdict.REJECTED
         assert outcome.required_unmet == ()
+
+
+# ---------------------------------------------------------------------------
+# SIP-0098 98.4: contract-criterion coverage accounting
+# ---------------------------------------------------------------------------
+
+
+class TestContractCriteriaCoverage:
+    def test_run_coverage_counts_passed_criteria(self):
+        results = [
+            _passed("acceptance:import_present", criterion_id="vc-a", subject="t1"),
+            _passed("acceptance:endpoint_defined", criterion_id="vc-b", subject="t1"),
+            _failed("vc-probe-x", criterion_id="vc-probe-x", subject="t2"),
+        ]
+        s = aggregate_verification(results)
+        assert s.criteria_verified == ("vc-a", "vc-b")
+        assert s.criteria_total == ("vc-a", "vc-b", "vc-probe-x")
+        assert s.criteria_coverage == (2, 3)
+
+    def test_checks_without_criterion_id_are_excluded(self):
+        # author-mode / framework checks carry no criterion_id -> zero coverage
+        s = aggregate_verification([_passed("tests_pass", subject="t")])
+        assert s.criteria_coverage == (0, 0)
+        assert s.criteria_total == ()
+
+    def test_adverse_criterion_never_credited_within_a_run(self):
+        # a criterion with any adverse result in the run is not credited (adverse wins)
+        results = [
+            _failed("vc-x", criterion_id="vc-x", subject="t1"),
+            _passed("vc-x", criterion_id="vc-x", subject="t2"),
+        ]
+        s = aggregate_verification(results)
+        assert s.criteria_verified == ()
+        assert s.criteria_total == ("vc-x",)
+
+    def test_skipped_criterion_is_counted_but_uncredited(self):
+        s = aggregate_verification([_skipped("vc-p", criterion_id="vc-p", subject="t")])
+        assert s.criteria_verified == ()
+        assert s.criteria_total == ("vc-p",)
+
+    def test_cycle_union_credits_criterion_verified_in_any_run(self):
+        # a probe that failed in run 1 and passed in run 2 is verified at cycle scope
+        run1 = aggregate_verification([_failed("vc-p", criterion_id="vc-p", subject="t")])
+        run2 = aggregate_verification([_passed("vc-p", criterion_id="vc-p", subject="t")])
+        outcome = aggregate_cycle_outcome([run1, run2])
+        assert outcome.criteria_verified == ("vc-p",)
+        assert outcome.criteria_total == ("vc-p",)
+        assert outcome.criteria_coverage == (1, 1)

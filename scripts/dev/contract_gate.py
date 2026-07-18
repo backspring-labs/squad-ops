@@ -15,8 +15,10 @@ correct code — the structural fix for the criteria lottery.
 
 Refinement of SIP §6.2 (approved 2026-07-17, noted on the PR): a walking skeleton
 compiles/builds/boots by design, so compile/build checks are regression guards that
-PASS on the bare skeleton; only behavior-exercising checks (tests_pass; probes, from
-98.4) fail on it. Probes are not executed here — the probe runner lands in 98.4.
+PASS on the bare skeleton; only behavior-exercising checks (tests_pass; probes) fail
+on it. As of 98.4 the behavioral probes are executed here too (the probe runner boots
+the subject and issues the declared requests): they PASS against the reference fill
+(winnability) and must NOT pass on the bare skeleton (its 501 stubs answer nothing).
 
 Usage:
     python scripts/dev/contract_gate.py <lint|bare-skeleton|reference-fill> \
@@ -32,6 +34,7 @@ import sys
 import tempfile
 from pathlib import Path
 
+from squadops.capabilities.handlers.probe_runner import run_probes
 from squadops.capabilities.scaffold import InterfaceManifest, expand
 from squadops.capabilities.scaffold_contract import emit_contract_dict
 from squadops.cycles.verification_contract import VerificationContract
@@ -114,6 +117,22 @@ def _evaluate(contract: VerificationContract, workspace: Path, result: _Result) 
         result.record(build[0].id, got, "passed")
 
 
+def _record_probes(
+    contract: VerificationContract, workspace: Path, result: _Result, *, bare: bool
+) -> None:
+    """Boot the subject and run every behavioral probe (SIP §6.4/§6.5, 98.4).
+
+    Reference-fill: each probe must ``passed``. Bare skeleton: a probe must NOT pass
+    (its stubs answer 501/nothing) — a probe that passes on the bare skeleton is a
+    false-green admitted at authoring time, exactly what this gate exists to catch."""
+    for outcome in run_probes(workspace, contract.behavioral.probes):
+        if bare:
+            got = "passed" if outcome.status == "passed" else "not_passed"
+            result.record(outcome.id, got, "not_passed")
+        else:
+            result.record(outcome.id, outcome.status, "passed")
+
+
 def _mode_lint(manifest_path: Path) -> int:
     manifest = InterfaceManifest.from_yaml(manifest_path.read_text(encoding="utf-8"))
     errors = VerificationContract.from_dict(emit_contract_dict(manifest)).lint()
@@ -138,6 +157,7 @@ def _mode_bare(manifest_path: Path) -> int:
             if crit.check in FILL_BEHAVIOR_MEASURES:
                 got = "passed" if _tests_pass(workspace) else "not_passed"
                 result.record(crit.id, got, "not_passed")
+        _record_probes(contract, workspace, result, bare=True)
     result.report("bare-skeleton")
     return 0 if result.ok() else 1
 
@@ -155,6 +175,7 @@ def _mode_reference_fill(manifest_path: Path, ref_dir: Path) -> int:
             if crit.check in FILL_BEHAVIOR_MEASURES:
                 got = "passed" if _tests_pass(workspace) else "failed"
                 result.record(crit.id, got, "passed")
+        _record_probes(contract, workspace, result, bare=False)
     result.report("reference-fill")
     return 0 if result.ok() else 1
 
