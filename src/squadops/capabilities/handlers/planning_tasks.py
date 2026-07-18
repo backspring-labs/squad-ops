@@ -819,6 +819,12 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
 
         if self._proposer_role != "development":
             return ""
+        # #496: bind mode (a contract_criteria_index was injected) means the manifest
+        # already exists — the contract was emitted from it and binds its exact hash.
+        # Asking framing to re-derive it from a product-only PRD is unwinnable (any
+        # naming drift breaks the hash), so emission is author-mode only.
+        if inputs.get("contract_criteria_index"):
+            return ""
         resolved_config = inputs.get("resolved_config") or {}
         stack = str(resolved_config.get("build_profile") or "")
         if not is_scaffoldable_stack(stack):

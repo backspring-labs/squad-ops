@@ -1485,9 +1485,10 @@ class TestInterWorkloadGatePlanValidation:
     async def test_bind_mode_without_manifest_rejected_even_when_plan_binds(
         self, executor, mock_registry, mock_event_bus
     ):
-        """#494 — the shakedown gap: bind mode, correctly bound plan, but framing
-        emitted NO interface manifest. Pre-#494 this passed the net silently and
-        the implementation would have run unscaffolded while claiming contract
+        """#494/#496 — the shakedown gap: bind mode, correctly bound plan, but NO
+        interface manifest from either source (framing emitted none, nothing seeded
+        in plan_artifact_refs). Pre-#494 this passed the net silently and the
+        implementation would have run unscaffolded while claiming contract
         verification. Must record a system rejection naming the missing manifest."""
         import dataclasses
 
@@ -1517,8 +1518,9 @@ class TestInterWorkloadGatePlanValidation:
         _, decision = mock_registry.record_gate_decision.await_args.args
         assert decision.decision == GateDecisionValue.REJECTED.value
         assert decision.decided_by == "system:plan_validation"
-        assert "requires a framing-emitted interface manifest" in (decision.notes or "")
+        assert "bind mode requires an interface manifest" in (decision.notes or "")
         assert "#494" in (decision.notes or "")
+        assert "#496" in (decision.notes or "")
         mock_registry.create_run.assert_not_called()
         assert EventType.WORKLOAD_GATE_AWAITING not in _emit_types(mock_event_bus)
 
@@ -1555,6 +1557,93 @@ class TestInterWorkloadGatePlanValidation:
         run1 = dataclasses.replace(
             _make_run("run_001", 1, "completed", "framing", gate_decisions=(approved,)),
             artifact_refs=("art_plan", "art_manifest"),
+        )
+        run2 = _make_run("run_002", 2, "completed", "implementation")
+
+        async def _get_run(run_id):
+            return run1 if run_id == "run_001" else run2
+
+        mock_registry.get_run.side_effect = _get_run
+        mock_registry.list_runs.return_value = [run1]
+        mock_registry.create_run.side_effect = lambda r: r
+
+        def _art(ref_id, artifact_type, filename, text):
+            return (
+                ArtifactRef(
+                    artifact_id=ref_id,
+                    project_id="proj_001",
+                    artifact_type=artifact_type,
+                    filename=filename,
+                    content_hash="h",
+                    size_bytes=len(text),
+                    media_type="text/yaml",
+                    created_at=NOW,
+                    cycle_id="cyc_001",
+                    run_id="run_001",
+                ),
+                text.encode(),
+            )
+
+        store = {
+            "art_plan": self._plan_ref(plan_text),
+            "art_manifest": _art(
+                "art_manifest", "interface_manifest", "interface_manifest.yaml", manifest_text
+            ),
+            "art_c": _art(
+                "art_c", "verification_contract", "verification_contract.yaml", contract_text
+            ),
+        }
+
+        async def _retrieve(ref_id):
+            return store[ref_id]
+
+        executor._artifact_vault.retrieve.side_effect = _retrieve
+        executor._artifact_vault.list_artifacts.return_value = []
+
+        await executor.execute_cycle("cyc_001", "run_001")
+
+        mock_registry.record_gate_decision.assert_not_awaited()
+        assert EventType.WORKLOAD_GATE_AWAITING in _emit_types(mock_event_bus)
+
+    async def test_bind_mode_with_seeded_manifest_gates_normally(
+        self, executor, mock_registry, mock_event_bus
+    ):
+        """#496 through the real path: bind mode, framing emits NO manifest (the
+        production shape once #496 gates the emission instruction off), but the
+        canonical manifest is operator-seeded in plan_artifact_refs. The #494
+        rejection must NOT fire — the seeded manifest is hash-checked against the
+        contract and the bound plan reaches the gate."""
+        import dataclasses
+        from pathlib import Path
+
+        from squadops.capabilities.scaffold import InterfaceManifest
+        from squadops.capabilities.scaffold_contract import emit_contract_yaml
+
+        manifest_text = (
+            Path(__file__).resolve().parents[3]
+            / "examples"
+            / "03_group_run"
+            / "interface_manifest.yaml"
+        ).read_text(encoding="utf-8")
+        contract_text = emit_contract_yaml(InterfaceManifest.from_yaml(manifest_text))
+        bound_refs = "[vc-routes-endpoints, vc-routes-apierror, vc-routes-compiles]"
+        plan_text = self._PLAN_YAML_BOUND.replace(
+            "criteria_refs: [vc-routes-apierror]", f"criteria_refs: {bound_refs}"
+        )
+
+        approved = _gate_decision("progress_plan_review", GateDecisionValue.APPROVED.value)
+        cycle = dataclasses.replace(
+            self._cycle_with_gate(),
+            execution_overrides={
+                "contract_ref": "art_c",
+                "plan_artifact_refs": ["art_manifest"],
+            },
+        )
+        mock_registry.get_cycle.return_value = cycle
+
+        run1 = dataclasses.replace(
+            _make_run("run_001", 1, "completed", "framing", gate_decisions=(approved,)),
+            artifact_refs=("art_plan",),  # NO framing-emitted manifest
         )
         run2 = _make_run("run_002", 2, "completed", "implementation")
 
