@@ -87,11 +87,13 @@ def normalize_task_checks(
             continue
         if "status" in row:
             # Typed-acceptance row: carries a CheckOutcome status verbatim.
+            # SIP-0098 98.3: a bind-mode row also carries the contract criterion id.
             results.append(
                 CheckResult(
                     check_id=cid,
                     status=str(row.get("status") or ""),
                     reason=_str_or_none(row.get("reason")),
+                    criterion_id=_str_or_none(row.get("criterion_id")),
                 )
             )
         else:

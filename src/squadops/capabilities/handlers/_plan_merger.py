@@ -323,6 +323,7 @@ def _build_canonical_pair(
         expected_artifacts=list(ptask.expected_artifacts),
         acceptance_criteria=list(ptask.acceptance_criteria),
         depends_on=[],  # resolved in rule-5 pass
+        criteria_refs=list(ptask.criteria_refs),  # SIP-0098 98.3: carry bind refs through
     )
     provenance = CanonicalTaskProvenance(
         task_index=0,
@@ -494,6 +495,9 @@ def _plan_task_to_dict(task: PlanTask) -> dict[str, Any]:
         "expected_artifacts": list(task.expected_artifacts),
         "acceptance_criteria": [_criterion_to_dict(c) for c in task.acceptance_criteria],
         "depends_on": list(task.depends_on),
+        # SIP-0098 98.3: emit criteria_refs only when present so contract-less merged
+        # plans stay byte-identical to today (from_yaml defaults the field to []).
+        **({"criteria_refs": list(task.criteria_refs)} if task.criteria_refs else {}),
     }
 
 

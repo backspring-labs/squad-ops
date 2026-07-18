@@ -1375,6 +1375,94 @@ class TestInterWorkloadGatePlanValidation:
         assert EventType.WORKLOAD_GATE_AWAITING not in emit_types
         assert EventType.GATE_DECIDED in emit_types
 
+    # SIP-0098 98.3: bind-mode contract validation rides the SAME #473 seam.
+    _CONTRACT_YAML_BIND = (
+        "contract_version: 1\n"
+        "skeleton:\n"
+        "  expander: fullstack_fastapi_react\n"
+        f"  interface_manifest_hash: {'a' * 64}\n"
+        "capabilities: [python]\n"
+        "frozen: []\n"
+        "fill_files:\n"
+        "  backend/routes.py:\n"
+        "    interface:\n"
+        "      - {check: import_present, id: vc-routes-apierror, module: .errors, symbol: ApiError}\n"
+        "    implementation: []\n"
+        "behavioral: {build: [], suite: {checks: [], coverage_expectations: []}, probes: []}\n"
+    )
+    # A plan that PRODUCES the covered file but binds NONE of its criteria — a silent
+    # descoping of verification that bind-mode validation must reject.
+    _PLAN_YAML_UNBOUND = (
+        "version: 1\n"
+        "project_id: proj_001\n"
+        "cycle_id: cyc_001\n"
+        "prd_hash: h\n"
+        "tasks:\n"
+        "  - task_index: 0\n"
+        "    task_type: development.develop\n"
+        "    role: dev\n"
+        "    focus: routes\n"
+        "    description: fill routes\n"
+        "    expected_artifacts: [backend/routes.py]\n"
+        "    acceptance_criteria: []\n"
+        "summary: {total_dev_tasks: 1, total_qa_tasks: 0, total_tasks: 1}\n"
+    )
+
+    def _contract_ref(self):
+        ref = ArtifactRef(
+            artifact_id="art_c",
+            project_id="proj_001",
+            artifact_type="verification_contract",
+            filename="verification_contract.yaml",
+            content_hash="h",
+            size_bytes=len(self._CONTRACT_YAML_BIND),
+            media_type="text/yaml",
+            created_at=NOW,
+            cycle_id="cyc_001",
+            run_id="run_001",
+        )
+        return ref, self._CONTRACT_YAML_BIND.encode()
+
+    async def test_bind_mode_unbound_plan_rejected_as_recorded_gate_decision(
+        self, executor, mock_registry, mock_event_bus
+    ):
+        """A seeded contract_ref puts the cycle in bind mode; a framing plan that
+        fails to bind the contract's covered-file criteria is rejected at the same
+        #473 seam (system REJECTED gate decision, no implementation run, clean
+        return) — the exact 3.13-stall-avoiding shape as the #464 source-regex net."""
+        import dataclasses
+
+        cycle = dataclasses.replace(
+            self._cycle_with_gate(), execution_overrides={"contract_ref": "art_c"}
+        )
+        mock_registry.get_cycle.return_value = cycle
+
+        run1 = dataclasses.replace(
+            _make_run("run_001", 1, "completed", "framing"), artifact_refs=("art_plan",)
+        )
+        mock_registry.get_run.return_value = run1
+
+        store = {
+            "art_plan": self._plan_ref(self._PLAN_YAML_UNBOUND),
+            "art_c": self._contract_ref(),
+        }
+
+        async def _retrieve(ref_id):
+            return store[ref_id]
+
+        executor._artifact_vault.retrieve.side_effect = _retrieve
+
+        await executor.execute_cycle("cyc_001", "run_001")  # must NOT raise
+
+        mock_registry.record_gate_decision.assert_awaited_once()
+        _, decision = mock_registry.record_gate_decision.await_args.args
+        assert decision.decision == GateDecisionValue.REJECTED.value
+        assert decision.decided_by == "system:plan_validation"
+        assert "verification_contract" in (decision.notes or "")
+        assert "does not bind its criteria" in (decision.notes or "")
+        mock_registry.create_run.assert_not_called()
+        assert EventType.GATE_DECIDED in _emit_types(mock_event_bus)
+
     async def test_document_regex_plan_gates_normally(
         self, executor, mock_registry, mock_event_bus
     ):

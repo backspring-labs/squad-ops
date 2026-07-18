@@ -269,7 +269,19 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             # before task dispatch begins.
             implementation_plan = await self._load_plan_for_run(cycle, run)
 
-            plan = generate_task_plan(cycle, run, profile, plan=implementation_plan)
+            # SIP-0098 98.3: a seeded contract_ref switches the cycle to bind mode.
+            # Loaded here (alongside the plan) so net-a inside generate_task_plan can
+            # validate the plan's criteria_refs and dispatch can resolve them into
+            # TypedChecks. Absent contract = author mode = today's behavior.
+            verification_contract = await self._load_contract_for_run(cycle, run)
+
+            plan = generate_task_plan(
+                cycle,
+                run,
+                profile,
+                plan=implementation_plan,
+                contract=verification_contract,
+            )
             participating_agent_ids = {e.agent_id for e in plan}
 
             # SIP-0089 §2.5: reserve-buffer guard. The plan now names every
@@ -1422,6 +1434,80 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         )
         return seeded_ids
 
+    @staticmethod
+    def _is_bind_mode(cycle: Any) -> bool:
+        """True when a verification contract is seeded (SIP-0098 §6.3 P9).
+
+        Bind mode is data-driven and keyed strictly on a ``contract_ref`` in
+        ``execution_overrides`` — no feature flag (house rule). Absence is
+        author mode = today's behavior exactly."""
+        return bool(cycle.execution_overrides.get("contract_ref"))
+
+    async def _load_contract_for_run(self, cycle: Any, run: Any) -> Any:
+        """Load the seeded verification contract for a run (SIP-0098 98.3).
+
+        Reads the ``contract_ref`` artifact id from ``execution_overrides`` (a bare
+        id or a single-element list) and parses it into a ``VerificationContract``.
+        Returns the contract, or ``None`` when no ref is seeded (author mode) or the
+        seeded ref is unreadable/unparseable. A seeded-but-broken ref is NOT silently
+        treated as author mode — ``_is_bind_mode`` stays true, so the plan-validation
+        net records a rejection rather than letting the run fall through unverified
+        (the stale-binding class, SIP §10)."""
+        from squadops.cycles.verification_contract import VerificationContract
+
+        ref = cycle.execution_overrides.get("contract_ref")
+        if not ref:
+            return None
+        ref_id = ref[0] if isinstance(ref, (list, tuple)) and ref else ref
+        if not isinstance(ref_id, str):
+            return None
+        try:
+            _, content_bytes = await self._artifact_vault.retrieve(ref_id)
+            contract = VerificationContract.from_yaml(content_bytes.decode(errors="replace"))
+        except Exception:
+            logger.warning(
+                "Failed to load verification contract from contract_ref %r for run %s; "
+                "bind-mode validation will reject the run",
+                ref_id,
+                run.run_id,
+                exc_info=True,
+            )
+            return None
+        logger.info(
+            "Loaded verification contract (expander=%s, %d criteria) for run %s [bind mode]",
+            contract.skeleton.expander,
+            len(contract.criterion_ids()),
+            run.run_id,
+        )
+        return contract
+
+    @staticmethod
+    def _validate_contract_binding(contract: Any, interface_content: str) -> list[str]:
+        """§10 decision — FAIL on interface-manifest hash mismatch.
+
+        A contract binds to the exact skeleton it was authored against via
+        ``skeleton.interface_manifest_hash``. If the run's manifest hashes to
+        something else, the contract measures a different skeleton's fill against
+        the wrong criteria (the stale-evidence-after-mutation class) — a hard
+        rejection, not a warning read once and ignored. The manifest's own parse
+        failures are already reported by ``_validate_interface_manifest``; here a
+        parse failure is a no-op to avoid a duplicate rejection."""
+        from squadops.capabilities.scaffold import InterfaceManifest
+
+        try:
+            manifest = InterfaceManifest.from_yaml(interface_content)
+        except Exception:  # noqa: BLE001 — parse failure already surfaced elsewhere
+            return []
+        actual = manifest.content_hash()
+        expected = contract.skeleton.interface_manifest_hash
+        if actual != expected:
+            return [
+                f"contract bound to interface_manifest_hash {expected[:12]}… but the run's "
+                f"manifest hashes to {actual[:12]}… — the contract was authored against a "
+                f"different skeleton (stale binding, rejected)"
+            ]
+        return []
+
     # ------------------------------------------------------------------
     # Extracted helpers for _execute_sequential
     # ------------------------------------------------------------------
@@ -2195,6 +2281,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
 
         errors: list[str] = []
         interface_content: str | None = None
+        parsed_plan: ImplementationPlan | None = None
         for ref_id in tuple(run.artifact_refs or ()):
             try:
                 ref, content_bytes = await self._artifact_vault.retrieve(ref_id)
@@ -2205,7 +2292,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 artifact_type == "control_implementation_plan"
             ):
                 try:
-                    plan = ImplementationPlan.from_yaml(content_bytes.decode(errors="replace"))
+                    parsed_plan = ImplementationPlan.from_yaml(
+                        content_bytes.decode(errors="replace")
+                    )
                 except Exception:
                     logger.warning(
                         "Plan artifact %s unreadable before gate %r — deferring to the "
@@ -2215,7 +2304,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                         exc_info=True,
                     )
                 else:
-                    errors.extend(plan.validate_criteria_scope())
+                    errors.extend(parsed_plan.validate_criteria_scope())
             elif ref.filename == "interface_manifest.yaml" or artifact_type == "interface_manifest":
                 interface_content = content_bytes.decode(errors="replace")
 
@@ -2226,6 +2315,29 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # Absent manifest → no-op = today's behavior (byte-identical for plan-only cycles).
         if interface_content is not None:
             errors.extend(self._validate_interface_manifest(interface_content))
+
+        # SIP-0098 98.3: bind-mode contract validation. A seeded contract_ref switches the
+        # cycle to bind mode — the plan must bind the contract's covered-file criteria by
+        # id (validate_criteria_refs) rather than author them, and the contract must be
+        # bound to this run's skeleton (hash check). A seeded-but-unparseable contract is
+        # a hard rejection, never a silent fall-through to author mode (§10). Errors join
+        # the same returned list → identical system:plan_validation REJECTED recording.
+        # Contract absent (author mode) → no-op = today's behavior.
+        if self._is_bind_mode(cycle):
+            contract = await self._load_contract_for_run(cycle, run)
+            if contract is None:
+                errors.append(
+                    "verification_contract: contract_ref is seeded but the contract is "
+                    "missing or unparseable — bind mode cannot validate the plan"
+                )
+            else:
+                if interface_content is not None:
+                    errors.extend(self._validate_contract_binding(contract, interface_content))
+                if parsed_plan is not None:
+                    errors.extend(
+                        f"verification_contract: {e}"
+                        for e in parsed_plan.validate_criteria_refs(contract)
+                    )
         return errors
 
     @staticmethod

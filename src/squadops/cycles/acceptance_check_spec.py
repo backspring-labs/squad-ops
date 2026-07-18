@@ -252,9 +252,12 @@ def reserved_keys_for(check_name: str) -> frozenset[str]:
     """Return the keys reserved for the wrapper (not part of params).
 
     Useful for the parser's flat-YAML normalization rule: params is the
-    authored dict minus these keys.
+    authored dict minus these keys. ``id`` is reserved so a ``TypedCheck``
+    resolved from a verification-contract ``criteria_ref`` (SIP-0098 98.3)
+    carries the stable contract criterion id through parse/serialize/wire
+    round-trips without the id leaking into the check's params.
     """
-    return frozenset({"check", "severity", "description"})
+    return frozenset({"check", "severity", "description", "id"})
 
 
 _PARAM_TYPE_NAMES: dict[type, str] = {

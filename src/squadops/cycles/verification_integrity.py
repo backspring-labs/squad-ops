@@ -157,6 +157,12 @@ class CheckResult:
     stub_disclosed: bool = False
     provenance: CheckProvenance | None = None
     subject: str | None = None
+    # SIP-0098 98.3: the verification-contract criterion id this result answers to,
+    # when the check was resolved from a plan ``criteria_ref`` in bind mode. Traces a
+    # row back to its contract criterion so cross-roll analysis can key on a stable id
+    # (§6.3); ``None`` in author mode / for framework-spine checks. The coverage
+    # accounting that consumes it (n-of-m criteria executed-and-passed) lands in 98.4.
+    criterion_id: str | None = None
     # The producing subject's identity (§6.3) — the plan-task id that emitted this
     # result. DISTINCT from ``provenance.subject_ref`` (the *thing* under test — a
     # file-set hash/artifact/endpoint, which legitimately *differs* between a failed

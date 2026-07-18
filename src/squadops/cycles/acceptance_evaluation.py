@@ -45,7 +45,7 @@ class SplitCriteria:
     unparseable: tuple[Any, ...] = ()
 
 
-_SERIALIZED_ROW_KEYS = frozenset({"check", "params", "severity", "description"})
+_SERIALIZED_ROW_KEYS = frozenset({"check", "params", "severity", "description", "id"})
 
 
 def _flatten_serialized_row(item: Mapping[str, Any]) -> dict[str, Any]:

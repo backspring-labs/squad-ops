@@ -341,6 +341,70 @@ class VerificationContract:
         ids.extend(p.id for p in self.behavioral.probes)
         return tuple(ids)
 
+    # --- binding (98.3) --------------------------------------------------- #
+
+    def criterion_index(self) -> dict[str, tuple[Criterion, str]]:
+        """Map every typed criterion's stable id to ``(criterion, owning_fill_path)``.
+
+        The owning path is the ``fill_files`` key a file-targeting check applies to
+        (empty for behavioral ``build``/``suite`` checks, which are file-less). This
+        is the resolution table for plan ``criteria_refs`` — bind validation looks up
+        refs here, and dispatch enrichment (98.3 slice D) rebuilds each ref into a
+        ``TypedCheck`` stamped with the criterion id, targeting the owning path.
+
+        Probes are excluded: they are not ``TypedCheck``s and run via the probe
+        runner (98.4), not the ``criteria_refs`` seam. On a well-linted contract ids
+        are unique; if a duplicate slips through, last-writer wins (the linter is the
+        gate that prevents it, `lint()._lint_ids`)."""
+        index: dict[str, tuple[Criterion, str]] = {}
+        for ff in self.fill_files:
+            for crit in (*ff.interface, *ff.implementation):
+                index[crit.id] = (crit, ff.path)
+        for crit in (*self.behavioral.build, *self.behavioral.suite.checks):
+            index[crit.id] = (crit, "")
+        return index
+
+    def covered_fill_paths(self) -> frozenset[str]:
+        """The set of fill-file paths this contract owns the acceptance of. A plan
+        task whose ``expected_artifacts`` names one of these must bind that file's
+        criteria by ref rather than author its own typed checks (§6.3)."""
+        return frozenset(ff.path for ff in self.fill_files)
+
+    def required_ref_ids_for(self, path: str) -> tuple[str, ...]:
+        """Every ``interface`` + ``implementation`` criterion id for the fill file at
+        ``path``, in document order. A bind-mode plan task producing this file must
+        carry all of them — descoping verification is the #439 lesson at the criteria
+        level (§6.3). Unknown path ⇒ empty (the file is not contract-covered)."""
+        for ff in self.fill_files:
+            if ff.path == path:
+                return tuple(c.id for c in (*ff.interface, *ff.implementation))
+        return ()
+
+    def criteria_index_lines(self) -> list[str]:
+        """A human-readable per-covered-file index for the *bind, don't author*
+        proposer prompt (§6.3): one line per fill file naming the exact criterion ids
+        the proposing task must list in ``criteria_refs``. Files with no per-file typed
+        criteria (e.g. JSX views, covered by the behavioral build) are still listed so
+        the proposer knows they are contract-owned and must not author their own checks.
+
+        This is a rendering of contract *data* — the ``bind, don't author`` instruction
+        prose lives in the managed proposer prompt asset (CLAUDE.md #448), which takes
+        these lines as a variable."""
+        lines: list[str] = []
+        for ff in self.fill_files:
+            ids = [c.id for c in (*ff.interface, *ff.implementation)]
+            if ids:
+                pairs = ", ".join(
+                    f"{c.id} ({c.check})" for c in (*ff.interface, *ff.implementation)
+                )
+                lines.append(f"- {ff.path}: bind {pairs}")
+            else:
+                lines.append(
+                    f"- {ff.path}: contract-owned (no per-file typed criteria); "
+                    f"do not author your own for this file"
+                )
+        return lines
+
     # --- linting ---------------------------------------------------------- #
 
     def lint(self) -> list[str]:

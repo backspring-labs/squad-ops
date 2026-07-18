@@ -11,6 +11,7 @@ optional_variables:
   - roles_section
   - builder_section
   - typed_acceptance_vocabulary
+  - bind_criteria_section
 ---
 You are proposing QA-domain plan tasks for the upcoming build.
 
@@ -69,3 +70,5 @@ risks: []
 gaps_not_covered: []
 confidence: ""  # low | medium | high
 ```
+
+{{bind_criteria_section}}
