@@ -192,3 +192,34 @@ def test_split_keeps_non_safelisted_command_rows_typed():
     assert len(result.typed) == 1
     assert result.typed[0].params["argv"] == ["npm", "test"]
     assert not result.unparseable
+
+
+# --------------------------------------------------------------------------- #
+# resolve_check_stack (#503) — bug caught: live cycles fed stack=None into every
+# AST evaluator (resolved_config never carries a "stack" key), so endpoint/field
+# checks silently skipped in production while CI passed them with an explicit stack.
+# --------------------------------------------------------------------------- #
+
+
+def test_resolve_check_stack_maps_fullstack_profile_to_fastapi():
+    from squadops.cycles.acceptance_evaluation import resolve_check_stack
+
+    # the live shakedown-3 config shape: build_profile present, no stack key
+    assert resolve_check_stack({"build_profile": "fullstack_fastapi_react"}) == "fastapi"
+
+
+def test_resolve_check_stack_explicit_key_wins_over_profile():
+    from squadops.cycles.acceptance_evaluation import resolve_check_stack
+
+    assert (
+        resolve_check_stack({"stack": "django", "build_profile": "fullstack_fastapi_react"})
+        == "django"
+    )
+
+
+def test_resolve_check_stack_unmapped_profile_and_empty_config_stay_none():
+    from squadops.cycles.acceptance_evaluation import resolve_check_stack
+
+    # unmapped profiles keep today's skip behavior — never a guessed stack
+    assert resolve_check_stack({"build_profile": "python_cli_builder"}) is None
+    assert resolve_check_stack({}) is None

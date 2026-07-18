@@ -18,6 +18,7 @@ from squadops.capabilities.handlers.base import (
 from squadops.cycles.acceptance_checks import CheckOutcome
 from squadops.cycles.acceptance_evaluation import (
     evaluate_criterion,
+    resolve_check_stack,
     split_acceptance_criteria,
 )
 from squadops.cycles.implementation_plan import TypedCheck
@@ -321,7 +322,7 @@ class _CycleTaskHandler(CapabilityHandler):
         resolved_config = inputs.get("resolved_config", {})
         typed_acceptance_enabled = resolved_config.get("typed_acceptance", True)
         command_acceptance_enabled = resolved_config.get("command_acceptance_checks", True)
-        stack = resolved_config.get("stack")
+        stack = resolve_check_stack(resolved_config)
 
         with tempfile.TemporaryDirectory(prefix="squadops-typed-acc-") as tmpdir_str:
             workspace_root = Path(tmpdir_str)

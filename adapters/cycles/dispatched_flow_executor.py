@@ -33,6 +33,7 @@ from adapters.cycles.pulse_boundary_runner import PulseBoundaryRunner
 from adapters.cycles.run_completion import RunCompletion, resolve_terminal_outcome
 from adapters.cycles.task_dispatcher import TaskDispatcher
 from adapters.cycles.task_naming import build_task_name
+from squadops.cycles.acceptance_evaluation import resolve_check_stack
 from squadops.cycles.agent_config import build_agent_resolver
 from squadops.cycles.build_completeness import compute_missing_required_files
 from squadops.cycles.checkpoint import RunCheckpoint
@@ -1827,7 +1828,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         verification = await verify_patched_artifacts(
             criteria,
             patched_artifacts,
-            stack=resolved_config.get("stack"),
+            stack=resolve_check_stack(resolved_config),
             typed_acceptance_enabled=resolved_config.get("typed_acceptance", True),
             command_acceptance_enabled=resolved_config.get("command_acceptance_checks", True),
         )
