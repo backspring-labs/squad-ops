@@ -614,3 +614,56 @@ class TestFirstLinePathPrefix:
         # the shared safety check still applies to a strategy-5 path
         assert extract_fenced_files("```python\n/etc/evil.py:import os\n```") == []
         assert extract_fenced_files("```python\n../esc.py:bad\n```") == []
+
+
+class TestFirstLineBareFilename:
+    """Strategy 6 (#502): the whole first body line is the bare path — no
+    comment marker, no colon. The live shape that burned shakedown-3's
+    m009 qa.test attempt 1 (eve emitted ```jsx, then the path on its own
+    line, then code; zero blocks extracted)."""
+
+    def test_bare_path_first_line_resolves_filename(self):
+        # verbatim shape from the live failure
+        response = (
+            "```jsx\n"
+            "frontend/src/views/CreateRunView.jsx\n"
+            'import { useState } from "react";\n'
+            "\n"
+            "export default function CreateRunView() {}\n"
+            "```\n"
+        )
+        result = extract_fenced_files(response)
+        assert len(result) == 1
+        assert result[0]["filename"] == "frontend/src/views/CreateRunView.jsx"
+        # the path line is stripped; content starts at the real code
+        assert result[0]["content"].startswith('import { useState } from "react";')
+
+    def test_slashless_bare_filename_accepted_via_extension_guard(self):
+        result = extract_fenced_files("```python\nmain.py\nimport sys\n```")
+        assert result == [{"filename": "main.py", "content": "import sys", "language": "python"}]
+
+    def test_multiple_bare_filename_fences(self):
+        response = "```python\na/one.py\nx = 1\n```\n```js\nb/two.js\ny = 2\n```"
+        assert [(r["filename"], r["content"]) for r in extract_fenced_files(response)] == [
+            ("a/one.py", "x = 1"),
+            ("b/two.js", "y = 2"),
+        ]
+
+    def test_code_first_line_is_never_stolen(self):
+        # a real first code line must not be mis-read as a filename and stripped
+        assert extract_fenced_files("```python\nimport os\n```") == []
+        assert extract_fenced_files("```text\nplain prose here\n```") == []
+
+    def test_prose_word_with_dot_is_not_a_filename(self):
+        # no slash + non-source extension -> guard rejects (same as #470)
+        assert extract_fenced_files("```text\nversion.1a\nbody\n```") == []
+
+    def test_traversal_and_absolute_bare_paths_rejected(self):
+        assert extract_fenced_files("```python\n/etc/evil.py\nimport os\n```") == []
+        assert extract_fenced_files("```python\n../esc.py\nbad\n```") == []
+
+    def test_comment_strategy_still_wins_over_bare(self):
+        # a first-line COMMENT filename resolves via strategy 4, not 6
+        result = extract_fenced_files("```python\n# real.py\nimport os\n```")
+        assert result[0]["filename"] == "real.py"
+        assert result[0]["content"] == "import os"

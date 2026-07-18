@@ -47,6 +47,33 @@ class SplitCriteria:
 
 _SERIALIZED_ROW_KEYS = frozenset({"check", "params", "severity", "description", "id"})
 
+# #503: check-stack derivation from the build profile. Live configs carry
+# ``build_profile``/``dev_capability`` but never a ``stack`` key, so every
+# consumer that read ``resolved_config.get("stack")`` fed ``None`` into the
+# evaluators and the AST checks (endpoint_defined, field_present, ...) silently
+# skipped in every live cycle — while CI passed them via an explicit stack.
+# Conservative mapping: only profiles deliberately verified against the check
+# implementations; unmapped profiles keep today's skip behavior.
+_BUILD_PROFILE_CHECK_STACKS: dict[str, str] = {
+    "fullstack_fastapi_react": "fastapi",
+}
+
+
+def resolve_check_stack(resolved_config: Mapping[str, Any]) -> str | None:
+    """The stack passed to typed-check evaluators, derived in ONE place (#503).
+
+    An explicit ``stack`` key wins (operator override / future configs); else the
+    ``build_profile`` maps through ``_BUILD_PROFILE_CHECK_STACKS``; else ``None``
+    (checks skip with ``unsupported_stack_or_syntax``, today's behavior).
+    """
+    explicit = resolved_config.get("stack")
+    if explicit:
+        return str(explicit)
+    profile = resolved_config.get("build_profile")
+    if profile:
+        return _BUILD_PROFILE_CHECK_STACKS.get(str(profile))
+    return None
+
 
 def _flatten_serialized_row(item: Mapping[str, Any]) -> dict[str, Any]:
     """Normalize a ``dataclasses.asdict``-shaped row to the flat authored shape.

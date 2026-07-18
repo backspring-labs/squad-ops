@@ -22,6 +22,11 @@ Recognized formats, in priority order (most explicit first):
    this variant carries no comment/heading marker, the path is accepted only when
    it contains ``/`` or ends in a known source extension — a guard prose like
    ``note:todo`` can't trip.
+6. Bare filename alone on the first body line (#502) — the whole first line is
+   the path, nothing else: ``` ```jsx``` ``` then ``frontend/src/api.js`` on its
+   own line, then code. Same acceptance guard as #470 (contains ``/``, known
+   source extension, or special name). A lone path line is not valid code in any
+   emitted language, so stripping it never eats real content.
 
 Models naturally drift between these formats; the parser tolerates all of
 them so a one-character format slip doesn't drop the whole task on the floor.
@@ -239,6 +244,31 @@ def _resolve_filename_from_first_line_prefix(body: str) -> tuple[str | None, str
     return path, new_body
 
 
+def _resolve_filename_from_first_line_bare(body: str) -> tuple[str | None, str]:
+    """#502: if the first line of ``body`` is *exactly* a path-shaped token —
+    the bare filename on its own line, no comment marker, no colon — return
+    ``(filename, body_with_the_line_stripped)``. Otherwise ``(None, body)``.
+
+    Same guard as #470: accepted only when the token contains ``/``, has a known
+    source extension, or is a special name. A lone path line is not valid code in
+    any language the build handlers emit, so this never eats real content.
+    """
+    nl = body.find("\n")
+    first_line = (body if nl == -1 else body[:nl]).strip()
+    if not first_line or " " in first_line or ":" in first_line:
+        return None, body
+    if not re.fullmatch(rf"[\w./-]+\.[a-zA-Z0-9]+|{_SPECIAL_NAMES_RE}", first_line):
+        return None, body
+    if not (
+        "/" in first_line
+        or _has_source_extension(first_line)
+        or first_line in _SPECIAL_FILENAMES_AS_LANG
+    ):
+        return None, body
+    remainder = "" if nl == -1 else body[nl + 1 :]
+    return first_line, remainder
+
+
 def extract_fenced_files(response: str) -> list[dict]:
     """Parse fenced code blocks into structured file records.
 
@@ -311,6 +341,12 @@ def extract_fenced_files(response: str) -> list[dict]:
                     if prefix_filename is not None:
                         filename = prefix_filename
                         body = prefixed_body
+                    else:
+                        # Strategy 6 (#502): bare filename alone on the first line
+                        bare_filename, bare_body = _resolve_filename_from_first_line_bare(body)
+                        if bare_filename is not None:
+                            filename = bare_filename
+                            body = bare_body
 
         if filename is None or not _path_is_safe(filename):
             pos = close_match.end()

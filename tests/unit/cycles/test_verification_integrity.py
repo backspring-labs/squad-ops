@@ -615,3 +615,29 @@ class TestContractCriteriaCoverage:
         assert outcome.criteria_verified == ("vc-p",)
         assert outcome.criteria_total == ("vc-p",)
         assert outcome.criteria_coverage == (1, 1)
+
+
+# --------------------------------------------------------------------------- #
+# failed_detail (#500) — bug caught: a failed contract probe's reason died at
+# aggregation (failed = bare names), so evidence couldn't say WHY vc-probe-runs
+# failed and diagnosis required manually re-running the probe.
+# --------------------------------------------------------------------------- #
+
+
+def test_aggregate_carries_failed_reasons_in_failed_detail():
+    s = aggregate_verification(
+        [_passed("a"), _failed("vc-probe-runs", reason="status 422 != expected 200")],
+        required_check_ids=["vc-probe-runs"],
+    )
+    assert s.failed == ("vc-probe-runs",)
+    assert len(s.failed_detail) == 1
+    d = s.failed_detail[0]
+    assert d.check_id == "vc-probe-runs"
+    assert d.reason == "status 422 != expected 200"
+    assert d.required is True
+
+
+def test_aggregate_failed_without_reason_yields_empty_string_not_crash():
+    s = aggregate_verification([_failed("b")])
+    assert s.failed_detail[0].reason == ""
+    assert s.failed_detail[0].required is False

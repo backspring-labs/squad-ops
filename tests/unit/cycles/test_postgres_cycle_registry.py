@@ -783,3 +783,63 @@ class TestListRunVerificationSummaries:
         )
         restored = _verification_summary_from_dict(_verification_summary_to_dict(original))
         assert restored == original  # frozen dataclass equality — lossless
+
+
+class TestVerificationSummarySerializationFidelity:
+    """#500: failed_detail + 98.4 criteria coverage must survive the Postgres
+    round-trip. Bug caught: criteria_verified/criteria_total were never
+    serialized, so any roll-up counting yield from stored summaries read 0/0
+    coverage; failed entries were bare names, so a failed probe's reason was
+    unrecoverable from evidence."""
+
+    def test_round_trip_preserves_failed_detail_and_criteria_coverage(self):
+        from adapters.cycles.postgres_cycle_registry import (
+            _verification_summary_from_dict,
+            _verification_summary_to_dict,
+        )
+        from squadops.cycles.verification_integrity import CheckResult, aggregate_verification
+
+        summary = aggregate_verification(
+            [
+                CheckResult(
+                    check_id="vc-probe-runs",
+                    status="failed",
+                    reason="status 422 != expected 200",
+                    criterion_id="vc-probe-runs",
+                ),
+                CheckResult(
+                    check_id="acceptance:import_present",
+                    status="passed",
+                    criterion_id="vc-routes-apierror",
+                ),
+            ],
+            required_check_ids=["vc-probe-runs"],
+        )
+
+        rebuilt = _verification_summary_from_dict(
+            json.loads(json.dumps(_verification_summary_to_dict(summary)))
+        )
+
+        assert rebuilt.failed_detail == summary.failed_detail
+        assert rebuilt.failed_detail[0].reason == "status 422 != expected 200"
+        assert rebuilt.criteria_verified == ("vc-routes-apierror",)
+        assert rebuilt.criteria_total == ("vc-probe-runs", "vc-routes-apierror")
+        assert rebuilt.criteria_coverage == (1, 2)
+
+    def test_pre_500_stored_dict_reconstructs_with_empty_detail(self):
+        from adapters.cycles.postgres_cycle_registry import _verification_summary_from_dict
+
+        # a summary persisted before #500 has none of the new keys
+        old = {
+            "verdict": "rejected",
+            "verified": ["a"],
+            "failed": ["vc-probe-runs"],
+            "unverified": [],
+            "required_unmet": [],
+            "executed_count": 2,
+            "passed_count": 1,
+        }
+        rebuilt = _verification_summary_from_dict(old)
+        assert rebuilt.failed == ("vc-probe-runs",)
+        assert rebuilt.failed_detail == ()
+        assert rebuilt.criteria_coverage == (0, 0)

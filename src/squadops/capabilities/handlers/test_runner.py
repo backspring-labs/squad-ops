@@ -643,6 +643,22 @@ async def run_backend_import_check(
         shutil.rmtree(workspace, ignore_errors=True)
 
 
+def _merged_exit_code(backend: RunTestsResult, frontend: RunTestsResult) -> int:
+    """D13 merge: backend controls the combined outcome — *when it executed*.
+
+    #501: the old fallback hardcoded exit 0 whenever the backend suite didn't
+    execute, discarding the only evidence there was (a failing vitest run
+    reported "all tests passed" while zero tests executed anywhere). When the
+    frontend is the sole executed suite it controls; when nothing executed the
+    result is not a pass — "0 tests ran" must never verify ``tests_pass``.
+    """
+    if backend.executed:
+        return backend.exit_code
+    if frontend.executed:
+        return frontend.exit_code
+    return -1
+
+
 async def run_fullstack_tests(
     source_files: list[dict[str, str]],
     test_files: list[dict[str, str]],
@@ -699,9 +715,8 @@ async def run_fullstack_tests(
     if frontend_result.stderr:
         combined_stderr_parts.append(f"=== Frontend (vitest) ===\n{frontend_result.stderr}")
 
-    # D13: backend exit code controls combined outcome
     combined_executed = backend_result.executed or frontend_result.executed
-    combined_exit_code = backend_result.exit_code if backend_result.executed else 0
+    combined_exit_code = _merged_exit_code(backend_result, frontend_result)
 
     # Build combined error
     error_parts = []
