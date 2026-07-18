@@ -93,6 +93,13 @@ _PLAN_AUTHORING_PROPOSER_STEPS: dict[str, tuple[str, str]] = {
 # config doesn't silently drop a proposer.
 _VALID_PLAN_AUTHORING_CONTRIBUTORS = frozenset({"development", "qa", "strategy"})
 
+# SIP-0098 98.3: proposer task types that receive the contract criteria index in
+# bind mode. dev/qa propose build tasks and so bind covered-file criteria; strategy
+# proposes guidance (no build tasks), so it is not indexed.
+_BIND_INDEX_PROPOSER_TASK_TYPES = frozenset(
+    {"development.propose_plan_tasks", "qa.propose_plan_tasks"}
+)
+
 
 def build_planning_steps(
     plan_authoring_contributors: list[str] | None,
@@ -496,6 +503,14 @@ def generate_task_plan(
             if contract is not None and plan_task.criteria_refs:
                 acceptance.extend(resolve_contract_refs(plan_task.criteria_refs, contract))
             inputs["acceptance_criteria"] = acceptance
+
+        # SIP-0098 98.3: bind-mode proposers receive the contract's criteria index so
+        # they can *bind* (list criteria_refs) rather than *author* covered-file
+        # criteria (§6.3). Only the index data is injected here; the bind instruction
+        # prose lives in the proposer's managed prompt asset (CLAUDE.md #448). dev/qa
+        # propose build tasks; strategy proposes guidance, so it is not indexed.
+        if contract is not None and task_type in _BIND_INDEX_PROPOSER_TASK_TYPES:
+            inputs["contract_criteria_index"] = "\n".join(contract.criteria_index_lines())
 
         envelope = TaskEnvelope(
             task_id=task_id,

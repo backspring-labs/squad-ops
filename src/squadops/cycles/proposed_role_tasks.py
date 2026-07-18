@@ -119,6 +119,11 @@ class ProposedTask:
     expected_artifacts: list[str] = field(default_factory=list)
     acceptance_criteria: list[str | TypedCheck] = field(default_factory=list)
     depends_on_focus: list[str] = field(default_factory=list)
+    # SIP-0098 98.3 bind mode: verification-contract criterion ids this proposed
+    # task binds for its contract-covered expected_artifacts. The proposer *binds*
+    # (lists refs) instead of authoring typed criteria for covered files; the merger
+    # carries them onto the PlanTask. Empty in author mode — the default.
+    criteria_refs: list[str] = field(default_factory=list)
 
 
 _VALID_BRIEF_CONFLICT_SEVERITIES = frozenset({"warning", "blocking"})
@@ -353,6 +358,10 @@ def _parse_proposed_task(td: object, i: int, seen_keys: set[str]) -> ProposedTas
     if not isinstance(expected_artifacts, list):
         raise ValueError(f"Proposal task {i} expected_artifacts must be a list")
 
+    raw_refs = td.get("criteria_refs", [])
+    if not isinstance(raw_refs, list) or not all(isinstance(r, str) for r in raw_refs):
+        raise ValueError(f"Proposal task {i} criteria_refs must be a list of strings")
+
     return ProposedTask(
         task_type=str(td["task_type"]).strip(),
         role=role,
@@ -361,6 +370,7 @@ def _parse_proposed_task(td: object, i: int, seen_keys: set[str]) -> ProposedTas
         expected_artifacts=[str(a) for a in expected_artifacts],
         acceptance_criteria=criteria,
         depends_on_focus=depends_on_focus,
+        criteria_refs=list(raw_refs),
     )
 
 

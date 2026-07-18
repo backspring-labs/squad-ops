@@ -828,6 +828,26 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
         )
         return rendered.content
 
+    async def _bind_criteria_section(self, renderer: Any, inputs: dict[str, Any]) -> str:
+        """The *bind, don't author* instruction + contract criteria index, or ""
+        (SIP-0098 98.3).
+
+        Non-empty ONLY in bind mode — a contract is seeded, so the executor injected
+        ``contract_criteria_index`` into this proposer's inputs — and only for the dev/qa
+        proposers that author build tasks (strategy proposes guidance, not tasks). The
+        instruction prose lives in a managed asset (``request.plan_bind_criteria_appendix``);
+        only the index *data* is a variable (CLAUDE.md #448). Absent contract → "" →
+        today's author-mode proposer prompt exactly."""
+        if self._proposer_role not in ("development", "qa"):
+            return ""
+        index = inputs.get("contract_criteria_index")
+        if not index:
+            return ""
+        rendered = await renderer.render(
+            "request.plan_bind_criteria_appendix", {"criteria_index": index}
+        )
+        return rendered.content
+
     async def handle(
         self,
         context: ExecutionContext,
@@ -868,6 +888,14 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
         scaffold_section = await self._scaffold_section(renderer, inputs)
         if scaffold_section:
             variables["scaffold_section"] = scaffold_section
+        # SIP-0098 98.3: in bind mode the dev/qa proposer is told to bind the contract's
+        # covered-file criteria by id (not author them). Data-driven — only set when the
+        # executor injected the criteria index (contract seeded) — and the instruction is
+        # a managed asset, not an inline literal (#448). Only set when non-empty so a
+        # non-bind render doesn't warn on an unknown variable.
+        bind_criteria_section = await self._bind_criteria_section(renderer, inputs)
+        if bind_criteria_section:
+            variables["bind_criteria_section"] = bind_criteria_section
         rendered = await renderer.render(self._request_template_id, variables)
         user_prompt = rendered.content
 

@@ -380,6 +380,31 @@ class VerificationContract:
                 return tuple(c.id for c in (*ff.interface, *ff.implementation))
         return ()
 
+    def criteria_index_lines(self) -> list[str]:
+        """A human-readable per-covered-file index for the *bind, don't author*
+        proposer prompt (§6.3): one line per fill file naming the exact criterion ids
+        the proposing task must list in ``criteria_refs``. Files with no per-file typed
+        criteria (e.g. JSX views, covered by the behavioral build) are still listed so
+        the proposer knows they are contract-owned and must not author their own checks.
+
+        This is a rendering of contract *data* — the ``bind, don't author`` instruction
+        prose lives in the managed proposer prompt asset (CLAUDE.md #448), which takes
+        these lines as a variable."""
+        lines: list[str] = []
+        for ff in self.fill_files:
+            ids = [c.id for c in (*ff.interface, *ff.implementation)]
+            if ids:
+                pairs = ", ".join(
+                    f"{c.id} ({c.check})" for c in (*ff.interface, *ff.implementation)
+                )
+                lines.append(f"- {ff.path}: bind {pairs}")
+            else:
+                lines.append(
+                    f"- {ff.path}: contract-owned (no per-file typed criteria); "
+                    f"do not author your own for this file"
+                )
+        return lines
+
     # --- linting ---------------------------------------------------------- #
 
     def lint(self) -> list[str]:
