@@ -15,6 +15,13 @@ Recognized formats, in priority order (most explicit first):
 4. First-line filename comment inside the fence — ``# path/to/file.py`` or
    ``// path/to/file.py`` as the first line of the body. The comment line
    is stripped from the extracted content.
+5. First-line path *prefix* inside the fence (#470) — a bare ``` ```<lang>``` ```
+   fence whose first body line is ``path/to/file.py:<code>`` (the path as a
+   colon-prefix of the first code line, not a comment). The ``path:`` prefix is
+   stripped and the code after the colon becomes the first content line. Because
+   this variant carries no comment/heading marker, the path is accepted only when
+   it contains ``/`` or ends in a known source extension — a guard prose like
+   ``note:todo`` can't trip.
 
 Models naturally drift between these formats; the parser tolerates all of
 them so a one-character format slip doesn't drop the whole task on the floor.
@@ -65,8 +72,56 @@ _FILENAME_COMMENT_RE = re.compile(
     rf"^\s*(?:#|//|--|/\*)\s*(?P<path>[\w./-]+\.[a-zA-Z0-9]+|{_SPECIAL_NAMES_RE})\b",
 )
 
+# First line of fence body as a bare ``path:code`` prefix (#470). No comment
+# marker, so the path is disambiguated from prose by the extension guard below.
+_FILENAME_PREFIX_RE = re.compile(
+    rf"^(?P<path>[\w./-]+\.[a-zA-Z0-9]+|{_SPECIAL_NAMES_RE}):(?P<rest>.*)$",
+)
+
+# Source/deliverable extensions the build handlers emit — the guard that lets an
+# unmarked ``path:code`` first line (#470) be read as a filename without
+# mis-reading prose or config values (``example.com:8080``, ``note.txt:`` are
+# fine only when path-shaped). A path containing ``/`` is accepted regardless.
+_SOURCE_EXTENSIONS = frozenset(
+    {
+        "py",
+        "js",
+        "jsx",
+        "ts",
+        "tsx",
+        "mjs",
+        "cjs",
+        "vue",
+        "json",
+        "yaml",
+        "yml",
+        "toml",
+        "ini",
+        "cfg",
+        "env",
+        "md",
+        "rst",
+        "txt",
+        "html",
+        "htm",
+        "css",
+        "scss",
+        "sh",
+        "bash",
+        "sql",
+        "xml",
+        "svg",
+    }
+)
+
 # Filenames that LLMs often emit as the language slot (``` ```Dockerfile``` ```).
 _SPECIAL_FILENAMES_AS_LANG = set(_SPECIAL_NAMES)
+
+
+def _has_source_extension(path: str) -> bool:
+    ext = path.rsplit(".", 1)[-1].lower() if "." in path else ""
+    return ext in _SOURCE_EXTENSIONS
+
 
 _HEADING_PROSE_DISTANCE_LINES = 4
 """Max newline count between a filename heading and the fence it labels.
@@ -153,6 +208,37 @@ def _resolve_filename_from_first_comment(body: str) -> tuple[str | None, str]:
     return match.group("path"), remainder
 
 
+def _resolve_filename_from_first_line_prefix(body: str) -> tuple[str | None, str]:
+    """#470: if the first line of ``body`` is ``path:code`` (a filename as a bare
+    colon-prefix of the first code line — no comment marker), return
+    ``(filename, body_with_the_prefix_stripped)`` so the code after the colon
+    becomes the first content line. Otherwise ``(None, body)``.
+
+    Guarded: the path is accepted only when it contains ``/`` or ends in a known
+    source extension (or is a special name), so a prose/config first line like
+    ``example.com:8080`` is never mistaken for a filename.
+    """
+    nl = body.find("\n")
+    first_line = body if nl == -1 else body[:nl]
+    match = _FILENAME_PREFIX_RE.match(first_line)
+    if match is None:
+        return None, body
+    path = match.group("path")
+    if not ("/" in path or _has_source_extension(path) or path in _SPECIAL_FILENAMES_AS_LANG):
+        return None, body
+    rest = match.group("rest")
+    remainder = "" if nl == -1 else body[nl + 1 :]
+    if nl == -1:
+        new_body = rest
+    elif rest == "":
+        # ``path:`` alone on the first line — the code starts on the next line,
+        # so don't prepend an empty first line.
+        new_body = remainder
+    else:
+        new_body = f"{rest}\n{remainder}"
+    return path, new_body
+
+
 def extract_fenced_files(response: str) -> list[dict]:
     """Parse fenced code blocks into structured file records.
 
@@ -219,6 +305,12 @@ def extract_fenced_files(response: str) -> list[dict]:
                 if comment_filename is not None:
                     filename = comment_filename
                     body = stripped_body
+                else:
+                    # Strategy 5 (#470): first-line ``path:code`` prefix inside body
+                    prefix_filename, prefixed_body = _resolve_filename_from_first_line_prefix(body)
+                    if prefix_filename is not None:
+                        filename = prefix_filename
+                        body = prefixed_body
 
         if filename is None or not _path_is_safe(filename):
             pos = close_match.end()
