@@ -82,11 +82,11 @@ squadops doctor dev-mac --json                     # Machine-readable output
 ```bash
 squadops login                             # Authenticate via Keycloak
 squadops cycles create <project> --squad-profile full --request-profile selftest
-squadops cycles show <cycle-id>            # Show cycle status + runs
-squadops cycles list <project-id>          # List cycles for project
-squadops runs list <cycle-id>              # List runs for cycle
-squadops gate decide <run-id> <gate-name> --approve  # Approve a gate
-squadops artifacts list <run-id>           # List artifacts for run
+squadops cycles show <project> <cycle-id>  # Show cycle status + runs
+squadops cycles list <project>             # List cycles for project
+squadops runs list <project> <cycle-id>    # List runs for cycle
+squadops runs gate <project> <cycle-id> <run-id> <gate-name> --approve  # Approve a gate
+squadops artifacts list --project <project> --cycle <cycle-id> --run <run-id>  # List artifacts for run
 ```
 
 ## Architecture
