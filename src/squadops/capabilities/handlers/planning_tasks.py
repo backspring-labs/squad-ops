@@ -1072,6 +1072,23 @@ class StrategyProposePlanGuidanceHandler(_ProposeBaseHandler):
     _success_artifact_type = "plan_guidance"
     _proposer_role = "strategy"
 
+    def _build_render_variables(
+        self,
+        prd: str,
+        prior_outputs: dict[str, Any] | None,
+        inputs: dict[str, Any],
+    ) -> dict[str, str]:
+        # #484: strategy emits PlanGuidance (guidance_id), not a ProposedRoleTasks
+        # (proposal_id), so its request template requires a `guidance_id` the shared
+        # proposer base never provides — the strategy proposer crashed with
+        # TemplateMissingVariableError on every multi-role cycle. Supply one, mirroring
+        # the base's proposal_id generation.
+        import uuid
+
+        variables = super()._build_render_variables(prd, prior_outputs, inputs)
+        variables["guidance_id"] = str(inputs.get("guidance_id") or f"guid-{uuid.uuid4().hex[:8]}")
+        return variables
+
     def _parse_and_validate(
         self,
         yaml_content: str | None,
