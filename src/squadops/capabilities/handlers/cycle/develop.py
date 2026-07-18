@@ -621,6 +621,12 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
             if strategy:
                 variables["strategy"] = f"\n\n## Strategy Analysis\n\n{strategy}"
             variables["prior_outputs"] = self._format_prior_outputs(prior_outputs)
+            # SIP-0099 99.3 (part 2): on a scaffoldable stack a walking skeleton was
+            # seeded into the workspace (part 1), so instruct the dev to FILL the fixed
+            # slots rather than rewire. Data-driven — "" for a non-scaffolded cycle.
+            fill_only = await self._fill_only_section(renderer)
+            if fill_only:
+                variables["fill_only_section"] = fill_only
             rendered = await renderer.render(
                 "request.development_develop.code_generate",
                 variables,
@@ -634,3 +640,21 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
             strategy=strategy,
         )
         return None, user_prompt
+
+    async def _fill_only_section(self, renderer: Any) -> str:
+        """The fill-only instruction, or "" (SIP-0099 99.3 part 2).
+
+        Non-empty only on a scaffoldable stack — a walking skeleton has been seeded into
+        the workspace (part 1), so the dev fills fixed slots instead of rewiring. The
+        instruction lives in a managed prompt asset, not an inline literal (CLAUDE.md
+        #448). Frozen-surface *enforcement* is SIP-0098's `frozen:` contract, not here.
+        """
+        from squadops.capabilities.scaffold import is_scaffoldable_stack
+
+        stack = str(self._resolved_config.get("build_profile") or "")
+        if not is_scaffoldable_stack(stack):
+            return ""
+        rendered = await renderer.render(
+            "request.development_develop_fill_only_appendix", {"stack": stack}
+        )
+        return rendered.content

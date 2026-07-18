@@ -323,6 +323,17 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 if plan_refs:
                     seed_artifact_refs = list(plan_refs)
 
+            # SIP-0099 99.3: if framing forwarded an interface manifest, expand it into a
+            # walking skeleton and seed those files so develop fills the fixed slots.
+            # Data-driven: no manifest -> seed_artifact_refs unchanged = byte-identical to
+            # today (the manifest itself is already among plan_artifact_refs; this ADDS the
+            # expanded skeleton). Logic lives in helpers (#290 god-file rule).
+            interface_manifest = await self._load_interface_manifest_for_run(cycle, run)
+            if interface_manifest is not None:
+                seed_artifact_refs.extend(
+                    await self._seed_skeleton_artifacts(interface_manifest, cycle, run_id)
+                )
+
             # LangFuse + Prefect observability setup
             obs_ctx, flow_run_id = await self._init_run_observability(
                 cycle_id,
@@ -1313,6 +1324,103 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 return None
 
         return None
+
+    async def _load_interface_manifest_for_run(
+        self,
+        cycle: Any,
+        run: Any,
+    ) -> Any:
+        """Load the framing-emitted interface manifest for a run (SIP-0099 99.3).
+
+        Mirrors ``_load_plan_for_run``: searches the forwarded ``plan_artifact_refs``
+        for the ``interface_manifest.yaml`` a scaffolded framing run emitted (99.2) and
+        parses it. Returns ``InterfaceManifest`` or ``None`` — a missing or unparseable
+        manifest leaves the run on today's non-scaffolded path (graceful, data-driven).
+        """
+        from squadops.capabilities.scaffold import InterfaceManifest
+
+        plan_refs = cycle.execution_overrides.get("plan_artifact_refs", [])
+        if not plan_refs:
+            return None
+
+        for ref_id in plan_refs:
+            try:
+                ref, content_bytes = await self._artifact_vault.retrieve(ref_id)
+                if ref.filename == "interface_manifest.yaml" or (
+                    getattr(ref, "artifact_type", None) == "interface_manifest"
+                ):
+                    manifest = InterfaceManifest.from_yaml(content_bytes.decode(errors="replace"))
+                    logger.info(
+                        "Loaded interface manifest (stack=%s, %d entities) for run %s",
+                        manifest.stack,
+                        len(manifest.entities),
+                        run.run_id,
+                    )
+                    return manifest
+            except Exception:
+                logger.warning(
+                    "Failed to load interface manifest from artifact %s; skipping scaffold",
+                    ref_id,
+                    exc_info=True,
+                )
+                return None
+
+        return None
+
+    async def _seed_skeleton_artifacts(
+        self,
+        manifest: Any,
+        cycle: Cycle,
+        run_id: str,
+    ) -> list[str]:
+        """Expand the interface manifest into a walking skeleton and store each file in
+        the vault, returning the stored artifact ids to seed into the run (SIP-0099 99.3).
+
+        Reuses the 99.1 profile seam (``BuildProfile.expand`` -> the pure ``scaffold``
+        module). Never crashes the run: an unscaffoldable stack or an expander failure
+        yields ``[]`` and the run proceeds on today's non-scaffolded path.
+        """
+        from squadops.capabilities.handlers.build_profiles import get_profile
+        from squadops.capabilities.scaffold import is_scaffoldable_stack
+
+        if not is_scaffoldable_stack(manifest.stack):
+            return []
+        try:
+            files = get_profile(manifest.stack).expand(manifest)
+        except Exception:
+            logger.warning(
+                "Failed to expand interface manifest (stack=%s); skipping scaffold seed",
+                manifest.stack,
+                exc_info=True,
+            )
+            return []
+
+        seeded_ids: list[str] = []
+        for f in files:
+            content = f["content"].encode("utf-8")
+            ref = ArtifactRef(
+                artifact_id=f"art_{uuid4().hex[:12]}",
+                project_id=cycle.project_id,
+                cycle_id=cycle.cycle_id,
+                run_id=run_id,
+                artifact_type="source",
+                filename=f["name"],
+                content_hash=sha256(content).hexdigest(),
+                size_bytes=len(content),
+                media_type="text/plain",
+                created_at=datetime.now(UTC),
+                metadata={"producing_task_type": "scaffold.expand", "scaffold_seeded": True},
+            )
+            await self._artifact_vault.store(ref, content)
+            seeded_ids.append(ref.artifact_id)
+
+        logger.info(
+            "Seeded %d walking-skeleton files (stack=%s) for run %s",
+            len(seeded_ids),
+            manifest.stack,
+            run_id,
+        )
+        return seeded_ids
 
     # ------------------------------------------------------------------
     # Extracted helpers for _execute_sequential
