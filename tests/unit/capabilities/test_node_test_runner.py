@@ -276,6 +276,12 @@ _FRONTEND_NOT_RUN = RunTestsResult(
     test_file_count=1,
     source_file_count=2,
 )
+_BACKEND_NOT_RUN = RunTestsResult(
+    executed=False,
+    error="no test files provided",
+    test_file_count=0,
+    source_file_count=3,
+)
 
 
 class TestFullstackTestsBothPass:
@@ -331,6 +337,41 @@ class TestFullstackTestsD13MergePolicy:
         )
         assert result.exit_code == 0
         assert "non-blocking" in result.error
+
+    @patch(_RUN_NODE_PATH, return_value=_FRONTEND_FAIL)
+    @patch(_RUN_PYTEST_PATH, return_value=_BACKEND_NOT_RUN)
+    async def test_backend_not_run_frontend_fail_combined_fails(self, _mock_pytest, _mock_node):
+        """#501 — the shakedown-3 false green: backend never executed, frontend
+        vitest exited 1, yet the merge hardcoded exit 0 and reported 'all tests
+        passed'. The sole executed suite's failure must control."""
+        result = await run_fullstack_tests(
+            [{"path": "frontend/src/App.jsx", "content": "export default () => {}"}],
+            [{"path": "frontend/src/App.test.jsx", "content": "test('ok', () => {})"}],
+        )
+        assert result.exit_code == 1
+        assert result.tests_passed is False
+
+    @patch(_RUN_NODE_PATH, return_value=_FRONTEND_PASS)
+    @patch(_RUN_PYTEST_PATH, return_value=_BACKEND_NOT_RUN)
+    async def test_backend_not_run_frontend_pass_combined_passes(self, _mock_pytest, _mock_node):
+        """#501 inverse guard: when the frontend is the only executed suite and it
+        passed, the combined result is an honest pass (frontend controls)."""
+        result = await run_fullstack_tests(
+            [{"path": "frontend/src/App.jsx", "content": "export default () => {}"}],
+            [{"path": "frontend/src/App.test.jsx", "content": "test('ok', () => {})"}],
+        )
+        assert result.exit_code == 0
+        assert result.tests_passed is True
+
+    @patch(_RUN_NODE_PATH, return_value=_FRONTEND_NOT_RUN)
+    @patch(_RUN_PYTEST_PATH, return_value=_BACKEND_NOT_RUN)
+    async def test_neither_suite_executed_is_not_a_pass(self, _mock_pytest, _mock_node):
+        """#501: zero tests executed anywhere must never read 'all tests passed' —
+        tests_pass verifying on no evidence is the false-green class itself."""
+        result = await run_fullstack_tests([], [])
+        assert result.executed is False
+        assert result.exit_code != 0
+        assert result.tests_passed is False
 
 
 class TestFullstackTestsFileSplit:
