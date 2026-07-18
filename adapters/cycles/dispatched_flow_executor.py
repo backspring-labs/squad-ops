@@ -2324,6 +2324,21 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # the same returned list → identical system:plan_validation REJECTED recording.
         # Contract absent (author mode) → no-op = today's behavior.
         if self._is_bind_mode(cycle):
+            # #494: the contract binds to a skeleton, so bind mode REQUIRES a
+            # framing-emitted interface manifest. Without one, no skeleton is
+            # expanded at the implementation run — a plan whose criteria happen
+            # to bind would proceed UNSCAFFOLDED while claiming contract
+            # verification (the §10 stale-binding class through the front
+            # door; observed live: shakedown cyc_c8d3414a6bee ran sole-author,
+            # emitted no manifest, and this net said nothing about it).
+            if interface_content is None:
+                errors.append(
+                    "verification_contract: bind mode requires a framing-emitted "
+                    "interface manifest, and this run produced none — the contract "
+                    "binds to a skeleton; without a manifest the implementation "
+                    "would run unscaffolded while claiming contract verification "
+                    "(#494)"
+                )
             contract = await self._load_contract_for_run(cycle, run)
             if contract is None:
                 errors.append(
