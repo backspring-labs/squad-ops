@@ -1,9 +1,26 @@
 # PRD: group_run (1-Hour Cycle MVP+)
-**Version:** v0.3
+**Version:** v0.4 (SIP-0098 §6.7 split — product-only content; technical contract externalized)
 **Purpose:** Define a testable full-stack MVP for a 1-hour SquadOps cycle
 **Status:** Draft for cycle planning
 **Timebox Target:** 1-hour autonomous cycle (5-agent squad)
-**Stack Constraint (Locked):** FastAPI + React (Vite)
+
+---
+
+## 0) Technical Contract (owned elsewhere — do not restate here)
+
+Per SIP-0098 §6.7, this PRD carries **product content only**: features, behaviors,
+scope, and priorities. The technical fill contract lives in two sibling artifacts:
+
+- **`interface_manifest.yaml`** — entities, API endpoints and request/error shapes,
+  frontend routes/views, stack, persistence mode, and the pinned interface decisions
+  the earlier PRD delegated to implementation.
+- **`verification_contract.yaml`** (emitted by the scaffold expander) — frozen-file
+  protection, per-fill-file criteria, test-suite expectations, and behavioral probes.
+
+Change interfaces by amending the manifest and re-expanding the skeleton — never by
+adding endpoint tables, data models, file lists, or test mechanics back into this
+document. Sections below marked *moved* are tombstones kept so existing §-references
+resolve.
 
 ---
 
@@ -223,43 +240,20 @@ User can leave a run using participant name (MVP simplification; no auth/user id
 
 ---
 
-## 6) API Requirements (Locked to FastAPI)
+## 6) API Requirements — *moved* (SIP-0098 §6.7)
 
-### Required Endpoints (MVP)
-- `GET /runs` — list runs
-- `POST /runs` — create run
-- `GET /runs/{id}` — get run details
-- `POST /runs/{id}/join` — join run by participant name
-- `POST /runs/{id}/leave` — leave run by participant name
-
-### API Contract Expectations
-- JSON request/response bodies
-- Appropriate HTTP status codes for success and validation errors
-- Clear error payloads for:
-  - invalid request body
-  - run not found
-  - duplicate participant join
-  - participant not found on leave (if treated as error)
+Endpoints, request/response shapes, status codes, and the error-payload contract are
+owned by `interface_manifest.yaml` (`api:` section, incl. `error_contract`). The
+product behaviors they serve remain in §5.
 
 ---
 
-## 7) Frontend Requirements (Locked to React + Vite)
+## 7) Frontend Requirements
 
-### Required Views / Routes
-1. **Runs List View**
-   - Displays upcoming runs
-   - CTA to create new run
+### Required Views / Routes — *moved* (SIP-0098 §6.7)
 
-2. **Create Run View/Form**
-   - Form fields for event creation
-   - Submit action
-   - Basic validation messages
-
-3. **Run Detail View**
-   - Event details
-   - Participant list
-   - Join form
-   - Leave action
+Routes, view names, and view purposes are owned by `interface_manifest.yaml`
+(`frontend:` section). The user-facing behaviors of each view remain in §5.
 
 ### UI Constraints (for 1-hour build)
 - Minimal styling only (functional > polished)
@@ -270,54 +264,24 @@ User can leave a run using participant name (MVP simplification; no auth/user id
 
 ---
 
-## 8) Data Model (MVP)
+## 8) Data Model — *moved* (SIP-0098 §6.7)
 
-## RunEvent
-- `id` (string/uuid)
-- `title` (string)
-- `datetime` (string)
-- `location` (string)
-- `distance` (string | optional)
-- `pace_target` (string | optional)
-- `route_notes` (string | optional)
-- `participants` (list of Participant)
-
-## Participant
-- `id` (string/uuid or generated id)
-- `name` (string)
-
-### Persistence (MVP)
-**Required for this cycle:** in-memory repository/storage only.
-
-### Persistence Non-Goal (for this cycle)
-- SQLite / migrations / production database setup (unless completed as extra with no risk to core scope)
+Entities, fields, and the persistence mode are owned by `interface_manifest.yaml`
+(`entities:` and `persistence:`). Product-level persistence scope: this cycle ships
+without a database — SQLite/migrations/production storage remain out of scope (see
+§13 for the post-MVP path).
 
 ---
 
-## 9) Technical Scope Guidance (Locked for Cycle Success)
+## 9) Technical Scope Guidance — *moved* (SIP-0098 §6.7)
 
-## Backend (Required)
-- Python 3.11+
-- FastAPI
-- Pydantic
-- Uvicorn
-- pytest (FastAPI test client / httpx acceptable)
+Stack, toolchain, and test mechanics are owned by `interface_manifest.yaml` (stack,
+language, api_client) and `verification_contract.yaml` (suite expectations, probes).
 
-## Frontend (Required)
-- React (Vite)
-- React Router (if multi-route implementation chosen)
-- Fetch API
-
-## Testing (Minimum)
-- Backend tests for core happy path + validation/error behavior
-- Frontend test optional if time allows (preferred: one basic render/flow test)
-
-### Explicit Constraints (to prevent drift)
+### Product Scope Constraints (retained — to prevent drift)
 - No authentication
-- No database migrations
 - No external APIs/maps
 - No WebSocket/realtime features
-- No TypeScript requirement for this cycle (allowed only if templates are already mature and do not add setup risk)
 
 ---
 
@@ -339,19 +303,18 @@ User can leave a run using participant name (MVP simplification; no auth/user id
 - [ ] Empty participant name is rejected on join
 - [ ] Empty participant name is rejected on leave
 
-### API
-- [ ] Required endpoints are implemented and return JSON responses
-- [ ] Not-found run returns clear error response
-- [ ] Duplicate join returns clear error response
+### API — *moved* (SIP-0098 §6.7)
+Endpoint-level acceptance (implemented endpoints, error responses) is verified by the
+verification contract's criteria and behavioral probes, not restated here.
 
 ### Runability
 - [ ] Backend starts locally with documented commands
 - [ ] Frontend starts locally with documented commands
 - [ ] UI can communicate with backend in local dev setup
 
-### Tests
-- [ ] Basic backend tests run successfully (happy path + at least one validation/error case)
-- [ ] If frontend tests are implemented, test command and scope are documented
+### Tests — *moved* (SIP-0098 §6.7)
+Test-suite expectations (happy paths, error cases, isolation) are owned by the
+verification contract's `behavioral.suite.coverage_expectations`.
 
 ### Handoff / QA Friendliness
 - [ ] Build includes a clear `qa_handoff` artifact (or equivalent) with:
@@ -372,45 +335,12 @@ If any expansion items are completed, `qa_handoff` should include:
 
 ---
 
-## 11) Suggested Task Decomposition (for 1-Hour Squad Cycle)
+## 11) Suggested Task Decomposition — *moved* (SIP-0098 §6.7)
 
-This section helps planning but does not prescribe exact implementation.
-
-### Workstream A: Product / Planning
-- confirm scope lock (must-haves vs expansion tiers)
-- define API contract expectations
-- define validation rules (including duplicate-name behavior)
-- define acceptance checks
-
-### Workstream B: Backend (FastAPI)
-- data models / schemas
-- in-memory repository
-- endpoints for create/list/detail/join/leave
-- backend validation + error responses
-- API tests
-
-### Workstream C: Frontend (React)
-- app shell / routes/views
-- runs list view
-- create run form
-- run detail view
-- join/leave interactions
-- error/empty-state handling
-
-### Workstream D: QA / Validation
-- execute run/test instructions
-- verify core flows and validation behavior
-- verify duplicate-name rejection behavior
-- verify implemented expansion items (if any)
-- produce validation summary
-
-### Workstream E: Integration / Orchestration
-- maintain scope discipline
-- coordinate API/UI contract alignment
-- track progress vs timebox
-- pull expansion items from §4.1 in priority order only if core scope is stable
-- cut expansion work immediately if time risk rises
-- ensure final handoff completeness
+Decomposition is framing's job (SIP-0098 §5), performed against the scaffold's fill
+slots; the earlier workstream sketch restated interface content and is retired.
+Scope-discipline rules it carried live on in §4.1 (expansion rules) and §14 (scope
+lock).
 
 ---
 
@@ -425,9 +355,9 @@ This section helps planning but does not prescribe exact implementation.
 - Unplanned expansion work displacing core scope completion
 
 ### Mitigations
-- Scope lock to 3 views + 5 endpoints
-- Prefer in-memory persistence for v0.3
-- Keep API contract simple and explicit
+- Scope lock to the interface manifest's declared views and endpoints — nothing more
+- Prefer in-memory persistence for this cycle
+- Keep the API contract simple and explicit (owned by the manifest)
 - Use minimal styling
 - Prioritize end-to-end happy path before refinements
 - Use only pre-approved expansion items (§4.1) and only after core stability
