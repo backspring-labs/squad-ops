@@ -281,3 +281,71 @@ async def test_net_b_author_mode_ignores_contract_binding():
 
     # only the interface-manifest net runs (manifest is valid) -> no bind errors
     assert not any("verification_contract" in e for e in errors)
+
+
+# --------------------------------------------------------------------------- #
+# #496: bind mode falls back to the operator-seeded manifest
+# --------------------------------------------------------------------------- #
+
+# Parses and lints clean but hashes differently — the re-derivation-drift shape
+# shakedown cyc_59bfbd3f4a2a produced live (plausible rename, broken hash).
+_DRIFTED_MANIFEST_YAML = _MANIFEST_YAML.replace("name: Participant", "name: Attendee", 1)
+
+
+async def test_net_b_seeded_manifest_satisfies_when_framing_emits_none():
+    # bug caught: fallback not wired — bind mode without a framing-emitted manifest
+    # would reject (#494) even though the canonical manifest is seeded on the very
+    # rail (plan_artifact_refs) the implementation run scaffolds from.
+    executor = _make_executor(_bind_store())
+    cycle = _make_cycle(
+        execution_overrides={"contract_ref": "art_c", "plan_artifact_refs": ["art_iface"]}
+    )
+    run = _make_run(["art_plan"])  # framing emitted the plan only, no manifest
+
+    errors = await executor._reject_invalid_plan_before_workload_gate(run, cycle, "plan-review")
+
+    assert errors == []
+
+
+async def test_net_b_seeded_manifest_is_hash_checked():
+    # bug caught: fallback skipping validation — a seeded manifest the contract was
+    # NOT authored against must still trip the §10 stale-binding rejection.
+    import yaml
+
+    tampered = VerificationContract.from_dict(
+        {
+            **_CONTRACT.to_dict(),
+            "skeleton": {
+                "expander": "fullstack_fastapi_react",
+                "interface_manifest_hash": "f" * 64,
+            },
+        }
+    )
+    executor = _make_executor(_bind_store(contract_yaml=yaml.safe_dump(tampered.to_dict())))
+    cycle = _make_cycle(
+        execution_overrides={"contract_ref": "art_c", "plan_artifact_refs": ["art_iface"]}
+    )
+    run = _make_run(["art_plan"])
+
+    errors = await executor._reject_invalid_plan_before_workload_gate(run, cycle, "plan-review")
+
+    assert any("different skeleton" in e for e in errors)
+
+
+async def test_net_b_drifted_framing_manifest_rejects_despite_matching_seed():
+    # bug caught: precedence inversion — preferring the seed would silently mask a
+    # framing-emitted manifest that drifted from the contract (drift must still reject).
+    store = _bind_store()
+    store["art_iface_drift"] = (
+        _Ref("art_iface_drift", "interface_manifest.yaml", "interface_manifest"),
+        _DRIFTED_MANIFEST_YAML.encode(),
+    )
+    executor = _make_executor(store)
+    cycle = _make_cycle(
+        execution_overrides={"contract_ref": "art_c", "plan_artifact_refs": ["art_iface"]}
+    )
+    run = _make_run(["art_plan", "art_iface_drift"])  # framing emitted a drifted manifest
+
+    errors = await executor._reject_invalid_plan_before_workload_gate(run, cycle, "plan-review")
+
+    assert any("different skeleton" in e for e in errors)

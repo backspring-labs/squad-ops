@@ -198,6 +198,23 @@ async def test_scaffold_section_empty_for_non_dev_proposer():
     renderer.render.assert_not_awaited()
 
 
+async def test_scaffold_section_empty_in_bind_mode():
+    # #496: a contract_criteria_index means bind mode — the manifest already exists
+    # (the contract binds its exact hash), so asking dev to re-derive it from a
+    # product-only PRD is unwinnable drift. Emission must be author-mode only.
+    handler = DevelopmentProposePlanTasksHandler()
+    renderer = AsyncMock()
+    out = await handler._scaffold_section(
+        renderer,
+        {
+            "resolved_config": {"build_profile": "fullstack_fastapi_react"},
+            "contract_criteria_index": [{"id": "vc-routes-apierror"}],
+        },
+    )
+    assert out == ""
+    renderer.render.assert_not_awaited()
+
+
 def test_appendix_example_manifest_is_itself_valid_and_scaffoldable():
     # the schema example we teach the LLM must itself parse, lint clean, and be
     # scaffoldable — otherwise a squad copying it faithfully still gets rejected

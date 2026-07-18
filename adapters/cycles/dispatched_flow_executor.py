@@ -1348,8 +1348,17 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         for the ``interface_manifest.yaml`` a scaffolded framing run emitted (99.2) and
         parses it. Returns ``InterfaceManifest`` or ``None`` — a missing or unparseable
         manifest leaves the run on today's non-scaffolded path (graceful, data-driven).
+
+        Never loads for a framing run (#496): an operator-seeded manifest sits in
+        ``plan_artifact_refs`` from cycle creation, visible to EVERY workload — but the
+        skeleton is the implementation substrate. A framing run authors the plan and
+        must not expand or carry skeleton files. (Pre-#496 this was unreachable:
+        forwarding only populated ``plan_artifact_refs`` after framing completed.)
         """
         from squadops.capabilities.scaffold import InterfaceManifest
+
+        if getattr(run, "workload_type", None) == "framing":
+            return None
 
         plan_refs = cycle.execution_overrides.get("plan_artifact_refs", [])
         if not plan_refs:
@@ -2324,20 +2333,25 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # the same returned list → identical system:plan_validation REJECTED recording.
         # Contract absent (author mode) → no-op = today's behavior.
         if self._is_bind_mode(cycle):
-            # #494: the contract binds to a skeleton, so bind mode REQUIRES a
-            # framing-emitted interface manifest. Without one, no skeleton is
-            # expanded at the implementation run — a plan whose criteria happen
-            # to bind would proceed UNSCAFFOLDED while claiming contract
-            # verification (the §10 stale-binding class through the front
-            # door; observed live: shakedown cyc_c8d3414a6bee ran sole-author,
-            # emitted no manifest, and this net said nothing about it).
+            # #494/#496: the contract binds to a skeleton, so bind mode REQUIRES an
+            # interface manifest — without one, no skeleton is expanded at the
+            # implementation run and contract checks would measure from-scratch code
+            # (the §10 stale-binding class through the front door). In bind mode the
+            # manifest is normally operator-SEEDED via plan_artifact_refs (#496 —
+            # framing cannot re-derive it from a product-only PRD without hash
+            # drift; emission is author-mode only). A framing-emitted manifest, if
+            # one appears anyway, still takes precedence and is still hash-checked.
+            seeded_content: str | None = None
             if interface_content is None:
+                seeded_content = await self._load_seeded_manifest_content(cycle)
+            if interface_content is None and seeded_content is None:
                 errors.append(
-                    "verification_contract: bind mode requires a framing-emitted "
-                    "interface manifest, and this run produced none — the contract "
-                    "binds to a skeleton; without a manifest the implementation "
-                    "would run unscaffolded while claiming contract verification "
-                    "(#494)"
+                    "verification_contract: bind mode requires an interface manifest "
+                    "and none exists — this run emitted none and no seeded "
+                    "interface_manifest.yaml is present in plan_artifact_refs; the "
+                    "contract binds to a skeleton, and without a manifest the "
+                    "implementation would run unscaffolded while claiming contract "
+                    "verification (#494, #496)"
                 )
             contract = await self._load_contract_for_run(cycle, run)
             if contract is None:
@@ -2346,14 +2360,36 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     "missing or unparseable — bind mode cannot validate the plan"
                 )
             else:
-                if interface_content is not None:
-                    errors.extend(self._validate_contract_binding(contract, interface_content))
+                binding_content = (
+                    interface_content if interface_content is not None else (seeded_content)
+                )
+                if binding_content is not None:
+                    errors.extend(self._validate_contract_binding(contract, binding_content))
                 if parsed_plan is not None:
                     errors.extend(
                         f"verification_contract: {e}"
                         for e in parsed_plan.validate_criteria_refs(contract)
                     )
         return errors
+
+    async def _load_seeded_manifest_content(self, cycle: Cycle) -> str | None:
+        """Raw content of an operator-seeded interface manifest, or ``None`` (#496).
+
+        Searches ``execution_overrides.plan_artifact_refs`` — the exact rail
+        ``_load_interface_manifest_for_run`` reads at the implementation run — so the
+        manifest the gate hash-checks against the contract is the same one the
+        skeleton will expand from. Unreadable refs are skipped, not fatal: an absent
+        seeded manifest is reported by the caller as the #494/#496 rejection."""
+        for ref_id in cycle.execution_overrides.get("plan_artifact_refs") or []:
+            try:
+                ref, content_bytes = await self._artifact_vault.retrieve(ref_id)
+            except Exception:
+                continue
+            if ref.filename == "interface_manifest.yaml" or (
+                getattr(ref, "artifact_type", None) == "interface_manifest"
+            ):
+                return content_bytes.decode(errors="replace")
+        return None
 
     @staticmethod
     def _validate_interface_manifest(content: str) -> list[str]:
