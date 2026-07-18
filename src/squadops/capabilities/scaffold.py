@@ -245,6 +245,47 @@ class InterfaceManifest:
         canonical = json.dumps(self._canonical(), sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
+    def lint(self) -> list[str]:
+        """Return the consistency defects that make this manifest unusable for
+        scaffolding — the "malformed/incomplete" net a framing LLM emission is checked
+        against (SIP-0099 phase 99.2). Gross malformation (bad version/kind, missing
+        required keys) is already raised by ``from_dict``; this catches the manifests
+        that *parse* but cannot be expanded (no endpoints, an endpoint referencing an
+        undeclared request shape, a route with no view). Empty list ⇒ usable.
+        """
+        errors: list[str] = []
+        if not self.project_id:
+            errors.append("project_id is required")
+        if self.stack not in _EXPANDERS:
+            errors.append(
+                f"stack {self.stack!r} has no scaffold expander (known: {sorted(_EXPANDERS)})"
+            )
+        if not self.api.endpoints:
+            errors.append("api.endpoints is empty — declare at least one endpoint to scaffold")
+
+        entity_names = {e.name for e in self.entities}
+        shape_names = {s.name for s in self.api.request_shapes}
+        for ep in self.api.endpoints:
+            label = f"endpoint {ep.method} {ep.path}".rstrip()
+            if not ep.method or not ep.path:
+                errors.append(f"{label}: method and path are required")
+            if ep.request and ep.request not in shape_names and ep.request not in entity_names:
+                errors.append(
+                    f"{label}: request {ep.request!r} is not a declared request_shape or entity"
+                )
+            if ep.response:
+                base = _base_type_name(ep.response)
+                # a capitalized response type names an entity; a lowercase one is a
+                # primitive (str/int/…) the expander passes through.
+                if base and base[0].isupper() and base not in entity_names:
+                    errors.append(f"{label}: response references undeclared entity {base!r}")
+
+        for route in self.frontend.routes:
+            if not route.view:
+                errors.append(f"frontend route {route.path!r}: view is required")
+
+        return errors
+
 
 def _parse_entity(raw: dict[str, Any]) -> Entity:
     fields = []
@@ -348,6 +389,14 @@ def fill_slot_paths(manifest: InterfaceManifest) -> tuple[str, ...]:
         )
     views = tuple(f"frontend/src/views/{r.view}.jsx" for r in manifest.frontend.routes)
     return ("backend/routes.py", *dict.fromkeys(views))
+
+
+def is_scaffoldable_stack(stack: str) -> bool:
+    """True when ``stack`` has a registered walking-skeleton expander — i.e. a cycle on
+    this stack can be scaffolded. The data-driven gate for the framing instruction
+    (SIP-0099 99.2): only scaffoldable cycles are asked to author an interface manifest,
+    so a non-scaffoldable stack never emits one that plan validation would then reject."""
+    return bool(stack) and stack in _EXPANDERS
 
 
 # ------------------------------------------------- fullstack_fastapi_react templates

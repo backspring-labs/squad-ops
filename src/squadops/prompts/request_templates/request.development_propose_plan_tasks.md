@@ -11,6 +11,7 @@ optional_variables:
   - roles_section
   - builder_section
   - typed_acceptance_vocabulary
+  - scaffold_section
 ---
 You are proposing development-domain plan tasks for the upcoming build.
 
@@ -67,3 +68,5 @@ risks: []
 gaps_not_covered: []
 confidence: ""  # low | medium | high
 ```
+
+{{scaffold_section}}

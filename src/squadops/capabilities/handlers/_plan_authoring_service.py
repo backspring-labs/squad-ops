@@ -271,12 +271,19 @@ async def produce_plan(
                 prd_hash=hashlib.sha256(prd.encode()).hexdigest() if prd else "",
                 handler_name=handler_name,
             )
-            return {
+            result_artifact: dict[str, Any] = {
                 "name": "implementation_plan.yaml",
                 "content": yaml_content,
                 "media_type": "text/yaml",
                 "type": "control_implementation_plan",
             }
+            # SIP-0099 99.2: a sole-author governance run may emit interface_manifest.yaml
+            # alongside the plan; carry the raw block so the merger emits it as a sibling
+            # artifact (absent = no key = today's behavior, byte-identical).
+            interface_files = [f for f in extracted if f["filename"] == "interface_manifest.yaml"]
+            if interface_files:
+                result_artifact["interface_manifest_yaml"] = interface_files[0]["content"]
+            return result_artifact
 
         logger.warning(
             "%s: manifest attempt %d/%d failed (%s)",
