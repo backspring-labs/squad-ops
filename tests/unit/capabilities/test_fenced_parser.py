@@ -549,3 +549,68 @@ class TestNestedFences:
         records = extract_fenced_files(response)
         assert [r["filename"] for r in records] == ["config.json"]
         assert records[0]["content"] == '{"ok": true}'
+
+
+class TestFirstLinePathPrefix:
+    """#470: a bare ```<lang> fence whose first body line is ``path:code`` (the
+    filename as a colon-prefix of the first code line, no comment marker). Each
+    occurrence otherwise dropped a whole task and cost a full generation round."""
+
+    def test_the_reported_variant_extracts_the_file(self):
+        # verbatim shape from the issue: qa suite emitted as ```python\npath:code
+        response = (
+            "```python\n"
+            "tests/test_api.py:import pytest\n"
+            "\n"
+            "def test_health():\n"
+            "    assert True\n"
+            "```\n"
+        )
+        result = extract_fenced_files(response)
+        assert len(result) == 1
+        assert result[0]["filename"] == "tests/test_api.py"
+        # the code after the colon becomes the first content line — prefix stripped
+        assert result[0]["content"].startswith("import pytest\n")
+        assert "def test_health():" in result[0]["content"]
+
+    def test_bare_extension_filename_without_slash(self):
+        # a slash-less path is accepted via the source-extension guard
+        result = extract_fenced_files("```python\nmain.py:import sys\n```")
+        assert result == [{"filename": "main.py", "content": "import sys", "language": "python"}]
+
+    def test_path_colon_alone_takes_code_from_next_line(self):
+        # ``path:`` with nothing after the colon — code starts on the next line,
+        # and no empty first line is prepended
+        result = extract_fenced_files(
+            "```python\nbackend/main.py:\nfrom fastapi import FastAPI\n```"
+        )
+        assert result[0]["filename"] == "backend/main.py"
+        assert result[0]["content"] == "from fastapi import FastAPI"
+
+    def test_multiple_path_prefix_fences(self):
+        response = "```python\na/one.py:x = 1\n```\n```js\nb/two.js:y = 2\n```"
+        result = extract_fenced_files(response)
+        assert [(r["filename"], r["content"]) for r in result] == [
+            ("a/one.py", "x = 1"),
+            ("b/two.js", "y = 2"),
+        ]
+
+    def test_strict_header_still_wins_over_body_prefix(self):
+        # an explicit ```<lang>:<path> header is authoritative; a path:code first
+        # body line is left untouched as content, not treated as the filename
+        result = extract_fenced_files("```python:real.py\nother.py:import os\n```")
+        assert result[0]["filename"] == "real.py"
+        assert result[0]["content"] == "other.py:import os"
+
+    def test_host_port_first_line_is_not_a_filename(self):
+        # guard: no slash and a non-source extension (.com) -> not a file (would
+        # otherwise mis-read config/prose colon lines as filenames)
+        assert extract_fenced_files("```yaml\nexample.com:8080\nfoo: bar\n```") == []
+
+    def test_prose_colon_first_line_is_not_a_filename(self):
+        assert extract_fenced_files("```text\nNote:this is important\n```") == []
+
+    def test_absolute_and_traversal_prefixes_rejected(self):
+        # the shared safety check still applies to a strategy-5 path
+        assert extract_fenced_files("```python\n/etc/evil.py:import os\n```") == []
+        assert extract_fenced_files("```python\n../esc.py:bad\n```") == []
