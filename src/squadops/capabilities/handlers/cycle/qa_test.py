@@ -4,8 +4,11 @@ Split from cycle_tasks.py (#152).
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import tempfile
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from squadops.capabilities.dev_capabilities import get_capability
@@ -210,6 +213,50 @@ class QATestHandler(_CycleTaskHandler):
                 parts.append(f"### {role}\n{summary}\n")
 
         return "\n".join(parts)
+
+    async def _append_contract_probe_rows(
+        self, inputs: dict[str, Any], outputs: dict[str, Any]
+    ) -> None:
+        """Execute the seeded contract's behavioral probes (SIP-0098 §6.4, phase 98.5).
+
+        Bind mode injects the contract's probe specs into this task's inputs
+        (``contract_probes``, serialized ``Probe`` dicts). The app workspace is
+        materialized from the same source artifacts the suite ran against, the
+        runner boots it per the default execution profile, and each outcome lands
+        as its own criterion-ID-stamped check row in ``validation_result`` — the
+        rollup's contract-coverage accounting counts it like any other criterion.
+
+        Additive evidence only, on both verdict paths (the #407 frontend_build
+        pattern): a failed probe surfaces at the run verdict/rollup, not as a task
+        failure here. A malformed entry is logged and skipped — the rollup then
+        reports that criterion not-executed, never a silent pass.
+        """
+        raw = inputs.get("contract_probes")
+        if not raw:
+            return
+
+        from squadops.capabilities.handlers.probe_runner import probe_check_rows, run_probes
+        from squadops.cycles.patch_verification import materialize_artifacts
+        from squadops.cycles.verification_contract import Probe
+
+        probes = []
+        for entry in raw:
+            try:
+                probes.append(Probe.from_dict(entry))
+            except ValueError:
+                logger.warning("Skipping malformed contract_probes entry: %r", entry)
+        if not probes:
+            return
+
+        sources = self._get_source_artifacts(inputs)
+        artifacts = [{"name": path, "content": content} for path, content in sources.items()]
+        with tempfile.TemporaryDirectory(prefix="qa_probes_") as tmp:
+            workspace = Path(tmp)
+            materialize_artifacts(artifacts, workspace)
+            outcomes = await asyncio.to_thread(run_probes, workspace, probes)
+
+        vr = outputs.setdefault("validation_result", {})
+        vr.setdefault("checks", []).extend(probe_check_rows(outcomes))
 
     @staticmethod
     async def _run_test_suite(
@@ -426,6 +473,10 @@ class QATestHandler(_CycleTaskHandler):
                     "reason": _frontend_skip_reason(fb.error),
                 }
             outputs["validation_result"]["checks"].append(fb_row)
+
+        # SIP-0098 98.5: probe evidence rides the retest path too — a repaired
+        # suite's run must not under-count contract-criterion coverage.
+        await self._append_contract_probe_rows(inputs, outputs)
 
         duration_ms = (time.perf_counter() - start_time) * 1000
         evidence = HandlerEvidence.create(
@@ -798,6 +849,10 @@ class QATestHandler(_CycleTaskHandler):
                 }
             vr = outputs.setdefault("validation_result", {})
             vr.setdefault("checks", []).append(fb_row)
+
+        # SIP-0098 98.5: execute seeded behavioral probes and append their rows
+        # (both verdict paths, like frontend_build above — additive evidence).
+        await self._append_contract_probe_rows(inputs, outputs)
 
         duration_ms = (time.perf_counter() - start_time) * 1000
         evidence = HandlerEvidence.create(

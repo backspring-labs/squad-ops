@@ -359,6 +359,33 @@ def _resolve_legacy_steps(
     return steps, builder_used
 
 
+def _inject_contract_inputs(
+    inputs: dict, contract: VerificationContract | None, task_type: str
+) -> None:
+    """Bind-mode envelope inputs derived from the seeded contract (SIP-0098).
+
+    98.3 (§6.3): dev/qa proposers receive the criteria index so they *bind*
+    (list ``criteria_refs``) rather than author covered-file criteria; only the
+    index data is injected here — the bind instruction prose lives in the
+    proposer's managed prompt asset (CLAUDE.md #448). Strategy proposes
+    guidance, not build tasks, so it is not indexed.
+
+    98.5 (§6.4): qa.test carries the contract's behavioral probes (serialized
+    ``Probe`` dicts — envelope inputs are JSON). The qa handler reconstructs and
+    executes them against the built workspace, so probe evidence lands in
+    live-cycle runs, not only the CI gate. Probe-less contracts inject no key.
+
+    Author mode (``contract is None``) injects nothing — contract-less cycles
+    stay byte-identical.
+    """
+    if contract is None:
+        return
+    if task_type in _BIND_INDEX_PROPOSER_TASK_TYPES:
+        inputs["contract_criteria_index"] = "\n".join(contract.criteria_index_lines())
+    if task_type == "qa.test" and contract.behavioral.probes:
+        inputs["contract_probes"] = [p.to_dict() for p in contract.behavioral.probes]
+
+
 def generate_task_plan(
     cycle: Cycle,
     run: Run,
@@ -504,13 +531,7 @@ def generate_task_plan(
                 acceptance.extend(resolve_contract_refs(plan_task.criteria_refs, contract))
             inputs["acceptance_criteria"] = acceptance
 
-        # SIP-0098 98.3: bind-mode proposers receive the contract's criteria index so
-        # they can *bind* (list criteria_refs) rather than *author* covered-file
-        # criteria (§6.3). Only the index data is injected here; the bind instruction
-        # prose lives in the proposer's managed prompt asset (CLAUDE.md #448). dev/qa
-        # propose build tasks; strategy proposes guidance, so it is not indexed.
-        if contract is not None and task_type in _BIND_INDEX_PROPOSER_TASK_TYPES:
-            inputs["contract_criteria_index"] = "\n".join(contract.criteria_index_lines())
+        _inject_contract_inputs(inputs, contract, task_type)
 
         envelope = TaskEnvelope(
             task_id=task_id,

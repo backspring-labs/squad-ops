@@ -1326,3 +1326,159 @@ class TestQARetestExecuteOnly:
         stub_row = next(r for r in rows if r["check"] == "no_stub_fallback_tests")
         assert stub_row["passed"] is False
         assert "tests/test_api.py" in stub_row["offenders"]
+
+
+# ---------------------------------------------------------------------------
+# QATestHandler — contract probe emission (SIP-0098 phase 98.5)
+# ---------------------------------------------------------------------------
+
+
+class TestQAContractProbeEmission:
+    """98.5: bind mode injects ``contract_probes`` into qa.test inputs; the handler
+    reconstructs the probes, boots the materialized workspace via the probe runner,
+    and appends criterion-ID-stamped rows to ``validation_result.checks`` — additive
+    evidence on both the generate and retest paths. Without this, probe criteria
+    never execute in a live cycle and the rollup under-counts contract coverage."""
+
+    _PROBES = [
+        {
+            "id": "vc-probe-create",
+            "subject": "backend",
+            "request": {"method": "POST", "path": "/items", "json": {"title": "x"}},
+            "expect": {"status": 200},
+        },
+        {
+            "id": "vc-probe-dup",
+            "subject": "backend",
+            "request": {"method": "POST", "path": "/items", "json": {"title": "x"}},
+            "expect": {"status": 409},
+        },
+    ]
+
+    def _fake_run_probes(self, captured):
+        from squadops.capabilities.handlers.probe_runner import ProbeOutcome
+
+        def fake(workspace, probes):
+            captured["probe_ids"] = [p.id for p in probes]
+            captured["files"] = sorted(
+                str(p.relative_to(workspace)) for p in workspace.rglob("*") if p.is_file()
+            )
+            return [
+                ProbeOutcome("vc-probe-create", "passed", None),
+                ProbeOutcome("vc-probe-dup", "failed", "status 200 != expected 409"),
+            ]
+
+        return fake
+
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
+    async def test_generate_path_appends_probe_rows(
+        self, _mock_run, mock_context, qa_inputs, monkeypatch
+    ):
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
+        )
+        captured = {}
+        monkeypatch.setattr(
+            "squadops.capabilities.handlers.probe_runner.run_probes",
+            self._fake_run_probes(captured),
+        )
+        handler = QATestHandler()
+        result = await handler.handle(mock_context, {**qa_inputs, "contract_probes": self._PROBES})
+
+        # Probes reconstructed from wire dicts and run against the materialized
+        # source workspace (the same artifacts the suite validated).
+        assert captured["probe_ids"] == ["vc-probe-create", "vc-probe-dup"]
+        assert captured["files"] == ["src/main.py", "src/utils.py"]
+        # Exact evidence rows: per-probe check rows, criterion-ID-stamped, with the
+        # status key normalize_task_checks requires to carry criterion_id through.
+        rows = result.outputs["validation_result"]["checks"]
+        assert rows == [
+            {
+                "check": "vc-probe-create",
+                "status": "passed",
+                "reason": None,
+                "criterion_id": "vc-probe-create",
+            },
+            {
+                "check": "vc-probe-dup",
+                "status": "failed",
+                "reason": "status 200 != expected 409",
+                "criterion_id": "vc-probe-dup",
+            },
+        ]
+        # Additive evidence: a failed probe surfaces at the rollup, not as task failure.
+        assert result.success is True
+
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
+    async def test_retest_path_appends_probe_rows(
+        self, _mock_run, mock_context, qa_inputs, monkeypatch
+    ):
+        # #456 execute-only retest must carry probe evidence too, or a repaired
+        # run's rollup under-counts contract-criterion coverage.
+        captured = {}
+        monkeypatch.setattr(
+            "squadops.capabilities.handlers.probe_runner.run_probes",
+            self._fake_run_probes(captured),
+        )
+        handler = QATestHandler()
+        result = await handler.handle(
+            mock_context,
+            {
+                **qa_inputs,
+                "contract_probes": self._PROBES,
+                "retest_files": [
+                    {
+                        "filename": "tests/test_api.py",
+                        "content": "def test_ok():\n    assert True\n",
+                    }
+                ],
+            },
+        )
+
+        mock_context.ports.llm.chat_stream_with_usage.assert_not_called()
+        rows = result.outputs["validation_result"]["checks"]
+        probe_rows = [r for r in rows if r.get("criterion_id")]
+        assert [r["criterion_id"] for r in probe_rows] == ["vc-probe-create", "vc-probe-dup"]
+        assert probe_rows[1]["status"] == "failed"
+
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
+    async def test_malformed_probe_entry_skipped_valid_ones_still_run(
+        self, _mock_run, mock_context, qa_inputs, monkeypatch
+    ):
+        # A non-mapping entry (wire corruption / plumbing bug) is dropped with a
+        # warning; the valid probe still executes. The dropped criterion then shows
+        # up as not-executed in the rollup — honest, never a silent pass.
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
+        )
+        captured = {}
+        monkeypatch.setattr(
+            "squadops.capabilities.handlers.probe_runner.run_probes",
+            self._fake_run_probes(captured),
+        )
+        handler = QATestHandler()
+        await handler.handle(
+            mock_context,
+            {**qa_inputs, "contract_probes": ["bogus-not-a-dict", self._PROBES[0]]},
+        )
+
+        assert captured["probe_ids"] == ["vc-probe-create"]
+
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
+    async def test_no_contract_probes_input_is_byte_identical(
+        self, _mock_run, mock_context, qa_inputs, monkeypatch
+    ):
+        # Contract-less / author-mode qa.test must not touch the probe runner and
+        # must not grow a validation_result it didn't have (98.3 regression bar).
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
+        )
+
+        def explode(workspace, probes):
+            raise AssertionError("run_probes must not be called without contract_probes")
+
+        monkeypatch.setattr("squadops.capabilities.handlers.probe_runner.run_probes", explode)
+        handler = QATestHandler()
+        result = await handler.handle(mock_context, qa_inputs)
+
+        assert "validation_result" not in result.outputs
