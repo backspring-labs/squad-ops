@@ -9,10 +9,12 @@ optional_variables:
   - impl_plan
   - strategy
   - prior_outputs
+  - fill_only_section
 ---
 ## Product Requirements Document
 
 {{prd}}
+{{fill_only_section}}
 {{impl_plan}}
 {{strategy}}
 {{file_structure_guidance}}
