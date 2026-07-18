@@ -199,6 +199,13 @@ class RunVerificationSummary:
     required_unmet: tuple[str, ...]  # required check_ids not-executed (drove blocked_unverified)
     executed_count: int
     passed_count: int
+    # SIP-0098 98.4: contract-criterion coverage — distinct verification-contract
+    # criterion ids (carried on CheckResult.criterion_id in bind mode) that
+    # executed-and-passed, vs every criterion that produced evidence. Makes "verified"
+    # quantitative (§6.3) and the Functional App Yield metric well-defined: a run is
+    # green iff every covered criterion passed. Empty in author mode (no criterion ids).
+    criteria_verified: tuple[str, ...] = ()
+    criteria_total: tuple[str, ...] = ()
 
     @property
     def pass_rate(self) -> float:
@@ -209,6 +216,12 @@ class RunVerificationSummary:
         denominator, so they can never inflate this toward success.
         """
         return self.passed_count / self.executed_count if self.executed_count else 0.0
+
+    @property
+    def criteria_coverage(self) -> tuple[int, int]:
+        """``(n, m)`` — contract criteria executed-and-passed of criteria with evidence
+        (SIP-0098 §6.3). ``(0, 0)`` in author mode / when no criterion ids were carried."""
+        return len(self.criteria_verified), len(self.criteria_total)
 
 
 @dataclass(frozen=True)
@@ -254,6 +267,16 @@ class CycleOutcome:
     run_count: int
     inert: tuple[str, ...] = ()  # §9 chronic not-executed — populated by the inert-detection slice
     waived: tuple[WaivedCheck, ...] = ()  # §6.5 operator waivers — populated by the waiver slice
+    # SIP-0098 98.4: contract-criterion coverage across the cycle's runs (union — a
+    # criterion verified in any run is honestly verified, matching verified/failed).
+    criteria_verified: tuple[str, ...] = ()
+    criteria_total: tuple[str, ...] = ()
+
+    @property
+    def criteria_coverage(self) -> tuple[int, int]:
+        """``(n, m)`` — contract criteria executed-and-passed of criteria with evidence
+        across the cycle (SIP-0098 §6.3)."""
+        return len(self.criteria_verified), len(self.criteria_total)
 
     @property
     def required_unmet(self) -> tuple[str, ...]:
@@ -389,6 +412,10 @@ def aggregate_verification(
     failed: list[str] = []
     unverified: list[UnverifiedCheck] = []
     seen_ids: set[str] = set()
+    # SIP-0098 98.4: contract-criterion coverage, keyed on CheckResult.criterion_id.
+    # A criterion is credited only if it executed-and-passed AND never went adverse.
+    criteria_passed: set[str] = set()
+    criteria_adverse: set[str] = set()
 
     # Resolve each producer's re-verified check to its final state first (§6.5, #379)
     # so a repaired-and-passed check no longer counts its superseded FAILED attempt.
@@ -406,6 +433,10 @@ def aggregate_verification(
                     reason=_not_executed_reason(r),
                     required=r.check_id in required,
                 )
+            )
+        if r.criterion_id:
+            (criteria_passed if family is EvidenceFamily.EXECUTED_PASSED else criteria_adverse).add(
+                r.criterion_id
             )
 
     # A required check that produced NO result is the strongest not-executed
@@ -444,6 +475,8 @@ def aggregate_verification(
         required_unmet=required_unmet,
         executed_count=executed_count,
         passed_count=passed_count,
+        criteria_verified=tuple(sorted(criteria_passed - criteria_adverse)),
+        criteria_total=tuple(sorted(criteria_passed | criteria_adverse)),
     )
 
 
@@ -551,6 +584,17 @@ def aggregate_cycle_outcome(
     else:
         verdict = RunVerdict.ACCEPTED
 
+    # SIP-0098 98.4: cycle criterion coverage — union of the runs' verified/total
+    # (a criterion verified in any run is verified, consistent with the verified/failed
+    # unions above; a criterion never verified but seen stays in total, uncredited).
+    criteria_verified: list[str] = []
+    criteria_total: list[str] = []
+    for s in run_summaries:
+        criteria_verified.extend(s.criteria_verified)
+        criteria_total.extend(s.criteria_total)
+    cycle_criteria_verified = _dedupe(criteria_verified)
+    cycle_criteria_total = _dedupe(criteria_total)
+
     return CycleOutcome(
         verdict=verdict,
         verified=_dedupe(verified),
@@ -559,4 +603,6 @@ def aggregate_cycle_outcome(
         run_count=len(run_summaries),
         inert=_dedupe(inert),
         waived=tuple(waived),
+        criteria_verified=cycle_criteria_verified,
+        criteria_total=cycle_criteria_total,
     )

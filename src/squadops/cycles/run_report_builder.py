@@ -134,6 +134,9 @@ def _build_verification_lines(summary: RunVerificationSummary) -> list[str]:
         f"Executed: {summary.executed_count} "
         f"(passed {summary.passed_count}, pass-rate {summary.pass_rate:.0%})"
     )
+    if summary.criteria_total:
+        n, m = summary.criteria_coverage
+        lines.append(f"Contract criteria: {n}/{m} executed-and-passed")
     if summary.failed:
         lines.append(f"Failed: {', '.join(summary.failed)}")
     if summary.unverified:

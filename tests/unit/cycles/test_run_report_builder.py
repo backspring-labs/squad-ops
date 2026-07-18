@@ -69,3 +69,40 @@ def test_non_completed_statuses_unchanged(status, expected):
     # a rejected verdict must not mask the real terminal reason on non-COMPLETED runs
     text = _notes(status, [CheckResult(check_id="a", status=ResultStatus.FAILED)])
     assert expected in text
+
+
+# --- SIP-0098 98.4: contract-criteria coverage line in the verification section ---
+
+
+def test_verification_lines_show_criteria_coverage():
+    from squadops.cycles.run_report_builder import _build_verification_lines
+
+    summary = aggregate_verification(
+        [
+            CheckResult(
+                check_id="acceptance:import_present",
+                status=ResultStatus.PASSED,
+                criterion_id="vc-a",
+                subject="t",
+            ),
+            CheckResult(
+                check_id="vc-probe",
+                status=ResultStatus.FAILED,
+                criterion_id="vc-probe",
+                subject="t",
+            ),
+        ]
+    )
+    text = "\n".join(_build_verification_lines(summary))
+    assert "Contract criteria: 1/2 executed-and-passed" in text
+
+
+def test_verification_lines_omit_coverage_when_no_criteria():
+    # author-mode run (no criterion ids) shows no coverage line — nothing to count
+    from squadops.cycles.run_report_builder import _build_verification_lines
+
+    summary = aggregate_verification(
+        [CheckResult(check_id="tests_pass", status=ResultStatus.PASSED, subject="t")]
+    )
+    text = "\n".join(_build_verification_lines(summary))
+    assert "Contract criteria" not in text
