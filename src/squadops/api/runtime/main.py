@@ -27,6 +27,14 @@ from .deps import (
     set_cycle_ports,
     set_health_checker,
 )
+from .logging_setup import configure_logging
+
+# #427: configure application logging before any module-level log fires. uvicorn
+# configures only its own loggers and leaves the root logger untouched, so without
+# this the executor's in-process logs (including a run's terminal exception) never
+# reach stdout and every failure is a black box. Installed at import so it survives
+# uvicorn's startup dictConfig (see logging_setup for the why).
+configure_logging()
 
 logger = logging.getLogger(__name__)
 
