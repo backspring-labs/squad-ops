@@ -12,6 +12,15 @@ correct code — the structural fix for the criteria lottery.
                   the behavior measures actually measure the fill.
   reference-fill  The FULL contract passes against skeleton + the checked-in reference
                   fill. The winnability proof.
+  emit            Write the lint-clean contract to a file for seeding into live cycles
+                  (98.5): ingest it (`squadops artifacts ingest --type
+                  verification_contract`) and set the returned artifact id as
+                  `execution_overrides.contract_ref` at cycle create. Emission is
+                  deterministic, so a contract emitted from a gate-green tree IS the
+                  gate-validated contract; the printed content_hash is the frozen hash
+                  the yield baseline measures against. The contract must pre-exist the
+                  cycle — framing consumes its criteria index at proposer dispatch, so
+                  it cannot be derived mid-cycle from framing's own manifest.
 
 Refinement of SIP §6.2 (approved 2026-07-17, noted on the PR): a walking skeleton
 compiles/builds/boots by design, so compile/build checks are regression guards that
@@ -21,13 +30,14 @@ the subject and issues the declared requests): they PASS against the reference f
 (winnability) and must NOT pass on the bare skeleton (its 501 stubs answer nothing).
 
 Usage:
-    python scripts/dev/contract_gate.py <lint|bare-skeleton|reference-fill> \
-        [--manifest PATH] [--reference-fill DIR]
+    python scripts/dev/contract_gate.py <lint|bare-skeleton|reference-fill|emit> \
+        [--manifest PATH] [--reference-fill DIR] [--out PATH]
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import shutil
 import subprocess
 import sys
@@ -36,7 +46,7 @@ from pathlib import Path
 
 from squadops.capabilities.handlers.probe_runner import run_probes
 from squadops.capabilities.scaffold import InterfaceManifest, expand
-from squadops.capabilities.scaffold_contract import emit_contract_dict
+from squadops.capabilities.scaffold_contract import emit_contract_dict, emit_contract_yaml
 from squadops.cycles.verification_contract import VerificationContract
 from squadops.cycles.verification_contract_runner import (
     FILL_BEHAVIOR_MEASURES,
@@ -180,17 +190,50 @@ def _mode_reference_fill(manifest_path: Path, ref_dir: Path) -> int:
     return 0 if result.ok() else 1
 
 
+def _mode_emit(manifest_path: Path, out_path: Path) -> int:
+    """Write the seeding artifact (98.5): lint-gated, deterministic, hash-reported."""
+    manifest = InterfaceManifest.from_yaml(manifest_path.read_text(encoding="utf-8"))
+    contract_yaml = emit_contract_yaml(manifest)
+    contract = VerificationContract.from_yaml(contract_yaml)
+    errors = contract.lint()
+    if errors:
+        print("emit: RED (refusing to write a contract that fails lint)")
+        for e in errors:
+            print(f"  - {e}")
+        return 1
+    out_path.write_text(contract_yaml, encoding="utf-8")
+    content_hash = hashlib.sha256(contract_yaml.encode("utf-8")).hexdigest()
+    print(f"emit: GREEN -> {out_path} ({len(contract.criterion_ids())} criteria)")
+    print(f"  contract content_hash (the frozen yield-baseline hash): {content_hash}")
+    print(f"  skeleton.interface_manifest_hash: {manifest.content_hash()}")
+    print("Seed it:")
+    print(
+        f"  squadops artifacts ingest --project <project> "
+        f"--type verification_contract --file {out_path}"
+    )
+    print('  then create the cycle with execution_overrides {"contract_ref": "<artifact_id>"}')
+    return 0
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description="SIP-0098 contract emission-time gate")
-    parser.add_argument("mode", choices=["lint", "bare-skeleton", "reference-fill"])
+    parser.add_argument("mode", choices=["lint", "bare-skeleton", "reference-fill", "emit"])
     parser.add_argument("--manifest", type=Path, default=_DEFAULT_MANIFEST)
     parser.add_argument("--reference-fill", type=Path, default=_DEFAULT_REFERENCE_FILL)
+    parser.add_argument(
+        "--out",
+        type=Path,
+        default=Path("verification_contract.yaml"),
+        help="emit mode: output path for the contract artifact",
+    )
     args = parser.parse_args(argv)
 
     if args.mode == "lint":
         return _mode_lint(args.manifest)
     if args.mode == "bare-skeleton":
         return _mode_bare(args.manifest)
+    if args.mode == "emit":
+        return _mode_emit(args.manifest, args.out)
     return _mode_reference_fill(args.manifest, args.reference_fill)
 
 

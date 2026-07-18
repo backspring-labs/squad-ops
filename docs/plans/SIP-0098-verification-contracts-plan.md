@@ -50,14 +50,21 @@ and **(C)** contract-criterion coverage accounting (`criteria_verified`/`criteri
 **Spark pick-up: 98.5 slice 3 (measurement) — do in this order:**
 1. **Preconditions:** #433/#434 landed; UPS question resolved/risk-accepted; **rebuild agent +
    runtime-api images from `756f692` or later** (restart alone does not pick up code).
-2. **Contract-seeding wiring** (the one unbuilt piece): live cycles have no path that sets
-   `contract_ref` yet. `_load_contract_for_run` retrieves it from the artifact vault via
-   `execution_overrides.contract_ref` (bare id or single-element list). Either operator-seed
-   (ingest the emitted `verification_contract.yaml` as an artifact, set `contract_ref` on the
-   cycle) or build the expander-emits-at-runtime path (emit contract beside the skeleton at the
-   `_seed_skeleton_artifacts` seam — a small PR; keep it data-driven, no flag). Emit the contract
-   deterministically with `scaffold_contract.emit_contract_yaml(manifest)`; freeze and record its
-   `content_hash` — the yield baseline is measured against that hash.
+2. **Contract-seeding wiring — DECIDED + BUILT (Spark, 2026-07-18): operator-seed; the
+   runtime-emit alternative is rejected.** Two reasons it cannot work: (a) framing consumes
+   the contract's criteria index at *proposer dispatch* (`_inject_contract_inputs`), so a
+   contract derived mid-cycle from framing's own manifest arrives after the plan was
+   authored — the bind net would reject every such plan; (b) the SIP's own doctrine
+   (§2: verifiers are *curated artifacts, not per-run emissions*) and the frozen-hash
+   baseline both require the contract to pre-exist the cycle. The wiring:
+   `contract_gate.py emit` writes the lint-gated, deterministic
+   `verification_contract.yaml` and prints its `content_hash` (the frozen baseline hash)
+   → `squadops artifacts ingest --type verification_contract` → cycle create with
+   `execution_overrides {"contract_ref": "<artifact_id>"}`. Determinism ties the seeded
+   bytes to the CI-validated contract; the hash check at plan validation
+   (`_validate_contract_binding`) then enforces that framing's per-roll manifest
+   semantically reproduces the frozen skeleton (`content_hash()` is canonical-JSON, so
+   formatting variance is tolerated, interface drift is rejected).
 3. **Shakedown:** one bind-mode roll of group_run on the full squad proving the pipeline E2E —
    including probe rows landing in run evidence with `criterion_id`s (the slice-1 live validation,
    deliberately co-located here per the built-next-to-its-validation call).
