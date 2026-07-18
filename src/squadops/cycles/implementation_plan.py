@@ -19,6 +19,7 @@ import dataclasses
 import hashlib
 import json
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 import yaml
 
@@ -29,6 +30,9 @@ from squadops.cycles.acceptance_check_spec import (
     command_safelist_names,
     reserved_keys_for,
 )
+
+if TYPE_CHECKING:
+    from squadops.cycles.verification_contract import VerificationContract
 
 # Known task types that may appear in plan tasks.
 _KNOWN_BUILD_TASK_TYPES = {
@@ -75,12 +79,18 @@ class TypedCheck:
             Per RC-9, only severity=error AND status ∈ {failed, error}
             blocks validation.
         description: Human-readable description for evidence/UI. Optional.
+        id: Stable verification-contract criterion id when this check was
+            resolved from a plan ``criteria_ref`` in bind mode (SIP-0098 98.3);
+            empty for framing-authored checks. Carried onto evidence rows so a
+            result traces back to its contract criterion. Excluded from
+            ``fingerprint`` — it labels provenance, not check identity.
     """
 
     check: str
     params: dict
     severity: str = "error"
     description: str = ""
+    id: str = ""
 
     def fingerprint(self) -> str:
         """Stable identity for per-criterion error counting (SIP-0092 M1.3 / RC-9b).
@@ -88,8 +98,8 @@ class TypedCheck:
         Hash spans (check, severity, params) so retries against the same
         criterion share an error counter, but a tightened-acceptance plan
         change that produces a distinct param shape resets it. Description
-        is excluded — it's prose for evidence/UI, not part of the criterion's
-        identity.
+        and id are excluded — they're prose/provenance for evidence/UI, not
+        part of the criterion's identity.
         """
         canonical = json.dumps(
             {"check": self.check, "severity": self.severity, "params": self.params},
@@ -114,6 +124,12 @@ class PlanTask:
     # typed entries into TypedCheck (see ImplementationPlan.from_yaml).
     acceptance_criteria: list[str | TypedCheck] = field(default_factory=list)
     depends_on: list[int] = field(default_factory=list)
+    # SIP-0098 98.3 bind mode: stable verification-contract criterion ids this
+    # task binds for the contract-covered fill files in ``expected_artifacts``.
+    # Framing *binds* (lists refs) rather than *authors* typed criteria for
+    # covered files; dispatch resolves each ref into a TypedCheck against the
+    # seeded contract. Empty in contract-less (author) mode — the default.
+    criteria_refs: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -218,6 +234,10 @@ class ImplementationPlan:
                 enforce_command_safelist=enforce_command_safelist,
             )
 
+            raw_refs = td.get("criteria_refs", [])
+            if not isinstance(raw_refs, list) or not all(isinstance(r, str) for r in raw_refs):
+                raise ValueError(f"Task {task_index}: criteria_refs must be a list of strings")
+
             tasks.append(
                 PlanTask(
                     task_index=task_index,
@@ -228,6 +248,7 @@ class ImplementationPlan:
                     expected_artifacts=td.get("expected_artifacts", []),
                     acceptance_criteria=criteria,
                     depends_on=depends_on,
+                    criteria_refs=list(raw_refs),
                 )
             )
 
@@ -311,6 +332,73 @@ class ImplementationPlan:
                     )
         return errors
 
+    def validate_criteria_refs(self, contract: VerificationContract) -> list[str]:
+        """SIP-0098 §6.3: bind-mode plan validation against the seeded contract.
+
+        In bind mode a plan *binds* the contract's acceptance by id rather than
+        *authoring* its own typed criteria for contract-covered fill files. This
+        enforces that discipline, returning one error string per defect (empty =
+        valid). Callers surface the list at the existing #464/#473 seams alongside
+        ``validate_criteria_scope`` — net-a (dispatch) raises, net-b (gate) records
+        a system rejection. Contract-less mode never calls this (no contract to
+        bind against), so today's plans are unaffected.
+
+        Three rejection classes (§6.3, acceptance bullet 3):
+
+        1. **Unresolvable ref** — a ``criteria_ref`` naming no contract criterion id.
+        2. **Missing coverage** — a task produces a contract-covered fill file but
+           does not bind *all* its interface+implementation criteria (silent
+           descoping of verification is the #439 lesson at the criteria level).
+        3. **Authored-on-covered** — a task authors a typed criterion targeting a
+           contract-covered fill file (bind by id; do not author). Prose criteria
+           and plan-introduced document regexes remain legal.
+        """
+        errors: list[str] = []
+        index = contract.criterion_index()
+        covered = contract.covered_fill_paths()
+
+        for task in self.tasks:
+            bound = set(task.criteria_refs)
+
+            # 1. every ref must resolve.
+            for ref in task.criteria_refs:
+                if ref not in index:
+                    errors.append(
+                        f"Task {task.task_index} ({task.focus}): criteria_ref {ref!r} "
+                        f"does not resolve against the seeded verification contract"
+                    )
+
+            # 2. every contract-covered fill file this task produces must bind all
+            #    of its interface + implementation criteria (no silent descoping).
+            for artifact in task.expected_artifacts:
+                if artifact not in covered:
+                    continue
+                missing = [
+                    rid for rid in contract.required_ref_ids_for(artifact) if rid not in bound
+                ]
+                if missing:
+                    errors.append(
+                        f"Task {task.task_index} ({task.focus}): fill file {artifact!r} "
+                        f"is contract-covered but does not bind its criteria "
+                        f"{sorted(missing)} — bind every interface+implementation ref "
+                        f"(no silent descoping of verification)"
+                    )
+
+            # 3. authored typed criteria targeting a covered file are rejected.
+            for criterion in task.acceptance_criteria:
+                if not isinstance(criterion, TypedCheck):
+                    continue
+                target = criterion.params.get("file", "")
+                if target in covered:
+                    errors.append(
+                        f"Task {task.task_index} ({task.focus}): authored typed criterion "
+                        f"{criterion.check!r} targets contract-covered file {target!r} — "
+                        f"bind the contract criteria by id (criteria_refs); do not author "
+                        f"typed criteria for covered files"
+                    )
+
+        return errors
+
     def to_dict(self) -> dict:
         """Serialize to dict for YAML/JSON transport.
 
@@ -369,6 +457,8 @@ def _serialize_acceptance_criterion(c: str | TypedCheck) -> str | dict:
     flat["severity"] = c.severity
     if c.description:
         flat["description"] = c.description
+    if c.id:
+        flat["id"] = c.id
     return flat
 
 
@@ -514,12 +604,19 @@ def _parse_acceptance_criteria(
                     f"{'; '.join(command_safelist_names())}"
                 )
 
+        criterion_id = item.get("id", "")
+        if not isinstance(criterion_id, str):
+            raise ValueError(
+                f"Task {task_index}.acceptance_criteria[{j}] ({check_name}): 'id' must be a string"
+            )
+
         parsed.append(
             TypedCheck(
                 check=check_name,
                 params=params,
                 severity=severity,
                 description=description,
+                id=criterion_id,
             )
         )
 
