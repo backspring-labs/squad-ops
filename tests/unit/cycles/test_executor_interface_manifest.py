@@ -96,6 +96,23 @@ class TestLoadInterfaceManifestForRun:
         cycle = _make_cycle(execution_overrides={"plan_artifact_refs": ["art_iface"]})
         assert await executor._load_interface_manifest_for_run(cycle, _make_run()) is None
 
+    async def test_framing_run_never_loads_a_seeded_manifest(self):
+        # #496: an operator-seeded manifest is in plan_artifact_refs from cycle
+        # creation, visible to every workload — but the skeleton is the
+        # implementation substrate. Bug caught: a framing run expanding skeleton
+        # files into its own artifact list (pre-#496 unreachable, so untested).
+        executor = _make_executor()
+        executor._artifact_vault.retrieve.return_value = (
+            _FakeManifestRef(),
+            _GROUP_RUN_MANIFEST.encode(),
+        )
+        cycle = _make_cycle(execution_overrides={"plan_artifact_refs": ["art_iface"]})
+        run = _make_run()
+        run.workload_type = "framing"
+
+        assert await executor._load_interface_manifest_for_run(cycle, run) is None
+        executor._artifact_vault.retrieve.assert_not_awaited()
+
 
 class TestSeedSkeletonArtifacts:
     async def test_seeds_full_skeleton_set_as_source_artifacts(self):

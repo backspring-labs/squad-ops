@@ -1348,8 +1348,17 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         for the ``interface_manifest.yaml`` a scaffolded framing run emitted (99.2) and
         parses it. Returns ``InterfaceManifest`` or ``None`` — a missing or unparseable
         manifest leaves the run on today's non-scaffolded path (graceful, data-driven).
+
+        Never loads for a framing run (#496): an operator-seeded manifest sits in
+        ``plan_artifact_refs`` from cycle creation, visible to EVERY workload — but the
+        skeleton is the implementation substrate. A framing run authors the plan and
+        must not expand or carry skeleton files. (Pre-#496 this was unreachable:
+        forwarding only populated ``plan_artifact_refs`` after framing completed.)
         """
         from squadops.capabilities.scaffold import InterfaceManifest
+
+        if getattr(run, "workload_type", None) == "framing":
+            return None
 
         plan_refs = cycle.execution_overrides.get("plan_artifact_refs", [])
         if not plan_refs:
