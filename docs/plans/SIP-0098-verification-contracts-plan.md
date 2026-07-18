@@ -16,6 +16,53 @@ extends its expander's output; the two ship as one contract surface (see Couplin
 **Arc:** v1.4 (even minor, feature release), Lane M Scaffold headline surface.
 **Evidence base:** Phase-0.5 spike attempts 3.5–3.14; the criteria-lottery record in SIP-0098 §2.
 
+## Status & handoff (updated 2026-07-18)
+
+The single in-repo source of truth for where the arc stands — read this first.
+
+| Phase | State | PR |
+|---|---|---|
+| 98.1 Schema + linter | ✅ merged | — |
+| 98.2 Expander emission + CI gates | ✅ merged | — |
+| 98.3 Orchestration binding | ✅ merged | #488 |
+| 98.4 Probe runner | ✅ merged **as A+B+C only** (see carve-out) | #489 |
+| 98.5 Migration + measurement | ⬜ **next — Spark** | — |
+
+**98.4 carve-out (decided 2026-07-18).** 98.4 shipped its CI-provable core:
+**(A)** the probe runner + default execution profile (`src/squadops/capabilities/handlers/probe_runner.py`),
+**(B)** the reference-fill/bare-skeleton CI gate running probes (the §8-bullet-1 exit criterion),
+and **(C)** contract-criterion coverage accounting (`criteria_verified`/`criteria_total`/
+`criteria_coverage` on `RunVerificationSummary`/`CycleOutcome`, keyed on `CheckResult.criterion_id`).
+
+**Deferred out of 98.4 → the 98.5 lead-in:** the *live* qa.test-handler probe emission (running
+probes inside a real cycle so probe rows land in run evidence). It boots uvicorn in the deployed
+qa container (a Spark-owned image dependency, #306-adjacent) and can only be validated by a live
+bind-mode cycle, so it is built next to its validation rather than landed unexercised on Mac —
+the same call made for 98.3's live-validation deferral.
+
+**Spark pick-up order for 98.5 (do in this sequence):**
+1. **qa-handler probe emission** (the deferred 98.4 piece): the executor injects the seeded
+   contract's `behavioral.probes` into the `qa.test` task inputs (mirror 98.3's criteria-index
+   injection in `generate_task_plan`); `QATestHandler` reconstructs `Probe`s, calls
+   `run_probes(workspace, probes)` against the materialized app workspace, and appends
+   `probe_check_rows(outcomes)` to `outputs["validation_result"]["checks"]`. Provision uvicorn in
+   the qa agent image so the boot succeeds (else probes degrade to `skipped`).
+2. **PRD v0.4 split** (§6.7): move file lists / frozen-file language / interface examples / test
+   mechanics out of the group_run PRD into the interface manifest + verification contract; human
+   gate-review the diff.
+3. **Shakedown + N=5 yield baseline** (§8 bullet 5): one bind-mode roll to prove the pipeline
+   end-to-end on the real deployment, then five bind-mode rolls against a **frozen contract hash**;
+   a run is green iff all contract criteria pass; report per-criterion failure counts. This is the
+   Functional App Yield metric and SIP-0098's acceptance evidence.
+
+**Reusable seams already built (98.1–98.4):** contract model + linter (`cycles/verification_contract.py`);
+emission (`capabilities/scaffold_contract.py`); the emission-time gate (`scripts/dev/contract_gate.py`);
+bind-mode seeding + both plan-validation nets + dispatch `criteria_refs`→`TypedCheck` + evidence
+`criterion_id` (98.3, in `cycles/` + `adapters/cycles/dispatched_flow_executor.py`); the probe runner
++ execution profile + rollup coverage (98.4). **Contract seeding is still operator/`contract_ref`-only**
+— 98.5 owns wiring a real contract into a live cycle (the expander-emits-at-runtime path or a
+migration-seeded `contract_ref`).
+
 ## Lane routing & session assignment
 
 | Phase | Lane / box | Rationale |
