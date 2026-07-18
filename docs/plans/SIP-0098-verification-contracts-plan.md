@@ -26,7 +26,7 @@ The single in-repo source of truth for where the arc stands — read this first.
 | 98.2 Expander emission + CI gates | ✅ merged | — |
 | 98.3 Orchestration binding | ✅ merged | #488 |
 | 98.4 Probe runner | ✅ merged **as A+B+C only** (see carve-out) | #489 |
-| 98.5 Migration + measurement | ⬜ **next — Spark** | — |
+| 98.5 Migration + measurement | 🔶 **slices 1–2 merged (Mac, PR #491, `756f692`); measurement remains — Spark** | #491 |
 
 **98.4 carve-out (decided 2026-07-18).** 98.4 shipped its CI-provable core:
 **(A)** the probe runner + default execution profile (`src/squadops/capabilities/handlers/probe_runner.py`),
@@ -34,26 +34,36 @@ The single in-repo source of truth for where the arc stands — read this first.
 and **(C)** contract-criterion coverage accounting (`criteria_verified`/`criteria_total`/
 `criteria_coverage` on `RunVerificationSummary`/`CycleOutcome`, keyed on `CheckResult.criterion_id`).
 
-**Deferred out of 98.4 → the 98.5 lead-in:** the *live* qa.test-handler probe emission (running
-probes inside a real cycle so probe rows land in run evidence). It boots uvicorn in the deployed
-qa container (a Spark-owned image dependency, #306-adjacent) and can only be validated by a live
-bind-mode cycle, so it is built next to its validation rather than landed unexercised on Mac —
-the same call made for 98.3's live-validation deferral.
+**98.5 slices 1–2 — DONE on Mac (Jason redirect), merged as PR #491 (`756f692`):**
+1. **qa-handler probe emission** (the deferred 98.4-D piece): `generate_task_plan` injects the
+   seeded contract's `behavioral.probes` into qa.test inputs as serialized `Probe` dicts
+   (`_inject_contract_inputs`, beside the 98.3 criteria-index injection); `QATestHandler._append_contract_probe_rows`
+   reconstructs them, materializes sources via `materialize_artifacts`, runs `run_probes` in a
+   thread, and extends `validation_result.checks` with `probe_check_rows` on BOTH the generate and
+   retest paths — **additive evidence** (#407 pattern; failed probe → rollup/verdict, not task
+   failure). Malformed probe entry → warn+skip (rollup shows not-executed). Author mode byte-identical.
+   **uvicorn needs NO image change** — it is a direct dep in `requirements/agent.txt` → in
+   `agent.lock` → every agent image. Verify post-rebuild: `docker exec <qa> python -m uvicorn --version`.
+2. **PRD v0.4 split** (§6.7): merged in the same PR — numbered tombstones point at the interface
+   manifest + contract; PR #491 review served as the human gate.
 
-**Spark pick-up order for 98.5 (do in this sequence):**
-1. **qa-handler probe emission** (the deferred 98.4 piece): the executor injects the seeded
-   contract's `behavioral.probes` into the `qa.test` task inputs (mirror 98.3's criteria-index
-   injection in `generate_task_plan`); `QATestHandler` reconstructs `Probe`s, calls
-   `run_probes(workspace, probes)` against the materialized app workspace, and appends
-   `probe_check_rows(outcomes)` to `outputs["validation_result"]["checks"]`. Provision uvicorn in
-   the qa agent image so the boot succeeds (else probes degrade to `skipped`).
-2. **PRD v0.4 split** (§6.7): move file lists / frozen-file language / interface examples / test
-   mechanics out of the group_run PRD into the interface manifest + verification contract; human
-   gate-review the diff.
-3. **Shakedown + N=5 yield baseline** (§8 bullet 5): one bind-mode roll to prove the pipeline
-   end-to-end on the real deployment, then five bind-mode rolls against a **frozen contract hash**;
-   a run is green iff all contract criteria pass; report per-criterion failure counts. This is the
-   Functional App Yield metric and SIP-0098's acceptance evidence.
+**Spark pick-up: 98.5 slice 3 (measurement) — do in this order:**
+1. **Preconditions:** #433/#434 landed; UPS question resolved/risk-accepted; **rebuild agent +
+   runtime-api images from `756f692` or later** (restart alone does not pick up code).
+2. **Contract-seeding wiring** (the one unbuilt piece): live cycles have no path that sets
+   `contract_ref` yet. `_load_contract_for_run` retrieves it from the artifact vault via
+   `execution_overrides.contract_ref` (bare id or single-element list). Either operator-seed
+   (ingest the emitted `verification_contract.yaml` as an artifact, set `contract_ref` on the
+   cycle) or build the expander-emits-at-runtime path (emit contract beside the skeleton at the
+   `_seed_skeleton_artifacts` seam — a small PR; keep it data-driven, no flag). Emit the contract
+   deterministically with `scaffold_contract.emit_contract_yaml(manifest)`; freeze and record its
+   `content_hash` — the yield baseline is measured against that hash.
+3. **Shakedown:** one bind-mode roll of group_run on the full squad proving the pipeline E2E —
+   including probe rows landing in run evidence with `criterion_id`s (the slice-1 live validation,
+   deliberately co-located here per the built-next-to-its-validation call).
+4. **N=5 yield baseline** (§8 bullet 5): five bind-mode rolls against the frozen contract hash;
+   green iff all contract criteria pass; report per-criterion failure counts. Functional App
+   Yield = SIP-0098's acceptance evidence (and the small-model thesis R3 measurement).
 
 **Reusable seams already built (98.1–98.4):** contract model + linter (`cycles/verification_contract.py`);
 emission (`capabilities/scaffold_contract.py`); the emission-time gate (`scripts/dev/contract_gate.py`);
