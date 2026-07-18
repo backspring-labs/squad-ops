@@ -15,6 +15,7 @@ Part of SIP-0066 Phase 4 + build capabilities extension + SIP-0071 + SIP-0078.
 from __future__ import annotations
 
 from collections import Counter
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from squadops.capabilities.handlers.build_profiles import (
@@ -34,6 +35,9 @@ from squadops.cycles.models import (
 )
 from squadops.cycles.proposed_role_tasks import role_to_id
 from squadops.tasks.models import TaskEnvelope
+
+if TYPE_CHECKING:
+    from squadops.cycles.verification_contract import VerificationContract
 
 # Pinned task_type → role mapping (SIP-0066 §5.4)
 CYCLE_TASK_STEPS: list[tuple[str, str]] = [
@@ -353,6 +357,7 @@ def generate_task_plan(
     run: Run,
     profile: SquadProfile,
     plan: ImplementationPlan | None = None,
+    contract: VerificationContract | None = None,
 ) -> list[TaskEnvelope]:
     """Generate a task plan for a cycle run.
 
@@ -370,6 +375,10 @@ def generate_task_plan(
         run: The run to generate tasks for.
         profile: The squad profile for agent resolution.
         plan: Optional approved implementation plan (SIP-0086 / SIP-0092).
+        contract: Optional seeded verification contract (SIP-0098 98.3). When
+            present the cycle is in bind mode: the plan is validated to *bind*
+            the contract's criteria by id (net-a, raises), and each task's
+            ``criteria_refs`` resolve into TypedChecks. Absent = author mode.
 
     Returns:
         Ordered list of TaskEnvelopes, one per pipeline step.
@@ -392,7 +401,7 @@ def generate_task_plan(
     # Only applies when the step list actually contains build steps.
     has_build_steps = any(s[0] in _BUILD_TASK_TYPES for s in steps)
     if plan is not None and has_build_steps:
-        steps = _replace_build_steps_with_plan(steps, plan, profile, profile_roles)
+        steps = _replace_build_steps_with_plan(steps, plan, profile, profile_roles, contract)
 
     # Shared lineage IDs for the entire plan
     correlation_id = uuid4().hex
@@ -518,6 +527,7 @@ def _replace_build_steps_with_plan(
     plan: ImplementationPlan,
     profile: SquadProfile,
     profile_roles: set[str],
+    contract: VerificationContract | None = None,
 ) -> list:
     """Replace static build steps with plan-derived PlanTask objects.
 
@@ -536,6 +546,15 @@ def _replace_build_steps_with_plan(
     scope_errors = plan.validate_criteria_scope()
     if scope_errors:
         raise CycleError("Plan validation failed (criteria scope): " + "; ".join(scope_errors))
+
+    # SIP-0098 98.3 bind-mode dispatch net: when a contract is seeded, the plan
+    # must bind the contract's covered-file criteria by id rather than author
+    # them. This is the raising backstop; the gate-time net records the graceful
+    # #473 rejection first. Contract absent = author mode = no-op.
+    if contract is not None:
+        ref_errors = plan.validate_criteria_refs(contract)
+        if ref_errors:
+            raise CycleError("Plan validation failed (contract binding): " + "; ".join(ref_errors))
 
     # Remove static build steps, keep everything else (planning steps)
     static_build_types = {s[0] for s in BUILD_TASK_STEPS} | {
