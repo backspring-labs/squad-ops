@@ -421,3 +421,42 @@ class TestFullstackTestsFileSplit:
             result.source_file_count
             == _BACKEND_PASS.source_file_count + _FRONTEND_PASS.source_file_count
         )
+
+
+# --------------------------------------------------------------------------- #
+# test-authorship guard — bug caught: both night measurement rolls shipped only
+# qa/test_smoke.js; pytest collected nothing (exit 5) and the failure surfaced
+# at run end as an unexplained tests_pass red. The runner must refuse up front
+# with a repair-precise reason.
+# --------------------------------------------------------------------------- #
+
+from squadops.capabilities.handlers.test_runner import run_generated_tests  # noqa: E402
+
+
+async def test_js_only_suite_refused_with_authorship_reason():
+    result = await run_generated_tests(
+        [{"path": "backend/main.py", "content": "app = None"}],
+        [{"path": "qa/test_smoke.js", "content": "console.log('hi')"}],
+    )
+    assert result.executed is False
+    assert "no pytest-discoverable test files" in result.error
+    assert "qa/test_smoke.js" in result.error
+    assert result.tests_passed is False
+
+
+async def test_misnamed_python_file_refused():
+    result = await run_generated_tests(
+        [{"path": "backend/main.py", "content": "app = None"}],
+        [{"path": "tests/smoke.py", "content": "def test_x(): pass"}],
+    )
+    assert result.executed is False
+    assert "test_*.py" in result.error
+
+
+async def test_discoverable_pytest_file_still_runs():
+    result = await run_generated_tests(
+        [{"path": "backend/main.py", "content": "VALUE = 3"}],
+        [{"path": "tests/test_value.py", "content": "def test_v():\n    assert 1 + 2 == 3\n"}],
+    )
+    assert result.executed is True
+    assert result.exit_code == 0
