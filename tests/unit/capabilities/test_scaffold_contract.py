@@ -140,7 +140,7 @@ def test_behavioral_has_build_suite_and_self_contained_probe():
     create = behavioral["probes"][0]
     assert create["request"]["method"] == "POST"
     assert set(create["request"]["json"]) == {"title", "datetime", "location"}
-    assert create["expect"]["status"] == 200
+    assert create["expect"]["status"] == 201  # creates return 201 (pf-3: contract contradicted the PRD)
 
 
 def test_capabilities_derived_from_what_criteria_require():

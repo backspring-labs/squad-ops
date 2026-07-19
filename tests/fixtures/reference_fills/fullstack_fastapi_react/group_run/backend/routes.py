@@ -33,7 +33,7 @@ def get_runs():
     return list(_RUNS.values())
 
 
-@router.post("/runs", response_model=RunEvent)
+@router.post("/runs", response_model=RunEvent, status_code=201)
 def post_runs(payload: RunEventCreate):
     """create run."""
     run = RunEvent(id=uuid.uuid4().hex, participants=[], **payload.model_dump())

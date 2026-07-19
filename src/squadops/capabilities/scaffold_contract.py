@@ -185,7 +185,12 @@ def _probes(manifest: InterfaceManifest) -> list[dict[str, Any]]:
                 "id": f"vc-probe-{_slug(ep.path) or 'root'}",
                 "subject": "backend",
                 "request": {"method": ep.method, "path": ep.path, "json": json_body},
-                "expect": {"status": 200},
+                # Emitted probes are parameterless POSTs — resource creates by
+                # construction — and REST (and the PRD/QA suite) say a create
+                # returns 201. Expecting 200 made the contract contradict the
+                # PRD: a PRD-conformant app could never pass its own probe
+                # (pf-3: "status 201 != expected 200" on a correct app).
+                "expect": {"status": 201},
             }
         )
     return probes
