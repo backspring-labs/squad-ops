@@ -129,6 +129,34 @@ def resolve_terminal_outcome(exc: BaseException, run_id: str) -> TerminalOutcome
     )
 
 
+def _stamp_behavioral_criteria(results: Any, contract: Any) -> Any:
+    """Stamp behavioral check rows with their contract criterion ids (#509 tail).
+
+    Behavioral criteria (``frontend_build``/``tests_pass`` vocabulary) execute in
+    the qa/build handlers, outside the ``criteria_refs``→TypedCheck materializer —
+    their rows carried no ``criterion_id``, so ``vc-frontend-builds``/``vc-suite-
+    passes`` could never be credited (or go adverse) in coverage, capping n at
+    the typed subset. The contract's behavioral section maps check name → stable
+    id; rows matching a behavioral check that don't already carry a criterion id
+    get stamped here, adapter-side, so the pure choke point stays
+    producer-agnostic. Probe rows (which carry their own ids) are untouched.
+    """
+    import dataclasses
+
+    behavioral = getattr(contract, "behavioral", None)
+    if behavioral is None:
+        return results
+    check_to_id = {c.check: c.id for c in list(behavioral.build) + list(behavioral.suite.checks)}
+    if not check_to_id:
+        return results
+    return tuple(
+        dataclasses.replace(r, criterion_id=check_to_id[r.check_id])
+        if r.criterion_id is None and r.check_id in check_to_id
+        else r
+        for r in results
+    )
+
+
 class RunCompletion:
     """Composes the executor's run-end path (SIP-0097 §6.4).
 
@@ -258,6 +286,7 @@ class RunCompletion:
         contract_criteria: tuple[str, ...] = ()
         if contract is not None:
             contract_criteria = tuple(contract.criterion_ids())
+            results = _stamp_behavioral_criteria(results, contract)
         summary = aggregate_verification(
             results,
             required_check_ids,

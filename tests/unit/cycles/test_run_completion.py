@@ -648,3 +648,43 @@ class TestAggregateVerificationContractDenominator:
         ledger = self._ledger_with_partial_evidence()
         summary = RunCompletion._aggregate_verification(None, ledger, "COMPLETED", None)
         assert summary.criteria_total == (_REAL_CONTRACT.criterion_ids()[0],)
+
+
+class TestBehavioralCriterionStamping:
+    """#509 tail — bug caught: frontend_build/tests_pass rows carried no
+    criterion_id, so vc-frontend-builds/vc-suite-passes could never be credited
+    or go adverse; a fully-green roll could not reach n=6 coverage."""
+
+    def _behavioral_map(self):
+        b = _REAL_CONTRACT.behavioral
+        return {c.check: c.id for c in list(b.build) + list(b.suite.checks)}
+
+    def test_behavioral_rows_gain_contract_ids_and_credit_coverage(self):
+        cmap = self._behavioral_map()
+        assert cmap  # the example contract declares behavioral criteria
+        ledger = RunLedger()
+        ledger.record_check_result(
+            CheckResult(check_id="frontend_build", status=ResultStatus.PASSED)
+        )
+        ledger.record_check_result(CheckResult(check_id="tests_pass", status=ResultStatus.FAILED))
+        summary = RunCompletion._aggregate_verification(None, ledger, "COMPLETED", _REAL_CONTRACT)
+        assert cmap["frontend_build"] in summary.criteria_verified
+        # a failed suite goes adverse: present in the denominator, never credited
+        assert cmap["tests_pass"] in summary.criteria_total
+        assert cmap["tests_pass"] not in summary.criteria_verified
+
+    def test_existing_criterion_ids_are_not_overwritten(self):
+        ledger = RunLedger()
+        ledger.record_check_result(
+            CheckResult(check_id="tests_pass", status=ResultStatus.PASSED, criterion_id="vc-custom")
+        )
+        summary = RunCompletion._aggregate_verification(None, ledger, "COMPLETED", _REAL_CONTRACT)
+        assert "vc-custom" in summary.criteria_verified
+
+    def test_author_mode_rows_stay_unstamped(self):
+        ledger = RunLedger()
+        ledger.record_check_result(
+            CheckResult(check_id="frontend_build", status=ResultStatus.PASSED)
+        )
+        summary = RunCompletion._aggregate_verification(None, ledger, "COMPLETED", None)
+        assert summary.criteria_verified == ()
