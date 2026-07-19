@@ -84,6 +84,38 @@ class PatchVerification:
     reason: str | None = None
 
 
+def rebase_artifact_paths(
+    artifacts: list[dict[str, Any]], expected_paths: list[str] | tuple[str, ...]
+) -> list[dict[str, Any]]:
+    """Deterministically re-home a repair artifact onto its expected path (#507).
+
+    Repair handlers re-derive the layout from prose and can emit the right file
+    under the wrong directory (roll cyc_22b14aeda70f: every repair landed
+    ``app/routes.py`` while the scaffold, contract, and typed checks target
+    ``backend/routes.py``) — the overlay then appends a net-new file instead of
+    superseding, typed patch verification runs against the un-patched original,
+    and a content-correct, QA-validated repair is discarded by re-dispatch. The
+    target path is not the model's to choose: when an emitted ``name`` is not an
+    expected path and exactly one expected path shares its basename, the entry
+    is rewritten to that path. Ambiguous or unmatched names pass through
+    unchanged (conservative — never a false re-home).
+    """
+    expected = [p for p in expected_paths if isinstance(p, str) and p]
+    by_base: dict[str, list[str]] = {}
+    for p in expected:
+        by_base.setdefault(Path(p).name, []).append(p)
+    out: list[dict[str, Any]] = []
+    for art in artifacts:
+        name = art.get("name")
+        if isinstance(name, str) and name and name not in expected:
+            candidates = by_base.get(Path(name).name, [])
+            if len(candidates) == 1 and candidates[0] != name:
+                logger.info("patch_rebase: repair artifact %r re-homed to %r", name, candidates[0])
+                art = {**art, "name": candidates[0]}
+        out.append(art)
+    return out
+
+
 def overlay_artifacts(
     base: list[dict[str, Any]] | None, patches: list[dict[str, Any]] | None
 ) -> list[dict[str, Any]]:
