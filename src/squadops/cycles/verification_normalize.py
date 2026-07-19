@@ -143,9 +143,39 @@ def _tests_pass_from_result(tr: Mapping[str, Any], *, is_stub: bool) -> CheckRes
     return CheckResult(
         check_id=CHECK_TESTS_PASS,
         status=ResultStatus.PASSED if tests_passed else ResultStatus.FAILED,
+        # #510: a failed suite must disclose WHY in the row itself — failed_detail
+        # reads CheckResult.reason, and an empty reason made the run's only
+        # required failure undiagnosable from evidence.
+        reason=None if tests_passed else _failed_tests_reason(tr),
         is_stub=is_stub,
         provenance=CheckProvenance(exit_code=_int_or_none(tr.get("exit_code"))),
     )
+
+
+# pytest's documented exit-code semantics. Best-effort annotation only — the
+# suite runner is usually pytest, and code 5 ("no tests collected") is the one
+# that repeatedly cost live diagnosis time; a non-pytest runner still gets the
+# bare exit code plus its own summary.
+_PYTEST_EXIT_MEANINGS = {
+    1: "test failures",
+    2: "execution interrupted",
+    3: "internal error",
+    4: "usage error",
+    5: "no tests collected",
+}
+
+
+def _failed_tests_reason(tr: Mapping[str, Any]) -> str:
+    """Compose the disclosed reason for an executed-and-failed suite (#510)."""
+    exit_code = _int_or_none(tr.get("exit_code"))
+    reason = f"exit_code {exit_code}" if exit_code is not None else "test suite failed"
+    meaning = _PYTEST_EXIT_MEANINGS.get(exit_code)
+    if meaning:
+        reason += f": {meaning}"
+    summary = _str_or_none(tr.get("summary"))
+    if summary:
+        reason += f" — {summary}"
+    return reason
 
 
 def _not_executed_reason(tr: Mapping[str, Any]) -> str:
