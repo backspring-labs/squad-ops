@@ -18,6 +18,7 @@ import shutil
 import sys
 import tempfile
 from dataclasses import dataclass, replace
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -143,6 +144,29 @@ async def run_generated_tests(
             executed=False,
             error="no test files provided",
             test_file_count=0,
+            source_file_count=len(source_files),
+        )
+
+    # Test-authorship guard: pytest discovers only test_*.py / *_test.py. Both
+    # night measurement rolls shipped a single qa/test_smoke.js — pytest
+    # collected nothing (exit 5) and the red surfaced at run end with no
+    # actionable reason. Refuse up front with a repair-precise message so the
+    # correction loop fixes authorship, not symptoms.
+    discoverable = [
+        f
+        for f in test_files
+        if f.get("path", "").endswith(".py")
+        and (Path(f["path"]).name.startswith("test_") or f["path"].endswith("_test.py"))
+    ]
+    if not discoverable:
+        got = ", ".join(sorted(f.get("path", "?") for f in test_files)) or "none"
+        return RunTestsResult(
+            executed=False,
+            error=(
+                "no pytest-discoverable test files — backend tests must be Python "
+                f"files named test_*.py (got: {got})"
+            ),
+            test_file_count=len(test_files),
             source_file_count=len(source_files),
         )
 
