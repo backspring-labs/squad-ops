@@ -238,8 +238,10 @@ class RunVerificationSummary:
 
     @property
     def criteria_coverage(self) -> tuple[int, int]:
-        """``(n, m)`` — contract criteria executed-and-passed of criteria with evidence
-        (SIP-0098 §6.3). ``(0, 0)`` in author mode / when no criterion ids were carried."""
+        """``(n, m)`` — contract criteria executed-and-passed of the bound contract's
+        full criterion set (SIP-0098 §6.3; #508). In author mode / when no contract
+        was bound, ``m`` falls back to the criteria that carried evidence, and
+        ``(0, 0)`` when no criterion ids were carried at all."""
         return len(self.criteria_verified), len(self.criteria_total)
 
 
@@ -387,6 +389,7 @@ def aggregate_verification(
     required_check_ids: Collection[str] = (),
     *,
     run_succeeded: bool = True,
+    contract_criteria: Collection[str] = (),
 ) -> RunVerificationSummary:
     """Pure aggregation choke point (SIP-0096 §6.2, §6.4).
 
@@ -425,6 +428,14 @@ def aggregate_verification(
     A check that was repaired and re-verified is first resolved to its final state
     per ``(check_id, subject)`` (§6.5, #379) — the verdict reflects the outcome
     after correction, not the union of every attempt. See ``_resolve_final_state``.
+
+    ``contract_criteria`` is the bound verification contract's full criterion-id
+    set (SIP-0098; #508). When supplied, it is the coverage *denominator*:
+    ``criteria_total`` lists every contract criterion, whether or not any check
+    row produced evidence for it — a run that dies early must report 2/6, not
+    2-of-the-2-it-happened-to-reach. Criterion ids observed on check rows are
+    unioned in so unexpected evidence is never dropped. Empty (author mode /
+    unbound cycles) preserves the evidence-derived denominator.
     """
     required = frozenset(required_check_ids)
     verified: list[str] = []
@@ -503,7 +514,7 @@ def aggregate_verification(
         executed_count=executed_count,
         passed_count=passed_count,
         criteria_verified=tuple(sorted(criteria_passed - criteria_adverse)),
-        criteria_total=tuple(sorted(criteria_passed | criteria_adverse)),
+        criteria_total=tuple(sorted(set(contract_criteria) | criteria_passed | criteria_adverse)),
         failed_detail=tuple(failed_detail),
     )
 

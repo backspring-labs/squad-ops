@@ -158,8 +158,14 @@ class RunCompletion:
         cycle: Cycle | None = None,
         plan: list[TaskEnvelope] | None = None,
         ledger: RunLedger | None = None,
+        contract: Any | None = None,
     ) -> None:
-        """Close observability traces and generate run report."""
+        """Close observability traces and generate run report.
+
+        ``contract`` is the bind-mode verification contract the executor loaded for
+        this run (None in author mode); its criterion ids become the coverage
+        denominator in the verification summary (#508).
+        """
         # LangFuse: close cycle trace
         if self._llm_observability and obs_ctx:
             from squadops.telemetry.models import StructuredEvent
@@ -190,7 +196,7 @@ class RunCompletion:
         # and no shipped profile declares required_checks — so this computes
         # `accepted` with zero recorded evidence and discloses it in the report.
         # Phase 2 wires the producers and per-profile required lists (the throttle).
-        summary = self._aggregate_verification(cycle, ledger, terminal_status)
+        summary = self._aggregate_verification(cycle, ledger, terminal_status, contract)
 
         # SIP-0096 Phase 3 (§10): persist the run's verdict as durable structured
         # evidence so the CycleOutcome roll-up can read it back — until now the
@@ -220,7 +226,10 @@ class RunCompletion:
 
     @staticmethod
     def _aggregate_verification(
-        cycle: Cycle | None, ledger: RunLedger | None, terminal_status: str
+        cycle: Cycle | None,
+        ledger: RunLedger | None,
+        terminal_status: str,
+        contract: Any | None = None,
     ) -> RunVerificationSummary:
         """Run the SIP-0096 aggregation over the ledger against the cycle's required set.
 
@@ -244,7 +253,17 @@ class RunCompletion:
                 required_check_ids = tuple(declared)
         results = ledger.check_results if ledger else ()
         run_succeeded = (terminal_status or "").upper() == RunStatus.COMPLETED.value.upper()
-        summary = aggregate_verification(results, required_check_ids, run_succeeded=run_succeeded)
+        # SIP-0098 #508: a bound contract supplies the coverage denominator — every
+        # criterion it declares, not just the ones whose checks got dispatched.
+        contract_criteria: tuple[str, ...] = ()
+        if contract is not None:
+            contract_criteria = tuple(contract.criterion_ids())
+        summary = aggregate_verification(
+            results,
+            required_check_ids,
+            run_succeeded=run_succeeded,
+            contract_criteria=contract_criteria,
+        )
         logger.info(
             "Verification integrity: verdict=%s executed=%d passed=%d unverified=%d required_unmet=%d",
             summary.verdict.value,
