@@ -156,3 +156,44 @@ class TestVerifyPatchedArtifacts:
         assert row["status"] == "passed"
         assert row["passed"] is True
         assert row["patch_verified"] is True
+
+
+# --------------------------------------------------------------------------- #
+# repair path rebase (#507) — bug caught: every roll-4 repair emitted
+# app/routes.py while checks target backend/routes.py; the overlay appended it
+# as net-new, typed verification ran on the un-patched original, and three
+# QA-validated repairs were discarded by re-dispatch until the time budget.
+# --------------------------------------------------------------------------- #
+
+from squadops.cycles.patch_verification import rebase_artifact_paths  # noqa: E402
+
+
+def test_wrong_directory_repair_is_rehomed_to_expected_path():
+    arts = [{"name": "app/routes.py", "content": "fixed"}]
+    out = rebase_artifact_paths(arts, ["backend/routes.py", "backend/models.py"])
+    assert out == [{"name": "backend/routes.py", "content": "fixed"}]
+
+
+def test_rehomed_repair_supersedes_in_overlay():
+    base = [{"name": "backend/routes.py", "content": "broken"}]
+    patches = rebase_artifact_paths(
+        [{"name": "app/routes.py", "content": "fixed"}], ["backend/routes.py"]
+    )
+    merged = {a["name"]: a["content"] for a in overlay_artifacts(base, patches)}
+    assert merged == {"backend/routes.py": "fixed"}
+
+
+def test_exact_expected_path_passes_through():
+    arts = [{"name": "backend/routes.py", "content": "x"}]
+    assert rebase_artifact_paths(arts, ["backend/routes.py"]) == arts
+
+
+def test_ambiguous_basename_is_never_rehomed():
+    arts = [{"name": "app/routes.py", "content": "x"}]
+    out = rebase_artifact_paths(arts, ["backend/routes.py", "frontend/routes.py"])
+    assert out[0]["name"] == "app/routes.py"
+
+
+def test_unmatched_and_net_new_files_pass_through():
+    arts = [{"name": "README.md", "content": "x"}, {"name": "", "content": "y"}, {"other": 1}]
+    assert rebase_artifact_paths(arts, ["backend/routes.py"]) == arts

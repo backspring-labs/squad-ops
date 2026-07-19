@@ -517,7 +517,19 @@ class CorrectionRunner:
                 # it can't shadow a product file in the overlay.
                 if task_type != "qa.validate_repair":
                     step_artifacts = (repair_result.outputs or {}).get("artifacts") or []
-                    repair_artifacts.extend(a for a in step_artifacts if isinstance(a, dict))
+                    # #507: re-home repair files onto the failed task's expected
+                    # paths before they reach the overlay — a repair emitted under
+                    # the wrong directory otherwise lands as a net-new file, patch
+                    # verification runs on the un-patched original, and the
+                    # validated repair is discarded by re-dispatch.
+                    from squadops.cycles.patch_verification import rebase_artifact_paths
+
+                    repair_artifacts.extend(
+                        rebase_artifact_paths(
+                            [a for a in step_artifacts if isinstance(a, dict)],
+                            failed_inputs.get("expected_artifacts") or [],
+                        )
+                    )
 
         # 8. Emit CORRECTION_COMPLETED
         self._event_bus.emit(
