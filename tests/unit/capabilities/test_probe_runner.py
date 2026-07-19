@@ -10,6 +10,7 @@ stubs do not (probes measure the fill, not the scaffold).
 from __future__ import annotations
 
 import shutil
+import sys
 import tempfile
 from pathlib import Path
 
@@ -249,3 +250,52 @@ def test_bare_skeleton_fails_the_probe():
         outcomes = run_probes(ws, [_group_run_probe()])
     assert outcomes[0].status == "failed"
     assert "501" in outcomes[0].reason
+
+
+# --------------------------------------------------------------------------- #
+# boot-failure stderr disclosure (#512) — bug caught: both night measurement
+# rolls reported only "subject did not boot"; the uvicorn stderr (the actual
+# diagnosis) went to DEVNULL and diagnosis required manually rebuilding the
+# workspace and booting by hand.
+# --------------------------------------------------------------------------- #
+
+
+def test_boot_failure_reason_carries_stderr_tail(tmp_path):
+    # A subject that crashes on start with a distinctive stderr message: the
+    # disclosed reason must carry the exit state AND the message tail.
+    crash = pr.ExecutionProfile(
+        boot_argv=(
+            sys.executable,
+            "-c",
+            "import sys; sys.stderr.write('BOOM: no module backend'); sys.exit(3)",
+        ),
+        startup_timeout_s=2.0,
+        poll_interval_s=0.05,
+    )
+    outcomes = run_probes(tmp_path, [_probe(status=200)], profile=crash)
+    assert outcomes[0].status == "skipped"
+    assert "subject did not boot (exited 3)" in outcomes[0].reason
+    assert "BOOM: no module backend" in outcomes[0].reason
+
+
+def test_boot_hang_reason_discloses_timeout_not_exit(tmp_path):
+    # A subject that never becomes ready but stays alive: reason says so.
+    hang = pr.ExecutionProfile(
+        boot_argv=(sys.executable, "-c", "import time; time.sleep(30)"),
+        startup_timeout_s=0.5,
+        poll_interval_s=0.05,
+    )
+    outcomes = run_probes(tmp_path, [_probe(status=200)], profile=hang)
+    assert outcomes[0].status == "skipped"
+    assert "no ready response within 0.5s" in outcomes[0].reason
+
+
+def test_stderr_tail_is_bounded(tmp_path):
+    # A subject spewing >4KB of stderr must not blow up the reason string.
+    spew = pr.ExecutionProfile(
+        boot_argv=(sys.executable, "-c", "import sys; sys.stderr.write('x' * 100000); sys.exit(1)"),
+        startup_timeout_s=2.0,
+        poll_interval_s=0.05,
+    )
+    outcomes = run_probes(tmp_path, [_probe(status=200)], profile=spew)
+    assert len(outcomes[0].reason) < 600

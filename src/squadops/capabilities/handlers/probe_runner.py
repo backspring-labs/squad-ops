@@ -25,9 +25,11 @@ qa.test handler wraps it in a thread.
 from __future__ import annotations
 
 import contextlib
+import os
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -139,18 +141,24 @@ def _run_backend_probes(
 ) -> list[ProbeOutcome]:
     port = _free_port(profile.host)
     try:
-        proc = _boot(workspace, profile, port)
+        proc, stderr_spool = _boot(workspace, profile, port)
     except OSError as exc:
         # e.g. the boot command isn't on PATH, or the workspace is missing — a
         # not-executed result (skipped), never a probe failure or a crash.
         return [ProbeOutcome(p.id, "skipped", f"could not launch subject: {exc}") for p in probes]
     try:
         if not _wait_ready(profile, port):
-            return [ProbeOutcome(p.id, "skipped", "subject did not boot") for p in probes]
+            # #512: "subject did not boot" alone is undiagnosable — disclose the
+            # process state (crashed vs never-ready) and the captured stderr tail
+            # in the reason, which is the only channel the evidence row carries.
+            reason = _boot_failure_reason(proc, stderr_spool, profile)
+            return [ProbeOutcome(p.id, "skipped", reason) for p in probes]
         base = f"http://{profile.host}:{port}"
         return [_run_one(base, p, profile) for p in probes]
     finally:
         _terminate(proc)
+        with contextlib.suppress(Exception):
+            stderr_spool.close()
 
 
 def _free_port(host: str) -> int:
@@ -161,14 +169,55 @@ def _free_port(host: str) -> int:
         return int(s.getsockname()[1])
 
 
-def _boot(workspace: Path, profile: ExecutionProfile, port: int) -> subprocess.Popen:
+def _boot(workspace: Path, profile: ExecutionProfile, port: int) -> tuple[subprocess.Popen, Any]:
+    """Launch the subject, spooling stderr to an unbounded temp file (#512).
+
+    A pipe would deadlock a chatty subject once the ~64KB buffer fills; DEVNULL
+    (the previous behavior) destroyed the only diagnosis channel for a boot
+    failure. The spool is read only on ready-timeout and closed at teardown.
+    """
     argv = [arg.replace("{port}", str(port)) for arg in profile.boot_argv]
-    return subprocess.Popen(  # noqa: S603 — fixed profile argv, workspace-scoped verifier boot
-        argv,
-        cwd=str(workspace),
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+    stderr_spool = tempfile.TemporaryFile()
+    try:
+        proc = subprocess.Popen(  # noqa: S603 — fixed profile argv, workspace-scoped verifier boot
+            argv,
+            cwd=str(workspace),
+            stdout=subprocess.DEVNULL,
+            stderr=stderr_spool,
+        )
+    except OSError:
+        stderr_spool.close()
+        raise
+    return proc, stderr_spool
+
+
+def _boot_failure_reason(
+    proc: subprocess.Popen, stderr_spool: Any, profile: ExecutionProfile
+) -> str:
+    """Compose the disclosed reason for a subject that never became ready (#512)."""
+    exit_code = proc.poll()
+    state = (
+        f"exited {exit_code}"
+        if exit_code is not None
+        else f"no ready response within {profile.startup_timeout_s}s"
     )
+    reason = f"subject did not boot ({state})"
+    tail = _stderr_tail(stderr_spool)
+    if tail:
+        reason += f": {tail}"
+    return reason
+
+
+def _stderr_tail(stderr_spool: Any, limit: int = 500) -> str:
+    """Best-effort whitespace-collapsed tail of the spooled boot stderr."""
+    try:
+        stderr_spool.seek(0, os.SEEK_END)
+        size = stderr_spool.tell()
+        stderr_spool.seek(max(0, size - 4096))
+        text = stderr_spool.read().decode("utf-8", "replace")
+    except Exception:
+        return ""
+    return " ".join(text.split())[-limit:]
 
 
 def _wait_ready(profile: ExecutionProfile, port: int) -> bool:
