@@ -316,3 +316,52 @@ def test_generic_skip_row_without_reason_defaults_to_subject_missing():
     out = {"validation_result": {"checks": [{"check": "frontend_build", "executed": False}]}}
     r = _by_id(normalize_task_checks(out))["frontend_build"]
     assert r.reason == NotExecutedReason.SUBJECT_MISSING
+
+
+# --------------------------------------------------------------------------- #
+# failed tests_pass reason disclosure (#510) — bug caught: both night
+# measurement rolls' only required failure read `reason: ""`; diagnosing pytest
+# exit 5 (zero tests collected) required manually reproducing the workspace.
+# --------------------------------------------------------------------------- #
+
+
+def test_failed_suite_reason_discloses_exit_meaning_and_summary():
+    out = {
+        "test_result": {
+            "executed": True,
+            "exit_code": 5,
+            "tests_passed": False,
+            "summary": "tests failed (exit code 5, 1 test file(s), 8 source file(s))",
+        }
+    }
+    r = _by_id(normalize_task_checks(out))[CHECK_TESTS_PASS]
+    assert r.status == ResultStatus.FAILED
+    assert r.reason == (
+        "exit_code 5: no tests collected — "
+        "tests failed (exit code 5, 1 test file(s), 8 source file(s))"
+    )
+
+
+def test_failed_suite_unknown_exit_code_still_discloses_code():
+    out = {"test_result": {"executed": True, "exit_code": 137, "tests_passed": False}}
+    r = _by_id(normalize_task_checks(out))[CHECK_TESTS_PASS]
+    assert r.reason == "exit_code 137"
+
+
+def test_passing_suite_carries_no_reason():
+    out = {"test_result": {"executed": True, "exit_code": 0, "tests_passed": True}}
+    r = _by_id(normalize_task_checks(out))[CHECK_TESTS_PASS]
+    assert r.reason is None
+
+
+def test_failed_reason_flows_through_aggregation_to_failed_detail():
+    # End-to-end through the choke point: the reason must land in failed_detail,
+    # not just on the raw row.
+    from squadops.cycles.verification_integrity import aggregate_verification
+
+    out = {"test_result": {"executed": True, "exit_code": 5, "tests_passed": False}}
+    rows = normalize_task_checks(out)
+    summary = aggregate_verification(rows, required_check_ids=[CHECK_TESTS_PASS])
+    detail = summary.failed_detail[0]
+    assert detail.check_id == CHECK_TESTS_PASS
+    assert detail.reason == "exit_code 5: no tests collected"
