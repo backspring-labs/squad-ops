@@ -216,6 +216,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         ledger = RunLedger()
         cycle = None
         plan = None
+        verification_contract = None
         # SIP-0089 §3.5 (#233): agents this run transitioned ambient→cycle, to be
         # returned to ambient (releasing their cycle lease) in the finally. Stays
         # empty when recruitment defers (admission rolls its own recruits back) or
@@ -463,6 +464,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 cycle=cycle,
                 plan=plan,
                 ledger=ledger,
+                contract=verification_contract,
             )
 
     async def cancel_run(self, run_id: str) -> None:

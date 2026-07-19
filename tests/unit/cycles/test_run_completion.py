@@ -596,3 +596,55 @@ class TestVerificationIntegrityWiring:
         )
         # report still generated despite the persistence failure
         assert vault.store.call_args is not None
+
+
+# --------------------------------------------------------------------------- #
+# _aggregate_verification contract threading (#508) — bug caught: the executor
+# loaded the bind-mode contract but finalize never received it, so criteria_total
+# collapsed to whichever criteria happened to carry evidence (2/3 reported where
+# the truth was 2/6 against the contract).
+# --------------------------------------------------------------------------- #
+
+from pathlib import Path  # noqa: E402
+
+from adapters.cycles.run_completion import RunCompletion  # noqa: E402
+from squadops.capabilities.scaffold import InterfaceManifest  # noqa: E402
+from squadops.capabilities.scaffold_contract import emit_contract_yaml  # noqa: E402
+from squadops.cycles.run_ledger import RunLedger  # noqa: E402
+from squadops.cycles.verification_contract import VerificationContract  # noqa: E402
+from squadops.cycles.verification_integrity import CheckResult, ResultStatus  # noqa: E402
+
+_MANIFEST_YAML = (
+    Path(__file__).resolve().parents[3] / "examples" / "03_group_run" / "interface_manifest.yaml"
+).read_text(encoding="utf-8")
+_REAL_CONTRACT = VerificationContract.from_yaml(
+    emit_contract_yaml(InterfaceManifest.from_yaml(_MANIFEST_YAML))
+)
+
+
+class TestAggregateVerificationContractDenominator:
+    def _ledger_with_partial_evidence(self) -> RunLedger:
+        ledger = RunLedger()
+        some_id = _REAL_CONTRACT.criterion_ids()[0]
+        ledger.record_check_result(
+            CheckResult(
+                check_id="acceptance:import_present",
+                status=ResultStatus.PASSED,
+                criterion_id=some_id,
+            )
+        )
+        return ledger
+
+    def test_bound_contract_denominator_is_full_contract(self):
+        ledger = self._ledger_with_partial_evidence()
+        summary = RunCompletion._aggregate_verification(None, ledger, "COMPLETED", _REAL_CONTRACT)
+        assert summary.criteria_total == tuple(sorted(_REAL_CONTRACT.criterion_ids()))
+        n, m = summary.criteria_coverage
+        assert n == 1
+        assert m == len(_REAL_CONTRACT.criterion_ids())
+        assert m > 1  # the fixture contract declares more than the evidenced one
+
+    def test_author_mode_denominator_unchanged(self):
+        ledger = self._ledger_with_partial_evidence()
+        summary = RunCompletion._aggregate_verification(None, ledger, "COMPLETED", None)
+        assert summary.criteria_total == (_REAL_CONTRACT.criterion_ids()[0],)

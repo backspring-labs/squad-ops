@@ -641,3 +641,57 @@ def test_aggregate_failed_without_reason_yields_empty_string_not_crash():
     s = aggregate_verification([_failed("b")])
     assert s.failed_detail[0].reason == ""
     assert s.failed_detail[0].required is False
+
+
+# --------------------------------------------------------------------------- #
+# contract_criteria denominator (#508) — bug caught: a bound contract with 6
+# criteria whose run died after dispatching checks for only 3 reported coverage
+# 2/3 instead of 2/6 (criteria_total derived from evidence, not the contract),
+# overstating coverage exactly when the run failed early.
+# --------------------------------------------------------------------------- #
+
+
+def test_bound_contract_supplies_full_denominator():
+    contract_ids = ["vc-a", "vc-b", "vc-frontend", "vc-suite", "vc-probes", "vc-c"]
+    s = aggregate_verification(
+        [
+            _passed("acceptance:import_present", criterion_id="vc-a"),
+            _passed("acceptance:command_exit_zero", criterion_id="vc-b"),
+            _failed("acceptance:endpoint_defined", criterion_id="vc-c"),
+        ],
+        contract_criteria=contract_ids,
+    )
+    assert s.criteria_verified == ("vc-a", "vc-b")
+    assert s.criteria_total == tuple(sorted(contract_ids))
+    assert s.criteria_coverage == (2, 6)
+
+
+def test_no_contract_keeps_evidence_derived_denominator():
+    s = aggregate_verification(
+        [
+            _passed("x", criterion_id="vc-a"),
+            _failed("y", criterion_id="vc-b"),
+        ]
+    )
+    assert s.criteria_total == ("vc-a", "vc-b")
+    assert s.criteria_coverage == (1, 2)
+
+
+def test_evidence_outside_contract_still_counted_in_denominator():
+    # A criterion id on a check row that the contract does not declare must not
+    # vanish from the totals — unexpected evidence is disclosed, never dropped.
+    s = aggregate_verification(
+        [_passed("x", criterion_id="vc-rogue")],
+        contract_criteria=["vc-a", "vc-b"],
+    )
+    assert s.criteria_total == ("vc-a", "vc-b", "vc-rogue")
+    assert s.criteria_verified == ("vc-rogue",)
+
+
+def test_bound_contract_with_zero_evidence_reports_zero_of_m():
+    # Run died before any criterion-bound check dispatched: coverage must read
+    # 0/m against the contract, not 0/0.
+    s = aggregate_verification([_passed("framework_check")], contract_criteria=["vc-a", "vc-b"])
+    assert s.criteria_verified == ()
+    assert s.criteria_total == ("vc-a", "vc-b")
+    assert s.criteria_coverage == (0, 2)
