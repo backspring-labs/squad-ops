@@ -562,7 +562,45 @@ def generate_task_plan(
             "no default (a builder must not assemble for an assumed stack)."
         )
 
+    _attach_unbound_contract_criteria(envelopes, plan, contract)
+
     return envelopes
+
+
+def _attach_unbound_contract_criteria(
+    envelopes: list[TaskEnvelope],
+    plan: ImplementationPlan | None,
+    contract: VerificationContract | None,
+) -> None:
+    """Attach every contract criterion no plan task bound to the tail qa.test (#509).
+
+    The bind nets key on exact string matches between LLM-authored plan fields
+    (``expected_artifacts``, typed-check ``file`` params) and contract fill paths,
+    so a plan that names a covered file differently binds nothing for it and
+    sails through — criterion coverage then varies roll to roll with plan
+    authoring (criteria_total went 3 → 1 → 1 across identical contracts in the
+    night rolls). The contract, not the plan, is the last word on verification:
+    the residue resolves into criterion-stamped TypedChecks on the final qa.test
+    envelope, where the assembled workspace is complete — so every criterion
+    produces an evidence row with its ``criterion_id`` on every roll. Bound
+    criteria keep their item-level attachment (better repair locality); this is
+    the deterministic floor, not a replacement for binding.
+    """
+    if contract is None:
+        return
+    bound: set[str] = set()
+    if plan is not None:
+        for task in plan.tasks:
+            bound.update(task.criteria_refs)
+    residue = [rid for rid in contract.criterion_index() if rid not in bound]
+    if not residue:
+        return
+    tail_qa = next((e for e in reversed(envelopes) if e.task_type == "qa.test"), None)
+    if tail_qa is None:
+        return
+    existing = list(tail_qa.inputs.get("acceptance_criteria") or [])
+    existing.extend(resolve_contract_refs(residue, contract))
+    tail_qa.inputs["acceptance_criteria"] = existing
 
 
 def _replace_build_steps_with_plan(

@@ -344,3 +344,91 @@ def test_author_mode_check_result_has_no_criterion_id():
     }
     results = normalize_task_checks(outputs, subject="t")
     assert results[0].criterion_id is None
+
+
+# --------------------------------------------------------------------------- #
+# dispatch-time residue attachment (#509) — bug caught: binding keyed on exact
+# LLM-authored path strings, so a plan that named a covered file differently
+# bound nothing and criterion coverage varied roll to roll (criteria_total went
+# 3 -> 1 -> 1 across identical seeded contracts in the night rolls).
+# --------------------------------------------------------------------------- #
+
+from squadops.cycles.implementation_plan import CHECK_SPECS  # noqa: E402
+from squadops.cycles.task_plan import _attach_unbound_contract_criteria  # noqa: E402
+from squadops.tasks.models import TaskEnvelope  # noqa: E402
+
+
+def _envelope(task_type: str, inputs: dict | None = None) -> TaskEnvelope:
+    return TaskEnvelope(
+        task_id=f"t-{task_type}",
+        agent_id="qa",
+        cycle_id="cyc_x",
+        pulse_id="p1",
+        project_id="proj",
+        task_type=task_type,
+        correlation_id="c",
+        causation_id="c",
+        trace_id="t",
+        span_id="s",
+        inputs=inputs if inputs is not None else {},
+        metadata={},
+    )
+
+
+def _typed_ids(contract: VerificationContract) -> set[str]:
+    # resolve_contract_refs materializes only typed-acceptance criteria; behavioral
+    # ones (frontend_build / tests_pass vocabulary) run via the qa/build handlers.
+    return {
+        rid for rid, (crit, _) in contract.criterion_index().items() if crit.check in CHECK_SPECS
+    }
+
+
+def _criterion_ids(envelope: TaskEnvelope) -> set[str]:
+    return {
+        c.id
+        for c in envelope.inputs.get("acceptance_criteria", ())
+        if isinstance(c, TypedCheck) and c.id
+    }
+
+
+def test_unbound_criteria_attach_to_tail_qa_test_with_ids():
+    contract = _contract()
+    dev = _envelope("development.develop")
+    qa = _envelope("qa.test", inputs={"acceptance_criteria": []})
+    _attach_unbound_contract_criteria([dev, qa], None, contract)
+    # every typed criterion in the contract lands on the tail qa.test, stamped
+    assert _criterion_ids(qa) == _typed_ids(contract)
+    assert dev.inputs.get("acceptance_criteria") is None
+
+
+def test_bound_refs_are_excluded_from_residue():
+    contract = _contract()
+    plan = ImplementationPlan.from_yaml(
+        _plan_yaml(refs=["vc-routes-endpoints", "vc-routes-apierror", "vc-routes-compiles"])
+    )
+    qa = _envelope("qa.test")
+    _attach_unbound_contract_criteria([qa], plan, contract)
+    ids = _criterion_ids(qa)
+    assert "vc-routes-endpoints" not in ids
+    assert ids == _typed_ids(contract) - {
+        "vc-routes-endpoints",
+        "vc-routes-apierror",
+        "vc-routes-compiles",
+    }
+
+
+def test_residue_attaches_to_last_qa_test_only():
+    contract = _contract()
+    qa1 = _envelope("qa.test")
+    qa2 = _envelope("qa.test")
+    _attach_unbound_contract_criteria([qa1, qa2], None, contract)
+    assert _criterion_ids(qa1) == set()
+    assert _criterion_ids(qa2) == _typed_ids(contract)
+
+
+def test_author_mode_and_missing_qa_are_no_ops():
+    dev = _envelope("development.develop")
+    _attach_unbound_contract_criteria([dev], None, None)  # author mode
+    assert "acceptance_criteria" not in dev.inputs
+    _attach_unbound_contract_criteria([dev], None, _contract())  # no qa.test envelope
+    assert "acceptance_criteria" not in dev.inputs
