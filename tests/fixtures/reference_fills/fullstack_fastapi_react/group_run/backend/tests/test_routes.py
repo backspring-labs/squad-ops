@@ -21,7 +21,7 @@ def _create(title="Saturday Long Run"):
     resp = client.post(
         "/runs", json={"title": title, "datetime": "2026-08-01T08:00", "location": "Park Gate"}
     )
-    assert resp.status_code == 200
+    assert resp.status_code == 201
     return resp.json()
 
 
