@@ -514,7 +514,14 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             forwarding_overrides = await self._rebuild_forwarding_overrides_on_entry(
                 cycle, cycle_id, start_index
             )
-        for i in range(start_index, len(workload_sequence)):
+        # #522: framing re-rolls on a system plan-validation rejection. `while`
+        # (not `for`) so a re-roll can re-process the SAME workload index — the
+        # re-roll path `continue`s without the tail `i += 1`. Zero re-rolls
+        # (default) is byte-identical to the old `for` loop.
+        framing_rerolls = 0
+        max_framing_rerolls = cycle.applied_defaults.get("framing_max_rerolls", 0)
+        i = start_index
+        while i < len(workload_sequence):
             workload_entry = workload_sequence[i]
             await self.execute_run(
                 cycle_id,
@@ -597,6 +604,48 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                         current_run_id,
                         "; ".join(plan_errors),
                     )
+                    # #522: a *system* plan-validation rejection is a stochastic
+                    # framing fault (the rule the model tripped is already in its
+                    # prompt), not an operator's verdict — the retry a human would
+                    # grant instantly. Re-roll framing, bounded by
+                    # ``framing_max_rerolls``, rather than killing the cycle. The
+                    # rejection stays in gate_decisions (evidence, #473); the
+                    # superseded framing run is CANCELLED so the positional
+                    # run↔workload invariant (#257/D14) holds — exactly one
+                    # non-cancelled run per position. A human --reject is a
+                    # different decided_by and never reaches this branch.
+                    if (
+                        workload_entry.get("type") == "framing"
+                        and framing_rerolls < max_framing_rerolls
+                    ):
+                        framing_rerolls += 1
+                        await self._cycle_registry.cancel_run(current_run_id)
+                        reroll_run = await self._create_next_workload_run(
+                            cycle,
+                            run,
+                            workload_entry,
+                            config_hash=run.resolved_config_hash,
+                        )
+                        current_run_id = reroll_run.run_id
+                        self._cycle_event_bus.emit(
+                            EventType.WORKLOAD_ADVANCED,
+                            entity_type="workload",
+                            entity_id=current_run_id,
+                            context={"cycle_id": cycle_id, "run_id": current_run_id},
+                            payload={
+                                "workload_type": "framing",
+                                "reason": "framing_reroll_on_system_rejection",
+                                "reroll": framing_rerolls,
+                            },
+                        )
+                        logger.info(
+                            "Framing re-roll %d/%d on cycle %s: new framing run %s",
+                            framing_rerolls,
+                            max_framing_rerolls,
+                            cycle_id,
+                            current_run_id,
+                        )
+                        continue  # same index — re-execute framing
                     break
                 self._cycle_event_bus.emit(
                     EventType.WORKLOAD_GATE_AWAITING,
@@ -704,6 +753,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 context={"cycle_id": cycle_id, "run_id": current_run_id},
                 payload={"workload_type": next_workload.get("type")},
             )
+            i += 1
 
     async def _starting_workload_index(self, cycle_id: str, first_run_id: str) -> int:
         """Workload-sequence index that ``first_run_id`` occupies (#257).

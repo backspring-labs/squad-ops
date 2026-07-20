@@ -36,9 +36,13 @@ NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
 # ---------------------------------------------------------------------------
 
 
-def _make_cycle(workload_sequence: list[dict] | None = None, **kwargs) -> Cycle:
+def _make_cycle(
+    workload_sequence: list[dict] | None = None,
+    applied_defaults_extra: dict | None = None,
+    **kwargs,
+) -> Cycle:
     """Build a Cycle with optional workload_sequence in applied_defaults."""
-    applied_defaults = {}
+    applied_defaults = dict(applied_defaults_extra or {})
     if workload_sequence is not None:
         applied_defaults["workload_sequence"] = workload_sequence
     return Cycle(
@@ -273,6 +277,20 @@ class TestStartingWorkloadIndex:
         ]
         ex = self._bare_executor(mock_registry)
         # run_003 is the 2nd non-cancelled run → index 1, not 2
+        assert await ex._starting_workload_index("cyc_001", "run_003") == 1
+
+    async def test_framing_reroll_preserves_positional_index(self, mock_registry):
+        """#522 resume-safety: a re-rolled cycle has a CANCELLED rejected framing
+        run plus the live one; the implementation run must still resolve to index
+        1, not 2 — the invariant that lets the re-roll reuse _create_next_workload_run
+        and the duplicate guard without corrupting resume."""
+        mock_registry.list_runs.return_value = [
+            _make_run("run_001", 1, "cancelled", "framing"),  # rejected attempt
+            _make_run("run_002", 2, "completed", "framing"),  # the re-roll
+            _make_run("run_003", 3, "running", "implementation"),
+        ]
+        ex = self._bare_executor(mock_registry)
+        assert await ex._starting_workload_index("cyc_001", "run_002") == 0
         assert await ex._starting_workload_index("cyc_001", "run_003") == 1
 
     async def test_unknown_run_defaults_to_zero(self, mock_registry):
@@ -1730,3 +1748,123 @@ class TestInterWorkloadGatePlanValidation:
 
         assert executor.execute_run.await_count == 2
         mock_registry.create_run.assert_called_once()
+
+
+class TestFramingReroll:
+    """#522 — a system plan-validation rejection re-rolls framing (bounded by
+    framing_max_rerolls) instead of killing the cycle. Bug caught: 3 of 9 live
+    rolls (pf-2/5/9) died at the gate on a stochastic framing fault the model's
+    own prompt already forbids, with no retry and no implementation run."""
+
+    def _seq(self):
+        return [
+            {"type": "framing", "gate": "progress_plan_review"},
+            {"type": "implementation", "gate": None},
+        ]
+
+    async def test_system_rejection_rerolls_then_advances(
+        self, executor, mock_registry, mock_event_bus
+    ):
+        cycle = _make_cycle(
+            workload_sequence=self._seq(), applied_defaults_extra={"framing_max_rerolls": 1}
+        )
+        mock_registry.get_cycle.return_value = cycle
+        run1 = _make_run("run_001", 1, "completed", "framing")
+        run2 = _make_run("run_002", 2, "completed", "framing")  # the re-roll
+        run3 = _make_run("run_003", 3, "completed", "implementation")
+        mock_registry.get_run.side_effect = [run1, run2, run3]
+        mock_registry.list_runs.return_value = [run1]
+        # plan invalid on attempt 1, clean on attempt 2
+        executor._reject_invalid_plan_before_workload_gate = AsyncMock(
+            side_effect=[["regex_match on source file 'x.py'"], []]
+        )
+        executor._create_next_workload_run = AsyncMock(side_effect=[run2, run3])
+        executor._poll_inter_workload_gate = AsyncMock(
+            return_value=_gate_decision("progress_plan_review", GateDecisionValue.APPROVED)
+        )
+
+        await executor.execute_cycle("cyc_001", "run_001")
+
+        # framing ran twice, implementation once
+        assert executor.execute_run.await_count == 3
+        # the rejected framing run was CANCELLED to preserve the positional
+        # run<->workload invariant (#257/D14): one non-cancelled run per position
+        mock_registry.cancel_run.assert_awaited_once_with("run_001")
+        # the re-roll created a fresh framing run before reaching implementation
+        assert [c.args[2]["type"] for c in executor._create_next_workload_run.await_args_list] == [
+            "framing",
+            "implementation",
+        ]
+
+    async def test_budget_exhausted_kills_cycle_no_impl_run(
+        self, executor, mock_registry, mock_event_bus
+    ):
+        cycle = _make_cycle(
+            workload_sequence=self._seq(), applied_defaults_extra={"framing_max_rerolls": 1}
+        )
+        mock_registry.get_cycle.return_value = cycle
+        run1 = _make_run("run_001", 1, "completed", "framing")
+        run2 = _make_run("run_002", 2, "completed", "framing")
+        mock_registry.get_run.side_effect = [run1, run2]
+        mock_registry.list_runs.return_value = [run1]
+        # plan invalid on every attempt
+        executor._reject_invalid_plan_before_workload_gate = AsyncMock(
+            return_value=["regex_match on source file 'x.py'"]
+        )
+        executor._create_next_workload_run = AsyncMock(side_effect=[run2])
+        executor._poll_inter_workload_gate = AsyncMock()
+
+        await executor.execute_cycle("cyc_001", "run_001")
+
+        # one re-roll (2 framing executions), then the cycle dies — no impl run
+        assert executor.execute_run.await_count == 2
+        mock_registry.cancel_run.assert_awaited_once_with("run_001")
+        assert executor._create_next_workload_run.await_count == 1  # only the re-roll
+        executor._poll_inter_workload_gate.assert_not_awaited()
+
+    async def test_default_zero_rerolls_is_unchanged_behavior(
+        self, executor, mock_registry, mock_event_bus
+    ):
+        # no framing_max_rerolls set -> default 0 -> first rejection kills the
+        # cycle exactly as before (no cancel, no re-roll)
+        cycle = _make_cycle(workload_sequence=self._seq())
+        mock_registry.get_cycle.return_value = cycle
+        run1 = _make_run("run_001", 1, "completed", "framing")
+        mock_registry.get_run.side_effect = [run1]
+        mock_registry.list_runs.return_value = [run1]
+        executor._reject_invalid_plan_before_workload_gate = AsyncMock(
+            return_value=["regex_match on source file 'x.py'"]
+        )
+        executor._create_next_workload_run = AsyncMock()
+
+        await executor.execute_cycle("cyc_001", "run_001")
+
+        assert executor.execute_run.await_count == 1
+        mock_registry.cancel_run.assert_not_awaited()
+        executor._create_next_workload_run.assert_not_awaited()
+
+    async def test_non_framing_workload_never_rerolls(
+        self, executor, mock_registry, mock_event_bus
+    ):
+        # a system rejection on a non-framing gated workload must not re-roll even
+        # with budget — the type guard is explicit
+        seq = [
+            {"type": "implementation", "gate": "impl_review"},
+            {"type": "wrapup", "gate": None},
+        ]
+        cycle = _make_cycle(
+            workload_sequence=seq, applied_defaults_extra={"framing_max_rerolls": 2}
+        )
+        mock_registry.get_cycle.return_value = cycle
+        run1 = _make_run("run_001", 1, "completed", "implementation")
+        mock_registry.get_run.side_effect = [run1]
+        mock_registry.list_runs.return_value = [run1]
+        executor._reject_invalid_plan_before_workload_gate = AsyncMock(
+            return_value=["some plan error"]
+        )
+        executor._create_next_workload_run = AsyncMock()
+
+        await executor.execute_cycle("cyc_001", "run_001")
+
+        assert executor.execute_run.await_count == 1
+        mock_registry.cancel_run.assert_not_awaited()
