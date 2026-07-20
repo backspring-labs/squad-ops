@@ -326,9 +326,10 @@ class TestEmitCallSitePayloadFields:
         assert with_payload >= 35
 
     def test_total_emit_call_count(self) -> None:
-        """Sanity check: 18 executor + 7 correction-runner +
-        8 pulse-boundary-runner + 2 task-dispatcher + 7 route = 42 total
-        emit calls (#473 added the pre-gate rejection's GATE_DECIDED emit).
+        """Sanity check: 19 executor + 7 correction-runner +
+        8 pulse-boundary-runner + 2 task-dispatcher + 7 route = 43 total
+        emit calls (#473 added the pre-gate rejection's GATE_DECIDED emit;
+        #522 added the framing re-roll's WORKLOAD_ADVANCED emit).
 
         SIP-0097 slice 2c collapsed execute_run's five per-exception-class
         terminal emits into one emit driven by the RunCompletion terminal
@@ -341,4 +342,4 @@ class TestEmitCallSitePayloadFields:
         total = 0
         for path in _ALL_EMISSION_FILES:
             total += len(self._extract_emit_calls(path))
-        assert total == 42
+        assert total == 43
