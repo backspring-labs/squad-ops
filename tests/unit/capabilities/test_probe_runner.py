@@ -299,3 +299,32 @@ def test_stderr_tail_is_bounded(tmp_path):
     )
     outcomes = run_probes(tmp_path, [_probe(status=200)], profile=spew)
     assert len(outcomes[0].reason) < 600
+
+
+# --------------------------------------------------------------------------- #
+# readiness = any HTTP response (#520) — bug caught: pf-1's app booted and
+# served ("Uvicorn running") but has no /health endpoint; readiness demanded
+# 200 from /health, timed out, and every probe was skipped forever.
+# --------------------------------------------------------------------------- #
+
+
+def test_ready_on_404_response(tmp_path):
+    # An app WITHOUT the ready-path endpoint: server answers 404 -> ready,
+    # and the actual probe against a real endpoint passes.
+    (tmp_path / "backend").mkdir()
+    (tmp_path / "backend" / "__init__.py").write_text("")
+    (tmp_path / "backend" / "main.py").write_text(
+        "from fastapi import FastAPI\n"
+        "app = FastAPI()\n"
+        "@app.get('/items')\n"
+        "def items():\n"
+        "    return {'ok': True}\n"
+    )
+    probe = Probe(
+        id="vc-probe-items",
+        subject="backend",
+        request={"method": "GET", "path": "/items"},
+        expect={"status": 200},
+    )
+    outcomes = run_probes(tmp_path, [probe])
+    assert outcomes == [ProbeOutcome("vc-probe-items", "passed", None)]

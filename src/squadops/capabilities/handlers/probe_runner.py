@@ -221,12 +221,20 @@ def _stderr_tail(stderr_spool: Any, limit: int = 500) -> str:
 
 
 def _wait_ready(profile: ExecutionProfile, port: int) -> bool:
+    """Poll until the subject answers HTTP on the ready path (#520).
+
+    ANY response — 200 or 404 alike — proves the server is up and routing.
+    Demanding 200 from ``/health`` made readiness a hidden product requirement:
+    the group_run PRD declares no /health, so a perfectly booted app timed out
+    'not ready' and every probe was skipped, forever. Readiness is transport-
+    level; the probes themselves are the behavioral assertions.
+    """
     url = f"http://{profile.host}:{port}{profile.ready_path}"
     deadline = time.monotonic() + profile.startup_timeout_s
     while time.monotonic() < deadline:
         try:
-            if httpx.get(url, timeout=1.0).status_code == 200:
-                return True
+            httpx.get(url, timeout=1.0)
+            return True
         except httpx.HTTPError:
             pass
         time.sleep(profile.poll_interval_s)
