@@ -125,7 +125,8 @@ def test_unbootable_subject_is_skipped_not_failed(tmp_path):
         id="vc-probe-fe",
         subject="frontend",
         request={"method": "GET", "path": "/"},
-        expect={"status": 200},
+        # creates return 201 (PR #523: the contract contradicted the PRD at 200)
+        expect={"status": 201},
     )
     outcomes = run_probes(tmp_path, [frontend_probe])
     assert outcomes == [
