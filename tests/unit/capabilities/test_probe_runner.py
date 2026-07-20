@@ -228,7 +228,8 @@ def _group_run_probe() -> Probe:
             "path": "/runs",
             "json": {"title": "T", "datetime": "D", "location": "L"},
         },
-        expect={"status": 200},
+        # creates return 201 (PR #523: the contract contradicted the PRD at 200)
+        expect={"status": 201},
     )
 
 
