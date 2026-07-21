@@ -169,17 +169,52 @@ def _coverage_expectations(manifest: InterfaceManifest) -> list[str]:
     return out
 
 
+def _probe_sample_value(field_name: str, field_type: str) -> Any:
+    """A plausible sample value for a probe request field (#524).
+
+    ``"x"`` for every field failed apps that validate their inputs: a field named
+    ``datetime`` typed ``string`` still gets parsed as a datetime by a reasonable
+    app, which then 422s the bogus ``"x"`` — penalizing a *correct* app for
+    validating (pf-12: the app passed its own suite yet failed the probe on
+    "status 422 != expected 201"). Semantic name hints win over the declared type
+    (a string-typed ``datetime`` still wants an ISO value); type is the fallback.
+    """
+    n = field_name.lower()
+    t = (field_type or "").lower()
+    if "datetime" in n or "timestamp" in n or n.endswith("_at") or n in ("date", "time"):
+        return "2026-08-01T08:00:00"
+    if "email" in n:
+        return "sample@example.com"
+    if "url" in n or "uri" in n:
+        return "https://example.com"
+    if t in ("int", "integer"):
+        return 1
+    if t in ("float", "number", "decimal"):
+        return 1.0
+    if t in ("bool", "boolean"):
+        return True
+    if t.startswith("list") or t.startswith("array"):
+        return []
+    return "sample"
+
+
 def _probes(manifest: InterfaceManifest) -> list[dict[str, Any]]:
     """Self-contained probes only (POST endpoints with no path params). Sequenced
     probes (join/leave requiring a prior create) and richer response assertions land
     with the probe runner in 98.4; these are emitted now so the contract is complete."""
     shapes = {s.name: s for s in manifest.api.request_shapes}
+    # #524: resolve each required field's declared type (from entity fields) so the
+    # probe body carries type/name-appropriate sample values, not a blanket "x".
+    field_types = {f.name: f.type for e in manifest.entities for f in e.fields}
     probes: list[dict[str, Any]] = []
     for ep in manifest.api.endpoints:
         if ep.method != "POST" or "{" in ep.path:
             continue
         shape = shapes.get(ep.request or "")
-        json_body = {field: "x" for field in (shape.required if shape else ())}
+        json_body = {
+            field: _probe_sample_value(field, field_types.get(field, "string"))
+            for field in (shape.required if shape else ())
+        }
         probes.append(
             {
                 "id": f"vc-probe-{_slug(ep.path) or 'root'}",
