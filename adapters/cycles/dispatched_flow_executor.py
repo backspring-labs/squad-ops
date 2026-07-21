@@ -2356,6 +2356,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         errors: list[str] = []
         interface_content: str | None = None
         parsed_plan: ImplementationPlan | None = None
+        contract = None  # set in bind mode below; feeds the soft-violation log
         for ref_id in tuple(run.artifact_refs or ()):
             try:
                 ref, content_bytes = await self._artifact_vault.retrieve(ref_id)
@@ -2435,6 +2436,21 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                         f"verification_contract: {e}"
                         for e in parsed_plan.validate_criteria_refs(contract)
                     )
+
+        # Soft (warning/info-severity) structural violations are tolerated, not
+        # rejected — but logged so the pass is never silent (a warning check can't
+        # block a build per RC-9, so it must not kill the cycle at plan validation).
+        if parsed_plan is not None:
+            soft = parsed_plan.soft_criteria_violations(contract)
+            if soft:
+                logger.warning(
+                    "Plan for gate %r on run %s: tolerated %d soft criteria "
+                    "violation(s) (warning/info severity — not rejecting): %s",
+                    gate_name,
+                    run.run_id,
+                    len(soft),
+                    "; ".join(soft),
+                )
         return errors
 
     async def _load_seeded_manifest_content(self, cycle: Cycle) -> str | None:
