@@ -301,6 +301,30 @@ class ImplementationPlan:
                 errors.append(f"Task {task.task_index}: role '{task.role}' not in profile")
         return errors
 
+    def _regex_on_source_criteria(self):
+        """Yield ``(task, criterion, target)`` for every ``regex_match`` criterion
+        that targets a non-document file — the #464 violation shared by the fatal
+        scope check and the soft-violation collector."""
+        from squadops.cycles.acceptance_check_spec import regex_target_is_document
+
+        for task in self.tasks:
+            for criterion in task.acceptance_criteria:
+                if not isinstance(criterion, TypedCheck) or criterion.check != "regex_match":
+                    continue
+                target = criterion.params.get("file", "")
+                if not regex_target_is_document(target):
+                    yield task, criterion, target
+
+    @staticmethod
+    def _regex_on_source_message(task: PlanTask, target: str) -> str:
+        return (
+            f"Task {task.task_index} ({task.focus}): regex_match on source "
+            f"file {target!r} — regex criteria are allowed only on document "
+            "artifacts (.md/.txt/.rst); verify source files with "
+            "endpoint_defined/import_present/command_exit_zero or the "
+            "behavioral checks (#464)"
+        )
+
     def validate_criteria_scope(self) -> list[str]:
         """#464: regex_match criteria may only target document artifacts.
 
@@ -311,26 +335,20 @@ class ImplementationPlan:
         mechanical guard. Prose criteria and unparseable rows are out of
         scope here (non-blocking per #420).
 
+        Only ``severity=error`` violations reject the plan. A warning/info-severity
+        regex-on-source is a soft authoring slip that cannot block a build at
+        execution (RC-9), so it must not kill the cycle at plan validation either —
+        those are surfaced by ``soft_criteria_violations`` for a logged, tolerated
+        pass instead.
+
         Returns:
             List of validation error strings (empty = valid).
         """
-        from squadops.cycles.acceptance_check_spec import regex_target_is_document
-
-        errors: list[str] = []
-        for task in self.tasks:
-            for criterion in task.acceptance_criteria:
-                if not isinstance(criterion, TypedCheck) or criterion.check != "regex_match":
-                    continue
-                target = criterion.params.get("file", "")
-                if not regex_target_is_document(target):
-                    errors.append(
-                        f"Task {task.task_index} ({task.focus}): regex_match on source "
-                        f"file {target!r} — regex criteria are allowed only on document "
-                        "artifacts (.md/.txt/.rst); verify source files with "
-                        "endpoint_defined/import_present/command_exit_zero or the "
-                        "behavioral checks (#464)"
-                    )
-        return errors
+        return [
+            self._regex_on_source_message(task, target)
+            for task, criterion, target in self._regex_on_source_criteria()
+            if criterion.severity == "error"
+        ]
 
     def validate_criteria_refs(self, contract: VerificationContract) -> list[str]:
         """SIP-0098 §6.3: bind-mode plan validation against the seeded contract.
@@ -384,20 +402,66 @@ class ImplementationPlan:
                         f"(no silent descoping of verification)"
                     )
 
-            # 3. authored typed criteria targeting a covered file are rejected.
+        # 3. authored typed criteria targeting a covered file are rejected — but
+        #    only at severity=error. A warning/info-severity authored check on a
+        #    covered file is a soft slip (the contract owns the file; RC-9: a
+        #    warning can't block a build), tolerated + logged via
+        #    soft_criteria_violations rather than killing the whole cycle.
+        errors.extend(
+            self._authored_on_covered_message(task, criterion, target)
+            for task, criterion, target in self._authored_on_covered_criteria(contract)
+            if criterion.severity == "error"
+        )
+
+        return errors
+
+    def _authored_on_covered_criteria(self, contract: VerificationContract):
+        """Yield ``(task, criterion, target)`` for every authored ``TypedCheck``
+        whose target file is contract-covered (§6.3 rule 3) — shared by the fatal
+        refs check and the soft-violation collector."""
+        covered = contract.covered_fill_paths()
+        for task in self.tasks:
             for criterion in task.acceptance_criteria:
                 if not isinstance(criterion, TypedCheck):
                     continue
                 target = criterion.params.get("file", "")
                 if target in covered:
-                    errors.append(
-                        f"Task {task.task_index} ({task.focus}): authored typed criterion "
-                        f"{criterion.check!r} targets contract-covered file {target!r} — "
-                        f"bind the contract criteria by id (criteria_refs); do not author "
-                        f"typed criteria for covered files"
-                    )
+                    yield task, criterion, target
 
-        return errors
+    @staticmethod
+    def _authored_on_covered_message(task: PlanTask, criterion: TypedCheck, target: str) -> str:
+        return (
+            f"Task {task.task_index} ({task.focus}): authored typed criterion "
+            f"{criterion.check!r} targets contract-covered file {target!r} — "
+            f"bind the contract criteria by id (criteria_refs); do not author "
+            f"typed criteria for covered files"
+        )
+
+    def soft_criteria_violations(self, contract: VerificationContract | None = None) -> list[str]:
+        """Warning/info-severity structural criteria violations that are TOLERATED,
+        not rejected — regex-on-source (#464) and, when a contract is given (bind
+        mode), authored-on-covered (§6.3). Each note is prefixed with the criterion's
+        severity so the caller can log an audit trail; this method never rejects.
+
+        Error-severity violations are NOT returned here — they stay fatal in
+        ``validate_criteria_scope`` / ``validate_criteria_refs``. RC-9 anchors the
+        split: a warning check cannot block a build at execution, so it must not
+        kill the cycle at plan validation either.
+        """
+        notes: list[str] = [
+            f"tolerated (severity={criterion.severity}): "
+            + self._regex_on_source_message(task, target)
+            for task, criterion, target in self._regex_on_source_criteria()
+            if criterion.severity != "error"
+        ]
+        if contract is not None:
+            notes.extend(
+                f"tolerated (severity={criterion.severity}): "
+                + self._authored_on_covered_message(task, criterion, target)
+                for task, criterion, target in self._authored_on_covered_criteria(contract)
+                if criterion.severity != "error"
+            )
+        return notes
 
     def to_dict(self) -> dict:
         """Serialize to dict for YAML/JSON transport.

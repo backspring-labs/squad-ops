@@ -739,3 +739,46 @@ summary:
         )
 
         assert regex_target_is_document(CHECK_SPECS["regex_match"].example["file"])
+
+    def test_warning_severity_regex_on_source_tolerated(self):
+        """A warning-severity regex-on-source is a soft slip — tolerated by the
+        scope validator (RC-9: a warning check can't block a build, so it must not
+        kill the cycle at plan validation), surfaced by soft_criteria_violations."""
+        plan = self._plan(
+            "      - {check: regex_match, file: frontend/src/views/RunDetailView.jsx, "
+            "pattern: 'apiFetch', severity: warning}"
+        )
+        assert plan.validate_criteria_scope() == []
+        soft = plan.soft_criteria_violations()
+        assert len(soft) == 1
+        assert "RunDetailView.jsx" in soft[0]
+        assert "severity=warning" in soft[0]
+
+    def test_info_severity_regex_on_source_tolerated(self):
+        plan = self._plan(
+            "      - {check: regex_match, file: frontend/src/views/RunDetailView.jsx, "
+            "pattern: 'x', severity: info}"
+        )
+        assert plan.validate_criteria_scope() == []
+        assert len(plan.soft_criteria_violations()) == 1
+
+    def test_error_severity_regex_on_source_still_rejected(self):
+        """The severity split keeps error-severity structural violations fatal —
+        the author asserted it matters, so honor the rejection."""
+        plan = self._plan(
+            "      - {check: regex_match, file: frontend/src/views/RunDetailView.jsx, "
+            "pattern: 'apiFetch', severity: error}"
+        )
+        errors = plan.validate_criteria_scope()
+        assert len(errors) == 1
+        assert "#464" in errors[0]
+        assert plan.soft_criteria_violations() == []
+
+    def test_document_regex_never_a_soft_violation(self):
+        """A document regex is legal at any severity — never fatal, never soft."""
+        plan = self._plan(
+            "      - {check: regex_match, file: qa_handoff.md, "
+            "pattern: '## How to Test', severity: warning}"
+        )
+        assert plan.validate_criteria_scope() == []
+        assert plan.soft_criteria_violations() == []

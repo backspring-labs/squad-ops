@@ -260,6 +260,42 @@ def test_authored_typed_criterion_on_covered_file_is_rejected():
     assert any("authored typed criterion" in e and "backend/routes.py" in e for e in errors)
 
 
+def test_warning_severity_authored_on_covered_is_tolerated():
+    """§6.3 + RC-9: a warning-severity authored check on a covered file is a soft
+    slip, not fatal — tolerated (the contract owns the file) and surfaced via
+    soft_criteria_violations instead of killing the cycle at the plan gate."""
+    authored = (
+        "\n      - {check: import_present, file: backend/routes.py, "
+        "module: .errors, symbol: ApiError, severity: warning}"
+    )
+    plan = ImplementationPlan.from_yaml(
+        _plan_yaml(
+            refs="[vc-routes-endpoints, vc-routes-apierror, vc-routes-compiles]", authored=authored
+        )
+    )
+    contract = _contract()
+    assert plan.validate_criteria_refs(contract) == []
+    soft = plan.soft_criteria_violations(contract)
+    assert len(soft) == 1
+    assert "backend/routes.py" in soft[0]
+    assert "severity=warning" in soft[0]
+
+
+def test_error_severity_authored_on_covered_still_rejected():
+    authored = (
+        "\n      - {check: import_present, file: backend/routes.py, "
+        "module: .errors, symbol: ApiError, severity: error}"
+    )
+    plan = ImplementationPlan.from_yaml(
+        _plan_yaml(
+            refs="[vc-routes-endpoints, vc-routes-apierror, vc-routes-compiles]", authored=authored
+        )
+    )
+    contract = _contract()
+    assert any("do not author" in e for e in plan.validate_criteria_refs(contract))
+    assert plan.soft_criteria_violations(contract) == []
+
+
 def test_authored_typed_criterion_on_uncovered_file_is_allowed():
     # binding routes fully, and authoring a check on an UNCOVERED file, is legal —
     # the contract only owns acceptance of the files it covers.
