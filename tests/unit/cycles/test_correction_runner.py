@@ -1923,3 +1923,88 @@ class TestReexecuteRepairedSuite:
 
         assert result is None
         assert dispatcher.dispatched == []
+
+
+class TestResolveRepairTarget:
+    """#531: a patch-path repair must target the DRIFTED SOURCE (from the
+    deterministic interface-drift evidence), not the failed check's own task —
+    otherwise a tests_pass failure caused by drifted models.py gets 'repaired'
+    by regenerating the tests, and the loop never converges."""
+
+    def test_drift_retargets_to_drifted_source_not_the_tests(self):
+        """Replay of pf-19 (cyc_3632da190fd2): tests_pass failed because
+        backend/models.py drifted (notes/pace vs route_notes/pace_target) and
+        main.py added GET /. The failed task is the qa pytest suite, but the
+        repair must target the drifted source files."""
+        from adapters.cycles.correction_runner import _resolve_repair_target
+
+        failure_evidence = {
+            "interface_drift": [
+                {
+                    "kind": "field_drift",
+                    "file": "backend/models.py",
+                    "extra": ["notes", "pace"],
+                    "missing": ["route_notes", "pace_target"],
+                    "instruction": "rename notes->route_notes, pace->pace_target",
+                },
+                {
+                    "kind": "route_drift",
+                    "file": "backend/main.py",
+                    "extra": ["GET /"],
+                    "missing": [],
+                    "instruction": "remove the unauthorized GET / route",
+                },
+            ],
+            "validation_result": {"summary": "tests_pass exit 1"},
+        }
+        failed_inputs = {
+            "expected_artifacts": ["tests/test_runs.py", "tests/test_participants.py"],
+            "subtask_focus": "Backend run CRUD and validation pytest suite",
+            "subtask_description": "Write and run the backend pytest suite",
+        }
+        artifacts, focus, description = _resolve_repair_target(failure_evidence, failed_inputs)
+
+        assert artifacts == ["backend/main.py", "backend/models.py"]
+        assert "tests/test_runs.py" not in artifacts
+        assert "tests/test_participants.py" not in artifacts
+        # No inline prompt content is authored here (#448): the "how" is the managed
+        # drift instruction surfaced in the failure summary, so focus/description stay
+        # unset — the named source artifacts + that instruction do the redirect.
+        assert focus is None
+        assert description is None
+
+    def test_no_drift_falls_back_to_failed_task_artifacts(self):
+        """Absent interface drift, the target is byte-identical to today —
+        the failed task's own artifacts/focus/description."""
+        from adapters.cycles.correction_runner import _resolve_repair_target
+
+        failed_inputs = {
+            "expected_artifacts": ["qa_handoff.md"],
+            "subtask_focus": "QA handoff",
+            "subtask_description": "Assemble the handoff doc",
+        }
+        artifacts, focus, description = _resolve_repair_target(
+            {"validation_result": {"summary": "missing sections"}}, failed_inputs
+        )
+        assert artifacts == ["qa_handoff.md"]
+        assert focus == "QA handoff"
+        assert description == "Assemble the handoff doc"
+
+    @pytest.mark.parametrize(
+        "evidence",
+        [
+            None,
+            {},
+            {"interface_drift": []},
+            {"interface_drift": [{"kind": "field_drift"}]},  # finding with no 'file'
+            "not-a-dict",
+        ],
+    )
+    def test_missing_or_fileless_drift_falls_back(self, evidence):
+        """Robustness: no usable drift evidence → fall back to the failed task's
+        artifacts, never crash or return an empty retarget."""
+        from adapters.cycles.correction_runner import _resolve_repair_target
+
+        artifacts, focus, _ = _resolve_repair_target(evidence, {"expected_artifacts": ["a.py"]})
+        assert artifacts == ["a.py"]
+        assert focus is None

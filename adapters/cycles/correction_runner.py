@@ -46,6 +46,36 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _resolve_repair_target(
+    failure_evidence: Any, failed_inputs: dict[str, Any]
+) -> tuple[list[str], str | None, str | None]:
+    """Choose ``(expected_artifacts, focus, description)`` for a patch-path repair.
+
+    #531: the target defaults to the *failed task's own* artifacts — but the
+    ``tests_pass`` check lives on the qa test task, so anchoring there regenerates
+    the tests (the symptom) while the drifted source (the cause) is never rewritten
+    and the loop can't converge. When the correction carries deterministic
+    interface-drift evidence (an AST diff, not the free-text ``affected_task_types``),
+    the drifted files ARE the target: retarget so the dev repair rewrites the source.
+    No drift → today's failed-task anchor, byte-identical.
+    """
+    drift = failure_evidence.get("interface_drift") if isinstance(failure_evidence, dict) else None
+    drift_files = sorted({d["file"] for d in (drift or []) if isinstance(d, dict) and d.get("file")})
+    if drift_files:
+        # The target is pure data (the drifted file paths). The instructional "how"
+        # is NOT authored here — it is the interface-drift `instruction`, already a
+        # managed/authored asset surfaced into the repair prompt's failure summary
+        # as the "INTERFACE CONFORMANCE" section. So focus/description are left unset
+        # (no inline prompt content — CLAUDE.md #448); the named artifacts + that
+        # instruction are what redirect the repair onto the source.
+        return (drift_files, None, None)
+    return (
+        failed_inputs.get("expected_artifacts", []),
+        failed_inputs.get("subtask_focus"),
+        failed_inputs.get("subtask_description"),
+    )
+
+
 @dataclass(frozen=True)
 class CorrectionProtocolResult:
     """Outcome of one correction-protocol run.
@@ -463,6 +493,11 @@ class CorrectionRunner:
         # dev repair handler.
         repair_artifacts: list[dict[str, Any]] = []
         if correction_path == "patch":
+            failed_inputs = envelope.inputs or {}
+            repair_expected_artifacts, repair_focus, repair_description = _resolve_repair_target(
+                failure_evidence, failed_inputs
+            )
+
             for step_idx, (task_type, role) in enumerate(repair_steps_for(envelope.task_type)):
                 repair_task_id = f"repair-{run_id[:12]}-{correction_attempts:02d}-{task_type}"
                 resolved = resolve_agent_config(role, profile)
@@ -470,12 +505,10 @@ class CorrectionRunner:
                 agent_model = resolved.model
                 agent_overrides = resolved.config_overrides
 
-                # Plumb the failed task's contract through to the repair
-                # envelope. Without this the repair handler only sees the
-                # PRD + failure evidence and produces a generic "repair_output.md"
-                # rather than re-emitting the named artifact (e.g. qa_handoff.md)
-                # that originally failed acceptance.
-                failed_inputs = envelope.inputs or {}
+                # Plumb the (retargeted) task contract through to the repair
+                # envelope. Without this the repair handler only sees the PRD +
+                # failure evidence and produces a generic "repair_output.md" rather
+                # than re-emitting the named artifact that must actually be fixed.
                 repair_inputs: dict[str, Any] = {
                     "prd": cycle.prd_ref,
                     "failed_task_type": envelope.task_type,
@@ -486,9 +519,9 @@ class CorrectionRunner:
                     "artifact_refs": list(all_artifact_refs),
                     "agent_model": agent_model,
                     "agent_config_overrides": agent_overrides,
-                    "subtask_focus": failed_inputs.get("subtask_focus"),
-                    "subtask_description": failed_inputs.get("subtask_description"),
-                    "expected_artifacts": failed_inputs.get("expected_artifacts", []),
+                    "subtask_focus": repair_focus,
+                    "subtask_description": repair_description,
+                    "expected_artifacts": repair_expected_artifacts,
                     "acceptance_criteria": failed_inputs.get("acceptance_criteria", []),
                 }
 
