@@ -221,11 +221,15 @@ class TestEdgeCases:
         result = extract_fenced_files(response)
         assert len(result) == 0
 
-    def test_no_closing_fence(self):
-        """Unclosed fence is skipped."""
+    def test_no_closing_fence_recovers_at_eof(self):
+        """#431: a single unterminated fence whose body runs cleanly to EOF (no
+        further fence markers) infers the dropped close rather than losing the
+        file — the model dropped only the closing ```."""
         response = "```python:main.py\nprint('hi')\n"
         result = extract_fenced_files(response)
-        assert len(result) == 0
+        assert len(result) == 1
+        assert result[0]["filename"] == "main.py"
+        assert result[0]["content"] == "print('hi')"
 
     def test_malformed_header_with_space(self):
         """Fence headers with spaces in the path are not matched."""
@@ -667,3 +671,95 @@ class TestFirstLineBareFilename:
         result = extract_fenced_files("```python\n# real.py\nimport os\n```")
         assert result[0]["filename"] == "real.py"
         assert result[0]["content"] == "import os"
+
+
+class TestPathLabelHeal:
+    """#431: strict headers with a redundant ``path:``/``file:`` label
+    (``` ```python:path:backend/main.py``` ```) — the residual colon would fail
+    the safety check and drop the whole file. Replay-derived from real losses
+    (cyc_40dd251ff9b8 emitted two such files, both dropped)."""
+
+    def test_path_label_stripped(self):
+        result = extract_fenced_files("```python:path:backend/main.py\nx = 1\n```\n")
+        assert len(result) == 1
+        assert result[0]["filename"] == "backend/main.py"
+        assert result[0]["language"] == "python"
+        assert result[0]["content"] == "x = 1"
+
+    def test_file_label_stripped(self):
+        result = extract_fenced_files("```js:file:src/api.js\nconst x = 1;\n```\n")
+        assert result[0]["filename"] == "src/api.js"
+        assert result[0]["content"] == "const x = 1;"
+
+    def test_two_labelled_files_both_recovered(self):
+        """The real cyc_40dd251ff9b8 shape: two path:-labelled blocks, both
+        properly closed — before #431 both were dropped, now both recover."""
+        response = (
+            "```python:path:backend/tests/conftest.py\n"
+            "import pytest\n"
+            "```\n"
+            "```python:path:backend/tests/test_runs.py\n"
+            "assert True\n"
+            "```\n"
+        )
+        result = extract_fenced_files(response)
+        assert [r["filename"] for r in result] == [
+            "backend/tests/conftest.py",
+            "backend/tests/test_runs.py",
+        ]
+
+    def test_plain_strict_header_unaffected(self):
+        """A conforming header without a label is untouched (no regression)."""
+        result = extract_fenced_files("```python:backend/main.py\ny = 2\n```\n")
+        assert result[0]["filename"] == "backend/main.py"
+
+    def test_filename_starting_with_label_word_not_mangled(self):
+        """A real path whose basename merely begins with ``file``/``path`` (no
+        colon after the word) must not be truncated."""
+        result = extract_fenced_files("```python:backend/fileutils.py\nz = 3\n```\n")
+        assert result[0]["filename"] == "backend/fileutils.py"
+
+
+class TestImplicitEofClose:
+    """#431: a single unterminated fence whose body runs cleanly to EOF infers
+    the dropped close; the no-inner-fence guard prevents swallowing a following
+    file when a close is merely missing between two blocks."""
+
+    def test_clean_unterminated_block_recovered(self):
+        response = "```python:backend/routes.py\ndef handler():\n    return 1\n"
+        result = extract_fenced_files(response)
+        assert len(result) == 1
+        assert result[0]["filename"] == "backend/routes.py"
+        assert result[0]["content"] == "def handler():\n    return 1"
+
+    def test_labelled_unterminated_block_recovered(self):
+        """Both fixes compose: path: label + missing close on one block."""
+        response = "```python:path:backend/x.py\nvalue = 42\n"
+        result = extract_fenced_files(response)
+        assert result[0]["filename"] == "backend/x.py"
+        assert result[0]["content"] == "value = 42"
+
+    def test_inner_fence_blocks_implicit_close_no_swallow(self):
+        """Guard: an unterminated opener followed by another fenced block must
+        NOT swallow that block into the first file's content. The ambiguous
+        first opener is abandoned; the clean trailing block still recovers —
+        crucially, no file ever contains the other file's code."""
+        response = "```python:a.py\ncode_a\n```python:b.py\ncode_b\n"
+        result = extract_fenced_files(response)
+        filenames = [r["filename"] for r in result]
+        assert "b.py" in filenames
+        b = next(r for r in result if r["filename"] == "b.py")
+        assert b["content"] == "code_b"
+        # No emitted file smuggles the other block's header/content.
+        assert all("```" not in r["content"] for r in result)
+        assert all("code_a" not in r["content"] for r in result if r["filename"] == "b.py")
+
+    def test_empty_output_stays_unrecovered(self):
+        """A genuinely empty response is a real failure, not a format slip —
+        it must remain unrecovered (cyc_571c5ea5a426 was 0 bytes)."""
+        assert extract_fenced_files("") == []
+
+    def test_bare_unterminated_fence_no_filename_still_dropped(self):
+        """Implicit close only helps when a filename resolves — an untagged
+        unterminated fence has no path and is still dropped."""
+        assert extract_fenced_files("```\nsome loose text at eof\n") == []
