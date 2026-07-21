@@ -17,7 +17,11 @@ import pytest
 import yaml
 
 from squadops.capabilities.scaffold import InterfaceManifest, expand, fill_slot_paths
-from squadops.capabilities.scaffold_contract import emit_contract_dict, emit_contract_yaml
+from squadops.capabilities.scaffold_contract import (
+    _probe_sample_value,
+    emit_contract_dict,
+    emit_contract_yaml,
+)
 from squadops.cycles.verification_contract import VerificationContract
 
 pytestmark = [pytest.mark.domain_capabilities]
@@ -139,7 +143,12 @@ def test_behavioral_has_build_suite_and_self_contained_probe():
     assert probe_paths == {"/runs"}
     create = behavioral["probes"][0]
     assert create["request"]["method"] == "POST"
-    assert set(create["request"]["json"]) == {"title", "datetime", "location"}
+    body = create["request"]["json"]
+    assert set(body) == {"title", "datetime", "location"}
+    # #524: the datetime field gets an ISO value, not "x" — an app that validates
+    # datetime (pf-12) must not 422 the probe. Non-date fields get a plain string.
+    assert body["datetime"] == "2026-08-01T08:00:00"
+    assert body["title"] == "sample"
     assert (
         create["expect"]["status"] == 201
     )  # creates return 201 (pf-3: contract contradicted the PRD)
@@ -159,3 +168,40 @@ def test_emission_is_deterministic():
         VerificationContract.from_dict(a).content_hash()
         == VerificationContract.from_dict(b).content_hash()
     )
+
+
+# --------------------------------------------------------------------------- #
+# probe sample-value generator (#524) — bug caught: "x" for every field made an
+# app that validates its inputs (e.g. a datetime field) 422 the probe, failing a
+# correct app. pf-12: app passed its own suite yet failed the probe on 422/201.
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    ("name", "type_", "expected"),
+    [
+        ("datetime", "string", "2026-08-01T08:00:00"),
+        ("start_at", "string", "2026-08-01T08:00:00"),
+        ("timestamp", "string", "2026-08-01T08:00:00"),
+        ("email", "string", "sample@example.com"),
+        ("callback_url", "string", "https://example.com"),
+        ("count", "int", 1),
+        ("ratio", "number", 1.0),
+        ("active", "bool", True),
+        ("tags", "list[str]", []),
+        ("title", "string", "sample"),
+    ],
+)
+def test_probe_sample_value_is_type_and_name_appropriate(name, type_, expected):
+    assert _probe_sample_value(name, type_) == expected
+
+
+def test_datetime_name_beats_string_type():
+    # the manifest declares datetime as type 'string' (MVP); the name must still
+    # win so the value is a real ISO datetime, not a bare string
+    assert _probe_sample_value("datetime", "string") == "2026-08-01T08:00:00"
+
+
+def test_unknown_field_defaults_to_plain_string():
+    assert _probe_sample_value("location", "string") == "sample"
+    assert _probe_sample_value("whatever", "") == "sample"
