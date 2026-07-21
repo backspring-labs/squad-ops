@@ -60,7 +60,9 @@ def _resolve_repair_target(
     No drift → today's failed-task anchor, byte-identical.
     """
     drift = failure_evidence.get("interface_drift") if isinstance(failure_evidence, dict) else None
-    drift_files = sorted({d["file"] for d in (drift or []) if isinstance(d, dict) and d.get("file")})
+    drift_files = sorted(
+        {d["file"] for d in (drift or []) if isinstance(d, dict) and d.get("file")}
+    )
     if drift_files:
         # The target is pure data (the drifted file paths). The instructional "how"
         # is NOT authored here — it is the interface-drift `instruction`, already a
