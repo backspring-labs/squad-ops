@@ -75,6 +75,17 @@ def _format_failure_summary(failure_evidence: Any, failure_analysis: Any) -> str
     """Compose a compact failure description from evidence + analysis."""
     parts: list[str] = []
     if isinstance(failure_evidence, dict):
+        # Interface-drift diagnosis is deterministic and authoritative — the
+        # manifest, not the analyzer's guess, is the source of truth. Lead with
+        # it so the repair renames to the interface names and stops thrashing.
+        drift = failure_evidence.get("interface_drift") or []
+        if drift:
+            lines = [str(d.get("instruction", "")).strip() for d in drift if d.get("instruction")]
+            if lines:
+                parts.append(
+                    "INTERFACE CONFORMANCE (authoritative — apply exactly):\n"
+                    + "\n".join(f"- {line}" for line in lines)
+                )
         vr = failure_evidence.get("validation_result") or {}
         summary = vr.get("summary") or failure_evidence.get("error") or ""
         if summary:

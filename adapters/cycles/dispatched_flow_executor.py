@@ -384,6 +384,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                         profile=profile,
                         run_root=run_root,
                         ledger=ledger,
+                        interface_manifest=interface_manifest,
                     )
                 elif mode == "fan_out_fan_in":
                     await self._execute_fan_out(plan, run_id, cycle, flow_run_id)
@@ -398,6 +399,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                         profile=profile,
                         run_root=run_root,
                         ledger=ledger,
+                        interface_manifest=interface_manifest,
                     )
                 else:
                     await self._execute_sequential(
@@ -409,6 +411,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                         obs_ctx=obs_ctx,
                         run_root=run_root,
                         ledger=ledger,
+                        interface_manifest=interface_manifest,
                     )
 
                 # Success -> completed
@@ -1036,6 +1039,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         run_root: str = "",
         *,
         ledger: RunLedger,
+        interface_manifest: Any = None,
     ) -> None:
         """Sequential: dispatch one task at a time, fail-fast.
 
@@ -1184,6 +1188,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     profile=profile,
                     flow_run_id=flow_run_id,
                     patched_result_holder=_holder,
+                    interface_manifest=interface_manifest,
                 )
                 if action in ("continue", "accept_patch"):
                     # #379: this attempt failed — re-dispatched ("continue") or
@@ -1719,6 +1724,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         flow_run_id: str | None = None,
         patched_result_holder: dict[str, Any] | None = None,
         enriched_envelope: TaskEnvelope | None = None,
+        interface_manifest: Any = None,
     ) -> str:
         """Route a failed task outcome. Returns an action string.
 
@@ -1798,6 +1804,12 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             plan_delta_refs=plan_delta_refs,
             profile=profile,
             flow_run_id=flow_run_id,
+            interface_manifest=interface_manifest,
+            # The materialized workspace (path -> content) rides on the enriched
+            # envelope (#456); the drift detector parses model/route files from it.
+            artifact_contents=(
+                (enriched_envelope.inputs if enriched_envelope is not None else {}) or {}
+            ).get("artifact_contents"),
         )
         correction_path = protocol.correction_path
 

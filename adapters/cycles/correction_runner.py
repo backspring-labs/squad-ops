@@ -256,6 +256,8 @@ class CorrectionRunner:
         plan_delta_refs: list[str],
         profile: Any = None,
         flow_run_id: str | None = None,
+        interface_manifest: Any = None,
+        artifact_contents: dict[str, str] | None = None,
     ) -> CorrectionProtocolResult:
         """Run the correction protocol: analyze → decide → act.
 
@@ -285,6 +287,26 @@ class CorrectionRunner:
         failure_evidence = build_failure_evidence(
             envelope, result, prior_plan_deltas_count=len(plan_delta_refs)
         )
+
+        # Deterministic interface-drift diagnosis (piece 1): when the app renamed
+        # a model field or route the manifest pins, hand the repair agent the exact
+        # offending identifiers + interface targets instead of an opaque check
+        # status. Additive — a clean workspace or absent manifest injects nothing,
+        # leaving the LLM-analysis path unchanged.
+        from squadops.cycles.interface_conformance import detect_interface_drift
+
+        drift = detect_interface_drift(interface_manifest, artifact_contents)
+        if drift:
+            failure_evidence["interface_drift"] = [
+                {
+                    "kind": f.kind,
+                    "file": f.file,
+                    "extra": list(f.extra),
+                    "missing": list(f.missing),
+                    "instruction": f.instruction,
+                }
+                for f in drift
+            ]
 
         # Issue #95: capture each correction step's outputs in its own variable
         # so the analyzer's classification/analysis_summary survive past the
