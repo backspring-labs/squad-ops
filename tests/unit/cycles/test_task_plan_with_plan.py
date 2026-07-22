@@ -155,6 +155,26 @@ class TestGenerateTaskPlanWithManifest:
         assert by_agent["nat"] == [(1, 1)]  # strat
         assert by_agent["data"] == [(1, 1)]  # data
 
+    def test_qa_test_envelope_carries_implementation_surface_rc2(self):
+        """RC2 (pf-24): qa.test envelopes carry `implementation_artifacts` = every
+        development.develop task's source (backend + frontend), so a no-drift
+        correction can retarget the source under test instead of only re-emitting
+        the test file. Dev envelopes do NOT carry it — they own their source."""
+        manifest = ImplementationPlan.from_yaml(MANIFEST_YAML)
+        envelopes = generate_task_plan(_make_cycle(), _make_run(), _make_profile(), plan=manifest)
+
+        qa = [e for e in envelopes if e.task_type == "qa.test"]
+        assert len(qa) == 1
+        assert qa[0].inputs["implementation_artifacts"] == [
+            "backend/models.py",
+            "backend/main.py",
+            "frontend/App.jsx",
+        ]
+
+        dev = [e for e in envelopes if e.task_type == "development.develop"]
+        assert dev  # sanity: dev build tasks exist in this manifest
+        assert all("implementation_artifacts" not in e.inputs for e in dev)
+
     def test_without_manifest_produces_static_steps(self):
         cycle = _make_cycle()
         run = _make_run()
