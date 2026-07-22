@@ -194,6 +194,44 @@ class TestArtifactContentsPreResolution:
         # First two fit (256+256=512), third would exceed limit
         assert len(contents) == 2
 
+    async def test_repair_patch_wins_over_original_on_filename_collision(self, executor):
+        """RC3 (pf-23): when stored_artifacts accumulates a correction repair's
+        patched file AFTER the original (same filename), re-resolution returns the
+        PATCH — not the stale original. This is the property the correction loop
+        relies on after the RC3 fix: re-resolving artifact_contents from the live
+        stored_artifacts hands the drift detector the accumulated fix, so it stops
+        re-reporting drift the prior attempt already corrected. Note the repair's
+        producing_task_type (development.correction_repair) is NOT in the qa.test
+        by_producing_task list — it survives only via by_type=source."""
+        ref_orig = _make_artifact_ref(
+            "art_001",
+            "backend/models.py",
+            "source",
+            producing_task_type="development.develop",
+        )
+        ref_patch = _make_artifact_ref(
+            "art_002",
+            "backend/models.py",
+            "source",
+            producing_task_type="development.correction_repair",
+        )
+        # Append order: original dev output first, repair patch last (as the
+        # executor accumulates them across attempts).
+        stored = [("art_001", ref_orig), ("art_002", ref_patch)]
+        executor._artifact_vault.retrieve = AsyncMock(
+            side_effect=[
+                (ref_orig, b"class RunEvent:\n    pace: str\n"),
+                (ref_patch, b"class RunEvent:\n    pace_target: str\n"),
+            ]
+        )
+
+        contents = await executor._resolve_artifact_contents("qa.test", stored)
+
+        # Last-wins: the repair's patched content supersedes the original.
+        assert contents["backend/models.py"] == "class RunEvent:\n    pace_target: str\n"
+        assert "pace_target" in contents["backend/models.py"]
+        assert "    pace:" not in contents["backend/models.py"]
+
 
 class TestProducingTaskTypeMetadata:
     async def test_store_artifact_includes_producing_task_type(self, executor):

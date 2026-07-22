@@ -1805,11 +1805,21 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             profile=profile,
             flow_run_id=flow_run_id,
             interface_manifest=interface_manifest,
-            # The materialized workspace (path -> content) rides on the enriched
-            # envelope (#456); the drift detector parses model/route files from it.
+            # RC3 (pf-23): re-resolve the workspace from the LIVE stored_artifacts
+            # instead of the enriched envelope's copy captured once at the original
+            # dispatch. stored_artifacts accumulates each attempt's repair outputs
+            # (appended last → last-wins on filename), so re-resolving hands the
+            # drift detector + repair analysis the ACCUMULATED patches. Reading the
+            # stale enriched copy made the deterministic drift detector re-report
+            # already-fixed drift every attempt, so the loop re-targeted the fixed
+            # file and never converged. Fall back to the enriched copy for task
+            # types with no build-artifact filter (non-build corrections unchanged).
             artifact_contents=(
-                (enriched_envelope.inputs if enriched_envelope is not None else {}) or {}
-            ).get("artifact_contents"),
+                await self._resolve_artifact_contents(envelope.task_type, stored_artifacts)
+                or ((enriched_envelope.inputs if enriched_envelope is not None else {}) or {}).get(
+                    "artifact_contents"
+                )
+            ),
         )
         correction_path = protocol.correction_path
 
