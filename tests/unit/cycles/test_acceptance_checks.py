@@ -343,6 +343,124 @@ class TestFieldPresent:
 
 
 # ---------------------------------------------------------------------------
+# function_defined
+# ---------------------------------------------------------------------------
+
+
+_TEST_SUITE_SOURCE = """
+import pytest
+
+
+def test_create():
+    assert True
+
+
+def test_list():
+    assert True
+
+
+async def test_async_flow():
+    assert True
+
+
+class TestDetail:
+    def test_detail_view(self):
+        assert True
+
+    def helper_setup(self):
+        return 1
+
+
+def build_app():
+    return None
+"""
+
+
+class TestFunctionDefined:
+    @pytest.fixture
+    def suite_workspace(self, tmp_path):
+        (tmp_path / "test_runs.py").write_text(_TEST_SUITE_SOURCE)
+        return tmp_path
+
+    async def test_meets_min_count_passed(self, suite_workspace):
+        # 4 `test_` functions: two top-level, one async, one method.
+        result = await get_check("function_defined").evaluate(
+            {"file": "test_runs.py", "name_prefix": "test_", "min_count": 3},
+            suite_workspace,
+            stack="python",
+        )
+        assert result.status == "passed"
+        assert result.actual["matched_count"] == 4
+
+    async def test_below_min_count_failed_and_counts_methods_and_async(self, suite_workspace):
+        # Proves async defs and class methods are counted: the matched list is
+        # exactly the four `test_` names, but the min of 5 is unmet.
+        result = await get_check("function_defined").evaluate(
+            {"file": "test_runs.py", "name_prefix": "test_", "min_count": 5},
+            suite_workspace,
+            stack="python",
+        )
+        assert result.status == "failed"
+        assert result.reason == "function_count_below_minimum"
+        assert result.actual["matched"] == [
+            "test_async_flow",
+            "test_create",
+            "test_detail_view",
+            "test_list",
+        ]
+        assert result.actual["matched_count"] == 4
+        assert result.actual["min_count"] == 5
+
+    async def test_default_min_count_is_one(self, suite_workspace):
+        # No min_count → 1; a single matching def satisfies it.
+        result = await get_check("function_defined").evaluate(
+            {"file": "test_runs.py", "name_prefix": "build_"},
+            suite_workspace,
+            stack="python",
+        )
+        assert result.status == "passed"
+        assert result.actual["matched_count"] == 1
+
+    async def test_nonmatching_prefix_failed(self, suite_workspace):
+        # Prefix specificity: `helper_setup` must NOT match `test_`, and a
+        # prefix that matches nothing fails rather than erroring.
+        result = await get_check("function_defined").evaluate(
+            {"file": "test_runs.py", "name_prefix": "spec_", "min_count": 1},
+            suite_workspace,
+            stack="python",
+        )
+        assert result.status == "failed"
+        assert result.actual["matched_count"] == 0
+
+    async def test_file_not_found_failed(self, suite_workspace):
+        result = await get_check("function_defined").evaluate(
+            {"file": "missing.py", "name_prefix": "test_"},
+            suite_workspace,
+            stack="python",
+        )
+        assert result.status == "failed"
+        assert result.reason == "file_not_found"
+
+    async def test_syntax_error_is_error(self, tmp_path):
+        (tmp_path / "broken.py").write_text("def test_x(:\n    pass\n")
+        result = await get_check("function_defined").evaluate(
+            {"file": "broken.py", "name_prefix": "test_"},
+            tmp_path,
+            stack="python",
+        )
+        assert result.status == "error"
+        assert result.reason == "parse_failed"
+
+    async def test_stack_unset_skipped(self, suite_workspace):
+        result = await get_check("function_defined").evaluate(
+            {"file": "test_runs.py", "name_prefix": "test_"},
+            suite_workspace,
+            stack=None,
+        )
+        assert result.status == "skipped"
+
+
+# ---------------------------------------------------------------------------
 # regex_match
 # ---------------------------------------------------------------------------
 
@@ -680,6 +798,7 @@ class TestSafeResolve:
         ("endpoint_defined", {"file": "../escape.py", "methods_paths": ["GET /x"]}),
         ("import_present", {"file": "../escape.py", "module": "json"}),
         ("field_present", {"file": "../escape.py", "class_name": "X", "fields": ["a"]}),
+        ("function_defined", {"file": "../escape.py", "name_prefix": "test_"}),
         ("regex_match", {"file": "../escape.py", "pattern": "x"}),
     ],
 )
@@ -696,6 +815,7 @@ async def test_path_traversal_all_path_checks_error(check_name, params, tmp_path
         ("endpoint_defined", {"file": "/etc/passwd", "methods_paths": ["GET /x"]}),
         ("import_present", {"file": "/etc/passwd", "module": "json"}),
         ("field_present", {"file": "/etc/passwd", "class_name": "X", "fields": ["a"]}),
+        ("function_defined", {"file": "/etc/passwd", "name_prefix": "test_"}),
         ("regex_match", {"file": "/etc/passwd", "pattern": "x"}),
     ],
 )

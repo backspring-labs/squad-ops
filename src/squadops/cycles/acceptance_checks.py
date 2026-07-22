@@ -472,6 +472,65 @@ class FieldPresentCheck(BaseCheck):
         return CheckOutcome.passed(class_name=target_class, declared=sorted(declared))
 
 
+def _defined_function_names(tree: ast.AST) -> list[str]:
+    """Names of every ``def``/``async def`` in the tree — top-level, methods,
+    and nested. The AST answer to 'what functions does this file define'."""
+    return [
+        node.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+    ]
+
+
+@register_check("function_defined")
+class FunctionDefinedCheck(BaseCheck):
+    """Function-definition count by name prefix — Python AST, style-immune.
+
+    The sanctioned answer to 'this source file defines functions named X'
+    (e.g. pytest ``test_*``): it matches the real ``def`` name via the AST, so
+    it never prescribes another roll's wording the way a #464 source regex does.
+    """
+
+    async def evaluate(
+        self,
+        params: dict[str, Any],
+        workspace_root: Path,
+        *,
+        stack: str | None = None,
+    ) -> CheckOutcome:
+        if stack is None:
+            return _skip_unsupported_stack()
+        try:
+            file_path = _safe_resolve(params["file"], workspace_root)
+        except _SafetyError as exc:
+            return CheckOutcome.error(reason=exc.reason)
+        if not file_path.is_file():
+            return CheckOutcome.failed(reason="file_not_found", file=str(params["file"]))
+        try:
+            source = file_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return CheckOutcome.error(reason="file_unreadable")
+        try:
+            tree = ast.parse(source, filename=str(file_path))
+        except SyntaxError:
+            return CheckOutcome.error(reason="parse_failed")
+
+        name_prefix = params["name_prefix"]
+        min_count = int(params.get("min_count", 1))
+        matched = [n for n in _defined_function_names(tree) if n.startswith(name_prefix)]
+        if len(matched) >= min_count:
+            return CheckOutcome.passed(
+                name_prefix=name_prefix, matched_count=len(matched), min_count=min_count
+            )
+        return CheckOutcome.failed(
+            reason="function_count_below_minimum",
+            name_prefix=name_prefix,
+            matched=sorted(matched),
+            matched_count=len(matched),
+            min_count=min_count,
+        )
+
+
 @register_check("regex_match")
 class RegexMatchCheck(BaseCheck):
     """Regex match count — stack-agnostic, size-bounded against ReDoS surface."""

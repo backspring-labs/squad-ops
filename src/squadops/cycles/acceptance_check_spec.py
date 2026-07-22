@@ -155,8 +155,9 @@ def argv_matches_safelist(argv: list[str]) -> bool:
 # source files prescribe another roll's stylistic choices (quote style,
 # identifier names) and have twice produced criteria unwinnable by correct
 # code; source files are verifiable by the style-immune checks
-# (endpoint_defined / import_present / command_exit_zero) and the
-# behavioral required checks (tests_pass / frontend_build).
+# (endpoint_defined / import_present / field_present / function_defined /
+# command_exit_zero) and the behavioral required checks (tests_pass /
+# frontend_build).
 REGEX_DOCUMENT_SUFFIXES: tuple[str, ...] = (".md", ".txt", ".rst")
 
 
@@ -203,6 +204,25 @@ CHECK_SPECS: dict[str, CheckSpec] = {
         path_params=frozenset({"file"}),
         example={"file": "app/models.py", "class_name": "RunEvent", "fields": ["id", "title"]},
     ),
+    "function_defined": CheckSpec(
+        name="function_defined",
+        required_params=frozenset({"file", "name_prefix"}),
+        optional_params=frozenset({"min_count"}),
+        param_types={"file": str, "name_prefix": str, "min_count": int},
+        supported_stacks=frozenset({"python"}),
+        requires_stack_context=True,
+        path_params=frozenset({"file"}),
+        example={"file": "backend/tests/test_runs.py", "name_prefix": "test_", "min_count": 3},
+        # The style-immune answer to "this file defines test functions" — the
+        # intent that otherwise tempts a proposer into a #464 regex on a source
+        # file. AST-based: a prefix on the real function name, not a text regex.
+        notes=(
+            "AST-based, style-immune: counts `def`/`async def` whose name starts "
+            "with `name_prefix` (default `min_count` 1). Use this — NOT "
+            "regex_match — to assert a source file defines functions such as "
+            "pytest `test_*`."
+        ),
+    ),
     "regex_match": CheckSpec(
         name="regex_match",
         required_params=frozenset({"file", "pattern"}),
@@ -217,6 +237,11 @@ CHECK_SPECS: dict[str, CheckSpec] = {
         # The example targets a DOCUMENT on purpose (#464): regex on source
         # files is rejected at plan validation — teach the allowed shape.
         example={"file": "qa_handoff.md", "pattern": r"## How to \w+", "count_min": 2},
+        notes=(
+            "Documents only (.md/.txt/.rst) — a regex on a SOURCE file is "
+            "rejected at plan validation (#464). To assert a source file defines "
+            "functions (e.g. pytest `test_*`), use `function_defined` instead."
+        ),
     ),
     "count_at_least": CheckSpec(
         name="count_at_least",
