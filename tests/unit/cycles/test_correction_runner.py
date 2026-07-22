@@ -1926,16 +1926,20 @@ class TestReexecuteRepairedSuite:
 
 
 class TestResolveRepairTarget:
-    """#531: a patch-path repair must target the DRIFTED SOURCE (from the
-    deterministic interface-drift evidence), not the failed check's own task —
-    otherwise a tests_pass failure caused by drifted models.py gets 'repaired'
-    by regenerating the tests, and the loop never converges."""
+    """#531/#532: a patch-path repair must include the DRIFTED SOURCE (from the
+    deterministic interface-drift evidence) so a tests_pass failure caused by
+    drifted models.py isn't 'repaired' by regenerating the tests. pf-21 refined
+    this to a UNION: the failing check's own artifact can carry an independent bug
+    (a broken pytest fixture) alongside drift, so it must be targeted too — else
+    the loop re-patches already-fixed source forever and never converges."""
 
-    def test_drift_retargets_to_drifted_source_not_the_tests(self):
-        """Replay of pf-19 (cyc_3632da190fd2): tests_pass failed because
-        backend/models.py drifted (notes/pace vs route_notes/pace_target) and
-        main.py added GET /. The failed task is the qa pytest suite, but the
-        repair must target the drifted source files."""
+    def test_drift_unions_drifted_source_with_the_failing_artifacts(self):
+        """Replay of pf-19 (cyc_3632da190fd2) + pf-21 (cyc_2aac58b9f03d):
+        tests_pass failed with backend/models.py drifted (notes/pace vs
+        route_notes/pace_target) and main.py adding GET /. The drifted source
+        MUST be in the target (the #531/#532 win), AND — because the failing test
+        file can have its own bug (pf-21's client fixture) — the failed task's
+        artifacts are unioned in, drift first."""
         from adapters.cycles.correction_runner import _resolve_repair_target
 
         failure_evidence = {
@@ -1964,14 +1968,35 @@ class TestResolveRepairTarget:
         }
         artifacts, focus, description = _resolve_repair_target(failure_evidence, failed_inputs)
 
-        assert artifacts == ["backend/main.py", "backend/models.py"]
-        assert "tests/test_runs.py" not in artifacts
-        assert "tests/test_participants.py" not in artifacts
+        # Drift files first (the cause, #531/#532 win — always fixable, no masking),
+        # then the failing task's own artifacts (pf-21: their own bug is fixable too).
+        assert artifacts == [
+            "backend/main.py",
+            "backend/models.py",
+            "tests/test_runs.py",
+            "tests/test_participants.py",
+        ]
+        assert "backend/models.py" in artifacts  # drifted source is targeted
+        assert "tests/test_runs.py" in artifacts  # failing artifact's own bug is fixable
+        assert artifacts.index("backend/models.py") < artifacts.index("tests/test_runs.py")
         # No inline prompt content is authored here (#448): the "how" is the managed
-        # drift instruction surfaced in the failure summary, so focus/description stay
-        # unset — the named source artifacts + that instruction do the redirect.
+        # drift instruction + failure summary, so focus/description stay unset.
         assert focus is None
         assert description is None
+
+    def test_drift_dedups_when_failing_artifact_is_also_drifted(self):
+        """If the failing check's artifact IS one of the drifted files, it appears
+        once — no duplicate target entry."""
+        from adapters.cycles.correction_runner import _resolve_repair_target
+
+        evidence = {
+            "interface_drift": [
+                {"file": "backend/models.py", "instruction": "fix fields"},
+            ],
+        }
+        failed_inputs = {"expected_artifacts": ["backend/models.py"]}
+        artifacts, _, _ = _resolve_repair_target(evidence, failed_inputs)
+        assert artifacts == ["backend/models.py"]
 
     def test_no_drift_falls_back_to_failed_task_artifacts(self):
         """Absent interface drift, the target is byte-identical to today —
