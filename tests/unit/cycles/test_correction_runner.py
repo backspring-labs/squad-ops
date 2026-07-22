@@ -2015,6 +2015,106 @@ class TestResolveRepairTarget:
         assert focus == "QA handoff"
         assert description == "Assemble the handoff doc"
 
+    def test_no_drift_qa_test_retargets_package_scoped_source(self):
+        """RC2 (pf-24): a no-drift qa.test failure (a behavioral bug whose fix lives
+        in the source under test, not the test file) unions the failing test artifact
+        with the plan's implementation source that shares its top-level package —
+        reaching backend/main.py (the /api-prefix fix) while excluding frontend."""
+        from adapters.cycles.correction_runner import _resolve_repair_target
+
+        failed_inputs = {
+            "expected_artifacts": ["backend/tests/test_runs.py"],
+            "implementation_artifacts": [
+                "backend/models.py",
+                "backend/routes.py",
+                "backend/main.py",
+                "frontend/src/App.jsx",
+            ],
+            "subtask_focus": "Backend pytest suite",
+            "subtask_description": "Run the backend suite",
+        }
+        # No interface drift → the RC2 branch.
+        artifacts, focus, description = _resolve_repair_target(
+            {"validation_result": {"summary": "tests_pass exit 1; /api/runs 404"}},
+            failed_inputs,
+        )
+
+        assert artifacts == [
+            "backend/tests/test_runs.py",
+            "backend/models.py",
+            "backend/routes.py",
+            "backend/main.py",
+        ]
+        assert "backend/main.py" in artifacts  # the /api-prefix fix is now reachable
+        assert "frontend/src/App.jsx" not in artifacts  # package-scoped: no cross-package regen
+        assert focus == "Backend pytest suite"
+        assert description == "Run the backend suite"
+
+    def test_no_drift_without_surface_is_byte_identical(self):
+        """Backward-compat: no implementation_artifacts key → target is exactly the
+        failed task's own artifacts (the pre-RC2 #531 behavior)."""
+        from adapters.cycles.correction_runner import _resolve_repair_target
+
+        failed_inputs = {
+            "expected_artifacts": ["backend/tests/test_runs.py"],
+            "subtask_focus": "suite",
+            "subtask_description": "run suite",
+        }
+        artifacts, focus, description = _resolve_repair_target(
+            {"validation_result": {"summary": "tests_pass exit 1"}}, failed_inputs
+        )
+        assert artifacts == ["backend/tests/test_runs.py"]
+        assert focus == "suite"
+        assert description == "run suite"
+
+    def test_no_drift_frontend_failure_scopes_to_frontend_only(self):
+        """Package-scoping is symmetric: a frontend test failure retargets frontend
+        source and leaves backend untouched (blast-radius containment both ways)."""
+        from adapters.cycles.correction_runner import _resolve_repair_target
+
+        failed_inputs = {
+            "expected_artifacts": ["frontend/src/tests/flows.test.jsx"],
+            "implementation_artifacts": [
+                "backend/main.py",
+                "frontend/src/App.jsx",
+                "frontend/src/api.js",
+            ],
+        }
+        artifacts, _, _ = _resolve_repair_target({}, failed_inputs)
+        assert artifacts == [
+            "frontend/src/tests/flows.test.jsx",
+            "frontend/src/App.jsx",
+            "frontend/src/api.js",
+        ]
+        assert "backend/main.py" not in artifacts
+
+    def test_drift_present_ignores_implementation_surface(self):
+        """When interface drift IS present the drift-union branch wins and the
+        implementation surface is not added — the drift path stays byte-identical."""
+        from adapters.cycles.correction_runner import _resolve_repair_target
+
+        evidence = {"interface_drift": [{"file": "backend/models.py", "instruction": "fix fields"}]}
+        failed_inputs = {
+            "expected_artifacts": ["backend/tests/test_runs.py"],
+            "implementation_artifacts": ["backend/routes.py", "frontend/src/App.jsx"],
+        }
+        artifacts, focus, _ = _resolve_repair_target(evidence, failed_inputs)
+        assert artifacts == ["backend/models.py", "backend/tests/test_runs.py"]
+        assert "backend/routes.py" not in artifacts  # surface NOT added on the drift path
+        assert focus is None  # drift path leaves focus/description unset (#448)
+
+    def test_no_drift_scoped_source_dedups_against_failed_artifact(self):
+        """If a surface file is also a failed artifact it appears once, failed
+        artifact first (order preserved)."""
+        from adapters.cycles.correction_runner import _resolve_repair_target
+
+        failed_inputs = {
+            "expected_artifacts": ["backend/main.py"],
+            "implementation_artifacts": ["backend/main.py", "backend/routes.py"],
+        }
+        artifacts, _, _ = _resolve_repair_target({}, failed_inputs)
+        assert artifacts == ["backend/main.py", "backend/routes.py"]
+
     @pytest.mark.parametrize(
         "evidence",
         [

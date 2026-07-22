@@ -46,6 +46,29 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _top_level_package(path: str) -> str:
+    """First path segment of a repo-relative artifact path.
+
+    ``backend/tests/x.py`` → ``backend``; a bare filename is its own package.
+    """
+    head, _, _ = str(path).strip().lstrip("./").partition("/")
+    return head
+
+
+def _scope_to_shared_packages(candidates: list[str], anchors: list[str]) -> list[str]:
+    """Keep ``candidates`` whose top-level package matches some ``anchor``'s.
+
+    RC2 (pf-24) blast-radius control: a failing ``backend/tests/…`` test retargets
+    ``backend/…`` source but leaves ``frontend/…`` untouched, so a backend failure
+    can never regress frontend source. No anchors → nothing (the caller falls back
+    to the failed artifacts alone).
+    """
+    anchor_pkgs = {_top_level_package(a) for a in anchors if a}
+    if not anchor_pkgs:
+        return []
+    return [c for c in candidates if c and _top_level_package(c) in anchor_pkgs]
+
+
 def _resolve_repair_target(
     failure_evidence: Any, failed_inputs: dict[str, Any]
 ) -> tuple[list[str], str | None, str | None]:
@@ -66,7 +89,19 @@ def _resolve_repair_target(
     when drift is present, target the UNION (drift files first, then the failed
     task's artifacts): the drifted source is always in the set (no masking — the
     cause is always fixable, the #531/#532 win holds), and the failing artifact's
-    own bug is fixable too. No drift → today's failed-task anchor, byte-identical.
+    own bug is fixable too.
+
+    pf-24 (cyc_38415226ad82) — RC2: a ``tests_pass``/probe failure with NO interface
+    drift (a behavioral/runtime bug — there a missing ``/api`` router prefix in
+    main.py) has its fix in the *source under test*, which the failing qa.test does
+    NOT own (its artifacts are the test files). Anchoring on the failed task then
+    edits only the test and the loop exhausts. So with no drift, extend the target
+    with the plan's implementation source (``implementation_artifacts``, threaded
+    onto qa.test envelopes by task_plan) that shares a top-level package with a
+    failing artifact — ``backend/tests/*`` failure → ``backend/*`` source, never
+    ``frontend/*`` (package-scoping bounds the blast radius). Absent that surface
+    (author mode, non-build corrections) the target is byte-identical to the #531
+    fallback below.
     """
     drift = failure_evidence.get("interface_drift") if isinstance(failure_evidence, dict) else None
     drift_files = sorted(
@@ -83,8 +118,16 @@ def _resolve_repair_target(
         # redirect the repair onto both the drifted source and the failing file.
         target = list(dict.fromkeys([*drift_files, *failed_artifacts]))
         return (target, None, None)
+    # RC2 no-drift path: union the failing task's own artifacts with the
+    # package-scoped implementation surface so a behavioral failure can reach the
+    # source under test. Empty surface → byte-identical to the #531 fallback
+    # (failed_artifacts, focus, description).
+    scoped_source = _scope_to_shared_packages(
+        failed_inputs.get("implementation_artifacts", []) or [], failed_artifacts
+    )
+    target = list(dict.fromkeys([*failed_artifacts, *scoped_source]))
     return (
-        failed_artifacts,
+        target,
         failed_inputs.get("subtask_focus"),
         failed_inputs.get("subtask_description"),
     )

@@ -463,6 +463,19 @@ def generate_task_plan(
     lane_totals = Counter(r.agent_id for r in step_resolutions)
     lane_seen: dict[str, int] = {}
 
+    # RC2 (pf-24): the plan's implementation source surface — every
+    # development.develop task's expected_artifacts. Threaded onto qa.test envelopes
+    # (below) so a no-drift qa.test correction can retarget the source under test
+    # (package-scoped in _resolve_repair_target) instead of only re-emitting the
+    # test file, which orphaned the buggy source (missing /api prefix in main.py)
+    # and exhausted the loop. A static plan fact, computed once.
+    implementation_artifacts = [
+        artifact
+        for s in steps
+        if not isinstance(s, tuple) and getattr(s, "task_type", None) == "development.develop"
+        for artifact in (getattr(s, "expected_artifacts", None) or [])
+    ]
+
     for step_index, step in enumerate(steps):
         # Steps are either (task_type, role) tuples or PlanTask objects
         if isinstance(step, tuple):
@@ -522,6 +535,12 @@ def generate_task_plan(
             inputs["subtask_description"] = plan_task.description
             inputs["expected_artifacts"] = plan_task.expected_artifacts
             inputs["subtask_index"] = plan_task.task_index
+            # RC2: only qa.test failures need the source-under-test surface — their
+            # own artifacts are the test files, so a no-drift correction must reach
+            # past them to the dev source. Dev tasks already own their source
+            # artifact, so omitting the key keeps their corrections byte-identical.
+            if task_type == "qa.test":
+                inputs["implementation_artifacts"] = implementation_artifacts
             acceptance = list(plan_task.acceptance_criteria)
             # SIP-0098 98.3: in bind mode, resolve the task's criteria_refs into
             # TypedChecks (stamped with contract ids) and merge them in. The plan
