@@ -399,10 +399,11 @@ class VerificationContract:
                 )
                 lines.append(f"- {ff.path}: bind {pairs}")
             else:
-                lines.append(
-                    f"- {ff.path}: contract-owned (no per-file typed criteria); "
-                    f"do not author your own for this file"
-                )
+                # Data only: label the file contract-owned. The "leave criteria_refs
+                # empty, never a placeholder" instruction lives in the managed proposer
+                # asset (request.plan_bind_criteria_appendix), which references this exact
+                # label — no instruction prose in Python (CLAUDE.md #448).
+                lines.append(f"- {ff.path}: contract-owned (no per-file typed criteria)")
         return lines
 
     # --- linting ---------------------------------------------------------- #

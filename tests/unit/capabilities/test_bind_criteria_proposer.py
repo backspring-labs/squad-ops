@@ -72,9 +72,47 @@ def test_criteria_index_lines_lists_ids_for_covered_files():
     assert lines == [
         "- backend/routes.py: bind vc-routes-endpoints (endpoint_defined), "
         "vc-routes-apierror (import_present)",
-        "- frontend/src/views/ListView.jsx: contract-owned (no per-file typed criteria); "
-        "do not author your own for this file",
+        "- frontend/src/views/ListView.jsx: contract-owned (no per-file typed criteria)",
     ]
+
+
+async def test_bind_appendix_teaches_empty_criteria_refs_and_has_no_placeholder_example():
+    """pf-25 regression: the rendered bind appendix must tell the proposer to leave
+    criteria_refs EMPTY for a contract-owned file, and its example must NOT model an
+    angle-bracket placeholder inside criteria_refs. Neo mimicked the old
+    ``["<the ids...>"]`` example into ``["<contract-owned; no per-file typed criteria>"]``
+    for the frontend views, which failed plan validation and killed the cycle at framing."""
+    from pathlib import Path
+
+    from adapters.prompts.filesystem_asset_adapter import FilesystemPromptAssetAdapter
+    from squadops.prompts.renderer import RequestTemplateRenderer
+
+    templates_dir = (
+        Path(__file__).parent.parent.parent.parent
+        / "src"
+        / "squadops"
+        / "prompts"
+        / "request_templates"
+    )
+    source = FilesystemPromptAssetAdapter(
+        fragments_path=templates_dir.parent / "fragments",
+        templates_path=templates_dir,
+    )
+    rendered = await RequestTemplateRenderer(source).render(
+        "request.plan_bind_criteria_appendix",
+        {
+            "criteria_index": "- frontend/src/views/ListView.jsx: contract-owned (no per-file typed criteria)"
+        },
+    )
+    body = rendered.content
+
+    # Teaches the empty-refs convention for contract-owned files.
+    assert "EMPTY" in body
+    assert "criteria_refs: []" in body  # the corrective example is present
+    # Real ids modeled for a covered file (not a placeholder token).
+    assert "vc-routes-endpoints" in body
+    # The angle-bracket-in-a-list pattern Neo copied must be gone.
+    assert '["<' not in body
 
 
 # --------------------------------------------------------------------------- #
