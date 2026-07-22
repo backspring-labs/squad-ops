@@ -321,8 +321,9 @@ class ImplementationPlan:
             f"Task {task.task_index} ({task.focus}): regex_match on source "
             f"file {target!r} — regex criteria are allowed only on document "
             "artifacts (.md/.txt/.rst); verify source files with "
-            "endpoint_defined/import_present/command_exit_zero or the "
-            "behavioral checks (#464)"
+            "endpoint_defined/import_present/function_defined/command_exit_zero "
+            "or the behavioral checks. To assert a file defines functions "
+            "(e.g. pytest test_*), use function_defined (#464)"
         )
 
     def validate_criteria_scope(self) -> list[str]:
