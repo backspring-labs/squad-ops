@@ -1,6 +1,6 @@
 ---
 template_id: request.plan_bind_criteria_appendix
-version: "1"
+version: "2"
 required_variables:
   - criteria_index
 optional_variables: []
@@ -24,17 +24,34 @@ contract's are authoritative and yours would be rejected at plan validation. Pro
 
 {{criteria_index}}
 
-Example task shape (YAML):
+A file the index marks **"contract-owned (no per-file typed criteria)"** has nothing to
+bind: leave that task's `criteria_refs` **empty** (`criteria_refs: []`, or omit the field
+entirely) — never copy the description into it, invent an id, or write any placeholder
+string. Any `criteria_refs` entry that is not a real contract criterion id from the index
+above is rejected at plan validation.
+
+Example task shapes (YAML):
 
 ```yaml
+# Contract-covered file → bind its listed criterion ids, exactly (use the real ids, not a placeholder):
 - task_type: development.develop
   role: dev
   focus: "Implement the API routes"
   description: "Fill the route bodies in backend/routes.py."
   expected_artifacts: ["backend/routes.py"]
-  criteria_refs: ["<the ids listed for backend/routes.py above>"]
+  criteria_refs: ["vc-routes-endpoints", "vc-routes-apierror"]
   acceptance_criteria:
     - "Endpoints behave per the PRD's happy-path and error cases."   # prose is fine
+
+# Contract-owned file (index says "no per-file typed criteria") → criteria_refs EMPTY:
+- task_type: development.develop
+  role: dev
+  focus: "Build the runs list view"
+  description: "Render the runs list in frontend/src/views/RunsListView.jsx."
+  expected_artifacts: ["frontend/src/views/RunsListView.jsx"]
+  criteria_refs: []            # nothing to bind — NEVER a placeholder string
+  acceptance_criteria:
+    - "List renders each run with its title and date."   # prose is fine
 ```
 
 Bind completely: a covered file that reaches the plan without all of its contract
