@@ -56,23 +56,35 @@ def _resolve_repair_target(
     the tests (the symptom) while the drifted source (the cause) is never rewritten
     and the loop can't converge. When the correction carries deterministic
     interface-drift evidence (an AST diff, not the free-text ``affected_task_types``),
-    the drifted files ARE the target: retarget so the dev repair rewrites the source.
-    No drift → today's failed-task anchor, byte-identical.
+    the drifted files ARE part of the target so the dev repair rewrites the source.
+
+    pf-21 (cyc_2aac58b9f03d): drift is not always the *whole* story — the failing
+    check's OWN artifact can carry an independent bug too (there: models.py drift
+    AND a broken pytest ``client`` fixture in the test file). #532 targeted the
+    drift files EXCLUSIVELY, orphaning that file so the loop re-patched already-fixed
+    source every attempt and never touched the real test bug → non-convergence. So
+    when drift is present, target the UNION (drift files first, then the failed
+    task's artifacts): the drifted source is always in the set (no masking — the
+    cause is always fixable, the #531/#532 win holds), and the failing artifact's
+    own bug is fixable too. No drift → today's failed-task anchor, byte-identical.
     """
     drift = failure_evidence.get("interface_drift") if isinstance(failure_evidence, dict) else None
     drift_files = sorted(
         {d["file"] for d in (drift or []) if isinstance(d, dict) and d.get("file")}
     )
+    failed_artifacts = failed_inputs.get("expected_artifacts", []) or []
     if drift_files:
-        # The target is pure data (the drifted file paths). The instructional "how"
+        # Union, drift first, de-duplicated preserving order. The instructional "how"
         # is NOT authored here — it is the interface-drift `instruction`, already a
         # managed/authored asset surfaced into the repair prompt's failure summary
-        # as the "INTERFACE CONFORMANCE" section. So focus/description are left unset
-        # (no inline prompt content — CLAUDE.md #448); the named artifacts + that
-        # instruction are what redirect the repair onto the source.
-        return (drift_files, None, None)
+        # as the "INTERFACE CONFORMANCE" section, plus the failure summary itself for
+        # the failing artifact's bug. So focus/description stay unset (no inline
+        # prompt content — CLAUDE.md #448); the named artifacts + that instruction
+        # redirect the repair onto both the drifted source and the failing file.
+        target = list(dict.fromkeys([*drift_files, *failed_artifacts]))
+        return (target, None, None)
     return (
-        failed_inputs.get("expected_artifacts", []),
+        failed_artifacts,
         failed_inputs.get("subtask_focus"),
         failed_inputs.get("subtask_description"),
     )
