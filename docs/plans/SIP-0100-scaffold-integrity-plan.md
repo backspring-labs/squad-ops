@@ -100,10 +100,39 @@ Ordered so ownership (0.2) precedes the checks that consume it (Review #18).
 | 2.3 | **Post-materialize integrity verify + system-fault handling (D4).** ✅ **PRIMITIVES DONE** — `verify_frozen_integrity(workspace, record)` returns the frozen paths whose bytes changed/vanished (empty = intact; non-empty = high-severity system fault); `restore_frozen_files(workspace, record)` rewrites them from the bound record's persisted bytes (D2 authority, never re-expand). The executor *calling* verify + stopping on fault is part of 2.4's wiring. | `patch_verification.py` | `test_materialize_unified.py` (clean → tamper-detected → restored; missing-file flagged) — green. |
 | 2.4 | **Executor wiring — enforcement is LIVE.** ✅ **DONE (restore-at-storage).** The executor builds the bound record once per scaffold-bound run (`_build_bound_record_for_run`, at the dispatch loop where `interface_manifest` lives) and, at the artifact-storage seam (`_collect_artifacts_and_checkpoint`, executor-level so no handler threading), `_enforce_frozen_ownership` **restores** any producer emission of a frozen path to the bound scaffold bytes (D2) — the pf-26 clobber can't land — recorded (not silent). Unbound/legacy runs → no-op (D3 parity, §10). **Deliberate decision:** *restore*, not response-atomic *reject*, is the first enforcement because the current squad still re-emits frozen files (pf-24/26), so reject would break every bind-mode build; restore is non-breaking + correct. The stricter reject + targeted correction (§4.6) + D3 hard-guard are gated on fill-only being enforced (§3.4). | `dispatched_flow_executor.py` | `test_sip0100_executor_enforcement.py` (frozen restore / conftest restore / bound-record build) — green; 3170 domain tests green. |
 
-## Phase 3 — Repair authority & evidence (SIP-0086 coordination)
+## Phase 3 — Authoring & repair authority & evidence (SIP-0086 coordination)
+
+### Validation finding (2026-07-23, `cyc_3baf018e839c`) — the plan-authoring↔scaffold-contract gap
+
+A live `validated-fullstack`×`lite` `group_run` roll (Phases 0–2 deployed and verified in-container)
+was cancelled at the `progress_plan_review` gate once the framing plan proved **pre-destined to fail
+convergence for a reason enforcement cannot fix**: the plan-author invents artifact paths with **no
+reference to the scaffold contract's fill slots**. For `fullstack_fastapi_react` the scaffold exposes
+exactly two writable slots — `backend/routes.py` and `frontend/src/views/<View>.jsx` (one per manifest
+route); **every other emitted path is frozen.** The framing plan (`run_c665e1773ef6`) instead targeted:
+
+| Plan target (dev task) | Scaffold reality | Result |
+|---|---|---|
+| `backend/main.py` ← `POST /runs` route + `endpoint_defined` check | **frozen**; docstring: *"Business routes live in routes.py"*; body is only `app.include_router(router)` | dev write restored by 2.4 → route lost; **and** the check fails against the *pristine* scaffold too (no `@post` in `main.py`) |
+| `backend/models.py` ← `CreateRunRequest` + `field_present` check | **frozen**, scaffold-owned | dev write restored → model lost → check fails |
+| `frontend/src/App.js`, `RunCreationForm.js`, `RunsList.js`, `components/*.tsx` | scaffold uses **`.jsx` under `src/views/`**; `App.jsx` is frozen | undeclared paths (wrong ext/dir) → never imported by the frozen `App.jsx` → `frontend_build` fails |
+| `backend/routes.py` — **the only backend fill slot** | endpoint stub (`@router.post("/runs")` → 501) awaiting a body | **never targeted** → stays a 501 stub; the app boots but does nothing |
+
+`total_qa_tasks: 0`, so `harness_boundary` (Phase 1) was not exercised either.
+
+**Root cause.** Phases 0–2 built the *enforcement* half of the SIP-0100 thesis (frozen files are
+protected; the harness import convention is bound). The *referencing* half — the plan-author consuming
+the bound scaffold contract so dev tasks **and their acceptance criteria** target the **fill slots** —
+was never built. Enforcement therefore correctly protects the interface while the plan fights it, and
+**bind-mode convergence is blocked regardless of enforcement quality.** This is the founding insight
+("assign the decision to the scaffold; everyone references it") applied one step earlier: 3.1–3.4
+govern *repair* write-authority; **3.5 governs *authoring* write-targets** — the same contract, one
+stage sooner. Until 3.5 lands, Phase 4.4 (a clean live bind-mode roll) is unreachable — a run cannot
+converge no matter how correct the enforcement is.
 
 | # | Task | Files | Notes |
 |---|------|-------|-------|
+| 3.5 | **Plan-authoring consumes the scaffold contract (2026-07-23 finding — gates 4.4).** Task-plan generation must **derive** each dev task's `expected_artifacts` and every acceptance criterion's `file:` from the bound scaffold contract's fill slots — endpoints → `routes.py`, views → `src/views/<View>.jsx` — never let the proposer invent them. Deterministic interface / LLM implementation (scaffold the interface deterministically; the LLM generates only the implementation): the proposer chooses *what* logic fills a slot, never *where*. Any per-slot authoring guidance to the proposer lives in a **prompt asset** (#448), not a py literal. | `cycles/task_plan.py` (already contract-aware since 1.1), `cycles/scaffold_contract.py` (fill-slot source), dev-task proposer prompt asset | acceptance: replay `cyc_3baf018e839c`'s objective and assert every dev-task target ∈ fill slots (0 frozen/undeclared targets); **this gates 4.4.** |
 | 3.1 | **QA-correction write scope (§4.4).** A QA-owned correction's `WriteGrant` authorizes only QA-owned slots. | `correction_runner.py` (`_resolve_repair_target` → produce a *grant*, not a hint), `dispatched_flow_executor.py` | fixes pf-26's QA-rewrites-`main.py`. |
 | 3.2 | **Delegation safeguards (Review #13).** Implementation-slot access requires an **explicit, path-bounded, single-correction** delegation issued by orchestration from the bound slot map; it can extend writable slots but **never** frozen paths, expires after one correction, and is recorded in evidence. | `correction_runner.py`, orchestration | delegation is not a broad escape hatch. |
 | 3.3 | **Evidence classes (0.5 codes).** Structured `scaffold_integrity`-family evidence: producer/stage, attempted+normalized path, bound identity, expected vs attempted hash, disposition, sibling retention, whether a targeted correction was re-requested. **Separate attempted-emission from post-write integrity fault from system restoration** (Review #10). | `run_completion.py` / evidence models | distinct reason codes → distinct corrective messages. |
@@ -127,10 +156,17 @@ Ordered so ownership (0.2) precedes the checks that consume it (Review #18).
 gates 2.2–2.4) → `Phase 3` (rides 2.x; 3.4 needs 0.4 characterization + loop-owner sign-off) → `Phase 4`.
 **No surface flips to "lifecycle-enforced" until Phase 2 (2.2+2.4) lands** (SIP-0100 §8). The riskiest
 change (3.4, SIP-0086 counters) is isolated behind Phase-0 characterization and the stable 2.x seam.
+**3.5 (plan-authoring targets fill slots) gates 4.4** — the 2026-07-23 validation (`cyc_3baf018e839c`)
+showed no bind-mode roll converges until authoring references the contract, so the clean-roll acceptance
+is blocked on it independent of the repair-authority tasks.
 
 ## Risks & open questions (reduced — most resolved by D1–D8)
 
 - **Chokepoint completeness** is the top risk; Task 0.1 is the mitigation (prove, don't assume).
+- **Authoring↔contract alignment (3.5, 2026-07-23 finding)** is a hard prerequisite for a converging
+  bind-mode roll: the plan-author currently invents targets (frozen files + undeclared paths) and never
+  targets the fill slots, so enforcement and authoring pull against each other. Enforcement quality does
+  not unblock convergence — 3.5 does.
 - **SIP-0086 coordination** (3.4): the compliance/implementation counter split needs the loop owner's
   sign-off; gated behind 0.4.
 - **Grant resolution point:** grants are resolved *before generation* from the bound slot map; if any
