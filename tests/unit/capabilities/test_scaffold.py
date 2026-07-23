@@ -424,3 +424,35 @@ def test_pf26_import_guess_fails_without_the_seeded_fixture(tmp_path):
     assert result.returncode != 0  # collection crashes, exactly like pf-26
     assert "ModuleNotFoundError" in result.stdout + result.stderr
     assert "app" in result.stdout + result.stderr  # the unresolvable `app` root
+
+
+# --------------------------------------------------------------------------- #
+# SIP-0100 Task 0.2 — QA test namespace (D1: bounded-hybrid ownership)
+# --------------------------------------------------------------------------- #
+
+
+def test_qa_test_namespace_is_deterministic_and_bounds_qa_paths():
+    """The QA test namespace is deterministic per stack (independent of manifest contents), and
+    membership is the write-authority boundary: plan-declared concrete test files fall inside it;
+    source files and undeclared top-level paths (the pf-26 shape) do not."""
+    from squadops.capabilities.scaffold import is_qa_test_path, qa_test_namespace
+
+    m = _group_run_manifest()
+    assert qa_test_namespace(m) == ("backend/tests/", "frontend/src/tests/")
+    assert qa_test_namespace(m) == qa_test_namespace(_group_run_manifest())  # deterministic
+
+    assert is_qa_test_path("backend/tests/test_runs.py", m)
+    assert is_qa_test_path("./frontend/src/tests/flows.test.jsx", m)  # normalized
+    assert not is_qa_test_path("backend/main.py", m)  # frozen source, not QA-owned
+    assert not is_qa_test_path("backend/routes.py", m)  # fill slot, not QA-owned
+    assert not is_qa_test_path("tests/test_runs.py", m)  # undeclared top-level tests dir
+
+
+def test_qa_test_namespace_rejects_unknown_stack():
+    from squadops.capabilities.scaffold import InterfaceManifest, qa_test_namespace
+
+    bad = InterfaceManifest.from_dict(
+        {"version": 1, "kind": "interface_manifest", "project_id": "x", "stack": "cobol_cics"}
+    )
+    with pytest.raises(ValueError, match="no scaffold expander"):
+        qa_test_namespace(bad)
