@@ -145,3 +145,39 @@ def frozen_restore_evidence(
         disposition=DISPOSITION_RESTORED,
         siblings_retained=siblings_retained,
     )
+
+
+def unauthorized_slot_evidence(
+    *,
+    producer_task_id: str,
+    producer_task_type: str,
+    record: BoundScaffoldRecord,
+    attempted_path: str,
+    normalized_path: str,
+    attempted_content: Any,
+    siblings_retained: int,
+    stage: str = "artifact_storage",
+) -> ScaffoldIntegrityEvidence:
+    """Build the evidence for the 3.1 case: a producer emitted a path that is writable *in
+    principle* but belongs to a **different** producer's slot (e.g. a QA task writing dev's
+    ``routes.py``). The enforcer **drops** the emission — the owning producer's version stays.
+
+    ``expected_sha256`` is ``None``: a fill slot has no canonical scaffold bytes to compare
+    against (its legitimate content is the owner's implementation, not a scaffold constant).
+    Only the attempted bytes are recorded, for forensics."""
+    return ScaffoldIntegrityEvidence(
+        producer_task_id=producer_task_id,
+        producer_task_type=producer_task_type,
+        stage=stage,
+        kind=KIND_ATTEMPTED_EMISSION,
+        violation_code=ContractComplianceViolation.UNAUTHORIZED_SLOT_EMISSION,
+        attempted_path=attempted_path,
+        normalized_path=normalized_path,
+        bound_run_id=record.run_id,
+        bound_attempt_id=record.attempt_id,
+        manifest_hash=record.manifest_hash,
+        expected_sha256=None,
+        attempted_sha256=sha256_of(attempted_content),
+        disposition=DISPOSITION_DROPPED,
+        siblings_retained=siblings_retained,
+    )

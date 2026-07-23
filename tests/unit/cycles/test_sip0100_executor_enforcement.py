@@ -74,6 +74,82 @@ def test_clean_response_yields_no_evidence():
     assert enforced[0]["content"] == "x = 1\n"
 
 
+# ---- 3.1: QA producers are scoped to the QA test namespace ----
+
+
+def test_qa_write_to_dev_fill_slot_is_dropped():
+    """3.1: a qa.test task rewriting dev's routes.py (the source under test) is DROPPED — the
+    owning producer's version stays. This is the pf-26 class one step past the frozen main.py."""
+    artifacts = [
+        {"name": "backend/tests/test_api.py", "content": "def test_x(): assert True\n"},
+        {"name": "backend/routes.py", "content": "def sneaky(): return 1\n"},
+    ]
+    enforced, evidence = DispatchedFlowExecutor._enforce_frozen_ownership(
+        object(), artifacts, _record(), _env("qa.test")
+    )
+    names = {a["name"] for a in enforced}
+    assert "backend/routes.py" not in names  # dropped
+    assert "backend/tests/test_api.py" in names  # QA's own test kept
+    assert len(evidence) == 1
+    ev = evidence[0]
+    assert ev.normalized_path == "backend/routes.py"
+    assert ev.violation_code == "unauthorized_slot_emission"
+    assert ev.disposition == "dropped"
+    assert ev.expected_sha256 is None  # a fill slot has no canonical scaffold bytes
+    assert ev.attempted_sha256 is not None
+    assert ev.siblings_retained == 1  # the test file passed through
+
+
+def test_qa_write_in_its_namespace_passes():
+    """A QA task writing its own tests is authorized — no evidence, content untouched."""
+    enforced, evidence = DispatchedFlowExecutor._enforce_frozen_ownership(
+        object(),
+        [{"name": "backend/tests/test_api.py", "content": "T = 1\n"}],
+        _record(),
+        _env("qa.test"),
+    )
+    assert evidence == []
+    assert enforced[0]["content"] == "T = 1\n"
+
+
+def test_qa_undeclared_deliverable_is_allowed():
+    """An undeclared path (a QA deliverable like test_report.md) is NOT dropped — we can't tell it
+    from a rogue file here, so leaving it be keeps QA's reports safe (undeclared-reject is 3.4)."""
+    enforced, evidence = DispatchedFlowExecutor._enforce_frozen_ownership(
+        object(),
+        [{"name": "test_report.md", "content": "# report\n"}],
+        _record(),
+        _env("qa.test"),
+    )
+    assert evidence == []
+    assert enforced[0]["content"] == "# report\n"
+
+
+def test_qa_write_to_frozen_is_still_restored():
+    """3.1 does not weaken 2.4: a QA emission of frozen main.py is still restored, not dropped."""
+    enforced, evidence = DispatchedFlowExecutor._enforce_frozen_ownership(
+        object(),
+        [{"name": "backend/main.py", "content": "TAMPER\n"}],
+        _record(),
+        _env("qa.test"),
+    )
+    assert "from .routes import router" in enforced[0]["content"]  # restored, not dropped
+    assert evidence[0].violation_code == "frozen_path_emission"
+    assert evidence[0].disposition == "restored"
+
+
+def test_dev_write_to_its_own_fill_slot_is_not_dropped():
+    """3.1 scopes QA only: a dev task writing dev's routes.py is legitimate and untouched."""
+    enforced, evidence = DispatchedFlowExecutor._enforce_frozen_ownership(
+        object(),
+        [{"name": "backend/routes.py", "content": "def real(): return 1\n"}],
+        _record(),
+        _env("development.develop"),
+    )
+    assert evidence == []
+    assert enforced[0]["content"] == "def real(): return 1\n"
+
+
 def test_build_bound_record_none_for_unbound_and_unscaffoldable():
     assert DispatchedFlowExecutor._build_bound_record_for_run(object(), None, "r") is None
     bad = InterfaceManifest.from_dict(
