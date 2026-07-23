@@ -119,6 +119,19 @@ Ordered so ownership (0.2) precedes the checks that consume it (Review #18).
 | 4.4 | **Live integration + enforcement trace** — ≥1 live bind-mode `group_run` completes with no package-root divergence and no frozen mutation, **and** a lightweight enforcement trace (ownership-record id, artifacts evaluated, grant id, integrity result) proves the seam actually ran (Review #22). "No violation" alone is weak if the seam might have been inactive. | one clean roll + trace present. |
 | 4.5 | **Legacy/unbound + no-regression** — unbound fill/repair retain current behavior; a bound flow lacking ownership fails binding (not partial enforcement); no caller silently omits authorization; capability/verification-contract/build-convergence suites green. | tests (Review #21). |
 
+> **Run 4.4 on `full` (27b), not `lite` (7b) — 2026-07-23 finding.** A `lite` validation
+> roll (`cyc_3baf018e839c`) produced a plan that missed every scaffold fill slot (`.js` flat
+> files, `backend/routes.py` never targeted, 0 qa tasks). This is **model capacity, not a
+> defect**: the `full` (27b) proposer that authored the prior rolls — including pf-26
+> (`cyc_af8800f8943f`) the day before — binds to the fill slots correctly (`backend/routes.py`
+> + `frontend/src/views/*.jsx`, right names/extensions, 2–3 qa tasks). So the enforcement-vs-
+> convergence acceptance is only meaningful on a squad that can author a *bindable* plan —
+> `full`. A `lite` roll can't reach the enforcement seam meaningfully and its failure says
+> nothing about restore-at-storage. *(Separate, out-of-scope robustness idea: deriving dev-task
+> targets deterministically from the fill slots — "scaffold the interface, don't trust the LLM
+> for structure" — would make weak models viable, but that belongs to the SIP-0098 proposer
+> chain, not this SIP.)*
+
 ---
 
 ## Sequencing & dependencies
