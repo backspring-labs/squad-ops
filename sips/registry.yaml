@@ -1,4 +1,4 @@
-last_assigned: 99
+last_assigned: 100
 sips:
 - sip_number: 3
   sip_uid: '17642554775787694'
@@ -891,3 +891,12 @@ sips:
   approver: jladd
   created_at: '2026-07-10T00:00:00Z'
   updated_at: '2026-07-16T21:41:07.013486Z'
+- sip_uid: null
+  sip_number: 100
+  title: Scaffolded Test Harness and Frozen-File Enforcement
+  path: sips/accepted/SIP-0100-Scaffolded-Test-Harness-and.md
+  status: accepted
+  author: jladd
+  approver: jladd
+  created_at: '2026-07-22T00:00:00Z'
+  updated_at: '2026-07-22T21:21:48.884957Z'
