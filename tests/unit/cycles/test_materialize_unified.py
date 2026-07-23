@@ -76,3 +76,49 @@ def test_path_safety_skips_absolute_and_escape(tmp_path):
     )
     assert r.written == ("ok.txt",)
     assert (tmp_path / "ok.txt").exists()
+
+
+# --------------------------------------------------------------------------- #
+# SIP-0100 Task 2.4 (D4) — post-write frozen-integrity verify + restore
+# --------------------------------------------------------------------------- #
+
+
+def _bound_record():
+    return build_bound_record(
+        InterfaceManifest.from_yaml(_MANIFEST.read_text()),
+        run_id="r",
+        attempt_id="a",
+        created_at="t",
+    )
+
+
+def test_verify_frozen_integrity_clean_then_detects_tamper_then_restores(tmp_path):
+    from squadops.cycles.patch_verification import (
+        restore_frozen_files,
+        verify_frozen_integrity,
+    )
+
+    record = _bound_record()
+    materialize([{"name": fa.path, "content": fa.content} for fa in record.frozen], tmp_path)
+
+    # Freshly materialized from the record → intact.
+    assert verify_frozen_integrity(tmp_path, record) == ()
+
+    # Tamper a frozen file (the pf-26 clobber) → detected as a fault.
+    (tmp_path / "backend" / "main.py").write_text("TAMPERED = 1\n")
+    faults = verify_frozen_integrity(tmp_path, record)
+    assert "backend/main.py" in faults
+
+    # Restore from the bound record (D2 authority) → intact again.
+    restored = restore_frozen_files(tmp_path, record)
+    assert "backend/main.py" in restored
+    assert verify_frozen_integrity(tmp_path, record) == ()
+
+
+def test_verify_frozen_integrity_flags_a_missing_frozen_file(tmp_path):
+    from squadops.cycles.patch_verification import verify_frozen_integrity
+
+    record = _bound_record()
+    materialize([{"name": fa.path, "content": fa.content} for fa in record.frozen], tmp_path)
+    (tmp_path / "backend" / "main.py").unlink()
+    assert "backend/main.py" in verify_frozen_integrity(tmp_path, record)

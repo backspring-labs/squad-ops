@@ -34,6 +34,7 @@ from squadops.cycles.acceptance_evaluation import (
     evaluate_criterion,
     split_acceptance_criteria,
 )
+from squadops.cycles.bound_scaffold_record import BoundScaffoldRecord
 from squadops.cycles.implementation_plan import TypedCheck
 from squadops.cycles.write_authorization import WriteAuthorization
 
@@ -204,6 +205,44 @@ def materialize_artifacts(artifacts: list[dict], workspace_root: Path) -> None:
     authorization (today's write-everything-with-path-safety behavior). Ownership-enforcing
     callers call ``materialize(..., authorization=...)`` directly (SIP-0100 2.4)."""
     materialize(artifacts, workspace_root)
+
+
+def verify_frozen_integrity(
+    workspace_root: Path | str, record: BoundScaffoldRecord
+) -> tuple[str, ...]:
+    """SIP-0100 D4: after materialization, every frozen path's on-disk bytes MUST equal the
+    bound record's bytes. Returns the frozen paths whose bytes changed or vanished (empty ⇒
+    intact). A non-empty result is a **high-severity system fault** (a producer bypass /
+    concurrent writer / bug — plan D4/§16), NOT a producer correction — the caller restores and
+    stops the attempt."""
+    workspace_root = Path(workspace_root)
+    faults: list[str] = []
+    for fa in record.frozen:
+        target = workspace_root / fa.path
+        try:
+            on_disk = target.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            faults.append(fa.path)
+            continue
+        if on_disk != fa.content:
+            faults.append(fa.path)
+    return tuple(faults)
+
+
+def restore_frozen_files(
+    workspace_root: Path | str, record: BoundScaffoldRecord
+) -> tuple[str, ...]:
+    """SIP-0100 D2: rewrite every frozen path from the bound record's persisted bytes — the
+    restoration authority is the bound instance, NEVER a re-run of the (possibly newer) expander.
+    Returns the restored paths."""
+    workspace_root = Path(workspace_root)
+    restored: list[str] = []
+    for fa in record.frozen:
+        target = workspace_root / fa.path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(fa.content, encoding="utf-8")
+        restored.append(fa.path)
+    return tuple(restored)
 
 
 def _coerce_typed_criteria(criteria: list[Any]) -> list[TypedCheck] | None:
