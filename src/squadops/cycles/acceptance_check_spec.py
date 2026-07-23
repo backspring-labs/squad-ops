@@ -223,6 +223,28 @@ CHECK_SPECS: dict[str, CheckSpec] = {
             "pytest `test_*`."
         ),
     ),
+    "harness_boundary": CheckSpec(
+        name="harness_boundary",
+        required_params=frozenset({"file", "entry_modules"}),
+        optional_params=frozenset({"client_ctor"}),
+        param_types={"file": str, "entry_modules": list, "client_ctor": str},
+        supported_stacks=frozenset({"python"}),
+        requires_stack_context=True,
+        path_params=frozenset({"file"}),
+        example={
+            "file": "backend/tests/test_runs.py",
+            "entry_modules": ["backend.main", "app.main"],
+            "client_ctor": "TestClient",
+        },
+        # SIP-0100 scaffold test boundary: the mechanical guarantee behind the harness. The
+        # test must consume the scaffold-owned `client` fixture, not re-derive the app.
+        notes=(
+            "SIP-0100 scaffold test boundary: a QA test must consume the scaffold-owned "
+            "`client` fixture — it must NOT import an app entry module (`entry_modules`) or "
+            "directly construct the app test client (`client_ctor`, default `TestClient`). "
+            "AST-based; a pure unit test that never touches the app passes."
+        ),
+    ),
     "regex_match": CheckSpec(
         name="regex_match",
         required_params=frozenset({"file", "pattern"}),

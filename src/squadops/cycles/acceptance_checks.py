@@ -531,6 +531,90 @@ class FunctionDefinedCheck(BaseCheck):
         )
 
 
+def _harness_boundary_violations(
+    tree: ast.AST, entry_modules: frozenset[str], client_ctor: str
+) -> list[str]:
+    """SIP-0100: the ways a QA test authors its own app boundary instead of consuming the
+    scaffold-owned fixture — importing an app entry module (static / from-import /
+    ``importlib.import_module``), or directly constructing the app test client."""
+
+    def _is_entry(mod: str) -> bool:
+        return any(mod == m or mod.startswith(m + ".") for m in entry_modules)
+
+    viols: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if _is_entry(alias.name):
+                    viols.add(f"imports app entry module '{alias.name}'")
+        elif isinstance(node, ast.ImportFrom):
+            if node.module and _is_entry(node.module):
+                viols.add(f"imports from app entry module '{node.module}'")
+        elif isinstance(node, ast.Call):
+            func = node.func
+            if (
+                isinstance(func, ast.Attribute)
+                and func.attr == "import_module"
+                and node.args
+                and isinstance(node.args[0], ast.Constant)
+                and isinstance(node.args[0].value, str)
+                and _is_entry(node.args[0].value)
+            ):
+                viols.add(f"dynamically imports app entry module '{node.args[0].value}'")
+            ctor = (
+                func.id
+                if isinstance(func, ast.Name)
+                else func.attr
+                if isinstance(func, ast.Attribute)
+                else None
+            )
+            if ctor == client_ctor:
+                viols.add(f"directly constructs the app test client '{client_ctor}'")
+    return sorted(viols)
+
+
+@register_check("harness_boundary")
+class HarnessBoundaryCheck(BaseCheck):
+    """SIP-0100: a QA test consumes the scaffold-owned test boundary (the ``client`` fixture)
+    and never authors its own app import or client construction. Python AST.
+
+    Fails a test that imports an app entry module (``entry_modules``) or directly constructs the
+    app test client (``client_ctor``, default ``TestClient``). A pure unit test that never touches
+    the app — or one that only uses the injected ``client`` fixture — passes. Indirect / dynamically
+    obscured bypasses are out of first scope (plan §1.2 / SIP-0100 review #6)."""
+
+    async def evaluate(
+        self,
+        params: dict[str, Any],
+        workspace_root: Path,
+        *,
+        stack: str | None = None,
+    ) -> CheckOutcome:
+        if stack is None:
+            return _skip_unsupported_stack()
+        try:
+            file_path = _safe_resolve(params["file"], workspace_root)
+        except _SafetyError as exc:
+            return CheckOutcome.error(reason=exc.reason)
+        if not file_path.is_file():
+            return CheckOutcome.failed(reason="file_not_found", file=str(params["file"]))
+        try:
+            source = file_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return CheckOutcome.error(reason="file_unreadable")
+        try:
+            tree = ast.parse(source, filename=str(file_path))
+        except SyntaxError:
+            return CheckOutcome.error(reason="parse_failed")
+
+        entry_modules = frozenset(str(m) for m in (params.get("entry_modules") or []))
+        client_ctor = str(params.get("client_ctor") or "TestClient")
+        viols = _harness_boundary_violations(tree, entry_modules, client_ctor)
+        if viols:
+            return CheckOutcome.failed(reason="; ".join(viols), violations=viols)
+        return CheckOutcome.passed(entry_modules=sorted(entry_modules), client_ctor=client_ctor)
+
+
 @register_check("regex_match")
 class RegexMatchCheck(BaseCheck):
     """Regex match count — stack-agnostic, size-bounded against ReDoS surface."""
