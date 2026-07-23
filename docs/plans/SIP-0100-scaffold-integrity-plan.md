@@ -118,7 +118,15 @@ Ordered so ownership (0.2) precedes the checks that consume it (Review #18).
 | 4.2 | ✅ **DONE** — pf-26 replay: a QA correction emitting frozen `backend/main.py` beside its corrected suite **cannot** mutate main.py (restored to the router-importing scaffold; suite kept). The suite reaching execution through the `client` fixture is the `harness_boundary` check (`test_acceptance_checks.py`: fixture passes, import/TestClient/dynamic-import fail). | `test_sip0100_phase4_replay.py::test_pf26_replay_*` — green. |
 | 4.3 | ✅ **DONE** — expander-change replay: a bound record pinned to sentinel bytes restores to **those** bytes (not a re-expansion) at both the enforcement seam and `restore_frozen_files` on disk — the record, not the live expander, is the D2 restore authority. | `test_sip0100_phase4_replay.py::test_restore_uses_bound_bytes_*` — green. |
 | 4.4 | **Live integration + enforcement trace** — ≥1 live bind-mode `group_run` completes with no package-root divergence and no frozen mutation, **and** a lightweight enforcement trace (ownership-record id, artifacts evaluated, grant id, integrity result) proves the seam actually ran (Review #22). "No violation" alone is weak if the seam might have been inactive. | one clean roll + trace present. |
-| 4.5 | **Legacy/unbound + no-regression** — unbound fill/repair retain current behavior; a bound flow lacking ownership fails binding (not partial enforcement); no caller silently omits authorization; capability/verification-contract/build-convergence suites green. | tests (Review #21). |
+| 4.5 | ✅ **DONE** (with one flagged deviation) — unbound/legacy retain current behavior (None manifest / non-scaffoldable → no record → enforcement skipped; unbound `materialize` byte-identical); binding is **all-or-nothing** (full frozen set or None, never partial); capability + correction (build-convergence) suites green (verification-contract's 2 `missing_tooling` skips are the known env gap, green in CI). **D3 deviation flagged:** `_build_bound_record_for_run` is **fail-OPEN** — a `build_bound_record` error disables enforcement rather than failing the run (a deliberate 2.4 rollout-safety choice), where D3 wants **fail-closed**. Pinned by test; hardening is a separate decision (§4.5 note below). | `test_sip0100_no_regression.py` — green. |
+
+> **§4.5 D3 deviation — fail-open vs fail-closed (open decision).** D3 says a scaffold-bound
+> flow whose binding fails must fail the run, so enforcement can't be bypassed by broken wiring.
+> The shipped 2.4 code chose fail-**open** (a binding error → `None` → enforcement disabled, run
+> continues) as a rollout-safety hedge. Reachable only when `build_bound_record` *throws* on a
+> scaffoldable stack (a bug), so the exposure is narrow — but it is a real D3 gap. Recommend
+> revisiting to fail-**closed** once the enforcement has a clean `full`-roll under its belt (4.4);
+> until then the deviation is documented and test-pinned, not silent.
 
 > **Run 4.4 on `full` (27b), not `lite` (7b) — 2026-07-23 finding.** A `lite` validation
 > roll (`cyc_3baf018e839c`) produced a plan that missed every scaffold fill slot (`.js` flat
