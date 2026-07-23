@@ -24,10 +24,13 @@ future scaffold-owned infrastructure (DBs, queues, auth boundaries, migrations, 
 | Import *resolution* for the package convention | **DONE, no change** — `_source_dir_pythonpath` (#303/#454) roots package dirs at the workspace | `handlers/test_runner.py:98` |
 | Everything below | **NOT built** — this plan | — |
 
-**Candidate chokepoint (to be *proven*, not assumed — see Task 0.1):** `materialize_artifacts(artifacts,
-workspace_root)` (`cycles/patch_verification.py:136`), called by the fill path (`handlers/cycle/base.py:329`)
-and repair/verification path (`patch_verification.py:207`, from `dispatched_flow_executor.py` ~L1845–1909).
-Today it enforces only path-safety (absolute/escape); no ownership awareness.
+**Chokepoint — CORRECTED by Task 0.1 (proven, not assumed):** there are **two** independent
+workspace materializers, not one. `materialize_artifacts` (`patch_verification.py:136`) covers the
+typed-acceptance + patch-verify workspaces, but the **qa.test pytest/frontend workspace** is
+materialized by `_materialize_files` (`handlers/test_runner.py:67-76`, `mkdtemp` at :173) — which
+**bypasses** `materialize_artifacts` and is the workspace pf-26 actually failed in. Phase 2 must
+**unify both behind one authorization-aware materializer**. Full inventory + characterization test:
+`docs/plans/SIP-0100-phase-0-mutation-path-inventory.md`.
 
 ## Normative decisions (resolved up front — no open architectural choices inside implementation steps)
 
@@ -69,7 +72,7 @@ Today it enforces only path-safety (absolute/escape); no ownership awareness.
 
 | # | Task | Files | Acceptance |
 |---|------|-------|-----------|
-| 0.1 | **Workspace mutation-path inventory.** Enumerate *every* path that can mutate a bound workspace after scaffold materialization (fill, repair, artifact extraction, scaffold expansion, verification setup, file-copy/patch helpers). Prove each either passes through the authorization seam or is explicitly a scaffold-owned materialization/restoration. | audit across `handlers/cycle/*`, `adapters/cycles/*`, `cycles/patch_verification.py` | a **characterization test that fails if a known producer path writes without authorization**; a documented list of all mutation paths. (Review #1.) |
+| 0.1 | **Workspace mutation-path inventory.** ✅ **DONE** — `docs/plans/SIP-0100-phase-0-mutation-path-inventory.md` + `tests/unit/capabilities/test_sip0100_mutation_inventory.py`. **Finding: two materializers**, `test_runner._materialize_files` bypasses `materialize_artifacts` (the pf-26 path). Vault + report + PRD-seed writes classified as non-workspace. | — | inventory doc + characterization test (green). (Review #1.) |
 | 0.2 | **QA test-slot ownership (D1).** Encode the deterministic QA test namespace in the scaffold contract; confirm the plan slot map declares concrete files within it. | `scaffold_contract.py`, `scaffold.py` (`fill_slot_paths`), `cycles/implementation_plan.py` | unit: QA test namespace + concrete slots are deterministic for a manifest. |
 | 0.3 | **Bound ownership record (D2).** Define a durable, named artifact persisted at bind: scaffold+contract id/hash, expander identity (provenance), normalized frozen paths + hashes + **bytes** (or content-addressed refs), slot ownership map, test-boundary metadata, run/attempt id, timestamp. Source of truth for authorization, integrity, restoration, replay, evidence. | new model (`cycles/`), persisted at run-root materialization (`dispatched_flow_executor.py:2105`) | unit: record round-trips; contains bytes for every frozen path. |
 | 0.4 | **Correction-counter characterization (pre-change safety for 3.x).** Capture current SIP-0086 behavior: implementation failure consumes an attempt; malformed repair consumes the counter; success advances; exhaustion outcome; correction target selection. | `tests/unit/cycles/test_correction_runner.py`, executor tests | characterization tests green *before* any 3.x change. (Review #20.) |
@@ -93,7 +96,7 @@ Ordered so ownership (0.2) precedes the checks that consume it (Review #18).
 | # | Task | Files | Notes |
 |---|------|-------|-------|
 | 2.1 | **`WorkspaceOwnership`** (from the 0.3 bound record): frozen paths+hashes+bytes, declared slots, bound identity — permanent for the attempt. **`WriteGrant`** (resolved per producer *before generation*): producer/task identity, lifecycle stage, originating slot owner, **explicit normalized writable path set**, delegated paths, correction target, bound contract id. Keep the two separate (Review #2/#3) — don't fold transient authority into permanent ownership. | new `cycles/workspace_ownership.py`, `cycles/write_grant.py` | grant is a *resolved set*, not inferred from role at materialize time. |
-| 2.2 | **Authorize before materialize.** `materialize_artifacts` gains a required-when-bound `authorization` (ownership + grant). It authorizes the **complete normalized set** (D5/D7) *before* any write; forbidden/ambiguous → reject whole response, write nothing. Unbound/legacy (no authorization) = today's behavior (D3 guard rejects a *bound* flow that omits it). | `patch_verification.py:136` + callers `base.py:329`, `patch_verification.py:207` | authorize→materialize, never materialize→restore. |
+| 2.2 | **Unify the two materializers + authorize before materialize (per 0.1).** Extract one authorization-aware `materialize(files, workspace, authorization=None)` that BOTH `materialize_artifacts` (`{name}`) and `test_runner._materialize_files` (`{path}`) delegate to (reconciling the two artifact shapes). It authorizes the **complete normalized set** (D5/D7) *before* any write; forbidden/ambiguous → reject whole response, write nothing. Unbound/legacy (no authorization) = today's behavior (D3 guard rejects a *bound* flow that omits it). | `patch_verification.py:136`, `handlers/test_runner.py:67-76` + callers `base.py:329`, `patch_verification.py:205`, `test_runner.py:173` | authorize→materialize, never materialize→restore. **Covers the pf-26 workspace.** |
 | 2.3 | **Post-materialize integrity verify + system-fault handling (D4).** After permitted writes, assert frozen bytes == bound bytes; mismatch → restore from the bound record, record high-severity `post_write_integrity_fault`, **stop the attempt**. | new `verify_frozen_integrity` in `patch_verification.py` | defense in depth, not the primary teeth. |
 | 2.4 | **Bound-flow authorization guard (D3).** A scaffold-bound producing call MUST carry ownership+grant; absence raises a deterministic orchestration error. No empty-authorization-permits/forbids-all footgun. | `dispatched_flow_executor.py` dispatch + repair paths | acceptance below. |
 
