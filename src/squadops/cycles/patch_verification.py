@@ -35,6 +35,7 @@ from squadops.cycles.acceptance_evaluation import (
     split_acceptance_criteria,
 )
 from squadops.cycles.implementation_plan import TypedCheck
+from squadops.cycles.write_authorization import WriteAuthorization
 
 logger = logging.getLogger(__name__)
 
@@ -133,17 +134,52 @@ def overlay_artifacts(
     return list(merged.values())
 
 
-def materialize_artifacts(artifacts: list[dict], workspace_root: Path) -> None:
-    """Write in-memory artifact dicts to disk under ``workspace_root``.
+@dataclass(frozen=True)
+class MaterializeResult:
+    """Outcome of a unified ``materialize`` (SIP-0100 2.2)."""
 
-    Skips entries whose ``name`` is missing, absolute, or escapes the
-    workspace — the typed-check evaluators apply their own ``_safe_resolve``
-    chroot on top, but it is cheaper to refuse here than to materialize a
-    malformed file just to fail evaluation.
+    written: tuple[str, ...] = ()
+    # (original path, reason code) when a bound authorization rejected the response.
+    rejected: tuple[tuple[str, str], ...] = ()
+    authorized: bool = True  # False only when a passed authorization forbade the response
+
+
+def _artifact_name(art: dict) -> Any:
+    """The workspace-relative path from either artifact shape — ``{name}``
+    (materialize_artifacts) or ``{path}`` (test_runner). SIP-0100 0.1 found the two
+    materializers used different shapes; 2.2 unifies them here."""
+    return art.get("name") if art.get("name") is not None else art.get("path")
+
+
+def materialize(
+    artifacts: list[dict],
+    workspace_root: Path | str,
+    *,
+    authorization: WriteAuthorization | None = None,
+) -> MaterializeResult:
+    """The single workspace materializer for BOTH artifact shapes (SIP-0100 2.2 — the one seam
+    0.1's inventory said must exist).
+
+    When ``authorization`` is given, the COMPLETE emitted set is authorized BEFORE any write
+    (response-atomic, D5): a forbidden or ambiguous path rejects the whole response and writes
+    nothing (authorize→materialize, never materialize→restore — plan §3). Without authorization
+    (unbound/legacy) it writes everything with path-safety only, byte-identical to the pre-SIP
+    behavior. Path-safety (absolute / workspace-escape) always applies; the typed-check
+    evaluators keep their own ``_safe_resolve`` chroot on top.
     """
+    workspace_root = Path(workspace_root)
+    if authorization is not None:
+        names = [n for a in artifacts if isinstance((n := _artifact_name(a)), str) and n]
+        decision = authorization.authorize_response(names)
+        if not decision.allowed:
+            return MaterializeResult(
+                rejected=tuple((p, str(d)) for p, d in decision.violations), authorized=False
+            )
+
     root_resolved = workspace_root.resolve()
+    written: list[str] = []
     for art in artifacts:
-        name = art.get("name")
+        name = _artifact_name(art)
         content = art.get("content", "")
         if not isinstance(name, str) or not name:
             continue
@@ -159,6 +195,15 @@ def materialize_artifacts(artifacts: list[dict], workspace_root: Path) -> None:
             target.write_bytes(content)
         else:
             target.write_text(str(content), encoding="utf-8")
+        written.append(name)
+    return MaterializeResult(written=tuple(written))
+
+
+def materialize_artifacts(artifacts: list[dict], workspace_root: Path) -> None:
+    """Backward-compatible ``{name}``-shape entry point — delegates to ``materialize`` with no
+    authorization (today's write-everything-with-path-safety behavior). Ownership-enforcing
+    callers call ``materialize(..., authorization=...)`` directly (SIP-0100 2.4)."""
+    materialize(artifacts, workspace_root)
 
 
 def _coerce_typed_criteria(criteria: list[Any]) -> list[TypedCheck] | None:

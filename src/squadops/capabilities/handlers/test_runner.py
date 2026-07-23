@@ -68,12 +68,15 @@ def _materialize_files(
     workspace: str,
     files: list[dict[str, str]],
 ) -> None:
-    """Write ``[{"path": ..., "content": ...}, ...]`` into *workspace*."""
-    for rec in files:
-        dest = os.path.join(workspace, rec["path"])
-        os.makedirs(os.path.dirname(dest), exist_ok=True)
-        with open(dest, "w", encoding="utf-8") as fh:
-            fh.write(rec["content"])
+    """Write ``[{"path": ..., "content": ...}, ...]`` into *workspace*.
+
+    SIP-0100 2.2: delegates to the single unified ``materialize`` so the qa.test workspace and the
+    typed-acceptance / patch-verify workspaces share ONE write path — 0.1 found these were separate
+    and that this one (the pf-26 pytest workspace) bypassed the chokepoint. Behavior-preserving
+    today (no authorization passed); ownership authorization is wired in 2.4."""
+    from squadops.cycles.patch_verification import materialize
+
+    materialize(files, workspace)
 
 
 def _find_package_json_dir(files: list[dict[str, str]]) -> str | None:
