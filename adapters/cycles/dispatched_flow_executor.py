@@ -1080,6 +1080,11 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # each inner-loop correction (not just once per outer iteration) to bound it
         # (max_correction_attempts) and keep corr-/plan_delta- ids unique across re-runs.
         correction_counter: dict[str, int] = {"n": 0}
+        # SIP-0100 3.4a: run-level contract-compliance counter, SEPARATE from the convergence
+        # counter (D6) — cross-lane (unauthorized-slot) emissions don't fail a task on their own,
+        # so this bounded budget is the only thing that stops a producer chronically writing
+        # another producer's slot. Frozen re-emission is the tolerated 2.4 baseline (not counted).
+        compliance_counter: dict[str, int] = {"n": 0}
         task_attempt_counts: dict[str, int] = {}
 
         # SIP-0079: Time budget enforcement (RC-8)
@@ -1291,6 +1296,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 completed_task_ids=completed_task_ids,
                 plan_delta_refs=plan_delta_refs,
                 bound_record=bound_record,
+                compliance_counter=compliance_counter,
             )
 
             # ----------------------------------------------------------
@@ -2160,6 +2166,49 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         except Exception:
             logger.debug("SIP-0100: scaffold_integrity event emit failed", exc_info=True)
 
+    def _enforce_compliance_budget(
+        self,
+        evidence: list[Any],
+        cycle: Cycle,
+        envelope: TaskEnvelope,
+        compliance_counter: dict[str, int],
+    ) -> None:
+        """SIP-0100 3.4a — bounded contract-compliance circuit-breaker (Option A, D6).
+
+        Counts only ``unauthorized_slot_emission`` (a producer writing another producer's slot,
+        3.1). These are dropped, so they never fail the task through the convergence loop — this
+        bounded counter is the only thing that stops a producer chronically overstepping its lane.
+        Frozen re-emission (``frozen_path_emission``) is deliberately NOT counted: it is the
+        tolerated 2.4 baseline (restored, and already bounded by ``max_correction_attempts``), so
+        counting it would risk false-terminating a normal run.
+
+        Separate from the convergence counter (D6): compliance violations don't consume the
+        correction budget, but they aren't free — past ``contract_compliance_attempts`` the run
+        terminates with a CONTRACT_COMPLIANCE failure (honest terminal state, not a silent green).
+        (Option B — an active targeted correction that re-dispatches the producer with slot
+        guidance — is deferred.)"""
+        from squadops.cycles.task_outcome import (
+            ContractComplianceViolation,
+            FailureClassification,
+        )
+
+        unauthorized = sum(
+            1
+            for e in evidence
+            if e.violation_code == ContractComplianceViolation.UNAUTHORIZED_SLOT_EMISSION
+        )
+        if unauthorized == 0:
+            return
+        compliance_counter["n"] += unauthorized
+        bound = cycle.applied_defaults.get("contract_compliance_attempts", 3)
+        if compliance_counter["n"] > bound:
+            raise _ExecutionError(
+                f"Contract-compliance budget ({bound}) exceeded: {compliance_counter['n']} "
+                f"unauthorized cross-slot emissions across the run "
+                f"(latest: task {envelope.task_id} / {envelope.task_type}) — "
+                f"{FailureClassification.CONTRACT_COMPLIANCE}"
+            )
+
     async def _collect_artifacts_and_checkpoint(
         self,
         result: TaskResult,
@@ -2172,6 +2221,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         completed_task_ids: list[str],
         plan_delta_refs: list[str],
         bound_record: Any = None,
+        compliance_counter: dict[str, int] | None = None,
     ) -> None:
         """Collect artifacts from a successful task and save a checkpoint."""
         # Collect artifacts (with producing_task_type metadata)
@@ -2186,6 +2236,11 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             )
             for record in integrity_evidence:
                 self._emit_scaffold_integrity_evidence(record, envelope)
+            # 3.4a: circuit-breaker — raises CONTRACT_COMPLIANCE past the bound (before storage).
+            if compliance_counter is not None:
+                self._enforce_compliance_budget(
+                    integrity_evidence, cycle, envelope, compliance_counter
+                )
         new_refs: list[str] = []
         for art in artifacts:
             ref = await self._store_artifact(
