@@ -1,10 +1,36 @@
 ---
 template_id: request.plan_bind_criteria_appendix
-version: "2"
+version: "3"
 required_variables:
   - criteria_index
-optional_variables: []
+optional_variables:
+  - writable_slots
 ---
+## Write ONLY the scaffold's fill slots — the layout is fixed
+
+The scaffold owns the file layout. These are the **only** paths a build task may write, and
+every required slot must be filled. Anything else is rejected at plan validation before the
+build runs.
+
+{{writable_slots}}
+
+Rules — follow them exactly:
+
+- Every `development.develop` task that writes source MUST list one or more `DEV_WRITABLE_SLOTS`
+  paths in `expected_artifacts`, **verbatim**. Every `qa.*` task writes only within
+  `QA_WRITABLE_NAMESPACES`.
+- `READ_ONLY_CONTEXT_PATHS` are the scaffold's frozen files — read them for context, but **never**
+  list one as an `expected_artifact`. Writing one is discarded and rejected.
+- Do **not** translate the layout: no swapping `backend/routes.py` for `backend/routers/…`, no
+  `.tsx` for a `.jsx` slot, no `src/components/` or `src/pages/` for `src/views/`, no inventing
+  `store.py`/`services/`. Use the exact slot paths above.
+- Do not replace a concrete slot with a "similar" file, and do not add extra source files — if a
+  file is not a listed slot, it does not belong in `expected_artifacts`.
+- Assign **every** `REQUIRED_SLOT_COVERAGE` path to exactly one dev task — no missing slots, no two
+  tasks writing the same slot.
+- A task that produces only a non-source deliverable (a report, a handoff doc) names that
+  deliverable, not a fabricated source file.
+
 ## Bind the verification contract — do NOT author acceptance criteria
 
 This build is governed by a **verification contract**: a pre-authored, frozen
