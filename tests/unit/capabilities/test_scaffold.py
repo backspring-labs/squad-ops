@@ -322,3 +322,105 @@ def test_lint_rejects_unscaffoldable_stack_and_empty_manifest():
     errors = m.lint()
     assert any("no scaffold expander" in e for e in errors)
     assert any("at least one endpoint" in e for e in errors)
+
+
+# --------------------------------------------------------------------------- #
+# Prototype proof (import-convention pieces 1-2): the scaffold seeds a consistent
+# import root so a qa suite runs against the materialized skeleton with no import
+# guessing — the pf-26 wall (files under backend/ but the test invented
+# `from app.main import app`) removed AT THE SCAFFOLD.
+# --------------------------------------------------------------------------- #
+
+
+def test_scaffold_seeds_consistent_import_root_for_tests(tmp_path):
+    """A qa-style suite authored against the scaffold's seeded ``client`` fixture
+    COLLECTS AND RUNS against the freshly-materialized walking skeleton — no
+    ModuleNotFoundError. The suite never imports the app itself; the frozen
+    ``conftest.py`` owns the import root (sys.path anchor + ``client`` fixture)."""
+    import subprocess
+    import sys
+
+    # Materialize the walking skeleton exactly as patch_verification would.
+    for f in expand(_group_run_manifest()):
+        p = tmp_path / f["name"]
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(f["content"])
+
+    # A qa suite that uses the seeded `client` fixture and never authors an app import.
+    test_dir = tmp_path / "backend" / "tests"
+    test_dir.mkdir(parents=True, exist_ok=True)
+    (test_dir / "test_smoke.py").write_text(
+        "def test_health(client):\n"
+        "    resp = client.get('/health')\n"
+        "    assert resp.status_code == 200\n"
+        "    assert resp.json() == {'status': 'ok'}\n"
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "backend/tests/test_smoke.py",
+            "-q",
+            "-p",
+            "no:cacheprovider",
+        ],
+        cwd=str(tmp_path),
+        capture_output=True,
+        text=True,
+    )
+
+    # Exit 0 = the app imported via the frozen conftest and the health probe answered.
+    assert result.returncode == 0, (
+        f"scaffold-materialized suite failed to run:\n"
+        f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+    )
+    assert "1 passed" in result.stdout
+    # Guard the regression directly: no import resolution failure at collection.
+    assert "ModuleNotFoundError" not in result.stdout + result.stderr
+
+
+def test_pf26_import_guess_fails_without_the_seeded_fixture(tmp_path):
+    """Counterfactual: the exact pf-26 failure mode. Against the SAME skeleton, a
+    suite that guesses its own import root (`from app.main import app` — no `app`
+    package; files live under backend/) crashes pytest collection with a
+    ModuleNotFoundError. This is the wall the seeded `client` fixture removes: the
+    delta between converging and exhausting is purely the import convention."""
+    import subprocess
+    import sys
+
+    for f in expand(_group_run_manifest()):
+        p = tmp_path / f["name"]
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(f["content"])
+
+    test_dir = tmp_path / "backend" / "tests"
+    test_dir.mkdir(parents=True, exist_ok=True)
+    # The pf-26 mistake: the suite invents its own app import instead of using `client`.
+    (test_dir / "test_bad.py").write_text(
+        "from app.main import app\n"
+        "from fastapi.testclient import TestClient\n"
+        "client = TestClient(app)\n\n"
+        "def test_health():\n"
+        "    assert client.get('/health').status_code == 200\n"
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "backend/tests/test_bad.py",
+            "-q",
+            "-p",
+            "no:cacheprovider",
+        ],
+        cwd=str(tmp_path),
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0  # collection crashes, exactly like pf-26
+    assert "ModuleNotFoundError" in result.stdout + result.stderr
+    assert "app" in result.stdout + result.stderr  # the unresolvable `app` root
