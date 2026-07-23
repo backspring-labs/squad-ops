@@ -1,6 +1,6 @@
 """Canonical event type constants for the cycle lifecycle event taxonomy.
 
-28 event types across 9 entity types (cycle, run, gate, task, pulse, artifact, checkpoint, correction, workload).
+29 event types across 9 entity types (cycle, run, gate, task, pulse, artifact, checkpoint, correction, workload).
 Follows the WorkloadType / ArtifactType constants-class pattern (not enum).
 """
 
@@ -41,9 +41,12 @@ class EventType:
     PULSE_REPAIR_STARTED = "pulse.repair_started"
     PULSE_REPAIR_EXHAUSTED = "pulse.repair_exhausted"
 
-    # --- Artifact (2) ---
+    # --- Artifact (3) ---
     ARTIFACT_STORED = "artifact.stored"
     ARTIFACT_PROMOTED = "artifact.promoted"
+    # SIP-0100 3.3: a producer's emission was evaluated against scaffold write-ownership
+    # (frozen restored / unauthorized dropped / integrity fault). Payload = ScaffoldIntegrityEvidence.
+    ARTIFACT_OWNERSHIP_ENFORCED = "artifact.ownership_enforced"
 
     # --- Checkpoint (2) — SIP-0079 ---
     CHECKPOINT_CREATED = "checkpoint.created"
@@ -61,7 +64,7 @@ class EventType:
 
     @classmethod
     def all(cls) -> tuple[str, ...]:
-        """Return all 28 event type constants."""
+        """Return all 29 event type constants."""
         return tuple(
             v
             for k, v in vars(cls).items()

@@ -31,7 +31,7 @@ def test_frozen_emission_is_restored_others_pass_through():
         {"name": "backend/main.py", "content": "TAMPERED = 1\n"},
         {"name": "backend/routes.py", "content": "def real_route(): return 1\n"},
     ]
-    enforced = DispatchedFlowExecutor._enforce_frozen_ownership(
+    enforced, evidence = DispatchedFlowExecutor._enforce_frozen_ownership(
         object(), artifacts, _record(), _env()
     )
     by_name = {a["name"]: a["content"] for a in enforced}
@@ -40,14 +40,38 @@ def test_frozen_emission_is_restored_others_pass_through():
     assert by_name["backend/main.py"] != "TAMPERED = 1\n"
     # routes.py (a fill slot) is untouched.
     assert by_name["backend/routes.py"] == "def real_route(): return 1\n"
+    # 3.3: exactly one evidence record (the frozen violation), the sibling routes.py is retained.
+    assert len(evidence) == 1
+    ev = evidence[0]
+    assert ev.normalized_path == "backend/main.py"
+    assert ev.violation_code == "frozen_path_emission"
+    assert ev.kind == "attempted_emission"
+    assert ev.disposition == "restored"
+    assert ev.siblings_retained == 1  # routes.py kept
+    assert ev.producer_task_id == "task-1"
+    # attempted hash reflects the tamper; expected hash reflects the scaffold bytes — they differ.
+    assert ev.attempted_sha256 is not None
+    assert ev.expected_sha256 is not None
+    assert ev.attempted_sha256 != ev.expected_sha256
 
 
 def test_conftest_is_frozen_and_restored_too():
     """The SIP-0100 harness (conftest.py) is frozen — a producer can't overwrite it either."""
-    enforced = DispatchedFlowExecutor._enforce_frozen_ownership(
+    enforced, evidence = DispatchedFlowExecutor._enforce_frozen_ownership(
         object(), [{"path": "conftest.py", "content": "import os  # tampered"}], _record(), _env()
     )
     assert "client" in enforced[0]["content"]  # restored to the scaffold conftest (has the fixture)
+    assert evidence[0].normalized_path == "conftest.py"
+    assert evidence[0].siblings_retained == 0  # the only artifact in the response
+
+
+def test_clean_response_yields_no_evidence():
+    """A producer that writes only its fill slot emits no violation and no evidence."""
+    enforced, evidence = DispatchedFlowExecutor._enforce_frozen_ownership(
+        object(), [{"name": "backend/routes.py", "content": "x = 1\n"}], _record(), _env()
+    )
+    assert evidence == []
+    assert enforced[0]["content"] == "x = 1\n"
 
 
 def test_build_bound_record_none_for_unbound_and_unscaffoldable():

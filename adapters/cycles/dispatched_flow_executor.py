@@ -81,6 +81,12 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _artifact_raw_path(art: dict) -> str | None:
+    """The producer-emitted path of an artifact, accepting both the ``{name}`` and ``{path}``
+    shapes the two materializers use (SIP-0100 0.1)."""
+    return art.get("name") if art.get("name") is not None else art.get("path")
+
+
 class DispatchedFlowExecutor(FlowExecutionPort):
     """Flow executor that dispatches tasks to agent containers via RabbitMQ.
 
@@ -2030,7 +2036,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
 
     def _enforce_frozen_ownership(
         self, artifacts: list[dict], bound_record: Any, envelope: TaskEnvelope
-    ) -> list[dict]:
+    ) -> tuple[list[dict], list[Any]]:
         """SIP-0100 2.4: a producer must not overwrite a scaffold-frozen file. Any emitted artifact
         whose normalized path is frozen has its content RESTORED to the bound record's bytes (D2
         restoration authority — never re-derive), so the producer cannot clobber the scaffold
@@ -2039,7 +2045,13 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         Restore (not response-atomic reject) is the deliberate first enforcement: the current squad
         still re-emits frozen files, so a reject would break every bind-mode build; restore is
         non-breaking and correct. The stricter reject + targeted correction is gated on fill-only
-        (plan §4.6 / 3.4)."""
+        (plan §4.6 / 3.4).
+
+        SIP-0100 3.3: each restore now also produces a structured ``ScaffoldIntegrityEvidence``
+        record (returned alongside the artifacts). Pure — the caller emits it as an
+        ``artifact.ownership_enforced`` event + structured log — so enforcement stays testable and
+        3.4 can drive the compliance counter off the returned records."""
+        from squadops.cycles.scaffold_integrity_evidence import frozen_restore_evidence
         from squadops.cycles.write_authorization import normalize_ws_path
 
         frozen = {
@@ -2047,26 +2059,49 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             for fa in bound_record.frozen
             if (n := normalize_ws_path(fa.path)) is not None
         }
+        # Identify violations first so each evidence record can report how many sibling artifacts in
+        # the SAME response were retained (restore keeps all; a future response-atomic reject would
+        # not — that difference is exactly what the field captures).
+        norms = [
+            normalize_ws_path(raw) if isinstance(raw := _artifact_raw_path(art), str) else None
+            for art in artifacts
+        ]
+        violation_count = sum(1 for n in norms if n is not None and n in frozen)
         enforced: list[dict] = []
-        violated: list[str] = []
-        for art in artifacts:
-            raw = art.get("name") if art.get("name") is not None else art.get("path")
-            norm = normalize_ws_path(raw) if isinstance(raw, str) else None
+        evidence: list[Any] = []
+        for art, norm in zip(artifacts, norms, strict=True):
             if norm is not None and norm in frozen:
-                violated.append(norm)
-                enforced.append({**art, "content": frozen[norm]})  # restore scaffold bytes
+                evidence.append(
+                    frozen_restore_evidence(
+                        producer_task_id=envelope.task_id,
+                        producer_task_type=envelope.task_type,
+                        record=bound_record,
+                        attempted_path=_artifact_raw_path(art) or norm,
+                        normalized_path=norm,
+                        attempted_content=art.get("content"),
+                        siblings_retained=len(artifacts) - violation_count,
+                    )
+                )
+                enforced.append({**art, "content": frozen[norm]})  # restore scaffold bytes (D2)
             else:
                 enforced.append(art)
-        if violated:
-            logger.warning(
-                "SIP-0100 scaffold_integrity: task %s (%s) emitted %d frozen path(s); content "
-                "restored to scaffold bytes: %s",
-                envelope.task_id,
-                envelope.task_type,
-                len(violated),
-                sorted(violated),
+        return enforced, evidence
+
+    def _emit_scaffold_integrity_evidence(self, record: Any, envelope: TaskEnvelope) -> None:
+        """SIP-0100 3.3: surface one enforcement event as a structured event + log (best-effort —
+        observability must never break artifact storage)."""
+        payload = record.to_dict()
+        logger.warning("SIP-0100 scaffold_integrity: %s", payload)
+        try:
+            self._cycle_event_bus.emit(
+                EventType.ARTIFACT_OWNERSHIP_ENFORCED,
+                entity_type="artifact",
+                entity_id=record.normalized_path or record.attempted_path,
+                context={"cycle_id": envelope.cycle_id, "run_id": record.bound_run_id},
+                payload=payload,
             )
-        return enforced
+        except Exception:
+            logger.debug("SIP-0100: scaffold_integrity event emit failed", exc_info=True)
 
     async def _collect_artifacts_and_checkpoint(
         self,
@@ -2087,8 +2122,13 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # SIP-0100 2.4: on a scaffold-bound run, a producer's emission of a scaffold-frozen path
         # has its content restored to the bound scaffold bytes (D2 authority) — the producer
         # cannot overwrite a frozen file (pf-26). Recorded, not silent; no-op when unbound.
+        # 3.3: enforcement returns structured evidence; emit it (event + log) before storage.
         if bound_record is not None and artifacts:
-            artifacts = self._enforce_frozen_ownership(artifacts, bound_record, envelope)
+            artifacts, integrity_evidence = self._enforce_frozen_ownership(
+                artifacts, bound_record, envelope
+            )
+            for record in integrity_evidence:
+                self._emit_scaffold_integrity_evidence(record, envelope)
         new_refs: list[str] = []
         for art in artifacts:
             ref = await self._store_artifact(
