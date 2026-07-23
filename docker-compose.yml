@@ -214,6 +214,7 @@ services:
         BUILD_HASH: ${BUILD_HASH:-unknown}
         SOURCE_HASH: ${SOURCE_HASH:-unknown}
     container_name: squadops-max
+    init: true  # tini as PID 1 reaps orphaned build subprocesses (esbuild/vite/node) — no zombie pileup
     restart: unless-stopped
     secrets:
       - agent_client_secret
@@ -267,6 +268,7 @@ services:
         BUILD_HASH: ${BUILD_HASH:-unknown}
         SOURCE_HASH: ${SOURCE_HASH:-unknown}
     container_name: squadops-nat
+    init: true  # tini as PID 1 reaps orphaned build subprocesses (esbuild/vite/node) — no zombie pileup
     restart: unless-stopped
     secrets:
       - agent_client_secret
@@ -339,6 +341,7 @@ services:
         BUILD_HASH: ${BUILD_HASH:-unknown}
         SOURCE_HASH: ${SOURCE_HASH:-unknown}
     container_name: squadops-neo
+    init: true  # tini as PID 1 reaps orphaned build subprocesses (esbuild/vite/node) — no zombie pileup
     restart: unless-stopped
     secrets:
       - agent_client_secret
@@ -394,6 +397,7 @@ services:
         BUILD_HASH: ${BUILD_HASH:-unknown}
         SOURCE_HASH: ${SOURCE_HASH:-unknown}
     container_name: squadops-eve
+    init: true  # tini as PID 1 reaps orphaned build subprocesses (esbuild/vite/node) — no zombie pileup
     restart: unless-stopped
     secrets:
       - agent_client_secret
@@ -445,6 +449,7 @@ services:
         BUILD_HASH: ${BUILD_HASH:-unknown}
         SOURCE_HASH: ${SOURCE_HASH:-unknown}
     container_name: squadops-data
+    init: true  # tini as PID 1 reaps orphaned build subprocesses (esbuild/vite/node) — no zombie pileup
     restart: unless-stopped
     secrets:
       - agent_client_secret
@@ -500,6 +505,7 @@ services:
         BUILD_HASH: ${BUILD_HASH:-unknown}
         SOURCE_HASH: ${SOURCE_HASH:-unknown}
     container_name: squadops-bob
+    init: true  # tini as PID 1 reaps orphaned build subprocesses (esbuild/vite/node) — no zombie pileup
     restart: unless-stopped
     secrets:
       - agent_client_secret
@@ -576,6 +582,7 @@ services:
         BUILD_HASH: ${BUILD_HASH:-unknown}
         SOURCE_HASH: ${SOURCE_HASH:-unknown}
     container_name: squadops-joi
+    init: true  # tini as PID 1 reaps orphaned build subprocesses (esbuild/vite/node) — no zombie pileup
     restart: unless-stopped
     secrets:
       - agent_client_secret
