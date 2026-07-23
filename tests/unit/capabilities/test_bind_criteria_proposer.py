@@ -152,6 +152,80 @@ async def test_bind_section_empty_in_author_mode():
     renderer.render.assert_not_awaited()
 
 
+# --------------------------------------------------------------------------- #
+# SIP-0100 follow-up Phase A — publish the writable surfaces to the proposer
+# --------------------------------------------------------------------------- #
+
+
+def test_format_writable_surfaces_sections_and_empty_marker():
+    from squadops.capabilities.handlers.planning_tasks import _format_writable_surfaces
+
+    out = _format_writable_surfaces(
+        {
+            "dev_writable_slots": ["backend/routes.py"],
+            "qa_writable_namespaces": ["backend/tests/"],
+            "required_slot_coverage": ["backend/routes.py"],
+            "read_only_context_paths": [],
+        }
+    )
+    assert "DEV_WRITABLE_SLOTS:" in out and "  - backend/routes.py" in out
+    assert "QA_WRITABLE_NAMESPACES:" in out and "  - backend/tests/" in out
+    assert "READ_ONLY_CONTEXT_PATHS:" in out and "  (none)" in out  # empty surface marked
+
+
+async def test_bind_section_passes_writable_slots_when_surfaces_present():
+    handler = DevelopmentProposePlanTasksHandler()
+    renderer = AsyncMock()
+    renderer.render.return_value = MagicMock(content="BIND")
+    await handler._bind_criteria_section(
+        renderer,
+        {
+            "contract_criteria_index": "- backend/routes.py: bind x",
+            "writable_surfaces": {
+                "dev_writable_slots": ["backend/routes.py"],
+                "qa_writable_namespaces": ["backend/tests/"],
+                "required_slot_coverage": ["backend/routes.py"],
+                "read_only_context_paths": ["backend/main.py"],
+            },
+        },
+    )
+    variables = renderer.render.await_args.args[1]
+    assert variables["criteria_index"] == "- backend/routes.py: bind x"
+    assert "backend/routes.py" in variables["writable_slots"]
+    assert "backend/main.py" in variables["writable_slots"]  # read-only context surface
+
+
+async def test_bind_appendix_names_slots_and_forbids_translation():
+    """The rendered appendix names the fill slots and forbids swapping them for similar paths."""
+    from pathlib import Path
+
+    from adapters.prompts.filesystem_asset_adapter import FilesystemPromptAssetAdapter
+    from squadops.prompts.renderer import RequestTemplateRenderer
+
+    templates_dir = (
+        Path(__file__).parent.parent.parent.parent
+        / "src"
+        / "squadops"
+        / "prompts"
+        / "request_templates"
+    )
+    source = FilesystemPromptAssetAdapter(
+        fragments_path=templates_dir.parent / "fragments",
+        templates_path=templates_dir,
+    )
+    rendered = await RequestTemplateRenderer(source).render(
+        "request.plan_bind_criteria_appendix",
+        {
+            "criteria_index": "- backend/routes.py: bind",
+            "writable_slots": "DEV_WRITABLE_SLOTS:\n  - backend/routes.py",
+        },
+    )
+    body = rendered.content
+    assert "backend/routes.py" in body
+    assert "ONLY" in body  # the write-only instruction
+    assert "routers/" in body  # the "do not translate" guidance names the bad pattern
+
+
 async def test_bind_section_empty_for_strategy_proposer():
     # strategy proposes guidance, not build tasks — it binds no fill-file criteria
     handler = StrategyProposePlanGuidanceHandler()
