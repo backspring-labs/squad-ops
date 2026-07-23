@@ -43,13 +43,14 @@ class TestTaskOutcome:
 
 
 class TestFailureClassification:
-    def test_all_five_constants_exist(self):
+    def test_all_failure_classification_constants_exist(self):
         expected = {
             "EXECUTION",
             "WORK_PRODUCT",
             "ALIGNMENT",
             "DECISION",
             "MODEL_LIMITATION",
+            "CONTRACT_COMPLIANCE",  # SIP-0100: scaffold write-ownership violation family
         }
         actual = {
             k

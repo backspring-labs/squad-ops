@@ -764,7 +764,14 @@ class TestCorrectionTerminalPaths:
 
 
 class TestMaxCorrectionAttempts:
-    """max_correction_attempts enforced."""
+    """max_correction_attempts enforced.
+
+    SIP-0100 Task 0.4 baseline: this class is the characterization of the CURRENT correction
+    counting — there is ONE shared ``correction_counter`` and every correction attempt consumes
+    it (exhaustion raises at ``max_correction_attempts``). SIP-0100 Task 3.4 adds a *separate*
+    bounded contract-compliance counter (plan D6); it MUST keep this behavior green for
+    implementation-caused corrections while routing compliance violations to the new counter.
+    """
 
     async def test_max_corrections_exhausted(self, executor, mock_queue, mock_registry, cycle):
         import dataclasses

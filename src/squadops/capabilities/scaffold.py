@@ -391,6 +391,38 @@ def fill_slot_paths(manifest: InterfaceManifest) -> tuple[str, ...]:
     return ("backend/routes.py", *dict.fromkeys(views))
 
 
+# SIP-0100 D1 (bounded-hybrid QA test ownership): the scaffold owns the *namespace* — the
+# deterministic directory prefixes a bound plan may declare concrete QA test files within — while
+# the plan declares the concrete paths. A QA producer may write only inside this surface; a QA
+# file at an undeclared path outside it is an unauthorized write (Phase 2). Per-stack, like the
+# slot map (99.4 stacks carry their own).
+_QA_TEST_NAMESPACES: dict[str, tuple[str, ...]] = {
+    "fullstack_fastapi_react": ("backend/tests/", "frontend/src/tests/"),
+}
+
+
+def qa_test_namespace(manifest: InterfaceManifest) -> tuple[str, ...]:
+    """Workspace-relative directory prefixes that own QA test files for ``manifest.stack``.
+
+    Deterministic for a given stack (no dependence on the manifest contents), so plan
+    validation and Phase-2 write authorization derive the same surface. Raises for an unknown
+    stack (parity with ``expand`` / ``fill_slot_paths``)."""
+    if manifest.stack not in _EXPANDERS:
+        raise ValueError(
+            f"no scaffold expander for stack {manifest.stack!r}; available: {sorted(_EXPANDERS)}"
+        )
+    return _QA_TEST_NAMESPACES.get(manifest.stack, ())
+
+
+def is_qa_test_path(path: str, manifest: InterfaceManifest) -> bool:
+    """True when a workspace-relative ``path`` falls within the stack's QA test namespace.
+
+    Membership is by normalized directory-prefix (``./`` and ``//`` collapsed); it does not
+    resolve traversal — Phase-2 authorization owns canonical-target identity (D7)."""
+    norm = str(path).strip().lstrip("./").replace("//", "/")
+    return any(norm.startswith(ns) for ns in qa_test_namespace(manifest))
+
+
 def is_scaffoldable_stack(stack: str) -> bool:
     """True when ``stack`` has a registered walking-skeleton expander — i.e. a cycle on
     this stack can be scaffolded. The data-driven gate for the framing instruction
