@@ -1,14 +1,15 @@
 ---
 title: Scaffolded Test Harness and Frozen-File Enforcement
-status: proposed
+status: accepted
 author: jladd
 created_at: '2026-07-22T00:00:00Z'
-updated_at: '2026-07-23T00:00:00Z'
+updated_at: '2026-07-22T21:21:48.855065Z'
+sip_number: 100
 ---
-# SIP-XXXX: Scaffolded Test Harness and Frozen-File Enforcement
+# SIP-0100: Scaffolded Test Harness and Frozen-File Enforcement
 
 ## Status
-Proposed
+Accepted
 
 **Extends:** SIP-0099 (Contract-First Build Scaffolding). SIP-0099 makes the *interface*
 scaffold-owned and frozen at generation time; this SIP promotes that ownership to a **lifecycle
