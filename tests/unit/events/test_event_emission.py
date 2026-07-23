@@ -18,7 +18,7 @@ pytestmark = [pytest.mark.domain_events]
 
 # ---- Source-level coverage: every EventType constant appears in an emit() call ----
 
-# Collect all 28 event type constant names
+# Collect all 29 event type constant names
 _ALL_EVENT_TYPE_ATTRS = [
     attr
     for attr in dir(EventType)
@@ -98,8 +98,8 @@ class TestEmissionCoverage:
             f"in any emission source file"
         )
 
-    def test_all_28_types_defined(self, all_emitted_types: set[str]) -> None:
-        assert len(_ALL_EVENT_TYPE_ATTRS) == 28
+    def test_all_29_types_defined(self, all_emitted_types: set[str]) -> None:
+        assert len(_ALL_EVENT_TYPE_ATTRS) == 29
 
     def test_wired_types_covered(self, all_emitted_types: set[str]) -> None:
         wired = set(_ALL_EVENT_TYPE_ATTRS) - _SIP_0083_PENDING_EMISSION
@@ -130,12 +130,13 @@ class TestExecutorEmissionPoints:
             "WORKLOAD_GATE_AWAITING",
             "WORKLOAD_ADVANCED",
             "GATE_DECIDED",
+            "ARTIFACT_OWNERSHIP_ENFORCED",
         ],
     )
     def test_executor_emits(self, attr: str, executor_refs: set[str]) -> None:
         assert attr in executor_refs
 
-    def test_executor_has_13_types(self, executor_refs: set[str]) -> None:
+    def test_executor_has_14_types(self, executor_refs: set[str]) -> None:
         """13 = the post-slice-5 twelve plus GATE_DECIDED (#473): the
         inter-workload pre-gate validation records a system REJECTED gate
         decision and emits GATE_DECIDED, so a mechanically rejected plan is
@@ -151,8 +152,11 @@ class TestExecutorEmissionPoints:
         in the executor. (Slice 5 moved the retry loop's TASK_SUCCEEDED/
         FAILED emits to TaskDispatcher, but the fan-out path still
         references all three TASK_* types here, so the count is unchanged.)
+
+        SIP-0100 3.3 added ARTIFACT_OWNERSHIP_ENFORCED (the scaffold-integrity
+        enforcement event), emitted by _emit_scaffold_integrity_evidence — 13 → 14.
         """
-        assert len(executor_refs) == 13
+        assert len(executor_refs) == 14
 
 
 class TestRunCompletionEmissionPoints:
@@ -326,10 +330,11 @@ class TestEmitCallSitePayloadFields:
         assert with_payload >= 35
 
     def test_total_emit_call_count(self) -> None:
-        """Sanity check: 19 executor + 7 correction-runner +
-        8 pulse-boundary-runner + 2 task-dispatcher + 7 route = 43 total
+        """Sanity check: 20 executor + 7 correction-runner +
+        8 pulse-boundary-runner + 2 task-dispatcher + 7 route = 44 total
         emit calls (#473 added the pre-gate rejection's GATE_DECIDED emit;
-        #522 added the framing re-roll's WORKLOAD_ADVANCED emit).
+        #522 added the framing re-roll's WORKLOAD_ADVANCED emit; SIP-0100 3.3
+        added the scaffold-integrity ARTIFACT_OWNERSHIP_ENFORCED emit).
 
         SIP-0097 slice 2c collapsed execute_run's five per-exception-class
         terminal emits into one emit driven by the RunCompletion terminal
@@ -342,4 +347,4 @@ class TestEmitCallSitePayloadFields:
         total = 0
         for path in _ALL_EMISSION_FILES:
             total += len(self._extract_emit_calls(path))
-        assert total == 43
+        assert total == 44

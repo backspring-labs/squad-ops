@@ -81,6 +81,18 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _artifact_raw_path(art: dict) -> str | None:
+    """The producer-emitted path of an artifact, accepting both the ``{name}`` and ``{path}``
+    shapes the two materializers use (SIP-0100 0.1)."""
+    return art.get("name") if art.get("name") is not None else art.get("path")
+
+
+def _is_qa_producer(task_type: str) -> bool:
+    """SIP-0100 3.1: QA task types (``qa.test``, ``qa.validate``) are scoped to the QA test
+    namespace — they write tests, not the source under test."""
+    return task_type.startswith("qa.")
+
+
 class DispatchedFlowExecutor(FlowExecutionPort):
     """Flow executor that dispatches tasks to agent containers via RabbitMQ.
 
@@ -2030,7 +2042,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
 
     def _enforce_frozen_ownership(
         self, artifacts: list[dict], bound_record: Any, envelope: TaskEnvelope
-    ) -> list[dict]:
+    ) -> tuple[list[dict], list[Any]]:
         """SIP-0100 2.4: a producer must not overwrite a scaffold-frozen file. Any emitted artifact
         whose normalized path is frozen has its content RESTORED to the bound record's bytes (D2
         restoration authority — never re-derive), so the producer cannot clobber the scaffold
@@ -2039,34 +2051,114 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         Restore (not response-atomic reject) is the deliberate first enforcement: the current squad
         still re-emits frozen files, so a reject would break every bind-mode build; restore is
         non-breaking and correct. The stricter reject + targeted correction is gated on fill-only
-        (plan §4.6 / 3.4)."""
-        from squadops.cycles.write_authorization import normalize_ws_path
+        (plan §4.6 / 3.4).
+
+        SIP-0100 3.3: each enforcement produces a structured ``ScaffoldIntegrityEvidence`` record
+        (returned alongside the artifacts). Pure — the caller emits it as an
+        ``artifact.ownership_enforced`` event + structured log — so enforcement stays testable and
+        3.4 can drive the compliance counter off the returned records.
+
+        SIP-0100 3.1: a **QA** producer is additionally scoped to its own namespace. A QA emission
+        of a path writable in principle but owned by another producer's slot (e.g. dev's
+        ``routes.py``) is **dropped** — the owning producer's version stays; QA cannot rewrite the
+        source under test to agree with its own test (the pf-26 class, one step past ``main.py``).
+        QA emissions in its namespace, and undeclared paths (deliverables like ``test_report.md``),
+        pass through. Non-QA producers are unaffected here (frozen-restore only)."""
+        from squadops.cycles.scaffold_integrity_evidence import (
+            frozen_restore_evidence,
+            unauthorized_slot_evidence,
+        )
+        from squadops.cycles.write_authorization import (
+            AuthzDecision,
+            WorkspaceOwnership,
+            WriteAuthorization,
+            WriteGrant,
+            normalize_ws_path,
+        )
 
         frozen = {
             n: fa.content
             for fa in bound_record.frozen
             if (n := normalize_ws_path(fa.path)) is not None
         }
-        enforced: list[dict] = []
-        violated: list[str] = []
-        for art in artifacts:
-            raw = art.get("name") if art.get("name") is not None else art.get("path")
-            norm = normalize_ws_path(raw) if isinstance(raw, str) else None
+        # A QA producer gets a namespace-scoped grant; the 2.1 authorization classes decide whether
+        # a non-frozen emission is inside its lane (allow), another producer's slot (drop), or
+        # undeclared (allow — could be a deliverable, §4.6 undeclared-reject stays gated on 3.4).
+        qa_authz = None
+        if _is_qa_producer(envelope.task_type):
+            ownership = WorkspaceOwnership.from_record(bound_record)
+            grant = WriteGrant.for_qa(envelope.task_type, ownership)
+            qa_authz = WriteAuthorization(ownership, grant)
+
+        # Classify first so each evidence record can report how many sibling artifacts in the SAME
+        # response were left untouched (per-artifact disposition — restore/drop keep the rest; a
+        # response-atomic reject would not — that difference is exactly what the field captures).
+        norms = [
+            normalize_ws_path(raw) if isinstance(raw := _artifact_raw_path(art), str) else None
+            for art in artifacts
+        ]
+
+        def _disposition(art: dict, norm: str | None) -> str:
             if norm is not None and norm in frozen:
-                violated.append(norm)
-                enforced.append({**art, "content": frozen[norm]})  # restore scaffold bytes
+                return "restore"
+            if qa_authz is not None and (
+                qa_authz.authorize(_artifact_raw_path(art) or "")
+                == AuthzDecision.FORBIDDEN_UNAUTHORIZED
+            ):
+                return "drop"
+            return "pass"
+
+        dispositions = [_disposition(art, norm) for art, norm in zip(artifacts, norms, strict=True)]
+        siblings_retained = sum(1 for d in dispositions if d == "pass")
+
+        enforced: list[dict] = []
+        evidence: list[Any] = []
+        for art, norm, disposition in zip(artifacts, norms, dispositions, strict=True):
+            if disposition == "restore":
+                evidence.append(
+                    frozen_restore_evidence(
+                        producer_task_id=envelope.task_id,
+                        producer_task_type=envelope.task_type,
+                        record=bound_record,
+                        attempted_path=_artifact_raw_path(art) or norm,
+                        normalized_path=norm,
+                        attempted_content=art.get("content"),
+                        siblings_retained=siblings_retained,
+                    )
+                )
+                enforced.append({**art, "content": frozen[norm]})  # restore scaffold bytes (D2)
+            elif disposition == "drop":
+                evidence.append(
+                    unauthorized_slot_evidence(
+                        producer_task_id=envelope.task_id,
+                        producer_task_type=envelope.task_type,
+                        record=bound_record,
+                        attempted_path=_artifact_raw_path(art) or (norm or ""),
+                        normalized_path=norm,
+                        attempted_content=art.get("content"),
+                        siblings_retained=siblings_retained,
+                    )
+                )
+                # dropped: NOT appended — the owning producer's already-stored version stays.
             else:
                 enforced.append(art)
-        if violated:
-            logger.warning(
-                "SIP-0100 scaffold_integrity: task %s (%s) emitted %d frozen path(s); content "
-                "restored to scaffold bytes: %s",
-                envelope.task_id,
-                envelope.task_type,
-                len(violated),
-                sorted(violated),
+        return enforced, evidence
+
+    def _emit_scaffold_integrity_evidence(self, record: Any, envelope: TaskEnvelope) -> None:
+        """SIP-0100 3.3: surface one enforcement event as a structured event + log (best-effort —
+        observability must never break artifact storage)."""
+        payload = record.to_dict()
+        logger.warning("SIP-0100 scaffold_integrity: %s", payload)
+        try:
+            self._cycle_event_bus.emit(
+                EventType.ARTIFACT_OWNERSHIP_ENFORCED,
+                entity_type="artifact",
+                entity_id=record.normalized_path or record.attempted_path,
+                context={"cycle_id": envelope.cycle_id, "run_id": record.bound_run_id},
+                payload=payload,
             )
-        return enforced
+        except Exception:
+            logger.debug("SIP-0100: scaffold_integrity event emit failed", exc_info=True)
 
     async def _collect_artifacts_and_checkpoint(
         self,
@@ -2087,8 +2179,13 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # SIP-0100 2.4: on a scaffold-bound run, a producer's emission of a scaffold-frozen path
         # has its content restored to the bound scaffold bytes (D2 authority) — the producer
         # cannot overwrite a frozen file (pf-26). Recorded, not silent; no-op when unbound.
+        # 3.3: enforcement returns structured evidence; emit it (event + log) before storage.
         if bound_record is not None and artifacts:
-            artifacts = self._enforce_frozen_ownership(artifacts, bound_record, envelope)
+            artifacts, integrity_evidence = self._enforce_frozen_ownership(
+                artifacts, bound_record, envelope
+            )
+            for record in integrity_evidence:
+                self._emit_scaffold_integrity_evidence(record, envelope)
         new_refs: list[str] = []
         for art in artifacts:
             ref = await self._store_artifact(

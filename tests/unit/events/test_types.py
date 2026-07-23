@@ -7,9 +7,9 @@ from squadops.events.types import EventType
 
 @pytest.mark.domain_events
 class TestEventType:
-    def test_all_returns_28_events(self):
+    def test_all_returns_29_events(self):
         all_types = EventType.all()
-        assert len(all_types) == 28
+        assert len(all_types) == 29
 
     def test_entity_transition_format(self):
         for event_type in EventType.all():
@@ -44,7 +44,7 @@ class TestEventType:
             "gate": 1,
             "task": 3,
             "pulse": 5,
-            "artifact": 2,
+            "artifact": 3,
             "checkpoint": 2,
             "correction": 3,
             "workload": 3,
