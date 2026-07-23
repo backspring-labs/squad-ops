@@ -1051,6 +1051,11 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # Track stored artifacts with their refs for build pre-resolution
         stored_artifacts: list[tuple[str, ArtifactRef]] = []
 
+        # SIP-0100 2.4: bind the run's scaffold ownership once (frozen paths + bytes) so a
+        # producing task cannot clobber a scaffold-frozen file at artifact storage (pf-26).
+        # None for unbound/legacy runs → no enforcement (plan §10).
+        bound_record = self._build_bound_record_for_run(interface_manifest, run_id)
+
         # SIP-0079: Checkpoint/resume state tracking
         completed_task_ids: list[str] = []
         plan_delta_refs: list[str] = []
@@ -1273,6 +1278,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 stored_artifacts=stored_artifacts,
                 completed_task_ids=completed_task_ids,
                 plan_delta_refs=plan_delta_refs,
+                bound_record=bound_record,
             )
 
             # ----------------------------------------------------------
@@ -1998,6 +2004,70 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         )
         return "accept_patch"
 
+    def _build_bound_record_for_run(self, interface_manifest: Any, run_id: str) -> Any:
+        """SIP-0100 2.4: build the bound scaffold record (frozen paths + bytes) for a scaffold-bound
+        run, or None for unbound/legacy runs (no manifest / non-scaffoldable stack → no enforcement,
+        plan §10). Best-effort: a build failure disables enforcement rather than failing the run."""
+        if interface_manifest is None:
+            return None
+        try:
+            from squadops.capabilities.scaffold import is_scaffoldable_stack
+            from squadops.cycles.bound_scaffold_record import build_bound_record
+
+            if not is_scaffoldable_stack(getattr(interface_manifest, "stack", "")):
+                return None
+            return build_bound_record(
+                interface_manifest, run_id=run_id, attempt_id=run_id, created_at=""
+            )
+        except Exception:
+            logger.warning(
+                "SIP-0100: could not build bound scaffold record for run %s; frozen-ownership "
+                "enforcement disabled for this run",
+                run_id,
+                exc_info=True,
+            )
+            return None
+
+    def _enforce_frozen_ownership(
+        self, artifacts: list[dict], bound_record: Any, envelope: TaskEnvelope
+    ) -> list[dict]:
+        """SIP-0100 2.4: a producer must not overwrite a scaffold-frozen file. Any emitted artifact
+        whose normalized path is frozen has its content RESTORED to the bound record's bytes (D2
+        restoration authority — never re-derive), so the producer cannot clobber the scaffold
+        (pf-26). The attempt is recorded (not silent). Non-frozen artifacts pass through unchanged.
+
+        Restore (not response-atomic reject) is the deliberate first enforcement: the current squad
+        still re-emits frozen files, so a reject would break every bind-mode build; restore is
+        non-breaking and correct. The stricter reject + targeted correction is gated on fill-only
+        (plan §4.6 / 3.4)."""
+        from squadops.cycles.write_authorization import normalize_ws_path
+
+        frozen = {
+            n: fa.content
+            for fa in bound_record.frozen
+            if (n := normalize_ws_path(fa.path)) is not None
+        }
+        enforced: list[dict] = []
+        violated: list[str] = []
+        for art in artifacts:
+            raw = art.get("name") if art.get("name") is not None else art.get("path")
+            norm = normalize_ws_path(raw) if isinstance(raw, str) else None
+            if norm is not None and norm in frozen:
+                violated.append(norm)
+                enforced.append({**art, "content": frozen[norm]})  # restore scaffold bytes
+            else:
+                enforced.append(art)
+        if violated:
+            logger.warning(
+                "SIP-0100 scaffold_integrity: task %s (%s) emitted %d frozen path(s); content "
+                "restored to scaffold bytes: %s",
+                envelope.task_id,
+                envelope.task_type,
+                len(violated),
+                sorted(violated),
+            )
+        return enforced
+
     async def _collect_artifacts_and_checkpoint(
         self,
         result: TaskResult,
@@ -2009,11 +2079,18 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         stored_artifacts: list[tuple[str, ArtifactRef]],
         completed_task_ids: list[str],
         plan_delta_refs: list[str],
+        bound_record: Any = None,
     ) -> None:
         """Collect artifacts from a successful task and save a checkpoint."""
         # Collect artifacts (with producing_task_type metadata)
+        artifacts = (result.outputs or {}).get("artifacts", [])
+        # SIP-0100 2.4: on a scaffold-bound run, a producer's emission of a scaffold-frozen path
+        # has its content restored to the bound scaffold bytes (D2 authority) — the producer
+        # cannot overwrite a frozen file (pf-26). Recorded, not silent; no-op when unbound.
+        if bound_record is not None and artifacts:
+            artifacts = self._enforce_frozen_ownership(artifacts, bound_record, envelope)
         new_refs: list[str] = []
-        for art in (result.outputs or {}).get("artifacts", []):
+        for art in artifacts:
             ref = await self._store_artifact(
                 art,
                 cycle,
