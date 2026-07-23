@@ -786,6 +786,36 @@ def _view_stub(route: Route) -> str:
     )
 
 
+# Scaffold-owned pytest anchor (frozen) — the SINGLE source of the test import root.
+# Puts the workspace root on sys.path so ``import backend`` resolves regardless of
+# pytest's CWD, and owns the app import behind a ``client`` fixture. Suites fill bodies
+# against ``client`` and never author ``from <root>.main import app`` themselves — so the
+# package root is a scaffold invariant, not a per-suite guess (the pf-26 divergence:
+# files under backend/ but the qa test invented ``from app.main import app``).
+_CONFTEST_PY = '''"""Scaffold-owned pytest anchor (frozen) — the single source of the import root.
+
+Puts the workspace root on sys.path so ``import backend`` resolves regardless of the
+working directory pytest runs from, and exposes ``client`` as the ONE place the app is
+imported. Test suites fill bodies against ``client``; they never author the app import.
+"""
+
+import os
+import sys
+
+import pytest
+from fastapi.testclient import TestClient
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from backend.main import app  # noqa: E402  -- after the sys.path anchor above
+
+
+@pytest.fixture
+def client() -> TestClient:
+    return TestClient(app)
+'''
+
+
 def _expand_fullstack_fastapi_react(manifest: InterfaceManifest) -> list[dict[str, str]]:
     files: list[dict[str, str]] = []
 
@@ -798,6 +828,8 @@ def _expand_fullstack_fastapi_react(manifest: InterfaceManifest) -> list[dict[st
     files.append({"name": "backend/errors.py", "content": _errors_source(manifest)})
     files.append({"name": "backend/routes.py", "content": _routes_source(manifest)})
     files.append({"name": "backend/requirements.txt", "content": _REQUIREMENTS_TXT})
+    # Frozen pytest anchor: pins the import root so suites don't each guess it.
+    files.append({"name": "conftest.py", "content": _CONFTEST_PY})
 
     # ---- frontend (React + Vite) ----
     files.append(
