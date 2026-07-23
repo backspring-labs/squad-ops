@@ -15,15 +15,20 @@ Part of SIP-0066 Phase 4 + build capabilities extension + SIP-0071 + SIP-0078.
 from __future__ import annotations
 
 from collections import Counter
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from squadops.capabilities.handlers.build_profiles import (
     ROUTING_BUILDER_PRESENT,
     ROUTING_FALLBACK_NO_BUILDER,
 )
+from squadops.capabilities.scaffold import harness_entry_modules, is_qa_test_path_for_stack
 from squadops.cycles.agent_config import resolve_agent_config
-from squadops.cycles.implementation_plan import ImplementationPlan, resolve_contract_refs
+from squadops.cycles.implementation_plan import (
+    ImplementationPlan,
+    TypedCheck,
+    resolve_contract_refs,
+)
 from squadops.cycles.models import (
     REQUIRED_PLAN_ROLES,
     WORKLOAD_REQUIRED_ROLES,
@@ -386,6 +391,32 @@ def _inject_contract_inputs(
         inputs["contract_probes"] = [p.to_dict() for p in contract.behavioral.probes]
 
 
+def _harness_boundary_criteria(
+    task_type: str, plan_task: Any, contract: VerificationContract | None
+) -> list[TypedCheck]:
+    """SIP-0100 1.1: scaffold-owned ``harness_boundary`` checks for a bound qa.test task — one per
+    Python test file in the stack's QA namespace, so a suite that re-derives the app boundary
+    (pf-25/26: ``from app.main import app``) is rejected mechanically (the harness prompt is only
+    guidance; this is the guarantee). Empty in author mode, non-qa tasks, or a stack with no
+    declared boundary. Scoped to ``.py`` — ``harness_boundary`` is a Python-AST check; frontend
+    ``.jsx`` tests carry their own boundary check (future)."""
+    if task_type != "qa.test" or contract is None:
+        return []
+    stack = contract.skeleton.expander
+    entry = list(harness_entry_modules(stack))
+    if not entry:
+        return []
+    return [
+        TypedCheck(
+            check="harness_boundary",
+            params={"file": art, "entry_modules": entry},
+            id=f"scaffold-harness:{art}",
+        )
+        for art in plan_task.expected_artifacts
+        if art.endswith(".py") and is_qa_test_path_for_stack(art, stack)
+    ]
+
+
 def generate_task_plan(
     cycle: Cycle,
     run: Run,
@@ -548,6 +579,8 @@ def generate_task_plan(
             # mode (no contract / no refs) leaves acceptance_criteria as authored.
             if contract is not None and plan_task.criteria_refs:
                 acceptance.extend(resolve_contract_refs(plan_task.criteria_refs, contract))
+            # SIP-0100 1.1: bind scaffold-owned harness_boundary checks onto bound qa.test slots.
+            acceptance.extend(_harness_boundary_criteria(task_type, plan_task, contract))
             inputs["acceptance_criteria"] = acceptance
 
         _inject_contract_inputs(inputs, contract, task_type)

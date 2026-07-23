@@ -400,6 +400,14 @@ _QA_TEST_NAMESPACES: dict[str, tuple[str, ...]] = {
     "fullstack_fastapi_react": ("backend/tests/", "frontend/src/tests/"),
 }
 
+# SIP-0100 harness boundary: the app entry modules a QA test must NOT import — it must consume
+# the scaffold-owned `client` fixture instead. Per stack, like the namespace. The scaffold roots
+# the app at `backend.main` (main.py); `app.main`/`main` are the recurring wrong guesses that
+# killed pf-25/26. The `harness_boundary` acceptance check is authored with this list.
+_HARNESS_ENTRY_MODULES: dict[str, tuple[str, ...]] = {
+    "fullstack_fastapi_react": ("backend.main", "app.main", "main"),
+}
+
 
 def qa_test_namespace(manifest: InterfaceManifest) -> tuple[str, ...]:
     """Workspace-relative directory prefixes that own QA test files for ``manifest.stack``.
@@ -414,13 +422,28 @@ def qa_test_namespace(manifest: InterfaceManifest) -> tuple[str, ...]:
     return _QA_TEST_NAMESPACES.get(manifest.stack, ())
 
 
-def is_qa_test_path(path: str, manifest: InterfaceManifest) -> bool:
-    """True when a workspace-relative ``path`` falls within the stack's QA test namespace.
+def is_qa_test_path_for_stack(path: str, stack: str) -> bool:
+    """True when a workspace-relative ``path`` falls within ``stack``'s QA test namespace.
 
     Membership is by normalized directory-prefix (``./`` and ``//`` collapsed); it does not
-    resolve traversal — Phase-2 authorization owns canonical-target identity (D7)."""
+    resolve traversal — Phase-2 authorization owns canonical-target identity (D7). Stack-keyed
+    (tolerant: unknown stack → no namespace) so bind-mode dispatch, which has the stack from the
+    contract, can use it without a manifest."""
     norm = str(path).strip().lstrip("./").replace("//", "/")
-    return any(norm.startswith(ns) for ns in qa_test_namespace(manifest))
+    return any(norm.startswith(ns) for ns in _QA_TEST_NAMESPACES.get(stack, ()))
+
+
+def is_qa_test_path(path: str, manifest: InterfaceManifest) -> bool:
+    """Manifest-keyed convenience over ``is_qa_test_path_for_stack``."""
+    return is_qa_test_path_for_stack(path, manifest.stack)
+
+
+def harness_entry_modules(stack: str) -> tuple[str, ...]:
+    """App entry modules a QA test must not import for ``stack`` (SIP-0100 harness boundary).
+
+    Empty for a stack without a declared boundary — dispatch then binds no ``harness_boundary``
+    check (author-mode / non-scaffolded parity)."""
+    return _HARNESS_ENTRY_MODULES.get(stack, ())
 
 
 def is_scaffoldable_stack(stack: str) -> bool:

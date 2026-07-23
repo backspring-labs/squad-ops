@@ -456,3 +456,33 @@ def test_qa_test_namespace_rejects_unknown_stack():
     )
     with pytest.raises(ValueError, match="no scaffold expander"):
         qa_test_namespace(bad)
+
+
+# --------------------------------------------------------------------------- #
+# SIP-0100 Task 1.4 — runner-shape harness proof (through the production runner)
+# --------------------------------------------------------------------------- #
+
+
+async def test_scaffold_harness_resolves_under_the_production_test_runner():
+    """The fixture-based smoke test reaches assertion execution through the PRODUCTION test-runner
+    handler (`run_generated_tests`) — the same invocation shape (workspace, PYTHONPATH #454,
+    collection) a bound cycle uses, not just a dev-shell `pytest`. Proves the scaffold harness
+    (conftest sys.path anchor + `client` fixture) works under the real runner (SIP-0100 §9)."""
+    from squadops.capabilities.handlers.test_runner import run_generated_tests
+
+    # runner shape is {"path", "content"}; expand() emits {"name", "content"}.
+    files = [{"path": f["name"], "content": f["content"]} for f in expand(_group_run_manifest())]
+    source = [f for f in files if not f["path"].startswith("frontend/")]  # backend + root conftest
+    tests = [
+        {
+            "path": "backend/tests/test_smoke.py",
+            "content": (
+                "def test_health(client):\n    assert client.get('/health').status_code == 200\n"
+            ),
+        }
+    ]
+
+    result = await run_generated_tests(source, tests)
+    assert result.executed is True, getattr(result, "output", result)
+    assert result.exit_code == 0, getattr(result, "output", result)
+    assert result.tests_passed is True

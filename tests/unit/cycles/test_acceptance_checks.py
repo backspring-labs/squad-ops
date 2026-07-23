@@ -924,3 +924,82 @@ class TestImportPresentDotlessLeniency:
             tmp_path,
         )
         assert result.status == "failed"
+
+
+# ---------------------------------------------------------------------------
+# SIP-0100 harness_boundary — a QA test consumes the scaffold-owned fixture
+# ---------------------------------------------------------------------------
+
+_BOUNDARY = {"entry_modules": ["backend.main", "app.main"], "client_ctor": "TestClient"}
+
+
+class TestHarnessBoundary:
+    async def _run(self, tmp_path, source: str):
+        (tmp_path / "test_x.py").write_text(source)
+        return await get_check("harness_boundary").evaluate(
+            {"file": "test_x.py", **_BOUNDARY}, tmp_path, stack="python"
+        )
+
+    async def test_fixture_use_passes(self, tmp_path):
+        """The sanctioned shape: consume the injected `client` fixture, never import the app."""
+        result = await self._run(
+            tmp_path,
+            "def test_health(client):\n    assert client.get('/health').status_code == 200\n",
+        )
+        assert result.status == "passed"
+
+    async def test_pure_unit_test_with_no_app_access_passes(self, tmp_path):
+        """Review #7: a test that never touches the app need not use the fixture."""
+        result = await self._run(tmp_path, "def test_add():\n    assert 1 + 2 == 3\n")
+        assert result.status == "passed"
+
+    async def test_from_import_of_app_entry_fails(self, tmp_path):
+        result = await self._run(
+            tmp_path, "from backend.main import app\n\ndef test_x():\n    assert app\n"
+        )
+        assert result.status == "failed"
+        assert "backend.main" in result.reason
+
+    async def test_import_statement_of_app_entry_fails(self, tmp_path):
+        result = await self._run(
+            tmp_path, "import app.main\n\ndef test_x():\n    assert app.main\n"
+        )
+        assert result.status == "failed"
+        assert "app.main" in result.reason
+
+    async def test_direct_client_construction_fails(self, tmp_path):
+        """Even without importing the app module, constructing the client directly is a bypass."""
+        result = await self._run(
+            tmp_path,
+            "from fastapi.testclient import TestClient\nfrom backend.main import app\n"
+            "c = TestClient(app)\n\ndef test_x():\n    assert c\n",
+        )
+        assert result.status == "failed"
+        assert "TestClient" in result.reason
+
+    async def test_dynamic_import_of_app_entry_fails(self, tmp_path):
+        result = await self._run(
+            tmp_path,
+            "import importlib\napp = importlib.import_module('backend.main').app\n\n"
+            "def test_x():\n    assert app\n",
+        )
+        assert result.status == "failed"
+        assert "backend.main" in result.reason
+
+    async def test_stack_unset_skips(self, tmp_path):
+        (tmp_path / "test_x.py").write_text("from backend.main import app\n")
+        result = await get_check("harness_boundary").evaluate(
+            {"file": "test_x.py", **_BOUNDARY}, tmp_path, stack=None
+        )
+        assert result.status == "skipped"
+
+    async def test_missing_file_failed(self, tmp_path):
+        result = await get_check("harness_boundary").evaluate(
+            {"file": "nope.py", **_BOUNDARY}, tmp_path, stack="python"
+        )
+        assert result.status == "failed"
+        assert result.reason == "file_not_found"
+
+    async def test_syntax_error_is_error(self, tmp_path):
+        result = await self._run(tmp_path, "def test_x(:\n    pass\n")
+        assert result.status == "error"

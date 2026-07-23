@@ -695,3 +695,54 @@ class TestGenerateTaskPlanBindMode:
         models_env = next(e for e in envelopes if e.inputs.get("subtask_focus") == "Backend models")
         assert models_env.inputs["acceptance_criteria"] == ["Models exist"]
         assert not any(isinstance(c, TypedCheck) for c in models_env.inputs["acceptance_criteria"])
+
+
+# ---------------------------------------------------------------------------
+# SIP-0100 Task 1.1 — bind the harness_boundary check onto qa.test slots
+# ---------------------------------------------------------------------------
+
+_HARNESS_MANIFEST_YAML = _BIND_MANIFEST_YAML.replace(
+    'expected_artifacts: ["tests/test_api.py"]',
+    'expected_artifacts: ["backend/tests/test_api.py"]',
+)
+
+
+class TestHarnessBoundaryInjection:
+    def test_qa_test_task_gets_harness_boundary_for_in_namespace_py_file(self):
+        """A bound qa.test task carries a scaffold-owned harness_boundary check for each Python
+        test file in the QA namespace — the mechanical guarantee that a suite can't re-derive the
+        app boundary (pf-25/26). Severity defaults to error (blocking)."""
+        from squadops.cycles.implementation_plan import TypedCheck
+
+        plan = ImplementationPlan.from_yaml(_HARNESS_MANIFEST_YAML)
+        envelopes = generate_task_plan(
+            _make_cycle(), _make_run(), _make_profile(), plan=plan, contract=_models_contract()
+        )
+        harness = [
+            c
+            for e in envelopes
+            if e.task_type == "qa.test"
+            for c in e.inputs.get("acceptance_criteria", [])
+            if isinstance(c, TypedCheck) and c.check == "harness_boundary"
+        ]
+        assert len(harness) == 1
+        assert harness[0].params["file"] == "backend/tests/test_api.py"
+        assert "backend.main" in harness[0].params["entry_modules"]
+        assert "app.main" in harness[0].params["entry_modules"]
+        assert harness[0].severity == "error"
+
+    def test_author_mode_injects_no_harness_boundary(self):
+        """No contract → author mode → no scaffold-owned harness check (unbound/legacy parity)."""
+        from squadops.cycles.implementation_plan import TypedCheck
+
+        plan = ImplementationPlan.from_yaml(
+            MANIFEST_YAML.replace('["tests/test_api.py"]', '["backend/tests/test_api.py"]')
+        )
+        envelopes = generate_task_plan(_make_cycle(), _make_run(), _make_profile(), plan=plan)
+        assert not [
+            c
+            for e in envelopes
+            if e.task_type == "qa.test"
+            for c in e.inputs.get("acceptance_criteria", [])
+            if isinstance(c, TypedCheck) and c.check == "harness_boundary"
+        ]
