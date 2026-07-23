@@ -50,4 +50,6 @@ def test_the_two_known_workspace_materializers_are_callable():
     materializer is introduced, update the inventory doc AND this ledger so it is not left
     unenforced."""
     assert callable(_materialize_files)  # {'path', 'content'} — qa.test pytest/frontend workspace
-    assert callable(materialize_artifacts)  # {'name', 'content'} — typed-acc / patch-verify workspace
+    assert callable(
+        materialize_artifacts
+    )  # {'name', 'content'} — typed-acc / patch-verify workspace
