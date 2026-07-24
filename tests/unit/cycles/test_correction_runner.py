@@ -1675,6 +1675,112 @@ class TestCorrectionRunnerStandalone:
         assert protocol_result.correction_path == "patch"
         assert protocol_result.repair_artifacts == [repaired]
 
+    async def test_repair_envelope_threads_resolved_config_from_failed_task(self, cycle):
+        """pf-30 regression: the repair handler's scaffold fill-only appendix
+        gates on ``inputs["resolved_config"]["build_profile"]``
+        (``is_scaffoldable_stack``). The repair envelope previously omitted
+        ``resolved_config``, so the gate saw an empty profile and silently
+        no-opped — repairs freely rewrote scaffold-owned interface (pf-30
+        attempts 1-3 re-emitted routes.py with relative decorator paths
+        against a correct diagnosis, never converging). The retest path
+        already threaded the field; this pins the repair path too."""
+        import dataclasses as _dc
+
+        captured: list = []
+
+        def responder(envelope):
+            if envelope.task_type == "governance.correction_decision":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={
+                        "correction_path": "patch",
+                        "decision_rationale": "patchable",
+                        "affected_task_types": ["development.develop"],
+                    },
+                )
+            if envelope.task_type == "development.correction_repair":
+                captured.append(envelope)
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={"artifacts": [], "summary": "repaired"},
+                )
+            return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs={})
+
+        runner, _registry, _vault, _bus = self._make_runner(responder)
+        resolved_config = {"build_profile": "fullstack_fastapi_react"}
+        failed = _dc.replace(
+            self._failed_envelope(),
+            task_type="development.develop",
+            inputs={
+                "resolved_config": resolved_config,
+                "expected_artifacts": ["backend/routes.py"],
+            },
+        )
+
+        await runner.run_correction_protocol(
+            run_id="run_001",
+            cycle=cycle,
+            envelope=failed,
+            result=TaskResult(task_id="task_failed", status="FAILED", error="typed check failed"),
+            correction_attempts=0,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+        )
+
+        assert len(captured) == 1
+        assert captured[0].inputs["resolved_config"] == resolved_config
+
+    async def test_repair_envelope_resolved_config_defaults_empty(self, cycle):
+        """A failed envelope with no resolved_config threads {} — the
+        fill-only gate no-ops cleanly instead of the handler KeyErroring."""
+        import dataclasses as _dc
+
+        captured: list = []
+
+        def responder(envelope):
+            if envelope.task_type == "governance.correction_decision":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={
+                        "correction_path": "patch",
+                        "decision_rationale": "patchable",
+                        "affected_task_types": ["development.develop"],
+                    },
+                )
+            if envelope.task_type == "development.correction_repair":
+                captured.append(envelope)
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={"artifacts": [], "summary": "repaired"},
+                )
+            return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs={})
+
+        runner, _registry, _vault, _bus = self._make_runner(responder)
+        failed = _dc.replace(self._failed_envelope(), task_type="development.develop")
+
+        await runner.run_correction_protocol(
+            run_id="run_001",
+            cycle=cycle,
+            envelope=failed,
+            result=TaskResult(task_id="task_failed", status="FAILED", error="bad"),
+            correction_attempts=0,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+        )
+
+        assert len(captured) == 1
+        assert captured[0].inputs["resolved_config"] == {}
+
     async def test_non_patch_path_returns_no_repair_artifacts(self, cycle):
         """#389: a 'continue' decision dispatches no repair steps — surfacing
         stale/empty artifacts here would make the executor 'verify' nothing

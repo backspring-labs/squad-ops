@@ -598,6 +598,14 @@ class CorrectionRunner:
                     "artifact_refs": list(all_artifact_refs),
                     "agent_model": agent_model,
                     "agent_config_overrides": agent_overrides,
+                    # The repair handler's scaffold fill-only appendix gates on
+                    # resolved_config.build_profile (is_scaffoldable_stack) — without
+                    # this the gate sees an empty profile and silently no-ops, and
+                    # repairs freely rewrite scaffold-owned interface (pf-30:
+                    # attempts 1-3 re-emitted routes.py with relative decorator
+                    # paths against a correct diagnosis). Mirrors the retest
+                    # threading in reexecute_repaired_suite below.
+                    "resolved_config": failed_inputs.get("resolved_config", {}),
                     "subtask_focus": repair_focus,
                     "subtask_description": repair_description,
                     "expected_artifacts": repair_expected_artifacts,
