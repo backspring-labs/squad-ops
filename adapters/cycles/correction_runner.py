@@ -14,6 +14,15 @@ artifact plumbing is §6.7 executor residual, residual-but-watched.
 Cancellation: the protocol performs no cancellation checks of its own (it
 never did); it relies on the dispatch path's checks at dispatch/await
 boundaries per the §6 cancellation ownership rule.
+
+Repair acceptance is deterministic-only (#556): the repair sequence has no
+LLM validation step — patch verification (#389) re-runs the typed criteria
+and ``reexecute_repaired_suite`` (#456) re-runs the behavioral suite, and
+those two signals decide convergence. If LLM judgment ever returns to this
+loop it goes AFTER the retest, on the governance role, fail-closed — it may
+reject or flag a deterministic green but never approve past a deterministic
+red (#557). The retest ``TaskResult`` returned by
+``reexecute_repaired_suite`` is the evidence feed such a step would consume.
 """
 
 from __future__ import annotations
@@ -625,36 +634,30 @@ class CorrectionRunner:
                     plan_delta_refs=plan_delta_refs,
                 )
 
-                # Collect repair outputs. Unlike the regular fan-in path
-                # (executor fan-in), keep `artifacts` so the next step in this
-                # sequence — `qa.validate_repair` — can see the actual
-                # repaired files rather than only the role-keyed one-line
-                # summary. Without this the qa role renders Verdict: FAIL
-                # on repairs whose artifacts are already in the registry,
-                # because the validate-repair prompt has no visibility
-                # into what the upstream repair handler produced.
+                # Collect repair outputs under the role key, matching the
+                # regular fan-in convention (summaries only — `artifacts` are
+                # surfaced to the overlay below, not through prompt context).
                 role_key = repair_envelope.metadata.get("role", "unknown")
-                prior_outputs[role_key] = dict(repair_result.outputs or {})
+                prior_outputs[role_key] = {
+                    k: v for k, v in (repair_result.outputs or {}).items() if k != "artifacts"
+                }
 
                 # #389: surface the repair's emitted files to the executor for
-                # behavioral patch verification. The validate step's output is
-                # an LLM judgment document, not product content — excluded so
-                # it can't shadow a product file in the overlay.
-                if task_type != "qa.validate_repair":
-                    step_artifacts = (repair_result.outputs or {}).get("artifacts") or []
-                    # #507: re-home repair files onto the failed task's expected
-                    # paths before they reach the overlay — a repair emitted under
-                    # the wrong directory otherwise lands as a net-new file, patch
-                    # verification runs on the un-patched original, and the
-                    # validated repair is discarded by re-dispatch.
-                    from squadops.cycles.patch_verification import rebase_artifact_paths
+                # behavioral patch verification.
+                step_artifacts = (repair_result.outputs or {}).get("artifacts") or []
+                # #507: re-home repair files onto the failed task's expected
+                # paths before they reach the overlay — a repair emitted under
+                # the wrong directory otherwise lands as a net-new file, patch
+                # verification runs on the un-patched original, and the
+                # validated repair is discarded by re-dispatch.
+                from squadops.cycles.patch_verification import rebase_artifact_paths
 
-                    repair_artifacts.extend(
-                        rebase_artifact_paths(
-                            [a for a in step_artifacts if isinstance(a, dict)],
-                            failed_inputs.get("expected_artifacts") or [],
-                        )
+                repair_artifacts.extend(
+                    rebase_artifact_paths(
+                        [a for a in step_artifacts if isinstance(a, dict)],
+                        failed_inputs.get("expected_artifacts") or [],
                     )
+                )
 
         # 8. Emit CORRECTION_COMPLETED
         self._event_bus.emit(

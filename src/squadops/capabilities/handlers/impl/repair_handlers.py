@@ -1,8 +1,8 @@
 """Repair handlers for the SIP-0079 correction protocol.
 
 Thin subclasses of _CycleTaskHandler used by the repair-task selector in
-cycles/task_plan.py: development.correction_repair (dev),
-builder.assemble_repair (builder), and qa.validate_repair (qa).
+cycles/task_plan.py: development.correction_repair (dev) and
+builder.assemble_repair (builder).
 
 Issue #100: this file used to define a `DevelopmentRepairHandler` with
 `_capability_id = "development.repair"`. That collided with the SIP-0070
@@ -111,58 +111,6 @@ def _format_failure_summary(failure_evidence: Any, failure_analysis: Any) -> str
     return "\n\n".join(parts) if parts else "(no structured failure evidence available)"
 
 
-_FENCE_LANG_BY_EXT: dict[str, str] = {
-    ".py": "python",
-    ".js": "javascript",
-    ".jsx": "jsx",
-    ".ts": "typescript",
-    ".tsx": "tsx",
-    ".json": "json",
-    ".md": "markdown",
-    ".yml": "yaml",
-    ".yaml": "yaml",
-    ".sh": "bash",
-    ".sql": "sql",
-    ".html": "html",
-    ".css": "css",
-    ".toml": "toml",
-}
-
-
-def _fence_language_for(filename: str) -> str:
-    if not isinstance(filename, str):
-        return ""
-    lower = filename.lower()
-    for ext, lang in _FENCE_LANG_BY_EXT.items():
-        if lower.endswith(ext):
-            return lang
-    return ""
-
-
-def _format_repair_artifacts(artifacts: Any) -> str:
-    """Render repair artifacts as fenced code blocks with filename headers.
-
-    The qa role previously saw only the role-keyed one-line summary, so
-    it would return Verdict: FAIL on repairs whose artifacts were
-    already in the registry. Surfacing the full content here lets the
-    validator cite specific lines when checking acceptance criteria.
-    """
-    if not isinstance(artifacts, list) or not artifacts:
-        return ""
-    rendered: list[str] = []
-    for art in artifacts:
-        if not isinstance(art, dict):
-            continue
-        name = art.get("name") or "(unnamed)"
-        content = art.get("content")
-        if content is None:
-            continue
-        lang = _fence_language_for(name)
-        fence_open = f"```{lang}" if lang else "```"
-        rendered.append(f"#### `{name}`\n{fence_open}\n{content}\n```")
-    return "\n\n".join(rendered)
-
-
 def _format_correction_decision(correction_decision: Any) -> str:
     """Render the lead's correction decision rationale for the prompt."""
     if isinstance(correction_decision, dict):
@@ -182,7 +130,7 @@ class _RepairPromptMixin:
     acceptance_criteria, so the dev/builder roles emit generic content
     instead of re-producing the named artifact that failed acceptance.
     This mixin surfaces the failed task's contract and the failure
-    context to the LLM. Used by all three repair handlers below.
+    context to the LLM. Used by both repair handlers below.
     """
 
     _request_template_id = "request.cycle_repair_task"
@@ -348,121 +296,3 @@ class BuilderAssembleRepairHandler(_RepairPromptMixin, _CycleTaskHandler):
 
     def _build_artifacts_from_content(self, content: str) -> list[dict[str, Any]]:
         return _artifacts_from_fenced_blocks(content, self._artifact_name)
-
-
-class QAValidateRepairHandler(_CycleTaskHandler):
-    """Validate repair handler: verifies the repair was successful.
-
-    Receives the original failed task's contract (expected_artifacts,
-    acceptance_criteria) plus the upstream repair handler's outputs via
-    `prior_outputs`, and produces a structured PASS/FAIL `repair_validation.md`
-    against those criteria — not a fresh QA strategy document.
-    """
-
-    _handler_name = "qa_validate_repair_handler"
-    _capability_id = "qa.validate_repair"
-    _role = "qa"
-    _artifact_name = "repair_validation.md"
-    _request_template_id = "request.cycle_validate_repair"
-
-    @staticmethod
-    def _format_repair_summary(prior_outputs: dict[str, Any] | None) -> str:
-        """Render the upstream repair handler's artifacts for the qa prompt.
-
-        The executor stores the repair task's outputs under its role key
-        (e.g. `prior_outputs["builder"]` for builder.assemble_repair). For
-        repair tasks the executor preserves the `artifacts` list (unlike
-        the regular fan-in path), so we surface filename + content here
-        so the qa role can verify against the original acceptance
-        criteria. Falls back to the role-keyed summary when no artifacts
-        are present.
-        """
-        if not prior_outputs:
-            return "(no repair output available)"
-        repair_keys = [k for k in ("dev", "builder") if k in prior_outputs]
-        if not repair_keys:
-            return "(no repair output from dev or builder role)"
-        parts: list[str] = []
-        for key in repair_keys:
-            block = prior_outputs[key]
-            if not isinstance(block, dict):
-                parts.append(f"### {key} repair\n{block!r}")
-                continue
-
-            section = [f"### {key} repair"]
-            summary = block.get("summary")
-            if summary:
-                section.append(str(summary))
-
-            artifacts = block.get("artifacts") or []
-            rendered_artifacts = _format_repair_artifacts(artifacts)
-            if rendered_artifacts:
-                section.append(rendered_artifacts)
-            elif not summary:
-                section.append(repr(block))
-            parts.append("\n\n".join(section))
-        return "\n\n".join(parts)
-
-    def _build_render_variables(
-        self,
-        prd: str,
-        prior_outputs: dict[str, Any] | None,
-        inputs: dict[str, Any],
-    ) -> dict[str, str]:
-        return {
-            "prd": prd,
-            "role": self._role,
-            "failed_task_type": str(inputs.get("failed_task_type", "")),
-            "expected_artifacts": _format_bullets(inputs.get("expected_artifacts")),
-            "acceptance_criteria": _format_bullets(inputs.get("acceptance_criteria")),
-            "failure_summary": _format_failure_summary(
-                inputs.get("failure_evidence"),
-                inputs.get("failure_analysis"),
-            ),
-            "repair_summary": self._format_repair_summary(prior_outputs),
-            "prior_outputs": self._format_prior_outputs(prior_outputs),
-        }
-
-    def _build_user_prompt(
-        self,
-        prd: str,
-        prior_outputs: dict[str, Any] | None,
-        inputs: dict[str, Any] | None = None,
-    ) -> str:
-        inputs = inputs or {}
-        parts = [
-            "## Validate Repair",
-            "Decide whether the repair output satisfies the original acceptance "
-            "criteria. Do NOT write a fresh QA strategy. Answer the specific "
-            "question: was the failure fixed?",
-        ]
-
-        failed_type = inputs.get("failed_task_type")
-        if failed_type:
-            parts.append(f"### Failed Task Type\n`{failed_type}`")
-
-        expected = inputs.get("expected_artifacts")
-        if expected:
-            parts.append("### Original Required Artifacts\n" + _format_bullets(expected))
-
-        criteria = inputs.get("acceptance_criteria")
-        if criteria:
-            parts.append("### Original Acceptance Criteria\n" + _format_bullets(criteria))
-
-        failure_summary = _format_failure_summary(
-            inputs.get("failure_evidence"),
-            inputs.get("failure_analysis"),
-        )
-        parts.append("### Original Failure\n" + failure_summary)
-
-        parts.append("### Repair Output\n" + self._format_repair_summary(prior_outputs))
-
-        parts.append(f"### Product Requirements Document\n\n{prd}")
-
-        parts.append(
-            "Produce a `repair_validation.md` with sections: Verdict (PASS|FAIL), "
-            "Per-Artifact Findings, Per-Criterion Findings, Recommendation. "
-            "Be concrete. Cite the criterion and the specific content (or absence) "
-            "that satisfies or violates it."
-        )
-        return "\n\n".join(parts)

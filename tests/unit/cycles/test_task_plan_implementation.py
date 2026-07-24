@@ -118,28 +118,37 @@ class TestCorrectionAndRepairSteps:
     def test_repair_steps_defined(self):
         # Issue #100: development.correction_repair, NOT development.repair
         # (the latter belongs to the pulse-check chain in pulse_verification.py).
+        # Issue #556: no qa.validate_repair step — repair acceptance is
+        # deterministic (patch verification #389 + retest #456).
         assert REPAIR_TASK_STEPS == [
             ("development.correction_repair", "dev"),
-            ("qa.validate_repair", "qa"),
         ]
 
 
 class TestRepairStepsFor:
-    def test_dev_develop_uses_dev_repair_pair(self):
+    def test_dev_develop_uses_dev_repair_steps(self):
         assert repair_steps_for("development.develop") == [
             ("development.correction_repair", "dev"),
-            ("qa.validate_repair", "qa"),
         ]
 
     def test_builder_assemble_routes_to_builder_repair_handler(self):
         # Regression: previously a failed builder.assemble silently routed
-        # to development.correction_repair (Neo) because the executor
+        # to development.correction_repair (dev role) because the executor
         # always looped REPAIR_TASK_STEPS.
-        steps = repair_steps_for("builder.assemble")
-        assert steps[0] == ("builder.assemble_repair", "builder")
-        assert steps[-1] == ("qa.validate_repair", "qa")
+        assert repair_steps_for("builder.assemble") == [
+            ("builder.assemble_repair", "builder"),
+        ]
 
-    def test_unknown_failed_task_type_falls_back_to_dev_pair(self):
+    def test_no_repair_sequence_contains_validate_repair(self):
+        # Issue #556 regression: an LLM validate step must not sneak back
+        # into any repair sequence — acceptance is deterministic-only.
+        for failed_task_type in ("development.develop", "builder.assemble", "unknown", ""):
+            assert all(
+                task_type != "qa.validate_repair"
+                for task_type, _ in repair_steps_for(failed_task_type)
+            )
+
+    def test_unknown_failed_task_type_falls_back_to_dev_steps(self):
         assert repair_steps_for("strategy.frame_objective") == REPAIR_TASK_STEPS
         assert repair_steps_for("") == REPAIR_TASK_STEPS
 

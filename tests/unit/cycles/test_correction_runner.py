@@ -301,10 +301,8 @@ class TestCorrectionPatch:
             ),
             # Correction: correction_decision -> patch
             ("SUCCEEDED", correction_decision, None),
-            # Repair: development.repair
+            # Repair: development.correction_repair
             ("SUCCEEDED", {"summary": "repaired", "role": "dev"}, None),
-            # Repair: qa.validate_repair
-            ("SUCCEEDED", {"summary": "validated", "role": "qa"}, None),
             # #374: a patch re-runs the ORIGINAL failed check (Task 1) — now passes
             ("SUCCEEDED", {"summary": "task1 re-run ok", "role": "dev"}, None),
             # Tasks 2-5: succeed
@@ -321,8 +319,9 @@ class TestCorrectionPatch:
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
 
-        # 1 (failed) + 2 (correction) + 2 (repair) + 1 (#374 re-run of Task 1) + 4 (remaining) = 10
-        assert mock_queue.publish.call_count == 10
+        # 1 (failed) + 2 (correction) + 1 (repair, #556: dev only) +
+        # 1 (#374 re-run of Task 1) + 4 (remaining) = 9
+        assert mock_queue.publish.call_count == 9
 
         status_calls = mock_registry.update_run_status.call_args_list
         terminal_statuses = [c.args[1] for c in status_calls]
@@ -362,7 +361,7 @@ class TestCorrectionPatch:
                     task_id=tid, status="SUCCEEDED", outputs=patch_decision, error=None
                 )
             if tid.startswith("corr-") or tid.startswith("repair-"):
-                # analyze_failure / repair / validate_repair all succeed
+                # analyze_failure / repair all succeed
                 return TaskResult(
                     task_id=tid,
                     status="SUCCEEDED",
@@ -579,7 +578,6 @@ class TestCorrectionTaskArtifactStorage:
             ),
             ("SUCCEEDED", correction_decision, None),
             ("SUCCEEDED", repaired_qa_handoff, None),
-            ("SUCCEEDED", {"summary": "validated", "role": "qa"}, None),
             # remaining tasks just succeed
             ("SUCCEEDED", {"summary": "ok", "role": "dev"}, None),
             ("SUCCEEDED", {"summary": "ok", "role": "dev"}, None),
@@ -607,17 +605,16 @@ class TestCorrectionTaskArtifactStorage:
         terminal_statuses = [c.args[1] for c in status_calls]
         assert RunStatus.COMPLETED in terminal_statuses
 
-    async def test_validate_repair_envelope_carries_repair_artifacts_in_prior_outputs(
+    async def test_repair_sequence_dispatches_no_validate_step(
         self, executor, mock_queue, mock_registry, mock_vault, mock_event_bus
     ):
-        """qa.validate_repair must see the upstream repair task's artifacts.
-
-        Cycle 8 regression: the executor previously stripped `artifacts`
-        from the repair task's outputs when collecting prior_outputs, so
-        Eve only saw the role-keyed one-line summary and rendered
-        Verdict: FAIL even when the repaired file was already in the
-        registry. This pins the executor side of the fix — the
-        downstream prompt formatting is covered by repair handler tests."""
+        """#556: the repair sequence dispatches NO qa.validate_repair task,
+        and the repair's outputs land in prior_outputs WITHOUT `artifacts`
+        (fan-in convention) — the repaired files reach the overlay via
+        `repair_artifacts`, not prompt context. A validate dispatch
+        reappearing here means an unconsumed LLM turn re-entered the loop;
+        artifacts reappearing in prior_outputs means full file contents
+        are bloating every downstream prompt again."""
         semantic_outputs = {
             "outcome_class": TaskOutcome.SEMANTIC_FAILURE,
             "role": "strat",
@@ -656,7 +653,6 @@ class TestCorrectionTaskArtifactStorage:
             ),
             ("SUCCEEDED", correction_decision, None),
             ("SUCCEEDED", repair_with_artifacts, None),
-            ("SUCCEEDED", {"summary": "validated", "role": "qa"}, None),
             ("SUCCEEDED", {"summary": "ok", "role": "dev"}, None),
             ("SUCCEEDED", {"summary": "ok", "role": "dev"}, None),
             ("SUCCEEDED", {"summary": "ok", "role": "qa"}, None),
@@ -671,24 +667,20 @@ class TestCorrectionTaskArtifactStorage:
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
 
         publishes = [_published_envelope(c) for c in mock_queue.publish.call_args_list]
-        validate = next(p for p in publishes if p["task_type"] == "qa.validate_repair")
-
-        prior = validate["inputs"]["prior_outputs"]
-        dev_block = prior.get("dev")
-        assert dev_block is not None, (
-            f"dev repair output missing from prior_outputs; got keys: {list(prior.keys())}"
+        assert not any(p["task_type"] == "qa.validate_repair" for p in publishes), (
+            "no qa.validate_repair task may be dispatched (#556)"
         )
-        artifacts = dev_block.get("artifacts")
-        assert artifacts, (
-            "validate_repair envelope must carry repair artifacts; "
-            "without this Eve cannot verify the repair against acceptance criteria"
-        )
-        names = [a.get("name") for a in artifacts]
-        assert "frontend/src/components/RunDetail.jsx" in names
-        # Content travels too — Eve needs to read it, not just see the filename.
-        assert any(
-            "export default function RunDetail" in (a.get("content") or "") for a in artifacts
-        )
+        # The dev repair DID run, and later envelopes see its summary but
+        # not its file contents.
+        assert any(p["task_id"].startswith("repair-") for p in publishes)
+        later_with_dev = [
+            p["inputs"]["prior_outputs"]["dev"]
+            for p in publishes
+            if "dev" in (p.get("inputs", {}).get("prior_outputs") or {})
+            and p["inputs"]["prior_outputs"]["dev"].get("summary") == "[dev] repaired"
+        ]
+        assert later_with_dev, "repair summary should reach downstream prior_outputs"
+        assert all("artifacts" not in block for block in later_with_dev)
 
 
 # ---------------------------------------------------------------------------
@@ -934,9 +926,8 @@ class TestPlanDelta:
             ("FAILED", semantic_outputs, "bad"),
             ("SUCCEEDED", analyze_failure, None),
             ("SUCCEEDED", correction_decision, None),
-            # repair tasks (development.correction_repair, qa.validate_repair)
+            # repair task (development.correction_repair)
             ("SUCCEEDED", {"summary": "ok", "role": "dev"}, None),
-            ("SUCCEEDED", {"summary": "ok", "role": "qa"}, None),
             # remaining tasks
             ("SUCCEEDED", {"summary": "ok", "role": "dev"}, None),
             ("SUCCEEDED", {"summary": "ok", "role": "dev"}, None),
@@ -1287,9 +1278,8 @@ class TestCorrectionModelResolution:
                 None,
             ),
             ("SUCCEEDED", decision, None),
-            # Repair tasks + remaining task plan succeed.
+            # Repair task + remaining task plan succeed.
             ("SUCCEEDED", {"summary": "repaired", "role": "dev"}, None),
-            ("SUCCEEDED", {"summary": "validated", "role": "qa"}, None),
             ("SUCCEEDED", {"summary": "ok", "role": "dev"}, None),
             ("SUCCEEDED", {"summary": "ok", "role": "qa"}, None),
             ("SUCCEEDED", {"summary": "ok", "role": "data"}, None),
@@ -1404,7 +1394,6 @@ class TestCorrectionModelResolution:
             ),
             ("SUCCEEDED", decision, None),
             ("SUCCEEDED", {"summary": "repaired", "role": "dev"}, None),
-            ("SUCCEEDED", {"summary": "validated", "role": "qa"}, None),
             ("SUCCEEDED", {"summary": "ok", "role": "dev"}, None),
             ("SUCCEEDED", {"summary": "ok", "role": "qa"}, None),
             ("SUCCEEDED", {"summary": "ok", "role": "data"}, None),
@@ -1638,10 +1627,9 @@ class TestCorrectionRunnerStandalone:
         # One checkpoint saved (decision step only).
         assert registry.save_checkpoint.await_count == 1
 
-    async def test_patch_path_returns_repair_artifacts_excluding_validate_step(self, cycle):
+    async def test_patch_path_returns_repair_artifacts(self, cycle):
         """#389 regression: the executor verifies patches against the repair
-        steps' emitted files — if the protocol doesn't surface them (or lets
-        the validate step's judgment doc shadow a product file), patch
+        steps' emitted files — if the protocol doesn't surface them, patch
         verification silently never engages and every repair is re-rolled."""
         import dataclasses as _dc
 
@@ -1663,15 +1651,6 @@ class TestCorrectionRunnerStandalone:
                     task_id=envelope.task_id,
                     status="SUCCEEDED",
                     outputs={"artifacts": [repaired], "summary": "repaired"},
-                )
-            if envelope.task_type == "qa.validate_repair":
-                return TaskResult(
-                    task_id=envelope.task_id,
-                    status="SUCCEEDED",
-                    outputs={
-                        "artifacts": [{"name": "repair_validation.md", "content": "PASS"}],
-                        "verdict": "PASS",
-                    },
                 )
             return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs={})
 
