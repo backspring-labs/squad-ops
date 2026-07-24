@@ -387,19 +387,6 @@ def _inject_contract_inputs(
         return
     if task_type in _BIND_INDEX_PROPOSER_TASK_TYPES:
         inputs["contract_criteria_index"] = "\n".join(contract.criteria_index_lines())
-        # SIP-0100 follow-up (Phase A): publish the authoritative writable surfaces (data only,
-        # #448) so the proposer targets fill slots deterministically instead of inventing paths.
-        # The bind appendix asset carries the "write ONLY these paths" instruction. Same source
-        # (the contract) that Phase B validates against and the runtime enforces against.
-        from squadops.cycles.plan_authorization import PlanAuthorization
-
-        authz = PlanAuthorization.from_contract(contract)
-        inputs["writable_surfaces"] = {
-            "read_only_context_paths": sorted(authz.read_only_paths),
-            "dev_writable_slots": sorted(authz.dev_writable),
-            "qa_writable_namespaces": list(authz.qa_namespace),
-            "required_slot_coverage": sorted(authz.required_coverage),
-        }
     if task_type == "qa.test" and contract.behavioral.probes:
         inputs["contract_probes"] = [p.to_dict() for p in contract.behavioral.probes]
 
@@ -701,27 +688,6 @@ def _replace_build_steps_with_plan(
         ref_errors = plan.validate_criteria_refs(contract)
         if ref_errors:
             raise CycleError("Plan validation failed (contract binding): " + "; ".join(ref_errors))
-
-        # SIP-0100 follow-up (Phase B): bind-mode target authorization — every dev/qa
-        # workspace target must resolve to an authorized fill slot / QA namespace, and every
-        # required slot must be assigned exactly once. Reuses the same ownership surface the
-        # runtime write-enforcement uses (a read-only projection), so authoring and enforcement
-        # can't diverge. Raising routes to the bounded framing re-roll (#522); exhaustion is a
-        # distinct authoring-bind failure, never a build-convergence failure.
-        from squadops.cycles.plan_authorization import (
-            PlanAuthorization,
-            validate_plan_write_targets,
-        )
-
-        target_rejections = validate_plan_write_targets(
-            plan.tasks, PlanAuthorization.from_contract(contract)
-        )
-        if target_rejections:
-            summary = "; ".join(
-                f"task {r.task_index} [{r.code}] {r.raw_target} — {r.detail}"
-                for r in target_rejections
-            )
-            raise CycleError("Plan validation failed (target binding): " + summary)
 
     # Remove static build steps, keep everything else (planning steps)
     static_build_types = {s[0] for s in BUILD_TASK_STEPS} | {

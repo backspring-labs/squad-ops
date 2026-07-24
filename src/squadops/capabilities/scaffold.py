@@ -422,14 +422,6 @@ def qa_test_namespace(manifest: InterfaceManifest) -> tuple[str, ...]:
     return _QA_TEST_NAMESPACES.get(manifest.stack, ())
 
 
-def qa_test_namespace_for_stack(stack: str) -> tuple[str, ...]:
-    """QA test-namespace directory prefixes for ``stack`` (empty for an unknown stack).
-
-    Stack-keyed sibling of ``qa_test_namespace`` that needs no manifest — plan-authoring
-    binding has the stack from the contract skeleton, not the manifest."""
-    return _QA_TEST_NAMESPACES.get(stack, ())
-
-
 def is_qa_test_path_for_stack(path: str, stack: str) -> bool:
     """True when a workspace-relative ``path`` falls within ``stack``'s QA test namespace.
 

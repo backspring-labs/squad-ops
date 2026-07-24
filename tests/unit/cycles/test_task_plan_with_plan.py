@@ -602,9 +602,8 @@ class TestWorkloadInvariantTail:
 
 
 def _models_contract():
-    """A contract covering the bind plan's fill slots (backend/models.py with a criterion,
-    backend/routes.py with none) so a bind-mode plan binds models.py's criterion AND every dev
-    target resolves to a fill slot (SIP-0100 follow-up target binding)."""
+    """A one-fill-file contract covering backend/models.py (the artifact MANIFEST_YAML's
+    task 0 produces) so a bind-mode plan must bind its criterion."""
     from squadops.cycles.verification_contract import VerificationContract
 
     return VerificationContract.from_dict(
@@ -627,8 +626,7 @@ def _models_contract():
                         }
                     ],
                     "implementation": [],
-                },
-                "backend/routes.py": {"interface": [], "implementation": []},
+                }
             },
             "behavioral": {
                 "build": [],
@@ -639,12 +637,10 @@ def _models_contract():
     )
 
 
-# Bind variant: task 0 binds its criterion by id; task 1 targets the routes.py fill slot (not the
-# frozen main.py) so every dev target resolves to a fill slot under the target-binding gate.
 _BIND_MANIFEST_YAML = MANIFEST_YAML.replace(
     '    expected_artifacts: ["backend/models.py"]\n    acceptance_criteria: ["Models exist"]',
     '    expected_artifacts: ["backend/models.py"]\n    criteria_refs: ["vc-models-base"]',
-).replace('expected_artifacts: ["backend/main.py"]', 'expected_artifacts: ["backend/routes.py"]')
+)
 
 
 class TestGenerateTaskPlanBindMode:
