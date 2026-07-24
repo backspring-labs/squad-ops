@@ -1855,7 +1855,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             raise _ExecutionError(f"Rewinding to checkpoint after {envelope.task_type} failure")
         elif correction_path == "patch":
             # #374/#389 (pure-behavioral): the verdict is the re-executed check,
-            # never the LLM validate_repair judgment. First re-run the failed
+            # never an LLM judgment (the validate_repair step was removed, #556).
+            # First re-run the failed
             # task's typed acceptance criteria against the REPAIRED artifacts
             # (#389) — a pass accepts the patch outright, because re-dispatching
             # a generative task re-rolls its artifacts and discards the repair

@@ -173,14 +173,14 @@ class TestHandlerBootstrap:
             f"or remove them from the corresponding *_TASK_STEPS list."
         )
 
-    def test_qa_validate_repair_registered_for_qa_role(self):
-        """Issue #93 regression: qa.validate_repair must be available to
-        the qa role specifically. Adding it to the registry without the
-        right role would still 13ms-fail when dispatched to eve.
+    def test_qa_validate_repair_not_registered(self):
+        """Issue #556: qa.validate_repair was removed — repair acceptance is
+        deterministic (patch verification #389 + retest #456). A leftover or
+        re-added registration would silently re-enable an LLM turn whose
+        verdict nothing consumes.
         """
         registry = create_handler_registry()
-        qa_caps = registry.list_by_role("qa")
-        assert "qa.validate_repair" in qa_caps
+        assert "qa.validate_repair" not in set(registry.list_capabilities())
 
 
 class TestSystemBootstrap:

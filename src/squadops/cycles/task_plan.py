@@ -183,16 +183,21 @@ CORRECTION_TASK_STEPS: list[tuple[str, str]] = [
 # latter belongs to the SIP-0070 pulse-check chain in pulse_verification.py.
 #
 # Default sequence used when the failed task type has no specialized repair
-# pair registered below. Kept as a module constant for direct import in
+# step registered below. Kept as a module constant for direct import in
 # tests and for use as the fallback inside `repair_steps_for`.
+#
+# Issue #556: the `qa.validate_repair` step that used to follow each repair
+# was removed — its verdict had no programmatic consumer; repair acceptance
+# is decided deterministically by patch verification (#389) and the
+# behavioral retest (#456). Any future LLM judgment on repairs belongs
+# AFTER the retest, on the governance role, fail-closed (#557).
 REPAIR_TASK_STEPS: list[tuple[str, str]] = [
     ("development.correction_repair", "dev"),
-    ("qa.validate_repair", "qa"),
 ]
 
 # Specialized repair sequences keyed by the failed task's task_type. The
-# correction loop dispatches the right pair instead of always running the
-# dev-flavored default — without this mapping a failed `builder.assemble`
+# correction loop dispatches the right sequence instead of always running
+# the dev-flavored default — without this mapping a failed `builder.assemble`
 # task gets repaired by the dev role (which has no useful context for
 # packaging output) and the builder role is silently bypassed even though
 # the failed work is the builder's.
@@ -200,7 +205,6 @@ _REPAIR_STEPS_BY_FAILED_TASK_TYPE: dict[str, list[tuple[str, str]]] = {
     "development.develop": REPAIR_TASK_STEPS,
     "builder.assemble": [
         ("builder.assemble_repair", "builder"),
-        ("qa.validate_repair", "qa"),
     ],
 }
 
@@ -212,8 +216,8 @@ def repair_steps_for(failed_task_type: str) -> list[tuple[str, str]]:
     the LLM-emitted `affected_task_types` field on a PlanDelta is
     free-text and was previously the only routing signal, so a builder
     failure tagged `["QA Handoff"]` would mis-route to the dev repair
-    handler. Falls back to `REPAIR_TASK_STEPS` (dev + qa) for any task
-    type without a specialized pair.
+    handler. Falls back to `REPAIR_TASK_STEPS` (dev) for any task type
+    without a specialized sequence.
     """
     return _REPAIR_STEPS_BY_FAILED_TASK_TYPE.get(failed_task_type, REPAIR_TASK_STEPS)
 

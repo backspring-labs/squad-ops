@@ -33,7 +33,6 @@ from squadops.capabilities.handlers.impl.define_done import (
 from squadops.capabilities.handlers.impl.repair_handlers import (
     BuilderAssembleRepairHandler,
     DevelopmentCorrectionRepairHandler,
-    QAValidateRepairHandler,
 )
 from squadops.capabilities.handlers.planning_tasks import (
     DataResearchContextHandler,
@@ -92,13 +91,14 @@ HANDLER_CONFIGS: list[tuple[type[CapabilityHandler], tuple[str, ...]]] = [
     (GovernanceDefineDoneHandler, ("lead",)),
     (DataAnalyzeFailureHandler, ("data",)),
     (GovernanceCorrectionDecisionHandler, ("lead",)),
-    # Correction-loop repair pair (SIP-0079 §7.7). Distinct from the
+    # Correction-loop repair handlers (SIP-0079 §7.7). Distinct from the
     # SIP-0070 `development.repair` registered above via
     # handlers.repair_tasks.DevelopmentRepairHandler — see issue #100 for
     # the rationale behind the split into `development.correction_repair`.
+    # `qa.validate_repair` removed in #556: repair acceptance is decided
+    # deterministically (patch verification #389 + retest #456).
     (DevelopmentCorrectionRepairHandler, ("dev",)),
     (BuilderAssembleRepairHandler, ("builder",)),
-    (QAValidateRepairHandler, ("qa",)),
     # Planning handlers (SIP-0078: Planning Workload Protocol)
     (DataResearchContextHandler, ("data",)),
     (StrategyFrameObjectiveHandler, ("strat",)),

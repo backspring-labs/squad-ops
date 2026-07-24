@@ -31,7 +31,6 @@ defaults:
         - development.develop
         - development.repair
         - qa.test
-        - qa.validate_repair
       checks:
         - check_type: plan_alignment
           target: "{run_root}/definition_of_done.json"
