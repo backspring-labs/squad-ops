@@ -14,6 +14,7 @@ Part of SIP-0066 Phase 4 + build capabilities extension + SIP-0071 + SIP-0078.
 
 from __future__ import annotations
 
+import logging
 from collections import Counter
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
@@ -40,6 +41,8 @@ from squadops.cycles.models import (
 )
 from squadops.cycles.proposed_role_tasks import role_to_id
 from squadops.tasks.models import TaskEnvelope
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from squadops.cycles.verification_contract import VerificationContract
@@ -207,6 +210,16 @@ _REPAIR_STEPS_BY_FAILED_TASK_TYPE: dict[str, list[tuple[str, str]]] = {
         ("builder.assemble_repair", "builder"),
     ],
 }
+
+# pf-31 Fix E: every task type that produces repair-CANDIDATE emissions, derived
+# from the dispatch tables above (never re-typed — #559). Candidates land in the
+# artifact store for the correction loop's accumulation (RC3), but an ACCEPTED
+# patch is re-stored under the repaired task's own type by the #389 accept path —
+# so candidate-typed artifacts are, by construction, in-flight or rejected, and
+# workspace views for fresh dispatches exclude them by this provenance.
+REPAIR_TASK_TYPES: frozenset[str] = frozenset(
+    task_type for steps in _REPAIR_STEPS_BY_FAILED_TASK_TYPE.values() for task_type, _ in steps
+) | frozenset(task_type for task_type, _ in REPAIR_TASK_STEPS)
 
 
 def repair_steps_for(failed_task_type: str) -> list[tuple[str, str]]:
@@ -692,6 +705,10 @@ def _replace_build_steps_with_plan(
         ref_errors = plan.validate_criteria_refs(contract)
         if ref_errors:
             raise CycleError("Plan validation failed (contract binding): " + "; ".join(ref_errors))
+        # pf-31 Fix A3: warning-only prose-vs-contract conflict lint, surfaced for
+        # the gate reviewer (never a rejection — reverted-#552 lesson).
+        for warning in plan.lint_prose_contract_conflicts(contract):
+            logger.warning("Plan prose/contract conflict: %s", warning)
 
     # Remove static build steps, keep everything else (planning steps)
     static_build_types = {s[0] for s in BUILD_TASK_STEPS} | {

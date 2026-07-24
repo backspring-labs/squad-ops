@@ -963,12 +963,22 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         self,
         task_type: str,
         stored_artifacts: list[tuple[str, ArtifactRef]],
+        *,
+        include_repair_candidates: bool = True,
     ) -> dict[str, str]:
         """Pre-resolve artifact content for build tasks (D3).
 
         Args:
             task_type: The build task type being dispatched.
             stored_artifacts: List of (artifact_id, ArtifactRef) from prior tasks.
+            include_repair_candidates: pf-31 Fix E — repair-typed emissions are
+                CANDIDATES: an accepted patch is re-stored under the repaired
+                task's own type (#389 swap), so candidate-typed artifacts are
+                in-flight or rejected. The correction loop keeps them (RC3
+                accumulation needs every attempt's content); fresh task
+                dispatches exclude them, so a rejected candidate can never
+                supersede the accepted state in a later task's workspace —
+                the pf-31 endpoint_defined final-verification regression.
 
         Returns:
             Dict of filename → content string. Empty if task_type not a build task.
@@ -976,6 +986,15 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         filter_spec = self._BUILD_ARTIFACT_FILTER.get(task_type)
         if not filter_spec:
             return {}
+
+        if not include_repair_candidates:
+            from squadops.cycles.task_plan import REPAIR_TASK_TYPES
+
+            stored_artifacts = [
+                (art_id, ref)
+                for art_id, ref in stored_artifacts
+                if ref.metadata.get("producing_task_type", "") not in REPAIR_TASK_TYPES
+            ]
 
         producing_tasks = set(filter_spec.get("by_producing_task", []))
         type_filter = set(filter_spec.get("by_type", []))
@@ -1643,11 +1662,15 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             "artifact_refs": list(all_artifact_refs),
         }
 
-        # Pre-resolve artifact contents for build tasks (D3)
+        # Pre-resolve artifact contents for build tasks (D3). Fresh dispatches
+        # see the ACCEPTED state only (pf-31 Fix E): rejected repair candidates
+        # stay out of task workspaces; the correction loop's own re-resolution
+        # keeps them for RC3.
         if envelope.task_type in self._BUILD_ARTIFACT_FILTER:
             artifact_contents = await self._resolve_artifact_contents(
                 envelope.task_type,
                 stored_artifacts,
+                include_repair_candidates=False,
             )
             if artifact_contents:
                 extra_inputs["artifact_contents"] = artifact_contents

@@ -47,6 +47,9 @@ class EventType:
     # SIP-0100 3.3: a producer's emission was evaluated against scaffold write-ownership
     # (frozen restored / unauthorized dropped / integrity fault). Payload = ScaffoldIntegrityEvidence.
     ARTIFACT_OWNERSHIP_ENFORCED = "artifact.ownership_enforced"
+    # pf-31 Fix D: a repair-path Python emission failed ast.parse and was discarded
+    # (truncation guard) — the prior stored version stays current.
+    ARTIFACT_EMISSION_REJECTED = "artifact.emission_rejected"
 
     # --- Checkpoint (2) — SIP-0079 ---
     CHECKPOINT_CREATED = "checkpoint.created"

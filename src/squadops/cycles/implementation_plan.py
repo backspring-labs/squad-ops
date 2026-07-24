@@ -351,6 +351,66 @@ class ImplementationPlan:
             if criterion.severity == "error"
         ]
 
+    def lint_prose_contract_conflicts(self, contract: VerificationContract) -> list[str]:
+        """pf-31 Fix A3: WARNING-only lint for prose that contradicts bound criteria.
+
+        The two observed poisonings were gate-visible in the plan text: pf-31's
+        description said ``/runs/{run_id}/join`` where the bound ``endpoint_defined``
+        pins ``{id}`` (all 7 repairs followed the prose and were rejected over that
+        one token); pf-30's prose said ``DELETE /runs/{run_id}/leave`` vs the
+        contract's ``POST``. This flags path-parameter names and methods used in a
+        task's description/prose criteria that conflict with the task's resolved
+        ``endpoint_defined`` expectations. Heuristic and conservative: warnings for
+        the gate reviewer's eyes (surfaced via log at dispatch validation), never a
+        rejection — the reverted #552 lesson bars new hard gates on prompt prose.
+        """
+        import re as _re
+
+        from squadops.cycles.task_plan import resolve_contract_refs
+
+        warnings: list[str] = []
+        for task in self.tasks:
+            if not task.criteria_refs:
+                continue
+            endpoint_paths: list[str] = []
+            for check in resolve_contract_refs(list(task.criteria_refs), contract):
+                if check.check == "endpoint_defined":
+                    for item in check.params.get("methods_paths", []) or []:
+                        endpoint_paths.append(
+                            f"{item[0]} {item[1]}"
+                            if isinstance(item, (list, tuple)) and len(item) == 2
+                            else str(item)
+                        )
+            if not endpoint_paths:
+                continue
+            allowed_params = {m for p in endpoint_paths for m in _re.findall(r"\{(\w+)\}", p)}
+            prose = " ".join([task.description, *[str(c) for c in task.acceptance_criteria]])
+            for token in sorted(set(_re.findall(r"/\S*?\{(\w+)\}", prose))):
+                if token not in allowed_params:
+                    warnings.append(
+                        f"Task {task.task_index} ({task.focus}): prose uses path "
+                        f"parameter {{{token}}} but the bound contract paths use "
+                        f"{sorted(allowed_params)} — prose-steered emissions will "
+                        f"fail endpoint_defined (pf-31 class)"
+                    )
+            normalized = {
+                (m.split()[0].upper(), _re.sub(r"\{\w+\}", "{}", m.split(maxsplit=1)[1]))
+                for m in endpoint_paths
+                if " " in m
+            }
+            for method, path in _re.findall(r"\b(GET|POST|PUT|PATCH|DELETE)\s+(/\S+)", prose):
+                norm = _re.sub(r"\{\w+\}", "{}", path).rstrip(".,;:)")
+                if (
+                    any(p == norm for _m, p in normalized)
+                    and (method.upper(), norm) not in normalized
+                ):
+                    warnings.append(
+                        f"Task {task.task_index} ({task.focus}): prose says "
+                        f"{method} {path} but the bound contract requires a "
+                        f"different method for that path (pf-30 DELETE-/leave class)"
+                    )
+        return warnings
+
     def validate_criteria_refs(self, contract: VerificationContract) -> list[str]:
         """SIP-0098 §6.3: bind-mode plan validation against the seeded contract.
 

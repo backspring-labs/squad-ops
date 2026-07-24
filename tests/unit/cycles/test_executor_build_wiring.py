@@ -834,3 +834,81 @@ class TestSeededScaffoldReachesVerification:
         executor._artifact_vault.retrieve = AsyncMock()
         contents = await executor._resolve_artifact_contents("qa.test", [("art_001", ref_framing)])
         assert contents == {}
+
+
+class TestRepairCandidateExclusion:
+    """pf-31 Fix E: fresh dispatches see the ACCEPTED state only.
+
+    A rejected repair candidate's emission (stored for RC3 accumulation)
+    must not supersede the accepted version in a later task's workspace —
+    the pf-31 endpoint_defined final-verification regression: repair-04's
+    rejected {run_id} routes.py was the last-stored version, so the final
+    qa attempt evaluated (and failed) the discarded candidate."""
+
+    async def test_fresh_dispatch_excludes_rejected_candidate(self, executor):
+        accepted = _make_artifact_ref(
+            "art_ok",
+            "backend/routes.py",
+            "source",
+            producing_task_type="development.develop",
+        )
+        candidate = _make_artifact_ref(
+            "art_candidate",
+            "backend/routes.py",
+            "source",
+            producing_task_type="development.correction_repair",
+        )
+        stored = [("art_ok", accepted), ("art_candidate", candidate)]
+        executor._artifact_vault.retrieve = AsyncMock(
+            side_effect=[(accepted, b"ACCEPTED = True\n")]
+        )
+
+        contents = await executor._resolve_artifact_contents(
+            "qa.test", stored, include_repair_candidates=False
+        )
+
+        # Last-wins would have given the candidate; the accepted version survives.
+        assert contents["backend/routes.py"] == "ACCEPTED = True\n"
+
+    async def test_correction_path_keeps_candidates_by_default(self, executor):
+        """RC3: the correction loop's own re-resolution must keep candidate
+        accumulation — analyze needs each attempt's content."""
+        accepted = _make_artifact_ref(
+            "art_ok",
+            "backend/routes.py",
+            "source",
+            producing_task_type="development.develop",
+        )
+        candidate = _make_artifact_ref(
+            "art_candidate",
+            "backend/routes.py",
+            "source",
+            producing_task_type="development.correction_repair",
+        )
+        stored = [("art_ok", accepted), ("art_candidate", candidate)]
+        executor._artifact_vault.retrieve = AsyncMock(
+            side_effect=[(accepted, b"ACCEPTED = True\n"), (candidate, b"CANDIDATE = True\n")]
+        )
+
+        contents = await executor._resolve_artifact_contents("qa.test", stored)
+
+        assert contents["backend/routes.py"] == "CANDIDATE = True\n"
+
+
+class TestRepairTaskTypesDerivation:
+    def test_repair_task_types_derived_from_dispatch_tables(self):
+        """The provenance filter and the dispatch tables must never drift: a
+        new repair step type added to the tables is automatically a candidate
+        type (#559 — no re-typed literals)."""
+        from squadops.cycles.task_plan import (
+            _REPAIR_STEPS_BY_FAILED_TASK_TYPE,
+            REPAIR_TASK_TYPES,
+        )
+
+        table_types = {
+            task_type
+            for steps in _REPAIR_STEPS_BY_FAILED_TASK_TYPE.values()
+            for task_type, _ in steps
+        }
+        assert table_types <= REPAIR_TASK_TYPES
+        assert "development.develop" not in REPAIR_TASK_TYPES
