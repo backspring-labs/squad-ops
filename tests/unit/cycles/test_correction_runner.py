@@ -1913,6 +1913,66 @@ class TestCorrectionRunnerStandalone:
         evidence = captured[0].inputs["failure_evidence"]
         assert evidence["scaffold_enforcement"] == carry
 
+    async def test_failure_evidence_carries_contract_expectations(self, cycle):
+        """pf-31 Fix A: the failed task's typed criteria reach the analyzer as
+        exact expectation lines — without this the analyzer/decision reason from
+        prose while the contract's letter ({id} vs {run_id}) stays invisible."""
+        import dataclasses as _dc
+
+        captured: list = []
+
+        def responder(envelope):
+            if envelope.task_type == "data.analyze_failure":
+                captured.append(envelope)
+            if envelope.task_type == "governance.correction_decision":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={
+                        "correction_path": "continue",
+                        "decision_rationale": "x",
+                        "affected_task_types": [],
+                    },
+                )
+            return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs={})
+
+        runner, _registry, _vault, _bus = self._make_runner(responder)
+        failed = _dc.replace(
+            self._failed_envelope(),
+            task_type="development.develop",
+            inputs={
+                "acceptance_criteria": [
+                    "GET /runs/{run_id} returns run detail",
+                    {
+                        "check": "endpoint_defined",
+                        "params": {
+                            "file": "backend/routes.py",
+                            "methods_paths": ["GET /runs/{id}"],
+                        },
+                        "id": "vc-routes-endpoints",
+                    },
+                ],
+            },
+        )
+
+        await runner.run_correction_protocol(
+            run_id="run_001",
+            cycle=cycle,
+            envelope=failed,
+            result=TaskResult(task_id="task_failed", status="FAILED", error="typed check failed"),
+            correction_attempts=0,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+        )
+
+        assert len(captured) == 1
+        lines = captured[0].inputs["failure_evidence"]["contract_expectations"]
+        assert len(lines) == 1
+        assert "`GET /runs/{id}`" in lines[0]
+
     async def test_non_patch_path_returns_no_repair_artifacts(self, cycle):
         """#389: a 'continue' decision dispatches no repair steps — surfacing
         stale/empty artifacts here would make the executor 'verify' nothing

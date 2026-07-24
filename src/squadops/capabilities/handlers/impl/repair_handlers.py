@@ -149,6 +149,14 @@ class _RepairPromptMixin:
         prior_outputs: dict[str, Any] | None,
         inputs: dict[str, Any],
     ) -> dict[str, str]:
+        from squadops.cycles.contract_expectations import expectation_lines, prose_criteria
+
+        criteria = inputs.get("acceptance_criteria") or []
+        # pf-31 Fix A2: typed criteria render ONLY through the authoritative
+        # Contract Expectations block; the narrative section carries prose alone.
+        # Rendering TypedCheck dicts through _format_bullets produced the repr
+        # soup every pf-31 repair ignored in favor of contradicting prose.
+        narrative = prose_criteria(criteria) if expectation_lines(criteria) else criteria
         return {
             "prd": prd,
             "role": self._role,
@@ -161,11 +169,14 @@ class _RepairPromptMixin:
             "subtask_focus": str(inputs.get("subtask_focus") or ""),
             "subtask_description": str(inputs.get("subtask_description") or ""),
             "expected_artifacts": _format_bullets(inputs.get("expected_artifacts")),
-            "acceptance_criteria": _format_bullets(inputs.get("acceptance_criteria")),
+            "acceptance_criteria": _format_bullets(narrative),
             "prior_outputs": self._format_prior_outputs(prior_outputs),
             # Same scaffold fill-only constraint the develop handler injects (SIP-0099
             # 99.3). Rendered in handle() and threaded via inputs; "" when absent.
             "fill_only_section": str(inputs.get("fill_only_section") or ""),
+            # pf-31 Fix A1: authoritative typed-expectations block, rendered in
+            # handle() from the managed appendix asset; "" when no typed criteria.
+            "contract_expectations": str(inputs.get("contract_expectations_section") or ""),
         }
 
     async def handle(
@@ -187,7 +198,34 @@ class _RepairPromptMixin:
         fill_only = await self._render_fill_only_section(context, inputs)
         if fill_only:
             inputs = {**inputs, "fill_only_section": fill_only}
+        expectations = await self._render_contract_expectations_section(context, inputs)
+        if expectations:
+            inputs = {**inputs, "contract_expectations_section": expectations}
         return await super().handle(context, inputs)
+
+    async def _render_contract_expectations_section(
+        self, context: ExecutionContext, inputs: dict[str, Any]
+    ) -> str:
+        """The authoritative typed-expectations appendix, or "" (pf-31 Fix A1).
+
+        Rendered whenever the failed task's acceptance criteria carry typed
+        checks — the resolved contract expectations were already delivered to
+        repairs but as low-salience dict reprs below contradicting prose (the
+        pf-31 ``{run_id}``-vs-``{id}`` poisoning: 7 of 7 repairs rejected).
+        """
+        renderer = getattr(context.ports, "request_renderer", None)
+        if renderer is None:
+            return ""
+        from squadops.cycles.contract_expectations import expectation_lines
+
+        lines = expectation_lines(inputs.get("acceptance_criteria"))
+        if not lines:
+            return ""
+        rendered = await renderer.render(
+            "request.cycle_repair_contract_expectations_appendix",
+            {"expectations": "\n".join(f"- {line}" for line in lines)},
+        )
+        return rendered.content
 
     async def _render_fill_only_section(
         self, context: ExecutionContext, inputs: dict[str, Any]
@@ -239,9 +277,18 @@ class _RepairPromptMixin:
                 "` ```language:path/to/file `:\n" + _format_bullets(expected)
             )
 
-        criteria = inputs.get("acceptance_criteria")
+        from squadops.cycles.contract_expectations import expectation_lines, prose_criteria
+
+        criteria = inputs.get("acceptance_criteria") or []
+        typed_lines = expectation_lines(criteria)
+        if typed_lines:
+            parts.append(
+                "### Contract Expectations (authoritative — apply exactly)\n"
+                + "\n".join(f"- {line}" for line in typed_lines)
+            )
+            criteria = prose_criteria(criteria)
         if criteria:
-            parts.append("### Acceptance Criteria\n" + _format_bullets(criteria))
+            parts.append("### Acceptance Criteria (narrative)\n" + _format_bullets(criteria))
 
         failure_summary = _format_failure_summary(
             inputs.get("failure_evidence"),

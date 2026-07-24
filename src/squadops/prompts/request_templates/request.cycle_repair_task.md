@@ -14,11 +14,13 @@ optional_variables:
   - acceptance_criteria
   - prior_outputs
   - fill_only_section
+  - contract_expectations
 ---
 ## Repair Task
 
 You are repairing a failed `{{failed_task_type}}` task. Your job is to re-produce the named output artifact(s) below so they satisfy the acceptance criteria. Do not rewrite the PRD, do not produce a status tracker, do not emit a generic narrative document.
 {{fill_only_section}}
+{{contract_expectations}}
 
 ### Failed Task Contract
 
@@ -32,9 +34,9 @@ The repair MUST produce the following file(s) by name, using fenced code blocks 
 
 {{expected_artifacts}}
 
-### Acceptance Criteria
+### Acceptance Criteria (narrative)
 
-The output must satisfy every criterion below. Each criterion was the original spec — if the prior attempt failed because a section was missing or empty, your repair must include it explicitly.
+The narrative criteria below describe intent. They are context, not letter-of-the-law: where a Contract Expectations line above covers the same ground, the Contract Expectations line is authoritative and the narrative may be imprecise.
 
 {{acceptance_criteria}}
 

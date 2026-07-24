@@ -490,6 +490,15 @@ class CorrectionRunner:
         if scaffold_enforcement_carry:
             failure_evidence["scaffold_enforcement"] = list(scaffold_enforcement_carry)
 
+        # pf-31 Fix A: the failed task's typed criteria as exact expectation lines,
+        # so the analyzer/decision reason against the contract's letter (repairs get
+        # the same lines as an authoritative prompt block via the appendix asset).
+        from squadops.cycles.contract_expectations import expectation_lines
+
+        expectations = expectation_lines((envelope.inputs or {}).get("acceptance_criteria"))
+        if expectations:
+            failure_evidence["contract_expectations"] = expectations
+
         # Issue #95: capture each correction step's outputs in its own variable
         # so the analyzer's classification/analysis_summary survive past the
         # subsequent governance.correction_decision step (which doesn't carry
