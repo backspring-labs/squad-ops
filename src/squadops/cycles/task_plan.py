@@ -211,6 +211,16 @@ _REPAIR_STEPS_BY_FAILED_TASK_TYPE: dict[str, list[tuple[str, str]]] = {
     ],
 }
 
+# pf-31 Fix E: every task type that produces repair-CANDIDATE emissions, derived
+# from the dispatch tables above (never re-typed — #559). Candidates land in the
+# artifact store for the correction loop's accumulation (RC3), but an ACCEPTED
+# patch is re-stored under the repaired task's own type by the #389 accept path —
+# so candidate-typed artifacts are, by construction, in-flight or rejected, and
+# workspace views for fresh dispatches exclude them by this provenance.
+REPAIR_TASK_TYPES: frozenset[str] = frozenset(
+    task_type for steps in _REPAIR_STEPS_BY_FAILED_TASK_TYPE.values() for task_type, _ in steps
+) | frozenset(task_type for task_type, _ in REPAIR_TASK_STEPS)
+
 
 def repair_steps_for(failed_task_type: str) -> list[tuple[str, str]]:
     """Return the repair (task_type, role) sequence for a failed task.
