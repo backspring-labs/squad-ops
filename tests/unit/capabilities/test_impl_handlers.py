@@ -817,3 +817,42 @@ class TestRepairHandlers:
         prompt = captured["user"]
         assert "test" in prompt
         assert "Repair Task" in prompt
+
+
+# ---------------------------------------------------------------------------
+# _format_failure_summary — deterministic authoritative-instruction blocks
+# ---------------------------------------------------------------------------
+
+
+class TestFailureSummaryEnforcementBlock:
+    def test_scaffold_enforcement_rendered_as_authoritative_block(self):
+        """SIP-0100 3.4b: frozen-restore instructions carried from a prior attempt
+        must reach the repair prompt as an authoritative block — without this the
+        repair silently fights the restore (pf-30: three attempts re-emitting
+        frozen files against a correct diagnosis)."""
+        from squadops.capabilities.handlers.impl.repair_handlers import (
+            _format_failure_summary,
+        )
+
+        evidence = {
+            "scaffold_enforcement": [
+                "`backend/main.py` is scaffold-frozen and canonical; do not re-emit it."
+            ],
+            "validation_result": {"summary": "tests_pass failed"},
+        }
+        rendered = _format_failure_summary(evidence, None)
+        assert "FROZEN OWNERSHIP (authoritative" in rendered
+        assert "backend/main.py" in rendered
+        # The rest of the evidence still renders alongside it.
+        assert "tests_pass failed" in rendered
+
+    def test_no_enforcement_key_renders_no_block(self):
+        """Absent/empty scaffold_enforcement must not inject the block."""
+        from squadops.capabilities.handlers.impl.repair_handlers import (
+            _format_failure_summary,
+        )
+
+        assert "FROZEN OWNERSHIP" not in _format_failure_summary(
+            {"validation_result": {"summary": "x"}}, None
+        )
+        assert "FROZEN OWNERSHIP" not in _format_failure_summary({"scaffold_enforcement": []}, None)

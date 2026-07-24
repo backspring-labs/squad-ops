@@ -81,18 +81,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _artifact_raw_path(art: dict) -> str | None:
-    """The producer-emitted path of an artifact, accepting both the ``{name}`` and ``{path}``
-    shapes the two materializers use (SIP-0100 0.1)."""
-    return art.get("name") if art.get("name") is not None else art.get("path")
-
-
-def _is_qa_producer(task_type: str) -> bool:
-    """SIP-0100 3.1: QA task types (``qa.test``, ``qa.validate``) are scoped to the QA test
-    namespace — they write tests, not the source under test."""
-    return task_type.startswith("qa.")
-
-
 class DispatchedFlowExecutor(FlowExecutionPort):
     """Flow executor that dispatches tasks to agent containers via RabbitMQ.
 
@@ -1080,6 +1068,11 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # each inner-loop correction (not just once per outer iteration) to bound it
         # (max_correction_attempts) and keep corr-/plan_delta- ids unique across re-runs.
         correction_counter: dict[str, int] = {"n": 0}
+        # SIP-0100 3.4b (restore+signal): run-lived instruction carry — frozen-path
+        # restores on the repair path append here; the next correction attempt's
+        # failure_evidence surfaces them so the loop is TOLD the edit was rejected
+        # instead of silently fighting the restore.
+        scaffold_enforcement_carry: list[str] = []
         # SIP-0100 3.4a: run-level contract-compliance counter, SEPARATE from the convergence
         # counter (D6) — cross-lane (unauthorized-slot) emissions don't fail a task on their own,
         # so this bounded budget is the only thing that stops a producer chronically writing
@@ -1202,6 +1195,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     task_attempt_counts=task_attempt_counts,
                     consecutive_failures=_consecutive_failures,
                     correction_counter=correction_counter,
+                    scaffold_enforcement_carry=scaffold_enforcement_carry,
                     prior_outputs=prior_outputs,
                     all_artifact_refs=all_artifact_refs,
                     stored_artifacts=stored_artifacts,
@@ -1739,6 +1733,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         task_attempt_counts: dict[str, int],
         consecutive_failures: int,
         correction_counter: dict[str, int],
+        scaffold_enforcement_carry: list[str],
         prior_outputs: dict[str, Any],
         all_artifact_refs: list[str],
         stored_artifacts: list[tuple[str, ArtifactRef]],
@@ -1829,6 +1824,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             profile=profile,
             flow_run_id=flow_run_id,
             interface_manifest=interface_manifest,
+            # 3.4b: run-lived restore+signal carry (created beside correction_counter).
+            scaffold_enforcement_carry=scaffold_enforcement_carry,
             # RC3 (pf-23): re-resolve the workspace from the LIVE stored_artifacts
             # instead of the enriched envelope's copy captured once at the original
             # dispatch. stored_artifacts accumulates each attempt's repair outputs
@@ -2027,25 +2024,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         """SIP-0100 2.4: build the bound scaffold record (frozen paths + bytes) for a scaffold-bound
         run, or None for unbound/legacy runs (no manifest / non-scaffoldable stack → no enforcement,
         plan §10). Best-effort: a build failure disables enforcement rather than failing the run."""
-        if interface_manifest is None:
-            return None
-        try:
-            from squadops.capabilities.scaffold import is_scaffoldable_stack
-            from squadops.cycles.bound_scaffold_record import build_bound_record
+        from squadops.cycles.scaffold_enforcement import bound_record_or_none
 
-            if not is_scaffoldable_stack(getattr(interface_manifest, "stack", "")):
-                return None
-            return build_bound_record(
-                interface_manifest, run_id=run_id, attempt_id=run_id, created_at=""
-            )
-        except Exception:
-            logger.warning(
-                "SIP-0100: could not build bound scaffold record for run %s; frozen-ownership "
-                "enforcement disabled for this run",
-                run_id,
-                exc_info=True,
-            )
-            return None
+        return bound_record_or_none(interface_manifest, run_id)
 
     def _enforce_frozen_ownership(
         self, artifacts: list[dict], bound_record: Any, envelope: TaskEnvelope
@@ -2071,85 +2052,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         source under test to agree with its own test (the pf-26 class, one step past ``main.py``).
         QA emissions in its namespace, and undeclared paths (deliverables like ``test_report.md``),
         pass through. Non-QA producers are unaffected here (frozen-restore only)."""
-        from squadops.cycles.scaffold_integrity_evidence import (
-            frozen_restore_evidence,
-            unauthorized_slot_evidence,
-        )
-        from squadops.cycles.write_authorization import (
-            AuthzDecision,
-            WorkspaceOwnership,
-            WriteAuthorization,
-            WriteGrant,
-            normalize_ws_path,
-        )
+        from squadops.cycles.scaffold_enforcement import enforce_frozen_ownership
 
-        frozen = {
-            n: fa.content
-            for fa in bound_record.frozen
-            if (n := normalize_ws_path(fa.path)) is not None
-        }
-        # A QA producer gets a namespace-scoped grant; the 2.1 authorization classes decide whether
-        # a non-frozen emission is inside its lane (allow), another producer's slot (drop), or
-        # undeclared (allow — could be a deliverable, §4.6 undeclared-reject stays gated on 3.4).
-        qa_authz = None
-        if _is_qa_producer(envelope.task_type):
-            ownership = WorkspaceOwnership.from_record(bound_record)
-            grant = WriteGrant.for_qa(envelope.task_type, ownership)
-            qa_authz = WriteAuthorization(ownership, grant)
-
-        # Classify first so each evidence record can report how many sibling artifacts in the SAME
-        # response were left untouched (per-artifact disposition — restore/drop keep the rest; a
-        # response-atomic reject would not — that difference is exactly what the field captures).
-        norms = [
-            normalize_ws_path(raw) if isinstance(raw := _artifact_raw_path(art), str) else None
-            for art in artifacts
-        ]
-
-        def _disposition(art: dict, norm: str | None) -> str:
-            if norm is not None and norm in frozen:
-                return "restore"
-            if qa_authz is not None and (
-                qa_authz.authorize(_artifact_raw_path(art) or "")
-                == AuthzDecision.FORBIDDEN_UNAUTHORIZED
-            ):
-                return "drop"
-            return "pass"
-
-        dispositions = [_disposition(art, norm) for art, norm in zip(artifacts, norms, strict=True)]
-        siblings_retained = sum(1 for d in dispositions if d == "pass")
-
-        enforced: list[dict] = []
-        evidence: list[Any] = []
-        for art, norm, disposition in zip(artifacts, norms, dispositions, strict=True):
-            if disposition == "restore":
-                evidence.append(
-                    frozen_restore_evidence(
-                        producer_task_id=envelope.task_id,
-                        producer_task_type=envelope.task_type,
-                        record=bound_record,
-                        attempted_path=_artifact_raw_path(art) or norm,
-                        normalized_path=norm,
-                        attempted_content=art.get("content"),
-                        siblings_retained=siblings_retained,
-                    )
-                )
-                enforced.append({**art, "content": frozen[norm]})  # restore scaffold bytes (D2)
-            elif disposition == "drop":
-                evidence.append(
-                    unauthorized_slot_evidence(
-                        producer_task_id=envelope.task_id,
-                        producer_task_type=envelope.task_type,
-                        record=bound_record,
-                        attempted_path=_artifact_raw_path(art) or (norm or ""),
-                        normalized_path=norm,
-                        attempted_content=art.get("content"),
-                        siblings_retained=siblings_retained,
-                    )
-                )
-                # dropped: NOT appended — the owning producer's already-stored version stays.
-            else:
-                enforced.append(art)
-        return enforced, evidence
+        return enforce_frozen_ownership(artifacts, bound_record, envelope)
 
     def _emit_scaffold_integrity_evidence(self, record: Any, envelope: TaskEnvelope) -> None:
         """SIP-0100 3.3: surface one enforcement event as a structured event + log (best-effort —

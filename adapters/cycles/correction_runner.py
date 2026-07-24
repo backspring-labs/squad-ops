@@ -266,6 +266,23 @@ class CorrectionRunner:
             },
         )
 
+    def _emit_scaffold_integrity_evidence(self, record: Any, envelope: TaskEnvelope) -> None:
+        """SIP-0100 3.3/3.4b: surface one repair-path enforcement as a structured event + log
+        (best-effort — observability must never break the correction loop). Mirrors the
+        executor's emitter for the regular storage path."""
+        payload = record.to_dict()
+        logger.warning("SIP-0100 scaffold_integrity (repair path): %s", payload)
+        try:
+            self._event_bus.emit(
+                EventType.ARTIFACT_OWNERSHIP_ENFORCED,
+                entity_type="artifact",
+                entity_id=record.normalized_path or record.attempted_path,
+                context={"cycle_id": envelope.cycle_id, "run_id": record.bound_run_id},
+                payload=payload,
+            )
+        except Exception:
+            logger.debug("SIP-0100: scaffold_integrity event emit failed", exc_info=True)
+
     async def _dispatch_protocol_step(
         self,
         step_envelope: TaskEnvelope,
@@ -278,6 +295,8 @@ class CorrectionRunner:
         stored_artifacts: list[tuple[str, ArtifactRef]],
         completed_task_ids: list[str],
         plan_delta_refs: list[str],
+        bound_record: Any = None,
+        enforcement_carry: list[str] | None = None,
     ) -> TaskResult:
         """Dispatch one correction/repair step and handle its outcome.
 
@@ -288,6 +307,15 @@ class CorrectionRunner:
         guard), or on failure emit TASK_FAILED. Returns the step's result;
         output collection stays with the caller (the two loops bucket
         outputs differently — issue #95 vs. repair prior_outputs).
+
+        SIP-0100 3.4b: when ``bound_record`` is set, the step's emitted
+        artifacts pass through the same frozen-ownership enforcement as
+        regular task storage BEFORE they land anywhere — the enforced list
+        replaces ``result.outputs["artifacts"]`` in place, so registry
+        storage, the caller's repair overlay, and patch verification all
+        see restored bytes, never the clobber. Each restore appends its
+        authoritative instruction to ``enforcement_carry`` for the next
+        attempt's evidence (restore+signal).
         """
         task_run_id = await self._task_dispatcher.create_task_run_if_enabled(
             flow_run_id, step_envelope
@@ -321,6 +349,34 @@ class CorrectionRunner:
                 context=task_context,
                 payload={"task_type": step_envelope.task_type},
             )
+            # SIP-0100 3.4b: enforce frozen ownership on the step's emissions
+            # before ANY landing point (registry store below, the caller's
+            # repair overlay, patch verification). In-place replacement of
+            # the artifacts list is deliberate — both consumers read
+            # result.outputs.
+            step_artifacts = (result.outputs or {}).get("artifacts") or []
+            if bound_record is not None and step_artifacts:
+                from squadops.cycles.scaffold_enforcement import (
+                    enforce_frozen_ownership,
+                    frozen_restore_instruction,
+                )
+                from squadops.cycles.task_outcome import ContractComplianceViolation
+
+                enforced, integrity_evidence = enforce_frozen_ownership(
+                    step_artifacts, bound_record, step_envelope
+                )
+                if integrity_evidence:
+                    result.outputs["artifacts"] = enforced
+                    for record in integrity_evidence:
+                        self._emit_scaffold_integrity_evidence(record, step_envelope)
+                        if (
+                            enforcement_carry is not None
+                            and record.violation_code
+                            == ContractComplianceViolation.FROZEN_PATH_EMISSION
+                        ):
+                            instruction = frozen_restore_instruction(record)
+                            if instruction not in enforcement_carry:
+                                enforcement_carry.append(instruction)
             # Persist the step's output artifacts BEFORE checkpointing —
             # _checkpoint_correction_task only snapshots existing refs and
             # would otherwise drop these silently.
@@ -367,6 +423,7 @@ class CorrectionRunner:
         flow_run_id: str | None = None,
         interface_manifest: Any = None,
         artifact_contents: dict[str, str] | None = None,
+        scaffold_enforcement_carry: list[str] | None = None,
     ) -> CorrectionProtocolResult:
         """Run the correction protocol: analyze → decide → act.
 
@@ -374,10 +431,20 @@ class CorrectionRunner:
         on the patch path, the repair steps' emitted artifacts (#389).
         Side effects: dispatches correction/repair tasks, stores plan delta,
         emits correction events.
+
+        ``scaffold_enforcement_carry`` is an executor-owned, run-lived list
+        (3.4b restore+signal): instructions from prior attempts' frozen-path
+        restores are injected into this attempt's ``failure_evidence``, and
+        this attempt's restores append new instructions for the next.
         """
         from uuid import uuid4
 
+        from squadops.cycles.scaffold_enforcement import bound_record_or_none
         from squadops.cycles.task_plan import CORRECTION_TASK_STEPS, repair_steps_for
+
+        # SIP-0100 3.4b: repair emissions are subject to the same frozen-ownership
+        # enforcement as regular task storage — None on unbound runs (no-op).
+        bound_record = bound_record_or_none(interface_manifest, run_id)
 
         # 1. Emit CORRECTION_INITIATED
         self._event_bus.emit(
@@ -416,6 +483,12 @@ class CorrectionRunner:
                 }
                 for f in drift
             ]
+
+        # 3.4b restore+signal: prior attempts' frozen-restore instructions reach this
+        # attempt's analyze/decision/repair prompts as authoritative evidence (the
+        # same deterministic-instruction pattern as interface_drift above).
+        if scaffold_enforcement_carry:
+            failure_evidence["scaffold_enforcement"] = list(scaffold_enforcement_carry)
 
         # Issue #95: capture each correction step's outputs in its own variable
         # so the analyzer's classification/analysis_summary survive past the
@@ -598,6 +671,14 @@ class CorrectionRunner:
                     "artifact_refs": list(all_artifact_refs),
                     "agent_model": agent_model,
                     "agent_config_overrides": agent_overrides,
+                    # The repair handler's scaffold fill-only appendix gates on
+                    # resolved_config.build_profile (is_scaffoldable_stack) — without
+                    # this the gate sees an empty profile and silently no-ops, and
+                    # repairs freely rewrite scaffold-owned interface (pf-30:
+                    # attempts 1-3 re-emitted routes.py with relative decorator
+                    # paths against a correct diagnosis). Mirrors the retest
+                    # threading in reexecute_repaired_suite below.
+                    "resolved_config": failed_inputs.get("resolved_config", {}),
                     "subtask_focus": repair_focus,
                     "subtask_description": repair_description,
                     "expected_artifacts": repair_expected_artifacts,
@@ -632,6 +713,10 @@ class CorrectionRunner:
                     stored_artifacts=stored_artifacts,
                     completed_task_ids=completed_task_ids,
                     plan_delta_refs=plan_delta_refs,
+                    # 3.4b: repair emissions get the same frozen-ownership
+                    # enforcement as regular storage (restore + carry signal).
+                    bound_record=bound_record,
+                    enforcement_carry=scaffold_enforcement_carry,
                 )
 
                 # Collect repair outputs under the role key, matching the

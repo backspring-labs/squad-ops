@@ -90,6 +90,14 @@ def _format_failure_summary(failure_evidence: Any, failure_analysis: Any) -> str
                     "INTERFACE CONFORMANCE (authoritative — apply exactly):\n"
                     + "\n".join(f"- {line}" for line in lines)
                 )
+        # SIP-0100 3.4b restore+signal: a prior repair's edit to a frozen file was
+        # rejected and restored — tell this repair instead of silently fighting it.
+        enforcement = failure_evidence.get("scaffold_enforcement") or []
+        if enforcement:
+            parts.append(
+                "FROZEN OWNERSHIP (authoritative — apply exactly):\n"
+                + "\n".join(f"- {str(line).strip()}" for line in enforcement if str(line).strip())
+            )
         vr = failure_evidence.get("validation_result") or {}
         summary = vr.get("summary") or failure_evidence.get("error") or ""
         if summary:
