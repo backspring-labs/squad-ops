@@ -13,10 +13,12 @@ optional_variables:
   - expected_artifacts
   - acceptance_criteria
   - prior_outputs
+  - fill_only_section
 ---
 ## Repair Task
 
 You are repairing a failed `{{failed_task_type}}` task. Your job is to re-produce the named output artifact(s) below so they satisfy the acceptance criteria. Do not rewrite the PRD, do not produce a status tracker, do not emit a generic narrative document.
+{{fill_only_section}}
 
 ### Failed Task Contract
 
