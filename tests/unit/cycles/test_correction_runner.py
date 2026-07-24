@@ -2005,6 +2005,50 @@ class TestResolveRepairTarget:
         artifacts, _, _ = _resolve_repair_target(evidence, failed_inputs)
         assert artifacts == ["backend/models.py"]
 
+    def test_drift_qa_test_also_unions_package_scoped_source(self):
+        """pf-27 (cyc_d01810b2922f): a tests_pass failure that CO-OCCURS with interface
+        drift on a frozen file (backend/main.py) must STILL reach the fill-slot source
+        under test (backend/routes.py). The drift branch unions the same package-scoped
+        implementation surface as the no-drift RC2 branch — else the repair edits only
+        the drifted file + the failing test and the real validation bug in routes.py is
+        never fixed (the pf-27 non-convergence wall)."""
+        from adapters.cycles.correction_runner import _resolve_repair_target
+
+        evidence = {
+            "interface_drift": [
+                {"file": "backend/main.py", "instruction": "remove undeclared GET /health"},
+            ],
+        }
+        failed_inputs = {
+            "expected_artifacts": ["backend/tests/test_runs_crud.py"],
+            "implementation_artifacts": [
+                "backend/models.py",
+                "backend/routes.py",
+                "backend/main.py",
+                "frontend/src/views/RunsListView.jsx",
+            ],
+        }
+        artifacts, focus, description = _resolve_repair_target(evidence, failed_inputs)
+
+        assert "backend/routes.py" in artifacts  # fill-slot validation fix now reachable
+        assert "backend/tests/test_runs_crud.py" in artifacts  # failing artifact still targeted
+        assert "backend/main.py" in artifacts  # drifted file still targeted
+        assert artifacts.count("backend/main.py") == 1  # deduped across drift + scoped source
+        assert "frontend/src/views/RunsListView.jsx" not in artifacts  # package-scoped
+        # drift branch: the "how" is the interface-drift instruction + failure summary.
+        assert focus is None and description is None
+
+    def test_drift_without_implementation_surface_is_byte_identical(self):
+        """Backward-compat: drift present but no implementation_artifacts key (author
+        mode / non-build corrections) → the target is exactly drift ∪ failed artifacts,
+        the pre-pf-27 union (empty scoped surface adds nothing)."""
+        from adapters.cycles.correction_runner import _resolve_repair_target
+
+        evidence = {"interface_drift": [{"file": "backend/models.py", "instruction": "fix"}]}
+        failed_inputs = {"expected_artifacts": ["backend/tests/test_runs.py"]}
+        artifacts, _, _ = _resolve_repair_target(evidence, failed_inputs)
+        assert artifacts == ["backend/models.py", "backend/tests/test_runs.py"]
+
     def test_no_drift_falls_back_to_failed_task_artifacts(self):
         """Absent interface drift, the target is byte-identical to today —
         the failed task's own artifacts/focus/description."""
@@ -2095,9 +2139,15 @@ class TestResolveRepairTarget:
         ]
         assert "backend/main.py" not in artifacts
 
-    def test_drift_present_ignores_implementation_surface(self):
-        """When interface drift IS present the drift-union branch wins and the
-        implementation surface is not added — the drift path stays byte-identical."""
+    def test_drift_present_also_unions_implementation_surface(self):
+        """pf-27 (cyc_d01810b2922f) SUPERSEDED the earlier 'drift path stays
+        byte-identical' boundary: RC2's package-scoped implementation surface is now
+        unioned on the drift branch too. The old boundary assumed drift_files always
+        capture the fixable source cause — false when the drift is on a scaffold-FROZEN
+        file (main.py) while the behavioral bug lives in a non-drift fill slot
+        (routes.py), which then never enters the target → non-convergence. Ordering:
+        drifted source first, failed artifact, then scoped source; frontend stays out
+        (package-scoped); focus/description unset (#448)."""
         from adapters.cycles.correction_runner import _resolve_repair_target
 
         evidence = {"interface_drift": [{"file": "backend/models.py", "instruction": "fix fields"}]}
@@ -2106,8 +2156,8 @@ class TestResolveRepairTarget:
             "implementation_artifacts": ["backend/routes.py", "frontend/src/App.jsx"],
         }
         artifacts, focus, _ = _resolve_repair_target(evidence, failed_inputs)
-        assert artifacts == ["backend/models.py", "backend/tests/test_runs.py"]
-        assert "backend/routes.py" not in artifacts  # surface NOT added on the drift path
+        assert artifacts == ["backend/models.py", "backend/tests/test_runs.py", "backend/routes.py"]
+        assert "frontend/src/App.jsx" not in artifacts  # package-scoped: no cross-package regen
         assert focus is None  # drift path leaves focus/description unset (#448)
 
     def test_no_drift_scoped_source_dedups_against_failed_artifact(self):
