@@ -114,9 +114,9 @@ def test_fill_slots_carry_interface_and_implementation_criteria():
     assert endpoints["methods_paths"] == [
         "GET /runs",
         "POST /runs",
-        "GET /runs/{id}",
-        "POST /runs/{id}/join",
-        "POST /runs/{id}/leave",
+        "GET /runs/{run_id}",
+        "POST /runs/{run_id}/join",
+        "POST /runs/{run_id}/leave",
     ]
     assert any(c["id"] == "vc-routes-apierror" for c in routes["interface"])
     compiles = next(c for c in routes["implementation"] if c["check"] == "command_exit_zero")

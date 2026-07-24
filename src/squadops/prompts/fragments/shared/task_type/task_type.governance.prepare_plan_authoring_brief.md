@@ -38,7 +38,7 @@ fail to parse and force the cycle to fall back to sole-author mode.
   for this cycle. Anything outside this map is out of bounds for proposers.
   Be explicit: `{frontend: "React+Vite", backend: "FastAPI+SQLite", ...}`.
 - `must_cover_requirements` — list of requirements every proposal must
-  honor. These are the non-negotiables (e.g., "POST /runs/{id}/join must
+  honor. These are the non-negotiables (e.g., "POST /runs/{run_id}/join must
   return 409 on duplicate"). Phrase each so it can be referenced by
   proposal `acceptance_criteria`.
 - `scope_cuts` — list of features explicitly deferred. Use this to

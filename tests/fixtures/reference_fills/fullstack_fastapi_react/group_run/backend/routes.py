@@ -41,16 +41,16 @@ def post_runs(payload: RunEventCreate):
     return run
 
 
-@router.get("/runs/{id}", response_model=RunEvent)
-def get_runs_id(id: str):
+@router.get("/runs/{run_id}", response_model=RunEvent)
+def get_runs_run_id(run_id: str):
     """run details."""
-    return _get_run(id)
+    return _get_run(run_id)
 
 
-@router.post("/runs/{id}/join", response_model=RunEvent)
-def post_runs_id_join(id: str, payload: ParticipantName):
+@router.post("/runs/{run_id}/join", response_model=RunEvent)
+def post_runs_run_id_join(run_id: str, payload: ParticipantName):
     """join run by participant name."""
-    run = _get_run(id)
+    run = _get_run(run_id)
     # Case-insensitive uniqueness; the stored name is NOT normalized (manifest decisions).
     if any(p.name.casefold() == payload.name.casefold() for p in run.participants):
         raise ApiError("duplicate_participant", f"{payload.name!r} has already joined")
@@ -58,10 +58,10 @@ def post_runs_id_join(id: str, payload: ParticipantName):
     return run
 
 
-@router.post("/runs/{id}/leave", response_model=RunEvent)
-def post_runs_id_leave(id: str, payload: ParticipantName):
+@router.post("/runs/{run_id}/leave", response_model=RunEvent)
+def post_runs_run_id_leave(run_id: str, payload: ParticipantName):
     """leave run by participant name."""
-    run = _get_run(id)
+    run = _get_run(run_id)
     match = next(
         (p for p in run.participants if p.name.casefold() == payload.name.casefold()), None
     )
