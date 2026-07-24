@@ -1973,6 +1973,79 @@ class TestCorrectionRunnerStandalone:
         assert len(lines) == 1
         assert "`GET /runs/{id}`" in lines[0]
 
+    async def test_repair_truncated_python_emission_dropped_and_signaled(self, cycle):
+        """pf-31 Fix D: a syntactically invalid .py repair emission is DROPPED
+        before any landing point — the overlay and registry never see it (the
+        prior stored version stays current) — and the next attempt is told via
+        the carry. pf-31 repair-03's truncated test file re-imported the
+        collection crash it was dispatched to fix."""
+        import dataclasses as _dc
+
+        truncated = "def test_join(client):\n    resp = client.post(\n"
+
+        def responder(envelope):
+            if envelope.task_type == "governance.correction_decision":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={
+                        "correction_path": "patch",
+                        "decision_rationale": "patchable",
+                        "affected_task_types": ["development.develop"],
+                    },
+                )
+            if envelope.task_type == "development.correction_repair":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={
+                        "artifacts": [
+                            {"name": "backend/tests/test_runs.py", "content": truncated},
+                            {"name": "backend/routes.py", "content": "ROUTES = []\n"},
+                        ],
+                        "summary": "repaired",
+                    },
+                )
+            return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs={})
+
+        runner, _registry, vault, bus = self._make_runner(responder)
+        carry: list[str] = []
+        failed = _dc.replace(self._failed_envelope(), task_type="development.develop")
+
+        protocol_result = await runner.run_correction_protocol(
+            run_id="run_001",
+            cycle=cycle,
+            envelope=failed,
+            result=TaskResult(task_id="task_failed", status="FAILED", error="tests failed"),
+            correction_attempts=0,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+            scaffold_enforcement_carry=carry,
+        )
+
+        # Overlay: only the valid file survives.
+        names = [a["name"] for a in protocol_result.repair_artifacts]
+        assert names == ["backend/routes.py"]
+        # Registry: the truncated file was never stored.
+        stored_names = [c.args[0].filename for c in vault.store.call_args_list]
+        assert "backend/tests/test_runs.py" not in stored_names
+        assert "backend/routes.py" in stored_names
+        # Signal: carried instruction names the file and demands completeness.
+        assert len(carry) == 1
+        assert "backend/tests/test_runs.py" in carry[0] and "DISCARDED" in carry[0]
+        # Evidence: surfaced as an event, not silent.
+        from squadops.events.types import EventType as _ET
+
+        rejected_events = [
+            c
+            for c in bus.emit.call_args_list
+            if c.args and c.args[0] == _ET.ARTIFACT_EMISSION_REJECTED
+        ]
+        assert len(rejected_events) == 1
+
     async def test_non_patch_path_returns_no_repair_artifacts(self, cycle):
         """#389: a 'continue' decision dispatches no repair steps — surfacing
         stale/empty artifacts here would make the executor 'verify' nothing

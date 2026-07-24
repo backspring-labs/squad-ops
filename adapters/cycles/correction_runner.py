@@ -367,6 +367,7 @@ class CorrectionRunner:
                 )
                 if integrity_evidence:
                     result.outputs["artifacts"] = enforced
+                    step_artifacts = enforced
                     for record in integrity_evidence:
                         self._emit_scaffold_integrity_evidence(record, step_envelope)
                         if (
@@ -375,6 +376,47 @@ class CorrectionRunner:
                             == ContractComplianceViolation.FROZEN_PATH_EMISSION
                         ):
                             instruction = frozen_restore_instruction(record)
+                            if instruction not in enforcement_carry:
+                                enforcement_carry.append(instruction)
+
+            # pf-31 Fix D: drop syntactically invalid .py emissions (truncation
+            # guard) — the prior stored version (last known parseable) stays
+            # current for RC3 and the retest; the next attempt is told what was
+            # discarded via the same carry transport as the frozen restores.
+            if step_artifacts:
+                from squadops.cycles.emission_integrity import (
+                    emission_integrity_instruction,
+                    syntax_gate_python_artifacts,
+                )
+
+                kept, rejected = syntax_gate_python_artifacts(step_artifacts)
+                if rejected:
+                    result.outputs["artifacts"] = kept
+                    for art, error in rejected:
+                        name = art.get("name") or art.get("path") or "(unnamed)"
+                        payload = {
+                            "producer_task_id": step_envelope.task_id,
+                            "producer_task_type": step_envelope.task_type,
+                            "artifact": name,
+                            "error": error,
+                            "disposition": "dropped",
+                        }
+                        logger.warning("pf-31 emission_integrity (repair path): %s", payload)
+                        try:
+                            self._event_bus.emit(
+                                EventType.ARTIFACT_EMISSION_REJECTED,
+                                entity_type="artifact",
+                                entity_id=name,
+                                context={
+                                    "cycle_id": step_envelope.cycle_id,
+                                    "run_id": run_id,
+                                },
+                                payload=payload,
+                            )
+                        except Exception:
+                            logger.debug("emission_integrity event emit failed", exc_info=True)
+                        if enforcement_carry is not None:
+                            instruction = emission_integrity_instruction(name, error)
                             if instruction not in enforcement_carry:
                                 enforcement_carry.append(instruction)
             # Persist the step's output artifacts BEFORE checkpointing —
