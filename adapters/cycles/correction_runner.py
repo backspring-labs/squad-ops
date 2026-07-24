@@ -116,7 +116,20 @@ def _resolve_repair_target(
         # the failing artifact's bug. So focus/description stay unset (no inline
         # prompt content — CLAUDE.md #448); the named artifacts + that instruction
         # redirect the repair onto both the drifted source and the failing file.
-        target = list(dict.fromkeys([*drift_files, *failed_artifacts]))
+        # pf-27 (cyc_d01810b2922f): a ``tests_pass`` failure can CO-OCCUR with
+        # interface drift on a scaffold-FROZEN file (there: backend/main.py — its
+        # /health route + the repair's own un-restored inline routes), which pins the
+        # target to this drift branch. But the behavioral fix still lives in the
+        # fill-slot source under test (routes.py), which is neither a drift file nor
+        # the failing qa.test's own artifact — so without the same package-scoped
+        # implementation surface the no-drift branch already unions (RC2), the repair
+        # edits only the drifted file + the test and NEVER reaches routes.py →
+        # non-convergence. Union it here too; empty surface (author mode) → the scoped
+        # set is empty and the target is byte-identical to the pre-pf-27 union.
+        scoped_source = _scope_to_shared_packages(
+            failed_inputs.get("implementation_artifacts", []) or [], failed_artifacts
+        )
+        target = list(dict.fromkeys([*drift_files, *failed_artifacts, *scoped_source]))
         return (target, None, None)
     # RC2 no-drift path: union the failing task's own artifacts with the
     # package-scoped implementation surface so a behavioral failure can reach the
