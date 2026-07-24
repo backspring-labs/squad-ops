@@ -15,6 +15,12 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+# Per-artifact enforcement dispositions (internal protocol; named so comparison
+# sites never carry raw literals that shadow unrelated enums — #380/#559).
+_DISP_RESTORE = "restore"
+_DISP_DROP = "drop"
+_DISP_PASS = "pass"
+
 
 def _artifact_raw_path(art: dict) -> str | None:
     """The producer-emitted path of an artifact, accepting both the ``{name}`` and ``{path}``
@@ -126,21 +132,21 @@ def enforce_frozen_ownership(
 
     def _disposition(art: dict, norm: str | None) -> str:
         if norm is not None and norm in frozen:
-            return "restore"
+            return _DISP_RESTORE
         if qa_authz is not None and (
             qa_authz.authorize(_artifact_raw_path(art) or "")
             == AuthzDecision.FORBIDDEN_UNAUTHORIZED
         ):
-            return "drop"
-        return "pass"
+            return _DISP_DROP
+        return _DISP_PASS
 
     dispositions = [_disposition(art, norm) for art, norm in zip(artifacts, norms, strict=True)]
-    siblings_retained = sum(1 for d in dispositions if d == "pass")
+    siblings_retained = sum(1 for d in dispositions if d == _DISP_PASS)
 
     enforced: list[dict] = []
     evidence: list[Any] = []
     for art, norm, disposition in zip(artifacts, norms, dispositions, strict=True):
-        if disposition == "restore":
+        if disposition == _DISP_RESTORE:
             evidence.append(
                 frozen_restore_evidence(
                     producer_task_id=envelope.task_id,
@@ -153,7 +159,7 @@ def enforce_frozen_ownership(
                 )
             )
             enforced.append({**art, "content": frozen[norm]})  # restore scaffold bytes (D2)
-        elif disposition == "drop":
+        elif disposition == _DISP_DROP:
             evidence.append(
                 unauthorized_slot_evidence(
                     producer_task_id=envelope.task_id,

@@ -360,6 +360,7 @@ class CorrectionRunner:
                     enforce_frozen_ownership,
                     frozen_restore_instruction,
                 )
+                from squadops.cycles.task_outcome import ContractComplianceViolation
 
                 enforced, integrity_evidence = enforce_frozen_ownership(
                     step_artifacts, bound_record, step_envelope
@@ -370,7 +371,8 @@ class CorrectionRunner:
                         self._emit_scaffold_integrity_evidence(record, step_envelope)
                         if (
                             enforcement_carry is not None
-                            and record.violation_code == "frozen_path_emission"
+                            and record.violation_code
+                            == ContractComplianceViolation.FROZEN_PATH_EMISSION
                         ):
                             instruction = frozen_restore_instruction(record)
                             if instruction not in enforcement_carry:

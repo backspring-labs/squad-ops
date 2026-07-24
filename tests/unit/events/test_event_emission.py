@@ -192,6 +192,9 @@ class TestCorrectionRunnerEmissionPoints:
             "TASK_SUCCEEDED",
             "TASK_FAILED",
             "CHECKPOINT_CREATED",
+            # SIP-0100 3.4b: frozen-ownership enforcement on the repair path
+            # surfaces each restore as an event (mirrors the executor's emitter).
+            "ARTIFACT_OWNERSHIP_ENFORCED",
         ],
     )
     def test_correction_runner_emits(self, attr: str, correction_runner_refs: set[str]) -> None:
@@ -330,11 +333,13 @@ class TestEmitCallSitePayloadFields:
         assert with_payload >= 35
 
     def test_total_emit_call_count(self) -> None:
-        """Sanity check: 20 executor + 7 correction-runner +
-        8 pulse-boundary-runner + 2 task-dispatcher + 7 route = 44 total
+        """Sanity check: 20 executor + 8 correction-runner +
+        8 pulse-boundary-runner + 2 task-dispatcher + 7 route = 45 total
         emit calls (#473 added the pre-gate rejection's GATE_DECIDED emit;
         #522 added the framing re-roll's WORKLOAD_ADVANCED emit; SIP-0100 3.3
-        added the scaffold-integrity ARTIFACT_OWNERSHIP_ENFORCED emit).
+        added the scaffold-integrity ARTIFACT_OWNERSHIP_ENFORCED emit;
+        SIP-0100 3.4b added the correction runner's repair-path
+        ARTIFACT_OWNERSHIP_ENFORCED emit, 44 → 45).
 
         SIP-0097 slice 2c collapsed execute_run's five per-exception-class
         terminal emits into one emit driven by the RunCompletion terminal
@@ -347,4 +352,4 @@ class TestEmitCallSitePayloadFields:
         total = 0
         for path in _ALL_EMISSION_FILES:
             total += len(self._extract_emit_calls(path))
-        assert total == 44
+        assert total == 45
