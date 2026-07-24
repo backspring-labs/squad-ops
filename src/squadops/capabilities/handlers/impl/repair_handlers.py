@@ -14,10 +14,14 @@ correction-loop flows have distinct, non-overlapping capability ids.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from squadops.capabilities.handlers.cycle_tasks import _classify_file, _CycleTaskHandler
 from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
+
+if TYPE_CHECKING:
+    from squadops.capabilities.handlers.base import HandlerResult
+    from squadops.capabilities.handlers.context import ExecutionContext
 
 
 def _artifacts_from_fenced_blocks(content: str, fallback_name: str) -> list[dict[str, Any]]:
@@ -203,7 +207,50 @@ class _RepairPromptMixin:
             "expected_artifacts": _format_bullets(inputs.get("expected_artifacts")),
             "acceptance_criteria": _format_bullets(inputs.get("acceptance_criteria")),
             "prior_outputs": self._format_prior_outputs(prior_outputs),
+            # Same scaffold fill-only constraint the develop handler injects (SIP-0099
+            # 99.3). Rendered in handle() and threaded via inputs; "" when absent.
+            "fill_only_section": str(inputs.get("fill_only_section") or ""),
         }
+
+    async def handle(
+        self,
+        context: ExecutionContext,
+        inputs: dict[str, Any],
+    ) -> HandlerResult:
+        """Inject the scaffold fill-only constraint before the base render.
+
+        The develop handler tells the dev to FILL the seeded skeleton's slots and NOT
+        rewrite scaffold-owned interface (route paths/decorators/signatures, the wired
+        ``ApiError`` seam) — but the correction/repair path previously got none of that
+        and was told to "re-produce the artifact", so repairs freely rewrote the seeded
+        interface (observed: ``ApiError(status_code=...)`` vs the seeded
+        ``ApiError(code, message)``; ``APIRouter(prefix=...)`` vs seeded absolute
+        decorators). Reuse the SAME managed appendix the dev gets so the repair honors
+        the same boundary. Dev-role repairs on a scaffoldable stack only; no-op otherwise.
+        """
+        fill_only = await self._render_fill_only_section(context, inputs)
+        if fill_only:
+            inputs = {**inputs, "fill_only_section": fill_only}
+        return await super().handle(context, inputs)
+
+    async def _render_fill_only_section(
+        self, context: ExecutionContext, inputs: dict[str, Any]
+    ) -> str:
+        """The dev fill-only appendix, or "" (non-dev role, non-scaffolded, no renderer)."""
+        if self._role != "dev":
+            return ""
+        renderer = getattr(context.ports, "request_renderer", None)
+        if renderer is None:
+            return ""
+        from squadops.capabilities.scaffold import is_scaffoldable_stack
+
+        stack = str((inputs.get("resolved_config") or {}).get("build_profile") or "")
+        if not is_scaffoldable_stack(stack):
+            return ""
+        rendered = await renderer.render(
+            "request.development_develop_fill_only_appendix", {"stack": stack}
+        )
+        return rendered.content
 
     def _build_user_prompt(
         self,
