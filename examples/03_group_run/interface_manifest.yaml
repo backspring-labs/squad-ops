@@ -55,12 +55,12 @@ api:
     - { method: POST, path: /runs,              summary: create run,
         request: RunEventCreate, response: RunEvent,
         errors: [validation_error] }                                 # §5.1
-    - { method: GET,  path: "/runs/{id}",       summary: run details,
+    - { method: GET,  path: "/runs/{run_id}",       summary: run details,
         response: RunEvent, errors: [run_not_found] }                # §5.3
-    - { method: POST, path: "/runs/{id}/join",  summary: join run by participant name,
+    - { method: POST, path: "/runs/{run_id}/join",  summary: join run by participant name,
         request: ParticipantName, response: RunEvent,
         errors: [run_not_found, duplicate_participant, validation_error] }   # §5.4
-    - { method: POST, path: "/runs/{id}/leave", summary: leave run by participant name,
+    - { method: POST, path: "/runs/{run_id}/leave", summary: leave run by participant name,
         request: ParticipantName, response: RunEvent,
         errors: [run_not_found, participant_not_found, validation_error] }   # §5.5
   error_contract:  # §6 "clear error payloads"; shape pinned so both sides agree

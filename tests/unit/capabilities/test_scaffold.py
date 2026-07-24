@@ -69,9 +69,9 @@ def test_parses_group_run_manifest_structure():
     assert {(e.method, e.path) for e in m.api.endpoints} == {
         ("GET", "/runs"),
         ("POST", "/runs"),
-        ("GET", "/runs/{id}"),
-        ("POST", "/runs/{id}/join"),
-        ("POST", "/runs/{id}/leave"),
+        ("GET", "/runs/{run_id}"),
+        ("POST", "/runs/{run_id}/join"),
+        ("POST", "/runs/{run_id}/leave"),
     }
     assert [r.view for r in m.frontend.routes] == [
         "RunsListView",
@@ -103,7 +103,7 @@ def test_expand_defines_every_declared_endpoint_and_model():
     routes = files["backend/routes.py"]
     assert '@router.get("/runs", response_model=list[RunEvent])' in routes
     assert '@router.post("/runs", response_model=RunEvent)' in routes
-    assert '@router.post("/runs/{id}/join", response_model=RunEvent)' in routes
+    assert '@router.post("/runs/{run_id}/join", response_model=RunEvent)' in routes
     assert "payload: RunEventCreate" in routes
     assert "payload: ParticipantName" in routes
     # only referenced models are imported (no unused-import lint failure)
