@@ -93,25 +93,6 @@ def _build_refinement_time_budget_section(time_budget_seconds: int | None) -> st
     )
 
 
-def _format_writable_surfaces(surfaces: dict[str, Any]) -> str:
-    """Render the Phase-A writable-surface DATA into named sections for the bind appendix. Data
-    only — the instruction ("write ONLY these paths") lives in the asset (#448)."""
-    sections = (
-        ("DEV_WRITABLE_SLOTS", surfaces.get("dev_writable_slots", [])),
-        ("QA_WRITABLE_NAMESPACES", surfaces.get("qa_writable_namespaces", [])),
-        ("REQUIRED_SLOT_COVERAGE", surfaces.get("required_slot_coverage", [])),
-        ("READ_ONLY_CONTEXT_PATHS", surfaces.get("read_only_context_paths", [])),
-    )
-    lines: list[str] = []
-    for name, items in sections:
-        lines.append(f"{name}:")
-        if items:
-            lines.extend(f"  - {p}" for p in items)
-        else:
-            lines.append("  (none)")
-    return "\n".join(lines)
-
-
 class _PlanningTaskHandler(_CycleTaskHandler):
     """Base class for planning and refinement task handlers.
 
@@ -868,14 +849,9 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
         index = inputs.get("contract_criteria_index")
         if not index:
             return ""
-        variables = {"criteria_index": index}
-        # SIP-0100 follow-up (Phase A): pass the authoritative writable surfaces as DATA; the asset
-        # carries the "write ONLY these paths" instruction (#448). Present whenever a contract is
-        # seeded (injected alongside contract_criteria_index).
-        surfaces = inputs.get("writable_surfaces")
-        if surfaces:
-            variables["writable_slots"] = _format_writable_surfaces(surfaces)
-        rendered = await renderer.render("request.plan_bind_criteria_appendix", variables)
+        rendered = await renderer.render(
+            "request.plan_bind_criteria_appendix", {"criteria_index": index}
+        )
         return rendered.content
 
     async def handle(
