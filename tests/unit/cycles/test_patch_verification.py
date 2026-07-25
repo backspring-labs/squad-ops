@@ -197,3 +197,102 @@ def test_ambiguous_basename_is_never_rehomed():
 def test_unmatched_and_net_new_files_pass_through():
     arts = [{"name": "README.md", "content": "x"}, {"name": "", "content": "y"}, {"other": 1}]
     assert rebase_artifact_paths(arts, ["backend/routes.py"]) == arts
+
+
+# The pf-37 shape (#591): correction-00 emitted a coherent models.py/routes.py
+# pair, SIP-0100 restored the frozen models.py, and the surviving routes.py
+# imported names the frozen module never defines. Every typed check passed —
+# routes.py compiles perfectly alone — and the patch was ACCEPTED, then the
+# suite failed to collect.
+FROZEN_MODELS = (
+    "from pydantic import BaseModel\n\n"
+    "class RunEvent(BaseModel):\n    id: str\n    title: str\n\n"
+    "class RunEventCreate(BaseModel):\n    title: str\n"
+)
+REPAIR_ROUTES = (
+    "from .models import RunCreate, RunResponse\n\ndef create_run(body):\n    return body\n"
+)
+GOOD_ROUTES = (
+    "from .models import RunEvent, RunEventCreate\n\ndef create_run(body):\n    return body\n"
+)
+
+
+def _routes_criteria() -> list[TypedCheck]:
+    """The checks pf-37 actually ran against routes.py — all file-local."""
+    return [
+        TypedCheck(
+            check="function_defined",
+            params={"file": "backend/routes.py", "name_prefix": "create_", "min_count": 1},
+            severity="error",
+            description="routes.py defines a create_ handler",
+        ),
+    ]
+
+
+class TestUnresolvedImportsBlockAcceptance:
+    async def test_patch_with_unresolvable_imports_is_rejected(self):
+        """Bug caught: THE #591 defect — every file-local check passes, the patch
+        is accepted, and the assembled app cannot import at all."""
+        artifacts = [
+            {"name": "backend/__init__.py", "content": ""},
+            {"name": "backend/models.py", "content": FROZEN_MODELS},
+            {"name": "backend/routes.py", "content": REPAIR_ROUTES},
+        ]
+        result = await verify_patched_artifacts(_routes_criteria(), artifacts, stack="python")
+
+        assert result.status == PATCH_FAILED
+        assert "unresolved_imports" in (result.reason or "")
+        assert "RunCreate" in (result.reason or "")
+        assert "backend/routes.py" in (result.reason or "")
+
+    async def test_same_patch_would_pass_every_typed_check(self):
+        """Pins WHY the defect was invisible: the file-local criterion passes on
+        the very artifacts the check above rejects. Without this, a future
+        refactor could weaken the criteria and call #591 'fixed'."""
+        import tempfile
+        from pathlib import Path
+
+        from squadops.cycles.acceptance_evaluation import evaluate_criterion
+        from squadops.cycles.patch_verification import materialize_artifacts
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            materialize_artifacts(
+                [
+                    {"name": "backend/models.py", "content": FROZEN_MODELS},
+                    {"name": "backend/routes.py", "content": REPAIR_ROUTES},
+                ],
+                root,
+            )
+            outcome = await evaluate_criterion(
+                _routes_criteria()[0],
+                root,
+                stack="python",
+                typed_acceptance_enabled=True,
+                command_acceptance_enabled=True,
+            )
+
+        assert outcome.status == "passed"
+
+    async def test_resolvable_patch_still_accepted(self):
+        """Bug caught: the new gate rejecting healthy patches — it must only bite
+        on genuinely unimportable combinations."""
+        artifacts = [
+            {"name": "backend/__init__.py", "content": ""},
+            {"name": "backend/models.py", "content": FROZEN_MODELS},
+            {"name": "backend/routes.py", "content": GOOD_ROUTES},
+        ]
+        result = await verify_patched_artifacts(_routes_criteria(), artifacts, stack="python")
+
+        assert result.status == PATCH_PASSED
+
+    async def test_non_python_patches_are_unaffected(self):
+        """Bug caught: the doc/markdown repair path (the original #389 case)
+        regressing because an import walk runs over a workspace with no Python."""
+        artifacts = overlay_artifacts(
+            [{"name": "qa_handoff.md", "content": BROKEN_DOC}],
+            [{"name": "qa_handoff.md", "content": REPAIRED_DOC}],
+        )
+        result = await verify_patched_artifacts(_heading_criteria(), artifacts)
+
+        assert result.status == PATCH_PASSED
