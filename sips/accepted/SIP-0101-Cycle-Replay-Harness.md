@@ -1,6 +1,14 @@
-# SIP-0XXX: Cycle Replay Harness — Resuming a Cycle From a Recorded Execution Boundary
+---
+title: Cycle Replay Harness
+status: accepted
+author: jladd
+created_at: '2026-07-25T00:00:00Z'
+sip_number: 101
+updated_at: '2026-07-25T11:34:32.304767Z'
+---
+# SIP-0101: Cycle Replay Harness — Resuming a Cycle From a Recorded Execution Boundary
 
-**Status:** Proposed
+**Status:** Accepted
 **Authors:** SquadOps Architecture
 **Created:** 2026-07-25
 **Revision:** 3 (review round 1; FAY-enforcement correction + implementation order)

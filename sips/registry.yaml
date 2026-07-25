@@ -1,4 +1,4 @@
-last_assigned: 100
+last_assigned: 101
 sips:
 - sip_number: 3
   sip_uid: '17642554775787694'
@@ -900,3 +900,12 @@ sips:
   approver: jladd
   created_at: '2026-07-22T00:00:00Z'
   updated_at: '2026-07-22T21:21:48.884957Z'
+- sip_uid: null
+  sip_number: 101
+  title: Cycle Replay Harness
+  path: sips/accepted/SIP-0101-Cycle-Replay-Harness.md
+  status: accepted
+  author: jladd
+  approver: jladd
+  created_at: '2026-07-25T00:00:00Z'
+  updated_at: '2026-07-25T11:34:32.354533Z'
