@@ -225,7 +225,14 @@ def _probes(manifest: InterfaceManifest) -> list[dict[str, Any]]:
                 # returns 201. Expecting 200 made the contract contradict the
                 # PRD: a PRD-conformant app could never pass its own probe
                 # (pf-3: "status 201 != expected 200" on a correct app).
-                "expect": {"status": 201},
+                #
+                # pf-39: read the endpoint's declared success status so the probe and
+                # the emitted decorator cannot disagree. Previously this was hardcoded
+                # 201 while ``_routes_source`` emitted no ``status_code`` at all, so
+                # the skeleton contradicted its own contract and only a dev agent
+                # volunteering ``status_code=201`` could close the gap. A manifest that
+                # declares no success status keeps the historical 201 expectation.
+                "expect": {"status": ep.success_status or 201},
             }
         )
     return probes

@@ -476,6 +476,41 @@ class ImplementationPlan:
 
         return errors
 
+    def validate_qa_artifact_ownership(self, contract: VerificationContract) -> list[str]:
+        """pf-39: a ``qa.test`` task may not declare scaffold- or dev-owned files as
+        its ``expected_artifacts``.
+
+        Write authorization already refuses these at *emission* time
+        (``unauthorized_slot_emission``), so a plan that declares them admits a task
+        that provably cannot produce its own outputs. The cost is not the wasted task:
+        a correction repair is scoped to the **failing task's** expected artifacts, so
+        when such a task fails the repair is aimed at files that were never the defect.
+        In pf-39 a ``qa.test`` task declared the three view fill slots; the analyzer
+        correctly diagnosed a backend status-code defect in another task's file, and
+        the repair rewrote the views instead — one whole correction attempt that could
+        not have fixed anything.
+
+        Same referent as write authorization (the contract's frozen + fill surfaces),
+        applied at authoring time instead of emission time. Documents and test files
+        are unaffected — only files the contract says someone else owns are rejected.
+
+        Returns:
+            List of validation error strings (empty = valid).
+        """
+        owned: dict[str, str] = {ff.path: "frozen (scaffold-owned)" for ff in contract.frozen_files}
+        owned.update({ff.path: "a fill slot (dev-owned)" for ff in contract.fill_files})
+
+        return [
+            f"Task {task.task_index} ({task.focus}): qa.test declares expected artifact "
+            f"{artifact!r}, which is {owned[artifact]} — write authorization refuses it at "
+            f"emission, and a repair scoped to this task would target the wrong files. "
+            f"QA tasks own their test files only"
+            for task in self.tasks
+            if task.task_type == "qa.test"
+            for artifact in task.expected_artifacts
+            if artifact in owned
+        ]
+
     def _authored_on_covered_criteria(self, contract: VerificationContract):
         """Yield ``(task, criterion, target)`` for every authored ``TypedCheck``
         whose target file is contract-covered (§6.3 rule 3) — shared by the fatal

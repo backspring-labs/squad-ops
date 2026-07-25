@@ -782,3 +782,94 @@ summary:
         )
         assert plan.validate_criteria_scope() == []
         assert plan.soft_criteria_violations() == []
+
+
+class TestQaArtifactOwnership:
+    """pf-39: a qa.test task declaring scaffold- or dev-owned files is unsatisfiable.
+
+    Write authorization already refuses those emissions (``unauthorized_slot_emission``),
+    so the plan admits a task that cannot produce its own declared outputs. The real
+    damage is downstream: a correction repair is scoped to the *failing task's*
+    expected artifacts, so when such a task fails the repair is aimed at files that were
+    never the defect. In pf-39 a qa.test task declared the three view fill slots, the
+    analyzer correctly diagnosed a backend status-code defect in another task's file,
+    and the repair rewrote the views — an entire correction attempt that could not have
+    fixed anything.
+    """
+
+    @staticmethod
+    def _contract():
+        from pathlib import Path
+
+        from squadops.capabilities.scaffold import InterfaceManifest
+        from squadops.capabilities.scaffold_contract import emit_contract_dict
+        from squadops.cycles.verification_contract import VerificationContract
+
+        path = (
+            Path(__file__).resolve().parents[3]
+            / "examples"
+            / "03_group_run"
+            / "interface_manifest.yaml"
+        )
+        manifest = InterfaceManifest.from_yaml(path.read_text(encoding="utf-8"))
+        return VerificationContract.from_dict(emit_contract_dict(manifest))
+
+    @staticmethod
+    def _plan_with(task_type: str, artifact: str) -> ImplementationPlan:
+        return ImplementationPlan.from_yaml(
+            "version: 1\n"
+            "project_id: group_run\n"
+            "cycle_id: cyc_test\n"
+            "prd_hash: abc123\n"
+            "tasks:\n"
+            "  - task_index: 0\n"
+            f"    task_type: {task_type}\n"
+            f"    role: {'qa' if task_type == 'qa.test' else 'dev'}\n"
+            '    focus: "Frontend compilation and view sanity"\n'
+            '    description: "check the views"\n'
+            "    expected_artifacts:\n"
+            f'      - "{artifact}"\n'
+            "    depends_on: []\n"
+            "summary:\n"
+            "  total_dev_tasks: 0\n"
+            "  total_qa_tasks: 1\n"
+            "  total_tasks: 1\n"
+            "  estimated_layers: []\n"
+        )
+
+    def test_rejects_qa_task_declaring_a_dev_fill_slot(self):
+        """The exact pf-39 shape: qa.test declaring a view component."""
+        errors = self._plan_with(
+            "qa.test", "frontend/src/views/RunsListView.jsx"
+        ).validate_qa_artifact_ownership(self._contract())
+
+        assert len(errors) == 1
+        assert "RunsListView.jsx" in errors[0]
+        assert "fill slot (dev-owned)" in errors[0]
+
+    def test_rejects_qa_task_declaring_a_frozen_scaffold_file(self):
+        errors = self._plan_with("qa.test", "backend/main.py").validate_qa_artifact_ownership(
+            self._contract()
+        )
+
+        assert len(errors) == 1
+        assert "frozen (scaffold-owned)" in errors[0]
+
+    def test_accepts_qa_task_declaring_its_own_test_file(self):
+        """Must not over-reject: a QA task owning a test file is the normal case."""
+        assert (
+            self._plan_with("qa.test", "backend/tests/test_runs.py").validate_qa_artifact_ownership(
+                self._contract()
+            )
+            == []
+        )
+
+    def test_dev_task_may_declare_a_fill_slot(self):
+        """The rule is scoped to qa.test — a dev task owning routes.py is exactly
+        how bind mode is supposed to work, and rejecting it would break every plan."""
+        assert (
+            self._plan_with(
+                "development.develop", "backend/routes.py"
+            ).validate_qa_artifact_ownership(self._contract())
+            == []
+        )
