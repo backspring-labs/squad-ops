@@ -18,13 +18,19 @@ loop (§6.1): ``dispatch_with_retry`` receives the executor's routing
 decision as a per-call ``handle_task_outcome`` closure and only acts on the
 returned action token — the decision logic never moves.
 
-Cancellation: the transport performs no cancellation checks of its own (it
-never did — the orchestration loops check between tasks); the §6.1
-cancellation probe is deliberately not wired until a dispatch-boundary
-check actually exists (defer-infra-completeness). Likewise the §6.1 LLM
-observability dependency: per-task generation traces are recorded
-agent-side today, so the port is not taken until this class has a real use
-for it.
+Cancellation (§6.1 probe, #586): this class owns the dispatch-boundary
+check. ``dispatch_task`` probes ``is_cancelled`` before publishing, so no
+agent work starts on a cancelled run — on *any* path through this
+transport, including the correction/repair and pulse-boundary dispatches
+whose runners depend on this class directly. The orchestration loops keep
+their own between-task checks; those alone left the long-running paths
+uncovered, because a correction loop dispatches many tasks without ever
+returning to the loop top (#586: a cancelled run burned five correction
+attempts over 2h20m).
+
+The §6.1 LLM observability dependency remains untaken: per-task generation
+traces are recorded agent-side today, so the port is not wired until this
+class has a real use for it.
 """
 
 from __future__ import annotations
@@ -36,6 +42,7 @@ import logging
 import time
 from typing import TYPE_CHECKING
 
+from adapters.cycles.execution_errors import _CancellationError
 from adapters.cycles.task_naming import build_task_name
 from squadops.events.types import EventType
 from squadops.runtime import reasons
@@ -73,6 +80,7 @@ class TaskDispatcher:
         activity_port: RuntimeActivityPort | None = None,
         event_bus: CycleEventBusPort | None = None,
         task_timeout: float = 300.0,
+        is_cancelled: Callable[[str], Awaitable[bool]] | None = None,
     ) -> None:
         self._queue = queue
         self._reply_router = reply_router
@@ -80,6 +88,10 @@ class TaskDispatcher:
         self._activity_port = activity_port
         self._event_bus = event_bus
         self._task_timeout = task_timeout
+        # §6.1 cancellation probe (#586). Executor-supplied callable, the same
+        # idiom as ``store_artifact`` / ``handle_task_outcome``: the transport
+        # asks "is this run cancelled?" without taking a registry dependency.
+        self._is_cancelled = is_cancelled
 
     # SIP-0087: task-run lifecycle lives here (moved out of WorkflowTrackerBridge) so
     # the task_run_id is known before the agent starts producing logs.
@@ -126,6 +138,21 @@ class TaskDispatcher:
                 envelope.task_id,
             )
 
+    async def _raise_if_cancelled(self, run_id: str) -> None:
+        """Raise ``_CancellationError`` when the run has been cancelled (#586).
+
+        No-op when no probe is wired (standalone unit tests, in-memory
+        compositions). Probe errors propagate deliberately — the between-task
+        check this complements has always been fail-closed, and a probe that
+        silently swallowed registry errors would reintroduce the very
+        "cancel doesn't stop it" behaviour this exists to prevent.
+        """
+        if self._is_cancelled is None:
+            return
+        if await self._is_cancelled(run_id):
+            logger.info("Dispatch cancelled: run %s is cancelled", run_id)
+            raise _CancellationError(run_id)
+
     async def dispatch_task(
         self,
         envelope: TaskEnvelope,
@@ -145,7 +172,15 @@ class TaskDispatcher:
         ``PrefectLogHandler`` scopes handler logs to the right Prefect task
         pane, and spawns a periodic heartbeat coroutine so long-running LLM
         calls show liveness in the UI.
+
+        Raises:
+            _CancellationError — the run was cancelled before this dispatch
+                (§6.1 probe, #586). Raised before any Prefect task run is
+                created and before publish, so a cancelled run starts no
+                further agent work on any path through this transport.
         """
+        await self._raise_if_cancelled(run_id)
+
         if task_run_id is None:
             task_run_id = await self.create_task_run_if_enabled(flow_run_id, envelope)
 

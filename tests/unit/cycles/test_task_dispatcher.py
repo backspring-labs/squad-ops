@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from adapters.cycles.execution_errors import _CancellationError
 from adapters.cycles.task_dispatcher import TaskDispatcher
 from squadops.tasks.models import TaskEnvelope, TaskResult
 
@@ -598,4 +599,182 @@ class TestAcceptPatchToken:
         # The dispatcher hands back the raw failed result; the executor
         # substitutes the corrected one from its holder (#389).
         assert result.status == "FAILED"
+        assert mock_queue.publish.await_count == 1
+
+
+# ---------------------------------------------------------------------------
+# Cancellation probe (#586)
+# ---------------------------------------------------------------------------
+
+
+class TestCancellationProbe:
+    """§6.1 dispatch-boundary cancellation check.
+
+    Before #586 this class documented the probe as "deliberately not wired"
+    while ``CorrectionRunner`` documented itself as relying on it — so the only
+    real check was the executor's between-task one, and a run cancelled inside
+    a correction loop kept dispatching repairs for 2h20m.
+    """
+
+    def _envelope(self):
+        return TaskEnvelope(
+            task_id="task_repair",
+            agent_id="neo",
+            cycle_id="cyc_001",
+            pulse_id="p1",
+            project_id="proj_001",
+            task_type="development.develop",
+            correlation_id="corr",
+            causation_id="cause",
+            trace_id="trace",
+            span_id="span",
+            metadata={"role": "dev"},
+        )
+
+    async def test_cancelled_run_raises_before_publishing(self, mock_queue, reply_router) -> None:
+        """Bug caught: a repair dispatched onto a cancelled run — the #586 shape.
+
+        The assertion that matters is ``publish`` never happening: raising after
+        publish would still hand the agent an LLM task to burn.
+        """
+        dispatcher = TaskDispatcher(
+            queue=mock_queue,
+            reply_router=reply_router,
+            task_timeout=5.0,
+            is_cancelled=AsyncMock(return_value=True),
+        )
+
+        with pytest.raises(_CancellationError) as exc_info:
+            await dispatcher.dispatch_task(self._envelope(), "run_001")
+
+        assert "run_001" in str(exc_info.value)
+        mock_queue.publish.assert_not_awaited()
+
+    async def test_cancelled_run_creates_no_prefect_task_run(
+        self, mock_queue, reply_router
+    ) -> None:
+        """Bug caught: probing after task-run creation orphans a RUNNING
+        task_run in the Prefect UI for every cancelled dispatch."""
+        tracker = AsyncMock()
+        dispatcher = TaskDispatcher(
+            queue=mock_queue,
+            reply_router=reply_router,
+            workflow_tracker=tracker,
+            task_timeout=5.0,
+            is_cancelled=AsyncMock(return_value=True),
+        )
+
+        with pytest.raises(_CancellationError):
+            await dispatcher.dispatch_task(self._envelope(), "run_001", flow_run_id="flow_001")
+
+        tracker.create_task_run.assert_not_awaited()
+        tracker.set_task_run_state.assert_not_awaited()
+
+    async def test_live_run_dispatches_normally(self, mock_queue, reply_router) -> None:
+        """Bug caught: a probe wired fail-closed (always raising) would kill
+        every healthy run — the inverse regression of the fix."""
+        probe = AsyncMock(return_value=False)
+        dispatcher = TaskDispatcher(
+            queue=mock_queue,
+            reply_router=reply_router,
+            task_timeout=5.0,
+            is_cancelled=probe,
+        )
+
+        with patch("adapters.cycles.task_dispatcher.asyncio.sleep", new_callable=AsyncMock):
+            result = await dispatcher.dispatch_task(self._envelope(), "run_001")
+
+        assert result.status == "SUCCEEDED"
+        mock_queue.publish.assert_awaited_once()
+        probe.assert_awaited_once_with("run_001")
+
+    async def test_probe_failure_propagates_rather_than_dispatching(
+        self, mock_queue, reply_router
+    ) -> None:
+        """Bug caught: swallowing probe errors silently restores the #586
+        behaviour — a registry blip would resume dispatching on a cancelled
+        run. The between-task check this complements is fail-closed too."""
+        dispatcher = TaskDispatcher(
+            queue=mock_queue,
+            reply_router=reply_router,
+            task_timeout=5.0,
+            is_cancelled=AsyncMock(side_effect=RuntimeError("registry down")),
+        )
+
+        with pytest.raises(RuntimeError, match="registry down"):
+            await dispatcher.dispatch_task(self._envelope(), "run_001")
+
+        mock_queue.publish.assert_not_awaited()
+
+    async def test_unwired_probe_dispatches(self, mock_queue, reply_router) -> None:
+        """Bug caught: making the probe mandatory breaks the standalone and
+        in-memory compositions that construct a dispatcher without one."""
+        dispatcher = TaskDispatcher(
+            queue=mock_queue,
+            reply_router=reply_router,
+            task_timeout=5.0,
+        )
+
+        with patch("adapters.cycles.task_dispatcher.asyncio.sleep", new_callable=AsyncMock):
+            result = await dispatcher.dispatch_task(self._envelope(), "run_001")
+
+        assert result.status == "SUCCEEDED"
+        mock_queue.publish.assert_awaited_once()
+
+    async def test_retry_loop_stops_when_cancelled_mid_flight(
+        self, mock_queue, reply_router
+    ) -> None:
+        """Bug caught: cancel landing during a retry/correction sequence lets the
+        loop re-dispatch anyway. Probing inside ``dispatch_task`` (not only at
+        the loop top) is what bounds post-cancel work to the in-flight task."""
+        from squadops.cycles.models import Cycle, TaskFlowPolicy
+
+        cancelled = {"now": False}
+
+        async def probe(run_id: str) -> bool:
+            return cancelled["now"]
+
+        dispatcher = TaskDispatcher(
+            queue=mock_queue,
+            reply_router=reply_router,
+            task_timeout=5.0,
+            event_bus=MagicMock(),
+            is_cancelled=probe,
+        )
+        envelope = self._envelope()
+        reply_router.responder = lambda env: TaskResult(
+            task_id=env["task_id"], status="FAILED", error="needs repair"
+        )
+
+        async def handle_outcome(result):
+            # Stands in for the correction protocol: the run is cancelled while
+            # the outcome is being routed, then the loop asks for a re-dispatch.
+            cancelled["now"] = True
+            return "continue"
+
+        cycle = Cycle(
+            cycle_id="cyc_001",
+            project_id="proj_001",
+            created_at=NOW,
+            created_by="system",
+            prd_ref="prd",
+            squad_profile_id="full",
+            squad_profile_snapshot_ref="sha256:abc",
+            task_flow_policy=TaskFlowPolicy(mode="sequential"),
+            build_strategy="fresh",
+        )
+
+        with (
+            patch("adapters.cycles.task_dispatcher.asyncio.sleep", new_callable=AsyncMock),
+            pytest.raises(_CancellationError),
+        ):
+            await dispatcher.dispatch_with_retry(
+                envelope,
+                envelope,
+                cycle,
+                "run_001",
+                handle_task_outcome=handle_outcome,
+            )
+
+        # One dispatch happened (the in-flight task); the retry never published.
         assert mock_queue.publish.await_count == 1
