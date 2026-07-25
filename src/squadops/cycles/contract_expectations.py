@@ -91,10 +91,18 @@ def expectation_line(entry: Any) -> str | None:
         argv = params.get("argv") or []
         return f"the command `{' '.join(str(a) for a in argv)}` must exit 0"
     if check == "harness_boundary":
+        # pf-33 corr-00: the previous wording ("must build its TestClient against
+        # one of: backend.main...") read as an INSTRUCTION to import the entry
+        # module and construct the client — the exact violation the evaluator
+        # rejects. eve's repair obeyed it faithfully and was rejected for it.
+        # The line must state the prohibition and the sanctioned alternative.
         entries = ", ".join(f"`{m}`" for m in params.get("entry_modules", []))
+        ctor = params.get("client_ctor", "TestClient")
         return (
-            f"`{file}` must build its `{params.get('client_ctor', 'TestClient')}` "
-            f"against one of: {entries} (no ad-hoc app construction)"
+            f"`{file}` must NOT import the app entry module ({entries}) and must NOT "
+            f"construct `{ctor}(...)` itself — every test takes the scaffold-provided "
+            f"`client` fixture as an argument (it already exists in the frozen "
+            f"conftest; do not define your own)"
         )
     # Unknown/new check type: still surface it exactly rather than dropping it.
     kv = ", ".join(f"{k}={v!r}" for k, v in sorted(params.items()) if k != "file")

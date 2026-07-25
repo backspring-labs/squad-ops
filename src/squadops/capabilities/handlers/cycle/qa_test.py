@@ -307,6 +307,31 @@ class QATestHandler(_CycleTaskHandler):
         }
         return test_result, report_artifact
 
+    @staticmethod
+    def _prompt_scoped_contents(
+        artifact_contents: dict[str, str],
+        expected_artifacts: list[Any],
+    ) -> dict[str, str]:
+        """pf-33: scope the focused prompt's source dump to the top-level
+        package(s) the task's own artifacts live in (the RC2 package rule at
+        the prompt seam). m007's prompt carried all 16 files (~18k tokens,
+        every frontend .jsx included) into a backend suite task — prefill cost
+        plus rambling pressure against the 8192 completion clamp, and the
+        truncation crashed collection. No expected artifacts or no package
+        match → contents unchanged (never starve the prompt).
+        """
+        packages = {
+            str(e).strip().lstrip("./").partition("/")[0] for e in (expected_artifacts or []) if e
+        }
+        if not packages:
+            return artifact_contents
+        scoped = {
+            name: content
+            for name, content in artifact_contents.items()
+            if str(name).strip().lstrip("./").partition("/")[0] in packages
+        }
+        return scoped or artifact_contents
+
     def _build_focused_prompt(self, inputs: dict[str, Any]) -> str:
         """Build a focused prompt for manifest-driven QA subtasks (SIP-0086).
 
@@ -317,7 +342,9 @@ class QATestHandler(_CycleTaskHandler):
         description = inputs.get("subtask_description", "")
         expected_files = inputs.get("expected_artifacts", [])
         acceptance_criteria = inputs.get("acceptance_criteria", [])
-        artifact_contents = inputs.get("artifact_contents", {})
+        artifact_contents = self._prompt_scoped_contents(
+            inputs.get("artifact_contents", {}), expected_files
+        )
 
         parts = [f"## QA Task: {focus}\n\n{description}\n"]
 

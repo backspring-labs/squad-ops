@@ -1974,13 +1974,21 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             typed_acceptance_enabled=resolved_config.get("typed_acceptance", True),
             command_acceptance_enabled=resolved_config.get("command_acceptance_checks", True),
         )
+        # pf-33: name the failed checks — "status=failed reason= checks=7" forced
+        # a by-hand artifact replay to learn WHICH check rejected the patch.
+        failed_checks = [
+            str(c.get("check", "?"))
+            for c in verification.checks
+            if isinstance(c, dict) and c.get("passed") is False
+        ]
         logger.info(
-            "patch_verification task=%s task_type=%s status=%s reason=%s checks=%d",
+            "patch_verification task=%s task_type=%s status=%s reason=%s checks=%d failed=%s",
             envelope.task_id,
             envelope.task_type,
             verification.status,
             verification.reason or "",
             len(verification.checks),
+            ",".join(failed_checks) or "-",
         )
         if verification.status != PATCH_PASSED:
             return "continue"

@@ -1573,3 +1573,62 @@ class TestEmissionRetryFeedback:
             if c.args and c.args[0] == "request.cycle_emission_retry_feedback"
         ]
         assert feedback_calls == []
+
+
+class TestPromptScopedContents:
+    """pf-33: the focused qa prompt scopes its source dump to the packages the
+    task's own artifacts live in — a backend suite prompt must not carry every
+    frontend .jsx into an 18k-token prefill that pressures the completion clamp."""
+
+    _CONTENTS = {
+        "backend/routes.py": "r",
+        "backend/models.py": "m",
+        "backend/tests/conftest.py": "c",
+        "frontend/src/App.jsx": "a",
+        "frontend/src/views/RunsListView.jsx": "v",
+    }
+
+    def test_backend_suite_excludes_frontend(self):
+        scoped = QATestHandler._prompt_scoped_contents(
+            self._CONTENTS, ["backend/tests/test_runs.py"]
+        )
+        assert set(scoped) == {
+            "backend/routes.py",
+            "backend/models.py",
+            "backend/tests/conftest.py",
+        }
+
+    def test_frontend_suite_excludes_backend(self):
+        scoped = QATestHandler._prompt_scoped_contents(
+            self._CONTENTS, ["frontend/src/__tests__/CoreFlow.test.jsx"]
+        )
+        assert set(scoped) == {
+            "frontend/src/App.jsx",
+            "frontend/src/views/RunsListView.jsx",
+        }
+
+    def test_no_expected_artifacts_keeps_everything(self):
+        assert QATestHandler._prompt_scoped_contents(self._CONTENTS, []) == self._CONTENTS
+
+    def test_no_package_match_keeps_everything(self):
+        """Never starve the prompt: an expected artifact in an unknown package
+        falls back to the full dump rather than an empty source section."""
+        assert (
+            QATestHandler._prompt_scoped_contents(self._CONTENTS, ["docs/qa_handoff.md"])
+            == self._CONTENTS
+        )
+
+    def test_focused_prompt_end_to_end_scoping(self):
+        handler = QATestHandler()
+        prompt = handler._build_focused_prompt(
+            {
+                "prd": "p",
+                "subtask_focus": "backend suite",
+                "subtask_description": "d",
+                "expected_artifacts": ["backend/tests/test_runs.py"],
+                "acceptance_criteria": ["covers endpoints"],
+                "artifact_contents": self._CONTENTS,
+            }
+        )
+        assert "backend/routes.py" in prompt
+        assert "App.jsx" not in prompt
