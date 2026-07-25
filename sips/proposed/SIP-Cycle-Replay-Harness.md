@@ -3,7 +3,7 @@
 **Status:** Proposed
 **Authors:** SquadOps Architecture
 **Created:** 2026-07-25
-**Revision:** 2 (review round 1 incorporated)
+**Revision:** 3 (review round 1; FAY-enforcement correction + implementation order)
 
 ## 1. Abstract
 
@@ -168,15 +168,38 @@ threat to the evidence chain. These are requirements, not guidance.
 2. Replay metadata **SHALL** be immutable after run creation.
 3. Replayed runs **SHALL NOT** satisfy baseline aggregation (the N=5 green baseline).
 4. Replayed runs **SHALL NOT** count toward Functional App Yield.
-5. Requirements 3–4 **SHALL** be enforced at the `verification_integrity` aggregation
-   seam — refusal in code, not operator discipline.
-6. Replay metadata **SHALL** be rendered on every surface that reports the run: CLI
+5. Replay metadata **SHALL** be rendered on every surface that reports the run: CLI
    listings, console, and the run report.
+
+### 4.1 Where requirements 3–4 are enforced
+
+Revision 2 placed enforcement "at the `verification_integrity` aggregation seam." That
+was wrong, and the correction matters more than the wording.
+
+**Neither consumer exists.** Grepping `src/` and `adapters/` for Functional App Yield and
+for any N=5 / green-baseline aggregation returns nothing. Green counting is performed by
+hand, in cycle notes and session records. There is today no code path that could refuse a
+replayed run, because there is no code path that counts one.
+
+So the obligation splits:
+
+- **Implementable now, and required of Phase 1:** `CycleOutcome` carries the typed,
+  immutable replay attribute (requirements 1–2), and every reporting surface renders it
+  (requirement 5). `CycleOutcome` already lives in `verification_integrity` and is
+  surfaced on the cycle detail GET, so this is a real seam, not a placeholder.
+- **Deferred to the consumer, and binding on it:** requirements 3–4 are an obligation on
+  whoever first implements baseline aggregation or FAY. That implementation **SHALL**
+  consult the replay attribute and exclude pinned runs, and **SHALL NOT** ship without a
+  test asserting the exclusion.
+
+This SIP does not claim an enforcement it cannot deliver. Until an aggregator exists, the
+protection is that a replayed run is *unmistakably labelled* wherever it appears — which
+is why requirement 5 is not cosmetic and is not deferrable.
 
 **Acceptance bar:** it must be impossible to accidentally cite a replayed run as evidence
 that the system works.
 
-### 4.1 What replay cannot tell you
+### 4.2 What replay cannot tell you
 
 - **It pins model variance.** A replayed roll answers "does this fix work against *this*
   input," never "does this fix work." Convergence rates, first-pass yield and prior
@@ -200,10 +223,40 @@ Phase 1 is complete when:
    named (§3.5).
 6. A boundary checkpoint survives to the end of its source run (§3.6).
 7. Replay metadata is present, typed, and immutable on `CycleOutcome`.
-8. A replayed run is **refused** by baseline aggregation and FAY at the
-   `verification_integrity` seam, asserted by test.
+8. A replayed run's outcome carries the replay attribute, and no reporting surface
+   presents it as an ordinary run (§4.1). Refusal by baseline aggregation / FAY is
+   **not** a Phase-1 criterion — neither consumer exists; it is an obligation binding on
+   whichever change introduces one.
 9. Replay status is visible in CLI, console and run report output.
 10. Absent `execution_mode: replay`, behaviour is byte-identical to today.
+
+### 5.1 Implementation order
+
+Phase 1 spans the cycle-create DTO, a checkpoint retention change across the port and
+both adapters, the executor, SIP-0095 preflight, `CycleOutcome`, the CLI, the run report
+and `console/` — a separate service in a different language. That is not one reviewable
+diff, and the slicing is constrained by one rule:
+
+> **The evidence rails must not lag the mechanism.** If replay ships before marking,
+> there exists a window in which an unlabelled replayed run can be produced — precisely
+> what §4 forbids.
+
+So the rails are built first, against a mechanism that does not yet exist:
+
+| Slice | Contents |
+|---|---|
+| 1 — evidence rails | `CycleOutcome` replay attribute (typed, immutable) + DTO + CLI/report rendering. Nothing sets it yet |
+| 2 — retention | boundary checkpoints exempt from `max_keep` pruning: port + postgres + memory adapters |
+| 3 — mechanism | `execution_mode`, source-checkpoint restore, no-dispatch, byte-equivalence test |
+| 4 — compatibility policy | per-boundary sets in preflight (§3.5) |
+| 5 — console | replay visibility in the UI |
+
+**Slices 1–3 are the first usable increment.** Slice 3 ships with an interim gate:
+replay is refused unless the source and target cycles have *identical* `contract_ref`,
+`plan_artifact_refs`, `prd_ref` and `build_profile`. Strict equality is a few lines and
+is strictly more conservative than §3.5's policy, so slice 4 *relaxes* an existing
+guard rather than adding a missing one. At no point does a usable-but-ungated replay
+exist.
 
 ## 6. Extension Layers
 
