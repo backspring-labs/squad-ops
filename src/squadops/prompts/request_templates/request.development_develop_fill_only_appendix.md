@@ -1,9 +1,10 @@
 ---
 template_id: request.development_develop_fill_only_appendix
-version: "1"
+version: "2"
 required_variables:
   - stack
-optional_variables: []
+optional_variables:
+  - error_contract
 ---
 ## Fill-only: a walking skeleton is already in your workspace
 
@@ -28,6 +29,8 @@ the fixed slots** — never to rebuild, rewire, or regenerate the scaffold.
   `frontend/src/api.js`, `vite.config.js`, `package.json`, `index.html`, or the
   requirements/manifest files.
 - Do NOT rewire `App.jsx`'s import/route graph, rename or move views, or add/remove files.
+
+{{error_contract}}
 
 Filling the fixed slots — rather than regenerating the app — is the whole point: the
 skeleton already builds and boots, so a fill that preserves it stays green, while one

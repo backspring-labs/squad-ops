@@ -788,3 +788,89 @@ class TestCancellationProbeWiring:
         await executor.cancel_run("run_001")
 
         assert await executor._task_dispatcher._is_cancelled("run_001") is True
+
+
+# ---------------------------------------------------------------------------
+# Error-seam threading onto dev envelopes (#588)
+# ---------------------------------------------------------------------------
+
+
+class TestErrorSeamThreading:
+    """The manifest-derived error seam has reached repairs since pf-34 but never
+    the INITIAL author, so every scaffolded roll re-made the same mistake —
+    ``ApiError(status_code=…, detail=…)`` against a frozen
+    ``ApiError(code, message)`` seam — TypeErroring into a 500 on every error
+    path, invisible to import- and compile-level checks.
+    """
+
+    @staticmethod
+    def _manifest():
+        from pathlib import Path
+
+        from squadops.capabilities.scaffold import InterfaceManifest
+
+        repo_root = Path(__file__).resolve().parents[3]
+        path = repo_root / "examples" / "03_group_run" / "interface_manifest.yaml"
+        return InterfaceManifest.from_yaml(path.read_text(encoding="utf-8"))
+
+    @staticmethod
+    def _envelope(task_type: str):
+        from squadops.tasks.models import TaskEnvelope
+
+        return TaskEnvelope(
+            task_id="t1",
+            agent_id="neo",
+            cycle_id="cyc_001",
+            pulse_id="p1",
+            project_id="proj_001",
+            task_type=task_type,
+            correlation_id="c",
+            causation_id="ca",
+            trace_id="tr",
+            span_id="s",
+        )
+
+    async def test_dev_envelope_carries_the_error_seam(self, executor) -> None:
+        """Bug caught: the seam stays repair-only, so the first author keeps
+        guessing the ApiError signature (pf-28/33/34, and pf-37's routes.py)."""
+        enriched = await executor._enrich_envelope(
+            self._envelope("development.develop"),
+            {},
+            [],
+            [],
+            interface_manifest=self._manifest(),
+        )
+
+        lines = enriched.inputs.get("error_contract")
+        assert lines, "development.develop envelope carries no error contract"
+        joined = " ".join(lines)
+        assert "ApiError(code, message)" in joined
+        assert "never `ApiError(status_code=..., detail=...)`" in joined
+        assert "run_not_found` → 404" in joined
+
+    async def test_non_authoring_task_types_are_not_given_the_seam(self, executor) -> None:
+        """Bug caught: blanket attachment pushes fill-slot authoring instructions
+        into roles that do not author into the scaffold (a qa suite told to raise
+        ApiError writes assertions against the wrong thing)."""
+        enriched = await executor._enrich_envelope(
+            self._envelope("qa.test"),
+            {},
+            [],
+            [],
+            interface_manifest=self._manifest(),
+        )
+
+        assert "error_contract" not in enriched.inputs
+
+    async def test_unscaffolded_run_attaches_nothing(self, executor) -> None:
+        """Bug caught: author-mode cycles have no manifest, so attaching a
+        fabricated or empty seam would state a contract that does not exist."""
+        enriched = await executor._enrich_envelope(
+            self._envelope("development.develop"),
+            {},
+            [],
+            [],
+            interface_manifest=None,
+        )
+
+        assert "error_contract" not in enriched.inputs
