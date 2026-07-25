@@ -17,6 +17,7 @@ Pure functions — the caller owns storage, events, and the carry.
 from __future__ import annotations
 
 import ast
+from pathlib import Path
 from typing import Any
 
 
@@ -107,3 +108,152 @@ def emission_retry_reason_line(marker: dict[str, Any]) -> str:
             f"from the {chars}-character response."
         )
     return f"the response failed emission extraction ({reason})."
+
+
+# ---------------------------------------------------------------------------
+# Intra-package import resolution (#591)
+# ---------------------------------------------------------------------------
+#
+# The syntax gate above proves each file parses ALONE. pf-37 showed that is not
+# enough: correction-00 emitted a coherent PAIR — its own ``backend/models.py``
+# plus a ``backend/routes.py`` written against it — SIP-0100 correctly restored
+# the frozen ``models.py``, and the surviving ``routes.py`` imported seven names
+# (``RunCreate``, ``RunResponse``, …) that the frozen module never defined.
+# Every typed check passed (they read one file at a time; the import statement is
+# syntactically perfect) and the patch was ACCEPTED. The suite then failed to
+# collect at all, and the correction budget went to re-rolling a test file
+# against source that could never import.
+#
+# The defect was manufactured by enforcement, not by the model: each half was
+# individually valid and nothing checked the pair. This resolves imports across
+# the assembled workspace, which is the only place the mismatch is visible.
+
+
+def _names_bound_by(node: ast.stmt) -> set[str] | None:
+    """Names one module-level statement binds, or None when undecidable.
+
+    None propagates: a star-import, a module-level ``__getattr__`` (PEP 562), or
+    a conditional definition can bind names a flat walk cannot see.
+    """
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        return None if node.name == "__getattr__" else {node.name}
+    if isinstance(node, ast.Assign):
+        return {t.id for t in node.targets if isinstance(t, ast.Name)}
+    if isinstance(node, ast.AnnAssign):
+        return {node.target.id} if isinstance(node.target, ast.Name) else set()
+    if isinstance(node, ast.Import):
+        return {a.asname or a.name.split(".")[0] for a in node.names}
+    if isinstance(node, ast.ImportFrom):
+        if any(a.name == "*" for a in node.names):
+            return None
+        return {a.asname or a.name for a in node.names}
+    if isinstance(node, (ast.If, ast.Try)):
+        # TYPE_CHECKING blocks, optional-dependency fallbacks.
+        return None
+    return set()
+
+
+def _module_level_names(tree: ast.Module) -> set[str] | None:
+    """Names a module binds at import time, or None when it can't be decided.
+
+    None means "do not judge this module" — a false rejection of a good patch is
+    worse than a missed one.
+    """
+    names: set[str] = set()
+    for node in tree.body:
+        bound = _names_bound_by(node)
+        if bound is None:
+            return None
+        names |= bound
+    return names
+
+
+def _resolve_module_path(
+    workspace_root: Path, source_rel: str, node: ast.ImportFrom
+) -> Path | None:
+    """Workspace path for an intra-package ``from ... import`` target, else None.
+
+    Returns None for anything not resolvable *within the workspace* — stdlib,
+    third-party, and absolute imports rooted outside it are none of this check's
+    business.
+    """
+    source_dir = (workspace_root / source_rel).parent
+    if node.level:
+        base = source_dir
+        for _ in range(node.level - 1):
+            base = base.parent
+        parts = (node.module or "").split(".") if node.module else []
+    else:
+        if not node.module:
+            return None
+        parts = node.module.split(".")
+        base = workspace_root
+        # Absolute, but rooted at a package that lives in this workspace
+        # (``from backend.models import X`` beside ``backend/``).
+        if not (workspace_root / parts[0]).is_dir():
+            return None
+    target = base
+    for part in parts:
+        target = target / part
+    for candidate in (target.with_suffix(".py"), target / "__init__.py"):
+        try:
+            if candidate.is_file() and candidate.resolve().is_relative_to(workspace_root.resolve()):
+                return candidate
+        except (OSError, ValueError):
+            continue
+    return None
+
+
+def unresolved_imports(workspace_root: Path | str) -> list[tuple[str, str, tuple[str, ...]]]:
+    """Intra-package imports the workspace cannot satisfy (#591).
+
+    Returns ``(source_file, module, missing_names)`` per offending statement,
+    sorted for stable reporting. Empty means every intra-package import resolves.
+
+    Deliberately conservative — it only reports a name when the target module is
+    present, parses, and demonstrably does not bind it. Unreadable or
+    undecidable modules are skipped, and imports pointing outside the workspace
+    are ignored entirely, so third-party and stdlib imports never appear here.
+    """
+    workspace_root = Path(workspace_root)
+    findings: list[tuple[str, str, tuple[str, ...]]] = []
+    parsed: dict[Path, set[str] | None] = {}
+
+    for source in sorted(workspace_root.rglob("*.py")):
+        try:
+            tree = ast.parse(source.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, SyntaxError, ValueError):
+            continue  # the syntax gate owns unparseable emissions
+        source_rel = source.relative_to(workspace_root).as_posix()
+
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom):
+                continue
+            if any(alias.name == "*" for alias in node.names):
+                continue
+            target = _resolve_module_path(workspace_root, source_rel, node)
+            if target is None:
+                continue
+            if target not in parsed:
+                try:
+                    parsed[target] = _module_level_names(
+                        ast.parse(target.read_text(encoding="utf-8"))
+                    )
+                except (OSError, UnicodeDecodeError, SyntaxError, ValueError):
+                    parsed[target] = None
+            defined = parsed[target]
+            if defined is None:
+                continue
+            missing = tuple(sorted(a.name for a in node.names if a.name not in defined))
+            if missing:
+                label = ("." * node.level) + (node.module or "")
+                findings.append((source_rel, label, missing))
+    return sorted(set(findings))
+
+
+def unresolved_import_summary(findings: list[tuple[str, str, tuple[str, ...]]]) -> str:
+    """One-line, operator-readable rendering of :func:`unresolved_imports`."""
+    return "; ".join(
+        f"{src} imports {', '.join(names)} from {module} (not defined there)"
+        for src, module, names in findings
+    )

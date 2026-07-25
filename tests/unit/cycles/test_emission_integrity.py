@@ -12,6 +12,8 @@ import pytest
 from squadops.cycles.emission_integrity import (
     emission_integrity_instruction,
     syntax_gate_python_artifacts,
+    unresolved_import_summary,
+    unresolved_imports,
 )
 
 pytestmark = [pytest.mark.domain_capabilities]
@@ -96,3 +98,170 @@ def test_emission_retry_reason_line_known_and_unknown():
     assert "no fenced code block" in line
     # Unknown reason still yields a usable factual line, never a KeyError.
     assert "other_reason" in emission_retry_reason_line({"reason": "other_reason"})
+
+
+# ---------------------------------------------------------------------------
+# Intra-package import resolution (#591)
+# ---------------------------------------------------------------------------
+
+
+class TestUnresolvedImports:
+    """The syntax gate proves each file parses ALONE. pf-37 proved that isn't
+    enough: a repair emitted a coherent models.py/routes.py pair, SIP-0100
+    restored the frozen models.py, and the surviving routes.py imported seven
+    names the frozen module never defined. Every typed check passed — they read
+    one file at a time — and the patch was accepted.
+    """
+
+    @staticmethod
+    def _write(root, files: dict[str, str]) -> None:
+        for name, content in files.items():
+            path = root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+
+    def test_pf37_restored_frozen_model_leaves_routes_unimportable(self, tmp_path) -> None:
+        """Bug caught: THE #591 defect, replayed from pf-37's real shape — the
+        exact name set correction-00 imported against the frozen module."""
+        self._write(
+            tmp_path,
+            {
+                "backend/__init__.py": "",
+                "backend/models.py": (
+                    "from pydantic import BaseModel\n\n"
+                    "class Participant(BaseModel):\n    id: str\n    name: str\n\n"
+                    "class RunEvent(BaseModel):\n    id: str\n    title: str\n\n"
+                    "class RunEventCreate(BaseModel):\n    title: str\n\n"
+                    "class ParticipantName(BaseModel):\n    name: str\n"
+                ),
+                "backend/routes.py": (
+                    "from .models import (\n"
+                    "    RunCreate,\n"
+                    "    RunResponse,\n"
+                    "    RunListResponse,\n"
+                    "    ParticipantJoin,\n"
+                    ")\n"
+                ),
+            },
+        )
+
+        findings = unresolved_imports(tmp_path)
+
+        assert len(findings) == 1
+        source, module, missing = findings[0]
+        assert source == "backend/routes.py"
+        assert module == ".models"
+        assert missing == ("ParticipantJoin", "RunCreate", "RunListResponse", "RunResponse")
+
+        summary = unresolved_import_summary(findings)
+        assert "backend/routes.py" in summary
+        assert "RunCreate" in summary
+
+    def test_resolvable_package_reports_nothing(self, tmp_path) -> None:
+        """Bug caught: a check that flags healthy workspaces rejects every good
+        patch — worse than the defect it fixes."""
+        self._write(
+            tmp_path,
+            {
+                "backend/__init__.py": "",
+                "backend/models.py": "class RunEvent:\n    pass\n\nSTORE = {}\n",
+                "backend/routes.py": "from .models import RunEvent, STORE\n",
+            },
+        )
+
+        assert unresolved_imports(tmp_path) == []
+
+    def test_third_party_and_stdlib_imports_are_ignored(self, tmp_path) -> None:
+        """Bug caught: resolving imports that point outside the workspace turns
+        every fastapi/pydantic import into a false rejection."""
+        self._write(
+            tmp_path,
+            {
+                "backend/__init__.py": "",
+                "backend/routes.py": (
+                    "import json\n"
+                    "from pathlib import Path\n"
+                    "from fastapi import APIRouter, status\n"
+                    "from pydantic import BaseModel\n"
+                ),
+            },
+        )
+
+        assert unresolved_imports(tmp_path) == []
+
+    def test_absolute_intra_workspace_import_is_resolved(self, tmp_path) -> None:
+        """Bug caught: only handling relative imports misses `from backend.models
+        import X`, which the scaffold's own test harness uses."""
+        self._write(
+            tmp_path,
+            {
+                "backend/__init__.py": "",
+                "backend/models.py": "class RunEvent:\n    pass\n",
+                "backend/tests/test_x.py": "from backend.models import RunEvent, Missing\n",
+            },
+        )
+
+        findings = unresolved_imports(tmp_path)
+
+        assert [(s, m, n) for s, m, n in findings] == [
+            ("backend/tests/test_x.py", "backend.models", ("Missing",))
+        ]
+
+    def test_star_import_target_is_not_judged(self, tmp_path) -> None:
+        """Bug caught: a module doing `from .base import *` binds names this walk
+        can't see; judging it would reject valid code."""
+        self._write(
+            tmp_path,
+            {
+                "backend/__init__.py": "",
+                "backend/base.py": "class Thing:\n    pass\n",
+                "backend/models.py": "from .base import *\n",
+                "backend/routes.py": "from .models import Thing, Anything\n",
+            },
+        )
+
+        assert unresolved_imports(tmp_path) == []
+
+    def test_conditional_definitions_are_not_judged(self, tmp_path) -> None:
+        """Bug caught: TYPE_CHECKING blocks and optional-dependency fallbacks
+        bind names conditionally — flagging them rejects idiomatic code."""
+        self._write(
+            tmp_path,
+            {
+                "backend/__init__.py": "",
+                "backend/compat.py": (
+                    "try:\n    from fast import Impl\nexcept ImportError:\n"
+                    "    class Impl:\n        pass\n"
+                ),
+                "backend/routes.py": "from .compat import Impl\n",
+            },
+        )
+
+        assert unresolved_imports(tmp_path) == []
+
+    def test_unparseable_target_is_skipped(self, tmp_path) -> None:
+        """Bug caught: double-reporting a truncated file the syntax gate already
+        owns, instead of leaving that concern to it."""
+        self._write(
+            tmp_path,
+            {
+                "backend/__init__.py": "",
+                "backend/models.py": "class RunEvent:\n    def broken(\n",
+                "backend/routes.py": "from .models import RunEvent\n",
+            },
+        )
+
+        assert unresolved_imports(tmp_path) == []
+
+    def test_missing_target_module_is_not_reported(self, tmp_path) -> None:
+        """Bug caught: treating an absent module as a name failure — it may be a
+        third-party package that merely shares a directory name."""
+        self._write(
+            tmp_path,
+            {
+                "backend/__init__.py": "",
+                "backend/routes.py": "from .nonexistent import Thing\n",
+            },
+        )
+
+        assert unresolved_imports(tmp_path) == []

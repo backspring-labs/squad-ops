@@ -35,6 +35,10 @@ from squadops.cycles.acceptance_evaluation import (
     split_acceptance_criteria,
 )
 from squadops.cycles.bound_scaffold_record import BoundScaffoldRecord
+from squadops.cycles.emission_integrity import (
+    unresolved_import_summary,
+    unresolved_imports,
+)
 from squadops.cycles.implementation_plan import TypedCheck
 from squadops.cycles.write_authorization import WriteAuthorization
 
@@ -289,6 +293,23 @@ async def verify_patched_artifacts(
     with tempfile.TemporaryDirectory(prefix="squadops-patch-verify-") as tmpdir:
         workspace_root = Path(tmpdir)
         materialize_artifacts(artifacts, workspace_root)
+
+        # #591: typed criteria read one file at a time, so a patch whose imports
+        # cannot resolve passes every one of them and is accepted — then the
+        # suite fails to collect. pf-37: the repair emitted a coherent
+        # models.py/routes.py pair, SIP-0100 restored the frozen models.py, and
+        # the surviving routes.py imported seven names it never defined.
+        # Deliberately BEFORE the criteria loop: an unimportable workspace makes
+        # every downstream verdict meaningless, and this is the one place the
+        # restored-plus-repaired combination actually exists.
+        unresolved = unresolved_imports(workspace_root)
+        if unresolved:
+            summary = unresolved_import_summary(unresolved)
+            logger.info("patch_verification: unresolved intra-package imports — %s", summary)
+            return PatchVerification(
+                status=PATCH_FAILED,
+                reason=f"unresolved_imports:{summary}",
+            )
 
         for criterion in typed:
             outcome = await evaluate_criterion(
