@@ -221,6 +221,11 @@ class InterfaceManifest:
                         "request": ep.request,
                         "response": ep.response,
                         "errors": list(ep.errors),
+                        # The expander emits this onto the decorator, so it changes the
+                        # skeleton and must move the hash — omitting it would let two
+                        # manifests that produce different skeletons hash identically
+                        # and silently keep a contract bound to the wrong one.
+                        "success_status": ep.success_status,
                     }
                     for ep in self.api.endpoints
                 ],

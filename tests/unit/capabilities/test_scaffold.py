@@ -580,3 +580,20 @@ class TestDeclaredSuccessStatus:
             if p["id"] == "vc-probe-runs"
         )
         assert probe["expect"]["status"] == 201
+
+
+def test_success_status_moves_the_manifest_content_hash():
+    """``_canonical`` claims to project every field the expander reads. ``success_status``
+    lands on the emitted decorator, so a manifest that changes it produces a different
+    skeleton — if the hash ignored it, a verification contract could stay bound to a
+    manifest whose skeleton no longer matches, which is precisely the SIP-0098 §10 drift
+    the hash exists to prevent."""
+    raw = _raw_manifest()
+    baseline = InterfaceManifest.from_dict(raw).content_hash()
+
+    changed = _raw_manifest()
+    for ep in changed["api"]["endpoints"]:
+        if ep["method"] == "POST" and ep["path"] == "/runs":
+            ep["success_status"] = 202
+
+    assert InterfaceManifest.from_dict(changed).content_hash() != baseline
