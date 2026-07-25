@@ -9,7 +9,12 @@ from __future__ import annotations
 
 import pytest
 
-from squadops.cycles.failure_evidence import build_failure_evidence, compose_failure_trigger
+from squadops.cycles.failure_evidence import (
+    FailureLocus,
+    build_failure_evidence,
+    classify_failure_locus,
+    compose_failure_trigger,
+)
 from squadops.tasks.models import TaskEnvelope, TaskResult
 
 pytestmark = [pytest.mark.domain_orchestration]
@@ -277,3 +282,90 @@ class TestComposeFailureTrigger:
         evidence = self._evidence(["not a dict", None, 42])  # type: ignore[list-item]
         trigger = compose_failure_trigger(self._envelope("qa.test"), evidence)
         assert trigger == "task_failure:qa.test"
+
+
+class TestClassifyFailureLocus:
+    """#568: deterministic locus classification — the routing key that decides
+    whether a failed task's own role re-authors its artifact or the default
+    (dev) chain repairs the subject. Conservative: ambiguity → UNKNOWN."""
+
+    def _evidence_with_check(self, row):
+        return {"validation_result": {"passed": False, "checks": [row]}}
+
+    def test_emission_failure_marker_is_own_artifact(self):
+        evidence = {"emission_failure": {"reason": "no_fenced_blocks", "response_chars": 6203}}
+        assert classify_failure_locus(evidence) == FailureLocus.OWN_ARTIFACT
+
+    def test_missing_expected_artifacts_is_own_artifact(self):
+        row = {
+            "check": "expected_artifacts",
+            "missing": ["backend/tests/test_runs.py"],
+            "passed": False,
+        }
+        assert classify_failure_locus(self._evidence_with_check(row)) == FailureLocus.OWN_ARTIFACT
+
+    @pytest.mark.parametrize("exit_code", [2, 4, 5])
+    def test_suite_defect_exit_codes_are_own_artifact(self, exit_code):
+        """pytest 2=collection/interrupted, 4=usage error, 5=no tests collected:
+        the suite itself cannot run as a suite — the test artifact is the defect
+        (pf-31's truncated-test collection crash lands here)."""
+        row = {"check": "tests_pass", "executed": True, "exit_code": exit_code, "passed": False}
+        assert classify_failure_locus(self._evidence_with_check(row)) == FailureLocus.OWN_ARTIFACT
+
+    def test_exit_one_is_subject(self):
+        """Tests ran and failed — the app is implicated, NEVER the qa re-author
+        route (the test-gaming guard: rewriting tests to green a broken app)."""
+        row = {"check": "tests_pass", "executed": True, "exit_code": 1, "passed": False}
+        assert classify_failure_locus(self._evidence_with_check(row)) == FailureLocus.SUBJECT
+
+    def test_pytest_internal_error_is_unknown(self):
+        row = {"check": "tests_pass", "executed": True, "exit_code": 3, "passed": False}
+        assert classify_failure_locus(self._evidence_with_check(row)) == FailureLocus.UNKNOWN
+
+    def test_not_executed_suite_is_unknown(self):
+        """Runner/environment failures implicate neither artifact nor subject."""
+        row = {"check": "tests_pass", "executed": False, "exit_code": None, "passed": False}
+        assert classify_failure_locus(self._evidence_with_check(row)) == FailureLocus.UNKNOWN
+
+    def test_passed_rows_and_junk_are_unknown(self):
+        assert classify_failure_locus(None) == FailureLocus.UNKNOWN
+        assert classify_failure_locus({}) == FailureLocus.UNKNOWN
+        row = {"check": "tests_pass", "executed": True, "exit_code": 1, "passed": True}
+        assert classify_failure_locus(self._evidence_with_check(row)) == FailureLocus.UNKNOWN
+
+
+class TestEmissionFailurePassthrough:
+    """#566/#568: the zero-extraction marker must travel into failure evidence
+    so the analyzer and the locus classifier see a machine fact."""
+
+    @staticmethod
+    def _envelope() -> TaskEnvelope:
+        return TaskEnvelope(
+            task_id="t1",
+            agent_id="eve",
+            cycle_id="cyc_001",
+            pulse_id="p",
+            project_id="proj",
+            task_type="qa.test",
+            correlation_id="c",
+            causation_id=None,
+            trace_id="tr",
+            span_id="sp",
+            inputs={},
+            metadata={"role": "qa"},
+        )
+
+    def test_marker_passes_through(self):
+        result = TaskResult(
+            task_id="t1",
+            status="FAILED",
+            error="No valid fenced code blocks found",
+            outputs={"emission_failure": {"reason": "no_fenced_blocks", "response_chars": 42}},
+        )
+        evidence = build_failure_evidence(self._envelope(), result, prior_plan_deltas_count=0)
+        assert evidence["emission_failure"] == {"reason": "no_fenced_blocks", "response_chars": 42}
+
+    def test_absent_marker_stays_absent(self):
+        result = TaskResult(task_id="t1", status="FAILED", error="x", outputs={})
+        evidence = build_failure_evidence(self._envelope(), result, prior_plan_deltas_count=0)
+        assert "emission_failure" not in evidence

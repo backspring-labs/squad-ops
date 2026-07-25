@@ -387,6 +387,9 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         agent_overrides = inputs.get("agent_config_overrides", {})
         agent_model = inputs.get("agent_model") or None
 
+        # #566: aimed retry after a zero-extraction failure (see qa_test.py).
+        user_prompt = await self._apply_emission_retry_feedback(context, inputs, user_prompt)
+
         # SIP-0073: guard prompt size against context window
         try:
             user_prompt = _guard_prompt_size(
@@ -437,9 +440,13 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         )
 
         # Parse fenced code blocks
-        extracted = extract_fenced_files(content)
+        extracted = extract_fenced_files(
+            content, expected_artifacts=inputs.get("expected_artifacts")
+        )
 
         if not extracted:
+            from squadops.cycles.emission_integrity import no_fenced_blocks_failure
+
             self._log_no_fenced_blocks(content)
             return self._fail_result(
                 start_time,
@@ -454,6 +461,11 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
                             "type": "document",
                         },
                     ],
+                    # #566: marker for the executor's aimed retry + the
+                    # correction loop's failure-locus classifier.
+                    "emission_failure": no_fenced_blocks_failure(
+                        len(content), inputs.get("expected_artifacts")
+                    ),
                 },
             )
 

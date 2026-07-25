@@ -153,6 +153,41 @@ class TestRepairStepsFor:
         assert repair_steps_for("") == REPAIR_TASK_STEPS
 
 
+class TestRepairStepsForFailureLocus:
+    """#568: the own-artifact locus routes qa.test repairs to the qa role;
+    every other locus keeps the default dev chain — a behavioral failure
+    routed to qa re-authoring would be the test-gaming false green."""
+
+    def test_qa_test_own_artifact_routes_to_qa_repair(self):
+        from squadops.cycles.failure_evidence import FailureLocus
+
+        assert repair_steps_for("qa.test", FailureLocus.OWN_ARTIFACT) == [
+            ("qa.test_repair", "qa"),
+        ]
+
+    def test_qa_test_subject_and_unknown_stay_on_dev_chain(self):
+        from squadops.cycles.failure_evidence import FailureLocus
+
+        assert repair_steps_for("qa.test", FailureLocus.SUBJECT) == REPAIR_TASK_STEPS
+        assert repair_steps_for("qa.test", FailureLocus.UNKNOWN) == REPAIR_TASK_STEPS
+        assert repair_steps_for("qa.test", None) == REPAIR_TASK_STEPS
+        assert repair_steps_for("qa.test") == REPAIR_TASK_STEPS
+
+    def test_own_artifact_without_specialized_entry_uses_default(self):
+        from squadops.cycles.failure_evidence import FailureLocus
+
+        assert repair_steps_for("development.develop", FailureLocus.OWN_ARTIFACT) == (
+            REPAIR_TASK_STEPS
+        )
+
+    def test_qa_test_repair_joins_repair_task_types(self):
+        # Fix E composition: the candidate type derives from the table, so the
+        # provenance filter and #389 re-typing cover it with zero bookkeeping.
+        from squadops.cycles.task_plan import REPAIR_TASK_TYPES
+
+        assert "qa.test_repair" in REPAIR_TASK_TYPES
+
+
 class TestDeterministicTaskIds:
     def test_implementation_uses_deterministic_ids(self, impl_cycle, impl_run, profile):
         plan = generate_task_plan(impl_cycle, impl_run, profile)

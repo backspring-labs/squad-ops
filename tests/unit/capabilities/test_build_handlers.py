@@ -186,6 +186,11 @@ class TestDevBuildParseFailure:
         artifacts = result.outputs.get("artifacts", [])
         assert len(artifacts) == 1
         assert artifacts[0]["name"] == "build_warnings.md"
+        # #566: machine-readable marker for the executor's aimed retry and the
+        # correction loop's locus classifier.
+        marker = result.outputs["emission_failure"]
+        assert marker["reason"] == "no_fenced_blocks"
+        assert marker["response_chars"] == len(LLM_NO_FENCES_RESPONSE)
 
 
 class TestDevBuildLLMError:
@@ -309,6 +314,31 @@ class TestQABuildParseFailure:
 
         assert result.success is False
         assert "No valid fenced code blocks found" in result.error
+        # #566: marker present on the qa path too (the pf-32 live class).
+        assert result.outputs["emission_failure"]["reason"] == "no_fenced_blocks"
+
+    async def test_qa_bare_fence_recovered_via_expected_artifact(self, mock_context, qa_inputs):
+        """#566 end-to-end at the handler: the pf-32 emission shape (bare
+        ```python fence, no filename, unterminated) succeeds when the task
+        expects exactly one artifact — no failure, no retry burned."""
+        qa_inputs = {
+            **qa_inputs,
+            "subtask_focus": "runs API suite",
+            "subtask_description": "pytest suite",
+            "expected_artifacts": ["backend/tests/test_runs.py"],
+        }
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
+            return_value=ChatMessage(
+                role="assistant",
+                content="```python\nimport pytest\n\ndef test_ok(client):\n    assert True\n",
+            ),
+        )
+        handler = QATestHandler()
+        result = await handler.handle(mock_context, qa_inputs)
+
+        names = [a["name"] for a in result.outputs["artifacts"]]
+        assert "backend/tests/test_runs.py" in names
+        assert "emission_failure" not in result.outputs
 
 
 class TestQABuildPromptContent:
@@ -1482,3 +1512,64 @@ class TestQAContractProbeEmission:
         result = await handler.handle(mock_context, qa_inputs)
 
         assert "validation_result" not in result.outputs
+
+
+class TestEmissionRetryFeedback:
+    """#566: a retry envelope carrying ``emission_retry_feedback`` gets the
+    rendered format-feedback appendix appended to its user prompt — the retry
+    is an aimed shot, not a blind re-roll. All prose comes from the template
+    asset; the handler supplies only data lines."""
+
+    class _Rendered:
+        content = "### Prior Attempt Failed — Output Format (RENDERED-APPENDIX)"
+        template_id = "request.cycle_emission_retry_feedback"
+        template_version = "1"
+        render_hash = "h"
+
+    async def test_feedback_appendix_reaches_the_prompt(self, mock_context, qa_inputs):
+        qa_inputs = {
+            **qa_inputs,
+            "emission_retry_feedback": {
+                "reason": "no_fenced_blocks",
+                "response_chars": 6203,
+                "expected_artifacts": ["backend/tests/test_runs.py"],
+                "attempt": 1,
+            },
+        }
+        mock_context.ports.request_renderer = MagicMock()
+        mock_context.ports.request_renderer.render = AsyncMock(return_value=self._Rendered())
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
+        )
+        handler = QATestHandler()
+        await handler.handle(mock_context, qa_inputs)
+
+        render_calls = [
+            c
+            for c in mock_context.ports.request_renderer.render.call_args_list
+            if c.args and c.args[0] == "request.cycle_emission_retry_feedback"
+        ]
+        assert len(render_calls) == 1
+        variables = render_calls[0].args[1]
+        assert "6203-character" in variables["reason_line"]
+        assert "backend/tests/test_runs.py" in variables["expected_files"]
+
+        messages = mock_context.ports.llm.chat_stream_with_usage.call_args.args[0]
+        user_prompt = messages[-1].content
+        assert "RENDERED-APPENDIX" in user_prompt
+
+    async def test_no_marker_means_no_render_call(self, mock_context, qa_inputs):
+        mock_context.ports.request_renderer = MagicMock()
+        mock_context.ports.request_renderer.render = AsyncMock(return_value=self._Rendered())
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
+        )
+        handler = QATestHandler()
+        await handler.handle(mock_context, qa_inputs)
+
+        feedback_calls = [
+            c
+            for c in mock_context.ports.request_renderer.render.call_args_list
+            if c.args and c.args[0] == "request.cycle_emission_retry_feedback"
+        ]
+        assert feedback_calls == []

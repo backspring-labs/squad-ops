@@ -7,6 +7,7 @@ NEEDS_REPLAN from contract aborts immediately, and the D5 fallback table.
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
@@ -829,3 +830,55 @@ class TestAcceptPatchRetestWorkspaceThreading:
         assert action == "accept_patch"
         retest_envelope = executor._correction_runner.reexecute_repaired_suite.await_args.args[2]
         assert retest_envelope.inputs["artifact_contents"] == {"src/main.py": "app = 1\n"}
+
+
+class TestEmissionRetryFeedbackThreading:
+    """#566: a zero-extraction failure's machine marker must reach the RETRY
+    dispatch's envelope inputs — that is what turns the blind re-roll (pf-32:
+    two identical bare-fence failures in a row) into an aimed retry."""
+
+    async def test_marker_threads_into_retry_envelope(self, executor, mock_queue, mock_registry):
+        marker = {
+            "reason": "no_fenced_blocks",
+            "response_chars": 6203,
+            "expected_artifacts": ["backend/tests/test_runs.py"],
+        }
+        responses = {
+            0: ("FAILED", {"emission_failure": marker}, "No valid fenced code blocks found"),
+        }
+        mock_queue.reply_router.responder = _scripted_responder(responses)
+
+        with patch(
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        published = [json.loads(c.args[1]) for c in mock_queue.publish.call_args_list]
+        first_inputs = published[0]["payload"]["inputs"]
+        retry_inputs = published[1]["payload"]["inputs"]
+        assert published[0]["payload"]["task_id"] == published[1]["payload"]["task_id"]
+        assert "emission_retry_feedback" not in first_inputs
+        assert retry_inputs["emission_retry_feedback"]["reason"] == "no_fenced_blocks"
+        assert retry_inputs["emission_retry_feedback"]["attempt"] == 1
+        assert retry_inputs["emission_retry_feedback"]["expected_artifacts"] == [
+            "backend/tests/test_runs.py"
+        ]
+
+    async def test_plain_retryable_failure_adds_no_marker(
+        self, executor, mock_queue, mock_registry
+    ):
+        """A transport-style failure with no marker keeps the retry envelope
+        untouched — feedback is strictly opt-in via the machine marker."""
+        responses = {0: ("FAILED", None, "transient")}
+        mock_queue.reply_router.responder = _scripted_responder(responses)
+
+        with patch(
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        published = [json.loads(c.args[1]) for c in mock_queue.publish.call_args_list]
+        retry_inputs = published[1]["payload"]["inputs"]
+        assert "emission_retry_feedback" not in retry_inputs

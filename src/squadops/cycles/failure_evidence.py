@@ -51,7 +51,7 @@ def build_failure_evidence(
                 "content_snippet": snippet,
             }
         )
-    return {
+    evidence = {
         "failed_task_id": envelope.task_id,
         "failed_task_type": envelope.task_type,
         "error": result.error or "",
@@ -66,6 +66,69 @@ def build_failure_evidence(
         "rejected_artifacts": rejected_artifacts,
         "prior_plan_deltas_count": prior_plan_deltas_count,
     }
+    # #566/#568: the zero-extraction marker travels into evidence so the locus
+    # classifier (and the analyzer) see "no artifact was ever produced" as a
+    # machine fact instead of inferring a work-product story from its absence.
+    emission_failure = result_outputs.get("emission_failure")
+    if isinstance(emission_failure, dict):
+        evidence["emission_failure"] = emission_failure
+    return evidence
+
+
+class FailureLocus:
+    """Where a failed task's defect lives, relative to the task itself (#568).
+
+    Constants-class pattern like ``TaskOutcome``. Drives repair routing: a task
+    whose OWN emitted artifact is missing/unparseable/uncollectable should be
+    repaired by its own role (re-produce the artifact); only a failure in the
+    SUBJECT under test/verification belongs to the subject's producing role.
+    For ``qa.test``: OWN_ARTIFACT = the test suite itself is broken (eve
+    re-authors); SUBJECT = the suite ran and the app failed it (dev repairs).
+    """
+
+    OWN_ARTIFACT = "own_artifact"
+    SUBJECT = "subject"
+    UNKNOWN = "unknown"
+
+
+# pytest exit codes that mean the SUITE could not run as a suite — collection
+# errors/interruption (2), usage error (4), no tests collected (5). Exit 1
+# (tests ran, some failed) is the subject's failure; 3 (pytest internal error)
+# stays UNKNOWN — neither artifact nor subject is implicated deterministically.
+_SUITE_DEFECT_EXIT_CODES = frozenset({2, 4, 5})
+
+
+def classify_failure_locus(failure_evidence: Any) -> str:
+    """Deterministic failure-locus classification from evidence alone (#568).
+
+    Conservative by design (the test-gaming guard): only explicit machine
+    signals produce ``OWN_ARTIFACT``; ambiguity returns ``UNKNOWN``, which
+    routes to the default (dev) repair chain — never toward a qa re-author
+    that could "fix" an app bug by rewriting the tests.
+    """
+    if not isinstance(failure_evidence, dict):
+        return FailureLocus.UNKNOWN
+
+    # Zero-extraction marker (#566): the task produced no artifact at all.
+    if isinstance(failure_evidence.get("emission_failure"), dict):
+        return FailureLocus.OWN_ARTIFACT
+
+    validation_result = failure_evidence.get("validation_result") or {}
+    checks = validation_result.get("checks") or []
+    for row in checks:
+        if not isinstance(row, dict):
+            continue
+        check = row.get("check")
+        if check == "expected_artifacts" and row.get("passed") is False:
+            # The task's own named output files are missing from its emission.
+            return FailureLocus.OWN_ARTIFACT
+        if check == "tests_pass" and row.get("passed") is False and row.get("executed"):
+            exit_code = row.get("exit_code")
+            if exit_code in _SUITE_DEFECT_EXIT_CODES:
+                return FailureLocus.OWN_ARTIFACT
+            if exit_code == 1:
+                return FailureLocus.SUBJECT
+    return FailureLocus.UNKNOWN
 
 
 def compose_failure_trigger(

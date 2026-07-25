@@ -351,3 +351,27 @@ class BuilderAssembleRepairHandler(_RepairPromptMixin, _CycleTaskHandler):
 
     def _build_artifacts_from_content(self, content: str) -> list[dict[str, Any]]:
         return _artifacts_from_fenced_blocks(content, self._artifact_name)
+
+
+class QATestRepairHandler(_RepairPromptMixin, _CycleTaskHandler):
+    """Correction-loop repair handler for failed qa.test tasks (#568).
+
+    Reachable ONLY via the own-artifact failure locus (the test suite itself
+    is missing, unparseable, or uncollectable — deterministic signals, never
+    LLM judgment): the qa role re-authors its own test artifact(s). Behavioral
+    failures (the suite ran and the app failed it) never route here — they
+    stay on the default dev chain, because "repairing" an app bug by
+    rewriting tests until they pass is a manufactured false green.
+
+    Acceptance is the same deterministic pair as every correction repair:
+    patch verification against the failed task's typed criteria (#389), then
+    the behavioral retest executes the re-authored suite (#456).
+    """
+
+    _handler_name = "qa_test_repair_handler"
+    _capability_id = "qa.test_repair"
+    _role = "qa"
+    _artifact_name = "repair_output.md"
+
+    def _build_artifacts_from_content(self, content: str) -> list[dict[str, Any]]:
+        return _artifacts_from_fenced_blocks(content, self._artifact_name)

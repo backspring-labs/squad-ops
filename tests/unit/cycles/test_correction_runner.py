@@ -2540,3 +2540,151 @@ class TestResolveRepairTarget:
         artifacts, focus, _ = _resolve_repair_target(evidence, {"expected_artifacts": ["a.py"]})
         assert artifacts == ["a.py"]
         assert focus is None
+
+
+class TestOwnArtifactLocusRouting(TestCorrectionRunnerStandalone):
+    """#568: a qa.test failure whose OWN artifact is the defect dispatches a
+    qa.test_repair step targeted at the failed task's own contract; behavioral
+    failures stay on the dev chain with the subject-scoped repair target."""
+
+    def _failed_qa_envelope(self):
+        from squadops.tasks.models import TaskEnvelope
+
+        return TaskEnvelope(
+            task_id="task_qa_failed",
+            agent_id="eve",
+            cycle_id="cyc_001",
+            pulse_id="p",
+            project_id="hello_squad",
+            task_type="qa.test",
+            correlation_id="corr",
+            causation_id=None,
+            trace_id="t",
+            span_id="s",
+            inputs={
+                "expected_artifacts": ["backend/tests/test_runs.py"],
+                "subtask_focus": "Backend runs API pytest suite",
+                "subtask_description": "Comprehensive pytest test file.",
+                "acceptance_criteria": ["suite covers all endpoints"],
+                "resolved_config": {"dev_capability": "python_fastapi"},
+            },
+            metadata={"role": "qa"},
+        )
+
+    @staticmethod
+    def _patch_responder(captured):
+        def responder(envelope):
+            captured.append(envelope)
+            if envelope.task_type == "data.analyze_failure":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={"classification": "execution", "analysis_summary": "no artifact"},
+                )
+            if envelope.task_type == "governance.correction_decision":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={
+                        "correction_path": "patch",
+                        "decision_rationale": "re-author",
+                        "affected_task_types": ["qa.test"],
+                    },
+                )
+            return TaskResult(
+                task_id=envelope.task_id,
+                status="SUCCEEDED",
+                outputs={
+                    "artifacts": [
+                        {
+                            "name": "backend/tests/test_runs.py",
+                            "content": "def test_ok(client):\n    assert True\n",
+                            "media_type": "text/x-python",
+                            "type": "test",
+                        }
+                    ]
+                },
+            )
+
+        return responder
+
+    async def test_emission_failure_routes_to_qa_test_repair(self, cycle):
+        """Zero-extraction qa.test failure (the pf-32 class): the repair step
+        is qa.test_repair aimed at the failed task's OWN artifact — not a dev
+        repair aimed at the implementation surface."""
+        captured: list = []
+        runner, _registry, _vault, _bus = self._make_runner(self._patch_responder(captured))
+
+        await runner.run_correction_protocol(
+            run_id="run_001",
+            cycle=cycle,
+            envelope=self._failed_qa_envelope(),
+            result=TaskResult(
+                task_id="task_qa_failed",
+                status="FAILED",
+                error="No valid fenced code blocks found",
+                outputs={
+                    "emission_failure": {
+                        "reason": "no_fenced_blocks",
+                        "response_chars": 6203,
+                        "expected_artifacts": ["backend/tests/test_runs.py"],
+                    }
+                },
+            ),
+            correction_attempts=0,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+        )
+
+        repair_envelopes = [e for e in captured if e.task_type.endswith("_repair")]
+        assert [e.task_type for e in repair_envelopes] == ["qa.test_repair"]
+        repair = repair_envelopes[0]
+        assert repair.metadata.get("role") == "qa" or "qa" in repair.agent_id
+        assert repair.inputs["expected_artifacts"] == ["backend/tests/test_runs.py"]
+        assert repair.inputs["subtask_focus"] == "Backend runs API pytest suite"
+        assert repair.inputs["failed_task_type"] == "qa.test"
+
+    async def test_behavioral_failure_stays_on_dev_chain(self, cycle):
+        """Exit-1 (tests ran, app failed them) must NEVER reach qa re-authoring
+        — the test-gaming guard. The dev chain repairs the subject."""
+        captured: list = []
+        runner, _registry, _vault, _bus = self._make_runner(self._patch_responder(captured))
+
+        await runner.run_correction_protocol(
+            run_id="run_001",
+            cycle=cycle,
+            envelope=self._failed_qa_envelope(),
+            result=TaskResult(
+                task_id="task_qa_failed",
+                status="FAILED",
+                error="Tests failed (exit 1)",
+                outputs={
+                    "validation_result": {
+                        "passed": False,
+                        "summary": "Tests failed (exit 1)",
+                        "missing_components": ["tests_failed:exit_1"],
+                        "checks": [
+                            {
+                                "check": "tests_pass",
+                                "executed": True,
+                                "exit_code": 1,
+                                "tests_passed": False,
+                                "passed": False,
+                            }
+                        ],
+                    }
+                },
+            ),
+            correction_attempts=0,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+        )
+
+        repair_envelopes = [e for e in captured if e.task_type.endswith("_repair")]
+        assert [e.task_type for e in repair_envelopes] == ["development.correction_repair"]

@@ -562,6 +562,11 @@ class QATestHandler(_CycleTaskHandler):
             inputs, capability.max_completion_tokens, context.ports.llm.default_model
         )
 
+        # #566: a re-dispatch after a zero-extraction failure carries the prior
+        # marker — tell the model exactly what was discarded and the required
+        # fence format instead of re-rolling blind.
+        user_prompt = await self._apply_emission_retry_feedback(context, inputs, user_prompt)
+
         try:
             user_prompt = _guard_prompt_size(
                 system_prompt,
@@ -608,8 +613,12 @@ class QATestHandler(_CycleTaskHandler):
             chat_response=response,
         )
 
-        extracted = extract_fenced_files(content)
+        extracted = extract_fenced_files(
+            content, expected_artifacts=inputs.get("expected_artifacts")
+        )
         if not extracted:
+            from squadops.cycles.emission_integrity import no_fenced_blocks_failure
+
             self._log_no_fenced_blocks(content)
             return self._fail_result(
                 start_time,
@@ -623,7 +632,13 @@ class QATestHandler(_CycleTaskHandler):
                             "media_type": "text/markdown",
                             "type": "document",
                         }
-                    ]
+                    ],
+                    # #566: machine-readable marker — the executor's retry path
+                    # turns it into aimed feedback; the correction loop's locus
+                    # classifier reads it as a test-artifact-locus signal.
+                    "emission_failure": no_fenced_blocks_failure(
+                        len(content), inputs.get("expected_artifacts")
+                    ),
                 },
             )
 

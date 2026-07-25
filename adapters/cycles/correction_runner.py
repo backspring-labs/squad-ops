@@ -155,6 +155,40 @@ def _resolve_repair_target(
     )
 
 
+def _locus_and_repair_target(
+    failed_task_type: str,
+    failure_evidence: Any,
+    failed_inputs: dict[str, Any],
+) -> tuple[str, list[str], str | None, str | None]:
+    """#568: classify the failure locus and choose the repair target for it.
+
+    Returns ``(locus, expected_artifacts, focus, description)``. An
+    OWN_ARTIFACT failure (the failed task's own emission is missing or
+    uncollectable) targets the failed task's own contract — pointing
+    ``_resolve_repair_target``'s subject-implementation union at a test
+    re-author would aim it at app source files. Every other locus keeps the
+    existing target resolution unchanged.
+    """
+    from squadops.cycles.failure_evidence import FailureLocus, classify_failure_locus
+
+    failure_locus = classify_failure_locus(failure_evidence)
+    own_expected = [str(e) for e in (failed_inputs.get("expected_artifacts") or []) if e]
+    if failure_locus == FailureLocus.OWN_ARTIFACT and own_expected:
+        logger.info(
+            "correction_repair_locus: own_artifact — %s re-produces %s",
+            failed_task_type,
+            ", ".join(own_expected),
+        )
+        return (
+            failure_locus,
+            own_expected,
+            failed_inputs.get("subtask_focus"),
+            failed_inputs.get("subtask_description"),
+        )
+    expected, focus, description = _resolve_repair_target(failure_evidence, failed_inputs)
+    return (failure_locus, expected, focus, description)
+
+
 @dataclass(frozen=True)
 class CorrectionProtocolResult:
     """Outcome of one correction-protocol run.
@@ -712,14 +746,26 @@ class CorrectionRunner:
         # field, which is free-text and previously caused builder failures
         # (`affected_task_types: ["QA Handoff"]`) to silently route to the
         # dev repair handler.
+        #
+        # #568: selection is additionally keyed on the deterministic failure
+        # locus — a task whose OWN artifact is missing/uncollectable is repaired
+        # by its own role re-producing that artifact (qa.test → qa.test_repair),
+        # and the repair target is the failed task's own contract, not the
+        # subject-implementation surface (_resolve_repair_target aims repairs at
+        # the SUBJECT and would point a test re-author at app source files).
         repair_artifacts: list[dict[str, Any]] = []
         if correction_path == "patch":
             failed_inputs = envelope.inputs or {}
-            repair_expected_artifacts, repair_focus, repair_description = _resolve_repair_target(
-                failure_evidence, failed_inputs
-            )
+            (
+                failure_locus,
+                repair_expected_artifacts,
+                repair_focus,
+                repair_description,
+            ) = _locus_and_repair_target(envelope.task_type, failure_evidence, failed_inputs)
 
-            for step_idx, (task_type, role) in enumerate(repair_steps_for(envelope.task_type)):
+            for step_idx, (task_type, role) in enumerate(
+                repair_steps_for(envelope.task_type, failure_locus)
+            ):
                 repair_task_id = f"repair-{run_id[:12]}-{correction_attempts:02d}-{task_type}"
                 resolved = resolve_agent_config(role, profile)
                 agent_id = resolved.agent_id
