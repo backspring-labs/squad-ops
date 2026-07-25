@@ -164,6 +164,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             activity_port=activity_port,
             event_bus=event_bus,
             task_timeout=task_timeout,
+            # §6.1 cancellation probe (#586). Wired on the single dispatcher
+            # instance the correction and pulse runners below share, so cancel
+            # reaches every dispatch path, not just the sequential loop top.
+            is_cancelled=lambda run_id: self._is_cancelled(run_id),
         )
         # SIP-0097 §6.3: correction-protocol collaborator. store_artifact stays
         # an executor-supplied late-bound callable (artifact plumbing is §6.7

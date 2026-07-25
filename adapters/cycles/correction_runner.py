@@ -11,9 +11,13 @@ state — slice 5 retired the interim executor-supplied dispatch callables
 per AC#9). ``store_artifact`` remains a narrow executor-supplied callable:
 artifact plumbing is §6.7 executor residual, residual-but-watched.
 
-Cancellation: the protocol performs no cancellation checks of its own (it
-never did); it relies on the dispatch path's checks at dispatch/await
-boundaries per the §6 cancellation ownership rule.
+Cancellation: the protocol performs no cancellation checks of its own; it
+relies on the dispatch path's check per the §6 cancellation ownership rule.
+That check now exists — ``TaskDispatcher.dispatch_task`` probes before every
+publish (#586). Until it was wired, this delegation pointed at nothing: the
+transport documented the probe as "deliberately not wired" while this module
+documented itself as relying on it, so a run cancelled mid-correction ran to
+attempt exhaustion (2h20m, five attempts, observed 2026-07-25).
 
 Repair acceptance is deterministic-only (#556): the repair sequence has no
 LLM validation step — patch verification (#389) re-runs the typed criteria

@@ -735,3 +735,56 @@ class TestArtifactStorage:
                 continue
             assert "task_id" in ref.metadata
             assert "role" in ref.metadata
+
+
+# ---------------------------------------------------------------------------
+# Cancellation probe wiring (#586)
+# ---------------------------------------------------------------------------
+
+
+class TestCancellationProbeWiring:
+    """The §6.1 probe is only worth anything if the *composed* dispatcher gets
+    it — and if the correction/pulse runners share that same instance.
+
+    #586 was a mutual-delegation hole: ``CorrectionRunner`` documented itself as
+    relying on a dispatch-boundary check, ``TaskDispatcher`` documented that
+    check as not wired, and the only real probe sat at the sequential loop top —
+    which a correction loop never returns to until it exhausts.
+    """
+
+    async def test_composed_dispatcher_probe_reflects_registry_cancellation(
+        self, executor, mock_registry, run
+    ) -> None:
+        """Bug caught: the probe parameter exists but the executor's default
+        composition doesn't pass it, so the fix is inert in production."""
+        probe = executor._task_dispatcher._is_cancelled
+        assert probe is not None, "executor composed a dispatcher with no cancellation probe"
+
+        mock_registry.get_run.return_value = run  # status "queued"
+        assert await probe("run_001") is False
+
+        mock_registry.get_run.return_value = Run(
+            run_id="run_001",
+            cycle_id="cyc_001",
+            run_number=1,
+            status=RunStatus.CANCELLED.value,
+            initiated_by="api",
+            resolved_config_hash="hash",
+        )
+        assert await probe("run_001") is True
+
+    async def test_correction_and_pulse_runners_share_the_probed_dispatcher(self, executor) -> None:
+        """Bug caught: a runner composing its own unprobed TaskDispatcher would
+        leave the repair path — the exact #586 path — uncovered."""
+        shared = executor._task_dispatcher
+        assert executor._correction_runner._task_dispatcher is shared
+        assert executor._pulse_boundary_runner._task_dispatcher is shared
+
+    async def test_probe_honours_the_local_cancel_fast_path(self, executor) -> None:
+        """Bug caught: a probe that only reads the registry misses an in-process
+        ``cancel_run`` whose registry write failed (the method logs and
+        continues), letting dispatch proceed on a run the operator cancelled."""
+        executor._cycle_registry.cancel_run.side_effect = RuntimeError("registry down")
+        await executor.cancel_run("run_001")
+
+        assert await executor._task_dispatcher._is_cancelled("run_001") is True
