@@ -351,8 +351,22 @@ class QATestHandler(_CycleTaskHandler):
         parts.append("### Expected Output Files\n")
         parts.extend(f"- `{f}`\n" for f in expected_files)
 
+        # pf-36: typed criteria render ONLY through the authoritative expectations
+        # block; the narrative section carries prose alone. The raw dump rendered
+        # TypedChecks as dict-repr soup, so the corrected harness_boundary line
+        # (and every other exact expectation) never reached the INITIAL suite
+        # generation — eve self-built TestClient(app) on every fresh roll and only
+        # her repairs (which get the block) complied. Same A2 treatment the repair
+        # prompt received in pf-31 Fix A / pf-33.
+        from squadops.cycles.contract_expectations import expectation_lines, prose_criteria
+
+        typed_lines = expectation_lines(acceptance_criteria)
+        if typed_lines:
+            parts.append("\n### Contract Expectations (authoritative — apply exactly)\n")
+            parts.extend(f"- {line}\n" for line in typed_lines)
+            acceptance_criteria = prose_criteria(acceptance_criteria)
         if acceptance_criteria:
-            parts.append("\n### Acceptance Criteria\n")
+            parts.append("\n### Acceptance Criteria (narrative)\n")
             parts.extend(f"- {c}\n" for c in acceptance_criteria)
 
         parts.append(f"\n### Context\nPRD:\n{prd}\n")

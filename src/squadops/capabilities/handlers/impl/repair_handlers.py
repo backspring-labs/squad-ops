@@ -98,6 +98,17 @@ def _format_failure_summary(failure_evidence: Any, failure_analysis: Any) -> str
                 "FROZEN OWNERSHIP (authoritative — apply exactly):\n"
                 + "\n".join(f"- {str(line).strip()}" for line in enforcement if str(line).strip())
             )
+        # pf-34: the ApiError(code, message) raise convention + code→status map,
+        # manifest-derived (scaffold.error_seam_instructions) — repairs otherwise
+        # guess the signature and 500 every error path at the behavioral retest.
+        error_contract = failure_evidence.get("error_contract") or []
+        if error_contract:
+            parts.append(
+                "ERROR CONTRACT (authoritative — apply exactly):\n"
+                + "\n".join(
+                    f"- {str(line).strip()}" for line in error_contract if str(line).strip()
+                )
+            )
         vr = failure_evidence.get("validation_result") or {}
         summary = vr.get("summary") or failure_evidence.get("error") or ""
         if summary:

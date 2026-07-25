@@ -1632,3 +1632,53 @@ class TestPromptScopedContents:
         )
         assert "backend/routes.py" in prompt
         assert "App.jsx" not in prompt
+
+
+class TestFocusedPromptExpectations:
+    """pf-36: the INITIAL qa prompt renders typed criteria through the
+    authoritative expectations block (incl. the corrected harness_boundary
+    line) — the raw dict-soup dump meant every fresh suite generation
+    self-built TestClient(app) and only repairs complied."""
+
+    def test_typed_criteria_render_as_expectations_block(self):
+        handler = QATestHandler()
+        prompt = handler._build_focused_prompt(
+            {
+                "prd": "p",
+                "subtask_focus": "backend suite",
+                "subtask_description": "d",
+                "expected_artifacts": ["backend/tests/test_runs.py"],
+                "acceptance_criteria": [
+                    "covers all endpoints",
+                    {
+                        "check": "harness_boundary",
+                        "file": "backend/tests/test_runs.py",
+                        "entry_modules": ["backend.main", "app.main"],
+                        "client_ctor": "TestClient",
+                        "id": "scaffold-harness:backend/tests/test_runs.py",
+                    },
+                ],
+                "artifact_contents": {},
+            }
+        )
+        assert "### Contract Expectations (authoritative — apply exactly)" in prompt
+        assert "must NOT import the app entry module" in prompt
+        assert "`client` fixture" in prompt
+        assert "### Acceptance Criteria (narrative)" in prompt
+        assert "covers all endpoints" in prompt
+        assert "'check':" not in prompt  # no dict-repr soup
+
+    def test_prose_only_criteria_keep_plain_section(self):
+        handler = QATestHandler()
+        prompt = handler._build_focused_prompt(
+            {
+                "prd": "p",
+                "subtask_focus": "f",
+                "subtask_description": "d",
+                "expected_artifacts": ["backend/tests/t.py"],
+                "acceptance_criteria": ["only prose"],
+                "artifact_contents": {},
+            }
+        )
+        assert "Contract Expectations" not in prompt
+        assert "### Acceptance Criteria (narrative)" in prompt

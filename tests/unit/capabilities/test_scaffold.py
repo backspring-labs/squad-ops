@@ -486,3 +486,29 @@ async def test_scaffold_harness_resolves_under_the_production_test_runner():
     assert result.executed is True, getattr(result, "output", result)
     assert result.exit_code == 0, getattr(result, "output", result)
     assert result.tests_passed is True
+
+
+class TestErrorSeamInstructions:
+    """pf-34: the ApiError raise convention must survive the stub's death and
+    reach correction prompts — dev repairs guessed ApiError(status_code=...,
+    detail=...) on two consecutive rolls and 500'd every error path."""
+
+    def test_lines_derive_from_manifest_error_contract(self):
+        from squadops.capabilities.scaffold import error_seam_instructions
+
+        lines = error_seam_instructions(_group_run_manifest())
+        assert len(lines) == 2
+        assert "ApiError(code, message)" in lines[0]
+        assert "never `ApiError(status_code=..., detail=...)`" in lines[0]
+        assert "HTTPException" in lines[0]
+        assert "`run_not_found` → 404" in lines[1]
+        assert "`duplicate_participant` → 409" in lines[1]
+        assert "`validation_error` → 422" in lines[1]
+
+    def test_empty_without_error_contract_or_manifest(self):
+        from squadops.capabilities.scaffold import error_seam_instructions
+
+        raw = _raw_manifest()
+        raw["api"].pop("error_contract", None)
+        assert error_seam_instructions(InterfaceManifest.from_dict(raw)) == []
+        assert error_seam_instructions(None) == []
