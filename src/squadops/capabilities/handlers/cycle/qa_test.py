@@ -321,9 +321,7 @@ class QATestHandler(_CycleTaskHandler):
         match → contents unchanged (never starve the prompt).
         """
         packages = {
-            str(e).strip().lstrip("./").partition("/")[0]
-            for e in (expected_artifacts or [])
-            if e
+            str(e).strip().lstrip("./").partition("/")[0] for e in (expected_artifacts or []) if e
         }
         if not packages:
             return artifact_contents
