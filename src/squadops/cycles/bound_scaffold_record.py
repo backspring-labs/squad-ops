@@ -62,6 +62,12 @@ class BoundScaffoldRecord:
     frozen: tuple[FrozenArtifact, ...] = ()
     fill_slots: tuple[str, ...] = ()
     qa_namespace: tuple[str, ...] = ()
+    # The scaffold's ORIGINAL bytes for each fill slot. A fill slot is producer-owned in
+    # its body but scaffold-owned in its decorators/signatures, and enforcing that split
+    # needs the seed to compare against. Pinned here for the same reason ``frozen`` is:
+    # restoration must never re-derive (D2). Defaults empty so records bound before this
+    # field existed deserialize cleanly and simply enforce nothing.
+    fill_seeds: tuple[FrozenArtifact, ...] = ()
 
     def frozen_paths(self) -> frozenset[str]:
         return frozenset(f.path for f in self.frozen)
@@ -70,6 +76,15 @@ class BoundScaffoldRecord:
         """The bound bytes for a frozen path (the restoration/replay authority), or None."""
         norm = _normalize(path)
         for f in self.frozen:
+            if f.path == norm:
+                return f.content
+        return None
+
+    def fill_seed_bytes(self, path: str) -> str | None:
+        """The scaffold's original bytes for a fill slot, or None when unseeded (older
+        records, or a path that is not a slot)."""
+        norm = _normalize(path)
+        for f in self.fill_seeds:
             if f.path == norm:
                 return f.content
         return None
@@ -86,6 +101,7 @@ class BoundScaffoldRecord:
             "frozen": [f.to_dict() for f in self.frozen],
             "fill_slots": list(self.fill_slots),
             "qa_namespace": list(self.qa_namespace),
+            "fill_seeds": [f.to_dict() for f in self.fill_seeds],
         }
 
     @classmethod
@@ -101,6 +117,7 @@ class BoundScaffoldRecord:
             frozen=tuple(FrozenArtifact.from_dict(f) for f in d.get("frozen", [])),
             fill_slots=tuple(d.get("fill_slots", [])),
             qa_namespace=tuple(d.get("qa_namespace", [])),
+            fill_seeds=tuple(FrozenArtifact.from_dict(f) for f in d.get("fill_seeds", [])),
         )
 
 
@@ -134,4 +151,9 @@ def build_bound_record(
         frozen=frozen,
         fill_slots=fill,
         qa_namespace=qa_test_namespace(manifest),
+        fill_seeds=tuple(
+            FrozenArtifact(path=name, sha256=_sha256(files[name]), content=files[name])
+            for name in sorted(fill_set)
+            if name in files
+        ),
     )
