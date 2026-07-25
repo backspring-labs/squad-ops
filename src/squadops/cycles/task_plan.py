@@ -741,6 +741,15 @@ def _replace_build_steps_with_plan(
         ref_errors = plan.validate_criteria_refs(contract)
         if ref_errors:
             raise CycleError("Plan validation failed (contract binding): " + "; ".join(ref_errors))
+        # pf-39: a qa.test task declaring scaffold-/dev-owned files as its expected
+        # artifacts is unsatisfiable (write authorization refuses the emission) and
+        # misdirects any repair scoped to it. Same referent as write authorization,
+        # applied at authoring time.
+        ownership_errors = plan.validate_qa_artifact_ownership(contract)
+        if ownership_errors:
+            raise CycleError(
+                "Plan validation failed (qa artifact ownership): " + "; ".join(ownership_errors)
+            )
         # pf-31 Fix A3: warning-only prose-vs-contract conflict lint, surfaced for
         # the gate reviewer (never a rejection — reverted-#552 lesson).
         for warning in plan.lint_prose_contract_conflicts(contract):

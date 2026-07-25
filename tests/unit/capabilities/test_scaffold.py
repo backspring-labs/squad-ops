@@ -102,7 +102,10 @@ def test_expand_defines_every_declared_endpoint_and_model():
 
     routes = files["backend/routes.py"]
     assert '@router.get("/runs", response_model=list[RunEvent])' in routes
-    assert '@router.post("/runs", response_model=RunEvent)' in routes
+    # /runs declares success_status: 201, so the decorator carries it (pf-39); join
+    # declares none, so its decorator stays bare — the two together pin that the
+    # status is emitted from the manifest rather than blanket-applied.
+    assert '@router.post("/runs", response_model=RunEvent, status_code=201)' in routes
     assert '@router.post("/runs/{run_id}/join", response_model=RunEvent)' in routes
     assert "payload: RunEventCreate" in routes
     assert "payload: ParticipantName" in routes
@@ -512,3 +515,68 @@ class TestErrorSeamInstructions:
         raw["api"].pop("error_contract", None)
         assert error_seam_instructions(InterfaceManifest.from_dict(raw)) == []
         assert error_seam_instructions(None) == []
+
+
+class TestDeclaredSuccessStatus:
+    """pf-39: the success status is *interface*, so the scaffold must own it.
+
+    Before this, ``Endpoint`` had no success-status field, ``_routes_source`` emitted a
+    bare ``@router.post(path)`` (FastAPI default 200), and ``_probes`` hardcoded
+    ``expect: status 201`` — a skeleton that contradicted its own contract. Green then
+    depended on the dev agent *volunteering* ``status_code=201``: pf-38 did, pf-39 did
+    not, and that single token was the entire difference between accepted and rejected.
+    """
+
+    def test_declared_status_lands_on_the_decorator(self):
+        routes = next(
+            f["content"] for f in expand(_group_run_manifest()) if f["name"] == "backend/routes.py"
+        )
+        post_runs = next(ln for ln in routes.splitlines() if ln.startswith('@router.post("/runs"'))
+        assert "status_code=201" in post_runs
+
+    def test_undeclared_status_emits_no_status_code(self):
+        """A GET declares no success status, so the decorator must stay bare — the
+        fix must not blanket every route with a status it did not ask for."""
+        routes = next(
+            f["content"] for f in expand(_group_run_manifest()) if f["name"] == "backend/routes.py"
+        )
+        get_runs = next(ln for ln in routes.splitlines() if ln.startswith('@router.get("/runs"'))
+        assert "status_code" not in get_runs
+
+    def test_probe_expectation_follows_the_manifest_not_a_constant(self):
+        """The probe must *derive* its expectation from the same field the decorator
+        reads. If it stayed hardcoded at 201, a manifest declaring anything else would
+        emit a contract its own skeleton could never satisfy — the pf-39 defect with
+        the numbers changed."""
+        from squadops.capabilities.scaffold_contract import emit_contract_dict
+
+        raw = _raw_manifest()
+        for ep in raw["api"]["endpoints"]:
+            if ep["method"] == "POST" and ep["path"] == "/runs":
+                ep["success_status"] = 202
+        manifest = InterfaceManifest.from_dict(raw)
+
+        probe = next(
+            p
+            for p in emit_contract_dict(manifest)["behavioral"]["probes"]
+            if p["id"] == "vc-probe-runs"
+        )
+        assert probe["expect"]["status"] == 202
+
+        routes = next(f["content"] for f in expand(manifest) if f["name"] == "backend/routes.py")
+        assert "status_code=202" in routes
+
+    def test_manifest_without_success_status_keeps_the_historical_probe_default(self):
+        """Backward compatibility: manifests predating the field still get 201."""
+        from squadops.capabilities.scaffold_contract import emit_contract_dict
+
+        raw = _raw_manifest()
+        for ep in raw["api"]["endpoints"]:
+            ep.pop("success_status", None)
+
+        probe = next(
+            p
+            for p in emit_contract_dict(InterfaceManifest.from_dict(raw))["behavioral"]["probes"]
+            if p["id"] == "vc-probe-runs"
+        )
+        assert probe["expect"]["status"] == 201

@@ -75,6 +75,14 @@ class Endpoint:
     request: str | None = None  # names a RequestShape
     response: str | None = None  # e.g. "RunEvent" or "list[RunEvent]"
     errors: tuple[str, ...] = ()
+    # Success status the endpoint must return. ``ErrorCode.http`` already models the
+    # *error* statuses, so before pf-39 the manifest could declare "422 on validation
+    # failure" but not "201 on create" — the expander emitted a bare
+    # ``@router.post(path)`` (FastAPI default 200) while the derived contract probe
+    # pinned 201, making the skeleton unable to satisfy its own contract. Green then
+    # depended on the dev agent volunteering ``status_code=201``: pf-38 did, pf-39 did
+    # not, and that single token was the whole difference. None = framework default.
+    success_status: int | None = None
 
 
 @dataclass(frozen=True)
@@ -321,6 +329,9 @@ def _parse_api(raw: dict[str, Any]) -> Api:
             request=(str(ep["request"]) if ep.get("request") else None),
             response=(str(ep["response"]) if ep.get("response") else None),
             errors=tuple(str(x) for x in ep.get("errors", [])),
+            success_status=(
+                int(ep["success_status"]) if ep.get("success_status") is not None else None
+            ),
         )
         for ep in raw.get("endpoints", [])
     )
@@ -615,6 +626,10 @@ def _routes_source(manifest: InterfaceManifest) -> str:
         decorator = f'@router.{ep.method.lower()}("{ep.path}"'
         if ep.response:
             decorator += f", response_model={_py_type(ep.response)}"
+        # The success status is *interface*, not implementation — it belongs to the
+        # scaffold-owned decorator so the fill dev cannot drop it (pf-39).
+        if ep.success_status is not None:
+            decorator += f", status_code={ep.success_status}"
         decorator += ")"
         lines.append(decorator)
         lines.append(f"def {fn}({sig}):")

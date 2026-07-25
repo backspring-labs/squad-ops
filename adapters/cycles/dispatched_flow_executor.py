@@ -2652,6 +2652,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                         f"verification_contract: {e}"
                         for e in parsed_plan.validate_criteria_refs(contract)
                     )
+                    errors.extend(
+                        f"verification_contract: {e}"
+                        for e in parsed_plan.validate_qa_artifact_ownership(contract)
+                    )
 
         # Soft (warning/info-severity) structural violations are tolerated, not
         # rejected — but logged so the pass is never silent (a warning check can't
