@@ -930,6 +930,12 @@ class DispatchedFlowExecutor(FlowExecutionPort):
     # Build task artifact filter (D3, §2.2)
     # ------------------------------------------------------------------
 
+    # Task types that author into the scaffold's fill slots and therefore need the
+    # manifest-derived error seam in their prompt (#588). A table, not a literal
+    # test at the branch — the repair path's equivalent lives in CorrectionRunner's
+    # failure_evidence assembly.
+    _ERROR_SEAM_TASK_TYPES: frozenset[str] = frozenset({"development.develop"})
+
     # Maps build task_type → which prior artifacts to inject.
     # by_producing_task: match on producing_task_type metadata
     # by_type / by_type_fallback: match on artifact_type for artifacts without provenance
@@ -1160,6 +1166,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 prior_outputs,
                 all_artifact_refs,
                 stored_artifacts,
+                interface_manifest=interface_manifest,
             )
 
             # SIP-0087: executor owns Prefect task-run creation so task_run_id
@@ -1658,6 +1665,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         prior_outputs: dict[str, Any],
         all_artifact_refs: list[str],
         stored_artifacts: list[tuple[str, ArtifactRef]],
+        interface_manifest: Any = None,
     ) -> TaskEnvelope:
         """Build chain context inputs and return an enriched envelope."""
 
@@ -1665,6 +1673,20 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             "prior_outputs": prior_outputs,
             "artifact_refs": list(all_artifact_refs),
         }
+
+        # #588: the manifest-derived error-seam lines the correction path has
+        # carried since pf-34, threaded to the INITIAL author too. The raise
+        # convention lives in the fill-slot stub's docstring, which the first
+        # fill overwrites — so without this the author guesses the signature,
+        # every error path TypeErrors into a 500, and the run pays a correction
+        # to learn what the scaffold already knew. Data only; the block's prose
+        # lives in a managed prompt asset.
+        if envelope.task_type in self._ERROR_SEAM_TASK_TYPES:
+            from squadops.capabilities.scaffold import error_seam_instructions
+
+            error_lines = error_seam_instructions(interface_manifest)
+            if error_lines:
+                extra_inputs["error_contract"] = error_lines
 
         # Pre-resolve artifact contents for build tasks (D3). Fresh dispatches
         # see the ACCEPTED state only (pf-31 Fix E): rejected repair candidates

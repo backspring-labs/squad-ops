@@ -283,35 +283,109 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
 
         return "\n".join(parts)
 
-    def _build_focused_prompt(self, inputs: dict[str, Any]) -> str:
+    async def _build_focused_prompt(self, inputs: dict[str, Any], renderer: Any = None) -> str:
         """Build a focused prompt for manifest-driven subtasks (SIP-0086 §6.1.5).
 
         RC-6: When subtask_focus is present, this path is used exclusively.
-        The legacy monolithic prompt path is NOT used.
+        The legacy monolithic prompt path is NOT used — which is why #588 lands
+        here: this is the ONLY prompt a plan-driven dev task ever sees, and it
+        previously carried neither the SIP-0099 fill-only instruction (wired
+        only into the monolithic path) nor the manifest-derived error seam. The
+        initial author was told nothing about the frozen surface it was filling.
+
+        Three changes, all the treatment #585 gave the qa twin:
+        - Typed criteria render as the authoritative Contract Expectations block
+          instead of ``f"- {dict}"`` repr soup, with narrative prose demoted below.
+        - The fill-only + ERROR CONTRACT sections reach the initial author.
+        - Every block of prose lives in a managed asset (CLAUDE.md #448); this
+          method assembles DATA and nothing else.
+
+        Falls back to unrendered plain text only when no renderer is wired
+        (the same degraded path ``_build_dev_prompt`` has always had).
         """
-        prd = inputs.get("prd", "")
+        from squadops.cycles.contract_expectations import expectation_lines, prose_criteria
+
         focus = inputs["subtask_focus"]
-        description = inputs.get("subtask_description", "")
-        expected_files = inputs.get("expected_artifacts", [])
-        acceptance_criteria = inputs.get("acceptance_criteria", [])
-        artifact_contents = inputs.get("artifact_contents", {})
+        description = str(inputs.get("subtask_description", "") or "")
+        prd = str(inputs.get("prd", "") or "")
+        expected_files = inputs.get("expected_artifacts", []) or []
+        acceptance_criteria = inputs.get("acceptance_criteria", []) or []
+        artifact_contents = inputs.get("artifact_contents", {}) or {}
 
+        expected_block = "\n".join(f"- `{f}`" for f in expected_files)
+        typed_lines = expectation_lines(acceptance_criteria)
+        narrative = prose_criteria(acceptance_criteria)
+        artifacts_block = "\n".join(
+            f"**{name}:**\n```\n{content}\n```" for name, content in artifact_contents.items()
+        )
+
+        if renderer is None:
+            return self._focused_prompt_fallback(
+                focus, description, expected_block, typed_lines, narrative, prd, artifacts_block
+            )
+
+        variables: dict[str, str] = {
+            "focus": str(focus),
+            "expected_files": expected_block,
+            "prd": prd,
+        }
+        if description:
+            variables["description"] = description
+        fill_only = await self._fill_only_section(renderer, inputs)
+        if fill_only:
+            variables["fill_only_section"] = fill_only
+        if typed_lines:
+            expectations = await renderer.render(
+                "request.cycle_repair_contract_expectations_appendix",
+                {"expectations": "\n".join(f"- {line}" for line in typed_lines)},
+            )
+            variables["contract_expectations"] = expectations.content
+        if narrative:
+            rendered_narrative = await renderer.render(
+                "request.development_develop_narrative_criteria_appendix",
+                {"criteria": "\n".join(f"- {c}" for c in narrative)},
+            )
+            variables["narrative_criteria"] = rendered_narrative.content
+        if artifacts_block:
+            rendered_artifacts = await renderer.render(
+                "request.development_develop_prior_artifacts_appendix",
+                {"artifacts": artifacts_block},
+            )
+            variables["prior_artifacts"] = rendered_artifacts.content
+
+        rendered = await renderer.render(
+            "request.development_develop.focused_build_task", variables
+        )
+        return rendered.content
+
+    @staticmethod
+    def _focused_prompt_fallback(
+        focus: Any,
+        description: str,
+        expected_block: str,
+        typed_lines: list[str],
+        narrative: list[str],
+        prd: str,
+        artifacts_block: str,
+    ) -> str:
+        """Degraded-mode assembly when no request renderer is wired.
+
+        Structure mirrors the managed asset so the two never drift in meaning;
+        the asset is the authority whenever a renderer exists.
+        """
         parts = [f"## Build Task: {focus}\n\n{description}\n"]
-
-        parts.append("### Expected Output Files\n")
-        parts.extend(f"- `{f}`\n" for f in expected_files)
-
-        if acceptance_criteria:
-            parts.append("\n### Acceptance Criteria\n")
-            parts.extend(f"- {c}\n" for c in acceptance_criteria)
-
+        parts.append(f"### Expected Output Files\n{expected_block}\n")
+        if typed_lines:
+            parts.append("\n### Contract Expectations (authoritative — apply exactly)\n")
+            parts.extend(f"- {line}\n" for line in typed_lines)
+        if narrative:
+            parts.append("\n### Acceptance Criteria (narrative)\n")
+            parts.extend(f"- {c}\n" for c in narrative)
         parts.append(f"\n### Context\nPRD:\n{prd}\n")
-
-        if artifact_contents:
-            parts.append("\n### Prior Artifacts (already built — do not reproduce)\n")
-            for name, content in artifact_contents.items():
-                parts.append(f"**{name}:**\n```\n{content}\n```\n")
-
+        if artifacts_block:
+            parts.append(
+                f"\n### Prior Artifacts (already built — do not reproduce)\n{artifacts_block}\n"
+            )
         parts.append(
             "\nProduce ONLY the files listed in Expected Output Files. "
             "Use fenced code blocks with ```language:path/to/file``` format. "
@@ -336,7 +410,9 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
 
         # SIP-0086 RC-6: focused prompt path for manifest-driven subtasks
         if inputs.get("subtask_focus") is not None:
-            user_prompt = self._build_focused_prompt(inputs)
+            user_prompt = await self._build_focused_prompt(
+                inputs, getattr(context.ports, "request_renderer", None)
+            )
             rendered = None
             try:
                 capability = get_capability(
@@ -375,6 +451,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
                 capability,
                 impl_plan,
                 strategy,
+                inputs=inputs,
             )
 
         assembled = context.ports.prompt_service.get_system_prompt(self._role)
@@ -618,6 +695,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         capability: Any,
         impl_plan: str | None,
         strategy: str | None,
+        inputs: dict[str, Any] | None = None,
     ) -> tuple[Any, str]:
         """Build the dev prompt via renderer or fallback. Returns (rendered, user_prompt)."""
         rendered = None
@@ -636,7 +714,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
             # SIP-0099 99.3 (part 2): on a scaffoldable stack a walking skeleton was
             # seeded into the workspace (part 1), so instruct the dev to FILL the fixed
             # slots rather than rewire. Data-driven — "" for a non-scaffolded cycle.
-            fill_only = await self._fill_only_section(renderer)
+            fill_only = await self._fill_only_section(renderer, inputs)
             if fill_only:
                 variables["fill_only_section"] = fill_only
             rendered = await renderer.render(
@@ -653,20 +731,47 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         )
         return None, user_prompt
 
-    async def _fill_only_section(self, renderer: Any) -> str:
+    async def _fill_only_section(self, renderer: Any, inputs: dict | None = None) -> str:
         """The fill-only instruction, or "" (SIP-0099 99.3 part 2).
 
         Non-empty only on a scaffoldable stack — a walking skeleton has been seeded into
         the workspace (part 1), so the dev fills fixed slots instead of rewiring. The
         instruction lives in a managed prompt asset, not an inline literal (CLAUDE.md
         #448). Frozen-surface *enforcement* is SIP-0098's `frozen:` contract, not here.
+
+        Carries the manifest-derived ERROR CONTRACT block when the executor threaded one
+        onto the envelope (#588). The repair path has had this since pf-34; the *initial*
+        author never did, so every roll re-made the same mistake — routes.py raising
+        ``ApiError(status_code=…, detail=…)`` against a frozen seam whose signature is
+        ``ApiError(code, message)`` — and paid a correction to undo it. Same data, same
+        transport, one step earlier.
         """
         from squadops.capabilities.scaffold import is_scaffoldable_stack
 
         stack = str(self._resolved_config.get("build_profile") or "")
         if not is_scaffoldable_stack(stack):
             return ""
+        variables = {"stack": stack}
+        error_contract = await self._error_contract_section(renderer, inputs)
+        if error_contract:
+            variables["error_contract"] = error_contract
         rendered = await renderer.render(
-            "request.development_develop_fill_only_appendix", {"stack": stack}
+            "request.development_develop_fill_only_appendix", variables
+        )
+        return rendered.content
+
+    async def _error_contract_section(self, renderer: Any, inputs: dict | None) -> str:
+        """Render the ERROR CONTRACT block from executor-threaded lines, or "".
+
+        The lines are manifest-derived data (``scaffold.error_seam_instructions``);
+        all prose lives in the appendix asset (CLAUDE.md #448).
+        """
+        lines = [str(line).strip() for line in ((inputs or {}).get("error_contract") or [])]
+        lines = [line for line in lines if line]
+        if not lines:
+            return ""
+        rendered = await renderer.render(
+            "request.development_develop_error_contract_appendix",
+            {"error_lines": "\n".join(f"- {line}" for line in lines)},
         )
         return rendered.content
