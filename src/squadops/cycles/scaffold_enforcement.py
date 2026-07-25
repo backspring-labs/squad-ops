@@ -173,5 +173,45 @@ def enforce_frozen_ownership(
             )
             # dropped: NOT appended — the owning producer's already-stored version stays.
         else:
-            enforced.append(art)
+            enforced.append(_restore_fill_slot_ownership(art, norm, bound_record, envelope))
     return enforced, evidence
+
+
+def _restore_fill_slot_ownership(
+    art: dict, norm: str | None, bound_record: Any, envelope: Any
+) -> dict:
+    """Hold the scaffold-owned parts of a *fill slot* in place (pf-40).
+
+    A frozen file is restored wholesale; a fill slot cannot be, because rewriting it is the
+    producer's job. But the slot's decorators and signatures are scaffold-owned — the stub
+    says so in its own header — and pf-40 showed that saying so is not enough: the producer
+    replaced ``@router.post("/runs", response_model=RunEvent, status_code=201)`` with
+    ``@router.post("/runs")``, so the app answered 200 against a contract demanding 201 and
+    the run was rejected for it, on the very deploy that had just fixed the scaffold to emit
+    201.
+
+    Only ``status_code`` is put back — see ``fill_slot_integrity`` for why the rest is
+    reported rather than rewritten. No seed (older bound records) means no enforcement, and
+    a non-Python or unparseable artifact passes through untouched.
+    """
+    if norm is None or norm not in set(bound_record.fill_slots) or not norm.endswith(".py"):
+        return art
+    seed = bound_record.fill_seed_bytes(norm)
+    content = art.get("content")
+    if not seed or not isinstance(content, str):
+        return art
+
+    from squadops.cycles.fill_slot_integrity import (
+        divergence_summary,
+        restore_declared_status_codes,
+    )
+
+    corrected, divergences = restore_declared_status_codes(seed, content)
+    if divergences:
+        logger.warning(
+            "SIP-0100 fill_slot_integrity: task=%s path=%s %s",
+            getattr(envelope, "task_id", "?"),
+            norm,
+            divergence_summary(divergences),
+        )
+    return art if corrected == content else {**art, "content": corrected}
