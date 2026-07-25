@@ -33,6 +33,7 @@ from squadops.capabilities.handlers.impl.define_done import (
 from squadops.capabilities.handlers.impl.repair_handlers import (
     BuilderAssembleRepairHandler,
     DevelopmentCorrectionRepairHandler,
+    QATestRepairHandler,
 )
 from squadops.capabilities.handlers.planning_tasks import (
     DataResearchContextHandler,
@@ -99,6 +100,8 @@ HANDLER_CONFIGS: list[tuple[type[CapabilityHandler], tuple[str, ...]]] = [
     # deterministically (patch verification #389 + retest #456).
     (DevelopmentCorrectionRepairHandler, ("dev",)),
     (BuilderAssembleRepairHandler, ("builder",)),
+    # #568: own-artifact-locus qa.test repairs — eve re-authors her own suite.
+    (QATestRepairHandler, ("qa",)),
     # Planning handlers (SIP-0078: Planning Workload Protocol)
     (DataResearchContextHandler, ("data",)),
     (StrategyFrameObjectiveHandler, ("strat",)),

@@ -209,6 +209,44 @@ class _CycleTaskHandler(CapabilityHandler):
             content[:excerpt],
         )
 
+    async def _apply_emission_retry_feedback(
+        self,
+        context: ExecutionContext,
+        inputs: dict[str, Any],
+        user_prompt: str,
+    ) -> str:
+        """#566: append the parse-failure feedback appendix to a retry prompt.
+
+        The executor sets ``inputs["emission_retry_feedback"]`` (the prior
+        attempt's ``emission_failure`` marker) when re-dispatching after a
+        zero-extraction failure — without it the retry re-rolls blind on the
+        same prior. All instruction prose renders from the managed template
+        asset; this method only supplies the data lines. No renderer or no
+        marker → prompt unchanged.
+        """
+        marker = inputs.get("emission_retry_feedback")
+        if not isinstance(marker, dict):
+            return user_prompt
+        renderer = getattr(context.ports, "request_renderer", None)
+        if renderer is None:
+            return user_prompt
+        from squadops.cycles.emission_integrity import emission_retry_reason_line
+
+        expected = [
+            str(e)
+            for e in (marker.get("expected_artifacts") or inputs.get("expected_artifacts") or [])
+            if e
+        ]
+        expected_files = "\n".join(f"  - `{e}`" for e in expected) or "  - (as named in the task)"
+        rendered = await renderer.render(
+            "request.cycle_emission_retry_feedback",
+            {
+                "reason_line": emission_retry_reason_line(marker),
+                "expected_files": expected_files,
+            },
+        )
+        return f"{user_prompt}\n\n{rendered.content}"
+
     def _resolve_model_budget(
         self,
         inputs: dict[str, Any],

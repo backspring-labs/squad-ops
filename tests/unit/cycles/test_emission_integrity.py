@@ -68,3 +68,31 @@ def test_instruction_names_file_error_and_completeness_demand():
     assert "backend/tests/test_runs.py" in line
     assert "DISCARDED" in line
     assert "COMPLETE" in line
+
+
+def test_no_fenced_blocks_marker_shape():
+    from squadops.cycles.emission_integrity import (
+        EMISSION_FAILURE_NO_FENCED_BLOCKS,
+        no_fenced_blocks_failure,
+    )
+
+    marker = no_fenced_blocks_failure(6203, ["backend/tests/test_runs.py"])
+    assert marker == {
+        "reason": EMISSION_FAILURE_NO_FENCED_BLOCKS,
+        "response_chars": 6203,
+        "expected_artifacts": ["backend/tests/test_runs.py"],
+    }
+    assert no_fenced_blocks_failure(0, None)["expected_artifacts"] == []
+
+
+def test_emission_retry_reason_line_known_and_unknown():
+    from squadops.cycles.emission_integrity import (
+        emission_retry_reason_line,
+        no_fenced_blocks_failure,
+    )
+
+    line = emission_retry_reason_line(no_fenced_blocks_failure(6203, ["x.py"]))
+    assert "6203-character" in line
+    assert "no fenced code block" in line
+    # Unknown reason still yields a usable factual line, never a KeyError.
+    assert "other_reason" in emission_retry_reason_line({"reason": "other_reason"})

@@ -69,3 +69,41 @@ def emission_integrity_instruction(name: str, error: str) -> str:
         "COMPLETE file, and keep it small enough to finish: do not start more files "
         "than you can fully emit."
     )
+
+
+# ---------------------------------------------------------------------------
+# Emission-failure marker (#566): machine-readable classification of a
+# zero-extraction handler failure, emitted in the handler's failure outputs and
+# consumed by the executor's retry path (aimed-retry feedback) and by the
+# correction loop's failure-locus classifier. The marker is DATA — every
+# instruction the model reads renders from the managed template asset.
+
+EMISSION_FAILURE_KEY = "emission_failure"
+EMISSION_FAILURE_NO_FENCED_BLOCKS = "no_fenced_blocks"
+
+
+def no_fenced_blocks_failure(
+    response_chars: int,
+    expected_artifacts: list[str] | None,
+) -> dict[str, Any]:
+    """Build the ``emission_failure`` marker for a zero-extraction failure."""
+    return {
+        "reason": EMISSION_FAILURE_NO_FENCED_BLOCKS,
+        "response_chars": response_chars,
+        "expected_artifacts": [str(e) for e in (expected_artifacts or [])],
+    }
+
+
+def emission_retry_reason_line(marker: dict[str, Any]) -> str:
+    """One factual sentence describing the marker, for the retry-feedback
+    template's ``reason_line`` variable (same deterministic-instruction genre
+    as ``emission_integrity_instruction`` above — data-derived line, section
+    framing owned by the template asset)."""
+    reason = marker.get("reason")
+    if reason == EMISSION_FAILURE_NO_FENCED_BLOCKS:
+        chars = marker.get("response_chars", 0)
+        return (
+            f"no fenced code block carrying a file path could be extracted "
+            f"from the {chars}-character response."
+        )
+    return f"the response failed emission extraction ({reason})."

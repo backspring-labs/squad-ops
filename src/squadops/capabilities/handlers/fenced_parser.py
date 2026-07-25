@@ -369,18 +369,32 @@ def _resolve_block(
     return filename, language, body, last_used_heading_pos
 
 
-def extract_fenced_files(response: str) -> list[dict]:
+def extract_fenced_files(
+    response: str,
+    expected_artifacts: list[str] | None = None,
+) -> list[dict]:
     """Parse fenced code blocks into structured file records.
 
     Tries multiple resolution strategies per fence (see module docstring).
     Returns a list of ``{filename, content, language}`` dicts. Empty list
     if no resolvable, security-safe fences are found.
 
+    Single-expected-artifact fallback (#566): when NO strategy resolves any
+    file, the task expects exactly ONE artifact, and the response holds exactly
+    ONE substantial filename-less fence, that fence is mapped to the expected
+    path — a bare ``` ```python``` ``` emission with the whole file inside has
+    exactly one place it can belong. Guarded to unambiguous cardinality only:
+    it never fires when any fence resolved a filename (even an unsafe one),
+    when two or more expected artifacts exist, or when the response holds two
+    or more candidate fences.
+
     Security: rejects absolute paths, paths containing ``..`` segments,
     and paths containing ``:``.
 
     Args:
         response: Raw LLM response text.
+        expected_artifacts: The task envelope's expected output paths, used
+            only by the #566 fallback. ``None``/empty disables the fallback.
 
     Returns:
         List of dicts with keys ``filename``, ``content``, ``language``.
@@ -395,6 +409,8 @@ def extract_fenced_files(response: str) -> list[dict]:
     response = _strip_think_blocks(response)
 
     results: list[dict] = []
+    unlabeled: list[dict] = []  # #566 fallback candidates: no strategy resolved a name
+    saw_labeled = False  # any fence that DID resolve a name (safe or not)
     pos = 0
     last_used_heading_pos = -1
 
@@ -423,9 +439,14 @@ def extract_fenced_files(response: str) -> list[dict]:
         )
 
         if filename is None or not _path_is_safe(filename):
+            if filename is None and body.strip():
+                unlabeled.append({"content": body, "language": language or "text"})
+            else:
+                saw_labeled = True
             pos = next_pos
             continue
 
+        saw_labeled = True
         results.append(
             {
                 "filename": filename,
@@ -435,4 +456,34 @@ def extract_fenced_files(response: str) -> list[dict]:
         )
         pos = next_pos
 
+    if not results:
+        fallback = _single_expected_artifact_fallback(unlabeled, expected_artifacts, saw_labeled)
+        if fallback is not None:
+            return [fallback]
+
     return results
+
+
+def _single_expected_artifact_fallback(
+    unlabeled: list[dict],
+    expected_artifacts: list[str] | None,
+    saw_labeled: bool,
+) -> dict | None:
+    """#566: map the sole filename-less fence to the sole expected artifact.
+
+    Fires only when every cardinality is exactly one and nothing labeled was
+    seen anywhere in the response — any resolved filename (even a rejected
+    unsafe one) means the model IS labeling its fences and a missing label is
+    ambiguity, not convention drift. Returns the mapped record or ``None``.
+    """
+    if saw_labeled or len(unlabeled) != 1:
+        return None
+    expected = [e for e in (expected_artifacts or []) if isinstance(e, str) and e]
+    if len(expected) != 1 or not _path_is_safe(expected[0]):
+        return None
+    candidate = unlabeled[0]
+    return {
+        "filename": expected[0],
+        "content": _strip_trailing_newline(candidate["content"]),
+        "language": candidate["language"],
+    }

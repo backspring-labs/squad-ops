@@ -1806,6 +1806,20 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             raise _PausedError(f"Task {envelope.task_id} ({envelope.task_type}) blocked")
 
         if outcome == TaskOutcome.RETRYABLE_FAILURE:
+            # #566: a zero-extraction failure carries a machine marker — thread
+            # it into the retry envelope so the handler appends the aimed
+            # format-feedback appendix instead of re-rolling blind. The retry
+            # loop re-dispatches the ENRICHED envelope, so the marker must land
+            # there (the base envelope is mutated too for evidence parity).
+            emission_failure = (result.outputs or {}).get("emission_failure")
+            if isinstance(emission_failure, dict):
+                feedback = {
+                    **emission_failure,
+                    "attempt": task_attempt_counts.get(envelope.task_id, 1),
+                }
+                envelope.inputs["emission_retry_feedback"] = feedback
+                if enriched_envelope is not None:
+                    enriched_envelope.inputs["emission_retry_feedback"] = feedback
             logger.info(
                 "Retryable failure for %s (attempt %d), retrying",
                 envelope.task_id,

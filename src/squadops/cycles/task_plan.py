@@ -25,6 +25,7 @@ from squadops.capabilities.handlers.build_profiles import (
 )
 from squadops.capabilities.scaffold import harness_entry_modules, is_qa_test_path_for_stack
 from squadops.cycles.agent_config import resolve_agent_config
+from squadops.cycles.failure_evidence import FailureLocus
 from squadops.cycles.implementation_plan import (
     ImplementationPlan,
     TypedCheck,
@@ -211,18 +212,44 @@ _REPAIR_STEPS_BY_FAILED_TASK_TYPE: dict[str, list[tuple[str, str]]] = {
     ],
 }
 
+# #568: repair sequences reachable ONLY when the failure locus is the failed
+# task's OWN artifact (missing/unparseable/uncollectable emission) — the owning
+# role re-produces its own artifact. Deliberately a separate table from the
+# default above: a qa.test entry in the default table would route BEHAVIORAL
+# failures (app failed the tests) to qa re-authoring, i.e. "fix the app by
+# rewriting tests until green" — a manufactured false green. Locus is computed
+# deterministically (failure_evidence.classify_failure_locus); ambiguity falls
+# through to the default table.
+QA_TEST_REPAIR_STEPS: list[tuple[str, str]] = [
+    ("qa.test_repair", "qa"),
+]
+_REPAIR_STEPS_BY_FAILED_TASK_TYPE_OWN_ARTIFACT: dict[str, list[tuple[str, str]]] = {
+    "qa.test": QA_TEST_REPAIR_STEPS,
+}
+
 # pf-31 Fix E: every task type that produces repair-CANDIDATE emissions, derived
 # from the dispatch tables above (never re-typed — #559). Candidates land in the
 # artifact store for the correction loop's accumulation (RC3), but an ACCEPTED
 # patch is re-stored under the repaired task's own type by the #389 accept path —
 # so candidate-typed artifacts are, by construction, in-flight or rejected, and
 # workspace views for fresh dispatches exclude them by this provenance.
-REPAIR_TASK_TYPES: frozenset[str] = frozenset(
-    task_type for steps in _REPAIR_STEPS_BY_FAILED_TASK_TYPE.values() for task_type, _ in steps
-) | frozenset(task_type for task_type, _ in REPAIR_TASK_STEPS)
+REPAIR_TASK_TYPES: frozenset[str] = (
+    frozenset(
+        task_type for steps in _REPAIR_STEPS_BY_FAILED_TASK_TYPE.values() for task_type, _ in steps
+    )
+    | frozenset(
+        task_type
+        for steps in _REPAIR_STEPS_BY_FAILED_TASK_TYPE_OWN_ARTIFACT.values()
+        for task_type, _ in steps
+    )
+    | frozenset(task_type for task_type, _ in REPAIR_TASK_STEPS)
+)
 
 
-def repair_steps_for(failed_task_type: str) -> list[tuple[str, str]]:
+def repair_steps_for(
+    failed_task_type: str,
+    failure_locus: str | None = None,
+) -> list[tuple[str, str]]:
     """Return the repair (task_type, role) sequence for a failed task.
 
     Looked up by the failed task's `task_type`, which is authoritative —
@@ -231,7 +258,16 @@ def repair_steps_for(failed_task_type: str) -> list[tuple[str, str]]:
     failure tagged `["QA Handoff"]` would mis-route to the dev repair
     handler. Falls back to `REPAIR_TASK_STEPS` (dev) for any task type
     without a specialized sequence.
+
+    #568: when ``failure_locus`` is ``FailureLocus.OWN_ARTIFACT``, the
+    own-artifact table takes precedence — the failed task's own role
+    re-produces its own artifact. Any other locus (including ``None`` and
+    ``UNKNOWN``) uses the default tables unchanged.
     """
+    if failure_locus == FailureLocus.OWN_ARTIFACT:
+        specialized = _REPAIR_STEPS_BY_FAILED_TASK_TYPE_OWN_ARTIFACT.get(failed_task_type)
+        if specialized is not None:
+            return specialized
     return _REPAIR_STEPS_BY_FAILED_TASK_TYPE.get(failed_task_type, REPAIR_TASK_STEPS)
 
 

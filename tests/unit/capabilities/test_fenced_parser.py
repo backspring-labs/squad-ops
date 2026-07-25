@@ -763,3 +763,80 @@ class TestImplicitEofClose:
         """Implicit close only helps when a filename resolves — an untagged
         unterminated fence has no path and is still dropped."""
         assert extract_fenced_files("```\nsome loose text at eof\n") == []
+
+
+class TestSingleExpectedArtifactFallback:
+    """#566: a filename-less fence maps to the task's sole expected artifact —
+    but only at exactly-one cardinality everywhere. Live case: pf-32 qa.test
+    emitted the whole suite in one bare ```python fence (no path label,
+    unterminated at EOF) twice in a row; 0 blocks extracted, ~10 min of
+    generation discarded per attempt, and a dev repair burned on a failure
+    whose artifact never existed."""
+
+    _EXPECTED = ["backend/tests/test_runs.py"]
+
+    def test_pf32_live_shape_recovered(self):
+        """Bare language-only fence, no filename anywhere, unterminated at
+        EOF — the exact live emission — maps to the sole expected artifact."""
+        response = "```python\nimport pytest\n\ndef test_create(client):\n    assert True\n"
+        result = extract_fenced_files(response, expected_artifacts=self._EXPECTED)
+        assert len(result) == 1
+        assert result[0]["filename"] == "backend/tests/test_runs.py"
+        assert result[0]["content"].startswith("import pytest")
+        assert result[0]["language"] == "python"
+
+    def test_terminated_bare_fence_recovered(self):
+        response = "```python\ndef test_x():\n    pass\n```\n"
+        result = extract_fenced_files(response, expected_artifacts=self._EXPECTED)
+        assert [r["filename"] for r in result] == ["backend/tests/test_runs.py"]
+        assert result[0]["content"] == "def test_x():\n    pass"
+
+    def test_no_expected_artifacts_disables_fallback(self):
+        response = "```python\ndef test_x():\n    pass\n```\n"
+        assert extract_fenced_files(response) == []
+        assert extract_fenced_files(response, expected_artifacts=[]) == []
+
+    def test_two_expected_artifacts_decline(self):
+        response = "```python\ndef test_x():\n    pass\n```\n"
+        result = extract_fenced_files(response, expected_artifacts=["a/test_a.py", "b/test_b.py"])
+        assert result == []
+
+    def test_two_unlabeled_fences_decline(self):
+        """Two candidate fences → the mapping is ambiguous, never guessed."""
+        response = "```python\ncode_a\n```\n\n```python\ncode_b\n```\n"
+        assert extract_fenced_files(response, expected_artifacts=self._EXPECTED) == []
+
+    def test_never_fires_when_any_fence_resolved(self):
+        """A resolved fence means the model IS labeling — an unlabeled sibling
+        is ambiguity, not convention drift; it stays dropped."""
+        response = (
+            "```python:backend/tests/test_runs.py\ndef test_a():\n    pass\n```\n\n"
+            "```python\norphan_code\n```\n"
+        )
+        result = extract_fenced_files(response, expected_artifacts=self._EXPECTED)
+        assert [r["filename"] for r in result] == ["backend/tests/test_runs.py"]
+        assert all("orphan_code" not in r["content"] for r in result)
+
+    def test_labeled_but_unsafe_fence_blocks_fallback(self):
+        """A fence that resolved an UNSAFE path still counts as labeling —
+        remapping its sibling would trust a response that mislabels."""
+        response = "```python:/etc/passwd\nnope\n```\n\n```python\ndef test_x():\n    pass\n```\n"
+        assert extract_fenced_files(response, expected_artifacts=self._EXPECTED) == []
+
+    def test_whitespace_only_fence_is_not_a_candidate(self):
+        assert (
+            extract_fenced_files("```python\n   \n```\n", expected_artifacts=self._EXPECTED) == []
+        )
+
+    def test_unsafe_expected_path_declines(self):
+        response = "```python\ncode\n```\n"
+        assert extract_fenced_files(response, expected_artifacts=["../escape.py"]) == []
+        assert extract_fenced_files(response, expected_artifacts=["/abs/path.py"]) == []
+
+    def test_strategy_resolution_still_wins_over_fallback(self):
+        """A fence the strategies CAN resolve keeps its own name even when it
+        differs from the expected artifact — the fallback only rescues, never
+        renames."""
+        response = "```python:backend/tests/test_other.py\ndef test_a():\n    pass\n```\n"
+        result = extract_fenced_files(response, expected_artifacts=self._EXPECTED)
+        assert [r["filename"] for r in result] == ["backend/tests/test_other.py"]
