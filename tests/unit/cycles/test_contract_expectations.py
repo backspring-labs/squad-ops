@@ -101,13 +101,34 @@ class TestExpectationLines:
                     "entry_modules": ["backend.main", "app.main"],
                     "client_ctor": "TestClient",
                 },
-                "`TestClient` against one of: `backend.main`, `app.main`",
+                "must NOT import the app entry module (`backend.main`, `app.main`)",
             ),
         ],
     )
     def test_known_check_types_render(self, entry, fragment):
         (line,) = expectation_lines([entry])
         assert fragment in line
+
+    def test_harness_boundary_states_prohibition_not_construction(self):
+        """pf-33 corr-00 regression: the old wording ("must build its TestClient
+        against one of: backend.main...") read as an instruction to import the
+        entry module and construct the client — eve's repair obeyed it and was
+        rejected by the very check the line rendered. The line must forbid the
+        import/construction and point at the scaffold `client` fixture."""
+        (line,) = expectation_lines(
+            [
+                {
+                    "check": "harness_boundary",
+                    "file": "backend/tests/test_runs.py",
+                    "entry_modules": ["backend.main", "app.main"],
+                    "client_ctor": "TestClient",
+                }
+            ]
+        )
+        assert "must NOT import" in line
+        assert "must NOT construct `TestClient(...)`" in line
+        assert "`client` fixture" in line
+        assert "must build its" not in line  # the misleading phrasing stays dead
 
     def test_unknown_check_type_still_surfaces(self):
         """A new check vocabulary entry must not be silently dropped from the
