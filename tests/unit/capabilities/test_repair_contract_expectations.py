@@ -105,3 +105,27 @@ def test_templates_declare_and_use_the_variable():
     appendix = _APPENDIX.read_text()
     assert "authoritative" in appendix
     assert "{{expectations}}" in appendix
+
+
+def test_failure_summary_renders_error_contract_block():
+    """pf-34: the ERROR CONTRACT block renders authoritatively in the repair
+    prompt, above the analyzer prose — the ApiError signature stops being a
+    guess."""
+    from squadops.capabilities.handlers.impl.repair_handlers import _format_failure_summary
+
+    summary = _format_failure_summary(
+        {
+            "error_contract": [
+                "on failure raise `ApiError(code, message)` — never "
+                "`ApiError(status_code=..., detail=...)`",
+                "valid error codes: `run_not_found` → 404",
+            ],
+            "validation_result": {"summary": "tests failed"},
+        },
+        {"analysis_summary": "endpoint returns 400 instead of 404"},
+    )
+    assert "ERROR CONTRACT (authoritative — apply exactly):" in summary
+    assert "ApiError(code, message)" in summary
+    idx_block = summary.index("ERROR CONTRACT")
+    idx_analysis = summary.index("Analyzer summary")
+    assert idx_block < idx_analysis

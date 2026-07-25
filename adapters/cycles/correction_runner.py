@@ -155,6 +155,59 @@ def _resolve_repair_target(
     )
 
 
+def _inject_deterministic_evidence(
+    failure_evidence: dict[str, Any],
+    *,
+    envelope: TaskEnvelope,
+    interface_manifest: Any,
+    artifact_contents: dict[str, str] | None,
+    scaffold_enforcement_carry: list[str] | None,
+) -> None:
+    """Deterministic authoritative-evidence injection for the correction chain.
+
+    Every entry is data-derived (manifest / typed criteria / prior enforcement),
+    never LLM output, and each travels the same failure_evidence →
+    authoritative-prompt-block transport. Additive: absent sources inject nothing.
+
+    - ``interface_drift`` (piece 1): exact renamed identifiers vs the manifest.
+    - ``scaffold_enforcement`` (3.4b): prior attempts' frozen-restore instructions.
+    - ``contract_expectations`` (pf-31 Fix A): the failed task's typed criteria
+      as exact expectation lines.
+    - ``error_contract`` (pf-34): the ApiError raise convention + code→status
+      map — scaffold-owned knowledge that dies with the fill-slot stub's
+      docstring; without it dev repairs guess ``ApiError(status_code=...,
+      detail=...)`` and 500 every error path at the behavioral retest despite
+      passing all typed checks (pf-33 corr-01, pf-34 corr-00).
+    """
+    from squadops.capabilities.scaffold import error_seam_instructions
+    from squadops.cycles.contract_expectations import expectation_lines
+    from squadops.cycles.interface_conformance import detect_interface_drift
+
+    drift = detect_interface_drift(interface_manifest, artifact_contents)
+    if drift:
+        failure_evidence["interface_drift"] = [
+            {
+                "kind": f.kind,
+                "file": f.file,
+                "extra": list(f.extra),
+                "missing": list(f.missing),
+                "instruction": f.instruction,
+            }
+            for f in drift
+        ]
+
+    if scaffold_enforcement_carry:
+        failure_evidence["scaffold_enforcement"] = list(scaffold_enforcement_carry)
+
+    expectations = expectation_lines((envelope.inputs or {}).get("acceptance_criteria"))
+    if expectations:
+        failure_evidence["contract_expectations"] = expectations
+
+    error_lines = error_seam_instructions(interface_manifest)
+    if error_lines:
+        failure_evidence["error_contract"] = error_lines
+
+
 def _locus_and_repair_target(
     failed_task_type: str,
     failure_evidence: Any,
@@ -557,41 +610,13 @@ class CorrectionRunner:
         failure_evidence = build_failure_evidence(
             envelope, result, prior_plan_deltas_count=len(plan_delta_refs)
         )
-
-        # Deterministic interface-drift diagnosis (piece 1): when the app renamed
-        # a model field or route the manifest pins, hand the repair agent the exact
-        # offending identifiers + interface targets instead of an opaque check
-        # status. Additive — a clean workspace or absent manifest injects nothing,
-        # leaving the LLM-analysis path unchanged.
-        from squadops.cycles.interface_conformance import detect_interface_drift
-
-        drift = detect_interface_drift(interface_manifest, artifact_contents)
-        if drift:
-            failure_evidence["interface_drift"] = [
-                {
-                    "kind": f.kind,
-                    "file": f.file,
-                    "extra": list(f.extra),
-                    "missing": list(f.missing),
-                    "instruction": f.instruction,
-                }
-                for f in drift
-            ]
-
-        # 3.4b restore+signal: prior attempts' frozen-restore instructions reach this
-        # attempt's analyze/decision/repair prompts as authoritative evidence (the
-        # same deterministic-instruction pattern as interface_drift above).
-        if scaffold_enforcement_carry:
-            failure_evidence["scaffold_enforcement"] = list(scaffold_enforcement_carry)
-
-        # pf-31 Fix A: the failed task's typed criteria as exact expectation lines,
-        # so the analyzer/decision reason against the contract's letter (repairs get
-        # the same lines as an authoritative prompt block via the appendix asset).
-        from squadops.cycles.contract_expectations import expectation_lines
-
-        expectations = expectation_lines((envelope.inputs or {}).get("acceptance_criteria"))
-        if expectations:
-            failure_evidence["contract_expectations"] = expectations
+        _inject_deterministic_evidence(
+            failure_evidence,
+            envelope=envelope,
+            interface_manifest=interface_manifest,
+            artifact_contents=artifact_contents,
+            scaffold_enforcement_carry=scaffold_enforcement_carry,
+        )
 
         # Issue #95: capture each correction step's outputs in its own variable
         # so the analyzer's classification/analysis_summary survive past the

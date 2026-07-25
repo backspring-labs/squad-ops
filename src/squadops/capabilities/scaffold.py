@@ -391,6 +391,37 @@ def fill_slot_paths(manifest: InterfaceManifest) -> tuple[str, ...]:
     return ("backend/routes.py", *dict.fromkeys(views))
 
 
+def error_seam_instructions(manifest: InterfaceManifest | None) -> list[str]:
+    """Authoritative error-contract lines for correction/repair prompts (pf-34).
+
+    The ``ApiError(code, message)`` raise convention and the code→status map are
+    scaffold-owned interface knowledge; they live in the manifest's
+    ``error_contract`` and in the fill-slot STUB's docstring — which dies the
+    moment the first fill replaces the stub. Repairs then guess the seam:
+    ``ApiError(status_code=..., detail=...)`` appeared in dev repairs on two
+    consecutive rolls (pf-33 corr-01, pf-34 corr-00 — every error path
+    TypeError→500 at runtime, failing the behavioral retest AFTER passing all
+    typed checks, which cannot see call signatures). These lines travel the
+    same failure_evidence → authoritative-block transport as interface drift
+    and frozen-ownership instructions. Empty when the manifest declares no
+    error contract (author mode, non-scaffold stacks).
+    """
+    ec = manifest.api.error_contract if manifest is not None else None
+    if ec is None or not ec.codes:
+        return []
+    code_map = ", ".join(f"`{c.code}` → {c.http}" for c in ec.codes)
+    return [
+        (
+            "on failure raise `ApiError(code, message)` (imported from `.errors`): the "
+            "FIRST argument is the error-code STRING, the second a human message — "
+            "never `ApiError(status_code=..., detail=...)` and never `HTTPException` "
+            "for contract errors; the frozen `errors.py` maps the code to the HTTP "
+            "status and renders the pinned envelope"
+        ),
+        f"valid error codes (code → HTTP status, mapped by frozen `errors.py`): {code_map}",
+    ]
+
+
 # SIP-0100 D1 (bounded-hybrid QA test ownership): the scaffold owns the *namespace* — the
 # deterministic directory prefixes a bound plan may declare concrete QA test files within — while
 # the plan declares the concrete paths. A QA producer may write only inside this surface; a QA

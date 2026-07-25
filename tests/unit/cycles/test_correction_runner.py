@@ -2688,3 +2688,84 @@ class TestOwnArtifactLocusRouting(TestCorrectionRunnerStandalone):
 
         repair_envelopes = [e for e in captured if e.task_type.endswith("_repair")]
         assert [e.task_type for e in repair_envelopes] == ["development.correction_repair"]
+
+
+class TestErrorContractEvidence(TestCorrectionRunnerStandalone):
+    """pf-34: the manifest's error-contract raise convention travels into
+    failure_evidence so analyze AND the repair prompt state the ApiError
+    signature authoritatively (the pf-33/pf-34 repair 500-class killer)."""
+
+    async def test_error_contract_injected_when_manifest_present(self, cycle):
+        from pathlib import Path as _Path
+
+        from squadops.capabilities.scaffold import InterfaceManifest
+
+        manifest = InterfaceManifest.from_yaml(
+            _Path("examples/03_group_run/interface_manifest.yaml").read_text(encoding="utf-8")
+        )
+        analyze_inputs: dict = {}
+
+        def responder(envelope):
+            if envelope.task_type == "data.analyze_failure":
+                analyze_inputs.update(envelope.inputs or {})
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={"classification": "work_product", "analysis_summary": "x"},
+                )
+            return TaskResult(
+                task_id=envelope.task_id,
+                status="SUCCEEDED",
+                outputs={"correction_path": "continue", "decision_rationale": "r"},
+            )
+
+        runner, _r, _v, _b = self._make_runner(responder)
+        await runner.run_correction_protocol(
+            run_id="run_001",
+            cycle=cycle,
+            envelope=self._failed_envelope(),
+            result=TaskResult(task_id="task_failed", status="FAILED", error="bad"),
+            correction_attempts=0,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+            interface_manifest=manifest,
+        )
+        evidence = analyze_inputs.get("failure_evidence") or {}
+        lines = evidence.get("error_contract") or []
+        assert any("ApiError(code, message)" in ln for ln in lines)
+        assert any("run_not_found" in ln for ln in lines)
+
+    async def test_absent_manifest_injects_nothing(self, cycle):
+        analyze_inputs: dict = {}
+
+        def responder(envelope):
+            if envelope.task_type == "data.analyze_failure":
+                analyze_inputs.update(envelope.inputs or {})
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={"classification": "work_product", "analysis_summary": "x"},
+                )
+            return TaskResult(
+                task_id=envelope.task_id,
+                status="SUCCEEDED",
+                outputs={"correction_path": "continue", "decision_rationale": "r"},
+            )
+
+        runner, _r, _v, _b = self._make_runner(responder)
+        await runner.run_correction_protocol(
+            run_id="run_001",
+            cycle=cycle,
+            envelope=self._failed_envelope(),
+            result=TaskResult(task_id="task_failed", status="FAILED", error="bad"),
+            correction_attempts=0,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+        )
+        assert "error_contract" not in (analyze_inputs.get("failure_evidence") or {})
