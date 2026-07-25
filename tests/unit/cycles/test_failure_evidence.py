@@ -304,9 +304,9 @@ class TestClassifyFailureLocus:
         }
         assert classify_failure_locus(self._evidence_with_check(row)) == FailureLocus.OWN_ARTIFACT
 
-    @pytest.mark.parametrize("exit_code", [2, 4, 5])
+    @pytest.mark.parametrize("exit_code", [2, 5])
     def test_suite_defect_exit_codes_are_own_artifact(self, exit_code):
-        """pytest 2=collection/interrupted, 4=usage error, 5=no tests collected:
+        """pytest 2=collection error in the test files, 5=no tests collected:
         the suite itself cannot run as a suite — the test artifact is the defect
         (pf-31's truncated-test collection crash lands here)."""
         row = {"check": "tests_pass", "executed": True, "exit_code": exit_code, "passed": False}
@@ -320,6 +320,15 @@ class TestClassifyFailureLocus:
 
     def test_pytest_internal_error_is_unknown(self):
         row = {"check": "tests_pass", "executed": True, "exit_code": 3, "passed": False}
+        assert classify_failure_locus(self._evidence_with_check(row)) == FailureLocus.UNKNOWN
+
+    def test_exit_four_is_unknown_dev_chain(self):
+        """pf-35 corr-01/02 regression: exit 4 (usage error) is AMBIGUOUS — a
+        conftest/app-import failure (accepted routes.py importing names the
+        frozen models.py never defined) surfaces as exit 4, and own-artifact
+        classification sent the qa role to re-author a suite that could never
+        fix the app's import. Ambiguity falls to the dev chain."""
+        row = {"check": "tests_pass", "executed": True, "exit_code": 4, "passed": False}
         assert classify_failure_locus(self._evidence_with_check(row)) == FailureLocus.UNKNOWN
 
     def test_not_executed_suite_is_unknown(self):

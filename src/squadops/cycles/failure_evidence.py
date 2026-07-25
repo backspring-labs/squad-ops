@@ -91,11 +91,16 @@ class FailureLocus:
     UNKNOWN = "unknown"
 
 
-# pytest exit codes that mean the SUITE could not run as a suite — collection
-# errors/interruption (2), usage error (4), no tests collected (5). Exit 1
-# (tests ran, some failed) is the subject's failure; 3 (pytest internal error)
-# stays UNKNOWN — neither artifact nor subject is implicated deterministically.
-_SUITE_DEFECT_EXIT_CODES = frozenset({2, 4, 5})
+# pytest exit codes that mean the SUITE ITSELF is the defect — collection
+# errors in the test files (2), no tests collected (5). Exit 1 (tests ran,
+# some failed) is the subject's failure. Exit 3 (pytest internal error) stays
+# UNKNOWN. Exit 4 (usage error) ALSO stays UNKNOWN → default dev chain:
+# pf-35 corr-01/02 proved it ambiguous — conftest/app-import failures (an
+# accepted routes.py importing names the frozen models.py never defined)
+# surface as exit 4, and classifying that own-artifact sent the qa role to
+# re-author a suite that could never fix the app's broken import. Ambiguity
+# falls toward the dev chain, per the same guard rationale as test-gaming.
+_SUITE_DEFECT_EXIT_CODES = frozenset({2, 5})
 
 
 def classify_failure_locus(failure_evidence: Any) -> str:
