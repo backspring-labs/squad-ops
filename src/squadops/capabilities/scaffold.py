@@ -546,6 +546,18 @@ def _python_surface(source: str) -> str:
         for node in tree.body
         if isinstance(node, ast.ClassDef)
     ]
+    # Module-level state is the whole public API of some frozen modules, and omitting it
+    # is how pf-43 died: `store.py` is two annotated dicts plus `reset()`, so an index
+    # listing only functions read as "an empty stub", and the plan author wrote a task to
+    # build the store it already had — five typed checks against a file no agent may
+    # change. A name the author cannot see is a name it will invent.
+    state = [
+        f"{stmt.target.id}: {ast.unparse(stmt.annotation)}"
+        for stmt in tree.body
+        if isinstance(stmt, ast.AnnAssign)
+        and isinstance(stmt.target, ast.Name)
+        and not stmt.target.id.startswith("_")
+    ]
     functions = [
         node.name
         for node in tree.body
@@ -557,6 +569,8 @@ def _python_surface(source: str) -> str:
     parts = []
     if classes:
         parts.append("defines " + ", ".join(classes))
+    if state:
+        parts.append("module state " + ", ".join(state))
     if functions:
         parts.append("functions " + ", ".join(functions))
     if modules:
