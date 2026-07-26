@@ -1,6 +1,6 @@
-"""Execution service HTTP surface (SIP-0102 §4.3 — phase 102.1 slice d).
+"""Sandbox service HTTP surface (SIP-0102 §4.3 — phase 102.1 slice d).
 
-The narrow authenticated API over the transport-agnostic ``ExecutionService``
+The narrow authenticated API over the transport-agnostic ``SandboxService``
 core. Conforms to the repo API lanes: authenticated resources under
 ``/api/v1``, ``/health`` as the unauthenticated read-only probe, errors in
 the resource-lane envelope ``{"error": {code, message, details}}``.
@@ -23,14 +23,14 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from squadops.execution.evidence import result_to_dict
-from squadops.execution.models import (
+from squadops.sandbox.evidence import result_to_dict
+from squadops.sandbox.models import (
     OperationName,
     RevisionOrigin,
     WorkspaceRevision,
 )
-from squadops.execution.service import ExecutionService
-from squadops.execution.workspace import (
+from squadops.sandbox.service import SandboxService
+from squadops.sandbox.workspace import (
     AlreadySeededError,
     StaleBaseRevisionError,
     WorkspaceEscapeError,
@@ -57,29 +57,29 @@ class OperationRequest(BaseModel):
     params: dict = Field(default_factory=dict)
 
 
-async def _op_install(service: ExecutionService, revision: WorkspaceRevision, params: dict):
+async def _op_install(service: SandboxService, revision: WorkspaceRevision, params: dict):
     return await service.install_dependencies(revision=revision)
 
 
-async def _op_build(service: ExecutionService, revision: WorkspaceRevision, params: dict):
+async def _op_build(service: SandboxService, revision: WorkspaceRevision, params: dict):
     return await service.build_frontend(revision=revision)
 
 
-async def _op_tests(service: ExecutionService, revision: WorkspaceRevision, params: dict):
+async def _op_tests(service: SandboxService, revision: WorkspaceRevision, params: dict):
     return await service.run_backend_tests(revision=revision)
 
 
-async def _op_start(service: ExecutionService, revision: WorkspaceRevision, params: dict):
+async def _op_start(service: SandboxService, revision: WorkspaceRevision, params: dict):
     return await service.start_application(revision=revision)
 
 
-async def _op_stop(service: ExecutionService, revision: WorkspaceRevision, params: dict):
+async def _op_stop(service: SandboxService, revision: WorkspaceRevision, params: dict):
     return await service.stop_application(
         revision=revision, cleanup_handle=params["cleanup_handle"]
     )
 
 
-async def _op_probe(service: ExecutionService, revision: WorkspaceRevision, params: dict):
+async def _op_probe(service: SandboxService, revision: WorkspaceRevision, params: dict):
     return await service.probe_http_endpoint(
         revision=revision,
         probe_id=params["probe_id"],
@@ -89,7 +89,7 @@ async def _op_probe(service: ExecutionService, revision: WorkspaceRevision, para
     )
 
 
-async def _op_patch(service: ExecutionService, revision: WorkspaceRevision, params: dict):
+async def _op_patch(service: SandboxService, revision: WorkspaceRevision, params: dict):
     return await service.apply_workspace_patch(
         base=revision,
         files=params["files"],
@@ -109,7 +109,7 @@ _OPERATIONS = {
 }
 
 
-async def _handle_seed(service: ExecutionService, cycle_id: str, body: SeedRequest) -> dict:
+async def _handle_seed(service: SandboxService, cycle_id: str, body: SeedRequest) -> dict:
     try:
         revision = service.seed_workspace(
             cycle_id, body.files, origin=body.origin, created_at=body.created_at
@@ -121,7 +121,7 @@ async def _handle_seed(service: ExecutionService, cycle_id: str, body: SeedReque
     return revision.to_dict()
 
 
-async def _handle_operate(service: ExecutionService, cycle_id: str, body: OperationRequest) -> dict:
+async def _handle_operate(service: SandboxService, cycle_id: str, body: OperationRequest) -> dict:
     try:
         revision = WorkspaceRevision.from_dict(body.revision)
     except (KeyError, ValueError) as e:
@@ -146,14 +146,14 @@ async def _handle_operate(service: ExecutionService, cycle_id: str, body: Operat
     return result_to_dict(result)
 
 
-def create_app(service: ExecutionService, *, service_token: str) -> FastAPI:
+def create_app(service: SandboxService, *, service_token: str) -> FastAPI:
     if not service_token:
         raise ValueError(
-            "execution service requires a service token "
-            "(SQUADOPS__EXECUTION__SERVICE_TOKEN) — it never runs unauthenticated"
+            "sandbox service requires a service token "
+            "(SQUADOPS__SANDBOX__SERVICE_TOKEN) — it never runs unauthenticated"
         )
 
-    app = FastAPI(title="SquadOps Execution Service", docs_url=None, redoc_url=None)
+    app = FastAPI(title="SquadOps Sandbox Service", docs_url=None, redoc_url=None)
 
     @app.exception_handler(HTTPException)
     async def _envelope_handler(request: Request, exc: HTTPException) -> JSONResponse:
@@ -170,7 +170,7 @@ def create_app(service: ExecutionService, *, service_token: str) -> FastAPI:
 
     @app.get("/health")
     async def health() -> dict:
-        return {"status": "ok", "service": "execution"}
+        return {"status": "ok", "service": "sandbox"}
 
     @app.post(
         "/api/v1/workspaces/{cycle_id}/seed",

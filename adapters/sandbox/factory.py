@@ -11,22 +11,22 @@ from __future__ import annotations
 from collections.abc import Mapping
 from pathlib import Path
 
-from adapters.execution.container_backend import ContainerBackend
+from adapters.sandbox.container_backend import ContainerBackend
 from adapters.tools.docker import DockerAdapter
-from squadops.config.schema import ExecutionConfig
+from squadops.config.schema import SandboxConfig
 from squadops.core.secrets import SecretManager
-from squadops.execution.evidence import OperationEvidenceJournal
-from squadops.execution.noop import NoOpExecutionSandbox
-from squadops.execution.service import ExecutionService
-from squadops.execution.workspace import WorkspaceStore
-from squadops.ports.execution import ExecutionSandboxPort
+from squadops.ports.sandbox import ExecutionSandboxPort
+from squadops.sandbox.evidence import OperationEvidenceJournal
+from squadops.sandbox.noop import NoOpExecutionSandbox
+from squadops.sandbox.service import SandboxService
+from squadops.sandbox.workspace import WorkspaceStore
 
 
-def create_execution_service(
-    config: ExecutionConfig,
+def create_sandbox_service(
+    config: SandboxConfig,
     *,
     operation_commands: Mapping[str, tuple[str, ...]] | None = None,
-) -> ExecutionService:
+) -> SandboxService:
     """Build the service core for the configured provider.
 
     ``operation_commands`` comes from the environment contract (102.2); until
@@ -40,9 +40,7 @@ def create_execution_service(
         backend: ExecutionSandboxPort | None = None
     elif config.provider == "docker":
         if not config.image:
-            raise ValueError(
-                "SQUADOPS__EXECUTION__IMAGE is required for execution provider 'docker'"
-            )
+            raise ValueError("SQUADOPS__SANDBOX__IMAGE is required for sandbox provider 'docker'")
         backend = ContainerBackend(
             container=DockerAdapter(),
             store=store,
@@ -51,20 +49,20 @@ def create_execution_service(
             app_port=config.app_port,
         )
     else:
-        raise ValueError(f"Unknown execution provider: {config.provider}")
-    return ExecutionService(store=store, journal=journal, backend=backend)
+        raise ValueError(f"Unknown sandbox provider: {config.provider}")
+    return SandboxService(store=store, journal=journal, backend=backend)
 
 
-def create_execution_sandbox(config: ExecutionConfig | None) -> ExecutionSandboxPort:
+def create_execution_sandbox(config: SandboxConfig | None) -> ExecutionSandboxPort:
     """The injectable port: NoOp unless explicitly configured (the parity
     guarantee — absent/default config ⇒ today's in-process behavior)."""
     if config is None or config.provider == "noop":
         return NoOpExecutionSandbox()
-    return create_execution_service(config)
+    return create_sandbox_service(config)
 
 
 def resolve_service_token(
-    config: ExecutionConfig, secret_manager: SecretManager | None = None
+    config: SandboxConfig, secret_manager: SecretManager | None = None
 ) -> str:
     """Resolve the service token, honoring secret:// references."""
     token = config.service_token

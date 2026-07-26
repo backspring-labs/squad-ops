@@ -2,8 +2,8 @@
 
 import pytest
 
-from squadops.execution.models import RevisionOrigin
-from squadops.execution.workspace import (
+from squadops.sandbox.models import RevisionOrigin
+from squadops.sandbox.workspace import (
     AlreadySeededError,
     StaleBaseRevisionError,
     WorkspaceEscapeError,

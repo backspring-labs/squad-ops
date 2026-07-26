@@ -1,4 +1,4 @@
-"""Execution service core (SIP-0102 §4.3 — phase 102.1 slice b).
+"""Sandbox service core (SIP-0102 §4.3 — phase 102.1 slice b).
 
 Transport-agnostic: this class owns workspace provisioning, revision
 bookkeeping, and evidence capture around every typed operation. The confirmed
@@ -18,8 +18,9 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from squadops.execution.evidence import OperationEvidenceJournal
-from squadops.execution.models import (
+from squadops.ports.sandbox import ExecutionSandboxPort
+from squadops.sandbox.evidence import OperationEvidenceJournal
+from squadops.sandbox.models import (
     BuildResult,
     DiagnosticsResult,
     InstallResult,
@@ -34,13 +35,12 @@ from squadops.execution.models import (
     TestRunResult,
     WorkspaceRevision,
 )
-from squadops.execution.workspace import WorkspaceStore
-from squadops.ports.execution import ExecutionSandboxPort
+from squadops.sandbox.workspace import WorkspaceStore
 
 _NO_BACKEND = "no execution backend configured"
 
 
-class ExecutionService(ExecutionSandboxPort):
+class SandboxService(ExecutionSandboxPort):
     """Workspace + evidence bookkeeping around a delegated execution backend."""
 
     def __init__(

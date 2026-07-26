@@ -3,14 +3,14 @@
 import httpx
 import pytest
 
-from adapters.execution.container_backend import ContainerBackend
-from squadops.execution.models import (
+from adapters.sandbox.container_backend import ContainerBackend
+from squadops.ports.tools.container import ContainerPort
+from squadops.sandbox.models import (
     OperationName,
     OperationStatus,
     RevisionOrigin,
 )
-from squadops.execution.workspace import WorkspaceStore
-from squadops.ports.tools.container import ContainerPort
+from squadops.sandbox.workspace import WorkspaceStore
 from squadops.tools.exceptions import ToolContainerError
 from squadops.tools.models import ContainerResult, ContainerSpec
 

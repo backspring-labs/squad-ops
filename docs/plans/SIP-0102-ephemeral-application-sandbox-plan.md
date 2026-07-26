@@ -39,7 +39,13 @@ it is authored.
   clean-room invariant, and the §7 acceptance items are standing — a PR that
   bends any of them is wrong regardless of green tests.
 - **Data-driven, no flag** (the 98/99 doctrine): sandbox presence is config
-  (`SQUADOPS__EXECUTION__*`) with a NoOp default; unconfigured ⇒ byte-identical behavior.
+  (`SQUADOPS__SANDBOX__*`) with a NoOp default; unconfigured ⇒ byte-identical behavior.
+- **Naming (decided 2026-07-26, post-102.1):** the domain/package/deployable name is
+  **sandbox** — `squadops.sandbox`, `adapters/sandbox`, `SQUADOPS__SANDBOX__*`, compose
+  `sandbox-service` — because "execution" collides with the repo's established
+  cycle-execution vocabulary (SIP-0064/65/66, the executors). The SIP's "execution
+  service" prose term maps to `sandbox-service`; `ExecutionSandboxPort` keeps its name
+  at the seam.
 - **Inert-to-merge (Spark campaign protection, Jason 2026-07-26):** while 98.5 /
   Phase-0 measurement campaigns are rolling, every merge to main must be dormant on
   an unconfigured stack — pure-addition modules (102.1/102.2), NoOp default, DDL
@@ -81,11 +87,11 @@ capture; **c** Docker adapter; **d** config/factory/NoOp wiring + parity guard.
   layer's internal contract. `WorkspaceRevision` model implementing §4.6 semantics
   (every op records a revision; boundaries: seeding / applied patch / promoted outputs;
   warm-attempt dirty state never referenceable; verification pins by content match).
-- **Execution service skeleton** (`src/squadops/execution/` proposed — confirm home at
-  review): narrow authenticated API, workspace provisioning (cycle-scoped, revision
-  capture), typed-op dispatch, TTL'd idempotent cleanup recoverable after restart
-  (§7 items 11–12), evidence capture that persists through orchestration crashes (#427).
-- **Docker adapter** (`adapters/execution/`) on `ContainerPort`
+- **Sandbox service skeleton** (`src/squadops/sandbox/` — confirmed home): narrow
+  authenticated API, workspace provisioning (cycle-scoped, revision capture), typed-op
+  dispatch, TTL'd idempotent cleanup recoverable after restart (§7 items 11–12),
+  evidence capture that persists through orchestration crashes (#427).
+- **Docker adapter** (`adapters/sandbox/`) on `ContainerPort`
   (`src/squadops/ports/tools/container.py`): resource limits + timeouts mandatory,
   privileged/host-networking forbidden, capabilities dropped, no host paths mountable
   outside the cycle workspace, network deny-by-default (§7 items 8–10).

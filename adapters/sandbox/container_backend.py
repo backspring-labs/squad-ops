@@ -28,7 +28,8 @@ from collections.abc import Callable, Mapping
 
 import httpx
 
-from squadops.execution.models import (
+from squadops.ports.tools.container import ContainerPort
+from squadops.sandbox.models import (
     BuildResult,
     DiagnosticsResult,
     InstallResult,
@@ -40,9 +41,8 @@ from squadops.execution.models import (
     TestRunResult,
     WorkspaceRevision,
 )
-from squadops.execution.noop import NoOpExecutionSandbox
-from squadops.execution.workspace import WorkspaceStore, WorkspaceStoreError
-from squadops.ports.tools.container import ContainerPort
+from squadops.sandbox.noop import NoOpExecutionSandbox
+from squadops.sandbox.workspace import WorkspaceStore, WorkspaceStoreError
 from squadops.tools.exceptions import ToolContainerError
 from squadops.tools.models import ContainerResult, ContainerSpec
 

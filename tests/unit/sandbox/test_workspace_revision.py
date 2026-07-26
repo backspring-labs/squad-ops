@@ -7,7 +7,7 @@ taxonomy.
 
 import pytest
 
-from squadops.execution.models import (
+from squadops.sandbox.models import (
     RevisionOrigin,
     WorkspaceRevision,
     compute_revision_id,

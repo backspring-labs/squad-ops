@@ -1,7 +1,7 @@
 """Execution sandbox domain (SIP-0102 — Ephemeral Application Sandbox)."""
 
-from squadops.execution.evidence import OperationEvidenceJournal, result_to_dict
-from squadops.execution.models import (
+from squadops.sandbox.evidence import OperationEvidenceJournal, result_to_dict
+from squadops.sandbox.models import (
     BuildResult,
     DiagnosticsResult,
     InstallResult,
@@ -18,9 +18,9 @@ from squadops.execution.models import (
     compute_revision_id,
     is_deliverable_failure,
 )
-from squadops.execution.noop import NoOpExecutionSandbox
-from squadops.execution.service import ExecutionService
-from squadops.execution.workspace import (
+from squadops.sandbox.noop import NoOpExecutionSandbox
+from squadops.sandbox.service import SandboxService
+from squadops.sandbox.workspace import (
     AlreadySeededError,
     StaleBaseRevisionError,
     WorkspaceEscapeError,
@@ -32,7 +32,7 @@ __all__ = [
     "AlreadySeededError",
     "BuildResult",
     "DiagnosticsResult",
-    "ExecutionService",
+    "SandboxService",
     "InstallResult",
     "NoOpExecutionSandbox",
     "OperationEvidenceJournal",

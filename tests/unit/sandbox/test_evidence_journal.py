@@ -1,7 +1,7 @@
 """Operation evidence journal (SIP-0102 §7 item 11 / #427 — phase 102.1 slice b)."""
 
-from squadops.execution.evidence import OperationEvidenceJournal, result_to_dict
-from squadops.execution.models import BuildResult, OperationName, OperationStatus
+from squadops.sandbox.evidence import OperationEvidenceJournal, result_to_dict
+from squadops.sandbox.models import BuildResult, OperationName, OperationStatus
 
 
 def _result(**overrides) -> BuildResult:

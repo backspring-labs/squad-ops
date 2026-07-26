@@ -6,7 +6,7 @@ failure — must be unrepresentable in the result model, not merely discouraged.
 
 import pytest
 
-from squadops.execution.models import (
+from squadops.sandbox.models import (
     BuildResult,
     OperationName,
     OperationStatus,
