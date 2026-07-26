@@ -250,6 +250,24 @@ class TestDevFocusedPromptRendered:
         assert "ApiError(code, message)" in prompt
         assert "run_not_found` → 404" in prompt
 
+    async def test_model_surface_lines_reach_the_initial_author(self):
+        """pf-45: the field vocabulary reaches repairs but not the first author, so the
+        dev guessed `pace` for the frozen model's `pace_target` and every POST /runs
+        raised into a 500 — through import- and compile-level checks untouched."""
+        handler = DevelopmentDevelopHandler()
+        handler._resolved_config = {"build_profile": "fullstack_fastapi_react"}
+        inputs = self._inputs(
+            model_surface=[
+                "`backend/models.py` defines EXACTLY: `RunEvent(id, title, pace_target)`",
+                "`backend/store.py` already defines `run_event_store` — import it",
+            ]
+        )
+        prompt = await handler._build_focused_prompt(inputs, self._renderer())
+
+        assert "MODEL SURFACE (authoritative" in prompt
+        assert "pace_target" in prompt
+        assert "run_event_store" in prompt
+
     async def test_non_scaffolded_stack_omits_scaffold_sections(self):
         """Bug caught: rendering fill-only/error-contract unconditionally would
         instruct an unscaffolded cycle to preserve a skeleton that isn't there."""

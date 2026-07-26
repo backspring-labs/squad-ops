@@ -755,8 +755,31 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         error_contract = await self._error_contract_section(renderer, inputs)
         if error_contract:
             variables["error_contract"] = error_contract
+        # pf-45: the model surface, same transport and same reasoning as the error
+        # contract above — the first fill guessed a field name (`pace` for the frozen
+        # model's `pace_target`) and every POST /runs raised into a 500.
+        model_surface = await self._model_surface_section(renderer, inputs)
+        if model_surface:
+            variables["model_surface"] = model_surface
         rendered = await renderer.render(
             "request.development_develop_fill_only_appendix", variables
+        )
+        return rendered.content
+
+    async def _model_surface_section(self, renderer: Any, inputs: dict | None) -> str:
+        """Render the MODEL SURFACE block from executor-threaded lines, or "".
+
+        The lines are manifest-derived data (``scaffold.model_surface_instructions``,
+        field-level signatures + the frozen store); all prose lives in the appendix
+        asset (CLAUDE.md #448).
+        """
+        lines = [str(line).strip() for line in ((inputs or {}).get("model_surface") or [])]
+        lines = [line for line in lines if line]
+        if not lines:
+            return ""
+        rendered = await renderer.render(
+            "request.development_develop_model_surface_appendix",
+            {"surface_lines": "\n".join(f"- {line}" for line in lines)},
         )
         return rendered.content
 
