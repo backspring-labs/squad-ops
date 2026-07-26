@@ -16,7 +16,7 @@ The single in-repo source of truth for where SIP-0102 stands — read this first
 
 | Phase | Milestone unlocked | State |
 |---|---|---|
-| 102.1 Execution boundary (service skeleton + workspace + Docker adapter) | the execution boundary exists | ⬜ not started |
+| 102.1 Execution boundary (service skeleton + workspace + Docker adapter) | the execution boundary exists | ✅ slices a–d complete on the feature branch (PR open); exit proven by the ASGI client→API→service→store E2E + parity guards; compose entry profile-guarded (`--profile sandbox`); interim shared-secret auth (Keycloak #326 upgrade pinned to 102.3) |
 | 102.2 Environment contract + canonical image + preflight | environment is a pinned, validated contract | ⬜ |
 | 102.3 Typed-op relocation of in-process exec sites | execution leaves the agent trust boundary | ⬜ |
 | 102.4 Clean-room verification + outcome integration | verdicts are clean-room and honestly named | ⬜ |
