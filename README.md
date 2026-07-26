@@ -3,7 +3,7 @@
 ## Overview
 **SquadOps** is an AI agent collaboration framework for software development. The system implements a role-based agent architecture where specialized agents handle different aspects of development tasks, from requirements analysis to application deployment.
 
-**Current Status**: v1.3.1 — Production-ready framework with hexagonal architecture, freshly stabilized in the first even/odd stabilization release (SIP-0097 executor decomposition, cycle-task handler package split, push-based agent comms, vendor-type-free ports) and hardened in the 1.3.1 patch (authed agent-status lane #326, FocusLease concurrency fix #288, QA-image Node #306, broker-hygiene doctor check #328), plus the Agent Embodiment Substrate (SIP-0090 Phase 1), the Cycle Create Preflight (SIP-0095), the completed Agent Runtime State platform (SIP-0089: runtime modes ambient/cycle/duty, single-writer coordinator, FocusLease arbitration, single-transaction UoW, RuntimeActivity observability), distributed cycle execution pipeline, multi-run cycle orchestration, workload protocols (planning, implementation, wrapup), cycle event system, correction protocol with checkpoint/resume, agent build capabilities, build convergence loop (SIP-0086), Prefect task-scoped log streaming (SIP-0087), Postgres-backed persistence, LangFuse observability, Keycloak authentication, CLI tooling, test quality enforcement, and 4,700+ passing tests.
+**Current Status**: v1.3.1 — Production-ready framework with hexagonal architecture, freshly stabilized in the first even/odd stabilization release (SIP-0097 executor decomposition, cycle-task handler package split, push-based agent comms, vendor-type-free ports) and hardened in the 1.3.1 patch (authed agent-status lane #326, FocusLease concurrency fix #288, QA-image Node #306, broker-hygiene doctor check #328), plus the Agent Embodiment Substrate (SIP-0090 Phase 1), the Cycle Create Preflight (SIP-0095), the completed Agent Runtime State platform (SIP-0089: runtime modes ambient/cycle/duty, single-writer coordinator, FocusLease arbitration, single-transaction UoW, RuntimeActivity observability), distributed cycle execution pipeline, multi-run cycle orchestration, workload protocols (planning, implementation, wrapup), cycle event system, correction protocol with checkpoint/resume, agent build capabilities, build convergence loop (SIP-0086), Prefect task-scoped log streaming (SIP-0087), Postgres-backed persistence, LangFuse observability, Keycloak authentication, CLI tooling, test quality enforcement, and 5,500+ passing tests.
 
 ---
 
@@ -118,7 +118,7 @@ Comprehensive documentation and protocols are available in `/docs/`:
 ├── accepted/         # Numbered, approved
 ├── implemented/      # Matched to code
 └── registry.yaml     # Canonical index
-/tests/               # Test suite (3,030+ tests)
+/tests/               # Test suite (5,500+ tests)
 ├── unit/             # Unit tests (mocked deps)
 ├── integration/      # Integration tests (real services)
 └── conftest.py       # Global fixtures

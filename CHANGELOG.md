@@ -5,6 +5,152 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+In-flight **1.4 arc — the Verified Canonical App Build** (133 merges since 1.3.1).
+Nothing below has shipped in a release. Lane M's golden-path stack (scaffold +
+verification contracts + frozen-file enforcement) is largely landed and under live
+measurement; **Lane S — the Ephemeral Application Sandbox — has not started and is the
+arc's critical path.** Entries are grouped by arc rather than listed per-PR; the volume
+here is dominated by the correction/repair loop, which had to converge before any of the
+scaffold work could be measured at all. Bare `#NNN` references in this section are **pull
+requests**; the issues they close are named in the PR bodies.
+
+### Added — the golden-path scaffold stack (Lane M)
+- **SIP-0099 Contract-First Build Scaffolding** — an interface manifest expands to a
+  deterministic walking skeleton, and dev tasks *fill declared slots* instead of
+  authoring structure. Phase-0.5 spike (#428 hand-written group_run manifest, #429
+  `fullstack_fastapi_react` expander proving the empty skeleton builds and boots) then
+  phases 99.1–99.3 (#482 expander canonicalization + skeleton CI gate, #486 manifest in
+  framing, #487 executor materialization + fill-only develop).
+- **SIP-0098 Verification Contracts** — acceptance criteria now come from a contract the
+  cycle is *bound* to, not authored per-plan. Proposed #475, accepted with implementation
+  plans #477; phases 98.1–98.4 (#478 contract schema, #483 expander emission +
+  emission-time gates, #488 orchestration binding — "bind, don't author", #489 behavioral
+  probe runner + coverage accounting); 98.5 migration slices (#491 live probe emission +
+  PRD v0.4 split, #493 `contract_gate emit` mode for operator seeding).
+- **SIP-0100 Scaffolded Test Harness and Frozen-File Enforcement** — frozen scaffold
+  files are restored when a producer rewrites them, and unauthorized slot emissions are
+  dropped. Prototype #538, accepted #539 with plan #540; phases 0–4 (#541 characterization,
+  #542 harness contract, #544 authorization spine + live frozen-ownership enforcement,
+  #547 evidence + QA write-scope, #548 contract-compliance circuit breaker, #549/#550
+  deterministic replay, path/atomicity matrix, no-regression).
+- **SIP-0101 Cycle Replay Harness** — proposed #594, revised #595, accepted with a
+  Phase-1 plan #596. Implementation deliberately held until the 98.5 baseline closes.
+- **`function_defined` acceptance check (#533)** — a style-immune "this file defines N
+  functions matching a prefix", replacing regex-on-source criteria that failed on
+  formatting rather than behavior.
+
+### Added — verification evidence integrity (SIP-0096, Phases 1–3)
+- **Phase 1 (#369):** the integrity core — pure aggregation, evidence families, and the
+  `blocked_unverified` verdict. Cycle-level `request_profile` provenance (#367).
+- **Phase 2:** task-result verification normalized into the ledger with honest-red guards
+  (#378); final-state resolution for re-verified checks (#386).
+- **Phase 3:** `CycleOutcome` roll-up pure core (#412), per-run `RunVerificationSummary`
+  persistence (#416), derive-on-read `CycleOutcome` + cycle-detail surface (#418).
+- **Check governance:** canonical framework-check registry rejecting unknown
+  `required_checks` ids (#396); required-check tooling parity at preflight + a `doctor`
+  verification category (#398); `required_files` enforced at run completion (#390) and
+  recorded as a `CheckResult` (#402, corrected builder seam #405); fullstack
+  `frontend_build` as evidence (#408).
+- **Honest verdicts:** a non-succeeded run never reads `accepted` on zero evidence
+  (#409); cycle outcome reconciles per-check evidence across runs (#446); typed
+  acceptance reaches the builder seam with wire-shape criteria coercion (#421).
+
+### Fixed — correction and repair convergence
+- **Repairs are verified behaviorally, not structurally.** Re-run the failed check on a
+  patch (#385); accept behaviorally-verified patches instead of re-rolling repaired tasks
+  (#413); re-execute repaired `qa.test` suites before acceptance (#461); reject patches
+  whose intra-package imports can't resolve (#592).
+- **Repair targeting** — a correct diagnosis is useless if the repair edits the wrong
+  file. Retarget onto the drifted source rather than the failing check's tests (#532);
+  target the union of drift files and the failing artifact (#534); dependency-scoped
+  targeting so no-drift `qa.test` failures reach the source under test (#536); the drift
+  branch reaches the fill-slot source (#554); repair artifacts re-homed onto expected
+  paths before overlay (#517).
+- **Repair context** — the recurring root cause was the system holding an authoritative
+  fact and never putting it in front of the agent that needed it. The dev repair gets the
+  same fill-only constraint as develop (#555); `resolved_config` threading + frozen
+  enforcement on the repair path (#562); deterministic interface-drift diagnosis feeds the
+  repair (#527); contract expectations, emission integrity and candidate-free workspaces
+  (#564); error-contract block, exit-4 locus, initial-QA expectations (#585); the initial
+  dev prompt carries the scaffold contract it was filling (#589); repairs are told the real
+  model names instead of guessing them (#604).
+- **Workspace correctness:** the correction workspace is re-resolved from live stored
+  artifacts each attempt, so the loop can see its own progress (#535).
+- **Policy and routing:** `continue` cannot discard executed-failed required checks (#449);
+  locus-keyed QA repair routing + emission recovery with aimed retry (#569); cancel reaches
+  the dispatch boundary so repairs stop on a cancelled run (#587); four shakedown fixes
+  raising roll-success odds (#505).
+- **Removed** the unconsumed `qa.validate_repair` step (#558) — its verdict was never read.
+
+### Fixed — the scaffold's own contract
+- Success status is declared in the manifest so the skeleton can satisfy its own probe
+  (#600), and is included in the content hash (#601).
+- The scaffold-owned status code is held inside fill slots (#602); the router takes no
+  prefix — stated in the stub and enforced on emission (#608).
+- The in-memory store the manifest already declares is emitted rather than left for the
+  planner to invent (#606).
+- The seeded scaffold reaches `qa.test` and `builder.assemble` (#445).
+
+### Fixed — acceptance checks and emission parsing
+- `import_present` matches relative imports (#437) and dotless specs (#442); the backend
+  import check imports package members by qualified name (#471); the delivered backend is
+  verified to import, not just its tests (#393).
+- `regex_match` criteria restricted to document artifacts — the style-lottery guard
+  (#468); AST checks skip non-Python files instead of erroring (#607).
+- A missing command binary skips instead of erroring (#463); failed suites disclose
+  exit-code meaning (#514); the coverage denominator comes from the bound contract rather
+  than dispatched checks (#513); behavioral rows are stamped with their contract criterion
+  ids (#519); unbound criteria attach to the tail `qa.test` at dispatch (#516).
+- Package dirs stay off the test runner's `PYTHONPATH` (#455); the runner refuses
+  non-pytest suites precisely, and the QA fragment gained a discovery contract (#518).
+- Fenced-parser hardening: nested fences (#432), path-prefix on the first body line (#490),
+  path-labelled headers and unterminated-at-EOF fences (#528).
+- Probe readiness accepts any HTTP response rather than only 200 on `/health` (#521);
+  create-probes expect 201, resolving a contract that contradicted the PRD it verifies
+  (#523); typed sample values for probes (#526).
+
+### Fixed — plan authoring and framing
+- A system plan-validation rejection re-rolls framing instead of killing the cycle (#525);
+  pre-gate plan rejection records a system gate decision instead of dying silently (#476);
+  the inter-workload gate stops the sequence on `returned_for_revision` (#467).
+- Plan substitution preserves the workload-invariant tail (#440); invariant tasks run in
+  canonical order, assemble before `qa.test` (#459); warning/info-severity criteria
+  violations are tolerated rather than rejecting the plan (#530).
+- Command-safelist lint at the authoring boundary + manifest retry runway (#425);
+  style-dependent regex criteria forbidden in guidance (#438); the bind-criteria proposer
+  leaves `criteria_refs` empty for contract-owned files (#537); the strategy proposer
+  supplies `guidance_id`, unblocking multi-role framing (#485); `qa.test` prompt content
+  routed through the fragment system (#450); test-isolation doctrine in the QA fragment
+  (#460).
+- Bind mode requires a framing-emitted interface manifest (#495) and seeds the canonical
+  one (#497).
+- Deterministic fill-slot binding at plan authoring landed (#552) and was **reverted**
+  (#553) to keep the measurement baseline free of an unvalidated confound.
+
+### Fixed — runtime and ops
+- Agent identity is never fabricated (#387); the agent secret is provisioned on deploy and
+  fails honestly when absent (#391); runtime-api application logging reaches stdout (#492);
+  `init: true` on agent containers reaps subprocess zombies (#543).
+- `runs retry` resolves `workload_type` positionally instead of defaulting to `None`
+  (#479); forwarding overrides are rebuilt from durable state on mid-sequence entry (#480).
+- group_run manifest path param renamed `{id}` → `{run_id}` (#565); anchored hash
+  replacement in `regen_fragment_manifest.py` (#453).
+
+### Removed
+- Vestigial analysis skills and their dead JSON parsing (#400).
+- The dead SIP-0.8.8 skill handler layer, end to end (#403).
+- Warmboot operational artifacts, with the era's lessons distilled for the book (#406).
+
+### Docs & SIP lifecycle
+- **Proposed:** Contract-First Build Scaffolding (#383), Verification Contracts (#475),
+  Cycle Replay Harness (#594), LLM Emission Contracts (#570), fine-grained issue
+  enumeration (#384), process lexicon (#599).
+- **Accepted:** SIP-0098 + SIP-0099 with both implementation plans (#477), SIP-0100
+  (#539, plan #540), SIP-0101 (#596).
+- Night triage runbook (#609); RuntimeActivity lifecycle requirements (#546); enum-shadow
+  architecture guardrail failing CI on status string-literal comparisons (#382); idea and
+  vision drafts tracked under `docs/ideas` (#366); CLI cheatsheet corrections (#499).
+
 ## [1.3.1] — 2026-07-08
 
 Hardening patch on the 1.3.0 stabilization line — the post-1.3.0 batch surfaced by
