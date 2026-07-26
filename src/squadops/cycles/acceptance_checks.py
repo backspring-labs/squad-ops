@@ -260,6 +260,27 @@ def _decorator_route(decorator: ast.expr) -> tuple[str, str] | None:
     return None
 
 
+# Every AST-based check parses Python. Handed anything else, `ast.parse` raises and the
+# check reports `error` — which `patch_verification` maps to `evaluator_error:<check>` and
+# turns into an UNVERIFIABLE patch: neither accepted nor rejected, so it lands unverified.
+# pf-41 lost a roll to exactly that (a `function_defined` aimed at a `.jsx` test file), and
+# the contrast with pf-40 is the proof: same bad repairs, but there verification returned a
+# verdict, rejected them, and nothing landed. Skipping is the honest outcome for a file we
+# cannot analyse — `import_present` already did this; the other four did not (#605).
+_FRONTEND_SUFFIXES = frozenset({".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"})
+
+
+def _unparseable_source_skip(file_path: Path) -> CheckOutcome | None:
+    """A skip outcome when ``file_path`` is not Python, else None."""
+    ext = file_path.suffix.lower()
+    if ext in _FRONTEND_SUFFIXES:
+        # JS/TS analysis is gated behind the frontend_acceptance_checks follow-up.
+        return CheckOutcome.skipped(reason="frontend_acceptance_checks_disabled")
+    if ext != ".py":
+        return CheckOutcome.skipped(reason="unsupported_file_extension")
+    return None
+
+
 @register_check("endpoint_defined")
 class EndpointDefinedCheck(BaseCheck):
     """FastAPI route decorator presence — `@app.METHOD('/path')` / `@router.METHOD('/path')`."""
@@ -277,6 +298,8 @@ class EndpointDefinedCheck(BaseCheck):
             file_path = _safe_resolve(params["file"], workspace_root)
         except _SafetyError as exc:
             return CheckOutcome.error(reason=exc.reason)
+        if (skip := _unparseable_source_skip(file_path)) is not None:
+            return skip
         if not file_path.is_file():
             return CheckOutcome.failed(reason="file_not_found", file=str(params["file"]))
         try:
@@ -334,13 +357,8 @@ class ImportPresentCheck(BaseCheck):
         except _SafetyError as exc:
             return CheckOutcome.error(reason=exc.reason)
 
-        ext = file_path.suffix.lower()
-        if ext in {".ts", ".js"}:
-            # JS/TS regex fallback gated behind frontend_acceptance_checks
-            # follow-up flag — out of scope for M1.2.
-            return CheckOutcome.skipped(reason="frontend_acceptance_checks_disabled")
-        if ext != ".py":
-            return CheckOutcome.skipped(reason="unsupported_file_extension")
+        if (skip := _unparseable_source_skip(file_path)) is not None:
+            return skip
 
         if not file_path.is_file():
             return CheckOutcome.failed(reason="file_not_found", file=str(params["file"]))
@@ -439,6 +457,8 @@ class FieldPresentCheck(BaseCheck):
             file_path = _safe_resolve(params["file"], workspace_root)
         except _SafetyError as exc:
             return CheckOutcome.error(reason=exc.reason)
+        if (skip := _unparseable_source_skip(file_path)) is not None:
+            return skip
         if not file_path.is_file():
             return CheckOutcome.failed(reason="file_not_found", file=str(params["file"]))
         try:
@@ -504,6 +524,8 @@ class FunctionDefinedCheck(BaseCheck):
             file_path = _safe_resolve(params["file"], workspace_root)
         except _SafetyError as exc:
             return CheckOutcome.error(reason=exc.reason)
+        if (skip := _unparseable_source_skip(file_path)) is not None:
+            return skip
         if not file_path.is_file():
             return CheckOutcome.failed(reason="file_not_found", file=str(params["file"]))
         try:
@@ -596,6 +618,8 @@ class HarnessBoundaryCheck(BaseCheck):
             file_path = _safe_resolve(params["file"], workspace_root)
         except _SafetyError as exc:
             return CheckOutcome.error(reason=exc.reason)
+        if (skip := _unparseable_source_skip(file_path)) is not None:
+            return skip
         if not file_path.is_file():
             return CheckOutcome.failed(reason="file_not_found", file=str(params["file"]))
         try:
