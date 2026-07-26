@@ -67,3 +67,26 @@ class ContainerPort(ABC):
             Health status dictionary with at least {"healthy": bool}
         """
         ...
+
+    @abstractmethod
+    async def run_detached(self, spec: ContainerSpec) -> str:
+        """Start a container without waiting for it to exit (SIP-0102 runtime
+        unit). Ports listed in ``spec.publish_ports`` are published to
+        loopback-only ephemeral host ports.
+
+        Returns:
+            The started container's id (use with stop/logs/resolve_host_port)
+
+        Raises:
+            ToolContainerError: Container could not be started
+        """
+        ...
+
+    @abstractmethod
+    async def resolve_host_port(self, container_id: str, container_port: int) -> int:
+        """The ephemeral host port a published container port was mapped to.
+
+        Raises:
+            ToolContainerError: Mapping could not be resolved
+        """
+        ...

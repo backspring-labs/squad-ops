@@ -20,6 +20,7 @@ from squadops.execution.models import (
     ProbeResult,
     RevisionOrigin,
     StartResult,
+    StopResult,
     TestRunResult,
     WorkspaceRevision,
 )
@@ -53,6 +54,11 @@ class NoOpExecutionSandbox(ExecutionSandboxPort):
 
     async def start_application(self, *, revision: WorkspaceRevision) -> StartResult:
         return StartResult(**self._common(OperationName.START_APPLICATION, revision.revision_id))
+
+    async def stop_application(
+        self, *, revision: WorkspaceRevision, cleanup_handle: str
+    ) -> StopResult:
+        return StopResult(**self._common(OperationName.STOP_APPLICATION, revision.revision_id))
 
     async def probe_http_endpoint(
         self,

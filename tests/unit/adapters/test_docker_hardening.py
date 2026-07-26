@@ -54,5 +54,44 @@ async def test_default_spec_emits_no_hardening_flags(captured):
     invocations must stay byte-identical (the inert-to-merge guarantee)."""
     await DockerAdapter().run(ContainerSpec(image="img", command=["true"]))
     args = captured[0]
-    for flag in ("--network", "--memory", "--cpus", "--pids-limit", "--cap-drop", "--security-opt"):
+    for flag in (
+        "--network",
+        "--memory",
+        "--cpus",
+        "--pids-limit",
+        "--cap-drop",
+        "--security-opt",
+        "-p",
+    ):
         assert flag not in args
+
+
+async def test_run_detached_publishes_to_loopback_and_returns_id(monkeypatch):
+    """Bug caught: a published app port bound to 0.0.0.0 (host-wide exposure)
+    instead of loopback, or the container id lost — probes and teardown would
+    have nothing to address."""
+    calls = []
+
+    async def fake_run_docker(self, *args, timeout=None):
+        calls.append(args)
+        return 0, "abc123\n", ""
+
+    monkeypatch.setattr(DockerAdapter, "_run_docker", fake_run_docker)
+    container_id = await DockerAdapter().run_detached(
+        ContainerSpec(image="img", command=["serve"], publish_ports=(8000,))
+    )
+    assert container_id == "abc123"
+    args = list(calls[0])
+    assert args[:3] == ["run", "-d", "--rm"]
+    assert args[args.index("-p") + 1] == "127.0.0.1:0:8000"
+
+
+async def test_resolve_host_port_parses_docker_port_output(monkeypatch):
+    """Bug caught: the ephemeral port mapping misparsed — every probe would
+    target the wrong port and fail an app that is actually healthy."""
+
+    async def fake_run_docker(self, *args, timeout=None):
+        return 0, "127.0.0.1:49153\n", ""
+
+    monkeypatch.setattr(DockerAdapter, "_run_docker", fake_run_docker)
+    assert await DockerAdapter().resolve_host_port("abc123", 8000) == 49153

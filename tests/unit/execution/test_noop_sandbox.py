@@ -27,6 +27,7 @@ async def test_every_operation_returns_not_run_without_raising():
         await sandbox.probe_http_endpoint(
             revision=REV, probe_id="p1", method="GET", path="/health"
         ),
+        await sandbox.stop_application(revision=REV, cleanup_handle="h1"),
         await sandbox.apply_workspace_patch(base=REV, files={"backend/main.py": "x"}),
         await sandbox.read_build_diagnostics(revision=REV),
     ]

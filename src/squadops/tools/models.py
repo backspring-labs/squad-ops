@@ -29,6 +29,9 @@ class ContainerSpec:
     pids_limit: int | None = None
     cap_drop_all: bool = False
     no_new_privileges: bool = False
+    # Container ports to publish to loopback-only ephemeral host ports
+    # (rendered as `-p 127.0.0.1:0:<port>`). Empty = nothing published.
+    publish_ports: tuple[int, ...] = ()
 
 
 # NOTE: Container volume host paths are NOT validated against PathSecurityPolicy in 0.8.7.

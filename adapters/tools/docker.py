@@ -79,9 +79,11 @@ class DockerAdapter(ContainerPort):
         except Exception as e:
             raise ToolContainerError(f"Docker command failed: {e}") from e
 
-    async def run(self, spec: ContainerSpec) -> ContainerResult:
-        """Run a container."""
-        args = ["run", "--rm"]
+    @staticmethod
+    def _render_run_args(spec: ContainerSpec) -> list[str]:
+        """Render a spec into `docker run` arguments (shared by foreground and
+        detached runs)."""
+        args: list[str] = []
 
         # Add environment variables
         for key, value in spec.env:
@@ -109,6 +111,8 @@ class DockerAdapter(ContainerPort):
             args.extend(["--cap-drop", "ALL"])
         if spec.no_new_privileges:
             args.extend(["--security-opt", "no-new-privileges"])
+        for port in spec.publish_ports:
+            args.extend(["-p", f"127.0.0.1:0:{port}"])
 
         # Add image
         args.append(spec.image)
@@ -117,8 +121,14 @@ class DockerAdapter(ContainerPort):
         if spec.command:
             args.extend(spec.command)
 
+        return args
+
+    async def run(self, spec: ContainerSpec) -> ContainerResult:
+        """Run a container."""
         exit_code, stdout, stderr = await self._run_docker(
-            *args,
+            "run",
+            "--rm",
+            *self._render_run_args(spec),
             timeout=spec.timeout_seconds,
         )
 
@@ -128,6 +138,36 @@ class DockerAdapter(ContainerPort):
             stdout=stdout,
             stderr=stderr,
         )
+
+    async def run_detached(self, spec: ContainerSpec) -> str:
+        """Start a container detached; returns its id."""
+        exit_code, stdout, stderr = await self._run_docker(
+            "run",
+            "-d",
+            "--rm",
+            *self._render_run_args(spec),
+            timeout=spec.timeout_seconds,
+        )
+        if exit_code != 0:
+            raise ToolContainerError(f"Failed to start container: {stderr}")
+        container_id = stdout.strip().splitlines()[-1] if stdout.strip() else ""
+        if not container_id:
+            raise ToolContainerError("docker run -d returned no container id")
+        return container_id
+
+    async def resolve_host_port(self, container_id: str, container_port: int) -> int:
+        """Resolve a published container port to its ephemeral host port."""
+        exit_code, stdout, stderr = await self._run_docker(
+            "port", container_id, str(container_port)
+        )
+        if exit_code != 0:
+            raise ToolContainerError(f"Failed to resolve port mapping: {stderr}")
+        # Output shape: "127.0.0.1:49153" (possibly one line per protocol).
+        for line in stdout.splitlines():
+            host_part = line.strip().rsplit(":", 1)
+            if len(host_part) == 2 and host_part[1].isdigit():
+                return int(host_part[1])
+        raise ToolContainerError(f"Unparseable port mapping output: {stdout!r}")
 
     async def stop(self, container_id: str) -> None:
         """Stop a running container."""

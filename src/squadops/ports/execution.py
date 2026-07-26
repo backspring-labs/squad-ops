@@ -24,6 +24,7 @@ from squadops.execution.models import (
     ProbeResult,
     RevisionOrigin,
     StartResult,
+    StopResult,
     TestRunResult,
     WorkspaceRevision,
 )
@@ -52,6 +53,15 @@ class ExecutionSandboxPort(ABC):
     async def start_application(self, *, revision: WorkspaceRevision) -> StartResult:
         """Start the assembled application in the runtime unit and await
         readiness; the result carries endpoint handles and a cleanup handle."""
+        ...
+
+    @abstractmethod
+    async def stop_application(
+        self, *, revision: WorkspaceRevision, cleanup_handle: str
+    ) -> StopResult:
+        """Tear down a started application runtime using the cleanup handle
+        its ``start_application`` result carried. Converges: stopping an
+        already-gone runtime succeeds."""
         ...
 
     @abstractmethod

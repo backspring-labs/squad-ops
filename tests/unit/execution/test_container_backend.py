@@ -45,6 +45,13 @@ class FakeContainer(ContainerPort):
     async def health(self) -> dict:  # pragma: no cover - unused
         return {"healthy": True}
 
+    async def run_detached(self, spec: ContainerSpec) -> str:
+        self.specs.append(spec)
+        return "cid-detached"
+
+    async def resolve_host_port(self, container_id: str, container_port: int) -> int:
+        return 49999
+
 
 @pytest.fixture
 def store(tmp_path):
@@ -143,9 +150,11 @@ class TestContractAndPinning:
         with pytest.raises(WorkspaceStoreError, match="does not match declared"):
             await _backend(FakeContainer(), store).build_frontend(revision=seeded)
 
-    async def test_runtime_unit_ops_stay_honestly_not_run(self, store, seeded):
-        """Bug caught: c2's unimplemented start_application claiming anything
-        other than not_run."""
+    async def test_start_without_provided_command_is_explicit_not_run(self, store, seeded):
+        """Bug caught: a runtime unit booted with a guessed start command when
+        the environment declared none — the advertised-vs-provided rule
+        applies to the runtime unit exactly as to the build runner."""
         result = await _backend(FakeContainer(), store).start_application(revision=seeded)
         assert result.ran is False
         assert result.status == OperationStatus.NOT_RUN
+        assert "provides no command" in result.unavailable_reason

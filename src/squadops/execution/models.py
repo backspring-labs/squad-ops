@@ -51,6 +51,7 @@ class OperationName:
     BUILD_FRONTEND = "build_frontend"
     RUN_BACKEND_TESTS = "run_backend_tests"
     START_APPLICATION = "start_application"
+    STOP_APPLICATION = "stop_application"
     PROBE_HTTP_ENDPOINT = "probe_http_endpoint"
     APPLY_WORKSPACE_PATCH = "apply_workspace_patch"
     READ_BUILD_DIAGNOSTICS = "read_build_diagnostics"
@@ -61,6 +62,7 @@ class OperationName:
             BUILD_FRONTEND,
             RUN_BACKEND_TESTS,
             START_APPLICATION,
+            STOP_APPLICATION,
             PROBE_HTTP_ENDPOINT,
             APPLY_WORKSPACE_PATCH,
             READ_BUILD_DIAGNOSTICS,
@@ -209,6 +211,11 @@ class StartResult(OperationResult):
     ready: bool = False
     startup_diagnostics: tuple[str, ...] = ()
     cleanup_handle: str | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class StopResult(OperationResult):
+    detail: str | None = None
 
 
 @dataclass(frozen=True, kw_only=True)

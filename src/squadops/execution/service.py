@@ -30,6 +30,7 @@ from squadops.execution.models import (
     ProbeResult,
     RevisionOrigin,
     StartResult,
+    StopResult,
     TestRunResult,
     WorkspaceRevision,
 )
@@ -124,6 +125,18 @@ class ExecutionService(ExecutionSandboxPort):
             StartResult,
             revision,
             lambda: self._backend.start_application(revision=revision),
+        )
+
+    async def stop_application(
+        self, *, revision: WorkspaceRevision, cleanup_handle: str
+    ) -> StopResult:
+        return await self._delegate(
+            OperationName.STOP_APPLICATION,
+            StopResult,
+            revision,
+            lambda: self._backend.stop_application(
+                revision=revision, cleanup_handle=cleanup_handle
+            ),
         )
 
     async def probe_http_endpoint(
