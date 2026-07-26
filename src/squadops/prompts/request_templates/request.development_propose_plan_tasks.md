@@ -13,6 +13,7 @@ optional_variables:
   - typed_acceptance_vocabulary
   - scaffold_section
   - bind_criteria_section
+  - frozen_surface_section
 ---
 You are proposing development-domain plan tasks for the upcoming build.
 
@@ -72,3 +73,5 @@ confidence: ""  # low | medium | high
 
 {{scaffold_section}}
 {{bind_criteria_section}}
+
+{{frozen_surface_section}}
