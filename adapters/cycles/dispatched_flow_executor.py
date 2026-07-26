@@ -1700,11 +1700,22 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # to learn what the scaffold already knew. Data only; the block's prose
         # lives in a managed prompt asset.
         if envelope.task_type in self._ERROR_SEAM_TASK_TYPES:
-            from squadops.capabilities.scaffold import error_seam_instructions
+            from squadops.capabilities.scaffold import (
+                error_seam_instructions,
+                model_surface_instructions,
+            )
 
             error_lines = error_seam_instructions(interface_manifest)
             if error_lines:
                 extra_inputs["error_contract"] = error_lines
+            # pf-45: the model surface, to the INITIAL author on the same transport.
+            # Repairs have carried it since #604; the first fill never did, so the dev
+            # guessed a field name (`pace` for `pace_target`) and every POST /runs
+            # raised into a 500 — a correction spent learning what the scaffold already
+            # knew. Field-level since pf-45 for the same reason.
+            surface_lines = model_surface_instructions(interface_manifest)
+            if surface_lines:
+                extra_inputs["model_surface"] = surface_lines
 
         # Pre-resolve artifact contents for build tasks (D3). Fresh dispatches
         # see the ACCEPTED state only (pf-31 Fix E): rejected repair candidates

@@ -626,9 +626,45 @@ class TestModelSurfaceInstructions:
         ]
         assert defined, "fixture sanity: models.py should define classes"
         for name in defined:
-            assert f"`{name}`" in blob, (
+            # field-level since pf-45: names render as signatures, `RunEvent(id, ...)`
+            assert f"`{name}(" in blob, (
                 f"{name} is defined in models.py but not named to the repair"
             )
+
+    def test_field_names_are_exact_and_field_level(self):
+        """pf-45: class names alone did not carry the surface a fill body touches — the
+        dev wrote `pace=data.pace` against a model declaring `pace_target`, and every
+        POST /runs raised into a 500. The block must name the fields, not just the class."""
+        from squadops.capabilities.scaffold import model_surface_instructions
+
+        blob = " ".join(model_surface_instructions(_group_run_manifest()))
+
+        assert "pace_target" in blob
+        assert "`RunEvent(id, title, datetime, location, distance, pace_target" in blob
+        assert "`RunEventCreate(title, datetime, location" in blob
+
+    def test_the_frozen_store_is_named_with_its_actual_store_names(self):
+        """pf-45's second defect: the dev re-declared local store dicts, shadowing
+        backend/store.py — reset() then cleared the unused stores and test isolation
+        silently broke. The block names the real stores so there is nothing to invent."""
+        from squadops.capabilities.scaffold import model_surface_instructions
+
+        blob = " ".join(model_surface_instructions(_group_run_manifest()))
+
+        assert "`backend/store.py`" in blob
+        assert "`run_event_store`" in blob
+        assert "`participant_store`" in blob
+        assert "reset()" in blob
+
+    def test_non_memory_persistence_omits_the_store_line(self):
+        from squadops.capabilities.scaffold import model_surface_instructions
+
+        raw = _raw_manifest()
+        raw["persistence"] = "external"
+        lines = model_surface_instructions(InterfaceManifest.from_dict(raw))
+
+        assert lines, "model lines still render"
+        assert not any("store.py" in ln for ln in lines)
 
     def test_the_names_pf41_invented_are_not_presented_as_valid(self):
         """The five names pf-41's last repair imported do not exist. They may appear in

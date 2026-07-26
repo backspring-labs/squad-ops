@@ -848,6 +848,31 @@ class TestErrorSeamThreading:
         assert "never `ApiError(status_code=..., detail=...)`" in joined
         assert "run_not_found` → 404" in joined
 
+    async def test_dev_envelope_carries_the_model_surface(self, executor) -> None:
+        """pf-45: repairs have had the model surface since #604; the first author did
+        not, guessed `pace` for the frozen model's `pace_target`, and every POST /runs
+        raised into a 500 — a correction spent learning what the scaffold already knew."""
+        enriched = await executor._enrich_envelope(
+            self._envelope("development.develop"),
+            {},
+            [],
+            [],
+            interface_manifest=self._manifest(),
+        )
+
+        lines = enriched.inputs.get("model_surface")
+        assert lines, "development.develop envelope carries no model surface"
+        joined = " ".join(lines)
+        assert "pace_target" in joined  # field-level — the exact pf-45 token
+        assert "run_event_store" in joined  # the frozen store the dev shadowed
+
+    async def test_model_surface_follows_the_same_gating_as_the_error_seam(self, executor) -> None:
+        for task_type, manifest in (("qa.test", self._manifest()), ("development.develop", None)):
+            enriched = await executor._enrich_envelope(
+                self._envelope(task_type), {}, [], [], interface_manifest=manifest
+            )
+            assert "model_surface" not in enriched.inputs
+
     async def test_non_authoring_task_types_are_not_given_the_seam(self, executor) -> None:
         """Bug caught: blanket attachment pushes fill-slot authoring instructions
         into roles that do not author into the scaffold (a qa suite told to raise

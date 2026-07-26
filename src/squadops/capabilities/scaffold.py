@@ -482,19 +482,39 @@ def model_surface_instructions(manifest: InterfaceManifest | None) -> list[str]:
     ``failure_evidence`` → authoritative-block transport as the error seam and frozen
     ownership.
 
+    Field-level since pf-45: class names alone did not carry the surface a fill body
+    actually touches. pf-45's dev wrote ``pace=data.pace`` against a model declaring
+    ``pace_target`` — a one-token invention this block could not have prevented, because
+    it named the classes and not their fields. Every POST /runs raised into a 500. The
+    signature form makes the field vocabulary exact for both consumers of this transport
+    (the initial fill prompt and the repair prompt).
+
+    Also names the frozen store: pf-45's dev re-declared local store dicts in the fill
+    slot, shadowing ``backend/store.py`` — the scaffold's ``reset()`` then cleared the
+    unused stores, so test isolation silently broke.
+
     Empty when there is no manifest (author mode, non-scaffold stacks) — additive, like
     every other entry on that transport.
     """
     if manifest is None:
         return []
-    names = [e.name for e in manifest.entities] + [s.name for s in manifest.api.request_shapes]
-    if not names:
+    signatures = [f"`{e.name}({', '.join(f.name for f in e.fields)})`" for e in manifest.entities]
+    signatures += [
+        f"`{s.name}({', '.join(dict.fromkeys(list(s.required) + list(s.optional)))})`"
+        for s in manifest.api.request_shapes
+    ]
+    if not signatures:
         return []
-    exact = ", ".join(f"`{n}`" for n in dict.fromkeys(names))
-    return [
+    lines = [
         (
-            f"`backend/models.py` is scaffold-frozen and defines EXACTLY these names: {exact}. "
-            "Import only from this list — these are the complete contents of that module"
+            "`backend/models.py` is scaffold-frozen and defines EXACTLY these names: "
+            f"{', '.join(dict.fromkeys(signatures))}. Import only from this list — these "
+            "are the complete contents of that module"
+        ),
+        (
+            "field names are exact — construct and read models with the fields shown above; "
+            "a near-miss (`pace` for `pace_target`, `meeting_location` for `location`) raises "
+            "at request time and every affected endpoint returns HTTP 500"
         ),
         (
             "do NOT invent model names or aliases (`Run`, `RunCreate`, `RunResponse`, "
@@ -506,6 +526,16 @@ def model_surface_instructions(manifest: InterfaceManifest | None) -> list[str]:
             "and shape the response in the fill slot; do not edit or re-emit the model module"
         ),
     ]
+    if manifest.persistence == "in_memory":
+        stores = ", ".join(f"`{_snake(e.name)}_store`" for e in manifest.entities)
+        lines.append(
+            f"`backend/store.py` is scaffold-frozen and already defines the in-memory "
+            f"stores: {stores} (plus `reset()` for test isolation). Import them "
+            "(`from .store import ...`); do NOT declare your own store dicts — a shadow "
+            "store is invisible to `reset()`, so state leaks between tests and the suite "
+            "fails on isolation"
+        )
+    return lines
 
 
 def _class_field_names(node: ast.ClassDef) -> list[str]:
