@@ -393,6 +393,17 @@ class TestStatusCodeKeywordAlreadyPresent:
         ast.parse(out)  # the actual regression: this used to raise
         assert out.count("status_code=") == 1
         assert "status.HTTP_201_CREATED" in out
+        # HTTP_201_CREATED names the declared code — correct code, no "problem" row.
+        # Divergence evidence feeds repair context; reporting right code invites churn.
+        assert not [d for d in divs if "status_code" in d.detail]
+
+    def test_symbolic_status_code_naming_a_different_code_is_reported(self):
+        emitted = self._emitted('@router.post("/runs", status_code=status.HTTP_200_OK)')
+
+        out, divs = restore_declared_status_codes(self.SEED, emitted)
+
+        ast.parse(out)
+        assert "status.HTTP_200_OK" in out  # left as written, never rewritten
         status_divs = [d for d in divs if "status_code" in d.detail]
         assert len(status_divs) == 1
         assert status_divs[0].restored is False
@@ -440,3 +451,72 @@ class TestStatusCodeKeywordAlreadyPresent:
             out, _ = restore_declared_status_codes(self.SEED, self._emitted(decorator))
             ast.parse(out)
             assert out.count("status_code=") <= 1, decorator
+
+
+class TestMultiLineDecorators:
+    """The insertion must survive real-world formatting, not only the single-line shape.
+
+    Black formats a long decorator with one argument per line and a trailing comma. The
+    comma-prefixed insertion landed right after that trailing comma — double comma,
+    SyntaxError, unimportable module: the exact corruption class this module exists to
+    never emit, through a shape the original tests never swept.
+    """
+
+    SEED = (
+        '@router.post("/runs", response_model=RunEvent, status_code=201)\n'
+        "def create_run(payload: RunEventCreate):\n"
+        "    ...\n"
+    )
+
+    def test_trailing_comma_black_style(self):
+        emitted = (
+            "@router.post(\n"
+            '    "/runs",\n'
+            "    response_model=RunEvent,\n"
+            ")\n"
+            "def create_run(payload):\n"
+            "    return None\n"
+        )
+
+        out, divs = restore_declared_status_codes(self.SEED, emitted)
+
+        ast.parse(out)  # the regression: double comma used to make this raise
+        assert out.count("status_code=201") == 1
+        assert [d.restored for d in divs if "status_code" in d.detail] == [True]
+
+    def test_multi_line_without_trailing_comma(self):
+        emitted = (
+            "@router.post(\n"
+            '    "/runs",\n'
+            "    response_model=RunEvent\n"
+            ")\n"
+            "def create_run(payload):\n"
+            "    return None\n"
+        )
+
+        out, _ = restore_declared_status_codes(self.SEED, emitted)
+
+        ast.parse(out)
+        assert out.count("status_code=201") == 1
+
+
+class TestParseBackstop:
+    """The invariant by construction: never hand back source that parses worse than
+    what was received. If a splice ever produces unparseable output through a shape not
+    yet enumerated, the whole restore is abandoned and the evidence says so."""
+
+    SEED = '@router.post("/runs", status_code=201)\ndef create_run(payload):\n    ...\n'
+
+    def test_unparseable_result_returns_producer_bytes_and_downgrades_evidence(self, monkeypatch):
+        import squadops.cycles.fill_slot_integrity as fsi
+
+        emitted = '@router.post("/runs")\ndef create_run(payload):\n    return None\n'
+        monkeypatch.setattr(fsi, "_apply_splices", lambda source, splices: source + "\ndef (:")
+
+        out, divs = restore_declared_status_codes(self.SEED, emitted)
+
+        assert out == emitted  # producer bytes untouched
+        status_divs = [d for d in divs if "status_code" in d.detail]
+        assert len(status_divs) == 1
+        assert status_divs[0].restored is False  # the evidence never claims a dead restore
+        assert "restore abandoned" in status_divs[0].detail

@@ -48,7 +48,7 @@ from __future__ import annotations
 
 import ast
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 _ROUTER_METHODS = frozenset({"get", "post", "put", "patch", "delete", "head", "options"})
 _PARAM = re.compile(r"\{[^}]*\}")
@@ -241,6 +241,15 @@ def _reconcile_status_code(
         )
         return
 
+    if re.search(rf"(?<!\d){declared}(?!\d)", kw.text):
+        # ``status.HTTP_201_CREATED`` spells the declared code in its own name — the
+        # idiomatic form of exactly what the scaffold asked for. Reporting it as a
+        # divergence would put a "problem" row on correct code, and divergence evidence
+        # feeds repair context: an invitation to churn on a non-issue. Silence is honest
+        # here. Expressions that do NOT name the declared code (``status.HTTP_200_OK``
+        # against a declared 201, ``HTTPStatus.CREATED`` — no digits) are still reported.
+        return
+
     divergences.append(
         DecoratorDivergence(
             method=got.method.upper(),
@@ -424,7 +433,28 @@ def restore_declared_status_codes(
                 )
             )
 
-    return _apply_splices(emitted_source, splices), divergences
+    corrected = _apply_splices(emitted_source, splices)
+    if corrected != emitted_source:
+        # The invariant, enforced by construction rather than by enumerating decorator
+        # shapes: this module never hands back source that parses worse than what it
+        # received. pf-44 proved a restorer that can corrupt is worse than none — if a
+        # splice produced unparseable output, abandon the whole restore, return the
+        # producer's bytes untouched, and downgrade the divergence records so the
+        # evidence never claims a restoration that did not survive.
+        try:
+            ast.parse(corrected)
+        except SyntaxError:
+            return emitted_source, [
+                replace(
+                    d,
+                    restored=False,
+                    detail=d.detail + " (restore abandoned: result would not parse)",
+                )
+                if d.restored
+                else d
+                for d in divergences
+            ]
+    return corrected, divergences
 
 
 def _apply_splices(source: str, splices: list[tuple[int, int, int, int, str]]) -> str:
@@ -446,11 +476,43 @@ def _apply_splices(source: str, splices: list[tuple[int, int, int, int, str]]) -
         line = lines[idx]
         if col < 0 or end_col > len(line) or col > end_col:
             continue  # offsets did not land where expected
-        if col == end_col and line[col : col + 1] != ")":
-            continue  # an insertion must land just before the decorator's closing paren
+        if col == end_col:
+            if line[col : col + 1] != ")":
+                continue  # an insertion must land just before the decorator's closing paren
+            text = _separator_adjusted(lines, idx, col, text)
         lines[idx] = line[:col] + text + line[end_col:]
 
     return "".join(lines)
+
+
+def _separator_adjusted(lines: list[str], idx: int, col: int, text: str) -> str:
+    """Drop the leading ``", "`` from an insertion whose context already provides it.
+
+    The insertion text is built for the common shape — a single-line decorator whose last
+    argument has no trailing comma — where ``", status_code=201"`` is exactly right. A
+    multi-line decorator formatted Black-style ends its last argument with a trailing
+    comma before the closing paren's own line::
+
+        @router.post(
+            "/runs",
+            response_model=RunEvent,
+        )
+
+    Inserting the comma-prefixed text there produced ``RunEvent,`` followed by
+    ``, status_code=201)`` — a double comma, a SyntaxError, and an unimportable module:
+    the exact corruption class this module exists to never emit, through a decorator
+    shape the original tests simply never swept. The last non-whitespace character before
+    the insertion point decides: after ``,`` or ``(`` the separator is already there (or
+    not needed); after anything else the prefix stands.
+    """
+    before = lines[idx][:col].rstrip()
+    j = idx
+    while not before and j > 0:
+        j -= 1
+        before = lines[j].rstrip()
+    if before.endswith(",") or before.endswith("("):
+        return text.removeprefix(", ")
+    return text
 
 
 def divergence_summary(divergences: list[DecoratorDivergence]) -> str:
