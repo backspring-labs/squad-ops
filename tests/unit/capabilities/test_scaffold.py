@@ -665,3 +665,81 @@ class TestModelSurfaceInstructions:
             }
         )
         assert model_surface_instructions(bare) == []
+
+
+class TestScaffoldOwnedStore:
+    """#603: the manifest declares in-memory persistence and the skeleton emitted nothing
+    that held the data, so the planner invented a module every roll. An invented file is
+    outside every safety net — nothing freezes it, no criterion names it, and its imports
+    are guessed fresh. pf-40 died on exactly that: `from models import ...` without the
+    leading dot, so the app never started and the behavioural probe could not run.
+    """
+
+    def test_the_skeleton_owns_the_state_the_manifest_declares(self):
+        manifest = _group_run_manifest()
+        assert manifest.persistence == "in_memory"  # fixture sanity
+
+        names = {f["name"] for f in expand(manifest)}
+        assert "backend/store.py" in names
+
+    def test_store_imports_resolve_against_the_emitted_models(self):
+        """The pf-40 killer, as a unit test: every name the store imports from `.models`
+        must actually be defined there. This would have failed before that roll dispatched."""
+        files = _by_name(expand(_group_run_manifest()))
+        store, models = files["backend/store.py"], files["backend/models.py"]
+
+        defined = {
+            ln.split("class ", 1)[1].split("(", 1)[0]
+            for ln in models.splitlines()
+            if ln.startswith("class ")
+        }
+        imported = {
+            name.strip()
+            for ln in store.splitlines()
+            if ln.startswith("from .models import ")
+            for name in ln.split("import ", 1)[1].split(",")
+        }
+        assert imported, "store should import its entity types"
+        assert imported <= defined, (
+            f"store imports names models.py does not define: {imported - defined}"
+        )
+
+    def test_store_uses_a_relative_import(self):
+        """pf-40's dev agent wrote `from models import ...` — absolute, so the package
+        never loaded. The scaffold must not leave that to chance."""
+        store = _by_name(expand(_group_run_manifest()))["backend/store.py"]
+        assert "from .models import" in store
+        assert "\nfrom models import" not in store
+
+    def test_one_store_per_declared_entity(self):
+        manifest = _group_run_manifest()
+        store = _by_name(expand(manifest))["backend/store.py"]
+        for entity in manifest.entities:
+            assert f"_store: dict[str, {entity.name}]" in store
+
+    def test_routes_stub_wires_the_store_so_the_fill_uses_it(self):
+        """If the fill slot doesn't see the store it will invent one — which is the whole
+        defect. Same rationale as pre-wiring the ApiError import."""
+        routes = _by_name(expand(_group_run_manifest()))["backend/routes.py"]
+        assert "from .store import" in routes
+
+    def test_store_is_frozen_not_a_fill_slot(self):
+        """Frozen means scaffold enforcement restores it if a producer rewrites it. If it
+        were a fill slot the agent could reintroduce the broken import it was meant to fix."""
+        from squadops.capabilities.scaffold import fill_slot_paths
+
+        assert "backend/store.py" not in fill_slot_paths(_group_run_manifest())
+
+    def test_store_is_valid_python_and_exposes_reset(self):
+        store = _by_name(expand(_group_run_manifest()))["backend/store.py"]
+        compile(store, "backend/store.py", "exec")
+        # QA suites currently reach into a private dict to isolate cases; give them a seam
+        assert "def reset()" in store
+
+    def test_entityless_manifest_still_emits_a_valid_module(self):
+        raw = _raw_manifest()
+        raw.pop("entities", None)
+        store = _by_name(expand(InterfaceManifest.from_dict(raw)))["backend/store.py"]
+
+        compile(store, "backend/store.py", "exec")  # must not emit a bodyless reset()
+        assert "from .models import" not in store  # nothing to import
