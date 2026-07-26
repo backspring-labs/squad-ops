@@ -95,6 +95,21 @@ class DockerAdapter(ContainerPort):
         if spec.working_dir:
             args.extend(["-w", spec.working_dir])
 
+        # Hardening flags (SIP-0102): emitted only when the spec sets them, so
+        # pre-0102 callers keep byte-identical docker invocations.
+        if spec.network is not None:
+            args.extend(["--network", spec.network])
+        if spec.memory_limit is not None:
+            args.extend(["--memory", spec.memory_limit])
+        if spec.cpu_limit is not None:
+            args.extend(["--cpus", str(spec.cpu_limit)])
+        if spec.pids_limit is not None:
+            args.extend(["--pids-limit", str(spec.pids_limit)])
+        if spec.cap_drop_all:
+            args.extend(["--cap-drop", "ALL"])
+        if spec.no_new_privileges:
+            args.extend(["--security-opt", "no-new-privileges"])
+
         # Add image
         args.append(spec.image)
 

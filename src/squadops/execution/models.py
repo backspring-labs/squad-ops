@@ -156,6 +156,7 @@ class OperationResult:
     status: str
     ran: bool
     duration_seconds: float | None = None
+    exit_classification: str | None = None  # e.g. "nonzero_exit", "timeout"
     image_identity: str | None = None  # §7 item 4 — populated from 102.2
     environment_contract_id: str | None = None  # §7 item 4
     unavailable_reason: str | None = None
@@ -188,7 +189,6 @@ class InstallResult(OperationResult):
 
 @dataclass(frozen=True, kw_only=True)
 class BuildResult(OperationResult):
-    exit_classification: str | None = None
     diagnostics: tuple[str, ...] = ()
     warning_count: int = 0
     artifact_refs: tuple[str, ...] = ()
