@@ -49,6 +49,9 @@ _ALLOWLIST: set[tuple[str, str]] = {
     # verification (#389).
     ("src/squadops/cycles/patch_verification.py", "failed"),
     ("src/squadops/cycles/patch_verification.py", "error"),
+    # Same CheckOutcome.status vocabulary again, evaluated at plan-authoring time to
+    # prove a frozen-file check can pass before the run is dispatched (pf-42).
+    ("src/squadops/cycles/frozen_check_validation.py", "failed"),
     # External Ollama model-pull job status — a vendor vocabulary, not a domain enum.
     ("src/squadops/cli/commands/models.py", "failed"),
     # window_state() returns a duty-window lifecycle token ("active"/

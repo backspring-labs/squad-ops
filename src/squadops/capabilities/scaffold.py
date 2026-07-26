@@ -26,6 +26,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import yaml
@@ -388,6 +389,29 @@ def expand(manifest: InterfaceManifest) -> list[dict[str, str]]:
             f"no scaffold expander for stack {manifest.stack!r}; available: {sorted(_EXPANDERS)}"
         )
     return expander(manifest)
+
+
+def materialize(manifest: InterfaceManifest, dest: Path) -> int:
+    """Write the expanded skeleton under ``dest``. Returns the file count.
+
+    The canonical writer for ``expand`` output. Two copies of this loop had grown in
+    ``scripts/dev/`` (one with the chroot guard, one without); callers that need a
+    skeleton on disk use this instead of re-implementing the walk, so the safety check
+    below can never be the one that gets left out.
+
+    Raises:
+        ValueError: if an expander emits a name that escapes ``dest``.
+    """
+    root = dest.resolve()
+    files = expand(manifest)
+    for f in files:
+        out = (dest / f["name"]).resolve()
+        # chroot safety: an expander must never write outside the target root.
+        if root != out and root not in out.parents:
+            raise ValueError(f"refusing to write outside {root}: {f['name']!r}")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(f["content"], encoding="utf-8")
+    return len(files)
 
 
 def fill_slot_paths(manifest: InterfaceManifest) -> tuple[str, ...]:

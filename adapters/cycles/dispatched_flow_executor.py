@@ -37,6 +37,7 @@ from squadops.cycles.acceptance_evaluation import resolve_check_stack
 from squadops.cycles.agent_config import build_agent_resolver
 from squadops.cycles.build_completeness import compute_missing_required_files
 from squadops.cycles.checkpoint import RunCheckpoint
+from squadops.cycles.frozen_check_validation import frozen_check_violations
 from squadops.cycles.models import (
     ArtifactRef,
     Cycle,
@@ -2656,6 +2657,18 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                         f"verification_contract: {e}"
                         for e in parsed_plan.validate_qa_artifact_ownership(contract)
                     )
+                    # pf-42: a typed check aimed at a frozen file is decidable right
+                    # now — the skeleton those files will contain is deterministic.
+                    # A failing one makes the plan unwinnable (frozen emissions are
+                    # restored, so the repair loop can never converge), and it costs
+                    # milliseconds to prove instead of a three-hour roll.
+                    if binding_content is not None:
+                        errors.extend(
+                            f"verification_contract: {e}"
+                            for e in await frozen_check_violations(
+                                parsed_plan, contract, binding_content
+                            )
+                        )
 
         # Soft (warning/info-severity) structural violations are tolerated, not
         # rejected — but logged so the pass is never silent (a warning check can't
