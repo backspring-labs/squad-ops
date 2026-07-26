@@ -1,4 +1,4 @@
-last_assigned: 101
+last_assigned: 102
 sips:
 - sip_number: 3
   sip_uid: '17642554775787694'
@@ -909,3 +909,12 @@ sips:
   approver: jladd
   created_at: '2026-07-25T00:00:00Z'
   updated_at: '2026-07-25T11:34:32.354533Z'
+- sip_uid: null
+  sip_number: 102
+  title: Ephemeral Application Sandbox
+  path: sips/accepted/SIP-0102-Ephemeral-Application-Sandbox.md
+  status: accepted
+  author: jladd
+  approver: jladd
+  created_at: '2026-07-08T00:00:00Z'
+  updated_at: '2026-07-26T17:18:28.138078Z'

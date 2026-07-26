@@ -1,9 +1,10 @@
 ---
 title: Ephemeral Application Sandbox
-status: proposed
+status: accepted
 author: jladd
 created_at: '2026-07-08T00:00:00Z'
-updated_at: '2026-07-26T00:00:00Z'
+updated_at: '2026-07-26T17:18:28.110454Z'
+sip_number: 102
 ---
 # SIP: Ephemeral Application Sandbox
 
@@ -13,7 +14,7 @@ live-validation campaign and two second-opinion review rounds; see
 `docs/ideas/IDEA-Functional-App-Obstacles-and-Roadmap.md` v3.)*
 
 ## Status
-Proposed
+Accepted (2026-07-26)
 
 **Targets:** **v1.4 headline component** (re-targeted from the 2.0 vision arc on
 2026-07-14 — see Motivating case). Together with SIP-0099
