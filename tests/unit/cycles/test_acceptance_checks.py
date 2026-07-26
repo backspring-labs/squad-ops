@@ -1003,3 +1003,105 @@ class TestHarnessBoundary:
     async def test_syntax_error_is_error(self, tmp_path):
         result = await self._run(tmp_path, "def test_x(:\n    pass\n")
         assert result.status == "error"
+
+
+class TestNonPythonFilesSkipRatherThanError:
+    """#605: an AST check handed a JavaScript file used to raise, and an erroring check
+    turns patch verification into `unverifiable` — neither accepted nor rejected, so the
+    unverified patch lands.
+
+    pf-41 lost a roll to it: `function_defined` was aimed at `run.test.jsx`, verification
+    never returned a verdict, and three bad repairs landed unchecked. pf-40 had the same
+    bad repairs but verification worked, rejected them, and nothing landed.
+
+    Only `import_present` guarded; its four siblings did not.
+    """
+
+    @staticmethod
+    def _params(check_name: str, file: str) -> dict:
+        base: dict[str, dict] = {
+            "endpoint_defined": {"methods_paths": [["GET", "/x"]]},
+            "import_present": {"module": "x"},
+            "field_present": {"class_name": "X", "fields": ["a"]},
+            "function_defined": {"name_prefix": "test_", "min_count": 1},
+            "harness_boundary": {"entry_modules": ["backend.main"], "client_ctor": "TestClient"},
+        }
+        return {"file": file, **base[check_name]}
+
+    @pytest.mark.parametrize(
+        "check_name",
+        [
+            "endpoint_defined",
+            "import_present",
+            "field_present",
+            "function_defined",
+            "harness_boundary",
+        ],
+    )
+    @pytest.mark.parametrize("suffix", [".jsx", ".js", ".ts", ".tsx"])
+    async def test_frontend_file_skips(self, check_name, suffix, tmp_path):
+        from squadops.cycles.acceptance_checks import get_check
+
+        target = tmp_path / f"thing{suffix}"
+        target.write_text("export default function Thing() { return null }\n")
+
+        outcome = await get_check(check_name).evaluate(
+            self._params(check_name, target.name), tmp_path, stack="fastapi"
+        )
+
+        assert outcome.status == "skipped", (
+            f"{check_name} on {suffix} returned {outcome.status}"
+            f"({getattr(outcome, 'reason', None)}) — an error makes the patch unverifiable"
+        )
+
+    @pytest.mark.parametrize(
+        "check_name",
+        [
+            "endpoint_defined",
+            "import_present",
+            "field_present",
+            "function_defined",
+            "harness_boundary",
+        ],
+    )
+    async def test_other_non_python_file_skips(self, check_name, tmp_path):
+        """Not just JS — a markdown or YAML target must skip too, not crash the verdict."""
+        from squadops.cycles.acceptance_checks import get_check
+
+        target = tmp_path / "notes.md"
+        target.write_text("# not python\n")
+
+        outcome = await get_check(check_name).evaluate(
+            self._params(check_name, target.name), tmp_path, stack="fastapi"
+        )
+        assert outcome.status == "skipped"
+
+    async def test_python_files_are_still_evaluated(self, tmp_path):
+        """The guard must not disable the checks it protects — a real Python file with
+        real test functions must still pass."""
+        from squadops.cycles.acceptance_checks import get_check
+
+        target = tmp_path / "test_thing.py"
+        target.write_text("def test_a():\n    pass\n\n\ndef test_b():\n    pass\n")
+
+        outcome = await get_check("function_defined").evaluate(
+            {"file": target.name, "name_prefix": "test_", "min_count": 2},
+            tmp_path,
+            stack="fastapi",
+        )
+        assert outcome.status == "passed"
+
+    async def test_broken_python_still_errors(self, tmp_path):
+        """A Python file that genuinely will not parse is a real problem and must NOT be
+        silently skipped — the guard is about file type, not about hiding failures."""
+        from squadops.cycles.acceptance_checks import get_check
+
+        target = tmp_path / "broken.py"
+        target.write_text("def oops(:\n")
+
+        outcome = await get_check("function_defined").evaluate(
+            {"file": target.name, "name_prefix": "test_", "min_count": 1},
+            tmp_path,
+            stack="fastapi",
+        )
+        assert outcome.status != "skipped"
