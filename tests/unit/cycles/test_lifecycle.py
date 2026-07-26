@@ -84,9 +84,16 @@ class TestValidateRunTransition:
         with pytest.raises(IllegalStateTransitionError):
             validate_run_transition(RunStatus.COMPLETED, RunStatus.FAILED)
 
-    def test_completed_to_cancelled_illegal(self):
-        with pytest.raises(IllegalStateTransitionError):
-            validate_run_transition(RunStatus.COMPLETED, RunStatus.CANCELLED)
+    def test_completed_to_cancelled_legal_as_supersede(self):
+        """#522 / pf-43: REVERSES the prior assertion that this was illegal.
+
+        Inter-workload gates are decided on COMPLETED runs by design (SIP-0083 D15), so a
+        framing run whose plan is auto-rejected is already terminal when its re-roll needs
+        to supersede it. With no edge, the re-roll's cancel raised and killed the re-roll
+        — which is why #522 passed its harness and never fired live. The edge is named
+        ``supersede``; operator-facing cancel refuses terminal runs at the API boundary.
+        """
+        validate_run_transition(RunStatus.COMPLETED, RunStatus.CANCELLED)
 
     def test_failed_to_running_legal(self):
         """SIP-0079: resume_from_failed allows FAILED → RUNNING."""
@@ -144,12 +151,20 @@ class TestValidateRunTransition:
             {RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.CANCELLED}
         )
 
-    def test_completed_and_cancelled_reject_all_targets(self):
-        """COMPLETED and CANCELLED have no outgoing transitions."""
-        for terminal in (RunStatus.COMPLETED, RunStatus.CANCELLED):
-            for target in RunStatus:
+    def test_cancelled_rejects_all_targets(self):
+        """CANCELLED has no outgoing transitions."""
+        for target in RunStatus:
+            with pytest.raises(IllegalStateTransitionError):
+                validate_run_transition(RunStatus.CANCELLED, target)
+
+    def test_completed_rejects_all_targets_except_supersede(self):
+        """COMPLETED gained exactly one outgoing edge (#522), and no more."""
+        for target in RunStatus:
+            if target == RunStatus.CANCELLED:
+                validate_run_transition(RunStatus.COMPLETED, RunStatus.CANCELLED)  # legal
+            else:
                 with pytest.raises(IllegalStateTransitionError):
-                    validate_run_transition(terminal, target)
+                    validate_run_transition(RunStatus.COMPLETED, target)
 
     def test_failed_rejects_all_except_running(self):
         """FAILED only allows resume_from_failed → RUNNING (SIP-0079)."""

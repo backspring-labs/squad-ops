@@ -17,13 +17,18 @@ from squadops.api.routes.cycles.dtos import (
 from squadops.api.routes.cycles.errors import handle_cycle_error
 from squadops.api.routes.cycles.mapping import compute_workload_progress, run_to_response
 from squadops.auth.models import Scope
-from squadops.cycles.lifecycle import compute_config_hash, resolve_cycle_status
+from squadops.cycles.lifecycle import (
+    TERMINAL_STATES,
+    compute_config_hash,
+    resolve_cycle_status,
+)
 from squadops.cycles.models import (
     Cycle,
     CycleError,
     CycleStatus,
     GateDecision,
     GateDecisionValue,
+    IllegalStateTransitionError,
     Run,
     RunStatus,
     RunTerminalError,
@@ -169,6 +174,16 @@ async def cancel_run(project_id: str, cycle_id: str, run_id: str):
 
     try:
         registry = get_cycle_registry()
+        # The run state machine gained a COMPLETED -> CANCELLED edge so the executor can
+        # supersede a framing run whose plan was auto-rejected (#522). That edge is for
+        # the orchestrator, not for operators: cancelling a run that already finished is
+        # not a cancel, it is a rewrite of what happened. Refuse it here so this surface
+        # behaves exactly as it did before that edge existed.
+        existing = await registry.get_run(run_id)
+        if RunStatus(existing.status) in TERMINAL_STATES:
+            raise IllegalStateTransitionError(
+                f"Cannot transition Run from '{existing.status}' to 'cancelled'"
+            )
         await registry.cancel_run(run_id)
 
         # #77: stop the orphaned Prefect flow run for this run.

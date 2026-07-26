@@ -32,6 +32,16 @@ _RUN_TRANSITIONS: list[tuple[str, RunStatus, RunStatus]] = [
     ("cancel", RunStatus.RUNNING, RunStatus.CANCELLED),
     ("cancel", RunStatus.PAUSED, RunStatus.CANCELLED),
     ("resume_from_failed", RunStatus.FAILED, RunStatus.RUNNING),
+    # #522 / pf-43: a framing run whose inter-workload gate is REJECTED by system plan
+    # validation is superseded by its re-roll. Inter-workload gates are decided on
+    # COMPLETED runs by design (SIP-0083 D15 — see GATE_REJECTED_STATES below, which
+    # excludes COMPLETED for exactly that reason), so by the time the rejection is
+    # recorded the run is already terminal. The re-roll cancels it to keep the positional
+    # run<->workload invariant (#257/D14: exactly one non-cancelled run per position) —
+    # and without this edge that cancel raised IllegalStateTransitionError, killing the
+    # re-roll before it created the replacement run. That is why #522 passed its harness
+    # (which drives a still-RUNNING run) and never once fired live.
+    ("supersede", RunStatus.COMPLETED, RunStatus.CANCELLED),
 ]
 
 # Derived lookup: source → set of valid destinations
