@@ -115,3 +115,22 @@ def test_unparseable_python_degrades_to_a_bare_path(monkeypatch):
         sc, "expand", lambda _m: [{"name": "backend/broken.py", "content": "def (:\n"}]
     )
     assert frozen_surface_index_lines(_manifest()) == ["- `backend/broken.py`"]
+
+
+def test_module_state_is_named_so_a_data_module_does_not_read_as_a_stub():
+    """pf-43: store.py is two annotated dicts plus reset(). An index listing only
+    functions read as an empty stub, so the plan author wrote a task to build the store
+    it already had — five typed checks against a file no agent may change."""
+    line = _line_for("backend/store.py")
+
+    assert "participant_store: dict[str, Participant]" in line
+    assert "run_event_store: dict[str, RunEvent]" in line
+    # the function is still named; state does not displace it
+    assert "reset" in line
+
+
+def test_private_module_state_is_omitted():
+    import squadops.capabilities.scaffold as sc
+
+    src = "public: int = 1\n_private: int = 2\n"
+    assert sc._python_surface(src) == "module state public: int"
