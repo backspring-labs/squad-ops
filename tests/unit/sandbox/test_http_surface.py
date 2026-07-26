@@ -1,4 +1,4 @@
-"""Execution service HTTP surface + client adapter E2E (SIP-0102 — 102.1 slice d).
+"""Sandbox service HTTP surface + client adapter E2E (SIP-0102 — 102.1 slice d).
 
 The phase exit criterion, in-process: a typed operation travels client →
 HTTP API → service core → workspace store and back as a typed semantic
@@ -8,12 +8,12 @@ result, via httpx's ASGI transport (no network, no docker).
 import httpx
 import pytest
 
-from adapters.execution.http_client import ExecutionServiceError, HttpExecutionSandbox
-from squadops.execution.api import create_app
-from squadops.execution.evidence import OperationEvidenceJournal
-from squadops.execution.models import BuildResult, OperationName, PatchResult
-from squadops.execution.service import ExecutionService
-from squadops.execution.workspace import WorkspaceStore
+from adapters.sandbox.http_client import HttpExecutionSandbox, SandboxServiceError
+from squadops.sandbox.api import create_app
+from squadops.sandbox.evidence import OperationEvidenceJournal
+from squadops.sandbox.models import BuildResult, OperationName, PatchResult
+from squadops.sandbox.service import SandboxService
+from squadops.sandbox.workspace import WorkspaceStore
 
 TOKEN = "tok-123"
 FILES = {"backend/main.py": "print('a')\n"}
@@ -24,7 +24,7 @@ def stack(tmp_path):
     root = tmp_path / "cycles"
     store = WorkspaceStore(root)
     journal = OperationEvidenceJournal(root)
-    app = create_app(ExecutionService(store=store, journal=journal), service_token=TOKEN)
+    app = create_app(SandboxService(store=store, journal=journal), service_token=TOKEN)
 
     def client_factory():
         return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://exec")
@@ -39,7 +39,7 @@ def test_create_app_refuses_to_run_unauthenticated(tmp_path):
     """Bug caught: the service booting with no token — an unauthenticated
     privileged surface (§7 item 2/the narrow-port requirement)."""
     root = tmp_path / "cycles"
-    service = ExecutionService(store=WorkspaceStore(root), journal=OperationEvidenceJournal(root))
+    service = SandboxService(store=WorkspaceStore(root), journal=OperationEvidenceJournal(root))
     with pytest.raises(ValueError, match="service token"):
         create_app(service, service_token="")
 
@@ -111,11 +111,11 @@ async def test_conflicts_surface_with_their_own_codes(stack):
     into generic errors the caller cannot route on."""
     store, _, _, sandbox, _ = stack
     seed = await sandbox.seed_workspace("cyc_1", FILES)
-    with pytest.raises(ExecutionServiceError) as excinfo:
+    with pytest.raises(SandboxServiceError) as excinfo:
         await sandbox.seed_workspace("cyc_1", {"other.py": "x"})
     assert excinfo.value.status_code == 409
     (store.workspace_dir("cyc_1") / "backend/main.py").write_text("drift", encoding="utf-8")
-    with pytest.raises(ExecutionServiceError) as excinfo:
+    with pytest.raises(SandboxServiceError) as excinfo:
         await sandbox.apply_workspace_patch(base=seed, files={"backend/main.py": "x"})
     assert excinfo.value.status_code == 409
 

@@ -1,16 +1,16 @@
-"""ExecutionService core (SIP-0102 §4.3/§4.4 — phase 102.1 slice b)."""
+"""SandboxService core (SIP-0102 §4.3/§4.4 — phase 102.1 slice b)."""
 
 import pytest
 
-from squadops.execution.evidence import OperationEvidenceJournal
-from squadops.execution.models import (
+from squadops.sandbox.evidence import OperationEvidenceJournal
+from squadops.sandbox.models import (
     BuildResult,
     OperationName,
     OperationStatus,
 )
-from squadops.execution.noop import NoOpExecutionSandbox
-from squadops.execution.service import ExecutionService
-from squadops.execution.workspace import StaleBaseRevisionError, WorkspaceStore
+from squadops.sandbox.noop import NoOpExecutionSandbox
+from squadops.sandbox.service import SandboxService
+from squadops.sandbox.workspace import StaleBaseRevisionError, WorkspaceStore
 
 FILES = {"backend/main.py": "print('a')\n"}
 
@@ -38,7 +38,7 @@ async def test_patch_flows_through_store_and_is_journaled(parts):
     """Bug caught: a patch mutating the tree without evidence, or evidence
     without mutation — the two must be one motion."""
     store, journal = parts
-    service = ExecutionService(store=store, journal=journal)
+    service = SandboxService(store=store, journal=journal)
     seed = service.seed_workspace("cyc_1", FILES)
     result = await service.apply_workspace_patch(
         base=seed, files={"backend/main.py": "print('b')\n"}
@@ -54,7 +54,7 @@ async def test_stale_patch_raises_and_leaves_no_evidence_or_revision(parts):
     """Bug caught: a rejected patch minting a revision or journal entry —
     failed authority checks must leave no trace claiming success."""
     store, journal = parts
-    service = ExecutionService(store=store, journal=journal)
+    service = SandboxService(store=store, journal=journal)
     seed = service.seed_workspace("cyc_1", FILES)
     (store.workspace_dir("cyc_1") / "backend/main.py").write_text("drift", encoding="utf-8")
     with pytest.raises(StaleBaseRevisionError):
@@ -68,7 +68,7 @@ async def test_backendless_execution_is_not_run_but_journaled(parts):
     or skipping the journal — a request that reached the service is evidence
     even when the environment cannot execute it."""
     store, journal = parts
-    service = ExecutionService(store=store, journal=journal, backend=None)
+    service = SandboxService(store=store, journal=journal, backend=None)
     seed = service.seed_workspace("cyc_1", FILES)
     result = await service.build_frontend(revision=seed)
     assert result.ran is False
@@ -82,7 +82,7 @@ async def test_backend_results_pass_through_and_are_journaled(parts):
     """Bug caught: the service rewriting or dropping backend semantics on the
     way through — the journaled result must be the returned result."""
     store, journal = parts
-    service = ExecutionService(store=store, journal=journal, backend=StubBackend())
+    service = SandboxService(store=store, journal=journal, backend=StubBackend())
     seed = service.seed_workspace("cyc_1", FILES)
     result = await service.build_frontend(revision=seed)
     assert result.ran is True

@@ -27,7 +27,7 @@ import shutil
 from collections.abc import Mapping
 from pathlib import Path
 
-from squadops.execution.models import (
+from squadops.sandbox.models import (
     WorkspaceRevision,
     compute_revision_id,
 )

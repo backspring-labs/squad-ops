@@ -4,8 +4,8 @@ The unconfigured default must be honestly not-run for every operation and must
 never raise — this is the parity floor the inert-to-merge guarantee rests on.
 """
 
-from squadops.execution.models import OperationStatus, RevisionOrigin, WorkspaceRevision
-from squadops.execution.noop import NoOpExecutionSandbox
+from squadops.sandbox.models import OperationStatus, RevisionOrigin, WorkspaceRevision
+from squadops.sandbox.noop import NoOpExecutionSandbox
 
 REV = WorkspaceRevision.cut(
     cycle_id="cyc_1",

@@ -7,7 +7,7 @@ against an explicit workspace revision (§4.6) — never "whatever is in the
 directory."
 
 Adapters own container mechanics; callers never see a container runtime. The
-NoOp adapter (``squadops.execution.noop``) is the unconfigured default: every
+NoOp adapter (``squadops.sandbox.noop``) is the unconfigured default: every
 operation reports ``ran=False`` and callers keep today's in-process behavior.
 """
 
@@ -16,7 +16,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
 
-from squadops.execution.models import (
+from squadops.sandbox.models import (
     BuildResult,
     DiagnosticsResult,
     InstallResult,

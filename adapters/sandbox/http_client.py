@@ -1,4 +1,4 @@
-"""HTTP client adapter for the execution service (SIP-0102 — 102.1 slice d).
+"""HTTP client adapter for the sandbox service (SIP-0102 — 102.1 slice d).
 
 Implements ``ExecutionSandboxPort`` over the service's narrow API, so callers
 (the 102.3 relocations) are transport-blind: same port, whether backed by the
@@ -14,7 +14,8 @@ from collections.abc import Callable, Mapping
 
 import httpx
 
-from squadops.execution.models import (
+from squadops.ports.sandbox import ExecutionSandboxPort
+from squadops.sandbox.models import (
     BuildResult,
     DiagnosticsResult,
     InstallResult,
@@ -28,7 +29,6 @@ from squadops.execution.models import (
     TestRunResult,
     WorkspaceRevision,
 )
-from squadops.ports.execution import ExecutionSandboxPort
 
 _RESULT_TYPES: dict[str, type[OperationResult]] = {
     cls.__name__: cls
@@ -45,18 +45,18 @@ _RESULT_TYPES: dict[str, type[OperationResult]] = {
 }
 
 
-class ExecutionServiceError(Exception):
-    """The execution service rejected or failed a request."""
+class SandboxServiceError(Exception):
+    """The sandbox service rejected or failed a request."""
 
     def __init__(self, status_code: int, message: str) -> None:
-        super().__init__(f"execution service returned {status_code}: {message}")
+        super().__init__(f"sandbox service returned {status_code}: {message}")
         self.status_code = status_code
 
 
 def _rehydrate(payload: dict) -> OperationResult:
     cls = _RESULT_TYPES.get(payload.get("result_type", ""))
     if cls is None:
-        raise ExecutionServiceError(200, f"unknown result_type: {payload.get('result_type')!r}")
+        raise SandboxServiceError(200, f"unknown result_type: {payload.get('result_type')!r}")
     kwargs = {}
     for field in dataclasses.fields(cls):
         if field.name in payload:
@@ -67,7 +67,7 @@ def _rehydrate(payload: dict) -> OperationResult:
 
 
 class HttpExecutionSandbox(ExecutionSandboxPort):
-    """Port implementation over the execution service HTTP API."""
+    """Port implementation over the sandbox service HTTP API."""
 
     def __init__(
         self,
@@ -90,7 +90,7 @@ class HttpExecutionSandbox(ExecutionSandboxPort):
                 message = response.json()["error"]["message"]
             except (KeyError, ValueError):
                 message = response.text
-            raise ExecutionServiceError(response.status_code, message)
+            raise SandboxServiceError(response.status_code, message)
         return response.json()
 
     async def _operate(self, revision: WorkspaceRevision, operation: str, params: dict) -> dict:

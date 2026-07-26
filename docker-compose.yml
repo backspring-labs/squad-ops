@@ -776,27 +776,27 @@ services:
     networks:
       - squadnet
     restart: unless-stopped
-  execution-service:  # SIP-0102: Ephemeral Application Sandbox execution service
+  sandbox-service:  # SIP-0102: Ephemeral Application Sandbox sandbox service
     # Profile-guarded: invisible to every plain `docker compose up` / rebuild
     # path — activation requires an explicit `--profile sandbox` (the
     # inert-to-merge guarantee for the Spark campaigns).
     profiles: ["sandbox"]
     build:
       context: .
-      dockerfile: src/squadops/execution/Dockerfile
+      dockerfile: src/squadops/sandbox/Dockerfile
       args:
         SOURCE_HASH: ${SOURCE_HASH:-unknown}
-    container_name: squadops-execution-service
+    container_name: squadops-sandbox-service
     ports:
       - "127.0.0.1:8002:8002"  # loopback-only (SIP-0102 transport decision)
     environment:
-      SQUADOPS__EXECUTION__PROVIDER: ${SQUADOPS_EXECUTION_PROVIDER:-noop}
-      SQUADOPS__EXECUTION__IMAGE: ${SQUADOPS_EXECUTION_IMAGE:-}
-      SQUADOPS__EXECUTION__WORKSPACE_ROOT: /sandbox/cycles
+      SQUADOPS__SANDBOX__PROVIDER: ${SQUADOPS_SANDBOX_PROVIDER:-noop}
+      SQUADOPS__SANDBOX__IMAGE: ${SQUADOPS_SANDBOX_IMAGE:-}
+      SQUADOPS__SANDBOX__WORKSPACE_ROOT: /sandbox/cycles
       # No default: create_app refuses to start without a token.
-      SQUADOPS__EXECUTION__SERVICE_TOKEN: ${SQUADOPS_EXECUTION_SERVICE_TOKEN:-}
+      SQUADOPS__SANDBOX__SERVICE_TOKEN: ${SQUADOPS_SANDBOX_SERVICE_TOKEN:-}
     volumes:
-      # The execution service is the ONLY socket holder (SIP-0102 §4.3).
+      # The sandbox service is the ONLY socket holder (SIP-0102 §4.3).
       - /var/run/docker.sock:/var/run/docker.sock
       - sandbox_workspaces:/sandbox/cycles
     networks:
@@ -804,7 +804,7 @@ services:
     restart: unless-stopped
 volumes:
   rabbitmq_data: {}
-  sandbox_workspaces: {}  # SIP-0102 cycle workspaces (execution-service only)
+  sandbox_workspaces: {}  # SIP-0102 cycle workspaces (sandbox-service only)
   postgres_data: {}
   redis_data: {}
   prometheus_data: {}

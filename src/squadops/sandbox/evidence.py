@@ -12,7 +12,7 @@ import dataclasses
 import json
 from pathlib import Path
 
-from squadops.execution.models import OperationResult
+from squadops.sandbox.models import OperationResult
 
 
 def result_to_dict(result: OperationResult) -> dict:

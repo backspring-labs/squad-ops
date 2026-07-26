@@ -10,7 +10,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from squadops.execution.models import (
+from squadops.ports.sandbox import ExecutionSandboxPort
+from squadops.sandbox.models import (
     BuildResult,
     DiagnosticsResult,
     InstallResult,
@@ -24,7 +25,6 @@ from squadops.execution.models import (
     TestRunResult,
     WorkspaceRevision,
 )
-from squadops.ports.execution import ExecutionSandboxPort
 
 _REASON = "execution sandbox not configured"
 
