@@ -250,6 +250,41 @@ class ServiceClientConfig(BaseModel):
     )
 
 
+class ExecutionConfig(BaseModel):
+    """Ephemeral Application Sandbox configuration (SIP-0102).
+
+    Defaults are the dormant posture: provider "noop" keeps every execution
+    path in-process and byte-identical to pre-0102 behavior.
+    """
+
+    provider: str = Field(
+        default="noop", description="Execution sandbox provider: 'noop' or 'docker'"
+    )
+    workspace_root: Path = Field(
+        default=Path("cycle_data/sandbox"),
+        description="Root directory for cycle workspaces (bind-mounted into execution units)",
+    )
+    image: str = Field(
+        default="",
+        description="Pinned canonical environment image (required for provider 'docker')",
+    )
+    app_port: int = Field(
+        default=8000, description="Container port the application runtime listens on"
+    )
+    service_url: str = Field(
+        default="http://127.0.0.1:8002",
+        description="Execution service base URL (loopback per the SIP-0102 transport decision)",
+    )
+    service_token: str = Field(
+        default="",
+        description=(
+            "Bearer token for the execution service's narrow API (supports secret:// "
+            "references). Interim shared-secret auth; the Keycloak service-identity "
+            "(#326) upgrade rides SIP-0102 phase 102.3 when runtime-api becomes the caller."
+        ),
+    )
+
+
 class KeycloakTokenPolicyConfig(BaseModel):
     """Keycloak token lifetime policy (SIP-0063)."""
 
@@ -732,6 +767,12 @@ class AppConfig(BaseModel):
     # Deployment
     deployment: DeploymentConfig = Field(
         default_factory=DeploymentConfig, description="Deployment tooling configuration"
+    )
+
+    # Execution sandbox (SIP-0102)
+    execution: ExecutionConfig = Field(
+        default_factory=ExecutionConfig,
+        description="Ephemeral Application Sandbox configuration (SIP-0102)",
     )
 
     # Private attributes for runtime state (not part of config validation)
