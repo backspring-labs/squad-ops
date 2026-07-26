@@ -80,3 +80,53 @@ class TestResolveCorrectionPath:
         res = resolve_correction_path("continue", ev, DEFAULTS)
         assert res.path == "patch"
         assert res.failed_required_checks == ("tests_pass",)
+
+
+class TestRewindAnchor:
+    """pf-45: a work_product rewind is escalated to patch while the repair slot is unspent.
+
+    Rewind is implemented as run death, so accepting it discards every remaining
+    correction attempt. pf-45's analyzer correctly diagnosed a one-token fill-slot defect
+    (``pace`` for the frozen model's ``pace_target``); the lead called it "systemic
+    contract violations", chose rewind, and the run died with four of five attempts
+    unused — on the exact failure shape the repair path was built for.
+    """
+
+    def test_work_product_rewind_becomes_patch(self):
+        resolution = resolve_correction_path("rewind", {}, {}, classification="work_product")
+
+        assert resolution.path == "patch"
+        assert resolution.overridden_from == "rewind"
+        assert resolution.override_reason == "work_product_rewind_with_unspent_repair"
+        assert resolution.failed_required_checks == ()
+
+    @pytest.mark.parametrize("classification", ["environment", "infrastructure", "unknown", ""])
+    def test_non_work_product_rewind_stands(self, classification):
+        """Patching correct code against a broken world is the opposite failure."""
+        resolution = resolve_correction_path("rewind", {}, {}, classification=classification)
+
+        assert resolution.path == "rewind"
+        assert resolution.overridden_from is None
+
+    def test_abort_is_never_overridden_even_for_work_product(self):
+        resolution = resolve_correction_path("abort", {}, {}, classification="work_product")
+
+        assert resolution.path == "abort"
+        assert resolution.overridden_from is None
+
+    def test_patch_passes_through_untouched(self):
+        resolution = resolve_correction_path("patch", {}, {}, classification="work_product")
+
+        assert resolution.path == "patch"
+        assert resolution.overridden_from is None
+
+    def test_continue_anchor_still_reports_its_reason(self):
+        """Anchor 1's provenance now rides the same field the event payload reads."""
+        evidence = {"validation_result": {"checks": [{"check": "tests_pass", "passed": False}]}}
+        resolution = resolve_correction_path(
+            "continue", evidence, {"required_checks": ["tests_pass"]}
+        )
+
+        assert resolution.path == "patch"
+        assert resolution.override_reason == "executed_failed_required_checks"
+        assert resolution.failed_required_checks == ("tests_pass",)

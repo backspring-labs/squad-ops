@@ -716,13 +716,23 @@ class CorrectionRunner:
             decision_outputs.get("correction_path", "abort"),
             failure_evidence,
             cycle.applied_defaults,
+            # pf-45: the rewind anchor keys on the analyzer's classification — a
+            # work_product rewind dies as a run failure with the repair budget unspent,
+            # so the guard substitutes the patch the classification says is possible.
+            classification=str(analysis_outputs.get("classification", "")),
         )
         correction_path = resolution.path
         if resolution.overridden_from:
             logger.warning(
-                "correction_policy_override: %s -> patch (executed-failed required checks: %s)",
+                "correction_policy_override: %s -> %s (%s%s)",
                 resolution.overridden_from,
-                ", ".join(resolution.failed_required_checks),
+                resolution.path,
+                resolution.override_reason,
+                (
+                    "; checks: " + ", ".join(resolution.failed_required_checks)
+                    if resolution.failed_required_checks
+                    else ""
+                ),
             )
 
         # 5. Emit CORRECTION_DECIDED
@@ -733,7 +743,7 @@ class CorrectionRunner:
         if resolution.overridden_from:
             decided_payload["policy_override"] = {
                 "from": resolution.overridden_from,
-                "reason": "executed_failed_required_checks",
+                "reason": resolution.override_reason,
                 "checks": list(resolution.failed_required_checks),
             }
         self._event_bus.emit(
