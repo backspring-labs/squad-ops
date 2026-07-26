@@ -158,6 +158,79 @@ def _route_from_decorator(
     )
 
 
+def _router_assignment(source: str) -> tuple[str, int, int] | None:
+    """The module-level ``router = APIRouter(...)`` statement as ``(text, start, end)``
+    1-indexed inclusive line span, or None when absent/unparseable.
+
+    Body-independent like ``status_code``: the router object's prefix changes where routes
+    register, never what a handler body references. So it is safe to restore.
+    """
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return None
+    for node in tree.body:
+        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+            continue
+        target = node.targets[0]
+        if not isinstance(target, ast.Name) or target.id != "router":
+            continue
+        call = node.value
+        if not isinstance(call, ast.Call):
+            continue
+        func = call.func
+        name = func.id if isinstance(func, ast.Name) else getattr(func, "attr", "")
+        if name != "APIRouter" or node.end_lineno is None:
+            continue
+        lines = source.splitlines()
+        text = "\n".join(lines[node.lineno - 1 : node.end_lineno])
+        return text, node.lineno, node.end_lineno
+    return None
+
+
+def _restore_router_assignment(
+    seed_source: str, emitted_source: str
+) -> tuple[str, list[DecoratorDivergence]]:
+    """Put back the scaffold's ``router = APIRouter(...)`` when the producer changed it.
+
+    pf-41: the scaffold seeded ``router = APIRouter()`` and the dev agent emitted
+    ``router = APIRouter(prefix="/api")``. Every route then registered under a second
+    ``/api``, the contract probe asked for ``POST /runs``, and a perfectly healthy app
+    answered 404 to its own contract.
+
+    The mistake is a reasonable one: the scaffold's frontend calls ``/api/...`` and the
+    agent made the backend match. It could not see that the proxy strips that prefix
+    before the request arrives — that rewrite lives in ``vite.config.js``, a frozen file
+    the agent never reads. So the fact is knowable, authoritative, and was simply never
+    in front of it.
+
+    Restoring is safe for the same reason ``status_code`` is: the router's prefix decides
+    where routes register, never what a handler body references.
+    """
+    want = _router_assignment(seed_source)
+    got = _router_assignment(emitted_source)
+    if want is None or got is None or want[0].strip() == got[0].strip():
+        return emitted_source, []
+
+    lines = emitted_source.splitlines(keepends=True)
+    start, end = got[1] - 1, got[2]
+    if start < 0 or end > len(lines):
+        return emitted_source, []
+    newline = "\n" if not lines[end - 1].endswith("\n") else ""
+    lines[start:end] = [want[0] + newline]
+    return "".join(lines), [
+        DecoratorDivergence(
+            method="-",
+            path="(router)",
+            detail=(
+                f"scaffold declares `{want[0].strip()}`, emitted as `{got[0].strip()}` — "
+                "a router prefix re-homes every route and the app 404s its own contract"
+            ),
+            restored=True,
+        )
+    ]
+
+
 def restore_declared_status_codes(
     seed_source: str, emitted_source: str
 ) -> tuple[str, list[DecoratorDivergence]]:
@@ -173,12 +246,14 @@ def restore_declared_status_codes(
         unchanged when nothing needed restoring, so a compliant producer is byte-identical
         through this function.
     """
+    corrected, divergences = _restore_router_assignment(seed_source, emitted_source)
+    emitted_source = corrected
+
     seed_routes = {_route_key(r.method, r.path): r for r in _routes(seed_source)}
     if not seed_routes:
-        return emitted_source, []
+        return emitted_source, divergences
 
     emitted = _routes(emitted_source)
-    divergences: list[DecoratorDivergence] = []
     # (line, col) -> text to insert. Collected first, applied bottom-up so earlier splices
     # cannot shift the offsets of later ones.
     splices: list[tuple[int, int, str]] = []

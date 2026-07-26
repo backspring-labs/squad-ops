@@ -282,3 +282,83 @@ class TestEnforcementWiring:
             assert record.fill_seed_bytes(slot), f"no seed pinned for fill slot {slot}"
         # the seed is the real scaffold stub, carrying the status code the producer must keep
         assert "status_code=201" in record.fill_seed_bytes("backend/routes.py")
+
+
+class TestRouterPrefixRestoration:
+    """pf-41's actual 404. The scaffold seeded `router = APIRouter()`; the dev agent
+    emitted `router = APIRouter(prefix="/api")`. Every route re-homed under a second
+    /api, so a perfectly healthy app answered 404 to `POST /runs` — its own contract.
+
+    The agent's reasoning was sound: the scaffold's frontend calls /api/... so it made
+    the backend match. It could not see that the proxy strips that prefix, because the
+    rewrite lives in vite.config.js, a frozen file it never reads.
+    """
+
+    SEED = (
+        '"""stub."""\n\nfrom fastapi import APIRouter\n\nrouter = APIRouter()\n\n\n'
+        '@router.post("/runs", status_code=201)\ndef create_run(payload):\n    return {}\n'
+    )
+
+    def test_prefix_is_stripped_back_to_the_scaffold_router(self):
+        emitted = self.SEED.replace("APIRouter()", 'APIRouter(prefix="/api")')
+
+        corrected, divergences = restore_declared_status_codes(self.SEED, emitted)
+
+        assert "router = APIRouter()" in corrected
+        assert 'prefix="/api"' not in corrected
+        assert any(d.restored and d.path == "(router)" for d in divergences)
+
+    def test_any_invented_prefix_is_stripped_not_just_api(self):
+        """A repair tried `prefix="/runs"`, which would have doubled the path segment."""
+        emitted = self.SEED.replace("APIRouter()", 'APIRouter(prefix="/runs", tags=["runs"])')
+
+        corrected, _ = restore_declared_status_codes(self.SEED, emitted)
+
+        assert "router = APIRouter()" in corrected
+
+    def test_handler_bodies_survive(self):
+        """Restoring the router must not disturb the implementation — the prefix decides
+        where routes register, never what a body references."""
+        emitted = self.SEED.replace("APIRouter()", 'APIRouter(prefix="/api")').replace(
+            "return {}", "return {'id': 'x'}"
+        )
+
+        corrected, _ = restore_declared_status_codes(self.SEED, emitted)
+
+        assert "return {'id': 'x'}" in corrected
+        import ast
+
+        ast.parse(corrected)
+
+    def test_matching_router_is_untouched(self):
+        """A compliant emission passes through byte-identical, so enforcement cannot mask
+        its own no-op."""
+        corrected, divergences = restore_declared_status_codes(self.SEED, self.SEED)
+
+        assert corrected == self.SEED
+        assert [d for d in divergences if d.path == "(router)"] == []
+
+    def test_seed_without_a_router_enforces_nothing(self):
+        emitted = 'router = APIRouter(prefix="/api")\n'
+        assert restore_declared_status_codes("x = 1\n", emitted) == (emitted, [])
+
+    def test_replays_the_real_pf41_emission(self):
+        """The load-bearing case: the actual stored artifacts from the roll that failed."""
+        from pathlib import Path
+
+        base = (
+            Path(__file__).resolve().parents[3]
+            / "data/artifacts/group_run/cyc_bff6a0abfa32/run_861f68199132"
+        )
+        seed_f = base / "art_acc468c1494c/backend/routes.py"
+        emitted_f = base / "art_dfb9d9bc6f5d/backend/routes.py"
+        if not (seed_f.exists() and emitted_f.exists()):
+            import pytest
+
+            pytest.skip("pf-41 artifacts not present in this checkout")
+
+        corrected, _ = restore_declared_status_codes(seed_f.read_text(), emitted_f.read_text())
+
+        assert "router = APIRouter()" in corrected
+        assert "prefix=" not in corrected.split("@router")[0]
+        assert "status_code=201" in corrected  # the #602 restoration still holds
