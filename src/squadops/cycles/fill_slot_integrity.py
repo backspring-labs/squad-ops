@@ -72,7 +72,7 @@ class DecoratorDivergence:
 class _Route:
     method: str
     path: str
-    status_code: int | None
+    status_kw: _StatusKw | None
     response_model: str | None
     func_name: str
     arg_names: tuple[str, ...]
@@ -124,16 +124,135 @@ def _route_decorator_path(dec: ast.expr) -> str | None:
     return path if isinstance(path, str) else None
 
 
-def _decorator_kwargs(dec: ast.Call) -> tuple[int | None, str | None]:
-    """``(status_code, response_model)`` as declared on the decorator."""
-    status: int | None = None
+@dataclass(frozen=True)
+class _StatusKw:
+    """A ``status_code=`` keyword as it actually appears on the decorator.
+
+    ``value`` is the literal int, or None when the producer wrote an expression
+    (``status.HTTP_201_CREATED``). The distinction between *that* and no keyword at all is
+    the whole point of this type: pf-44 collapsed them, decided a present-but-symbolic
+    status code was absent, appended its own, and produced
+    ``status_code=status.HTTP_201_CREATED, status_code=201`` — a duplicate keyword, a
+    SyntaxError, an unimportable module, and a test suite that could not even be collected.
+    """
+
+    value: int | None
+    text: str
+    lineno: int
+    col_offset: int
+    end_lineno: int
+    end_col_offset: int
+
+
+def _decorator_kwargs(dec: ast.Call) -> tuple[_StatusKw | None, str | None]:
+    """``(status_code keyword or None, response_model)`` as declared on the decorator."""
+    status: _StatusKw | None = None
     response_model: str | None = None
     for kw in dec.keywords:
-        if kw.arg == "status_code" and isinstance(kw.value, ast.Constant):
-            status = kw.value.value if isinstance(kw.value.value, int) else None
+        if kw.arg == "status_code":
+            if kw.end_lineno is None or kw.end_col_offset is None:  # pragma: no cover
+                continue
+            literal = (
+                kw.value.value
+                if isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, int)
+                else None
+            )
+            status = _StatusKw(
+                value=literal,
+                text=ast.unparse(kw.value),
+                lineno=kw.lineno,
+                col_offset=kw.col_offset,
+                end_lineno=kw.end_lineno,
+                end_col_offset=kw.end_col_offset,
+            )
         elif kw.arg == "response_model":
             response_model = ast.unparse(kw.value)
     return status, response_model
+
+
+def _reconcile_status_code(
+    got: _Route,
+    declared: int,
+    divergences: list[DecoratorDivergence],
+    splices: list[tuple[int, int, int, int, str]],
+) -> None:
+    """Decide what to do about one route's status code. Three cases, one of them safe to
+    append and only one.
+
+    Appending is correct **only** when the keyword is absent. pf-44 appended onto a
+    decorator that already carried ``status_code=status.HTTP_201_CREATED`` — because a
+    symbolic value parsed as "no literal" and the old code could not tell that apart from
+    "no keyword" — and produced a duplicate keyword argument. That is a SyntaxError, so
+    ``backend/routes.py`` would not import, so pytest aborted during collection with exit
+    4, so every check downstream failed and every repair regenerated the same corruption.
+    An enforcement mechanism that turns correct code into unparseable code is worse than
+    no enforcement at all.
+
+    A present-but-wrong *literal* is replaced in place rather than appended (same
+    body-independence argument as the original restore, and appending there would have
+    produced the identical duplicate). A present *expression* is left completely alone and
+    only reported: it cannot be evaluated from here, ``status.HTTP_201_CREATED`` is the
+    idiomatic spelling of exactly what the scaffold asked for, and the behavioral probe
+    already checks the status the app actually returns.
+    """
+    kw = got.status_kw
+
+    if kw is None:
+        divergences.append(
+            DecoratorDivergence(
+                method=got.method.upper(),
+                path=got.path,
+                detail=f"status_code={declared} declared by the scaffold, emitted as absent",
+                restored=True,
+            )
+        )
+        # insert before the decorator call's closing paren (zero-width span)
+        splices.append(
+            (
+                got.end_lineno,
+                got.end_col_offset - 1,
+                got.end_lineno,
+                got.end_col_offset - 1,
+                f", status_code={declared}",
+            )
+        )
+        return
+
+    if kw.value == declared:
+        return  # already exactly what the scaffold declared
+
+    if kw.value is not None:
+        divergences.append(
+            DecoratorDivergence(
+                method=got.method.upper(),
+                path=got.path,
+                detail=(f"status_code={declared} declared by the scaffold, emitted as {kw.value}"),
+                restored=True,
+            )
+        )
+        splices.append(
+            (
+                kw.lineno,
+                kw.col_offset,
+                kw.end_lineno,
+                kw.end_col_offset,
+                f"status_code={declared}",
+            )
+        )
+        return
+
+    divergences.append(
+        DecoratorDivergence(
+            method=got.method.upper(),
+            path=got.path,
+            detail=(
+                f"status_code={declared} declared by the scaffold, emitted as the expression "
+                f"{kw.text!r} — left as written; a non-literal cannot be reconciled from here "
+                f"and the behavioral probe checks the status actually returned"
+            ),
+            restored=False,
+        )
+    )
 
 
 def _route_from_decorator(
@@ -149,7 +268,7 @@ def _route_from_decorator(
     return _Route(
         method=dec.func.attr,  # type: ignore[union-attr]  # Attribute, per the guard above
         path=path,
-        status_code=status,
+        status_kw=status,
         response_model=response_model,
         func_name=node.name,
         arg_names=tuple(a.arg for a in node.args.args),
@@ -256,28 +375,16 @@ def restore_declared_status_codes(
     emitted = _routes(emitted_source)
     # (line, col) -> text to insert. Collected first, applied bottom-up so earlier splices
     # cannot shift the offsets of later ones.
-    splices: list[tuple[int, int, str]] = []
+    splices: list[tuple[int, int, int, int, str]] = []
 
     for got in emitted:
         want = seed_routes.get(_route_key(got.method, got.path))
         if want is None:
             continue
 
-        if want.status_code is not None and got.status_code != want.status_code:
-            divergences.append(
-                DecoratorDivergence(
-                    method=got.method.upper(),
-                    path=got.path,
-                    detail=(
-                        f"status_code={want.status_code} declared by the scaffold, "
-                        f"emitted as {got.status_code if got.status_code is not None else 'absent'}"
-                    ),
-                    restored=True,
-                )
-            )
-            splices.append(
-                (got.end_lineno, got.end_col_offset, f", status_code={want.status_code}")
-            )
+        declared = want.status_kw.value if want.status_kw else None
+        if declared is not None:
+            _reconcile_status_code(got, declared, divergences, splices)
 
         # Reported only — see the module docstring for why these are not rewritten.
         if want.response_model and got.response_model != want.response_model:
@@ -317,22 +424,33 @@ def restore_declared_status_codes(
                 )
             )
 
+    return _apply_splices(emitted_source, splices), divergences
+
+
+def _apply_splices(source: str, splices: list[tuple[int, int, int, int, str]]) -> str:
+    """Apply edits bottom-up so an earlier one cannot shift a later one's offsets.
+
+    A zero-width span is an insertion; a non-empty one replaces the text it covers. Every
+    guard below leaves the line untouched rather than guessing — this module's whole job is
+    to hand back source that still parses, so a splice that does not land exactly where the
+    AST said it would is abandoned, not forced.
+    """
     if not splices:
-        return emitted_source, divergences
+        return source
 
-    lines = emitted_source.splitlines(keepends=True)
-    for lineno, col, text in sorted(splices, reverse=True):
+    lines = source.splitlines(keepends=True)
+    for lineno, col, end_lineno, end_col, text in sorted(splices, reverse=True):
         idx = lineno - 1
-        if idx < 0 or idx >= len(lines):
-            continue
+        if idx < 0 or idx >= len(lines) or lineno != end_lineno:
+            continue  # multi-line spans are not reconciled from here
         line = lines[idx]
-        # end_col_offset points just past the decorator call's ``)``; insert before it.
-        cut = col - 1
-        if cut < 0 or cut > len(line) or line[cut : cut + 1] != ")":
-            continue  # offsets did not land where expected — leave the line untouched
-        lines[idx] = line[:cut] + text + line[cut:]
+        if col < 0 or end_col > len(line) or col > end_col:
+            continue  # offsets did not land where expected
+        if col == end_col and line[col : col + 1] != ")":
+            continue  # an insertion must land just before the decorator's closing paren
+        lines[idx] = line[:col] + text + line[end_col:]
 
-    return "".join(lines), divergences
+    return "".join(lines)
 
 
 def divergence_summary(divergences: list[DecoratorDivergence]) -> str:

@@ -11,6 +11,8 @@ These cases are written against the shapes actually observed in that roll.
 
 from __future__ import annotations
 
+import ast
+
 import pytest
 
 from squadops.cycles.fill_slot_integrity import (
@@ -362,3 +364,79 @@ class TestRouterPrefixRestoration:
         assert "router = APIRouter()" in corrected
         assert "prefix=" not in corrected.split("@router")[0]
         assert "status_code=201" in corrected  # the #602 restoration still holds
+
+
+class TestStatusCodeKeywordAlreadyPresent:
+    """pf-44: the restorer must never append a keyword the decorator already carries.
+
+    The dev agent wrote ``status_code=status.HTTP_201_CREATED`` — correct, idiomatic, and
+    exactly what the scaffold asked for, just not spelled as an int literal. The restorer
+    read "no literal" as "absent", appended its own, and produced a duplicate keyword
+    argument: a SyntaxError, so routes.py would not import, so pytest aborted at collection
+    with exit 4, so nothing was tested and every repair regenerated the same corruption.
+    """
+
+    SEED = (
+        '@router.post("/runs", response_model=RunEvent, status_code=201)\n'
+        "def create_run(payload: RunEventCreate):\n"
+        "    ...\n"
+    )
+
+    def _emitted(self, decorator: str) -> str:
+        return f"{decorator}\ndef create_run(payload):\n    return None\n"
+
+    def test_symbolic_status_code_is_left_alone_and_stays_parseable(self):
+        emitted = self._emitted('@router.post("/runs", status_code=status.HTTP_201_CREATED)')
+
+        out, divs = restore_declared_status_codes(self.SEED, emitted)
+
+        ast.parse(out)  # the actual regression: this used to raise
+        assert out.count("status_code=") == 1
+        assert "status.HTTP_201_CREATED" in out
+        status_divs = [d for d in divs if "status_code" in d.detail]
+        assert len(status_divs) == 1
+        assert status_divs[0].restored is False
+
+    def test_wrong_literal_is_replaced_not_appended(self):
+        emitted = self._emitted('@router.post("/runs", status_code=200)')
+
+        out, divs = restore_declared_status_codes(self.SEED, emitted)
+
+        ast.parse(out)
+        assert out.count("status_code=") == 1
+        assert "status_code=201" in out
+        assert "status_code=200" not in out
+        assert [d.restored for d in divs if "status_code" in d.detail] == [True]
+
+    def test_correct_literal_is_untouched(self):
+        emitted = self._emitted('@router.post("/runs", status_code=201)')
+
+        out, divs = restore_declared_status_codes(self.SEED, emitted)
+
+        assert out == emitted
+        assert not [d for d in divs if "status_code" in d.detail]
+
+    def test_absent_status_code_is_still_restored(self):
+        """The original pf-40 behaviour must survive the fix."""
+        emitted = self._emitted('@router.post("/runs")')
+
+        out, divs = restore_declared_status_codes(self.SEED, emitted)
+
+        ast.parse(out)
+        assert out.count("status_code=") == 1
+        assert "status_code=201" in out
+        assert [d.restored for d in divs if "status_code" in d.detail] == [True]
+
+    def test_every_reconciled_form_stays_importable(self):
+        """The invariant that actually matters: never emit unparseable source."""
+        for decorator in (
+            '@router.post("/runs")',
+            '@router.post("/runs", status_code=201)',
+            '@router.post("/runs", status_code=200)',
+            '@router.post("/runs", status_code=status.HTTP_201_CREATED)',
+            '@router.post("/runs", response_model=RunEvent, status_code=HTTPStatus.CREATED)',
+            '@router.post("/runs", status_code=int("201"))',
+        ):
+            out, _ = restore_declared_status_codes(self.SEED, self._emitted(decorator))
+            ast.parse(out)
+            assert out.count("status_code=") <= 1, decorator
