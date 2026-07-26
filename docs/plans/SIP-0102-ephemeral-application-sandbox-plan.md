@@ -35,6 +35,9 @@ it is authored.
 
 ## Standing constraints
 
+- **Review checklist for every phase PR:** SIP §1.1 terminology, the §4.5
+  clean-room invariant, and the §7 acceptance items are standing — a PR that
+  bends any of them is wrong regardless of green tests.
 - **Data-driven, no flag** (the 98/99 doctrine): sandbox presence is config
   (`SQUADOPS__EXECUTION__*`) with a NoOp default; unconfigured ⇒ byte-identical behavior.
 - **Zero contract revisions on probe re-home** — SIP-0098 §98.6's reserved constraint:
@@ -51,8 +54,16 @@ it is authored.
 
 ## Phase ladder
 
+**Ordering:** 102.1 → 102.2 → 102.3 strict; **102.4 ∥ 102.5** once 102.3 lands;
+102.6 last. A second lane picking up mid-arc should not serialize 102.4 behind
+102.5 or vice versa.
+
 ### 102.1 — Execution boundary: service skeleton, workspace provisioning, Docker adapter
 *(SIP migration step 1; unlocks: the execution boundary exists)*
+
+Slices (each independently landable): **a** port + semantic-result models +
+`WorkspaceRevision`; **b** service skeleton + provisioning + cleanup + evidence
+capture; **c** Docker adapter; **d** config/factory/NoOp wiring + parity guard.
 
 - **Port + domain models** (`src/squadops/ports/`): `ExecutionSandboxPort` exposing the
   floor's typed operations (`install_dependencies`, `build_frontend`, `run_backend_tests`,
@@ -77,6 +88,10 @@ it is authored.
 - **Decisions resolved at this phase's review:** transport + auth (open decision 1),
   storage backend (2), compose service addition (3).
 
+**Exit:** a configured stack executes one typed operation end-to-end through the
+service against a provisioned workspace revision (adapter integration test), and
+an unconfigured stack is byte-identical to today (regression green).
+
 ### 102.2 — Environment contract, canonical image, preflight
 *(SIP migration steps 2+4; unlocks: environment is a pinned, preflight-validated contract)*
 
@@ -96,6 +111,10 @@ it is authored.
 - **Decision resolved here:** image ownership + publish pipeline (open decision 4 —
   moved out of the SIP).
 
+**Exit:** cycle-create fails a deliberately mismatched environment contract at
+preflight (doctor reports the same finding), and every sandbox op result carries
+image + environment-contract identity.
+
 ### 102.3 — Typed-op relocation of in-process execution
 *(SIP migration step 3; unlocks: execution leaves the agent trust boundary)*
 
@@ -108,6 +127,10 @@ it is authored.
 - **Coordination flag:** `test_runner.py`/build-check are Spark-owned files and
   `acceptance_checks.py` is the explicitly-coordinated shared surface (#421/#425
   precedent) — Spark reviews before merge.
+
+**Exit:** the parity suite asserts identical check rows from the in-process and
+sandbox paths for all three relocated sites, and a live lite bind-mode cycle on
+the deployed stack runs its checks through the sandbox.
 
 ### 102.4 — Clean-room verification + outcome integration + failure classification
 *(SIP migration step 5, second half; unlocks: verdicts are clean-room and honestly named)*
@@ -125,6 +148,11 @@ it is authored.
   (open decision 5) — the two compose (locus gates patchability; ownership routes the
   repairing role) but must not share a name ambiguously.
 
+**Exit:** a completed run's verdict evidence pins workspace revision +
+environment contract + image identity, `CycleOutcome` derives
+`verified_executable`, and an induced infrastructure failure routes without
+taking `patch` or burning application correction budget.
+
 ### 102.5 — Builder warm-unit convergence
 *(SIP migration step 5, first half; unlocks: convergence iterates inside the sandbox)*
 
@@ -132,6 +160,10 @@ it is authored.
   attempt: build → inspect (`read_build_diagnostics`) → patch (`apply_workspace_patch`,
   cutting revisions per §4.6) → rebuild without re-provisioning; unit destroyed at
   attempt end. Warm state never feeds a verdict (§7 item 5).
+
+**Exit:** a builder attempt performs build → patch → rebuild on one warm unit
+(no re-provisioning), a revision is cut at attempt end, and none of the warm
+state feeds the final verdict.
 
 ### 102.6 — Retirement + golden-path live validation
 *(SIP migration steps 6+7; unlocks: lean agent images + engine-turns-over)*
@@ -146,6 +178,10 @@ it is authored.
   motivating evidence closing out).
 - This satisfies the arc's **engine-turns-over** checkpoint and opens Phase-0 benchmark
   runs (cut gate: ≥3 consecutive, squad-authored-manifest mode only).
+
+**Exit:** the qa agent image carries no Node toolchain (regression-guarded), and
+one canonical `full` cycle on the Spark deploy reaches clean-room
+`verified_executable` end-to-end — engine-turns-over recorded.
 
 ## Acceptance mapping (SIP §7 → phases)
 
