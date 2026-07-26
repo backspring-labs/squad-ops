@@ -45,7 +45,7 @@ import tempfile
 from pathlib import Path
 
 from squadops.capabilities.handlers.probe_runner import run_probes
-from squadops.capabilities.scaffold import InterfaceManifest, expand
+from squadops.capabilities.scaffold import InterfaceManifest, materialize
 from squadops.capabilities.scaffold_contract import emit_contract_dict, emit_contract_yaml
 from squadops.cycles.verification_contract import VerificationContract
 from squadops.cycles.verification_contract_runner import (
@@ -81,10 +81,7 @@ class _Result:
 
 def _materialize(manifest_path: Path, dest: Path) -> InterfaceManifest:
     manifest = InterfaceManifest.from_yaml(manifest_path.read_text(encoding="utf-8"))
-    for f in expand(manifest):
-        out = dest / f["name"]
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(f["content"], encoding="utf-8")
+    materialize(manifest, dest)
     return manifest
 
 

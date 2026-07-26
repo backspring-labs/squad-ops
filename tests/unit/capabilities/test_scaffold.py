@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from squadops.capabilities import scaffold
 from squadops.capabilities.handlers.build_profiles import get_profile
 from squadops.capabilities.scaffold import InterfaceManifest, expand
 
@@ -273,11 +274,12 @@ def test_materialize_writes_every_expanded_file(tmp_path):
 
 def test_materialize_refuses_path_traversal(tmp_path, monkeypatch):
     # Defense-in-depth: even if a future expander emitted an escaping name, the
-    # materializer must refuse to write outside the target root.
-    mod = _load_materialize_module()
-    monkeypatch.setattr(mod, "expand", lambda _m: [{"name": "../escape.txt", "content": "x"}])
+    # materializer must refuse to write outside the target root. The guard lives on
+    # the canonical helper, so every caller inherits it — the two copies of this loop
+    # in scripts/dev/ (only one of which HAD the guard) now delegate here.
+    monkeypatch.setattr(scaffold, "expand", lambda _m: [{"name": "../escape.txt", "content": "x"}])
     with pytest.raises(ValueError, match="refusing to write outside"):
-        mod.materialize(_MANIFEST_PATH, tmp_path)
+        scaffold.materialize(_group_run_manifest(), tmp_path)
     assert not (tmp_path.parent / "escape.txt").exists()
 
 

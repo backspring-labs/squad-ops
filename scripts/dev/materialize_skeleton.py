@@ -17,25 +17,18 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from squadops.capabilities.scaffold import InterfaceManifest, expand
+from squadops.capabilities.scaffold import InterfaceManifest
+from squadops.capabilities.scaffold import materialize as materialize_skeleton
 
 
 def materialize(manifest_path: Path, out_dir: Path) -> int:
     manifest = InterfaceManifest.from_yaml(manifest_path.read_text(encoding="utf-8"))
-    files = expand(manifest)
-    out_root = out_dir.resolve()
-    for f in files:
-        dest = (out_dir / f["name"]).resolve()
-        # chroot safety: an expander must never write outside the target root.
-        if out_root != dest and out_root not in dest.parents:
-            raise ValueError(f"refusing to write outside {out_root}: {f['name']!r}")
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_text(f["content"], encoding="utf-8")
+    count = materialize_skeleton(manifest, out_dir)
     print(
-        f"materialized {len(files)} files from {manifest_path} "
-        f"(manifest_hash={manifest.content_hash()[:12]}) -> {out_root}"
+        f"materialized {count} files from {manifest_path} "
+        f"(manifest_hash={manifest.content_hash()[:12]}) -> {out_dir.resolve()}"
     )
-    return len(files)
+    return count
 
 
 def main(argv: list[str]) -> int:
