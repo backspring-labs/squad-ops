@@ -182,8 +182,16 @@ def _inject_deterministic_evidence(
       docstring; without it dev repairs guess ``ApiError(status_code=...,
       detail=...)`` and 500 every error path at the behavioral retest despite
       passing all typed checks (pf-33 corr-01, pf-34 corr-00).
+    - ``model_surface`` (pf-41): the exact importable names from the frozen
+      ``models.py``. Repairs invented them on three consecutive attempts,
+      degrading working imports into unimportable ones; the unresolved-import
+      gate rejects such a patch but never says what the right names are, so the
+      next attempt guesses again.
     """
-    from squadops.capabilities.scaffold import error_seam_instructions
+    from squadops.capabilities.scaffold import (
+        error_seam_instructions,
+        model_surface_instructions,
+    )
     from squadops.cycles.contract_expectations import expectation_lines
     from squadops.cycles.interface_conformance import detect_interface_drift
 
@@ -210,6 +218,10 @@ def _inject_deterministic_evidence(
     error_lines = error_seam_instructions(interface_manifest)
     if error_lines:
         failure_evidence["error_contract"] = error_lines
+
+    model_lines = model_surface_instructions(interface_manifest)
+    if model_lines:
+        failure_evidence["model_surface"] = model_lines
 
 
 def _locus_and_repair_target(

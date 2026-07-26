@@ -438,6 +438,51 @@ def error_seam_instructions(manifest: InterfaceManifest | None) -> list[str]:
     ]
 
 
+def model_surface_instructions(manifest: InterfaceManifest | None) -> list[str]:
+    """Authoritative importable names from the frozen ``models.py`` (pf-41).
+
+    ``models.py`` is scaffold-frozen and its contents are fully determined by the
+    manifest's entities and request shapes — yet nothing puts those names in front of a
+    repair. So repairs guess them, and the guesses compound: on pf-41 the dev agent
+    imported the correct names, then three consecutive repairs replaced them with
+    ``Run``/``CreateRun``, then ``RunCreate``, then a five-name invention
+    (``RunCreate``, ``RunResponse``, ``RunJoin``, ``RunLeave``, ``RunDetailResponse``) —
+    none of which exist. Working code degraded into unimportable code across the
+    correction loop.
+
+    Detection already exists (``emission_integrity.unresolved_imports`` rejects a patch
+    whose intra-package imports do not resolve) and it works — on pf-40 it caught every
+    bad repair. But detection only throws the repair away; it never tells the model what
+    the right names ARE, so the next attempt guesses again. These lines close that: same
+    ``failure_evidence`` → authoritative-block transport as the error seam and frozen
+    ownership.
+
+    Empty when there is no manifest (author mode, non-scaffold stacks) — additive, like
+    every other entry on that transport.
+    """
+    if manifest is None:
+        return []
+    names = [e.name for e in manifest.entities] + [s.name for s in manifest.api.request_shapes]
+    if not names:
+        return []
+    exact = ", ".join(f"`{n}`" for n in dict.fromkeys(names))
+    return [
+        (
+            f"`backend/models.py` is scaffold-frozen and defines EXACTLY these names: {exact}. "
+            "Import only from this list — these are the complete contents of that module"
+        ),
+        (
+            "do NOT invent model names or aliases (`Run`, `RunCreate`, `RunResponse`, "
+            "`RunJoin` and similar do not exist); an import of a name absent from the list "
+            "above fails at load, the app never starts, and the patch is rejected"
+        ),
+        (
+            "`models.py` is frozen — if a name you want is missing, use the declared names "
+            "and shape the response in the fill slot; do not edit or re-emit the model module"
+        ),
+    ]
+
+
 # SIP-0100 D1 (bounded-hybrid QA test ownership): the scaffold owns the *namespace* — the
 # deterministic directory prefixes a bound plan may declare concrete QA test files within — while
 # the plan declares the concrete paths. A QA producer may write only inside this surface; a QA
