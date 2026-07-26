@@ -23,6 +23,7 @@ components exist, wire together, build, and boot, but their bodies are stubs.
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 from dataclasses import dataclass, field
@@ -505,6 +506,98 @@ def model_surface_instructions(manifest: InterfaceManifest | None) -> list[str]:
             "and shape the response in the fill slot; do not edit or re-emit the model module"
         ),
     ]
+
+
+def _class_field_names(node: ast.ClassDef) -> list[str]:
+    """Annotated attribute names declared directly on a class body."""
+    return [
+        stmt.target.id
+        for stmt in node.body
+        if isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name)
+    ]
+
+
+def _imported_modules(tree: ast.AST) -> list[str]:
+    """Module strings as the source actually writes them — ``.routes`` stays relative.
+
+    The relative form is the point: pf-42's plan asserted ``import_present`` for
+    ``backend.routes`` against a frozen ``main.py`` that says ``from .routes import
+    router``. Rendering the *written* form is what makes that mismatch visible.
+    """
+    modules: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            modules.extend(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            modules.append("." * node.level + (node.module or ""))
+    # __future__ is on every emitted module and tells the author nothing.
+    return [m for m in modules if m != "__future__"]
+
+
+def _python_surface(source: str) -> str:
+    """One line describing what a frozen Python module declares, or "" if nothing useful."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:  # pragma: no cover - the expander emits valid Python
+        return ""
+
+    classes = [
+        f"{node.name}({', '.join(fields)})" if (fields := _class_field_names(node)) else node.name
+        for node in tree.body
+        if isinstance(node, ast.ClassDef)
+    ]
+    functions = [
+        node.name
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and not node.name.startswith("_")
+    ]
+    modules = sorted(set(_imported_modules(tree)))
+
+    parts = []
+    if classes:
+        parts.append("defines " + ", ".join(classes))
+    if functions:
+        parts.append("functions " + ", ".join(functions))
+    if modules:
+        parts.append("imports " + ", ".join(f"`{m}`" for m in modules))
+    return "; ".join(parts)
+
+
+def frozen_surface_index_lines(manifest: InterfaceManifest | None) -> list[str]:
+    """One line per scaffold-frozen file, naming exactly what it declares (pf-42).
+
+    The plan author is shown a criteria index covering the *fill slots* and nothing else
+    — four files out of seventeen. The other thirteen are frozen, and the author has
+    never been told they exist, let alone what is in them. So when it wants a check on
+    one it invents the contents: pf-42 asserted a ``RunEvent`` field called
+    ``meeting_location`` (the manifest says ``location``) and an ``import_present`` for
+    ``backend.routes`` against a file that writes ``from .routes``. Neither could ever
+    pass, and neither could be repaired — a frozen emission is restored before the check
+    re-runs — so the plan was dead on arrival and cost a roll to discover.
+
+    Derived by parsing the *expanded skeleton itself* rather than describing it by hand,
+    so this index cannot drift from what the expander emits: change a template and the
+    lines change with it.
+
+    The companion to the plan-validation net (``cycles.frozen_check_validation``), and
+    the same pairing as the repair path's model surface + unresolved-import gate: supply
+    the authoritative fact so nothing has to guess, and verify deterministically so a
+    guess can never cost a roll.
+
+    Empty when there is no manifest (author mode, non-scaffold stacks) — additive.
+    """
+    if manifest is None:
+        return []
+    fills = set(fill_slot_paths(manifest))
+    lines = []
+    for f in expand(manifest):
+        name = f["name"]
+        if name in fills:
+            continue
+        detail = _python_surface(f["content"]) if name.endswith(".py") else ""
+        lines.append(f"- `{name}` — {detail}" if detail else f"- `{name}`")
+    return lines
 
 
 # SIP-0100 D1 (bounded-hybrid QA test ownership): the scaffold owns the *namespace* — the

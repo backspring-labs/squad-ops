@@ -23,7 +23,12 @@ from squadops.capabilities.handlers.build_profiles import (
     ROUTING_BUILDER_PRESENT,
     ROUTING_FALLBACK_NO_BUILDER,
 )
-from squadops.capabilities.scaffold import harness_entry_modules, is_qa_test_path_for_stack
+from squadops.capabilities.scaffold import (
+    InterfaceManifest,
+    frozen_surface_index_lines,
+    harness_entry_modules,
+    is_qa_test_path_for_stack,
+)
 from squadops.cycles.agent_config import resolve_agent_config
 from squadops.cycles.failure_evidence import FailureLocus
 from squadops.cycles.implementation_plan import (
@@ -418,7 +423,10 @@ def _resolve_legacy_steps(
 
 
 def _inject_contract_inputs(
-    inputs: dict, contract: VerificationContract | None, task_type: str
+    inputs: dict,
+    contract: VerificationContract | None,
+    task_type: str,
+    interface_manifest: InterfaceManifest | None = None,
 ) -> None:
     """Bind-mode envelope inputs derived from the seeded contract (SIP-0098).
 
@@ -440,6 +448,14 @@ def _inject_contract_inputs(
         return
     if task_type in _BIND_INDEX_PROPOSER_TASK_TYPES:
         inputs["contract_criteria_index"] = "\n".join(contract.criteria_index_lines())
+        # pf-42: the criteria index covers the fill slots only — four files of
+        # seventeen. The rest are frozen, and the proposer was never told they exist,
+        # so a check it wanted on one was written against an invented interior
+        # (``RunEvent.meeting_location`` for the declared ``location``). Same data-only
+        # injection as the index above; the instruction prose is a managed asset (#448).
+        frozen_index = frozen_surface_index_lines(interface_manifest)
+        if frozen_index:
+            inputs["frozen_surface_index"] = "\n".join(frozen_index)
     if task_type == "qa.test" and contract.behavioral.probes:
         inputs["contract_probes"] = [p.to_dict() for p in contract.behavioral.probes]
 
@@ -476,6 +492,7 @@ def generate_task_plan(
     profile: SquadProfile,
     plan: ImplementationPlan | None = None,
     contract: VerificationContract | None = None,
+    interface_manifest: InterfaceManifest | None = None,
 ) -> list[TaskEnvelope]:
     """Generate a task plan for a cycle run.
 
@@ -636,7 +653,7 @@ def generate_task_plan(
             acceptance.extend(_harness_boundary_criteria(task_type, plan_task, contract))
             inputs["acceptance_criteria"] = acceptance
 
-        _inject_contract_inputs(inputs, contract, task_type)
+        _inject_contract_inputs(inputs, contract, task_type, interface_manifest)
 
         envelope = TaskEnvelope(
             task_id=task_id,

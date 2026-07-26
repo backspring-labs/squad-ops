@@ -282,12 +282,29 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             # TypedChecks. Absent contract = author mode = today's behavior.
             verification_contract = await self._load_contract_for_run(cycle, run)
 
+            # pf-42: the proposer binds criteria for the fill slots but is told nothing
+            # about the frozen files, so a check it wants on one is written against an
+            # invented interior. The manifest is what those files expand from, so it is
+            # the authority on their contents.
+            #
+            # Read from the OPERATOR-SEEDED rail, not `_load_interface_manifest_for_run`
+            # — that one returns None for a framing run by design (#496), and framing is
+            # exactly when the proposer needs this. The #496 rule is that a framing run
+            # must not expand or carry skeleton FILES; describing the interface in a
+            # prompt materializes nothing, so it stays inside that rule. Bind mode
+            # already requires a seeded manifest (#494), so this is the same document
+            # the gate hash-checks and the skeleton later expands from.
+            interface_manifest = None
+            if verification_contract is not None:
+                interface_manifest = await self._seeded_manifest_for_authoring(cycle)
+
             plan = generate_task_plan(
                 cycle,
                 run,
                 profile,
                 plan=implementation_plan,
                 contract=verification_contract,
+                interface_manifest=interface_manifest,
             )
             participating_agent_ids = {e.agent_id for e in plan}
 
@@ -2704,6 +2721,29 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             ):
                 return content_bytes.decode(errors="replace")
         return None
+
+    async def _seeded_manifest_for_authoring(self, cycle: Cycle) -> Any:
+        """The seeded manifest parsed, for describing the frozen surface to a proposer.
+
+        Distinct from ``_load_interface_manifest_for_run`` on purpose: that one refuses
+        framing runs (#496) because a framing run must not expand or carry skeleton
+        files, and framing is precisely when the plan is authored. Nothing is
+        materialized here — the manifest is read only to render an index of what the
+        frozen files declare into the authoring prompt (pf-42).
+
+        Returns ``InterfaceManifest`` or ``None``; unreadable/unparseable is not fatal,
+        the prompt simply falls back to today's shape.
+        """
+        from squadops.capabilities.scaffold import InterfaceManifest
+
+        content = await self._load_seeded_manifest_content(cycle)
+        if content is None:
+            return None
+        try:
+            return InterfaceManifest.from_yaml(content)
+        except Exception:
+            logger.warning("seeded interface manifest did not parse; frozen surface omitted")
+            return None
 
     @staticmethod
     def _validate_interface_manifest(content: str) -> list[str]:

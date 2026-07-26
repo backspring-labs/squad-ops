@@ -12,6 +12,7 @@ optional_variables:
   - builder_section
   - typed_acceptance_vocabulary
   - bind_criteria_section
+  - frozen_surface_section
 ---
 You are proposing QA-domain plan tasks for the upcoming build.
 
@@ -72,3 +73,5 @@ confidence: ""  # low | medium | high
 ```
 
 {{bind_criteria_section}}
+
+{{frozen_surface_section}}

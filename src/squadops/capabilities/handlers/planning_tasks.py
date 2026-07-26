@@ -854,6 +854,31 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
         )
         return rendered.content
 
+    async def _frozen_surface_section(self, renderer: Any, inputs: dict[str, Any]) -> str:
+        """What the scaffold-frozen files declare, or "" (pf-42).
+
+        The criteria index above names the fill slots only — four files of seventeen on
+        the group_run skeleton. The other thirteen are frozen, and nothing told the
+        proposer they exist, so a check it wanted on one was written against an invented
+        interior (``RunEvent.meeting_location`` for the declared ``location``;
+        ``backend.routes`` for a module that imports ``.routes``). Neither could pass and
+        neither could be repaired — a frozen emission is restored before the check
+        re-runs — so the plan was unwinnable before dispatch.
+
+        Same conditions as the bind section: bind mode only, dev/qa proposers only. The
+        index *data* is injected by the executor; the instruction prose is a managed
+        asset (CLAUDE.md #448). No index → "" → today's proposer prompt exactly.
+        """
+        if self._proposer_role not in ("development", "qa"):
+            return ""
+        index = inputs.get("frozen_surface_index")
+        if not index:
+            return ""
+        rendered = await renderer.render(
+            "request.plan_frozen_surface_appendix", {"frozen_surface_index": index}
+        )
+        return rendered.content
+
     async def handle(
         self,
         context: ExecutionContext,
@@ -902,6 +927,12 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
         bind_criteria_section = await self._bind_criteria_section(renderer, inputs)
         if bind_criteria_section:
             variables["bind_criteria_section"] = bind_criteria_section
+        # pf-42: the same bind-mode prompt names the fill slots but not the frozen files,
+        # so checks aimed at those were written against an invented interior. Data-driven
+        # and managed-asset prose, exactly like the section above.
+        frozen_surface_section = await self._frozen_surface_section(renderer, inputs)
+        if frozen_surface_section:
+            variables["frozen_surface_section"] = frozen_surface_section
         rendered = await renderer.render(self._request_template_id, variables)
         user_prompt = rendered.content
 
