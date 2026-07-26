@@ -75,40 +75,62 @@ def _format_bullets(items: Any) -> str:
         return str(items)
 
 
+# Deterministic, data-derived evidence the correction runner injects, each rendered as an
+# authoritative block. Order is deliberate — conformance first, then ownership, then the two
+# scaffold-knowledge seams — and it is a table rather than four copy-pasted branches so a
+# fifth seam is one row, not another clause (and does not push this function past C901).
+#
+#   interface_drift      — exact renamed identifiers vs the manifest (deterministic, not the
+#                          analyzer's guess), so the repair renames to interface names.
+#   scaffold_enforcement — SIP-0100 3.4b: a prior repair's edit to a frozen file was rejected
+#                          and restored; tell this repair rather than let it silently fight.
+#   error_contract       — pf-34: the ApiError(code, message) convention + code→status map.
+#                          Without it repairs guess the signature and 500 every error path at
+#                          the behavioral retest despite passing every typed check.
+#   model_surface        — pf-41: the exact importable names from the frozen models.py.
+#                          Repairs invented them on three consecutive attempts, degrading
+#                          working imports into unimportable ones; the unresolved-import gate
+#                          rejects such a patch but never says what the real names are.
+_AUTHORITATIVE_EVIDENCE_BLOCKS: tuple[tuple[str, str], ...] = (
+    ("interface_drift", "INTERFACE CONFORMANCE"),
+    ("scaffold_enforcement", "FROZEN OWNERSHIP"),
+    ("error_contract", "ERROR CONTRACT"),
+    ("model_surface", "MODEL SURFACE"),
+)
+
+
+def _evidence_lines(value: Any) -> list[str]:
+    """Normalize one evidence entry to its instruction lines.
+
+    Interface drift arrives as dicts carrying an ``instruction``; the rest arrive as plain
+    strings. Blank entries are dropped so an empty list never renders a bare header.
+    """
+    lines: list[str] = []
+    for item in value or []:
+        text = item.get("instruction", "") if isinstance(item, dict) else item
+        if text := str(text).strip():
+            lines.append(text)
+    return lines
+
+
+def _authoritative_blocks(failure_evidence: dict) -> list[str]:
+    """Render every present authoritative evidence block, in table order."""
+    blocks: list[str] = []
+    for key, header in _AUTHORITATIVE_EVIDENCE_BLOCKS:
+        lines = _evidence_lines(failure_evidence.get(key))
+        if lines:
+            blocks.append(
+                f"{header} (authoritative — apply exactly):\n"
+                + "\n".join(f"- {line}" for line in lines)
+            )
+    return blocks
+
+
 def _format_failure_summary(failure_evidence: Any, failure_analysis: Any) -> str:
     """Compose a compact failure description from evidence + analysis."""
     parts: list[str] = []
     if isinstance(failure_evidence, dict):
-        # Interface-drift diagnosis is deterministic and authoritative — the
-        # manifest, not the analyzer's guess, is the source of truth. Lead with
-        # it so the repair renames to the interface names and stops thrashing.
-        drift = failure_evidence.get("interface_drift") or []
-        if drift:
-            lines = [str(d.get("instruction", "")).strip() for d in drift if d.get("instruction")]
-            if lines:
-                parts.append(
-                    "INTERFACE CONFORMANCE (authoritative — apply exactly):\n"
-                    + "\n".join(f"- {line}" for line in lines)
-                )
-        # SIP-0100 3.4b restore+signal: a prior repair's edit to a frozen file was
-        # rejected and restored — tell this repair instead of silently fighting it.
-        enforcement = failure_evidence.get("scaffold_enforcement") or []
-        if enforcement:
-            parts.append(
-                "FROZEN OWNERSHIP (authoritative — apply exactly):\n"
-                + "\n".join(f"- {str(line).strip()}" for line in enforcement if str(line).strip())
-            )
-        # pf-34: the ApiError(code, message) raise convention + code→status map,
-        # manifest-derived (scaffold.error_seam_instructions) — repairs otherwise
-        # guess the signature and 500 every error path at the behavioral retest.
-        error_contract = failure_evidence.get("error_contract") or []
-        if error_contract:
-            parts.append(
-                "ERROR CONTRACT (authoritative — apply exactly):\n"
-                + "\n".join(
-                    f"- {str(line).strip()}" for line in error_contract if str(line).strip()
-                )
-            )
+        parts.extend(_authoritative_blocks(failure_evidence))
         vr = failure_evidence.get("validation_result") or {}
         summary = vr.get("summary") or failure_evidence.get("error") or ""
         if summary:

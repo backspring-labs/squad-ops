@@ -597,3 +597,71 @@ def test_success_status_moves_the_manifest_content_hash():
             ep["success_status"] = 202
 
     assert InterfaceManifest.from_dict(changed).content_hash() != baseline
+
+
+class TestModelSurfaceInstructions:
+    """pf-41: repairs invent model names, and the guesses compound.
+
+    The dev agent imported the correct names; three consecutive repairs then replaced
+    them with `Run`/`CreateRun`, then `RunCreate`, then a five-name invention — turning
+    working code into code that cannot import. The unresolved-import gate rejects such a
+    patch but never says what the real names ARE, so the next attempt guesses again.
+    """
+
+    def test_lines_name_every_model_the_scaffold_emits(self):
+        from squadops.capabilities.scaffold import model_surface_instructions
+
+        manifest = _group_run_manifest()
+        lines = model_surface_instructions(manifest)
+        blob = " ".join(lines)
+
+        # every class the frozen models.py actually defines must be named
+        emitted = next(f["content"] for f in expand(manifest) if f["name"] == "backend/models.py")
+        defined = [
+            ln.split("class ", 1)[1].split("(", 1)[0]
+            for ln in emitted.splitlines()
+            if ln.startswith("class ")
+        ]
+        assert defined, "fixture sanity: models.py should define classes"
+        for name in defined:
+            assert f"`{name}`" in blob, (
+                f"{name} is defined in models.py but not named to the repair"
+            )
+
+    def test_the_names_pf41_invented_are_not_presented_as_valid(self):
+        """The five names pf-41's last repair imported do not exist. They may appear in
+        the do-not-invent warning, but never in the authoritative list of what exists."""
+        from squadops.capabilities.scaffold import model_surface_instructions
+
+        available = next(
+            ln for ln in model_surface_instructions(_group_run_manifest()) if "EXACTLY these" in ln
+        )
+        for invented in ("RunResponse", "RunJoin", "RunLeave", "RunDetailResponse", "CreateRun"):
+            assert f"`{invented}`" not in available
+
+    def test_states_the_module_is_frozen(self):
+        """Without this a repair 'fixes' a missing name by editing models.py — which is
+        restored by scaffold enforcement, so the repair silently accomplishes nothing."""
+        from squadops.capabilities.scaffold import model_surface_instructions
+
+        assert any("frozen" in ln for ln in model_surface_instructions(_group_run_manifest()))
+
+    def test_absent_manifest_contributes_nothing(self):
+        """Author mode and non-scaffold stacks inject nothing — additive, like every
+        other entry on this transport."""
+        from squadops.capabilities.scaffold import model_surface_instructions
+
+        assert model_surface_instructions(None) == []
+
+    def test_manifest_without_entities_or_shapes_contributes_nothing(self):
+        from squadops.capabilities.scaffold import model_surface_instructions
+
+        bare = InterfaceManifest.from_dict(
+            {
+                "version": 1,
+                "kind": "interface_manifest",
+                "project_id": "x",
+                "stack": "fullstack_fastapi_react",
+            }
+        )
+        assert model_surface_instructions(bare) == []

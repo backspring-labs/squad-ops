@@ -181,3 +181,66 @@ class TestRepairHandlerHandle:
             result = await h.handle(ctx, {"prd": "test"})
             assert result.success is True
             assert result.outputs["artifacts"][0]["name"] == expected_name
+
+
+class TestModelSurfaceReachesTheRepairPrompt:
+    """The pure lines are useless unless they land in the prompt the repair agent reads.
+
+    This is the #588 lesson in test form: that fix was correct and wired to a code path
+    nothing used, so it changed no outcome until the wiring was fixed. Assert the whole
+    path — manifest → failure_evidence → rendered prompt text.
+    """
+
+    @staticmethod
+    def _manifest():
+        from pathlib import Path
+
+        from squadops.capabilities.scaffold import InterfaceManifest
+
+        path = (
+            Path(__file__).resolve().parents[3]
+            / "examples"
+            / "03_group_run"
+            / "interface_manifest.yaml"
+        )
+        return InterfaceManifest.from_yaml(path.read_text(encoding="utf-8"))
+
+    def test_evidence_lines_render_into_the_failure_summary(self):
+        from squadops.capabilities.handlers.impl.repair_handlers import _format_failure_summary
+        from squadops.capabilities.scaffold import model_surface_instructions
+
+        evidence = {"model_surface": model_surface_instructions(self._manifest())}
+
+        rendered = _format_failure_summary(evidence, None)
+
+        assert "MODEL SURFACE (authoritative" in rendered
+        # the real names the pf-41 repairs failed to use
+        for real in ("RunEvent", "RunEventCreate", "Participant", "ParticipantName"):
+            assert real in rendered
+
+    def test_absent_evidence_renders_no_section(self):
+        """Author-mode runs carry no manifest, so the block must not appear at all —
+        an empty authoritative header would be noise in every non-scaffold repair."""
+        from squadops.capabilities.handlers.impl.repair_handlers import _format_failure_summary
+
+        assert "MODEL SURFACE" not in _format_failure_summary({"error": "boom"}, None)
+
+    def test_correction_runner_populates_the_evidence_key(self):
+        """The executor-side half: the runner must actually put the lines on the
+        envelope's failure_evidence, or the renderer above never sees them."""
+        from types import SimpleNamespace
+
+        from adapters.cycles.correction_runner import _inject_deterministic_evidence
+
+        manifest = self._manifest()
+        evidence: dict = {}
+        _inject_deterministic_evidence(
+            failure_evidence=evidence,
+            interface_manifest=manifest,
+            artifact_contents={},
+            scaffold_enforcement_carry=[],
+            envelope=SimpleNamespace(inputs={}),
+        )
+
+        assert evidence.get("model_surface"), "model_surface must be injected for a bound run"
+        assert "RunEvent" in " ".join(evidence["model_surface"])
