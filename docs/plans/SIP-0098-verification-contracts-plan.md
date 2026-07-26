@@ -89,7 +89,7 @@ migration-seeded `contract_ref`).
 | 98.3 Orchestration binding | **Mac** | Executor / framing fragments / plan validation — all Mac-owned |
 | 98.4 Probe runner | **Mac** (see note) | New self-contained runner module in the handler battery + rollup accounting in the cycles domain |
 | 98.5 Migration + measurement | **Spark** | Bind-mode rolls need the agents/GPU/group_run deployment; the yield baseline is run here |
-| 98.6 Sandbox convergence | coordination only | Non-blocking; activates when SIP-Externalized-Build-Sandbox lands |
+| 98.6 Sandbox convergence | coordination only | Non-blocking; activates when SIP-0102 (Ephemeral Application Sandbox) lands |
 
 **98.4 routing note:** the probe runner is pinned as a *new* module precisely so phase 4 does
 not edit `test_runner.py` / build-check surfaces (Spark-owned by the file-ownership rule).
@@ -280,7 +280,7 @@ proving it. There is no feature flag anywhere (house rule; SIP-0098 principle 5)
 
 ### 98.6 — Sandbox convergence (coordination, non-blocking)
 
-When SIP-Externalized-Build-Sandbox lands, it ships a second execution profile re-homing
+When SIP-0102 (Ephemeral Application Sandbox) lands, it ships a second execution profile re-homing
 probe/check execution to the ephemeral container — **zero contract revisions** by design
 (§6.5). This plan only reserves the constraint; no work items here.
 
@@ -308,7 +308,7 @@ probe/check execution to the ephemeral container — **zero contract revisions**
 
 ## Out of scope
 
-- The sandbox itself (SIP-Externalized-Build-Sandbox owns it; §98.6 is coordination only).
+- The sandbox itself (SIP-0102 (Ephemeral Application Sandbox) owns it; §98.6 is coordination only).
 - Objective→PRD contract generation (later rung; this SIP removes its blocker via 98.5's
   PRD split).
 - Replacing the #464/#473 nets — they remain the floor for authored criteria in

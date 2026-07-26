@@ -158,7 +158,7 @@ yield baseline measures the production pipeline, not a hand-rigged spike path.
 
 - Verification mechanics of any kind — SIP-0096 owns evidence integrity; SIP-0098 owns
   criteria/contract, including frozen-surface enforcement and behavioral probes.
-- Where builds/tests execute — SIP-Externalized-Build-Sandbox (composes cleanly; the
+- Where builds/tests execute — SIP-0102 Ephemeral Application Sandbox (composes cleanly; the
   skeleton gate runs on plain CI runners regardless).
 - Universal manifest for novel architectures (SIP §6 non-goal; CRUD-shaped apps first).
 - Opinionated app design in templates (invariant substrate only — the "identical regardless

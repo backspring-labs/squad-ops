@@ -29,7 +29,7 @@ Today's convergence loop (SIP-0086) is **task-granular and binary**: a whole tas
 The scaled model mirrors how human teams work:
 
 1. Scaffolding makes the app **build and boot** (see `IDEA-Scaffold-Interface-vs-Implementation.md`), so QA can reach *behavioral* issues (endpoint returns 500) instead of drowning in structural ones (won't compile).
-2. QA runs the app in an isolated sandbox (see `SIP-Externalized-Build-Sandbox`) and emits **many fine-grained checks** — one per endpoint / behavior / acceptance criterion.
+2. QA runs the app in an isolated sandbox (see SIP-0102, Ephemeral Application Sandbox) and emits **many fine-grained checks** — one per endpoint / behavior / acceptance criterion.
 3. **The set of FAILED checks *is* the enumerated issue list.**
 4. Dev **resolves them one by one** — each fix flips one check from failed → passed.
 5. The run's verdict is `accepted` only when every required check is executed-and-passed.

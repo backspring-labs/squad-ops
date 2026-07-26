@@ -2,7 +2,7 @@
 
 **Version:** 3 (v1 + two second-opinion review rounds, all 2026-07-14)
 **Status:** Working strategy — the sandbox design has graduated to
-`sips/proposed/SIP-Externalized-Build-Sandbox.md` (now titled **Ephemeral
+`sips/accepted/SIP-0102-Ephemeral-Application-Sandbox.md` (now titled **Ephemeral
 Application Sandbox**, evolved in place from the 2026-07-08 draft and
 re-targeted from the 2.0 vision arc to v1.4); the scaffold was already
 drafted as `sips/proposed/SIP-Contract-First-Build-Scaffolding.md`. This doc
@@ -143,7 +143,7 @@ separate.) Key rules:
 
 Full design, v1.4 scope split (contract-level-right vs
 implementation-level-minimal), 15 acceptance-grade security requirements,
-and migration: **`sips/proposed/SIP-Externalized-Build-Sandbox.md`**.
+and migration: **`sips/accepted/SIP-0102-Ephemeral-Application-Sandbox.md`**.
 
 ## Three verification levels
 
@@ -291,7 +291,7 @@ reliability belongs to 1.5/1.6. Governing text: `docs/plans/1-4-evidence-arc-pla
    plan envelope in 1.4).
 10. Dependency caching policy added (read-through caches; never semantic).
 11. **Discovered and reconciled with existing drafts:** the sandbox design
-    evolved `sips/proposed/SIP-Externalized-Build-Sandbox.md` in place
+    evolved `sips/accepted/SIP-0102-Ephemeral-Application-Sandbox.md` in place
     (re-targeted 2.0-vision → v1.4) rather than duplicating it; Phase 2A is
     owned by the already-drafted `SIP-Contract-First-Build-Scaffolding`.
 

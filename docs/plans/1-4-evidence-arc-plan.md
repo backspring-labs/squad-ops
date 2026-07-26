@@ -100,7 +100,7 @@ behind "evidence is honest," and "compound over grades" behind "grades are trust
 | SIP | Status | Release | Role in the arc |
 |---|---|---|---|
 | **SIP-0096** Verification Evidence Integrity | **accepted 2026-07-06** (PR #337, rev 2); P1–P3 landing through 1.3.x/1.4 (P3 slice 2b merged #418) | **1.4 headline** | integrity invariant, provenance, inert-check detection, `CycleOutcome` contract |
-| **Ephemeral Application Sandbox** (`SIP-Externalized-Build-Sandbox.md`, evolved 2026-07-14) | proposed — **acceptance gated on the Phase-0.5 spike** | **1.4 headline (Lane S)** | the golden path's execution half; 1.4 floor: build runner + app start + HTTP health (rest → 1.5+) |
+| **Ephemeral Application Sandbox** (**SIP-0102**, evolved 2026-07-14) | **accepted 2026-07-26** — spike gate satisfied | **1.4 headline (Lane S)** | the golden path's execution half; 1.4 floor: build runner + app start + HTTP health (rest → 1.5+) |
 | **Contract-First Build Scaffolding** | proposed (2026-07-10) — **acceptance gated on the Phase-0.5 spike** | **1.4 headline (Lane M)** | the golden path's composition half; own acceptance surface = the Mac-owned CI skeleton-builds+boots gate |
 | SIP-0091 Duty Durability via Temporal | accepted | **1.6** (moved from 1.4, 2026-07-14 — serves Campaign-era long-running automation, not the golden path) | durable responsibility |
 | **SIP-0097** Executor Decomposition Boundaries | **accepted 2026-07-06** (PR #340, rev 2) | **1.3** (structural) | produces the `RunCompletion`+`RunLedger` seam SIP-0096 §6.4 wires into (slice 2 scheduled early for exactly this) |
@@ -218,7 +218,7 @@ S runs 1A verification-truth + 1B sandbox; M runs 2A scaffold + evidence P3 clos
   downstream readers now** — Campaign continuation (1.6) and `CycleAssessment` (1.8) —
   carrying config/squad/pack provenance from the start. New outcome vocabulary from the
   golden path: `verified_executable` / `verified_functional` (three verification levels).
-- **Ephemeral Application Sandbox** (Lane S headline; `SIP-Externalized-Build-Sandbox.md`)
+- **Ephemeral Application Sandbox** (Lane S headline; **SIP-0102**, accepted 2026-07-26)
   — **1.4 floor (rev 2): build runner + `start_application` + HTTP health probe.**
   Browser probe, probe-as-peer implementation, operator-access CLI/caddy → 1.5+; if the
   browser probe descopes, the 1.4 verdict is honestly named `verified_executable`.
