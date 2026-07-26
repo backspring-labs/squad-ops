@@ -3,7 +3,7 @@ title: Ephemeral Application Sandbox
 status: proposed
 author: jladd
 created_at: '2026-07-08T00:00:00Z'
-updated_at: '2026-07-14T00:00:00Z'
+updated_at: '2026-07-26T00:00:00Z'
 ---
 # SIP: Ephemeral Application Sandbox
 
@@ -16,10 +16,11 @@ live-validation campaign and two second-opinion review rounds; see
 Proposed
 
 **Targets:** **v1.4 headline component** (re-targeted from the 2.0 vision arc on
-2026-07-14 — see Motivating case). Together with
-SIP-Contract-First-Build-Scaffolding it forms the "Verified Canonical App
-Build" vertical slice: *one canonical stack can be deterministically composed,
-executed, and honestly verified without manual intervention.*
+2026-07-14 — see Motivating case). Together with SIP-0099
+(Contract-First Build Scaffolding, accepted 2026-07-16) it forms the "Verified
+Canonical App Build" vertical slice: *one canonical stack can be
+deterministically composed, executed, and honestly verified without manual
+intervention.*
 **Acceptance gate (arc rev 2, Mac-lane review):** acceptance of this SIP is gated on
 the **Phase-0.5 walking-skeleton spike** succeeding (see the 1.4 arc plan) — empirical
 proof of the golden-path thesis before this service is committed to a minor. Noted
@@ -27,6 +28,10 @@ residual (rev 2 final): a green spike validates this service's *demand*, not its
 *implementation feasibility* — the arc's **alternative-ready checkpoint** covers that
 residual risk (when the evidence release is otherwise cut-ready, this floor must have
 executed the golden path end-to-end at least once, or the fallback fires by default).
+**Gate status (2026-07-26): satisfied.** The Phase-0.5 spike concluded (attempts
+3.5–3.14) and both sibling SIPs (SIP-0098/0099) were accepted 2026-07-16 on its
+evidence; this SIP is promotable. The alternative-ready checkpoint remains live
+as the residual-risk control.
 **v1.4 floor (arc rev 2):** build runner + `start_application` + HTTP health probe,
 with environment contract + preflight and clean-room verification. Browser probe,
 probe-as-peer implementation, and operator-access CLI/caddy defer to 1.5+; if the
@@ -47,8 +52,10 @@ cycle stalled pre-builder on environment, not intelligence. The stopgap
 (spread Node to more agent images) was **considered and rejected**: this SIP
 is the chosen path, and the #419 builder-seam live validation deliberately
 waits for its minimal version.
-**Coordinates with:** SIP-Contract-First-Build-Scaffolding (*what* is
+**Coordinates with:** SIP-0099 Contract-First Build Scaffolding (*what* is
 deterministic vs generated — orthogonal and sibling in the 1.4 slice),
+SIP-Stack-Blueprint-Contract (generalized blueprint schema, deliberately
+deferred until a second stack exists — see the §4.2 status note),
 SIP-Edge-Deployment-Profile (remote sandbox adapter target),
 SIP-Capability-Backed-Agents (toolchain-as-capability, 2.0 arc).
 
@@ -62,20 +69,33 @@ might invoke, untrusted generated code executes inside the agent trust
 boundary, and "the app works" can only ever be claimed about an agent venv —
 not about anything app-shaped.
 
-This SIP proposes the **Ephemeral Application Sandbox**: a cycle-scoped
-execution sandbox, managed by a dedicated **workspace/execution service**,
-containing a **persistent cycle workspace** and disposable **build**,
+This SIP proposes the **Ephemeral Application Sandbox**. The core boundary in
+one sentence: **the execution service is the authoritative execution boundary
+for all application code — agents never execute application code directly.**
+The sandbox is cycle-scoped, managed by that dedicated **execution service**,
+and contains a **persistent cycle workspace** and disposable **build**,
 **runtime**, and **probe** execution units. Agents never touch a container
 runtime; they request **typed operations** (`build_frontend`,
 `start_application`, `probe_http_endpoint`, …) that return structured
-semantic results. Authoritative verification runs **clean-room** — a freshly
-provisioned environment against the persisted workspace — never from the
-dirty convergence container.
+semantic results. Authoritative verification is governed by the **clean-room
+invariant** (§4.5): verdicts come from a freshly provisioned environment
+against a pinned workspace revision (§4.6), never from the dirty convergence
+container.
 
 Agent images become lean and stack-agnostic; untrusted execution is isolated;
 the environment becomes a pinned, preflight-validated contract; and
 executable + functional verification finally happens where the application
 contract says the app must run.
+
+### 1.1 Terminology
+
+| Term | Meaning |
+|---|---|
+| **Sandbox** | the whole cycle-scoped construct: one workspace plus the execution units operating on it |
+| **Execution service** | the privileged service owning the container runtime and managing sandboxes — the only socket holder ("workspace/execution service" in earlier drafts) |
+| **Workspace** | the persistent, revisioned application state for one cycle; outlives every execution unit (§4.6) |
+| **Execution unit** | a disposable container provisioned for one concern: build runner, application runtime, or probe runner |
+| **Application runtime** | the execution unit that starts the assembled app — never the agent runtime, which runs no application code |
 
 ## 2. Problem Statement
 
@@ -108,8 +128,8 @@ execution locus *provides* (the roll-4 failure class).
 
 **Goals**
 - A cycle-scoped application sandbox: persistent workspace + disposable
-  build/runtime/probe execution units, owned by a dedicated
-  workspace/execution service.
+  build/runtime/probe execution units, owned by a dedicated execution
+  service.
 - Agents and runtime-api never hold a container-runtime socket; the execution
   service is the only privileged component, exposing typed operations only.
 - Agent images carry **no** build toolchain; retire the #306 qa-Node branch
@@ -119,9 +139,9 @@ execution locus *provides* (the roll-4 failure class).
   dispatch, never at task time.
 - Typed operations with structured semantic outputs (never raw console text
   as the contract).
-- **Clean-room rule:** interactive builder convergence may reuse a warm unit
-  within one bounded attempt; authoritative final verification always runs in
-  a freshly provisioned environment against the persisted workspace.
+- The **clean-room invariant** (§4.5): warm reuse is confined to bounded
+  builder attempts; authoritative final verification always runs in a freshly
+  provisioned environment against a pinned workspace revision.
 - Executable and functional verification levels (per the roadmap doc's
   three-level model), including a deliberately narrow browser probe; the
   probe runner executes as a **peer** of the application runtime, not inside
@@ -167,14 +187,23 @@ the agent-facing model.
 
 ### 4.2 Environment definition is the contract; Dockerfiles are an adapter rendering
 
-The Stack Blueprint (SIP-Contract-First-Build-Scaffolding) declares a
-deterministic environment definition: base environment identity, required
-tools/versions, build/runtime operations, exposed endpoints, mounts, env
-inputs, network policy. The container adapter renders that into
-Dockerfiles/compose for the canonical stack (checked in, deterministic,
-never LLM-authored). The Dockerfile is one representation, not the contract.
+The stack's blueprint declares a deterministic environment definition: base
+environment identity, required tools/versions, build/runtime operations,
+exposed endpoints, mounts, env inputs, network policy. The container adapter
+renders that into Dockerfiles/compose for the canonical stack (checked in,
+deterministic, never LLM-authored). The Dockerfile is one representation, not
+the contract.
 
-### 4.3 The workspace/execution service
+**Status note (2026-07-26):** the generalized `StackBlueprint` schema is
+deliberately deferred — SIP-Stack-Blueprint-Contract gates it on a second real
+stack existing. For v1.4 the environment definition is a checked-in canonical
+definition for `fullstack_fastapi_react`, owned alongside SIP-0099's expander
+surface, and migrates into the blueprint when that SIP is accepted. Whether
+the blueprint ultimately owns the packaging set is that SIP's open question;
+this SIP requires only that the definition be deterministic, checked in, and
+pinned.
+
+### 4.3 The execution service
 
 A **dedicated service beside runtime-api** (same Spark host initially):
 
@@ -212,19 +241,48 @@ now roll up through SIP-0096 as explicit environment-contract failures.
 
 ### 4.5 Lifecycle: warm convergence, clean-room verdicts
 
+**Clean-room invariant** — *authoritative verification evidence is only ever
+produced by a freshly provisioned execution environment against a pinned
+workspace revision (§4.6); no verdict may depend on state accumulated in a
+convergence container.* Later sections and §7 reference this invariant by
+name rather than restating it.
+
 - **Persistent workspace per cycle** — required for iterative builder
   patches, attempt comparison, outer-loop correction, evidence lineage.
 - **Warm execution unit within one bounded builder convergence attempt** —
   build → inspect → patch → rebuild without re-provisioning. Destroyed when
   the attempt ends.
-- **Fresh environment for authoritative verification** — final
-  executable/functional evidence always comes from a newly provisioned
-  environment against the persisted workspace. Prevents false success from
-  lingering processes, undeclared files, mutated state, or previously
-  installed undeclared packages. **`verified_functional` never depends on
-  the dirty convergence container.**
+- **Fresh environment for authoritative verification** — the invariant
+  applied: it prevents false success from lingering processes, undeclared
+  files, mutated state, or previously installed undeclared packages.
+  `verified_functional` and `verified_executable` are only ever rendered
+  under it.
 
-### 4.6 Dependency caching
+### 4.6 Workspace revision lifecycle
+
+The workspace is the durable unit of state; **revisions are its unit of
+truth**:
+
+- **Every typed operation executes against, and records, an explicit
+  workspace revision.** No operation runs against "whatever is in the
+  directory."
+- **Revision boundaries:** a new revision is cut when content enters the
+  workspace from outside an execution unit — scaffold seeding, an applied
+  agent patch (`apply_workspace_patch`), and build outputs explicitly
+  promoted as artifacts.
+- **Mutability window:** within a warm builder attempt the working tree may
+  mutate freely between operations; the attempt's end (success or budget
+  exhaustion) cuts a revision. Intermediate dirty state is never
+  referenceable by later operations.
+- **Verification pinning:** clean-room verification provisions against a
+  named revision and fails if the workspace content does not match it — so
+  the revision recorded in evidence (§7 item 15) is the one that was
+  verified, by construction.
+- The storage backend (bind-mounted dir vs volume vs content-addressed
+  store — open question 2) may change how revisions are captured, never
+  these semantics.
+
+### 4.7 Dependency caching
 
 Shared **read-through download caches** only (npm/wheel caches, browser
 binaries, base layers). No shared installed-dependency directories
@@ -233,7 +291,7 @@ lockfile/manifest captured as evidence; the clean-room build must succeed
 without undeclared workspace state. Cache hits are recorded but never change
 the semantic result.
 
-### 4.7 Verification levels and check locus
+### 4.8 Verification levels and check locus
 
 - **Structural** checks need no application runtime. They may run near
   agents for fast feedback, but **authoritative structural verification runs
@@ -248,26 +306,38 @@ the semantic result.
   the outcome name honestly downgrades to `verified_executable`.**
 - Typed acceptance `command_exit_zero` evaluation moves from agent-side
   `create_subprocess_exec` (`acceptance_checks.py`) to sandbox execution,
-  alongside `test_runner.py`'s three sites.
+  alongside `test_runner.py`'s exec sites and the 98.4 probe runner's
+  in-process boot+probe path (`probe_runner.py` — its `ExecutionProfile` was
+  designed as runner-owned mechanics precisely so it re-homes here with no
+  contract change).
 
-### 4.8 Correction-policy integration: locus × mode
+### 4.9 Correction-policy integration: locus × mode
 
-Failure classification gains two dimensions — **locus** (infrastructure /
-application / orchestration / verification) and **mode** (syntax / build /
-startup / runtime / timeout / unsupported / unavailable):
+Failure classification gains two dimensions — **locus** (which layer owns the
+failure) and **mode** (syntax / build / startup / runtime / timeout /
+unsupported / unavailable):
 
-- **Infrastructure execution failure** (binary missing from declared env,
-  container won't start, image unresolvable, service unavailable): retry
-  infra, continue after environment correction, or block as
-  infrastructure-unverified. **Never consumes application correction
-  budget, never takes the `patch` path.** (Roll-4 defect: an
-  `execution`-classified missing-binary failure took `patch` and burned the
-  budget.)
-- **Application execution failure** (app crashes, build reveals a code
-  defect, health never ready, browser hits an app exception): local builder
-  patch, outer correction, or replan — these are patchable and budgeted.
+| Locus | Owns the failure | Examples | Routing |
+|---|---|---|---|
+| **infrastructure** | the execution environment | binary missing from the declared env; image unresolvable; unit won't start; service unavailable | retry infra, continue after environment correction, or block as infrastructure-unverified — **never `patch`, never application correction budget** (roll-4 defect: an `execution`-classified missing-binary failure took `patch` and burned the budget) |
+| **application** | the generated application | build reveals a code defect; app crashes; health never ready; probe hits an app exception | builder patch, outer correction, or replan — patchable and budgeted |
+| **orchestration** | the cycle machinery around execution | dispatch/envelope failure surrounding an operation | orchestration recovery, outside the correction budget |
+| **verification** | the probe/check apparatus itself | the probe runner fails, as distinct from a probe failing | recorded as a verification-infrastructure failure — never a pass, never an application defect |
 
-### 4.9 Operator access / manual inspection
+Environment-contract violations (advertised-vs-provided mismatches) are the
+distinguished infrastructure sub-class preflight exists to eliminate; one that
+surfaces at task time anyway is an explicit contract failure (§7 item 7),
+never a generic execution error.
+
+**Vocabulary note (2026-07-26):** main now carries `FailureLocus`
+(`cycles/failure_evidence.py`, #568) — an *artifact-ownership* axis
+(own_artifact / subject) that routes which role repairs. The two compose
+rather than collide: this SIP's locus decides whether a failure is patchable
+at all; #568's ownership axis then routes *application-locus* failures to the
+right role. Reconciling the shared name is part of the correction-policy
+follow-up (open question 3).
+
+### 4.10 Operator access / manual inspection
 
 The runtime unit is short-lived by design — started, probed, torn down. But
 the operator's boot-it-yourself verification habit (the #376 lesson) deserves
@@ -318,8 +388,9 @@ how to run it directly.
    adapter (on `ContainerPort`), behind config with a NoOp default (parity
    with today).
 2. Publish the pinned canonical environment image(s) for fastapi+react.
-3. Route `test_runner.py`'s three exec sites and `CommandExitZeroCheck`
-   through typed operations; unit tests assert parity.
+3. Route the in-process execution sites through typed operations —
+   `test_runner.py`'s exec sites, `CommandExitZeroCheck`, and the probe
+   runner's boot+probe path (`probe_runner.py`); unit tests assert parity.
 4. Wire preflight validation of the environment contract (doctor category +
    cycle-create check).
 5. Builder convergence loop adopts the warm-unit ops; add clean-room final
@@ -362,16 +433,18 @@ how to run it directly.
 
 1. Execution-service transport: HTTP on localhost vs unix socket vs queue —
    and its auth story against the #326 service-identity pattern.
-2. Workspace representation: bind-mounted host dir per cycle vs volume vs
-   content-addressed store (the v1 "files inline in BuildJob" is resolved —
-   workspace revisions, not inline bytes; the storage backend is open).
-3. Browser probe runtime: headless chromium in the probe image — **resolved for
-   v1.4 by arc rev 2: HTTP-only floor, `verified_executable` naming; the browser
-   probe is a 1.5+ decision.**
-4. Toolchain/environment image ownership and publish pipeline (this repo vs
-   deployment-profile repo).
-5. How much of the locus × mode taxonomy lands in this SIP vs the
-   correction-policy follow-up (#413 lineage)?
+2. Workspace storage backend: bind-mounted host dir per cycle vs volume vs
+   content-addressed store. (The v1 "files inline in BuildJob" is resolved —
+   workspace revisions, not inline bytes; §4.6 fixes the revision
+   *semantics*, only the capture mechanism is open.)
+3. How much of the locus × mode taxonomy lands in this SIP vs the
+   correction-policy follow-up (#413 lineage) — including reconciling the
+   `FailureLocus` name collision (§4.9 vocabulary note)?
+
+*(Pruned 2026-07-26: the browser-probe runtime question was already resolved
+by arc rev 2 — HTTP-only floor, `verified_executable` naming, browser probe a
+1.5+ decision; environment-image ownership/publish pipeline is an
+implementation-planning choice and moves to the implementation plan.)*
 
 ## 9. Alternatives Considered
 
@@ -396,7 +469,10 @@ how to run it directly.
   — 2026-07-14 findings; #114 — evaluator outcome surfacing.
 - `cyc_b9be8be77b31` — the roll-4 motivating run (full squad, stalled
   pre-builder on environment).
-- SIP-0068, SIP-0071, SIP-0086, SIP-0096; SIP-Contract-First-Build-Scaffolding
-  (sibling); SIP-Edge-Deployment-Profile; SIP-Capability-Backed-Agents.
+- SIP-0068, SIP-0071, SIP-0086, SIP-0096; SIP-0099 Contract-First Build
+  Scaffolding (sibling); SIP-Stack-Blueprint-Contract (deferred blueprint
+  schema); SIP-Edge-Deployment-Profile; SIP-Capability-Backed-Agents.
 - `ContainerPort` — `src/squadops/ports/tools/container.py`;
-  `test_runner.py`; `acceptance_checks.py` (`CommandExitZeroCheck`).
+  `test_runner.py`; `acceptance_checks.py` (`CommandExitZeroCheck`);
+  `probe_runner.py` (`ExecutionProfile` — the in-process boot+probe path
+  this SIP re-homes).
