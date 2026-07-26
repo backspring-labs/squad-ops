@@ -40,6 +40,14 @@ it is authored.
   bends any of them is wrong regardless of green tests.
 - **Data-driven, no flag** (the 98/99 doctrine): sandbox presence is config
   (`SQUADOPS__EXECUTION__*`) with a NoOp default; unconfigured ⇒ byte-identical behavior.
+- **Inert-to-merge (Spark campaign protection, Jason 2026-07-26):** while 98.5 /
+  Phase-0 measurement campaigns are rolling, every merge to main must be dormant on
+  an unconfigured stack — pure-addition modules (102.1/102.2), NoOp default, DDL
+  additive-only (migrations auto-apply at runtime-api startup on Spark rebuilds),
+  no agent-image dependency changes before 102.6. Hot-path edits (102.3:
+  `test_runner.py` / `acceptance_checks.py` / `probe_runner.py`) land only
+  coordinated with Spark, between campaigns. Enforced by the byte-identical /
+  parity guard tests, not by promise.
 - **Zero contract revisions on probe re-home** — SIP-0098 §98.6's reserved constraint:
   `ExecutionProfile` is runner-owned mechanics precisely so 102.3 moves execution without
   touching verification contracts.
