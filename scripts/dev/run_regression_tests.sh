@@ -32,6 +32,7 @@ REGRESSION_DIRS=(
     "tests/unit/architecture/"   # D26 forbidden-imports + future architecture guards (#220)
     "tests/unit/adapters/"       # mocked adapter unit tests (a2a, persistence, queue, chat) (#207)
     "tests/unit/scripts/"        # dev/ops script helpers (derive_binding, #327)
+    "tests/unit/execution/"      # SIP-0102 execution sandbox domain (102.1)
 )
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
