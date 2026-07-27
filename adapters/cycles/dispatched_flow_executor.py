@@ -49,6 +49,8 @@ from squadops.cycles.models import (
 from squadops.cycles.naming import flow_run_name
 from squadops.cycles.patch_verification import (
     PATCH_PASSED,
+    PATCH_UNVERIFIABLE,
+    STRUCTURALLY_UNEVALUABLE_REASONS,
     overlay_artifacts,
     verify_patched_artifacts,
 )
@@ -2045,7 +2047,28 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             len(verification.checks),
             ",".join(failed_checks) or "-",
         )
-        if verification.status != PATCH_PASSED:
+        # pf-47/pf-49: when a task's checks are structurally unevaluable (a frontend
+        # test file — every AST check skips by design), "unverifiable" is not caution,
+        # it is a deterministic repair deadlock: no repair can EVER produce an executed
+        # verdict, so the loop burns its whole budget rejecting repairs unheard. The
+        # behavioral retest below re-runs the actual failing suite against the patched
+        # workspace — stronger evidence than the checks it stands in for — so for
+        # exactly these reasons, and only with behavioral evidence to re-run, the
+        # retest verdict decides alone. Evaluator errors, parse failures, and real
+        # check failures keep failing closed, unchanged.
+        retest_decides = (
+            verification.status == PATCH_UNVERIFIABLE
+            and verification.reason in STRUCTURALLY_UNEVALUABLE_REASONS
+            and isinstance((result.outputs or {}).get("test_result"), dict)
+        )
+        if retest_decides:
+            logger.info(
+                "patch_verification task=%s structurally unevaluable (%s) — "
+                "behavioral retest decides",
+                envelope.task_id,
+                verification.reason,
+            )
+        if verification.status != PATCH_PASSED and not retest_decides:
             return "continue"
 
         corrected_outputs = dict(result.outputs or {})

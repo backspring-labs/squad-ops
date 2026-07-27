@@ -882,3 +882,196 @@ class TestEmissionRetryFeedbackThreading:
         published = [json.loads(c.args[1]) for c in mock_queue.publish.call_args_list]
         retry_inputs = published[1]["payload"]["inputs"]
         assert "emission_retry_feedback" not in retry_inputs
+
+
+class TestAcceptPatchStructurallyUnevaluable:
+    """pf-47/pf-49: a task whose typed checks ALL skip (Python-AST checks, non-Python
+    file) could never land a repair — zero executed blocking checks → unverifiable →
+    fail closed, on every attempt, deterministically. Both rolls burned their full
+    correction budgets rejecting repairs unheard while the behavioral retest — which
+    re-runs the actual failing suite — sat one step downstream, gated behind the
+    structural verdict that could never come. For exactly the structurally-unevaluable
+    reasons, and only when behavioral evidence exists to re-run, the retest decides.
+    """
+
+    def _failed_frontend_qa_result(self):
+        return TaskResult(
+            task_id="task_7",
+            status="FAILED",
+            outputs={
+                "artifacts": [
+                    {
+                        "name": "frontend/src/__tests__/App.test.jsx",
+                        "content": "jest.mock('x')\n",  # the pf-49 Jest-in-Vitest emission
+                        "type": "test",
+                    }
+                ],
+                "test_result": {"executed": True, "exit_code": 1, "tests_passed": False},
+                "validation_result": {"passed": False, "checks": []},
+                "outcome_class": TaskOutcome.SEMANTIC_FAILURE,
+            },
+            error="vitest cannot parse jest syntax",
+        )
+
+    def _frontend_qa_envelope(self):
+        from squadops.cycles.implementation_plan import TypedCheck
+        from squadops.tasks.models import TaskEnvelope
+
+        # The pf-49 criteria shape: every check Python-AST-shaped, every one skips
+        # on the .jsx target — structural verification can never speak.
+        return TaskEnvelope(
+            task_id="task_7",
+            agent_id="eve",
+            cycle_id="cyc_001",
+            pulse_id="p",
+            project_id="hello_squad",
+            task_type="qa.test",
+            correlation_id="corr",
+            causation_id=None,
+            trace_id="t",
+            span_id="s",
+            inputs={
+                "resolved_config": {},
+                "artifact_contents": {},
+                "acceptance_criteria": [
+                    TypedCheck(
+                        check="function_defined",
+                        params={
+                            "file": "frontend/src/__tests__/App.test.jsx",
+                            "name_prefix": "test",
+                        },
+                        severity="error",
+                        description="Defines tests",
+                    ),
+                    TypedCheck(
+                        check="import_present",
+                        params={
+                            "file": "frontend/src/__tests__/App.test.jsx",
+                            "module": "frontend/src/App",
+                        },
+                        severity="error",
+                        description="Imports the app",
+                    ),
+                ],
+            },
+            metadata={"role": "qa"},
+        )
+
+    def _repair(self):
+        return [
+            {
+                "name": "frontend/src/__tests__/App.test.jsx",
+                "content": "import { test, expect } from 'vitest'\ntest('x', () => {})\n",
+            }
+        ]
+
+    def _retest(self, passed):
+        return TaskResult(
+            task_id="retest",
+            status="SUCCEEDED" if passed else "FAILED",
+            outputs={
+                "test_result": {
+                    "executed": True,
+                    "exit_code": 0 if passed else 1,
+                    "tests_passed": passed,
+                }
+            },
+            error=None if passed else "still failing",
+        )
+
+    def _kwargs(self, cycle):
+        return {
+            "run_id": "run_001",
+            "cycle": cycle,
+            "correction_attempts": 0,
+            "prior_outputs": {},
+            "all_artifact_refs": [],
+            "stored_artifacts": [],
+            "completed_task_ids": [],
+            "plan_delta_refs": [],
+            "profile": None,
+            "flow_run_id": None,
+        }
+
+    async def test_retest_pass_breaks_the_deadlock(self, executor, cycle):
+        """The pf-47/pf-49 fix: all checks skip, but the repaired suite re-runs
+        and passes — the repair is accepted on behavioral evidence."""
+        executor._correction_runner.reexecute_repaired_suite = AsyncMock(
+            return_value=self._retest(True)
+        )
+        holder: dict = {}
+        action = await executor._try_accept_patch(
+            self._frontend_qa_envelope(),
+            self._failed_frontend_qa_result(),
+            self._repair(),
+            holder,
+            **self._kwargs(cycle),
+        )
+
+        assert action == "accept_patch"
+        corrected = holder["patched_result"]
+        assert corrected.outputs["test_result"]["tests_passed"] is True
+        # Evidence stays honest: the structural rows record skipped, not passed.
+        rows = corrected.outputs["validation_result"]["checks"]
+        skipped = [r for r in rows if r.get("status") == "skipped"]
+        assert skipped, "the skip rows must survive into evidence"
+
+    async def test_retest_failure_still_rejects(self, executor, cycle):
+        """The false-green guard survives: behavioral evidence decides, and it said no."""
+        executor._correction_runner.reexecute_repaired_suite = AsyncMock(
+            return_value=self._retest(False)
+        )
+        holder: dict = {}
+        action = await executor._try_accept_patch(
+            self._frontend_qa_envelope(),
+            self._failed_frontend_qa_result(),
+            self._repair(),
+            holder,
+            **self._kwargs(cycle),
+        )
+        assert action == "continue"
+        assert "patched_result" not in holder
+
+    async def test_no_behavioral_evidence_stays_fail_closed(self, executor, cycle):
+        """Unevaluable checks WITHOUT a test_result → nothing can decide → continue.
+        The §6.2 principle holds: never accept on absent evidence."""
+        import dataclasses as _dc
+
+        result = self._failed_frontend_qa_result()
+        outputs = dict(result.outputs)
+        outputs.pop("test_result")
+        result = _dc.replace(result, outputs=outputs)
+
+        holder: dict = {}
+        action = await executor._try_accept_patch(
+            self._frontend_qa_envelope(), result, self._repair(), holder, **self._kwargs(cycle)
+        )
+        assert action == "continue"
+        assert holder == {}
+
+    async def test_evaluator_error_stays_fail_closed(self, executor, cycle, monkeypatch):
+        """A broken checker proves nothing about the patch and does NOT unlock the
+        retest path — only the structurally-unevaluable reasons do."""
+        from squadops.cycles.patch_verification import PATCH_UNVERIFIABLE, PatchVerification
+
+        async def _broken_evaluator(*args, **kwargs):
+            return PatchVerification(
+                status=PATCH_UNVERIFIABLE, reason="evaluator_error:function_defined"
+            )
+
+        import adapters.cycles.dispatched_flow_executor as ex_mod
+
+        monkeypatch.setattr(ex_mod, "verify_patched_artifacts", _broken_evaluator)
+        executor._correction_runner.reexecute_repaired_suite = AsyncMock(
+            return_value=self._retest(True)
+        )
+        holder: dict = {}
+        action = await executor._try_accept_patch(
+            self._frontend_qa_envelope(),
+            self._failed_frontend_qa_result(),
+            self._repair(),
+            holder,
+            **self._kwargs(cycle),
+        )
+        assert action == "continue"
+        executor._correction_runner.reexecute_repaired_suite.assert_not_awaited()

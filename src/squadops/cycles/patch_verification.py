@@ -50,6 +50,19 @@ PATCH_PASSED = "passed"
 PATCH_FAILED = "failed"
 PATCH_UNVERIFIABLE = "unverifiable"
 
+# Unverifiable *reasons* that mean "no structural evidence is possible for this
+# task" — as opposed to "an evaluator broke". The distinction is load-bearing at
+# patch acceptance: a frontend test task's checks all skip by design (Python-AST
+# checks, non-Python file), so structural verification can never speak, and the
+# behavioral retest (#456) is the only evidence there will ever be. Fail-closed
+# on THESE reasons is not caution — it is a deterministic repair deadlock
+# (pf-47: 4 repairs rejected unheard; pf-49: same signature).
+REASON_NO_EXECUTED_BLOCKING_CHECKS = "no_executed_blocking_checks"
+REASON_NO_TYPED_CRITERIA = "no_typed_criteria"
+STRUCTURALLY_UNEVALUABLE_REASONS = frozenset(
+    {REASON_NO_EXECUTED_BLOCKING_CHECKS, REASON_NO_TYPED_CRITERIA}
+)
+
 
 @dataclass(frozen=True)
 class PatchCheckRecord:
@@ -285,7 +298,7 @@ async def verify_patched_artifacts(
     if typed is None:
         return PatchVerification(status=PATCH_UNVERIFIABLE, reason="unparseable_criteria")
     if not typed:
-        return PatchVerification(status=PATCH_UNVERIFIABLE, reason="no_typed_criteria")
+        return PatchVerification(status=PATCH_UNVERIFIABLE, reason=REASON_NO_TYPED_CRITERIA)
 
     records: list[PatchCheckRecord] = []
     blocking_failure = False
@@ -355,6 +368,6 @@ async def verify_patched_artifacts(
         return PatchVerification(
             status=PATCH_UNVERIFIABLE,
             checks=tuple(records),
-            reason="no_executed_blocking_checks",
+            reason=REASON_NO_EXECUTED_BLOCKING_CHECKS,
         )
     return PatchVerification(status=PATCH_PASSED, checks=tuple(records))
