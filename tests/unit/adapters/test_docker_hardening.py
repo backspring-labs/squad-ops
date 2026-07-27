@@ -86,6 +86,37 @@ async def test_run_detached_publishes_to_loopback_and_returns_id(monkeypatch):
     assert args[args.index("-p") + 1] == "127.0.0.1:0:8000"
 
 
+@pytest.mark.parametrize(
+    ("exit_code", "stderr", "expected"),
+    [(0, "", True), (1, "Error: No such image: img", False)],
+    ids=["present", "absent"],
+)
+async def test_has_image_distinguishes_present_from_absent(
+    monkeypatch, exit_code, stderr, expected
+):
+    """Bug caught: preflight's image evidence inverted or guessed — a missing
+    image passing preflight stalls the cycle at task time (#306 class)."""
+
+    async def fake_run_docker(self, *args, timeout=None):
+        return exit_code, "", stderr
+
+    monkeypatch.setattr(DockerAdapter, "_run_docker", fake_run_docker)
+    assert await DockerAdapter().has_image("img") is expected
+
+
+async def test_has_image_raises_when_the_daemon_cannot_answer(monkeypatch):
+    """Bug caught: daemon-down reported as image-absent — a false preflight
+    block on an environment that may be perfectly provisioned."""
+    from squadops.tools.exceptions import ToolContainerError
+
+    async def fake_run_docker(self, *args, timeout=None):
+        return 1, "", "Cannot connect to the Docker daemon"
+
+    monkeypatch.setattr(DockerAdapter, "_run_docker", fake_run_docker)
+    with pytest.raises(ToolContainerError, match="inspect image"):
+        await DockerAdapter().has_image("img")
+
+
 async def test_resolve_host_port_parses_docker_port_output(monkeypatch):
     """Bug caught: the ephemeral port mapping misparsed — every probe would
     target the wrong port and fail an app that is actually healthy."""

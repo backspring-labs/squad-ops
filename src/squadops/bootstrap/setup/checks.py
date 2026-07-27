@@ -41,6 +41,7 @@ VALID_CATEGORIES = frozenset(
         "auth",
         "broker",
         "verification",
+        "sandbox",
     }
 )
 
@@ -975,6 +976,101 @@ def _collect_verification_checks(profile: BootstrapProfile) -> list[CheckResult]
     return results
 
 
+# ---------------------------------------------------------------------------
+# Sandbox checks (SIP-0102 phase 102.2c)
+# ---------------------------------------------------------------------------
+
+
+def _fetch_sandbox_report(service_url: str) -> dict | None:
+    """Best-effort GET of the sandbox service's /health environment block;
+    None ⇒ unverifiable (the decision warns, never blocks on missing
+    evidence)."""
+    import httpx
+
+    try:
+        response = httpx.get(f"{service_url.rstrip('/')}/health", timeout=2.0)
+        if response.status_code == 200:
+            return response.json().get("environment")
+    except (httpx.HTTPError, ValueError):
+        pass
+    return None
+
+
+def _collect_sandbox_checks(profile: BootstrapProfile) -> list[CheckResult]:
+    """Sandbox environment reconciliation — the SAME decision the cycle-create
+    preflight applies (SIP-0102 102.2c), rendered as doctor results, so
+    doctor and create-time never disagree."""
+    from squadops.sandbox.environment import get_environment_contract
+    from squadops.sandbox.main import sandbox_config_from_env
+    from squadops.sandbox.preflight import sandbox_environment_decision
+
+    try:
+        cfg = sandbox_config_from_env()
+    except ValueError as exc:
+        return [
+            CheckResult(
+                name="sandbox_config",
+                category="sandbox",
+                passed=False,
+                message=f"sandbox configuration is invalid: {exc}",
+            )
+        ]
+    if cfg.provider != "docker":
+        return [
+            CheckResult(
+                name="sandbox_dormant",
+                category="sandbox",
+                passed=True,
+                message="sandbox provider is 'noop' (dormant) — nothing to verify",
+            )
+        ]
+    try:
+        expected: str | None = get_environment_contract(cfg.environment).contract_id()
+    except ValueError:
+        expected = None
+    decision = sandbox_environment_decision(
+        provider=cfg.provider,
+        expected_contract_id=expected,
+        report=_fetch_sandbox_report(cfg.service_url),
+    )
+    results = [
+        CheckResult(
+            name=f.code,
+            category="sandbox",
+            passed=False,
+            message=f.message,
+            fix_command=(
+                "./scripts/dev/build_sandbox_env_image.sh"
+                if f.code == "sandbox_image_missing"
+                else None
+            ),
+        )
+        for f in decision.blocking
+    ]
+    results += [
+        CheckResult(
+            name=f.code,
+            category="sandbox",
+            passed=False,
+            message=f.message,
+            heuristic=True,  # warn-and-allow parity with create-time preflight
+        )
+        for f in decision.warnings
+    ]
+    if not results:
+        results.append(
+            CheckResult(
+                name="sandbox_environment",
+                category="sandbox",
+                passed=True,
+                message=(
+                    f"sandbox environment verified (contract {expected[:12]}…, image present)"
+                ),
+            )
+        )
+    return results
+
+
 _CHECK_REGISTRY: list[tuple[str, object]] = [
     ("python", _collect_python_checks),
     ("platform", _collect_platform_checks),
@@ -986,6 +1082,7 @@ _CHECK_REGISTRY: list[tuple[str, object]] = [
     ("auth", _collect_auth_checks),
     ("broker", _collect_broker_checks),
     ("verification", _collect_verification_checks),
+    ("sandbox", _collect_sandbox_checks),
 ]
 
 

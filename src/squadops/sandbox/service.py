@@ -16,7 +16,7 @@ execute it (§4.4).
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 
 from squadops.ports.sandbox import ExecutionSandboxPort
 from squadops.sandbox.evidence import OperationEvidenceJournal
@@ -49,10 +49,19 @@ class SandboxService(ExecutionSandboxPort):
         store: WorkspaceStore,
         journal: OperationEvidenceJournal,
         backend: ExecutionSandboxPort | None = None,
+        environment_report: Callable[[], Awaitable[dict | None]] | None = None,
     ) -> None:
         self._store = store
         self._journal = journal
         self._backend = backend
+        self._environment_report = environment_report
+
+    async def environment_report(self) -> dict | None:
+        """The backend's environment facts (contract id, image presence) for
+        /health and preflight reconciliation; None when no backend reports."""
+        if self._environment_report is None:
+            return None
+        return await self._environment_report()
 
     # -- workspace lifecycle (service-level, not port operations) ------------
 

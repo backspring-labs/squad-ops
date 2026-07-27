@@ -200,6 +200,20 @@ class ContainerBackend(NoOpExecutionSandbox):
             **common, entries=_tail_lines(run.stdout + run.stderr) if run else ()
         )
 
+    async def environment_report(self) -> dict:
+        """Operational facts for /health and the 102.2c preflight
+        reconciliation. ``image_present`` is None when the daemon cannot
+        answer (unverifiable, never a guessed False)."""
+        try:
+            image_present: bool | None = await self._container.has_image(self._image)
+        except ToolContainerError:
+            image_present = None
+        return {
+            "contract_id": self._environment_contract_id,
+            "image": self._image,
+            "image_present": image_present,
+        }
+
     # -- runtime unit (slice c2) ---------------------------------------------
 
     async def _await_ready(self, base_url: str) -> bool:

@@ -52,6 +52,28 @@ async def test_health_probe_is_unauthenticated(stack):
         response = await client.get("/health")
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
+    assert response.json()["environment"] is None  # backendless: nothing to report
+
+
+async def test_health_carries_the_environment_report(tmp_path):
+    """Bug caught: 102.2c's reconciliation evidence not riding /health — the
+    cycle-create preflight and doctor would have nothing to reconcile."""
+    root = tmp_path / "cycles"
+
+    async def report():
+        return {"contract_id": "env-123", "image": "img", "image_present": True}
+
+    service = SandboxService(
+        store=WorkspaceStore(root),
+        journal=OperationEvidenceJournal(root),
+        environment_report=report,
+    )
+    app = create_app(service, service_token=TOKEN)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://exec"
+    ) as client:
+        response = await client.get("/health")
+    assert response.json()["environment"]["contract_id"] == "env-123"
 
 
 async def test_missing_bearer_is_401_in_the_resource_envelope(stack):

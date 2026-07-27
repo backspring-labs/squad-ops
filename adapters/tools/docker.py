@@ -155,6 +155,16 @@ class DockerAdapter(ContainerPort):
             raise ToolContainerError("docker run -d returned no container id")
         return container_id
 
+    async def has_image(self, image: str) -> bool:
+        """Whether the image exists locally (distinguishes absent from
+        daemon-unreachable — only definitive absence returns False)."""
+        exit_code, _stdout, stderr = await self._run_docker("image", "inspect", image)
+        if exit_code == 0:
+            return True
+        if "no such image" in stderr.lower():
+            return False
+        raise ToolContainerError(f"Failed to inspect image: {stderr}")
+
     async def resolve_host_port(self, container_id: str, container_port: int) -> int:
         """Resolve a published container port to its ephemeral host port."""
         exit_code, stdout, stderr = await self._run_docker(

@@ -23,12 +23,23 @@ COMMANDS = {
 
 
 class FakeContainer(ContainerPort):
-    def __init__(self, result: ContainerResult | None = None, error: Exception | None = None):
+    def __init__(
+        self,
+        result: ContainerResult | None = None,
+        error: Exception | None = None,
+        image_present: bool | Exception = True,
+    ):
         self.specs: list[ContainerSpec] = []
         self._result = result or ContainerResult(
             container_id="", exit_code=0, stdout="ok\n", stderr=""
         )
         self._error = error
+        self._image_present = image_present
+
+    async def has_image(self, image: str) -> bool:
+        if isinstance(self._image_present, Exception):
+            raise self._image_present
+        return self._image_present
 
     async def run(self, spec: ContainerSpec) -> ContainerResult:
         self.specs.append(spec)
@@ -103,6 +114,31 @@ class TestOutcomeClassification:
         assert result.ran and result.status == OperationStatus.SUCCEEDED
         assert result.image_identity == "sandbox:pinned"
         assert result.exit_code == 0
+
+    @pytest.mark.parametrize(
+        ("image_present", "expected"),
+        [(True, True), (False, False), (ToolContainerError("no daemon"), None)],
+        ids=["present", "absent", "daemon-unreachable"],
+    )
+    async def test_environment_report_is_honest_about_image_presence(
+        self, store, image_present, expected
+    ):
+        """Bug caught: a daemon outage reported as image-absent (a false
+        preflight block) or as present (a false pass) — unverifiable must
+        stay None."""
+        backend = ContainerBackend(
+            container=FakeContainer(image_present=image_present),
+            store=store,
+            image="sandbox:pinned",
+            operation_commands=COMMANDS,
+            environment_contract_id="env-123",
+        )
+        report = await backend.environment_report()
+        assert report == {
+            "contract_id": "env-123",
+            "image": "sandbox:pinned",
+            "image_present": expected,
+        }
 
     async def test_environment_contract_id_rides_every_result(self, store, seeded):
         """Bug caught: §7 item 4's second half — results without the contract

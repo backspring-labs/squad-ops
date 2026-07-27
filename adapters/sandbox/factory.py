@@ -47,6 +47,12 @@ def create_sandbox_service(config: SandboxConfig) -> SandboxService:
             install_network=contract.install_network,
             environment_contract_id=contract.contract_id(),
         )
+        return SandboxService(
+            store=store,
+            journal=journal,
+            backend=backend,
+            environment_report=backend.environment_report,
+        )
     else:
         raise ValueError(f"Unknown sandbox provider: {config.provider}")
     return SandboxService(store=store, journal=journal, backend=backend)

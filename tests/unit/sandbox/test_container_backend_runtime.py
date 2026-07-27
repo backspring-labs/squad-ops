@@ -74,6 +74,9 @@ class RuntimeFakeContainer(ContainerPort):
     async def health(self) -> dict:  # pragma: no cover - unused
         return {"healthy": True}
 
+    async def has_image(self, image: str) -> bool:  # pragma: no cover - unused
+        return True
+
 
 @pytest.fixture
 def store(tmp_path):

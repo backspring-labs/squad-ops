@@ -90,3 +90,15 @@ class ContainerPort(ABC):
             ToolContainerError: Mapping could not be resolved
         """
         ...
+
+    @abstractmethod
+    async def has_image(self, image: str) -> bool:
+        """Whether the image is present locally (SIP-0102 preflight).
+
+        Returns:
+            True if present, False if definitively absent
+
+        Raises:
+            ToolContainerError: Presence could not be determined (daemon down)
+        """
+        ...
