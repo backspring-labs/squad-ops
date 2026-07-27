@@ -25,6 +25,7 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import Callable, Mapping
+from pathlib import Path
 
 import httpx
 
@@ -76,6 +77,7 @@ class ContainerBackend(NoOpExecutionSandbox):
         poll_interval_seconds: float = 0.5,
         http_client_factory: Callable[[], httpx.AsyncClient] | None = None,
         environment_contract_id: str | None = None,
+        cache_root: Path | None = None,
     ) -> None:
         self._container = container
         self._store = store
@@ -89,6 +91,7 @@ class ContainerBackend(NoOpExecutionSandbox):
         self._app_port = app_port
         self._ready_path = ready_path
         self._environment_contract_id = environment_contract_id
+        self._cache_root = cache_root
         self._readiness_timeout = readiness_timeout_seconds
         self._poll_interval = poll_interval_seconds
         self._http_client_factory = http_client_factory or (lambda: httpx.AsyncClient(timeout=5.0))
@@ -96,6 +99,21 @@ class ContainerBackend(NoOpExecutionSandbox):
         # a service restart orphans nothing durable (`--rm` containers), and
         # the labeled-container sweep is 102.2+ hardening.
         self._running: dict[str, tuple[str, int]] = {}
+
+    def _cache_volumes(self) -> tuple[tuple[str, str], ...]:
+        """Read-through download caches (§4.7): pip/npm download caches shared
+        across cycles — never installed-dependency dirs (those live in each
+        cycle's workspace), never semantic (a cold cache only means slower)."""
+        if self._cache_root is None:
+            return ()
+        pip_cache = self._cache_root / "pip"
+        npm_cache = self._cache_root / "npm"
+        for cache_dir in (pip_cache, npm_cache):
+            cache_dir.mkdir(parents=True, exist_ok=True)
+        return (
+            (str(pip_cache), "/root/.cache/pip"),
+            (str(npm_cache), "/root/.npm"),
+        )
 
     def _spec(self, operation: str, cycle_id: str, command: tuple[str, ...]) -> ContainerSpec:
         network = (
@@ -106,7 +124,10 @@ class ContainerBackend(NoOpExecutionSandbox):
         return ContainerSpec(
             image=self._image,
             command=list(command),
-            volumes=((str(self._store.workspace_dir(cycle_id)), _WORKSPACE_MOUNT),),
+            volumes=(
+                (str(self._store.workspace_dir(cycle_id)), _WORKSPACE_MOUNT),
+                *self._cache_volumes(),
+            ),
             working_dir=_WORKSPACE_MOUNT,
             timeout_seconds=self._timeout_seconds,
             network=network,

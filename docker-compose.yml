@@ -792,19 +792,23 @@ services:
     environment:
       SQUADOPS__SANDBOX__PROVIDER: ${SQUADOPS_SANDBOX_PROVIDER:-noop}
       SQUADOPS__SANDBOX__IMAGE: ${SQUADOPS_SANDBOX_IMAGE:-}
-      SQUADOPS__SANDBOX__WORKSPACE_ROOT: /sandbox/cycles
+      SQUADOPS__SANDBOX__WORKSPACE_ROOT: ${SQUADOPS_SANDBOX_ROOT:-/tmp/squadops-sandbox}/cycles
+      SQUADOPS__SANDBOX__CACHE_ROOT: ${SQUADOPS_SANDBOX_ROOT:-/tmp/squadops-sandbox}/caches
       # No default: create_app refuses to start without a token.
       SQUADOPS__SANDBOX__SERVICE_TOKEN: ${SQUADOPS_SANDBOX_SERVICE_TOKEN:-}
     volumes:
       # The sandbox service is the ONLY socket holder (SIP-0102 §4.3).
       - /var/run/docker.sock:/var/run/docker.sock
-      - sandbox_workspaces:/sandbox/cycles
+      # Docker-outside-of-docker: workspace/cache paths are handed to the HOST
+      # daemon for bind-mounting into execution units, so the host path and
+      # the in-container path must be the IDENTICAL string — a named volume
+      # cannot satisfy that. Same-path bind, host dir configurable.
+      - ${SQUADOPS_SANDBOX_ROOT:-/tmp/squadops-sandbox}:${SQUADOPS_SANDBOX_ROOT:-/tmp/squadops-sandbox}
     networks:
       - squadnet
     restart: unless-stopped
 volumes:
   rabbitmq_data: {}
-  sandbox_workspaces: {}  # SIP-0102 cycle workspaces (sandbox-service only)
   postgres_data: {}
   redis_data: {}
   prometheus_data: {}

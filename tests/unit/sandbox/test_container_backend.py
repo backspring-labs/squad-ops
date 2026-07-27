@@ -95,6 +95,31 @@ class TestHardenedSpecRendering:
         assert spec.cap_drop_all and spec.no_new_privileges
         assert spec.memory_limit and spec.cpu_limit and spec.pids_limit
 
+    async def test_cache_root_mounts_download_caches_only(self, tmp_path, store, seeded):
+        """Bug caught: §7 item 13's structural guarantee broken — mounting
+        installed-dependency dirs (site-packages/node_modules) instead of
+        download caches would let cached deps substitute for undeclared ones."""
+        container = FakeContainer()
+        backend = ContainerBackend(
+            container=container,
+            store=store,
+            image="sandbox:pinned",
+            operation_commands=COMMANDS,
+            cache_root=tmp_path / "caches",
+        )
+        await backend.install_dependencies(revision=seeded)
+        mounts = dict(container.specs[0].volumes)
+        assert mounts[str(tmp_path / "caches" / "pip")] == "/root/.cache/pip"
+        assert mounts[str(tmp_path / "caches" / "npm")] == "/root/.npm"
+        assert (tmp_path / "caches" / "pip").is_dir()  # pre-created, never root-owned
+        assert not any("site-packages" in c or "node_modules" in c for c in mounts.values())
+
+    async def test_no_cache_root_means_no_cache_mounts(self, store, seeded):
+        """Bug caught: phantom cache mounts when caching is disabled."""
+        container = FakeContainer()
+        await _backend(container, store).build_frontend(revision=seeded)
+        assert len(container.specs[0].volumes) == 1  # workspace only
+
     async def test_install_gets_deps_egress_build_does_not(self, store, seeded):
         """Bug caught: egress polarity flipped — installs starved of the
         network they need, or builds granted egress they must not have."""

@@ -46,6 +46,7 @@ def create_sandbox_service(config: SandboxConfig) -> SandboxService:
             app_port=contract.app_port,
             install_network=contract.install_network,
             environment_contract_id=contract.contract_id(),
+            cache_root=Path(config.cache_root) if config.cache_root else None,
         )
         return SandboxService(
             store=store,

@@ -266,6 +266,14 @@ class SandboxConfig(BaseModel):
         default=Path("cycle_data/sandbox"),
         description="Root directory for cycle workspaces (bind-mounted into execution units)",
     )
+    cache_root: Path | None = Field(
+        default=None,
+        description=(
+            "Read-through download caches (pip/npm) shared across cycles — §4.7: "
+            "download caches only, never installed-dependency dirs, never semantic. "
+            "None disables cache mounts."
+        ),
+    )
     image: str = Field(
         default="",
         description=(
