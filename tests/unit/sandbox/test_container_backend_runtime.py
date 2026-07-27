@@ -106,6 +106,16 @@ class TestStartApplication:
             revision=seeded
         )
         assert result.ran and result.ready
+
+    async def test_readiness_is_transport_level_any_response_counts(self, store, seeded):
+        """Bug caught: #520/#622 — readiness demanding a 2xx from a health
+        path the PRD never declared, so a perfectly booted app times out
+        'not ready' forever. A 404 proves the server is up and routing."""
+        container = RuntimeFakeContainer()
+        result = await _backend(container, store, [FakeResponse(404)]).start_application(
+            revision=seeded
+        )
+        assert result.ran and result.ready
         assert result.status == OperationStatus.SUCCEEDED
         assert result.endpoints == ("http://127.0.0.1:49999",)
         assert result.cleanup_handle == "cid-app"

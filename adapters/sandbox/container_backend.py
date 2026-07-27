@@ -71,7 +71,7 @@ class ContainerBackend(NoOpExecutionSandbox):
         pids_limit: int = 512,
         timeout_seconds: float = 600.0,
         app_port: int = 8000,
-        health_path: str = "/health",
+        ready_path: str = "/",
         readiness_timeout_seconds: float = 30.0,
         poll_interval_seconds: float = 0.5,
         http_client_factory: Callable[[], httpx.AsyncClient] | None = None,
@@ -86,7 +86,7 @@ class ContainerBackend(NoOpExecutionSandbox):
         self._pids_limit = pids_limit
         self._timeout_seconds = timeout_seconds
         self._app_port = app_port
-        self._health_path = health_path
+        self._ready_path = ready_path
         self._readiness_timeout = readiness_timeout_seconds
         self._poll_interval = poll_interval_seconds
         self._http_client_factory = http_client_factory or (lambda: httpx.AsyncClient(timeout=5.0))
@@ -200,13 +200,17 @@ class ContainerBackend(NoOpExecutionSandbox):
     # -- runtime unit (slice c2) ---------------------------------------------
 
     async def _await_ready(self, base_url: str) -> bool:
+        """Transport-level readiness (#520/#622): ANY HTTP response — 200 or
+        404 alike — proves the server is up and routing. Demanding a 2xx from
+        a health path made readiness a hidden product requirement (the
+        canonical PRD declares no /health). The probes are the behavioral
+        assertions; readiness only asks "is something answering?"."""
         deadline = time.monotonic() + self._readiness_timeout
         while True:
             try:
                 async with self._http_client_factory() as client:
-                    response = await client.request("GET", base_url + self._health_path)
-                if 200 <= response.status_code < 300:
-                    return True
+                    await client.request("GET", base_url + self._ready_path)
+                return True
             except (httpx.HTTPError, OSError):
                 pass  # connection refused while the app boots is expected
             if time.monotonic() >= deadline:
