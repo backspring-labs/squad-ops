@@ -179,6 +179,11 @@ class TestOutcomeClassification:
         assert one_shot.environment_contract_id == "env-123"
         stop = await backend.stop_application(revision=seeded, cleanup_handle="h1")
         assert stop.environment_contract_id == "env-123"
+        # The probe base dict has its own shape — live-smoke caught it missing.
+        probe = await backend.probe_http_endpoint(
+            revision=seeded, probe_id="p1", method="GET", path="/x"
+        )
+        assert probe.environment_contract_id == "env-123"
 
     async def test_nonzero_exit_is_a_deliverable_failure(self, store, seeded):
         """Bug caught: a failing build not routed to application correction."""

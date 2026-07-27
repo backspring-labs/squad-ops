@@ -35,13 +35,23 @@ from squadops.sandbox.models import (
 _CYCLE_ID_RE = re.compile(r"[A-Za-z0-9_\-]+")
 
 # Derived/dependency state is NOT revision content (§4.6/§4.7): per-cycle
-# installs land inside the sandbox (venv, node_modules) and builds emit
-# outputs (dist) — all of it lives in the workspace but never in the pin,
-# or the first install would break every stale-base check and pin
-# verification. Promotion of build outputs is an explicit §4.6 boundary,
-# never implicit inclusion.
+# installs land inside the sandbox (venv, node_modules, the lockfile npm
+# install generates) and builds emit outputs (dist) — all of it lives in the
+# workspace but never in the pin, or the first install would break every
+# stale-base check and pin verification (live-smoke-proven: npm install
+# writes frontend/package-lock.json). Promotion into revision content —
+# including lockfile-as-evidence capture (§4.7) — is an explicit §4.6
+# boundary, never implicit inclusion.
 _EXCLUDED_SEGMENTS = frozenset(
-    {".sandbox-venv", "node_modules", "dist", "__pycache__", ".pytest_cache", ".git"}
+    {
+        ".sandbox-venv",
+        "node_modules",
+        "dist",
+        "__pycache__",
+        ".pytest_cache",
+        ".git",
+        "package-lock.json",
+    }
 )
 
 

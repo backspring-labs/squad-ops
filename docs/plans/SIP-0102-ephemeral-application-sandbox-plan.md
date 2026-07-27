@@ -17,7 +17,7 @@ The single in-repo source of truth for where SIP-0102 stands — read this first
 | Phase | Milestone unlocked | State |
 |---|---|---|
 | 102.1 Execution boundary (service skeleton + workspace + Docker adapter) | the execution boundary exists | ✅ slices a–d complete on the feature branch (PR open); exit proven by the ASGI client→API→service→store E2E + parity guards; compose entry profile-guarded (`--profile sandbox`); interim shared-secret auth (Keycloak #326 upgrade pinned to 102.3) |
-| 102.2 Environment contract + canonical image + preflight | environment is a pinned, validated contract | ⬜ |
+| 102.2 Environment contract + canonical image + preflight | environment is a pinned, validated contract | ✅ complete on the feature branch (PR open); exit proven: mismatched/missing environment blocks at cycle-create preflight AND doctor (same decision fn); every result carries image + contract identity; **live smoke on real docker: full floor E2E green** (install→build→boot→probe 501→teardown, pin intact) |
 | 102.3 Typed-op relocation of in-process exec sites | execution leaves the agent trust boundary | ⬜ |
 | 102.4 Clean-room verification + outcome integration | verdicts are clean-room and honestly named | ⬜ |
 | 102.5 Builder warm-unit convergence | convergence iterates inside the sandbox | ⬜ |
@@ -223,8 +223,11 @@ one canonical `full` cycle on the Spark deploy reaches clean-room
 3. **Compose service addition** (102.1): repo rule requires explicit approval for
    docker-compose changes — the service entry (name, port) gets proposed alongside the
    102.1 PR, not silently added.
-4. **Environment-image ownership + publish pipeline** (102.2): this repo vs
-   deployment-profile repo (moved out of the SIP at acceptance).
+4. **Environment-image ownership + publish pipeline** — **RESOLVED (Jason,
+   2026-07-26): local build per host** from the checked-in rendering
+   (`infra/sandbox/fastapi-react.Dockerfile` via
+   `scripts/dev/build_sandbox_env_image.sh`; Mac now, Spark at 102.6).
+   Registry publishing + digest pinning defer to 1.5 hardening.
 5. **Locus × mode scope + `FailureLocus` naming** (102.4): how much taxonomy lands here
    vs the correction-policy follow-up (#413 lineage), and the #568 name reconciliation.
 

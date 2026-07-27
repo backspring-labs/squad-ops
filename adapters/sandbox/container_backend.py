@@ -352,6 +352,7 @@ class ContainerBackend(NoOpExecutionSandbox):
             "operation": OperationName.PROBE_HTTP_ENDPOINT,
             "workspace_revision_id": revision.revision_id,
             "image_identity": self._image,
+            "environment_contract_id": self._environment_contract_id,
             "probe_id": probe_id,
         }
         running = self._running.get(revision.cycle_id)

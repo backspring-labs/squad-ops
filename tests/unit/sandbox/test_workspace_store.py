@@ -107,6 +107,8 @@ class TestDerivedStateExclusion:
         (ws / ".sandbox-venv/bin/python").write_text("bin", encoding="utf-8")
         (ws / "backend/__pycache__").mkdir(parents=True)
         (ws / "backend/__pycache__/main.pyc").write_text("pyc", encoding="utf-8")
+        # npm install generates a lockfile (live-smoke-proven) — derived, not pinned.
+        (ws / "frontend/package-lock.json").write_text("{}", encoding="utf-8")
         assert store.verify_pinned("cyc_1", seed.revision_id)
         rev, _ = store.apply_patch(
             "cyc_1",
