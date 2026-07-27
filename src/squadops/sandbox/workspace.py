@@ -34,6 +34,16 @@ from squadops.sandbox.models import (
 
 _CYCLE_ID_RE = re.compile(r"[A-Za-z0-9_\-]+")
 
+# Derived/dependency state is NOT revision content (§4.6/§4.7): per-cycle
+# installs land inside the sandbox (venv, node_modules) and builds emit
+# outputs (dist) — all of it lives in the workspace but never in the pin,
+# or the first install would break every stale-base check and pin
+# verification. Promotion of build outputs is an explicit §4.6 boundary,
+# never implicit inclusion.
+_EXCLUDED_SEGMENTS = frozenset(
+    {".sandbox-venv", "node_modules", "dist", "__pycache__", ".pytest_cache", ".git"}
+)
+
 
 class WorkspaceStoreError(Exception):
     """Base error for workspace-store violations."""
@@ -61,6 +71,11 @@ def _safe_relpath(path: str) -> str:
     parts = [p for p in norm.split("/") if p not in ("", ".")]
     if not parts or ".." in parts or any(":" in p for p in parts):
         raise WorkspaceEscapeError(f"not a workspace-relative path: {path!r}")
+    if _EXCLUDED_SEGMENTS.intersection(parts):
+        raise WorkspaceEscapeError(
+            f"derived-state path is not revision content: {path!r} "
+            "(installs/build outputs live in the sandbox but are never seeded or patched)"
+        )
     return "/".join(parts)
 
 
@@ -101,15 +116,20 @@ class WorkspaceStore:
         return ws
 
     def current_files(self, cycle_id: str) -> dict[str, str]:
-        """The live tree as a path → content mapping."""
+        """The live tree as a path → content mapping, excluding derived state
+        (``_EXCLUDED_SEGMENTS``) — revision content is source, not installs."""
         ws = self.workspace_dir(cycle_id)
         if not ws.is_dir():
             return {}
-        return {
-            str(p.relative_to(ws)).replace("\\", "/"): p.read_text(encoding="utf-8")
-            for p in sorted(ws.rglob("*"))
-            if p.is_file()
-        }
+        files: dict[str, str] = {}
+        for p in sorted(ws.rglob("*")):
+            if not p.is_file():
+                continue
+            rel = p.relative_to(ws)
+            if _EXCLUDED_SEGMENTS.intersection(rel.parts):
+                continue
+            files[str(rel).replace("\\", "/")] = p.read_text(encoding="utf-8")
+        return files
 
     # -- revisions ----------------------------------------------------------
 

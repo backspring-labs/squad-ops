@@ -75,6 +75,7 @@ class ContainerBackend(NoOpExecutionSandbox):
         readiness_timeout_seconds: float = 30.0,
         poll_interval_seconds: float = 0.5,
         http_client_factory: Callable[[], httpx.AsyncClient] | None = None,
+        environment_contract_id: str | None = None,
     ) -> None:
         self._container = container
         self._store = store
@@ -87,6 +88,7 @@ class ContainerBackend(NoOpExecutionSandbox):
         self._timeout_seconds = timeout_seconds
         self._app_port = app_port
         self._ready_path = ready_path
+        self._environment_contract_id = environment_contract_id
         self._readiness_timeout = readiness_timeout_seconds
         self._poll_interval = poll_interval_seconds
         self._http_client_factory = http_client_factory or (lambda: httpx.AsyncClient(timeout=5.0))
@@ -131,6 +133,7 @@ class ContainerBackend(NoOpExecutionSandbox):
             "operation": operation,
             "workspace_revision_id": revision.revision_id,
             "image_identity": self._image,  # §7 item 4
+            "environment_contract_id": self._environment_contract_id,
         }
         command = self._operation_commands.get(operation)
         if command is None:
@@ -227,6 +230,7 @@ class ContainerBackend(NoOpExecutionSandbox):
             "operation": OperationName.START_APPLICATION,
             "workspace_revision_id": revision.revision_id,
             "image_identity": self._image,
+            "environment_contract_id": self._environment_contract_id,
         }
         command = self._operation_commands.get(OperationName.START_APPLICATION)
         if command is None:
@@ -366,6 +370,7 @@ class ContainerBackend(NoOpExecutionSandbox):
             "operation": OperationName.STOP_APPLICATION,
             "workspace_revision_id": revision.revision_id,
             "image_identity": self._image,
+            "environment_contract_id": self._environment_contract_id,
         }
         self._running.pop(revision.cycle_id, None)
         try:

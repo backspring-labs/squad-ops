@@ -104,6 +104,21 @@ class TestOutcomeClassification:
         assert result.image_identity == "sandbox:pinned"
         assert result.exit_code == 0
 
+    async def test_environment_contract_id_rides_every_result(self, store, seeded):
+        """Bug caught: §7 item 4's second half — results without the contract
+        identity cannot prove which environment declaration they ran under."""
+        backend = ContainerBackend(
+            container=FakeContainer(),
+            store=store,
+            image="sandbox:pinned",
+            operation_commands=COMMANDS,
+            environment_contract_id="env-123",
+        )
+        one_shot = await backend.run_backend_tests(revision=seeded)
+        assert one_shot.environment_contract_id == "env-123"
+        stop = await backend.stop_application(revision=seeded, cleanup_handle="h1")
+        assert stop.environment_contract_id == "env-123"
+
     async def test_nonzero_exit_is_a_deliverable_failure(self, store, seeded):
         """Bug caught: a failing build not routed to application correction."""
         container = FakeContainer(

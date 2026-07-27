@@ -258,13 +258,20 @@ class SandboxConfig(BaseModel):
     """
 
     provider: str = Field(default="noop", description="Sandbox provider: 'noop' or 'docker'")
+    environment: str = Field(
+        default="fullstack_fastapi_react",
+        description="Environment-contract stack id (see squadops.sandbox.environment)",
+    )
     workspace_root: Path = Field(
         default=Path("cycle_data/sandbox"),
         description="Root directory for cycle workspaces (bind-mounted into execution units)",
     )
     image: str = Field(
         default="",
-        description="Pinned canonical environment image (required for provider 'docker')",
+        description=(
+            "Override of the environment contract's pinned image (empty = use the "
+            "contract's; the actually-used image rides every result as evidence)"
+        ),
     )
     app_port: int = Field(
         default=8000, description="Container port the application runtime listens on"
