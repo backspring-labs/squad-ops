@@ -129,6 +129,22 @@ cares about. The verification contract already distinguishes `build` / `suite` /
 `probes` as separate behavioral families — the taxonomy exists upstream and is thrown
 away the moment work becomes tasks.
 
+**The deeper defect in `analysable_suffix` (sharpened in review, 2026-07-27).** The
+sketch's `analysable_suffix: str` was not merely awaiting a second stack to falsify it —
+**the first stack already did**. `fullstack_fastapi_react` has been Python *plus*
+JavaScript since the expander's first commit; the singular was never true for any real
+instance. The assumption survived its own counterexample because the field was written
+from the *checker's* perspective: "analysable" meant "what our Python AST parser can
+read" — a limitation of the tooling encoded as a property of the domain. The frontend
+was not modeled as a second language without checkers; it was silently absent, and
+absence demands no handling — every downstream organ inherited the omission without
+confronting it. The schema must therefore split the conflated field: the stack declares
+its **languages as facts**; **checker coverage is a separate per-language declaration**;
+and an empty checker list ("javascript: no structural checkers yet") is a representable,
+load-bearing state that forces downstream consumers — check authoring, locus routing,
+repair acceptance — to answer "then what verifies this language?" explicitly. A partial
+model is worse than none: it implies the rest does not exist.
+
 **The requirement.** *Test type* is a first-class classification, carried on the QA task
 and threaded into its evidence; *runner* is an implementation property of the type, not
 the classification itself. Each blueprint populates a handling row per type:
