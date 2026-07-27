@@ -67,6 +67,15 @@ class CheckSpec:
         notes: Free-text constraint rendered into the proposer vocabulary as a
             ``- Note:`` line. For constraints the param schema alone can't
             express (e.g. the command safelist).
+        applicable_extensions: File extensions (lowercase, with dot) the
+            evaluator can actually parse for this check's ``file`` target.
+            Empty = not file-scoped or applicable to any file. pf-47/pf-49: the
+            five AST checks read Python source only, but nothing told the plan
+            author, so QA tasks dressed ``.jsx`` test files in pytest-idiom
+            checks — every one skipped at evaluation, and a repair to such a
+            task could never produce an executed verdict. Declared here so the
+            authoring vocabulary renders it and dispatch can strip dead checks;
+            derived consumers cannot drift from this table.
     """
 
     name: str
@@ -78,10 +87,28 @@ class CheckSpec:
     path_params: frozenset[str] = frozenset()
     example: dict[str, object] = field(default_factory=dict)
     notes: str = ""
+    applicable_extensions: frozenset[str] = frozenset()
 
 
 # Allowed severity values. Anything else → ValueError at parse time.
 ALLOWED_SEVERITIES: frozenset[str] = frozenset({"error", "warning", "info"})
+
+
+def is_check_applicable(check_name: str, file_path: str) -> bool:
+    """Can ``check_name``'s evaluator ever parse ``file_path``?
+
+    True for checks that are not file-scoped (no ``applicable_extensions``) and
+    for unknown names (the parser rejects those elsewhere; this helper never
+    invents a second rejection path). A False here means the check would skip at
+    every evaluation forever — dead weight in a plan, and on a QA task whose
+    checks are ALL dead, a repair can never produce an executed verdict.
+    """
+    spec = CHECK_SPECS.get(check_name)
+    if spec is None or not spec.applicable_extensions:
+        return True
+    from pathlib import PurePosixPath
+
+    return PurePosixPath(file_path).suffix.lower() in spec.applicable_extensions
 
 
 # ---------------------------------------------------------------------------
@@ -178,6 +205,7 @@ def command_safelist_names() -> tuple[str, ...]:
 CHECK_SPECS: dict[str, CheckSpec] = {
     "endpoint_defined": CheckSpec(
         name="endpoint_defined",
+        applicable_extensions=frozenset({".py"}),
         required_params=frozenset({"file", "methods_paths"}),
         param_types={"file": str, "methods_paths": list},
         supported_stacks=frozenset({"fastapi"}),
@@ -187,6 +215,7 @@ CHECK_SPECS: dict[str, CheckSpec] = {
     ),
     "import_present": CheckSpec(
         name="import_present",
+        applicable_extensions=frozenset({".py"}),
         required_params=frozenset({"file", "module"}),
         optional_params=frozenset({"symbol"}),
         param_types={"file": str, "module": str, "symbol": str},
@@ -197,6 +226,7 @@ CHECK_SPECS: dict[str, CheckSpec] = {
     ),
     "field_present": CheckSpec(
         name="field_present",
+        applicable_extensions=frozenset({".py"}),
         required_params=frozenset({"file", "class_name", "fields"}),
         param_types={"file": str, "class_name": str, "fields": list},
         supported_stacks=frozenset({"python"}),
@@ -206,6 +236,7 @@ CHECK_SPECS: dict[str, CheckSpec] = {
     ),
     "function_defined": CheckSpec(
         name="function_defined",
+        applicable_extensions=frozenset({".py"}),
         required_params=frozenset({"file", "name_prefix"}),
         optional_params=frozenset({"min_count"}),
         param_types={"file": str, "name_prefix": str, "min_count": int},
@@ -225,6 +256,7 @@ CHECK_SPECS: dict[str, CheckSpec] = {
     ),
     "harness_boundary": CheckSpec(
         name="harness_boundary",
+        applicable_extensions=frozenset({".py"}),
         required_params=frozenset({"file", "entry_modules"}),
         optional_params=frozenset({"client_ctor"}),
         param_types={"file": str, "entry_modules": list, "client_ctor": str},
@@ -374,6 +406,13 @@ def render_typed_acceptance_vocabulary() -> str:
                 f"`{p}` ({_type_label(spec, p)})" for p in sorted(spec.optional_params)
             )
             out.append(f"- Optional: {optional}")
+        if spec.applicable_extensions:
+            exts = ", ".join(f"`{e}`" for e in sorted(spec.applicable_extensions))
+            out.append(
+                f"- Applies to: {exts} files ONLY — never attach to any other "
+                f"file type (e.g. `.js`/`.jsx`); it cannot be evaluated there "
+                f"and is stripped at dispatch."
+            )
         if spec.notes:
             out.append(f"- Note: {spec.notes}")
         out.append("- Example:")

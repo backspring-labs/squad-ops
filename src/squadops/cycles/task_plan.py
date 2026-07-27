@@ -29,6 +29,7 @@ from squadops.capabilities.scaffold import (
     harness_entry_modules,
     is_qa_test_path_for_stack,
 )
+from squadops.cycles.acceptance_check_spec import is_check_applicable
 from squadops.cycles.agent_config import resolve_agent_config
 from squadops.cycles.failure_evidence import FailureLocus
 from squadops.cycles.implementation_plan import (
@@ -422,6 +423,36 @@ def _resolve_legacy_steps(
     return steps, builder_used
 
 
+def _applicable_acceptance(plan_task: Any) -> list:
+    """The task's authored acceptance criteria, minus checks that can never evaluate.
+
+    pf-47/pf-49: the author dresses non-Python files in Python-AST checks (pytest
+    idioms on ``.jsx`` test files) because the vocabulary never told it which checks
+    apply where. Such a check skips at every evaluation forever — and a QA task whose
+    checks are ALL dead can never land a repair (zero executed blocking checks →
+    unverifiable → fail closed): both rolls burned their full correction budgets
+    rejecting repairs unheard. Stripped at dispatch, loudly; the vocabulary now
+    teaches applicability so authored plans converge, and this is the deterministic
+    backstop.
+    """
+    acceptance: list = []
+    for criterion in plan_task.acceptance_criteria:
+        if isinstance(criterion, TypedCheck):
+            target = str(criterion.params.get("file", ""))
+            if target and not is_check_applicable(criterion.check, target):
+                logger.warning(
+                    "inapplicable_check_stripped task=%s check=%s file=%s — the "
+                    "evaluator cannot parse this file type; the check would skip "
+                    "at every evaluation (pf-47/pf-49 deadlock class)",
+                    plan_task.task_index,
+                    criterion.check,
+                    target,
+                )
+                continue
+        acceptance.append(criterion)
+    return acceptance
+
+
 def _inject_contract_inputs(
     inputs: dict,
     contract: VerificationContract | None,
@@ -642,7 +673,7 @@ def generate_task_plan(
             # artifact, so omitting the key keeps their corrections byte-identical.
             if task_type == "qa.test":
                 inputs["implementation_artifacts"] = implementation_artifacts
-            acceptance = list(plan_task.acceptance_criteria)
+            acceptance = _applicable_acceptance(plan_task)
             # SIP-0098 98.3: in bind mode, resolve the task's criteria_refs into
             # TypedChecks (stamped with contract ids) and merge them in. The plan
             # binds by id, dispatch materializes — evaluation is unchanged. Author

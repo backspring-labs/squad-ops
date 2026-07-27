@@ -746,3 +746,86 @@ class TestHarnessBoundaryInjection:
             for c in e.inputs.get("acceptance_criteria", [])
             if isinstance(c, TypedCheck) and c.check == "harness_boundary"
         ]
+
+
+class TestInapplicableCheckStripping:
+    """pf-47/pf-49: Python-AST checks authored against non-Python files are stripped
+    at dispatch. Such a check skips at every evaluation forever, and a QA task whose
+    checks are ALL dead can never land a repair (zero executed blocking checks →
+    unverifiable → fail closed) — the deadlock that burned both rolls' budgets.
+    """
+
+    PLAN = """\
+version: 1
+project_id: group_run
+cycle_id: cyc_test
+prd_hash: abc123
+tasks:
+  - task_index: 0
+    task_type: qa.test
+    role: qa
+    focus: "Frontend tests"
+    description: "Component tests"
+    expected_artifacts: ["frontend/src/__tests__/App.test.jsx"]
+    acceptance_criteria:
+      - check: function_defined
+        file: frontend/src/__tests__/App.test.jsx
+        name_prefix: "test"
+        min_count: 4
+      - check: import_present
+        file: frontend/src/__tests__/App.test.jsx
+        module: frontend/src/App
+      - check: command_exit_zero
+        severity: warning
+        argv: ["node", "--check", "frontend/src/__tests__/App.test.jsx"]
+      - "Renders each view without crashing."
+    depends_on: []
+  - task_index: 1
+    task_type: qa.test
+    role: qa
+    focus: "Backend tests"
+    description: "API tests"
+    expected_artifacts: ["backend/tests/test_api.py"]
+    acceptance_criteria:
+      - check: function_defined
+        file: backend/tests/test_api.py
+        name_prefix: "test_"
+        min_count: 3
+      - check: regex_match
+        file: qa_handoff.md
+        pattern: "## How to Test"
+    depends_on: []
+summary:
+  total_tasks: 2
+"""
+
+    def _envelopes(self):
+        plan = ImplementationPlan.from_yaml(self.PLAN)
+        return generate_task_plan(_make_cycle(), _make_run(), _make_profile(), plan=plan)
+
+    def _criteria(self, envelopes, focus):
+        env = next(e for e in envelopes if e.inputs.get("subtask_focus") == focus)
+        return env.inputs["acceptance_criteria"]
+
+    def test_python_ast_checks_on_jsx_are_stripped(self):
+        """The exact pf-49 shape: pytest-idiom checks dressed on a .jsx test file."""
+        criteria = self._criteria(self._envelopes(), "Frontend tests")
+        typed = [c for c in criteria if not isinstance(c, str)]
+
+        assert not any(c.check == "function_defined" for c in typed)
+        assert not any(c.check == "import_present" for c in typed)
+
+    def test_applicable_checks_and_prose_survive_the_strip(self):
+        criteria = self._criteria(self._envelopes(), "Frontend tests")
+
+        # command_exit_zero is not file-scoped; prose is untouched
+        assert any(not isinstance(c, str) and c.check == "command_exit_zero" for c in criteria)
+        assert "Renders each view without crashing." in criteria
+
+    def test_python_files_keep_their_ast_checks(self):
+        criteria = self._criteria(self._envelopes(), "Backend tests")
+        typed = [c for c in criteria if not isinstance(c, str)]
+
+        assert any(c.check == "function_defined" for c in typed)
+        # regex on a document is #464-legal and not file-type-mismatched
+        assert any(c.check == "regex_match" for c in typed)
