@@ -107,6 +107,69 @@ stack #2.
 3. **After:** migrate the typed checks off their hardcoded `.py` onto the blueprint's
    declared source language.
 
+## Test-type taxonomy (added 2026-07-27 — pf-47/pf-49 evidence)
+
+Three production defects in twenty-four hours traced to the same missing dimension, so it
+is recorded here as a first-class schema requirement rather than a field on the side.
+
+**The evidence.** (1) pf-47 and pf-49 both burned their full correction budgets in a
+repair deadlock: every typed check on a frontend test file skips (Python-AST checkers),
+so no repair could ever produce an executed verdict — fixed tactically by check
+applicability + retest-decides (PR #624). (2) pf-49's repair was routed to the dev role
+to rewrite QA's own broken test file: the failure-locus table reads **pytest** exit-code
+semantics (exit 2/4 = suite broken, exit 1 = subject broken), but Vitest signals a
+transform failure with the same exit 1 it uses for assertion failures — the classifier
+cannot be corrected by exit codes alone. (3) The `tests_pass` evidence aggregates every
+runner into one `{executed, exit_code, tests_passed}` shape with no record of who
+produced it, so heterogeneous evidence arrives pre-flattened.
+
+**The pattern.** The task layer has one task type (`qa.test`), one check (`tests_pass`),
+and one evidence shape for things that differ on every axis the correction machinery
+cares about. The verification contract already distinguishes `build` / `suite` /
+`probes` as separate behavioral families — the taxonomy exists upstream and is thrown
+away the moment work becomes tasks.
+
+**The deeper defect in `analysable_suffix` (sharpened in review, 2026-07-27).** The
+sketch's `analysable_suffix: str` was not merely awaiting a second stack to falsify it —
+**the first stack already did**. `fullstack_fastapi_react` has been Python *plus*
+JavaScript since the expander's first commit; the singular was never true for any real
+instance. The assumption survived its own counterexample because the field was written
+from the *checker's* perspective: "analysable" meant "what our Python AST parser can
+read" — a limitation of the tooling encoded as a property of the domain. The frontend
+was not modeled as a second language without checkers; it was silently absent, and
+absence demands no handling — every downstream organ inherited the omission without
+confronting it. The schema must therefore split the conflated field: the stack declares
+its **languages as facts**; **checker coverage is a separate per-language declaration**;
+and an empty checker list ("javascript: no structural checkers yet") is a representable,
+load-bearing state that forces downstream consumers — check authoring, locus routing,
+repair acceptance — to answer "then what verifies this language?" explicitly. A partial
+model is worse than none: it implies the rest does not exist.
+
+**The requirement.** *Test type* is a first-class classification, carried on the QA task
+and threaded into its evidence; *runner* is an implementation property of the type, not
+the classification itself. Each blueprint populates a handling row per type:
+
+| axis | backend-unit | frontend-component | frontend-build | behavioral-probe |
+|---|---|---|---|---|
+| runner | pytest | vitest | vite | probe runner |
+| evidence vocabulary | exit 1 / 2 / 4 distinct | exit 1 only; suite-broken visible in **output**, not exit code | build log | HTTP status |
+| suite-broken → repairer | QA re-authors | QA re-authors | n/a (build is the test) | n/a (probes are contract-owned) |
+| subject-broken → repairer | dev | dev | dev | dev, always |
+| repair verification | AST checks + retest | retest only (no structural checks exist) | re-run build | re-fire probe |
+| execution locus | QA container | QA container | QA container | sandbox (SIP-0102) |
+
+This strengthens the existing open question toward **"the blueprint declares data that
+generic machinery consumes"**: the locus classifier, repair router, and patch-acceptance
+policy all become lookups over the type row instead of encoding one stack's runner
+conventions as universal truths. It also sharpens the acceptance gate: the second
+stack's schema must be written against at least two *test types* per stack, or the
+generalisation repeats the pytest-universal mistake one level up.
+
+**Near-term seam (filed separately, not blocked on this SIP):** thread the test type and
+runner identity into `test_result` at the runner seam, and key the locus table on it —
+conservative default (unknown type → UNKNOWN → dev chain) preserves today's behavior
+exactly.
+
 ## Open questions for review
 
 - **Does the blueprint own the container/packaging set?** The Functional App roadmap's stack
