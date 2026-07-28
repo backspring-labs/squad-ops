@@ -161,7 +161,7 @@ def test_bind_mode_injects_behavior_expectations_into_qa_test_only():
     assert qa_envs, "implementation workload must contain a qa.test step"
     assert qa_envs[0].inputs["api_behavior_contract"] == [
         "POST /items → HTTP 200",
-        "POST /items → HTTP 409 (error_code: duplicate_item)",
+        "POST /items (rejection case) → HTTP 409 (error_code: duplicate_item)",
     ]
     for env in envs:
         if env.task_type != "qa.test":

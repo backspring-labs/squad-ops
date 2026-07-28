@@ -245,6 +245,29 @@ def _probes(manifest: InterfaceManifest) -> list[dict[str, Any]]:
                 "expect": {"status": ep.success_status or 201},
             }
         )
+        # #593: the blank-input rejection probe. pf-38 volunteered blank-field
+        # guards and pf-39 didn't — both green, because nothing required OR
+        # tested the behavior. The scaffold model now owns the constraint
+        # (NonBlankStr on required request fields), so this probe is a
+        # scaffold-owned regression guard: pydantic rejects the blank body
+        # before any stub or fill body runs, hence guards="scaffold" (passes
+        # on the bare skeleton by design — the frontend_build class, not the
+        # tests_pass class). Emitted only alongside an error contract, whose
+        # frozen handler shapes the 422 validation_error envelope.
+        if shape and shape.required and manifest.api.error_contract:
+            probes.append(
+                {
+                    "id": f"vc-probe-{_slug(ep.path) or 'root'}-rejects-blank",
+                    "subject": "backend",
+                    "request": {
+                        "method": ep.method,
+                        "path": ep.path,
+                        "json": dict.fromkeys(shape.required, ""),
+                    },
+                    "expect": {"status": 422, "error_code": "validation_error"},
+                    "guards": "scaffold",
+                }
+            )
     return probes
 
 

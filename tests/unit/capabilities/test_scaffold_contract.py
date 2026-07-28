@@ -215,3 +215,60 @@ def test_behavior_expectation_lines_carry_the_pinned_statuses():
     assert "POST /runs → HTTP 201" in lines
     assert "validation_error -> HTTP 422" in lines
     assert "duplicate_participant -> HTTP 409" in lines
+
+
+class TestBlankInputProbe:
+    """#593: pf-38 volunteered blank-field guards and pf-39 didn't — both went
+    green, because nothing required OR tested blank rejection. Now the scaffold
+    model owns the constraint and this probe pins it against the running app."""
+
+    def test_create_endpoint_emits_a_blank_rejection_probe(self):
+        contract = VerificationContract.from_dict(emit_contract_dict(_manifest()))
+        blank = [p for p in contract.behavioral.probes if p.id.endswith("-rejects-blank")]
+        assert len(blank) == 1
+        probe = blank[0]
+        assert probe.request["method"] == "POST"
+        assert probe.request["path"] == "/runs"
+        # Every required create field sent blank — the exact pf-39 gap
+        # (its suite posted ABSENT fields, a different behavior).
+        assert probe.request["json"] == {"title": "", "datetime": "", "location": ""}
+        assert probe.expect == {"status": 422, "error_code": "validation_error"}
+        assert probe.guards == "scaffold"
+
+    def test_blank_probe_contract_lints_clean_and_roundtrips(self):
+        contract = VerificationContract.from_dict(emit_contract_dict(_manifest()))
+        assert contract.lint() == []
+        rt = VerificationContract.from_dict(contract.to_dict())
+        blank = [p for p in rt.behavioral.probes if p.guards == "scaffold"]
+        assert len(blank) == 1
+
+    def test_bad_guards_value_is_a_lint_error(self):
+        raw = emit_contract_dict(_manifest())
+        for probe in raw["behavioral"]["probes"]:
+            if probe["id"].endswith("-rejects-blank"):
+                probe["guards"] = "skeleton"  # not a valid class
+        errors = VerificationContract.from_dict(raw).lint()
+        assert any("guards must be" in e for e in errors)
+
+    def test_no_error_contract_emits_no_blank_probe(self):
+        # Without the error contract there is no frozen 422-envelope handler to
+        # pin error_code against — the probe is conditional on the seam.
+        raw = _raw()
+        raw["api"].pop("error_contract", None)
+        manifest = InterfaceManifest.from_dict(raw)
+        contract = VerificationContract.from_dict(emit_contract_dict(manifest))
+        assert not [p for p in contract.behavioral.probes if p.id.endswith("-rejects-blank")]
+
+    def test_emitted_model_constrains_required_request_fields(self):
+        from squadops.capabilities.scaffold import expand
+
+        files = {f["name"]: f["content"] for f in expand(_manifest())}
+        models = files["backend/models.py"]
+        assert (
+            "NonBlankStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]"
+            in models
+        )
+        assert "    title: NonBlankStr" in models
+        # Optional fields stay unconstrained — blankness only matters where
+        # presence is required.
+        assert "    distance: str | None = None" in models

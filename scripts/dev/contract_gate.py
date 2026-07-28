@@ -129,13 +129,19 @@ def _record_probes(
 ) -> None:
     """Boot the subject and run every behavioral probe (SIP §6.4/§6.5, 98.4).
 
-    Reference-fill: each probe must ``passed``. Bare skeleton: a probe must NOT pass
-    (its stubs answer 501/nothing) — a probe that passes on the bare skeleton is a
-    false-green admitted at authoring time, exactly what this gate exists to catch."""
+    Reference-fill: each probe must ``passed``. Bare skeleton: a fill-behavior probe
+    must NOT pass (its stubs answer 501/nothing) — a probe that passes on the bare
+    skeleton is a false-green admitted at authoring time, exactly what this gate
+    exists to catch. The exception is ``guards: scaffold`` probes (#593): they pin
+    behavior the skeleton itself provides (e.g. model-layer blank rejection, which
+    fires before any stub body), so they must pass in BOTH modes — the probe analog
+    of the frontend_build regression guard."""
+    guards_by_id = {p.id: p.guards for p in contract.behavioral.probes}
     for outcome in run_probes(workspace, contract.behavioral.probes):
         if bare:
             got = "passed" if outcome.status == "passed" else "not_passed"
-            result.record(outcome.id, got, "not_passed")
+            expected = "passed" if guards_by_id.get(outcome.id) == "scaffold" else "not_passed"
+            result.record(outcome.id, got, expected)
         else:
             result.record(outcome.id, outcome.status, "passed")
 

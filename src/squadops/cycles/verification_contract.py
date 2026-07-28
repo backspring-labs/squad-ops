@@ -143,6 +143,12 @@ class Probe:
     subject: str
     request: dict[str, Any]
     expect: dict[str, Any]
+    # #593: "" = fill-behavior probe (must NOT pass on the bare skeleton — stubs
+    # answer nothing); "scaffold" = the skeleton itself satisfies it (a
+    # scaffold-owned regression guard, the probe analog of frontend_build —
+    # e.g. blank-input rejection enforced at the emitted model layer, which
+    # fires before any stub body runs).
+    guards: str = ""
 
     @classmethod
     def from_dict(cls, raw: Any) -> Probe:
@@ -155,15 +161,20 @@ class Probe:
             subject=str(raw.get("subject", "")),
             request=dict(request) if isinstance(request, dict) else {},
             expect=dict(expect) if isinstance(expect, dict) else {},
+            guards=str(raw.get("guards", "")),
         )
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "id": self.id,
             "subject": self.subject,
             "request": self.request,
             "expect": self.expect,
         }
+        # Omitted when unset: pre-#593 probe dicts round-trip byte-identical.
+        if self.guards:
+            out["guards"] = self.guards
+        return out
 
 
 @dataclass(frozen=True)
@@ -428,7 +439,11 @@ class VerificationContract:
             status = probe.expect.get("status")
             if not (method and path) or status is None:
                 continue
-            line = f"{method} {path} → HTTP {status}"
+            # A 4xx-expecting probe is a rejection case — without the label, a
+            # contract with a create probe (201) and a blank-input probe (422)
+            # renders two contradictory-looking lines for the same endpoint.
+            case = " (rejection case)" if isinstance(status, int) and status >= 400 else ""
+            line = f"{method} {path}{case} → HTTP {status}"
             error_code = probe.expect.get("error_code")
             if error_code:
                 line += f" (error_code: {error_code})"
@@ -643,6 +658,8 @@ class VerificationContract:
                 errors.append(f"{label}: request must declare 'method' and 'path'")
             if "status" not in probe.expect:
                 errors.append(f"{label}: expect must declare a 'status'")
+            if probe.guards not in ("", "scaffold"):
+                errors.append(f"{label}: guards must be '' or 'scaffold', got {probe.guards!r}")
 
     def _labelled_criteria(self) -> list[tuple[str, Criterion]]:
         out: list[tuple[str, Criterion]] = []
