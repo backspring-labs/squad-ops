@@ -410,6 +410,32 @@ class VerificationContract:
                 lines.append(f"- {ff.path}: contract-owned (no per-file typed criteria)")
         return lines
 
+    def behavior_expectation_lines(self) -> list[str]:
+        """The contract's pinned HTTP behavior as one-line facts for the qa.test
+        authoring prompt (#629): probe request → expected status, then the suite's
+        ``coverage_expectations`` verbatim.
+
+        pf-54: the contract pinned ``POST /runs → 201`` (probe) and the full
+        error-code→status map (coverage_expectations), yet all five authored
+        suite versions asserted 200-on-create — the pins existed only where the
+        suite author never saw them. This is a rendering of contract *data*; the
+        "your assertions must match" instruction prose lives in the managed
+        prompt asset (CLAUDE.md #448), which takes these lines as a variable."""
+        lines: list[str] = []
+        for probe in self.behavioral.probes:
+            method = str(probe.request.get("method", "")).upper()
+            path = str(probe.request.get("path", ""))
+            status = probe.expect.get("status")
+            if not (method and path) or status is None:
+                continue
+            line = f"{method} {path} → HTTP {status}"
+            error_code = probe.expect.get("error_code")
+            if error_code:
+                line += f" (error_code: {error_code})"
+            lines.append(line)
+        lines.extend(str(exp) for exp in self.behavioral.suite.coverage_expectations)
+        return lines
+
     # --- linting ---------------------------------------------------------- #
 
     def lint(self) -> list[str]:

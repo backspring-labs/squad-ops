@@ -236,3 +236,31 @@ class TestCaching:
         await renderer.render("request.test", {"prd": "A", "role": "dev"}, environment="production")
 
         assert source.resolve_request_template.call_count == 2
+
+
+class TestBehaviorContractAppendixAsset:
+    """#629 / pf-54: render the REAL behavior-contract appendix through the real
+    filesystem source — the block eve's pf-54 prompt lacked. Proves the asset
+    carries both halves of the fix: the pinned-status authority and the
+    no-undeclared-prefix instruction (three of five pf-54 suite versions
+    prefixed /api; all five asserted 200 against the pinned 201)."""
+
+    async def test_real_asset_renders_pins_and_prefix_rule(self):
+        from adapters.prompts.factory import create_prompt_asset_source
+
+        renderer = RequestTemplateRenderer(create_prompt_asset_source())
+        rendered = await renderer.render(
+            "request.qa_test_behavior_contract_appendix",
+            {
+                "behavior_lines": (
+                    "- POST /runs → HTTP 201\n"
+                    "- validation_error -> HTTP 422\n"
+                    "- duplicate_participant -> HTTP 409"
+                )
+            },
+        )
+        assert "API BEHAVIOR CONTRACT" in rendered.content
+        assert "- POST /runs → HTTP 201" in rendered.content
+        assert "assertions MUST match" in rendered.content
+        assert "`/api`" in rendered.content
+        assert "do not add a URL prefix" in rendered.content

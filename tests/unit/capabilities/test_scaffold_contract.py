@@ -205,3 +205,13 @@ def test_datetime_name_beats_string_type():
 def test_unknown_field_defaults_to_plain_string():
     assert _probe_sample_value("location", "string") == "sample"
     assert _probe_sample_value("whatever", "") == "sample"
+
+
+def test_behavior_expectation_lines_carry_the_pinned_statuses():
+    # #629 / pf-54: the emitted contract must be able to state its own HTTP pins
+    # as authoring-prompt lines — the create probe's 201 and the error-code map.
+    contract = VerificationContract.from_dict(emit_contract_dict(_manifest()))
+    lines = contract.behavior_expectation_lines()
+    assert "POST /runs → HTTP 201" in lines
+    assert "validation_error -> HTTP 422" in lines
+    assert "duplicate_participant -> HTTP 409" in lines

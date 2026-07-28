@@ -487,8 +487,17 @@ def _inject_contract_inputs(
         frozen_index = frozen_surface_index_lines(interface_manifest)
         if frozen_index:
             inputs["frozen_surface_index"] = "\n".join(frozen_index)
-    if task_type == "qa.test" and contract.behavioral.probes:
-        inputs["contract_probes"] = [p.to_dict() for p in contract.behavioral.probes]
+    if task_type == "qa.test":
+        if contract.behavioral.probes:
+            inputs["contract_probes"] = [p.to_dict() for p in contract.behavioral.probes]
+        # #629 / pf-54: the contract's pinned statuses (probe expects + the
+        # error-code→status map) never reached suite AUTHORING — five authored
+        # suite versions asserted 200 where the probe pinned 201, an unwinnable
+        # loop no source repair could satisfy. Data-only injection; the
+        # "assertions must match" prose is a managed asset (#448).
+        behavior_lines = contract.behavior_expectation_lines()
+        if behavior_lines:
+            inputs["api_behavior_contract"] = behavior_lines
 
 
 def _harness_boundary_criteria(

@@ -332,6 +332,31 @@ class QATestHandler(_CycleTaskHandler):
         }
         return scoped or artifact_contents
 
+    async def _behavior_contract_section(
+        self, context: ExecutionContext, inputs: dict[str, Any]
+    ) -> str:
+        """Render the API BEHAVIOR CONTRACT block from executor-threaded lines, or "".
+
+        #629 / pf-54: the contract pinned POST /runs → 201 and the error-code→status
+        map, but only probes and repair prompts ever saw them — the INITIAL suite
+        generation did not, and all five authored suite versions asserted 200-on-create
+        (three added an undeclared /api prefix). The lines are contract-derived data
+        (``VerificationContract.behavior_expectation_lines``); all instruction prose
+        lives in the appendix asset (CLAUDE.md #448).
+        """
+        lines = [str(line).strip() for line in (inputs.get("api_behavior_contract") or [])]
+        lines = [line for line in lines if line]
+        if not lines:
+            return ""
+        renderer = getattr(context.ports, "request_renderer", None)
+        if renderer is None:
+            return ""
+        rendered = await renderer.render(
+            "request.qa_test_behavior_contract_appendix",
+            {"behavior_lines": "\n".join(f"- {line}" for line in lines)},
+        )
+        return rendered.content
+
     def _build_focused_prompt(self, inputs: dict[str, Any]) -> str:
         """Build a focused prompt for manifest-driven QA subtasks (SIP-0086).
 
@@ -565,6 +590,9 @@ class QATestHandler(_CycleTaskHandler):
         # SIP-0086 RC-6: focused prompt path for manifest-driven subtasks
         if inputs.get("subtask_focus") is not None:
             user_prompt = self._build_focused_prompt(inputs)
+            behavior_section = await self._behavior_contract_section(context, inputs)
+            if behavior_section:
+                user_prompt = f"{user_prompt}\n{behavior_section}"
             rendered = None
             sources = self._get_source_artifacts(inputs)
         else:
