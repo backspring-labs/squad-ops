@@ -744,7 +744,15 @@ def _model_source(manifest: InterfaceManifest) -> str:
         "",
         "from __future__ import annotations",
         "",
-        "from pydantic import BaseModel, Field",
+        "from typing import Annotated",
+        "",
+        "from pydantic import BaseModel, Field, StringConstraints",
+        "",
+        "# #593: required request fields reject blank/whitespace-only input at the",
+        "# model layer — the contract pins validation_error → 422 for it, and the",
+        "# blank-input probe enforces it against the running app. Whitespace is",
+        "# stripped before the length check, so '  ' is as blank as ''.",
+        "NonBlankStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]",
         "",
     ]
     for entity in manifest.entities:
@@ -768,7 +776,7 @@ def _model_source(manifest: InterfaceManifest) -> str:
         if not shape.required and not shape.optional:
             lines.append("    pass")
         for name in shape.required:
-            lines.append(f"    {name}: str")
+            lines.append(f"    {name}: NonBlankStr")
         for name in shape.optional:
             lines.append(f"    {name}: str | None = None")
         lines.append("")

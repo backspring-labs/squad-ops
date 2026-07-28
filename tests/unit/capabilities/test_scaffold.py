@@ -828,3 +828,43 @@ class TestFrontendTestHarness:
         slots = fill_slot_paths(_group_run_manifest())
         assert "frontend/src/__tests__/harness.test.jsx" not in slots
         assert "frontend/src/test-setup.js" not in slots
+
+
+class TestNonBlankRequestFields:
+    """#593: the emitted request models must actually enforce the constraint —
+    a template typo (wrong alias, misplaced annotation) would compile fine and
+    silently restore the blank-201 gap."""
+
+    def _models_module(self):
+        import sys
+        import types
+
+        src = _by_name(expand(_group_run_manifest()))["backend/models.py"]
+        mod = types.ModuleType("scaffold_emitted_models")
+        # Registered so pydantic can resolve the module's deferred annotations
+        # (`from __future__ import annotations`) exactly as a real import does.
+        sys.modules["scaffold_emitted_models"] = mod
+        try:
+            exec(compile(src, "backend/models.py", "exec"), mod.__dict__)
+        except Exception:
+            sys.modules.pop("scaffold_emitted_models", None)
+            raise
+        return mod
+
+    def test_blank_and_whitespace_required_fields_are_rejected(self):
+        import pydantic
+
+        mod = self._models_module()
+        for bad in ("", "   "):
+            try:
+                mod.RunEventCreate(title=bad, datetime="2026-08-01T08:00:00", location="Park")
+            except pydantic.ValidationError:
+                continue
+            raise AssertionError(f"blank title {bad!r} was accepted")
+
+    def test_valid_input_is_accepted_and_whitespace_stripped(self):
+        mod = self._models_module()
+        run = mod.RunEventCreate(
+            title="  Morning 5K  ", datetime="2026-08-01T08:00:00", location="Park"
+        )
+        assert run.title == "Morning 5K"
