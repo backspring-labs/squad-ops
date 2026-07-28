@@ -233,6 +233,69 @@ class TestArtifactContentsPreResolution:
         assert "    pace:" not in contents["backend/models.py"]
 
 
+class TestAcceptanceWorkspaceResolution:
+    """#643 (fay-1): the dev prompt filter has no by_type clause, so scaffold
+    source files never reached the dev envelope and module_imports evaluated
+    in a routes.py-only workspace. The acceptance workspace resolves with the
+    full-tree spec regardless of task type."""
+
+    async def test_full_tree_spec_includes_scaffold_source_for_dev(self, executor):
+        # The scaffold sibling (source, scaffold.expand provenance) is exactly
+        # what development.develop's own filter excludes.
+        ref_scaffold = _make_artifact_ref(
+            "art_001",
+            "backend/errors.py",
+            "source",
+            producing_task_type="scaffold.expand",
+        )
+        stored = [("art_001", ref_scaffold)]
+        executor._artifact_vault.retrieve = AsyncMock(
+            side_effect=[(ref_scaffold, b"class ApiError(Exception):\n    pass\n")]
+        )
+
+        default = await executor._resolve_artifact_contents("development.develop", stored)
+        assert "backend/errors.py" not in default
+
+        executor._artifact_vault.retrieve = AsyncMock(
+            side_effect=[(ref_scaffold, b"class ApiError(Exception):\n    pass\n")]
+        )
+        workspace = await executor._resolve_artifact_contents(
+            "development.develop",
+            stored,
+            filter_spec=executor._ACCEPTANCE_WORKSPACE_FILTER,
+        )
+        assert workspace["backend/errors.py"] == "class ApiError(Exception):\n    pass\n"
+
+    async def test_workspace_spec_excludes_rejected_repair_candidates(self, executor):
+        # pf-31 Fix E composes with #643: a rejected repair candidate must not
+        # enter the acceptance workspace of a fresh dispatch.
+        ref_scaffold = _make_artifact_ref(
+            "art_001",
+            "backend/errors.py",
+            "source",
+            producing_task_type="scaffold.expand",
+        )
+        ref_candidate = _make_artifact_ref(
+            "art_002",
+            "backend/routes.py",
+            "source",
+            producing_task_type="development.correction_repair",
+        )
+        stored = [("art_001", ref_scaffold), ("art_002", ref_candidate)]
+        executor._artifact_vault.retrieve = AsyncMock(
+            side_effect=[(ref_scaffold, b"class ApiError(Exception):\n    pass\n")]
+        )
+
+        workspace = await executor._resolve_artifact_contents(
+            "development.develop",
+            stored,
+            include_repair_candidates=False,
+            filter_spec=executor._ACCEPTANCE_WORKSPACE_FILTER,
+        )
+        assert "backend/errors.py" in workspace
+        assert "backend/routes.py" not in workspace
+
+
 class TestProducingTaskTypeMetadata:
     async def test_store_artifact_includes_producing_task_type(self, executor):
         from squadops.tasks.models import TaskEnvelope

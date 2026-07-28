@@ -699,3 +699,78 @@ class TestArtifactEmissionEndToEnd:
         )
         assert artifact is not None
         assert artifact["name"] == "typed_check_evaluation_task_1.json"
+
+
+# ---------------------------------------------------------------------------
+# #643: the acceptance workspace — scaffold siblings under the task's artifacts
+# ---------------------------------------------------------------------------
+
+
+_ROUTES_WITH_SIBLING_IMPORT = """\
+from backend.errors import ApiError
+
+
+def not_found() -> ApiError:
+    return ApiError()
+"""
+
+_ERRORS_MODULE = """\
+class ApiError(Exception):
+    pass
+"""
+
+
+class TestAcceptanceWorkspaceFiles:
+    """#643 (fay-1): module_imports evaluated in a task-artifacts-only
+    workspace, so a fill file importing its frozen scaffold siblings
+    false-failed every dev attempt — the check was structurally unwinnable
+    in-cycle. The executor threads the accepted tree as
+    ``acceptance_workspace_files``; evaluation materializes it FIRST, the
+    task's own artifacts on top."""
+
+    def _criterion(self) -> TypedCheck:
+        return TypedCheck(
+            check="module_imports",
+            params={"file": "backend/routes.py"},
+            severity="error",
+            description="routes module imports",
+        )
+
+    async def test_sibling_import_passes_with_threaded_workspace(self):
+        h = DevelopmentDevelopHandler()
+        inputs = _inputs([self._criterion()], expected=("backend/routes.py",))
+        inputs["acceptance_workspace_files"] = {
+            "backend/__init__.py": "",
+            "backend/errors.py": _ERRORS_MODULE,
+        }
+        result = await h._validate_output(
+            inputs, [_art("backend/routes.py", _ROUTES_WITH_SIBLING_IMPORT)]
+        )
+        assert result.passed is True
+
+    async def test_sibling_import_fails_without_workspace(self):
+        # The fay-1 mechanism itself: identical artifact, no threaded
+        # workspace — the sibling import cannot resolve and blocks.
+        h = DevelopmentDevelopHandler()
+        inputs = _inputs([self._criterion()], expected=("backend/routes.py",))
+        result = await h._validate_output(
+            inputs, [_art("backend/routes.py", _ROUTES_WITH_SIBLING_IMPORT)]
+        )
+        assert result.passed is False
+        assert "acceptance:routes module imports" in result.missing_components
+
+    async def test_task_artifact_supersedes_its_workspace_slot(self):
+        # The tree's copy of the task's own slot (the skeleton's 501 stub)
+        # must not shadow the candidate under evaluation: here the workspace
+        # copy raises at import and only the candidate is clean.
+        h = DevelopmentDevelopHandler()
+        inputs = _inputs([self._criterion()], expected=("backend/routes.py",))
+        inputs["acceptance_workspace_files"] = {
+            "backend/__init__.py": "",
+            "backend/errors.py": _ERRORS_MODULE,
+            "backend/routes.py": "raise RuntimeError('skeleton stub was evaluated')\n",
+        }
+        result = await h._validate_output(
+            inputs, [_art("backend/routes.py", _ROUTES_WITH_SIBLING_IMPORT)]
+        )
+        assert result.passed is True

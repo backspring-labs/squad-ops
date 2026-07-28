@@ -2829,3 +2829,56 @@ class TestRetestProbeThreading:
         )
         (env,) = dispatcher.dispatched
         assert "contract_probes" not in env.inputs
+
+
+class TestRetestWorkspaceThreading:
+    """#643: the retest envelope must carry the failed task's
+    acceptance_workspace_files — without them the retest's typed acceptance
+    re-evaluates in a task-artifacts-only workspace and re-fails a correct
+    repair on its contract-mandated sibling imports (the fay-1 loop)."""
+
+    _make_runner = TestReexecuteRepairedSuite._make_runner
+    _cycle = TestReexecuteRepairedSuite._cycle
+    _profile = TestReexecuteRepairedSuite._profile
+    _state_kwargs = TestReexecuteRepairedSuite._state_kwargs
+    _failed_qa_envelope = TestReexecuteRepairedSuite._failed_qa_envelope
+
+    async def test_workspace_files_thread_into_the_retest_envelope(self):
+        from squadops.tasks.models import TaskResult
+
+        runner, dispatcher = self._make_runner(
+            lambda env: TaskResult(task_id=env.task_id, status="SUCCEEDED", outputs={})
+        )
+        envelope = self._failed_qa_envelope()
+        workspace = {"backend/__init__.py": "", "backend/errors.py": "class ApiError: ..."}
+        envelope.inputs["acceptance_workspace_files"] = workspace
+
+        await runner.reexecute_repaired_suite(
+            "run_001",
+            self._cycle(),
+            envelope,
+            [{"name": "tests/test_api.py", "content": "repaired", "type": "test"}],
+            0,
+            profile=self._profile(),
+            **self._state_kwargs(),
+        )
+        (env,) = dispatcher.dispatched
+        assert env.inputs["acceptance_workspace_files"] == workspace
+
+    async def test_workspace_less_envelope_threads_no_key(self):
+        from squadops.tasks.models import TaskResult
+
+        runner, dispatcher = self._make_runner(
+            lambda env: TaskResult(task_id=env.task_id, status="SUCCEEDED", outputs={})
+        )
+        await runner.reexecute_repaired_suite(
+            "run_001",
+            self._cycle(),
+            self._failed_qa_envelope(),
+            [{"name": "tests/test_api.py", "content": "repaired", "type": "test"}],
+            0,
+            profile=self._profile(),
+            **self._state_kwargs(),
+        )
+        (env,) = dispatcher.dispatched
+        assert "acceptance_workspace_files" not in env.inputs

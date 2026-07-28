@@ -283,6 +283,7 @@ async def verify_patched_artifacts(
     criteria: list[Any],
     artifacts: list[dict[str, Any]],
     *,
+    workspace_files: dict[str, str] | None = None,
     stack: str | None = None,
     typed_acceptance_enabled: bool = True,
     command_acceptance_enabled: bool = True,
@@ -293,6 +294,12 @@ async def verify_patched_artifacts(
     criteria can block; ``skipped`` never blocks. Any evaluator ``error`` on
     a blocking criterion makes the whole patch UNVERIFIABLE (the executor
     environment may lack tooling the agent container has — never guess).
+
+    ``workspace_files`` (#643) is the accepted workspace tree the patch lands
+    in, materialized FIRST so *artifacts* supersede their own slots. It is a
+    verification substrate only — never part of what an accepted patch stores.
+    Runtime-level checks (module_imports, the #591 import pre-gate) are
+    meaningless without the scaffold siblings the patched file imports.
     """
     typed = _coerce_typed_criteria(criteria)
     if typed is None:
@@ -305,6 +312,11 @@ async def verify_patched_artifacts(
     blocking_passed = 0
     with tempfile.TemporaryDirectory(prefix="squadops-patch-verify-") as tmpdir:
         workspace_root = Path(tmpdir)
+        if workspace_files:
+            materialize_artifacts(
+                [{"name": name, "content": content} for name, content in workspace_files.items()],
+                workspace_root,
+            )
         materialize_artifacts(artifacts, workspace_root)
 
         # #591: typed criteria read one file at a time, so a patch whose imports
