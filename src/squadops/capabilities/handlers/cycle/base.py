@@ -364,6 +364,20 @@ class _CycleTaskHandler(CapabilityHandler):
 
         with tempfile.TemporaryDirectory(prefix="squadops-typed-acc-") as tmpdir_str:
             workspace_root = Path(tmpdir_str)
+            # #643: materialize the accepted workspace tree first (executor
+            # threads it — scaffold siblings included), then this task's own
+            # artifacts on top so the candidate supersedes its own slots.
+            # Runtime-level checks (module_imports) false-fail contract-
+            # mandated sibling imports in a task-artifacts-only workspace.
+            workspace_files = inputs.get("acceptance_workspace_files") or {}
+            if workspace_files:
+                self._materialize_artifacts(
+                    [
+                        {"name": name, "content": content}
+                        for name, content in workspace_files.items()
+                    ],
+                    workspace_root,
+                )
             self._materialize_artifacts(artifacts, workspace_root)
 
             for check_index, criterion in enumerate(typed_criteria):

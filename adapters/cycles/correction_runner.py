@@ -1000,6 +1000,13 @@ class CorrectionRunner:
         # the bind-mode injection (probe-less contracts thread no key).
         if failed_inputs.get("contract_probes"):
             retest_inputs["contract_probes"] = failed_inputs["contract_probes"]
+        # #643: same presence-keyed threading for the typed-acceptance
+        # workspace — the retest's evaluation needs the scaffold siblings
+        # exactly like the original dispatch did.
+        if failed_inputs.get("acceptance_workspace_files"):
+            retest_inputs["acceptance_workspace_files"] = failed_inputs[
+                "acceptance_workspace_files"
+            ]
 
         retest_envelope = TaskEnvelope(
             task_id=f"retest-{run_id[:12]}-{correction_attempts:02d}-{envelope.task_type}",

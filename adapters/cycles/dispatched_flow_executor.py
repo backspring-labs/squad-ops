@@ -956,6 +956,19 @@ class DispatchedFlowExecutor(FlowExecutionPort):
     # failure_evidence assembly.
     _ERROR_SEAM_TASK_TYPES: frozenset[str] = frozenset({"development.develop"})
 
+    # #643: the full accepted source/config tree — scaffold included via
+    # by_type (#443). Threaded to every build task as
+    # ``acceptance_workspace_files``: module_imports is runtime-level, so the
+    # typed-acceptance workspace must hold every sibling a fill file imports —
+    # exactly what the per-task prompt filters below deliberately omit
+    # (prompt diet). fay-1: dev's module_imports evaluated in a
+    # routes.py-only workspace and false-failed every attempt.
+    _ACCEPTANCE_WORKSPACE_FILTER: dict[str, list[str]] = {
+        "by_producing_task": ["qa.validate", "builder.assemble", "development.develop"],
+        "by_type": ["source", "config"],
+        "by_type_fallback": ["document"],
+    }
+
     # Maps build task_type → which prior artifacts to inject.
     # by_producing_task: match on producing_task_type metadata
     # by_type / by_type_fallback: match on artifact_type for artifacts without provenance
@@ -977,16 +990,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             # fill-contract files) — without them assembly packages a partial app.
             "by_type_fallback": ["document"],
         },
-        "qa.test": {
-            # SIP-0086: include development.develop for manifest-driven QA
-            # subtasks that need to see all prior build artifacts
-            "by_producing_task": ["qa.validate", "builder.assemble", "development.develop"],
-            "by_type": ["source", "config"],
-            # #443: same fallback development.develop already has — the seeded
-            # scaffold must reach verification or frontend_build/tests_pass run
-            # against a workspace missing package.json and the backend modules.
-            "by_type_fallback": ["document"],
-        },
+        # SIP-0086/#443: QA verification needs the whole accepted tree —
+        # the same selection the acceptance workspace uses (single-sourced).
+        "qa.test": _ACCEPTANCE_WORKSPACE_FILTER,
     }
 
     async def _resolve_artifact_contents(
@@ -995,6 +1001,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         stored_artifacts: list[tuple[str, ArtifactRef]],
         *,
         include_repair_candidates: bool = True,
+        filter_spec: dict[str, list[str]] | None = None,
     ) -> dict[str, str]:
         """Pre-resolve artifact content for build tasks (D3).
 
@@ -1009,11 +1016,14 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 dispatches exclude them, so a rejected candidate can never
                 supersede the accepted state in a later task's workspace —
                 the pf-31 endpoint_defined final-verification regression.
+            filter_spec: explicit selection override (#643 — the acceptance
+                workspace uses the full-tree spec regardless of task type).
+                Defaults to the task type's prompt-context filter.
 
         Returns:
             Dict of filename → content string. Empty if task_type not a build task.
         """
-        filter_spec = self._BUILD_ARTIFACT_FILTER.get(task_type)
+        filter_spec = filter_spec or self._BUILD_ARTIFACT_FILTER.get(task_type)
         if not filter_spec:
             return {}
 
@@ -1731,6 +1741,18 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             )
             if artifact_contents:
                 extra_inputs["artifact_contents"] = artifact_contents
+            # #643: the typed-acceptance workspace rides separately from the
+            # curated prompt context — evaluation needs the full accepted tree
+            # (scaffold siblings included) or runtime-level checks false-fail
+            # correct fill files on their own contract-mandated imports.
+            workspace_files = await self._resolve_artifact_contents(
+                envelope.task_type,
+                stored_artifacts,
+                include_repair_candidates=False,
+                filter_spec=self._ACCEPTANCE_WORKSPACE_FILTER,
+            )
+            if workspace_files:
+                extra_inputs["acceptance_workspace_files"] = workspace_files
 
         return dataclasses.replace(
             envelope,
@@ -2024,9 +2046,20 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         patched_artifacts = overlay_artifacts(
             (result.outputs or {}).get("artifacts") or [], repair_artifacts
         )
+        # #643: verify against the accepted workspace tree, not just the task's
+        # own files — module_imports and the #591 import pre-gate need the
+        # scaffold siblings present or a correct repair can never be accepted
+        # (fay-1: both candidates rejected in a routes.py-only workspace).
+        # Workspace rides as a separate base: patched_artifacts is what an
+        # accepted patch RE-STORES (#389 swap below), and the tree must never
+        # be re-stored under the repaired task's type.
+        workspace_files = ((enriched_envelope or envelope).inputs or {}).get(
+            "acceptance_workspace_files"
+        ) or {}
         verification = await verify_patched_artifacts(
             criteria,
             patched_artifacts,
+            workspace_files=workspace_files,
             stack=resolve_check_stack(resolved_config),
             typed_acceptance_enabled=resolved_config.get("typed_acceptance", True),
             command_acceptance_enabled=resolved_config.get("command_acceptance_checks", True),

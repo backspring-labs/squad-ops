@@ -296,3 +296,70 @@ class TestUnresolvedImportsBlockAcceptance:
         result = await verify_patched_artifacts(_heading_criteria(), artifacts)
 
         assert result.status == PATCH_PASSED
+
+
+# ---------------------------------------------------------------------------
+# #643: the workspace substrate — patched files verified inside the accepted tree
+# ---------------------------------------------------------------------------
+
+
+_ROUTES_IMPORTING_SIBLING = """\
+from backend.errors import ApiError
+
+
+def not_found() -> ApiError:
+    return ApiError()
+"""
+
+_ERRORS_MODULE = "class ApiError(Exception):\n    pass\n"
+
+
+def _module_imports_criterion() -> list[TypedCheck]:
+    return [
+        TypedCheck(
+            check="module_imports",
+            params={"file": "backend/routes.py"},
+            severity="error",
+            description="routes module imports",
+        )
+    ]
+
+
+class TestWorkspaceFiles:
+    """#643 (fay-1): patch verification materialized ONLY failed-outputs +
+    repairs, so a repaired fill file importing its frozen scaffold siblings
+    could never be accepted — both fay-1 candidates were rejected in a
+    routes.py-only workspace despite importing clean in the real tree."""
+
+    async def test_sibling_import_accepted_with_workspace_substrate(self):
+        result = await verify_patched_artifacts(
+            _module_imports_criterion(),
+            [{"name": "backend/routes.py", "content": _ROUTES_IMPORTING_SIBLING}],
+            workspace_files={
+                "backend/__init__.py": "",
+                "backend/errors.py": _ERRORS_MODULE,
+            },
+        )
+        assert result.status == PATCH_PASSED
+
+    async def test_sibling_import_rejected_without_workspace_substrate(self):
+        # The fay-1 rejection, pinned: identical patch, no substrate.
+        result = await verify_patched_artifacts(
+            _module_imports_criterion(),
+            [{"name": "backend/routes.py", "content": _ROUTES_IMPORTING_SIBLING}],
+        )
+        assert result.status == PATCH_FAILED
+
+    async def test_patched_artifact_supersedes_its_workspace_slot(self):
+        # The substrate's stale copy of the repaired file (the pre-repair
+        # tree) must not shadow the patch under verification.
+        result = await verify_patched_artifacts(
+            _module_imports_criterion(),
+            [{"name": "backend/routes.py", "content": _ROUTES_IMPORTING_SIBLING}],
+            workspace_files={
+                "backend/__init__.py": "",
+                "backend/errors.py": _ERRORS_MODULE,
+                "backend/routes.py": "raise RuntimeError('pre-repair tree was evaluated')\n",
+            },
+        )
+        assert result.status == PATCH_PASSED
