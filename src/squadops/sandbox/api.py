@@ -17,7 +17,6 @@ becomes the caller.
 from __future__ import annotations
 
 import hmac
-from typing import Annotated
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -163,7 +162,13 @@ def create_app(service: SandboxService, *, service_token: str) -> FastAPI:
             detail = {"error": {"code": "HTTP_ERROR", "message": str(detail), "details": None}}
         return JSONResponse(status_code=exc.status_code, content=detail)
 
-    def require_identity(authorization: Annotated[str | None, Header()] = None) -> None:
+    # Header(default=...) not Annotated[..., Header()]: under the LOCKED pair
+    # (fastapi 0.104.1 + pydantic 2.12.5, requirements/api.lock) the Annotated
+    # form crashes route registration (FieldInfo has no .in_) — the service
+    # container could never boot. The dev venv runs a newer fastapi where both
+    # forms work, so only the container image manifests it (Spark shakedown
+    # finding #3, 2026-07-28; minimal repro in the runtime-api container).
+    def require_identity(authorization: str | None = Header(default=None)) -> None:
         expected = f"Bearer {service_token}"
         if authorization is None or not hmac.compare_digest(authorization, expected):
             raise _error(401, "UNAUTHENTICATED", "valid service bearer token required")
