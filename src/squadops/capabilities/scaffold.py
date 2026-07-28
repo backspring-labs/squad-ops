@@ -995,7 +995,8 @@ _PACKAGE_JSON = """{{
   "scripts": {{
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run"
   }},
   "dependencies": {{
     "react": "^18.3.1",
@@ -1003,8 +1004,13 @@ _PACKAGE_JSON = """{{
     "react-router-dom": "^6.26.2"
   }},
   "devDependencies": {{
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/jest-dom": "^6.5.0",
+    "@testing-library/react": "^16.0.1",
     "@vitejs/plugin-react": "^4.3.1",
-    "vite": "^5.4.2"
+    "jsdom": "^25.0.1",
+    "vite": "^5.4.2",
+    "vitest": "^2.1.9"
   }}
 }}
 """
@@ -1025,6 +1031,47 @@ export default defineConfig({
       },
     },
   },
+  // #627: the frontend test harness is scaffold-owned, mirroring the backend
+  // conftest. vitest reads this key; `vite build` ignores it.
+  test: {
+    environment: 'jsdom',
+    setupFiles: ['src/test-setup.js'],
+  },
+})
+"""
+
+# Scaffold-owned vitest setup (frozen) — registers jest-dom matchers for every
+# suite. The frontend mirror of the conftest ``client`` fixture: harness wiring
+# is a workspace invariant, never a per-suite guess (#627 / pf-53: with no
+# seeded harness, qa either refused to test or invented one that could not run).
+_TEST_SETUP_JS = """// The /vitest entry registers jest-dom matchers on vitest's expect — the
+// bare entry assumes a GLOBAL expect and crashes collection under vitest's
+// default globals:false (caught on the real toolchain, not in review).
+import '@testing-library/jest-dom/vitest'
+"""
+
+# Scaffold-owned harness proof (frozen). Renders the app shell at a path no
+# route claims, so it passes on the bare skeleton AND after any fill — it
+# asserts harness wiring (vitest + jsdom + Testing Library + router), never
+# app behavior. Doubles as the in-workspace example of the testing idiom.
+_HARNESS_TEST_JSX = """// Scaffold-owned harness proof (frozen): vitest + jsdom + Testing Library +
+// router wiring all work in this workspace. Write real UI tests in NEW files
+// beside this one (e.g. views.test.jsx) — render with MemoryRouter exactly as
+// below; jest-dom matchers are already registered via src/test-setup.js.
+import { describe, expect, it } from 'vitest'
+import { render } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
+import App from '../App.jsx'
+
+describe('frontend test harness', () => {
+  it('renders the app shell under a memory router', () => {
+    const { container } = render(
+      <MemoryRouter initialEntries={['/__harness__']}>
+        <App />
+      </MemoryRouter>,
+    )
+    expect(container.querySelector('.app')).toBeInTheDocument()
+  })
 })
 """
 
@@ -1228,6 +1275,8 @@ def _expand_fullstack_fastapi_react(manifest: InterfaceManifest) -> list[dict[st
         }
     )
     files.append({"name": "frontend/vite.config.js", "content": _VITE_CONFIG})
+    files.append({"name": "frontend/src/test-setup.js", "content": _TEST_SETUP_JS})
+    files.append({"name": "frontend/src/__tests__/harness.test.jsx", "content": _HARNESS_TEST_JSX})
     files.append({"name": "frontend/src/main.jsx", "content": _MAIN_JSX})
     files.append({"name": "frontend/src/api.js", "content": _API_JS})
     files.append({"name": "frontend/src/App.jsx", "content": _app_jsx(manifest)})

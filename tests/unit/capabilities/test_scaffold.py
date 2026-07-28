@@ -781,3 +781,50 @@ class TestScaffoldOwnedStore:
 
         compile(store, "backend/store.py", "exec")  # must not emit a bodyless reset()
         assert "from .models import" not in store  # nothing to import
+
+
+class TestFrontendTestHarness:
+    """#627 / pf-53: the frontend test harness is scaffold-owned — deps, runner
+    script, jsdom config, setup file, and a frozen harness-proof test. Without
+    it, qa either refused to test ("no runner available" — which matched the
+    workspace) or invented harnesses that could not run (five repair attempts,
+    all environment-killed)."""
+
+    def test_package_json_declares_the_runner_and_harness_deps(self):
+        import json
+
+        pkg = json.loads(_by_name(expand(_group_run_manifest()))["frontend/package.json"])
+        assert pkg["scripts"]["test"] == "vitest run"
+        for dep in (
+            "vitest",
+            "jsdom",
+            "@testing-library/react",
+            "@testing-library/jest-dom",
+            "@testing-library/dom",
+        ):
+            assert dep in pkg["devDependencies"], f"missing devDependency: {dep}"
+
+    def test_vite_config_wires_jsdom_and_the_emitted_setup_file(self):
+        files = _by_name(expand(_group_run_manifest()))
+        config = files["frontend/vite.config.js"]
+        assert "environment: 'jsdom'" in config
+        # The setupFiles entry must point at a file the expansion actually emits —
+        # a renamed setup file would break every suite at collection.
+        assert "setupFiles: ['src/test-setup.js']" in config
+        assert "frontend/src/test-setup.js" in files
+        assert "@testing-library/jest-dom" in files["frontend/src/test-setup.js"]
+
+    def test_harness_proof_imports_only_emitted_modules(self):
+        files = _by_name(expand(_group_run_manifest()))
+        harness = files["frontend/src/__tests__/harness.test.jsx"]
+        # ../App.jsx from __tests__/ must resolve to the emitted App
+        assert "from '../App.jsx'" in harness
+        assert "frontend/src/App.jsx" in files
+        assert "MemoryRouter" in harness
+
+    def test_harness_files_are_frozen_not_fill_slots(self):
+        from squadops.capabilities.scaffold import fill_slot_paths
+
+        slots = fill_slot_paths(_group_run_manifest())
+        assert "frontend/src/__tests__/harness.test.jsx" not in slots
+        assert "frontend/src/test-setup.js" not in slots

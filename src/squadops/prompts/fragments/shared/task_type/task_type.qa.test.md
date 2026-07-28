@@ -1,7 +1,7 @@
 ---
 fragment_id: task_type.qa.test
 layer: task_type
-version: "0.9.22"
+version: "0.9.23"
 roles: ["qa"]
 ---
 # Task: Generate and Execute Tests (qa.test)
@@ -40,11 +40,26 @@ an unavailable library, cover that behavior from the other side of the stack
   that runs before each test (e.g. an autouse fixture clearing the store) —
   a test asserting "empty" must establish empty, not hope to run first.
 
+## Frontend Tests (when the workspace declares a runner)
+
+When `frontend/package.json` declares a `test` script (scaffolded workspaces
+declare vitest), frontend UI tests are real deliverables:
+
+- Files are `*.test.jsx` under `frontend/src/__tests__/`, executed with
+  `vitest run` in a jsdom environment.
+- The workspace seeds a frozen harness proof (`harness.test.jsx`) and setup
+  file (`src/test-setup.js`, registers jest-dom matchers). Follow the harness
+  example exactly: render components inside a `MemoryRouter`; never edit the
+  frozen harness files — write NEW test files beside them.
+- Component tests must not depend on a running backend: jsdom has no server.
+  Mock the workspace's `apiFetch` (from `frontend/src/api.js`) instead of
+  calling `fetch` against real URLs.
+
 ## Scope Discipline
 
 - Test the deliverable that exists, against the interfaces it actually
   exposes — do not test aspirational behavior the PRD excludes.
-- If the frontend dependency manifest declares no test runner, generate no
-  frontend test files; the frontend build check covers compile-level
-  integrity.
+- If the frontend dependency manifest declares no test runner and no `test`
+  script, generate no frontend test files; the frontend build check covers
+  compile-level integrity.
 - Prefer fewer tests that exercise real code paths over many shallow ones.
