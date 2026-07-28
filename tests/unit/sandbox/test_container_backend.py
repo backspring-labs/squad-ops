@@ -109,8 +109,10 @@ class TestHardenedSpecRendering:
         )
         await backend.install_dependencies(revision=seeded)
         mounts = dict(container.specs[0].volumes)
-        assert mounts[str(tmp_path / "caches" / "pip")] == "/root/.cache/pip"
-        assert mounts[str(tmp_path / "caches" / "npm")] == "/root/.npm"
+        # User-neutral mount points (Spark shakedown 2026-07-28): /root/.* paths
+        # only resolved while the container ran as root.
+        assert mounts[str(tmp_path / "caches" / "pip")] == "/cache/pip"
+        assert mounts[str(tmp_path / "caches" / "npm")] == "/cache/npm"
         assert (tmp_path / "caches" / "pip").is_dir()  # pre-created, never root-owned
         assert not any("site-packages" in c or "node_modules" in c for c in mounts.values())
 
@@ -239,3 +241,37 @@ class TestContractAndPinning:
         assert result.ran is False
         assert result.status == OperationStatus.NOT_RUN
         assert "provides no command" in result.unavailable_reason
+
+
+class TestWorkspaceOwnerUser:
+    """Spark shakedown (2026-07-28): with cap_drop_all, root loses DAC_OVERRIDE
+    and cannot write a host-owned bind mount on native Linux — the floor smoke
+    failed at `python -m venv` in 0.3s. Docker Desktop's virtiofs masked the
+    mismatch on Mac. The container must run as the workspace owner."""
+
+    async def test_operations_run_as_the_workspace_owner(self, tmp_path, store, seeded):
+        import os
+
+        container = FakeContainer()
+        backend = _backend(container, store)
+        await backend.install_dependencies(revision=seeded)
+        spec = container.specs[0]
+        st = os.stat(store.workspace_dir(seeded.cycle_id))
+        assert spec.user == f"{st.st_uid}:{st.st_gid}"
+
+    async def test_env_pins_home_and_user_neutral_caches(self, tmp_path, store, seeded):
+        container = FakeContainer()
+        backend = ContainerBackend(
+            container=container,
+            store=store,
+            image="sandbox:pinned",
+            operation_commands=COMMANDS,
+            cache_root=tmp_path / "caches",
+        )
+        await backend.install_dependencies(revision=seeded)
+        env = dict(container.specs[0].env)
+        # A passwd-less uid resolves $HOME to '/' — npm then writes /.npm and
+        # fails; HOME plus explicit cache env decouple caching from identity.
+        assert env["HOME"] == "/tmp"
+        assert env["PIP_CACHE_DIR"] == "/cache/pip"
+        assert env["npm_config_cache"] == "/cache/npm"
