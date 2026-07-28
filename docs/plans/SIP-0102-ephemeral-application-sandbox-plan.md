@@ -42,6 +42,29 @@ campaigns run):**
    behavior) here — that is exactly the drift the local-build decision accepted;
    findings feed the 1.5 digest-pinning revisit.
 
+**Spark shakedown results (2026-07-28, Spark lane):** image built locally
+(361MB); floor smoke initially FAILED, root-caused to two native-Linux
+divergences that Docker Desktop's virtiofs masked on Mac — exactly the drift
+class this shakedown existed to catch:
+
+1. **cap_drop_all vs host-owned bind mount:** the container ran as root, and
+   `--cap-drop ALL` strips `CAP_DAC_OVERRIDE` — on native Linux root then
+   cannot write the uid-1000-owned workspace mount (`python -m venv` died in
+   0.3s, `Permission denied`). Isolated three ways: cap-drop+root fails,
+   no-cap-drop works, cap-drop+`--user 1000:1000` works. Fix: the spec runs
+   every operation as the workspace owner's uid:gid (keeps §7 hardening
+   intact; `ContainerSpec.user` is inert-default for pre-0102 callers).
+2. **Cache mounts assumed root's home:** as uid 1000, npm resolved
+   `$HOME/.npm → /.npm` (unwritable). Fix: user-neutral mount points
+   (`/cache/pip`, `/cache/npm`) pinned via env (`HOME=/tmp`, `PIP_CACHE_DIR`,
+   `npm_config_cache`).
+
+With both fixes: **floor smoke GREEN on Spark's docker** (seed → install →
+vite build → boot → 501 probe → teardown, pin intact) — and the install now
+exercises the post-#633 expander output (vitest/testing-library devDeps)
+without issue. Service boot (step 4) deferred until the fix merges, so the
+service image bakes merged code. Digest-pinning note for 1.5 stands.
+
 Steps 1–5 need no coordination window. The next *merge* that needs one is
 102.3 (below).
 

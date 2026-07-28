@@ -80,6 +80,27 @@ class DockerAdapter(ContainerPort):
             raise ToolContainerError(f"Docker command failed: {e}") from e
 
     @staticmethod
+    def _render_hardening_args(spec: ContainerSpec) -> list[str]:
+        """Hardening flags (SIP-0102): emitted only when the spec sets them, so
+        pre-0102 callers keep byte-identical docker invocations."""
+        args: list[str] = []
+        if spec.network is not None:
+            args.extend(["--network", spec.network])
+        if spec.memory_limit is not None:
+            args.extend(["--memory", spec.memory_limit])
+        if spec.cpu_limit is not None:
+            args.extend(["--cpus", str(spec.cpu_limit)])
+        if spec.pids_limit is not None:
+            args.extend(["--pids-limit", str(spec.pids_limit)])
+        if spec.cap_drop_all:
+            args.extend(["--cap-drop", "ALL"])
+        if spec.no_new_privileges:
+            args.extend(["--security-opt", "no-new-privileges"])
+        if spec.user is not None:
+            args.extend(["--user", spec.user])
+        return args
+
+    @staticmethod
     def _render_run_args(spec: ContainerSpec) -> list[str]:
         """Render a spec into `docker run` arguments (shared by foreground and
         detached runs)."""
@@ -97,20 +118,7 @@ class DockerAdapter(ContainerPort):
         if spec.working_dir:
             args.extend(["-w", spec.working_dir])
 
-        # Hardening flags (SIP-0102): emitted only when the spec sets them, so
-        # pre-0102 callers keep byte-identical docker invocations.
-        if spec.network is not None:
-            args.extend(["--network", spec.network])
-        if spec.memory_limit is not None:
-            args.extend(["--memory", spec.memory_limit])
-        if spec.cpu_limit is not None:
-            args.extend(["--cpus", str(spec.cpu_limit)])
-        if spec.pids_limit is not None:
-            args.extend(["--pids-limit", str(spec.pids_limit)])
-        if spec.cap_drop_all:
-            args.extend(["--cap-drop", "ALL"])
-        if spec.no_new_privileges:
-            args.extend(["--security-opt", "no-new-privileges"])
+        args.extend(DockerAdapter._render_hardening_args(spec))
         for port in spec.publish_ports:
             args.extend(["-p", f"127.0.0.1:0:{port}"])
 

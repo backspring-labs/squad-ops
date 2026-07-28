@@ -31,6 +31,7 @@ async def test_hardened_spec_renders_every_flag(captured):
             pids_limit=512,
             cap_drop_all=True,
             no_new_privileges=True,
+            user="1000:1000",
         )
     )
     args = list(captured[0])
@@ -41,6 +42,7 @@ async def test_hardened_spec_renders_every_flag(captured):
         ("--pids-limit", "512"),
         ("--cap-drop", "ALL"),
         ("--security-opt", "no-new-privileges"),
+        ("--user", "1000:1000"),
     ]:
         i = args.index(flag)
         assert args[i + 1] == value
@@ -61,6 +63,7 @@ async def test_default_spec_emits_no_hardening_flags(captured):
         "--pids-limit",
         "--cap-drop",
         "--security-opt",
+        "--user",
         "-p",
     ):
         assert flag not in args

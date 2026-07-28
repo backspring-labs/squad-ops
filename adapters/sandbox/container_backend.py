@@ -110,9 +110,14 @@ class ContainerBackend(NoOpExecutionSandbox):
         npm_cache = self._cache_root / "npm"
         for cache_dir in (pip_cache, npm_cache):
             cache_dir.mkdir(parents=True, exist_ok=True)
+        # User-neutral mount points, pinned via env in _spec (PIP_CACHE_DIR /
+        # npm_config_cache): the old /root/.* paths only worked while the
+        # container ran as root — as the workspace owner (uid 1000), npm
+        # resolved $HOME/.npm -> /.npm and could not write it (Spark
+        # shakedown finding #2, 2026-07-28).
         return (
-            (str(pip_cache), "/root/.cache/pip"),
-            (str(npm_cache), "/root/.npm"),
+            (str(pip_cache), "/cache/pip"),
+            (str(npm_cache), "/cache/npm"),
         )
 
     def _spec(self, operation: str, cycle_id: str, command: tuple[str, ...]) -> ContainerSpec:
@@ -124,6 +129,14 @@ class ContainerBackend(NoOpExecutionSandbox):
         return ContainerSpec(
             image=self._image,
             command=list(command),
+            env=(
+                # HOME for a passwd-less uid; cache paths independent of user.
+                ("HOME", "/tmp"),
+                ("PIP_CACHE_DIR", "/cache/pip"),
+                ("npm_config_cache", "/cache/npm"),
+            )
+            if self._cache_root is not None
+            else (("HOME", "/tmp"),),
             volumes=(
                 (str(self._store.workspace_dir(cycle_id)), _WORKSPACE_MOUNT),
                 *self._cache_volumes(),
@@ -136,7 +149,17 @@ class ContainerBackend(NoOpExecutionSandbox):
             pids_limit=self._pids_limit,
             cap_drop_all=True,
             no_new_privileges=True,
+            user=self._workspace_user(cycle_id),
         )
+
+    def _workspace_user(self, cycle_id: str) -> str:
+        """uid:gid owning the live tree — the container runs as the workspace
+        owner so cap_drop_all (which strips DAC_OVERRIDE from root) and a
+        host-owned bind mount coexist on native Linux. On Docker Desktop the
+        virtiofs layer masked the mismatch; Spark's kernel enforces it
+        (shakedown finding, 2026-07-28)."""
+        st = self._store.workspace_dir(cycle_id).stat()
+        return f"{st.st_uid}:{st.st_gid}"
 
     async def _one_shot(
         self, operation: str, revision: WorkspaceRevision
@@ -278,6 +301,11 @@ class ContainerBackend(NoOpExecutionSandbox):
         spec = ContainerSpec(
             image=self._image,
             command=list(command),
+            # Same identity/env posture as the one-shot ops: the runtime unit
+            # executes the UNTRUSTED generated app — it deserves least
+            # privilege most of all, and as root-sans-DAC it could not write
+            # its own workspace (pycache, app state) on native Linux anyway.
+            env=(("HOME", "/tmp"),),
             volumes=((str(self._store.workspace_dir(revision.cycle_id)), _WORKSPACE_MOUNT),),
             working_dir=_WORKSPACE_MOUNT,
             timeout_seconds=self._timeout_seconds,
@@ -289,6 +317,7 @@ class ContainerBackend(NoOpExecutionSandbox):
             pids_limit=self._pids_limit,
             cap_drop_all=True,
             no_new_privileges=True,
+            user=self._workspace_user(revision.cycle_id),
             publish_ports=(self._app_port,),
         )
         started = time.monotonic()

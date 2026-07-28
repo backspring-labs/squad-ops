@@ -29,6 +29,11 @@ class ContainerSpec:
     pids_limit: int | None = None
     cap_drop_all: bool = False
     no_new_privileges: bool = False
+    # uid:gid to run as (docker --user). None = image default. The sandbox sets
+    # this to the workspace owner: with cap_drop_all, root loses DAC_OVERRIDE
+    # and cannot write a host-owned bind mount on native Linux (Spark
+    # shakedown finding, 2026-07-28); running as the owner needs no capability.
+    user: str | None = None
     # Container ports to publish to loopback-only ephemeral host ports
     # (rendered as `-p 127.0.0.1:0:<port>`). Empty = nothing published.
     publish_ports: tuple[int, ...] = ()
