@@ -44,9 +44,14 @@ green-but-not-functional (that gap is the #374/#376 class the sandbox exists
 to close — every such case is a finding) and, in principle,
 functional-but-not-green (over-strict criteria — also a finding).
 
-The audit is **post-hoc, not in-cycle**: SIP-0102 phases 102.3–102.4 (in-cycle
+The audit is **post-hoc, not in-cycle** — **SIGNED OFF (Jason, 2026-07-28)**:
+the fix-package changes are what this window validates, and folding a freshly
+integrated sandbox into the execution path would pollute that signal with
+first-exposure integration teething. SIP-0102 phases 102.3–102.4 (in-cycle
 clean-room verification) are Mac-lane work still in flight, and this
-measurement deliberately does not couple to their timeline. The sandbox acts
+measurement deliberately does not couple to their timeline. A post-integration
+re-run of this same pre-registered design is the natural 1.5-era baseline and
+isolates the integration's own effect. The sandbox acts
 as the independent auditor of each deliverable — its actual purpose — and
 when 102.4 lands, in-cycle enforcement supersedes the audit for future
 measurements.
