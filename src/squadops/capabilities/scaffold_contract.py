@@ -124,7 +124,17 @@ def _routes_criteria(manifest: InterfaceManifest) -> dict[str, Any]:
             "id": "vc-routes-compiles",
             "argv": ["python", "-m", "py_compile", _ROUTES_PATH],
             "requires": CAP_PYTHON,
-        }
+        },
+        # #628: py_compile validates syntax only — pf-54's routes.py passed it
+        # (and both AST checks) while NameError-ing at import because the
+        # scaffold's `router = APIRouter()` line was dropped. module_imports is
+        # the runtime-level complement: the module must actually import.
+        {
+            "check": "module_imports",
+            "id": "vc-routes-imports",
+            "file": _ROUTES_PATH,
+            "requires": CAP_PYTHON,
+        },
     ]
     return {"interface": interface, "implementation": implementation}
 

@@ -55,7 +55,7 @@ def _contract() -> VerificationContract:
 
 def test_structural_criteria_selects_only_evaluator_backed_checks():
     checks = {c["check"] for c, _ in structural_criteria(_contract())}
-    assert checks == {"endpoint_defined", "import_present", "command_exit_zero"}
+    assert checks == {"endpoint_defined", "import_present", "command_exit_zero", "module_imports"}
     # behavioral checks are the gate's subprocess job, never structural
     assert "tests_pass" not in checks
     assert "frontend_build" not in checks

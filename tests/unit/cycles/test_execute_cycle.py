@@ -1561,7 +1561,9 @@ class TestInterWorkloadGatePlanValidation:
             / "interface_manifest.yaml"
         ).read_text(encoding="utf-8")
         contract_text = emit_contract_yaml(InterfaceManifest.from_yaml(manifest_text))
-        bound_refs = "[vc-routes-endpoints, vc-routes-apierror, vc-routes-compiles]"
+        bound_refs = (
+            "[vc-routes-endpoints, vc-routes-apierror, vc-routes-compiles, vc-routes-imports]"
+        )
         plan_text = self._PLAN_YAML_BOUND.replace(
             "criteria_refs: [vc-routes-apierror]", f"criteria_refs: {bound_refs}"
         )
@@ -1644,7 +1646,9 @@ class TestInterWorkloadGatePlanValidation:
             / "interface_manifest.yaml"
         ).read_text(encoding="utf-8")
         contract_text = emit_contract_yaml(InterfaceManifest.from_yaml(manifest_text))
-        bound_refs = "[vc-routes-endpoints, vc-routes-apierror, vc-routes-compiles]"
+        bound_refs = (
+            "[vc-routes-endpoints, vc-routes-apierror, vc-routes-compiles, vc-routes-imports]"
+        )
         plan_text = self._PLAN_YAML_BOUND.replace(
             "criteria_refs: [vc-routes-apierror]", f"criteria_refs: {bound_refs}"
         )

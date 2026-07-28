@@ -69,7 +69,11 @@ KNOWN_CAPABILITIES: frozenset[str] = frozenset({CAP_PYTHON, TOOL_NODE})
 INTERFACE_CHECK_NAMES: frozenset[str] = frozenset(
     {"endpoint_defined", "import_present", "field_present"}
 )
-IMPLEMENTATION_CHECK_NAMES: frozenset[str] = frozenset({"command_exit_zero"})
+# module_imports (#628) is implementation-class by nature: it EXECUTES the
+# module's top level, so it cannot be an interface presence check — and unlike
+# the interface checks it need not pass on the bare skeleton (stub bodies
+# import cleanly, so in practice it does).
+IMPLEMENTATION_CHECK_NAMES: frozenset[str] = frozenset({"command_exit_zero", "module_imports"})
 
 # Keys owned by the criterion wrapper; everything else on a criterion mapping is a
 # check param. (Contract criteria carry ``id``/``requires``; plan criteria carry
