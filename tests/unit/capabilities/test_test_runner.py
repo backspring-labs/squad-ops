@@ -355,3 +355,83 @@ class TestPackageRelativeImports:
         _materialize_files(ws, sources)
         path = _source_dir_pythonpath(ws, sources)
         assert str(tmp_path / "backend") in path.split(os.pathsep)  # #303 preserved
+
+
+class TestVitestSuiteBroken:
+    """#626: vitest speaks suite-health through output, not exit codes —
+    misreading exit 1 as 'subject failed' routed pf-53's own-artifact defect
+    (a comment-only test file) to the dev repair chain five times."""
+
+    def test_no_test_suite_found_is_broken(self):
+        from squadops.capabilities.handlers.test_runner import _vitest_suite_broken
+
+        assert _vitest_suite_broken(1, "No test suite found in file x.test.jsx", "") is True
+
+    def test_unresolvable_import_is_broken(self):
+        from squadops.capabilities.handlers.test_runner import _vitest_suite_broken
+
+        assert _vitest_suite_broken(1, "", "Error: Failed to resolve import '../Appp.jsx'") is True
+
+    def test_real_test_failures_are_not_broken(self):
+        from squadops.capabilities.handlers.test_runner import _vitest_suite_broken
+
+        out = " Test Files  1 failed (1)\n      Tests  3 failed | 2 passed (5)\n"
+        assert _vitest_suite_broken(1, out, "") is False
+
+    def test_exit_zero_is_not_broken(self):
+        from squadops.capabilities.handlers.test_runner import _vitest_suite_broken
+
+        assert _vitest_suite_broken(0, "Tests  5 passed", "") is False
+
+    def test_unrecognized_failure_is_ambiguous(self):
+        from squadops.capabilities.handlers.test_runner import _vitest_suite_broken
+
+        assert _vitest_suite_broken(1, "something exploded", "") is None
+
+
+class TestMergedRunnerIdentity:
+    """#626: the combined D12 result carries the CONTROLLING side's runner
+    identity and suite-health verdict (backend when it executed, else the
+    frontend) — asserted through the real merge, not a re-derivation."""
+
+    async def test_backend_controls_when_executed(self, monkeypatch):
+        import squadops.capabilities.handlers.test_runner as tr
+
+        async def _backend(*_a, **_k):
+            return tr.RunTestsResult(executed=True, exit_code=2, runner="pytest", suite_broken=True)
+
+        async def _frontend(*_a, **_k):
+            return tr.RunTestsResult(
+                executed=True, exit_code=1, runner="vitest", suite_broken=False
+            )
+
+        monkeypatch.setattr(tr, "run_generated_tests", _backend)
+        monkeypatch.setattr(tr, "run_node_tests", _frontend)
+        result = await tr.run_fullstack_tests(
+            [{"path": "backend/a.py", "content": "x"}],
+            [
+                {"path": "backend/tests/test_a.py", "content": "x"},
+                {"path": "frontend/src/__tests__/a.test.jsx", "content": "x"},
+            ],
+        )
+        assert result.exit_code == 2
+        assert result.runner == "pytest"
+        assert result.suite_broken is True
+
+    async def test_frontend_controls_when_backend_did_not_execute(self, monkeypatch):
+        import squadops.capabilities.handlers.test_runner as tr
+
+        async def _backend(*_a, **_k):
+            return tr.RunTestsResult(executed=False, error="no test files provided")
+
+        async def _frontend(*_a, **_k):
+            return tr.RunTestsResult(executed=True, exit_code=1, runner="vitest", suite_broken=True)
+
+        monkeypatch.setattr(tr, "run_generated_tests", _backend)
+        monkeypatch.setattr(tr, "run_node_tests", _frontend)
+        result = await tr.run_fullstack_tests(
+            [], [{"path": "frontend/src/__tests__/a.test.jsx", "content": "x"}]
+        )
+        assert result.exit_code == 1
+        assert result.runner == "vitest"
+        assert result.suite_broken is True

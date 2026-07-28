@@ -378,3 +378,49 @@ class TestEmissionFailurePassthrough:
         result = TaskResult(task_id="t1", status="FAILED", error="x", outputs={})
         evidence = build_failure_evidence(self._envelope(), result, prior_plan_deltas_count=0)
         assert "emission_failure" not in evidence
+
+
+class TestRunnerAwareLocus:
+    """#626: the runner's own suite-health verdict outranks exit-code folklore.
+    vitest reports everything as exit 1, so pytest semantics routed every
+    frontend suite defect to the dev chain — pf-53's comment-stub test file
+    ("No test suite found") burned dev repair attempts on the qa role's own
+    artifact."""
+
+    _evidence_with_check = TestClassifyFailureLocus._evidence_with_check
+
+    def test_suite_broken_true_is_own_artifact_regardless_of_exit(self):
+        # The pf-53 shape: vitest exit 1 + "No test suite found" → the test
+        # file itself is the defect; the qa role re-authors it.
+        row = {
+            "check": "tests_pass",
+            "executed": True,
+            "exit_code": 1,
+            "passed": False,
+            "runner": "vitest",
+            "suite_broken": True,
+        }
+        assert classify_failure_locus(self._evidence_with_check(row)) == FailureLocus.OWN_ARTIFACT
+
+    def test_suite_broken_false_is_subject_even_on_pytest_suite_codes(self):
+        # An explicit ran-and-judged verdict outranks the exit table.
+        row = {
+            "check": "tests_pass",
+            "executed": True,
+            "exit_code": 2,
+            "passed": False,
+            "runner": "pytest",
+            "suite_broken": False,
+        }
+        assert classify_failure_locus(self._evidence_with_check(row)) == FailureLocus.SUBJECT
+
+    def test_suite_broken_none_falls_back_to_exit_table(self):
+        row = {
+            "check": "tests_pass",
+            "executed": True,
+            "exit_code": 1,
+            "passed": False,
+            "runner": "vitest",
+            "suite_broken": None,
+        }
+        assert classify_failure_locus(self._evidence_with_check(row)) == FailureLocus.SUBJECT

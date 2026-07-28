@@ -488,6 +488,11 @@ class QATestHandler(_CycleTaskHandler):
                     "exit_code": test_result.exit_code,
                     "tests_passed": test_result.tests_passed,
                     "passed": False,
+                    # #626: runner identity + the runner-neutral suite-health
+                    # verdict, so locus routing stops reading pytest exit
+                    # semantics into vitest failures.
+                    "runner": test_result.runner,
+                    "suite_broken": test_result.suite_broken,
                 }
             )
             missing.append(detail)
@@ -817,6 +822,11 @@ class QATestHandler(_CycleTaskHandler):
                     "exit_code": test_result.exit_code,
                     "tests_passed": test_result.tests_passed,
                     "passed": False,
+                    # #626: runner identity + the runner-neutral suite-health
+                    # verdict, so locus routing stops reading pytest exit
+                    # semantics into vitest failures.
+                    "runner": test_result.runner,
+                    "suite_broken": test_result.suite_broken,
                 }
             )
             validation.passed = False

@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -36,6 +37,15 @@ class RunTestsResult:
     error: str = ""
     test_file_count: int = 0
     source_file_count: int = 0
+    # #626: runner identity + a runner-NEUTRAL suite-health verdict, classified
+    # HERE because this module owns test-framework knowledge. The locus
+    # classifier (cycles/failure_evidence) consumes the neutral fact instead of
+    # applying pytest exit-code semantics to every runner. suite_broken:
+    # True = the suite itself cannot run (collection/transform/import death —
+    # the producing role re-authors); False = the suite ran and judged the
+    # subject; None = ambiguous (falls back to legacy exit-code semantics).
+    runner: str = ""
+    suite_broken: bool | None = None
     # #407: the fullstack frontend build outcome, surfaced distinctly so qa.test
     # can emit a frontend_build SIP-0096 CheckResult. None when no frontend was in
     # scope (non-fullstack run). A skip (``ran=False``) is otherwise folded away by
@@ -210,13 +220,20 @@ async def run_generated_tests(
         stdout = raw_stdout.decode(errors="replace")[:_STDOUT_LIMIT]
         stderr = raw_stderr.decode(errors="replace")[:_STDOUT_LIMIT]
 
+        exit_code = proc.returncode or 0
         return RunTestsResult(
             executed=True,
-            exit_code=proc.returncode or 0,
+            exit_code=exit_code,
             stdout=stdout,
             stderr=stderr,
             test_file_count=len(test_files),
             source_file_count=len(source_files),
+            runner="pytest",
+            # pytest speaks suite-health through exit codes: 2/5 = the suite
+            # itself is broken; 1 = it ran and judged the subject; 3/4 stay
+            # ambiguous (the pf-35 exit-4 lesson — app-import failures surface
+            # there too).
+            suite_broken={2: True, 5: True, 1: False, 0: False}.get(exit_code),
         )
 
     except Exception as exc:
@@ -345,13 +362,20 @@ async def run_node_tests(
         stdout = raw_stdout.decode(errors="replace")[:_STDOUT_LIMIT]
         stderr = raw_stderr.decode(errors="replace")[:_STDOUT_LIMIT]
 
+        exit_code = proc.returncode or 0
         return RunTestsResult(
             executed=True,
-            exit_code=proc.returncode or 0,
+            exit_code=exit_code,
             stdout=stdout,
             stderr=stderr,
             test_file_count=len(test_files),
             source_file_count=len(source_files),
+            runner="vitest",
+            # vitest cannot speak suite-health through exit codes (everything
+            # is 1) — classify from output signatures instead (#626; pf-53's
+            # "No test suite found" routed repairs to dev for a defect in the
+            # qa role's own file).
+            suite_broken=_vitest_suite_broken(exit_code, stdout, stderr),
         )
 
     except Exception as exc:
@@ -670,6 +694,35 @@ async def run_backend_import_check(
         shutil.rmtree(workspace, ignore_errors=True)
 
 
+_VITEST_SUITE_BROKEN_MARKERS = (
+    "No test suite found",
+    "Failed to resolve import",
+    "Failed to load",
+    "Transform failed",
+    "Cannot find module",
+    "Error: Cannot find package",
+)
+
+
+def _vitest_suite_broken(exit_code: int, stdout: str, stderr: str) -> bool | None:
+    """Runner-owned suite-health verdict for vitest (#626).
+
+    True = the suite could not run (missing/unloadable/untransformable test
+    modules — the authoring role's defect). False = tests executed and some
+    failed (the subject's defect). None = ambiguous; the consumer falls back
+    to legacy semantics (which route toward the dev chain, the conservative
+    test-gaming direction).
+    """
+    if exit_code == 0:
+        return False
+    combined = stdout + "\n" + stderr
+    if any(marker in combined for marker in _VITEST_SUITE_BROKEN_MARKERS):
+        return True
+    if re.search(r"Tests\s+\d+ failed", combined):
+        return False
+    return None
+
+
 def _merged_exit_code(backend: RunTestsResult, frontend: RunTestsResult) -> int:
     """D13 merge: backend controls the combined outcome — *when it executed*.
 
@@ -752,9 +805,14 @@ async def run_fullstack_tests(
     if frontend_result.error:
         error_parts.append(f"frontend (non-blocking): {frontend_result.error}")
 
+    # #626: the controlling side (D13 — backend when it executed, else the
+    # frontend) supplies runner identity and the suite-health verdict.
+    controlling = backend_result if backend_result.executed else frontend_result
     return RunTestsResult(
         executed=combined_executed,
         exit_code=combined_exit_code,
+        runner=controlling.runner,
+        suite_broken=controlling.suite_broken,
         stdout="\n\n".join(combined_stdout_parts)[:_STDOUT_LIMIT],
         stderr="\n\n".join(combined_stderr_parts)[:_STDOUT_LIMIT],
         error="; ".join(error_parts) if error_parts else "",
