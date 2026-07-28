@@ -1682,3 +1682,91 @@ class TestFocusedPromptExpectations:
         )
         assert "Contract Expectations" not in prompt
         assert "### Acceptance Criteria (narrative)" in prompt
+
+
+class TestBehaviorContractAppendix:
+    """#629 / pf-54: the contract's pinned HTTP statuses reach the INITIAL
+    suite-authoring prompt through the behavior-contract appendix asset. All
+    five of pf-54's authored suite versions asserted 200-on-create against a
+    pinned 201 — the pin existed only where the author never saw it. Data
+    lines come from the executor; all prose lives in the template asset."""
+
+    class _Rendered:
+        content = "**API BEHAVIOR CONTRACT (RENDERED-BEHAVIOR-APPENDIX)**"
+        template_id = "request.qa_test_behavior_contract_appendix"
+        template_version = "1"
+        render_hash = "h"
+
+    def _focused_inputs(self, qa_inputs, **extra):
+        return {
+            **qa_inputs,
+            "subtask_focus": "Backend API pytest suite",
+            "subtask_description": "d",
+            "expected_artifacts": ["backend/tests/test_runs.py"],
+            "acceptance_criteria": [],
+            **extra,
+        }
+
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
+    async def test_behavior_lines_reach_the_focused_prompt(
+        self, _mock_run, mock_context, qa_inputs
+    ):
+        inputs = self._focused_inputs(
+            qa_inputs,
+            api_behavior_contract=[
+                "POST /runs → HTTP 201",
+                "validation_error -> HTTP 422",
+            ],
+        )
+        mock_context.ports.request_renderer = MagicMock()
+        mock_context.ports.request_renderer.render = AsyncMock(return_value=self._Rendered())
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
+        )
+        handler = QATestHandler()
+        await handler.handle(mock_context, inputs)
+
+        calls = [
+            c
+            for c in mock_context.ports.request_renderer.render.call_args_list
+            if c.args and c.args[0] == "request.qa_test_behavior_contract_appendix"
+        ]
+        assert len(calls) == 1
+        behavior_lines = calls[0].args[1]["behavior_lines"]
+        assert "- POST /runs → HTTP 201" in behavior_lines
+        assert "- validation_error -> HTTP 422" in behavior_lines
+        messages = mock_context.ports.llm.chat_stream_with_usage.call_args.args[0]
+        assert "RENDERED-BEHAVIOR-APPENDIX" in messages[-1].content
+
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
+    async def test_no_behavior_input_renders_no_appendix(self, _mock_run, mock_context, qa_inputs):
+        inputs = self._focused_inputs(qa_inputs)
+        mock_context.ports.request_renderer = MagicMock()
+        mock_context.ports.request_renderer.render = AsyncMock(return_value=self._Rendered())
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
+        )
+        handler = QATestHandler()
+        await handler.handle(mock_context, inputs)
+        assert not [
+            c
+            for c in mock_context.ports.request_renderer.render.call_args_list
+            if c.args and c.args[0] == "request.qa_test_behavior_contract_appendix"
+        ]
+
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
+    async def test_no_renderer_degrades_to_bare_focused_prompt(
+        self, _mock_run, mock_context, qa_inputs
+    ):
+        # Renderer-less contexts (author mode, minimal harnesses) must not crash
+        # and must still produce the focused prompt without the block.
+        inputs = self._focused_inputs(qa_inputs, api_behavior_contract=["POST /runs → HTTP 201"])
+        mock_context.ports.request_renderer = None
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
+        )
+        handler = QATestHandler()
+        await handler.handle(mock_context, inputs)
+        messages = mock_context.ports.llm.chat_stream_with_usage.call_args.args[0]
+        assert "API BEHAVIOR CONTRACT" not in messages[-1].content
+        assert "## QA Task:" in messages[-1].content

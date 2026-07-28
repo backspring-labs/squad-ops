@@ -143,3 +143,41 @@ def test_probe_less_contract_injects_no_key():
     cycle, run, profile = _implementation_setup()
     envs = generate_task_plan(cycle, run, profile, plan=None, contract=_contract(with_probes=False))
     assert all("contract_probes" not in e.inputs for e in envs)
+
+
+# ---------------------------------------------------------------------------
+# #629: behavior-expectation injection (pf-54)
+# ---------------------------------------------------------------------------
+
+
+def test_bind_mode_injects_behavior_expectations_into_qa_test_only():
+    # pf-54: five authored suite versions asserted 200-on-create against a pinned
+    # 201 — the pins never reached suite AUTHORING. Exact rendered lines, probe
+    # order preserved, error_code carried.
+    cycle, run, profile = _implementation_setup()
+    envs = generate_task_plan(cycle, run, profile, plan=None, contract=_contract())
+
+    qa_envs = [e for e in envs if e.task_type == "qa.test"]
+    assert qa_envs, "implementation workload must contain a qa.test step"
+    assert qa_envs[0].inputs["api_behavior_contract"] == [
+        "POST /items → HTTP 200",
+        "POST /items → HTTP 409 (error_code: duplicate_item)",
+    ]
+    for env in envs:
+        if env.task_type != "qa.test":
+            assert "api_behavior_contract" not in env.inputs
+
+
+def test_author_mode_injects_no_behavior_expectations():
+    cycle, run, profile = _implementation_setup()
+    envs = generate_task_plan(cycle, run, profile, plan=None, contract=None)
+    assert all("api_behavior_contract" not in e.inputs for e in envs)
+
+
+def test_behaviorless_contract_injects_no_behavior_key():
+    # No probes and no coverage_expectations → no key; the handler keys on
+    # presence, and an empty block would render an authoritative header over
+    # nothing.
+    cycle, run, profile = _implementation_setup()
+    envs = generate_task_plan(cycle, run, profile, plan=None, contract=_contract(with_probes=False))
+    assert all("api_behavior_contract" not in e.inputs for e in envs)
