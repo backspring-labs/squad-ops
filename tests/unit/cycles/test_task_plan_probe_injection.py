@@ -181,3 +181,101 @@ def test_behaviorless_contract_injects_no_behavior_key():
     cycle, run, profile = _implementation_setup()
     envs = generate_task_plan(cycle, run, profile, plan=None, contract=_contract(with_probes=False))
     assert all("api_behavior_contract" not in e.inputs for e in envs)
+
+
+# ---------------------------------------------------------------------------
+# #509: deterministic criterion binding
+# ---------------------------------------------------------------------------
+
+
+def _plan_with_refs(refs):
+    import yaml as _yaml
+
+    from squadops.cycles.implementation_plan import ImplementationPlan
+
+    return ImplementationPlan.from_yaml(
+        _yaml.safe_dump(
+            {
+                "version": 1,
+                "project_id": "p",
+                "cycle_id": "cy",
+                "prd_hash": "h",
+                "tasks": [
+                    {
+                        "task_index": 0,
+                        "task_type": "development.develop",
+                        "role": "dev",
+                        "focus": "routes",
+                        "description": "d",
+                        "expected_artifacts": ["backend/routes.py"],
+                        "acceptance_criteria": [],
+                        "depends_on": [],
+                        "criteria_refs": refs,
+                    },
+                    {
+                        "task_index": 1,
+                        "task_type": "qa.test",
+                        "role": "qa",
+                        "focus": "suite",
+                        "description": "d",
+                        "expected_artifacts": ["backend/tests/test_runs.py"],
+                        "acceptance_criteria": [],
+                        "depends_on": [],
+                        "criteria_refs": [],
+                    },
+                ],
+                "summary": {"total_dev_tasks": 1, "total_qa_tasks": 1, "total_tasks": 2},
+            }
+        )
+    )
+
+
+def test_under_bound_plan_gains_the_missing_refs_and_passes_validation():
+    # The pf-54 run-2 killer: one missing ref auto-rejected the whole plan and
+    # burned a framing re-roll. Binding is now derived, not transcribed.
+    contract = _contract()
+    plan = _plan_with_refs([])
+    bound, notes = plan.with_contract_criteria_bound(contract)
+    assert bound.tasks[0].criteria_refs == ["vc-routes-endpoints"]
+    assert notes == ["Task 0 (routes): auto-bound ['vc-routes-endpoints']"]
+    assert bound.validate_criteria_refs(contract) == []
+    # Non-covered artifacts (the qa namespace) gain nothing.
+    assert bound.tasks[1].criteria_refs == []
+
+
+def test_fully_bound_plan_is_unchanged_and_binding_is_idempotent():
+    contract = _contract()
+    plan = _plan_with_refs(["vc-routes-endpoints"])
+    bound, notes = plan.with_contract_criteria_bound(contract)
+    assert notes == []
+    assert bound is plan
+    again, notes2 = bound.with_contract_criteria_bound(contract)
+    assert notes2 == []
+    assert again.tasks[0].criteria_refs == ["vc-routes-endpoints"]
+
+
+def test_authored_ref_order_is_preserved_missing_appended():
+    # Authors may bind extra-file refs (e.g. a qa task binding routes criteria);
+    # binding appends what's missing, never reorders what was written.
+    contract = _contract()
+    plan = _plan_with_refs(["vc-probe-create"])  # resolvable id, not the file's own
+    bound, _ = plan.with_contract_criteria_bound(contract)
+    assert bound.tasks[0].criteria_refs == ["vc-probe-create", "vc-routes-endpoints"]
+
+
+def test_generate_task_plan_binds_before_resolving_refs():
+    # End-to-end: an under-bound plan still dispatches routes tasks with the
+    # contract's typed checks resolved into acceptance.
+    cycle, run, profile = _implementation_setup()
+    envs = generate_task_plan(cycle, run, profile, plan=_plan_with_refs([]), contract=_contract())
+    dev_envs = [e for e in envs if e.task_type == "development.develop"]
+    assert dev_envs, "plan-derived dev step expected"
+    from squadops.cycles.implementation_plan import TypedCheck
+
+    checks = [
+        c
+        for c in dev_envs[0].inputs.get("acceptance_criteria", [])
+        if isinstance(c, TypedCheck) and c.check == "endpoint_defined"
+    ]
+    assert checks, "contract-resolved endpoint_defined must reach the envelope"
+    assert checks[0].id == "vc-routes-endpoints"

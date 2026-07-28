@@ -526,6 +526,18 @@ def _harness_boundary_criteria(
     ]
 
 
+def _bind_plan_criteria(plan, contract):
+    """#509: same deterministic binding the plan-validation gate applies —
+    dispatch and validation must see one plan. Criterion linkage comes from
+    the contract, never from the author's transcription."""
+    if contract is None:
+        return plan
+    bound, notes = plan.with_contract_criteria_bound(contract)
+    for note in notes:
+        logger.info("criteria_auto_bound (dispatch): %s", note)
+    return bound
+
+
 def generate_task_plan(
     cycle: Cycle,
     run: Run,
@@ -576,6 +588,7 @@ def generate_task_plan(
     # Only applies when the step list actually contains build steps.
     has_build_steps = any(s[0] in _BUILD_TASK_TYPES for s in steps)
     if plan is not None and has_build_steps:
+        plan = _bind_plan_criteria(plan, contract)
         steps = _replace_build_steps_with_plan(steps, plan, profile, profile_roles, contract)
 
     # Shared lineage IDs for the entire plan

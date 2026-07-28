@@ -2700,6 +2700,15 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 if binding_content is not None:
                     errors.extend(self._validate_contract_binding(contract, binding_content))
                 if parsed_plan is not None:
+                    # #509: bind the contract's covered-file criteria
+                    # deterministically BEFORE validating — the descoping rule
+                    # then guards against binding bugs instead of taxing every
+                    # roll on the author's transcription. Dispatch applies the
+                    # same normalization (generate_task_plan), so the validated
+                    # plan and the executed plan cannot drift.
+                    parsed_plan, auto_bound = parsed_plan.with_contract_criteria_bound(contract)
+                    for note in auto_bound:
+                        logger.info("criteria_auto_bound (gate %s): %s", gate_name, note)
                     errors.extend(
                         f"verification_contract: {e}"
                         for e in parsed_plan.validate_criteria_refs(contract)
