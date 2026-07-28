@@ -16,12 +16,34 @@ The single in-repo source of truth for where SIP-0102 stands — read this first
 
 | Phase | Milestone unlocked | State |
 |---|---|---|
-| 102.1 Execution boundary (service skeleton + workspace + Docker adapter) | the execution boundary exists | ✅ slices a–d complete on the feature branch (PR open); exit proven by the ASGI client→API→service→store E2E + parity guards; compose entry profile-guarded (`--profile sandbox`); interim shared-secret auth (Keycloak #326 upgrade pinned to 102.3) |
-| 102.2 Environment contract + canonical image + preflight | environment is a pinned, validated contract | ✅ complete on the feature branch (PR open); exit proven: mismatched/missing environment blocks at cycle-create preflight AND doctor (same decision fn); every result carries image + contract identity; **live smoke on real docker: full floor E2E green** (install→build→boot→probe 501→teardown, pin intact) |
-| 102.3 Typed-op relocation of in-process exec sites | execution leaves the agent trust boundary | ⬜ |
+| 102.1 Execution boundary (service skeleton + workspace + Docker adapter) | the execution boundary exists | ✅ **MERGED** (#620 + rename #621); exit proven by the ASGI client→API→service→store E2E + parity guards; compose entry profile-guarded (`--profile sandbox`); interim shared-secret auth (Keycloak #326 upgrade pinned to 102.3) |
+| 102.2 Environment contract + canonical image + preflight | environment is a pinned, validated contract | ✅ **MERGED** (#623, incl. the #622 readiness fix); exit proven: mismatched/missing environment blocks at cycle-create preflight AND doctor (same decision fn); every result carries image + contract identity; **live smoke on real docker (Mac): full floor E2E green** (install→build→boot→probe 501→teardown, pin intact) |
+| 102.3 Typed-op relocation of in-process exec sites | execution leaves the agent trust boundary | ⬜ next — **coordination-gated**: edits Spark-owned hot files; merges between campaigns with Spark review |
 | 102.4 Clean-room verification + outcome integration | verdicts are clean-room and honestly named | ⬜ |
 | 102.5 Builder warm-unit convergence | convergence iterates inside the sandbox | ⬜ |
 | 102.6 Retirement + golden-path live validation | lean agent images; engine-turns-over proven | ⬜ |
+
+**Spark pick-up: standalone shakedown (do any time — touches nothing the
+campaigns run):**
+1. Pull main (≥ the #623 merge). Everything is dormant: no `SQUADOPS__SANDBOX__*`
+   set ⇒ byte-identical behavior; the compose service is invisible without
+   `--profile sandbox`.
+2. Build the canonical environment image locally (the recorded publish decision):
+   `./scripts/dev/build_sandbox_env_image.sh` (needs network; ~505MB).
+3. Run the floor smoke on Spark's docker:
+   `.venv/bin/python scripts/dev/smoke_sandbox_floor.py` — expected output ends
+   `SMOKE PASSED`; it walks seed → install → vite build → boot → 501 probe →
+   teardown against the real expander skeleton, pin-verified throughout.
+4. Optionally boot the service:
+   `SQUADOPS_SANDBOX_SERVICE_TOKEN=<token> docker compose --profile sandbox up -d sandbox-service`
+   then `curl http://127.0.0.1:8002/health` and
+   `SQUADOPS__SANDBOX__PROVIDER=docker squadops doctor local-spark --check sandbox`.
+5. Report divergences from the Mac results (install/build timings, node/vite
+   behavior) here — that is exactly the drift the local-build decision accepted;
+   findings feed the 1.5 digest-pinning revisit.
+
+Steps 1–5 need no coordination window. The next *merge* that needs one is
+102.3 (below).
 
 **Lane note (recorded deviation):** SIP-0102 is the Lane-S headline (test-runner /
 build-check / agent-image / deploy-infra file ownership), but implementation is being
