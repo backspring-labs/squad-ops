@@ -1423,6 +1423,23 @@ class TestInterWorkloadGatePlanValidation:
         "    description: fill routes\n"
         "    expected_artifacts: [backend/routes.py]\n"
         "    acceptance_criteria: []\n"
+        "    criteria_refs: [vc-does-not-exist]\n"
+        "summary: {total_dev_tasks: 1, total_qa_tasks: 0, total_tasks: 1}\n"
+    )
+
+    _PLAN_YAML_NO_REFS = (
+        "version: 1\n"
+        "project_id: proj_001\n"
+        "cycle_id: cyc_001\n"
+        "prd_hash: h\n"
+        "tasks:\n"
+        "  - task_index: 0\n"
+        "    task_type: development.develop\n"
+        "    role: dev\n"
+        "    focus: routes\n"
+        "    description: fill routes\n"
+        "    expected_artifacts: [backend/routes.py]\n"
+        "    acceptance_criteria: []\n"
         "summary: {total_dev_tasks: 1, total_qa_tasks: 0, total_tasks: 1}\n"
     )
 
@@ -1441,13 +1458,14 @@ class TestInterWorkloadGatePlanValidation:
         )
         return ref, self._CONTRACT_YAML_BIND.encode()
 
-    async def test_bind_mode_unbound_plan_rejected_as_recorded_gate_decision(
+    async def test_bind_mode_unresolvable_ref_rejected_as_recorded_gate_decision(
         self, executor, mock_registry, mock_event_bus
     ):
-        """A seeded contract_ref puts the cycle in bind mode; a framing plan that
-        fails to bind the contract's covered-file criteria is rejected at the same
+        """A seeded contract_ref puts the cycle in bind mode; a framing plan whose
+        criteria_ref does not resolve against the contract is rejected at the same
         #473 seam (system REJECTED gate decision, no implementation run, clean
-        return) — the exact 3.13-stall-avoiding shape as the #464 source-regex net."""
+        return). Missing covered-file coverage no longer rejects — #509 binds it
+        deterministically (see the refless auto-bind test)."""
         import dataclasses
 
         cycle = dataclasses.replace(
@@ -1477,7 +1495,7 @@ class TestInterWorkloadGatePlanValidation:
         assert decision.decision == GateDecisionValue.REJECTED.value
         assert decision.decided_by == "system:plan_validation"
         assert "verification_contract" in (decision.notes or "")
-        assert "does not bind its criteria" in (decision.notes or "")
+        assert "does not resolve" in (decision.notes or "")
         mock_registry.create_run.assert_not_called()
         assert EventType.GATE_DECIDED in _emit_types(mock_event_bus)
 
@@ -1541,6 +1559,85 @@ class TestInterWorkloadGatePlanValidation:
         assert "#496" in (decision.notes or "")
         mock_registry.create_run.assert_not_called()
         assert EventType.WORKLOAD_GATE_AWAITING not in _emit_types(mock_event_bus)
+
+    async def test_bind_mode_refless_plan_auto_binds_and_gates_normally(
+        self, executor, mock_registry, mock_event_bus
+    ):
+        """#509: a plan with NO criteria_refs on a covered fill file used to be
+        auto-rejected (a burned framing re-roll — pf-54 run 2 died there);
+        binding is now derived from the contract before validation, so the
+        same plan gates normally."""
+        import dataclasses
+        from pathlib import Path
+
+        from squadops.capabilities.scaffold import InterfaceManifest
+        from squadops.capabilities.scaffold_contract import emit_contract_yaml
+
+        manifest_text = (
+            Path(__file__).resolve().parents[3]
+            / "examples"
+            / "03_group_run"
+            / "interface_manifest.yaml"
+        ).read_text(encoding="utf-8")
+        contract_text = emit_contract_yaml(InterfaceManifest.from_yaml(manifest_text))
+        plan_text = self._PLAN_YAML_NO_REFS
+
+        approved = _gate_decision("progress_plan_review", GateDecisionValue.APPROVED.value)
+        cycle = dataclasses.replace(
+            self._cycle_with_gate(), execution_overrides={"contract_ref": "art_c"}
+        )
+        mock_registry.get_cycle.return_value = cycle
+
+        run1 = dataclasses.replace(
+            _make_run("run_001", 1, "completed", "framing", gate_decisions=(approved,)),
+            artifact_refs=("art_plan", "art_manifest"),
+        )
+        run2 = _make_run("run_002", 2, "completed", "implementation")
+
+        async def _get_run(run_id):
+            return run1 if run_id == "run_001" else run2
+
+        mock_registry.get_run.side_effect = _get_run
+        mock_registry.list_runs.return_value = [run1]
+        mock_registry.create_run.side_effect = lambda r: r
+
+        def _art(ref_id, artifact_type, filename, text):
+            return (
+                ArtifactRef(
+                    artifact_id=ref_id,
+                    project_id="proj_001",
+                    artifact_type=artifact_type,
+                    filename=filename,
+                    content_hash="h",
+                    size_bytes=len(text),
+                    media_type="text/yaml",
+                    created_at=NOW,
+                    cycle_id="cyc_001",
+                    run_id="run_001",
+                ),
+                text.encode(),
+            )
+
+        store = {
+            "art_plan": self._plan_ref(plan_text),
+            "art_manifest": _art(
+                "art_manifest", "interface_manifest", "interface_manifest.yaml", manifest_text
+            ),
+            "art_c": _art(
+                "art_c", "verification_contract", "verification_contract.yaml", contract_text
+            ),
+        }
+
+        async def _retrieve(ref_id):
+            return store[ref_id]
+
+        executor._artifact_vault.retrieve.side_effect = _retrieve
+        executor._artifact_vault.list_artifacts.return_value = []
+
+        await executor.execute_cycle("cyc_001", "run_001")
+
+        mock_registry.record_gate_decision.assert_not_awaited()
+        assert EventType.WORKLOAD_GATE_AWAITING in _emit_types(mock_event_bus)
 
     async def test_bind_mode_with_manifest_and_bound_plan_gates_normally(
         self, executor, mock_registry, mock_event_bus

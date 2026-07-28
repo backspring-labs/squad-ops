@@ -654,11 +654,27 @@ class TestGenerateTaskPlanBindMode:
         # a correctly-bound plan is unaffected — same 9 envelopes as author mode
         assert len(envelopes) == 9
 
-    def test_unbound_plan_raises_cycle_error(self):
+    def test_unbound_plan_is_auto_bound_at_dispatch(self):
+        # #509: task 0 produces the covered file but binds nothing — dispatch
+        # now derives the binding from the contract instead of raising (the
+        # rejection burned framing re-rolls for a fact the contract already
+        # stated). Unresolvable refs still raise below.
+        plan = ImplementationPlan.from_yaml(MANIFEST_YAML)
+        envelopes = generate_task_plan(
+            _make_cycle(), _make_run(), _make_profile(), plan=plan, contract=_models_contract()
+        )
+        assert envelopes, "auto-bound plan must dispatch"
+
+    def test_unresolvable_ref_still_raises_cycle_error(self):
         from squadops.cycles.models import CycleError
 
-        # task 0 produces the covered file but binds nothing -> silent descoping
-        plan = ImplementationPlan.from_yaml(MANIFEST_YAML)
+        plan = ImplementationPlan.from_yaml(
+            MANIFEST_YAML.replace(
+                'acceptance_criteria: ["Models exist"]',
+                'acceptance_criteria: ["Models exist"]\n    criteria_refs: [vc-does-not-exist]',
+                1,
+            )
+        )
         with pytest.raises(CycleError, match="contract binding"):
             generate_task_plan(
                 _make_cycle(), _make_run(), _make_profile(), plan=plan, contract=_models_contract()

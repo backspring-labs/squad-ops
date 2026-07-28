@@ -223,8 +223,11 @@ async def test_net_b_rejects_when_contract_ref_unparseable():
     assert any("contract_ref is seeded but the contract is" in e for e in errors)
 
 
-async def test_net_b_rejects_missing_coverage():
-    # the plan drops one required ref -> silent descoping -> rejection
+async def test_net_b_auto_binds_missing_coverage_instead_of_rejecting():
+    # #509: an under-listed plan no longer burns a framing re-roll — the
+    # contract's covered-file refs bind deterministically before validation
+    # (pf-54 run 2 died on exactly this rejection). Unresolvable refs and
+    # authored-on-covered still reject below.
     thin_plan = _BIND_PLAN_YAML.replace(f"[{', '.join(_ROUTES_REFS)}]", f"[{_ROUTES_REFS[0]}]")
     executor = _make_executor(_bind_store(plan_yaml=thin_plan))
     cycle = _make_cycle(execution_overrides={"contract_ref": "art_c"})
@@ -232,7 +235,7 @@ async def test_net_b_rejects_missing_coverage():
 
     errors = await executor._reject_invalid_plan_before_workload_gate(run, cycle, "plan-review")
 
-    assert any("verification_contract:" in e and "does not bind its criteria" in e for e in errors)
+    assert not any("does not bind its criteria" in e for e in errors)
 
 
 async def test_net_b_rejects_authored_criterion_on_covered_file():

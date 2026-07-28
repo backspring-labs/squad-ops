@@ -476,6 +476,53 @@ class ImplementationPlan:
 
         return errors
 
+    def with_contract_criteria_bound(
+        self, contract: VerificationContract
+    ) -> tuple[ImplementationPlan, list[str]]:
+        """Deterministically bind every contract-covered fill file's criteria (#509).
+
+        Criterion linkage previously rode the framing LLM's plan authoring: a
+        roll that under-listed ``criteria_refs`` either under-counted coverage
+        (pre-descoping-validator) or burned a framing re-roll on an auto-
+        rejection (pf-54 run 2 died exactly there, one draw from cycle death).
+        The contract already states the authoritative answer — this puts it in
+        the plan instead of asking the author to transcribe it.
+
+        For each task, each expected artifact that is a contract-covered fill
+        file has its interface+implementation criterion ids unioned into
+        ``criteria_refs`` (authored refs keep their order; missing ids append
+        sorted). Idempotent; a fully-bound plan returns unchanged content.
+        ``validate_criteria_refs`` stays in force behind this as the guard —
+        binding makes its descoping rule vacuous, not absent.
+
+        Returns:
+            (bound_plan, notes) — one human-readable note per task that gained
+            refs, for the plan-validation log and the gate record.
+        """
+        covered = contract.covered_fill_paths()
+        notes: list[str] = []
+        new_tasks: list[PlanTask] = []
+        for task in self.tasks:
+            missing: list[str] = []
+            bound = set(task.criteria_refs)
+            for artifact in task.expected_artifacts:
+                if artifact not in covered:
+                    continue
+                for rid in contract.required_ref_ids_for(artifact):
+                    if rid not in bound:
+                        bound.add(rid)
+                        missing.append(rid)
+            if missing:
+                new_tasks.append(
+                    dataclasses.replace(task, criteria_refs=[*task.criteria_refs, *sorted(missing)])
+                )
+                notes.append(f"Task {task.task_index} ({task.focus}): auto-bound {sorted(missing)}")
+            else:
+                new_tasks.append(task)
+        if not notes:
+            return self, []
+        return dataclasses.replace(self, tasks=new_tasks), notes
+
     def validate_qa_artifact_ownership(self, contract: VerificationContract) -> list[str]:
         """pf-39: a ``qa.test`` task may not declare scaffold- or dev-owned files as
         its ``expected_artifacts``.
