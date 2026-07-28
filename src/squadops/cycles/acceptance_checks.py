@@ -21,6 +21,7 @@ import ast
 import asyncio
 import logging
 import re
+import sys
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -807,6 +808,92 @@ class CommandExitZeroCheck(BaseCheck):
             exit_code=exit_code,
             stdout_tail=_tail(stdout),
             stderr_tail=_tail(stderr),
+        )
+
+
+_MODULE_NOT_FOUND_RE = re.compile(r"ModuleNotFoundError: No module named '([^']+)'")
+
+
+@register_check("module_imports")
+class ModuleImportsCheck(BaseCheck):
+    """Import the file's module in a subprocess — the only runtime-level check.
+
+    pf-54 (#628): a fill file can satisfy every static check (AST finds the
+    decorators and imports, py_compile accepts the syntax) while raising at
+    import time — module-level NameError is invisible until something actually
+    imports the module, which until this check was the QA conftest, five
+    correction attempts too late.
+    """
+
+    async def evaluate(
+        self,
+        params: dict[str, Any],
+        workspace_root: Path,
+        *,
+        stack: str | None = None,
+    ) -> CheckOutcome:
+        try:
+            file_path = _safe_resolve(params["file"], workspace_root)
+        except _SafetyError as exc:
+            return CheckOutcome.error(reason=exc.reason)
+        if (skip := _unparseable_source_skip(file_path)) is not None:
+            return skip
+        if not file_path.is_file():
+            return CheckOutcome.failed(reason="file_not_found", file=str(params["file"]))
+
+        root = workspace_root.resolve()
+        parts = list(file_path.relative_to(root).with_suffix("").parts)
+        if parts and parts[-1] == "__init__":
+            parts = parts[:-1]
+        if not parts or not all(p.isidentifier() for p in parts):
+            return CheckOutcome.error(
+                reason="not_an_importable_module_path", file=str(params["file"])
+            )
+        module = ".".join(parts)
+
+        timeout_s = int(params.get("timeout_s", DEFAULT_COMMAND_TIMEOUT_S))
+        timeout_s = max(1, min(timeout_s, MAX_COMMAND_TIMEOUT_S))
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                sys.executable,
+                "-c",
+                f"import {module}",
+                cwd=str(root),
+                env=_restricted_env(),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+        except (OSError, ValueError) as exc:
+            return CheckOutcome.error(reason="command_spawn_failed", detail=str(exc))
+        try:
+            _stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout_s)
+        except TimeoutError:
+            proc.kill()
+            try:
+                await proc.wait()
+            except Exception:  # pragma: no cover - best-effort cleanup
+                pass
+            return CheckOutcome.error(reason="command_timeout", timeout_s=timeout_s)
+
+        if proc.returncode == 0:
+            return CheckOutcome.passed(module=module)
+
+        stderr = stderr_b.decode("utf-8", errors="replace")
+        not_found = _MODULE_NOT_FOUND_RE.search(stderr)
+        if not_found is not None:
+            missing_top = not_found.group(1).split(".")[0]
+            in_workspace = (root / missing_top).exists() or (root / f"{missing_top}.py").exists()
+            if not in_workspace and missing_top != module.split(".")[0]:
+                # A third-party dependency the evaluating container lacks is an
+                # environment gap, not an app defect (#462): never fail correct
+                # code on tooling the evaluator doesn't have. A missing module
+                # whose top-level package IS in the workspace stays a failure —
+                # that is the app referencing itself wrongly.
+                return CheckOutcome.skipped(
+                    reason="missing_tooling", missing_module=not_found.group(1)
+                )
+        return CheckOutcome.failed(
+            reason="module_import_failed", module=module, stderr_tail=_tail(stderr)
         )
 
 

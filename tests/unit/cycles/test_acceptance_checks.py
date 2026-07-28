@@ -1105,3 +1105,92 @@ class TestNonPythonFilesSkipRatherThanError:
             stack="fastapi",
         )
         assert outcome.status != "skipped"
+
+
+# ---------------------------------------------------------------------------
+# module_imports (#628)
+# ---------------------------------------------------------------------------
+
+
+class TestModuleImports:
+    async def test_module_level_name_error_fails(self, tmp_path):
+        # The pf-54 shape: decorators reference a name the module never defines.
+        # AST checks and py_compile both pass this file; import cannot.
+        (tmp_path / "backend").mkdir()
+        (tmp_path / "backend" / "__init__.py").write_text("")
+        (tmp_path / "backend" / "routes.py").write_text(
+            "@router.get('/runs')\ndef list_runs():\n    return []\n"
+        )
+        outcome = await get_check("module_imports").evaluate(
+            {"file": "backend/routes.py"}, tmp_path
+        )
+        assert outcome.status == "failed"
+        assert outcome.reason == "module_import_failed"
+        assert "NameError" in outcome.actual["stderr_tail"]
+
+    async def test_clean_module_passes(self, tmp_path):
+        (tmp_path / "backend").mkdir()
+        (tmp_path / "backend" / "__init__.py").write_text("")
+        (tmp_path / "backend" / "util.py").write_text("X = 1\n")
+        (tmp_path / "backend" / "routes.py").write_text("from .util import X\nY = X + 1\n")
+        outcome = await get_check("module_imports").evaluate(
+            {"file": "backend/routes.py"}, tmp_path
+        )
+        assert outcome.status == "passed"
+        assert outcome.actual["module"] == "backend.routes"
+
+    async def test_missing_third_party_dependency_skips(self, tmp_path):
+        # #462 philosophy: a dep the evaluating container lacks must not fail
+        # correct code — it is an environment gap, reported as such.
+        (tmp_path / "app.py").write_text("import nonexistent_dep_zq91\n")
+        outcome = await get_check("module_imports").evaluate({"file": "app.py"}, tmp_path)
+        assert outcome.status == "skipped"
+        assert outcome.reason == "missing_tooling"
+        assert outcome.actual["missing_module"] == "nonexistent_dep_zq91"
+
+    async def test_missing_workspace_internal_module_fails(self, tmp_path):
+        # The missing module's top-level package IS in the workspace — that is
+        # the app referencing itself wrongly, not an environment gap.
+        (tmp_path / "backend").mkdir()
+        (tmp_path / "backend" / "__init__.py").write_text("")
+        (tmp_path / "backend" / "routes.py").write_text("from backend.storee import reset\n")
+        outcome = await get_check("module_imports").evaluate(
+            {"file": "backend/routes.py"}, tmp_path
+        )
+        assert outcome.status == "failed"
+        assert outcome.reason == "module_import_failed"
+
+    async def test_self_import_not_found_fails(self, tmp_path):
+        # Root-level module importing a sibling that does not exist anywhere:
+        # the missing top-level equals the module's own package guard branch.
+        (tmp_path / "solo.py").write_text("import solo_helper\n")
+        outcome = await get_check("module_imports").evaluate({"file": "solo.py"}, tmp_path)
+        assert outcome.status == "skipped"  # helper is not in workspace → env-gap semantics
+        (tmp_path / "solo_helper.py").write_text("raise RuntimeError('boom')\n")
+        outcome = await get_check("module_imports").evaluate({"file": "solo.py"}, tmp_path)
+        assert outcome.status == "failed"
+
+    async def test_init_py_imports_the_package(self, tmp_path):
+        (tmp_path / "backend").mkdir()
+        (tmp_path / "backend" / "__init__.py").write_text("PKG = True\n")
+        outcome = await get_check("module_imports").evaluate(
+            {"file": "backend/__init__.py"}, tmp_path
+        )
+        assert outcome.status == "passed"
+        assert outcome.actual["module"] == "backend"
+
+    async def test_file_not_found_fails(self, tmp_path):
+        outcome = await get_check("module_imports").evaluate(
+            {"file": "backend/absent.py"}, tmp_path
+        )
+        assert outcome.status == "failed"
+        assert outcome.reason == "file_not_found"
+
+    async def test_path_traversal_errors(self, tmp_path):
+        outcome = await get_check("module_imports").evaluate({"file": "../outside.py"}, tmp_path)
+        assert outcome.status == "error"
+
+    async def test_frontend_extension_skips(self, tmp_path):
+        (tmp_path / "App.jsx").write_text("export default 1;\n")
+        outcome = await get_check("module_imports").evaluate({"file": "App.jsx"}, tmp_path)
+        assert outcome.status == "skipped"

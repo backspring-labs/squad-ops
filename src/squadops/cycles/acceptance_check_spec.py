@@ -324,6 +324,29 @@ CHECK_SPECS: dict[str, CheckSpec] = {
             "plan validation): " + "; ".join(f"`{p.name}`" for p in COMMAND_SAFELIST)
         ),
     ),
+    "module_imports": CheckSpec(
+        name="module_imports",
+        applicable_extensions=frozenset({".py"}),
+        required_params=frozenset({"file"}),
+        optional_params=frozenset({"timeout_s"}),
+        param_types={"file": str, "timeout_s": int},
+        supported_stacks=frozenset({"python"}),
+        requires_stack_context=False,
+        path_params=frozenset({"file"}),
+        example={"file": "backend/routes.py"},
+        # #628: every other check is static (AST / syntax) — pf-54 shipped a
+        # routes.py that passed endpoint_defined + import_present + py_compile
+        # yet NameError'd at import (the scaffold's `router = APIRouter()` line
+        # was dropped). This is the one check that actually executes the
+        # module's top level, in a subprocess, the way the app import will.
+        notes=(
+            "Imports the file's module in an isolated subprocess (workspace "
+            "root on sys.path). Catches module-level runtime errors — NameError, "
+            "missing symbols — that AST and py_compile cannot see. A dependency "
+            "missing from the evaluating environment skips (missing_tooling), "
+            "it does not fail."
+        ),
+    ),
 }
 
 
