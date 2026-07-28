@@ -995,6 +995,11 @@ class CorrectionRunner:
             "expected_artifacts": failed_inputs.get("expected_artifacts", []),
             "acceptance_criteria": failed_inputs.get("acceptance_criteria", []),
         }
+        # #639: probes ride the retest or the final verdict carries stale
+        # probe evidence for a tree the repair changed. Presence-keyed, like
+        # the bind-mode injection (probe-less contracts thread no key).
+        if failed_inputs.get("contract_probes"):
+            retest_inputs["contract_probes"] = failed_inputs["contract_probes"]
 
         retest_envelope = TaskEnvelope(
             task_id=f"retest-{run_id[:12]}-{correction_attempts:02d}-{envelope.task_type}",

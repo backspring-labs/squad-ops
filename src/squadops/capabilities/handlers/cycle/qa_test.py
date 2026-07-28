@@ -215,7 +215,10 @@ class QATestHandler(_CycleTaskHandler):
         return "\n".join(parts)
 
     async def _append_contract_probe_rows(
-        self, inputs: dict[str, Any], outputs: dict[str, Any]
+        self,
+        inputs: dict[str, Any],
+        outputs: dict[str, Any],
+        patched_files: list[dict[str, Any]] | None = None,
     ) -> None:
         """Execute the seeded contract's behavioral probes (SIP-0098 §6.4, phase 98.5).
 
@@ -250,6 +253,19 @@ class QATestHandler(_CycleTaskHandler):
 
         sources = self._get_source_artifacts(inputs)
         artifacts = [{"name": path, "content": content} for path, content in sources.items()]
+        if patched_files:
+            # #639: on the retest path the PATCHED tree must be under probe.
+            # Sources are the dispatch-time workspace — probing only them
+            # re-verifies the pre-repair app, and an accepted repair that
+            # regresses probed behavior sails through (pf-50 shipped 200
+            # against a pinned 201). materialize is last-wins, so the repaired
+            # files overwrite their dispatch-time versions — the same overlay
+            # order the retest suite run uses.
+            artifacts.extend(
+                {"name": f["filename"], "content": f.get("content", "")}
+                for f in patched_files
+                if isinstance(f, dict) and f.get("filename")
+            )
         with tempfile.TemporaryDirectory(prefix="qa_probes_") as tmp:
             workspace = Path(tmp)
             materialize_artifacts(artifacts, workspace)
@@ -541,8 +557,9 @@ class QATestHandler(_CycleTaskHandler):
             outputs["validation_result"]["checks"].append(fb_row)
 
         # SIP-0098 98.5: probe evidence rides the retest path too — a repaired
-        # suite's run must not under-count contract-criterion coverage.
-        await self._append_contract_probe_rows(inputs, outputs)
+        # suite's run must not under-count contract-criterion coverage. The
+        # patched files overlay the dispatch-time sources (#639).
+        await self._append_contract_probe_rows(inputs, outputs, patched_files=extracted)
 
         duration_ms = (time.perf_counter() - start_time) * 1000
         evidence = HandlerEvidence.create(

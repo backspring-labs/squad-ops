@@ -1770,3 +1770,62 @@ class TestBehaviorContractAppendix:
         messages = mock_context.ports.llm.chat_stream_with_usage.call_args.args[0]
         assert "API BEHAVIOR CONTRACT" not in messages[-1].content
         assert "## QA Task:" in messages[-1].content
+
+
+class TestRetestProbesPatchedTree:
+    """#639 second half: threading contract_probes into the retest is not
+    enough — the probe workspace built from dispatch-time sources alone would
+    re-verify the PRE-repair app (pf-50's probe would still see the 201 the
+    accepted repair had dropped). The patched files must overlay the sources,
+    last-wins, same as the retest suite run."""
+
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
+    async def test_retest_probe_workspace_carries_the_patched_tree(
+        self, _mock_run, mock_context, monkeypatch
+    ):
+        captured = {}
+
+        def fake_run_probes(workspace, probes):
+            from squadops.capabilities.handlers.probe_runner import ProbeOutcome
+
+            captured["probe_ids"] = [p.id for p in probes]
+            captured["routes"] = (workspace / "backend" / "routes.py").read_text()
+            return [ProbeOutcome("vc-probe-runs", "passed", None)]
+
+        monkeypatch.setattr(
+            "squadops.capabilities.handlers.probe_runner.run_probes", fake_run_probes
+        )
+        handler = QATestHandler()
+        await handler.handle(
+            mock_context,
+            {
+                "prd": "p",
+                "resolved_config": {},
+                "artifact_contents": {
+                    "backend/routes.py": "PRE-REPAIR (has status_code=201)",
+                    "backend/main.py": "app",
+                },
+                "retest_files": [
+                    {
+                        "filename": "backend/routes.py",
+                        "content": "REPAIRED (dropped the 201)",
+                    },
+                    {
+                        "filename": "backend/tests/test_runs.py",
+                        "content": "def test_a():\n    assert True\n",
+                    },
+                ],
+                "contract_probes": [
+                    {
+                        "id": "vc-probe-runs",
+                        "subject": "backend",
+                        "request": {"method": "POST", "path": "/runs", "json": {}},
+                        "expect": {"status": 201},
+                    }
+                ],
+            },
+        )
+        assert captured["probe_ids"] == ["vc-probe-runs"]
+        # The probe workspace must hold the tree the repair produced — probing
+        # the dispatch-time copy is exactly the pf-50 false green.
+        assert captured["routes"] == "REPAIRED (dropped the 201)"

@@ -2769,3 +2769,63 @@ class TestErrorContractEvidence(TestCorrectionRunnerStandalone):
             plan_delta_refs=[],
         )
         assert "error_contract" not in (analyze_inputs.get("failure_evidence") or {})
+
+
+class TestRetestProbeThreading:
+    """#639: the retest envelope must carry the failed task's contract_probes —
+    without them _append_contract_probe_rows no-ops on every retest, the final
+    verdict keeps the PRE-repair probe pass, and an accepted repair that
+    regresses probed behavior ships green (pf-50: 200 against a pinned 201)."""
+
+    _make_runner = TestReexecuteRepairedSuite._make_runner
+    _cycle = TestReexecuteRepairedSuite._cycle
+    _profile = TestReexecuteRepairedSuite._profile
+    _state_kwargs = TestReexecuteRepairedSuite._state_kwargs
+    _failed_qa_envelope = TestReexecuteRepairedSuite._failed_qa_envelope
+
+    async def test_contract_probes_thread_into_the_retest_envelope(self):
+        from squadops.tasks.models import TaskResult
+
+        runner, dispatcher = self._make_runner(
+            lambda env: TaskResult(task_id=env.task_id, status="SUCCEEDED", outputs={})
+        )
+        envelope = self._failed_qa_envelope()
+        probes = [
+            {
+                "id": "vc-probe-runs",
+                "subject": "backend",
+                "request": {"method": "POST", "path": "/runs", "json": {"title": "x"}},
+                "expect": {"status": 201},
+            }
+        ]
+        envelope.inputs["contract_probes"] = probes
+
+        await runner.reexecute_repaired_suite(
+            "run_001",
+            self._cycle(),
+            envelope,
+            [{"name": "tests/test_api.py", "content": "repaired", "type": "test"}],
+            0,
+            profile=self._profile(),
+            **self._state_kwargs(),
+        )
+        (env,) = dispatcher.dispatched
+        assert env.inputs["contract_probes"] == probes
+
+    async def test_probe_less_envelope_threads_no_key(self):
+        from squadops.tasks.models import TaskResult
+
+        runner, dispatcher = self._make_runner(
+            lambda env: TaskResult(task_id=env.task_id, status="SUCCEEDED", outputs={})
+        )
+        await runner.reexecute_repaired_suite(
+            "run_001",
+            self._cycle(),
+            self._failed_qa_envelope(),
+            [{"name": "tests/test_api.py", "content": "repaired", "type": "test"}],
+            0,
+            profile=self._profile(),
+            **self._state_kwargs(),
+        )
+        (env,) = dispatcher.dispatched
+        assert "contract_probes" not in env.inputs
