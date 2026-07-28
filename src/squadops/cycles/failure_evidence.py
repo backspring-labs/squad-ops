@@ -128,6 +128,16 @@ def classify_failure_locus(failure_evidence: Any) -> str:
             # The task's own named output files are missing from its emission.
             return FailureLocus.OWN_ARTIFACT
         if check == "tests_pass" and row.get("passed") is False and row.get("executed"):
+            # #626: prefer the runner's OWN suite-health verdict (test_runner
+            # owns test-framework knowledge; vitest cannot express suite-broken
+            # through exit codes, so pytest exit semantics misrouted every
+            # frontend suite defect to the dev chain — pf-53). Absent/None
+            # falls back to the legacy pytest exit-code table.
+            suite_broken = row.get("suite_broken")
+            if suite_broken is True:
+                return FailureLocus.OWN_ARTIFACT
+            if suite_broken is False:
+                return FailureLocus.SUBJECT
             exit_code = row.get("exit_code")
             if exit_code in _SUITE_DEFECT_EXIT_CODES:
                 return FailureLocus.OWN_ARTIFACT
