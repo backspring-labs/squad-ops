@@ -125,6 +125,12 @@ class TestStartApplication:
         spec = container.specs[0]
         assert spec.publish_ports == (8000,)
         assert spec.cap_drop_all and spec.no_new_privileges
+        # Runtime-unit parity with the one-shot ops (Spark shakedown + Mac
+        # review): the untrusted app runs as the workspace owner, never
+        # root-sans-DAC, with HOME pinned for the passwd-less uid.
+        st = __import__("os").stat(store.workspace_dir("cyc_1"))
+        assert spec.user == f"{st.st_uid}:{st.st_gid}"
+        assert dict(spec.env)["HOME"] == "/tmp"
 
     async def test_never_ready_app_is_stopped_and_fails_with_diagnostics(self, store, seeded):
         """Bug caught: a hung startup leaving an orphan container running, or

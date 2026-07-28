@@ -301,6 +301,11 @@ class ContainerBackend(NoOpExecutionSandbox):
         spec = ContainerSpec(
             image=self._image,
             command=list(command),
+            # Same identity/env posture as the one-shot ops: the runtime unit
+            # executes the UNTRUSTED generated app — it deserves least
+            # privilege most of all, and as root-sans-DAC it could not write
+            # its own workspace (pycache, app state) on native Linux anyway.
+            env=(("HOME", "/tmp"),),
             volumes=((str(self._store.workspace_dir(revision.cycle_id)), _WORKSPACE_MOUNT),),
             working_dir=_WORKSPACE_MOUNT,
             timeout_seconds=self._timeout_seconds,
@@ -312,6 +317,7 @@ class ContainerBackend(NoOpExecutionSandbox):
             pids_limit=self._pids_limit,
             cap_drop_all=True,
             no_new_privileges=True,
+            user=self._workspace_user(revision.cycle_id),
             publish_ports=(self._app_port,),
         )
         started = time.monotonic()
