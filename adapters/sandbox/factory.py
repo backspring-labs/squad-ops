@@ -8,7 +8,6 @@ configuration raises — never a fake-working default.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from pathlib import Path
 
 from adapters.sandbox.container_backend import ContainerBackend
@@ -16,22 +15,21 @@ from adapters.tools.docker import DockerAdapter
 from squadops.config.schema import SandboxConfig
 from squadops.core.secrets import SecretManager
 from squadops.ports.sandbox import ExecutionSandboxPort
+from squadops.sandbox.environment import get_environment_contract
 from squadops.sandbox.evidence import OperationEvidenceJournal
 from squadops.sandbox.noop import NoOpExecutionSandbox
 from squadops.sandbox.service import SandboxService
 from squadops.sandbox.workspace import WorkspaceStore
 
 
-def create_sandbox_service(
-    config: SandboxConfig,
-    *,
-    operation_commands: Mapping[str, tuple[str, ...]] | None = None,
-) -> SandboxService:
+def create_sandbox_service(config: SandboxConfig) -> SandboxService:
     """Build the service core for the configured provider.
 
-    ``operation_commands`` comes from the environment contract (102.2); until
-    it exists, a docker-backed service honestly reports execution operations
-    as not-run ("environment provides no command").
+    The docker provider is driven entirely by the checked-in environment
+    contract (§4.2): typed-operation commands, app port, install egress, and
+    the pinned image (``config.image`` may override — the actually-used image
+    rides every result as evidence), with the contract's identity stamped on
+    every result (§7 item 4).
     """
     root = Path(config.workspace_root)
     store = WorkspaceStore(root)
@@ -39,14 +37,22 @@ def create_sandbox_service(
     if config.provider == "noop":
         backend: ExecutionSandboxPort | None = None
     elif config.provider == "docker":
-        if not config.image:
-            raise ValueError("SQUADOPS__SANDBOX__IMAGE is required for sandbox provider 'docker'")
+        contract = get_environment_contract(config.environment)
         backend = ContainerBackend(
             container=DockerAdapter(),
             store=store,
-            image=config.image,
-            operation_commands=operation_commands or {},
-            app_port=config.app_port,
+            image=config.image or contract.image,
+            operation_commands=contract.commands(),
+            app_port=contract.app_port,
+            install_network=contract.install_network,
+            environment_contract_id=contract.contract_id(),
+            cache_root=Path(config.cache_root) if config.cache_root else None,
+        )
+        return SandboxService(
+            store=store,
+            journal=journal,
+            backend=backend,
+            environment_report=backend.environment_report,
         )
     else:
         raise ValueError(f"Unknown sandbox provider: {config.provider}")

@@ -170,7 +170,13 @@ def create_app(service: SandboxService, *, service_token: str) -> FastAPI:
 
     @app.get("/health")
     async def health() -> dict:
-        return {"status": "ok", "service": "sandbox"}
+        # Environment facts ride the probe (102.2c): the cycle-create
+        # preflight and doctor reconcile against them.
+        return {
+            "status": "ok",
+            "service": "sandbox",
+            "environment": await service.environment_report(),
+        }
 
     @app.post(
         "/api/v1/workspaces/{cycle_id}/seed",

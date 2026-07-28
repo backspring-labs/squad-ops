@@ -93,6 +93,45 @@ class TestPatch:
             )
 
 
+class TestDerivedStateExclusion:
+    def test_installed_dependencies_do_not_break_the_pin(self, store):
+        """Bug caught: the first install (venv/node_modules into the
+        bind-mounted workspace, §4.7) breaking pin verification and every
+        subsequent stale-base check — the sandbox would refuse to build
+        anything it had just installed dependencies for."""
+        seed = store.seed("cyc_1", FILES, origin=RevisionOrigin.SCAFFOLD_SEED)
+        ws = store.workspace_dir("cyc_1")
+        (ws / "frontend/node_modules/react").mkdir(parents=True)
+        (ws / "frontend/node_modules/react/index.js").write_text("js", encoding="utf-8")
+        (ws / ".sandbox-venv/bin").mkdir(parents=True)
+        (ws / ".sandbox-venv/bin/python").write_text("bin", encoding="utf-8")
+        (ws / "backend/__pycache__").mkdir(parents=True)
+        (ws / "backend/__pycache__/main.pyc").write_text("pyc", encoding="utf-8")
+        # npm install generates a lockfile (live-smoke-proven) — derived, not pinned.
+        (ws / "frontend/package-lock.json").write_text("{}", encoding="utf-8")
+        assert store.verify_pinned("cyc_1", seed.revision_id)
+        rev, _ = store.apply_patch(
+            "cyc_1",
+            base_revision_id=seed.revision_id,
+            files={"backend/main.py": "print('b')\n"},
+            origin=RevisionOrigin.AGENT_PATCH,
+        )
+        assert store.verify_pinned("cyc_1", rev.revision_id)
+
+    def test_patching_derived_state_paths_is_rejected(self, store):
+        """Bug caught: a patch writing into node_modules/dist — content that
+        would exist on disk but never in any revision, silently diverging the
+        tree from every pin."""
+        seed = store.seed("cyc_1", FILES, origin=RevisionOrigin.SCAFFOLD_SEED)
+        with pytest.raises(WorkspaceEscapeError, match="derived-state"):
+            store.apply_patch(
+                "cyc_1",
+                base_revision_id=seed.revision_id,
+                files={"frontend/node_modules/evil.js": "x"},
+                origin=RevisionOrigin.AGENT_PATCH,
+            )
+
+
 class TestPinningAndRecovery:
     def test_verify_pinned_detects_out_of_band_mutation(self, store):
         """Bug caught: clean-room verification passing against a tree that no

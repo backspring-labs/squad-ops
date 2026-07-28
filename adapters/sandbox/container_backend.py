@@ -25,6 +25,7 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import Callable, Mapping
+from pathlib import Path
 
 import httpx
 
@@ -71,10 +72,12 @@ class ContainerBackend(NoOpExecutionSandbox):
         pids_limit: int = 512,
         timeout_seconds: float = 600.0,
         app_port: int = 8000,
-        health_path: str = "/health",
+        ready_path: str = "/",
         readiness_timeout_seconds: float = 30.0,
         poll_interval_seconds: float = 0.5,
         http_client_factory: Callable[[], httpx.AsyncClient] | None = None,
+        environment_contract_id: str | None = None,
+        cache_root: Path | None = None,
     ) -> None:
         self._container = container
         self._store = store
@@ -86,7 +89,9 @@ class ContainerBackend(NoOpExecutionSandbox):
         self._pids_limit = pids_limit
         self._timeout_seconds = timeout_seconds
         self._app_port = app_port
-        self._health_path = health_path
+        self._ready_path = ready_path
+        self._environment_contract_id = environment_contract_id
+        self._cache_root = cache_root
         self._readiness_timeout = readiness_timeout_seconds
         self._poll_interval = poll_interval_seconds
         self._http_client_factory = http_client_factory or (lambda: httpx.AsyncClient(timeout=5.0))
@@ -94,6 +99,21 @@ class ContainerBackend(NoOpExecutionSandbox):
         # a service restart orphans nothing durable (`--rm` containers), and
         # the labeled-container sweep is 102.2+ hardening.
         self._running: dict[str, tuple[str, int]] = {}
+
+    def _cache_volumes(self) -> tuple[tuple[str, str], ...]:
+        """Read-through download caches (§4.7): pip/npm download caches shared
+        across cycles — never installed-dependency dirs (those live in each
+        cycle's workspace), never semantic (a cold cache only means slower)."""
+        if self._cache_root is None:
+            return ()
+        pip_cache = self._cache_root / "pip"
+        npm_cache = self._cache_root / "npm"
+        for cache_dir in (pip_cache, npm_cache):
+            cache_dir.mkdir(parents=True, exist_ok=True)
+        return (
+            (str(pip_cache), "/root/.cache/pip"),
+            (str(npm_cache), "/root/.npm"),
+        )
 
     def _spec(self, operation: str, cycle_id: str, command: tuple[str, ...]) -> ContainerSpec:
         network = (
@@ -104,7 +124,10 @@ class ContainerBackend(NoOpExecutionSandbox):
         return ContainerSpec(
             image=self._image,
             command=list(command),
-            volumes=((str(self._store.workspace_dir(cycle_id)), _WORKSPACE_MOUNT),),
+            volumes=(
+                (str(self._store.workspace_dir(cycle_id)), _WORKSPACE_MOUNT),
+                *self._cache_volumes(),
+            ),
             working_dir=_WORKSPACE_MOUNT,
             timeout_seconds=self._timeout_seconds,
             network=network,
@@ -131,6 +154,7 @@ class ContainerBackend(NoOpExecutionSandbox):
             "operation": operation,
             "workspace_revision_id": revision.revision_id,
             "image_identity": self._image,  # §7 item 4
+            "environment_contract_id": self._environment_contract_id,
         }
         command = self._operation_commands.get(operation)
         if command is None:
@@ -197,16 +221,34 @@ class ContainerBackend(NoOpExecutionSandbox):
             **common, entries=_tail_lines(run.stdout + run.stderr) if run else ()
         )
 
+    async def environment_report(self) -> dict:
+        """Operational facts for /health and the 102.2c preflight
+        reconciliation. ``image_present`` is None when the daemon cannot
+        answer (unverifiable, never a guessed False)."""
+        try:
+            image_present: bool | None = await self._container.has_image(self._image)
+        except ToolContainerError:
+            image_present = None
+        return {
+            "contract_id": self._environment_contract_id,
+            "image": self._image,
+            "image_present": image_present,
+        }
+
     # -- runtime unit (slice c2) ---------------------------------------------
 
     async def _await_ready(self, base_url: str) -> bool:
+        """Transport-level readiness (#520/#622): ANY HTTP response — 200 or
+        404 alike — proves the server is up and routing. Demanding a 2xx from
+        a health path made readiness a hidden product requirement (the
+        canonical PRD declares no /health). The probes are the behavioral
+        assertions; readiness only asks "is something answering?"."""
         deadline = time.monotonic() + self._readiness_timeout
         while True:
             try:
                 async with self._http_client_factory() as client:
-                    response = await client.request("GET", base_url + self._health_path)
-                if 200 <= response.status_code < 300:
-                    return True
+                    await client.request("GET", base_url + self._ready_path)
+                return True
             except (httpx.HTTPError, OSError):
                 pass  # connection refused while the app boots is expected
             if time.monotonic() >= deadline:
@@ -223,6 +265,7 @@ class ContainerBackend(NoOpExecutionSandbox):
             "operation": OperationName.START_APPLICATION,
             "workspace_revision_id": revision.revision_id,
             "image_identity": self._image,
+            "environment_contract_id": self._environment_contract_id,
         }
         command = self._operation_commands.get(OperationName.START_APPLICATION)
         if command is None:
@@ -309,6 +352,7 @@ class ContainerBackend(NoOpExecutionSandbox):
             "operation": OperationName.PROBE_HTTP_ENDPOINT,
             "workspace_revision_id": revision.revision_id,
             "image_identity": self._image,
+            "environment_contract_id": self._environment_contract_id,
             "probe_id": probe_id,
         }
         running = self._running.get(revision.cycle_id)
@@ -362,6 +406,7 @@ class ContainerBackend(NoOpExecutionSandbox):
             "operation": OperationName.STOP_APPLICATION,
             "workspace_revision_id": revision.revision_id,
             "image_identity": self._image,
+            "environment_contract_id": self._environment_contract_id,
         }
         self._running.pop(revision.cycle_id, None)
         try:

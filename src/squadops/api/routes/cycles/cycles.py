@@ -32,6 +32,7 @@ from squadops.cycles.models import (
 )
 from squadops.cycles.preflight import (
     Finding,
+    PreflightDecision,
     combine,
     model_availability_decision,
     required_check_tooling_decision,
@@ -65,6 +66,48 @@ async def _pulled_model_names() -> list[str] | None:
     return [name for m in raw if (name := m.get("name"))]
 
 
+async def _sandbox_preflight_decision() -> PreflightDecision:
+    """SIP-0102 102.2c: reconcile the configured sandbox environment before
+    dispatch. Dormant provider ⇒ empty decision (no IO); malformed sandbox
+    config ⇒ block (verifiable misconfiguration); unreachable service ⇒ the
+    pure decision warns and allows (never block on missing evidence)."""
+    import httpx
+
+    from squadops.sandbox.environment import get_environment_contract
+    from squadops.sandbox.main import sandbox_config_from_env
+    from squadops.sandbox.preflight import sandbox_environment_decision
+
+    try:
+        cfg = sandbox_config_from_env()
+    except ValueError as exc:
+        return PreflightDecision(
+            blocking=(
+                Finding(
+                    code="sandbox_config_invalid",
+                    severity="block",
+                    message=f"sandbox configuration is invalid: {exc}",
+                ),
+            )
+        )
+    if cfg.provider != "docker":
+        return PreflightDecision()
+    try:
+        expected: str | None = get_environment_contract(cfg.environment).contract_id()
+    except ValueError:
+        expected = None
+    report = None
+    try:
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            response = await client.get(f"{cfg.service_url.rstrip('/')}/health")
+        if response.status_code == 200:
+            report = response.json().get("environment")
+    except Exception as exc:  # unreachable/timeout/bad payload ⇒ unverifiable
+        logger.info("preflight_sandbox_unverifiable", extra={"error": str(exc)})
+    return sandbox_environment_decision(
+        provider=cfg.provider, expected_contract_id=expected, report=report
+    )
+
+
 async def _run_create_preflight(
     profile: SquadProfile, applied_defaults: dict
 ) -> tuple[Finding, ...]:
@@ -84,6 +127,9 @@ async def _run_create_preflight(
             applied_defaults.get("required_checks") or (),
             resolve_provisioned_tooling(),
         ),
+        # SIP-0102 102.2c: a skewed/unprovisioned sandbox environment is a
+        # create-time reject, never a mid-run environment stall (roll-4).
+        await _sandbox_preflight_decision(),
     )
     if decision.rejected:
         raise PreflightRejectedError(decision.summary())
