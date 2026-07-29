@@ -168,7 +168,57 @@ generalisation repeats the pytest-universal mistake one level up.
 **Near-term seam (filed separately, not blocked on this SIP):** thread the test type and
 runner identity into `test_result` at the runner seam, and key the locus table on it —
 conservative default (unknown type → UNKNOWN → dev chain) preserves today's behavior
-exactly.
+exactly. *Status 2026-07-29: shipped (#626 via PR #642 — `RunTestsResult.runner` +
+runner-owned `suite_broken` verdicts) and validated live in the FAY measurement window:
+fay-3's pytest exit 1 classified subject-broken and routed to the dev chain correctly;
+fay-6's vitest failures were not misread as pytest exits.*
+
+## Product intent: stack packs (recorded 2026-07-29)
+
+The owner's direction, recorded so the blueprint schema is designed toward it rather than
+discovered to conflict with it later: stacks become **packs — plugins loadable at runtime**.
+A squad is given a stack-agnostic PRD; the pack selection decides how the squad implements
+it (the canonical thought experiment: the same group_run PRD built on LAMP). The pipeline
+already has the right joints — agnostic PRD → pack-flavored interface manifest →
+pack-owned expander and check menu — and `dev_capability` is already a config selector.
+The blueprint of this SIP is the pack's core declaration; "plugin" adds a loading/packaging
+story on top, not a different schema.
+
+Two consequences for the schema, both learned the cheap way this window:
+
+- **The contract emitter's criteria families are pack-parameterized, not universal.** A
+  server-rendered stack has no frontend build step — `vc-frontend-builds` is meaningless
+  for LAMP, while HTTP probes and suite checks transfer untouched. The pack therefore
+  declares not just how to scaffold but **which criteria families the emission gate may
+  draw from**. (This does not touch the consolidation refactor's non-goal; it binds the
+  eventual schema.)
+- **Pack quality and roll yield are separate variables.** Yield is partly a function of how
+  deeply the implementation model knows the stack (training distribution). A perfect pack
+  for an obscure stack will still roll worse than a mediocre pack for FastAPI or LAMP. The
+  blueprint cannot fix this and should not be judged by it.
+
+## FAY window evidence (2026-07-29): the pack interface, discovered by loss mode
+
+The first pre-registered Functional App Yield window (fay-2..fay-7, deploy `880b1ea9`)
+produced loss modes that each name a declaration the blueprint must carry. This is the
+empirical companion to the schema discussion above — the interface was discovered by
+friction, not invented:
+
+| Window evidence | Required pack declaration |
+|---|---|
+| #626 (shipped, validated live) | runners + per-runner suite-health semantics (exit tables vs output signatures) |
+| #633 (shipped; fay-6 ran authored vitest suites) | test-harness provisioning: devDeps, config, frozen setup/harness files |
+| fay-6: frontend suites non-convergent — dev and QA have no shared DOM truth; both saw each other's artifacts and still disagreed (a shared *record* is not an *arbiter*) | **verification anchors** for UI surfaces (scaffold-declared testid convention injected into both dev and QA prompts) — the same contract-as-arbiter move that makes backend suites converge |
+| 3 of 5 scored plans authored doomed verification tasks (`node --check` on `.jsx` twice, template-unknowable regexes once) — models correctly sense verification gaps and reach for wrong tools (#645) | the **named check menu**: the blueprint declares the checks plan authors may use; free-form commands are both a per-roll failure mode and unportable across stacks. The menu *is* the pack's verification API |
+| fay-4: a build-breaking view was invisible until final verification — view tasks carry prose-only criteria | the menu must include **per-language compile/build checks available at task time**, not only as final-verification guards |
+| SIP-0102's environment contract (image + operation commands + readiness + port) already exists as a seam; the FAY auditor consumes it for every functional score | strong evidence for the open question below: the blueprint owns (or composes with) the **environment/packaging contract** — `FULLSTACK_FASTAPI_REACT` is already one instance of it |
+
+Sequencing note: the two 1.5-candidate items — the curated check menu (#645's structural
+fix) and the workspace-revision unification — are **pack-enablement work without being
+named that**: they shrink and enumerate exactly the surface a pack must fill. The
+acceptance gate stays the second real stack; choose it **maximally different** (server-
+rendered, no bundler, non-Python test runner) so the schema is written against genuine
+variance rather than a cousin of stack #1.
 
 ## Open questions for review
 
