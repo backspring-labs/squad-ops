@@ -82,6 +82,51 @@ def _scope_to_shared_packages(candidates: list[str], anchors: list[str]) -> list
     return [c for c in candidates if c and _top_level_package(c) in anchor_pkgs]
 
 
+def _frontend_build_failed(failure_evidence: Any) -> bool:
+    """#650 (fay-8): the failed task's validation shows the frontend build failing.
+
+    A failing ``frontend_build`` row places the defect in frontend source no
+    matter which task reported it — the check runs inside the backend qa.test
+    task, so ownership-anchored targeting never reaches the broken view.
+    """
+    from squadops.cycles.check_registry import CHECK_FRONTEND_BUILD
+
+    if not isinstance(failure_evidence, dict):
+        return False
+    checks = (failure_evidence.get("validation_result") or {}).get("checks") or []
+    return any(
+        isinstance(row, dict)
+        and row.get("check") == CHECK_FRONTEND_BUILD
+        and row.get("passed") is False
+        for row in checks
+    )
+
+
+def _widen_target_for_frontend_build(
+    target: list[str], failure_evidence: Any, failed_inputs: dict[str, Any]
+) -> list[str]:
+    """#650 minimal provenance targeting: a failing ``frontend_build`` unions the
+    plan's frontend implementation source into the repair target.
+
+    fay-8 (cyc_7f5f1b8b1790): five correction rounds, four identical
+    ``frontend_build`` failures, every repair emitted backend/test files only —
+    RC2's package scoping is deliberately conservative (``backend/tests/*`` →
+    ``backend/*``, never ``frontend/*``), which is exactly the trap: the loop
+    polished a passing backend while the build-breaking view sat outside every
+    target. The general provenance-driven scope seam stays deferred (1.5);
+    this widens exactly the measured case, derived from the same
+    ``implementation_artifacts`` surface RC2 already threads.
+    """
+    if not _frontend_build_failed(failure_evidence):
+        return target
+    frontend_source = [
+        p
+        for p in (failed_inputs.get("implementation_artifacts") or [])
+        if isinstance(p, str) and p.startswith("frontend/")
+    ]
+    return list(dict.fromkeys([*target, *frontend_source]))
+
+
 def _resolve_repair_target(
     failure_evidence: Any, failed_inputs: dict[str, Any]
 ) -> tuple[list[str], str | None, str | None]:
@@ -143,6 +188,7 @@ def _resolve_repair_target(
             failed_inputs.get("implementation_artifacts", []) or [], failed_artifacts
         )
         target = list(dict.fromkeys([*drift_files, *failed_artifacts, *scoped_source]))
+        target = _widen_target_for_frontend_build(target, failure_evidence, failed_inputs)
         return (target, None, None)
     # RC2 no-drift path: union the failing task's own artifacts with the
     # package-scoped implementation surface so a behavioral failure can reach the
@@ -152,6 +198,7 @@ def _resolve_repair_target(
         failed_inputs.get("implementation_artifacts", []) or [], failed_artifacts
     )
     target = list(dict.fromkeys([*failed_artifacts, *scoped_source]))
+    target = _widen_target_for_frontend_build(target, failure_evidence, failed_inputs)
     return (
         target,
         failed_inputs.get("subtask_focus"),
