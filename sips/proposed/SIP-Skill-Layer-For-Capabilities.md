@@ -77,6 +77,32 @@ unit of work, none of which existed when incarnation one was written:
    need a shared toolbox of small operations, unlike bespoke per-task-type
    cycle handlers.
 
+## Incarnation two is now specified elsewhere (2026-07-29)
+
+The Capability-Backed Agents umbrella SIP (§21, owner decisions of 2026-07-29)
+resolves this document's reservation — with a layer correction this document's
+own post-mortem points at but does not state:
+
+**Incarnation one placed "skill" at the wrong layer.** It was a *code seam*
+(handler → `execute_skill()` → ports), and code-reuse seams die of disuse when
+nothing needs them — which is exactly what happened. Incarnation two defines
+skill at the **knowledge layer**: an industry-format (`SKILL.md`, progressive
+disclosure) unit of procedural know-how loaded into model context by a
+capability at execution time — never dispatched, never planner-visible. That
+layer has a mandatory consumer from day one (context assembly for capability
+work, starting with the Design pack), so the "pull, don't push" trigger in
+item 5 above is satisfied by construction rather than awaited.
+
+The vocabulary lands as: **capability** (dispatchable execution contract) →
+**skill** (knowledge unit, industry format) → **tool** (invoked executor,
+MCP/CLI/port). SIP-0040's governed execution unit keeps its duties
+(permission, budget, evidence) but not the word — it becomes the
+tool-mediation machinery behind the capability SPI's tool invoker, renamed
+during the umbrella's mandated SIP-0040 audit. Items 1–4 above (evidence
+integrity, prompt registry, robust parsing, observability) bind unchanged on
+whatever executes — they are conditions on the SPI and its mediation layer,
+not on the deleted code's shape.
+
 ## Non-goals
 
 - Reintroducing any of the deleted code. Incarnation one's value is fully
