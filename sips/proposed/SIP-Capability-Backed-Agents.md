@@ -13,7 +13,7 @@ created_at: '2026-07-01'
 **Targets:** v2.0
 **Kind:** Umbrella SIP — a design commitment that splits into implementation SIPs (§17)
 **Depends on / builds on:**
-- `sips/implemented/SIP-0040-*` — the existing **Capability / Skill / Tool** system (this SIP extends it; it does **not** reintroduce "skill")
+- `sips/implemented/SIP-0040-*` — the existing **Capability / Skill / Tool** system (this SIP extends it; "skill" returns at the **knowledge layer only** — §21 — satisfying the Skill-Layer SIP's incarnation-two contract; the removed code-seam grain stays removed)
 - `sips/implemented/SIP-0068-Enhanced-Agent-Build-Capabilities.md`, `sips/implemented/SIP-0072-Stack-Aware-Development-Capabilities.md` — capability/handler direction this generalizes
 - `sips/implemented/SIP-0089-Agent-Runtime-State.md` — RuntimeMode / Assignment / FocusLease / RuntimeActivity (preserved; capability activation is **not** a fourth mode)
 - `sips/accepted/SIP-0090-Agent-Embodiment-Substrate.md`, `sips/accepted/SIP-0091-Duty-Durability-via-Temporal.md` — same identity-vs-capability separation
@@ -232,6 +232,7 @@ Umbrella phases; each becomes its own bounded implementation SIP. Per the roadma
 1. Storage layout for the workspace — logical projection over the artifact vault, DB-backed, filesystem-like, or hybrid?
 2. Manifest format — YAML/TOML/Python entry points/registry?
 3. Plugin discovery — Python packaging, Switchboard, config, or a dedicated registry?
+   *Resolved by owner (2026-07-29): **Switchboard is the presumptive substrate** — §21.*
 4. Resource indexing — LanceDB, separate vector store, or a knowledge service?
 5. Memory + resource promotion authority — Max / The Lab / operator / steward agents?
 6. Preflight strictness — which missing-context cases block vs warn?
@@ -242,12 +243,110 @@ Umbrella phases; each becomes its own bounded implementation SIP. Per the roadma
 11. Which native capabilities migrate first after the Design pack?
 12. Do binding contracts declare required model class/context, or is model fit advisory?
 13. Version pinning — exact capability versions or semver ranges in roster bindings?
+    *Advanced (2026-07-29): layered scheme with loud load-time enforcement — §21; the
+    roster-binding pinning grain (exact vs range) remains open.*
 
-## 21. Product Decisions
+## 21. Recorded owner decisions (2026-07-29): taxonomy, pack mechanics, trust scope
+
+Settled in owner discussion during the first FAY measurement window; recorded here so the
+implementation SIPs (§17) inherit decisions, not vibes.
+
+### The taxonomy and its razor
+
+Four layers, distinguished by **audience and contract type**, with a razor that keeps each
+honest:
+
+- **Identity** — *who is accountable.* Roster-scoped; memory, history, trust, runtime
+  state (SIP-0089). Never ships in a pack (§2's rule, unchanged).
+- **Capability** — *what the orchestrator can dispatch.* The SquadOps execution
+  interface: task type + binding contract + evidence obligations. The **only**
+  dispatchable unit. SquadOps-native vocabulary.
+- **Skill** — *how the model performs a procedure.* Industry-format (`SKILL.md`,
+  progressive disclosure — §9's resolution stands). Loaded into context at execution;
+  **never dispatched, never visible to the planner**.
+- **Tool** — *what actually executes.* MCP server, CLI, port. Invoked with arguments,
+  returns results, permission-scoped.
+
+**The razor:** if the cycle planner can assign it, it's a capability; if the model loads
+it to do the work, it's a skill; if it's invoked with arguments, it's a tool; if it has
+memory and accountability, it's an identity.
+
+This resolves why incarnation one of the skill layer died (see the Skill-Layer SIP):
+"skill" was placed at the wrong layer — a **code seam** between handlers and ports, which
+nothing needed. The knowledge-layer skill has a mandatory consumer from day one (context
+assembly for capability work), so it cannot die of disuse. The relations: the roster tags
+identity↔capability (prerequisite profiles + SIP-0089 assignments); the capability
+declares its skills (§9's Capability-Skill Contract); the skill wraps tools (declared
+tool requirements + permission scopes).
+
+**Direction for §5's mandated SIP-0040 audit** (this decides the audit's outcome shape,
+not its findings): the word "skill" canonically means the knowledge-layer unit above.
+SIP-0040's governed execution unit — permission, budget, evidence enforcement around
+tool use — is not discarded: it becomes the **tool-mediation machinery behind the SPI's
+tool invoker** (§ Packs ship code), and should be renamed during the audit rather than
+keeping the word. One word, one layer.
+
+### Switchboard is the substrate
+
+The peer library `backspring-labs/switchboard` (host-owned, deterministic extensibility)
+is the presumptive discovery/loading mechanism — the org already runs this pattern in
+production via Continuum (SIP-0069 console plugins). One plugin mechanism, multiple
+hosts: console plugins, stack packs (see the Stack-Blueprint draft), capability packs.
+The blueprint/binding schemas stay host-owned; Switchboard owns loading.
+
+### Packs ship code — against a narrow, versioned SPI
+
+Owner decision: declaration-only packs are insufficient for meaningful capability work
+(real orchestration: tool sequencing, domain parsing, evidence generation). Packs
+therefore ship **capability handler code**, under three commitments:
+
+1. **A narrow SPI, not host internals.** Pack handlers receive *mediated* services —
+   workspace view, skill loader, tool invoker, LLM access, evidence emitter — and return
+   artifacts + typed evidence. Hexagonal DI one level up: BaseAgent gets ports; pack
+   handlers get the SPI. Mediation is where the taxonomy gets teeth: pack code reaches
+   tools only through its declared requirements, giving permission scoping and evidence
+   provenance by construction. (Receipts for why internals-coupling is fatal: #643 and
+   #642 changed typed-acceptance workspace assembly and the test-result shape in a
+   single week; either would have broken every internals-coupled pack.)
+2. **Code for execution, data for contract.** Declarations — binding contract, check
+   menu, skill manifest, tool requirements, prerequisite profiles — remain data the host
+   validates, preflights (SIP-0095), and displays **without executing pack code**.
+3. **Layered versioning, enforced loudly.** SPI semver (host-owned, slow); pack version
+   (the distribution unit); per-skill versions (content, fast-churning). A pack declares
+   `requires_spi`; mismatch is a **load refusal at preflight, never warn-and-continue**
+   (#327 is the scar: prompt-manifest drift across all five role agents was masked by
+   exactly that pattern). Run records pin `pack@version` — the deploy-hash discipline
+   applied to packs, or pack-backed evidence is unauditable.
+
+**Conformance is executable, not documentary:** the host ships a conformance kit a pack
+must pass — canned envelopes in; well-formed evidence out; workspace write authorization
+respected; degraded-context behavior honored; tools touched ⊆ tools declared. "Verify
+the verifier," applied to packs. Graduated on-ramp: a simple capability may remain
+declaration-only (executed by the host's default skilled-task handler); the CX/UX pack
+ships real handlers; both pass the same kit.
+
+### Verification requirement carried in from the FAY window
+
+A pack declares its **check menu** — the named, executable checks its capabilities'
+acceptance criteria may draw from (the measured lesson: free-form and unknowable checks
+are a per-roll failure mode; plans reach for wrong tools wherever a named check is
+missing). Design-work evidence (rubric-judged checks for critiques/plans) is a **new
+check species needing its own design pass** — flagged, not solved here.
+
+### Trust scope
+
+**First-party packs only.** Hostile-code isolation is a **named non-goal, carved out for
+the future**: the SPI's mediation constrains the polite path, not a malicious one, and
+designing sandboxing before a real second party exists would be speculation. The carve-out
+means: nothing in the SPI, versioning, or conformance design may *assume* trust in a way
+that forecloses adding isolation later (e.g., conformance runs must not require the pack
+to be already-loaded into a privileged host).
+
+## 22. Product Decisions
 
 1. Capability packs are plugin-backed extensions. 2. Packs do not own named agents. 3. Binding contracts are required (agent-agnostic ≠ prerequisite-free). 4. Roster bindings are explicit (install ≠ authority). 5. Assignments activate capabilities. 6. Working-set assembly is first-class. 7. Memory is scoped and promoted, never raw accumulation. 8. Workspace artifacts are shared squad work-state. 9. The Design pack is the reference. 10. Iris applies; Glyph stewards. 11. Existing agents adopt plugin capabilities before any rewrite. 12. **Skill-mediated tool use extends SIP-0040; capabilities never touch raw tools directly.**
 
-## 22. Relationship to Existing SIPs
+## 23. Relationship to Existing SIPs
 
 - **SIP-0040 (Capability/Skill/Tool)** — this SIP *extends* it (§5); the skill layer is not new.
 - **SIP-0068 / SIP-0072** — generalizes capability-specific + stack-aware build behavior into pluggable, agent-bindable packs.
@@ -258,7 +357,7 @@ Umbrella phases; each becomes its own bounded implementation SIP. Per the roadma
 - **SIP-0064 (`TaskFlowPolicy`) / Campaign** — capability activation respects run-level flow policy; cross-cycle capability-driven squad augmentation is the 2.0 Campaign story.
 - **SIP-0069 + Continuum Runtime Console** — future console visibility into bindings, active capabilities, working sets, evidence, and design workflows.
 
-## 23. References
+## 24. References
 
 - `src/squadops/agents/skills/` — existing `Skill` / `SkillRegistry` / `ExecutionEvidence` (SIP-0040).
 - `sips/implemented/SIP-0089-Agent-Runtime-State.md`, `sips/accepted/SIP-0090-*`, `sips/accepted/SIP-0091-*`, `sips/accepted/SIP-0095-Cycle-Create-Preflight.md`.
