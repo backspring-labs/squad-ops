@@ -2681,6 +2681,14 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     )
                 else:
                     errors.extend(parsed_plan.validate_criteria_scope())
+                    # #645: contract-independent winnability nets — an
+                    # unexecutable command check or a directory-shaped
+                    # expected artifact dooms the roll deterministically;
+                    # both are provable here in microseconds, and a system
+                    # rejection re-rolls framing for free where a human
+                    # rejection would end the cycle (#522).
+                    errors.extend(parsed_plan.validate_command_checks())
+                    errors.extend(parsed_plan.validate_expected_artifact_shapes())
             elif ref.filename == "interface_manifest.yaml" or artifact_type == "interface_manifest":
                 interface_content = content_bytes.decode(errors="replace")
 
