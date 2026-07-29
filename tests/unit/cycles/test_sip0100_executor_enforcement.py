@@ -162,3 +162,86 @@ def test_build_bound_record_for_scaffoldable_manifest():
     rec = DispatchedFlowExecutor._build_bound_record_for_run(object(), _manifest(), "r")
     assert rec is not None
     assert "backend/main.py" in rec.frozen_paths()
+
+
+# ---------------------------------------------------------------------------
+# #649: builder write authorization — assembly re-packages, it does not author
+# ---------------------------------------------------------------------------
+
+
+def test_builder_net_new_source_is_dropped():
+    """fay-7: bob authored an uninstructed root start.py (StaticFiles mount on
+    frontend/dist) — import-time RuntimeError in every test workspace, and
+    dev-scoped repairs structurally never touch a builder artifact. Net-new
+    source at assembly is refused at emission, with evidence."""
+    artifacts = [
+        {"name": "start.py", "content": "from backend.main import app\n"},
+        {"name": "qa_handoff.md", "content": "## How to Run\n"},
+    ]
+    enforced, evidence = DispatchedFlowExecutor._enforce_frozen_ownership(
+        object(), artifacts, _record(), _env("builder.assemble")
+    )
+    names = {a["name"] for a in enforced}
+    assert "start.py" not in names  # dropped
+    assert "qa_handoff.md" in names  # the deliverable passes
+    assert len(evidence) == 1
+    ev = evidence[0]
+    assert ev.normalized_path == "start.py"
+    assert ev.disposition == "dropped"
+    assert ev.siblings_retained == 1
+
+
+def test_builder_fill_surface_reemission_passes():
+    """Assembly's whole job: re-packaging the accepted fill files stays authorized."""
+    enforced, evidence = DispatchedFlowExecutor._enforce_frozen_ownership(
+        object(),
+        [{"name": "backend/routes.py", "content": "def assembled(): return 1\n"}],
+        _record(),
+        _env("builder.assemble"),
+    )
+    assert evidence == []
+    assert enforced[0]["content"] == "def assembled(): return 1\n"
+
+
+def test_builder_write_into_qa_namespace_is_dropped():
+    """The QA namespace is another producer's lane — a builder emission there is
+    refused the same way QA's writes to dev slots are."""
+    enforced, evidence = DispatchedFlowExecutor._enforce_frozen_ownership(
+        object(),
+        [{"name": "backend/tests/test_sneaky.py", "content": "def test_x(): pass\n"}],
+        _record(),
+        _env("builder.assemble"),
+    )
+    assert enforced == []
+    assert len(evidence) == 1
+    assert evidence[0].violation_code == "unauthorized_slot_emission"
+
+
+def test_builder_undeclared_non_source_passes_and_frozen_still_restores():
+    """Docs/reports remain deliverables; frozen restoration is unchanged for builders."""
+    enforced, evidence = DispatchedFlowExecutor._enforce_frozen_ownership(
+        object(),
+        [
+            {"name": "deploy_notes.md", "content": "# notes\n"},
+            {"name": "backend/main.py", "content": "TAMPERED = 1\n"},
+        ],
+        _record(),
+        _env("builder.assemble"),
+    )
+    by_name = {a["name"]: a["content"] for a in enforced}
+    assert by_name["deploy_notes.md"] == "# notes\n"
+    assert "from .routes import router" in by_name["backend/main.py"]  # restored
+    assert len(evidence) == 1 and evidence[0].violation_code == "frozen_path_emission"
+
+
+def test_dev_producer_unaffected_by_builder_rule():
+    """A dev task emitting an undeclared .py helper keeps today's behavior (passes) —
+    the #649 rule scopes builders only; dev undeclared-reject stays gated on 3.4."""
+    enforced, evidence = DispatchedFlowExecutor._enforce_frozen_ownership(
+        object(),
+        [{"name": "backend/helpers.py", "content": "X = 1\n"}],
+        _record(),
+        _env("development.develop"),
+    )
+    assert evidence == []
+    assert enforced[0]["content"] == "X = 1\n"

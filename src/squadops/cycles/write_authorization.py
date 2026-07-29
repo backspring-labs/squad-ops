@@ -95,6 +95,14 @@ class WriteGrant:
         """A QA fill/correction may write only the QA test namespace (plan §4.4)."""
         return cls(producer=producer, stage="qa", writable=ownership.qa_namespace)
 
+    @classmethod
+    def for_builder(cls, producer: str, ownership: WorkspaceOwnership) -> WriteGrant:
+        """#649: assembly re-packages the accepted fill files — that is its whole
+        writable surface. It may not author source (fay-7's uninstructed
+        ``start.py``) nor write the QA namespace; undeclared non-source paths
+        (``qa_handoff.md``, reports) pass through as deliverables."""
+        return cls(producer=producer, stage="builder", writable=ownership.fill_slots)
+
 
 @dataclass(frozen=True)
 class ResponseAuthz:

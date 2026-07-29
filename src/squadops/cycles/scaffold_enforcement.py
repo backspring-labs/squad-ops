@@ -34,6 +34,18 @@ def _is_qa_producer(task_type: str) -> bool:
     return task_type.startswith("qa.")
 
 
+# #649: source suffixes a builder may not author. Assembly re-packages accepted
+# code; net-new source is how fay-7's uninstructed start.py entered the tree
+# (import-time RuntimeError in every test workspace, unrepairable — dev-scoped
+# repairs never touch builder artifacts). Docs/reports pass through.
+_BUILDER_FORBIDDEN_SOURCE_SUFFIXES = (".py", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs")
+
+
+def _is_builder_producer(task_type: str) -> bool:
+    """#649: builder task types are scoped to re-packaging the declared fill surface."""
+    return task_type.startswith("builder.")
+
+
 def bound_record_or_none(interface_manifest: Any, run_id: str) -> Any:
     """SIP-0100 2.4: the bound scaffold record (frozen paths + bytes) for a scaffold-bound
     run, or None for unbound/legacy runs (no manifest / non-scaffoldable stack → no
@@ -122,6 +134,15 @@ def enforce_frozen_ownership(
         grant = WriteGrant.for_qa(envelope.task_type, ownership)
         qa_authz = WriteAuthorization(ownership, grant)
 
+    # #649: a builder producer gets a fill-surface grant. Net-new SOURCE and
+    # QA-namespace writes are dropped with evidence; undeclared non-source
+    # paths (handoff docs, reports) remain deliverables and pass.
+    builder_authz = None
+    if _is_builder_producer(envelope.task_type):
+        ownership = WorkspaceOwnership.from_record(bound_record)
+        grant = WriteGrant.for_builder(envelope.task_type, ownership)
+        builder_authz = WriteAuthorization(ownership, grant)
+
     # Classify first so each evidence record can report how many sibling artifacts in the SAME
     # response were left untouched (per-artifact disposition — restore/drop keep the rest; a
     # response-atomic reject would not — that difference is exactly what the field captures).
@@ -138,6 +159,14 @@ def enforce_frozen_ownership(
             == AuthzDecision.FORBIDDEN_UNAUTHORIZED
         ):
             return _DISP_DROP
+        if builder_authz is not None:
+            decision = builder_authz.authorize(_artifact_raw_path(art) or "")
+            if decision == AuthzDecision.FORBIDDEN_UNAUTHORIZED:
+                return _DISP_DROP  # another producer's lane (e.g. the QA namespace)
+            if decision == AuthzDecision.FORBIDDEN_UNDECLARED and (norm or "").endswith(
+                _BUILDER_FORBIDDEN_SOURCE_SUFFIXES
+            ):
+                return _DISP_DROP  # net-new source (the fay-7 start.py class)
         return _DISP_PASS
 
     dispositions = [_disposition(art, norm) for art, norm in zip(artifacts, norms, strict=True)]
