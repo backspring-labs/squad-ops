@@ -873,3 +873,126 @@ class TestQaArtifactOwnership:
             ).validate_qa_artifact_ownership(self._contract())
             == []
         )
+
+
+# ---------------------------------------------------------------------------
+# #645: command-check executability + expected-artifact shape (FAY window)
+# ---------------------------------------------------------------------------
+
+
+def _qa_verification_plan(criteria_yaml: str, *, expected: str = '["backend/tests/test_x.py"]'):
+    return ImplementationPlan.from_yaml(
+        f"""\
+version: 1
+project_id: group_run
+cycle_id: cyc_test
+prd_hash: abc123
+tasks:
+  - task_index: 0
+    task_type: qa.test
+    role: qa
+    focus: "Verification"
+    description: "check things"
+    expected_artifacts: {expected}
+    acceptance_criteria:
+{criteria_yaml}
+    depends_on: []
+
+summary:
+  total_dev_tasks: 0
+  total_qa_tasks: 1
+  total_tasks: 1
+"""
+    )
+
+
+class TestValidateCommandChecks:
+    """#645: fay-2 was killed by a plan whose blocking checks could never run —
+    `tsc` absent from the check environment, `node --check` on .jsx refused
+    before parsing. Both are provable at authoring time; a validator rejection
+    re-rolls framing for free where a human gate rejection ends the cycle."""
+
+    def test_unknown_executable_rejected(self):
+        plan = _qa_verification_plan(
+            """\
+      - check: command_exit_zero
+        argv: [tsc, --noEmit]
+"""
+        )
+        errors = plan.validate_command_checks()
+        assert len(errors) == 1
+        assert "'tsc'" in errors[0] and "never execute" in errors[0]
+
+    def test_node_on_jsx_rejected_even_though_node_exists(self):
+        plan = _qa_verification_plan(
+            """\
+      - check: command_exit_zero
+        argv: [node, --check, frontend/src/views/RunsListView.jsx]
+"""
+        )
+        errors = plan.validate_command_checks()
+        assert len(errors) == 1
+        assert "ERR_UNKNOWN_FILE_EXTENSION" in errors[0]
+
+    def test_warning_severity_doomed_command_tolerated(self):
+        # RC-9: a warning cannot block a build — fay-6/fay-8 carried exactly
+        # this shape harmlessly and must keep passing validation.
+        plan = _qa_verification_plan(
+            """\
+      - check: command_exit_zero
+        argv: [node, --check, frontend/src/__tests__/runs.test.jsx]
+        severity: warning
+"""
+        )
+        assert plan.validate_command_checks() == []
+
+    def test_legitimate_py_compile_command_passes(self):
+        # fay-5/fay-7/fay-9 all used this exact shape correctly.
+        plan = _qa_verification_plan(
+            """\
+      - check: command_exit_zero
+        argv: [python, -m, py_compile, backend/tests/test_x.py]
+"""
+        )
+        assert plan.validate_command_checks() == []
+
+    def test_node_on_plain_js_passes(self):
+        plan = _qa_verification_plan(
+            """\
+      - check: command_exit_zero
+        argv: [node, --check, frontend/src/api.js]
+"""
+        )
+        assert plan.validate_command_checks() == []
+
+
+class TestValidateExpectedArtifactShapes:
+    """fay-9: rejected 16/17 solely because a verification-only task declared
+    expected_artifacts: ['backend/tests/'] and the presence check read the
+    directory as a permanently missing file."""
+
+    def test_directory_entry_rejected(self):
+        plan = _qa_verification_plan(
+            """\
+      - check: count_at_least
+        glob: backend/tests/test_*.py
+        min_count: 2
+""",
+            expected='["backend/tests/"]',
+        )
+        errors = plan.validate_expected_artifact_shapes()
+        assert len(errors) == 1
+        assert "'backend/tests/'" in errors[0] and "expected_artifacts: []" in errors[0]
+
+    def test_file_entries_and_empty_list_pass(self):
+        plan = ImplementationPlan.from_yaml(VALID_MANIFEST_YAML)
+        assert plan.validate_expected_artifact_shapes() == []
+        empty = _qa_verification_plan(
+            """\
+      - check: count_at_least
+        glob: backend/tests/test_*.py
+        min_count: 2
+""",
+            expected="[]",
+        )
+        assert empty.validate_expected_artifact_shapes() == []

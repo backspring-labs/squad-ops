@@ -803,6 +803,16 @@ def _replace_build_steps_with_plan(
     if scope_errors:
         raise CycleError("Plan validation failed (criteria scope): " + "; ".join(scope_errors))
 
+    # #645 dispatch-time nets (contract-independent, same raising backstop
+    # pattern): unexecutable command checks and directory-shaped expected
+    # artifacts are both provable at authoring time and unwinnable at runtime.
+    command_errors = plan.validate_command_checks()
+    if command_errors:
+        raise CycleError("Plan validation failed (command checks): " + "; ".join(command_errors))
+    shape_errors = plan.validate_expected_artifact_shapes()
+    if shape_errors:
+        raise CycleError("Plan validation failed (expected artifacts): " + "; ".join(shape_errors))
+
     # SIP-0098 98.3 bind-mode dispatch net: when a contract is seeded, the plan
     # must bind the contract's covered-file criteria by id rather than author
     # them. This is the raising backstop; the gate-time net records the graceful

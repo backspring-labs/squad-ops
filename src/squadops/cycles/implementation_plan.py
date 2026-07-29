@@ -48,6 +48,19 @@ _KNOWN_BUILD_TASK_TYPES = {
 # regardless of the authoring squad.
 _BUILDER_ROLE_BUILD_TASK_TYPES = {"builder.assemble"}
 
+# #645: the executable surface of the environment typed checks run in (the QA
+# agent image). A command check whose argv[0] is not here can never execute
+# where checks execute — it fails identically on every correction attempt
+# (fay-2's plan wanted `tsc`; two later plans reached for it again). This
+# mirrors the image's installed tooling, not a policy preference; extend it
+# when the image gains a tool.
+_CHECK_ENV_EXECUTABLES = frozenset({"python", "python3", "pytest", "node", "npm", "npx"})
+
+# #645: node refuses these extensions outright (ERR_UNKNOWN_FILE_EXTENSION,
+# exit 1 before parsing) — `node --check view.jsx` fails on ANY content,
+# correct or not (fay-2's killer; verified in the QA container).
+_NODE_UNPARSEABLE_SUFFIXES = (".jsx", ".tsx")
+
 
 def planner_build_task_types(*, has_builder: bool) -> set[str]:
     """Build task types the plan-authoring prompt may offer for a given squad.
@@ -350,6 +363,75 @@ class ImplementationPlan:
             for task, criterion, target in self._regex_on_source_criteria()
             if criterion.severity == "error"
         ]
+
+    def validate_command_checks(self) -> list[str]:
+        """#645: an error-severity command check must be executable where checks run.
+
+        Two deterministic classes from the FAY measurement window, both provable
+        at authoring time without running anything:
+
+        - an executable the check environment does not ship (fay-2's ``tsc``) —
+          the spawn fails on every attempt until the correction budget is spent;
+        - ``node`` pointed at a ``.jsx``/``.tsx`` file — node refuses the
+          extension before parsing (``ERR_UNKNOWN_FILE_EXTENSION``), so the check
+          fails on ANY content, correct or not.
+
+        Only ``severity=error`` rejects (RC-9: a warning cannot block a build, so
+        a doomed warning check costs nothing — fay-6 and fay-8 both carried one
+        harmlessly). Non-list/odd-shaped argv is the parser's concern, not ours.
+        """
+        errors: list[str] = []
+        for task in self.tasks:
+            for criterion in task.acceptance_criteria:
+                if not isinstance(criterion, TypedCheck):
+                    continue
+                if criterion.check != "command_exit_zero" or criterion.severity != "error":
+                    continue
+                argv = criterion.params.get("argv") or []
+                if not argv or not all(isinstance(a, str) for a in argv):
+                    continue
+                executable = argv[0]
+                if executable not in _CHECK_ENV_EXECUTABLES:
+                    errors.append(
+                        f"Task {task.task_index} ({task.focus}): command_exit_zero invokes "
+                        f"{executable!r}, which the check environment does not provide — "
+                        f"the check can never execute, so no repair can fix it and the "
+                        f"task fails identically on every correction attempt. Use one of "
+                        f"{sorted(_CHECK_ENV_EXECUTABLES)} or a named check"
+                    )
+                elif executable == "node" and any(
+                    arg.endswith(_NODE_UNPARSEABLE_SUFFIXES) for arg in argv[1:]
+                ):
+                    errors.append(
+                        f"Task {task.task_index} ({task.focus}): command_exit_zero runs "
+                        f"node against a .jsx/.tsx file — node refuses the extension "
+                        f"before parsing (ERR_UNKNOWN_FILE_EXTENSION), so this fails on "
+                        f"any content, correct or not. JSX compilation is verified by "
+                        f"the frontend build; drop the check or target plain .js"
+                    )
+        return errors
+
+    def validate_expected_artifact_shapes(self) -> list[str]:
+        """fay-9: an ``expected_artifacts`` entry must be a file, not a directory.
+
+        The presence check compares entries against emitted artifact *names*; a
+        directory entry (``backend/tests/``) can never appear there, so the task
+        fails on every attempt — fay-9 went 16/17 with frontend built, suite
+        passing, and both probes green, rejected solely on this shape. A
+        verification-only task declares ``[]``.
+        """
+        errors: list[str] = []
+        for task in self.tasks:
+            for name in task.expected_artifacts:
+                if isinstance(name, str) and name.endswith("/"):
+                    errors.append(
+                        f"Task {task.task_index} ({task.focus}): expected artifact "
+                        f"{name!r} is a directory — expected_artifacts are the FILES "
+                        f"the task emits, and the presence check reads a directory as "
+                        f"a permanently missing file. A verification-only task "
+                        f"declares expected_artifacts: []"
+                    )
+        return errors
 
     def lint_prose_contract_conflicts(self, contract: VerificationContract) -> list[str]:
         """pf-31 Fix A3: WARNING-only lint for prose that contradicts bound criteria.
