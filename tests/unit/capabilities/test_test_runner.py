@@ -125,6 +125,21 @@ class TestRunGeneratedTestsNoFiles:
         assert "no test files" in result.error
         assert result.source_file_count == 1
         assert result.test_file_count == 0
+        # #665: zero suite is an explicit own-artifact verdict, not ambiguity —
+        # without it the locus classifier routed fay-13's missing suite to the
+        # dev chain, which can never author the qa role's test files.
+        assert result.suite_broken is True
+
+    async def test_non_discoverable_files_carry_the_zero_suite_verdict(self):
+        """fay-13's actual emission shape: a doc artifact rode as the only
+        test-file candidate — nothing pytest can collect exists."""
+        result = await run_generated_tests(
+            source_files=[{"path": "main.py", "content": "x = 1"}],
+            test_files=[{"path": "qa_handoff.md", "content": "# QA Handoff\n"}],
+        )
+        assert result.executed is False
+        assert "no pytest-discoverable" in result.error
+        assert result.suite_broken is True
 
 
 class TestRunGeneratedTestsPassing:
@@ -213,6 +228,9 @@ class TestRunGeneratedTestsTimeout:
         result = await run_generated_tests(source_files=[], test_files=tests, timeout_seconds=2)
         assert result.executed is False
         assert "timed out" in result.error
+        # #665 boundary: a timeout is env-ambiguous — it must NOT read as the
+        # zero-suite own-artifact verdict.
+        assert result.suite_broken is None
 
 
 class TestRunGeneratedTestsCleanup:
