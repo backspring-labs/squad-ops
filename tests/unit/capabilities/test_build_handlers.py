@@ -172,6 +172,66 @@ class TestDevBuildMultiFile:
         assert result.outputs["role"] == "dev"
 
 
+class TestDevSuccessEvidence:
+    """#597: a PASSING dev task must carry ``validation_result`` in outputs so
+    ``normalize_task_checks`` records its rows — including bind-mode
+    ``criterion_id``s — into the run ledger. It was failure-branch-only, so
+    contract criteria bound exclusively to dev tasks could never be credited:
+    pf-38's green roll reported 3/6 criteria verified where 6/6 had passing
+    evidence (the qa handler has always populated it on success)."""
+
+    def _focused_inputs(self, build_inputs):
+        return {
+            **build_inputs,
+            "subtask_focus": "Backend source",
+            "subtask_description": "d",
+            "subtask_index": 0,
+            "expected_artifacts": ["src/main.py", "src/utils.py"],
+            "acceptance_criteria": [],
+            "resolved_config": {"output_validation": True},
+        }
+
+    async def test_passing_focused_task_outputs_carry_validation_result(
+        self, mock_context, build_inputs
+    ):
+        handler = DevelopmentDevelopHandler()
+        result = await handler.handle(mock_context, self._focused_inputs(build_inputs))
+
+        assert result.success is True
+        vr = result.outputs["validation_result"]
+        assert vr["passed"] is True
+        assert any(c["check"] == "expected_artifacts" for c in vr["checks"])
+
+    async def test_passing_task_evidence_is_recordable(self, mock_context, build_inputs):
+        """The downstream contract: normalize_task_checks must yield rows for a
+        passing dev task — an empty list is exactly the #597 under-count."""
+        from squadops.cycles.verification_normalize import normalize_task_checks
+
+        handler = DevelopmentDevelopHandler()
+        result = await handler.handle(mock_context, self._focused_inputs(build_inputs))
+
+        rows = normalize_task_checks(result.outputs, subject="task-m000")
+        assert rows, "passing dev task produced no recordable evidence"
+        assert all(r.subject == "task-m000" for r in rows)
+
+    async def test_failing_task_still_carries_validation_result(self, mock_context, build_inputs):
+        """Regression guard: moving the assignment must not strip the failure
+        branch — correction failure_evidence is built from these outputs."""
+        from squadops.cycles.task_outcome import TaskOutcome
+
+        inputs = self._focused_inputs(build_inputs)
+        inputs["expected_artifacts"] = ["src/main.py", "src/missing.py"]
+        handler = DevelopmentDevelopHandler()
+        result = await handler.handle(mock_context, inputs)
+
+        assert result.success is False
+        assert result.outputs["outcome_class"] == TaskOutcome.SEMANTIC_FAILURE
+        vr = result.outputs["validation_result"]
+        assert vr["passed"] is False
+        ea = next(c for c in vr["checks"] if c["check"] == "expected_artifacts")
+        assert ea["missing"] == ["src/missing.py"]
+
+
 class TestDevBuildParseFailure:
     async def test_dev_build_parse_failure_returns_failed(self, mock_context, build_inputs):
         mock_context.ports.llm.chat_stream_with_usage = AsyncMock(

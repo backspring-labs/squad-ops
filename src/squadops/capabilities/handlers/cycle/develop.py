@@ -668,7 +668,14 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
 
             outputs["outcome_class"] = TaskOutcome.SEMANTIC_FAILURE
             outputs["failure_classification"] = FailureClassification.WORK_PRODUCT
-            outputs["validation_result"] = evidence_extra.get("validation_result", {})
+
+        # #597: validation evidence rides BOTH branches. It was failure-only, so a
+        # PASSING dev task recorded no rows into the run ledger and contract
+        # criteria bound only to dev tasks could never be credited — pf-38's green
+        # roll reported 3/6 criteria verified where 6/6 had passing evidence (the
+        # qa handler has always populated this on success; the two diverged here).
+        if "validation_result" in evidence_extra:
+            outputs["validation_result"] = evidence_extra["validation_result"]
 
         duration_ms = (time.perf_counter() - start_time) * 1000
         evidence = HandlerEvidence.create(
