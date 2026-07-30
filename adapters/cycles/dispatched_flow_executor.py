@@ -2817,6 +2817,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                         f"verification_contract: {e}"
                         for e in parsed_plan.validate_qa_artifact_ownership(contract)
                     )
+                    errors.extend(
+                        f"verification_contract: {e}"
+                        for e in parsed_plan.validate_frozen_artifact_ownership(contract)
+                    )
                     # pf-42: a typed check aimed at a frozen file is decidable right
                     # now — the skeleton those files will contain is deterministic.
                     # A failing one makes the plan unwinnable (frozen emissions are

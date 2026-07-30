@@ -875,6 +875,60 @@ class TestQaArtifactOwnership:
         )
 
 
+class TestFrozenArtifactOwnership:
+    """#658: frozen files are claimable by nobody, regardless of role.
+
+    fay-12's approved plan carried a ``development.develop`` task with
+    ``expected_artifacts: [frontend/src/api.js]`` and prose-only criteria — it
+    slipped between the qa.test ownership rule and the typed-criteria frozen
+    rule. Scaffold enforcement restores frozen bytes at emission, so such a
+    task can never satisfy its declared outputs through an accepted write.
+    """
+
+    _contract = staticmethod(TestQaArtifactOwnership._contract)
+    _plan_with = staticmethod(TestQaArtifactOwnership._plan_with)
+
+    def test_rejects_dev_task_declaring_a_frozen_file(self):
+        """The exact fay-12 shape: dev claiming the frozen api client."""
+        errors = self._plan_with(
+            "development.develop", "frontend/src/api.js"
+        ).validate_frozen_artifact_ownership(self._contract())
+
+        assert len(errors) == 1
+        assert "frontend/src/api.js" in errors[0]
+        assert "frozen (scaffold-owned)" in errors[0]
+        assert "development.develop" in errors[0]
+
+    def test_rejects_builder_task_declaring_a_frozen_file(self):
+        """Any role: the rule keys on the frozen surface, not the task type."""
+        errors = self._plan_with(
+            "builder.assemble", "backend/main.py"
+        ).validate_frozen_artifact_ownership(self._contract())
+
+        assert len(errors) == 1
+        assert "backend/main.py" in errors[0]
+
+    def test_dev_task_fill_slot_is_not_rejected(self):
+        """Fill slots are dev-owned deliverables — claiming them is bind mode
+        working as designed; rejecting them would break every plan."""
+        assert (
+            self._plan_with(
+                "development.develop", "backend/routes.py"
+            ).validate_frozen_artifact_ownership(self._contract())
+            == []
+        )
+
+    def test_qa_task_is_not_double_reported(self):
+        """qa.test frozen claims are the qa ownership rule's report — one
+        defect must not produce two rejection lines."""
+        assert (
+            self._plan_with("qa.test", "backend/main.py").validate_frozen_artifact_ownership(
+                self._contract()
+            )
+            == []
+        )
+
+
 # ---------------------------------------------------------------------------
 # #645: command-check executability + expected-artifact shape (FAY window)
 # ---------------------------------------------------------------------------

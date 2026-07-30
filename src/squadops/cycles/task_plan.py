@@ -830,6 +830,15 @@ def _replace_build_steps_with_plan(
             raise CycleError(
                 "Plan validation failed (qa artifact ownership): " + "; ".join(ownership_errors)
             )
+        # #658: the same referent for every other role — frozen files are
+        # claimable by nobody (fay-12's dev task on the frozen api.js slipped
+        # between the qa net and the typed-criteria frozen rule).
+        frozen_ownership_errors = plan.validate_frozen_artifact_ownership(contract)
+        if frozen_ownership_errors:
+            raise CycleError(
+                "Plan validation failed (frozen artifact ownership): "
+                + "; ".join(frozen_ownership_errors)
+            )
         # pf-31 Fix A3: warning-only prose-vs-contract conflict lint, surfaced for
         # the gate reviewer (never a rejection — reverted-#552 lesson).
         for warning in plan.lint_prose_contract_conflicts(contract):

@@ -686,6 +686,30 @@ class TestGenerateTaskPlanBindMode:
         envelopes = generate_task_plan(_make_cycle(), _make_run(), _make_profile(), plan=plan)
         assert len(envelopes) == 9
 
+    def test_dev_task_claiming_frozen_file_raises_at_dispatch(self):
+        """#658 backstop: fay-12's shape — a development.develop task declaring a
+        frozen file as its expected artifact must never reach dispatch."""
+        import dataclasses
+
+        from squadops.cycles.models import CycleError
+        from squadops.cycles.verification_contract import FrozenFile
+
+        contract = _models_contract()
+        contract = dataclasses.replace(
+            contract, frozen_files=(FrozenFile(path="frontend/src/api.js", sha256="b" * 64),)
+        )
+        plan = ImplementationPlan.from_yaml(
+            _BIND_MANIFEST_YAML.replace(
+                'expected_artifacts: ["backend/models.py"]',
+                'expected_artifacts: ["backend/models.py", "frontend/src/api.js"]',
+                1,
+            )
+        )
+        with pytest.raises(CycleError, match="frozen artifact ownership"):
+            generate_task_plan(
+                _make_cycle(), _make_run(), _make_profile(), plan=plan, contract=contract
+            )
+
     def test_dispatch_resolves_refs_into_acceptance_criteria(self):
         # 98.3 slice C: the bound ref materializes into the dispatched envelope's
         # acceptance_criteria as a TypedCheck stamped with the contract id + file.
