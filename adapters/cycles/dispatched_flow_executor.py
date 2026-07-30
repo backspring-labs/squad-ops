@@ -969,6 +969,48 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         "by_type_fallback": ["document"],
     }
 
+    # #657: planning-chain context threading (the RC-22 pre-resolution the
+    # proposer handlers were written against). The executor's role-keyed
+    # ``prior_outputs`` strips artifact content, so the brief author and the
+    # plan-task proposers rendered "(brief not yet provided)" and PRD-prefix
+    # stubs while their templates instructed them to operate on the brief and
+    # gap-catch against Development's proposal. Contents resolve into an
+    # ENVELOPE-LOCAL ``prior_outputs["artifact_contents"]`` copy — never the
+    # loop-level dict, which is checkpointed per task (RC-4) and must stay lean.
+    # The merger is deliberately absent: it consumes ``brief_outcome`` /
+    # ``proposal_outcome`` output keys, and by merge time the two proposals
+    # collide on the ``proposed_plan_tasks.yaml`` filename.
+    _PLANNING_ARTIFACT_FILTER: dict[str, dict[str, list[str]]] = {
+        "governance.prepare_plan_authoring_brief": {
+            "by_producing_task": [
+                "data.research_context",
+                "strategy.frame_objective",
+                "development.design_plan",
+                "qa.define_test_strategy",
+            ],
+        },
+        "development.propose_plan_tasks": {
+            "by_producing_task": [
+                "governance.prepare_plan_authoring_brief",
+                "development.design_plan",
+            ],
+        },
+        "qa.propose_plan_tasks": {
+            "by_producing_task": [
+                "governance.prepare_plan_authoring_brief",
+                "development.design_plan",
+                "qa.define_test_strategy",
+                "development.propose_plan_tasks",
+            ],
+        },
+        "strategy.propose_plan_guidance": {
+            "by_producing_task": [
+                "governance.prepare_plan_authoring_brief",
+                "strategy.frame_objective",
+            ],
+        },
+    }
+
     # Maps build task_type → which prior artifacts to inject.
     # by_producing_task: match on producing_task_type metadata
     # by_type / by_type_fallback: match on artifact_type for artifacts without provenance
@@ -1003,7 +1045,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         include_repair_candidates: bool = True,
         filter_spec: dict[str, list[str]] | None = None,
     ) -> dict[str, str]:
-        """Pre-resolve artifact content for build tasks (D3).
+        """Pre-resolve artifact content for build tasks (D3) and planning context (#657).
 
         Args:
             task_type: The build task type being dispatched.
@@ -1728,6 +1770,23 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             surface_lines = model_surface_instructions(interface_manifest)
             if surface_lines:
                 extra_inputs["model_surface"] = surface_lines
+
+        # #657: planning-chain tasks get the upstream framing documents the
+        # RC-22 contract promised them, on an envelope-local prior_outputs
+        # copy (checkpoints keep the lean role-keyed dict). Filename keys
+        # last-win in storage order, so a proposer retry's failure artifact
+        # cannot shadow a successful peer document.
+        if envelope.task_type in self._PLANNING_ARTIFACT_FILTER:
+            planning_contents = await self._resolve_artifact_contents(
+                envelope.task_type,
+                stored_artifacts,
+                filter_spec=self._PLANNING_ARTIFACT_FILTER[envelope.task_type],
+            )
+            if planning_contents:
+                extra_inputs["prior_outputs"] = {
+                    **prior_outputs,
+                    "artifact_contents": planning_contents,
+                }
 
         # Pre-resolve artifact contents for build tasks (D3). Fresh dispatches
         # see the ACCEPTED state only (pf-31 Fix E): rejected repair candidates

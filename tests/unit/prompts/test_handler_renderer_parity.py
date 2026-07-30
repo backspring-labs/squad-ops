@@ -445,6 +445,35 @@ class TestFormatPriorOutputs:
         assert "### qa" in result
         assert "### strat" in result
 
+    def test_dict_values_render_summary_not_dict_repr(self):
+        """Bug caught (#657): chained outputs are dicts, so the prompt showed
+        raw dict reprs full of provenance hashes instead of the summary."""
+        result = _CycleTaskHandler._format_prior_outputs(
+            {
+                "dev": {
+                    "summary": "[dev] Designed the run API",
+                    "prompt_provenance": {"system_prompt_bundle_hash": "deadbeef"},
+                }
+            }
+        )
+        assert "[dev] Designed the run API" in result
+        assert "deadbeef" not in result
+        assert "prompt_provenance" not in result
+
+    def test_artifact_contents_render_as_named_sections(self):
+        """Bug caught (#657): executor-threaded upstream documents (RC-22) must
+        surface as full named sections, not leak as a dict under a role header."""
+        result = _CycleTaskHandler._format_prior_outputs(
+            {
+                "artifact_contents": {"technical_design.md": "The API uses routers."},
+                "dev": {"summary": "[dev] designed"},
+            }
+        )
+        assert "### technical_design.md" in result
+        assert "The API uses routers." in result
+        assert "### artifact_contents" not in result
+        assert "### dev" in result
+
 
 # ---------------------------------------------------------------------------
 # Phase 5: Prompt provenance recording

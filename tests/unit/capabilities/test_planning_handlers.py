@@ -1395,3 +1395,38 @@ class TestTimeBudgetAwareness:
         user_msg = call_args[0][0][1].content
         assert "Time Budget" in user_msg
         assert "30 minutes" in user_msg
+
+
+# ---------------------------------------------------------------------------
+# #657: chained summary derives from the produced document, not the PRD
+# ---------------------------------------------------------------------------
+
+
+class TestChainedSummaryContent:
+    """Bug caught: outputs["summary"] was ``[role] <first 80 chars of PRD>``,
+    so the executor's role-keyed chain context said nothing about the document
+    each framing task produced — every downstream prompt saw identical stubs."""
+
+    async def test_summary_derives_from_produced_content(self):
+        ctx = _make_context(llm_response="# Technical Design\nThe API exposes five run endpoints.")
+        h = DevelopmentDesignPlanHandler()
+        result = await h.handle(ctx, {"prd": "Build a run tracker for local groups"})
+
+        summary = result.outputs["summary"]
+        assert summary.startswith("[dev] ")
+        assert "Technical Design" in summary
+        assert "Build a run tracker" not in summary
+
+    async def test_summary_collapses_whitespace_and_truncates(self):
+        from squadops.capabilities.handlers.planning_tasks import _content_summary
+
+        collapsed = _content_summary("a\n\n  b\tc", limit=240)
+        assert collapsed == "a b c"
+        assert len(_content_summary("word " * 100, limit=240)) == 240
+
+    async def test_empty_document_summary_placeholder(self):
+        ctx = _make_context(llm_response="")
+        h = DevelopmentDesignPlanHandler()
+        result = await h.handle(ctx, {"prd": "Build a widget"})
+
+        assert result.outputs["summary"] == "[dev] (empty document)"

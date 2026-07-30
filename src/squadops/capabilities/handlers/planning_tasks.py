@@ -44,6 +44,17 @@ _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 _VALID_READINESS = {"go", "revise", "no-go"}
 
 
+def _content_summary(content: str, limit: int = 240) -> str:
+    """First ``limit`` chars of the produced document, whitespace-collapsed.
+
+    #657: the chained ``summary`` is the only cross-task context the executor
+    keeps once artifacts are stripped — a PRD-prefix summary said nothing
+    about the document this task actually produced.
+    """
+    collapsed = " ".join(content.split())
+    return collapsed[:limit]
+
+
 # ---------------------------------------------------------------------------
 # Time budget awareness helpers (SIP-0082)
 # ---------------------------------------------------------------------------
@@ -138,10 +149,9 @@ class _PlanningTaskHandler(_CycleTaskHandler):
         budget_section = _build_time_budget_section(time_budget_seconds)
         if budget_section:
             parts.append(budget_section)
-        if prior_outputs:
-            parts.append("\n\n## Prior Analysis from Upstream Roles\n")
-            for role, summary in prior_outputs.items():
-                parts.append(f"### {role}\n{summary}\n")
+        formatted = self._format_prior_outputs(prior_outputs)
+        if formatted:
+            parts.append(formatted)
         parts.append(f"\nPlease provide your {self._role} analysis and deliverables.")
         return "\n".join(parts)
 
@@ -248,7 +258,7 @@ class _PlanningTaskHandler(_CycleTaskHandler):
             )
             llm_obs.record_generation(context.correlation_context, gen_record, layers)
 
-        prd_summary = str(prd)[:80] if prd else "(no PRD)"
+        doc_summary = _content_summary(content) or "(empty document)"
 
         # SIP-0084 §10: build prompt provenance for artifact traceability
         provenance: dict[str, Any] = {
@@ -261,7 +271,7 @@ class _PlanningTaskHandler(_CycleTaskHandler):
             provenance["prompt_environment"] = "production"
 
         outputs = {
-            "summary": f"[{self._role}] {prd_summary}",
+            "summary": f"[{self._role}] {doc_summary}",
             "role": self._role,
             "artifacts": [
                 {

@@ -975,3 +975,176 @@ class TestRepairTaskTypesDerivation:
         }
         assert table_types <= REPAIR_TASK_TYPES
         assert "development.develop" not in REPAIR_TASK_TYPES
+
+
+# ---------------------------------------------------------------------------
+# #657: planning-chain context threading (RC-22 pre-resolution)
+# ---------------------------------------------------------------------------
+
+
+class TestPlanningContextThreading:
+    """The brief author and plan-task proposers receive upstream documents.
+
+    Bug caught: the executor drops planning artifact content when chaining
+    ``prior_outputs`` (role-keyed summaries only), so the qa proposer is
+    instructed to gap-catch against Development's proposal while rendering
+    "(brief not yet provided)" and PRD-prefix stubs — the #657 blindness that
+    produced the fill-slot-claiming qa tasks across FAY windows 1–2.
+    """
+
+    @staticmethod
+    def _envelope(task_type: str, agent_id: str = "eve"):
+        from squadops.tasks.models import TaskEnvelope
+
+        return TaskEnvelope(
+            task_id="t1",
+            agent_id=agent_id,
+            cycle_id="cyc_001",
+            pulse_id="p1",
+            project_id="proj_001",
+            task_type=task_type,
+            correlation_id="c",
+            causation_id="ca",
+            trace_id="tr",
+            span_id="s",
+        )
+
+    @staticmethod
+    def _planning_stored():
+        refs = [
+            _make_artifact_ref(
+                "art_ctx",
+                "context_research.md",
+                producing_task_type="data.research_context",
+            ),
+            _make_artifact_ref(
+                "art_objective",
+                "objective_frame.md",
+                producing_task_type="strategy.frame_objective",
+            ),
+            _make_artifact_ref(
+                "art_design",
+                "technical_design.md",
+                producing_task_type="development.design_plan",
+            ),
+            _make_artifact_ref(
+                "art_strategy",
+                "test_strategy.md",
+                producing_task_type="qa.define_test_strategy",
+            ),
+            _make_artifact_ref(
+                "art_brief",
+                "plan_authoring_brief.yaml",
+                producing_task_type="governance.prepare_plan_authoring_brief",
+            ),
+            _make_artifact_ref(
+                "art_dev_prop",
+                "proposed_plan_tasks.yaml",
+                producing_task_type="development.propose_plan_tasks",
+            ),
+        ]
+        return [(r.artifact_id, r) for r in refs]
+
+    @staticmethod
+    def _wire_vault(executor, stored):
+        by_id = {art_id: (ref, f"body of {ref.filename}".encode()) for art_id, ref in stored}
+
+        async def retrieve(art_id):
+            return by_id[art_id]
+
+        executor._artifact_vault.retrieve = AsyncMock(side_effect=retrieve)
+
+    async def test_qa_proposer_receives_upstream_documents(self, executor):
+        """Brief + design + test strategy + dev proposal reach the qa proposer;
+        out-of-map documents (context research) stay excluded."""
+        stored = self._planning_stored()
+        self._wire_vault(executor, stored)
+
+        enriched = await executor._enrich_envelope(
+            self._envelope("qa.propose_plan_tasks"),
+            {"dev": {"summary": "[dev] designed"}},
+            [],
+            stored,
+        )
+
+        contents = enriched.inputs["prior_outputs"]["artifact_contents"]
+        assert set(contents) == {
+            "plan_authoring_brief.yaml",
+            "technical_design.md",
+            "test_strategy.md",
+            "proposed_plan_tasks.yaml",
+        }
+        assert contents["plan_authoring_brief.yaml"] == "body of plan_authoring_brief.yaml"
+        assert contents["proposed_plan_tasks.yaml"] == "body of proposed_plan_tasks.yaml"
+        # role-keyed chain context is preserved alongside
+        assert enriched.inputs["prior_outputs"]["dev"] == {"summary": "[dev] designed"}
+
+    async def test_loop_prior_outputs_dict_not_mutated(self, executor):
+        """The threaded contents live on an envelope-local copy — the loop-level
+        dict is checkpointed per task (RC-4) and must stay lean."""
+        stored = self._planning_stored()
+        self._wire_vault(executor, stored)
+        loop_dict = {"dev": {"summary": "[dev] designed"}}
+
+        await executor._enrich_envelope(
+            self._envelope("qa.propose_plan_tasks"),
+            loop_dict,
+            [],
+            stored,
+        )
+
+        assert "artifact_contents" not in loop_dict
+
+    async def test_brief_author_receives_all_four_framing_documents(self, executor):
+        """The brief distills must_cover_requirements from the framing docs —
+        authored blind, it pins requirements no one researched."""
+        stored = self._planning_stored()
+        self._wire_vault(executor, stored)
+
+        enriched = await executor._enrich_envelope(
+            self._envelope("governance.prepare_plan_authoring_brief", agent_id="max"),
+            {},
+            [],
+            stored,
+        )
+
+        contents = enriched.inputs["prior_outputs"]["artifact_contents"]
+        assert set(contents) == {
+            "context_research.md",
+            "objective_frame.md",
+            "technical_design.md",
+            "test_strategy.md",
+        }
+        assert "proposed_plan_tasks.yaml" not in contents
+        assert "plan_authoring_brief.yaml" not in contents
+
+    async def test_merger_gets_no_artifact_contents(self, executor):
+        """The merger consumes brief_outcome/proposal_outcome output keys; by
+        merge time both proposals collide on the proposed_plan_tasks.yaml
+        filename, so threading there would silently drop one proposal."""
+        stored = self._planning_stored()
+        self._wire_vault(executor, stored)
+
+        enriched = await executor._enrich_envelope(
+            self._envelope("governance.merge_plan", agent_id="max"),
+            {"lead": {"brief_outcome": {"yaml_content": "brief_id: b1"}}},
+            [],
+            stored,
+        )
+
+        assert "artifact_contents" not in enriched.inputs["prior_outputs"]
+
+    async def test_build_task_prior_outputs_untouched(self, executor):
+        """D3's top-level artifact_contents channel for build tasks is a
+        different transport — the planning branch must not leak into it."""
+        stored = self._planning_stored()
+        self._wire_vault(executor, stored)
+
+        enriched = await executor._enrich_envelope(
+            self._envelope("development.develop", agent_id="neo"),
+            {"strat": {"summary": "[strat] framed"}},
+            [],
+            stored,
+        )
+
+        assert "artifact_contents" not in enriched.inputs["prior_outputs"]

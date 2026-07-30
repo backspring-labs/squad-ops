@@ -265,6 +265,27 @@ async def test_qa_proposer_emits_parseable_proposal():
     assert parsed.tasks[0].depends_on_focus == ["dev:user crud routes"]
 
 
+async def test_qa_proposer_renders_dev_proposal_in_planning_content():
+    """Bug caught (#657): the qa template instructs gap-catching against
+    Development's proposal; if the threaded document stops reaching
+    planning_content, qa re-proposes coverage for files dev already owns."""
+    ctx = _make_context(_QA_PROPOSAL_RESPONSE)
+    handler = QaProposePlanTasksHandler()
+    dev_proposal = "proposing_role: development\ntasks:\n  - focus: user crud routes\n"
+    inputs = _seeded_inputs()
+    inputs["prior_outputs"]["artifact_contents"]["proposed_plan_tasks.yaml"] = dev_proposal
+    inputs["prior_outputs"]["artifact_contents"]["technical_design.md"] = "## Design\nRouters."
+
+    await handler.handle(ctx, inputs)
+
+    variables = ctx.ports.request_renderer.render.call_args.args[1]
+    assert "### proposed_plan_tasks.yaml" in variables["planning_content"]
+    assert "focus: user crud routes" in variables["planning_content"]
+    assert "### technical_design.md" in variables["planning_content"]
+    # the brief renders in its own dedicated section, not duplicated here
+    assert "brief-test-001" not in variables["planning_content"]
+
+
 async def test_strategy_proposer_emits_parseable_guidance():
     ctx = _make_context(_STRATEGY_GUIDANCE_RESPONSE)
     handler = StrategyProposePlanGuidanceHandler()
