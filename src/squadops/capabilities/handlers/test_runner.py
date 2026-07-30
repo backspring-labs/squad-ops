@@ -41,9 +41,10 @@ class RunTestsResult:
     # HERE because this module owns test-framework knowledge. The locus
     # classifier (cycles/failure_evidence) consumes the neutral fact instead of
     # applying pytest exit-code semantics to every runner. suite_broken:
-    # True = the suite itself cannot run (collection/transform/import death —
-    # the producing role re-authors); False = the suite ran and judged the
-    # subject; None = ambiguous (falls back to legacy exit-code semantics).
+    # True = the suite itself cannot run (collection/transform/import death,
+    # or no collectable suite exists at all (#665) — the producing role
+    # re-authors); False = the suite ran and judged the subject; None =
+    # ambiguous (falls back to legacy exit-code semantics).
     runner: str = ""
     suite_broken: bool | None = None
     # #407: the fullstack frontend build outcome, surfaced distinctly so qa.test
@@ -153,11 +154,15 @@ async def run_generated_tests(
     Returns a ``RunTestsResult`` — never raises.
     """
     if not test_files:
+        # #665: zero suite = the producing role's own artifact is missing, an
+        # explicit verdict, not ambiguity — without it fay-13's absent suite
+        # classified UNKNOWN and burned every correction round on dev repairs.
         return RunTestsResult(
             executed=False,
             error="no test files provided",
             test_file_count=0,
             source_file_count=len(source_files),
+            suite_broken=True,
         )
 
     # Test-authorship guard: pytest discovers only test_*.py / *_test.py. Both
@@ -181,6 +186,9 @@ async def run_generated_tests(
             ),
             test_file_count=len(test_files),
             source_file_count=len(source_files),
+            # #665: nothing collectable exists — same own-artifact verdict as
+            # the empty case (this is the pre-emptive form of pytest exit 5).
+            suite_broken=True,
         )
 
     workspace = tempfile.mkdtemp(prefix="qa_run_")
@@ -261,11 +269,13 @@ async def run_node_tests(
     Returns a ``RunTestsResult`` — never raises.
     """
     if not test_files:
+        # #665: zero suite = own-artifact verdict, same as the pytest runner.
         return RunTestsResult(
             executed=False,
             error="no test files provided",
             test_file_count=0,
             source_file_count=len(source_files),
+            suite_broken=True,
         )
 
     workspace = tempfile.mkdtemp(prefix="qa_node_")

@@ -53,6 +53,8 @@ class TestRunNodeTestsNoFiles:
         result = await run_node_tests(_SOURCE_FILES, [])
         assert result.executed is False
         assert "no test files" in result.error
+        # #665: zero suite = own-artifact verdict, same as the pytest runner.
+        assert result.suite_broken is True
 
 
 # ---------------------------------------------------------------------------
@@ -107,6 +109,8 @@ class TestRunNodeTestsNpmInstallFailure:
             result = await run_node_tests(_SOURCE_FILES, _TEST_FILES)
         assert result.executed is False
         assert "npm install failed" in result.error
+        # #665 boundary: env failures stay ambiguous, never own-artifact.
+        assert result.suite_broken is None
 
 
 # ---------------------------------------------------------------------------

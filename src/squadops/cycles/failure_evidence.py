@@ -127,15 +127,26 @@ def classify_failure_locus(failure_evidence: Any) -> str:
         if check == "expected_artifacts" and row.get("passed") is False:
             # The task's own named output files are missing from its emission.
             return FailureLocus.OWN_ARTIFACT
-        if check == "tests_pass" and row.get("passed") is False and row.get("executed"):
+        if check == "tests_pass" and row.get("passed") is False:
             # #626: prefer the runner's OWN suite-health verdict (test_runner
             # owns test-framework knowledge; vitest cannot express suite-broken
             # through exit codes, so pytest exit semantics misrouted every
             # frontend suite defect to the dev chain — pf-53). Absent/None
             # falls back to the legacy pytest exit-code table.
+            #
+            # #665: the verdict is read BEFORE the executed guard. A suite that
+            # never ran because it does not exist (zero collectable files) is
+            # the producing role's own artifact, but the old executed gate
+            # skipped every own-artifact signal for exactly that case — fay-13's
+            # missing suite (executed:false, exit -1) fell to UNKNOWN and five
+            # dev-chain repairs churned on files only the qa role could author.
             suite_broken = row.get("suite_broken")
             if suite_broken is True:
                 return FailureLocus.OWN_ARTIFACT
+            if not row.get("executed"):
+                # Every other never-executed case (env/runner errors, timeouts,
+                # legacy rows with no verdict) stays ambiguous → dev chain.
+                continue
             if suite_broken is False:
                 return FailureLocus.SUBJECT
             exit_code = row.get("exit_code")

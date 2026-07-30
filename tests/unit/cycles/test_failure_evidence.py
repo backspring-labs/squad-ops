@@ -336,11 +336,86 @@ class TestClassifyFailureLocus:
         row = {"check": "tests_pass", "executed": False, "exit_code": None, "passed": False}
         assert classify_failure_locus(self._evidence_with_check(row)) == FailureLocus.UNKNOWN
 
+    def test_missing_suite_verdict_survives_the_executed_gate(self):
+        """#665 (fay-13): a suite that never ran because it does not EXIST is
+        the producing role's own artifact. The old executed gate skipped the
+        runner's verdict for exactly that case — executed:false / exit -1
+        classified UNKNOWN and five dev-chain repairs churned on files only
+        the qa role could author."""
+        row = {
+            "check": "tests_pass",
+            "executed": False,
+            "exit_code": -1,
+            "tests_passed": False,
+            "passed": False,
+            "runner": "",
+            "suite_broken": True,
+        }
+        assert classify_failure_locus(self._evidence_with_check(row)) == FailureLocus.OWN_ARTIFACT
+
+    def test_not_executed_never_reads_subject_from_contradictory_verdict(self):
+        """suite_broken False means the suite RAN and judged the subject — on a
+        never-executed row that combination is contradictory, so it must stay
+        ambiguous (dev chain), never implicate the app as SUBJECT."""
+        row = {
+            "check": "tests_pass",
+            "executed": False,
+            "exit_code": -1,
+            "passed": False,
+            "suite_broken": False,
+        }
+        assert classify_failure_locus(self._evidence_with_check(row)) == FailureLocus.UNKNOWN
+
     def test_passed_rows_and_junk_are_unknown(self):
         assert classify_failure_locus(None) == FailureLocus.UNKNOWN
         assert classify_failure_locus({}) == FailureLocus.UNKNOWN
         row = {"check": "tests_pass", "executed": True, "exit_code": 1, "passed": True}
         assert classify_failure_locus(self._evidence_with_check(row)) == FailureLocus.UNKNOWN
+
+
+class TestFay13MissingSuiteReplay:
+    """#665 deterministic replay of fay-13 (cyc_9a760526e420): eve's suite task
+    emitted qa_handoff.md and zero test_*.py; the stored evidence row read
+    executed:false / exit -1 with no suite-health verdict, classified UNKNOWN,
+    and all five correction rounds dispatched dev repairs that could never
+    author the missing suite. Both halves of the fix are required — the runner
+    must emit the zero-suite verdict AND the classifier must read it before the
+    executed gate — so the replay exercises the whole chain:
+    runner → evidence row (as qa.test builds it) → locus → repair route."""
+
+    @pytest.mark.parametrize(
+        "test_files",
+        [
+            [],
+            [{"path": "qa_handoff.md", "content": "# QA Handoff\n"}],
+        ],
+        ids=["extraction-dropped-the-doc", "doc-rode-as-only-candidate"],
+    )
+    async def test_zero_suite_routes_to_qa_test_repair(self, test_files):
+        from squadops.capabilities.handlers.test_runner import run_generated_tests
+        from squadops.cycles.task_plan import repair_steps_for
+
+        result = await run_generated_tests(
+            source_files=[{"path": "backend/routes.py", "content": "router = None\n"}],
+            test_files=test_files,
+        )
+        assert result.executed is False
+        assert result.exit_code == -1
+
+        # The row exactly as qa.test builds it (#626 threading in qa_test.py).
+        row = {
+            "check": "tests_pass",
+            "executed": result.executed,
+            "exit_code": result.exit_code,
+            "tests_passed": result.tests_passed,
+            "passed": False,
+            "runner": result.runner,
+            "suite_broken": result.suite_broken,
+        }
+        evidence = {"validation_result": {"passed": False, "checks": [row]}}
+        locus = classify_failure_locus(evidence)
+        assert locus == FailureLocus.OWN_ARTIFACT
+        assert repair_steps_for("qa.test", locus) == [("qa.test_repair", "qa")]
 
 
 class TestEmissionFailurePassthrough:
