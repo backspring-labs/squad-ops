@@ -59,13 +59,13 @@ def _stub_response(monkeypatch, *, status: int, json_body=None):
 
 def test_status_match_passes(monkeypatch):
     _stub_response(monkeypatch, status=200)
-    out = pr._run_one("http://x", _probe(status=200), DEFAULT_PROFILE)
+    out = pr._run_one("http://x", _probe(status=200), DEFAULT_PROFILE, {})
     assert out == ProbeOutcome("vc-probe-x", "passed", None)
 
 
 def test_status_mismatch_fails(monkeypatch):
     _stub_response(monkeypatch, status=501)
-    out = pr._run_one("http://x", _probe(status=200), DEFAULT_PROFILE)
+    out = pr._run_one("http://x", _probe(status=200), DEFAULT_PROFILE, {})
     assert out.status == "failed"
     assert "501" in out.reason and "200" in out.reason
 
@@ -73,7 +73,7 @@ def test_status_mismatch_fails(monkeypatch):
 def test_json_has_missing_key_fails(monkeypatch):
     _stub_response(monkeypatch, status=200, json_body={"id": "1"})
     out = pr._run_one(
-        "http://x", _probe(status=200, json_has=["id", "participants"]), DEFAULT_PROFILE
+        "http://x", _probe(status=200, json_has=["id", "participants"]), DEFAULT_PROFILE, {}
     )
     assert out.status == "failed"
     assert "participants" in out.reason
@@ -82,7 +82,7 @@ def test_json_has_missing_key_fails(monkeypatch):
 def test_json_has_present_passes(monkeypatch):
     _stub_response(monkeypatch, status=200, json_body={"id": "1", "participants": []})
     out = pr._run_one(
-        "http://x", _probe(status=200, json_has=["id", "participants"]), DEFAULT_PROFILE
+        "http://x", _probe(status=200, json_has=["id", "participants"]), DEFAULT_PROFILE, {}
     )
     assert out.status == "passed"
 
@@ -90,7 +90,7 @@ def test_json_has_present_passes(monkeypatch):
 def test_error_code_match_passes(monkeypatch):
     _stub_response(monkeypatch, status=409, json_body={"error": {"code": "duplicate_participant"}})
     out = pr._run_one(
-        "http://x", _probe(status=409, error_code="duplicate_participant"), DEFAULT_PROFILE
+        "http://x", _probe(status=409, error_code="duplicate_participant"), DEFAULT_PROFILE, {}
     )
     assert out.status == "passed"
 
@@ -98,7 +98,7 @@ def test_error_code_match_passes(monkeypatch):
 def test_error_code_mismatch_fails(monkeypatch):
     _stub_response(monkeypatch, status=409, json_body={"error": {"code": "run_not_found"}})
     out = pr._run_one(
-        "http://x", _probe(status=409, error_code="duplicate_participant"), DEFAULT_PROFILE
+        "http://x", _probe(status=409, error_code="duplicate_participant"), DEFAULT_PROFILE, {}
     )
     assert out.status == "failed"
     assert "run_not_found" in out.reason
@@ -109,7 +109,7 @@ def test_request_error_fails(monkeypatch):
         raise httpx.ConnectError("refused")
 
     monkeypatch.setattr(pr.httpx, "request", _boom)
-    out = pr._run_one("http://x", _probe(status=200), DEFAULT_PROFILE)
+    out = pr._run_one("http://x", _probe(status=200), DEFAULT_PROFILE, {})
     assert out.status == "failed"
     assert "request error" in out.reason
 
@@ -329,3 +329,67 @@ def test_ready_on_404_response(tmp_path):
     )
     outcomes = run_probes(tmp_path, [probe])
     assert outcomes == [ProbeOutcome("vc-probe-items", "passed", None)]
+
+
+# --------------------------------------------------------------------------- #
+# #651: sequenced probes — capture + placeholder resolution
+# --------------------------------------------------------------------------- #
+
+
+def test_passed_probe_captures_into_context(monkeypatch):
+    _stub_response(monkeypatch, status=201, json_body={"id": "run-42", "title": "x"})
+    context: dict[str, str] = {}
+    probe = Probe(
+        id="vc-probe-runs",
+        subject="backend",
+        request={"method": "POST", "path": "/runs", "json": {"title": "x"}},
+        expect={"status": 201},
+        capture={"run_id": "id"},
+    )
+    out = pr._run_one("http://x", probe, DEFAULT_PROFILE, context)
+    assert out.status == "passed"
+    assert context == {"run_id": "run-42"}
+
+
+def test_placeholder_resolves_from_context_and_missing_fails(monkeypatch):
+    seen: list[str] = []
+
+    def _fake_request(method, url, **kwargs):
+        seen.append(url)
+        return httpx.Response(200, json={})
+
+    monkeypatch.setattr(pr.httpx, "request", _fake_request)
+    join = Probe(
+        id="vc-probe-runs-join",
+        subject="backend",
+        request={"method": "POST", "path": "/runs/{run_id}/join", "json": {"name": "s"}},
+        expect={"status": 200},
+    )
+    # Resolved: the captured id lands in the request URL.
+    out = pr._run_one("http://x", join, DEFAULT_PROFILE, {"run_id": "run-42"})
+    assert out.status == "passed"
+    assert seen == ["http://x/runs/run-42/join"]
+    # Unresolved (the fay-3 skeleton case: upstream create failed, captured
+    # nothing): the dependent probe FAILS — never errors, never requests.
+    out = pr._run_one("http://x", join, DEFAULT_PROFILE, {})
+    assert out.status == "failed"
+    assert "unresolved path placeholder {run_id}" in out.reason
+    assert len(seen) == 1  # no request was issued
+
+
+def test_capture_key_missing_from_response_fails(monkeypatch):
+    # The app returned 201 but no id — a contract violation (the reference
+    # fill proves the key exists); dependents must not run on a phantom value.
+    _stub_response(monkeypatch, status=201, json_body={"title": "x"})
+    context: dict[str, str] = {}
+    probe = Probe(
+        id="vc-probe-runs",
+        subject="backend",
+        request={"method": "POST", "path": "/runs", "json": {"title": "x"}},
+        expect={"status": 201},
+        capture={"run_id": "id"},
+    )
+    out = pr._run_one("http://x", probe, DEFAULT_PROFILE, context)
+    assert out.status == "failed"
+    assert "capture key 'id' missing" in out.reason
+    assert context == {}

@@ -37,7 +37,11 @@ from typing import Any
 
 import httpx
 
-from squadops.cycles.verification_contract import Probe
+from squadops.cycles.verification_contract import (
+    Probe,
+    capture_probe_values,
+    resolve_probe_path,
+)
 
 # The one subject the default profile knows how to boot: a FastAPI backend. A probe whose
 # subject the active profile cannot boot is reported skipped (not-executed), never a false pass.
@@ -154,7 +158,10 @@ def _run_backend_probes(
             reason = _boot_failure_reason(proc, stderr_spool, profile)
             return [ProbeOutcome(p.id, "skipped", reason) for p in probes]
         base = f"http://{profile.host}:{port}"
-        return [_run_one(base, p, profile) for p in probes]
+        # #651: sequenced probes share a capture context in contract order —
+        # a create's captured id resolves the {run_id} in join/leave paths.
+        context: dict[str, str] = {}
+        return [_run_one(base, p, profile, context) for p in probes]
     finally:
         _terminate(proc)
         with contextlib.suppress(Exception):
@@ -241,9 +248,21 @@ def _wait_ready(profile: ExecutionProfile, port: int) -> bool:
     return False
 
 
-def _run_one(base_url: str, probe: Probe, profile: ExecutionProfile) -> ProbeOutcome:
+def _run_one(
+    base_url: str, probe: Probe, profile: ExecutionProfile, context: dict[str, str]
+) -> ProbeOutcome:
     method = str(probe.request.get("method", "GET")).upper()
-    path = str(probe.request.get("path", "/"))
+    # #651: resolve captured placeholders. Unresolved = FAILED, not errored —
+    # on the bare skeleton the upstream create legitimately failed, and its
+    # dependents failing is the correct fill-behavior gate outcome.
+    path, missing = resolve_probe_path(str(probe.request.get("path", "/")), context)
+    if missing is not None:
+        return ProbeOutcome(
+            probe.id,
+            "failed",
+            f"unresolved path placeholder {{{missing}}} — no prior probe captured it "
+            f"(its upstream probe failed or captured nothing)",
+        )
     body = probe.request.get("json")
     try:
         resp = httpx.request(method, base_url + path, json=body, timeout=profile.request_timeout_s)
@@ -274,6 +293,16 @@ def _run_one(base_url: str, probe: Probe, profile: ExecutionProfile) -> ProbeOut
             return ProbeOutcome(
                 probe.id, "failed", f"error_code {actual!r} != expected {error_code!r}"
             )
+
+    # #651: captures apply only on a passed probe. A missing capture key is a
+    # contract violation by the app (the reference fill proves the key exists).
+    if probe.capture:
+        captured, missing_key = capture_probe_values(probe, payload)
+        if missing_key is not None:
+            return ProbeOutcome(
+                probe.id, "failed", f"capture key {missing_key!r} missing from response body"
+            )
+        context.update(captured)
 
     return ProbeOutcome(probe.id, "passed", None)
 

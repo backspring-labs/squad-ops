@@ -44,7 +44,11 @@ import httpx
 from adapters.sandbox.container_backend import ContainerBackend
 from adapters.tools.docker import DockerAdapter
 from squadops.cycles.task_plan import REPAIR_TASK_TYPES
-from squadops.cycles.verification_contract import VerificationContract
+from squadops.cycles.verification_contract import (
+    VerificationContract,
+    capture_probe_values,
+    resolve_probe_path,
+)
 from squadops.sandbox.environment import FULLSTACK_FASTAPI_REACT
 from squadops.sandbox.models import RevisionOrigin
 from squadops.sandbox.workspace import WorkspaceStore
@@ -90,18 +94,32 @@ def _select_deliverable(pulled: Path) -> dict[str, str]:
 
 
 async def _run_probes(contract: VerificationContract, base_url: str) -> list[str]:
-    """Issue every contract probe over HTTP; return failure detail lines."""
+    """Issue every contract probe over HTTP, in order, sharing the capture
+    context (#651 — join/leave resolve the id the create captured); return
+    failure detail lines. Substitution/capture semantics come from the shared
+    contract helpers so this stays in lockstep with the qa probe runner."""
     failures: list[str] = []
+    context: dict[str, str] = {}
     async with httpx.AsyncClient(base_url=base_url, timeout=15.0) as client:
         for probe in contract.behavioral.probes:
             method = str(probe.request.get("method", "GET")).upper()
-            path = str(probe.request.get("path", "/"))
+            path, missing = resolve_probe_path(str(probe.request.get("path", "/")), context)
+            if missing is not None:
+                failures.append(
+                    f"probe {probe.id}: unresolved path placeholder {{{missing}}} "
+                    f"(its upstream probe failed or captured nothing)"
+                )
+                continue
             body = probe.request.get("json")
             try:
                 resp = await client.request(method, path, json=body)
             except httpx.HTTPError as exc:
                 failures.append(f"probe {probe.id}: transport error {exc!r}")
                 continue
+            try:
+                payload = resp.json()
+            except ValueError:
+                payload = None
             expected = probe.expect.get("status")
             if expected is not None and resp.status_code != expected:
                 failures.append(
@@ -110,10 +128,6 @@ async def _run_probes(contract: VerificationContract, base_url: str) -> list[str
                 continue
             error_code = probe.expect.get("error_code")
             if error_code is not None:
-                try:
-                    payload = resp.json()
-                except ValueError:
-                    payload = None
                 actual = (
                     (payload.get("error") or {}).get("code") if isinstance(payload, dict) else None
                 )
@@ -121,6 +135,15 @@ async def _run_probes(contract: VerificationContract, base_url: str) -> list[str
                     failures.append(
                         f"probe {probe.id}: error_code {actual!r} != expected {error_code!r}"
                     )
+                    continue
+            if probe.capture:
+                captured, missing_key = capture_probe_values(probe, payload)
+                if missing_key is not None:
+                    failures.append(
+                        f"probe {probe.id}: capture key {missing_key!r} missing from response"
+                    )
+                    continue
+                context.update(captured)
     return failures
 
 
