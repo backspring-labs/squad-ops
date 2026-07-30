@@ -138,9 +138,10 @@ def test_behavioral_has_build_suite_and_self_contained_probe():
     assert behavioral["suite"]["checks"][0]["check"] == "tests_pass"
     assert any("happy path" in exp for exp in behavioral["suite"]["coverage_expectations"])
 
-    # one self-contained probe (POST /runs); path-param endpoints defer to 98.4
+    # #651 (v8): the create probe leads, and the path-param child actions the
+    # 98.4 deferral promised are now emitted as a chained sequence behind it.
     probe_paths = {p["request"]["path"] for p in behavioral["probes"]}
-    assert probe_paths == {"/runs"}
+    assert probe_paths == {"/runs", "/runs/{run_id}/join", "/runs/{run_id}/leave"}
     create = behavioral["probes"][0]
     assert create["request"]["method"] == "POST"
     body = create["request"]["json"]
@@ -272,3 +273,58 @@ class TestBlankInputProbe:
         # Optional fields stay unconstrained — blankness only matters where
         # presence is required.
         assert "    distance: str | None = None" in models
+
+
+class TestChainedActionProbes:
+    """#651 (v8, fay-3): v7 probed create + blank rejection only, so an app with
+    a BROKEN JOIN scored functional. Child POST actions are now probed in a
+    manifest-derived sequence: the create captures the created id into the
+    child path parameter; a declared-conflict action gets an immediate
+    duplicate probe pinning the 409 envelope."""
+
+    def _probes(self):
+        contract = VerificationContract.from_dict(emit_contract_dict(_manifest()))
+        return {p.id: p for p in contract.behavioral.probes}, [
+            p.id for p in contract.behavioral.probes
+        ]
+
+    def test_create_probe_captures_the_child_path_parameter(self):
+        probes, _ = self._probes()
+        assert probes["vc-probe-runs"].capture == {"run_id": "id"}
+
+    def test_join_leave_and_duplicate_probes_emitted_in_sequence(self):
+        probes, order = self._probes()
+        # Order matters: capture before use; join before its duplicate; the
+        # duplicate before leave removes the participant.
+        assert order.index("vc-probe-runs") < order.index("vc-probe-runs-join")
+        assert order.index("vc-probe-runs-join") < order.index("vc-probe-runs-join-duplicate")
+        assert order.index("vc-probe-runs-join-duplicate") < order.index("vc-probe-runs-leave")
+
+        join = probes["vc-probe-runs-join"]
+        assert join.request["path"] == "/runs/{run_id}/join"
+        assert join.request["json"] == {"name": "sample"}
+        assert join.expect == {"status": 200}
+
+        # The duplicate expectation is read from the manifest's error contract
+        # (duplicate_participant: http 409), never guessed.
+        dup = probes["vc-probe-runs-join-duplicate"]
+        assert dup.request == join.request
+        assert dup.expect == {"status": 409, "error_code": "duplicate_participant"}
+
+        # leave declares no 409-class error -> happy path only, no duplicate.
+        leave = probes["vc-probe-runs-leave"]
+        assert leave.expect == {"status": 200}
+        assert "vc-probe-runs-leave-duplicate" not in probes
+
+    def test_chained_contract_lints_clean_and_roundtrips_capture(self):
+        contract = VerificationContract.from_dict(emit_contract_dict(_manifest()))
+        assert contract.lint() == []
+        rt = VerificationContract.from_dict(contract.to_dict())
+        assert {p.id: p.capture for p in rt.behavioral.probes}["vc-probe-runs"] == {"run_id": "id"}
+
+    def test_placeholder_without_earlier_capture_is_a_lint_error(self):
+        raw = emit_contract_dict(_manifest())
+        for probe in raw["behavioral"]["probes"]:
+            probe.pop("capture", None)  # orphan the {run_id} placeholders
+        errors = VerificationContract.from_dict(raw).lint()
+        assert any("no earlier probe capturing it" in e for e in errors)

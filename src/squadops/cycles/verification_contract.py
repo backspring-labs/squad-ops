@@ -149,6 +149,14 @@ class Probe:
     # e.g. blank-input rejection enforced at the emitted model layer, which
     # fires before any stub body runs).
     guards: str = ""
+    # #651 (v8): response captures for sequenced probes — {var: top-level
+    # response key}. A later probe's ``request.path`` may carry ``{var}``
+    # placeholders resolved from earlier captures (join/leave need the id the
+    # create returned). Capture happens only on a PASSED probe, so on the bare
+    # skeleton the create fails, nothing is captured, and every dependent
+    # probe fails on its unresolved placeholder — exactly the fill-behavior
+    # gate semantics.
+    capture: dict[str, str] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, raw: Any) -> Probe:
@@ -156,12 +164,14 @@ class Probe:
             raise ValueError(f"probe must be a mapping, got {type(raw).__name__}")
         request = raw.get("request", {})
         expect = raw.get("expect", {})
+        capture = raw.get("capture", {})
         return cls(
             id=str(raw.get("id", "")),
             subject=str(raw.get("subject", "")),
             request=dict(request) if isinstance(request, dict) else {},
             expect=dict(expect) if isinstance(expect, dict) else {},
             guards=str(raw.get("guards", "")),
+            capture=dict(capture) if isinstance(capture, dict) else {},
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -174,7 +184,45 @@ class Probe:
         # Omitted when unset: pre-#593 probe dicts round-trip byte-identical.
         if self.guards:
             out["guards"] = self.guards
+        if self.capture:
+            out["capture"] = self.capture
         return out
+
+    def path_placeholders(self) -> list[str]:
+        """``{var}`` names in this probe's request path, in order."""
+        return re.findall(r"\{(\w+)\}", str(self.request.get("path", "")))
+
+
+def resolve_probe_path(path: str, context: dict[str, str]) -> tuple[str, str | None]:
+    """Resolve ``{var}`` placeholders from captured context (#651).
+
+    Returns ``(resolved_path, None)`` or ``(path, missing_var)`` when a
+    placeholder has no captured value — the caller reports the probe failed,
+    never errored: on the bare skeleton the upstream create legitimately
+    failed, and an unresolved dependent probe IS the correct failing outcome.
+    Shared by every probe executor (qa runner, FAY auditor) so their
+    substitution semantics can never drift.
+    """
+    for var in re.findall(r"\{(\w+)\}", path):
+        if var not in context:
+            return path, var
+        path = path.replace("{" + var + "}", context[var])
+    return path, None
+
+
+def capture_probe_values(probe: Probe, payload: Any) -> tuple[dict[str, str], str | None]:
+    """Extract this probe's declared captures from its response payload (#651).
+
+    Returns ``(captured, None)`` or ``({}, missing_key)`` when the response
+    lacks a declared capture key — a contract violation by the app (the
+    reference fill proves the key exists), reported as a probe failure.
+    """
+    captured: dict[str, str] = {}
+    for var, key in probe.capture.items():
+        if not isinstance(payload, dict) or key not in payload:
+            return {}, key
+        captured[var] = str(payload[key])
+    return captured, None
 
 
 @dataclass(frozen=True)
@@ -650,6 +698,7 @@ class VerificationContract:
                 )
 
     def _lint_probes(self, errors: list[str]) -> None:
+        captured: set[str] = set()
         for probe in self.behavioral.probes:
             label = f"probe[{probe.id or '?'}]"
             if not probe.subject:
@@ -660,6 +709,22 @@ class VerificationContract:
                 errors.append(f"{label}: expect must declare a 'status'")
             if probe.guards not in ("", "scaffold"):
                 errors.append(f"{label}: guards must be '' or 'scaffold', got {probe.guards!r}")
+            # #651: sequenced probes — placeholders must be satisfied by an
+            # EARLIER probe's capture (probes execute in contract order), and
+            # capture declarations must be non-empty identifier -> key strings.
+            for var in probe.path_placeholders():
+                if var not in captured:
+                    errors.append(
+                        f"{label}: path placeholder {{{var}}} has no earlier probe "
+                        f"capturing it — sequenced probes resolve strictly in order"
+                    )
+            for var, key in probe.capture.items():
+                if not str(var).isidentifier() or not isinstance(key, str) or not key:
+                    errors.append(
+                        f"{label}: capture entries must map an identifier to a "
+                        f"non-empty response key, got {var!r}: {key!r}"
+                    )
+            captured.update(probe.capture)
 
     def _labelled_criteria(self) -> list[tuple[str, Criterion]]:
         out: list[tuple[str, Criterion]] = []

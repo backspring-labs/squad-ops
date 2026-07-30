@@ -209,13 +209,26 @@ def _probe_sample_value(field_name: str, field_type: str) -> Any:
 
 
 def _probes(manifest: InterfaceManifest) -> list[dict[str, Any]]:
-    """Self-contained probes only (POST endpoints with no path params). Sequenced
-    probes (join/leave requiring a prior create) and richer response assertions land
-    with the probe runner in 98.4; these are emitted now so the contract is complete."""
+    """POST-create probes plus their sequenced child-action probes (#651, v8).
+
+    fay-3 shipped a broken join as "functional": v7 probed create + blank
+    rejection only, so the functional bar never touched the app's core
+    interactions. Child POST actions (``/runs/{run_id}/join``) are now probed
+    in sequence — the create probe captures the created resource's ``id`` into
+    the child path's parameter, a declared-conflict action (an error code the
+    manifest maps to HTTP 409) gets an immediate duplicate probe expecting the
+    envelope, and every expectation is read from the manifest (success status,
+    error contract), never guessed. Winnability is the reference fill's proof,
+    as ever; on the bare skeleton the create fails, nothing is captured, and
+    each dependent probe fails on its unresolved placeholder — fill-behavior
+    gate semantics by construction."""
     shapes = {s.name: s for s in manifest.api.request_shapes}
     # #524: resolve each required field's declared type (from entity fields) so the
     # probe body carries type/name-appropriate sample values, not a blanket "x".
     field_types = {f.name: f.type for e in manifest.entities for f in e.fields}
+    ec = manifest.api.error_contract
+    error_http = {c.code: c.http for c in (ec.codes if ec else ())}
+    entity_field_names = {e.name: {f.name for f in e.fields} for e in manifest.entities}
     probes: list[dict[str, Any]] = []
     for ep in manifest.api.endpoints:
         if ep.method != "POST" or "{" in ep.path:
@@ -225,26 +238,25 @@ def _probes(manifest: InterfaceManifest) -> list[dict[str, Any]]:
             field: _probe_sample_value(field, field_types.get(field, "string"))
             for field in (shape.required if shape else ())
         }
-        probes.append(
-            {
-                "id": f"vc-probe-{_slug(ep.path) or 'root'}",
-                "subject": "backend",
-                "request": {"method": ep.method, "path": ep.path, "json": json_body},
-                # Emitted probes are parameterless POSTs — resource creates by
-                # construction — and REST (and the PRD/QA suite) say a create
-                # returns 201. Expecting 200 made the contract contradict the
-                # PRD: a PRD-conformant app could never pass its own probe
-                # (pf-3: "status 201 != expected 200" on a correct app).
-                #
-                # pf-39: read the endpoint's declared success status so the probe and
-                # the emitted decorator cannot disagree. Previously this was hardcoded
-                # 201 while ``_routes_source`` emitted no ``status_code`` at all, so
-                # the skeleton contradicted its own contract and only a dev agent
-                # volunteering ``status_code=201`` could close the gap. A manifest that
-                # declares no success status keeps the historical 201 expectation.
-                "expect": {"status": ep.success_status or 201},
-            }
-        )
+        create_probe = {
+            "id": f"vc-probe-{_slug(ep.path) or 'root'}",
+            "subject": "backend",
+            "request": {"method": ep.method, "path": ep.path, "json": json_body},
+            # Emitted probes are parameterless POSTs — resource creates by
+            # construction — and REST (and the PRD/QA suite) say a create
+            # returns 201. Expecting 200 made the contract contradict the
+            # PRD: a PRD-conformant app could never pass its own probe
+            # (pf-3: "status 201 != expected 200" on a correct app).
+            #
+            # pf-39: read the endpoint's declared success status so the probe and
+            # the emitted decorator cannot disagree. Previously this was hardcoded
+            # 201 while ``_routes_source`` emitted no ``status_code`` at all, so
+            # the skeleton contradicted its own contract and only a dev agent
+            # volunteering ``status_code=201`` could close the gap. A manifest that
+            # declares no success status keeps the historical 201 expectation.
+            "expect": {"status": ep.success_status or 201},
+        }
+        probes.append(create_probe)
         # #593: the blank-input rejection probe. pf-38 volunteered blank-field
         # guards and pf-39 didn't — both green, because nothing required OR
         # tested the behavior. The scaffold model now owns the constraint
@@ -268,6 +280,57 @@ def _probes(manifest: InterfaceManifest) -> list[dict[str, Any]]:
                     "guards": "scaffold",
                 }
             )
+
+        # #651 (v8): sequenced child-action probes. A child is a POST under
+        # this create's path with exactly one path parameter
+        # (``/runs/{run_id}/join``). The chain is manifest-derived end to end:
+        # the create's response entity must declare an ``id`` field (that is
+        # what gets captured into the parameter), the child's success status
+        # is its declared one (FastAPI-default 200 otherwise), and a declared
+        # error code the error contract maps to HTTP 409 yields an immediate
+        # duplicate probe pinning the envelope. Children emit in manifest
+        # declaration order — the winnability gate (reference fill) is the
+        # proof the resulting sequence is satisfiable.
+        response_fields = entity_field_names.get(ep.response or "", set())
+        children = [
+            child
+            for child in manifest.api.endpoints
+            if child.method == "POST"
+            and re.fullmatch(re.escape(ep.path) + r"/\{(\w+)\}/\w+", child.path)
+        ]
+        if children and "id" in response_fields:
+            param = re.findall(r"\{(\w+)\}", children[0].path)[0]
+            create_probe["capture"] = {param: "id"}
+            create_slug = _slug(ep.path) or "root"
+            for child in children:
+                child_shape = shapes.get(child.request or "")
+                child_body = {
+                    field: _probe_sample_value(field, field_types.get(field, "string"))
+                    for field in (child_shape.required if child_shape else ())
+                }
+                action = child.path.rsplit("/", 1)[-1]
+                probes.append(
+                    {
+                        "id": f"vc-probe-{create_slug}-{_slug(action)}",
+                        "subject": "backend",
+                        "request": {"method": "POST", "path": child.path, "json": child_body},
+                        "expect": {"status": child.success_status or 200},
+                    }
+                )
+                conflict_codes = [c for c in child.errors if error_http.get(c) == 409]
+                if conflict_codes:
+                    probes.append(
+                        {
+                            "id": f"vc-probe-{create_slug}-{_slug(action)}-duplicate",
+                            "subject": "backend",
+                            "request": {
+                                "method": "POST",
+                                "path": child.path,
+                                "json": child_body,
+                            },
+                            "expect": {"status": 409, "error_code": conflict_codes[0]},
+                        }
+                    )
     return probes
 
 
