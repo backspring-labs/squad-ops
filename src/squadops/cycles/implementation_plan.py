@@ -640,6 +640,40 @@ class ImplementationPlan:
             if artifact in owned
         ]
 
+    def validate_frozen_artifact_ownership(self, contract: VerificationContract) -> list[str]:
+        """#658: no task, any role, may declare a frozen-surface file as an
+        ``expected_artifact``.
+
+        Frozen files are scaffold-owned: scaffold enforcement restores their
+        bytes at emission, so a task claiming one can never satisfy its own
+        expected artifacts through an accepted write, and a repair scoped to
+        it aims at files that were never the defect. The qa.test rule above
+        already covers this for qa tasks (alongside fill slots); this rule
+        closes the asymmetry for every other role — fay-12 shipped a
+        ``development.develop`` task claiming the frozen ``frontend/src/api.js``
+        with prose-only criteria, which slipped between the qa net and the
+        typed-criteria frozen-file rule.
+
+        Fill slots are deliberately NOT checked here: they are dev-owned
+        deliverables, and dev tasks claim them by design.
+
+        Returns:
+            List of validation error strings (empty = valid).
+        """
+        frozen = {ff.path for ff in contract.frozen_files}
+
+        return [
+            f"Task {task.task_index} ({task.focus}): {task.task_type} declares expected "
+            f"artifact {artifact!r}, which is frozen (scaffold-owned) — no task may claim "
+            f"a frozen file as a deliverable; scaffold enforcement restores frozen bytes "
+            f"at emission, so the task cannot satisfy its expected artifacts and a repair "
+            f"scoped to it would target the wrong files"
+            for task in self.tasks
+            if task.task_type != "qa.test"
+            for artifact in task.expected_artifacts
+            if artifact in frozen
+        ]
+
     def _authored_on_covered_criteria(self, contract: VerificationContract):
         """Yield ``(task, criterion, target)`` for every authored ``TypedCheck``
         whose target file is contract-covered (§6.3 rule 3) — shared by the fatal
