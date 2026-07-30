@@ -28,6 +28,7 @@ from squadops.capabilities.scaffold import (
     frozen_surface_index_lines,
     harness_entry_modules,
     is_qa_test_path_for_stack,
+    testid_surface_instructions,
 )
 from squadops.cycles.acceptance_check_spec import is_check_applicable
 from squadops.cycles.agent_config import resolve_agent_config
@@ -498,6 +499,14 @@ def _inject_contract_inputs(
         behavior_lines = contract.behavior_expectation_lines()
         if behavior_lines:
             inputs["api_behavior_contract"] = behavior_lines
+        # #659: the DOM anchor inventory — the api_behavior_contract move
+        # applied to the frontend. Suites that query manifest-pinned testids
+        # assert a surface dev is told to preserve, instead of inventing
+        # roles/text the view never promised (fay-6/fay-12 churn). Data only;
+        # the query-only-these prose is a managed asset (#448).
+        testid_lines = testid_surface_instructions(interface_manifest)
+        if testid_lines:
+            inputs["dom_testid_surface"] = testid_lines
 
 
 def _harness_boundary_criteria(

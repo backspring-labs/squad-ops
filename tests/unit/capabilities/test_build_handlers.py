@@ -1772,6 +1772,76 @@ class TestBehaviorContractAppendix:
         assert "## QA Task:" in messages[-1].content
 
 
+class TestDomAnchorAppendix:
+    """#659 (fay-6/fay-12): the manifest-pinned testid inventory reaches the
+    INITIAL suite-authoring prompt through the DOM-anchor appendix asset, so
+    the suite queries the surface the view author was told to preserve instead
+    of inventing roles/text — the churn that burned all five of fay-12's
+    correction rounds. Data lines come from the executor; all prose lives in
+    the template asset."""
+
+    class _Rendered:
+        content = "**DOM ANCHOR CONTRACT (RENDERED-DOM-APPENDIX)**"
+        template_id = "request.qa_test_dom_anchor_appendix"
+        template_version = "1"
+        render_hash = "h"
+
+    def _focused_inputs(self, qa_inputs, **extra):
+        return {
+            **qa_inputs,
+            "subtask_focus": "Frontend run flow suite",
+            "subtask_description": "d",
+            "expected_artifacts": ["frontend/src/__tests__/Runs.test.jsx"],
+            "acceptance_criteria": [],
+            **extra,
+        }
+
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
+    async def test_testid_lines_reach_the_focused_prompt(self, _mock_run, mock_context, qa_inputs):
+        inputs = self._focused_inputs(
+            qa_inputs,
+            dom_testid_surface=[
+                "`RunsListView` (route `/`): root container `runs-list`; "
+                "anchors: `runs-list`, `run-item`",
+            ],
+        )
+        mock_context.ports.request_renderer = MagicMock()
+        mock_context.ports.request_renderer.render = AsyncMock(return_value=self._Rendered())
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
+        )
+        handler = QATestHandler()
+        await handler.handle(mock_context, inputs)
+
+        calls = [
+            c
+            for c in mock_context.ports.request_renderer.render.call_args_list
+            if c.args and c.args[0] == "request.qa_test_dom_anchor_appendix"
+        ]
+        assert len(calls) == 1
+        testid_lines = calls[0].args[1]["testid_lines"]
+        assert "- `RunsListView`" in testid_lines
+        assert "`run-item`" in testid_lines
+        messages = mock_context.ports.llm.chat_stream_with_usage.call_args.args[0]
+        assert "RENDERED-DOM-APPENDIX" in messages[-1].content
+
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
+    async def test_no_testid_input_renders_no_appendix(self, _mock_run, mock_context, qa_inputs):
+        inputs = self._focused_inputs(qa_inputs)
+        mock_context.ports.request_renderer = MagicMock()
+        mock_context.ports.request_renderer.render = AsyncMock(return_value=self._Rendered())
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
+        )
+        handler = QATestHandler()
+        await handler.handle(mock_context, inputs)
+        assert not [
+            c
+            for c in mock_context.ports.request_renderer.render.call_args_list
+            if c.args and c.args[0] == "request.qa_test_dom_anchor_appendix"
+        ]
+
+
 class TestRetestProbesPatchedTree:
     """#639 second half: threading contract_probes into the retest is not
     enough — the probe workspace built from dispatch-time sources alone would

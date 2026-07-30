@@ -78,9 +78,23 @@ frontend:
   language: javascript  # §9: no TypeScript requirement this cycle
   api_client: fetch     # §7: prefer simple fetch over heavier abstractions
   routes:
-    - { path: "/",          view: RunsListView,  purpose: "upcoming runs list + participant counts + CTA to create" }  # §7.1, §5.2
-    - { path: "/create",    view: CreateRunView, purpose: "create form, required-field validation, submit" }          # §7.2, §5.1
-    - { path: "/runs/:id",  view: RunDetailView, purpose: "event details, participant list, join form, leave action, not-found state" }  # §7.3, §5.3–5.5
+    # testids = the view's DOM anchor contract (#659): first entry is the root
+    # container (stamped on the scaffold stub); dev attaches the rest while
+    # filling; qa queries ONLY these. Names are behavioral roles, not layout.
+    - path: "/"
+      view: RunsListView
+      purpose: "upcoming runs list + participant counts + CTA to create"  # §7.1, §5.2
+      testids: [runs-list, run-item, run-participant-count, empty-state, create-run-link]
+    - path: "/create"
+      view: CreateRunView
+      purpose: "create form, required-field validation, submit"  # §7.2, §5.1
+      testids: [create-run-view, create-run-form, field-title, field-datetime, field-location,
+                field-distance, field-pace-target, field-route-notes, submit-create, form-error]
+    - path: "/runs/:id"
+      view: RunDetailView
+      purpose: "event details, participant list, join form, leave action, not-found state"  # §7.3, §5.3–5.5
+      testids: [run-detail, participant-list, participant-item, join-form, join-name-input,
+                join-submit, leave-form, leave-name-input, leave-submit, action-error, not-found]
 
 persistence: in_memory  # §8: required for this cycle; no DB/migrations (§9)
 

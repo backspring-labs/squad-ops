@@ -1757,6 +1757,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             from squadops.capabilities.scaffold import (
                 error_seam_instructions,
                 model_surface_instructions,
+                testid_surface_instructions,
             )
 
             error_lines = error_seam_instructions(interface_manifest)
@@ -1770,6 +1771,12 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             surface_lines = model_surface_instructions(interface_manifest)
             if surface_lines:
                 extra_inputs["model_surface"] = surface_lines
+            # #659: the DOM anchor inventory, same transport — dev is told the
+            # manifest-pinned testids to attach/preserve so the qa suite (which
+            # receives the same inventory) has a stable surface to query.
+            testid_lines = testid_surface_instructions(interface_manifest)
+            if testid_lines:
+                extra_inputs["testid_surface"] = testid_lines
 
         # #657: planning-chain tasks get the upstream framing documents the
         # RC-22 contract promised them, on an envelope-local prior_outputs
