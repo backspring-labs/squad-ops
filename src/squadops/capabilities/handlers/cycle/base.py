@@ -112,11 +112,24 @@ class _CycleTaskHandler(CapabilityHandler):
 
     @staticmethod
     def _format_prior_outputs(prior_outputs: dict[str, Any] | None) -> str:
-        """Format prior outputs dict as a prompt section string for template injection."""
+        """Format prior outputs dict as a prompt section string for template injection.
+
+        #657: ``artifact_contents`` (executor-threaded upstream documents, RC-22)
+        renders as full named sections; role entries render their ``summary``
+        field — the raw outputs dict carries provenance hashes and wire keys
+        that are noise as prompt context.
+        """
         if not prior_outputs:
             return ""
         parts = ["\n\n## Prior Analysis from Upstream Roles\n"]
-        for role, summary in prior_outputs.items():
+        contents = prior_outputs.get("artifact_contents")
+        if isinstance(contents, dict):
+            for name, content in contents.items():
+                parts.append(f"### {name}\n{content}\n")
+        for role, value in prior_outputs.items():
+            if role == "artifact_contents":
+                continue
+            summary = value.get("summary", "") if isinstance(value, dict) else value
             parts.append(f"### {role}\n{summary}\n")
         return "\n".join(parts)
 
