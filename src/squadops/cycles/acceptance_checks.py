@@ -21,6 +21,7 @@ import ast
 import asyncio
 import logging
 import re
+import shutil
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -81,6 +82,12 @@ DEFAULT_COMMAND_TIMEOUT_S = 10
 MAX_COMMAND_TIMEOUT_S = 60
 DEFAULT_REGEX_INPUT_CAP_BYTES = 10 * 1024 * 1024  # 10 MiB
 DEFAULT_REGEX_PATTERN_CAP_CHARS = 4096
+# #648: the frontend build is the one check that runs a package manager — its
+# ceilings are its own (measured: install ~6s cold / ~0.9s with the agent
+# container's warm npm cache; build ~0.9s). The install ceiling absorbs a
+# first-ever cold-network install; the command ceilings above stay untouched.
+FRONTEND_INSTALL_TIMEOUT_S = 240
+FRONTEND_BUILD_TIMEOUT_S = 120
 
 
 class _SafetyError(Exception):
@@ -894,6 +901,102 @@ class ModuleImportsCheck(BaseCheck):
                 )
         return CheckOutcome.failed(
             reason="module_import_failed", module=module, stderr_tail=_tail(stderr)
+        )
+
+
+@register_check("frontend_compiles")
+class FrontendCompilesCheck(BaseCheck):
+    """Run the real frontend build against the workspace tree (#648).
+
+    fay-4 and fay-8 both shipped a view with a rollup bind-time error (an
+    undefined identifier) — invisible to every static check and to
+    ``node --check`` (which refuses ``.jsx`` outright, #645), first surfacing
+    at final verification where no correction budget can reach it. Only the
+    actual bundler sees this class, so this check runs it at task time: the
+    #643 acceptance workspace carries the full tree, ``npm install`` is
+    sub-second against the agent container's warm cache, and the build's
+    stderr tail becomes repair-relevant evidence.
+
+    ``file`` anchors blame (and #641 binding) to the view under evaluation;
+    the build necessarily covers the whole frontend. Skips, never fails, on
+    environment gaps (#462): npm absent, or a workspace without
+    ``frontend/package.json`` (pre-#643 envelopes, non-fullstack stacks).
+    An install failure also skips — ``package.json`` is scaffold-frozen, so a
+    failing install is a network/registry gap, not an artifact defect.
+    """
+
+    async def evaluate(
+        self,
+        params: dict[str, Any],
+        workspace_root: Path,
+        *,
+        stack: str | None = None,
+    ) -> CheckOutcome:
+        try:
+            file_path = _safe_resolve(params["file"], workspace_root)
+        except _SafetyError as exc:
+            return CheckOutcome.error(reason=exc.reason)
+        if not file_path.is_file():
+            return CheckOutcome.failed(reason="file_not_found", file=str(params["file"]))
+
+        frontend_dir = workspace_root / "frontend"
+        if not (frontend_dir / "package.json").is_file():
+            return CheckOutcome.skipped(reason="no_frontend_tree")
+        if shutil.which("npm") is None:
+            return CheckOutcome.skipped(reason="missing_tooling", missing_module="npm")
+
+        if not (frontend_dir / "node_modules").is_dir():
+            rc, _, stderr = await self._run(
+                ["npm", "install", "--no-audit", "--no-fund"],
+                frontend_dir,
+                FRONTEND_INSTALL_TIMEOUT_S,
+            )
+            if rc is None:
+                return CheckOutcome.error(
+                    reason="command_timeout", timeout_s=FRONTEND_INSTALL_TIMEOUT_S
+                )
+            if rc != 0:
+                return CheckOutcome.skipped(reason="install_failed", stderr_tail=_tail(stderr))
+
+        timeout_s = int(params.get("timeout_s", FRONTEND_BUILD_TIMEOUT_S))
+        timeout_s = max(1, min(timeout_s, FRONTEND_BUILD_TIMEOUT_S))
+        rc, _, stderr = await self._run(["npm", "run", "build"], frontend_dir, timeout_s)
+        if rc is None:
+            return CheckOutcome.error(reason="command_timeout", timeout_s=timeout_s)
+        if rc != 0:
+            return CheckOutcome.failed(
+                reason="frontend_build_failed",
+                file=str(params["file"]),
+                stderr_tail=_tail(stderr),
+            )
+        return CheckOutcome.passed(file=str(params["file"]))
+
+    @staticmethod
+    async def _run(argv: list[str], cwd: Path, timeout_s: int) -> tuple[int | None, str, str]:
+        """Run one build step; ``(returncode, stdout, stderr)``, rc None on timeout."""
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *argv,
+                cwd=str(cwd),
+                env=_restricted_env(),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+        except (OSError, ValueError) as exc:
+            return 1, "", f"spawn failed: {exc}"
+        try:
+            stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout_s)
+        except TimeoutError:
+            proc.kill()
+            try:
+                await proc.wait()
+            except Exception:  # pragma: no cover - best-effort cleanup
+                pass
+            return None, "", ""
+        return (
+            proc.returncode,
+            stdout_b.decode("utf-8", errors="replace"),
+            stderr_b.decode("utf-8", errors="replace"),
         )
 
 
