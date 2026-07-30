@@ -2882,3 +2882,98 @@ class TestRetestWorkspaceThreading:
         )
         (env,) = dispatcher.dispatched
         assert "acceptance_workspace_files" not in env.inputs
+
+
+class TestFrontendBuildProvenanceTargeting:
+    """#650 (fay-8, cyc_7f5f1b8b1790): four identical frontend_build failures,
+    every repair emitted backend/test files — RC2's package scoping is
+    deliberately backend-bounded, so the build-breaking view sat outside every
+    target and the loop could not converge. A failing frontend_build row now
+    unions the plan's frontend implementation source into the target."""
+
+    _FAY8_INPUTS = {
+        "expected_artifacts": ["backend/tests/test_runs.py", "backend/tests/test_validation.py"],
+        "implementation_artifacts": [
+            "backend/routes.py",
+            "frontend/src/views/RunsListView.jsx",
+            "frontend/src/views/CreateRunView.jsx",
+            "frontend/src/views/RunDetailView.jsx",
+        ],
+        "subtask_focus": "Backend API test suite",
+        "subtask_description": "pytest suites",
+    }
+
+    def test_failing_frontend_build_row_widens_target_to_frontend_source(self):
+        # The fay-8 shape, replayed: backend qa.test reports, frontend is broken.
+        from adapters.cycles.correction_runner import _resolve_repair_target
+
+        evidence = {
+            "validation_result": {
+                "summary": "tests_pass exit 1",
+                "checks": [
+                    {"check": "frontend_build", "passed": False},
+                    {"check": "tests_pass", "passed": False},
+                ],
+            }
+        }
+        artifacts, _, _ = _resolve_repair_target(evidence, dict(self._FAY8_INPUTS))
+        assert "frontend/src/views/RunsListView.jsx" in artifacts
+        assert "frontend/src/views/CreateRunView.jsx" in artifacts
+        assert "frontend/src/views/RunDetailView.jsx" in artifacts
+        # The failing task's own artifacts stay targeted (pf-21: their own bug
+        # is fixable too) and backend source stays via RC2 package scoping.
+        assert "backend/tests/test_runs.py" in artifacts
+        assert "backend/routes.py" in artifacts
+
+    def test_passing_frontend_build_row_does_not_widen(self):
+        # fay-3's shape: real backend test failures, frontend fine — the
+        # backend-bounded RC2 scope must stay exactly as it is (no frontend
+        # noise diluting the repair).
+        from adapters.cycles.correction_runner import _resolve_repair_target
+
+        evidence = {
+            "validation_result": {
+                "summary": "tests_pass exit 1",
+                "checks": [
+                    {"check": "frontend_build", "passed": True},
+                    {"check": "tests_pass", "passed": False},
+                ],
+            }
+        }
+        artifacts, _, _ = _resolve_repair_target(evidence, dict(self._FAY8_INPUTS))
+        assert not any(a.startswith("frontend/") for a in artifacts)
+
+    def test_widening_applies_on_the_drift_branch_too(self):
+        # Drift and a broken frontend can co-occur; the widening must not be
+        # lost to the drift branch's earlier return.
+        from adapters.cycles.correction_runner import _resolve_repair_target
+
+        evidence = {
+            "interface_drift": [
+                {
+                    "kind": "route_drift",
+                    "file": "backend/main.py",
+                    "extra": ["GET /"],
+                    "missing": [],
+                    "instruction": "remove the unauthorized GET / route",
+                }
+            ],
+            "validation_result": {
+                "checks": [{"check": "frontend_build", "passed": False}],
+            },
+        }
+        artifacts, _, _ = _resolve_repair_target(evidence, dict(self._FAY8_INPUTS))
+        assert "backend/main.py" in artifacts  # drift stays first-class
+        assert "frontend/src/views/RunsListView.jsx" in artifacts
+
+    def test_skipped_frontend_build_row_does_not_widen(self):
+        # A not-executed row (#306 Node-absent skip shape) is not a failure.
+        from adapters.cycles.correction_runner import _resolve_repair_target
+
+        evidence = {
+            "validation_result": {
+                "checks": [{"check": "frontend_build", "executed": False, "reason": "skipped"}],
+            }
+        }
+        artifacts, _, _ = _resolve_repair_target(evidence, dict(self._FAY8_INPUTS))
+        assert not any(a.startswith("frontend/") for a in artifacts)
