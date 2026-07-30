@@ -373,6 +373,30 @@ class QATestHandler(_CycleTaskHandler):
         )
         return rendered.content
 
+    async def _dom_anchor_section(self, context: ExecutionContext, inputs: dict[str, Any]) -> str:
+        """Render the DOM ANCHOR CONTRACT block from executor-threaded lines, or "".
+
+        #659 / fay-6, fay-12: frontend suites churned every correction round on
+        invented render details (roles, text, structure) because nothing
+        arbitrates the DOM the way the api_behavior_contract arbitrates
+        statuses. The lines are manifest-derived data
+        (``scaffold.testid_surface_instructions``) and the view author receives
+        the same inventory with an attach-and-preserve instruction; all prose
+        lives in the appendix asset (CLAUDE.md #448).
+        """
+        lines = [str(line).strip() for line in (inputs.get("dom_testid_surface") or [])]
+        lines = [line for line in lines if line]
+        if not lines:
+            return ""
+        renderer = getattr(context.ports, "request_renderer", None)
+        if renderer is None:
+            return ""
+        rendered = await renderer.render(
+            "request.qa_test_dom_anchor_appendix",
+            {"testid_lines": "\n".join(f"- {line}" for line in lines)},
+        )
+        return rendered.content
+
     def _build_focused_prompt(self, inputs: dict[str, Any]) -> str:
         """Build a focused prompt for manifest-driven QA subtasks (SIP-0086).
 
@@ -615,6 +639,9 @@ class QATestHandler(_CycleTaskHandler):
             behavior_section = await self._behavior_contract_section(context, inputs)
             if behavior_section:
                 user_prompt = f"{user_prompt}\n{behavior_section}"
+            dom_anchor_section = await self._dom_anchor_section(context, inputs)
+            if dom_anchor_section:
+                user_prompt = f"{user_prompt}\n{dom_anchor_section}"
             rendered = None
             sources = self._get_source_artifacts(inputs)
         else:

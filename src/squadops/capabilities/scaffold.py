@@ -112,6 +112,10 @@ class Route:
     path: str
     view: str
     purpose: str = ""
+    # #659: the view's DOM anchor contract — scaffold-owned data-testid names
+    # both prompt sides receive (dev: attach/preserve; qa: query only these).
+    # First entry is the ROOT anchor, stamped on the expanded stub's container.
+    testids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -247,7 +251,12 @@ class InterfaceManifest:
                 "language": self.frontend.language,
                 "api_client": self.frontend.api_client,
                 "routes": [
-                    {"path": r.path, "view": r.view, "purpose": r.purpose}
+                    {
+                        "path": r.path,
+                        "view": r.view,
+                        "purpose": r.purpose,
+                        **({"testids": list(r.testids)} if r.testids else {}),
+                    }
                     for r in self.frontend.routes
                 ],
             },
@@ -364,6 +373,7 @@ def _parse_frontend(raw: dict[str, Any]) -> Frontend:
             path=str(r["path"]),
             view=str(r["view"]),
             purpose=str(r.get("purpose", "")),
+            testids=tuple(str(t) for t in r.get("testids", [])),
         )
         for r in raw.get("routes", [])
     )
@@ -536,6 +546,32 @@ def model_surface_instructions(manifest: InterfaceManifest | None) -> list[str]:
             "fails on isolation"
         )
     return lines
+
+
+def testid_surface_instructions(manifest: InterfaceManifest | None) -> list[str]:
+    """The manifest-pinned DOM anchor inventory, one line per view (#659).
+
+    Frontend suites never converge because nothing arbitrates the DOM: qa
+    asserts invented render details (roles, text, structure), dev patches the
+    view toward the last suite, and the re-dispatched suite re-rolls its
+    expectations — two models chasing a moving target (fay-6, fay-12: five
+    correction rounds, all on the frontend suite, backend green throughout).
+    The backend converges because the contract is injected into BOTH prompts;
+    these lines are that move applied to the DOM.
+
+    Data only, per the same transport as ``model_surface_instructions`` — the
+    dev-side "attach and preserve" and qa-side "query only these" prose lives
+    in the managed appendix assets (CLAUDE.md #448). Empty when no manifest or
+    no route declares testids — additive.
+    """
+    if manifest is None:
+        return []
+    return [
+        f"`{r.view}` (route `{r.path}`): root container `{r.testids[0]}`; "
+        f"anchors: {', '.join(f'`{t}`' for t in r.testids)}"
+        for r in manifest.frontend.routes
+        if r.testids
+    ]
 
 
 def _class_field_names(node: ast.ClassDef) -> list[str]:
@@ -1157,13 +1193,24 @@ def _app_jsx(manifest: InterfaceManifest) -> str:
 
 def _view_stub(route: Route) -> str:
     purpose = route.purpose or route.view
+    # #659: the root anchor is stamped on the stub container so it exists from
+    # the bare skeleton onward; the fill inherits it in place. The full anchor
+    # inventory rides as a comment because the stub has no other elements yet —
+    # the dev prompt (testid surface appendix) carries the binding instruction.
+    root_attr = f' data-testid="{route.testids[0]}"' if route.testids else ""
+    anchor_comment = (
+        f"  // DOM anchors (manifest-pinned, keep every one): {', '.join(route.testids)}\n"
+        if route.testids
+        else ""
+    )
     return (
         "// Scaffold-owned slot: fill this component's body. The default export\n"
         "// name and file path are fixed by the interface manifest. Fetch backend\n"
         "// data via apiFetch from '../api.js' (handles the /api prefix + errors).\n"
         f"export default function {route.view}() {{\n"
         f"  // TODO: {purpose}\n"
-        f"  return <div>{route.view}</div>\n"
+        f"{anchor_comment}"
+        f"  return <div{root_attr}>{route.view}</div>\n"
         "}\n"
     )
 

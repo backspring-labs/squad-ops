@@ -761,8 +761,30 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         model_surface = await self._model_surface_section(renderer, inputs)
         if model_surface:
             variables["model_surface"] = model_surface
+        # #659: the DOM anchor contract, same transport — the qa suite receives
+        # the same inventory with a query-only-these instruction, so the two
+        # prompts finally share a DOM arbiter (fay-6/fay-12 churn class).
+        testid_surface = await self._testid_surface_section(renderer, inputs)
+        if testid_surface:
+            variables["testid_surface"] = testid_surface
         rendered = await renderer.render(
             "request.development_develop_fill_only_appendix", variables
+        )
+        return rendered.content
+
+    async def _testid_surface_section(self, renderer: Any, inputs: dict | None) -> str:
+        """Render the DOM ANCHOR CONTRACT block from executor-threaded lines, or "".
+
+        The lines are manifest-derived data (``scaffold.testid_surface_instructions``);
+        all prose lives in the appendix asset (CLAUDE.md #448).
+        """
+        lines = [str(line).strip() for line in ((inputs or {}).get("testid_surface") or [])]
+        lines = [line for line in lines if line]
+        if not lines:
+            return ""
+        rendered = await renderer.render(
+            "request.development_develop_testid_surface_appendix",
+            {"testid_lines": "\n".join(f"- {line}" for line in lines)},
         )
         return rendered.content
 

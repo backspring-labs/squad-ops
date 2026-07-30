@@ -268,6 +268,25 @@ class TestDevFocusedPromptRendered:
         assert "pace_target" in prompt
         assert "run_event_store" in prompt
 
+    async def test_testid_surface_lines_reach_the_initial_author(self):
+        """#659 (fay-6/fay-12): the DOM anchor inventory must reach the view
+        author — a dev who never sees the pinned testids ships views the qa
+        suite (told to query only those anchors) cannot locate, and the
+        correction loop chases render details for five rounds."""
+        handler = DevelopmentDevelopHandler()
+        handler._resolved_config = {"build_profile": "fullstack_fastapi_react"}
+        inputs = self._inputs(
+            testid_surface=[
+                "`RunsListView` (route `/`): root container `runs-list`; "
+                "anchors: `runs-list`, `run-item`, `empty-state`",
+            ]
+        )
+        prompt = await handler._build_focused_prompt(inputs, self._renderer())
+
+        assert "DOM ANCHOR CONTRACT (authoritative" in prompt
+        assert "`runs-list`" in prompt
+        assert "`empty-state`" in prompt
+
     async def test_non_scaffolded_stack_omits_scaffold_sections(self):
         """Bug caught: rendering fill-only/error-contract unconditionally would
         instruct an unscaffolded cycle to preserve a skeleton that isn't there."""

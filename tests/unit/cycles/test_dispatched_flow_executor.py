@@ -873,6 +873,32 @@ class TestErrorSeamThreading:
             )
             assert "model_surface" not in enriched.inputs
 
+    async def test_dev_envelope_carries_the_testid_surface(self, executor) -> None:
+        """#659 (fay-6/fay-12): the anchor inventory must reach the view author on
+        the same transport as the model surface — a dev who never sees the pinned
+        testids ships views the qa suite (which queries only those) cannot find."""
+        enriched = await executor._enrich_envelope(
+            self._envelope("development.develop"),
+            {},
+            [],
+            [],
+            interface_manifest=self._manifest(),
+        )
+
+        lines = enriched.inputs.get("testid_surface")
+        assert lines, "development.develop envelope carries no testid surface"
+        joined = " ".join(lines)
+        assert "`RunsListView`" in joined
+        assert "`runs-list`" in joined
+        assert "`join-name-input`" in joined
+
+    async def test_testid_surface_follows_the_same_gating(self, executor) -> None:
+        for task_type, manifest in (("qa.test", self._manifest()), ("development.develop", None)):
+            enriched = await executor._enrich_envelope(
+                self._envelope(task_type), {}, [], [], interface_manifest=manifest
+            )
+            assert "testid_surface" not in enriched.inputs
+
     async def test_non_authoring_task_types_are_not_given_the_seam(self, executor) -> None:
         """Bug caught: blanket attachment pushes fill-slot authoring instructions
         into roles that do not author into the scaffold (a qa suite told to raise

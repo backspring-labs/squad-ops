@@ -868,3 +868,61 @@ class TestNonBlankRequestFields:
             title="  Morning 5K  ", datetime="2026-08-01T08:00:00", location="Park"
         )
         assert run.title == "Morning 5K"
+
+
+# --------------------------------------------------------------------------- #
+# #659: DOM anchor contract (route testids)
+# --------------------------------------------------------------------------- #
+
+
+class TestDomAnchorContract:
+    """The manifest pins per-view data-testid inventories; the stub stamps the
+    root anchor; the surface deriver feeds both prompt sides.
+
+    Bug caught (fay-6/fay-12): with no shared DOM arbiter, qa suites assert
+    invented render details, dev patches toward the last suite, and every
+    correction round re-rolls the mismatch — five rounds on fay-12, all on
+    the frontend suite, backend green throughout.
+    """
+
+    def test_manifest_parses_and_round_trips_route_testids(self):
+        m = _group_run_manifest()
+        runs_list = next(r for r in m.frontend.routes if r.view == "RunsListView")
+        assert runs_list.testids[0] == "runs-list"  # root-anchor convention
+        assert "empty-state" in runs_list.testids
+
+        # testids participate in the canonical form, so content_hash() moves
+        # with them — the re-seed driver for this contract change.
+        emitted = next(
+            r for r in m._canonical()["frontend"]["routes"] if r["view"] == "RunsListView"
+        )
+        assert emitted["testids"] == list(runs_list.testids)
+
+    def test_view_stub_stamps_root_anchor_and_inventory(self):
+        files = _by_name(expand(_group_run_manifest()))
+        stub = files["frontend/src/views/RunsListView.jsx"]
+        assert 'data-testid="runs-list"' in stub
+        # the full inventory rides as a comment for the fill author
+        assert "run-item" in stub
+        assert "empty-state" in stub
+
+    def test_route_without_testids_renders_the_plain_stub(self):
+        stub = scaffold._view_stub(scaffold.Route(path="/x", view="XView"))
+        assert "data-testid" not in stub
+        assert "DOM anchors" not in stub
+        assert "export default function XView()" in stub
+
+    def test_testid_surface_instructions_one_line_per_view(self):
+        lines = scaffold.testid_surface_instructions(_group_run_manifest())
+        assert len(lines) == 3
+        assert lines[0].startswith("`RunsListView` (route `/`): root container `runs-list`")
+        assert any("`join-name-input`" in line for line in lines)
+
+    def test_testid_surface_instructions_empty_without_manifest_or_testids(self):
+        assert scaffold.testid_surface_instructions(None) == []
+        import dataclasses
+
+        m = _group_run_manifest()
+        bare_routes = tuple(dataclasses.replace(r, testids=()) for r in m.frontend.routes)
+        bare = dataclasses.replace(m, frontend=dataclasses.replace(m.frontend, routes=bare_routes))
+        assert scaffold.testid_surface_instructions(bare) == []

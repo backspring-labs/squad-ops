@@ -1,11 +1,12 @@
 ---
 template_id: request.development_develop_fill_only_appendix
-version: "3"
+version: "4"
 required_variables:
   - stack
 optional_variables:
   - error_contract
   - model_surface
+  - testid_surface
 ---
 ## Fill-only: a walking skeleton is already in your workspace
 
@@ -34,6 +35,8 @@ the fixed slots** — never to rebuild, rewire, or regenerate the scaffold.
 {{error_contract}}
 
 {{model_surface}}
+
+{{testid_surface}}
 
 Filling the fixed slots — rather than regenerating the app — is the whole point: the
 skeleton already builds and boots, so a fill that preserves it stays green, while one

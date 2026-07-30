@@ -279,3 +279,56 @@ def test_generate_task_plan_binds_before_resolving_refs():
     ]
     assert checks, "contract-resolved endpoint_defined must reach the envelope"
     assert checks[0].id == "vc-routes-endpoints"
+
+
+# ---------------------------------------------------------------------------
+# #659: DOM anchor surface injection
+# ---------------------------------------------------------------------------
+
+
+def _testid_manifest():
+    from pathlib import Path
+
+    from squadops.capabilities.scaffold import InterfaceManifest
+
+    path = (
+        Path(__file__).resolve().parents[3]
+        / "examples"
+        / "03_group_run"
+        / "interface_manifest.yaml"
+    )
+    return InterfaceManifest.from_yaml(path.read_text(encoding="utf-8"))
+
+
+def test_bind_mode_injects_dom_testid_surface_into_qa_test_only():
+    """Bug caught (fay-6/fay-12): the anchor inventory reaching only one prompt
+    side (or neither) re-opens the DOM war — suites invent render details and
+    every correction round chases them."""
+    cycle, run, profile = _implementation_setup()
+    envs = generate_task_plan(
+        cycle, run, profile, plan=None, contract=_contract(), interface_manifest=_testid_manifest()
+    )
+
+    qa_envs = [e for e in envs if e.task_type == "qa.test"]
+    assert qa_envs, "implementation workload must contain a qa.test step"
+    lines = qa_envs[0].inputs["dom_testid_surface"]
+    assert any("`RunsListView`" in line and "`runs-list`" in line for line in lines)
+    for env in envs:
+        if env.task_type != "qa.test":
+            assert "dom_testid_surface" not in env.inputs
+
+
+def test_manifest_without_testids_injects_no_dom_key():
+    """The handler keys on presence — an empty inventory must not render an
+    authoritative header over nothing."""
+    import dataclasses
+
+    m = _testid_manifest()
+    bare_routes = tuple(dataclasses.replace(r, testids=()) for r in m.frontend.routes)
+    bare = dataclasses.replace(m, frontend=dataclasses.replace(m.frontend, routes=bare_routes))
+
+    cycle, run, profile = _implementation_setup()
+    envs = generate_task_plan(
+        cycle, run, profile, plan=None, contract=_contract(), interface_manifest=bare
+    )
+    assert all("dom_testid_surface" not in e.inputs for e in envs)
