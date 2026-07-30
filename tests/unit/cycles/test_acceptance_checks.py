@@ -1194,3 +1194,111 @@ class TestModuleImports:
         (tmp_path / "App.jsx").write_text("export default 1;\n")
         outcome = await get_check("module_imports").evaluate({"file": "App.jsx"}, tmp_path)
         assert outcome.status == "skipped"
+
+
+class TestFrontendCompiles:
+    """#648 (fay-4/fay-8): a view with a rollup bind-time error passes every
+    static check and first fails at final verification, out of correction
+    reach. This check runs the real bundler at task time. Build execution is
+    stubbed here (no node in the unit environment); the real thing is proven
+    by the contract gate (bare-skeleton/reference-fill 14/14) and the fay-8
+    deliverable replay."""
+
+    def _workspace(self, tmp_path, *, with_frontend=True):
+        views = tmp_path / "frontend" / "src" / "views"
+        views.mkdir(parents=True)
+        (views / "RunsListView.jsx").write_text("export default function V() {}\n")
+        if with_frontend:
+            (tmp_path / "frontend" / "package.json").write_text('{"name": "x"}\n')
+        return tmp_path
+
+    async def test_no_frontend_tree_skips(self, tmp_path):
+        ws = self._workspace(tmp_path, with_frontend=False)
+        outcome = await get_check("frontend_compiles").evaluate(
+            {"file": "frontend/src/views/RunsListView.jsx"}, ws
+        )
+        assert outcome.status == "skipped"
+        assert outcome.reason == "no_frontend_tree"
+
+    async def test_missing_npm_skips_as_tooling(self, tmp_path, monkeypatch):
+        # #462: never fail correct code on tooling the evaluator lacks.
+        from squadops.cycles import acceptance_checks as ac
+
+        ws = self._workspace(tmp_path)
+        monkeypatch.setattr(ac.shutil, "which", lambda _: None)
+        outcome = await get_check("frontend_compiles").evaluate(
+            {"file": "frontend/src/views/RunsListView.jsx"}, ws
+        )
+        assert outcome.status == "skipped"
+        assert outcome.reason == "missing_tooling"
+
+    async def test_missing_view_file_fails(self, tmp_path):
+        ws = self._workspace(tmp_path)
+        outcome = await get_check("frontend_compiles").evaluate(
+            {"file": "frontend/src/views/Nope.jsx"}, ws
+        )
+        assert outcome.status == "failed"
+        assert outcome.reason == "file_not_found"
+
+    async def test_build_failure_fails_with_stderr_evidence(self, tmp_path, monkeypatch):
+        # The fay-8 shape: install fine, bundler rejects an undefined
+        # identifier — the stderr tail is the repair-relevant evidence.
+        from squadops.cycles import acceptance_checks as ac
+        from squadops.cycles.acceptance_checks import FrontendCompilesCheck
+
+        monkeypatch.setattr(ac.shutil, "which", lambda _: "/usr/bin/npm")
+
+        ws = self._workspace(tmp_path)
+        (ws / "frontend" / "node_modules").mkdir()
+
+        async def _fake_run(argv, cwd, timeout_s):
+            assert argv == ["npm", "run", "build"]
+            return 1, "", "RollupError: 'runId' is not defined"
+
+        monkeypatch.setattr(FrontendCompilesCheck, "_run", staticmethod(_fake_run))
+        outcome = await get_check("frontend_compiles").evaluate(
+            {"file": "frontend/src/views/RunsListView.jsx"}, ws
+        )
+        assert outcome.status == "failed"
+        assert outcome.reason == "frontend_build_failed"
+        assert "RollupError" in outcome.actual["stderr_tail"]
+
+    async def test_clean_build_passes_and_installs_when_needed(self, tmp_path, monkeypatch):
+        from squadops.cycles import acceptance_checks as ac
+        from squadops.cycles.acceptance_checks import FrontendCompilesCheck
+
+        monkeypatch.setattr(ac.shutil, "which", lambda _: "/usr/bin/npm")
+
+        ws = self._workspace(tmp_path)  # no node_modules -> install expected first
+        calls: list[list[str]] = []
+
+        async def _fake_run(argv, cwd, timeout_s):
+            calls.append(argv)
+            return 0, "", ""
+
+        monkeypatch.setattr(FrontendCompilesCheck, "_run", staticmethod(_fake_run))
+        outcome = await get_check("frontend_compiles").evaluate(
+            {"file": "frontend/src/views/RunsListView.jsx"}, ws
+        )
+        assert outcome.status == "passed"
+        assert calls == [["npm", "install", "--no-audit", "--no-fund"], ["npm", "run", "build"]]
+
+    async def test_install_failure_skips_not_fails(self, tmp_path, monkeypatch):
+        # package.json is scaffold-frozen: a failing install is a
+        # network/registry gap, never an artifact defect.
+        from squadops.cycles import acceptance_checks as ac
+        from squadops.cycles.acceptance_checks import FrontendCompilesCheck
+
+        monkeypatch.setattr(ac.shutil, "which", lambda _: "/usr/bin/npm")
+
+        ws = self._workspace(tmp_path)
+
+        async def _fake_run(argv, cwd, timeout_s):
+            return 1, "", "npm ERR! network ETIMEDOUT"
+
+        monkeypatch.setattr(FrontendCompilesCheck, "_run", staticmethod(_fake_run))
+        outcome = await get_check("frontend_compiles").evaluate(
+            {"file": "frontend/src/views/RunsListView.jsx"}, ws
+        )
+        assert outcome.status == "skipped"
+        assert outcome.reason == "install_failed"

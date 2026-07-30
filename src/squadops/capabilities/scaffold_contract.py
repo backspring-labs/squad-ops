@@ -139,18 +139,28 @@ def _routes_criteria(manifest: InterfaceManifest) -> dict[str, Any]:
     return {"interface": interface, "implementation": implementation}
 
 
-def _view_criteria(_path: str) -> dict[str, Any]:
-    # Views (.jsx) carry NO per-file criteria in v1:
-    #   - `node --check` cannot parse JSX (fails on correct code), so no per-view
-    #     implementation criterion is winnable; and
-    #   - the SIP-0092 `import_present` evaluator skips .js/.jsx ("frontend acceptance
-    #     checks disabled" — out of scope for M1.2), so a view interface criterion could
-    #     only ever *skip*, never verify anything.
-    # View compilation is verified by the behavioral `frontend_build` (vite is the
-    # JSX-aware compiler). Per-view frontend structural criteria arrive when the
-    # frontend-acceptance-checks follow-up lands; the slot is recorded here regardless so
-    # the fill/frozen partition stays complete.
-    return {"interface": [], "implementation": []}
+def _view_criteria(path: str) -> dict[str, Any]:
+    # Views carry ONE implementation criterion (#648): the real frontend build,
+    # run at task time. The v1 rationale for empty criteria stands for the
+    # static vocabulary — `node --check` cannot parse JSX and the AST checks
+    # skip .jsx — but fay-4 and fay-8 each shipped a view with a rollup
+    # bind-time error that no static check can see, invisible until final
+    # verification where no correction budget can reach it. `frontend_compiles`
+    # is the bundler itself (the only tool that sees the class), anchored to
+    # the view so #641 binds it onto the view's own task and a failure repairs
+    # where the defect lives.
+    stem = path.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+    return {
+        "interface": [],
+        "implementation": [
+            {
+                "check": "frontend_compiles",
+                "id": f"vc-view-compiles-{_slug(stem)}",
+                "file": path,
+                "requires": CAP_NODE,
+            }
+        ],
+    }
 
 
 def _behavioral(manifest: InterfaceManifest) -> dict[str, Any]:

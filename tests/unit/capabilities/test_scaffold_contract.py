@@ -123,11 +123,20 @@ def test_fill_slots_carry_interface_and_implementation_criteria():
     assert compiles["argv"] == ["python", "-m", "py_compile", "backend/routes.py"]
     assert compiles["requires"] == "python"
 
-    # views carry NO per-file criteria in v1: node --check can't parse JSX and the
-    # import_present evaluator skips .jsx — view compilation is verified by frontend_build
+    # #648: views carry the real-bundler criterion — fay-4/fay-8 shipped views
+    # with rollup bind-time errors no static check (or node --check) can see,
+    # invisible until final verification. Anchored to the view so #641 binds
+    # it onto the view's own task.
     detail = contract["fill_files"]["frontend/src/views/RunDetailView.jsx"]
     assert detail["interface"] == []
-    assert detail["implementation"] == []
+    assert detail["implementation"] == [
+        {
+            "check": "frontend_compiles",
+            "id": "vc-view-compiles-run-detail-view",
+            "file": "frontend/src/views/RunDetailView.jsx",
+            "requires": "node",
+        }
+    ]
 
 
 def test_behavioral_has_build_suite_and_self_contained_probe():

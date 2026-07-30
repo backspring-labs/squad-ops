@@ -1,0 +1,10 @@
+# Dev agent role — system (apt) packages, the system-level analog of
+# requirements.txt. Installed at image build time for this role only.
+#
+# Node.js + npm: the frontend_compiles acceptance check (#648) runs the real
+# frontend build at dev-task acceptance time — fay-4/fay-8 shipped views with
+# rollup bind-time errors invisible to every static check, first surfacing at
+# final verification where no correction budget could reach them. The check
+# executes where dev typed acceptance executes: this container.
+nodejs
+npm

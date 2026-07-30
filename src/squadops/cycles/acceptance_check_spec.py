@@ -324,6 +324,31 @@ CHECK_SPECS: dict[str, CheckSpec] = {
             "plan validation): " + "; ".join(f"`{p.name}`" for p in COMMAND_SAFELIST)
         ),
     ),
+    "frontend_compiles": CheckSpec(
+        name="frontend_compiles",
+        applicable_extensions=frozenset({".js", ".jsx", ".ts", ".tsx"}),
+        required_params=frozenset({"file"}),
+        optional_params=frozenset({"timeout_s"}),
+        param_types={"file": str, "timeout_s": int},
+        supported_stacks=frozenset(),
+        requires_stack_context=False,
+        path_params=frozenset({"file"}),
+        example={"file": "frontend/src/views/RunsListView.jsx"},
+        # #648: fay-4 and fay-8 both shipped a view with a rollup bind-time
+        # error (an undefined identifier) — invisible to every static check
+        # AND to `node --check` (which refuses .jsx outright), first surfacing
+        # at final verification where no correction budget can reach it. This
+        # is the real bundler, run at task time against the acceptance
+        # workspace's full tree (#643).
+        notes=(
+            "Runs the actual frontend build (npm install + npm run build) in "
+            "the workspace's frontend/ tree and anchors blame to `file`. "
+            "Catches bundler-level errors (undefined identifiers, broken "
+            "imports) that no static check or `node --check` can see. Missing "
+            "npm or a workspace without frontend/package.json skips "
+            "(missing_tooling), it does not fail."
+        ),
+    ),
     "module_imports": CheckSpec(
         name="module_imports",
         applicable_extensions=frozenset({".py"}),

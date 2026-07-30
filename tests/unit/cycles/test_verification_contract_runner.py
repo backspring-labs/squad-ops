@@ -53,9 +53,26 @@ def _contract() -> VerificationContract:
     return VerificationContract.from_dict(emit_contract_dict(manifest))
 
 
+def _env_gap(criterion: dict, outcome) -> bool:
+    """#648/#462: a node-requiring criterion legitimately skips in an
+    environment without npm (this unit env / some CI). The real pass is
+    proven by the contract gate in the QA image (14/14 both modes)."""
+    return (
+        criterion.get("requires") == "node"
+        and outcome.status == "skipped"
+        and shutil.which("npm") is None
+    )
+
+
 def test_structural_criteria_selects_only_evaluator_backed_checks():
     checks = {c["check"] for c, _ in structural_criteria(_contract())}
-    assert checks == {"endpoint_defined", "import_present", "command_exit_zero", "module_imports"}
+    assert checks == {
+        "endpoint_defined",
+        "import_present",
+        "command_exit_zero",
+        "module_imports",
+        "frontend_compiles",
+    }
     # behavioral checks are the gate's subprocess job, never structural
     assert "tests_pass" not in checks
     assert "frontend_build" not in checks
@@ -76,6 +93,8 @@ def test_every_structural_criterion_passes_on_bare_skeleton(tmp_path):
     contract = _contract()
     for criterion, fill_file in structural_criteria(contract):
         outcome = evaluate_structural(criterion, tmp_path, fill_file=fill_file)
+        if _env_gap(criterion, outcome):
+            continue  # #462: node-requiring checks skip where npm is absent
         assert outcome.status == "passed", (
             f"{criterion['id']} -> {outcome.status} ({outcome.reason})"
         )
@@ -90,6 +109,8 @@ def test_structural_criteria_still_pass_with_reference_fill(tmp_path):
             shutil.copy2(src, out)
     for criterion, fill_file in structural_criteria(_contract()):
         outcome = evaluate_structural(criterion, tmp_path, fill_file=fill_file)
+        if _env_gap(criterion, outcome):
+            continue  # #462: node-requiring checks skip where npm is absent
         assert outcome.status == "passed"
 
 
