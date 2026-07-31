@@ -3,7 +3,7 @@
 ## Overview
 **SquadOps** is an AI agent collaboration framework for software development. The system implements a role-based agent architecture where specialized agents handle different aspects of development tasks, from requirements analysis to application deployment.
 
-**Current Status**: v1.3.1 — Experiment-ready framework with hexagonal architecture, freshly stabilized in the first even/odd stabilization release (SIP-0097 executor decomposition, cycle-task handler package split, push-based agent comms, vendor-type-free ports) and hardened in the 1.3.1 patch (authed agent-status lane #326, FocusLease concurrency fix #288, QA-image Node #306, broker-hygiene doctor check #328), plus the Agent Embodiment Substrate (SIP-0090 Phase 1), the Cycle Create Preflight (SIP-0095), the completed Agent Runtime State platform (SIP-0089: runtime modes ambient/cycle/duty, single-writer coordinator, FocusLease arbitration, single-transaction UoW, RuntimeActivity observability), distributed cycle execution pipeline, multi-run cycle orchestration, workload protocols (planning, implementation, wrapup), cycle event system, correction protocol with checkpoint/resume, agent build capabilities, build convergence loop (SIP-0086), Prefect task-scoped log streaming (SIP-0087), Postgres-backed persistence, LangFuse observability, Keycloak authentication, CLI tooling, test quality enforcement, and 5,500+ passing tests.
+**Current Status**: v1.4.0 — Experiment-ready framework with hexagonal architecture, shipping **the Verified Canonical App Build**: given a PRD and a fully specified interface manifest, the squad implements, verifies, and delivers a working full-stack application — measured at **100% functional yield (6/6 unfiltered rolls, 5/6 fully green, five consecutive)** under a pre-registered fixed-budget protocol with independent sandbox audits. The dual-lane headline pair is Contract-First Build Scaffolding (SIP-0099: deterministic skeleton + fill-slot authorship) and the Ephemeral Application Sandbox (SIP-0102: canonical build/boot/probe environment + delivered-app audit), completed by Verification Contracts (SIP-0098: a 14-criterion contract owns acceptance, evidence read per-criterion) and the Scaffolded Test Harness with Frozen-File Enforcement (SIP-0100). Three windows of measurement-driven hardening ride the release (plan validators, repair-provenance targeting, proposer context threading, chained HTTP contract probes, DOM testid contract, failure-locus routing). Squad-authored interface design is deliberately out of scope — it is the v1.6 headline. Built on the stabilized 1.3 line (SIP-0097 executor decomposition, push-based agent comms, Agent Runtime State platform SIP-0089), with distributed cycle execution, correction protocol with checkpoint/resume, Postgres persistence, LangFuse observability, Keycloak authentication, CLI tooling, test quality enforcement, and 5,900+ passing tests.
 
 ---
 
@@ -173,21 +173,21 @@ See [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) for full setup instructio
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the full release timeline.
 
-**Current**: v1.3.1 — hardening patch on the 1.3.0 stabilization line: agent-status writes moved off the unauthenticated `/health` lane onto the authed `/api/v1` lane with a service identity (#326), concurrent same-agent cycles no longer bypass FocusLease arbitration (#288), the QA image now has Node so the frontend build check actually runs (#306), and a broker-hygiene `doctor` check + sweep of orphaned pre-SIP-0094 queues (#328). Built on v1.3.0 — the first stabilization release (SIP-0097 executor decomposition #186 3,358→1,805 lines, `cycle_tasks` package split #152, agent comms poll→push #323, dead `DbRuntime` removed #234)
+**Current**: v1.4.0 — the Verified Canonical App Build: dual-lane headline (SIP-0099 Contract-First Build Scaffolding, Lane M + SIP-0102 Ephemeral Application Sandbox, Lane S) with SIP-0098 Verification Contracts and SIP-0100 Scaffolded Test Harness completing the arc. Exit evidence: Functional App Yield **6/6 (100% functional), 5/6 green, five consecutive greens** over a pre-registered unfiltered window on a frozen deploy, every deliverable independently audited (install/build/boot + chained HTTP contract probes). The claim is precise: the squad implements and verifies a **specified** application contract end-to-end; authoring the interface design from the PRD is the v1.6 headline. Next: v1.4.1 hardening patch (filed fix ledger #667–#673), then the v1.5 stabilization release.
 
 ---
 
 ## Current Status
-**Framework Version**: 1.3.1
-**Development Status**: Stabilized multi-agent orchestration (post-SIP-0097 decomposition) with the Agent Runtime State platform (SIP-0089: runtime modes, duty scheduler, FocusLease, RuntimeActivity), console UI, distributed cycle execution, multi-run cycle orchestration, workload protocols (planning → implementation → wrapup), cycle event system, correction protocol with checkpoint/resume, agent build capabilities, Prefect task-scoped log streaming, durable persistence, authentication, CLI tooling, profile-driven bootstrap, test quality enforcement, and full observability stack.
+**Framework Version**: 1.4.0
+**Development Status**: Verified canonical app build (SIP-0098/0099/0100/0102 golden-path arc: contract-owned acceptance, deterministic scaffolding, frozen-file enforcement, sandbox audit) on stabilized multi-agent orchestration (post-SIP-0097 decomposition) with the Agent Runtime State platform (SIP-0089: runtime modes, duty scheduler, FocusLease, RuntimeActivity), console UI, distributed cycle execution, multi-run cycle orchestration, workload protocols (planning → implementation → wrapup), cycle event system, correction protocol with checkpoint/resume, agent build capabilities, Prefect task-scoped log streaming, durable persistence, authentication, CLI tooling, profile-driven bootstrap, test quality enforcement, and full observability stack.
 
 ### Project Statistics
-*As of 2026-07-08 (v1.3.1):*
+*As of 2026-07-31 (v1.4.0):*
 - **~61,000 lines** of Python source code (src + adapters)
 - **~83,000 lines** of test code
 - **~110,000 lines** of documentation
-- **4,700+ tests** passing in regression suite
-- **~94 SIPs** (60 implemented, 6 accepted, 20 deprecated; 14 proposals/drafts)
+- **5,900+ tests** passing in regression suite
+- **~98 SIPs** (64 implemented, 7 accepted, 20 deprecated; proposals/drafts in `sips/proposed/`)
 
 ### Functional Components
 - 6 Agents: Max (Lead), Neo (Dev), Nat (Strategy), Bob (Builder), Eve (QA), Data (Analytics)
