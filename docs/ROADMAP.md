@@ -429,6 +429,7 @@ The following areas are identified for future work but do not block 1.0 readines
 | **SIP-0093** | Multi-Role Plan Authoring | audit for promotion (runtime-complete 2026-07-01) |
 | **SIP-0096** | Verification Evidence Integrity | audit for promotion (much shipped across the 1.4 arc incl. #597) |
 | **SIP-0101** | Cycle Replay Harness | next up — deferral condition (98.5 baseline) spent at the 1.4 cut |
+| **SIP-0102** | Ephemeral Application Sandbox (1.4 floor shipped as the v1.4.0 S-lane headline) | migration steps 3–7 → 1.5/1.6 (in-cycle routing, clean-room verdicts, #306 retirement, golden-path validation) |
 
 ## Proposals (Backlog)
 
