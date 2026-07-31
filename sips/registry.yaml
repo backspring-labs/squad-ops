@@ -912,8 +912,8 @@ sips:
 - sip_uid: null
   sip_number: 102
   title: Ephemeral Application Sandbox
-  path: sips/implemented/SIP-0102-Ephemeral-Application-Sandbox.md
-  status: implemented
+  path: sips/accepted/SIP-0102-Ephemeral-Application-Sandbox.md
+  status: accepted
   author: jladd
   approver: jladd
   created_at: '2026-07-08T00:00:00Z'

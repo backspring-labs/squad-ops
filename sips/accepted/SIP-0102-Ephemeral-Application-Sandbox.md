@@ -1,6 +1,6 @@
 ---
 title: Ephemeral Application Sandbox
-status: implemented
+status: accepted
 author: jladd
 created_at: '2026-07-08T00:00:00Z'
 updated_at: '2026-07-31T09:32:07.081680Z'
@@ -14,7 +14,7 @@ live-validation campaign and two second-opinion review rounds; see
 `docs/ideas/IDEA-Functional-App-Obstacles-and-Roadmap.md` v3.)*
 
 ## Status
-Implemented (v1.4.0, 2026-07-31) — S-lane headline, at the de-scoped 1.4 floor (Revision 2): 102.1–102.2 + sandbox service + post-hoc delivered-app audit (install/build/boot/HTTP contract probes). In-cycle verification wiring (102.3+) deliberately NOT included — the FAY measurement pre-registered audit-not-in-cycle; remaining phases stay open items.
+Accepted — **1.4 floor SHIPPED in v1.4.0 (2026-07-31, S-lane headline)**, SIP-0090-Phase-1 precedent: migration steps 1–2 complete (execution service + workspace provisioning + Docker adapter on `ContainerPort`; pinned canonical environment image) plus the clean-room capability as the post-hoc delivered-app audit (`scripts/dev/audit_delivered_app.py` — install/build/boot/HTTP contract probes; the FAY measurement pre-registered audit-not-in-cycle) and the doctor preflight category from step 4. **Open (the SIP stays accepted until these land)**: step 3 (route in-process exec sites — `test_runner`, `CommandExitZeroCheck`, probe runner — through typed sandbox ops), step 5 (clean-room verification at run finalization; `verified_executable`/`verified_functional` into SIP-0096 outcome derivation), step 6 (**retire the #306 qa-Node branch — "the payoff and the regression guard"**; note 1.4 moved further from this by adding Node to the dev image for #648), step 7 (golden-path live validation incl. #419 builder-seam). Target: integration steps → 1.5/1.6 per owner sequencing.
 
 **Targets:** **v1.4 headline component** (re-targeted from the 2.0 vision arc on
 2026-07-14 — see Motivating case). Together with SIP-0099

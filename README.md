@@ -69,7 +69,7 @@
 ## Documentation
 Comprehensive documentation and protocols are available in `/docs/`:
 
-- **SIPs (SquadOps Improvement Proposals)** – ~88 protocol specifications in `sips/` directory (54 implemented, 1 accepted, 13 proposed, 20 deprecated)
+- **SIPs (SquadOps Improvement Proposals)** – ~98 protocol specifications in `sips/` directory (63 implemented, 8 accepted, 20 deprecated; drafts in `sips/proposed/`)
 - **IDEA Documents** – 79 strategic ideas including Reasoning Telemetry Sharing, Squad Memory Pool, Observer Governance
 - **Architecture Documents** – Design guides for agent implementations and handoff templates
 - **Book Chapters** – 9 chapters covering methodology, implementation, and operations
@@ -187,7 +187,7 @@ See [docs/ROADMAP.md](docs/ROADMAP.md) for the full release timeline.
 - **~83,000 lines** of test code
 - **~110,000 lines** of documentation
 - **5,900+ tests** passing in regression suite
-- **~98 SIPs** (64 implemented, 7 accepted, 20 deprecated; proposals/drafts in `sips/proposed/`)
+- **~98 SIPs** (63 implemented, 8 accepted, 20 deprecated; proposals/drafts in `sips/proposed/`)
 
 ### Functional Components
 - 6 Agents: Max (Lead), Neo (Dev), Nat (Strategy), Bob (Builder), Eve (QA), Data (Analytics)
