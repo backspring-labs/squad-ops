@@ -876,30 +876,30 @@ sips:
 - sip_uid: null
   sip_number: 98
   title: Verification Contracts — Contract-Owned Acceptance Criteria
-  path: sips/accepted/SIP-0098-Verification-Contracts-Contract-Owned-Acceptance.md
-  status: accepted
+  path: sips/implemented/SIP-0098-Verification-Contracts-Contract-Owned-Acceptance.md
+  status: implemented
   author: jladd (drafted with Claude)
   approver: jladd
   created_at: '2026-07-17T00:00:00Z'
-  updated_at: '2026-07-16T21:34:29.711565Z'
+  updated_at: '2026-07-31T09:32:07.180008Z'
 - sip_uid: null
   sip_number: 99
   title: Contract-First Build Scaffolding
-  path: sips/accepted/SIP-0099-Contract-First-Build-Scaffolding.md
-  status: accepted
+  path: sips/implemented/SIP-0099-Contract-First-Build-Scaffolding.md
+  status: implemented
   author: jladd
   approver: jladd
   created_at: '2026-07-10T00:00:00Z'
-  updated_at: '2026-07-16T21:41:07.013486Z'
+  updated_at: '2026-07-31T09:32:06.990764Z'
 - sip_uid: null
   sip_number: 100
   title: Scaffolded Test Harness and Frozen-File Enforcement
-  path: sips/accepted/SIP-0100-Scaffolded-Test-Harness-and.md
-  status: accepted
+  path: sips/implemented/SIP-0100-Scaffolded-Test-Harness-and.md
+  status: implemented
   author: jladd
   approver: jladd
   created_at: '2026-07-22T00:00:00Z'
-  updated_at: '2026-07-22T21:21:48.884957Z'
+  updated_at: '2026-07-31T09:32:07.295303Z'
 - sip_uid: null
   sip_number: 101
   title: Cycle Replay Harness
@@ -917,4 +917,4 @@ sips:
   author: jladd
   approver: jladd
   created_at: '2026-07-08T00:00:00Z'
-  updated_at: '2026-07-26T17:18:28.138078Z'
+  updated_at: '2026-07-31T09:32:07.082425Z'

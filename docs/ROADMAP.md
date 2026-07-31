@@ -11,8 +11,9 @@ Semver with an **even/odd minor** overlay (parity gates *features*, not hardenin
 Version labels per the even/odd remap in `docs/plans/2-0-roadmap-reconciliation.md` (Findings 2 + 4):
 
 - **v1.3 — shipped 2026-07-08** (first stabilization minor; see Release Timeline).
-- **v1.4** — **the Verified Canonical App Build** (revised 2026-07-14): verification evidence integrity (SIP-0096) + the golden-path pair — Ephemeral Application Sandbox (**SIP-0102**, `sips/accepted/SIP-0102-Ephemeral-Application-Sandbox.md`, Lane S) + Contract-First Build Scaffolding (**SIP-0099**, Lane M). Three further SIPs were accepted into the arc after this entry was first written, all Lane M: **SIP-0098** Verification Contracts (contract-owned acceptance criteria — phases 98.1–98.4 merged, 98.5 measurement in flight), **SIP-0100** Scaffolded Test Harness and Frozen-File Enforcement (phases 0–4 merged), and **SIP-0101** Cycle Replay Harness (accepted; implementation deliberately held until the 98.5 baseline closes). Lane S implementation has not started — the sandbox SIP was accepted 2026-07-26 as **SIP-0102** (Phase-0.5 spike gate satisfied), and it is the arc's critical path. Cut gate: **≥3 consecutive** golden-benchmark runs reaching a verified functional outcome with zero manual file modification — **squad-authored-manifest mode only** (a hand-authored interface manifest is itself a manual file, so seeded-manifest runs are barred from the cut bar); the verdict is honestly `verified_executable` rather than `verified_functional` if the browser probe descopes. SIP-0091 and SIP-0090 P2 moved to 1.6. Plan: `docs/plans/1-4-evidence-arc-plan.md`; strategy: `docs/ideas/IDEA-Functional-App-Obstacles-and-Roadmap.md`.
-- **v1.6** — Campaign mechanic (objective envelope + continuation policy; `sips/proposed/SIP-Campaign-Orchestration.md`, Lane M) + Generalized Build Capability (pluginized blueprints, second stack; Lane S) + SIP-0091 duty durability + SIP-0090 Phase 2. Gated on SIP-0096 implemented + **Functional App Yield repeatably > 0** + #288 + #316.
+- **v1.4 — shipped 2026-07-31** — **the Verified Canonical App Build**: the dual-lane golden-path pair — Contract-First Build Scaffolding (**SIP-0099**, Lane M headline) + Ephemeral Application Sandbox 1.4 floor (**SIP-0102**, Lane S headline — floor shipped: sandbox service + canonical env image + post-hoc delivered-app audit; the SIP itself STAYS ACCEPTED, SIP-0090-Phase-1 precedent, until migration steps 3–7 land: in-cycle typed-op routing, clean-room verdicts at finalization, #306 qa-Node retirement, golden-path live validation) — with **SIP-0098** Verification Contracts and **SIP-0100** Scaffolded Test Harness/Frozen-File Enforcement as the arc, and three windows of fix packages as hardening. **Cut-gate supersession (owner decision 2026-07-28, executed at cut):** the original gate here ("≥3 consecutive golden-benchmark runs, squad-authored-manifest mode only") was replaced by the pre-registered **Functional App Yield** fixed-budget measurement (`docs/plans/functional-app-yield-measurement.md`) in **seeded-manifest (bind) mode** — exit number **FAY 6/6 (100%), greens 5/6, five consecutive**, on frozen deploy `9522ef4d`. What this honestly demonstrates: given a PRD **and a fully specified interface manifest**, the squad implements, verifies, and delivers a working app. **What remains unmeasured — by the original gate's own correct reasoning — is squad-authored-manifest mode; that rung moves to v1.6 as a headline.** SIP-0101 Cycle Replay Harness stays accepted (deferral condition now spent). Plan: `docs/plans/1-4-evidence-arc-plan.md`.
+- **v1.5** — stabilization (feature-free by rule): serious hardening on the 1.4 machinery. On the slate from earned evidence: executor context-assembly extraction (#663, the #186 strangler lineage), curated typed-check menu, workspace-revision unification, the qa-enforcement fork if it grows structural (#670), plus accumulated debt; scope finalized at freeze-exit per the odd-minor convention (substance gates the cut, not the clock).
+- **v1.6** — **Squad-Authored Interface Manifest** (the authorship rung moves up the ladder: from filling a given design to authoring the design from the PRD, under the same gate discipline — manifest-authoring framing task, schema + winnability gates in-cycle, manifest review gate, measured in its own FAY-style window; this IS the 1.4 gate's deferred squad-authored-manifest condition) + Campaign mechanic (objective envelope + continuation policy; `sips/proposed/SIP-Campaign-Orchestration.md`, Lane M) + Generalized Build Capability (pluginized blueprints, second stack; Lane S) + SIP-0091 duty durability + SIP-0090 Phase 2. Gated on **Functional App Yield repeatably > 0 in authored-manifest mode** + #316.
 - **v1.8** — the grading release: a **thin cycle-evaluation scorecard** — `CycleAssessment` over the `CycleOutcome` seam + benchmark registry + first-wave internal eval packs (Dev, QA, Research, Tool Executor) + a squad-vs-single-model comparison harness. Makes the SquadOps thesis *falsifiable*. Gated on SIP-0096 implemented (its `CycleOutcome` fields designed for this reader). Sliced from the over-scoped vision doc `docs/ideas/SIP-Plutarch-Experimentation-and-Cycle-Assessment-Framework-*` (retarget off its stale `v1.1` tag). Plan: `docs/plans/1-4-evidence-arc-plan.md`.
 - **v2.0** — compound on the *shipped* 1.8 scorecard: the 2.0 pillars — Capability-Backed Agents (what an agent *is*), Campaign capability-augmentation, Self-Improvement + Test Bay (the capstone). Self-improvement acts on `CycleAssessment` grades, never raw checks.
 
@@ -20,7 +21,13 @@ Each even-minor consumer sits strictly behind the release that earns its trust: 
 
 ## Release Timeline
 
-### v1.3.1 (2026-07-08) — Current — Hardening Patch
+### v1.4.0 (2026-07-31) — Current — the Verified Canonical App Build
+First dual-lane-headline feature release: **SIP-0099** Contract-First Build Scaffolding (Lane M) + the **SIP-0102** Ephemeral Application Sandbox 1.4 floor (Lane S — floor shipped, SIP stays accepted pending in-cycle integration, steps 3–7 of its migration plan), with **SIP-0098** Verification Contracts (14-criteria v9 contract, per-criterion evidence) and **SIP-0100** Scaffolded Test Harness + Frozen-File Enforcement completing the arc.
+- **Exit evidence (pre-registered):** Functional App Yield window 3 — **6/6 functional (100%), 5/6 green, five consecutive greens** (fay-15..19), unfiltered, frozen deploy `9522ef4d`, seeded-manifest mode; bar was ≥4/6. Full record: `docs/plans/functional-app-yield-measurement.md`. Cut-gate supersession + the deliberately unmeasured authored-manifest rung (→ v1.6) recorded in the version-labels entry above.
+- **Hardening riding the release** (three window fix packages): #645 plan-validator rules, #648 frontend_compiles at view acceptance, #649 builder write-authorization, #650 repair-provenance targeting, #651 contract v8 chained probes, #657 proposer context threading, #658 frozen-claim net, #659 DOM testid contract, #597 dev success evidence, #665 missing-suite repair locus — plus the #643 acceptance-workspace fix and #626 runner-owned suite-health verdicts from the window-1 deploy.
+- **Known-open ledger at cut** (filed, queued 1.4.1+): #667 repair-envelope testid threading, #668 DOM/client-contract enforcement, #669 framing re-roll context, #670 qa typed-check enforcement fork, #671 module-existence validation, #672 runtime_activities reaper, #673 duplicate expected_artifacts net; packaging determinism #598 (Stack Blueprint); machinery ruling: the #670 render-only gap is constant/pre-existing and taints no measured datum (owner-ratified at cut).
+
+### v1.3.1 (2026-07-08) — Hardening Patch
 Post-1.3.0 batch from the 2026-07-04 independent health assessment (Macbook lane while Spark offline). All fixes, no feature SIPs — patches ride either lane anytime, independent of even/odd feature parity (#281). Every runtime-affecting change live-validated before merge.
 - **#326 (security):** agent-status writes moved off the unauthenticated `/health` lane (any client could write) to `POST/PUT /api/v1/agents/status` behind `agents:write`; `/health/*` is GET-only and the middleware allowlist is method-scoped so a future `/health` write fails closed. Agents authenticate heartbeats via a new `squadops-agent` service identity (client credentials, `agent` role ⇒ `agents:write`).
 - **#288 (concurrency):** concurrent same-agent cycles no longer bypass FocusLease arbitration — a same-mode recruit from a *different* lease owner now rejects with `focus_lease_conflict` (the run defers) instead of free-riding the incumbent's lease and losing the agent mid-run.
@@ -415,12 +422,14 @@ The following areas are identified for future work but do not block 1.0 readines
 
 | SIP | Title | Target |
 |-----|-------|--------|
-| **SIP-0088** | Agent Runtime Modes (umbrella; runtime arc shipped 1.1–1.2, remaining pieces future) | — |
-| **SIP-0090** | Agent Embodiment Substrate (Phase 1 shipped 1.2.0) | Phases 2+ → v1.4+ |
-| **SIP-0091** | Duty Durability via Temporal | v1.4 |
-| **SIP-0092** | Implementation Plan Improvement — Typed Acceptance, Separated Authoring, and Plan Changes | — |
-| **SIP-0093** | Multi-Role Plan Authoring | — |
-| **SIP-0096** | Verification Evidence Integrity | v1.4 |
+| **SIP-0088** | Agent Runtime Modes (umbrella; runtime arc shipped 1.1–1.2, remaining pieces future) | audit for promotion (post-1.4) |
+| **SIP-0090** | Agent Embodiment Substrate (Phase 1 shipped 1.2.0) | Phases 2+ → v1.6 |
+| **SIP-0091** | Duty Durability via Temporal | v1.6 |
+| **SIP-0092** | Implementation Plan Improvement — Typed Acceptance, Separated Authoring, and Plan Changes | audit for promotion (M3 was pending 2026-07-01) |
+| **SIP-0093** | Multi-Role Plan Authoring | audit for promotion (runtime-complete 2026-07-01) |
+| **SIP-0096** | Verification Evidence Integrity | audit for promotion (much shipped across the 1.4 arc incl. #597) |
+| **SIP-0101** | Cycle Replay Harness | next up — deferral condition (98.5 baseline) spent at the 1.4 cut |
+| **SIP-0102** | Ephemeral Application Sandbox (1.4 floor shipped as the v1.4.0 S-lane headline) | migration steps 3–7 → 1.5/1.6 (in-cycle routing, clean-room verdicts, #306 retirement, golden-path validation) |
 
 ## Proposals (Backlog)
 
@@ -457,10 +466,10 @@ The following areas are identified for future work but do not block 1.0 readines
 
 ## Stats
 
-*As of 2026-07-08 (v1.3.1):*
+*As of 2026-07-31 (v1.4.0):*
 
-- **Framework version**: 1.3.1
-- **SIPs**: 60 implemented, 6 accepted (SIP-0088, 0090–0093, 0096), 20 deprecated (registry); 23 files in `sips/proposed/` (7 registry-tracked legacy + 15 unnumbered SIP drafts + 1 idea doc)
-- **Tests**: 4,700+ passing in the regression suite
+- **Framework version**: 1.4.0
+- **SIPs**: 63 implemented, 8 accepted (SIP-0088, 0090–0093, 0096, 0101, 0102), 20 deprecated (registry)
+- **Tests**: 5,900+ passing in the regression suite
 - **Python source**: ~61,000 lines (src + adapters; ~83,000 test lines, ~110,000 doc lines)
 - **~6 months** from initial repo (2025-09-20) to 1.0.0 release (2026-03-10)

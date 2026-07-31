@@ -1,15 +1,15 @@
 ---
 title: Contract-First Build Scaffolding
-status: accepted
+status: implemented
 author: jladd
 created_at: '2026-07-10T00:00:00Z'
 sip_number: 99
-updated_at: '2026-07-16T21:41:06.985776Z'
+updated_at: '2026-07-31T09:32:06.990122Z'
 ---
 # SIP-0099: Contract-First Build Scaffolding
 
 ## Status
-Accepted
+Implemented (v1.4.0, 2026-07-31) — M-lane headline. Expander + fill-slot machinery live-validated across FAY windows 1–3 (final: 6/6 functional on the canonical app).
 
 **Targets:** **v1.4 headline (Lane M)** per the revised 1.4 arc (2026-07-14; was: unslotted candidate). Sequenced after SIP-0096's honest-red layer lands (this SIP relies on behavioral acceptance to prove the scaffold works).
 **Acceptance gate (arc rev 2, Mac-lane review):** acceptance is gated on the

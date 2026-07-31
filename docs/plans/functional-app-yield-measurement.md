@@ -137,3 +137,55 @@ hardening. This measurement is the release's evidence section: the FAY number,
 the loss-mode census, and the machinery-defect count (which must be zero).
 The measurement does not require 102.3–102.6; it requires only what is already
 deployed plus the §7 audit script.
+
+---
+
+## 9. Results (appended at the 1.4.0 cut, 2026-07-31)
+
+Three windows ran under this protocol. Every roll unfiltered; every functional
+verdict = the §7 independent sandbox audit (install/build/boot + chained HTTP
+contract probes); every green read per-criterion.
+
+### Window 1 (fay-2..fay-9, deploy `880b1ea9`, contract v7, N=6 +2 extension)
+**FAY 5/8 (62.5%) — below the 6/8 extension bar. Greens 1/8. Zero machinery
+defects.** Diagnostic value: 5 of 7 non-greens were plan-authoring defects or
+repair-targeting gaps, not squad inability. Produced the five-item fix package
+(#645, #648, #649, #650, #651).
+
+### Window 2 (fay-10..fay-13, deploy `0689787a`, contract v8)
+**Closed early by owner decision — diagnostically complete, no cut number.**
+fay-10 machinery-tainted (#657 proposer blindness — root of the framing
+ownership-defect family), fay-11 green+functional, fay-12 functional (DOM
+channel), fay-13 post-close evidence roll (functional; missing-suite locus →
+#665). Produced the window-3 package (#657, #658, #659, #597, #665).
+
+### Window 3 (fay-14..fay-19, deploy `9522ef4d`, contract v9 `art_4f368ea08799` / manifest v4 `art_8becd104e9fc`, N=6)
+**FAY 6/6 (100%). Greens 5/6 (83%), five consecutive (fay-15..19). Bar was
+≥4/6: cleared decisively. Zero data-tainting machinery defects. THE 1.4 EXIT
+NUMBER.**
+
+| Roll | Framing | Verdict | Corrections | Audit | Score |
+|------|---------|---------|-------------|-------|-------|
+| fay-14 | first-roll pass | rejected (frontend RTL suite) | 4 | PASS | functional |
+| fay-15 | re-roll (#658: store.py) | accepted 14/14 | 1 | PASS | green + functional |
+| fay-16 | first-roll pass | accepted 14/14 | 2 | PASS | green + functional |
+| fay-17 | re-roll (qa-claims-views) | accepted 14/14 | 0 | PASS | green + functional |
+| fay-18 | re-roll (#658: api.js) | accepted 14/14 | 0 | PASS | green + functional |
+| fay-19 | re-roll (#658: App.jsx) | accepted 14/14 | 0 | PASS | green + functional |
+
+Sole non-green: the one plan shape carrying the known-unfixed DOM-anchor
+channel (fix ledger #667/#668). Three of five greens were single-pass,
+zero-correction runs.
+
+**Machinery ruling (owner-ratified at cut):** the #670 finding — authored
+typed checks on `qa.test` tasks are render-only, never evaluated — is
+constant across every window and baseline (`git log -S`: the evaluator was
+never wired into qa_test), and no measured verdict depends on those checks
+(greens rest on the 14 contract criteria + this audit). It taints no datum;
+filed as #670 with the enforcement-vs-advisory fork open.
+
+**Honest-claims note:** all three windows ran in seeded-manifest (bind) mode.
+The measured capability is *implements-and-verifies a specified interface
+contract from a PRD* — not *designs the app from a PRD*. Squad-authored
+manifest mode is deliberately unmeasured here and is the v1.6 headline (see
+ROADMAP v1.4 supersession note, owner decisions 2026-07-28 and 2026-07-31).
