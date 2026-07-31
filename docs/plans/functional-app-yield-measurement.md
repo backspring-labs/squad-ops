@@ -146,7 +146,7 @@ Three windows ran under this protocol. Every roll unfiltered; every functional
 verdict = the §7 independent sandbox audit (install/build/boot + chained HTTP
 contract probes); every green read per-criterion.
 
-### Window 1 (fay-2..fay-9, deploy `880b1a9e`-era `880b1ea9`, contract v7, N=6 +2 extension)
+### Window 1 (fay-2..fay-9, deploy `880b1ea9`, contract v7, N=6 +2 extension)
 **FAY 5/8 (62.5%) — below the 6/8 extension bar. Greens 1/8. Zero machinery
 defects.** Diagnostic value: 5 of 7 non-greens were plan-authoring defects or
 repair-targeting gaps, not squad inability. Produced the five-item fix package
