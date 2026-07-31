@@ -1,15 +1,15 @@
 ---
 title: Verification Contracts — Contract-Owned Acceptance Criteria
-status: accepted
+status: implemented
 author: jladd (drafted with Claude)
 created_at: '2026-07-17T00:00:00Z'
 sip_number: 98
-updated_at: '2026-07-16T21:34:29.685072Z'
+updated_at: '2026-07-31T09:32:07.179181Z'
 ---
 # SIP-0098: Verification Contracts — Contract-Owned Acceptance Criteria
 
 ## Status
-Accepted
+Implemented (v1.4.0, 2026-07-31). Phases 98.1–98.4 merged; the 98.5 measurement closed by the FAY windows (contract v9, 14 criteria, all live-verified per-criterion).
 
 **Targets:** v1.4 arc (Lane M), sequenced immediately after SIP-0099 (Contract-First Build Scaffolding)'s expander — this SIP extends the expander's output; the two ship as one contract surface. Implements the durable half of #465; #464's mechanical vocabulary guard remains as the universal fallback net.
 **Builds on:** SIP-0092 (typed acceptance vocabulary + `TypedCheck`), SIP-0096 (verification evidence integrity), the #419/#420 typed-acceptance seam, the Phase-0.5 fill-only spike (attempts 3.5–3.14, the evidence base below).

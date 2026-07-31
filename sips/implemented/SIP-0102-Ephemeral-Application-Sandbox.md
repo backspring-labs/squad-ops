@@ -1,9 +1,9 @@
 ---
 title: Ephemeral Application Sandbox
-status: accepted
+status: implemented
 author: jladd
 created_at: '2026-07-08T00:00:00Z'
-updated_at: '2026-07-26T17:18:28.110454Z'
+updated_at: '2026-07-31T09:32:07.081680Z'
 sip_number: 102
 ---
 # SIP: Ephemeral Application Sandbox
@@ -14,7 +14,7 @@ live-validation campaign and two second-opinion review rounds; see
 `docs/ideas/IDEA-Functional-App-Obstacles-and-Roadmap.md` v3.)*
 
 ## Status
-Accepted (2026-07-26)
+Implemented (v1.4.0, 2026-07-31) — S-lane headline, at the de-scoped 1.4 floor (Revision 2): 102.1–102.2 + sandbox service + post-hoc delivered-app audit (install/build/boot/HTTP contract probes). In-cycle verification wiring (102.3+) deliberately NOT included — the FAY measurement pre-registered audit-not-in-cycle; remaining phases stay open items.
 
 **Targets:** **v1.4 headline component** (re-targeted from the 2.0 vision arc on
 2026-07-14 — see Motivating case). Together with SIP-0099
