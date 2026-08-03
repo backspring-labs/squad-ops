@@ -21,7 +21,12 @@ Each even-minor consumer sits strictly behind the release that earns its trust: 
 
 ## Release Timeline
 
-### v1.4.0 (2026-07-31) — Current — the Verified Canonical App Build
+### v1.4.1 (2026-08-03) — Current — Hardening Patch (the 1.4 known-open ledger)
+The five hash-stable fixes filed at the 1.4.0 cut, one PR per issue: **#672** runtime_activities reaper (PR #676 — startup + finalize sweeps through the abort choke point), **#671** module-existence validation (PR #677 — closed-surface proof; entry_modules exempt by design), **#673** duplicate expected_artifacts net (PR #678 — first plan-wide cross-task rule), **#667** repair-envelope testid threading (PR #679 — surface re-derived from the manifest at repair-input construction), **#669** framing re-roll rejection context (PR #680 — re-rolls revise instead of re-dicing; `framing_max_rerolls` becomes a revision budget). Contract v9 / manifest v4 unchanged (hash-stable by construction); #668/#670 deliberately out (next window).
+- **Deploy verification**: startup reap ended exactly the 4 stranded activity rows; in-container replay of the real fay-16..19 plans against contract v9 (trip/clean exactly as pinned); loaded-module checks across runtime-api + all four authoring agents.
+- **Confirmation (unscored shakedowns by pre-declaration)**: **shk-1 green** — framing-1 authored a real dual-claim, #673 auto-rejected it (live true positive), #669 threaded the rejection into a surgically-revised re-roll (tasks identical except the flagged claim), implementation cleared all 14 criteria with zero corrections; full-cycle #672 silence; leases/activities clean. **shk-2** fired #667's trigger live (repair envelopes built by the new path), then surfaced a **pre-existing** correction-chain loss mode diagnosed to root cause (unimported symbol → call-time NameError → 500; analyzer guessed causes without the traceback, repairs mis-aimed at drift-named files) — filed **#687/#688/#689**, cycle cancelled after confirmation evidence was complete (recorded rationale; zero defects in the five fixes under test).
+
+### v1.4.0 (2026-07-31) — the Verified Canonical App Build
 First dual-lane-headline feature release: **SIP-0099** Contract-First Build Scaffolding (Lane M) + the **SIP-0102** Ephemeral Application Sandbox 1.4 floor (Lane S — floor shipped, SIP stays accepted pending in-cycle integration, steps 3–7 of its migration plan), with **SIP-0098** Verification Contracts (14-criteria v9 contract, per-criterion evidence) and **SIP-0100** Scaffolded Test Harness + Frozen-File Enforcement completing the arc.
 - **Exit evidence (pre-registered):** Functional App Yield window 3 — **6/6 functional (100%), 5/6 green, five consecutive greens** (fay-15..19), unfiltered, frozen deploy `9522ef4d`, seeded-manifest mode; bar was ≥4/6. Full record: `docs/plans/functional-app-yield-measurement.md`. Cut-gate supersession + the deliberately unmeasured authored-manifest rung (→ v1.6) recorded in the version-labels entry above.
 - **Hardening riding the release** (three window fix packages): #645 plan-validator rules, #648 frontend_compiles at view acceptance, #649 builder write-authorization, #650 repair-provenance targeting, #651 contract v8 chained probes, #657 proposer context threading, #658 frozen-claim net, #659 DOM testid contract, #597 dev success evidence, #665 missing-suite repair locus — plus the #643 acceptance-workspace fix and #626 runner-owned suite-health verdicts from the window-1 deploy.
@@ -422,12 +427,12 @@ The following areas are identified for future work but do not block 1.0 readines
 
 | SIP | Title | Target |
 |-----|-------|--------|
-| **SIP-0088** | Agent Runtime Modes (umbrella; runtime arc shipped 1.1–1.2, remaining pieces future) | audit for promotion (post-1.4) |
+| **SIP-0088** | Agent Runtime Modes (umbrella; runtime arc shipped 1.1–1.2, remaining pieces future) | stays accepted (audited 2026-08-03: children 0090 P2–4 / 0091 open, → v1.6) |
 | **SIP-0090** | Agent Embodiment Substrate (Phase 1 shipped 1.2.0) | Phases 2+ → v1.6 |
 | **SIP-0091** | Duty Durability via Temporal | v1.6 |
-| **SIP-0092** | Implementation Plan Improvement — Typed Acceptance, Separated Authoring, and Plan Changes | audit for promotion (M3 was pending 2026-07-01) |
-| **SIP-0093** | Multi-Role Plan Authoring | audit for promotion (runtime-complete 2026-07-01) |
-| **SIP-0096** | Verification Evidence Integrity | audit for promotion (much shipped across the 1.4 arc incl. #597) |
+| **SIP-0092** | Implementation Plan Improvement — Typed Acceptance, Separated Authoring, and Plan Changes | stays accepted (audited 2026-08-03: M1 landed, M2 partial on 93.4, M3 unstarted; `docs/plans/sip-promotion-audit-2026-08-03.md`) |
+| **SIP-0093** | Multi-Role Plan Authoring | stays accepted (audited 2026-08-03: runtime-complete; 93.4 + §5.8 merge rules 2–5 + two required tests remain) |
+| **SIP-0096** | Verification Evidence Integrity | stays accepted (audited 2026-08-03: core live-proven; #682 #683 #684 #423 remain — gates the v1.8 scorecard) |
 | **SIP-0101** | Cycle Replay Harness | next up — deferral condition (98.5 baseline) spent at the 1.4 cut |
 | **SIP-0102** | Ephemeral Application Sandbox (1.4 floor shipped as the v1.4.0 S-lane headline) | migration steps 3–7 → v1.6 S-lane rider (in-cycle routing, clean-room verdicts, #306 retirement, golden-path validation; kept out of 1.5 to keep the odd minor feature-free) |
 
@@ -468,9 +473,9 @@ The following areas are identified for future work but do not block 1.0 readines
 
 ## Stats
 
-*As of 2026-07-31 (v1.4.0):*
+*As of 2026-08-03 (v1.4.1):*
 
-- **Framework version**: 1.4.0
+- **Framework version**: 1.4.1
 - **SIPs**: 63 implemented, 8 accepted (SIP-0088, 0090–0093, 0096, 0101, 0102), 20 deprecated (registry)
 - **Tests**: 5,900+ passing in the regression suite
 - **Python source**: ~61,000 lines (src + adapters; ~83,000 test lines, ~110,000 doc lines)

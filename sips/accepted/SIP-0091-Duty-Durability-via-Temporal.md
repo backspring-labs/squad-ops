@@ -12,7 +12,7 @@ updated_at: '2026-04-25T17:57:14.005001Z'
 **Authors:** Jason Ladd
 **Created:** 2026-04-25
 **Revision:** 2 (incorporated review feedback on 2026-04-25)
-**Targets:** v1.4 (feature minor — headline alongside SIP-0096; remapped from the stale v1.3 self-tag, which predated the even/odd convention #281 under which 1.3 is feature-free stabilization — see `docs/plans/2-0-roadmap-reconciliation.md` Finding 4, #335)
+**Targets:** v1.6 (rider on the Authorship release — moved off v1.4 by the 2026-07-14 arc reconciliation (`docs/plans/1-4-evidence-arc-plan.md`) when 1.4 became the golden-path dual-headline release; reconfirmed by `docs/plans/post-1-4-roadmap-reconciliation.md`. Earlier remapped from the stale v1.3 self-tag, which predated the even/odd convention #281 — see `docs/plans/2-0-roadmap-reconciliation.md` Finding 4, #335)
 **Depends on:** `sips/accepted/SIP-0089-Agent-Runtime-State.md` (v1.1) — must land first
 **Parent vision:** `sips/accepted/SIP-0088-Agent-Runtime-Modes.md` (umbrella index)
 **Sibling:** `sips/accepted/SIP-0090-Agent-Embodiment-Substrate.md` (v1.2)
