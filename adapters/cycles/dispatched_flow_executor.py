@@ -2756,6 +2756,11 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     # rejection would end the cycle (#522).
                     errors.extend(parsed_plan.validate_command_checks())
                     errors.extend(parsed_plan.validate_expected_artifact_shapes())
+                    # #673: a dual-claimed expected artifact aliases two tasks
+                    # onto one file's fate (repair mis-scoping, last-wins
+                    # emission) — provable plan-wide right here, and a system
+                    # rejection re-rolls framing for free (#522).
+                    errors.extend(parsed_plan.validate_unique_expected_artifacts())
             elif ref.filename == "interface_manifest.yaml" or artifact_type == "interface_manifest":
                 interface_content = content_bytes.decode(errors="replace")
 

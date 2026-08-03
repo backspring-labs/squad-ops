@@ -456,6 +456,48 @@ class ImplementationPlan:
                     )
         return errors
 
+    def validate_unique_expected_artifacts(self) -> list[str]:
+        """#673: an artifact path may appear in only one task's ``expected_artifacts``.
+
+        Expected artifacts are load-bearing task identity — they drive write
+        authorization, repair scoping (#650) and missing-artifact locus routing
+        (#665) — so a dual claim quietly aliases two tasks onto one file's fate:
+        a failing non-producing claimant aims its repair at a file another task
+        owns, and if both produce, last-wins ordering silently decides whose
+        emission ships (the #389 class fay-14's repair chain replayed).
+
+        fay-18's approved framing-2 plan carried the shape live: qa task 5
+        declared dev task 4's ``backend/tests/test_runs.py`` with an explicit
+        do-not-produce instruction. The dice were kind (zero corrections); the
+        hazard rode anyway. There is no legitimate dual-claim the artifact-less
+        form doesn't cover, so no warn tier — the legal shape for a
+        verification-only task is ``expected_artifacts: []`` plus
+        ``criteria_refs`` (the fay-13 framing-2 receipt).
+
+        Plan-wide cross-task pass — the first of its kind in this family; the
+        per-task rules above stay per-task. A path repeated *within* one task
+        is a benign echo, not a claim conflict, and is not reported here.
+        """
+        claimants: dict[str, list[PlanTask]] = {}
+        for task in self.tasks:
+            seen_in_task: set[str] = set()
+            for name in task.expected_artifacts:
+                if not isinstance(name, str) or name in seen_in_task:
+                    continue
+                seen_in_task.add(name)
+                claimants.setdefault(name, []).append(task)
+
+        return [
+            f"Tasks {' and '.join(f'{t.task_index} ({t.focus})' for t in tasks)} both declare "
+            f"expected artifact {name!r} — expected artifacts are load-bearing task identity "
+            f"(write authorization, repair scoping, missing-artifact routing), so a dual claim "
+            f"aims repairs at another task's file and lets last-wins ordering decide whose "
+            f"emission ships. Exactly one task owns each file; a verification-only task "
+            f"declares expected_artifacts: [] and binds acceptance via criteria_refs"
+            for name, tasks in claimants.items()
+            if len(tasks) > 1
+        ]
+
     def lint_prose_contract_conflicts(self, contract: VerificationContract) -> list[str]:
         """pf-31 Fix A3: WARNING-only lint for prose that contradicts bound criteria.
 

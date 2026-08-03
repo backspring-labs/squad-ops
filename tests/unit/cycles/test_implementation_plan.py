@@ -1064,6 +1064,104 @@ class TestValidateModuleExistence:
         )
 
 
+class TestValidateUniqueExpectedArtifacts:
+    """#673: an artifact path may appear in only one task's expected_artifacts.
+
+    fay-18's approved framing-2 plan (cyc_42c44ad3af91) carried the live shape:
+    qa task 5 declared dev task 4's ``backend/tests/test_runs.py`` with an
+    explicit do-not-produce instruction. Benign that roll by luck — but a
+    failing non-producing claimant aims its repair at another task's file, and
+    dual producers hand the shipped suite to last-wins ordering (the #389
+    class). A regression here means that exact plan would be admitted again.
+    """
+
+    _fay_plan = staticmethod(TestValidateModuleExistence._fay_plan)
+
+    @staticmethod
+    def _plan_with_artifacts(*artifact_lists: list[str]) -> ImplementationPlan:
+        tasks = []
+        for i, artifacts in enumerate(artifact_lists):
+            entries = "".join(f'      - "{a}"\n' for a in artifacts)
+            tasks.append(
+                f"  - task_index: {i}\n"
+                "    task_type: development.develop\n"
+                "    role: dev\n"
+                f'    focus: "Task {i}"\n'
+                '    description: "build the thing"\n'
+                + (
+                    f"    expected_artifacts:\n{entries}"
+                    if artifacts
+                    else "    expected_artifacts: []\n"
+                )
+                + "    depends_on: []\n"
+            )
+        return ImplementationPlan.from_yaml(
+            "version: 1\n"
+            "project_id: group_run\n"
+            "cycle_id: cyc_test\n"
+            "prd_hash: abc123\n"
+            "tasks:\n" + "".join(tasks) + "summary:\n"
+            f"  total_dev_tasks: {len(artifact_lists)}\n"
+            "  total_qa_tasks: 0\n"
+            f"  total_tasks: {len(artifact_lists)}\n"
+            "  estimated_layers: []\n"
+        )
+
+    def test_fay18_stored_plan_trips_on_the_dual_claim(self):
+        """Stored-artifact replay: the real fay-18 framing-2 plan must reject,
+        solely on tasks 4/5 both claiming the backend test suite."""
+        errors = self._fay_plan(
+            "fay18_framing2_implementation_plan.yaml"
+        ).validate_unique_expected_artifacts()
+
+        assert len(errors) == 1
+        assert "Tasks 4 (Backend test suite) and 5" in errors[0]
+        assert "'backend/tests/test_runs.py'" in errors[0]
+        assert "criteria_refs" in errors[0]
+
+    def test_fay19_clean_stored_plan_passes(self):
+        """Stored-artifact replay: the window's cleanest accepted plan has
+        disjoint artifact sets and must pass untouched."""
+        assert (
+            self._fay_plan(
+                "fay19_framing2_implementation_plan.yaml"
+            ).validate_unique_expected_artifacts()
+            == []
+        )
+
+    def test_disjoint_artifacts_pass(self):
+        assert (
+            self._plan_with_artifacts(
+                ["backend/routes.py"], ["backend/tests/test_api.py"], []
+            ).validate_unique_expected_artifacts()
+            == []
+        )
+
+    def test_three_way_claim_reports_one_error_naming_every_claimant(self):
+        """One duplicated path is one defect — three claimants must not produce
+        three rejection lines, and every claimant must be named so the re-roll
+        knows which tasks to untangle."""
+        errors = self._plan_with_artifacts(
+            ["backend/tests/test_api.py"],
+            ["backend/tests/test_api.py"],
+            ["backend/tests/test_api.py"],
+        ).validate_unique_expected_artifacts()
+
+        assert len(errors) == 1
+        assert "0 (Task 0) and 1 (Task 1) and 2 (Task 2)" in errors[0]
+
+    def test_repeat_within_a_single_task_is_not_a_claim_conflict(self):
+        """Scope pin: a path listed twice in ONE task's expected_artifacts is a
+        benign echo (presence-checking is set-shaped), not a cross-task claim —
+        flagging it would reject plans over a formatting slip."""
+        assert (
+            self._plan_with_artifacts(
+                ["backend/routes.py", "backend/routes.py"]
+            ).validate_unique_expected_artifacts()
+            == []
+        )
+
+
 # ---------------------------------------------------------------------------
 # #645: command-check executability + expected-artifact shape (FAY window)
 # ---------------------------------------------------------------------------

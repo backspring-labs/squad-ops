@@ -858,6 +858,14 @@ def _replace_build_steps_with_plan(
     shape_errors = plan.validate_expected_artifact_shapes()
     if shape_errors:
         raise CycleError("Plan validation failed (expected artifacts): " + "; ".join(shape_errors))
+    # #673: two tasks claiming the same expected artifact alias themselves onto
+    # one file's fate — repairs mis-scope and last-wins ordering decides whose
+    # emission ships (fay-18's dual-claimed test suite).
+    duplicate_errors = plan.validate_unique_expected_artifacts()
+    if duplicate_errors:
+        raise CycleError(
+            "Plan validation failed (duplicate expected artifacts): " + "; ".join(duplicate_errors)
+        )
 
     # SIP-0098 98.3 bind-mode dispatch net: when a contract is seeded, the plan
     # must bind the contract's covered-file criteria by id rather than author
