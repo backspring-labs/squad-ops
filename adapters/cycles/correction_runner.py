@@ -853,7 +853,10 @@ class CorrectionRunner:
         # the SUBJECT and would point a test re-author at app source files).
         repair_artifacts: list[dict[str, Any]] = []
         if correction_path == "patch":
+            from squadops.capabilities.scaffold import testid_surface_instructions
+
             failed_inputs = envelope.inputs or {}
+            testid_lines = testid_surface_instructions(interface_manifest)
             (
                 failure_locus,
                 repair_expected_artifacts,
@@ -897,6 +900,17 @@ class CorrectionRunner:
                     "expected_artifacts": repair_expected_artifacts,
                     "acceptance_criteria": failed_inputs.get("acceptance_criteria", []),
                 }
+                # #667: the anchor surface must survive the correction loop —
+                # fay-14's first fill complied with the manifest convention and
+                # every repair regenerated the view blind, stripping the anchors.
+                # Re-derived from the manifest (same deriver as initial dispatch)
+                # rather than copied from the failed envelope: the dev repair
+                # chain is routinely reached from a failed qa.test task (SUBJECT
+                # locus), whose envelope carries only the qa-keyed variant. Both
+                # keys ride every repair envelope; each handler reads its own.
+                if testid_lines:
+                    repair_inputs["testid_surface"] = testid_lines
+                    repair_inputs["dom_testid_surface"] = testid_lines
 
                 repair_envelope = TaskEnvelope(
                     task_id=repair_task_id,
@@ -1054,6 +1068,12 @@ class CorrectionRunner:
             retest_inputs["acceptance_workspace_files"] = failed_inputs[
                 "acceptance_workspace_files"
             ]
+        # #667: the retest re-dispatches qa.test, which re-authors the suite
+        # from scratch (the fay-6 new-dice path) — without the anchor surface
+        # the retest author works blind to the DOM contract the original
+        # dispatch carried. Presence-keyed like the probes above.
+        if failed_inputs.get("dom_testid_surface"):
+            retest_inputs["dom_testid_surface"] = failed_inputs["dom_testid_surface"]
 
         retest_envelope = TaskEnvelope(
             task_id=f"retest-{run_id[:12]}-{correction_attempts:02d}-{envelope.task_type}",

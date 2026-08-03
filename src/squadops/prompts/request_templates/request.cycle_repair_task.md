@@ -1,6 +1,6 @@
 ---
 template_id: request.cycle_repair_task
-version: "1"
+version: "2"
 required_variables:
   - prd
   - role
@@ -15,12 +15,14 @@ optional_variables:
   - prior_outputs
   - fill_only_section
   - contract_expectations
+  - dom_anchor_section
 ---
 ## Repair Task
 
 You are repairing a failed `{{failed_task_type}}` task. Your job is to re-produce the named output artifact(s) below so they satisfy the acceptance criteria. Do not rewrite the PRD, do not produce a status tracker, do not emit a generic narrative document.
 {{fill_only_section}}
 {{contract_expectations}}
+{{dom_anchor_section}}
 
 ### Failed Task Contract
 

@@ -1781,6 +1781,127 @@ class TestCorrectionRunnerStandalone:
         assert len(captured) == 1
         assert captured[0].inputs["resolved_config"] == {}
 
+    async def test_repair_envelope_carries_the_anchor_surface_from_the_manifest(self, cycle):
+        """#667 / fay-14 (cyc_42eed09efbec): neo's FIRST fill of RunDetailView
+        honored the manifest anchor convention (art_5ece1244ce22); four repair
+        rounds later the accepted view (art_b5890e085e63) carried none of it —
+        every repair envelope lacked the anchor surface. The fay-14 shape is
+        cross-chain: the FAILED task is qa.test (suite failed → SUBJECT locus →
+        dev repair), whose envelope carries only the qa-keyed variant — so the
+        surface must be re-derived from the manifest, not copied by key. Both
+        keys ride the repair envelope; each handler reads its own."""
+        import dataclasses as _dc
+        from pathlib import Path
+
+        from squadops.capabilities.scaffold import (
+            InterfaceManifest,
+            testid_surface_instructions,
+        )
+
+        captured: list = []
+
+        def responder(envelope):
+            if envelope.task_type == "governance.correction_decision":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={
+                        "correction_path": "patch",
+                        "decision_rationale": "patchable",
+                        "affected_task_types": ["development.develop"],
+                    },
+                )
+            if envelope.task_type == "development.correction_repair":
+                captured.append(envelope)
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={"artifacts": [], "summary": "repaired"},
+                )
+            return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs={})
+
+        manifest = InterfaceManifest.from_yaml(
+            (
+                Path(__file__).parents[3] / "examples" / "03_group_run" / "interface_manifest.yaml"
+            ).read_text()
+        )
+        expected_lines = testid_surface_instructions(manifest)
+        assert expected_lines, "fixture manifest must declare testids"
+
+        runner, _registry, _vault, _bus = self._make_runner(responder)
+        failed = _dc.replace(
+            self._failed_envelope(),
+            task_type="qa.test",
+            inputs={"dom_testid_surface": expected_lines},
+        )
+
+        await runner.run_correction_protocol(
+            run_id="run_001",
+            cycle=cycle,
+            envelope=failed,
+            result=TaskResult(task_id="task_failed", status="FAILED", error="suite failed"),
+            correction_attempts=0,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+            interface_manifest=manifest,
+        )
+
+        assert len(captured) == 1
+        assert captured[0].inputs["testid_surface"] == expected_lines
+        assert captured[0].inputs["dom_testid_surface"] == expected_lines
+        assert any("run-detail" in line for line in captured[0].inputs["testid_surface"])
+
+    async def test_no_manifest_threads_no_anchor_keys(self, cycle):
+        """Boundary: a manifest-less correction (author mode, non-scaffold
+        stacks) must not grow anchor keys — the deriver returns [] and the
+        presence-keyed threading stays silent."""
+        import dataclasses as _dc
+
+        captured: list = []
+
+        def responder(envelope):
+            if envelope.task_type == "governance.correction_decision":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={
+                        "correction_path": "patch",
+                        "decision_rationale": "patchable",
+                        "affected_task_types": ["development.develop"],
+                    },
+                )
+            if envelope.task_type == "development.correction_repair":
+                captured.append(envelope)
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={"artifacts": [], "summary": "repaired"},
+                )
+            return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs={})
+
+        runner, _registry, _vault, _bus = self._make_runner(responder)
+        failed = _dc.replace(self._failed_envelope(), task_type="development.develop")
+
+        await runner.run_correction_protocol(
+            run_id="run_001",
+            cycle=cycle,
+            envelope=failed,
+            result=TaskResult(task_id="task_failed", status="FAILED", error="bad"),
+            correction_attempts=0,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+        )
+
+        assert len(captured) == 1
+        assert "testid_surface" not in captured[0].inputs
+        assert "dom_testid_surface" not in captured[0].inputs
+
     async def test_repair_frozen_emission_restored_and_signaled(self, cycle):
         """SIP-0100 3.4b (pf-27/pf-30 regression): a repair emitting a scaffold-frozen
         path has its content RESTORED before any landing point — the registry store
@@ -2829,6 +2950,63 @@ class TestRetestProbeThreading:
         )
         (env,) = dispatcher.dispatched
         assert "contract_probes" not in env.inputs
+
+
+class TestRetestAnchorThreading:
+    """#667: the retest re-dispatches qa.test, which re-authors the suite from
+    scratch (the fay-6 new-dice path) — without dom_testid_surface the retest
+    author is blind to the DOM anchor contract the original dispatch carried,
+    and the re-authored suite asserts invented render details (fay-14's four
+    churn rounds)."""
+
+    _make_runner = TestReexecuteRepairedSuite._make_runner
+    _cycle = TestReexecuteRepairedSuite._cycle
+    _profile = TestReexecuteRepairedSuite._profile
+    _state_kwargs = TestReexecuteRepairedSuite._state_kwargs
+    _failed_qa_envelope = TestReexecuteRepairedSuite._failed_qa_envelope
+
+    async def test_dom_testid_surface_threads_into_the_retest_envelope(self):
+        from squadops.tasks.models import TaskResult
+
+        runner, dispatcher = self._make_runner(
+            lambda env: TaskResult(task_id=env.task_id, status="SUCCEEDED", outputs={})
+        )
+        envelope = self._failed_qa_envelope()
+        lines = [
+            "`RunDetailView` (route `/runs/:id`): root container `run-detail`; "
+            "anchors: `run-detail`, `participant-list`"
+        ]
+        envelope.inputs["dom_testid_surface"] = lines
+
+        await runner.reexecute_repaired_suite(
+            "run_001",
+            self._cycle(),
+            envelope,
+            [{"name": "tests/test_api.py", "content": "repaired", "type": "test"}],
+            0,
+            profile=self._profile(),
+            **self._state_kwargs(),
+        )
+        (env,) = dispatcher.dispatched
+        assert env.inputs["dom_testid_surface"] == lines
+
+    async def test_anchor_less_envelope_threads_no_key(self):
+        from squadops.tasks.models import TaskResult
+
+        runner, dispatcher = self._make_runner(
+            lambda env: TaskResult(task_id=env.task_id, status="SUCCEEDED", outputs={})
+        )
+        await runner.reexecute_repaired_suite(
+            "run_001",
+            self._cycle(),
+            self._failed_qa_envelope(),
+            [{"name": "tests/test_api.py", "content": "repaired", "type": "test"}],
+            0,
+            profile=self._profile(),
+            **self._state_kwargs(),
+        )
+        (env,) = dispatcher.dispatched
+        assert "dom_testid_surface" not in env.inputs
 
 
 class TestRetestWorkspaceThreading:

@@ -107,3 +107,35 @@ def test_repair_template_declares_and_uses_fill_only_section():
     text = _TEMPLATE.read_text(encoding="utf-8")
     assert "- fill_only_section" in text  # declared optional var
     assert "{{fill_only_section}}" in text  # placed in the body
+
+
+async def test_testid_lines_reach_the_repair_fill_only_appendix():
+    """#667 / fay-14: the appendix's {{testid_surface}} slot rendered empty on
+    every repair — neo's first fill honored the manifest anchors
+    (art_5ece1244ce22), four repair rounds stripped them (art_b5890e085e63).
+    Threaded lines must render through the same testid appendix the initial
+    author gets, and land in the fill-only render's variables."""
+    handler = DevelopmentCorrectionRepairHandler()
+    renderer = AsyncMock()
+    renderer.render.side_effect = lambda template_id, variables: MagicMock(
+        content=f"RENDERED:{template_id}"
+    )
+    inputs = {
+        "resolved_config": {"build_profile": "fullstack_fastapi_react"},
+        "testid_surface": [
+            "`RunDetailView` (route `/runs/:id`): root container `run-detail`; "
+            "anchors: `run-detail`, `participant-list`"
+        ],
+    }
+
+    out = await handler._render_fill_only_section(_context(renderer), inputs)
+
+    calls = {c.args[0]: c.args[1] for c in renderer.render.await_args_list}
+    testid_vars = calls["request.development_develop_testid_surface_appendix"]
+    assert testid_vars["testid_lines"].startswith("- `RunDetailView`")
+    fill_vars = calls["request.development_develop_fill_only_appendix"]
+    assert (
+        fill_vars["testid_surface"]
+        == "RENDERED:request.development_develop_testid_surface_appendix"
+    )
+    assert out == "RENDERED:request.development_develop_fill_only_appendix"
