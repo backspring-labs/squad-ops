@@ -787,6 +787,43 @@ def _attach_unbound_contract_criteria(
     tail_qa.inputs["acceptance_criteria"] = existing
 
 
+def _validate_plan_against_contract(plan: ImplementationPlan, contract: VerificationContract):
+    """Bind-mode dispatch nets: every contract-gated plan validator, raising
+    ``CycleError`` on the first failing category (same backstop contract as the
+    contract-free nets in ``_replace_build_steps_with_plan``)."""
+    ref_errors = plan.validate_criteria_refs(contract)
+    if ref_errors:
+        raise CycleError("Plan validation failed (contract binding): " + "; ".join(ref_errors))
+    # pf-39: a qa.test task declaring scaffold-/dev-owned files as its expected
+    # artifacts is unsatisfiable (write authorization refuses the emission) and
+    # misdirects any repair scoped to it. Same referent as write authorization,
+    # applied at authoring time.
+    ownership_errors = plan.validate_qa_artifact_ownership(contract)
+    if ownership_errors:
+        raise CycleError(
+            "Plan validation failed (qa artifact ownership): " + "; ".join(ownership_errors)
+        )
+    # #658: the same referent for every other role — frozen files are
+    # claimable by nobody (fay-12's dev task on the frozen api.js slipped
+    # between the qa net and the typed-criteria frozen rule).
+    frozen_ownership_errors = plan.validate_frozen_artifact_ownership(contract)
+    if frozen_ownership_errors:
+        raise CycleError(
+            "Plan validation failed (frozen artifact ownership): "
+            + "; ".join(frozen_ownership_errors)
+        )
+    # #671: an import_present requiring a module the scaffold surface cannot
+    # provide (fay-17's app.routes) is unwinnable by construction — the
+    # surface is closed, so absence is provable at authoring time.
+    module_errors = plan.validate_module_existence(contract)
+    if module_errors:
+        raise CycleError("Plan validation failed (module existence): " + "; ".join(module_errors))
+    # pf-31 Fix A3: warning-only prose-vs-contract conflict lint, surfaced for
+    # the gate reviewer (never a rejection — reverted-#552 lesson).
+    for warning in plan.lint_prose_contract_conflicts(contract):
+        logger.warning("Plan prose/contract conflict: %s", warning)
+
+
 def _replace_build_steps_with_plan(
     steps: list,
     plan: ImplementationPlan,
@@ -821,37 +858,21 @@ def _replace_build_steps_with_plan(
     shape_errors = plan.validate_expected_artifact_shapes()
     if shape_errors:
         raise CycleError("Plan validation failed (expected artifacts): " + "; ".join(shape_errors))
+    # #673: two tasks claiming the same expected artifact alias themselves onto
+    # one file's fate — repairs mis-scope and last-wins ordering decides whose
+    # emission ships (fay-18's dual-claimed test suite).
+    duplicate_errors = plan.validate_unique_expected_artifacts()
+    if duplicate_errors:
+        raise CycleError(
+            "Plan validation failed (duplicate expected artifacts): " + "; ".join(duplicate_errors)
+        )
 
     # SIP-0098 98.3 bind-mode dispatch net: when a contract is seeded, the plan
     # must bind the contract's covered-file criteria by id rather than author
     # them. This is the raising backstop; the gate-time net records the graceful
     # #473 rejection first. Contract absent = author mode = no-op.
     if contract is not None:
-        ref_errors = plan.validate_criteria_refs(contract)
-        if ref_errors:
-            raise CycleError("Plan validation failed (contract binding): " + "; ".join(ref_errors))
-        # pf-39: a qa.test task declaring scaffold-/dev-owned files as its expected
-        # artifacts is unsatisfiable (write authorization refuses the emission) and
-        # misdirects any repair scoped to it. Same referent as write authorization,
-        # applied at authoring time.
-        ownership_errors = plan.validate_qa_artifact_ownership(contract)
-        if ownership_errors:
-            raise CycleError(
-                "Plan validation failed (qa artifact ownership): " + "; ".join(ownership_errors)
-            )
-        # #658: the same referent for every other role — frozen files are
-        # claimable by nobody (fay-12's dev task on the frozen api.js slipped
-        # between the qa net and the typed-criteria frozen rule).
-        frozen_ownership_errors = plan.validate_frozen_artifact_ownership(contract)
-        if frozen_ownership_errors:
-            raise CycleError(
-                "Plan validation failed (frozen artifact ownership): "
-                + "; ".join(frozen_ownership_errors)
-            )
-        # pf-31 Fix A3: warning-only prose-vs-contract conflict lint, surfaced for
-        # the gate reviewer (never a rejection — reverted-#552 lesson).
-        for warning in plan.lint_prose_contract_conflicts(contract):
-            logger.warning("Plan prose/contract conflict: %s", warning)
+        _validate_plan_against_contract(plan, contract)
 
     # Remove static build steps, keep everything else (planning steps)
     static_build_types = {s[0] for s in BUILD_TASK_STEPS} | {

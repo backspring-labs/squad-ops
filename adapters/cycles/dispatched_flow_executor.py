@@ -2756,6 +2756,11 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     # rejection would end the cycle (#522).
                     errors.extend(parsed_plan.validate_command_checks())
                     errors.extend(parsed_plan.validate_expected_artifact_shapes())
+                    # #673: a dual-claimed expected artifact aliases two tasks
+                    # onto one file's fate (repair mis-scoping, last-wins
+                    # emission) — provable plan-wide right here, and a system
+                    # rejection re-rolls framing for free (#522).
+                    errors.extend(parsed_plan.validate_unique_expected_artifacts())
             elif ref.filename == "interface_manifest.yaml" or artifact_type == "interface_manifest":
                 interface_content = content_bytes.decode(errors="replace")
 
@@ -2828,6 +2833,15 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     errors.extend(
                         f"verification_contract: {e}"
                         for e in parsed_plan.validate_frozen_artifact_ownership(contract)
+                    )
+                    # #671: import_present against a module the closed scaffold
+                    # surface cannot provide is provably unwinnable here, in
+                    # microseconds — a system rejection re-rolls framing for
+                    # free where the doomed roll would burn its correction
+                    # budget (#522).
+                    errors.extend(
+                        f"verification_contract: {e}"
+                        for e in parsed_plan.validate_module_existence(contract)
                     )
                     # pf-42: a typed check aimed at a frozen file is decidable right
                     # now — the skeleton those files will contain is deterministic.

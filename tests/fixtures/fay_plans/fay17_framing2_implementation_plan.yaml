@@ -1,0 +1,160 @@
+version: 1
+project_id: group_run
+cycle_id: cyc_e175cae83a6f
+prd_hash: 9903beaa1e21faf202bbf185e6dca69d51d185bb3670843dc859646afc158894
+tasks:
+- task_index: 0
+  task_type: development.develop
+  role: dev
+  focus: Implement backend API routes
+  description: 'Fill backend/routes.py with all required endpoints: POST /runs, GET
+    /runs, GET /runs/{id}, POST /runs/{id}/join, POST /runs/{id}/leave.
+
+    Integrate with frozen store.py (run_event_store, participant_store) and models.py.
+
+    Enforce required-field validation (422), case-insensitive duplicate participant
+    prevention, and proper error responses via frozen errors.py.
+
+    Ensure endpoints match the interface manifest contract.'
+  expected_artifacts:
+  - backend/routes.py
+  acceptance_criteria:
+  - All five endpoints respond correctly with valid JSON per contract.
+  - POST /runs rejects empty required fields with 422 status.
+  - POST /runs/{id}/join enforces case-insensitive name uniqueness.
+  - Unknown run IDs return clear error responses.
+  depends_on: []
+  criteria_refs:
+  - vc-routes-endpoints
+  - vc-routes-apierror
+  - vc-routes-compiles
+  - vc-routes-imports
+- task_index: 1
+  task_type: development.develop
+  role: dev
+  focus: Create Run UI view
+  description: 'Implement frontend/src/views/CreateRunView.jsx.
+
+    Renders a form for title, datetime, location (required) and optional distance/pace/notes.
+
+    Performs frontend validation for required fields before submit.
+
+    Uses frozen api.js client to POST to backend, then navigates to list on success
+    or shows inline error.'
+  expected_artifacts:
+  - frontend/src/views/CreateRunView.jsx
+  acceptance_criteria:
+  - Form correctly validates and submits required fields.
+  - Displays backend validation errors inline if submitted with missing data.
+  - Navigates to runs list upon successful creation.
+  depends_on: []
+  criteria_refs:
+  - vc-view-compiles-create-run-view
+- task_index: 2
+  task_type: development.develop
+  role: dev
+  focus: Runs List UI view
+  description: 'Implement frontend/src/views/RunsListView.jsx.
+
+    Fetches runs from GET /runs on mount.
+
+    Renders a list of run cards with title, datetime, location, and participant count.
+
+    Provides links/buttons to navigate to run detail and create run views.
+
+    Handles empty state gracefully.'
+  expected_artifacts:
+  - frontend/src/views/RunsListView.jsx
+  acceptance_criteria:
+  - Fetches and displays runs from backend API on load.
+  - Shows required fields and participant count per run.
+  - Provides navigation to detail and create views.
+  depends_on: []
+  criteria_refs:
+  - vc-view-compiles-runs-list-view
+- task_index: 3
+  task_type: development.develop
+  role: dev
+  focus: Run Detail UI view
+  description: 'Implement frontend/src/views/RunDetailView.jsx.
+
+    Fetches run detail from GET /runs/{id} on mount.
+
+    Displays event details, participant list, join form (name input), and leave form
+    (name input).
+
+    Handles mutations via api.js, refetches detail on success, and displays inline
+    validation/errors.
+
+    Shows clear not-found state for invalid IDs.'
+  expected_artifacts:
+  - frontend/src/views/RunDetailView.jsx
+  acceptance_criteria:
+  - Displays full run details and current participant list.
+  - Join form validates name, calls backend, updates UI on success, and shows duplicate/validation
+    errors.
+  - Leave form removes participant and updates UI or shows clear error if name not
+    found.
+  - Handles unknown run ID with a clear error state.
+  depends_on: []
+  criteria_refs:
+  - vc-view-compiles-run-detail-view
+- task_index: 4
+  task_type: qa.test
+  role: qa
+  focus: Backend API pytest suite
+  description: "Create backend/tests/test_api.py exercising all five core endpoints:\n\
+    \n- POST /runs: happy path with required fields, rejection of empty required fields\
+    \ (422),\n  optional fields accepted as empty/null, returned run includes generated\
+    \ id\n- GET /runs: empty list initially, populates after creation, returns title/datetime/location/participant_count\n\
+    - GET /runs/{id}: full run details with participant list, unknown ID returns 404\n\
+    - POST /runs/{id}/join: happy path with valid name, case-insensitive duplicate\
+    \ rejection\n  (\"Alice\" vs \"alice\"), empty name rejection (422), participant\
+    \ count increments\n- POST /runs/{id}/leave: happy path removing existing participant,\
+    \ empty name rejection,\n  non-existent participant returns 404 per technical\
+    \ design decision, count decrements\n\nUse the frozen conftest.py client fixture\
+    \ (do NOT construct TestClient directly).\nExercise backend.routes via the TestClient,\
+    \ not by importing route functions directly.\nReset in-memory store between test\
+    \ groups using store.reset() for isolation.\n\nVerify the full create→list→detail→join→leave\
+    \ lifecycle with count accuracy assertions."
+  expected_artifacts:
+  - backend/tests/test_api.py
+  acceptance_criteria:
+  - check: function_defined
+    file: backend/tests/test_api.py
+    name_prefix: test_
+    min_count: 12
+  - check: import_present
+    file: backend/tests/test_api.py
+    module: app.routes
+  - check: harness_boundary
+    file: backend/tests/test_api.py
+    entry_modules:
+    - backend.main
+    - app.main
+    client_ctor: TestClient
+  - Tests cover all five endpoints with both success and error cases.
+  - POST /runs rejects empty title, datetime, or location with 422 status.
+  - POST /runs/{id}/join rejects case-insensitive duplicates (e.g., 'Alice' vs 'alice').
+  - GET /runs/{id} returns 404 for unknown run IDs.
+  - POST /runs/{id}/leave returns 404 for non-existent participant (per technical
+    design decision).
+  - Participant count accurately reflects joins and leaves throughout the lifecycle.
+  - Tests isolate in-memory store state between groups via store.reset().
+  - check: command_exit_zero
+    argv:
+    - python
+    - -m
+    - py_compile
+    - backend/tests/test_api.py
+  - 'qa_handoff.md (builder-owned) includes: backend/frontend startup commands, test
+    execution steps, core scope summary, known limitations (in-memory persistence),
+    and documented answer to open question about leave-non-existent-participant behavior
+    (should return 404).'
+  depends_on:
+  - 0
+summary:
+  total_dev_tasks: 4
+  total_qa_tasks: 1
+  total_tasks: 5
+  estimated_layers: []

@@ -929,6 +929,239 @@ class TestFrozenArtifactOwnership:
         )
 
 
+class TestValidateModuleExistence:
+    """#671: an error-severity import_present may not require a module the closed
+    scaffold surface cannot provide.
+
+    fay-17's approved framing-2 plan (cyc_e175cae83a6f, art_b12c08f02557)
+    authored a blocking ``import_present: module: app.routes`` — no ``app``
+    package exists, so satisfying the check guarantees a collection-dead suite
+    while omitting it fails acceptance. A regression here means that exact plan
+    would be admitted again. Scope is deliberately narrow (zero third-party
+    false positives): only wrong-root hallucinations of real scaffold leaves
+    and nonexistent submodules under a scaffold root reject; relative/dotless
+    specs (#441 author-intent semantics, the contract's own ``.errors`` form)
+    and third-party dotted modules stay out of scope, and
+    ``harness_boundary.entry_modules`` is exempt — entries there are a
+    FORBIDDEN-import list whose scaffold convention seeds nonexistent
+    wrong-guess traps (``app.main``) on purpose.
+    """
+
+    _contract = staticmethod(TestQaArtifactOwnership._contract)
+
+    @staticmethod
+    def _fay_plan(name: str) -> ImplementationPlan:
+        from pathlib import Path
+
+        path = Path(__file__).resolve().parents[2] / "fixtures" / "fay_plans" / name
+        return ImplementationPlan.from_yaml(path.read_text(encoding="utf-8"))
+
+    @staticmethod
+    def _plan_with_import(module: str, severity: str = "error") -> ImplementationPlan:
+        return ImplementationPlan.from_yaml(
+            "version: 1\n"
+            "project_id: group_run\n"
+            "cycle_id: cyc_test\n"
+            "prd_hash: abc123\n"
+            "tasks:\n"
+            "  - task_index: 0\n"
+            "    task_type: qa.test\n"
+            "    role: qa\n"
+            '    focus: "Backend API pytest suite"\n'
+            '    description: "exercise the routes"\n'
+            "    expected_artifacts:\n"
+            '      - "backend/tests/test_api.py"\n'
+            "    acceptance_criteria:\n"
+            '      - {check: import_present, file: "backend/tests/test_api.py", '
+            f'module: "{module}", severity: "{severity}"}}\n'
+            "    depends_on: []\n"
+            "summary:\n"
+            "  total_dev_tasks: 0\n"
+            "  total_qa_tasks: 1\n"
+            "  total_tasks: 1\n"
+            "  estimated_layers: []\n"
+        )
+
+    def test_fay17_stored_plan_trips_on_app_routes(self):
+        """Stored-artifact replay: the real fay-17 framing-2 plan must reject,
+        solely on its task-4 ``app.routes`` import."""
+        errors = self._fay_plan(
+            "fay17_framing2_implementation_plan.yaml"
+        ).validate_module_existence(self._contract())
+
+        assert len(errors) == 1
+        assert "Task 4" in errors[0]
+        assert "'app.routes'" in errors[0]
+        assert "scaffold surface does not provide" in errors[0]
+
+    def test_wrong_root_hallucination_of_a_scaffold_leaf_rejected(self):
+        """``app.routes``: the leaf is a real scaffold module, the root is not —
+        the pf-26 wrong-package-root class as an authored check."""
+        errors = self._plan_with_import("app.routes").validate_module_existence(self._contract())
+
+        assert len(errors) == 1
+        assert "'app.routes'" in errors[0]
+
+    def test_nonexistent_submodule_under_scaffold_root_rejected(self):
+        """``backend.handlers``: the scaffold owns everything under backend/, so
+        the closed surface proves absence."""
+        errors = self._plan_with_import("backend.handlers").validate_module_existence(
+            self._contract()
+        )
+
+        assert len(errors) == 1
+        assert "'backend.handlers'" in errors[0]
+
+    @pytest.mark.parametrize(
+        "module",
+        [
+            "backend.routes",  # surface module
+            "conftest",  # dotless surface module
+            "fastapi.testclient",  # third-party dotted: out of scope by design
+            ".errors",  # relative — the contract authors this form itself
+            "errors",  # dotless (#441 author-intent-relative)
+            "pytest",  # dotless third-party
+        ],
+    )
+    def test_legitimate_modules_accepted(self, module):
+        """Must not over-reject: surface modules, relative/dotless specs, and
+        third-party imports all pass — a false positive here would reject
+        working plans (and the contract's own resolved criteria)."""
+        assert self._plan_with_import(module).validate_module_existence(self._contract()) == []
+
+    def test_warning_severity_tolerated(self):
+        """RC-9 parity with the #645 rules: a warning check cannot block a build,
+        so it must not kill the cycle at plan validation."""
+        assert (
+            self._plan_with_import("app.routes", severity="warning").validate_module_existence(
+                self._contract()
+            )
+            == []
+        )
+
+    def test_fay16_entry_modules_are_exempt(self):
+        """Stored-artifact replay pinning the narrowed scope: fay-16's plan
+        (cyc_c51568b00b64) lists ``app.main`` in harness_boundary entry_modules
+        at three sites — a forbidden-import list where nonexistent entries are
+        protective, matching the scaffold's own ``_HARNESS_ENTRY_MODULES``
+        convention. Existence-netting it would reject plans for copying the
+        scaffold's own convention (see #671 scope note)."""
+        assert (
+            self._fay_plan("fay16_implementation_plan.yaml").validate_module_existence(
+                self._contract()
+            )
+            == []
+        )
+
+    def test_fay19_clean_stored_plan_passes(self):
+        """Stored-artifact replay: the window's cleanest accepted plan (green,
+        cyc_96e72accb2b3 framing-2) must pass untouched."""
+        assert (
+            self._fay_plan("fay19_framing2_implementation_plan.yaml").validate_module_existence(
+                self._contract()
+            )
+            == []
+        )
+
+
+class TestValidateUniqueExpectedArtifacts:
+    """#673: an artifact path may appear in only one task's expected_artifacts.
+
+    fay-18's approved framing-2 plan (cyc_42c44ad3af91) carried the live shape:
+    qa task 5 declared dev task 4's ``backend/tests/test_runs.py`` with an
+    explicit do-not-produce instruction. Benign that roll by luck — but a
+    failing non-producing claimant aims its repair at another task's file, and
+    dual producers hand the shipped suite to last-wins ordering (the #389
+    class). A regression here means that exact plan would be admitted again.
+    """
+
+    _fay_plan = staticmethod(TestValidateModuleExistence._fay_plan)
+
+    @staticmethod
+    def _plan_with_artifacts(*artifact_lists: list[str]) -> ImplementationPlan:
+        tasks = []
+        for i, artifacts in enumerate(artifact_lists):
+            entries = "".join(f'      - "{a}"\n' for a in artifacts)
+            tasks.append(
+                f"  - task_index: {i}\n"
+                "    task_type: development.develop\n"
+                "    role: dev\n"
+                f'    focus: "Task {i}"\n'
+                '    description: "build the thing"\n'
+                + (
+                    f"    expected_artifacts:\n{entries}"
+                    if artifacts
+                    else "    expected_artifacts: []\n"
+                )
+                + "    depends_on: []\n"
+            )
+        return ImplementationPlan.from_yaml(
+            "version: 1\n"
+            "project_id: group_run\n"
+            "cycle_id: cyc_test\n"
+            "prd_hash: abc123\n"
+            "tasks:\n" + "".join(tasks) + "summary:\n"
+            f"  total_dev_tasks: {len(artifact_lists)}\n"
+            "  total_qa_tasks: 0\n"
+            f"  total_tasks: {len(artifact_lists)}\n"
+            "  estimated_layers: []\n"
+        )
+
+    def test_fay18_stored_plan_trips_on_the_dual_claim(self):
+        """Stored-artifact replay: the real fay-18 framing-2 plan must reject,
+        solely on tasks 4/5 both claiming the backend test suite."""
+        errors = self._fay_plan(
+            "fay18_framing2_implementation_plan.yaml"
+        ).validate_unique_expected_artifacts()
+
+        assert len(errors) == 1
+        assert "Tasks 4 (Backend test suite) and 5" in errors[0]
+        assert "'backend/tests/test_runs.py'" in errors[0]
+        assert "criteria_refs" in errors[0]
+
+    def test_fay19_clean_stored_plan_passes(self):
+        """Stored-artifact replay: the window's cleanest accepted plan has
+        disjoint artifact sets and must pass untouched."""
+        assert (
+            self._fay_plan(
+                "fay19_framing2_implementation_plan.yaml"
+            ).validate_unique_expected_artifacts()
+            == []
+        )
+
+    def test_disjoint_artifacts_pass(self):
+        assert (
+            self._plan_with_artifacts(
+                ["backend/routes.py"], ["backend/tests/test_api.py"], []
+            ).validate_unique_expected_artifacts()
+            == []
+        )
+
+    def test_three_way_claim_reports_one_error_naming_every_claimant(self):
+        """One duplicated path is one defect — three claimants must not produce
+        three rejection lines, and every claimant must be named so the re-roll
+        knows which tasks to untangle."""
+        errors = self._plan_with_artifacts(
+            ["backend/tests/test_api.py"],
+            ["backend/tests/test_api.py"],
+            ["backend/tests/test_api.py"],
+        ).validate_unique_expected_artifacts()
+
+        assert len(errors) == 1
+        assert "0 (Task 0) and 1 (Task 1) and 2 (Task 2)" in errors[0]
+
+    def test_repeat_within_a_single_task_is_not_a_claim_conflict(self):
+        """Scope pin: a path listed twice in ONE task's expected_artifacts is a
+        benign echo (presence-checking is set-shaped), not a cross-task claim —
+        flagging it would reject plans over a formatting slip."""
+        assert (
+            self._plan_with_artifacts(
+                ["backend/routes.py", "backend/routes.py"]
+            ).validate_unique_expected_artifacts()
+            == []
+        )
+
+
 # ---------------------------------------------------------------------------
 # #645: command-check executability + expected-artifact shape (FAY window)
 # ---------------------------------------------------------------------------

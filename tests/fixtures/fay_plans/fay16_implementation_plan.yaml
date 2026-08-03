@@ -1,0 +1,213 @@
+version: 1
+project_id: group_run
+cycle_id: cyc_c51568b00b64
+prd_hash: 9903beaa1e21faf202bbf185e6dca69d51d185bb3670843dc859646afc158894
+tasks:
+- task_index: 0
+  task_type: development.develop
+  role: dev
+  focus: Backend API routes
+  description: 'Implement all FastAPI endpoints in backend/routes.py:
+
+    - POST /runs: create a run, validate required fields, return 201 with generated
+    id
+
+    - GET /runs: return list of all runs
+
+    - GET /runs/{id}: return full run details, 404 if not found
+
+    - POST /runs/{id}/join: add participant, reject empty names and case-insensitive
+    duplicates (409), return 404 for unknown run
+
+    - POST /runs/{id}/leave: remove participant, reject empty names and non-existent
+    participants (404), return 404 for unknown run
+
+    Interact with the frozen in-memory store (run_event_store, participant_store)
+    and use Pydantic models from frozen backend/models.py. Register error handlers
+    if needed via frozen backend/errors.py.'
+  expected_artifacts:
+  - backend/routes.py
+  acceptance_criteria:
+  - Endpoints return correct HTTP status codes (201, 200, 404, 409, 422) per PRD behavior.
+  - Case-insensitive duplicate participant detection rejects joins with 409.
+  - Missing runs or participants return 404 with clear error payloads.
+  - Pydantic validation returns 422 for missing required fields (title, datetime,
+    location).
+  - In-memory state persists across requests within the same process lifecycle.
+  depends_on: []
+  criteria_refs:
+  - vc-routes-endpoints
+  - vc-routes-apierror
+  - vc-routes-compiles
+  - vc-routes-imports
+- task_index: 1
+  task_type: development.develop
+  role: dev
+  focus: Runs list view
+  description: Implement frontend/src/views/RunsListView.jsx to fetch runs from the
+    backend API and display them in a list. Show title, datetime, location, and participant
+    count for each run. Handle empty state when no runs exist. Use the frozen api.js
+    client for data fetching. Minimal styling, functional layout.
+  expected_artifacts:
+  - frontend/src/views/RunsListView.jsx
+  acceptance_criteria:
+  - View renders a list of runs fetched from GET /runs.
+  - Displays title, datetime, location, and participant count for each run.
+  - Shows an empty state message when no runs exist.
+  - Links to detail view at /run/:id for each run.
+  depends_on: []
+  criteria_refs:
+  - vc-view-compiles-runs-list-view
+- task_index: 2
+  task_type: development.develop
+  role: dev
+  focus: Create run view
+  description: Implement frontend/src/views/CreateRunView.jsx with a form for creating
+    a run. Validate required fields (title, datetime, location) before submission.
+    POST to /runs and redirect to / on success. Display backend validation errors
+    if the request fails. Use frozen api.js for submission.
+  expected_artifacts:
+  - frontend/src/views/CreateRunView.jsx
+  acceptance_criteria:
+  - Form requires title, datetime, and location fields.
+  - Submits a POST request to /runs with the form data.
+  - Redirects to / on successful creation (201 response).
+  - Displays backend validation errors (422) in the UI if the request fails.
+  depends_on: []
+  criteria_refs:
+  - vc-view-compiles-create-run-view
+- task_index: 3
+  task_type: development.develop
+  role: dev
+  focus: Run detail view
+  description: Implement frontend/src/views/RunDetailView.jsx to display full run
+    details, list of participants, and forms for joining and leaving. Fetch run data
+    via GET /runs/{id}. Handle join/leave actions with proper error feedback (409
+    duplicates, 404 not found) and update the UI state accordingly. Use frozen api.js
+    for all network calls.
+  expected_artifacts:
+  - frontend/src/views/RunDetailView.jsx
+  acceptance_criteria:
+  - Displays run details and participant list from GET /runs/{id}.
+  - Join form submits to POST /runs/{id}/join and updates the participant list on
+    success.
+  - Leave form submits to POST /runs/{id}/leave and removes the participant on success.
+  - Handles and displays errors for duplicate names (409) and not-found cases (404)
+    in the UI.
+  - Shows 404 state if the run does not exist.
+  depends_on: []
+  criteria_refs:
+  - vc-view-compiles-run-detail-view
+- task_index: 4
+  task_type: qa.test
+  role: qa
+  focus: Backend API pytest suite
+  description: 'Author pytest-based integration tests in backend/tests/test_api.py
+    exercising the full vertical slice:
+
+    - POST /runs (201 creation, 422 validation errors)
+
+    - GET /runs (200 list with participant count)
+
+    - GET /runs/{id} (200 details, 404 unknown ID)
+
+    - POST /runs/{id}/join (200 success, 409 duplicate, 404 unknown run)
+
+    - POST /runs/{id}/leave (200 success, 404 missing participant/run)
+
+    Validates structured JSON responses, payload shape alignment with Pydantic models,
+    and error contract consistency. Uses scaffold-owned conftest client fixture to
+    verify FE/BE payload shape alignment risk area.'
+  expected_artifacts:
+  - backend/tests/test_api.py
+  acceptance_criteria:
+  - check: function_defined
+    file: backend/tests/test_api.py
+    name_prefix: test_
+    min_count: 8
+  - check: harness_boundary
+    file: backend/tests/test_api.py
+    entry_modules:
+    - backend.main
+    - app.main
+    client_ctor: TestClient
+  - All endpoint tests return correct HTTP status codes (201, 200, 404, 409, 422)
+    per PRD behavior.
+  - Response payloads match Pydantic model shapes and error contract specifications.
+  depends_on:
+  - 0
+- task_index: 5
+  task_type: qa.test
+  role: qa
+  focus: State persistence and isolation tests
+  description: 'Author tests in backend/tests/test_state_isolation.py to verify in-memory
+    store behavior:
+
+    - Confirms state persists across sequential HTTP requests within a single test
+    client session.
+
+    - Validates test isolation prevents cross-test data leakage (e.g., runs created
+    in one test do not leak into another).
+
+    - Exercises conftest store reset mechanisms or session scoping to guarantee deterministic
+    assertions.
+
+    Directly addresses risk area: in-memory test state isolation preventing flaky
+    assertions.'
+  expected_artifacts:
+  - backend/tests/test_state_isolation.py
+  acceptance_criteria:
+  - check: function_defined
+    file: backend/tests/test_state_isolation.py
+    name_prefix: test_
+    min_count: 4
+  - check: harness_boundary
+    file: backend/tests/test_state_isolation.py
+    entry_modules:
+    - backend.main
+    - app.main
+    client_ctor: TestClient
+  - In-memory store correctly retains created runs and participants across multiple
+    client requests.
+  - Test execution order independence is verified; no cross-test data leakage occurs.
+  depends_on:
+  - 0
+- task_index: 6
+  task_type: qa.test
+  role: qa
+  focus: Duplicate participant validation tests
+  description: 'Author tests in backend/tests/test_validation.py targeting case-insensitive
+    duplicate detection and empty-input rejection:
+
+    - Validates join/leave operations reject duplicate participant names regardless
+    of casing (e.g., "Alice" vs "alice").
+
+    - Confirms empty string or whitespace-only participant names are rejected with
+    appropriate status codes.
+
+    - Verifies leave operations for non-existent participants return 404 as specified
+    in technical design.
+
+    Directly addresses risk area: case-insensitive duplicate validation edge cases.'
+  expected_artifacts:
+  - backend/tests/test_validation.py
+  acceptance_criteria:
+  - check: function_defined
+    file: backend/tests/test_validation.py
+    name_prefix: test_
+    min_count: 5
+  - check: harness_boundary
+    file: backend/tests/test_validation.py
+    entry_modules:
+    - backend.main
+    - app.main
+    client_ctor: TestClient
+  - Case-insensitive duplicate join attempts are consistently rejected with 409.
+  - Empty or invalid participant names on join/leave trigger correct validation errors.
+  depends_on:
+  - 0
+summary:
+  total_dev_tasks: 4
+  total_qa_tasks: 3
+  total_tasks: 7
+  estimated_layers: []

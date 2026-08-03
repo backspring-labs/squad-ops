@@ -1,0 +1,200 @@
+version: 1
+project_id: group_run
+cycle_id: cyc_42c44ad3af91
+prd_hash: 9903beaa1e21faf202bbf185e6dca69d51d185bb3670843dc859646afc158894
+tasks:
+- task_index: 0
+  task_type: development.develop
+  role: dev
+  focus: Backend API routes
+  description: Implement FastAPI routes in backend/routes.py to handle run creation,
+    listing, detail retrieval, and participant join/leave. Leverages frozen backend/models.py,
+    backend/store.py, and backend/errors.py. Enforces 422 for validation failures,
+    404 for missing resources, and 409 for duplicate participant names (case-insensitive,
+    whitespace-trimmed).
+  expected_artifacts:
+  - backend/routes.py
+  acceptance_criteria:
+  - POST /runs creates run with required fields and returns 201.
+  - GET /runs returns all runs with participant counts.
+  - GET /runs/{id} returns run detail; returns 404 for unknown IDs.
+  - POST /runs/{id}/join adds participant; rejects duplicates with 409.
+  - POST /runs/{id}/leave removes participant; returns 404/409 if not found.
+  - Missing or empty required fields trigger 422 validation errors.
+  depends_on: []
+  criteria_refs:
+  - vc-routes-endpoints
+  - vc-routes-apierror
+  - vc-routes-compiles
+  - vc-routes-imports
+- task_index: 1
+  task_type: development.develop
+  role: dev
+  focus: Frontend runs list view
+  description: Implement frontend/src/views/RunsListView.jsx to fetch and display
+    available runs. Renders title, datetime, location, and participant count per run.
+    Provides navigation to run detail and create forms.
+  expected_artifacts:
+  - frontend/src/views/RunsListView.jsx
+  acceptance_criteria:
+  - Fetches runs list on component mount.
+  - Renders each run with title, datetime, location, and participant count.
+  - Provides links to create new run and view run details.
+  depends_on:
+  - 0
+  criteria_refs:
+  - vc-view-compiles-runs-list-view
+- task_index: 2
+  task_type: development.develop
+  role: dev
+  focus: Frontend create run view
+  description: Implement frontend/src/views/CreateRunView.jsx with a form for run
+    title, datetime, location, and optional fields. Validates required fields client-side,
+    posts to POST /runs, and redirects to the list on success.
+  expected_artifacts:
+  - frontend/src/views/CreateRunView.jsx
+  acceptance_criteria:
+  - Form blocks submit if required fields are empty.
+  - Successfully posts payload to /runs and handles response.
+  - Redirects user to runs list after creation.
+  depends_on:
+  - 0
+  criteria_refs:
+  - vc-view-compiles-create-run-view
+- task_index: 3
+  task_type: development.develop
+  role: dev
+  focus: Frontend run detail view
+  description: Implement frontend/src/views/RunDetailView.jsx to display full run
+    details, participant list, and join/leave forms. Re-fetches state after mutations
+    to reflect updates. Uses frozen frontend/src/api.js for HTTP calls.
+  expected_artifacts:
+  - frontend/src/views/RunDetailView.jsx
+  acceptance_criteria:
+  - Extracts run id from URL params and fetches detail.
+  - Displays participant list and join/leave input forms.
+  - Refreshes view state after join or leave actions.
+  depends_on:
+  - 0
+  criteria_refs:
+  - vc-view-compiles-run-detail-view
+- task_index: 4
+  task_type: development.develop
+  role: dev
+  focus: Backend test suite
+  description: Implement pytest suite in backend/tests/test_runs.py covering happy
+    paths, validation boundaries, and duplicate/error handling. Uses the frozen conftest.py
+    client fixture to exercise backend/routes.py endpoints.
+  expected_artifacts:
+  - backend/tests/test_runs.py
+  acceptance_criteria:
+  - check: function_defined
+    file: backend/tests/test_runs.py
+    name_prefix: test_
+    min_count: 6
+  - check: command_exit_zero
+    argv:
+    - python
+    - -m
+    - py_compile
+    - backend/tests/test_runs.py
+  - Tests verify create, list, join, and leave happy paths.
+  - Tests assert 422 on empty required fields and 409/404 on duplicates/missing entities.
+  depends_on:
+  - 0
+- task_index: 5
+  task_type: qa.test
+  role: qa
+  focus: Validate backend test suite coverage
+  description: 'Verify that the dev-authored backend/tests/test_runs.py satisfies
+    the brief''s
+
+    must_cover_requirements for test coverage: POST /runs (201), GET /runs, GET /runs/{id}
+
+    (404), POST join (409 duplicate), POST leave (404/409 not-found), and 422 validation
+
+    on empty required fields. Confirm the suite has sufficient test function density
+    and
+
+    compiles without syntax errors. This task does NOT produce new tests — it gates
+    the
+
+    existing suite against the brief''s coverage expectations.'
+  expected_artifacts:
+  - backend/tests/test_runs.py
+  acceptance_criteria:
+  - check: function_defined
+    file: backend/tests/test_runs.py
+    name_prefix: test_
+    min_count: 8
+  - check: command_exit_zero
+    argv:
+    - python
+    - -m
+    - py_compile
+    - backend/tests/test_runs.py
+  - Suite includes tests for run creation (201), listing (200), detail retrieval (200/404),
+    join with duplicate rejection (409), leave with not-found handling (404/409),
+    and empty-field validation (422).
+  - All tests use the scaffold client fixture and do not directly import backend.app
+    or backend.main.
+  depends_on:
+  - 0
+  - 4
+- task_index: 6
+  task_type: qa.test
+  role: qa
+  focus: API integration flow test
+  description: 'Produce backend/tests/test_integration_flows.py with an integration
+    test that chains
+
+    the complete API lifecycle: create a run → list runs to confirm presence → fetch
+    run
+
+    detail → join with a participant → verify participant appears → attempt duplicate
+    join
+
+    (expect 409) → leave participant → verify participant removed → fetch unknown
+    run ID
+
+    (expect 404) → submit create/join/leave with empty required fields (expect 422).
+
+    This directly mitigates the brief''s risk_areas for API↔Frontend contract drift
+    and
+
+    in-memory state consistency during mutations. Uses the scaffold''s client fixture
+    from
+
+    conftest.py; does NOT import backend.main or app.main directly.'
+  expected_artifacts:
+  - backend/tests/test_integration_flows.py
+  acceptance_criteria:
+  - check: function_defined
+    file: backend/tests/test_integration_flows.py
+    name_prefix: test_
+    min_count: 1
+  - check: command_exit_zero
+    argv:
+    - python
+    - -m
+    - py_compile
+    - backend/tests/test_integration_flows.py
+  - check: harness_boundary
+    file: backend/tests/test_integration_flows.py
+    entry_modules:
+    - backend.main
+    - app.main
+    client_ctor: TestClient
+  - Integration test chains create → list → detail → join → duplicate-reject → leave
+    → not-found → empty-field-validation in a single session.
+  - 'Verifies HTTP status codes match contract: 201 (create), 200 (list/detail/join/leave),
+    404 (unknown run/participant), 409 (duplicate/not-found), 422 (validation).'
+  - Verifies response payload shapes include expected fields (run id, title, datetime,
+    location, participant count, participant list).
+  depends_on:
+  - 0
+summary:
+  total_dev_tasks: 5
+  total_qa_tasks: 2
+  total_tasks: 7
+  estimated_layers: []

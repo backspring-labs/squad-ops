@@ -19,6 +19,7 @@ import dataclasses
 import hashlib
 import json
 from dataclasses import dataclass, field
+from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
 import yaml
@@ -60,6 +61,28 @@ _CHECK_ENV_EXECUTABLES = frozenset({"python", "python3", "pytest", "node", "npm"
 # exit 1 before parsing) — `node --check view.jsx` fails on ANY content,
 # correct or not (fay-2's killer; verified in the QA container).
 _NODE_UNPARSEABLE_SUFFIXES = (".jsx", ".tsx")
+
+
+def _importable_module_surface(paths: frozenset[str] | set[str]) -> frozenset[str]:
+    """The dotted module paths the scaffold surface can ever provide.
+
+    Path→module conversion mirrors ``ModuleImportsCheck.evaluate``
+    (acceptance_checks.py) — ``backend/routes.py`` → ``backend.routes``,
+    ``backend/__init__.py`` → ``backend``; non-Python files and
+    non-identifier segments contribute nothing.
+    """
+    modules: set[str] = set()
+    for path in paths:
+        pure = PurePosixPath(path)
+        if pure.suffix != ".py":
+            continue
+        parts = list(pure.with_suffix("").parts)
+        if parts and parts[-1] == "__init__":
+            parts = parts[:-1]
+        if not parts or not all(part.isidentifier() for part in parts):
+            continue
+        modules.add(".".join(parts))
+    return frozenset(modules)
 
 
 def planner_build_task_types(*, has_builder: bool) -> set[str]:
@@ -433,6 +456,48 @@ class ImplementationPlan:
                     )
         return errors
 
+    def validate_unique_expected_artifacts(self) -> list[str]:
+        """#673: an artifact path may appear in only one task's ``expected_artifacts``.
+
+        Expected artifacts are load-bearing task identity — they drive write
+        authorization, repair scoping (#650) and missing-artifact locus routing
+        (#665) — so a dual claim quietly aliases two tasks onto one file's fate:
+        a failing non-producing claimant aims its repair at a file another task
+        owns, and if both produce, last-wins ordering silently decides whose
+        emission ships (the #389 class fay-14's repair chain replayed).
+
+        fay-18's approved framing-2 plan carried the shape live: qa task 5
+        declared dev task 4's ``backend/tests/test_runs.py`` with an explicit
+        do-not-produce instruction. The dice were kind (zero corrections); the
+        hazard rode anyway. There is no legitimate dual-claim the artifact-less
+        form doesn't cover, so no warn tier — the legal shape for a
+        verification-only task is ``expected_artifacts: []`` plus
+        ``criteria_refs`` (the fay-13 framing-2 receipt).
+
+        Plan-wide cross-task pass — the first of its kind in this family; the
+        per-task rules above stay per-task. A path repeated *within* one task
+        is a benign echo, not a claim conflict, and is not reported here.
+        """
+        claimants: dict[str, list[PlanTask]] = {}
+        for task in self.tasks:
+            seen_in_task: set[str] = set()
+            for name in task.expected_artifacts:
+                if not isinstance(name, str) or name in seen_in_task:
+                    continue
+                seen_in_task.add(name)
+                claimants.setdefault(name, []).append(task)
+
+        return [
+            f"Tasks {' and '.join(f'{t.task_index} ({t.focus})' for t in tasks)} both declare "
+            f"expected artifact {name!r} — expected artifacts are load-bearing task identity "
+            f"(write authorization, repair scoping, missing-artifact routing), so a dual claim "
+            f"aims repairs at another task's file and lets last-wins ordering decide whose "
+            f"emission ships. Exactly one task owns each file; a verification-only task "
+            f"declares expected_artifacts: [] and binds acceptance via criteria_refs"
+            for name, tasks in claimants.items()
+            if len(tasks) > 1
+        ]
+
     def lint_prose_contract_conflicts(self, contract: VerificationContract) -> list[str]:
         """pf-31 Fix A3: WARNING-only lint for prose that contradicts bound criteria.
 
@@ -673,6 +738,69 @@ class ImplementationPlan:
             for artifact in task.expected_artifacts
             if artifact in frozen
         ]
+
+    def validate_module_existence(self, contract: VerificationContract) -> list[str]:
+        """#671: an error-severity ``import_present`` may not require a module the
+        scaffold surface provably cannot provide.
+
+        fay-17's framing-2 plan authored a blocking ``import_present: module:
+        app.routes`` — the ``app`` package does not exist (the scaffold root is
+        ``backend``, the pf-26 package-root class). Satisfying the check
+        guarantees a collection-dead suite; omitting the import fails
+        acceptance. Contradictory by construction, and provable at authoring
+        time from the contract's file surface.
+
+        Two rejected classes, both zero-false-positive on third-party imports:
+
+        - a module under a scaffold package root that the closed surface does
+          not contain (``backend.handlers`` — the scaffold owns everything
+          under ``backend/``, so absence is proof);
+        - a real scaffold module leaf under a package root that does not exist
+          (``app.routes``, ``src.backend.main`` — the wrong-root hallucination).
+
+        Everything else is out of scope by design: relative specs (``.errors``
+        — the contract authors this form itself) and dotless specs (``errors``
+        — #441 author-intent-relative semantics) validate at evaluation depth
+        we don't have here, and dotted third-party modules
+        (``fastapi.testclient``) are legitimately outside the scaffold surface.
+
+        ``harness_boundary.entry_modules`` is deliberately NOT validated:
+        entry modules are a FORBIDDEN-import list (the check fails a test that
+        imports one), and the scaffold's own convention seeds nonexistent
+        wrong-guess traps (``app.main``, ``main`` — ``_HARNESS_ENTRY_MODULES``)
+        on purpose. A nonexistent entry there is protective, not doomed.
+
+        Only ``severity=error`` rejects (RC-9, same split as the #645 rules).
+        """
+        surface = _importable_module_surface(
+            {ff.path for ff in contract.frozen_files} | {ff.path for ff in contract.fill_files}
+        )
+        roots = {module.split(".", 1)[0] for module in surface}
+        leaves = {module.rsplit(".", 1)[-1] for module in surface}
+
+        errors: list[str] = []
+        for task in self.tasks:
+            for criterion in task.acceptance_criteria:
+                if not isinstance(criterion, TypedCheck):
+                    continue
+                if criterion.check != "import_present" or criterion.severity != "error":
+                    continue
+                module = criterion.params.get("module")
+                if not isinstance(module, str) or module.startswith(".") or "." not in module:
+                    continue  # relative / dotless / malformed: out of scope (see docstring)
+                if module in surface:
+                    continue
+                root, leaf = module.split(".", 1)[0], module.rsplit(".", 1)[-1]
+                if root not in roots and leaf not in leaves:
+                    continue  # third-party shaped (fastapi.testclient): out of scope
+                errors.append(
+                    f"Task {task.task_index} ({task.focus}): import_present requires "
+                    f"module {module!r}, which the scaffold surface does not provide — "
+                    f"the import can never succeed, so the check fails on any content "
+                    f"and satisfying it kills the suite at collection instead. The "
+                    f"importable scaffold modules are {sorted(surface)}"
+                )
+        return errors
 
     def _authored_on_covered_criteria(self, contract: VerificationContract):
         """Yield ``(task, criterion, target)`` for every authored ``TypedCheck``
