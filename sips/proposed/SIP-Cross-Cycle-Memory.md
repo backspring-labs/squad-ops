@@ -5,6 +5,9 @@ Draft (proposed)
 
 **Author:** Jason Ladd
 **Created:** 2026-08-03
+**Revision:** 2 (2026-08-03 — design-review round 1 incorporated: typed Phase-1
+primitive, governed encoding templates, lifecycle `status` dimension, deterministic
+Phase-1 retrieval, recall-vs-outcome metric split, Phase-1 decay)
 **Builds on:** SIP-042 (LanceDB semantic memory — the storage mechanics), SIP-0088/0089
 (persistent agent identity), #669 (framing re-roll rejection context — the within-cycle
 rung and the injection seam this SIP reuses), SIP-0101 (Cycle Replay Harness — the
@@ -47,6 +50,11 @@ The substrate is **mode-neutral by design** (§6): Phase 1 implements the cycle-
 loop, but the schema, identity model, and port are specified so duty- and ambient-mode
 memory utilization (SIP-0089 postures, SIP-0091 duty durability) extends the system
 rather than reworking it.
+
+**The thesis, stated once:** this SIP does not build a generic AI memory system. It
+builds a *validated organizational learning system* — the value is not that an agent
+remembers things; it is that SquadOps can **prove** a learned behavior improved future
+execution.
 
 ## 2. Justification — the specific cycle-success value
 
@@ -137,26 +145,57 @@ against stored plans via the SIP-0101 replay harness plus live rolls.
 
 ## 5. Phase 1 (normative): cross-cycle rejection memory
 
-One loop, end-to-end, one memory type, one consumer.
+One loop, end-to-end, one memory type, one consumer. Phase 1 does **not** implement
+generic memory — it implements *recurring failure classes transformed into validated
+behavioral guidance*, and the pipeline is typed to make that the only thing that can
+flow through it.
+
+**The Phase-1 primitive: `ReflectiveFailurePattern`.** A typed domain model — not a
+convention over generic entries — that *serializes into* SIP-042's `MemoryEntry` for
+storage (the storage substrate is unchanged; the type lives at the domain layer, per
+the constants-not-strings discipline). Generic `MemoryEntry` becomes the future
+umbrella: later phases add sibling types (`ProceduralSkill`, `EpisodicEvent`,
+`SemanticKnowledge`, `HandoffMemory` — vision §10); Phase 1's encode, recall, and
+inject paths accept `ReflectiveFailurePattern` only, so future contributors cannot
+assume arbitrary memories flow through the proving loop.
 
 **Observe.** On a plan-validation rejection (gate auto-reject or human gate rejection
 with reasons), and on cycle finalize for correction-loop failure classes that carry a
 deterministic label (validator-emitted classes only in Phase 1).
 
-**Encode.** A `MemoryEntry` per rejection class occurrence (atomic — one class, one
+**Encode — through a governed template registry, never invented.** The flow is
+*validator rejection class → deterministic encoding template → behavioral entry*, with
+an explicit abstraction layer in the middle: a per-class template (pattern statement +
+corrective rule) that lives beside the prompt fragment assets (#448 discipline) and is
+reviewed like any prompt content. Example: class `artifact_claim_conflict` → pattern
+"plans tend to assign ownership of produced artifacts to validation roles" + correction
+"verification-only tasks declare `expected_artifacts: []`; check ownership against the
+producer/consumer split before authoring." The validator supplies the evidence; the
+template supplies the generalization; **the memory system invents no patterns in
+Phase 1** — a rejection class with no registered template is not encoded (and the gap
+is disclosed, not silently skipped). No LLM anywhere in the encode path.
+
+One `ReflectiveFailurePattern` per rejection class occurrence (atomic — one class, one
 entry; never a blob of the whole gate decision):
 
 - `namespace`: `project:<project_id>` (Phase 1 *writes* only this scope; the schema
   admits the full ladder from day one)
-- `content`: behavioral statement + corrective rule (template-derived from the
-  validator's own teaching message — deterministic, no LLM in the encode path for
-  validator-sourced entries)
+- `content`: the template-rendered behavioral statement + corrective rule
 - `tags`: `rejection_class:<class>`, `task_type:<authoring task>`, `sip:cross-cycle-memory`
 - metadata: `owner_role` (role id, never an agent name in source), `agent_id` (nullable —
   the persistent identity per SIP-0088/0089, for agent-scoped entries; null for
   squad-attributed ones), `scope` (`agent | role | project | organization` — the full
   ladder is schema-legal from day one even though Phase 1 writes only `project`),
-  `origin_mode` (`cycle | duty | ambient` — Phase 1 writes only `cycle`), `type`
+  `origin_mode` (`cycle | duty | ambient` — Phase 1 writes only `cycle`), `status`
+  (`candidate | validated | promoted | deprecated` — **lifecycle trust state,
+  orthogonal to origin**: `origin_mode` says where a memory came from, `status` says
+  whether it may influence execution; origin does not equal trust. Phase-1 rule:
+  validator-sourced, template-encoded entries enter as `validated` — their evidence is
+  a deterministic validator firing through a reviewed template, and requiring a
+  further validation pass would deadlock the first proving loop; every other source,
+  including all duty/ambient-born entries, enters as `candidate`. Only
+  `validated`/`promoted` entries are ever injected; decay demotes to `deprecated`,
+  which never injects again), `type`
   (`reflective`), `confidence`, `importance`, `reuse_count`, `success_rate`,
   `created_cycle` (**optional** — duty- and ambient-born memories have no cycle),
   `created_campaign` (**optional** — carried when the origin cycle ran under a Campaign,
@@ -168,13 +207,18 @@ entry; never a blob of the whole gate decision):
 
 **Store.** Existing `MemoryPort` → LanceDB adapter. No new storage service.
 
-**Recall.** At plan-authoring input construction (the `generate_task_plan` seam, same
-place #669 injects), query by project namespace + task-type tags. Composite score =
-similarity·w₁ + recency·w₂ + importance·w₃ (CrewAI's formula; weights config-driven via
-`SQUADOPS__MEMORY__*`). **Adaptive gate:** inject only entries above a score threshold,
-hard cap on total injected lines (config), most-recent-per-class wins — the context-bloat
-countermeasure. Zero matches → zero keys → templates render without the section
-(presence-keyed, the #639/#643 pattern).
+**Recall — deterministic filters first; semantic ranking is Phase 2.** Phase 1's
+retrieval question is narrow — *has this project previously failed with this class?* —
+and class-labeled entries answer it exactly, so Phase 1 recall is a deterministic
+filter chain, not a ranking system: project namespace match → task-type tag match →
+`status ∈ {validated, promoted}` → confidence ≥ threshold → most-recent-per-class →
+hard cap on total injected lines (all thresholds config-driven via
+`SQUADOPS__MEMORY__*`). This keeps retrieval variance out of the measured lane
+entirely — two identical cycles recall identical memories. Embeddings are still
+*stored* (the schema keeps `embedding`), so Phase 2 can add composite semantic scoring
+(similarity·recency·importance, the CrewAI formula) retroactively over the corpus when
+exact class labels stop being sufficient. Zero matches → zero keys → templates render
+without the section (presence-keyed, the #639/#643 pattern).
 
 **Inject.** New data keys on the four plan-authoring task types (#657's set, merger
 excluded — deterministic path stays dry), rendered through a new managed appendix asset
@@ -183,8 +227,19 @@ context and cross-cycle memory context stay *separate slots*: one is "this plan 
 died," the other is "plans in this project tend to die this way."
 
 **Feedback.** On the next gate decision, update `reuse_count` (recalled entries) and
-`success_rate` (was the class absent from the authored plan?). This telemetry is what
-Phase 2's promotion gates on — collected from day one, acted on later.
+`success_rate` — defined strictly as **recall effectiveness**: was the *targeted class*
+absent from the authored plan? It deliberately does not measure whether the plan or
+cycle was good overall (a memory can suppress its class while the resulting strategy is
+still poor) — that is **outcome effectiveness**, a later-phase metric (§9). This
+telemetry is what Phase 2's promotion gates on — collected from day one, acted on later.
+
+**Decay — the Phase-1 bad-memory protection.** Full consolidation is Phase 2, but bad
+lessons must not accumulate in the proving loop: if a recalled entry's targeted class
+recurs anyway on K consecutive recalls (config, default small), or its guidance is
+implicated in a false-positive rejection, its `confidence` is decremented; below the
+recall threshold it stops being injected, and past a floor its `status` moves to
+`deprecated` (never injected again, retained for the audit trail). Computed entirely
+from the same per-gate feedback above — no new machinery.
 
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 
@@ -219,13 +274,18 @@ Phase 1's implementation (normative), with the utilization sketch they exist to 
   what the duty *learned*.
 - **Ambient mode:** ambient agents accumulate observations as agent-scoped candidate
   memories via agent-initiated `remember()`.
-- **The quarantine rule (design stance, review-confirmable):** memories born outside
-  validated seams (`origin_mode: duty | ambient`) do **not** enter cycle-mode recall
-  until they pass validation/promotion (Phase 2's evidence gates). Cycle execution is
-  the dice we measure; letting unvetted ambient observations into authoring prompts would
-  reintroduce the nondeterminism the 1.4 arc spent a release removing. Ambient/duty
-  agents may freely recall *validated* project memories; the gate is on what flows
-  *into* the measured lane, not out of it.
+- **The quarantine rule (design stance, review-confirmable), generalized by the
+  lifecycle `status` dimension (§5):** what may influence execution is governed by
+  `status`, not by origin — **origin does not equal trust** (a cycle-generated memory
+  can be wrong too). Duty/ambient-born memories enter as `candidate` and do **not**
+  reach cycle-mode recall until promoted through Phase 2's evidence gates;
+  validator-sourced cycle-born entries enter as `validated` (their evidence is a
+  deterministic validator firing through a reviewed template); decay can demote any
+  entry to `deprecated` regardless of where it came from. Cycle execution is the dice
+  we measure; letting unvetted observations into authoring prompts would reintroduce
+  the nondeterminism the 1.4 arc spent a release removing. Ambient/duty agents may
+  freely recall *validated* project memories; the gate is on what flows *into* the
+  measured lane, not out of it.
 
 ## 7. Campaign interaction
 
@@ -253,7 +313,11 @@ Design decisions this implies:
   function of (objective, policy, accumulated evidence, latest outcome) — the
   reserve-buffer-guard pattern. Memory improves *how the next cycle authors*; the
   campaign decides *whether and what to launch*. Coupling them would make the
-  continuation decision non-replayable and structurally entangle the two SIPs.
+  continuation decision non-replayable and structurally entangle the two SIPs — and it
+  would open a self-reinforcing loop: past failures bias the continuation decision,
+  biased continuation reduces new experiments, and reduced experimentation reinforces
+  the original belief. Keeping campaign control deterministic preserves replayability
+  and measurement integrity.
 
 ## 8. Phase 2 (design-sketch, separately gated): consolidation and promotion
 
@@ -270,15 +334,24 @@ Phase 2 does not begin until Phase 1's recurrence-rate measurement is in hand.
 
 ## 9. Success metrics (measured, not aspirational)
 
-1. **Primary (gates Phase 1):** recurrence rate of labeled rejection classes, memory-on
-   vs. memory-off — scored against stored plans via the SIP-0101 replay harness and over
-   a pre-registered set of live rolls (FAY methodology; N declared before rolling).
-2. Framing re-rolls consumed per cycle (memory-on vs. baseline window).
-3. Correction attempts consumed by already-labeled classes.
-4. Injection cost: prompt lines added per authoring task (must stay under the cap;
+Two tiers, deliberately separated — a memory can suppress its targeted class while the
+overall result stays poor, so conflating them would let recall wins masquerade as
+outcome wins:
+
+**Recall effectiveness (Phase 1 measures this; gates the phase):**
+1. **Primary:** recurrence rate of labeled rejection classes, memory-on vs. memory-off
+   — scored against stored plans via the SIP-0101 replay harness and over a
+   pre-registered set of live rolls (FAY methodology; N declared before rolling).
+2. Injection cost: prompt lines added per authoring task (must stay under the cap;
    context bloat is a regression, not a side effect).
-5. Retrieval usefulness: `reuse_count`/`success_rate` distributions (Phase 2's promotion
-   evidence).
+3. Retrieval usefulness: `reuse_count`/`success_rate` distributions, decay/deprecation
+   counts (Phase 2's promotion evidence).
+
+**Outcome effectiveness (observed in Phase 1, measured later — never gates Phase 1):**
+4. Framing re-rolls consumed per cycle (memory-on vs. baseline window).
+5. Correction attempts consumed by already-labeled classes.
+6. Functional App Yield delta (the §2 hypothesis; a later-phase measurement once
+   recall effectiveness is established).
 
 ## 10. Long-term vision (from the idea doc; non-normative here)
 
@@ -326,7 +399,10 @@ Per the ratified post-1.4 reshuffle (`docs/plans/post-1-4-roadmap-reconciliation
   exactly Phase 2's content — "memory needs scope, provenance, promotion, and
   disclosure." Phase 2 (consolidation, promotion, duty/ambient utilization, §6–§8) is
   that substrate, delivered with a Phase-1 measured result behind it rather than
-  specified cold from inside an umbrella.
+  specified cold from inside an umbrella. Framed at the 2.0 altitude, this SIP is the
+  *learned-experience* leg of the capability-backed agent equation — **agent = identity
+  (SIP-0088/0089) + capability (packs) + memory (this SIP) + policy + evidence
+  history** — which is why it precedes the umbrella rather than riding inside it.
 - **Sequencing (readiness, not dates):** implementation can begin once design review
   accepts; hard dependencies are already shipped (SIP-042 mechanics, the #669 injection
   seam, `gate_decisions` persistence). SIP-0101's replay harness must be usable before
@@ -350,7 +426,13 @@ Per the ratified post-1.4 reshuffle (`docs/plans/post-1-4-roadmap-reconciliation
 5. Role-scoped expertise memory (procedural — "how this role solves problems well",
    keyed to persistent identity per SIP-0088/0089): does it enter as a Phase 1.5 with
    its own seed corpus, or wait for Phase 2's LLM-assisted encode?
-6. The quarantine gate (§6): what validation evidence promotes a duty- or ambient-born
-   memory into cycle-mode recall — reuse under observation, audit sign-off, or a
-   replay-scored trial? (Draft position: Phase 2's promotion gates are the single
-   mechanism; no side door.)
+6. The `candidate → validated` transition (§5/§6): what validation evidence promotes a
+   duty- or ambient-born memory into cycle-mode recall — reuse under observation, audit
+   sign-off, or a replay-scored trial? (Draft position: Phase 2's promotion gates are
+   the single mechanism; no side door. The lifecycle `status` field now carries the
+   answer's machinery; this question is about the *evidence bar*.)
+7. Decay calibration (§5): the consecutive-ineffective threshold K and the confidence
+   floor — fixed defaults, or derived from the measurement window's base rates?
+8. Encoding-template governance: who reviews new per-class templates (they are prompt
+   content under #448 — same review path as fragments?), and is a missing template a
+   release-blocking gap for a newly shipped validator or a disclosed backlog item?

@@ -72,6 +72,23 @@ the same release.
    Phase 2 → 2.0) + Campaign-interaction section (§7: provenance-not-scope,
    campaign-close consolidation clock, continuation-decision purity boundary).
 
+## Addendum (2026-08-03, post-shk-1): the authoring-defect levers
+
+shk-1 (the first 1.4.1 confirmation cycle) re-authored the fay-18 dual-claim class live
+— caught by #673, revised via #669, but at the cost of one framing re-roll (~45 min,
+half the re-roll budget). Owner-ratified slotting of the three non-memory levers,
+layered so cross-cycle memory (1.8) measures only the uncodified tail:
+
+| Lever | Slot | Home |
+|---|---|---|
+| Statics: render validator-family rules into authoring prompts | **1.5** | #686, beside the #629/#627 "show the author the contract" family |
+| Shift-left: merge-time plan validation, revise before gate | **1.6** | SIP-0093 completion package (93.4 + §5.8 rules; rule 5 amended block→validate-and-revise) |
+| Structural: produce-vs-verify declared, `expected_artifacts` derived | **1.6** | Generalized Build / Stack Blueprint scope (QA-decomposition anchor) |
+
+Principle: validator-codified rules are *stated* (statics), authoring-time checks are
+*cheap* (shift-left), derivable facts are *not authored* (structural), and only the
+remainder is *learned* (memory).
+
 ## Not moved by this record
 
 - Promotion audits for SIP-0088/0092/0093/0096 (maintainer housekeeping; 0096 matters
