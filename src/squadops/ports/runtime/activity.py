@@ -99,3 +99,16 @@ class RuntimeActivityPort(ABC):
         """Return the agent's current (active) activity, or `None`.
 
         `conn` (§4.5/D25): read on the caller's unit-of-work connection when given."""
+
+    @abstractmethod
+    async def list_active_activities(
+        self, *, cycle_id: str | None = None, conn: Any = None
+    ) -> tuple[RuntimeActivity, ...]:
+        """Return every active (`pending`/`running`/`paused`) activity, oldest first.
+
+        `cycle_id` narrows the result to activities owned by that cycle. At most
+        one active activity exists per agent (D9), so the result is bounded by
+        the roster size — callers iterate it without pagination. Backs the #672
+        stranded-activity sweeps (run-finalize + startup reap).
+
+        `conn` (§4.5/D25): read on the caller's unit-of-work connection when given."""

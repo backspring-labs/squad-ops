@@ -296,3 +296,55 @@ async def test_row_to_activity_decodes_jsonb_and_maps_all_fields():
         paused_at=None,
         ended_at=None,
     )
+
+
+# ---------------------------------------------------------------------------
+# list_active_activities (#672 sweeps)
+# ---------------------------------------------------------------------------
+
+
+async def test_list_active_activities_filters_to_active_states_oldest_first():
+    """Bug class: the sweep source query returning terminal rows (they'd be
+    'aborted' again and mis-counted) or newest-first (nondeterministic sweep
+    order). The WHERE must restrict to active states, ordered by started_at."""
+    conn = AsyncMock()
+    conn.fetch.return_value = [
+        _activity_row(runtime_activity_id="act-1", agent_id="max"),
+        _activity_row(runtime_activity_id="act-2", agent_id="eve"),
+    ]
+    adapter = PostgresRuntimeActivity(_make_pool(conn))
+
+    activities = await adapter.list_active_activities()
+
+    query = conn.fetch.await_args.args[0]
+    assert "state IN ('pending', 'running', 'paused')" in query
+    assert "ORDER BY started_at" in query
+    assert [a.runtime_activity_id for a in activities] == ["act-1", "act-2"]
+
+
+async def test_list_active_activities_cycle_filter_binds_the_cycle_id():
+    """Bug class: the finalize sweep queries with a cycle filter — if the filter
+    isn't bound into the SQL, the sweep would abort OTHER cycles' live rows."""
+    conn = AsyncMock()
+    conn.fetch.return_value = []
+    adapter = PostgresRuntimeActivity(_make_pool(conn))
+
+    result = await adapter.list_active_activities(cycle_id="cyc-9")
+
+    query = conn.fetch.await_args.args[0]
+    assert "cycle_id = $1" in query
+    assert conn.fetch.await_args.args[1] == "cyc-9"
+    assert result == ()
+
+
+async def test_list_active_activities_without_filter_binds_no_params():
+    """Bug class: a leftover bind param with no placeholder (or vice versa)
+    raises at query time — the startup reaper's unfiltered read must send none."""
+    conn = AsyncMock()
+    conn.fetch.return_value = []
+    adapter = PostgresRuntimeActivity(_make_pool(conn))
+
+    await adapter.list_active_activities()
+
+    assert "cycle_id = $1" not in conn.fetch.await_args.args[0]
+    assert len(conn.fetch.await_args.args) == 1

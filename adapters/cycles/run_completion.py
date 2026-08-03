@@ -39,6 +39,7 @@ from squadops.cycles.verification_integrity import (
     aggregate_verification,
 )
 from squadops.events.types import EventType
+from squadops.runtime.activity_reaper import abort_cycle_activities
 
 if TYPE_CHECKING:
     from squadops.cycles.models import Cycle
@@ -46,6 +47,7 @@ if TYPE_CHECKING:
     from squadops.ports.cycles.artifact_vault import ArtifactVaultPort
     from squadops.ports.cycles.cycle_registry import CycleRegistryPort
     from squadops.ports.cycles.workflow_tracker import WorkflowTrackerPort
+    from squadops.ports.runtime.activity import RuntimeActivityPort
     from squadops.ports.telemetry.llm_observability import LLMObservabilityPort
     from squadops.tasks.models import TaskEnvelope
 
@@ -170,11 +172,13 @@ class RunCompletion:
         artifact_vault: ArtifactVaultPort | None = None,
         llm_observability: LLMObservabilityPort | None = None,
         workflow_tracker: WorkflowTrackerPort | None = None,
+        activity_port: RuntimeActivityPort | None = None,
     ) -> None:
         self._cycle_registry = cycle_registry
         self._artifact_vault = artifact_vault
         self._llm_observability = llm_observability
         self._workflow_tracker = workflow_tracker
+        self._activity_port = activity_port
 
     async def finalize(
         self,
@@ -251,6 +255,16 @@ class RunCompletion:
                 )
         except Exception:
             logger.warning("Run report generation failed", exc_info=True)
+
+        # #672: stranded-activity sweep. Task dispatch for this run is over, so
+        # any activity still active for its cycle was stranded by an interrupted
+        # task and would trip the one-active-per-agent index on every later
+        # dispatch. Best-effort (same contract as the report above).
+        if self._activity_port is not None and cycle_id:
+            try:
+                await abort_cycle_activities(self._activity_port, cycle_id)
+            except Exception:
+                logger.warning("Stranded-activity sweep failed", exc_info=True)
 
     @staticmethod
     def _aggregate_verification(

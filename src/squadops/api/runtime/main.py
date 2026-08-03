@@ -357,6 +357,38 @@ async def _init_cycle_subsystem(config, pool) -> None:
 
         _runtime_coordinator = create_runtime_coordinator(pool)
 
+        # #672: startup reap — end active activities whose owning cycle is
+        # already terminal (rows stranded by a process death that skipped run
+        # finalize). One stranded row blocks all of that agent's future
+        # activity tracking. Best-effort: a reap failure never blocks startup.
+        if activity_port is not None:
+            try:
+                from squadops.cycles.lifecycle import derive_cycle_status
+                from squadops.cycles.models import CycleNotFoundError, CycleStatus
+                from squadops.runtime.activity_reaper import reap_stale_activities
+
+                async def _cycle_is_terminal(cid: str) -> bool:
+                    try:
+                        owning_cycle = await cycle_registry.get_cycle(cid)
+                    except CycleNotFoundError:
+                        # No owner on record → definitionally stranded.
+                        return True
+                    runs = await cycle_registry.list_runs(cid)
+                    derived = derive_cycle_status(runs, cycle_cancelled=owning_cycle.cancelled)
+                    return derived in (
+                        CycleStatus.COMPLETED,
+                        CycleStatus.FAILED,
+                        CycleStatus.CANCELLED,
+                    )
+
+                reaped = await reap_stale_activities(
+                    activity_port, cycle_is_terminal=_cycle_is_terminal
+                )
+                if reaped:
+                    logger.info("Startup reap ended %d stranded runtime activity row(s)", reaped)
+            except Exception:
+                logger.warning("Startup stranded-activity reap failed", exc_info=True)
+
         flow_executor = create_flow_executor(
             "dispatched",
             cycle_registry=cycle_registry,

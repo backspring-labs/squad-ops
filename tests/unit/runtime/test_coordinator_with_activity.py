@@ -109,6 +109,9 @@ class _FakeActivityPort(RuntimeActivityPort):
     async def get_current_activity(self, agent_id, *, conn=None):
         return self._current
 
+    async def list_active_activities(self, *, cycle_id=None, conn=None):  # unused here
+        raise NotImplementedError
+
 
 class _RecordingPublisher(RuntimeEventPublisher):
     def __init__(self) -> None:

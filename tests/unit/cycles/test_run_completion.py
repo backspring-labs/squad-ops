@@ -688,3 +688,60 @@ class TestBehavioralCriterionStamping:
         )
         summary = RunCompletion._aggregate_verification(None, ledger, "COMPLETED", None)
         assert summary.criteria_verified == ()
+
+
+class TestStrandedActivitySweep:
+    """#672: finalize ends the finishing cycle's still-active activities."""
+
+    def _completion_with_activity_port(self, activity_port):
+        from adapters.cycles.run_completion import RunCompletion
+
+        vault = AsyncMock()
+        vault.store = AsyncMock(side_effect=lambda ref, content: ref)
+        registry = AsyncMock()
+        return RunCompletion(
+            cycle_registry=registry,
+            artifact_vault=vault,
+            activity_port=activity_port,
+        )
+
+    async def test_finalize_aborts_the_cycles_active_activities(self):
+        """Bug class: an interrupted task strands its activity row; if finalize
+        doesn't end it, every later dispatch for that agent trips the
+        one-active-per-agent index. The sweep must query THIS cycle's active
+        rows and abort each."""
+        from unittest.mock import MagicMock
+
+        stranded = MagicMock()
+        stranded.runtime_activity_id = "act-stranded"
+        stranded.agent_id = "eve"
+        stranded.activity_type = "qa.test"
+        activity_port = AsyncMock()
+        activity_port.list_active_activities.return_value = (stranded,)
+
+        completion = self._completion_with_activity_port(activity_port)
+        await completion.finalize("cyc_001", "run_001", "FAILED", None, None)
+
+        activity_port.list_active_activities.assert_awaited_once_with(cycle_id="cyc_001")
+        args = activity_port.abort_activity.await_args.args
+        assert args[0] == "act-stranded"
+        assert args[1] == "activity_stranded_at_run_finalize"
+
+    async def test_finalize_survives_a_sweep_failure(self):
+        """Bug class: the sweep is hygiene — a DB error during it must not turn
+        a finalized run into a raised exception (finalize runs in the executor's
+        terminal path). The verification summary must still have been persisted."""
+        activity_port = AsyncMock()
+        activity_port.list_active_activities.side_effect = RuntimeError("db down")
+
+        completion = self._completion_with_activity_port(activity_port)
+        await completion.finalize("cyc_001", "run_001", "COMPLETED", None, None)
+
+        completion._cycle_registry.record_run_verification_summary.assert_awaited_once()
+
+    async def test_finalize_without_activity_port_skips_the_sweep(self, completion):
+        """Boundary: the memory-registry / pool-less composition wires no
+        activity port — finalize must complete without touching activities."""
+        await completion.finalize("cyc_001", "run_001", "COMPLETED", None, None)
+
+        completion._cycle_registry.record_run_verification_summary.assert_awaited_once()

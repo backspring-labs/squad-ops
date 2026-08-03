@@ -147,6 +147,22 @@ class PostgresRuntimeActivity(RuntimeActivityPort):
             )
         return _row_to_activity(row) if row else None
 
+    async def list_active_activities(
+        self, *, cycle_id: str | None = None, conn: Any = None
+    ) -> tuple[RuntimeActivity, ...]:
+        query = (
+            f"SELECT {_COLUMNS} FROM runtime_activities "
+            "WHERE state IN ('pending', 'running', 'paused')"
+        )
+        args: list[Any] = []
+        if cycle_id is not None:
+            query += " AND cycle_id = $1"
+            args.append(cycle_id)
+        query += " ORDER BY started_at"
+        async with acquire(self._pool, conn) as conn:
+            rows = await conn.fetch(query, *args)
+        return tuple(_row_to_activity(row) for row in rows)
+
 
 def _loads_jsonb(value) -> list:
     """Decode a JSONB column value (asyncpg returns str by default)."""
