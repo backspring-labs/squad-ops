@@ -148,6 +148,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             artifact_vault=artifact_vault,
             llm_observability=llm_observability,
             workflow_tracker=workflow_tracker,
+            activity_port=activity_port,
         )
 
         # SIP-0077: Cycle event bus (defaults to NoOp if not provided)

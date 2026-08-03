@@ -925,3 +925,29 @@ class TestErrorSeamThreading:
         )
 
         assert "error_contract" not in enriched.inputs
+
+
+class TestRunCompletionActivityWiring:
+    async def test_default_run_completion_receives_the_executor_activity_port(
+        self, mock_registry, mock_vault, mock_queue, mock_squad_profile, reply_router
+    ):
+        """Bug class (#672 silent no-op): the executor composes its default
+        RunCompletion — if the activity port isn't threaded into it, the
+        finalize stranded-activity sweep never runs in production while every
+        unit test of RunCompletion itself still passes."""
+        from unittest.mock import AsyncMock
+
+        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+
+        activity_port = AsyncMock()
+        executor = DispatchedFlowExecutor(
+            cycle_registry=mock_registry,
+            artifact_vault=mock_vault,
+            queue=mock_queue,
+            squad_profile=mock_squad_profile,
+            task_timeout=5.0,
+            reply_router=reply_router,
+            activity_port=activity_port,
+        )
+
+        assert executor._run_completion._activity_port is activity_port
