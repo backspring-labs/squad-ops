@@ -710,6 +710,25 @@ class TestGenerateTaskPlanBindMode:
                 _make_cycle(), _make_run(), _make_profile(), plan=plan, contract=contract
             )
 
+    def test_import_present_on_nonexistent_module_raises_at_dispatch(self):
+        """#671 backstop: fay-17's shape — an error-severity import_present
+        requiring a module the contract's surface cannot provide must never
+        reach dispatch (the suite would be collection-dead if satisfied)."""
+        from squadops.cycles.models import CycleError
+
+        plan = ImplementationPlan.from_yaml(
+            MANIFEST_YAML.replace(
+                'acceptance_criteria: ["Models exist"]',
+                'acceptance_criteria: ["Models exist", {check: import_present, '
+                'file: "backend/tests/test_models.py", module: "app.models"}]',
+                1,
+            )
+        )
+        with pytest.raises(CycleError, match="module existence"):
+            generate_task_plan(
+                _make_cycle(), _make_run(), _make_profile(), plan=plan, contract=_models_contract()
+            )
+
     def test_dispatch_resolves_refs_into_acceptance_criteria(self):
         # 98.3 slice C: the bound ref materializes into the dispatched envelope's
         # acceptance_criteria as a TypedCheck stamped with the contract id + file.

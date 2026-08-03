@@ -1,0 +1,195 @@
+version: 1
+project_id: group_run
+cycle_id: cyc_96e72accb2b3
+prd_hash: 9903beaa1e21faf202bbf185e6dca69d51d185bb3670843dc859646afc158894
+tasks:
+- task_index: 0
+  task_type: development.develop
+  role: dev
+  focus: Backend REST endpoints and validation
+  description: "Implement all five REST endpoints in backend/routes.py using the frozen\n\
+    in-memory store (run_event_store, participant_store) and Pydantic models\n(RunEvent,\
+    \ RunEventCreate, ParticipantName).\n\nEndpoints to implement:\n- GET /runs: list\
+    \ all runs with participant counts\n- GET /runs/{run_id}: detail view for a single\
+    \ run (404 if missing)\n- POST /runs: create a run from RunEventCreate payload;\
+    \ return 201 with\n  the created RunEvent including generated id\n- POST /runs/{run_id}/join:\
+    \ accept ParticipantName, validate non-empty\n  name, check for case-insensitive\
+    \ duplicate (strip whitespace, lowercase\n  compare), return updated RunEvent\
+    \ on success; 404 if run missing; 409\n  if duplicate name\n- POST /runs/{run_id}/leave:\
+    \ accept ParticipantName, validate non-empty\n  name, remove participant by case-insensitive\
+    \ match; 404 if run missing\n  or participant not found\n\nAll write mutations\
+    \ must be guarded by asyncio.Lock on the store to\nprevent race conditions on\
+    \ concurrent join/leave.\n\nThis satisfies the brief requirements for:\n- In-memory\
+    \ state only (uses frozen store.py dicts)\n- REST endpoints for create, list,\
+    \ detail, join, and leave\n- Required field validation on run creation; non-empty\
+    \ participant name\n  on join/leave\n- Case-insensitive, whitespace-trimmed duplicate\
+    \ participant prevention\n- Server-side error feedback for validation failures,\
+    \ not-found, and\n  duplicates"
+  expected_artifacts:
+  - backend/routes.py
+  acceptance_criteria:
+  - POST /runs returns 422 when required fields (title, datetime, location) are empty
+  - POST /runs/{id}/join and /leave return 422 when participant name is empty or whitespace-only
+  - Duplicate name join (case-insensitive, whitespace-trimmed) returns 409
+  - Non-existent run_id returns 404 on GET, join, and leave
+  - Non-existent participant on leave returns 404
+  - asyncio.Lock guards all store mutations to prevent count drift under concurrent
+    requests
+  depends_on: []
+  criteria_refs:
+  - vc-routes-endpoints
+  - vc-routes-apierror
+  - vc-routes-compiles
+  - vc-routes-imports
+- task_index: 1
+  task_type: development.develop
+  role: dev
+  focus: Runs list view
+  description: 'Implement the runs list view in frontend/src/views/RunsListView.jsx.
+
+    On mount, fetch GET /runs via the frozen api.js client. Render each run
+
+    as a clickable link to /runs/:id showing title, datetime, location, and
+
+    participant count. Show an empty-state message when no runs exist.
+
+    Include a navigation link to the create run page.
+
+
+    This satisfies the brief requirement for browsing upcoming runs and
+
+    provides the client-side list behavior tied to the backend GET /runs
+
+    endpoint.'
+  expected_artifacts:
+  - frontend/src/views/RunsListView.jsx
+  acceptance_criteria:
+  - Fetches and displays all runs from the backend list endpoint on mount
+  - Each run shows title, datetime, location, and participant count
+  - Clicking a run navigates to its detail page via react-router
+  - Shows a clear empty state message when no runs exist
+  - Includes navigation to the create run page
+  depends_on:
+  - 0
+  criteria_refs:
+  - vc-view-compiles-runs-list-view
+- task_index: 2
+  task_type: development.develop
+  role: dev
+  focus: Create run view
+  description: 'Implement the create run form in frontend/src/views/CreateRunView.jsx.
+
+    Fields: title (required), datetime (required), location (required),
+
+    distance (optional), pace target (optional), route notes (optional).
+
+    Validate non-empty required fields before submitting POST /runs via the
+
+    frozen api.js client. On success, navigate to the runs list. On failure,
+
+    display the server error message inline. Redirect on successful creation
+
+    so the user sees the new run in the list.
+
+
+    This satisfies the brief requirement for client-side required-field
+
+    validation and the create run happy path.'
+  expected_artifacts:
+  - frontend/src/views/CreateRunView.jsx
+  acceptance_criteria:
+  - Form includes required fields (title, datetime, location) and optional fields
+    (distance, pace, notes)
+  - Client-side validation prevents submission when required fields are empty
+  - Successful creation redirects user to the runs list where the new run appears
+  - Server validation errors are displayed as clear inline messages
+  depends_on:
+  - 0
+  criteria_refs:
+  - vc-view-compiles-create-run-view
+- task_index: 3
+  task_type: development.develop
+  role: dev
+  focus: Run detail view
+  description: 'Implement the run detail view in frontend/src/views/RunDetailView.jsx.
+
+    Fetch the run by id from the backend on mount. Display all run details
+
+    (title, datetime, location, distance, pace, notes) and the participant
+
+    list with count. Provide a join form (participant name input + submit)
+
+    and a leave form (participant name input + submit). After a successful
+
+    join or leave, re-fetch the run to update the display. Handle 404 by
+
+    showing a not-found message. Handle 409 (duplicate name) and 422
+
+    (validation) errors by displaying them as clear inline messages.
+
+
+    This satisfies the brief requirements for viewing run details, joining,
+
+    leaving, and clear client-side error feedback for validation failures,
+
+    not-found, and duplicates.'
+  expected_artifacts:
+  - frontend/src/views/RunDetailView.jsx
+  acceptance_criteria:
+  - Displays all run event details including optional fields when present
+  - Shows participant list and count
+  - Join form accepts a name and submits to the backend join endpoint
+  - Leave form accepts a name and submits to the backend leave endpoint
+  - After join or leave, the view refreshes to reflect updated state
+  - 404 displays a clear not-found message; 409 displays a duplicate-name error
+  - 422 validation errors from the server are displayed as inline messages
+  depends_on:
+  - 0
+  criteria_refs:
+  - vc-view-compiles-run-detail-view
+- task_index: 4
+  task_type: qa.test
+  role: qa
+  focus: Backend REST pytest suite
+  description: "Author backend/tests/test_runs.py — a comprehensive pytest + httpx\n\
+    integration suite exercising the five REST endpoints defined in\nbackend/routes.py.\
+    \ All tests must use the scaffold's conftest `client`\nfixture (FastAPI TestClient)\
+    \ — never construct TestClient manually or\nimport backend.main/app.main at module\
+    \ level.\n\nTest categories to cover (aligned to brief must_cover_requirements):\n\
+    \n1. **Happy path CRUD** — create run, list runs, get run detail, join\n   run,\
+    \ leave run, verify participant count updates correctly after\n   each mutation.\n\
+    \n2. **Required-field validation** — POST /runs with empty/missing title,\n  \
+    \ datetime, location returns 422; POST /runs/{id}/join and /leave\n   with empty\
+    \ participant name returns 422.\n\n3. **Duplicate prevention** — case-insensitive\
+    \ (Alice vs alice),\n   whitespace-trimmed (\"Alice \" vs \"Alice\"), and combined\n\
+    \   case+whitespace duplicates all return 409 on join.\n\n4. **Not-found handling**\
+    \ — GET/join/leave for non-existent run_id\n   returns 404; leave for non-existent\
+    \ participant returns 404.\n\n5. **State mutation consistency** — sequential join-then-leave\
+    \ for\n   the same participant preserves correct count (count_after_leave ==\n\
+    \   count_before_join); rapid sequential mutations do not drift.\n\nEach test\
+    \ is independent (creates its own run/joins via the client)\nto avoid cross-test\
+    \ state contamination in the in-memory store."
+  expected_artifacts:
+  - backend/tests/test_runs.py
+  acceptance_criteria:
+  - At least 10 test functions covering CRUD happy path, validation boundaries, duplicate
+    edge cases, not-found handling, and state consistency
+  - All tests use the conftest `client` fixture — no manual TestClient construction
+    or direct backend.main import
+  - 'Happy path: create → list → detail → join → leave flow succeeds with correct
+    status codes and payload shapes'
+  - 'Validation: empty required fields on create return 422; empty name on join/leave
+    returns 422'
+  - 'Duplicates: case-insensitive and whitespace-trimmed joins return 409'
+  - 'Not-found: missing run returns 404 on GET, join, leave; missing participant on
+    leave returns 404'
+  - 'State consistency: participant count is accurate after each join/leave mutation;
+    no drift after sequential operations'
+  - Test module imports the backend production module it exercises
+  depends_on:
+  - 0
+summary:
+  total_dev_tasks: 4
+  total_qa_tasks: 1
+  total_tasks: 5
+  estimated_layers: []

@@ -2829,6 +2829,15 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                         f"verification_contract: {e}"
                         for e in parsed_plan.validate_frozen_artifact_ownership(contract)
                     )
+                    # #671: import_present against a module the closed scaffold
+                    # surface cannot provide is provably unwinnable here, in
+                    # microseconds — a system rejection re-rolls framing for
+                    # free where the doomed roll would burn its correction
+                    # budget (#522).
+                    errors.extend(
+                        f"verification_contract: {e}"
+                        for e in parsed_plan.validate_module_existence(contract)
+                    )
                     # pf-42: a typed check aimed at a frozen file is decidable right
                     # now — the skeleton those files will contain is deterministic.
                     # A failing one makes the plan unwinnable (frozen emissions are

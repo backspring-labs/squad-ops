@@ -19,6 +19,7 @@ import dataclasses
 import hashlib
 import json
 from dataclasses import dataclass, field
+from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
 import yaml
@@ -60,6 +61,28 @@ _CHECK_ENV_EXECUTABLES = frozenset({"python", "python3", "pytest", "node", "npm"
 # exit 1 before parsing) — `node --check view.jsx` fails on ANY content,
 # correct or not (fay-2's killer; verified in the QA container).
 _NODE_UNPARSEABLE_SUFFIXES = (".jsx", ".tsx")
+
+
+def _importable_module_surface(paths: frozenset[str] | set[str]) -> frozenset[str]:
+    """The dotted module paths the scaffold surface can ever provide.
+
+    Path→module conversion mirrors ``ModuleImportsCheck.evaluate``
+    (acceptance_checks.py) — ``backend/routes.py`` → ``backend.routes``,
+    ``backend/__init__.py`` → ``backend``; non-Python files and
+    non-identifier segments contribute nothing.
+    """
+    modules: set[str] = set()
+    for path in paths:
+        pure = PurePosixPath(path)
+        if pure.suffix != ".py":
+            continue
+        parts = list(pure.with_suffix("").parts)
+        if parts and parts[-1] == "__init__":
+            parts = parts[:-1]
+        if not parts or not all(part.isidentifier() for part in parts):
+            continue
+        modules.add(".".join(parts))
+    return frozenset(modules)
 
 
 def planner_build_task_types(*, has_builder: bool) -> set[str]:
@@ -673,6 +696,69 @@ class ImplementationPlan:
             for artifact in task.expected_artifacts
             if artifact in frozen
         ]
+
+    def validate_module_existence(self, contract: VerificationContract) -> list[str]:
+        """#671: an error-severity ``import_present`` may not require a module the
+        scaffold surface provably cannot provide.
+
+        fay-17's framing-2 plan authored a blocking ``import_present: module:
+        app.routes`` — the ``app`` package does not exist (the scaffold root is
+        ``backend``, the pf-26 package-root class). Satisfying the check
+        guarantees a collection-dead suite; omitting the import fails
+        acceptance. Contradictory by construction, and provable at authoring
+        time from the contract's file surface.
+
+        Two rejected classes, both zero-false-positive on third-party imports:
+
+        - a module under a scaffold package root that the closed surface does
+          not contain (``backend.handlers`` — the scaffold owns everything
+          under ``backend/``, so absence is proof);
+        - a real scaffold module leaf under a package root that does not exist
+          (``app.routes``, ``src.backend.main`` — the wrong-root hallucination).
+
+        Everything else is out of scope by design: relative specs (``.errors``
+        — the contract authors this form itself) and dotless specs (``errors``
+        — #441 author-intent-relative semantics) validate at evaluation depth
+        we don't have here, and dotted third-party modules
+        (``fastapi.testclient``) are legitimately outside the scaffold surface.
+
+        ``harness_boundary.entry_modules`` is deliberately NOT validated:
+        entry modules are a FORBIDDEN-import list (the check fails a test that
+        imports one), and the scaffold's own convention seeds nonexistent
+        wrong-guess traps (``app.main``, ``main`` — ``_HARNESS_ENTRY_MODULES``)
+        on purpose. A nonexistent entry there is protective, not doomed.
+
+        Only ``severity=error`` rejects (RC-9, same split as the #645 rules).
+        """
+        surface = _importable_module_surface(
+            {ff.path for ff in contract.frozen_files} | {ff.path for ff in contract.fill_files}
+        )
+        roots = {module.split(".", 1)[0] for module in surface}
+        leaves = {module.rsplit(".", 1)[-1] for module in surface}
+
+        errors: list[str] = []
+        for task in self.tasks:
+            for criterion in task.acceptance_criteria:
+                if not isinstance(criterion, TypedCheck):
+                    continue
+                if criterion.check != "import_present" or criterion.severity != "error":
+                    continue
+                module = criterion.params.get("module")
+                if not isinstance(module, str) or module.startswith(".") or "." not in module:
+                    continue  # relative / dotless / malformed: out of scope (see docstring)
+                if module in surface:
+                    continue
+                root, leaf = module.split(".", 1)[0], module.rsplit(".", 1)[-1]
+                if root not in roots and leaf not in leaves:
+                    continue  # third-party shaped (fastapi.testclient): out of scope
+                errors.append(
+                    f"Task {task.task_index} ({task.focus}): import_present requires "
+                    f"module {module!r}, which the scaffold surface does not provide — "
+                    f"the import can never succeed, so the check fails on any content "
+                    f"and satisfying it kills the suite at collection instead. The "
+                    f"importable scaffold modules are {sorted(surface)}"
+                )
+        return errors
 
     def _authored_on_covered_criteria(self, contract: VerificationContract):
         """Yield ``(task, criterion, target)`` for every authored ``TypedCheck``
