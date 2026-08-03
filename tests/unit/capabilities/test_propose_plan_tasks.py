@@ -286,6 +286,34 @@ async def test_qa_proposer_renders_dev_proposal_in_planning_content():
     assert "brief-test-001" not in variables["planning_content"]
 
 
+async def test_proposer_renders_rejection_context_on_a_reroll():
+    """#669 wiring: when dispatch injected the prior rejection, the proposer's
+    main render must carry the rendered section — the silent-no-op class where
+    the section renders but never reaches the template variables."""
+    ctx = _make_context(_DEV_PROPOSAL_RESPONSE)
+    handler = DevelopmentProposePlanTasksHandler()
+    inputs = _seeded_inputs()
+    inputs["rejection_reasons"] = [
+        "Task 2 (Backend store): development.develop declares expected artifact "
+        "'backend/store.py', which is frozen (scaffold-owned)"
+    ]
+
+    await handler.handle(ctx, inputs)
+
+    variables = ctx.ports.request_renderer.render.call_args.args[1]
+    assert "rejection_context_section" in variables
+
+
+async def test_first_roll_renders_no_rejection_section():
+    ctx = _make_context(_DEV_PROPOSAL_RESPONSE)
+    handler = DevelopmentProposePlanTasksHandler()
+
+    await handler.handle(ctx, _seeded_inputs())
+
+    variables = ctx.ports.request_renderer.render.call_args.args[1]
+    assert "rejection_context_section" not in variables
+
+
 async def test_strategy_proposer_emits_parseable_guidance():
     ctx = _make_context(_STRATEGY_GUIDANCE_RESPONSE)
     handler = StrategyProposePlanGuidanceHandler()

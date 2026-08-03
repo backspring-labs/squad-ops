@@ -1897,6 +1897,83 @@ class TestFramingReroll:
             "implementation",
         ]
 
+    async def test_reroll_forwards_rejection_context(self, executor, mock_registry, mock_event_bus):
+        """#669: the re-roll's execute_run must receive the prior rejection
+        (reasons + rejected plan YAML) on the §6.6 forwarding rail — fay-10
+        tripped the same ownership class on three blind framings. The
+        implementation run's forwarding is rebuilt at the advance, so the
+        context must NOT leak past framing."""
+        import dataclasses as _dc
+        from unittest.mock import MagicMock as _MM
+
+        cycle = _make_cycle(
+            workload_sequence=self._seq(), applied_defaults_extra={"framing_max_rerolls": 1}
+        )
+        mock_registry.get_cycle.return_value = cycle
+        run1 = _dc.replace(
+            _make_run("run_001", 1, "completed", "framing"), artifact_refs=("art_plan",)
+        )
+        run2 = _make_run("run_002", 2, "completed", "framing")
+        run3 = _make_run("run_003", 3, "completed", "implementation")
+        mock_registry.get_run.side_effect = [run1, run2, run3]
+        mock_registry.list_runs.return_value = [run1]
+        rejection = [
+            "Task 2 (Backend store): development.develop declares expected artifact "
+            "'backend/store.py', which is frozen (scaffold-owned)"
+        ]
+        executor._reject_invalid_plan_before_workload_gate = AsyncMock(side_effect=[rejection, []])
+        executor._create_next_workload_run = AsyncMock(side_effect=[run2, run3])
+        executor._poll_inter_workload_gate = AsyncMock(
+            return_value=_gate_decision("progress_plan_review", GateDecisionValue.APPROVED)
+        )
+        plan_ref = _MM()
+        plan_ref.filename = "implementation_plan.yaml"
+        executor._artifact_vault.retrieve = AsyncMock(
+            return_value=(plan_ref, b"version: 1\ntasks: []\n")
+        )
+
+        await executor.execute_cycle("cyc_001", "run_001")
+
+        assert executor.execute_run.await_count == 3
+        reroll_forwarding = executor.execute_run.await_args_list[1].kwargs["forwarding_overrides"]
+        context = reroll_forwarding["framing_rejection_context"]
+        assert context["rejection_reasons"] == rejection
+        assert context["rejected_plan_yaml"] == "version: 1\ntasks: []\n"
+        impl_forwarding = (
+            executor.execute_run.await_args_list[2].kwargs.get("forwarding_overrides") or {}
+        )
+        assert "framing_rejection_context" not in impl_forwarding
+
+    async def test_reroll_context_degrades_to_reasons_when_plan_unreadable(
+        self, executor, mock_registry, mock_event_bus
+    ):
+        """Best-effort plan loading: a vault failure must not block the re-roll
+        or drop the reasons — the context degrades to reasons-only."""
+        cycle = _make_cycle(
+            workload_sequence=self._seq(), applied_defaults_extra={"framing_max_rerolls": 1}
+        )
+        mock_registry.get_cycle.return_value = cycle
+        run1 = _make_run("run_001", 1, "completed", "framing")
+        run2 = _make_run("run_002", 2, "completed", "framing")
+        run3 = _make_run("run_003", 3, "completed", "implementation")
+        mock_registry.get_run.side_effect = [run1, run2, run3]
+        mock_registry.list_runs.return_value = [run1]
+        executor._reject_invalid_plan_before_workload_gate = AsyncMock(
+            side_effect=[["a teaching rejection"], []]
+        )
+        executor._create_next_workload_run = AsyncMock(side_effect=[run2, run3])
+        executor._poll_inter_workload_gate = AsyncMock(
+            return_value=_gate_decision("progress_plan_review", GateDecisionValue.APPROVED)
+        )
+
+        await executor.execute_cycle("cyc_001", "run_001")
+
+        context = executor.execute_run.await_args_list[1].kwargs["forwarding_overrides"][
+            "framing_rejection_context"
+        ]
+        assert context["rejection_reasons"] == ["a teaching rejection"]
+        assert "rejected_plan_yaml" not in context
+
     async def test_budget_exhausted_kills_cycle_no_impl_run(
         self, executor, mock_registry, mock_event_bus
     ):

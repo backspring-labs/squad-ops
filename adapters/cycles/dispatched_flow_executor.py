@@ -648,6 +648,20 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     ):
                         framing_rerolls += 1
                         await self._cycle_registry.cancel_run(current_run_id)
+                        # #669: the re-roll must revise, not re-dice — thread
+                        # what died and why into the new framing's authoring
+                        # prompts on the §6.6 forwarding rail. The rail is
+                        # rebuilt at the next workload advance, so the context
+                        # never leaks past framing; a second re-roll replaces
+                        # the first's context with the latest rejection.
+                        rejected_plan_yaml = await self._load_rejected_plan_yaml(run)
+                        rejection_context: dict[str, Any] = {"rejection_reasons": list(plan_errors)}
+                        if rejected_plan_yaml:
+                            rejection_context["rejected_plan_yaml"] = rejected_plan_yaml
+                        forwarding_overrides = {
+                            **(forwarding_overrides or {}),
+                            "framing_rejection_context": rejection_context,
+                        }
                         reroll_run = await self._create_next_workload_run(
                             cycle,
                             run,
@@ -942,6 +956,26 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             workload_type=workload_entry.get("type"),
         )
         return await self._cycle_registry.create_run(next_run)
+
+    async def _load_rejected_plan_yaml(self, run: Run) -> str | None:
+        """The rejected run's implementation_plan.yaml content, or None (#669).
+
+        Same match rule as the gate-net loader — cancellation only flips run
+        status, so the rejected run's artifact refs stay readable. Best-effort:
+        an unreadable artifact degrades the re-roll context to reasons-only,
+        never blocks the re-roll.
+        """
+        for ref_id in tuple(run.artifact_refs or ()):
+            try:
+                ref, content_bytes = await self._artifact_vault.retrieve(ref_id)
+            except Exception:
+                continue
+            if (
+                ref.filename == "implementation_plan.yaml"
+                or getattr(ref, "artifact_type", None) == "control_implementation_plan"
+            ):
+                return content_bytes.decode(errors="replace")
+        return None
 
     # ------------------------------------------------------------------
     # Execution strategies
