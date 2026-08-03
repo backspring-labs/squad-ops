@@ -92,6 +92,9 @@ class _FakeActivityPort(RuntimeActivityPort):
     async def get_current_activity(self, agent_id, *, conn=None):
         raise NotImplementedError
 
+    async def list_active_activities(self, *, cycle_id=None, conn=None):
+        raise NotImplementedError
+
 
 # ---------------------------------------------------------------------------
 # _start_task_activity
