@@ -9,7 +9,14 @@ created_at: '2026-07-04T00:00:00Z'
 ## Status
 Proposed
 
-**Targets:** v1.6 (feature minor — this is the headline feature SIP that gates 1.6)
+**Targets:** v1.8 (Lane M headline — **retargeted from v1.6, 2026-08-03**, per
+`docs/plans/post-1-4-roadmap-reconciliation.md`: the 1.4 cut moved the deferred
+squad-authored-manifest rung into v1.6 as the Lane M headline, and the trust ladder —
+automate only over evidence you trust — puts Campaign one slot behind it: the
+continuation policy automates relaunch over authored-manifest-mode cycles, so the
+authored-mode FAY baseline (the 1.6 exit number) must exist before Campaign tunes
+against it. At 1.8 Campaign lands beside the cycle-evaluation scorecard — both consumers
+of the SIP-0096 `CycleOutcome` seam.)
 **Carved from:** `SIP-Campaign-Self-Improvement-and-Test-Bay-Requirements.md` (the 2.0 vision anchor). This SIP is the **near-term, implementable mechanic** — the objective envelope + continuation policy — with no dependency on capability packs, Test Bay, or new agent roles. See `docs/plans/2-0-roadmap-reconciliation.md`.
 **Supersedes:** the "Loop Policy" naming in `docs/ideas/SquadOps-Roadmap-Runtime-Loop-Capability-Backed-Agents.md`. The idea's continuance-decision vocabulary is adopted here as the Campaign continuation decision.
 **Builds on:** SIP-0064 (Cycle/Run/TaskFlowPolicy + gates), SIP-0067 (Postgres cycle registry pattern), SIP-0070 (pulse checks / verification evidence), SIP-0083 (multi-run cycle orchestration), SIP-0089 (runtime state / cycle recruitment via the coordinator + FocusLease), SIP-0069 (Continuum console).
@@ -184,7 +191,7 @@ Continuum shows active/paused/blocked/completed Campaigns; a Campaign detail vie
 
 ---
 
-## 13. Phasing (within the 1.6 arc)
+## 13. Phasing (within the 1.8 arc)
 
 - **Phase 1 — Model + registry + manual coordination.** `Campaign`/`CampaignObjective`/`CampaignPolicy` models, `CampaignRegistryPort` + adapters, the additive `Cycle.campaign_id`, create/attach via API+CLI, derived status. An operator can group Cycles under an objective and see the aggregate. *No auto-continuation yet.* (Migration-light, CI-able — mirrors how SIP-0090 Phase 1 proved the model before wiring.)
 - **Phase 2 — Continuation policy.** `campaign_continuation_decision` pure function + the choke point that runs it when a Campaign's Cycle terminates, records the decision, and launches the next Cycle through the existing create path. This is the headline capability. **Sequenced behind:** #288 (lease arbitration, §8), the Verification Evidence Integrity SIP (the `CycleOutcome` contract §7.2 reads), and the request-profile naming taxonomy (#316) — a *policy-derived* `next_request_profile` needs a coherent profile namespace to derive from.
