@@ -10,7 +10,7 @@ Draft (proposed)
 rung and the injection seam this SIP reuses), SIP-0101 (Cycle Replay Harness — the
 measurement instrument).
 **Absorbs:** the "Hierarchical Cognitive Memory Architecture" idea doc (J. Ladd, 2026-08)
-as the long-term vision (§8); this SIP normatively specifies only Phase 1.
+as the long-term vision (§9); this SIP normatively specifies only Phase 1.
 **External reference:** CrewAI, "How we built cognitive memory for agentic systems"
 (blog.crewai.com) — adopted for its failure catalog and recall design; deliberately
 diverged from on agent-discretionary memory tools (§6).
@@ -41,6 +41,11 @@ squad stops needing a framework patch per recurring mistake class.
 Rung ladder: **#669 = within-cycle** (a re-roll sees this cycle's rejection; shipped in
 1.4.1) → **this SIP = cross-cycle** (a new cycle sees prior cycles' rejection classes) →
 **organization scope** (Phase 2 promotion, evidence-gated).
+
+The substrate is **mode-neutral by design** (§6): Phase 1 implements the cycle-mode
+loop, but the schema, identity model, and port are specified so duty- and ambient-mode
+memory utilization (SIP-0089 postures, SIP-0091 duty durability) extends the system
+rather than reworking it.
 
 ## 2. Justification — the specific cycle-success value
 
@@ -81,7 +86,7 @@ ones.
 **The measurable claim** (hypothesis, not forecast): with rejection memory on, the
 recurrence rate of already-labeled rejection classes drops measurably vs. the memory-off
 baseline, and saved framing/correction budget converts to a Functional App Yield delta.
-§7 defines the measurement; the SIP's phase-1 gate is the recurrence-rate number, scored
+§8 defines the measurement; the SIP's phase-1 gate is the recurrence-rate number, scored
 against stored plans via the SIP-0101 replay harness plus live rolls.
 
 ## 3. Problem
@@ -109,11 +114,18 @@ against stored plans via the SIP-0101 replay harness plus live rolls.
   of one manifest. "You tend to rename interface identifiers — check the manifest before
   emitting" generalizes. Phase-1 encodings state the *tendency and the corrective rule*,
   not the instance data.
-- **Deterministic seams, not model discretion.** Memory writes happen at fixed pipeline
-  points (gate rejection recorded, cycle finalized); memory reads happen at fixed input-
-  construction points (plan authoring, repair envelopes later). No agent-invoked
-  `remember()`/`recall()` tools in Phase 1 — this diverges from CrewAI's design and
-  matches the 1.4-arc lesson that every win came from moving judgment out of the dice.
+- **Mode-neutral substrate, mode-appropriate access.** Agents operate in three postures
+  (`mode: ambient | cycle | duty`, SIP-0089), and the memory substrate — schema, store,
+  port — must serve all three. What varies by mode is the *access discipline*, not the
+  memory model. Nothing in the schema or port may assume a cycle exists (§6).
+- **Deterministic seams in cycle mode, not model discretion.** Within cycle execution,
+  memory writes happen at fixed pipeline points (gate rejection recorded, cycle
+  finalized) and reads at fixed input-construction points (plan authoring, repair
+  envelopes later). No agent-invoked `remember()`/`recall()` tools *in cycle-mode task
+  execution* — this diverges from CrewAI's design and matches the 1.4-arc lesson that
+  every win came from moving judgment out of the dice. It is a cycle-mode discipline,
+  not a property of the substrate: ambient- and duty-mode access is agent-initiated by
+  nature (§6).
 - **Data-only inputs; prose in managed assets** (#448, CLAUDE.md). Recalled memories ride
   task inputs as data keys; the "here is what past cycles got rejected for — revise
   accordingly" prose lives in `src/squadops/prompts/fragments/` assets rendered through
@@ -133,15 +145,23 @@ deterministic label (validator-emitted classes only in Phase 1).
 **Encode.** A `MemoryEntry` per rejection class occurrence (atomic — one class, one
 entry; never a blob of the whole gate decision):
 
-- `namespace`: `project:<project_id>` (Phase 1 stops here; no org scope)
+- `namespace`: `project:<project_id>` (Phase 1 *writes* only this scope; the schema
+  admits the full ladder from day one)
 - `content`: behavioral statement + corrective rule (template-derived from the
   validator's own teaching message — deterministic, no LLM in the encode path for
   validator-sourced entries)
 - `tags`: `rejection_class:<class>`, `task_type:<authoring task>`, `sip:cross-cycle-memory`
-- metadata: `owner` (role id, never agent name), `scope`, `type` (`reflective`),
-  `confidence`, `importance`, `reuse_count`, `success_rate`, `created_cycle`, `source`
-  (gate_decision/artifact ref), `summary`. (SIP-042's `MemoryEntry` already carries
-  namespace/tags/importance/cycle_id; the delta is the scoring/provenance fields.)
+- metadata: `owner_role` (role id, never an agent name in source), `agent_id` (nullable —
+  the persistent identity per SIP-0088/0089, for agent-scoped entries; null for
+  squad-attributed ones), `scope` (`agent | role | project | organization` — the full
+  ladder is schema-legal from day one even though Phase 1 writes only `project`),
+  `origin_mode` (`cycle | duty | ambient` — Phase 1 writes only `cycle`), `type`
+  (`reflective`), `confidence`, `importance`, `reuse_count`, `success_rate`,
+  `created_cycle` (**optional** — duty- and ambient-born memories have no cycle),
+  `source` (a discriminated provenance union: `gate_decision:<ref>` in Phase 1;
+  extensible to duty-handoff, observation, and conversation origins), `summary`.
+  (SIP-042's `MemoryEntry` already carries namespace/tags/importance/cycle_id; the delta
+  is the scoring/provenance/identity fields.)
 
 **Store.** Existing `MemoryPort` → LanceDB adapter. No new storage service.
 
@@ -163,7 +183,48 @@ died," the other is "plans in this project tend to die this way."
 `success_rate` (was the class absent from the authored plan?). This telemetry is what
 Phase 2's promotion gates on — collected from day one, acted on later.
 
-## 6. Phase 2 (design-sketch, separately gated): consolidation and promotion
+## 6. Mode neutrality: cycle, duty, and ambient utilization
+
+Phase 1 implements the cycle-mode loop, but the substrate is designed so duty- and
+ambient-mode utilization is an *extension*, never a *migration*. Binding constraints on
+Phase 1's implementation (normative), with the utilization sketch they exist to permit:
+
+**Constraints Phase 1 must honor:**
+
+1. **No cycle assumption in schema or port.** `created_cycle` is optional, `origin_mode`
+   is first-class, and provenance is a discriminated union — a memory formed during a
+   duty window or ambient observation is schema-legal without a fake cycle ref.
+2. **Identity is carried, not inferred.** `agent_id` (persistent identity, SIP-0088/0089)
+   travels on every entry alongside `owner_role`. An agent-scoped memory survives role
+   reassignment and squad recomposition; collapsing agent into role in the storage key
+   would corner exactly the identity-memory future this section protects.
+3. **Recall is a port operation, not an executor feature.** The composite-scored,
+   confidence-gated recall of §5 lives behind `MemoryPort`, callable from any mode. The
+   executor's plan-authoring seam is Phase 1's *consumer*, not the recall API's owner.
+4. **Access discipline is a per-mode policy, not a substrate property.** Cycle mode:
+   seam-mediated only (§4). Duty and ambient modes: agent-initiated recall/remember
+   through the same port is the intended shape — there is no deterministic pipeline seam
+   in a duty window waiting on events (SIP-0091) or in ambient presence, so discretionary
+   access is not a compromise there; it is the only coherent design.
+
+**Utilization sketch (non-normative, later phases):**
+
+- **Duty mode:** a duty agent recalls its own agent-scoped and project-scoped memories at
+  window start; duty handoff (the Duty-Continuity/Handoff-Ledger draft) is a natural
+  encode/recall pair — the outgoing agent's handoff summary is an encode, the incoming
+  agent's context load is a recall. Temporal owns duty durability (SIP-0091); memory owns
+  what the duty *learned*.
+- **Ambient mode:** ambient agents accumulate observations as agent-scoped candidate
+  memories via agent-initiated `remember()`.
+- **The quarantine rule (design stance, review-confirmable):** memories born outside
+  validated seams (`origin_mode: duty | ambient`) do **not** enter cycle-mode recall
+  until they pass validation/promotion (Phase 2's evidence gates). Cycle execution is
+  the dice we measure; letting unvetted ambient observations into authoring prompts would
+  reintroduce the nondeterminism the 1.4 arc spent a release removing. Ambient/duty
+  agents may freely recall *validated* project memories; the gate is on what flows
+  *into* the measured lane, not out of it.
+
+## 7. Phase 2 (design-sketch, separately gated): consolidation and promotion
 
 - **Consolidation** — CrewAI's genuine differentiator: on encode, similarity-search for
   related entries; on contradiction, update-or-delete with provenance preserved (never
@@ -176,7 +237,7 @@ Phase 2's promotion gates on — collected from day one, acted on later.
 
 Phase 2 does not begin until Phase 1's recurrence-rate measurement is in hand.
 
-## 7. Success metrics (measured, not aspirational)
+## 8. Success metrics (measured, not aspirational)
 
 1. **Primary (gates Phase 1):** recurrence rate of labeled rejection classes, memory-on
    vs. memory-off — scored against stored plans via the SIP-0101 replay harness and over
@@ -188,7 +249,7 @@ Phase 2 does not begin until Phase 1's recurrence-rate measurement is in hand.
 5. Retrieval usefulness: `reuse_count`/`success_rate` distributions (Phase 2's promotion
    evidence).
 
-## 8. Long-term vision (from the idea doc; non-normative here)
+## 9. Long-term vision (from the idea doc; non-normative here)
 
 The destination is an engineering organization that learns from every execution cycle:
 a memory hierarchy (Agent → Cycle → Project → Organization), four cognitive memory types
@@ -200,21 +261,23 @@ knowledge. Phase 1 deliberately instantiates the smallest slice of this that can
 value on a number: one memory type (reflective), one scope (project), one consumer
 (plan authoring), one metric (rejection recurrence).
 
-## 9. Non-goals (Phase 1)
+## 10. Non-goals (Phase 1)
 
 - Organization-scope memory and cross-project promotion (Phase 2, evidence-gated).
 - Role cognitive profiles and per-role retrieval tuning (vision).
 - Memory analytics services, governance service, "Memory Consolidation Engine" as a
   standalone service — Phase 1 adds **zero new services**; it is a pipeline through
   existing ports.
-- Agent-discretionary remember/recall tools (deliberate divergence from CrewAI, §4).
+- Agent-discretionary remember/recall tools **in cycle-mode task execution** (deliberate
+  divergence from CrewAI, §4). Duty- and ambient-mode discretionary access is explicitly
+  designed *for* (§6) — deferred, not excluded.
 - A Memory Librarian role — the Campaign-Self-Improvement draft's §12.7 should defer to
   this SIP rather than grow a parallel memory surface.
 - Memories of *facts about the app under build* (manifest fields, endpoint shapes) — the
   contract/manifest seams already carry those deterministically; duplicating them in
   memory recreates the stale-fact poisoning CrewAI warns about.
 
-## 10. Placement in the dev arc
+## 11. Placement in the dev arc
 
 - **Lane and release:** feature SIP → gates an even feature release under the parity
   convention. It is headline-scale: "the org that learns" is a plausible flagship for the
@@ -233,7 +296,7 @@ value on a number: one memory type (reflective), one scope (project), one consum
   prompt assets) — Macbook-lane per the #281 ownership split; the LanceDB adapter and
   any config plumbing are shared surfaces.
 
-## 11. Open questions for design review
+## 12. Open questions for design review
 
 1. Should human gate rejections (free-text reasons) enter Phase 1's corpus, or only
    validator-emitted classes? (Draft position: validator-only — deterministic encode; the
@@ -243,3 +306,10 @@ value on a number: one memory type (reflective), one scope (project), one consum
    is that scope creep past "one consumer"? (Draft position: plan authoring only; repair
    recall is the first Phase-1.5 extension once the metric exists.)
 4. Retention horizon and the memory-off control protocol for the measurement window.
+5. Role-scoped expertise memory (procedural — "how this role solves problems well",
+   keyed to persistent identity per SIP-0088/0089): does it enter as a Phase 1.5 with
+   its own seed corpus, or wait for Phase 2's LLM-assisted encode?
+6. The quarantine gate (§6): what validation evidence promotes a duty- or ambient-born
+   memory into cycle-mode recall — reuse under observation, audit sign-off, or a
+   replay-scored trial? (Draft position: Phase 2's promotion gates are the single
+   mechanism; no side door.)
