@@ -8,9 +8,10 @@ Draft (proposed)
 **Builds on:** SIP-042 (LanceDB semantic memory — the storage mechanics), SIP-0088/0089
 (persistent agent identity), #669 (framing re-roll rejection context — the within-cycle
 rung and the injection seam this SIP reuses), SIP-0101 (Cycle Replay Harness — the
-measurement instrument).
+measurement instrument), Campaign Orchestration (proposed, v1.8 — same-release
+companion; see §7).
 **Absorbs:** the "Hierarchical Cognitive Memory Architecture" idea doc (J. Ladd, 2026-08)
-as the long-term vision (§9); this SIP normatively specifies only Phase 1.
+as the long-term vision (§10); this SIP normatively specifies only Phase 1.
 **External reference:** CrewAI, "How we built cognitive memory for agentic systems"
 (blog.crewai.com) — adopted for its failure catalog and recall design; deliberately
 diverged from on agent-discretionary memory tools (§6).
@@ -86,7 +87,7 @@ ones.
 **The measurable claim** (hypothesis, not forecast): with rejection memory on, the
 recurrence rate of already-labeled rejection classes drops measurably vs. the memory-off
 baseline, and saved framing/correction budget converts to a Functional App Yield delta.
-§8 defines the measurement; the SIP's phase-1 gate is the recurrence-rate number, scored
+§9 defines the measurement; the SIP's phase-1 gate is the recurrence-rate number, scored
 against stored plans via the SIP-0101 replay harness plus live rolls.
 
 ## 3. Problem
@@ -158,6 +159,8 @@ entry; never a blob of the whole gate decision):
   `origin_mode` (`cycle | duty | ambient` — Phase 1 writes only `cycle`), `type`
   (`reflective`), `confidence`, `importance`, `reuse_count`, `success_rate`,
   `created_cycle` (**optional** — duty- and ambient-born memories have no cycle),
+  `created_campaign` (**optional** — carried when the origin cycle ran under a Campaign,
+  per §7; a campaign is provenance and a recall-scoring signal, never a scope),
   `source` (a discriminated provenance union: `gate_decision:<ref>` in Phase 1;
   extensible to duty-handoff, observation, and conversation origins), `summary`.
   (SIP-042's `MemoryEntry` already carries namespace/tags/importance/cycle_id; the delta
@@ -224,7 +227,35 @@ Phase 1's implementation (normative), with the utilization sketch they exist to 
   agents may freely recall *validated* project memories; the gate is on what flows
   *into* the measured lane, not out of it.
 
-## 7. Phase 2 (design-sketch, separately gated): consolidation and promotion
+## 7. Campaign interaction
+
+Campaign Orchestration (targeting v1.8, the same release as this SIP's Phase 1) is the
+sharpest consumer of cross-cycle memory: `repair`/`retry`/`fork` continuations create
+back-to-back cycles pursuing one objective, where the prior cycle's failure classes are
+maximally relevant and the recurrence metric takes its tightest form (did the class
+recur *within the campaign*?).
+
+Design decisions this implies:
+
+- **Campaign is provenance, not scope.** Memories born in a campaign must outlive it —
+  organizational learning would be defeated by campaign-lifetime memories. `created_campaign`
+  rides the metadata; recall scoring may boost same-campaign provenance (the "this
+  objective's own history" signal); the scope ladder (§5) is unchanged.
+- **Campaign close is Phase 2's consolidation clock.** Consolidation and success-rate
+  updates need a deterministic trigger; cycle-end is too frequent and wall-clock is
+  arbitrary. Campaign disposition — the final continuation decision — is the natural
+  batch point: reflect over the campaign's accumulated evidence (SIP-0096
+  `CycleOutcome` roll-ups), consolidate per-class entries, update `success_rate` from
+  the outcome trajectory. This instantiates the idea doc's reflection pipeline
+  (Execution → Audit → Reflection → Extraction → Consolidation) at a real runtime seam.
+- **The purity boundary (binding constraint):** memory is **never** an input to the
+  campaign continuation decision. The Campaign SIP specifies that decision as a pure
+  function of (objective, policy, accumulated evidence, latest outcome) — the
+  reserve-buffer-guard pattern. Memory improves *how the next cycle authors*; the
+  campaign decides *whether and what to launch*. Coupling them would make the
+  continuation decision non-replayable and structurally entangle the two SIPs.
+
+## 8. Phase 2 (design-sketch, separately gated): consolidation and promotion
 
 - **Consolidation** — CrewAI's genuine differentiator: on encode, similarity-search for
   related entries; on contradiction, update-or-delete with provenance preserved (never
@@ -237,7 +268,7 @@ Phase 1's implementation (normative), with the utilization sketch they exist to 
 
 Phase 2 does not begin until Phase 1's recurrence-rate measurement is in hand.
 
-## 8. Success metrics (measured, not aspirational)
+## 9. Success metrics (measured, not aspirational)
 
 1. **Primary (gates Phase 1):** recurrence rate of labeled rejection classes, memory-on
    vs. memory-off — scored against stored plans via the SIP-0101 replay harness and over
@@ -249,7 +280,7 @@ Phase 2 does not begin until Phase 1's recurrence-rate measurement is in hand.
 5. Retrieval usefulness: `reuse_count`/`success_rate` distributions (Phase 2's promotion
    evidence).
 
-## 9. Long-term vision (from the idea doc; non-normative here)
+## 10. Long-term vision (from the idea doc; non-normative here)
 
 The destination is an engineering organization that learns from every execution cycle:
 a memory hierarchy (Agent → Cycle → Project → Organization), four cognitive memory types
@@ -261,7 +292,7 @@ knowledge. Phase 1 deliberately instantiates the smallest slice of this that can
 value on a number: one memory type (reflective), one scope (project), one consumer
 (plan authoring), one metric (rejection recurrence).
 
-## 10. Non-goals (Phase 1)
+## 11. Non-goals (Phase 1)
 
 - Organization-scope memory and cross-project promotion (Phase 2, evidence-gated).
 - Role cognitive profiles and per-role retrieval tuning (vision).
@@ -277,26 +308,36 @@ value on a number: one memory type (reflective), one scope (project), one consum
   contract/manifest seams already carry those deterministically; duplicating them in
   memory recreates the stale-fact poisoning CrewAI warns about.
 
-## 11. Placement in the dev arc
+## 12. Placement in the dev arc
 
-- **Lane and release:** feature SIP → gates an even feature release under the parity
-  convention. It is headline-scale: "the org that learns" is a plausible flagship for the
-  2.x line, and this SIP is written as that line's first rung. Whether the next feature
-  release is cut as 1.6 or 2.0 is a release-naming decision made at cut time — this SIP
-  binds to *the next feature lane slot after acceptance*, not to a number.
-- **Sequencing (readiness, not dates):** starts after the 1.4.1 confirmation window
-  closes. Hard dependencies are all satisfied by 1.4.1: SIP-042 mechanics (present,
-  unused), the #669 injection seam + appendix-asset discipline (deployed), gate_decisions
-  persistence (present), SIP-0101 replay harness (accepted; must be usable before the
-  Phase-1 measurement is scored, not before implementation starts).
-- **Interaction with the post-freeze backlog:** independent of #593/#598/#597/#626;
-  can proceed alongside. The Atlas migration (provider port work) does not touch these
-  seams.
+Per the ratified post-1.4 reshuffle (`docs/plans/post-1-4-roadmap-reconciliation.md`,
+2026-08-03):
+
+- **Phase 1 → v1.8, riding as a thin non-headline feature** beside the release's
+  headliners (Campaign mechanic, Lane M; scorecard/benchmark registry). Phase 1 adds
+  zero services — the 1.2.0 precedent (three feature SIPs, one release) covers a thin
+  rider. Deliberately **not** v1.6: injecting memory into authoring during the release
+  that measures the authored-manifest baseline would confound that baseline; and not
+  earlier, because by 1.8 Phase 1 inherits **two** seed corpora (plan-validation classes
+  + the manifest-authoring rejection classes v1.6 creates) and measures recurrence
+  against the banked 1.6 authored-mode FAY baseline.
+- **Phase 2 → v2.0, inside the Capability-Backed Agents arc.** The 2.0 umbrella names
+  scoped memory as a component of what an agent is and its problem statement demands
+  exactly Phase 2's content — "memory needs scope, provenance, promotion, and
+  disclosure." Phase 2 (consolidation, promotion, duty/ambient utilization, §6–§8) is
+  that substrate, delivered with a Phase-1 measured result behind it rather than
+  specified cold from inside an umbrella.
+- **Sequencing (readiness, not dates):** implementation can begin once design review
+  accepts; hard dependencies are already shipped (SIP-042 mechanics, the #669 injection
+  seam, `gate_decisions` persistence). SIP-0101's replay harness must be usable before
+  the Phase-1 *measurement* is scored, not before implementation starts. Campaign
+  landing in the same release supplies `created_campaign` provenance and the
+  within-campaign consumer from day one (§7); nothing in Phase 1 hard-requires it.
 - **File ownership:** planning/authoring surfaces (task_plan, planning handlers,
   prompt assets) — Macbook-lane per the #281 ownership split; the LanceDB adapter and
   any config plumbing are shared surfaces.
 
-## 12. Open questions for design review
+## 13. Open questions for design review
 
 1. Should human gate rejections (free-text reasons) enter Phase 1's corpus, or only
    validator-emitted classes? (Draft position: validator-only — deterministic encode; the
