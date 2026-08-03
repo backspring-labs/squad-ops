@@ -210,6 +210,9 @@ class _RepairPromptMixin:
             # pf-31 Fix A1: authoritative typed-expectations block, rendered in
             # handle() from the managed appendix asset; "" when no typed criteria.
             "contract_expectations": str(inputs.get("contract_expectations_section") or ""),
+            # #667: the qa DOM anchor contract, rendered in handle(); "" for
+            # non-qa repairs or when no anchor surface was threaded.
+            "dom_anchor_section": str(inputs.get("dom_anchor_section") or ""),
         }
 
     async def handle(
@@ -234,6 +237,9 @@ class _RepairPromptMixin:
         expectations = await self._render_contract_expectations_section(context, inputs)
         if expectations:
             inputs = {**inputs, "contract_expectations_section": expectations}
+        dom_anchor = await self._render_dom_anchor_section(context, inputs)
+        if dom_anchor:
+            inputs = {**inputs, "dom_anchor_section": dom_anchor}
         return await super().handle(context, inputs)
 
     async def _render_contract_expectations_section(
@@ -274,8 +280,60 @@ class _RepairPromptMixin:
         stack = str((inputs.get("resolved_config") or {}).get("build_profile") or "")
         if not is_scaffoldable_stack(stack):
             return ""
+        variables: dict[str, Any] = {"stack": stack}
+        # #667: the appendix's {{testid_surface}} slot rendered empty on every
+        # repair — fay-14's repairs regenerated the view blind to the anchor
+        # contract the first fill honored. Same section the develop handler
+        # builds at initial dispatch, from the same threaded lines.
+        testid_surface = await self._render_testid_surface_section(renderer, inputs)
+        if testid_surface:
+            variables["testid_surface"] = testid_surface
         rendered = await renderer.render(
-            "request.development_develop_fill_only_appendix", {"stack": stack}
+            "request.development_develop_fill_only_appendix", variables
+        )
+        return rendered.content
+
+    @staticmethod
+    async def _render_testid_surface_section(renderer: Any, inputs: dict[str, Any]) -> str:
+        """Render the DOM ANCHOR CONTRACT block from threaded lines, or "".
+
+        Mirrors ``DevelopHandler._testid_surface_section``: the lines are
+        manifest-derived data (``scaffold.testid_surface_instructions``); all
+        prose lives in the appendix asset (CLAUDE.md #448).
+        """
+        lines = [str(line).strip() for line in (inputs.get("testid_surface") or [])]
+        lines = [line for line in lines if line]
+        if not lines:
+            return ""
+        rendered = await renderer.render(
+            "request.development_develop_testid_surface_appendix",
+            {"testid_lines": "\n".join(f"- {line}" for line in lines)},
+        )
+        return rendered.content
+
+    async def _render_dom_anchor_section(
+        self, context: ExecutionContext, inputs: dict[str, Any]
+    ) -> str:
+        """The qa DOM anchor appendix, or "" (non-qa role, no lines, no renderer).
+
+        #667: ``qa.test_repair`` re-authors the suite with none of the anchor
+        inventory the original qa.test dispatch carried (``_dom_anchor_section``
+        in the qa_test handler) — the re-authored suite then asserts invented
+        render details, the fay-6/fay-12 churn class replayed through the
+        repair path. Same appendix asset, same threaded lines.
+        """
+        if self._role != "qa":
+            return ""
+        renderer = getattr(context.ports, "request_renderer", None)
+        if renderer is None:
+            return ""
+        lines = [str(line).strip() for line in (inputs.get("dom_testid_surface") or [])]
+        lines = [line for line in lines if line]
+        if not lines:
+            return ""
+        rendered = await renderer.render(
+            "request.qa_test_dom_anchor_appendix",
+            {"testid_lines": "\n".join(f"- {line}" for line in lines)},
         )
         return rendered.content
 
