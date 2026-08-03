@@ -422,12 +422,12 @@ The following areas are identified for future work but do not block 1.0 readines
 
 | SIP | Title | Target |
 |-----|-------|--------|
-| **SIP-0088** | Agent Runtime Modes (umbrella; runtime arc shipped 1.1–1.2, remaining pieces future) | audit for promotion (post-1.4) |
+| **SIP-0088** | Agent Runtime Modes (umbrella; runtime arc shipped 1.1–1.2, remaining pieces future) | stays accepted (audited 2026-08-03: children 0090 P2–4 / 0091 open, → v1.6) |
 | **SIP-0090** | Agent Embodiment Substrate (Phase 1 shipped 1.2.0) | Phases 2+ → v1.6 |
 | **SIP-0091** | Duty Durability via Temporal | v1.6 |
-| **SIP-0092** | Implementation Plan Improvement — Typed Acceptance, Separated Authoring, and Plan Changes | audit for promotion (M3 was pending 2026-07-01) |
-| **SIP-0093** | Multi-Role Plan Authoring | audit for promotion (runtime-complete 2026-07-01) |
-| **SIP-0096** | Verification Evidence Integrity | audit for promotion (much shipped across the 1.4 arc incl. #597) |
+| **SIP-0092** | Implementation Plan Improvement — Typed Acceptance, Separated Authoring, and Plan Changes | stays accepted (audited 2026-08-03: M1 landed, M2 partial on 93.4, M3 unstarted; `docs/plans/sip-promotion-audit-2026-08-03.md`) |
+| **SIP-0093** | Multi-Role Plan Authoring | stays accepted (audited 2026-08-03: runtime-complete; 93.4 + §5.8 merge rules 2–5 + two required tests remain) |
+| **SIP-0096** | Verification Evidence Integrity | stays accepted (audited 2026-08-03: core live-proven; #682 #683 #684 #423 remain — gates the v1.8 scorecard) |
 | **SIP-0101** | Cycle Replay Harness | next up — deferral condition (98.5 baseline) spent at the 1.4 cut |
 | **SIP-0102** | Ephemeral Application Sandbox (1.4 floor shipped as the v1.4.0 S-lane headline) | migration steps 3–7 → 1.5/1.6 (in-cycle routing, clean-room verdicts, #306 retirement, golden-path validation) |
 
