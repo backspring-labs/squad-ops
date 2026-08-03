@@ -454,6 +454,46 @@ def _applicable_acceptance(plan_task: Any) -> list:
     return acceptance
 
 
+# #669: the plan-authoring tasks that receive the prior framing's rejection
+# context on a re-roll — the same four the #657 planning-artifact filter feeds.
+# The merger is excluded: its normal merge path is deterministic (no prompt).
+_PLAN_AUTHORING_CONTEXT_TASK_TYPES = frozenset(
+    {
+        "governance.prepare_plan_authoring_brief",
+        "development.propose_plan_tasks",
+        "qa.propose_plan_tasks",
+        "strategy.propose_plan_guidance",
+    }
+)
+
+
+def _inject_rejection_context(
+    inputs: dict[str, Any], rejection_context: Any, task_type: str
+) -> None:
+    """#669: thread the prior framing's rejection into plan-authoring inputs.
+
+    A #522 framing re-roll previously granted fresh dice with zero context —
+    the validator's teaching message was persisted in gate_decisions and read
+    by nobody, so the re-roll was free to re-emit the exact rejected shape
+    (fay-10 tripped the same ownership class on all three framings). Data-only
+    keys; the authoring handlers render them through a managed appendix asset
+    (CLAUDE.md #448). Non-re-roll runs carry no context and get no keys.
+    """
+    if not isinstance(rejection_context, dict):
+        return
+    if task_type not in _PLAN_AUTHORING_CONTEXT_TASK_TYPES:
+        return
+    reasons = [
+        str(r).strip() for r in (rejection_context.get("rejection_reasons") or []) if str(r).strip()
+    ]
+    if not reasons:
+        return
+    inputs["rejection_reasons"] = reasons
+    plan_yaml = str(rejection_context.get("rejected_plan_yaml") or "")
+    if plan_yaml.strip():
+        inputs["rejected_plan_yaml"] = plan_yaml
+
+
 def _inject_contract_inputs(
     inputs: dict,
     contract: VerificationContract | None,
@@ -585,6 +625,11 @@ def generate_task_plan(
     # through resolved_config so the proposer steps are added/skipped per
     # cycle config. Other workload types ignore the extra argument.
     resolved_config = {**cycle.applied_defaults, **cycle.execution_overrides}
+    # #669: a framing re-roll forwards the prior rejection on the §6.6 overrides
+    # rail. It is authoring CONTEXT, not config — lift it out so resolved_config
+    # stays config-shaped on every envelope, then inject it onto the
+    # plan-authoring tasks only (below).
+    framing_rejection_context = resolved_config.pop("framing_rejection_context", None)
 
     if run.workload_type is not None:
         steps, builder_used = _resolve_workload_steps(
@@ -716,6 +761,7 @@ def generate_task_plan(
             inputs["acceptance_criteria"] = acceptance
 
         _inject_contract_inputs(inputs, contract, task_type, interface_manifest)
+        _inject_rejection_context(inputs, framing_rejection_context, task_type)
 
         envelope = TaskEnvelope(
             task_id=task_id,

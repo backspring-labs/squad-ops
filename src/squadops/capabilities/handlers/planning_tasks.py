@@ -138,6 +138,33 @@ class _PlanningTaskHandler(_CycleTaskHandler):
             variables["time_budget_section"] = budget_section
         return variables
 
+    async def _rejection_context_section(self, renderer: Any, inputs: dict[str, Any]) -> str:
+        """The prior-rejection appendix on a framing re-roll, or "" (#669).
+
+        A #522 re-roll previously started with fresh dice and zero context —
+        the validator's teaching message persisted in gate_decisions where no
+        model ever read it, so the re-roll was free to re-emit the exact
+        rejected shape (fay-10 tripped the same ownership class on all three
+        framings; fay-15's #658 rejection named file, rule, and consequence to
+        nobody). Data arrives as dispatch-injected inputs; all prose lives in
+        the appendix assets (CLAUDE.md #448).
+        """
+        reasons = [
+            str(r).strip() for r in (inputs.get("rejection_reasons") or []) if str(r).strip()
+        ]
+        if not reasons:
+            return ""
+        variables: dict[str, str] = {"rejection_reasons": "\n".join(f"- {r}" for r in reasons)}
+        plan_yaml = str(inputs.get("rejected_plan_yaml") or "").strip()
+        if plan_yaml:
+            plan_rendered = await renderer.render(
+                "request.plan_reroll_rejected_plan_appendix",
+                {"rejected_plan_yaml": plan_yaml},
+            )
+            variables["rejected_plan_section"] = plan_rendered.content
+        rendered = await renderer.render("request.plan_reroll_rejection_appendix", variables)
+        return rendered.content
+
     def _build_user_prompt(
         self,
         prd: str,
@@ -562,6 +589,11 @@ class GovernancePreparePlanAuthoringBriefHandler(_PlanningTaskHandler):
         renderer = getattr(context.ports, "request_renderer", None)
         if renderer is not None:
             variables = self._build_render_variables(prd, prior_outputs, inputs)
+            # #669: the brief pins the frame the proposers work from — on a
+            # re-roll it must know what died, or it re-pins the rejected shape.
+            rejection_section = await self._rejection_context_section(renderer, inputs)
+            if rejection_section:
+                variables["rejection_context_section"] = rejection_section
             rendered = await renderer.render(self._request_template_id, variables)
             user_prompt = rendered.content
         else:
@@ -943,6 +975,12 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
         frozen_surface_section = await self._frozen_surface_section(renderer, inputs)
         if frozen_surface_section:
             variables["frozen_surface_section"] = frozen_surface_section
+        # #669: on a framing re-roll, the prior attempt's rejection — revise,
+        # don't re-dice. Data-driven and managed-asset prose, exactly like the
+        # sections above; a first-roll framing has no input and renders nothing.
+        rejection_section = await self._rejection_context_section(renderer, inputs)
+        if rejection_section:
+            variables["rejection_context_section"] = rejection_section
         rendered = await renderer.render(self._request_template_id, variables)
         user_prompt = rendered.content
 

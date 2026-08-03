@@ -1,6 +1,6 @@
 ---
 template_id: request.qa_propose_plan_tasks
-version: "1"
+version: "2"
 required_variables:
   - brief_content
   - planning_content
@@ -13,6 +13,7 @@ optional_variables:
   - typed_acceptance_vocabulary
   - bind_criteria_section
   - frozen_surface_section
+  - rejection_context_section
 ---
 You are proposing QA-domain plan tasks for the upcoming build.
 
@@ -75,3 +76,4 @@ confidence: ""  # low | medium | high
 {{bind_criteria_section}}
 
 {{frozen_surface_section}}
+{{rejection_context_section}}

@@ -1,6 +1,6 @@
 ---
 template_id: request.strategy_propose_plan_guidance
-version: "1"
+version: "2"
 required_variables:
   - brief_content
   - planning_content
@@ -9,6 +9,7 @@ required_variables:
 optional_variables:
   - prd
   - roles_section
+  - rejection_context_section
 ---
 You are proposing cross-cutting plan-authoring guidance for the upcoming build.
 
@@ -63,3 +64,4 @@ must_not_skip: []             # Items the merger must preserve under budget pres
 defer_if_time_constrained: [] # Items the merger may drop first under pressure.
 confidence: ""                # low | medium | high
 ```
+{{rejection_context_section}}

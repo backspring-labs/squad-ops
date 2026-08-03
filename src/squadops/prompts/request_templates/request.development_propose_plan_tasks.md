@@ -1,6 +1,6 @@
 ---
 template_id: request.development_propose_plan_tasks
-version: "1"
+version: "2"
 required_variables:
   - brief_content
   - planning_content
@@ -14,6 +14,7 @@ optional_variables:
   - scaffold_section
   - bind_criteria_section
   - frozen_surface_section
+  - rejection_context_section
 ---
 You are proposing development-domain plan tasks for the upcoming build.
 
@@ -75,3 +76,4 @@ confidence: ""  # low | medium | high
 {{bind_criteria_section}}
 
 {{frozen_surface_section}}
+{{rejection_context_section}}
