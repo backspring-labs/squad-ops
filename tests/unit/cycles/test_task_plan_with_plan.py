@@ -710,6 +710,22 @@ class TestGenerateTaskPlanBindMode:
                 _make_cycle(), _make_run(), _make_profile(), plan=plan, contract=contract
             )
 
+    def test_dual_claimed_expected_artifact_raises_at_dispatch(self):
+        """#673 backstop: fay-18's shape — two tasks declaring the same expected
+        artifact must never reach dispatch (contract-free net, fires in author
+        mode too)."""
+        from squadops.cycles.models import CycleError
+
+        plan = ImplementationPlan.from_yaml(
+            MANIFEST_YAML.replace(
+                'expected_artifacts: ["backend/main.py"]',
+                'expected_artifacts: ["backend/models.py"]',
+                1,
+            )
+        )
+        with pytest.raises(CycleError, match="duplicate expected artifacts"):
+            generate_task_plan(_make_cycle(), _make_run(), _make_profile(), plan=plan)
+
     def test_import_present_on_nonexistent_module_raises_at_dispatch(self):
         """#671 backstop: fay-17's shape — an error-severity import_present
         requiring a module the contract's surface cannot provide must never
