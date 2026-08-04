@@ -55,6 +55,12 @@ class _FakeStatePort(RuntimeStatePort):
     async def get_state(self, agent_id):
         return self._rows.get(agent_id)
 
+    async def list_states(self, *, mode=None, conn=None):
+        rows = list(self._rows.values())
+        if mode is not None:
+            rows = [r for r in rows if r.mode == mode]
+        return tuple(sorted(rows, key=lambda r: r.agent_id))
+
     async def upsert_state(self, state, *, conn=None):
         self._rows[state.agent_id] = state
         self.upserts.append(state)

@@ -337,10 +337,12 @@ async def _init_cycle_subsystem(config, pool) -> None:
         assignment_port = None
         activity_port = None
         focus_lease_port = None
+        state_port = None
         if pool is not None:
             from adapters.persistence.runtime.activity_postgres import PostgresRuntimeActivity
             from adapters.persistence.runtime.assignments_postgres import PostgresAssignment
             from adapters.persistence.runtime.focus_lease_postgres import PostgresFocusLease
+            from adapters.persistence.runtime.state_postgres import PostgresRuntimeState
             from squadops.api.runtime.deps import set_assignment_port
 
             assignment_port = PostgresAssignment(pool)
@@ -355,6 +357,9 @@ async def _init_cycle_subsystem(config, pool) -> None:
             # `create_runtime_coordinator` builds (same precedent as the
             # assignment/activity adapters, which are also built twice).
             focus_lease_port = PostgresFocusLease(pool)
+            # #710: the mode half of the same residue. Stateless over the pool,
+            # same as the adapters above.
+            state_port = PostgresRuntimeState(pool)
 
         # SIP-0089 §3.5 (#233): the single-writer coordinator (D16), built once
         # here and reused by the duty scheduler (see _init_duty_scheduler) so the
@@ -379,9 +384,13 @@ async def _init_cycle_subsystem(config, pool) -> None:
         from squadops.api.runtime.startup_reaps import (
             reap_stranded_activities,
             reap_stranded_leases,
+            reap_stranded_modes,
         )
 
+        # Lease first: it returns the agents it clears to ambient, so the mode
+        # sweep after it sees only the residue with no lease at all (#710).
         await reap_stranded_leases(cycle_registry, _runtime_coordinator, focus_lease_port)
+        await reap_stranded_modes(_runtime_coordinator, state_port)
         await reap_stranded_activities(cycle_registry, activity_port)
 
         flow_executor = create_flow_executor(

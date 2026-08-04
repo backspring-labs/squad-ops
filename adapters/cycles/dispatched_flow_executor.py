@@ -62,7 +62,7 @@ from squadops.events.types import EventType
 from squadops.ports.cycles.flow_execution import FlowExecutionPort
 from squadops.runtime import reasons
 from squadops.runtime.admission import admit_participants, release_participants
-from squadops.runtime.lease_reaper import release_owner_leases
+from squadops.runtime.focus_reaper import release_owner_leases
 from squadops.runtime.recruitment import reserve_buffer_decision
 from squadops.tasks.models import TaskEnvelope, TaskResult, TaskResultStatus
 from squadops.telemetry.context import use_correlation_context

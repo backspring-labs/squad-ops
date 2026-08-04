@@ -78,7 +78,7 @@ async def release_cancelled_run_leases(cycle_id: str, run_ids: list[str]) -> int
     if coordinator is None or focus_lease is None or not run_ids:
         return 0
     from squadops.runtime import reasons
-    from squadops.runtime.lease_reaper import release_owner_leases
+    from squadops.runtime.focus_reaper import release_owner_leases
 
     released = 0
     for run_id in run_ids:

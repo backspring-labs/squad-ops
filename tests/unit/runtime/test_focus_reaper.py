@@ -1,4 +1,4 @@
-"""Tests for the stranded-lease sweeps (#373/#529 — `runtime.lease_reaper`).
+"""Tests for the stranded-focus sweeps (#373/#529/#710 — `runtime.focus_reaper`).
 
 Bug classes guarded:
 - the startup reaper releasing a lease whose owning run is still live — would
@@ -17,7 +17,10 @@ Bug classes guarded:
 - the cancel sweep reaching beyond its own owner and releasing a concurrent
   run's leases;
 - counting attempted rather than actually-cleared rows, and stealing a slot a
-  new owner re-acquired mid-sweep.
+  new owner re-acquired mid-sweep;
+- the inverse residue (#710): `cycle` mode with NO lease, which a lease sweep
+  structurally cannot see. Left unswept it disables focus arbitration outright
+  and does so silently — measured at 64 cycles over two weeks on the dev box.
 """
 
 from __future__ import annotations
@@ -28,8 +31,13 @@ import pytest
 
 from squadops.ports.runtime.focus_lease import FocusLeasePort
 from squadops.runtime import reasons
-from squadops.runtime.lease_reaper import reap_stale_leases, release_owner_leases
-from squadops.runtime.models import FocusLease
+from squadops.runtime.coordinator import TransitionOutcome
+from squadops.runtime.focus_reaper import (
+    reap_stale_leases,
+    reap_stranded_cycle_modes,
+    release_owner_leases,
+)
+from squadops.runtime.models import AgentRuntimeState, FocusLease
 
 pytestmark = [pytest.mark.domain_runtime]
 
@@ -124,16 +132,60 @@ class _FakeCoordinator:
         if agent_id in self._raises_for:
             raise RuntimeError("coordinator down")
         self.transitions.append((agent_id, target_mode, reason_code))
-        if self._modes.get(agent_id, "cycle") == target_mode:
-            return None  # same-mode idempotent skip: the lease is left held
+        current = self._modes.get(agent_id, "cycle")
+        if current == target_mode:
+            # Same-mode idempotent skip: never reaches lease arbitration, so a
+            # held lease stays held and a stranded mode stays stranded.
+            return TransitionOutcome(
+                applied=False,
+                agent_id=agent_id,
+                from_mode=current,
+                to_mode=target_mode,
+                reason_code=reason_code,
+                idempotent_skip=True,
+            )
         self._modes[agent_id] = target_mode
         held = await self._store.get_current_lease(agent_id)
         if held is not None:
             await self._store.release_lease(held.lease_id, reasons.FOCUS_LEASE_RELEASED)
-        return None
+        return TransitionOutcome(
+            applied=True,
+            agent_id=agent_id,
+            from_mode=current,
+            to_mode=target_mode,
+            reason_code=reason_code,
+        )
 
     def mode_of(self, agent_id: str) -> str:
         return self._modes.get(agent_id, "cycle")
+
+
+class _FakeStates:
+    """Minimal `RuntimeStatePort` listing surface for the mode sweep."""
+
+    def __init__(self, modes: dict[str, str], *, raises: bool = False) -> None:
+        self._modes = modes
+        self._raises = raises
+
+    async def list_states(self, *, mode=None, conn=None):
+        if self._raises:
+            raise RuntimeError("db down")
+        rows = [
+            AgentRuntimeState(
+                agent_id=agent_id,
+                mode=agent_mode,
+                runtime_status="online",
+                focus="",
+                current_runtime_activity_id=None,
+                interruptibility="high",
+                last_heartbeat_at=NOW,
+                current_assignment_ref=None,
+            )
+            for agent_id, agent_mode in sorted(self._modes.items())
+        ]
+        if mode is not None:
+            rows = [r for r in rows if r.mode == mode]
+        return tuple(rows)
 
 
 def _terminal_only(terminal_runs: set[str], *, raises_for: set[str] | None = None):
@@ -390,3 +442,88 @@ async def test_release_owner_leases_on_an_owner_holding_nothing_is_a_noop():
     assert released == 0
     assert coordinator.transitions == []
     assert store.released == []
+
+
+# ---------------------------------------------------------------------------
+# reap_stranded_cycle_modes (#710 — the half a lease sweep cannot reach)
+# ---------------------------------------------------------------------------
+
+
+async def test_stranded_cycle_modes_return_to_ambient():
+    """The measured production state: agents in `cycle` with NO lease. A lease
+    sweep iterates held leases, so it sees nothing and the mode survives —
+    which is why recruitment idempotent-skipped for 64 cycles and focus
+    arbitration was off entirely."""
+    store = _FakeLeaseStore()
+    coordinator = _FakeCoordinator(store, {"max": "cycle", "neo": "cycle", "eve": "ambient"})
+    states = _FakeStates({"max": "cycle", "neo": "cycle", "eve": "ambient"})
+
+    assert (
+        await reap_stale_leases(
+            coordinator,
+            store,
+            owner_is_finished=_terminal_only(set()),
+            reason_code=reasons.LEASE_STRANDED_AT_STARTUP,
+        )
+        == 0
+    )  # the lease sweep is structurally blind to this residue
+
+    reaped = await reap_stranded_cycle_modes(coordinator, states)
+
+    assert reaped == 2
+    assert coordinator.mode_of("max") == "ambient"
+    assert coordinator.mode_of("neo") == "ambient"
+    assert [t[2] for t in coordinator.transitions] == [reasons.MODE_STRANDED_AT_STARTUP] * 2
+
+
+async def test_ambient_and_duty_agents_are_not_touched():
+    """`duty` may legitimately be mid-window with the scheduler about to
+    re-evaluate, and `ambient` is already the target — reaping either would take
+    focus from an agent that holds it for a reason."""
+    store = _FakeLeaseStore()
+    coordinator = _FakeCoordinator(store, {"eve": "ambient", "nat": "duty"})
+    states = _FakeStates({"eve": "ambient", "nat": "duty"})
+
+    reaped = await reap_stranded_cycle_modes(coordinator, states)
+
+    assert reaped == 0
+    assert coordinator.transitions == []
+    assert coordinator.mode_of("nat") == "duty"
+
+
+async def test_a_failed_transition_skips_only_that_agent():
+    store = _FakeLeaseStore()
+    coordinator = _FakeCoordinator(
+        store, {"max": "cycle", "neo": "cycle"}, raises_for=frozenset({"max"})
+    )
+    states = _FakeStates({"max": "cycle", "neo": "cycle"})
+
+    reaped = await reap_stranded_cycle_modes(coordinator, states)
+
+    assert reaped == 1
+    assert coordinator.mode_of("max") == "cycle"  # untouched
+    assert coordinator.mode_of("neo") == "ambient"
+
+
+async def test_a_rejected_transition_is_not_counted():
+    """Counting attempts rather than applied transitions would report the box
+    healed when it was not — the reap total is the operator's only signal."""
+    store = _FakeLeaseStore()
+    # Coordinator believes the agent is already ambient, so its request is a
+    # same-mode idempotent skip: reported, not applied.
+    coordinator = _FakeCoordinator(store, {"max": "ambient"})
+    states = _FakeStates({"max": "cycle"})
+
+    reaped = await reap_stranded_cycle_modes(coordinator, states)
+
+    assert reaped == 0
+    assert coordinator.transitions == [("max", "ambient", reasons.MODE_STRANDED_AT_STARTUP)]
+
+
+async def test_nothing_stranded_is_a_noop():
+    store = _FakeLeaseStore()
+    coordinator = _FakeCoordinator(store, {})
+    states = _FakeStates({"eve": "ambient", "max": "ambient"})
+
+    assert await reap_stranded_cycle_modes(coordinator, states) == 0
+    assert coordinator.transitions == []
