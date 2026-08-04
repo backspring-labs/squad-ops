@@ -15,7 +15,13 @@ from squadops.cycles.implementation_plan import TypedCheck
 pytestmark = [pytest.mark.domain_capabilities]
 
 
-def _art(name: str, content: str = "x" * 200) -> dict:
+# #689 injects `undefined_names` on every emitted .py, so the default filler must be
+# VALID Python — a bare `xxxx…` is one undefined name, and every fixture using the
+# default would fail a check it was never written to exercise.
+_FILLER = "# placeholder module\nPLACEHOLDER = " + repr("x" * 200) + "\n"
+
+
+def _art(name: str, content: str = _FILLER) -> dict:
     return {"name": name, "content": content, "media_type": "text/plain", "type": "code"}
 
 
@@ -383,7 +389,12 @@ class TestM13Observability:
                 _inputs([criterion], config={"stack": "fastapi"}),
                 [_art("main.py", _FASTAPI_ALL)],
             )
-        check_logs = [r for r in caplog.records if "typed_acceptance_check" in r.getMessage()]
+        check_logs = [
+            r
+            for r in caplog.records
+            if "typed_acceptance_check" in r.getMessage()
+            and "check=endpoint_defined" in r.getMessage()  # #689 also injects one
+        ]
         assert len(check_logs) == 1
         msg = check_logs[0].getMessage()
         assert "check=endpoint_defined" in msg
@@ -430,18 +441,21 @@ class TestM13Observability:
         summary_logs = [r for r in caplog.records if "typed_acceptance_summary" in r.getMessage()]
         assert len(summary_logs) == 1
         msg = summary_logs[0].getMessage()
-        assert "evaluated=1" in msg
-        assert "passed=1" in msg
+        # endpoint_defined + the #689-injected undefined_names on main.py.
+        assert "evaluated=2" in msg
+        assert "passed=2" in msg
         assert "blocking_failures=0" in msg
         assert "overall_passed=True" in msg
 
     async def test_summary_log_skipped_when_no_typed_checks(self, caplog):
         # Prose-only criteria → summary log should NOT fire (it would be noise).
+        # The artifact is deliberately non-Python: a .py emission now carries a
+        # framework-injected check (#689), so there WOULD be a typed check to summarize.
         h = DevelopmentDevelopHandler()
         with caplog.at_level("INFO", logger="squadops.capabilities.handlers.cycle.develop"):
             await h._validate_output(
                 _inputs([_PROSE_CRITERION], config={"stack": "fastapi"}),
-                [_art("main.py", _FASTAPI_ALL)],
+                [_art("README.md", "# docs\n" + "x" * 200)],
             )
         summary_logs = [r for r in caplog.records if "typed_acceptance_summary" in r.getMessage()]
         assert len(summary_logs) == 0
@@ -474,7 +488,7 @@ class TestWireShapeCriteria:
         )
         assert result.passed is False
         assert "acceptance:frontend manifest" in result.missing_components
-        acceptance_rows = [c for c in result.checks if c.get("check", "").startswith("acceptance:")]
+        acceptance_rows = [c for c in result.checks if c.get("check") == "acceptance:regex_match"]
         assert len(acceptance_rows) == 1
         assert acceptance_rows[0]["status"] == "failed"
 
@@ -488,7 +502,7 @@ class TestWireShapeCriteria:
         assert result.passed is True
         prose_rows = [c for c in result.checks if c.get("check") == "acceptance_criteria_prose"]
         assert prose_rows == []
-        acceptance_rows = [c for c in result.checks if c.get("check", "").startswith("acceptance:")]
+        acceptance_rows = [c for c in result.checks if c.get("check") == "acceptance:regex_match"]
         assert len(acceptance_rows) == 1
         assert acceptance_rows[0]["status"] == "passed"
 
@@ -532,7 +546,7 @@ class TestEvaluationIdentityFields:
         inputs["subtask_index"] = 4
         result = await h._validate_output(inputs, [_art("main.py", _FASTAPI_ALL)])
 
-        typed = [c for c in result.checks if c.get("check", "").startswith("acceptance:")]
+        typed = [c for c in result.checks if c.get("check") == "acceptance:endpoint_defined"]
         assert len(typed) == 2
         # Both rows attribute to the same task; check_index distinguishes them.
         assert all(c["task_index"] == 4 for c in typed)
@@ -691,7 +705,7 @@ class TestArtifactEmissionEndToEnd:
         inputs["subtask_index"] = 1
         result = await h._validate_output(inputs, [_art("main.py", _FASTAPI_ALL)])
         # The check rows are present and self-identifying.
-        typed = [c for c in result.checks if c.get("check", "").startswith("acceptance:")]
+        typed = [c for c in result.checks if c.get("check") == "acceptance:endpoint_defined"]
         assert len(typed) == 1
         # And the helper builds an artifact from them.
         artifact = h._build_typed_check_evaluation_artifact(
@@ -774,3 +788,103 @@ class TestAcceptanceWorkspaceFiles:
             inputs, [_art("backend/routes.py", _ROUTES_WITH_SIBLING_IMPORT)]
         )
         assert result.passed is True
+
+
+# ---------------------------------------------------------------------------
+# #689 — framework-injected undefined_names on every emitted .py
+# ---------------------------------------------------------------------------
+
+
+_ROUTES_UNDEFINED = """
+from fastapi import APIRouter
+router = APIRouter()
+
+@router.post("/runs")
+def create_run(body):
+    return RunEvent(id=1)
+"""
+
+_ROUTES_CLEAN = """
+from fastapi import APIRouter
+from .models import RunEvent
+router = APIRouter()
+
+@router.post("/runs")
+def create_run(body):
+    return RunEvent(id=1)
+"""
+
+
+class TestFrameworkInjectedUndefinedNames:
+    """The check must reach a task that authored NOTHING — shk-2's dev task 0 carried
+    four contract-bound criteria, all of which passed, and the emission still shipped a
+    call-time NameError. Injection is also what makes it visible in BIND mode, whose
+    contract is pinned and never regenerated."""
+
+    async def test_emission_with_no_authored_criteria_is_still_checked(self):
+        h = DevelopmentDevelopHandler()
+        result = await h._validate_output(
+            _inputs([], expected=("backend/routes.py",)),
+            [_art("backend/routes.py", _ROUTES_UNDEFINED)],
+        )
+        assert result.passed is False
+        rows = [c for c in result.checks if c["check"] == "acceptance:undefined_names"]
+        assert len(rows) == 1
+        assert rows[0]["status"] == "failed"
+        assert rows[0]["actual"]["undefined"] == [{"name": "RunEvent", "line": 7}]
+
+    async def test_clean_emission_passes_and_is_still_recorded(self):
+        """A silent pass is indistinguishable from a check that never ran — the row has
+        to be in the evidence either way, or #689 cannot be confirmed on a green roll."""
+        h = DevelopmentDevelopHandler()
+        result = await h._validate_output(
+            _inputs([], expected=("backend/routes.py",)),
+            [_art("backend/routes.py", _ROUTES_CLEAN)],
+        )
+        assert result.passed is True
+        rows = [c for c in result.checks if c["check"] == "acceptance:undefined_names"]
+        assert [r["status"] for r in rows] == ["passed"]
+
+    async def test_only_python_artifacts_are_injected(self):
+        h = DevelopmentDevelopHandler()
+        result = await h._validate_output(
+            _inputs([], expected=("frontend/src/App.jsx",)),
+            [_art("frontend/src/App.jsx", "export default () => <div/>;"), _art("notes.md", "# x")],
+        )
+        assert [c for c in result.checks if c["check"] == "acceptance:undefined_names"] == []
+
+    async def test_injection_covers_every_python_file_in_a_multi_file_emission(self):
+        h = DevelopmentDevelopHandler()
+        result = await h._validate_output(
+            _inputs([], expected=("backend/routes.py",)),
+            [
+                _art("backend/routes.py", _ROUTES_CLEAN),
+                _art("backend/helpers.py", "def h():\n    return Missing()\n"),
+            ],
+        )
+        rows = {
+            c["params"]["file"]: c["status"]
+            for c in result.checks
+            if c["check"] == "acceptance:undefined_names"
+        }
+        assert rows == {"backend/routes.py": "passed", "backend/helpers.py": "failed"}
+        assert result.passed is False
+
+    async def test_an_authored_row_for_the_same_file_is_not_duplicated(self):
+        """Two rows for one file double-count in the evidence and let an authored
+        severity be silently overridden by the injected one."""
+        h = DevelopmentDevelopHandler()
+        authored = TypedCheck(
+            check="undefined_names",
+            params={"file": "backend/routes.py"},
+            severity="warning",
+            description="authored",
+        )
+        result = await h._validate_output(
+            _inputs([authored], expected=("backend/routes.py",)),
+            [_art("backend/routes.py", _ROUTES_UNDEFINED)],
+        )
+        rows = [c for c in result.checks if c["check"] == "acceptance:undefined_names"]
+        assert len(rows) == 1
+        assert rows[0]["severity"] == "warning"  # the author's choice survives
+        assert result.passed is True  # warning does not block (RC-9)

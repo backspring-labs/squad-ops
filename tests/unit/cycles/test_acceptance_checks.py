@@ -1302,3 +1302,129 @@ class TestFrontendCompiles:
         )
         assert outcome.status == "skipped"
         assert outcome.reason == "install_failed"
+
+
+# ---------------------------------------------------------------------------
+# undefined_names (#689) — the call-time NameError class
+# ---------------------------------------------------------------------------
+
+
+class TestUndefinedNames:
+    """shk-2's loss: `create_run` called `RunEvent(...)` without importing it. Valid
+    syntax, imports fine, every AST check green — the name resolves nowhere only when
+    the handler runs, so the first invocation was a 500 in the qa suite."""
+
+    @staticmethod
+    async def _run(tmp_path: Path, source: str, rel: str = "backend/routes.py"):
+        target = tmp_path / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(source)
+        return await get_check("undefined_names").evaluate({"file": rel}, tmp_path)
+
+    async def test_name_used_only_inside_a_function_body_is_caught(self, tmp_path):
+        outcome = await self._run(
+            tmp_path,
+            "from fastapi import APIRouter\n"
+            "router = APIRouter()\n"
+            '@router.post("/runs")\n'
+            "def create_run(body):\n"
+            "    return RunEvent(id=1)\n",
+        )
+        assert outcome.status == "failed"
+        assert outcome.actual["undefined"] == [{"name": "RunEvent", "line": 5}]
+        assert "RunEvent" in outcome.reason
+
+    async def test_every_undefined_name_is_reported_not_just_the_first(self, tmp_path):
+        """A repair fixes what the evidence names. Reporting one of three sends it back
+        for two more rounds — the same drip-feed that cost pf-41 three attempts."""
+        outcome = await self._run(
+            tmp_path,
+            "def f():\n    return RunEvent(), Participant(), uuid.uuid4()\n",
+        )
+        assert [u["name"] for u in outcome.actual["undefined"]] == [
+            "RunEvent",
+            "Participant",
+            "uuid",
+        ]
+
+    @pytest.mark.parametrize(
+        ("label", "source"),
+        [
+            ("imported", "from .models import RunEvent\ndef f():\n    return RunEvent()\n"),
+            ("fixture_params", "def test_x(client, monkeypatch):\n    return client.get('/')\n"),
+            ("star_import", "from .models import *\ndef f():\n    return RunEvent()\n"),
+            ("conditional", "import os\nif os.name:\n    Y = 1\ndef f():\n    return Y\n"),
+            ("comprehension", "def f(items):\n    return [i for i in items if i]\n"),
+            ("class_scope", "class A:\n    x = 1\n    def m(self):\n        return self.x\n"),
+            (
+                "forward_annotation",
+                "from __future__ import annotations\ndef f() -> 'L': ...\nclass L: ...\n",
+            ),
+            ("global_decl", "def f():\n    global G\n    G = 1\ndef g():\n    return G\n"),
+        ],
+    )
+    async def test_legitimate_scoping_shapes_do_not_false_fail(self, tmp_path, label, source):
+        """Every one of these would break a real emission if flagged. Pytest fixtures
+        bind as parameters (every qa suite), a star import is undecidable so it must
+        not be guessed at, and conditional/global/comprehension/class scopes are
+        ordinary Python the check must understand rather than approximate."""
+        assert (await self._run(tmp_path, source)).status == "passed"
+
+    async def test_syntax_error_skips_so_one_defect_is_not_reported_twice(self, tmp_path):
+        """The pf-31 syntax gate owns truncated emissions. Failing here too would show
+        one defect as two and split the repair's attention."""
+        outcome = await self._run(tmp_path, "def f(:\n    pass\n")
+        assert outcome.status == "skipped"
+        assert outcome.reason == "unsupported_stack_or_syntax"
+
+    async def test_missing_analyzer_is_an_error_never_a_skip(self, tmp_path, monkeypatch):
+        """The corollary that decides whether this check is real. #462's skip-never-fail
+        rule is for per-role provisioned tooling (Node in the qa image, TOOL_NODE); a
+        base-lock pip dependency is present in every image by construction, so its
+        absence is a build defect. Skipping would ship #689 as exactly the
+        looks-enforced-but-isn't no-op SIP-0096 exists to kill."""
+        import builtins
+
+        real_import = builtins.__import__
+
+        def fake_import(name, *args, **kwargs):
+            if name.startswith("pyflakes"):
+                raise ImportError("no pyflakes")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+        outcome = await self._run(tmp_path, "def f():\n    return Undefined()\n")
+        assert outcome.status == "error"
+        assert outcome.reason == "missing_analyzer"
+        assert outcome.actual["analyzer"] == "pyflakes"
+
+    async def test_missing_file_fails_rather_than_passing_vacuously(self, tmp_path):
+        outcome = await get_check("undefined_names").evaluate(
+            {"file": "backend/absent.py"}, tmp_path
+        )
+        assert outcome.status == "failed"
+        assert outcome.reason == "file_not_found"
+
+    async def test_non_python_target_skips(self, tmp_path):
+        (tmp_path / "view.jsx").write_text("export default function V(){ return <div/> }")
+        outcome = await get_check("undefined_names").evaluate({"file": "view.jsx"}, tmp_path)
+        assert outcome.status == "skipped"
+
+    async def test_path_escaping_the_workspace_is_an_error(self, tmp_path):
+        outcome = await get_check("undefined_names").evaluate(
+            {"file": "../../etc/passwd"}, tmp_path
+        )
+        assert outcome.status == "error"
+        assert outcome.reason == "path_escapes_workspace"
+
+
+def test_undefined_names_is_framework_injected_and_out_of_the_authoring_vocabulary():
+    """#689 D0: the framework applies it to every emission, so asking a plan author to
+    select it is redundant work that can only be authored wrong — and an authored row
+    would also be absent from bind-mode cycles, whose contract is pinned."""
+    from squadops.cycles.acceptance_check_spec import render_typed_acceptance_vocabulary
+
+    assert CHECK_SPECS["undefined_names"].framework_injected is True
+    assert "undefined_names" not in render_typed_acceptance_vocabulary()
+    # Every other check stays advertised — the flag must not hide the vocabulary.
+    assert "endpoint_defined" in render_typed_acceptance_vocabulary()

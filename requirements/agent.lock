@@ -126,6 +126,8 @@ pydantic==2.12.5
     #   langfuse
 pydantic-core==2.41.5
     # via pydantic
+pyflakes==3.4.0
+    # via -r requirements/base.txt
 pylance==0.12.1
     # via lancedb
 python-dotenv==1.0.0

@@ -25,7 +25,13 @@ from squadops.cycles.implementation_plan import TypedCheck, _parse_acceptance_cr
 pytestmark = [pytest.mark.domain_orchestration]
 
 
-@pytest.mark.parametrize("check_name", sorted(CHECK_SPECS))
+# #689: framework-injected checks are deliberately absent from the authoring
+# vocabulary — the framework runs them, so an author selecting one is redundant work
+# that can only go wrong. `test_framework_injected_checks_are_withheld` pins that.
+_AUTHORABLE = sorted(n for n, s in CHECK_SPECS.items() if not s.framework_injected)
+
+
+@pytest.mark.parametrize("check_name", _AUTHORABLE)
 def test_every_check_example_is_parser_valid(check_name):
     """The example we show proposers for each check must parse cleanly through
     the real validator. If it doesn't, we'd be teaching models malformed YAML —
@@ -42,7 +48,7 @@ def test_every_check_example_is_parser_valid(check_name):
     assert parsed[0].check == check_name
 
 
-@pytest.mark.parametrize("check_name", sorted(CHECK_SPECS))
+@pytest.mark.parametrize("check_name", _AUTHORABLE)
 def test_rendered_vocabulary_shows_each_check_and_its_required_params(check_name):
     """The whole point of the fix: the model must see the check name AND its
     exact required param names. Listing the name without params is what caused
@@ -68,7 +74,7 @@ def test_rendered_vocabulary_is_not_empty():
     rendered = render_typed_acceptance_vocabulary()
     assert rendered.strip()
     # Sanity: every check is represented, so length scales with the registry.
-    assert rendered.count("- check:") == len(CHECK_SPECS)
+    assert rendered.count("- check:") == len(_AUTHORABLE)
 
 
 def _yaml_example_blocks(rendered: str) -> list[str]:
@@ -113,7 +119,7 @@ def test_rendered_vocabulary_examples_all_parse_as_yaml():
     example now carries a backslash escape, so a regression to double-quoting
     fails here with the exact error that dropped the dev proposal."""
     blocks = _yaml_example_blocks(render_typed_acceptance_vocabulary())
-    assert len(blocks) == len(CHECK_SPECS)
+    assert len(blocks) == len(_AUTHORABLE)
     for block in blocks:
         loaded = yaml.safe_load(block)
         assert isinstance(loaded, list) and len(loaded) == 1
@@ -127,3 +133,17 @@ def test_regex_example_demonstrates_a_backslash_in_single_quotes():
     rendered = render_typed_acceptance_vocabulary()
     assert r"pattern: '## How to \w+'" in rendered
     assert r'pattern: "## How to \w+"' not in rendered
+
+
+def test_framework_injected_checks_are_withheld_from_the_authoring_vocabulary():
+    """#689: rendering a check the framework always applies invites a redundant
+    authored row — and on a bind-mode cycle an authored row is the ONLY form that
+    cannot reach the task, because the contract is pinned and never regenerated.
+    The withholding must be exactly the flagged set, not a hardcoded name."""
+    rendered = render_typed_acceptance_vocabulary()
+    injected = {n for n, s in CHECK_SPECS.items() if s.framework_injected}
+    assert injected, "the flag must be exercised by at least one real spec"
+    for name in injected:
+        assert f"`{name}`" not in rendered
+    for name in _AUTHORABLE:
+        assert f"`{name}`" in rendered

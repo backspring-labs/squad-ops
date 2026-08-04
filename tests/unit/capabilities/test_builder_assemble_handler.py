@@ -197,7 +197,10 @@ class TestBuilderAssembleSuccess:
 
         assert result.success is True
         artifacts = result.outputs["artifacts"]
-        assert len(artifacts) == 4  # __main__.py, Dockerfile, requirements.txt, qa_handoff
+        # __main__.py, Dockerfile, requirements.txt, qa_handoff, plus the #114 typed-check
+        # evaluation record — #689 injects `undefined_names` on the emitted __main__.py,
+        # so there is now always a typed check to record.
+        assert len(artifacts) == 5
 
     async def test_qa_handoff_artifact_present(self, mock_context, builder_inputs):
         handler = BuilderAssembleHandler()
@@ -1012,13 +1015,17 @@ class TestTypedAcceptance:
         row = next(c for c in checks if c["check"] == "acceptance:regex_match")
         assert row["status"] == "skipped"
 
-    async def test_no_criteria_keeps_legacy_behavior(self, mock_context, builder_inputs):
-        # Cycles without a plan contract: exactly one required_files row,
-        # no acceptance rows, no #114 artifact.
+    async def test_no_authored_criteria_still_checks_the_emitted_python(
+        self, mock_context, builder_inputs
+    ):
+        """Was: no criteria -> no acceptance rows at all. #689 changed that on purpose —
+        an assembly that emits a `.py` gets the undefined-name check whether or not the
+        plan authored anything, because a call-time NameError in builder-emitted source
+        is the same defect it is anywhere else. The required_files row is unchanged."""
         result = await BuilderAssembleHandler().handle(mock_context, builder_inputs)
 
         assert result.success is True
         checks = result.outputs["validation_result"]["checks"]
-        assert [c["check"] for c in checks] == ["required_files"]
-        names = [a["name"] for a in result.outputs["artifacts"]]
-        assert not any(n.startswith("typed_check_evaluation") for n in names)
+        assert [c["check"] for c in checks] == ["required_files", "acceptance:undefined_names"]
+        assert checks[1]["status"] == "passed"
+        assert checks[1]["params"]["file"] == "my_app/__main__.py"

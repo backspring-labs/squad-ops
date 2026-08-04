@@ -89,6 +89,8 @@ pydantic==2.12.5
     #   langfuse
 pydantic-core==2.41.5
     # via pydantic
+pyflakes==3.4.0
+    # via -r base.txt
 pyjwt==2.11.0
     # via redis
 python-dotenv==1.0.0

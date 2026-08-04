@@ -45,7 +45,13 @@ _APPLIED_DEFAULTS_EXTRA_KEYS = {
     # SIP-0092 M1.3 typed acceptance
     "typed_acceptance",  # master flag (default true)
     "command_acceptance_checks",  # gate command_exit_zero independently
-    "command_check_safelist",  # operator-controlled extension to argv safelist
+    # `command_check_safelist` lived here, declared and never read by anything
+    # (2026-08-03 audit). SIP-0092 RC-10a designed it as an operator-controlled
+    # extension point for the argv safelist; the safelist shipped as a code-owned
+    # table in `acceptance_check_spec.COMMAND_SAFELIST`, and the typed vocabulary
+    # superseded the need to extend it from config. A key a profile can set and
+    # nothing consumes is the looks-configured-but-isn't class — removed rather
+    # than left as a lie a future operator would believe.
     "stack",  # resolved stack identity for typed-check evaluators
     # SIP-0093: multi-role plan authoring activation. Selects which roles emit
     # ``*.propose_plan_tasks`` before ``governance.merge_plan``; empty/absent

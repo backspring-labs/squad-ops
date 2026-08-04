@@ -29,7 +29,9 @@ from pathlib import Path
 from typing import Any
 
 from squadops.cycles.acceptance_check_spec import (
+    CHECK_ENDPOINT_DEFINED,
     CHECK_SPECS,
+    CHECK_UNDEFINED_NAMES,
     FRONTEND_SUFFIXES,
     HTTP_METHODS,
     CheckSpec,
@@ -272,7 +274,80 @@ def _unparseable_source_skip(file_path: Path) -> CheckOutcome | None:
     return None
 
 
-@register_check("endpoint_defined")
+@register_check(CHECK_UNDEFINED_NAMES)
+class UndefinedNamesCheck(BaseCheck):
+    """Names a ``.py`` file uses but never binds — the call-time ``NameError`` class (#689).
+
+    shk-2 shipped a ``backend/routes.py`` whose ``create_run`` called ``RunEvent(...)``
+    without importing it. Nothing caught it: ``py_compile`` sees valid syntax,
+    ``import_present`` checks the imports that ARE there, ``endpoint_defined`` reads
+    decorators, and ``module_imports`` (#628) imports the module successfully because
+    the name only resolves when the handler runs. First invocation was the qa suite —
+    500, probe cascade, and a correction loop that never reached the defect.
+
+    Implemented on pyflakes, in-process. It is the reference implementation ruff's
+    F-rules reimplement, it is pure Python with no transitive dependencies, and running
+    it in-process keeps the check free of subprocess/PATH/restricted-env concerns.
+
+    **A missing pyflakes is an ``error``, never a ``skipped``.** The #462 skip-never-fail
+    rule is for tooling with per-role variance, provisioned through
+    ``agents/instances/<role>/system-packages.txt`` and declared in the SIP-0096
+    ``check_registry`` (Node lives in the qa image alone, which is why it earns
+    ``TOOL_NODE``). A base-lock pip dependency is present in every image by
+    construction, so its absence is a build defect rather than an environment gap.
+    Skipping there would ship this check as exactly the looks-enforced-but-isn't no-op
+    SIP-0096 exists to kill — on the one defect class that already cost a full
+    correction budget.
+    """
+
+    async def evaluate(
+        self,
+        params: dict[str, Any],
+        workspace_root: Path,
+        *,
+        stack: str | None = None,
+    ) -> CheckOutcome:
+        try:
+            file_path = _safe_resolve(params["file"], workspace_root)
+        except _SafetyError as exc:
+            return CheckOutcome.error(reason=exc.reason)
+        if (skip := _unparseable_source_skip(file_path)) is not None:
+            return skip
+        if not file_path.is_file():
+            return CheckOutcome.failed(reason="file_not_found", file=str(params["file"]))
+        try:
+            source = file_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return CheckOutcome.error(reason="file_unreadable")
+        try:
+            tree = ast.parse(source, filename=str(file_path))
+        except SyntaxError:
+            # The syntax gate owns unparseable emissions; reporting it twice would
+            # make one defect look like two.
+            return CheckOutcome.skipped(reason="unsupported_stack_or_syntax")
+
+        try:
+            from pyflakes.checker import Checker
+            from pyflakes.messages import UndefinedName
+        except ImportError:  # a baked dependency is missing ⇒ the image is wrong
+            return CheckOutcome.error(reason="missing_analyzer", analyzer="pyflakes")
+
+        undefined = [
+            {"name": str(m.message_args[0]), "line": m.lineno}
+            for m in Checker(tree, filename=str(file_path)).messages
+            if isinstance(m, UndefinedName)
+        ]
+        if undefined:
+            names = ", ".join(f"{u['name']} (line {u['line']})" for u in undefined)
+            return CheckOutcome.failed(
+                reason=f"undefined name(s): {names}",
+                file=str(params["file"]),
+                undefined=undefined,
+            )
+        return CheckOutcome.passed(file=str(params["file"]))
+
+
+@register_check(CHECK_ENDPOINT_DEFINED)
 class EndpointDefinedCheck(BaseCheck):
     """FastAPI route decorator presence — `@app.METHOD('/path')` / `@router.METHOD('/path')`."""
 
