@@ -60,7 +60,9 @@ from squadops.cycles.task_plan import generate_task_plan
 from squadops.cycles.verification_normalize import normalize_task_checks
 from squadops.events.types import EventType
 from squadops.ports.cycles.flow_execution import FlowExecutionPort
+from squadops.runtime import reasons
 from squadops.runtime.admission import admit_participants, release_participants
+from squadops.runtime.lease_reaper import release_owner_leases
 from squadops.runtime.recruitment import reserve_buffer_decision
 from squadops.tasks.models import TaskEnvelope, TaskResult, TaskResultStatus
 from squadops.telemetry.context import use_correlation_context
@@ -78,6 +80,7 @@ if TYPE_CHECKING:
     from squadops.ports.events.cycle_event_bus import CycleEventBusPort
     from squadops.ports.runtime.activity import RuntimeActivityPort
     from squadops.ports.runtime.assignments import AssignmentPort
+    from squadops.ports.runtime.focus_lease import FocusLeasePort
     from squadops.ports.telemetry.llm_observability import LLMObservabilityPort
     from squadops.runtime.coordinator import RuntimeCoordinator
 
@@ -109,6 +112,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         assignment_port: AssignmentPort | None = None,
         activity_port: RuntimeActivityPort | None = None,
         coordinator: RuntimeCoordinator | None = None,
+        focus_lease_port: FocusLeasePort | None = None,
         run_completion: RunCompletion | None = None,
         correction_runner: CorrectionRunner | None = None,
         pulse_boundary_runner: PulseBoundaryRunner | None = None,
@@ -139,6 +143,12 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # falls back to §2.5-only — a cycle never hard-fails for missing runtime
         # infra.
         self._coordinator = coordinator
+        # #373: opt-in FocusLeasePort for the finalize-time stranded-lease sweep.
+        # `release_participants` below clears the leases *this call* recorded;
+        # this clears the ones the *run* holds — the difference is a recruitment
+        # replay (#288 idempotent-skip, e.g. a resumed run), whose leases are
+        # owned by this run but were never returned in `recruited_agent_ids`.
+        self._focus_lease_port = focus_lease_port
         self._cancelled: set[str] = set()
         # SIP-0097 §6.4: run-completion collaborator (terminal path). Plain
         # injected collaborator with a default composed from this executor's
@@ -483,6 +493,22 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             # raise. Empty (and skipped) when the run recruited no one.
             if self._coordinator is not None and recruited_agent_ids:
                 await release_participants(self._coordinator, recruited_agent_ids, owner_ref=run_id)
+            # #373: then sweep anything still held under this run's owner_ref.
+            # `recruited_agent_ids` records only the agents *this* admission call
+            # transitioned; a recruitment replay (#288 idempotent-skip on a
+            # resumed run) leaves leases owned by this run that the release above
+            # cannot see. Best-effort — a sweep failure must not mask the run's
+            # own outcome.
+            if self._coordinator is not None and self._focus_lease_port is not None:
+                try:
+                    await release_owner_leases(
+                        self._coordinator,
+                        self._focus_lease_port,
+                        run_id,
+                        reason_code=reasons.LEASE_STRANDED_AT_RUN_FINALIZE,
+                    )
+                except Exception:
+                    logger.warning("Stranded-lease sweep failed for run %s", run_id, exc_info=True)
             await self._run_completion.finalize(
                 cycle_id,
                 run_id,

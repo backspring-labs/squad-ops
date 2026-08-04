@@ -19,6 +19,7 @@ from squadops.cycles.models import (
     RunTerminalError,
     TaskFlowPolicy,
 )
+from squadops.runtime.models import FocusLease
 
 pytestmark = [pytest.mark.domain_orchestration]
 
@@ -44,6 +45,22 @@ _RUN = Run(
     initiated_by="api",
     resolved_config_hash="hash123",
 )
+
+
+def _focus_lease(agent_id: str, owner_ref: str) -> FocusLease:
+    return FocusLease(
+        lease_id=f"lease-{agent_id}",
+        agent_id=agent_id,
+        owner_type="cycle",
+        owner_ref=owner_ref,
+        acquired_at=NOW,
+        expires_at=None,
+        renewal_policy="ttl",
+        interruptibility="high",
+        recall_policy="graceful",
+        released_at=None,
+        idempotency_key=f"cycle:{owner_ref}:{agent_id}",
+    )
 
 
 @pytest.fixture
@@ -147,6 +164,58 @@ class TestCancelRun:
         fake_tracker.set_flow_run_state.assert_awaited_once_with(
             "flowrun-abc", "CANCELLED", "Cancelled"
         )
+
+    def test_cancel_releases_the_runs_focus_leases(self, client, monkeypatch):
+        """#529: cancellation bypasses the executor's finalize path, so without
+        this sweep the run's cycle leases stay held and the next cycle recruiting
+        any of those agents deadlocks on focus_lease_conflict."""
+        import squadops.api.runtime.deps as deps_mod
+
+        held = _focus_lease("data", "run_001")
+        lease_port = AsyncMock()
+        lease_port.list_active_leases.return_value = (held,)
+        lease_port.get_current_lease.return_value = None  # the transition cleared it
+        coordinator = AsyncMock()
+        monkeypatch.setattr(deps_mod, "_focus_lease_port", lease_port)
+        monkeypatch.setattr(deps_mod, "_runtime_coordinator", coordinator)
+
+        resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/runs/run_001/cancel")
+
+        assert resp.status_code == 200
+        assert resp.json()["focus_leases_released"] == 1
+        # Scoped to the cancelled run's own leases, and the agent goes back to
+        # ambient — releasing the lease alone would leave it pinned in `cycle`.
+        lease_port.list_active_leases.assert_awaited_once_with(owner_ref="run_001")
+        agent_id, target_mode = coordinator.request_transition.await_args.args[:2]
+        assert (agent_id, target_mode) == ("data", "ambient")
+
+    def test_cancel_survives_a_lease_sweep_failure(self, client, monkeypatch):
+        """Registry cancellation is the source of truth (the #77 contract): a
+        lease-release failure must not turn a cancel into a 500."""
+        import squadops.api.runtime.deps as deps_mod
+
+        lease_port = AsyncMock()
+        lease_port.list_active_leases.side_effect = RuntimeError("db down")
+        monkeypatch.setattr(deps_mod, "_focus_lease_port", lease_port)
+        monkeypatch.setattr(deps_mod, "_runtime_coordinator", AsyncMock())
+
+        resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/runs/run_001/cancel")
+
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "cancelled"
+        assert resp.json()["focus_leases_released"] == 0
+
+    def test_cancel_without_lease_wiring_still_succeeds(self, client, monkeypatch):
+        """A pool-less deployment has no leases to release; cancel must not 500."""
+        import squadops.api.runtime.deps as deps_mod
+
+        monkeypatch.setattr(deps_mod, "_focus_lease_port", None)
+        monkeypatch.setattr(deps_mod, "_runtime_coordinator", None)
+
+        resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/runs/run_001/cancel")
+
+        assert resp.status_code == 200
+        assert resp.json()["focus_leases_released"] == 0
 
 
 class TestGateDecision:

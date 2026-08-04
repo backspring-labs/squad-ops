@@ -120,5 +120,6 @@ def create_flow_executor(
             assignment_port=kwargs.get("assignment_port"),
             activity_port=kwargs.get("activity_port"),
             coordinator=kwargs.get("coordinator"),
+            focus_lease_port=kwargs.get("focus_lease_port"),
         )
     raise ValueError(f"Unknown flow executor provider: {provider}")

@@ -145,6 +145,19 @@ class PostgresFocusLease(FocusLeasePort):
         async with acquire(self._pool, conn) as conn:
             return await self._current_lease(conn, agent_id)
 
+    async def list_active_leases(
+        self, *, owner_ref: str | None = None, conn: Any = None
+    ) -> tuple[FocusLease, ...]:
+        query = f"SELECT {_COLUMNS} FROM focus_leases WHERE released_at IS NULL"
+        args: list[Any] = []
+        if owner_ref is not None:
+            query += " AND owner_ref = $1"
+            args.append(owner_ref)
+        query += " ORDER BY acquired_at"
+        async with acquire(self._pool, conn) as conn:
+            rows = await conn.fetch(query, *args)
+        return tuple(_row_to_lease(row) for row in rows)
+
     async def _mark_released(self, lease_id: str, *, conn: Any = None) -> None:
         """Free the active-lease slot. Shared by release (cooperative) and revoke
         (non-cooperative) — the storage effect is identical in v1.1; the audit

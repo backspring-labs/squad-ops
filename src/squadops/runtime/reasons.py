@@ -45,6 +45,14 @@ CURRENT_ACTIVITY_CANNOT_PAUSE: Final[str] = "current_activity_cannot_pause"
 AGENT_RUNTIME_STATUS_UNAVAILABLE: Final[str] = "agent_runtime_status_unavailable"
 # Deferred-queue rejection (§3.0/D20): a request that would have queued in v1.2.
 FOCUS_LEASE_QUEUEING_NOT_SUPPORTED: Final[str] = "focus_lease_queueing_not_supported_in_v1.1"
+# Stranded-lease hygiene (#373/#529). A cancelled or abnormally-terminated run
+# leaves its cycle leases held with no expiry, and #288 turns that into a hard
+# reject for every later recruitment of those agents. The cancel sweep and the
+# startup reaper (`runtime.lease_reaper`) return the agent to ambient, which
+# releases the lease; these are the reasons those transitions carry.
+LEASE_STRANDED_AT_CANCEL: Final[str] = "lease_stranded_at_cancel"
+LEASE_STRANDED_AT_RUN_FINALIZE: Final[str] = "lease_stranded_at_run_finalize"
+LEASE_STRANDED_AT_STARTUP: Final[str] = "lease_stranded_at_startup"
 
 # Runtime-activity reasons (Phase 4 §4.4/§4.5)
 ACTIVITY_STARTED: Final[str] = "activity_started"

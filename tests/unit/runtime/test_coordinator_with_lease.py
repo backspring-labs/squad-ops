@@ -162,6 +162,12 @@ class _FakeFocusLease(FocusLeasePort):
     async def get_current_lease(self, agent_id, *, conn=None):
         return self._active.get(agent_id)
 
+    async def list_active_leases(self, *, owner_ref=None, conn=None):
+        leases = sorted(self._active.values(), key=lambda lease: lease.lease_id)
+        if owner_ref is not None:
+            leases = [lease for lease in leases if lease.owner_ref == owner_ref]
+        return tuple(leases)
+
     def _drop(self, lease_id):
         for aid, lease in list(self._active.items()):
             if lease.lease_id == lease_id:

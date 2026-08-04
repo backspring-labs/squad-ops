@@ -22,6 +22,8 @@ from squadops.ports.runtime.assignments import AssignmentPort
 
 if TYPE_CHECKING:
     from squadops.api.runtime.health_checker import HealthChecker
+    from squadops.ports.runtime.focus_lease import FocusLeasePort
+    from squadops.runtime.coordinator import RuntimeCoordinator
 
 # Global adapter instances (initialized at startup)
 _auth_port: AuthPort | None = None
@@ -48,6 +50,12 @@ _llm_port: LLMPort | None = None
 
 # SIP-0089 §2.7: Assignment port for the assignment REST surface
 _assignment_port: AssignmentPort | None = None
+
+# #373/#529: the composition root's single-writer coordinator (D16) and the lease
+# port, shared with the cancel routes so cancellation can release the leases the
+# cancelled run holds. Both stay None without a Postgres pool.
+_runtime_coordinator: RuntimeCoordinator | None = None
+_focus_lease_port: FocusLeasePort | None = None
 
 
 def set_auth_ports(
@@ -271,6 +279,40 @@ def get_assignment_port() -> AssignmentPort:
     if _assignment_port is None:
         raise RuntimeError("AssignmentPort not configured")
     return _assignment_port
+
+
+# =============================================================================
+# #373/#529: runtime coordinator + focus-lease port (stranded-lease sweeps)
+# =============================================================================
+
+
+def set_lease_sweep_ports(
+    coordinator: RuntimeCoordinator | None,
+    focus_lease: FocusLeasePort | None,
+) -> None:
+    """Register the shared coordinator and lease port for the cancel-time sweep.
+
+    The coordinator MUST be the composition root's single instance (D16) — the
+    sweep returns agents to ambient through it, and a second mode-writer would
+    race the executor and the duty scheduler.
+    """
+    global _runtime_coordinator, _focus_lease_port
+    _runtime_coordinator = coordinator
+    _focus_lease_port = focus_lease
+
+
+def get_runtime_coordinator() -> RuntimeCoordinator | None:
+    """Return the shared coordinator, or None when no Postgres pool is wired."""
+    return _runtime_coordinator
+
+
+def get_focus_lease_port() -> FocusLeasePort | None:
+    """Return the focus-lease port, or None when no Postgres pool is wired.
+
+    Unlike :func:`get_assignment_port` this never raises: cancellation must
+    succeed on a pool-less deployment, where there are no leases to release.
+    """
+    return _focus_lease_port
 
 
 # =============================================================================

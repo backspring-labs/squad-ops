@@ -105,3 +105,21 @@ class FocusLeasePort(ABC):
         `conn` (§4.5/D25): read on the caller's unit-of-work connection when given,
         so the coordinator sees a consistent snapshot within its transaction.
         """
+
+    @abstractmethod
+    async def list_active_leases(
+        self, *, owner_ref: str | None = None, conn: Any = None
+    ) -> tuple[FocusLease, ...]:
+        """Return every un-released lease, oldest first.
+
+        `owner_ref` narrows the result to the leases one owner holds — a run id
+        for `cycle` leases, an assignment id for `duty` leases. At most one
+        active lease exists per agent (§3.2), so the result is bounded by the
+        roster size and callers iterate it without pagination. Backs the
+        #373/#529 stranded-lease sweeps (`runtime.lease_reaper`), which need to
+        find held leases *by owner* — `get_current_lease` answers only the
+        inverse question, and an owner whose agents are unknown (a dead process,
+        a cancelled run) cannot ask it.
+
+        `conn` (§4.5/D25): read on the caller's unit-of-work connection when given.
+        """
