@@ -294,6 +294,90 @@ async def test_duty_to_ambient_releases_lease_after_mode_write():
     assert events.FOCUS_LEASE_RELEASED in pub.names()
 
 
+async def test_ambient_entry_by_a_non_owner_is_refused_without_touching_focus():
+    """Bug class (#712): release must be owner-checked, symmetric with #288's
+    owner-checked acquire. A cancelled run's finalize fires at its next dispatch
+    boundary — minutes after the cancel route released its leases — and by then
+    a relaunched run may hold the agent. The stale caller must not flip the mode
+    or release the NEW owner's lease."""
+    state = _FakeStatePort(_state(mode="cycle"))
+    pub = _RecordingPublisher()
+    fl = _FakeFocusLease()
+    new_lease = fl.seed("max", "cycle", "run_new")
+    coord = RuntimeCoordinator(state, events_publisher=pub, focus_lease=fl)
+
+    outcome = await coord.request_transition(
+        "max", "ambient", reasons.CYCLE_COMPLETED, requester_kind="external", owner_ref="run_old"
+    )
+
+    assert outcome.applied is False
+    assert outcome.rejected_reason == reasons.FOCUS_LEASE_HELD_BY_OTHER_OWNER
+    assert state.upserts == []  # mode never written
+    held = await fl.get_current_lease("max")
+    assert held is not None and held.lease_id == new_lease.lease_id  # lease intact
+    assert new_lease.lease_id not in fl.released
+    assert events.MODE_TRANSITION not in pub.names()
+    assert pub.reason_for(events.FOCUS_LEASE_REJECTED) == reasons.FOCUS_LEASE_HELD_BY_OTHER_OWNER
+
+
+async def test_stale_cancel_finalize_cannot_strip_a_relaunched_runs_focus():
+    """The full #712 sequence: recruit → cancel-sweep release → relaunch
+    re-recruits → the cancelled run's finalize fires late. The relaunched run
+    must come out still holding both the mode and its lease."""
+    state = _FakeStatePort(_state(mode="ambient"))
+    pub = _RecordingPublisher()
+    fl = _FakeFocusLease()
+    coord = RuntimeCoordinator(state, events_publisher=pub, focus_lease=fl)
+
+    # Old run recruits, then the cancel route returns the agent to ambient.
+    await coord.request_transition(
+        "max", "cycle", reasons.CYCLE_RECRUITED, requester_kind="external", owner_ref="run_old"
+    )
+    await coord.request_transition(
+        "max",
+        "ambient",
+        reasons.LEASE_STRANDED_AT_CANCEL,
+        requester_kind="coordinator",
+        owner_ref="run_old",
+    )
+    # Relaunch: a new run recruits the same agent.
+    await coord.request_transition(
+        "max", "cycle", reasons.CYCLE_RECRUITED, requester_kind="external", owner_ref="run_new"
+    )
+    # The cancelled run's executor finally unwinds and releases its participants.
+    stale = await coord.request_transition(
+        "max", "ambient", reasons.CYCLE_COMPLETED, requester_kind="external", owner_ref="run_old"
+    )
+
+    assert stale.applied is False
+    assert stale.rejected_reason == reasons.FOCUS_LEASE_HELD_BY_OTHER_OWNER
+    assert state.upserts[-1].mode == "cycle"  # the relaunched run keeps the agent
+    held = await fl.get_current_lease("max")
+    assert held is not None and held.owner_ref == "run_new"
+
+
+async def test_ambient_entry_with_no_lease_still_writes_mode():
+    """The #710 stranded-mode sweep path: `cycle` with NO lease must still reach
+    ambient — an owner check that fired with nothing held would re-strand the
+    exact residue the sweep exists to clear."""
+    state = _FakeStatePort(_state(mode="cycle"))
+    pub = _RecordingPublisher()
+    fl = _FakeFocusLease()
+    coord = RuntimeCoordinator(state, events_publisher=pub, focus_lease=fl)
+
+    outcome = await coord.request_transition(
+        "max",
+        "ambient",
+        reasons.MODE_STRANDED_AT_STARTUP,
+        requester_kind="coordinator",
+        owner_ref="startup_reap",
+    )
+
+    assert outcome.applied is True
+    assert state.upserts[-1].mode == "ambient"
+    assert fl.released == []  # nothing held, nothing released
+
+
 # ---------------------------------------------------------------------------
 # lease ≠ mode + rollback (the load-bearing regression)
 # ---------------------------------------------------------------------------

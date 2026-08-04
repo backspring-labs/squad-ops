@@ -78,6 +78,13 @@ logger = logging.getLogger(__name__)
 # assignment window, not a run, and `ambient` holds no lease in v1.1 (§10.4).
 _CYCLE_OWNER_TYPE: Final[str] = "cycle"
 
+# `owner_ref` for the #710 mode sweep's transitions: a stranded mode has no
+# owning run to name, and the field is required. Distinct from any run id, so
+# a reader of the MODE_TRANSITION payload sees the sweep, not a phantom owner.
+# The #712 owner check never consults it on this path — a stranded mode holds
+# no lease, so there is no owner to mismatch.
+STARTUP_REAP_OWNER_REF: Final[str] = "startup_reap"
+
 
 async def release_owner_leases(
     coordinator: RuntimeCoordinator,
@@ -171,7 +178,7 @@ async def reap_stranded_cycle_modes(
                 "ambient",
                 reasons.MODE_STRANDED_AT_STARTUP,
                 requester_kind="coordinator",
-                owner_ref=reasons.MODE_STRANDED_AT_STARTUP,
+                owner_ref=STARTUP_REAP_OWNER_REF,
             )
         except Exception:
             logger.warning(

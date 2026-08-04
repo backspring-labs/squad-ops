@@ -85,8 +85,8 @@ async def reap_stranded_leases(
             if RunStatus(owning_run.status) not in TERMINAL_STATES:
                 logger.warning(
                     "Releasing focus lease held by run %s still marked %r — no run "
-                    "can be executing at startup, so its executor died mid-run and "
-                    "the run status is stale.",
+                    "can be executing at startup, so its owning process exited "
+                    "without finalizing it and the run status is stale.",
                     run_id,
                     owning_run.status,
                 )

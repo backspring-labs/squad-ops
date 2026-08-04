@@ -45,6 +45,11 @@ CURRENT_ACTIVITY_CANNOT_PAUSE: Final[str] = "current_activity_cannot_pause"
 AGENT_RUNTIME_STATUS_UNAVAILABLE: Final[str] = "agent_runtime_status_unavailable"
 # Deferred-queue rejection (§3.0/D20): a request that would have queued in v1.2.
 FOCUS_LEASE_QUEUEING_NOT_SUPPORTED: Final[str] = "focus_lease_queueing_not_supported_in_v1.1"
+# #712: release is owner-checked, symmetric with #288's owner-checked acquire.
+# A caller leaving a focus-bearing mode whose lease is now held by a DIFFERENT
+# owner (a cancelled run's finalize firing after a relaunch re-recruited the
+# agent) no longer owns that focus; the transition is refused with this reason.
+FOCUS_LEASE_HELD_BY_OTHER_OWNER: Final[str] = "focus_lease_held_by_other_owner"
 # Stranded-lease hygiene (#373/#529). A cancelled or abnormally-terminated run
 # leaves its cycle leases held with no expiry, and #288 turns that into a hard
 # reject for every later recruitment of those agents. The cancel sweep and the

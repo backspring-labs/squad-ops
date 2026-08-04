@@ -144,7 +144,7 @@ async def test_a_non_terminal_owner_is_logged_as_a_dead_executor(caplog):
         await reap_stranded_leases(registry, coordinator, port)
 
     assert "run_1" in caplog.text
-    assert "died mid-run" in caplog.text
+    assert "exited without finalizing" in caplog.text
 
 
 async def test_missing_run_row_still_releases_the_lease():

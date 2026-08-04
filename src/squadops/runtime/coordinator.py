@@ -430,6 +430,15 @@ class RuntimeCoordinator:
         Never writes `mode` (lease ≠ mode). All reads/writes run on the caller's
         unit-of-work `conn` (§4.5/D25) so they roll back with the transition on a
         later failure. Resolution by case:
+        - entering ambient with the leaving-mode lease held by a DIFFERENT owner
+          → not ok (#712). Release is owner-checked, symmetric with #288's
+          owner-checked acquire: a cancelled run's finalize fires only at its
+          next dispatch boundary, which can be minutes after the cancel route
+          already released its leases — and a relaunched run may have
+          re-recruited the agent in between. Without this check the stale
+          finalize would flip the agent to ambient and release the NEW run's
+          lease, leaving that run to execute with no focus protection (the #288
+          double-booking hole, reopened silently);
         - entering ambient → no acquire; defer releasing the leaving-mode lease
           to after the mode write;
         - entering cycle/duty with no conflict → acquire (`granted`);
@@ -448,6 +457,14 @@ class RuntimeCoordinator:
         holds_leaving_lease = old_lease is not None and old_lease.owner_type == leaving_owner
 
         if new_owner is None:
+            # (#712) the owner check. Only the lease's owner may release it by
+            # leaving the mode; a mismatched caller is a stale finalize whose
+            # focus was already handed to someone else. No lease means nothing
+            # to protect (the #710 stranded-mode sweep relies on that path).
+            if holds_leaving_lease and old_lease is not None and old_lease.owner_ref != owner_ref:
+                return _LeaseArbitration(
+                    ok=False, rejected_reason=reasons.FOCUS_LEASE_HELD_BY_OTHER_OWNER
+                )
             return _LeaseArbitration(
                 ok=True,
                 release_after_lease_id=(old_lease.lease_id if holds_leaving_lease else None),
