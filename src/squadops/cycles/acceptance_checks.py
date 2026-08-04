@@ -159,6 +159,38 @@ def _restricted_env() -> dict[str, str]:
     return {k: v for k, v in os.environ.items() if k in keep}
 
 
+# Bare interpreter names a contract may emit for `command_exit_zero`.
+_BARE_INTERPRETERS = frozenset({"python", "python3"})
+
+
+def _resolve_interpreter(argv: list[str]) -> list[str]:
+    """Substitute the running interpreter for a bare python name in ``argv[0]``.
+
+    #498: ``command_exit_zero`` argv is authored (or scaffold-emitted) as a
+    *name*, and resolving that name through the inherited ``PATH`` at spawn made
+    the outcome depend on an environment detail. Ubuntu ships only
+    ``/usr/bin/python3`` — there is no ``python`` — so ``python -m py_compile``
+    raised ``FileNotFoundError`` and the check degraded to
+    ``skipped(missing_tooling)``. A structural criterion that silently stops
+    executing on a host detail is exactly what the bare-skeleton gate exists to
+    rule out (SIP-0098 §7).
+
+    The evaluator *is* a Python process, so ``sys.executable`` is by definition a
+    working interpreter — which makes ``_CHECK_ENV_EXECUTABLES``' claim that the
+    check environment provides ``python``/``python3`` true by construction
+    instead of by image accident. It also fixes contracts already seeded with the
+    bare name (v9 among them), which emitting ``python3`` could not do — and that
+    would have moved the contract hash besides.
+
+    Runs strictly *after* the safelist gate: the safelist governs what a contract
+    may ask for (a name), and resolution is a spawn detail. Reversing the order
+    would force every safelist pattern to know about absolute interpreter paths.
+    """
+    if not argv or argv[0] not in _BARE_INTERPRETERS or not sys.executable:
+        return argv
+    return [sys.executable, *argv[1:]]
+
+
 # ---------------------------------------------------------------------------
 # Base + registry
 # ---------------------------------------------------------------------------
@@ -833,10 +865,14 @@ class CommandExitZeroCheck(BaseCheck):
             if not cwd_path.is_dir():
                 return CheckOutcome.error(reason="cwd_not_a_directory")
 
+        # #498: spawn the running interpreter rather than whatever `python` the
+        # inherited PATH happens to resolve to. `argv` stays the authored form so
+        # evidence reads back as the contract wrote it, not as an absolute path.
+        spawn_argv = _resolve_interpreter(argv)
         env = _restricted_env()
         try:
             proc = await asyncio.create_subprocess_exec(
-                *argv,
+                *spawn_argv,
                 cwd=str(cwd_path),
                 env=env,
                 stdout=asyncio.subprocess.PIPE,

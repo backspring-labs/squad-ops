@@ -17,6 +17,7 @@ import pytest
 from squadops.cycles.acceptance_check_spec import CHECK_SPECS, argv_matches_safelist
 from squadops.cycles.acceptance_checks import (
     _CHECK_IMPLS,
+    _resolve_interpreter,
     _safe_resolve,
     assert_registry_complete,
     get_check,
@@ -45,6 +46,34 @@ class TestRegistryInvariants:
         for name in CHECK_SPECS:
             evaluator = get_check(name)
             assert evaluator.spec is CHECK_SPECS[name]
+
+    @pytest.mark.parametrize(
+        "check_name",
+        sorted(n for n, s in CHECK_SPECS.items() if s.applicable_extensions == frozenset({".py"})),
+    )
+    @pytest.mark.parametrize("target", ["view.jsx", "notes.md"])
+    async def test_python_parsing_checks_skip_a_non_python_target(
+        self, check_name, target, tmp_path
+    ):
+        """#605, pinned registry-wide rather than per-check.
+
+        A Python-parsing check handed a non-Python file must *skip*. If it lets
+        `ast.parse` raise, the check reports `error`, `patch_verification` maps
+        that to `evaluator_error:<check>`, and the patch lands UNVERIFIABLE —
+        neither accepted nor rejected. pf-41 lost a roll to exactly that (a
+        `function_defined` aimed at a `.jsx`), and pf-40 is the control: same bad
+        repairs, but verification returned a verdict and rejected them.
+
+        The property held by construction and was asserted nowhere. Derived from
+        `applicable_extensions` so a Python check added later inherits the test
+        instead of quietly opting out of it.
+        """
+        (tmp_path / target).write_text("const App = () => <div/>;\n")
+        params = dict(CHECK_SPECS[check_name].example) | {"file": target}
+
+        result = await get_check(check_name).evaluate(params, tmp_path, stack="fastapi")
+
+        assert result.status == "skipped", f"{check_name} -> {result.status} ({result.reason})"
 
 
 # ---------------------------------------------------------------------------
@@ -608,14 +637,14 @@ class TestCommandExitZero:
         return tmp_path
 
     @pytest.mark.skipif(sys.platform == "win32", reason="POSIX subprocess assumed")
-    async def test_compile_ok_passed(self, py_workspace):
+    async def test_absolute_interpreter_path_is_not_in_the_safelist(self, py_workspace):
+        # The safelist patterns match the *authored name*, so a contract may not
+        # smuggle in an arbitrary interpreter path. (#498 resolves the name to
+        # sys.executable at spawn, strictly after this gate.)
         result = await get_check("command_exit_zero").evaluate(
             {"argv": [sys.executable, "-m", "py_compile", "ok.py"]},
             py_workspace,
         )
-        # argv[0] is sys.executable (typically /path/to/python); pattern wants
-        # literal "python", so the safelist should reject this. We assert the
-        # safelist behavior, not the run-result, to keep the test hermetic.
         assert result.status == "error"
         assert result.reason == "command_not_in_safelist"
 
@@ -642,6 +671,82 @@ class TestCommandExitZero:
         )
         assert result.status == "error"
         assert result.reason == "command_must_be_argv"
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="POSIX subprocess assumed")
+    async def test_bare_python_runs_with_no_python_on_path(self, py_workspace, monkeypatch):
+        """#498 verbatim: Ubuntu ships only /usr/bin/python3, so a bare `python`
+        raised FileNotFoundError and `vc-*-compiles` degraded to
+        skipped(missing_tooling) — a structural criterion silently not executing
+        on a host detail, which is exactly what the bare-skeleton gate exists to
+        rule out."""
+        monkeypatch.setenv("PATH", "/nonexistent")
+
+        result = await get_check("command_exit_zero").evaluate(
+            {"argv": ["python", "-m", "py_compile", "ok.py"]},
+            py_workspace,
+        )
+
+        assert result.status == "passed"
+
+    @pytest.mark.parametrize(
+        ("argv", "rewritten"),
+        [
+            (["python", "-m", "py_compile", "x.py"], True),
+            # Not authorable today (no python3 safelist pattern), so this is the
+            # only place the branch is reachable — kept because a later safelist
+            # entry would otherwise silently reintroduce the PATH dependency.
+            (["python3", "-m", "py_compile", "x.py"], True),
+            (["node", "--check", "x.js"], False),
+            (["pyflakes", "x.py"], False),
+            ([], False),
+        ],
+    )
+    def test_only_bare_python_names_are_rewritten(self, argv, rewritten):
+        resolved = _resolve_interpreter(argv)
+
+        assert resolved == ([sys.executable, *argv[1:]] if rewritten else argv)
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="POSIX subprocess assumed")
+    async def test_resolved_interpreter_still_catches_bad_code(self, py_workspace, monkeypatch):
+        """Guard against resolving the check into a no-op: it must still fail on
+        code that does not compile, not just stop skipping."""
+        monkeypatch.setenv("PATH", "/nonexistent")
+
+        result = await get_check("command_exit_zero").evaluate(
+            {"argv": ["python", "-m", "py_compile", "broken.py"]},
+            py_workspace,
+        )
+
+        assert result.status == "failed"
+
+    async def test_a_non_interpreter_command_is_left_alone(self, tmp_path, monkeypatch):
+        """Only bare python names are rewritten. A genuinely missing tool must
+        still report the #462 environment gap under its *authored* name — an
+        absolute path in the evidence can't be matched back to the contract."""
+        monkeypatch.setenv("PATH", "/nonexistent")
+        (tmp_path / "x.js").write_text("const a = 1;\n")
+
+        result = await get_check("command_exit_zero").evaluate(
+            {"argv": ["node", "--check", "x.js"]},
+            tmp_path,
+        )
+
+        assert result.status == "skipped"
+        assert result.reason == "missing_tooling"
+        assert result.actual["command"] == "node"
+
+    async def test_resolution_never_precedes_the_safelist(self, py_workspace):
+        """Ordering pin. The safelist gates the name a contract may ask for; if
+        resolution ran first, argv[0] would already be an absolute path and no
+        pattern would match — so either everything errors, or the gate has to be
+        loosened to accept arbitrary interpreter paths."""
+        result = await get_check("command_exit_zero").evaluate(
+            {"argv": ["python", "-c", "import os; os.system('id')"]},
+            py_workspace,
+        )
+
+        assert result.status == "error"
+        assert result.reason == "command_not_in_safelist"
 
     async def test_safelist_run_passes(self, tmp_path):
         # Use /bin/true via a synthetic safelist entry — actually, the simpler

@@ -90,6 +90,12 @@ memory-profiler>=0.61.0
 # Code quality
 ruff>=0.1.0
 flake8>=6.0.0
+# Load-bearing, not a lint tool here: the `undefined_names` check (#689) runs
+# pyflakes in-process, so without it the whole typed-acceptance suite reports
+# `error: missing_analyzer`. The harness has only ever had it transitively via
+# flake8 above — which is a live risk, since ruff's F rules ARE pyflakes and
+# retiring flake8 is on the table. Runtime images pin it in requirements/base.txt.
+pyflakes>=3.4.0
 black>=23.0.0
 isort>=5.12.0
 mypy>=1.5.0
