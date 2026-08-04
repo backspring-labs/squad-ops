@@ -196,6 +196,24 @@ class Probe:
         """``{var}`` names in this probe's request path, in order."""
         return re.findall(r"\{(\w+)\}", str(self.request.get("path", "")))
 
+    def endpoint_token(self) -> str | None:
+        """This probe's ``"METHOD /path"`` token, or ``None`` if it declares no HTTP
+        request (a non-HTTP subject, or a malformed method).
+
+        The path keeps its ``{var}`` placeholders unresolved: this token joins
+        against the *contract's* declared endpoints (#688), not against a live
+        request, and both sides are rendered from the same manifest endpoints, so
+        the placeholder form is what matches.
+        """
+        from squadops.cycles.acceptance_check_spec import parse_method_path
+
+        method = str(self.request.get("method", "")).strip()
+        path = str(self.request.get("path", "")).strip()
+        if not method or not path:
+            return None
+        parsed = parse_method_path(f"{method} {path}")
+        return f"{parsed[0]} {parsed[1]}" if parsed else None
+
 
 def resolve_probe_path(path: str, context: dict[str, str]) -> tuple[str, str | None]:
     """Resolve ``{var}`` placeholders from captured context (#651).
@@ -430,6 +448,45 @@ class VerificationContract:
         for crit in (*self.behavioral.build, *self.behavioral.suite.checks):
             index[crit.id] = (crit, "")
         return index
+
+    def endpoint_owners(self) -> dict[str, str]:
+        """Map each declared ``"METHOD /path"`` endpoint to the fill file that owns it.
+
+        Read off the ``endpoint_defined`` criteria the expander attaches per fill
+        slot. The contract is the only artifact that states this relation: the
+        interface manifest declares the endpoints, the blueprint decides which slot
+        implements them, and only the expander's output joins the two.
+
+        #688 consumes it to aim a repair at the fill slot behind a *failing
+        behavioral probe*. Before this, a behavioral failure could reach app source
+        only through ``implementation_artifacts`` package-scoping (pf-24/pf-27),
+        which anchors on the failed qa task's own artifacts — so whether the source
+        was reachable depended on where the squad happened to author the suite
+        (``backend/tests/...`` matched ``backend/routes.py``; a root-level
+        ``tests/...`` matched nothing and silently emptied the target). This
+        relation is authoring-independent: it comes from the contract.
+
+        Keys are normalized through the same token grammar ``endpoint_defined``
+        evaluates against, so a probe and a criterion differing only in a trailing
+        slash still join. First declaration wins if two slots claim one endpoint —
+        a well-linted contract has exactly one owner per endpoint, and ``lint()``
+        is the gate for that, not this accessor.
+        """
+        from squadops.cycles.acceptance_check_spec import (
+            CHECK_ENDPOINT_DEFINED,
+            parse_method_path,
+        )
+
+        owners: dict[str, str] = {}
+        for ff in self.fill_files:
+            for crit in ff.interface:
+                if crit.check != CHECK_ENDPOINT_DEFINED:
+                    continue
+                for token in crit.params.get("methods_paths", []) or []:
+                    parsed = parse_method_path(str(token))
+                    if parsed:
+                        owners.setdefault(f"{parsed[0]} {parsed[1]}", ff.path)
+        return owners
 
     def covered_fill_paths(self) -> frozenset[str]:
         """The set of fill-file paths this contract owns the acceptance of. A plan

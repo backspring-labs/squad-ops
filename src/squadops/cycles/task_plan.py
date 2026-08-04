@@ -512,6 +512,8 @@ def _inject_contract_inputs(
     ``Probe`` dicts — envelope inputs are JSON). The qa handler reconstructs and
     executes them against the built workspace, so probe evidence lands in
     live-cycle runs, not only the CI gate. Probe-less contracts inject no key.
+    #688 adds the endpoint→fill-slot ownership map alongside them, so a repair
+    born of a failing probe can be aimed at the slot that owns the endpoint.
 
     Author mode (``contract is None``) injects nothing — contract-less cycles
     stay byte-identical.
@@ -531,6 +533,14 @@ def _inject_contract_inputs(
     if task_type == "qa.test":
         if contract.behavioral.probes:
             inputs["contract_probes"] = [p.to_dict() for p in contract.behavioral.probes]
+            # #688: the endpoint→fill-slot ownership map, so a correction born of a
+            # FAILING probe can aim the repair at the slot that owns the failing
+            # endpoint. Threaded with the probes because it is only meaningful
+            # alongside them — probe-less contracts inject neither key and stay
+            # byte-identical. Data only; no prose (#448).
+            endpoint_owners = contract.endpoint_owners()
+            if endpoint_owners:
+                inputs["contract_endpoint_owners"] = endpoint_owners
         # #629 / pf-54: the contract's pinned statuses (probe expects + the
         # error-code→status map) never reached suite AUTHORING — five authored
         # suite versions asserted 200 where the probe pinned 201, an unwinnable

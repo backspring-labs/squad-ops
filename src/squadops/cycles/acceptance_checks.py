@@ -30,8 +30,11 @@ from typing import Any
 
 from squadops.cycles.acceptance_check_spec import (
     CHECK_SPECS,
+    HTTP_METHODS,
     CheckSpec,
     argv_matches_safelist,
+    normalize_route,
+    parse_method_path,
 )
 
 logger = logging.getLogger(__name__)
@@ -230,27 +233,6 @@ def _skip_unsupported_stack() -> CheckOutcome:
 # ---------------------------------------------------------------------------
 
 
-_HTTP_METHODS = frozenset({"get", "post", "put", "delete", "patch", "options", "head"})
-
-
-def _normalize_route(path: str) -> str:
-    """Normalize trailing slash for tolerant route comparison."""
-    if path != "/" and path.endswith("/"):
-        return path[:-1]
-    return path
-
-
-def _parse_method_path(token: str) -> tuple[str, str] | None:
-    """Parse a `'METHOD /path'` token; return (method, path) or None."""
-    parts = token.strip().split(maxsplit=1)
-    if len(parts) != 2:
-        return None
-    method, path = parts[0].upper(), _normalize_route(parts[1])
-    if method.lower() not in _HTTP_METHODS:
-        return None
-    return method, path
-
-
 def _decorator_route(decorator: ast.expr) -> tuple[str, str] | None:
     """Extract (METHOD, path) from `@router.METHOD("/path")` or `@app.METHOD("/path")`."""
     if not isinstance(decorator, ast.Call):
@@ -258,13 +240,13 @@ def _decorator_route(decorator: ast.expr) -> tuple[str, str] | None:
     if not isinstance(decorator.func, ast.Attribute):
         return None
     method = decorator.func.attr.lower()
-    if method not in _HTTP_METHODS:
+    if method not in HTTP_METHODS:
         return None
     if not decorator.args:
         return None
     arg0 = decorator.args[0]
     if isinstance(arg0, ast.Constant) and isinstance(arg0.value, str):
-        return method.upper(), _normalize_route(arg0.value)
+        return method.upper(), normalize_route(arg0.value)
     return None
 
 
@@ -330,7 +312,7 @@ class EndpointDefinedCheck(BaseCheck):
         expected: list[tuple[str, str]] = []
         malformed: list[str] = []
         for token in params["methods_paths"]:
-            parsed = _parse_method_path(str(token))
+            parsed = parse_method_path(str(token))
             if parsed is None:
                 malformed.append(token)
             else:

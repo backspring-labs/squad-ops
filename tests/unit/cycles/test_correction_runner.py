@@ -2663,6 +2663,191 @@ class TestResolveRepairTarget:
         assert focus is None
 
 
+class TestProbeOwnedRepairTarget:
+    """#688: a failing behavioral probe aims the repair at the fill slot that owns
+    its endpoint, resolved from contract data.
+
+    shk-2 (cyc_88162ecfd895) is the loss this closes: ``backend/routes.py`` used
+    ``RunEvent`` without importing it, so ``vc-probe-runs`` answered 500. Both
+    repairs emitted ``backend/main.py`` (named by drift evidence) + the failing
+    suite, never ``routes.py`` — nothing in the target could name the defect site.
+    """
+
+    # Contract v9 (art_4f368ea08799) endpoint→slot map, and the probes that failed
+    # per run_verification_summaries for run_da25453895e3.
+    OWNERS = {
+        "GET /runs": "backend/routes.py",
+        "POST /runs": "backend/routes.py",
+        "GET /runs/{run_id}": "backend/routes.py",
+        "POST /runs/{run_id}/join": "backend/routes.py",
+        "POST /runs/{run_id}/leave": "backend/routes.py",
+    }
+    PROBES = [
+        {
+            "id": "vc-probe-runs",
+            "subject": "backend",
+            "request": {"method": "POST", "path": "/runs", "json": {"title": "sample"}},
+            "expect": {"status": 201},
+            "capture": {"run_id": "id"},
+        },
+        {
+            "id": "vc-probe-runs-join",
+            "subject": "backend",
+            "request": {"method": "POST", "path": "/runs/{run_id}/join", "json": {"name": "s"}},
+            "expect": {"status": 200},
+        },
+    ]
+
+    def _inputs(self, **over):
+        # The shk-2 qa.test envelope: the suite was authored at ROOT-level tests/,
+        # so package scoping against backend/ source yields nothing.
+        base = {
+            "expected_artifacts": ["tests/test_api.py"],
+            "implementation_artifacts": [
+                "backend/routes.py",
+                "frontend/src/views/RunsListView.jsx",
+            ],
+            "contract_probes": self.PROBES,
+            "contract_endpoint_owners": self.OWNERS,
+        }
+        base.update(over)
+        return base
+
+    @staticmethod
+    def _evidence(rows, drift=None):
+        ev = {"validation_result": {"passed": False, "checks": rows}}
+        if drift:
+            ev["interface_drift"] = drift
+        return ev
+
+    def test_failing_probe_leads_target_over_drift_and_failed_suite(self):
+        """The shk-2 replay. Both repairs targeted main.py + the suite and the loop
+        reproduced the identical 500; routes.py must now LEAD the target while the
+        drifted file and the failing suite still ride."""
+        from adapters.cycles.correction_runner import _resolve_repair_target
+
+        evidence = self._evidence(
+            [
+                {"check": "vc-probe-runs", "status": "failed", "criterion_id": "vc-probe-runs"},
+                {"check": "tests_pass", "status": "failed"},
+            ],
+            drift=[{"kind": "extra_endpoint", "file": "backend/main.py", "extra": ["GET /health"]}],
+        )
+        artifacts, _, _ = _resolve_repair_target(evidence, self._inputs())
+
+        assert artifacts == ["backend/routes.py", "backend/main.py", "tests/test_api.py"]
+
+    def test_root_level_suite_defeats_package_scoping_without_probe_resolution(self):
+        """Pins the mechanism, so a regression is diagnosable: with the probe inputs
+        absent the target is exactly what shk-2's repairs emitted — the pf-24/pf-27
+        package-scoped union anchors on ``tests/`` and reaches no ``backend/`` source."""
+        from adapters.cycles.correction_runner import _resolve_repair_target
+
+        evidence = self._evidence(
+            [{"check": "vc-probe-runs", "status": "failed"}],
+            drift=[{"file": "backend/main.py"}],
+        )
+        stripped = self._inputs()
+        del stripped["contract_probes"]
+        del stripped["contract_endpoint_owners"]
+
+        artifacts, _, _ = _resolve_repair_target(evidence, stripped)
+        assert artifacts == ["backend/main.py", "tests/test_api.py"]
+
+    def test_no_drift_probe_failure_still_reaches_the_owning_slot(self):
+        """The RC2 branch: a behavioral failure with no drift at all. Without probe
+        resolution this returned only the suite (scoped source empty), which is the
+        blind loop in a plainer form."""
+        from adapters.cycles.correction_runner import _resolve_repair_target
+
+        evidence = self._evidence([{"check": "vc-probe-runs-join", "status": "failed"}])
+        artifacts, focus, description = _resolve_repair_target(
+            evidence,
+            self._inputs(subtask_focus="Backend API pytest suite", subtask_description="Write it"),
+        )
+
+        assert artifacts == ["backend/routes.py", "tests/test_api.py"]
+        # Retargeting must not swallow the no-drift branch's focus/description
+        # passthrough — the repair prompt loses its subject framing without them.
+        assert focus == "Backend API pytest suite"
+        assert description == "Write it"
+
+    def test_multiple_failing_probes_on_one_slot_name_it_once(self):
+        """shk-2 failed four probes, all owned by routes.py — the repair envelope
+        must not list the same file four times."""
+        from adapters.cycles.correction_runner import _resolve_repair_target
+
+        evidence = self._evidence(
+            [
+                {"check": "vc-probe-runs", "status": "failed"},
+                {"check": "vc-probe-runs-join", "status": "failed"},
+            ]
+        )
+        artifacts, _, _ = _resolve_repair_target(evidence, self._inputs())
+        assert artifacts.count("backend/routes.py") == 1
+
+    @pytest.mark.parametrize("status", ["passed", "skipped"])
+    def test_non_failing_probe_indicts_no_slot(self, status):
+        """A passing probe is not evidence, and a SKIPPED one means the subject never
+        booted — blaming an endpoint for a boot failure would aim every repair at the
+        first route in the contract."""
+        from adapters.cycles.correction_runner import _resolve_repair_target
+
+        evidence = self._evidence(
+            [
+                {"check": "vc-probe-runs", "status": status},
+                {"check": "tests_pass", "status": "failed"},
+            ]
+        )
+        artifacts, _, _ = _resolve_repair_target(evidence, self._inputs())
+        assert "backend/routes.py" not in artifacts
+
+    def test_unmapped_probe_id_adds_nothing(self):
+        """A failing check that is not a probe (or a probe the contract map does not
+        cover) must not silently pull in an unrelated slot."""
+        from adapters.cycles.correction_runner import _resolve_repair_target
+
+        evidence = self._evidence([{"check": "vc-suite-passes", "status": "failed"}])
+        artifacts, _, _ = _resolve_repair_target(evidence, self._inputs())
+        assert artifacts == ["tests/test_api.py"]
+
+    @pytest.mark.parametrize(
+        "inputs_over",
+        [
+            {"contract_probes": []},  # probe-less contract
+            {"contract_endpoint_owners": {}},  # no endpoint_defined criteria
+            {"contract_probes": [{"id": "x"}]},  # probe declaring no HTTP request
+            {"contract_probes": ["not-a-mapping"]},  # malformed wire row
+        ],
+    )
+    def test_degraded_probe_inputs_never_crash_or_retarget(self, inputs_over):
+        """Author mode, probe-less contracts, and malformed wire rows must leave the
+        target byte-identical — a correction path that raises here strands the run."""
+        from adapters.cycles.correction_runner import _resolve_repair_target
+
+        evidence = self._evidence([{"check": "vc-probe-runs", "status": "failed"}])
+        artifacts, _, _ = _resolve_repair_target(evidence, self._inputs(**inputs_over))
+        assert artifacts == ["tests/test_api.py"]
+
+    def test_trailing_slash_still_joins_probe_to_owner(self):
+        """The probe path and the criterion token are rendered from the same manifest,
+        but a hand-authored contract may differ by a trailing slash — a formatting
+        difference must not silently drop the defect site."""
+        from adapters.cycles.correction_runner import _resolve_repair_target
+
+        probes = [
+            {
+                "id": "vc-probe-runs",
+                "subject": "backend",
+                "request": {"method": "post", "path": "/runs/"},
+                "expect": {"status": 201},
+            }
+        ]
+        evidence = self._evidence([{"check": "vc-probe-runs", "status": "failed"}])
+        artifacts, _, _ = _resolve_repair_target(evidence, self._inputs(contract_probes=probes))
+        assert artifacts[0] == "backend/routes.py"
+
+
 class TestOwnArtifactLocusRouting(TestCorrectionRunnerStandalone):
     """#568: a qa.test failure whose OWN artifact is the defect dispatches a
     qa.test_repair step targeted at the failed task's own contract; behavioral

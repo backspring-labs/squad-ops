@@ -198,13 +198,54 @@ def command_safelist_names() -> tuple[str, ...]:
     return tuple(pat.name for pat in COMMAND_SAFELIST)
 
 
+# The one vocabulary name read by a module that does not evaluate it: #688's
+# probe→fill-slot resolution filters contract criteria on it. Bound to the
+# CHECK_SPECS key below so a rename moves both together — a bare literal there
+# would silently resolve to "no endpoints owned" and revert the fix to the
+# no-op it was written to end.
+CHECK_ENDPOINT_DEFINED = "endpoint_defined"
+
+
+# The `"METHOD /path"` endpoint-token grammar. `endpoint_defined.methods_paths`
+# is authored in it and the evaluator matches route decorators against it; #688
+# added a second reader — the contract resolves which fill slot owns a failing
+# probe's endpoint — so the grammar lives here with the rest of the vocabulary
+# rather than being duplicated or reached into privately.
+HTTP_METHODS: frozenset[str] = frozenset(
+    {"get", "post", "put", "delete", "patch", "options", "head"}
+)
+
+
+def normalize_route(path: str) -> str:
+    """Normalize trailing slash for tolerant route comparison."""
+    if path != "/" and path.endswith("/"):
+        return path[:-1]
+    return path
+
+
+def parse_method_path(token: str) -> tuple[str, str] | None:
+    """Parse a ``"METHOD /path"`` token; return ``(METHOD, /path)`` or ``None``.
+
+    ``None`` on anything that is not two whitespace-separated fields whose first
+    is an HTTP method — callers treat that as "not an endpoint token" rather
+    than an error, so a malformed entry is inert instead of fatal.
+    """
+    parts = token.strip().split(maxsplit=1)
+    if len(parts) != 2:
+        return None
+    method, path = parts[0].upper(), normalize_route(parts[1])
+    if method.lower() not in HTTP_METHODS:
+        return None
+    return method, path
+
+
 # Rev 1 vocabulary. Each entry's evaluator implementation lands in M1.2;
 # the parser already rejects authoring errors against this spec. The ``example``
 # on each entry is rendered into the proposer prompt (issue #182) and is
 # asserted parser-valid by test.
 CHECK_SPECS: dict[str, CheckSpec] = {
-    "endpoint_defined": CheckSpec(
-        name="endpoint_defined",
+    CHECK_ENDPOINT_DEFINED: CheckSpec(
+        name=CHECK_ENDPOINT_DEFINED,
         applicable_extensions=frozenset({".py"}),
         required_params=frozenset({"file", "methods_paths"}),
         param_types={"file": str, "methods_paths": list},

@@ -127,6 +127,77 @@ def _widen_target_for_frontend_build(
     return list(dict.fromkeys([*target, *frontend_source]))
 
 
+def _failed_probe_ids(failure_evidence: Any) -> list[str]:
+    """Ids of the behavioral probes that FAILED, in evidence order (#688).
+
+    Probe rows enter ``validation_result.checks`` from ``probe_check_rows`` with
+    ``check`` == ``criterion_id`` == the probe id and a ``status`` of
+    passed/failed/skipped. Only ``failed`` counts: ``skipped`` means the subject
+    never booted, which indicts no particular endpoint.
+    """
+    if not isinstance(failure_evidence, dict):
+        return []
+    rows = (failure_evidence.get("validation_result") or {}).get("checks") or []
+    return [
+        str(row.get("check"))
+        for row in rows
+        if isinstance(row, dict) and row.get("status") == "failed" and row.get("check")
+    ]
+
+
+def _probe_owned_slots(failure_evidence: Any, failed_inputs: dict[str, Any]) -> list[str]:
+    """Fill-slot files owning the endpoints whose behavioral probes failed (#688).
+
+    The deterministic chain the shk-2 loss chain needed and did not have:
+    failed probe row → the probe's declared ``METHOD /path`` → the contract's
+    endpoint→fill-slot map → the file that owns the failing endpoint.
+
+    shk-2 (cyc_88162ecfd895): ``vc-probe-runs`` answered 500 because
+    ``backend/routes.py`` used ``RunEvent`` without importing it. Both repairs
+    emitted ``backend/main.py`` (named by interface-drift evidence) plus the
+    failed qa task's own suite, and never ``routes.py`` — the target set could
+    not name the defect site, so the loop reproduced the identical 500 and
+    exhausted. This resolution names it from contract data alone, independent of
+    the drift evidence and of where the squad chose to put its tests.
+
+    Empty whenever the inputs are absent (author mode, probe-less contracts,
+    pre-#688 envelopes) or no probe failed — the caller's target is then
+    byte-identical to its prior behavior.
+    """
+    owners = failed_inputs.get("contract_endpoint_owners") or {}
+    probes = failed_inputs.get("contract_probes") or []
+    if not owners or not probes:
+        return []
+    failed_ids = _failed_probe_ids(failure_evidence)
+    if not failed_ids:
+        return []
+
+    from squadops.cycles.verification_contract import Probe
+
+    tokens_by_id: dict[str, str] = {}
+    for raw in probes:
+        try:
+            probe = Probe.from_dict(raw)
+        except ValueError:  # a malformed row indicts nothing; it must not raise here
+            continue
+        token = probe.endpoint_token()
+        if token:
+            tokens_by_id[probe.id] = token
+
+    slots: list[str] = []
+    for probe_id in failed_ids:
+        owner = owners.get(tokens_by_id.get(probe_id, ""))
+        if owner and owner not in slots:
+            slots.append(owner)
+    if slots:
+        logger.info(
+            "correction_repair_target: probe-owned fill slots %s (failed probes: %s)",
+            ", ".join(slots),
+            ", ".join(failed_ids),
+        )
+    return slots
+
+
 def _resolve_repair_target(
     failure_evidence: Any, failed_inputs: dict[str, Any]
 ) -> tuple[list[str], str | None, str | None]:
@@ -160,7 +231,20 @@ def _resolve_repair_target(
     ``frontend/*`` (package-scoping bounds the blast radius). Absent that surface
     (author mode, non-build corrections) the target is byte-identical to the #531
     fallback below.
+
+    shk-2 (cyc_88162ecfd895) — #688: every surface above is *indirect*. The drift branch
+    names whatever files the drift evidence happened to name; the package-scoped union
+    reaches app source only when the failed qa task's own artifacts share a top-level
+    package with it. Both missed a one-line defect in ``backend/routes.py`` — drift
+    pointed at ``backend/main.py``, and the suite was authored at root-level ``tests/``,
+    so the scoped union came back empty (it matches on ``backend/tests/…``, which is what
+    fay-16…19 happened to author: the reach depended on an authoring coincidence). So the
+    target now LEADS with the fill slots that own the FAILING PROBES' endpoints, resolved
+    from contract data (``_probe_owned_slots``). Drift files and the failed task's own
+    artifacts still ride — they carry real defects too, the pf-21 lesson — but they can no
+    longer displace the defect site.
     """
+    probe_slots = _probe_owned_slots(failure_evidence, failed_inputs)
     drift = failure_evidence.get("interface_drift") if isinstance(failure_evidence, dict) else None
     drift_files = sorted(
         {d["file"] for d in (drift or []) if isinstance(d, dict) and d.get("file")}
@@ -187,7 +271,9 @@ def _resolve_repair_target(
         scoped_source = _scope_to_shared_packages(
             failed_inputs.get("implementation_artifacts", []) or [], failed_artifacts
         )
-        target = list(dict.fromkeys([*drift_files, *failed_artifacts, *scoped_source]))
+        target = list(
+            dict.fromkeys([*probe_slots, *drift_files, *failed_artifacts, *scoped_source])
+        )
         target = _widen_target_for_frontend_build(target, failure_evidence, failed_inputs)
         return (target, None, None)
     # RC2 no-drift path: union the failing task's own artifacts with the
@@ -197,7 +283,7 @@ def _resolve_repair_target(
     scoped_source = _scope_to_shared_packages(
         failed_inputs.get("implementation_artifacts", []) or [], failed_artifacts
     )
-    target = list(dict.fromkeys([*failed_artifacts, *scoped_source]))
+    target = list(dict.fromkeys([*probe_slots, *failed_artifacts, *scoped_source]))
     target = _widen_target_for_frontend_build(target, failure_evidence, failed_inputs)
     return (
         target,
