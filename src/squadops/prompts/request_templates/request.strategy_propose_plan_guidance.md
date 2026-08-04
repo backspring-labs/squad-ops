@@ -1,6 +1,6 @@
 ---
 template_id: request.strategy_propose_plan_guidance
-version: "2"
+version: "3"
 required_variables:
   - brief_content
   - planning_content
@@ -10,6 +10,7 @@ optional_variables:
   - prd
   - roles_section
   - rejection_context_section
+  - authoring_rules_section
 ---
 You are proposing cross-cutting plan-authoring guidance for the upcoming build.
 
@@ -28,6 +29,8 @@ The brief below was authored upstream and is immutable. Your guidance overlays t
 ## Planning artifacts (upstream framing)
 
 {{planning_content}}
+
+{{authoring_rules_section}}
 
 ## Your task
 

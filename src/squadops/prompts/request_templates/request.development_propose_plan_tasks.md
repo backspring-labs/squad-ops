@@ -1,6 +1,6 @@
 ---
 template_id: request.development_propose_plan_tasks
-version: "2"
+version: "3"
 required_variables:
   - brief_content
   - planning_content
@@ -15,6 +15,7 @@ optional_variables:
   - bind_criteria_section
   - frozen_surface_section
   - rejection_context_section
+  - authoring_rules_section
 ---
 You are proposing development-domain plan tasks for the upcoming build.
 
@@ -34,7 +35,8 @@ The brief below was authored upstream and is immutable. Your proposal must opera
 
 {{planning_content}}
 
-{{typed_acceptance_vocabulary}}
+{{typed_acceptance_vocabulary}}{{authoring_rules_section}}
+
 ## Your task
 
 Decompose the development work for this build into focused tasks (`task_type: development.develop`) that, together with QA's test proposal and Strategy's guidance, will assemble into a complete implementation plan. Restrict your proposal to dev-domain tasks. Use the typed-acceptance vocabulary above where applicable.

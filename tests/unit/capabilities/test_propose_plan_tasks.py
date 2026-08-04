@@ -486,9 +486,12 @@ class TestPromptRegistryIntegration:
 
         await handler.handle(ctx, _seeded_inputs())
 
-        ctx.ports.request_renderer.render.assert_called_once()
-        template_id = ctx.ports.request_renderer.render.call_args.args[0]
-        assert template_id == expected_template
+        # #686 renders the plan-shape rules appendix first, so the MAIN template is the
+        # last render — assert on identity rather than call count, which would now only
+        # be counting how many appendices happen to exist.
+        rendered = [c.args[0] for c in ctx.ports.request_renderer.render.call_args_list]
+        assert rendered[-1] == expected_template
+        assert "request.plan_authoring_rules_appendix" in rendered
 
         ctx.ports.prompt_service.assemble.assert_called_once_with(
             role=handler._role,
