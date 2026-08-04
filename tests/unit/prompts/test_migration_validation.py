@@ -427,10 +427,16 @@ class TestTemplateContractCompleteness:
         sorted(TEMPLATES_DIR.glob("*.md")),
         ids=lambda p: p.name,
     )
-    def test_every_template_has_required_variables(self, template_file):
-        """Bug caught: a template without required_variables silently accepts
-        any input — missing variables produce empty sections instead of errors.
-        """
+    def test_every_template_placeholder_is_declared(self, template_file):
+        """Bug caught: an undeclared variable silently accepts any input — a missing
+        value produces an empty section instead of an error.
+
+        Stated against the BODY rather than as "declare at least one variable" (#686):
+        a prose-only asset has no placeholders and therefore nothing to declare, and
+        demanding a variable there would only invite an invented one. Every placeholder
+        that IS used must still be declared, which is the actual contract."""
+        import re
+
         import yaml
 
         content = template_file.read_text()
@@ -438,8 +444,12 @@ class TestTemplateContractCompleteness:
         assert match, f"{template_file.name}: no YAML frontmatter found"
 
         header = yaml.safe_load(match.group(1)) or {}
-        required = header.get("required_variables", [])
-        assert len(required) > 0, (
-            f"{template_file.name}: no required_variables declared — "
-            "contract must specify at least one required variable"
+        declared = set(header.get("required_variables") or []) | set(
+            header.get("optional_variables") or []
+        )
+        used = set(re.findall(r"\{\{(\w+)\}\}", content[match.end() :]))
+        undeclared = sorted(used - declared)
+        assert not undeclared, (
+            f"{template_file.name}: placeholder(s) {undeclared} used but not declared in "
+            "required_variables/optional_variables"
         )

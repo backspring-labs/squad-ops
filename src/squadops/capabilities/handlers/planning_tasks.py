@@ -138,6 +138,20 @@ class _PlanningTaskHandler(_CycleTaskHandler):
             variables["time_budget_section"] = budget_section
         return variables
 
+    async def _authoring_rules_section(self, renderer: Any) -> str:
+        """The plan-shape rules every deterministic validator enforces (#686).
+
+        Unconditional — unlike the sections around it there is no input to key on,
+        because these rules hold for every plan on every roll. shk-1's first framing
+        authored the #673 dual-claim shape with the contract, the manifest and the
+        typed-acceptance vocabulary all present, because the rules themselves appeared
+        in no prompt: the validator knew, the author never did (#629's pattern). Prose
+        is the managed asset; which validators are author-facing is the data table in
+        ``squadops.cycles.plan_authoring_rules``, and a test binds the two (#448).
+        """
+        rendered = await renderer.render("request.plan_authoring_rules_appendix", {})
+        return rendered.content
+
     async def _rejection_context_section(self, renderer: Any, inputs: dict[str, Any]) -> str:
         """The prior-rejection appendix on a framing re-roll, or "" (#669).
 
@@ -589,6 +603,9 @@ class GovernancePreparePlanAuthoringBriefHandler(_PlanningTaskHandler):
         renderer = getattr(context.ports, "request_renderer", None)
         if renderer is not None:
             variables = self._build_render_variables(prd, prior_outputs, inputs)
+            # #686: the brief pins the frame the proposers author against, so the
+            # plan-shape rules belong here as much as on the proposers themselves.
+            variables["authoring_rules_section"] = await self._authoring_rules_section(renderer)
             # #669: the brief pins the frame the proposers work from — on a
             # re-roll it must know what died, or it re-pins the rejected shape.
             rejection_section = await self._rejection_context_section(renderer, inputs)
@@ -975,6 +992,9 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
         frozen_surface_section = await self._frozen_surface_section(renderer, inputs)
         if frozen_surface_section:
             variables["frozen_surface_section"] = frozen_surface_section
+        # #686: the plan-shape rules the deterministic validators enforce. No input
+        # to key on — they hold for every plan, so this one renders unconditionally.
+        variables["authoring_rules_section"] = await self._authoring_rules_section(renderer)
         # #669: on a framing re-roll, the prior attempt's rejection — revise,
         # don't re-dice. Data-driven and managed-asset prose, exactly like the
         # sections above; a first-roll framing has no input and renders nothing.

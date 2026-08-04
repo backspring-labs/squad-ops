@@ -1,6 +1,6 @@
 ---
 template_id: request.qa_propose_plan_tasks
-version: "2"
+version: "3"
 required_variables:
   - brief_content
   - planning_content
@@ -14,6 +14,7 @@ optional_variables:
   - bind_criteria_section
   - frozen_surface_section
   - rejection_context_section
+  - authoring_rules_section
 ---
 You are proposing QA-domain plan tasks for the upcoming build.
 
@@ -33,7 +34,8 @@ The brief below was authored upstream and is immutable. Your proposal must opera
 
 {{planning_content}}
 
-{{typed_acceptance_vocabulary}}
+{{typed_acceptance_vocabulary}}{{authoring_rules_section}}
+
 ## Your task
 
 Decompose the QA work for this build into focused tasks (`task_type: qa.test`) that verify the brief's `must_cover_requirements`. Where a requirement isn't already covered by acceptance criteria on a development task, propose a qa task that covers it explicitly. Restrict your proposal to qa-domain tasks. Reference development tasks via `depends_on_focus: ["dev:..."]` strings.

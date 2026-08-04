@@ -189,3 +189,84 @@ async def test_real_assets_carry_the_teaching_message_and_the_plan():
     assert "frozen (scaffold-owned)" in section
     assert "focus: Backend store" in section  # the rejected plan body
     assert "revise" in section.lower()
+
+
+# --- #686: the plan-shape rules reach the same four authoring prompts ----------- #
+
+
+@pytest.mark.parametrize(
+    "handler_cls",
+    [
+        DevelopmentProposePlanTasksHandler,
+        QaProposePlanTasksHandler,
+        StrategyProposePlanGuidanceHandler,
+        GovernancePreparePlanAuthoringBriefHandler,
+    ],
+)
+async def test_every_authoring_handler_renders_the_plan_shape_rules(handler_cls):
+    """Unlike the rejection appendix there is no input to key on — these rules hold for
+    every plan on every roll, so a handler that renders them only sometimes would leave
+    the first framing (the one shk-1 lost) exactly as uninformed as before."""
+    renderer = AsyncMock()
+    renderer.render.side_effect = lambda template_id, variables: MagicMock(
+        content=f"RENDERED:{template_id}"
+    )
+
+    out = await handler_cls()._authoring_rules_section(renderer)
+
+    assert out == "RENDERED:request.plan_authoring_rules_appendix"
+    (template_id, variables) = renderer.render.await_args.args
+    assert template_id == "request.plan_authoring_rules_appendix"
+    assert variables == {}  # prose-only asset: no data to inject (#448)
+
+
+async def test_real_asset_states_the_shk1_rule_in_the_rendered_section():
+    """A live render through the real template, so a malformed asset header or a
+    frontmatter typo fails here rather than silently rendering nothing into the prompt
+    that was supposed to carry the teaching."""
+    from adapters.prompts.filesystem_asset_adapter import FilesystemPromptAssetAdapter
+    from squadops.prompts.renderer import RequestTemplateRenderer
+
+    templates_dir = (
+        Path(__file__).resolve().parents[3] / "src" / "squadops" / "prompts" / "request_templates"
+    )
+    renderer = RequestTemplateRenderer(
+        FilesystemPromptAssetAdapter(
+            fragments_path=templates_dir.parent / "fragments",
+            templates_path=templates_dir,
+        )
+    )
+
+    section = await DevelopmentProposePlanTasksHandler()._authoring_rules_section(renderer)
+
+    assert "PLAN SHAPE RULES" in section
+    assert "one-file-one-owner" in section  # the class that cost shk-1 a re-roll
+    assert "expected_artifacts: []" in section  # the legitimate alternative
+    assert "no-frozen-claims" in section  # #658
+    assert "imports-must-exist" in section  # #671
+
+
+@pytest.mark.parametrize(
+    "template_id",
+    [
+        "request.planning_task_base",
+        "request.development_propose_plan_tasks",
+        "request.qa_propose_plan_tasks",
+        "request.strategy_propose_plan_guidance",
+    ],
+)
+def test_every_authoring_template_declares_and_places_the_slot(template_id):
+    """Declaring the variable without placing it, or vice versa, renders nothing into
+    the prompt while every handler-side test still passes — the silent-no-op shape this
+    patch line keeps closing."""
+    path = (
+        Path(__file__).resolve().parents[3]
+        / "src"
+        / "squadops"
+        / "prompts"
+        / "request_templates"
+        / f"{template_id}.md"
+    )
+    header, _, body = path.read_text(encoding="utf-8").partition("\n---\n")
+    assert "- authoring_rules_section" in header
+    assert "{{authoring_rules_section}}" in body
