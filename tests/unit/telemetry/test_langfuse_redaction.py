@@ -1,12 +1,38 @@
 """Unit tests for redaction strategies (SIP-0061)."""
 
+import re
+
 import pytest
 
 from adapters.telemetry.langfuse.redaction import (
+    _API_KEY_PATTERNS,
+    _PASSWORD_PATTERNS,
+    _PII_PATTERNS,
     StandardRedaction,
     StrictRedaction,
     get_redaction_strategy,
 )
+
+
+class TestPatternHygiene:
+    """#573 asked for a sweep of the sibling patterns for the same typo. This
+    pins the outcome rather than leaving it to the next reader's eyeball."""
+
+    # A `[...]` containing an unescaped `|` — the #573 shape.
+    _CLASS_WITH_PIPE = re.compile(r"\[(?:[^\]\\]|\\.)*\|(?:[^\]\\]|\\.)*\]")
+
+    @pytest.mark.parametrize(
+        "pattern",
+        [*_API_KEY_PATTERNS, *_PASSWORD_PATTERNS, *_PII_PATTERNS],
+        ids=lambda p: p.pattern[:40],
+    )
+    def test_no_literal_pipe_inside_a_character_class(self, pattern):
+        """In a character class `|` is a literal pipe, never alternation. In a
+        scrubber that means the class silently accepts a character it was never
+        meant to, and the match runs past its intended end — which is how the
+        email pattern started swallowing the next pipe-delimited log field.
+        No pattern in this module wants a literal pipe."""
+        assert self._CLASS_WITH_PIPE.search(pattern.pattern) is None
 
 
 class TestStandardRedaction:
@@ -105,6 +131,44 @@ class TestStrictRedaction:
         assert h1 == h2  # Deterministic
         assert h1 != h3  # Different inputs produce different hashes
         assert len(h1) == 16  # Truncated to 16 chars
+
+    def test_email_redaction_stops_at_the_address_in_a_pipe_delimited_line(self):
+        """#573: the TLD class was `[A-Z|a-z]`, and a `|` inside a character
+        class is a *literal pipe*, not alternation. The match therefore ran past
+        the address into the next pipe-delimited field, so a log line lost its
+        surrounding context — `email=…|status=ok` redacted to
+        `email=[REDACTED-PII]=ok`, silently corrupting the record it was meant to
+        make safe. Pipe-delimited fields are everywhere in log output, so this is
+        the shape that actually bit."""
+        r = StrictRedaction()
+
+        result = r.redact("email=alice@example.com|status=ok|retry=3")
+
+        assert result == "email=[REDACTED-PII]|status=ok|retry=3"
+
+    def test_a_pipe_is_not_a_tld_character(self):
+        """The direct statement of the typo: `b.c|m` is not a domain, so the
+        pattern must not treat it as one."""
+        r = StrictRedaction()
+
+        assert r.redact("user@example.c|m") == "user@example.c|m"
+
+    @pytest.mark.parametrize(
+        "address",
+        [
+            "alice@example.com",
+            "Bob.Smith+tag@sub.example.co.uk",
+            "x@y.IO",
+            "user_name%test@mail-server.example.org",
+        ],
+    )
+    def test_real_addresses_still_redact(self, address):
+        """The fix narrows the class, so the guard that matters is that every
+        genuine address still scrubs — both ranges were always covered, and this
+        pins that they stay covered."""
+        r = StrictRedaction()
+
+        assert address not in r.redact(f"Contact {address} for help")
 
 
 class TestGetRedactionStrategy:
