@@ -364,11 +364,12 @@ async def _init_cycle_subsystem(config, pool) -> None:
 
         _runtime_coordinator = create_runtime_coordinator(pool)
 
-        # #373/#529: share the single coordinator + lease port with the cancel
-        # routes, so cancelling a cycle/run releases the leases it holds.
-        from squadops.api.runtime.deps import set_lease_sweep_ports
+        # #373/#529/#561: share the runtime ports with the cancel routes, which
+        # bypass the executor's finalize path and so have to release the leases
+        # and end the activities the cancelled run leaves behind.
+        from squadops.api.runtime.deps import set_cancellation_ports
 
-        set_lease_sweep_ports(_runtime_coordinator, focus_lease_port)
+        set_cancellation_ports(_runtime_coordinator, focus_lease_port, activity_port)
 
         # Startup hygiene: clear runtime state a dead process left active, before
         # anything recruits against it. Each sweep is best-effort and owns its own

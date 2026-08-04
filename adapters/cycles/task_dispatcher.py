@@ -232,7 +232,9 @@ class TaskDispatcher:
         Best-effort: returns the activity id, or None when disabled/failed — it
         must never raise, so observability can't break dispatch. D9 (one active
         activity per agent) is enforced by the partial unique index; a leftover
-        active row from a prior crashed task makes this conflict, which we swallow.
+        active row from a prior crashed task is superseded by the adapter and the
+        insert retried (#561), so the swallow below no longer hides a permanently
+        dead tracking surface — it catches genuine failures only.
         """
         if self._activity_port is None:
             return None

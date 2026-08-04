@@ -326,6 +326,7 @@ async def cancel_cycle(project_id: str, cycle_id: str):
         # #77: stop the orphaned Prefect flow run(s) for this cycle's runs so
         # workers don't keep executing a logically-cancelled cycle.
         from squadops.api.routes.cycles.cancellation import (
+            abort_cancelled_cycle_activities,
             cancel_orphaned_flow_runs,
             release_cancelled_run_leases,
         )
@@ -353,11 +354,17 @@ async def cancel_cycle(project_id: str, cycle_id: str):
         # run is exactly #373's case and blocks recruitment just as hard.
         leases_released = await release_cancelled_run_leases(cycle_id, run_ids)
 
+        # #561: and end the cycle's open activity rows. One left active trips the
+        # one-active-per-agent index on every later dispatch, silently ending
+        # that agent's activity tracking.
+        activities_ended = await abort_cancelled_cycle_activities(cycle_id)
+
         return {
             "status": "cancelled",
             "cycle_id": cycle_id,
             "prefect_flow_runs_cancelled": cancelled,
             "focus_leases_released": leases_released,
+            "activities_ended": activities_ended,
         }
     except CycleError as e:
         raise handle_cycle_error(e) from e

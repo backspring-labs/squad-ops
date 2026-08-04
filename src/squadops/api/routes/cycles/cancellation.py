@@ -11,10 +11,14 @@ kinds of live state behind, and each needs an explicit hand-off:
   finalize path, so the cycle leases the run holds are never released. Post-#288
   that is a hard block: the next cycle recruiting any of those agents pauses at
   admission with ``focus_lease_conflict`` and needs manual SQL to clear.
+- **#561 — the cycle's open runtime activities.** Same bypass, same shape: the
+  ``RunCompletion`` sweep never runs, so each recruited agent keeps an active
+  row that trips ``uq_runtime_activities_one_active_per_agent`` on every later
+  dispatch, silently ending that agent's activity tracking.
 
-Both are best-effort and never raise, so the cancel route reports the cycle/run
-as cancelled even if Prefect is unreachable or no lease wiring exists (the
-failure is logged).
+All three are best-effort and never raise, so the cancel route reports the
+cycle/run as cancelled even if Prefect is unreachable or no runtime wiring
+exists (the failure is logged).
 """
 
 from __future__ import annotations
@@ -22,6 +26,7 @@ from __future__ import annotations
 import logging
 
 from squadops.api.runtime.deps import (
+    get_activity_port,
     get_focus_lease_port,
     get_runtime_coordinator,
     get_workflow_tracker,
@@ -93,3 +98,38 @@ async def release_cancelled_run_leases(cycle_id: str, run_ids: list[str]) -> int
             run_ids,
         )
     return released
+
+
+async def abort_cancelled_cycle_activities(cycle_id: str) -> int:
+    """End the cycle's open runtime activities. Returns how many flipped.
+
+    Scoped to the cycle rather than the cancelled run because that is how
+    activities are owned — ``RunCompletion.finalize`` sweeps by ``cycle_id``
+    too, and a cycle runs one workload at a time, so a run-cancel ends the only
+    dispatch loop the cycle has.
+
+    Returns 0 when no activity port is wired (a pool-less deployment records no
+    activities).
+    """
+    activity_port = get_activity_port()
+    if activity_port is None:
+        return 0
+    from squadops.runtime import reasons
+    from squadops.runtime.activity_reaper import abort_cycle_activities
+
+    try:
+        aborted = await abort_cycle_activities(
+            activity_port, cycle_id, reason_code=reasons.ACTIVITY_STRANDED_AT_CANCEL
+        )
+    except Exception:
+        logger.warning(
+            "#561: activity teardown failed for cancelled cycle %s", cycle_id, exc_info=True
+        )
+        return 0
+    if aborted:
+        logger.info(
+            "#561: ended %d open runtime activity row(s) for cancelled cycle %s",
+            aborted,
+            cycle_id,
+        )
+    return aborted

@@ -5,11 +5,14 @@ registry and the other runtime adapters. All rows hit `runtime_activities`
 (migration `1130_runtime_activities.sql`).
 
 `start_activity` inserts a `running` activity; the §4.2 partial unique index
-enforces the single-active-activity invariant (D9), so a second active start for
-the same agent raises `UniqueViolationError` — the §4.4 instrumentation treats
-activity calls as best-effort and swallows it so observability never breaks a
-real task. `update_state` manages the lifecycle timestamps; the terminal helpers
-are thin wrappers over it (their reason/evidence is event-surfaced, not stored).
+enforces the single-active-activity invariant (D9). A conflicting *stale* row
+(one whose task died without terminalizing it) is superseded and the insert
+retried once — see :meth:`PostgresRuntimeActivity.start_activity`. Without that,
+a single leftover row silently killed activity tracking for that agent forever,
+because the §4.4 instrumentation treats activity calls as best-effort and
+swallows the conflict so observability never breaks a real task (#561).
+`update_state` manages the lifecycle timestamps; the terminal helpers are thin
+wrappers over it (their reason/evidence is event-surfaced, not stored).
 
 JSONB columns (`completion_conditions`/`evidence_requirements`) follow the cycle
 registry convention: `json.dumps` on write, decode on read.
@@ -18,6 +21,7 @@ registry convention: `json.dumps` on write, decode on read.
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -38,6 +42,19 @@ _COLUMNS = (
     "runtime_activity_id, agent_id, mode, activity_type, goal, priority, state, "
     "source_kind, cycle_id, workload_id, task_id, source_ref, can_pause, can_resume, "
     "can_abort, completion_conditions, evidence_requirements, started_at, paused_at, ended_at"
+)
+
+logger = logging.getLogger(__name__)
+
+# Hoisted so the D9 self-heal retry (#561) replays the *same* statement rather
+# than a second copy that could drift from it.
+_INSERT_ACTIVITY = (
+    "INSERT INTO runtime_activities ("
+    "runtime_activity_id, agent_id, mode, activity_type, goal, priority, state, "
+    "source_kind, cycle_id, workload_id, task_id, source_ref, can_pause, can_resume, "
+    "can_abort, completion_conditions, evidence_requirements, started_at"
+    ") VALUES ($1,$2,$3,$4,$5,$6,'running',$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) "
+    f"RETURNING {_COLUMNS}"
 )
 
 
@@ -66,34 +83,67 @@ class PostgresRuntimeActivity(RuntimeActivityPort):
         completion_conditions: tuple[dict, ...] = (),
         evidence_requirements: tuple[dict, ...] = (),
     ) -> RuntimeActivity:
-        activity_id = uuid.uuid4().hex
+        args = (
+            uuid.uuid4().hex,
+            agent_id,
+            mode,
+            activity_type,
+            goal,
+            priority,
+            source_kind,
+            cycle_id,
+            workload_id,
+            task_id,
+            source_ref,
+            can_pause,
+            can_resume,
+            can_abort,
+            json.dumps(list(completion_conditions)),
+            json.dumps(list(evidence_requirements)),
+            datetime.now(UTC),
+        )
         async with self._pool.acquire() as conn:
-            row = await conn.fetchrow(
-                "INSERT INTO runtime_activities ("
-                "runtime_activity_id, agent_id, mode, activity_type, goal, priority, state, "
-                "source_kind, cycle_id, workload_id, task_id, source_ref, can_pause, can_resume, "
-                "can_abort, completion_conditions, evidence_requirements, started_at"
-                ") VALUES ($1,$2,$3,$4,$5,$6,'running',$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) "
-                f"RETURNING {_COLUMNS}",
-                activity_id,
-                agent_id,
-                mode,
-                activity_type,
-                goal,
-                priority,
-                source_kind,
-                cycle_id,
-                workload_id,
-                task_id,
-                source_ref,
-                can_pause,
-                can_resume,
-                can_abort,
-                json.dumps(list(completion_conditions)),
-                json.dumps(list(evidence_requirements)),
-                datetime.now(UTC),
-            )
+            try:
+                row = await conn.fetchrow(_INSERT_ACTIVITY, *args)
+            except asyncpg.UniqueViolationError:
+                # D9 self-heal (#561). The agent already holds an active row, and
+                # under D9 it holds at most one — so a *new* dispatch for this
+                # agent is itself the evidence that the old activity is no longer
+                # live: dispatch is sequential within a run, and #288 stops a
+                # second cycle from recruiting an agent another cycle holds.
+                # Supersede it and retry once. Before this, one leftover row from
+                # a crashed task silently ended activity tracking for that agent
+                # until someone ran DELETE by hand — observed dead for ~3 days
+                # across the green-roll arc while every dispatch logged the
+                # swallowed conflict.
+                superseded = await self._supersede_active(conn, agent_id)
+                if superseded is None:
+                    raise  # nothing stale to clear: a real, live conflict
+                logger.warning(
+                    "superseded stale activity %s for agent %s — its task ended "
+                    "without terminalizing the row (activity tracking was dead "
+                    "for this agent until now)",
+                    superseded,
+                    agent_id,
+                )
+                row = await conn.fetchrow(_INSERT_ACTIVITY, *args)
         return _row_to_activity(row)
+
+    @staticmethod
+    async def _supersede_active(conn: asyncpg.Connection, agent_id: str) -> str | None:
+        """Abort the agent's active activity so the slot frees; return its id or None.
+
+        `None` means the row vanished between the failed insert and this update
+        (a concurrent writer terminalized it), in which case the caller retries
+        anyway — the slot is free either way.
+        """
+        return await conn.fetchval(
+            "UPDATE runtime_activities SET state = 'aborted', ended_at = now(), "
+            "updated_at = now() "
+            "WHERE agent_id = $1 AND state IN ('pending', 'running', 'paused') "
+            "RETURNING runtime_activity_id",
+            agent_id,
+        )
 
     async def update_state(
         self, activity_id: str, state: ActivityState, *, conn: Any = None

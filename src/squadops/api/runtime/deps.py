@@ -22,6 +22,7 @@ from squadops.ports.runtime.assignments import AssignmentPort
 
 if TYPE_CHECKING:
     from squadops.api.runtime.health_checker import HealthChecker
+    from squadops.ports.runtime.activity import RuntimeActivityPort
     from squadops.ports.runtime.focus_lease import FocusLeasePort
     from squadops.runtime.coordinator import RuntimeCoordinator
 
@@ -51,11 +52,12 @@ _llm_port: LLMPort | None = None
 # SIP-0089 §2.7: Assignment port for the assignment REST surface
 _assignment_port: AssignmentPort | None = None
 
-# #373/#529: the composition root's single-writer coordinator (D16) and the lease
-# port, shared with the cancel routes so cancellation can release the leases the
-# cancelled run holds. Both stay None without a Postgres pool.
+# #373/#529/#561: the runtime state a cancel has to tear down, since cancellation
+# bypasses the executor's finalize path entirely — the single-writer coordinator
+# (D16) plus the lease and activity ports. All None without a Postgres pool.
 _runtime_coordinator: RuntimeCoordinator | None = None
 _focus_lease_port: FocusLeasePort | None = None
+_activity_port: RuntimeActivityPort | None = None
 
 
 def set_auth_ports(
@@ -282,23 +284,27 @@ def get_assignment_port() -> AssignmentPort:
 
 
 # =============================================================================
-# #373/#529: runtime coordinator + focus-lease port (stranded-lease sweeps)
+# #373/#529/#561: runtime ports the cancel path tears down
 # =============================================================================
 
 
-def set_lease_sweep_ports(
+def set_cancellation_ports(
     coordinator: RuntimeCoordinator | None,
     focus_lease: FocusLeasePort | None,
+    activity: RuntimeActivityPort | None,
 ) -> None:
-    """Register the shared coordinator and lease port for the cancel-time sweep.
+    """Register the runtime ports a cancel has to tear down.
 
-    The coordinator MUST be the composition root's single instance (D16) — the
+    Cancellation never reaches the executor's finalize path, so the leases and
+    activities the cancelled run holds have to be cleared by the route. The
+    coordinator MUST be the composition root's single instance (D16) — the lease
     sweep returns agents to ambient through it, and a second mode-writer would
     race the executor and the duty scheduler.
     """
-    global _runtime_coordinator, _focus_lease_port
+    global _runtime_coordinator, _focus_lease_port, _activity_port
     _runtime_coordinator = coordinator
     _focus_lease_port = focus_lease
+    _activity_port = activity
 
 
 def get_runtime_coordinator() -> RuntimeCoordinator | None:
@@ -313,6 +319,14 @@ def get_focus_lease_port() -> FocusLeasePort | None:
     succeed on a pool-less deployment, where there are no leases to release.
     """
     return _focus_lease_port
+
+
+def get_activity_port() -> RuntimeActivityPort | None:
+    """Return the activity port, or None when no Postgres pool is wired.
+
+    Never raises, for the same reason as :func:`get_focus_lease_port`.
+    """
+    return _activity_port
 
 
 # =============================================================================
