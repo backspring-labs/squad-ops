@@ -353,6 +353,7 @@ def _inject_deterministic_evidence(
     interface_manifest: Any,
     artifact_contents: dict[str, str] | None,
     scaffold_enforcement_carry: list[str] | None,
+    bound_record: Any = None,
 ) -> None:
     """Deterministic authoritative-evidence injection for the correction chain.
 
@@ -360,8 +361,11 @@ def _inject_deterministic_evidence(
     never LLM output, and each travels the same failure_evidence →
     authoritative-prompt-block transport. Additive: absent sources inject nothing.
 
-    - ``interface_drift`` (piece 1): exact renamed identifiers vs the manifest.
-    - ``scaffold_enforcement`` (3.4b): prior attempts' frozen-restore instructions.
+    - ``interface_drift`` (piece 1): exact renamed identifiers vs the manifest,
+      with the bound record's frozen paths excluded (#691 — a scaffold-owned file
+      cannot drift, and reporting that it does aims repairs at bytes the producer
+      may not write; shk-2 lost three attempts to exactly that).
+    - ``scaffold_enforcement`` (3.4b): prior attempts' frozen-emission instructions.
     - ``contract_expectations`` (pf-31 Fix A): the failed task's typed criteria
       as exact expectation lines.
     - ``error_contract`` (pf-34): the ApiError raise convention + code→status
@@ -382,7 +386,11 @@ def _inject_deterministic_evidence(
     from squadops.cycles.contract_expectations import expectation_lines
     from squadops.cycles.interface_conformance import detect_interface_drift
 
-    drift = detect_interface_drift(interface_manifest, artifact_contents)
+    drift = detect_interface_drift(
+        interface_manifest,
+        artifact_contents,
+        frozen_paths=bound_record.frozen_paths() if bound_record is not None else None,
+    )
     if drift:
         failure_evidence["interface_drift"] = [
             {
@@ -594,7 +602,7 @@ class CorrectionRunner:
         if bound_record is not None and step_artifacts:
             from squadops.cycles.scaffold_enforcement import (
                 enforce_frozen_ownership,
-                frozen_restore_instruction,
+                frozen_emission_instruction,
             )
             from squadops.cycles.task_outcome import ContractComplianceViolation
 
@@ -611,7 +619,7 @@ class CorrectionRunner:
                         and record.violation_code
                         == ContractComplianceViolation.FROZEN_PATH_EMISSION
                     ):
-                        instruction = frozen_restore_instruction(record)
+                        instruction = frozen_emission_instruction(record)
                         if instruction not in enforcement_carry:
                             enforcement_carry.append(instruction)
 
@@ -819,6 +827,7 @@ class CorrectionRunner:
             interface_manifest=interface_manifest,
             artifact_contents=artifact_contents,
             scaffold_enforcement_carry=scaffold_enforcement_carry,
+            bound_record=bound_record,
         )
 
         # Issue #95: capture each correction step's outputs in its own variable
