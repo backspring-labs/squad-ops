@@ -403,9 +403,22 @@ Per the ratified post-1.4 reshuffle (`docs/plans/post-1-4-roadmap-reconciliation
   *learned-experience* leg of the capability-backed agent equation — **agent = identity
   (SIP-0088/0089) + capability (packs) + memory (this SIP) + policy + evidence
   history** — which is why it precedes the umbrella rather than riding inside it.
+- **Hard prerequisite — #571 (added 2026-08-04, verified against the code):** the
+  SIP-042 LanceDB adapter's recall path has two defects that Phase 1 would build
+  directly on top of. `adapters/memory/lancedb.py:130` applies `.limit()` *before*
+  namespace and tag filtering (done in Python at 138–147), so a query whose nearest
+  neighbours all sit in another namespace returns nothing while matching entries exist
+  — and namespace-scoped recall is exactly what §5's filter chain does. Line 136 scores
+  `1.0 - _distance` against LanceDB's default **L2** metric, which is not a `[0, 1]`
+  similarity, so the confidence threshold in that same chain does not mean what it says.
+  Neither is live today (nothing leverages memory yet), which is why they must be fixed
+  BEFORE this SIP rather than beside it: §9's gate is a *measured recurrence-rate drop*,
+  and a starving recall path would report "memory doesn't help" when the truth is
+  "recall never returned the memory." Fix #571 first; it is small and independent.
 - **Sequencing (readiness, not dates):** implementation can begin once design review
-  accepts; hard dependencies are already shipped (SIP-042 mechanics, the #669 injection
-  seam, `gate_decisions` persistence). SIP-0101's replay harness must be usable before
+  accepts and #571 is fixed; the other hard dependencies are already shipped (SIP-042
+  mechanics, the #669 injection seam, `gate_decisions` persistence). SIP-0101's replay
+  harness must be usable before
   the Phase-1 *measurement* is scored, not before implementation starts. Campaign
   landing in the same release supplies `created_campaign` provenance and the
   within-campaign consumer from day one (§7); nothing in Phase 1 hard-requires it.
