@@ -191,7 +191,13 @@ class NoOpQueuePort(QueuePort):
     async def publish(
         self, queue_name: str, payload: str, delay_seconds: int | None = None
     ) -> None:
-        pass
+        # #572: refuse a delay no provider can honor, so this stub cannot make a
+        # caller believe delayed delivery works.
+        if delay_seconds is not None and delay_seconds > 0:
+            raise NotImplementedError(
+                f"Delayed delivery is not supported (delay_seconds={delay_seconds}); "
+                f"capabilities()['delay'] is False."
+            )
 
     async def consume(self, queue_name: str, max_messages: int = 1) -> list[QueueMessage]:
         return []
@@ -200,13 +206,15 @@ class NoOpQueuePort(QueuePort):
         pass
 
     async def retry(self, message: QueueMessage, delay_seconds: int) -> None:
-        pass
+        await self.publish("", "", delay_seconds=delay_seconds)
 
     async def health(self) -> dict[str, Any]:
         return {"status": "healthy", "provider": "noop"}
 
     def capabilities(self) -> dict[str, bool]:
-        return {"delay": True, "fifo": True, "priority": True}
+        # #572: delay/priority describe operations no shipped provider performs.
+        # `fifo` gates no operation, so it stays as-is.
+        return {"delay": False, "fifo": True, "priority": False}
 
 
 # ---------------------------------------------------------------------------

@@ -15,6 +15,7 @@ import pytest
 
 import adapters.comms.rabbitmq as rabbitmq_mod
 from adapters.comms.rabbitmq import QueueError, RabbitMQAdapter
+from squadops.comms.queue_message import QueueMessage
 from squadops.ports.comms.queue import REPLY_QUEUE_DECLARE_ARGS
 
 pytestmark = [pytest.mark.unit]
@@ -295,6 +296,81 @@ class TestPublishRetry:
 
         ch.default_exchange.publish.assert_awaited_once()
         adapter.invalidate_queue.assert_not_awaited()
+
+
+class TestDelayCapabilityHonesty:
+    """#572: the adapter set a per-message TTL with no dead-letter exchange
+    declared, so a "delayed" message was *discarded* at expiry rather than
+    delivered late — while ``capabilities()['delay']`` advertised True. A caller
+    trusting that flag lost messages with no error anywhere."""
+
+    @pytest.mark.parametrize("flag", ["delay", "priority"])
+    def test_unimplemented_capabilities_report_false(self, flag) -> None:
+        """Each flag is a contract with future callers. `delay` needs a wait
+        queue with `x-dead-letter-exchange`; `priority` needs `x-max-priority` on
+        the declaration plus a per-message property. Neither is declared
+        anywhere, so neither may claim True."""
+        adapter = _make_adapter_with_channel(MagicMock())
+
+        assert adapter.capabilities()[flag] is False
+
+    @pytest.mark.parametrize("delay", [1, 30, 3600])
+    async def test_non_zero_delay_raises_instead_of_dropping(self, delay) -> None:
+        """The message must not reach the broker at all. Publishing it with a TTL
+        loses it silently; publishing it without one delivers immediately, which
+        is not what the caller asked for. Refusing is the only honest option."""
+        adapter, ch, _ = TestPublishRetry._publish_adapter([None])
+
+        with pytest.raises(NotImplementedError, match="Delayed delivery is not supported"):
+            await adapter.publish("work", "{}", delay_seconds=delay)
+
+        ch.default_exchange.publish.assert_not_awaited()
+
+    @pytest.mark.parametrize("delay", [None, 0])
+    async def test_immediate_publish_is_unaffected(self, delay) -> None:
+        """The only live caller (`aci_executor` retry) passes 0, so the immediate
+        path must keep working exactly as before."""
+        adapter, ch, _ = TestPublishRetry._publish_adapter([None])
+
+        await adapter.publish("work", "{}", delay_seconds=delay)
+
+        ch.default_exchange.publish.assert_awaited_once()
+
+    async def test_retry_does_not_launder_the_refusal_into_a_queue_error(self) -> None:
+        """`retry` wraps failures as QueueError, which callers treat as transient
+        and retry. A capability gap is permanent — laundering it would retry an
+        impossible delay forever instead of surfacing once."""
+        adapter, ch, _ = TestPublishRetry._publish_adapter([None])
+        adapter.ack = AsyncMock()
+        message = QueueMessage(
+            message_id="m1",
+            queue_name="work",
+            payload="{}",
+            receipt_handle="1",
+            attributes={},
+        )
+
+        with pytest.raises(NotImplementedError):
+            await adapter.retry(message, delay_seconds=5)
+
+        # The original is left unacked, so the broker still owns it.
+        adapter.ack.assert_not_awaited()
+
+    async def test_retry_without_delay_still_republishes_and_acks(self) -> None:
+        adapter, ch, _ = TestPublishRetry._publish_adapter([None])
+        adapter.ack = AsyncMock()
+        message = QueueMessage(
+            message_id="m1",
+            queue_name="work",
+            payload="{}",
+            receipt_handle="1",
+            attributes={},
+        )
+
+        await adapter.retry(message, delay_seconds=0)
+
+        ch.default_exchange.publish.assert_awaited_once()
+        adapter.ack.assert_awaited_once()
 
 
 class _FakeIncoming:

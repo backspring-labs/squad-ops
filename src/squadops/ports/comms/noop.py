@@ -37,8 +37,19 @@ class NoOpQueuePort(QueuePort):
         Args:
             queue_name: Name of the queue
             payload: Message payload
-            delay_seconds: Optional delay (ignored in no-op)
+            delay_seconds: Optional delay. Rejected when non-zero, matching the
+                shipped providers (#572) — a null object that accepts an
+                operation every real provider refuses makes a test exercise the
+                branch production never takes.
+
+        Raises:
+            NotImplementedError: If a non-zero ``delay_seconds`` is requested.
         """
+        if delay_seconds is not None and delay_seconds > 0:
+            raise NotImplementedError(
+                f"Delayed delivery is not supported (delay_seconds={delay_seconds}); "
+                f"capabilities()['delay'] is False."
+            )
         logger.debug(
             "NoOp publish",
             extra={
@@ -97,13 +108,19 @@ class NoOpQueuePort(QueuePort):
         }
 
     def capabilities(self) -> dict[str, bool]:
-        """Return capabilities (all enabled in no-op mode).
+        """Return capabilities, matching what the shipped providers actually do.
+
+        A null object may deliver nothing, but its *flags* are still read by
+        callers deciding which branch to take. Advertising delay/priority here
+        while every real provider reports False (#572) would route tests down a
+        path production never takes. ``fifo`` stays True: it gates no operation,
+        so nothing can be built on it.
 
         Returns:
             Capabilities dictionary
         """
         return {
-            "delay": True,
+            "delay": False,
             "fifo": True,
-            "priority": True,
+            "priority": False,
         }

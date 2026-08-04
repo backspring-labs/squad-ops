@@ -81,10 +81,16 @@ class QueuePort(ABC):
         Args:
             queue_name: Name of the queue
             payload: Message payload (must be ACI TaskEnvelope JSON)
-            delay_seconds: Optional delay before message becomes available (None = immediate)
+            delay_seconds: Optional delay before message becomes available
+                (None = immediate). A provider that does not advertise
+                ``capabilities()["delay"]`` must reject a non-zero value rather
+                than deliver immediately or drop the message (#572).
 
         Raises:
             QueueError: If publishing fails
+            NotImplementedError: If a non-zero ``delay_seconds`` is requested of
+                a provider whose ``capabilities()["delay"]`` is False. No shipped
+                provider supports delay today.
         """
         pass
 
@@ -287,6 +293,11 @@ class QueuePort(ABC):
     def capabilities(self) -> dict[str, bool]:
         """
         Return the capabilities supported by this queue provider.
+
+        Every flag is a contract with future callers: it must describe what the
+        provider *does*, not what its transport could be configured to do. A
+        flag that overstates the implementation is worse than a missing feature
+        — the caller builds on it and loses messages silently (#572).
 
         Returns:
             Dictionary with capability flags:
