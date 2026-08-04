@@ -155,24 +155,32 @@ class RabbitMQAdapter(QueuePort):
         Args:
             queue_name: Name of the queue
             payload: Message payload (must be ACI TaskEnvelope JSON)
-            delay_seconds: Optional delay before message becomes available (None = immediate)
+            delay_seconds: Optional delay before message becomes available.
+                Only ``None``/``0`` (immediate) is supported — see Raises.
 
         Raises:
             QueueError: If publishing fails
+            NotImplementedError: If a non-zero ``delay_seconds`` is requested.
+                This adapter cannot delay delivery (#572), and the previous
+                behavior — a per-message TTL with no dead-letter exchange —
+                made the broker *discard* the message when the TTL expired.
+                Failing loudly beats losing the message: a caller that wanted
+                a delay has to know it did not get one.
         """
+        if delay_seconds is not None and delay_seconds > 0:
+            raise NotImplementedError(
+                f"Delayed delivery is not supported by this queue provider "
+                f"(delay_seconds={delay_seconds}); capabilities()['delay'] is False. "
+                f"Delivering it immediately would be wrong and setting a TTL would "
+                f"drop it — declare a dead-letter exchange or adopt "
+                f"rabbitmq-delayed-message-exchange before relying on this."
+            )
+
         # Build the message once; only the transport send is retried. A bad
         # payload fails here, before the loop, so it is never retried.
         message_properties: dict[str, Any] = {
             "delivery_mode": aio_pika.DeliveryMode.PERSISTENT,
         }
-
-        # Handle delay using TTL and Dead Letter Exchange
-        # Note: For production, consider using rabbitmq-delayed-message-exchange plugin
-        if delay_seconds is not None and delay_seconds > 0:
-            # Use TTL with DLX for delayed delivery
-            # This is a simplified approach; full implementation would use delayed exchange plugin
-            # aio_pika expects expiration as int (milliseconds) or timedelta
-            message_properties["expiration"] = delay_seconds * 1000  # TTL in milliseconds
 
         message = Message(
             body=payload.encode("utf-8"),
@@ -476,10 +484,16 @@ class RabbitMQAdapter(QueuePort):
 
         Args:
             message: QueueMessage to retry
-            delay_seconds: Delay before message becomes available again
+            delay_seconds: Delay before message becomes available again. Only
+                ``0`` (immediate) is supported — see Raises.
 
         Raises:
             QueueError: If retry fails
+            NotImplementedError: If a non-zero ``delay_seconds`` is requested
+                (#572). Propagated from :meth:`publish`, and deliberately not
+                softened into an immediate retry: a backoff that silently
+                becomes a hot loop is how a retry storm starts. The original
+                message is left unacked, so it is not lost.
         """
         try:
             # Republish the message with delay
@@ -490,6 +504,12 @@ class RabbitMQAdapter(QueuePort):
 
             logger.debug(f"Retried message {message.message_id} with {delay_seconds}s delay")
 
+        except NotImplementedError:
+            # A capability gap, not a transport failure. Laundering it into a
+            # QueueError would hand it to callers that treat QueueError as
+            # transient and retry — the unsupported delay would then be
+            # attempted forever instead of surfacing once.
+            raise
         except Exception as e:
             logger.error(f"Failed to retry message {message.message_id}: {e}")
             raise QueueError(f"Failed to retry message: {e}") from e
@@ -532,13 +552,28 @@ class RabbitMQAdapter(QueuePort):
         """
         Return the capabilities supported by this queue provider.
 
+        Each flag is a contract with future callers, so it reports what this
+        adapter *does*, not what RabbitMQ *could* do with configuration this
+        adapter never applies (#572).
+
         Returns:
             Dictionary with capability flags
         """
         return {
-            "delay": True,  # Supported via TTL+DLX (or delayed exchange plugin)
+            # #572: delayed delivery needs a wait queue with
+            # `x-dead-letter-exchange` pointing back at the work exchange, or the
+            # rabbitmq-delayed-message-exchange plugin. Neither is declared, and
+            # the TTL-only version this replaced made the broker *discard* the
+            # message at expiry rather than deliver it late. `publish` now raises
+            # on a non-zero delay instead.
+            "delay": False,
             "fifo": False,  # RabbitMQ does not guarantee FIFO ordering
-            "priority": True,  # Supported via priority queues
+            # #572 (same class, found alongside): priority needs `x-max-priority`
+            # on the queue declaration and a `priority` property per message.
+            # `_get_queue` declares neither and `publish` sets neither, so the
+            # broker ignores priority entirely — a caller ordering work by it
+            # would get plain FIFO-ish delivery and never know.
+            "priority": False,
         }
 
     async def close(self) -> None:

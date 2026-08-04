@@ -180,9 +180,9 @@ class TestRabbitMQAdapter:
         assert "delay" in caps
         assert "fifo" in caps
         assert "priority" in caps
-        assert caps["delay"] is True
+        assert caps["delay"] is False  # #572: no DLX declared
         assert caps["fifo"] is False  # RabbitMQ doesn't guarantee FIFO
-        assert caps["priority"] is True
+        assert caps["priority"] is False  # #572: no x-max-priority declared
 
     @pytest.mark.asyncio
     async def test_retry_message(self, rabbitmq_adapter, sample_task_envelope_json, clean_rabbitmq):
@@ -197,12 +197,30 @@ class TestRabbitMQAdapter:
         assert len(messages) == 1
         message = messages[0]
 
-        # Retry message with delay
-        await rabbitmq_adapter.retry(message, delay_seconds=1)
+        # Retry immediately. #572: a non-zero delay is refused, because the
+        # adapter declares no dead-letter exchange and a TTL alone would make the
+        # broker discard the message at expiry instead of delivering it late.
+        await rabbitmq_adapter.retry(message, delay_seconds=0)
 
-        # Verify original message was acked (retry should ack the original)
-        # The retried message should be republished, so we can consume it again
-        # Note: With delay, we may need to wait, but for testing we verify retry succeeded
+        # The retried message was republished and the original acked.
+        redelivered = await rabbitmq_adapter.consume(queue_name, max_messages=1)
+        assert len(redelivered) == 1
+        assert redelivered[0].payload == sample_task_envelope_json
+
+    @pytest.mark.asyncio
+    async def test_retry_with_a_delay_is_refused(
+        self, rabbitmq_adapter, sample_task_envelope_json, clean_rabbitmq
+    ):
+        """#572 against a live broker: the refusal must reach the caller intact,
+        not be laundered into the transient-looking QueueError that `retry` wraps
+        transport failures in — and the original must stay unacked."""
+        queue_name = "test_queue_retry_delay"
+        await rabbitmq_adapter.publish(queue_name, sample_task_envelope_json)
+        messages = await rabbitmq_adapter.consume(queue_name, max_messages=1)
+        assert len(messages) == 1
+
+        with pytest.raises(NotImplementedError):
+            await rabbitmq_adapter.retry(messages[0], delay_seconds=5)
 
     @pytest.mark.asyncio
     async def test_multiple_messages(
