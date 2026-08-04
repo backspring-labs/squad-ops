@@ -198,6 +198,19 @@ def command_safelist_names() -> tuple[str, ...]:
     return tuple(pat.name for pat in COMMAND_SAFELIST)
 
 
+# The frontend source-file family. Two readers, so it lives with the vocabulary:
+# the evaluators skip AST analysis on these (JS/TS parsing is a follow-up), and
+# #688's repair targeting uses the same line to decide which implementation source
+# a failure may legitimately retarget — a backend failure must never reach frontend
+# source, and vice versa.
+FRONTEND_SUFFIXES: frozenset[str] = frozenset({".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"})
+
+
+def is_frontend_source(path: str) -> bool:
+    """True when ``path`` is a frontend source file by extension."""
+    return isinstance(path, str) and path.lower().endswith(tuple(FRONTEND_SUFFIXES))
+
+
 # The one vocabulary name read by a module that does not evaluate it: #688's
 # probe→fill-slot resolution filters contract criteria on it. Bound to the
 # CHECK_SPECS key below so a rename moves both together — a bare literal there

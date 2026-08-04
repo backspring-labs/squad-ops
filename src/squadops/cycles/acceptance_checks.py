@@ -30,6 +30,7 @@ from typing import Any
 
 from squadops.cycles.acceptance_check_spec import (
     CHECK_SPECS,
+    FRONTEND_SUFFIXES,
     HTTP_METHODS,
     CheckSpec,
     argv_matches_safelist,
@@ -257,13 +258,13 @@ def _decorator_route(decorator: ast.expr) -> tuple[str, str] | None:
 # the contrast with pf-40 is the proof: same bad repairs, but there verification returned a
 # verdict, rejected them, and nothing landed. Skipping is the honest outcome for a file we
 # cannot analyse — `import_present` already did this; the other four did not (#605).
-_FRONTEND_SUFFIXES = frozenset({".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"})
+# Family definition lives in the spec module (two readers — see #688).
 
 
 def _unparseable_source_skip(file_path: Path) -> CheckOutcome | None:
     """A skip outcome when ``file_path`` is not Python, else None."""
     ext = file_path.suffix.lower()
-    if ext in _FRONTEND_SUFFIXES:
+    if ext in FRONTEND_SUFFIXES:
         # JS/TS analysis is gated behind the frontend_acceptance_checks follow-up.
         return CheckOutcome.skipped(reason="frontend_acceptance_checks_disabled")
     if ext != ".py":

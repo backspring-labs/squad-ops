@@ -2737,14 +2737,15 @@ class TestProbeOwnedRepairTarget:
 
         assert artifacts == ["backend/routes.py", "backend/main.py", "tests/test_api.py"]
 
-    def test_root_level_suite_defeats_package_scoping_without_probe_resolution(self):
-        """Pins the mechanism, so a regression is diagnosable: with the probe inputs
-        absent the target is exactly what shk-2's repairs emitted — the pf-24/pf-27
-        package-scoped union anchors on ``tests/`` and reaches no ``backend/`` source."""
+    def test_suite_only_failure_reaches_source_via_the_language_fallback(self):
+        """The other half of shk-2: a failure with NO probe evidence to resolve. The
+        pf-24/pf-27 package union anchors on ``tests/`` and matches no ``backend/``
+        source, so before the language fallback the target was exactly what shk-2's
+        repairs emitted — main.py + the suite, with routes.py unreachable."""
         from adapters.cycles.correction_runner import _resolve_repair_target
 
         evidence = self._evidence(
-            [{"check": "vc-probe-runs", "status": "failed"}],
+            [{"check": "tests_pass", "status": "failed"}],
             drift=[{"file": "backend/main.py"}],
         )
         stripped = self._inputs()
@@ -2752,7 +2753,58 @@ class TestProbeOwnedRepairTarget:
         del stripped["contract_endpoint_owners"]
 
         artifacts, _, _ = _resolve_repair_target(evidence, stripped)
-        assert artifacts == ["backend/main.py", "tests/test_api.py"]
+        assert artifacts == ["backend/main.py", "tests/test_api.py", "backend/routes.py"]
+        # The RC2 guarantee survives the widening: a backend failure still cannot
+        # reach frontend source.
+        assert "frontend/src/views/RunsListView.jsx" not in artifacts
+
+    def test_language_fallback_does_not_fire_when_packages_match(self):
+        """pf-24's tight rule is strictly narrower and must keep winning — the fallback
+        exists for the empty case only, not as a general widening."""
+        from adapters.cycles.correction_runner import _resolve_repair_target
+
+        artifacts, _, _ = _resolve_repair_target(
+            {},
+            {
+                "expected_artifacts": ["backend/tests/test_runs.py"],
+                "implementation_artifacts": [
+                    "backend/routes.py",
+                    "scripts/tool.py",  # same language, different package
+                ],
+            },
+        )
+        assert artifacts == ["backend/tests/test_runs.py", "backend/routes.py"]
+
+    def test_frontend_suite_failure_stays_on_the_frontend_side(self):
+        """The mirror case: a root-level frontend suite must reach views and never
+        backend source — the language line, not the directory tree, is the bound."""
+        from adapters.cycles.correction_runner import _resolve_repair_target
+
+        artifacts, _, _ = _resolve_repair_target(
+            {},
+            {
+                "expected_artifacts": ["e2e/runs.test.jsx"],
+                "implementation_artifacts": [
+                    "backend/routes.py",
+                    "frontend/src/views/RunsListView.jsx",
+                ],
+            },
+        )
+        assert artifacts == ["e2e/runs.test.jsx", "frontend/src/views/RunsListView.jsx"]
+
+    def test_mixed_language_anchors_widen_nothing(self):
+        """Anchors straddling both sides exclude nothing, so 'scoping' would be a
+        rename for 'take everything' — stay silent rather than widen blindly."""
+        from adapters.cycles.correction_runner import _resolve_repair_target
+
+        artifacts, _, _ = _resolve_repair_target(
+            {},
+            {
+                "expected_artifacts": ["qa/suite.py", "qa/view.test.jsx"],
+                "implementation_artifacts": ["backend/routes.py", "frontend/src/App.jsx"],
+            },
+        )
+        assert artifacts == ["qa/suite.py", "qa/view.test.jsx"]
 
     def test_no_drift_probe_failure_still_reaches_the_owning_slot(self):
         """The RC2 branch: a behavioral failure with no drift at all. Without probe
@@ -2790,7 +2842,8 @@ class TestProbeOwnedRepairTarget:
     def test_non_failing_probe_indicts_no_slot(self, status):
         """A passing probe is not evidence, and a SKIPPED one means the subject never
         booted — blaming an endpoint for a boot failure would aim every repair at the
-        first route in the contract."""
+        first route in the contract. routes.py still arrives via the language fallback,
+        but BEHIND the failed artifact rather than leading it."""
         from adapters.cycles.correction_runner import _resolve_repair_target
 
         evidence = self._evidence(
@@ -2800,16 +2853,16 @@ class TestProbeOwnedRepairTarget:
             ]
         )
         artifacts, _, _ = _resolve_repair_target(evidence, self._inputs())
-        assert "backend/routes.py" not in artifacts
+        assert artifacts == ["tests/test_api.py", "backend/routes.py"]
 
     def test_unmapped_probe_id_adds_nothing(self):
         """A failing check that is not a probe (or a probe the contract map does not
-        cover) must not silently pull in an unrelated slot."""
+        cover) must not promote a slot to the front of the target."""
         from adapters.cycles.correction_runner import _resolve_repair_target
 
         evidence = self._evidence([{"check": "vc-suite-passes", "status": "failed"}])
         artifacts, _, _ = _resolve_repair_target(evidence, self._inputs())
-        assert artifacts == ["tests/test_api.py"]
+        assert artifacts == ["tests/test_api.py", "backend/routes.py"]
 
     @pytest.mark.parametrize(
         "inputs_over",
@@ -2821,13 +2874,14 @@ class TestProbeOwnedRepairTarget:
         ],
     )
     def test_degraded_probe_inputs_never_crash_or_retarget(self, inputs_over):
-        """Author mode, probe-less contracts, and malformed wire rows must leave the
-        target byte-identical — a correction path that raises here strands the run."""
+        """Author mode, probe-less contracts, and malformed wire rows must degrade to
+        the pre-#688 ordering rather than raise — a correction path that raises here
+        strands the run."""
         from adapters.cycles.correction_runner import _resolve_repair_target
 
         evidence = self._evidence([{"check": "vc-probe-runs", "status": "failed"}])
         artifacts, _, _ = _resolve_repair_target(evidence, self._inputs(**inputs_over))
-        assert artifacts == ["tests/test_api.py"]
+        assert artifacts == ["tests/test_api.py", "backend/routes.py"]
 
     def test_trailing_slash_still_joins_probe_to_owner(self):
         """The probe path and the criterion token are rendered from the same manifest,
