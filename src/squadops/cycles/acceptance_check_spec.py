@@ -279,7 +279,10 @@ CHECK_SPECS: dict[str, CheckSpec] = {
         path_params=frozenset({"file"}),
         framework_injected=True,
         example={"file": "backend/routes.py"},
-        notes=("Applied by the framework to every emitted .py artifact; never authored."),
+        notes=(
+            "Applied by the framework to .py emissions from handlers on the "
+            "typed-acceptance seam (dev, builder); never authored."
+        ),
     ),
     CHECK_ENDPOINT_DEFINED: CheckSpec(
         name=CHECK_ENDPOINT_DEFINED,
