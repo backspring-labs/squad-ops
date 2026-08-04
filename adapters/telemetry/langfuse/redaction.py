@@ -45,8 +45,13 @@ _PASSWORD_PATTERNS: list[re.Pattern[str]] = [
 
 # PII patterns (strict mode only)
 _PII_PATTERNS: list[re.Pattern[str]] = [
-    # Email addresses
-    re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b"),
+    # Email addresses. The TLD class is `[A-Za-z]`, NOT `[A-Z|a-z]` (#573): a `|`
+    # inside a character class is a literal pipe, not alternation, so the old
+    # form accepted `|` as a TLD character and ran the match past the address
+    # into the next pipe-delimited field —
+    # `email=a@b.com|status=ok` redacted to `email=[REDACTED-PII]=ok`, destroying
+    # the surrounding context instead of just the address.
+    re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"),
     # Phone numbers (US/international)
     re.compile(r"\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b"),
     # SSN patterns
