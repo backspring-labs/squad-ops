@@ -106,11 +106,17 @@ async def reap_stranded_activities(
     cycle_registry: CycleRegistryPort,
     activity_port: RuntimeActivityPort | None,
 ) -> int:
-    """End active activities whose owning cycle is terminal (#672).
+    """End every active runtime activity at startup (#672, #561).
 
-    Returns how many ended; 0 when unwired or the reap failed. Rows stranded by
-    a process death that skipped run finalize — one blocks all of that agent's
-    future activity tracking.
+    Returns how many ended; 0 when unwired or the reap failed.
+
+    Same reasoning as :func:`reap_stranded_leases`, and the same correction: a
+    cycle whose runs were killed mid-flight derives as ACTIVE forever, so gating
+    on a terminal cycle status spared exactly the rows a crash strands — #561's
+    live evidence was four agents with one open row each, two of them dead for
+    three days. Nothing dispatches in a process that has not begun serving, so
+    every active row here is residue. The cycle status is looked up for the
+    *log*, not the decision.
     """
     if activity_port is None:
         return 0
@@ -119,17 +125,31 @@ async def reap_stranded_activities(
         from squadops.cycles.models import CycleNotFoundError, CycleStatus
         from squadops.runtime.activity_reaper import reap_stale_activities
 
-        async def _cycle_is_terminal(cycle_id: str) -> bool:
+        async def _owner_cannot_be_dispatching(cycle_id: str | None) -> bool:
+            if cycle_id is None:
+                # A duty/ambient row has no cycle to consult. Sparing it is what
+                # left #561's residue unreachable by any sweep.
+                logger.warning("Ending stranded activity with no owning cycle")
+                return True
             try:
                 owning_cycle = await cycle_registry.get_cycle(cycle_id)
             except CycleNotFoundError:
-                # No owner on record → definitionally stranded.
+                logger.warning("Ending stranded activity of unknown cycle %s", cycle_id)
                 return True
             runs = await cycle_registry.list_runs(cycle_id)
             derived = derive_cycle_status(runs, cycle_cancelled=owning_cycle.cancelled)
-            return derived in (CycleStatus.COMPLETED, CycleStatus.FAILED, CycleStatus.CANCELLED)
+            if derived not in (CycleStatus.COMPLETED, CycleStatus.FAILED, CycleStatus.CANCELLED):
+                logger.warning(
+                    "Ending stranded activity of cycle %s still deriving as %s — nothing "
+                    "dispatches at startup, so its executor died mid-task.",
+                    cycle_id,
+                    derived.value,
+                )
+            return True
 
-        reaped = await reap_stale_activities(activity_port, cycle_is_terminal=_cycle_is_terminal)
+        reaped = await reap_stale_activities(
+            activity_port, owner_is_finished=_owner_cannot_be_dispatching
+        )
         if reaped:
             logger.info("Startup reap ended %d stranded runtime activity row(s)", reaped)
         return reaped

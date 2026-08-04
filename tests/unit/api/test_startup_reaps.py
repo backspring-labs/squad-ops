@@ -183,17 +183,37 @@ async def test_missing_cycle_row_is_treated_as_terminal():
     assert await reap_stranded_activities(registry, activity_port) == 1
 
 
-async def test_activity_of_a_live_cycle_is_spared():
+async def test_an_activity_of_a_still_active_cycle_is_ended_and_logged(caplog):
+    """#561's live evidence: a cycle whose runs were killed derives as ACTIVE
+    forever, so gating on a terminal cycle spared exactly the rows a crash
+    strands — two agents sat dead for three days. Nothing dispatches at startup,
+    so the row is residue whatever the derived status says."""
     activity_port = AsyncMock()
     activity_port.list_active_activities.return_value = (_activity(),)
+    activity_port.abort_activity.return_value = _activity()
     registry = AsyncMock()
     # The predicate reads only `cancelled` off the cycle; the run list carries
     # the rest of the derivation.
     registry.get_cycle.return_value = SimpleNamespace(cancelled=False)
     registry.list_runs.return_value = [_run(RunStatus.RUNNING.value)]
 
-    assert await reap_stranded_activities(registry, activity_port) == 0
-    activity_port.abort_activity.assert_not_awaited()
+    with caplog.at_level("WARNING"):
+        assert await reap_stranded_activities(registry, activity_port) == 1
+
+    assert "cyc_1" in caplog.text
+    assert "died mid-task" in caplog.text
+
+
+async def test_an_activity_with_no_owning_cycle_is_ended():
+    """The residue #672 left unreachable: no cycle to consult meant no sweep
+    could ever clear the row."""
+    activity_port = AsyncMock()
+    activity_port.list_active_activities.return_value = (_activity(cycle_id=None),)
+    activity_port.abort_activity.return_value = _activity(cycle_id=None)
+    registry = AsyncMock()
+
+    assert await reap_stranded_activities(registry, activity_port) == 1
+    registry.get_cycle.assert_not_awaited()  # nothing to ask
 
 
 async def test_activity_reap_failure_never_blocks_startup():

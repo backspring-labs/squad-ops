@@ -100,16 +100,16 @@ class _FakeActivityPort(RuntimeActivityPort):
 
 
 def _terminal_only(terminal_cycles: set[str], *, raises_for: set[str] | None = None):
-    calls: list[str] = []
+    calls: list[str | None] = []
 
-    async def cycle_is_terminal(cycle_id: str) -> bool:
+    async def owner_is_finished(cycle_id: str | None) -> bool:
         calls.append(cycle_id)
         if raises_for and cycle_id in raises_for:
             raise RuntimeError("registry down")
         return cycle_id in terminal_cycles
 
-    cycle_is_terminal.calls = calls  # type: ignore[attr-defined]
-    return cycle_is_terminal
+    owner_is_finished.calls = calls  # type: ignore[attr-defined]
+    return owner_is_finished
 
 
 # ---------------------------------------------------------------------------
@@ -127,23 +127,34 @@ async def test_reap_aborts_terminal_cycle_rows_and_spares_live_ones():
         )
     )
 
-    reaped = await reap_stale_activities(port, cycle_is_terminal=_terminal_only({"cyc-dead"}))
+    reaped = await reap_stale_activities(port, owner_is_finished=_terminal_only({"cyc-dead"}))
 
     assert reaped == 1
-    assert port.aborted == [("act-dead", reasons.ACTIVITY_STRANDED_CYCLE_TERMINAL)]
+    assert port.aborted == [("act-dead", reasons.ACTIVITY_STRANDED_AT_STARTUP)]
 
 
-async def test_reap_leaves_cycle_less_activities_alone():
-    """Bug class: duty/ambient activities have no owning cycle — the cycle rule
-    must not consult the predicate for them, let alone abort them."""
+async def test_reap_asks_the_predicate_about_cycle_less_activities_too():
+    """Bug class (#561): a row skipped *before* the predicate is a row no sweep
+    can ever reach — permanently stranded, and one stranded row blocks all of
+    that agent's future activity tracking. The caller decides whether a
+    cycle-less row is finished; this module must not silently spare it."""
     port = _FakeActivityPort((_activity("act-duty", cycle_id=None),))
     predicate = _terminal_only(set())
 
-    reaped = await reap_stale_activities(port, cycle_is_terminal=predicate)
+    reaped = await reap_stale_activities(port, owner_is_finished=predicate)
 
-    assert reaped == 0
-    assert port.aborted == []
-    assert predicate.calls == []
+    assert reaped == 0  # this predicate answers "not finished"
+    assert predicate.calls == [None]  # but it was ASKED — that is the fix
+
+
+async def test_reap_ends_a_cycle_less_activity_when_the_predicate_says_finished():
+    port = _FakeActivityPort((_activity("act-duty", cycle_id=None),))
+
+    async def _finished(cycle_id: str | None) -> bool:
+        return True
+
+    assert await reap_stale_activities(port, owner_is_finished=_finished) == 1
+    assert port.aborted == [("act-duty", reasons.ACTIVITY_STRANDED_AT_STARTUP)]
 
 
 async def test_reap_survives_predicate_failure_and_clears_the_rest():
@@ -159,11 +170,11 @@ async def test_reap_survives_predicate_failure_and_clears_the_rest():
 
     reaped = await reap_stale_activities(
         port,
-        cycle_is_terminal=_terminal_only({"cyc-dead"}, raises_for={"cyc-unknown"}),
+        owner_is_finished=_terminal_only({"cyc-dead"}, raises_for={"cyc-unknown"}),
     )
 
     assert reaped == 1
-    assert port.aborted == [("act-dead", reasons.ACTIVITY_STRANDED_CYCLE_TERMINAL)]
+    assert port.aborted == [("act-dead", reasons.ACTIVITY_STRANDED_AT_STARTUP)]
 
 
 async def test_reap_survives_abort_failure_and_clears_the_rest():
@@ -175,10 +186,10 @@ async def test_reap_survives_abort_failure_and_clears_the_rest():
         abort_raises_for=frozenset({"act-a"}),
     )
 
-    reaped = await reap_stale_activities(port, cycle_is_terminal=_terminal_only({"cyc-dead"}))
+    reaped = await reap_stale_activities(port, owner_is_finished=_terminal_only({"cyc-dead"}))
 
     assert reaped == 1
-    assert ("act-b", reasons.ACTIVITY_STRANDED_CYCLE_TERMINAL) in port.aborted
+    assert ("act-b", reasons.ACTIVITY_STRANDED_AT_STARTUP) in port.aborted
 
 
 async def test_reap_does_not_count_concurrently_terminalized_rows():
@@ -190,7 +201,7 @@ async def test_reap_does_not_count_concurrently_terminalized_rows():
         abort_gone_for=frozenset({"act-gone"}),
     )
 
-    reaped = await reap_stale_activities(port, cycle_is_terminal=_terminal_only({"cyc-dead"}))
+    reaped = await reap_stale_activities(port, owner_is_finished=_terminal_only({"cyc-dead"}))
 
     assert reaped == 0
 

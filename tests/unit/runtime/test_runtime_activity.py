@@ -20,6 +20,7 @@ import json
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
+import asyncpg
 import pytest
 
 from adapters.persistence.runtime.activity_postgres import PostgresRuntimeActivity
@@ -141,6 +142,71 @@ async def test_start_activity_opens_running_with_started_at_and_minted_id():
     # completion_conditions serialized as JSON text (param order: ...,$15,$16,$17)
     assert json.loads(args[15]) == [{"kind": "tests_pass"}]
     assert isinstance(args[-1], datetime)  # started_at stamped
+
+
+async def _start(adapter, agent_id="max"):
+    return await adapter.start_activity(
+        agent_id,
+        mode="cycle",
+        activity_type="design",
+        goal="build the thing",
+        source_kind="cycle_task",
+        source_ref="task-7",
+        task_id="task-7",
+        cycle_id="cyc-1",
+    )
+
+
+async def test_start_activity_supersedes_a_stale_row_and_retries():
+    """#561: a leftover active row from a crashed task made every later
+    start_activity for that agent raise, and the best-effort dispatcher swallowed
+    it — so activity tracking was silently dead for that agent until someone ran
+    SQL by hand (observed: four agents, two dead for three days). The conflicting
+    row must be superseded and the insert retried."""
+    conn = AsyncMock()
+    conn.fetchrow.side_effect = [asyncpg.UniqueViolationError("D9"), _activity_row()]
+    conn.fetchval.return_value = "act-stale"
+    adapter = PostgresRuntimeActivity(_make_pool(conn))
+
+    activity = await _start(adapter)
+
+    assert activity.runtime_activity_id == "act-1"  # the retry's row, not the stale one
+    # The stale row was aborted (not deleted) and scoped to this agent's active row.
+    supersede_query, agent_id = conn.fetchval.await_args.args
+    assert "state = 'aborted'" in supersede_query
+    assert "ended_at = now()" in supersede_query
+    assert "state IN ('pending', 'running', 'paused')" in supersede_query
+    assert agent_id == "max"
+    # Retry replays the same INSERT rather than a divergent second copy.
+    first, second = (call.args[0] for call in conn.fetchrow.await_args_list)
+    assert first == second
+
+
+async def test_start_activity_reraises_when_nothing_stale_can_be_cleared():
+    """Bug class: blanket retry. If the conflicting row vanished or the slot is
+    genuinely contested, `fetchval` returns None and the original violation must
+    surface rather than being retried into a second failure or swallowed."""
+    conn = AsyncMock()
+    conn.fetchrow.side_effect = asyncpg.UniqueViolationError("D9")
+    conn.fetchval.return_value = None
+    adapter = PostgresRuntimeActivity(_make_pool(conn))
+
+    with pytest.raises(asyncpg.UniqueViolationError):
+        await _start(adapter)
+
+    assert conn.fetchrow.await_count == 1  # no retry attempted
+
+
+async def test_start_activity_does_not_supersede_when_the_insert_succeeds():
+    """Bug class: an unconditional pre-clear would abort a *live* activity on
+    every dispatch. The supersede path fires only on the D9 violation."""
+    conn = AsyncMock()
+    conn.fetchrow.return_value = _activity_row()
+    adapter = PostgresRuntimeActivity(_make_pool(conn))
+
+    await _start(adapter)
+
+    conn.fetchval.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------

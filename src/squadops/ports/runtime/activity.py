@@ -52,10 +52,16 @@ class RuntimeActivityPort(ABC):
     ) -> RuntimeActivity:
         """Create a new `running` activity for `agent_id` and return it.
 
-        Mints the id and sets `started_at`. Raises if the agent already holds an
-        active activity (D9 — the partial unique index rejects a second). Source
-        identity is explicit (`cycle_id`/`workload_id`/`task_id`); `source_ref` is
-        opaque and never parsed by core.
+        Mints the id and sets `started_at`. Source identity is explicit
+        (`cycle_id`/`workload_id`/`task_id`); `source_ref` is opaque and never
+        parsed by core.
+
+        D9 keeps one active activity per agent, so an existing active row is
+        **superseded** (aborted) and this start takes the slot: a new start for
+        an agent is itself evidence the previous activity is no longer live, and
+        refusing instead would let one row stranded by a crashed task disable
+        that agent's activity tracking permanently (#561). Implementations raise
+        only when the slot cannot be freed.
         """
 
     @abstractmethod

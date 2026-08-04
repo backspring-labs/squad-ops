@@ -3,6 +3,7 @@ Tests for SIP-0064 run API routes.
 """
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -19,6 +20,7 @@ from squadops.cycles.models import (
     RunTerminalError,
     TaskFlowPolicy,
 )
+from squadops.runtime import reasons
 from squadops.runtime.models import FocusLease
 
 pytestmark = [pytest.mark.domain_orchestration]
@@ -216,6 +218,45 @@ class TestCancelRun:
 
         assert resp.status_code == 200
         assert resp.json()["focus_leases_released"] == 0
+
+    def test_cancel_ends_the_cycles_open_activities(self, client, monkeypatch):
+        """#561: cancel bypasses `RunCompletion.finalize`, so each recruited
+        agent kept an active row that trips the one-active-per-agent index on
+        every later dispatch — silently ending that agent's activity tracking."""
+        import squadops.api.runtime.deps as deps_mod
+
+        open_row = SimpleNamespace(
+            runtime_activity_id="act-1",
+            agent_id="neo",
+            cycle_id="cyc_001",
+            activity_type="development.develop",
+        )
+        activity_port = AsyncMock()
+        activity_port.list_active_activities.return_value = (open_row,)
+        activity_port.abort_activity.return_value = open_row
+        monkeypatch.setattr(deps_mod, "_activity_port", activity_port)
+
+        resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/runs/run_001/cancel")
+
+        assert resp.status_code == 200
+        assert resp.json()["activities_ended"] == 1
+        activity_port.list_active_activities.assert_awaited_once_with(cycle_id="cyc_001")
+        activity_port.abort_activity.assert_awaited_once_with(
+            "act-1", reasons.ACTIVITY_STRANDED_AT_CANCEL
+        )
+
+    def test_cancel_survives_an_activity_teardown_failure(self, client, monkeypatch):
+        import squadops.api.runtime.deps as deps_mod
+
+        activity_port = AsyncMock()
+        activity_port.list_active_activities.side_effect = RuntimeError("db down")
+        monkeypatch.setattr(deps_mod, "_activity_port", activity_port)
+
+        resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/runs/run_001/cancel")
+
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "cancelled"
+        assert resp.json()["activities_ended"] == 0
 
 
 class TestGateDecision:

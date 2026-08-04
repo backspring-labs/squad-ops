@@ -3,6 +3,7 @@ Tests for SIP-0064 cycle API routes.
 """
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -365,6 +366,36 @@ class TestCancelCycle:
 
         assert resp.status_code == 200
         assert resp.json()["focus_leases_released"] == 2
+
+    def test_cancel_ends_the_cycles_open_activities(self, client, mock_cycle_registry, monkeypatch):
+        """#561: cancel bypasses `RunCompletion.finalize`, leaving one active row
+        per recruited agent to trip the one-active-per-agent index forever."""
+        import squadops.api.runtime.deps as deps_mod
+        from squadops.runtime import reasons
+
+        mock_cycle_registry.cancel_cycle.return_value = None
+        mock_cycle_registry.list_runs.return_value = []
+        rows = tuple(
+            SimpleNamespace(
+                runtime_activity_id=f"act-{agent}",
+                agent_id=agent,
+                cycle_id="cyc_001",
+                activity_type="development.develop",
+            )
+            for agent in ("eve", "neo")
+        )
+        activity_port = AsyncMock()
+        activity_port.list_active_activities.return_value = rows
+        activity_port.abort_activity.side_effect = list(rows)
+        monkeypatch.setattr(deps_mod, "_activity_port", activity_port)
+
+        resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/cancel")
+
+        assert resp.status_code == 200
+        assert resp.json()["activities_ended"] == 2
+        assert [c.args[1] for c in activity_port.abort_activity.await_args_list] == [
+            reasons.ACTIVITY_STRANDED_AT_CANCEL
+        ] * 2
 
 
 class TestCycleRouteScopeEnforcement:

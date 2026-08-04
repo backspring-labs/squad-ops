@@ -186,23 +186,26 @@ async def cancel_run(project_id: str, cycle_id: str, run_id: str):
             )
         await registry.cancel_run(run_id)
 
-        # #77: stop the orphaned Prefect flow run for this run.
-        # #529: and release the focus leases it holds — cancellation bypasses the
-        # executor's finalize path, so without this the next cycle recruiting any
-        # of this run's agents deadlocks on focus_lease_conflict.
+        # Cancellation bypasses the executor's finalize path, so everything
+        # finalize would have torn down has to be torn down here: the Prefect
+        # flow run (#77), the focus leases the run holds (#529), and the cycle's
+        # open activity rows (#561).
         from squadops.api.routes.cycles.cancellation import (
+            abort_cancelled_cycle_activities,
             cancel_orphaned_flow_runs,
             release_cancelled_run_leases,
         )
 
         cancelled = await cancel_orphaned_flow_runs(project_id, cycle_id, [run_id])
         leases_released = await release_cancelled_run_leases(cycle_id, [run_id])
+        activities_ended = await abort_cancelled_cycle_activities(cycle_id)
 
         return {
             "status": "cancelled",
             "run_id": run_id,
             "prefect_flow_runs_cancelled": cancelled,
             "focus_leases_released": leases_released,
+            "activities_ended": activities_ended,
         }
     except CycleError as e:
         raise handle_cycle_error(e) from e
