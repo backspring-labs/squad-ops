@@ -27,6 +27,20 @@ class RuntimeStatePort(ABC):
         """Return the current state for `agent_id`, or `None` if no row exists."""
 
     @abstractmethod
+    async def list_states(
+        self, *, mode: str | None = None, conn: Any = None
+    ) -> tuple[AgentRuntimeState, ...]:
+        """Return every agent's state, oldest agent_id first; `mode` narrows it.
+
+        Bounded by the roster, so callers iterate it without pagination. Backs
+        the #710 stranded-mode sweep, which has to find agents left in `cycle`
+        *by mode* — `get_state` answers only the per-agent question, and an agent
+        stranded by a dead process is one nobody thought to ask about.
+
+        `conn` (§4.5/D25): read on the caller's unit-of-work connection when given.
+        """
+
+    @abstractmethod
     async def upsert_state(
         self, state: AgentRuntimeState, *, conn: Any = None
     ) -> AgentRuntimeState:

@@ -116,7 +116,7 @@ class FocusLeasePort(ABC):
         for `cycle` leases, an assignment id for `duty` leases. At most one
         active lease exists per agent (§3.2), so the result is bounded by the
         roster size and callers iterate it without pagination. Backs the
-        #373/#529 stranded-lease sweeps (`runtime.lease_reaper`), which need to
+        #373/#529 stranded-lease sweeps (`runtime.focus_reaper`), which need to
         find held leases *by owner* — `get_current_lease` answers only the
         inverse question, and an owner whose agents are unknown (a dead process,
         a cancelled run) cannot ask it.

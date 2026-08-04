@@ -48,11 +48,15 @@ FOCUS_LEASE_QUEUEING_NOT_SUPPORTED: Final[str] = "focus_lease_queueing_not_suppo
 # Stranded-lease hygiene (#373/#529). A cancelled or abnormally-terminated run
 # leaves its cycle leases held with no expiry, and #288 turns that into a hard
 # reject for every later recruitment of those agents. The cancel sweep and the
-# startup reaper (`runtime.lease_reaper`) return the agent to ambient, which
+# startup reaper (`runtime.focus_reaper`) return the agent to ambient, which
 # releases the lease; these are the reasons those transitions carry.
 LEASE_STRANDED_AT_CANCEL: Final[str] = "lease_stranded_at_cancel"
 LEASE_STRANDED_AT_RUN_FINALIZE: Final[str] = "lease_stranded_at_run_finalize"
 LEASE_STRANDED_AT_STARTUP: Final[str] = "lease_stranded_at_startup"
+# #710: the other half — an agent left in `cycle` mode with NO lease. A lease
+# sweep iterates held leases, so it cannot reach this; the mode has to be swept
+# on its own or recruitment silently idempotent-skips forever.
+MODE_STRANDED_AT_STARTUP: Final[str] = "mode_stranded_at_startup"
 
 # Runtime-activity reasons (Phase 4 §4.4/§4.5)
 ACTIVITY_STARTED: Final[str] = "activity_started"

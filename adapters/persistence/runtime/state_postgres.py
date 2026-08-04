@@ -43,6 +43,24 @@ class PostgresRuntimeState(RuntimeStatePort):
             )
         return _row_to_state(row) if row else None
 
+    async def list_states(
+        self, *, mode: str | None = None, conn: Any = None
+    ) -> tuple[AgentRuntimeState, ...]:
+        query = (
+            "SELECT agent_id, mode, runtime_status, focus, "
+            "current_runtime_activity_id, interruptibility, "
+            "last_heartbeat_at, current_assignment_ref "
+            "FROM agent_runtime_state"
+        )
+        args: list[Any] = []
+        if mode is not None:
+            query += " WHERE mode = $1"
+            args.append(mode)
+        query += " ORDER BY agent_id"
+        async with acquire(self._pool, conn) as conn:
+            rows = await conn.fetch(query, *args)
+        return tuple(_row_to_state(row) for row in rows)
+
     async def upsert_state(
         self, state: AgentRuntimeState, *, conn: Any = None
     ) -> AgentRuntimeState:

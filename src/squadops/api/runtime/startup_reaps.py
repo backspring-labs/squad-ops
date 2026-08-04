@@ -13,6 +13,9 @@ then turn that residue into a hard block on every later run:
 - :func:`reap_stranded_leases` (#373) — a held cycle lease makes recruitment
   reject with ``focus_lease_conflict``, so the next cycle pauses before
   dispatching a task.
+- :func:`reap_stranded_cycle_modes` (#710) — the inverse residue: `cycle` mode
+  with *no* lease, which the lease sweep structurally cannot see. Recruitment
+  then idempotent-skips forever and focus arbitration is off entirely.
 - :func:`reap_stranded_activities` (#672) — an active activity trips
   ``uq_runtime_activities_one_active_per_agent``, so activity tracking goes
   silently dead for that agent.
@@ -21,7 +24,7 @@ Each owns its own best-effort contract: a reap failure is logged and never
 blocks startup, because a runtime-api that will not boot is worse than one that
 boots with residue.
 
-The domain reapers (``runtime.lease_reaper`` / ``runtime.activity_reaper``) stay
+The domain reapers (``runtime.focus_reaper`` / ``runtime.activity_reaper``) stay
 free of cycle-domain imports (D26); the "is the owner finished?" question is
 answered here, where the registry is already in scope.
 """
@@ -35,6 +38,7 @@ if TYPE_CHECKING:
     from squadops.ports.cycles.cycle_registry import CycleRegistryPort
     from squadops.ports.runtime.activity import RuntimeActivityPort
     from squadops.ports.runtime.focus_lease import FocusLeasePort
+    from squadops.ports.runtime.state import RuntimeStatePort
     from squadops.runtime.coordinator import RuntimeCoordinator
 
 logger = logging.getLogger(__name__)
@@ -70,7 +74,7 @@ async def reap_stranded_leases(
         from squadops.cycles.lifecycle import TERMINAL_STATES
         from squadops.cycles.models import RunNotFoundError, RunStatus
         from squadops.runtime import reasons
-        from squadops.runtime.lease_reaper import reap_stale_leases
+        from squadops.runtime.focus_reaper import reap_stale_leases
 
         async def _owner_cannot_be_executing(run_id: str) -> bool:
             try:
@@ -99,6 +103,39 @@ async def reap_stranded_leases(
         return released
     except Exception:
         logger.warning("Startup stranded-lease reap failed", exc_info=True)
+        return 0
+
+
+async def reap_stranded_modes(
+    coordinator: RuntimeCoordinator | None,
+    state_port: RuntimeStatePort | None,
+) -> int:
+    """Return every agent left in `cycle` mode to `ambient` at startup (#710).
+
+    Returns how many moved; 0 when unwired or the reap failed.
+
+    Runs *after* :func:`reap_stranded_leases`, which already returns the agents
+    it clears — so what remains here is the residue with no lease at all, the
+    state that made focus arbitration silently inert for 64 cycles. Same
+    justification as the other two sweeps: nothing dispatches in a process that
+    has not begun serving, so no agent can legitimately hold cycle focus yet.
+    """
+    if coordinator is None or state_port is None:
+        return 0
+    try:
+        from squadops.runtime.focus_reaper import reap_stranded_cycle_modes
+
+        reaped = await reap_stranded_cycle_modes(coordinator, state_port)
+        if reaped:
+            logger.warning(
+                "Startup reap returned %d agent(s) from a stranded cycle mode to ambient — "
+                "recruitment had been idempotent-skipping them, so no focus lease was being "
+                "acquired at all.",
+                reaped,
+            )
+        return reaped
+    except Exception:
+        logger.warning("Startup stranded-mode reap failed", exc_info=True)
         return 0
 
 

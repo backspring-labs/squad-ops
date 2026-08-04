@@ -1,6 +1,6 @@
-"""Tests for the composition root's startup hygiene sweeps (#373, #672).
+"""Tests for the composition root's startup hygiene sweeps (#373, #710, #672).
 
-`startup_reaps` owns the two things `main.py` used to inline: the wiring gate
+`startup_reaps` owns the three things `main.py` used to inline: the wiring gate
 and the "is the owner finished?" predicate. Both are where the silent-no-op bugs
 live, so both are tested here rather than through the domain reapers.
 
@@ -23,7 +23,11 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from squadops.api.runtime.startup_reaps import reap_stranded_activities, reap_stranded_leases
+from squadops.api.runtime.startup_reaps import (
+    reap_stranded_activities,
+    reap_stranded_leases,
+    reap_stranded_modes,
+)
 from squadops.cycles.models import CycleNotFoundError, Run, RunNotFoundError, RunStatus
 from squadops.runtime.models import FocusLease, RuntimeActivity
 
@@ -159,6 +163,40 @@ async def test_lease_reap_failure_never_blocks_startup():
     registry = AsyncMock()
 
     assert await reap_stranded_leases(registry, coordinator, port) == 0
+
+
+# ---------------------------------------------------------------------------
+# reap_stranded_modes (#710)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("coordinator", "state_port"),
+    [(None, AsyncMock()), (AsyncMock(), None), (None, None)],
+    ids=["no-coordinator", "no-state-port", "neither"],
+)
+async def test_mode_reap_is_a_noop_without_wiring(coordinator, state_port):
+    assert await reap_stranded_modes(coordinator, state_port) == 0
+
+
+async def test_mode_reap_asks_only_for_cycle_agents():
+    """Narrowed in SQL, not in Python: `duty` must never be enumerated by a sweep
+    that unconditionally sends everything it finds to ambient."""
+    coordinator = AsyncMock()
+    state_port = AsyncMock()
+    state_port.list_states.return_value = ()
+
+    await reap_stranded_modes(coordinator, state_port)
+
+    state_port.list_states.assert_awaited_once_with(mode="cycle")
+
+
+async def test_mode_reap_failure_never_blocks_startup():
+    coordinator = AsyncMock()
+    state_port = AsyncMock()
+    state_port.list_states.side_effect = RuntimeError("db down")
+
+    assert await reap_stranded_modes(coordinator, state_port) == 0
 
 
 # ---------------------------------------------------------------------------

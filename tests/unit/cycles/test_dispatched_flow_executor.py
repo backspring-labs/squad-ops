@@ -956,7 +956,7 @@ class TestRunCompletionActivityWiring:
         """Same silent-no-op class for #373: the composition root builds the
         executor through `create_flow_executor`, so a kwarg the factory drops
         leaves the finalize stranded-lease sweep permanently inert — with every
-        lease_reaper unit test still green."""
+        focus_reaper unit test still green."""
         from unittest.mock import AsyncMock
 
         from adapters.cycles.factory import create_flow_executor
