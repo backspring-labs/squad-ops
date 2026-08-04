@@ -43,11 +43,42 @@ rejected with disclosure in the validation result.
 ### 3. #689 — undefined-name (F821) typed check on `.py` fill slots
 Error-severity, auto-applied to `.py` fill-slot emissions, catching used-but-unimported
 symbols statically at acceptance — the class every current gate missed.
-**Open decision D1 (resolve in the fix PR):** implementation vehicle — `ruff --select
-F821` requires ruff in the *agent* images (acceptance checks evaluate in handler
-context); `pyflakes` is a lighter dep; an AST-based custom check needs no dep but
-re-implements scope analysis. Default lean: pyflakes if the dep is acceptable, else
-ruff-in-image; hand-rolled AST only as last resort.
+**Decision D0 — the seam, RULED (2026-08-03, pre-build):** the check is
+**framework-injected at emission acceptance**, NOT a contract-authored criterion. The
+tempting home is `scaffold_contract.py::_routes_criteria`, where #628's `module_imports`
+already hangs off `backend/routes.py` — but that function *generates the verification
+contract*, so a new row there moves the contract hash, violating this patch's
+hash-stability constraint. Worse, it would be untestable in the confirmation window:
+bind mode **loads** the pinned contract from `contract_ref`
+(`dispatched_flow_executor.py` `_is_bind_mode` / contract loading) instead of
+regenerating it, so a contract-authored check would stay invisible until a re-seed —
+which this plan defers to the #668 window. Injection at acceptance keeps the check live
+under the pinned v9 contract.
+
+**Decision D1 — the vehicle, RULED (2026-08-03, pre-build): `pyflakes`, imported
+in-process, added to `requirements/agent.txt`/`.lock`.** Grounds: acceptance checks
+evaluate in the **agent container** (the `frontend_compiles` docstring is explicit —
+npm runs against "the agent container's warm cache"), and neither `ruff` nor `pyflakes`
+is in `agent.lock` today, so either choice adds a dep. pyflakes is pure-Python with zero
+transitive deps and is the reference F821 implementation that ruff's F-rules reimplement;
+ruff would add a ~25MB binary wheel to seven agent images to shell out for one rule.
+Hand-rolled AST is rejected: F821 scope analysis (comprehension scopes, class bodies,
+star imports, conditional definition, `__all__`, builtins) is exactly the wheel pyflakes
+already is.
+**Corollary — this check must NOT follow the skip-on-missing-tooling precedent.** #462's
+skip-never-fail rule, and the SIP-0096 `check_tooling.py` declaration seam
+(`check_registry.TOOL_NODE`), exist for tooling with **per-role variance** provisioned
+via `agents/instances/<role>/system-packages.txt` — Node lives in the qa image only.
+A base-lock pip dep is present in every agent image *by construction*, so it is not
+provisioned tooling in the §6.3 sense and gets no `TOOL_` identifier. Therefore an
+ImportError on pyflakes is a **build defect, not an environment gap**, and must surface
+as `error`, never `skipped` — otherwise #689 ships as a silent no-op, precisely the
+"looks-enforced-but-isn't" class SIP-0096 exists to kill.
+**Forward-compatibility note (SIP-0102):** checks run in-agent-container today only
+because 0102 migration step 3 (routing `test_runner.py` / `CommandExitZeroCheck` /
+`probe_runner.py` through typed sandbox ops) is a v1.6 S-lane rider. Write the check as a
+registry entry whose execution is a single call site, so step 3 can reroute it without a
+rewrite.
 **Replay verification:** shk-2's stored `backend/routes.py` v2 (`art_87442fcf46db`)
 trips exactly once on `RunEvent`; shk-1's accepted fill files (green cycle
 cyc_b03d203df3f2) all pass clean — zero false positives on a known-good set.
@@ -70,13 +101,14 @@ shows whether the rules section was present in the authoring prompt.
 - Delete the dead `command_check_safelist` CRP key (declared `schema.py:48`, never read
   — 2026-08-03 audit; separately ruled superseded by typed tools). Rides #689's PR
   (same file neighborhood).
-- Close #114 (bookkeeping — code audit-confirmed landed with tests; no code change).
+- ~~Close #114~~ — **discharged 2026-08-03** before this patch opened; no longer a rider.
 
 ## Deploy window (after all four merge)
 
 1. Rebuild all + explicit runtime-api restart + verify-LOADED behaviorally in-container
-   (#688/#691 touch runtime-api; #689 touches agent images + possibly a new dep;
-   #686 touches agent images: template bumps + new asset).
+   (#688/#691 touch runtime-api; #689 touches agent images and adds the `pyflakes`
+   dep per D1 — the LOADED probe must import it *and* trip the check, not just find the
+   module; #686 touches agent images: template bumps + new asset).
 2. Assert contract v9 / manifest v4 unchanged (no re-seed).
 3. **One unfiltered confirmation shakedown** (standard seeded launcher, full, bind
    mode, unscored). What it proves: no false positives from #689/#691 on a clean roll;
@@ -90,10 +122,14 @@ shows whether the rules section was present in the authoring prompt.
 
 ## Deliberately out
 
-- **#668 + #593** — the hash-moving pair (both change the contract). They travel
-  together as a deliberate seed-roll window (contract v10 + re-baseline event), either
-  a dedicated 1.4.3 or folded into 1.5. Mixing them here would turn a fast
-  correction-chain patch into a re-baselining exercise.
+- **#668** — the hash-moving item (it changes the contract). It carries the seed-roll
+  window on its own (contract v10 + re-baseline event), either a dedicated 1.4.3 or
+  folded into 1.5, and is still held on the owner's enforce-vs-advisory call. Mixing it
+  here would turn a fast correction-chain patch into a re-baselining exercise.
+  **Correction (2026-08-03):** an earlier draft of this list paired #668 with #593.
+  #593 was closed 2026-07-28 by PR #634 (blank-input rejection made scaffold-owned and
+  probe-pinned), five days before this plan was written — the seed-roll window is #668
+  alone.
 - **#687** (traceback → failure_evidence) — cross-component (sandbox capture + evidence
   assembly + analyzer inputs) → 1.5.
 - **#682/#683/#684/#423** (SIP-0096 completion) — 1.5, pre-scorecard critical path.
@@ -106,5 +142,5 @@ shows whether the rules section was present in the authoring prompt.
 |---|---|---|---|
 | #688 | probe→slot repair targeting | runtime-api (correction_runner) | shk-2 evidence replay |
 | #691 | emission write authorization | runtime-api/agents (acceptance path) | shk-2 emission replay |
-| #689 | F821 typed check (D1: vehicle) | agents (check registry, images) | shk-2 trip + shk-1 clean set |
+| #689 | F821 check (D0 acceptance-injected, D1 pyflakes — both ruled) | agents (check registry, images, `agent.lock`) | shk-2 trip + shk-1 clean set |
 | #686 | authoring-rules render | agents (prompts/templates) | in-container render + negative live proof |
