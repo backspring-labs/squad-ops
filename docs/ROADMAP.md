@@ -21,7 +21,13 @@ Each even-minor consumer sits strictly behind the release that earns its trust: 
 
 ## Release Timeline
 
-### v1.4.1 (2026-08-03) — Current — Hardening Patch (the 1.4 known-open ledger)
+### v1.4.2 (2026-08-04) — Current — Correction Aim + Authoring Prevention
+The correction chain aims true, and known authoring classes can't be authored. Every fix traces to shk-2's diagnosed loss chain (`cyc_88162ecfd895`), where a one-line defect survived two correction attempts. Four fixes, hash-stable, one PR each: **#688** repair targeting (PR #695 — failed probe → endpoint → contract's endpoint→slot map → the owning fill slot, which now LEADS the target; plus a package→language scoping fallback, because pf-24's package anchor silently matched nothing whenever the suite was authored outside the source package), **#691** frozen-file handling (PR #696 — scaffold-frozen paths excluded from interface-drift detection, and frozen emissions dropped-with-disclosure instead of restored-and-stored), **#689** `undefined_names` (PR #697 — pyflakes F821, framework-injected at emission acceptance on `.py` fill slots; the call-time NameError class every prior gate missed), **#686** plan-shape rules rendered into the four authoring prompts (PR #698 — validator rules stated up front, bound to the validator family by a classification table + test).
+- **Corrected premises, recorded**: #691's filing blamed an unauthorized dev write; provenance showed the artifacts were `scaffold.expand`-seeded and hash-identical to the contract's frozen entries. The real defect was drift detection reporting the scaffold's own `GET /health` probe as producer drift — a permanent false positive on every bind-mode cycle that corrects. The issue was rewritten before it was built.
+- **Confirmation (shk-3, `cyc_74a741292539`, unscored)**: **green — verdict `accepted`, zero failed, zero unverified, zero corrections.** #686 confirmed at framing in its strongest form: a compliant plan on the FIRST roll (zero dual claims; the verification-only `expected_artifacts: []` form the new asset teaches), where shk-1 needed a #673 rejection plus a re-roll — with `request.planning_task_base v3` in the prompt provenance. #689 confirmed live on the dev surface: one injection on `backend/routes.py` (passed), correctly none on the three `.jsx` views. #688/#691 never fired (zero corrections), so their evidence remains the stored-artifact replays — a green cycle never credits an unfired fix. #672 silent; leases/activities clean without a restart; contract v9 / manifest v4 untouched.
+- **Found by the confirmation, not by the tests**: #689 stops at the `qa.test` boundary, which overrides `_validate_output` and never joins the typed-acceptance seam. That is #670, now owner-ruled fork 1 → v1.5, with scope widened to bringing qa onto the seam so authored checks and framework injections both reach it.
+
+### v1.4.1 (2026-08-03) — Hardening Patch (the 1.4 known-open ledger)
 The five hash-stable fixes filed at the 1.4.0 cut, one PR per issue: **#672** runtime_activities reaper (PR #676 — startup + finalize sweeps through the abort choke point), **#671** module-existence validation (PR #677 — closed-surface proof; entry_modules exempt by design), **#673** duplicate expected_artifacts net (PR #678 — first plan-wide cross-task rule), **#667** repair-envelope testid threading (PR #679 — surface re-derived from the manifest at repair-input construction), **#669** framing re-roll rejection context (PR #680 — re-rolls revise instead of re-dicing; `framing_max_rerolls` becomes a revision budget). Contract v9 / manifest v4 unchanged (hash-stable by construction); #668/#670 deliberately out (next window).
 - **Deploy verification**: startup reap ended exactly the 4 stranded activity rows; in-container replay of the real fay-16..19 plans against contract v9 (trip/clean exactly as pinned); loaded-module checks across runtime-api + all four authoring agents.
 - **Confirmation (unscored shakedowns by pre-declaration)**: **shk-1 green** — framing-1 authored a real dual-claim, #673 auto-rejected it (live true positive), #669 threaded the rejection into a surgically-revised re-roll (tasks identical except the flagged claim), implementation cleared all 14 criteria with zero corrections; full-cycle #672 silence; leases/activities clean. **shk-2** fired #667's trigger live (repair envelopes built by the new path), then surfaced a **pre-existing** correction-chain loss mode diagnosed to root cause (unimported symbol → call-time NameError → 500; analyzer guessed causes without the traceback, repairs mis-aimed at drift-named files) — filed **#687/#688/#689**, cycle cancelled after confirmation evidence was complete (recorded rationale; zero defects in the five fixes under test).
@@ -473,10 +479,10 @@ The following areas are identified for future work but do not block 1.0 readines
 
 ## Stats
 
-*As of 2026-08-03 (v1.4.1):*
+*As of 2026-08-04 (v1.4.2):*
 
-- **Framework version**: 1.4.1
+- **Framework version**: 1.4.2
 - **SIPs**: 63 implemented, 8 accepted (SIP-0088, 0090–0093, 0096, 0101, 0102), 20 deprecated (registry)
-- **Tests**: 5,900+ passing in the regression suite
+- **Tests**: 6,000+ passing in the regression suite
 - **Python source**: ~61,000 lines (src + adapters; ~83,000 test lines, ~110,000 doc lines)
 - **~6 months** from initial repo (2025-09-20) to 1.0.0 release (2026-03-10)
