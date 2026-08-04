@@ -326,3 +326,48 @@ async def test_get_current_lease_maps_row_to_dataclass():
     )
     # current-lease lookup must filter to the active row.
     assert "released_at IS NULL" in conn.fetchrow.await_args.args[0]
+
+
+# ---------------------------------------------------------------------------
+# list_active_leases — the #373/#529 sweep read
+# ---------------------------------------------------------------------------
+
+
+async def test_list_active_leases_filters_to_unreleased_rows():
+    """Bug class: a listing that ignores `released_at` feeds the reaper rows that
+    are already released, which then 'clears' healthy agents and inflates the
+    reap count with phantom work."""
+    conn = AsyncMock()
+    conn.fetch.return_value = [_lease_row(), _lease_row(lease_id="lease-2", agent_id="neo")]
+    adapter = PostgresFocusLease(_make_pool(conn))
+
+    leases = await adapter.list_active_leases()
+
+    assert [lease.lease_id for lease in leases] == ["lease-1", "lease-2"]
+    query, *args = conn.fetch.await_args.args
+    assert "released_at IS NULL" in query
+    assert args == []  # unfiltered: no owner_ref bind
+
+
+async def test_list_active_leases_narrows_by_owner_ref_in_sql():
+    """Bug class: the cancel sweep must not fetch every agent's lease and filter
+    in Python — the narrowing is what keeps one run's cancel from touching a
+    concurrent run's leases if the filter is ever dropped."""
+    conn = AsyncMock()
+    conn.fetch.return_value = [_lease_row(owner_ref="run_7")]
+    adapter = PostgresFocusLease(_make_pool(conn))
+
+    leases = await adapter.list_active_leases(owner_ref="run_7")
+
+    assert [lease.owner_ref for lease in leases] == ["run_7"]
+    query, *args = conn.fetch.await_args.args
+    assert "owner_ref = $1" in query
+    assert args == ["run_7"]
+
+
+async def test_list_active_leases_returns_empty_tuple_when_nothing_is_held():
+    conn = AsyncMock()
+    conn.fetch.return_value = []
+    adapter = PostgresFocusLease(_make_pool(conn))
+
+    assert await adapter.list_active_leases(owner_ref="run_gone") == ()

@@ -951,3 +951,22 @@ class TestRunCompletionActivityWiring:
         )
 
         assert executor._run_completion._activity_port is activity_port
+
+    async def test_factory_forwards_the_focus_lease_port(self, mock_registry, mock_vault):
+        """Same silent-no-op class for #373: the composition root builds the
+        executor through `create_flow_executor`, so a kwarg the factory drops
+        leaves the finalize stranded-lease sweep permanently inert — with every
+        lease_reaper unit test still green."""
+        from unittest.mock import AsyncMock
+
+        from adapters.cycles.factory import create_flow_executor
+
+        focus_lease_port = AsyncMock()
+        executor = create_flow_executor(
+            "dispatched",
+            cycle_registry=mock_registry,
+            artifact_vault=mock_vault,
+            focus_lease_port=focus_lease_port,
+        )
+
+        assert executor._focus_lease_port is focus_lease_port

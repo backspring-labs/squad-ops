@@ -19,7 +19,7 @@ from squadops.api.routes.cycles.mapping import cycle_to_response
 from squadops.auth.models import Scope
 from squadops.cycles.check_tooling import resolve_provisioned_tooling
 from squadops.cycles.cycle_outcome import resolve_cycle_outcome
-from squadops.cycles.lifecycle import compute_config_hash
+from squadops.cycles.lifecycle import TERMINAL_STATES, compute_config_hash
 from squadops.cycles.models import (
     Cycle,
     CycleError,
@@ -27,6 +27,7 @@ from squadops.cycles.models import (
     Gate,
     PreflightRejectedError,
     Run,
+    RunStatus,
     SquadProfile,
     TaskFlowPolicy,
 )
@@ -324,15 +325,39 @@ async def cancel_cycle(project_id: str, cycle_id: str):
 
         # #77: stop the orphaned Prefect flow run(s) for this cycle's runs so
         # workers don't keep executing a logically-cancelled cycle.
-        from squadops.api.routes.cycles.cancellation import cancel_orphaned_flow_runs
+        from squadops.api.routes.cycles.cancellation import (
+            cancel_orphaned_flow_runs,
+            release_cancelled_run_leases,
+        )
 
-        run_ids = [run.run_id for run in await registry.list_runs(cycle_id)]
+        runs = await registry.list_runs(cycle_id)
+        run_ids = [run.run_id for run in runs]
         cancelled = await cancel_orphaned_flow_runs(project_id, cycle_id, run_ids)
+
+        # #529: `cancel_cycle` writes only the cycle's `cancelled` flag, so an
+        # in-flight run stays `running` forever — a stale status, and one that
+        # makes the run look live to the startup lease reaper. Transition them
+        # here, per-run isolated so one failure never blocks the rest.
+        for run in runs:
+            if RunStatus(run.status) in TERMINAL_STATES:
+                continue
+            try:
+                await registry.cancel_run(run.run_id)
+            except Exception:
+                logger.warning(
+                    "cancel_cycle: run %s could not be cancelled", run.run_id, exc_info=True
+                )
+
+        # #529: release the focus leases those runs hold. Swept across every run,
+        # not just the in-flight ones — a lease stranded under an already-terminal
+        # run is exactly #373's case and blocks recruitment just as hard.
+        leases_released = await release_cancelled_run_leases(cycle_id, run_ids)
 
         return {
             "status": "cancelled",
             "cycle_id": cycle_id,
             "prefect_flow_runs_cancelled": cancelled,
+            "focus_leases_released": leases_released,
         }
     except CycleError as e:
         raise handle_cycle_error(e) from e

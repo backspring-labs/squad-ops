@@ -281,6 +281,91 @@ class TestCancelCycle:
         assert resp.json()["status"] == "cancelled"
         assert resp.json()["prefect_flow_runs_cancelled"] == 0
 
+    def test_cancel_transitions_the_in_flight_run(self, client, mock_cycle_registry):
+        """#529: `cancel_cycle` writes only the cycle's `cancelled` flag, so an
+        in-flight run stayed `running` forever — a stale status that also makes
+        the run look live to the startup lease reaper."""
+        from squadops.cycles.models import Run
+
+        mock_cycle_registry.cancel_cycle.return_value = None
+        mock_cycle_registry.list_runs.return_value = [
+            Run(
+                run_id="run_001",
+                cycle_id="cyc_001",
+                run_number=1,
+                status="running",
+                initiated_by="api",
+                resolved_config_hash="x",
+            ),
+            Run(
+                run_id="run_000",
+                cycle_id="cyc_001",
+                run_number=0,
+                status="completed",
+                initiated_by="api",
+                resolved_config_hash="x",
+            ),
+        ]
+
+        resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/cancel")
+
+        assert resp.status_code == 200
+        # Only the non-terminal run is transitioned — cancelling a finished run
+        # would rewrite what happened (the #522 edge is for the orchestrator).
+        mock_cycle_registry.cancel_run.assert_awaited_once_with("run_001")
+
+    def test_cancel_releases_leases_across_every_run(
+        self, client, mock_cycle_registry, monkeypatch
+    ):
+        """#373/#529: a lease stranded under an *already-terminal* run blocks
+        recruitment just as hard as one under the run being cancelled, so the
+        sweep covers the cycle's whole run list."""
+        import squadops.api.runtime.deps as deps_mod
+        from squadops.cycles.models import Run
+        from squadops.runtime.models import FocusLease
+
+        mock_cycle_registry.cancel_cycle.return_value = None
+        mock_cycle_registry.list_runs.return_value = [
+            Run(
+                run_id=rid,
+                cycle_id="cyc_001",
+                run_number=n,
+                status=status,
+                initiated_by="api",
+                resolved_config_hash="x",
+            )
+            for n, (rid, status) in enumerate([("run_000", "failed"), ("run_001", "running")])
+        ]
+
+        def _lease(agent_id, owner_ref):
+            return FocusLease(
+                lease_id=f"lease-{agent_id}",
+                agent_id=agent_id,
+                owner_type="cycle",
+                owner_ref=owner_ref,
+                acquired_at=datetime(2026, 8, 4, tzinfo=UTC),
+                expires_at=None,
+                renewal_policy="ttl",
+                interruptibility="high",
+                recall_policy="graceful",
+                released_at=None,
+                idempotency_key=f"cycle:{owner_ref}:{agent_id}",
+            )
+
+        by_owner = {"run_000": (_lease("nat", "run_000"),), "run_001": (_lease("max", "run_001"),)}
+        lease_port = AsyncMock()
+        lease_port.list_active_leases.side_effect = lambda *, owner_ref=None, conn=None: by_owner[
+            owner_ref
+        ]
+        lease_port.get_current_lease.return_value = None
+        monkeypatch.setattr(deps_mod, "_focus_lease_port", lease_port)
+        monkeypatch.setattr(deps_mod, "_runtime_coordinator", AsyncMock())
+
+        resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/cancel")
+
+        assert resp.status_code == 200
+        assert resp.json()["focus_leases_released"] == 2
+
 
 class TestCycleRouteScopeEnforcement:
     """#150: with auth enabled, cycle routes enforce cycles:read/write.

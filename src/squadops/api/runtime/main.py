@@ -336,9 +336,11 @@ async def _init_cycle_subsystem(config, pool) -> None:
         # Without a pool the guard stays unwired and recruitment is never gated.
         assignment_port = None
         activity_port = None
+        focus_lease_port = None
         if pool is not None:
             from adapters.persistence.runtime.activity_postgres import PostgresRuntimeActivity
             from adapters.persistence.runtime.assignments_postgres import PostgresAssignment
+            from adapters.persistence.runtime.focus_lease_postgres import PostgresFocusLease
             from squadops.api.runtime.deps import set_assignment_port
 
             assignment_port = PostgresAssignment(pool)
@@ -348,6 +350,11 @@ async def _init_cycle_subsystem(config, pool) -> None:
             # runtime-api process owns the asyncpg pool, so RuntimeActivity is
             # written here (not in agents) as each task is dispatched/replied.
             activity_port = PostgresRuntimeActivity(pool)
+            # #373/#529: the lease port for the stranded-lease sweeps. Stateless
+            # over the pool, so this instance is interchangeable with the one
+            # `create_runtime_coordinator` builds (same precedent as the
+            # assignment/activity adapters, which are also built twice).
+            focus_lease_port = PostgresFocusLease(pool)
 
         # SIP-0089 §3.5 (#233): the single-writer coordinator (D16), built once
         # here and reused by the duty scheduler (see _init_duty_scheduler) so the
@@ -357,37 +364,24 @@ async def _init_cycle_subsystem(config, pool) -> None:
 
         _runtime_coordinator = create_runtime_coordinator(pool)
 
-        # #672: startup reap — end active activities whose owning cycle is
-        # already terminal (rows stranded by a process death that skipped run
-        # finalize). One stranded row blocks all of that agent's future
-        # activity tracking. Best-effort: a reap failure never blocks startup.
-        if activity_port is not None:
-            try:
-                from squadops.cycles.lifecycle import derive_cycle_status
-                from squadops.cycles.models import CycleNotFoundError, CycleStatus
-                from squadops.runtime.activity_reaper import reap_stale_activities
+        # #373/#529: share the single coordinator + lease port with the cancel
+        # routes, so cancelling a cycle/run releases the leases it holds.
+        from squadops.api.runtime.deps import set_lease_sweep_ports
 
-                async def _cycle_is_terminal(cid: str) -> bool:
-                    try:
-                        owning_cycle = await cycle_registry.get_cycle(cid)
-                    except CycleNotFoundError:
-                        # No owner on record → definitionally stranded.
-                        return True
-                    runs = await cycle_registry.list_runs(cid)
-                    derived = derive_cycle_status(runs, cycle_cancelled=owning_cycle.cancelled)
-                    return derived in (
-                        CycleStatus.COMPLETED,
-                        CycleStatus.FAILED,
-                        CycleStatus.CANCELLED,
-                    )
+        set_lease_sweep_ports(_runtime_coordinator, focus_lease_port)
 
-                reaped = await reap_stale_activities(
-                    activity_port, cycle_is_terminal=_cycle_is_terminal
-                )
-                if reaped:
-                    logger.info("Startup reap ended %d stranded runtime activity row(s)", reaped)
-            except Exception:
-                logger.warning("Startup stranded-activity reap failed", exc_info=True)
+        # Startup hygiene: clear runtime state a dead process left active, before
+        # anything recruits against it. Each sweep is best-effort and owns its own
+        # wiring gate + terminal predicate (see `startup_reaps`); a held lease
+        # (#373) blocks recruitment outright, a live activity row (#672) kills
+        # that agent's activity tracking.
+        from squadops.api.runtime.startup_reaps import (
+            reap_stranded_activities,
+            reap_stranded_leases,
+        )
+
+        await reap_stranded_leases(cycle_registry, _runtime_coordinator, focus_lease_port)
+        await reap_stranded_activities(cycle_registry, activity_port)
 
         flow_executor = create_flow_executor(
             "dispatched",
@@ -404,6 +398,7 @@ async def _init_cycle_subsystem(config, pool) -> None:
             assignment_port=assignment_port,
             activity_port=activity_port,
             coordinator=_runtime_coordinator,
+            focus_lease_port=focus_lease_port,
         )
 
         set_cycle_ports(
