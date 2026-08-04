@@ -12,3 +12,9 @@ httpx>=0.27.0
 
 # Validation
 jsonschema>=4.20.0
+
+# Undefined-name analysis for the `undefined_names` acceptance check (#689).
+# Pure Python, zero transitive deps, and the reference F821 implementation that
+# ruff's F-rules reimplement. Pinned exactly: this library's verdicts gate task
+# acceptance, so a silent upgrade would change what the squad may ship.
+pyflakes==3.4.0

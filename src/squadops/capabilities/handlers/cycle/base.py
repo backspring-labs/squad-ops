@@ -15,6 +15,7 @@ from squadops.capabilities.handlers.base import (
     HandlerEvidence,
     HandlerResult,
 )
+from squadops.cycles.acceptance_check_spec import CHECK_UNDEFINED_NAMES, is_check_applicable
 from squadops.cycles.acceptance_checks import CheckOutcome
 from squadops.cycles.acceptance_evaluation import (
     evaluate_criterion,
@@ -36,6 +37,42 @@ from squadops.capabilities.handlers.cycle.validation import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _framework_injected_criteria(
+    artifacts: list[dict], authored: tuple[TypedCheck, ...]
+) -> list[TypedCheck]:
+    """Checks the framework applies to this emission regardless of what was authored (#689).
+
+    Today that is ``undefined_names`` on every emitted ``.py`` file. Injection —
+    rather than adding the check to the contract's per-slot criteria — is what makes
+    it reach a BIND-mode cycle at all: bind mode loads the pinned contract from
+    ``contract_ref`` instead of regenerating it, so a criterion added to the expander
+    would not appear until a re-seed, and the check would ship unverified.
+
+    Scoped to the producer's own emitted artifacts, so it can never indict a file this
+    task did not write. An authored row for the same check and file wins — the author
+    may have set a different severity, and two rows for one file would double-count in
+    the evidence.
+    """
+    already = {
+        (c.check, str(c.params.get("file", "")))
+        for c in authored
+        if c.check == CHECK_UNDEFINED_NAMES
+    }
+    injected: list[TypedCheck] = []
+    seen: set[str] = set()
+    for art in artifacts:
+        name = art.get("name") if art.get("name") is not None else art.get("path")
+        if not isinstance(name, str) or not is_check_applicable(CHECK_UNDEFINED_NAMES, name):
+            continue
+        if name in seen or (CHECK_UNDEFINED_NAMES, name) in already:
+            continue
+        seen.add(name)
+        injected.append(
+            TypedCheck(check=CHECK_UNDEFINED_NAMES, params={"file": name}, severity="error")
+        )
+    return injected
 
 
 class _CycleTaskHandler(CapabilityHandler):
@@ -366,7 +403,7 @@ class _CycleTaskHandler(CapabilityHandler):
                 }
             )
 
-        typed_criteria = list(split.typed)
+        typed_criteria = list(split.typed) + _framework_injected_criteria(artifacts, split.typed)
         if not typed_criteria:
             return
 

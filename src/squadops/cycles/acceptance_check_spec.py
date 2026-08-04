@@ -67,6 +67,14 @@ class CheckSpec:
         notes: Free-text constraint rendered into the proposer vocabulary as a
             ``- Note:`` line. For constraints the param schema alone can't
             express (e.g. the command safelist).
+        framework_injected: The framework applies this check itself, to every
+            applicable emitted artifact — it is not something a plan author
+            selects. Kept OUT of the rendered proposer vocabulary (#689): a
+            check the system always runs is not a decision the author should
+            be asked to make, and offering it invites redundant rows that can
+            only be authored wrong. The evaluator is registered normally, so
+            authoring one still parses and evaluates rather than becoming a
+            second rejection path.
         applicable_extensions: File extensions (lowercase, with dot) the
             evaluator can actually parse for this check's ``file`` target.
             Empty = not file-scoped or applicable to any file. pf-47/pf-49: the
@@ -88,6 +96,7 @@ class CheckSpec:
     example: dict[str, object] = field(default_factory=dict)
     notes: str = ""
     applicable_extensions: frozenset[str] = frozenset()
+    framework_injected: bool = False
 
 
 # Allowed severity values. Anything else → ValueError at parse time.
@@ -218,6 +227,11 @@ def is_frontend_source(path: str) -> bool:
 # no-op it was written to end.
 CHECK_ENDPOINT_DEFINED = "endpoint_defined"
 
+# #689: the framework-injected undefined-name check. Named here because the
+# injection site filters on it, the same single-source reason as the constant
+# above — a literal there would silently inject nothing after a rename.
+CHECK_UNDEFINED_NAMES = "undefined_names"
+
 
 # The `"METHOD /path"` endpoint-token grammar. `endpoint_defined.methods_paths`
 # is authored in it and the evaluator matches route decorators against it; #688
@@ -257,6 +271,16 @@ def parse_method_path(token: str) -> tuple[str, str] | None:
 # on each entry is rendered into the proposer prompt (issue #182) and is
 # asserted parser-valid by test.
 CHECK_SPECS: dict[str, CheckSpec] = {
+    CHECK_UNDEFINED_NAMES: CheckSpec(
+        name=CHECK_UNDEFINED_NAMES,
+        applicable_extensions=frozenset({".py"}),
+        required_params=frozenset({"file"}),
+        param_types={"file": str},
+        path_params=frozenset({"file"}),
+        framework_injected=True,
+        example={"file": "backend/routes.py"},
+        notes=("Applied by the framework to every emitted .py artifact; never authored."),
+    ),
     CHECK_ENDPOINT_DEFINED: CheckSpec(
         name=CHECK_ENDPOINT_DEFINED,
         applicable_extensions=frozenset({".py"}),
@@ -498,6 +522,8 @@ def render_typed_acceptance_vocabulary() -> str:
         "",
     ]
     for name, spec in CHECK_SPECS.items():
+        if spec.framework_injected:
+            continue  # #689: the framework runs it; it is not an authoring choice
         out.append(f"### `{name}`")
         required = ", ".join(
             f"`{p}` ({_type_label(spec, p)})" for p in sorted(spec.required_params)
