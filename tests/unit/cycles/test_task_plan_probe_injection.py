@@ -332,3 +332,37 @@ def test_manifest_without_testids_injects_no_dom_key():
         cycle, run, profile, plan=None, contract=_contract(), interface_manifest=bare
     )
     assert all("dom_testid_surface" not in e.inputs for e in envs)
+
+
+# ---------------------------------------------------------------------------
+# #688: endpoint → fill-slot ownership injection
+# ---------------------------------------------------------------------------
+
+
+def test_bind_mode_injects_endpoint_owners_into_qa_test_only():
+    """Bug caught (shk-2): without this key the correction runner has no way to name
+    the fill slot behind a failing probe, and the repair chases drift-named files
+    while the defect site sits untargeted for the whole correction budget."""
+    cycle, run, profile = _implementation_setup()
+    envs = generate_task_plan(cycle, run, profile, plan=None, contract=_contract())
+
+    qa_envs = [e for e in envs if e.task_type == "qa.test"]
+    assert qa_envs, "implementation workload must contain a qa.test step"
+    assert qa_envs[0].inputs["contract_endpoint_owners"] == {"POST /items": "backend/routes.py"}
+    for env in envs:
+        if env.task_type != "qa.test":
+            assert "contract_endpoint_owners" not in env.inputs
+
+
+def test_author_mode_injects_no_endpoint_owners():
+    cycle, run, profile = _implementation_setup()
+    envs = generate_task_plan(cycle, run, profile, plan=None, contract=None)
+    assert all("contract_endpoint_owners" not in e.inputs for e in envs)
+
+
+def test_probe_less_contract_injects_no_endpoint_owners():
+    # The map is only actionable alongside probe evidence; injecting it without
+    # probes would plant a key the correction path can never key on.
+    cycle, run, profile = _implementation_setup()
+    envs = generate_task_plan(cycle, run, profile, plan=None, contract=_contract(with_probes=False))
+    assert all("contract_endpoint_owners" not in e.inputs for e in envs)

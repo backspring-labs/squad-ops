@@ -421,3 +421,131 @@ def test_lint_accumulates_multiple_defects():
 
     errors = _lint(many)
     assert len(errors) >= 3
+
+
+# --------------------------------------------------------------------------- #
+# #688: endpoint → owning fill slot
+# --------------------------------------------------------------------------- #
+
+
+def test_endpoint_owners_maps_every_declared_endpoint_to_its_fill_slot():
+    # The relation only the contract states: the manifest declares endpoints, the
+    # blueprint decides which slot implements them. #688 aims a repair with it.
+    owners = VerificationContract.from_dict(_valid_contract_dict()).endpoint_owners()
+    assert owners == {
+        "GET /runs": "backend/routes.py",
+        "POST /runs": "backend/routes.py",
+        "GET /runs/{id}": "backend/routes.py",
+        "POST /runs/{id}/join": "backend/routes.py",
+        "POST /runs/{id}/leave": "backend/routes.py",
+    }
+
+
+def test_endpoint_owners_ignores_non_endpoint_criteria_and_implementation_class():
+    # import_present sits beside endpoint_defined in the same interface list, and a
+    # method-shaped token in an implementation criterion is not an endpoint
+    # declaration — reading either would map endpoints onto the wrong file.
+    def mutate(d):
+        d["fill_files"]["backend/routes.py"]["implementation"].append(
+            {
+                "check": "endpoint_defined",
+                "id": "vc-routes-impl-endpoints",
+                "methods_paths": ["DELETE /runs/{id}"],
+            }
+        )
+
+    data = _valid_contract_dict()
+    mutate(data)
+    owners = VerificationContract.from_dict(data).endpoint_owners()
+    assert "DELETE /runs/{id}" not in owners
+    assert set(owners.values()) == {"backend/routes.py"}
+
+
+def test_endpoint_owners_is_empty_without_endpoint_criteria():
+    # A frontend-only or author-mode contract yields no map, and the caller must
+    # degrade to its prior targeting rather than resolve nothing to something.
+    def strip(d):
+        d["fill_files"]["backend/routes.py"]["interface"] = [
+            c
+            for c in d["fill_files"]["backend/routes.py"]["interface"]
+            if c["check"] != "endpoint_defined"
+        ]
+
+    assert _contract_with(strip).endpoint_owners() == {}
+
+
+def test_endpoint_owners_first_declaration_wins_on_a_contested_endpoint():
+    # lint() is the gate against two slots claiming one endpoint; this accessor must
+    # be deterministic rather than order-dependent if one slips through.
+    def contest(d):
+        d["fill_files"]["frontend/src/views/RunDetailView.jsx"]["interface"].append(
+            {
+                "check": "endpoint_defined",
+                "id": "vc-detail-endpoints",
+                "methods_paths": ["POST /runs"],
+            }
+        )
+
+    assert _contract_with(contest).endpoint_owners()["POST /runs"] == "backend/routes.py"
+
+
+@pytest.mark.parametrize(
+    ("token", "expected"),
+    [
+        ("", {}),
+        ("POST", {}),  # method only
+        ("/runs", {}),  # path only
+        ("TELEPORT /runs", {}),  # not an HTTP method
+        ("post /runs/", {"POST /runs": "backend/routes.py"}),  # normalized, not dropped
+    ],
+)
+def test_endpoint_owners_skips_malformed_tokens(token, expected):
+    # A malformed methods_paths entry must be inert, not fatal: raising here would
+    # break repair targeting for every other endpoint in the contract.
+    def inject(d):
+        d["fill_files"]["backend/routes.py"]["interface"][0]["methods_paths"] = [token]
+
+    assert _contract_with(inject).endpoint_owners() == expected
+
+
+def _contract_with(mutate) -> VerificationContract:
+    data = _valid_contract_dict()
+    mutate(data)
+    return VerificationContract.from_dict(data)
+
+
+def test_probe_endpoint_token_keeps_placeholders_and_normalizes_method():
+    # The token joins against CONTRACT endpoints, not a live request, so {run_id}
+    # must survive; a lowercase method in a hand-authored probe must still match.
+    probes = VerificationContract.from_dict(
+        _probe_contract(
+            [
+                {
+                    "id": "p1",
+                    "subject": "backend",
+                    "request": {"method": "post", "path": "/runs/{run_id}/join/"},
+                    "expect": {"status": 200},
+                }
+            ]
+        )
+    ).behavioral.probes
+    assert probes[0].endpoint_token() == "POST /runs/{run_id}/join"
+
+
+@pytest.mark.parametrize(
+    "request_body",
+    [{}, {"method": "POST"}, {"path": "/runs"}, {"method": "TELEPORT", "path": "/runs"}],
+)
+def test_probe_endpoint_token_is_none_without_a_usable_http_request(request_body):
+    # A probe that declares no usable HTTP request indicts no endpoint; returning a
+    # partial token would map it onto whichever slot sorts first.
+    probes = VerificationContract.from_dict(
+        _probe_contract([{"id": "p1", "subject": "backend", "request": request_body, "expect": {}}])
+    ).behavioral.probes
+    assert probes[0].endpoint_token() is None
+
+
+def _probe_contract(probes: list[dict]) -> dict:
+    data = _valid_contract_dict()
+    data["behavioral"]["probes"] = probes
+    return data

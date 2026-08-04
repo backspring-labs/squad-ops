@@ -82,6 +82,54 @@ def _scope_to_shared_packages(candidates: list[str], anchors: list[str]) -> list
     return [c for c in candidates if c and _top_level_package(c) in anchor_pkgs]
 
 
+def _scope_to_shared_language(candidates: list[str], anchors: list[str]) -> list[str]:
+    """Keep ``candidates`` on the same side of the frontend/backend line as ``anchors``.
+
+    The guarantee RC2 was actually written to give — "a backend failure can never
+    regress frontend source" — expressed against the source language instead of the
+    directory tree, so it holds wherever the suite was authored.
+    """
+    from squadops.cycles.acceptance_check_spec import is_frontend_source
+
+    anchor_sides = {is_frontend_source(a) for a in anchors if a}
+    if len(anchor_sides) != 1:
+        # No anchors, or anchors straddling both sides — nothing is excluded, so
+        # scoping would not be bounding anything. Stay silent rather than widen.
+        return []
+    side = anchor_sides.pop()
+    return [c for c in candidates if c and is_frontend_source(c) is side]
+
+
+def _scoped_implementation_surface(candidates: list[str], anchors: list[str]) -> list[str]:
+    """The implementation source a failure in ``anchors`` may legitimately retarget.
+
+    Package scoping first — pf-24's rule, unchanged whenever it matches anything.
+    When it comes back EMPTY the anchor was uninformative, not exclusive, and #688
+    measured what that costs: shk-2's qa suite was authored at root-level ``tests/``,
+    so its anchor package was ``tests``, ``backend/routes.py`` was filtered out, and
+    the correction loop had no route to app source at all. fay-16…19 authored
+    ``backend/tests/…``, which matched — so whether pf-24 and pf-27 worked at all
+    depended on where the squad happened to put its tests.
+
+    So the empty case falls back to the language boundary, which bounds the blast
+    radius the way RC2 intended (a backend failure still cannot reach frontend
+    source) without depending on the authored layout. A non-empty package match is
+    strictly narrower, so it keeps winning.
+    """
+    scoped = _scope_to_shared_packages(candidates, anchors)
+    if scoped:
+        return scoped
+    widened = _scope_to_shared_language(candidates, anchors)
+    if widened:
+        logger.info(
+            "correction_repair_target: package scoping matched nothing for anchors %s — "
+            "falling back to same-language implementation source %s (#688)",
+            ", ".join(anchors),
+            ", ".join(widened),
+        )
+    return widened
+
+
 def _frontend_build_failed(failure_evidence: Any) -> bool:
     """#650 (fay-8): the failed task's validation shows the frontend build failing.
 
@@ -127,6 +175,77 @@ def _widen_target_for_frontend_build(
     return list(dict.fromkeys([*target, *frontend_source]))
 
 
+def _failed_probe_ids(failure_evidence: Any) -> list[str]:
+    """Ids of the behavioral probes that FAILED, in evidence order (#688).
+
+    Probe rows enter ``validation_result.checks`` from ``probe_check_rows`` with
+    ``check`` == ``criterion_id`` == the probe id and a ``status`` of
+    passed/failed/skipped. Only ``failed`` counts: ``skipped`` means the subject
+    never booted, which indicts no particular endpoint.
+    """
+    if not isinstance(failure_evidence, dict):
+        return []
+    rows = (failure_evidence.get("validation_result") or {}).get("checks") or []
+    return [
+        str(row.get("check"))
+        for row in rows
+        if isinstance(row, dict) and row.get("status") == "failed" and row.get("check")
+    ]
+
+
+def _probe_owned_slots(failure_evidence: Any, failed_inputs: dict[str, Any]) -> list[str]:
+    """Fill-slot files owning the endpoints whose behavioral probes failed (#688).
+
+    The deterministic chain the shk-2 loss chain needed and did not have:
+    failed probe row → the probe's declared ``METHOD /path`` → the contract's
+    endpoint→fill-slot map → the file that owns the failing endpoint.
+
+    shk-2 (cyc_88162ecfd895): ``vc-probe-runs`` answered 500 because
+    ``backend/routes.py`` used ``RunEvent`` without importing it. Both repairs
+    emitted ``backend/main.py`` (named by interface-drift evidence) plus the
+    failed qa task's own suite, and never ``routes.py`` — the target set could
+    not name the defect site, so the loop reproduced the identical 500 and
+    exhausted. This resolution names it from contract data alone, independent of
+    the drift evidence and of where the squad chose to put its tests.
+
+    Empty whenever the inputs are absent (author mode, probe-less contracts,
+    pre-#688 envelopes) or no probe failed — the caller's target is then
+    byte-identical to its prior behavior.
+    """
+    owners = failed_inputs.get("contract_endpoint_owners") or {}
+    probes = failed_inputs.get("contract_probes") or []
+    if not owners or not probes:
+        return []
+    failed_ids = _failed_probe_ids(failure_evidence)
+    if not failed_ids:
+        return []
+
+    from squadops.cycles.verification_contract import Probe
+
+    tokens_by_id: dict[str, str] = {}
+    for raw in probes:
+        try:
+            probe = Probe.from_dict(raw)
+        except ValueError:  # a malformed row indicts nothing; it must not raise here
+            continue
+        token = probe.endpoint_token()
+        if token:
+            tokens_by_id[probe.id] = token
+
+    slots: list[str] = []
+    for probe_id in failed_ids:
+        owner = owners.get(tokens_by_id.get(probe_id, ""))
+        if owner and owner not in slots:
+            slots.append(owner)
+    if slots:
+        logger.info(
+            "correction_repair_target: probe-owned fill slots %s (failed probes: %s)",
+            ", ".join(slots),
+            ", ".join(failed_ids),
+        )
+    return slots
+
+
 def _resolve_repair_target(
     failure_evidence: Any, failed_inputs: dict[str, Any]
 ) -> tuple[list[str], str | None, str | None]:
@@ -160,7 +279,26 @@ def _resolve_repair_target(
     ``frontend/*`` (package-scoping bounds the blast radius). Absent that surface
     (author mode, non-build corrections) the target is byte-identical to the #531
     fallback below.
+
+    shk-2 (cyc_88162ecfd895) — #688: every surface above is *indirect*. The drift branch
+    names whatever files the drift evidence happened to name; the package-scoped union
+    reaches app source only when the failed qa task's own artifacts share a top-level
+    package with it. Both missed a one-line defect in ``backend/routes.py`` — drift
+    pointed at ``backend/main.py``, and the suite was authored at root-level ``tests/``,
+    so the scoped union came back empty (it matches on ``backend/tests/…``, which is what
+    fay-16…19 happened to author: the reach depended on an authoring coincidence). Two
+    changes, one per half of that:
+
+    * The target now LEADS with the fill slots that own the FAILING PROBES' endpoints,
+      resolved from contract data (``_probe_owned_slots``). Drift files and the failed
+      task's own artifacts still ride — they carry real defects too, the pf-21 lesson —
+      but they can no longer displace the defect site.
+    * The scoped implementation surface falls back from package to language when the
+      package anchor matches nothing (``_scoped_implementation_surface``), so a
+      SUITE-ONLY failure — one with no probe evidence to resolve — can still reach the
+      source under test on a root-level-``tests/`` layout.
     """
+    probe_slots = _probe_owned_slots(failure_evidence, failed_inputs)
     drift = failure_evidence.get("interface_drift") if isinstance(failure_evidence, dict) else None
     drift_files = sorted(
         {d["file"] for d in (drift or []) if isinstance(d, dict) and d.get("file")}
@@ -184,20 +322,22 @@ def _resolve_repair_target(
         # edits only the drifted file + the test and NEVER reaches routes.py →
         # non-convergence. Union it here too; empty surface (author mode) → the scoped
         # set is empty and the target is byte-identical to the pre-pf-27 union.
-        scoped_source = _scope_to_shared_packages(
+        scoped_source = _scoped_implementation_surface(
             failed_inputs.get("implementation_artifacts", []) or [], failed_artifacts
         )
-        target = list(dict.fromkeys([*drift_files, *failed_artifacts, *scoped_source]))
+        target = list(
+            dict.fromkeys([*probe_slots, *drift_files, *failed_artifacts, *scoped_source])
+        )
         target = _widen_target_for_frontend_build(target, failure_evidence, failed_inputs)
         return (target, None, None)
     # RC2 no-drift path: union the failing task's own artifacts with the
     # package-scoped implementation surface so a behavioral failure can reach the
     # source under test. Empty surface → byte-identical to the #531 fallback
     # (failed_artifacts, focus, description).
-    scoped_source = _scope_to_shared_packages(
+    scoped_source = _scoped_implementation_surface(
         failed_inputs.get("implementation_artifacts", []) or [], failed_artifacts
     )
-    target = list(dict.fromkeys([*failed_artifacts, *scoped_source]))
+    target = list(dict.fromkeys([*probe_slots, *failed_artifacts, *scoped_source]))
     target = _widen_target_for_frontend_build(target, failure_evidence, failed_inputs)
     return (
         target,
