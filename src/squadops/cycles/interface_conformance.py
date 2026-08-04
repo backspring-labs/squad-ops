@@ -22,12 +22,29 @@ yields NO finding and falls through to the existing loop. Pure (manifest +
 from __future__ import annotations
 
 import ast
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
 _ROUTE_METHODS = {"get", "post", "put", "patch", "delete"}
 # Pydantic/class internals that are not interface fields even if annotated.
 _NON_FIELD_NAMES = {"model_config"}
+
+
+def _without_frozen(contents: dict[str, str], frozen_paths: Iterable[str] | None) -> dict[str, str]:
+    """Drop scaffold-frozen entries, comparing on the D7 canonical path identity.
+
+    Uses the same normalization write authorization and materialization share, so a
+    frozen path can never evade exclusion through ``./`` or a redundant separator.
+    """
+    if not frozen_paths:
+        return contents
+    from squadops.cycles.write_authorization import normalize_ws_path
+
+    frozen = {n for p in frozen_paths if (n := normalize_ws_path(str(p))) is not None}
+    if not frozen:
+        return contents
+    return {p: text for p, text in contents.items() if normalize_ws_path(str(p)) not in frozen}
 
 
 @dataclass(frozen=True)
@@ -48,7 +65,10 @@ class DriftFinding:
 
 
 def detect_interface_drift(
-    manifest: Any, artifact_contents: dict[str, str] | None
+    manifest: Any,
+    artifact_contents: dict[str, str] | None,
+    *,
+    frozen_paths: Iterable[str] | None = None,
 ) -> list[DriftFinding]:
     """Diagnose field/route identifier drift against the manifest.
 
@@ -56,8 +76,26 @@ def detect_interface_drift(
     ``api.endpoints``). ``artifact_contents`` maps workspace-relative path → file
     text. Returns a finding per drifted file; empty on clean input, missing
     manifest/content, or any parse error.
+
+    ``frozen_paths`` (#691) are scaffold-owned, hash-pinned files, and they are
+    EXCLUDED before any analysis. Drift on a frozen file is definitionally not a
+    producer defect — the bytes are the scaffold's, verified against the contract's
+    hash — and no producer repair can act on it. Including them produced a
+    permanent false positive: the fullstack scaffold's ``backend/main.py`` declares
+    ``GET /health`` as its readiness probe, the interface manifest declares only the
+    *business* endpoints, so every bind-mode correction whose workspace contained
+    that file was handed ``route_drift backend/main.py extra=['GET /health']`` as
+    authoritative deterministic evidence. shk-2 (cyc_88162ecfd895) is the measured
+    cost: that finding pinned the repair target to a frozen file and three repair
+    attempts rewrote bytes that enforcement then restored, while the real defect sat
+    in a fill slot nothing pointed at.
+
+    Omitted (author mode, unbound runs) ⇒ nothing is excluded, i.e. prior behavior.
     """
     if manifest is None or not artifact_contents:
+        return []
+    artifact_contents = _without_frozen(artifact_contents, frozen_paths)
+    if not artifact_contents:
         return []
     try:
         return _detect_field_drift(manifest, artifact_contents) + _detect_route_drift(

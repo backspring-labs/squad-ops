@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 # Per-artifact enforcement dispositions (internal protocol; named so comparison
 # sites never carry raw literals that shadow unrelated enums — #380/#559).
-_DISP_RESTORE = "restore"
+_DISP_DROP_FROZEN = "drop_frozen"
 _DISP_DROP = "drop"
 _DISP_PASS = "pass"
 
@@ -72,18 +72,22 @@ def bound_record_or_none(interface_manifest: Any, run_id: str) -> Any:
         return None
 
 
-def frozen_restore_instruction(record: Any) -> str:
-    """Authoritative next-attempt instruction for a restored frozen emission (3.4b restore+signal).
+def frozen_emission_instruction(record: Any) -> str:
+    """Authoritative next-attempt instruction for a discarded frozen emission (3.4b signal).
 
     Injected into the following correction attempt's ``failure_evidence`` (the
     ``scaffold_enforcement`` key) so the analyzer and repair are TOLD the edit was rejected
-    instead of silently fighting the restore — the same deterministic-instruction pattern
-    interface-drift uses. Mirrors ``interface_conformance``'s generated instructions."""
+    instead of silently fighting enforcement — the same deterministic-instruction pattern
+    interface-drift uses. Mirrors ``interface_conformance``'s generated instructions.
+
+    #691 measured what silence costs: shk-2's repairs rewrote the frozen ``backend/main.py``
+    on three consecutive attempts, each write was enforced away, and each attempt therefore
+    produced no net change to the file it was aimed at."""
     path = record.normalized_path or record.attempted_path
     return (
         f"`{path}` is scaffold-frozen and canonical; a prior repair's edit to it was "
-        "rejected and the scaffold bytes restored. Do NOT re-emit this file — implement "
-        "the fix in the writable fill slots instead."
+        "rejected and DISCARDED — the scaffold's own copy is unchanged and still in effect. "
+        "Do NOT re-emit this file — implement the fix in the writable fill slots instead."
     )
 
 
@@ -91,13 +95,21 @@ def enforce_frozen_ownership(
     artifacts: list[dict], bound_record: Any, envelope: Any
 ) -> tuple[list[dict], list[Any]]:
     """SIP-0100 2.4: a producer must not overwrite a scaffold-frozen file. Any emitted artifact
-    whose normalized path is frozen has its content RESTORED to the bound record's bytes (D2
-    restoration authority — never re-derive), so the producer cannot clobber the scaffold
+    whose normalized path is frozen is DROPPED, so the producer cannot clobber the scaffold
     (pf-26). The attempt is recorded (not silent). Non-frozen artifacts pass through unchanged.
 
-    Restore (not response-atomic reject) is the deliberate first enforcement: the current squad
-    still re-emits frozen files, so a reject would break every bind-mode build; restore is
-    non-breaking and correct.
+    Per-artifact drop (not response-atomic reject) is the deliberate enforcement shape: the
+    current squad still re-emits frozen files, so a whole-response reject would break every
+    bind-mode build, while dropping one artifact keeps its siblings — the same disposition
+    the QA and builder lanes below already use.
+
+    #691 replaced the original restore-to-scaffold-bytes with the drop. Restore left a copy of
+    the scaffold's own bytes stored under the *producer's* task type, and that duplicate did
+    real damage: it entered ``artifact_contents``, where interface-drift detection read the
+    scaffold's ``GET /health`` probe as producer drift and aimed repairs at a file no producer
+    may write. Dropping cannot lose the file — a bound run's scaffold seeds every frozen path
+    as its own artifact, which every workspace filter selects by artifact type, independent of
+    producer. The bound record remains the D2 restoration authority for materialization.
 
     SIP-0100 3.3: each enforcement produces a structured ``ScaffoldIntegrityEvidence`` record
     (returned alongside the artifacts). Pure — the caller emits it as an
@@ -109,9 +121,9 @@ def enforce_frozen_ownership(
     ``routes.py``) is **dropped** — the owning producer's version stays; QA cannot rewrite the
     source under test to agree with its own test (the pf-26 class, one step past ``main.py``).
     QA emissions in its namespace, and undeclared paths (deliverables like ``test_report.md``),
-    pass through. Non-QA producers are unaffected here (frozen-restore only)."""
+    pass through. Non-QA producers are unaffected here (frozen-path drop only)."""
     from squadops.cycles.scaffold_integrity_evidence import (
-        frozen_restore_evidence,
+        frozen_path_evidence,
         unauthorized_slot_evidence,
     )
     from squadops.cycles.write_authorization import (
@@ -122,9 +134,7 @@ def enforce_frozen_ownership(
         normalize_ws_path,
     )
 
-    frozen = {
-        n: fa.content for fa in bound_record.frozen if (n := normalize_ws_path(fa.path)) is not None
-    }
+    frozen = {n for fa in bound_record.frozen if (n := normalize_ws_path(fa.path)) is not None}
     # A QA producer gets a namespace-scoped grant; the 2.1 authorization classes decide whether
     # a non-frozen emission is inside its lane (allow), another producer's slot (drop), or
     # undeclared (allow — could be a deliverable, §4.6 undeclared-reject stays gated on 3.4).
@@ -153,7 +163,7 @@ def enforce_frozen_ownership(
 
     def _disposition(art: dict, norm: str | None) -> str:
         if norm is not None and norm in frozen:
-            return _DISP_RESTORE
+            return _DISP_DROP_FROZEN
         if qa_authz is not None and (
             qa_authz.authorize(_artifact_raw_path(art) or "")
             == AuthzDecision.FORBIDDEN_UNAUTHORIZED
@@ -175,9 +185,9 @@ def enforce_frozen_ownership(
     enforced: list[dict] = []
     evidence: list[Any] = []
     for art, norm, disposition in zip(artifacts, norms, dispositions, strict=True):
-        if disposition == _DISP_RESTORE:
+        if disposition == _DISP_DROP_FROZEN:
             evidence.append(
-                frozen_restore_evidence(
+                frozen_path_evidence(
                     producer_task_id=envelope.task_id,
                     producer_task_type=envelope.task_type,
                     record=bound_record,
@@ -187,7 +197,7 @@ def enforce_frozen_ownership(
                     siblings_retained=siblings_retained,
                 )
             )
-            enforced.append({**art, "content": frozen[norm]})  # restore scaffold bytes (D2)
+            # dropped: NOT appended — the scaffold's own seeded artifact is the copy.
         elif disposition == _DISP_DROP:
             evidence.append(
                 unauthorized_slot_evidence(

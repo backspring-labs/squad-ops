@@ -81,7 +81,9 @@ def test_byte_identical_frozen_emission_is_still_an_attempted_violation():
     """The subtle D7/atomicity case: emitting a frozen path with content BYTE-IDENTICAL to the
     scaffold is still an *attempted emission* (the producer tried to own a frozen path) — recorded,
     distinct from not emitting it at all (which yields no evidence, see the 3.1 clean-response test).
-    Restore is a content no-op here, but the attempt is not free."""
+    The bytes were going to be identical either way, but the attempt is not free — #691 measured
+    the cost: shk-2's repairs emitted byte-identical frozen files three times, each was enforced
+    away, and each attempt therefore changed nothing it was aimed at."""
     rec = _record()
     scaffold_main = _frozen_content(rec, "backend/main.py")
     enforced, evidence = _enforce(
@@ -91,7 +93,7 @@ def test_byte_identical_frozen_emission_is_still_an_attempted_violation():
     ev = evidence[0]
     assert ev.violation_code == "frozen_path_emission"
     assert ev.expected_sha256 == ev.attempted_sha256  # byte-identical, yet still recorded
-    assert enforced[0]["content"] == scaffold_main  # restore == no-op content-wise
+    assert enforced == []  # #691: dropped — a byte-identical emission is still not the producer's
 
 
 def test_symlink_escaping_the_workspace_is_not_written(tmp_path):
@@ -116,9 +118,9 @@ def test_symlink_escaping_the_workspace_is_not_written(tmp_path):
 
 def test_pf26_replay_qa_cannot_mutate_main_py():
     """The pf-26 pattern: a QA correction emitting the frozen ``backend/main.py`` alongside its
-    corrected test suite CANNOT mutate main.py. main.py is restored to the scaffold (which imports
-    the router); the corrected suite survives. (The suite reaching execution through the ``client``
-    fixture is the harness_boundary check, covered in test_acceptance_checks.py.)"""
+    corrected test suite CANNOT mutate main.py. The clobber is dropped (#691) and the scaffold's
+    own seeded copy stands; the corrected suite survives. (The suite reaching execution through the
+    ``client`` fixture is the harness_boundary check, covered in test_acceptance_checks.py.)"""
     rec = _record()
     enforced, evidence = _enforce(
         [
@@ -132,10 +134,10 @@ def test_pf26_replay_qa_cannot_mutate_main_py():
         _env("qa.test"),
     )
     by = {a["name"]: a["content"] for a in enforced}
-    assert "from .routes import router" in by["backend/main.py"]  # clobber gone, scaffold restored
+    assert "backend/main.py" not in by  # clobber gone, and no copy under the QA producer
     assert "backend/tests/test_runs.py" in by  # corrected suite kept
     assert [e.violation_code for e in evidence] == ["frozen_path_emission"]
-    assert evidence[0].disposition == "restored"
+    assert evidence[0].disposition == "dropped"
 
 
 # --------------------------------------------------------------------------- #
@@ -165,17 +167,19 @@ def _pinned_record(main_content: str) -> BoundScaffoldRecord:
     )
 
 
-def test_restore_uses_bound_bytes_not_the_live_expander():
-    """4.3: restoration is authorized by the PERSISTED bound bytes (D2), never a re-expansion. A
-    record pinned to sentinel bytes restores to THOSE bytes — proving the record, not whatever the
-    current expander asset would emit, is the restore authority."""
+def test_enforcement_compares_against_bound_bytes_not_the_live_expander():
+    """4.3: the integrity comparison is authorized by the PERSISTED bound bytes (D2), never a
+    re-expansion. A record pinned to sentinel bytes reports THOSE bytes as expected — proving the
+    record, not whatever the current expander asset would emit, is the authority. (Restoration
+    itself lives at the filesystem seam, ``restore_frozen_files``, covered next.)"""
     pinned = "# PINNED v1 — not what today's expander emits\napp = 1\n"
     rec = _pinned_record(pinned)
     enforced, evidence = _enforce(
         [{"name": "backend/main.py", "content": "TAMPER = 999\n"}], rec, _env()
     )
-    assert enforced[0]["content"] == pinned
+    assert enforced == []
     assert evidence[0].expected_sha256 == hashlib.sha256(pinned.encode()).hexdigest()
+    assert evidence[0].attempted_sha256 == hashlib.sha256(b"TAMPER = 999\n").hexdigest()
 
 
 def test_restore_frozen_files_rewrites_from_the_record_on_disk(tmp_path):

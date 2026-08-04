@@ -157,3 +157,63 @@ def test_real_group_run_manifest_pf13_multi_drift():
     assert len(findings) == 1
     assert findings[0].extra == ("meeting_location", "pace")
     assert findings[0].missing == ("location", "pace_target")
+
+
+# --------------------------------------------------------------------------- #
+# #691: scaffold-frozen files are excluded before analysis
+# --------------------------------------------------------------------------- #
+
+
+def test_frozen_file_declaring_a_scaffold_route_is_not_reported_as_drift():
+    """The shk-2 shape. The fullstack scaffold's ``backend/main.py`` declares ``GET
+    /health`` as its readiness probe; the interface manifest declares only the business
+    endpoints. Without the exclusion this is a PERMANENT false positive on every
+    bind-mode cycle, and it aimed three shk-2 repairs at a file no producer may write."""
+    manifest = _manifest(_FIELDS, _ROUTES)
+    contents = {
+        "backend/main.py": _routes_src([("GET", "/health")]),
+        "backend/routes.py": _routes_src(_ROUTES),
+    }
+    assert [f.file for f in detect_interface_drift(manifest, contents)] == ["backend/main.py"]
+    assert detect_interface_drift(manifest, contents, frozen_paths=["backend/main.py"]) == []
+
+
+def test_excluding_a_frozen_file_does_not_suppress_drift_in_a_fill_slot():
+    """The exclusion must be surgical: real drift in a writable slot is still reported
+    when a frozen sibling is excluded in the same pass. A blanket 'any frozen path
+    present -> no findings' would silently disable the whole diagnosis."""
+    manifest = _manifest(_FIELDS, _ROUTES)
+    contents = {
+        "backend/main.py": _routes_src([("GET", "/health")]),
+        "backend/routes.py": _routes_src([("GET", "/runs"), ("POST", "/run")]),
+    }
+    findings = detect_interface_drift(manifest, contents, frozen_paths=["backend/main.py"])
+    assert [(f.file, f.extra) for f in findings] == [("backend/routes.py", ("POST /run",))]
+
+
+def test_frozen_exclusion_matches_on_canonical_path_identity():
+    """``./backend/main.py`` and ``backend//main.py`` are the same target (D7). Comparing
+    raw strings would let a frozen file re-enter the diagnosis through its own alias."""
+    manifest = _manifest(_FIELDS, _ROUTES)
+    for alias in ("./backend/main.py", "backend//main.py", "backend/./main.py"):
+        contents = {alias: _routes_src([("GET", "/health")])}
+        assert detect_interface_drift(manifest, contents, frozen_paths=["backend/main.py"]) == []
+
+
+def test_omitted_frozen_paths_preserve_prior_behavior():
+    """Author mode and unbound runs pass nothing — the diagnosis must be byte-identical
+    to its pre-#691 behavior there, not silently weakened."""
+    manifest = _manifest(_FIELDS, _ROUTES)
+    contents = {"backend/routes.py": _routes_src([("GET", "/runs"), ("POST", "/run")])}
+    assert detect_interface_drift(manifest, contents) == detect_interface_drift(
+        manifest, contents, frozen_paths=None
+    )
+    assert len(detect_interface_drift(manifest, contents, frozen_paths=[])) == 1
+
+
+def test_all_content_frozen_yields_no_findings_and_never_raises():
+    """A workspace of nothing but frozen files leaves an empty content map — the guard
+    must short-circuit rather than hand an empty dict to the analyzers."""
+    manifest = _manifest(_FIELDS, _ROUTES)
+    contents = {"backend/main.py": _routes_src([("GET", "/health")])}
+    assert detect_interface_drift(manifest, contents, frozen_paths=["backend/main.py"]) == []

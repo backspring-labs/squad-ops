@@ -108,7 +108,7 @@ class ScaffoldIntegrityEvidence:
         }
 
 
-def frozen_restore_evidence(
+def frozen_path_evidence(
     *,
     producer_task_id: str,
     producer_task_type: str,
@@ -117,15 +117,21 @@ def frozen_restore_evidence(
     normalized_path: str,
     attempted_content: Any,
     siblings_retained: int,
+    disposition: str = DISPOSITION_DROPPED,
     stage: str = "artifact_storage",
 ) -> ScaffoldIntegrityEvidence:
-    """Build the evidence for the current 2.4 case: a producer emitted a frozen path
-    and the enforcer **restored** it to the bound scaffold bytes.
+    """Build the evidence for the 2.4 case: a producer emitted a scaffold-frozen path.
+
+    ``disposition`` records what the enforcer did with it — ``dropped`` since #691
+    (the emission is discarded; the scaffold's own seeded artifact is the workspace's
+    copy and is selected independently by artifact type), ``restored`` for the
+    pre-#691 rewrite-to-scaffold-bytes behavior. The *attempt* is the violation
+    either way, which is why the kind and reason code do not vary.
 
     ``expected_sha256`` comes from the bound record's persisted hash for that path
     (D2 — the authority is the bound bytes, never a re-derivation). Frozen paths are
     normalized to the D7 canonical identity so the lookup matches ``normalized_path``,
-    exactly as the enforcer keys its restore map."""
+    exactly as the enforcer keys its frozen map."""
     frozen_sha = {
         n: fa.sha256 for fa in record.frozen if (n := normalize_ws_path(fa.path)) is not None
     }
@@ -142,7 +148,7 @@ def frozen_restore_evidence(
         manifest_hash=record.manifest_hash,
         expected_sha256=frozen_sha.get(normalized_path),
         attempted_sha256=sha256_of(attempted_content),
-        disposition=DISPOSITION_RESTORED,
+        disposition=disposition,
         siblings_retained=siblings_retained,
     )
 

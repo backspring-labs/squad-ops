@@ -1902,13 +1902,14 @@ class TestCorrectionRunnerStandalone:
         assert "testid_surface" not in captured[0].inputs
         assert "dom_testid_surface" not in captured[0].inputs
 
-    async def test_repair_frozen_emission_restored_and_signaled(self, cycle):
-        """SIP-0100 3.4b (pf-27/pf-30 regression): a repair emitting a scaffold-frozen
-        path has its content RESTORED before any landing point — the registry store
-        AND the repair_artifacts overlay both see scaffold bytes, never the clobber —
-        the enforcement is evidenced, and the restore instruction lands on the carry
-        for the next attempt (restore+signal). Un-enforced repair emissions were how
-        pf-27's drift signal got polluted and pf-30's repairs fought the scaffold."""
+    async def test_repair_frozen_emission_dropped_and_signaled(self, cycle):
+        """SIP-0100 3.4b (pf-27/pf-30 regression), #691: a repair emitting a
+        scaffold-frozen path has that artifact DROPPED before any landing point —
+        neither the registry store nor the repair_artifacts overlay ever carries it —
+        the enforcement is evidenced, and the instruction lands on the carry for the
+        next attempt. Un-enforced repair emissions were how pf-27's drift signal got
+        polluted and pf-30's repairs fought the scaffold; storing the enforced copy
+        under the producer's own task type was how shk-2's phantom drift was fed."""
         from pathlib import Path
 
         from squadops.capabilities.scaffold import InterfaceManifest
@@ -1963,20 +1964,21 @@ class TestCorrectionRunnerStandalone:
             scaffold_enforcement_carry=carry,
         )
 
-        # Overlay landing point: main.py restored to scaffold bytes, fill slot untouched.
+        # Overlay landing point: the frozen path is gone, the fill slot untouched.
         by_name = {a["name"]: a["content"] for a in protocol_result.repair_artifacts}
-        assert "from .routes import router" in by_name["backend/main.py"]
-        assert "TAMPERED" not in by_name["backend/main.py"]
+        assert "backend/main.py" not in by_name
         assert by_name["backend/routes.py"] == "def fill(): return 1\n"
 
-        # Registry landing point: the stored main.py bytes are the scaffold's, not the tamper.
+        # Registry landing point: nothing was stored for the frozen path — not the
+        # tamper, and not a scaffold-byte copy under the repair's task type either
+        # (that copy is what fed shk-2's phantom drift, #691).
         stored = {
             call.args[0].filename: call.args[1]
             for call in vault.store.call_args_list
             if call.args[0].filename in ("backend/main.py", "backend/routes.py")
         }
-        assert b"TAMPERED" not in stored["backend/main.py"]
-        assert b"from .routes import router" in stored["backend/main.py"]
+        assert "backend/main.py" not in stored
+        assert stored["backend/routes.py"] == b"def fill(): return 1\n"
 
         # Signal: exactly one instruction carried, naming the frozen path.
         assert len(carry) == 1
@@ -2033,6 +2035,77 @@ class TestCorrectionRunnerStandalone:
         assert len(captured) == 1
         evidence = captured[0].inputs["failure_evidence"]
         assert evidence["scaffold_enforcement"] == carry
+
+    async def test_frozen_file_never_becomes_interface_drift_evidence(self, cycle):
+        """#691 wiring seam: the correction protocol must pass the bound record's frozen
+        paths into drift detection. Without this the exclusion exists but is never
+        reached — a silent no-op — and the analyzer is handed the scaffold's own
+        ``GET /health`` probe as producer drift, which is what pinned shk-2's repair
+        target to a file no producer may write."""
+        from pathlib import Path
+
+        from squadops.capabilities.scaffold import InterfaceManifest
+
+        manifest = InterfaceManifest.from_yaml(
+            (
+                Path(__file__).parents[3] / "examples" / "03_group_run" / "interface_manifest.yaml"
+            ).read_text()
+        )
+        # The scaffold's frozen main.py: declares the readiness probe the manifest does
+        # not (and cannot) describe, plus a business route so the file is route-bearing.
+        frozen_main = (
+            "from fastapi import APIRouter\n"
+            "router = APIRouter()\n"
+            '@router.get("/health")\n'
+            "def health(): ...\n"
+        )
+        drifted_slot = (
+            "from fastapi import APIRouter\n"
+            "router = APIRouter()\n"
+            '@router.post("/run")\n'
+            "def create(): ...\n"
+        )
+        captured: list = []
+
+        def responder(envelope):
+            if envelope.task_type == "data.analyze_failure":
+                captured.append(envelope)
+            if envelope.task_type == "governance.correction_decision":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={
+                        "correction_path": "continue",
+                        "decision_rationale": "keep going",
+                        "affected_task_types": [],
+                    },
+                )
+            return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs={})
+
+        runner, _registry, _vault, _bus = self._make_runner(responder)
+        await runner.run_correction_protocol(
+            run_id="run_001",
+            cycle=cycle,
+            envelope=self._failed_envelope(),
+            result=TaskResult(task_id="task_failed", status="FAILED", error="bad"),
+            correction_attempts=0,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+            interface_manifest=manifest,
+            artifact_contents={
+                "backend/main.py": frozen_main,
+                "backend/routes.py": drifted_slot,
+            },
+            scaffold_enforcement_carry=[],
+        )
+
+        drift = captured[0].inputs["failure_evidence"].get("interface_drift", [])
+        # The frozen file is silent; the writable slot's real drift still reported.
+        assert [d["file"] for d in drift] == ["backend/routes.py"]
+        assert "POST /run" in drift[0]["extra"]
 
     async def test_failure_evidence_carries_contract_expectations(self, cycle):
         """pf-31 Fix A: the failed task's typed criteria reach the analyzer as

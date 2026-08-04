@@ -24,9 +24,13 @@ def _env(task_type="development.develop"):
     return SimpleNamespace(task_id="task-1", task_type=task_type)
 
 
-def test_frozen_emission_is_restored_others_pass_through():
-    """pf-26: a producer emitting the frozen main.py (tampered) has its content restored to the
-    scaffold bytes; a fill-slot emission (routes.py) passes through unchanged."""
+def test_frozen_emission_is_dropped_others_pass_through():
+    """pf-26: a producer emitting the frozen main.py (tampered) has that artifact dropped; a
+    fill-slot emission (routes.py) passes through unchanged.
+
+    #691: the drop replaced a restore-to-scaffold-bytes. Either way the producer cannot
+    clobber the scaffold, but the restore also STORED the scaffold's bytes under the
+    producer's task type, and that duplicate was read back as producer drift."""
     artifacts = [
         {"name": "backend/main.py", "content": "TAMPERED = 1\n"},
         {"name": "backend/routes.py", "content": "def real_route(): return 1\n"},
@@ -35,9 +39,8 @@ def test_frozen_emission_is_restored_others_pass_through():
         object(), artifacts, _record(), _env()
     )
     by_name = {a["name"]: a["content"] for a in enforced}
-    # main.py restored to the scaffold's frozen bytes (relative import), not the tamper.
-    assert "from .routes import router" in by_name["backend/main.py"]
-    assert by_name["backend/main.py"] != "TAMPERED = 1\n"
+    # The tamper never lands, and no copy of the frozen file is emitted under this producer.
+    assert "backend/main.py" not in by_name
     # routes.py (a fill slot) is untouched.
     assert by_name["backend/routes.py"] == "def real_route(): return 1\n"
     # 3.3: exactly one evidence record (the frozen violation), the sibling routes.py is retained.
@@ -46,7 +49,7 @@ def test_frozen_emission_is_restored_others_pass_through():
     assert ev.normalized_path == "backend/main.py"
     assert ev.violation_code == "frozen_path_emission"
     assert ev.kind == "attempted_emission"
-    assert ev.disposition == "restored"
+    assert ev.disposition == "dropped"
     assert ev.siblings_retained == 1  # routes.py kept
     assert ev.producer_task_id == "task-1"
     # attempted hash reflects the tamper; expected hash reflects the scaffold bytes — they differ.
@@ -55,12 +58,15 @@ def test_frozen_emission_is_restored_others_pass_through():
     assert ev.attempted_sha256 != ev.expected_sha256
 
 
-def test_conftest_is_frozen_and_restored_too():
-    """The SIP-0100 harness (conftest.py) is frozen — a producer can't overwrite it either."""
+def test_conftest_is_frozen_and_dropped_too():
+    """The SIP-0100 harness (conftest.py) is frozen — a producer can't overwrite it either.
+
+    A frozen-only response therefore accepts nothing, which is the honest outcome: the
+    producer emitted no file it was authorized to write."""
     enforced, evidence = DispatchedFlowExecutor._enforce_frozen_ownership(
         object(), [{"path": "conftest.py", "content": "import os  # tampered"}], _record(), _env()
     )
-    assert "client" in enforced[0]["content"]  # restored to the scaffold conftest (has the fixture)
+    assert enforced == []
     assert evidence[0].normalized_path == "conftest.py"
     assert evidence[0].siblings_retained == 0  # the only artifact in the response
 
@@ -125,17 +131,19 @@ def test_qa_undeclared_deliverable_is_allowed():
     assert enforced[0]["content"] == "# report\n"
 
 
-def test_qa_write_to_frozen_is_still_restored():
-    """3.1 does not weaken 2.4: a QA emission of frozen main.py is still restored, not dropped."""
+def test_qa_write_to_frozen_reports_the_frozen_violation_not_the_slot_one():
+    """3.1 does not weaken 2.4: a QA emission of frozen main.py is enforced as a FROZEN
+    violation, not reclassified as an unauthorized-slot one — the reason code is what a
+    correction reads to know the path is scaffold-owned and permanently unwritable."""
     enforced, evidence = DispatchedFlowExecutor._enforce_frozen_ownership(
         object(),
         [{"name": "backend/main.py", "content": "TAMPER\n"}],
         _record(),
         _env("qa.test"),
     )
-    assert "from .routes import router" in enforced[0]["content"]  # restored, not dropped
+    assert enforced == []
     assert evidence[0].violation_code == "frozen_path_emission"
-    assert evidence[0].disposition == "restored"
+    assert evidence[0].disposition == "dropped"
 
 
 def test_dev_write_to_its_own_fill_slot_is_not_dropped():
@@ -217,8 +225,8 @@ def test_builder_write_into_qa_namespace_is_dropped():
     assert evidence[0].violation_code == "unauthorized_slot_emission"
 
 
-def test_builder_undeclared_non_source_passes_and_frozen_still_restores():
-    """Docs/reports remain deliverables; frozen restoration is unchanged for builders."""
+def test_builder_undeclared_non_source_passes_and_frozen_still_drops():
+    """Docs/reports remain deliverables; frozen enforcement applies to builders too."""
     enforced, evidence = DispatchedFlowExecutor._enforce_frozen_ownership(
         object(),
         [
@@ -230,7 +238,7 @@ def test_builder_undeclared_non_source_passes_and_frozen_still_restores():
     )
     by_name = {a["name"]: a["content"] for a in enforced}
     assert by_name["deploy_notes.md"] == "# notes\n"
-    assert "from .routes import router" in by_name["backend/main.py"]  # restored
+    assert "backend/main.py" not in by_name  # dropped
     assert len(evidence) == 1 and evidence[0].violation_code == "frozen_path_emission"
 
 

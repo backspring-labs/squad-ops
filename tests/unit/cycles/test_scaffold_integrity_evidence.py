@@ -6,9 +6,9 @@ import hashlib
 
 from squadops.cycles.bound_scaffold_record import BoundScaffoldRecord, FrozenArtifact
 from squadops.cycles.scaffold_integrity_evidence import (
-    DISPOSITION_RESTORED,
+    DISPOSITION_DROPPED,
     KIND_ATTEMPTED_EMISSION,
-    frozen_restore_evidence,
+    frozen_path_evidence,
     sha256_of,
 )
 from squadops.cycles.task_outcome import ContractComplianceViolation
@@ -35,9 +35,9 @@ def _frozen(path: str, content: str) -> FrozenArtifact:
     )
 
 
-def test_frozen_restore_evidence_captures_the_full_record():
+def test_frozen_path_evidence_captures_the_full_record():
     rec = _record(_frozen("backend/main.py", "SCAFFOLD BYTES"))
-    ev = frozen_restore_evidence(
+    ev = frozen_path_evidence(
         producer_task_id="t1",
         producer_task_type="qa.test",
         record=rec,
@@ -48,7 +48,8 @@ def test_frozen_restore_evidence_captures_the_full_record():
     )
     assert ev.violation_code == ContractComplianceViolation.FROZEN_PATH_EMISSION
     assert ev.kind == KIND_ATTEMPTED_EMISSION
-    assert ev.disposition == DISPOSITION_RESTORED
+    # #691: the emission is DISCARDED, not rewritten to scaffold bytes and stored.
+    assert ev.disposition == DISPOSITION_DROPPED
     assert ev.producer_task_type == "qa.test"
     assert ev.attempted_path == "./backend/main.py"  # raw preserved
     assert ev.normalized_path == "backend/main.py"
@@ -66,7 +67,7 @@ def test_expected_hash_matches_via_normalized_frozen_path():
     """The record stores an un-normalized frozen path; the lookup must still resolve it so the
     expected hash is populated (else every restore would report expected=None)."""
     rec = _record(_frozen("./backend/main.py", "S"))  # stored with a leading ./
-    ev = frozen_restore_evidence(
+    ev = frozen_path_evidence(
         producer_task_id="t",
         producer_task_type="development.develop",
         record=rec,
@@ -81,7 +82,7 @@ def test_expected_hash_matches_via_normalized_frozen_path():
 def test_unhashable_attempted_content_yields_none_hash():
     """A structured artifact with no text/bytes body must not crash evidence building."""
     rec = _record(_frozen("backend/main.py", "S"))
-    ev = frozen_restore_evidence(
+    ev = frozen_path_evidence(
         producer_task_id="t",
         producer_task_type="development.develop",
         record=rec,
@@ -96,7 +97,7 @@ def test_unhashable_attempted_content_yields_none_hash():
 
 def test_to_dict_is_stable_and_complete():
     rec = _record(_frozen("conftest.py", "client fixture"))
-    d = frozen_restore_evidence(
+    d = frozen_path_evidence(
         producer_task_id="t",
         producer_task_type="qa.test",
         record=rec,
