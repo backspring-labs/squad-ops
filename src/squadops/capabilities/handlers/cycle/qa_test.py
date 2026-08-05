@@ -18,6 +18,7 @@ from squadops.capabilities.handlers.base import (
 )
 from squadops.capabilities.handlers.prompt_guard import _guard_prompt_size
 from squadops.cycles.check_registry import CHECK_FRONTEND_BUILD
+from squadops.cycles.emission_integrity import emission_stats as _emission_stats
 from squadops.cycles.verification_integrity import NotExecutedReason, ResultStatus
 from squadops.llm.exceptions import LLMError
 from squadops.llm.models import ChatMessage
@@ -974,6 +975,8 @@ class QATestHandler(_CycleTaskHandler):
             "summary": f"[qa] Generated {len(artifacts) - 1} test file(s){test_suffix}",
             "role": self._role,
             "artifacts": artifacts,
+            # #431: generated-vs-stored accounting for extraction-loss diagnosis
+            "emission_stats": _emission_stats(len(content), artifacts),
             "test_result": {
                 "executed": test_result.executed,
                 "exit_code": test_result.exit_code,

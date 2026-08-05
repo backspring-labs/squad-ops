@@ -95,6 +95,53 @@ def no_fenced_blocks_failure(
     }
 
 
+EMISSION_STATS_KEY = "emission_stats"
+
+# The #431 gap rule: extraction loss is *suspected* when a substantial response
+# retained almost nothing through extraction. Both bounds are deliberate:
+# responses under the floor legitimately extract small (a one-line config fix
+# wrapped in prose), and healthy responses retain well above the ceiling —
+# prose around fences typically leaves 40–80% retention, while the production
+# exhibit (cyc_8830cfc78a1e: ~7k generated tokens → ~800 stored bytes) sat
+# near 3%. The flag is a DIAGNOSIS input, never a gate: it tells the analyzer
+# the evidence itself is suspect, so a parser loss is not diagnosed as a
+# work-product failure and repaired by regenerating into the same loss.
+_EXTRACTION_LOSS_MIN_RESPONSE_CHARS = 2000
+_EXTRACTION_LOSS_MAX_RETENTION = 0.15
+
+
+def emission_stats(response_chars: int, artifacts: list[Any]) -> dict[str, Any]:
+    """Per-attempt generated-vs-stored accounting (#431).
+
+    Recorded on every build/repair emission — success and failure alike — so a
+    failed attempt's evidence can compare what the model produced against what
+    survived extraction. ``extracted_chars`` counts artifact content only
+    (the stored work product), never metadata.
+    """
+    extracted = sum(
+        len(a.get("content", ""))
+        for a in artifacts
+        if isinstance(a, dict) and isinstance(a.get("content"), str)
+    )
+    return {
+        "response_chars": int(response_chars),
+        "extracted_chars": extracted,
+        "artifact_count": sum(1 for a in artifacts if isinstance(a, dict)),
+    }
+
+
+def extraction_loss_suspected(stats: dict[str, Any]) -> bool:
+    """The #431 gap rule over an ``emission_stats`` record."""
+    try:
+        response_chars = int(stats.get("response_chars", 0))
+        extracted_chars = int(stats.get("extracted_chars", 0))
+    except (TypeError, ValueError):
+        return False
+    if response_chars < _EXTRACTION_LOSS_MIN_RESPONSE_CHARS:
+        return False
+    return extracted_chars < response_chars * _EXTRACTION_LOSS_MAX_RETENTION
+
+
 def emission_retry_reason_line(marker: dict[str, Any]) -> str:
     """One factual sentence describing the marker, for the retry-feedback
     template's ``reason_line`` variable (same deterministic-instruction genre

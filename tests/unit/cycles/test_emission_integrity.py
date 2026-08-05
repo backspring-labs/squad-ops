@@ -265,3 +265,34 @@ class TestUnresolvedImports:
         )
 
         assert unresolved_imports(tmp_path) == []
+
+
+class TestEmissionStats:
+    """#431 accounting: what the model produced vs what survived extraction."""
+
+    def test_counts_content_chars_only(self):
+        from squadops.cycles.emission_integrity import emission_stats
+
+        arts = [
+            {"name": "a.py", "content": "x" * 100, "type": "code"},
+            {"name": "b.md", "content": "y" * 50, "type": "document"},
+            {"name": "meta", "content": None},  # non-string content never counts
+            "not-a-dict",
+        ]
+        stats = emission_stats(4000, arts)
+        assert stats == {"response_chars": 4000, "extracted_chars": 150, "artifact_count": 3}
+
+    def test_gap_rule_boundaries(self):
+        from squadops.cycles.emission_integrity import extraction_loss_suspected
+
+        # the production exhibit shape: ~3% retention on a large response
+        assert extraction_loss_suspected({"response_chars": 28000, "extracted_chars": 800})
+        # healthy prose-around-fences retention
+        assert not extraction_loss_suspected({"response_chars": 28000, "extracted_chars": 21000})
+        # floor: small responses legitimately extract small
+        assert not extraction_loss_suspected({"response_chars": 1999, "extracted_chars": 0})
+        # exactly at the ratio is NOT loss (strict less-than)
+        assert not extraction_loss_suspected({"response_chars": 10000, "extracted_chars": 1500})
+        # malformed stats never crash the evidence path
+        assert not extraction_loss_suspected({"response_chars": "x"})
+        assert not extraction_loss_suspected({})

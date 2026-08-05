@@ -595,3 +595,71 @@ class TestDeriveFailureCategory:
         from squadops.cycles.failure_evidence import derive_failure_category
 
         assert derive_failure_category({}) == "evidence_unavailable"
+
+
+class TestExtractionLossSignal:
+    """#431: a partial extraction loss must be diagnosable as an
+    infrastructure fact — cyc_8830cfc78a1e burned three repair attempts
+    regenerating ~7k-token documents into an ~800-byte parser loss that
+    failure analysis called 'work_product'."""
+
+    def _envelope(self) -> TaskEnvelope:
+        return TaskEnvelope(
+            task_id="t-7",
+            agent_id="bob",
+            cycle_id="cyc_x",
+            pulse_id="pulse",
+            project_id="proj",
+            task_type="builder.assemble",
+            correlation_id="corr",
+            causation_id=None,
+            trace_id="trace",
+            span_id="span",
+            inputs={},
+            metadata={},
+        )
+
+    def _result(self, stats: dict) -> TaskResult:
+        return TaskResult(
+            task_id="t-7",
+            status="FAILED",
+            outputs={
+                "emission_stats": stats,
+                "validation_result": {
+                    "passed": False,
+                    "checks": [{"check": "expected_artifacts", "passed": False}],
+                },
+            },
+            error="validation failed",
+        )
+
+    def test_gap_sets_flag_category_and_own_artifact_locus(self):
+        # the production shape: ~28k generated chars, ~800 stored
+        stats = {"response_chars": 28000, "extracted_chars": 800, "artifact_count": 1}
+        evidence = build_failure_evidence(
+            self._envelope(), self._result(stats), prior_plan_deltas_count=0
+        )
+        assert evidence["emission_stats"] == stats
+        assert evidence["extraction_loss"] is True
+        assert evidence["failure_category"] == "extraction_loss"
+        # never behavioral repair: the emission never arrived whole
+        assert classify_failure_locus(evidence) == FailureLocus.OWN_ARTIFACT
+
+    def test_healthy_retention_stays_product_diagnosis(self):
+        stats = {"response_chars": 28000, "extracted_chars": 21000, "artifact_count": 4}
+        evidence = build_failure_evidence(
+            self._envelope(), self._result(stats), prior_plan_deltas_count=0
+        )
+        assert "extraction_loss" not in evidence
+        assert evidence["failure_category"] == "executed_and_failed"
+        # expected_artifacts failed → own-artifact via the existing check rule,
+        # NOT via the loss flag — the two signals stay independent
+        assert classify_failure_locus(evidence) == FailureLocus.OWN_ARTIFACT
+
+    def test_small_responses_never_trip_the_rule(self):
+        # a one-line config fix wrapped in prose legitimately extracts small
+        stats = {"response_chars": 600, "extracted_chars": 40, "artifact_count": 1}
+        evidence = build_failure_evidence(
+            self._envelope(), self._result(stats), prior_plan_deltas_count=0
+        )
+        assert "extraction_loss" not in evidence
