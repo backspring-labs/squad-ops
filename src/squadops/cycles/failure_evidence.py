@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from squadops.cycles.verification_integrity import ResultStatus
+
 if TYPE_CHECKING:
     from squadops.tasks.models import TaskEnvelope, TaskResult
 
@@ -72,7 +74,87 @@ def build_failure_evidence(
     emission_failure = result_outputs.get("emission_failure")
     if isinstance(emission_failure, dict):
         evidence["emission_failure"] = emission_failure
+    # #687: hoist app-side tracebacks off the probe rows to the evidence top
+    # level — the analyzer's prompt renders the evidence dict, and the stack
+    # trace is THE diagnosis for a behavioral failure (shk-2: two attempts
+    # burned on guessed causes while the NameError sat unread).
+    app_tracebacks = [
+        {"check": row.get("check", ""), "traceback": row["app_traceback"]}
+        for row in (validation_result.get("checks") or [])
+        if isinstance(row, dict) and row.get("app_traceback")
+    ]
+    if app_tracebacks:
+        evidence["app_tracebacks"] = app_tracebacks[:_MAX_APP_TRACEBACKS]
+    evidence["failure_category"] = derive_failure_category(evidence)
     return evidence
+
+
+# Bounded: distinct failing probes usually share one root cause; three
+# tracebacks names it without turning the evidence into a log dump.
+_MAX_APP_TRACEBACKS = 3
+
+
+class FailureEvidenceCategory:
+    """What kind of fact the failure evidence carries (1.5 A3 taxonomy).
+
+    The shared vocabulary of the #687+#431 pair — deterministic, derived from
+    machine signals already in the evidence, never from prose. The analyzer,
+    the locus classifier, and (via evidence persistence) replay all read the
+    same answer to "what actually failed here?", so an infrastructure failure
+    can never masquerade as a work-product failure just because the diagnostic
+    inputs sat downstream of the infrastructure that failed.
+
+    Constants-class pattern (``TaskOutcome``). Categories with no detectable
+    signal yet are declared, not guessed: ``EXTRACTION_LOSS`` gains its signal
+    with #431's emission stats; ``VERIFICATION_INFRA_FAILURE`` with the
+    runner-side reasons already in evidence rows.
+    """
+
+    # The app/product executed its checks and failed them — the ordinary case.
+    EXECUTED_AND_FAILED = "executed_and_failed"
+    # The app executed and errored — an app_traceback names the cause (#687).
+    APP_ERROR = "app_error"
+    # The emission was extracted but materially truncated (#431 gap rule).
+    EXTRACTION_LOSS = "extraction_loss"
+    # Zero extraction — no artifact was ever produced (#566 marker).
+    EMISSION_ABSENT = "emission_absent"
+    # The subject never booted; behavioral checks never ran.
+    SANDBOX_PREEXEC_FAILURE = "sandbox_preexec_failure"
+    # The verification machinery itself failed (runner/env), not the product.
+    VERIFICATION_INFRA_FAILURE = "verification_infra_failure"
+    # Nothing machine-readable survived to classify from.
+    EVIDENCE_UNAVAILABLE = "evidence_unavailable"
+
+
+def derive_failure_category(evidence: dict[str, Any]) -> str:
+    """Deterministic category from the evidence's machine signals (A3).
+
+    Precedence is the diagnosis-integrity order: infrastructure/emission facts
+    first (they invalidate downstream product signals — the #431 lesson),
+    then the app's own error, then ordinary check failures.
+    """
+    if isinstance(evidence.get("emission_failure"), dict):
+        return FailureEvidenceCategory.EMISSION_ABSENT
+    if evidence.get("extraction_loss") is True:
+        return FailureEvidenceCategory.EXTRACTION_LOSS
+    checks = (evidence.get("validation_result") or {}).get("checks") or []
+    rows = [r for r in checks if isinstance(r, dict)]
+    if evidence.get("app_tracebacks"):
+        return FailureEvidenceCategory.APP_ERROR
+    skipped_boot = [
+        r
+        for r in rows
+        if r.get("status") == ResultStatus.SKIPPED
+        and "subject did not boot" in str(r.get("reason", ""))
+    ]
+    if skipped_boot:
+        return FailureEvidenceCategory.SANDBOX_PREEXEC_FAILURE
+    if any(
+        r.get("passed") is False or r.get("status") in (ResultStatus.FAILED, ResultStatus.ERROR)
+        for r in rows
+    ):
+        return FailureEvidenceCategory.EXECUTED_AND_FAILED
+    return FailureEvidenceCategory.EVIDENCE_UNAVAILABLE
 
 
 class FailureLocus:

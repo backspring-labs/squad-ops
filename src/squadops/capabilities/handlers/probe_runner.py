@@ -25,6 +25,7 @@ qa.test handler wraps it in a thread.
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import os
 import socket
 import subprocess
@@ -42,6 +43,7 @@ from squadops.cycles.verification_contract import (
     capture_probe_values,
     resolve_probe_path,
 )
+from squadops.cycles.verification_integrity import ResultStatus
 
 # The one subject the default profile knows how to boot: a FastAPI backend. A probe whose
 # subject the active profile cannot boot is reported skipped (not-executed), never a false pass.
@@ -85,11 +87,19 @@ DEFAULT_PROFILE = ExecutionProfile(
 class ProbeOutcome:
     """The result of one probe. ``status`` is a ``ResultStatus`` literal (passed/failed/
     skipped) so it flows straight through ``normalize_task_checks``; ``skipped`` means
-    not-executed (boot failed / subject unbootable), never a silent pass."""
+    not-executed (boot failed / subject unbootable), never a silent pass.
+
+    ``app_traceback`` (#687): the subject's own stack trace for THIS probe's
+    failure, read from the stderr spool delta the request produced — the fact
+    the analyzer used to guess at (shk-2: two of five correction attempts
+    burned repairing guessed causes while the NameError sat in the spool).
+    Bounded to the last traceback block; ``None`` when the failure produced
+    none (assertion mismatches on healthy responses don't traceback)."""
 
     id: str
     status: str  # "passed" | "failed" | "skipped"
     reason: str | None = None
+    app_traceback: str | None = None
 
 
 def run_probes(
@@ -129,10 +139,21 @@ def probe_check_rows(outcomes: list[ProbeOutcome]) -> list[dict[str, Any]]:
     carries ``criterion_id`` on the status-bearing branch — so a probe row always traces back
     to its contract criterion in the rollup.
     """
-    return [
-        {"check": o.id, "status": o.status, "reason": o.reason, "criterion_id": o.id}
-        for o in outcomes
-    ]
+    rows: list[dict[str, Any]] = []
+    for o in outcomes:
+        row: dict[str, Any] = {
+            "check": o.id,
+            "status": o.status,
+            "reason": o.reason,
+            "criterion_id": o.id,
+        }
+        # #687: the app-side stack trace rides the evidence row so
+        # build_failure_evidence (and through it data.analyze_failure) reads
+        # the actual cause instead of inferring plausible classes.
+        if o.app_traceback:
+            row["app_traceback"] = o.app_traceback
+        rows.append(row)
+    return rows
 
 
 # --------------------------------------------------------------------------- #
@@ -161,7 +182,19 @@ def _run_backend_probes(
         # #651: sequenced probes share a capture context in contract order —
         # a create's captured id resolves the {run_id} in join/leave paths.
         context: dict[str, str] = {}
-        return [_run_one(base, p, profile, context) for p in probes]
+        results: list[ProbeOutcome] = []
+        for p in probes:
+            # #687: bracket each probe with the spool position so a failed
+            # probe's app-side stderr (uvicorn writes the exception traceback
+            # synchronously with the 500) is attributable to THAT probe.
+            spool_start = _spool_size(stderr_spool)
+            outcome = _run_one(base, p, profile, context)
+            if outcome.status == ResultStatus.FAILED:
+                tb = _read_failure_traceback(stderr_spool, spool_start)
+                if tb:
+                    outcome = dataclasses.replace(outcome, app_traceback=tb)
+            results.append(outcome)
+        return results
     finally:
         _terminate(proc)
         with contextlib.suppress(Exception):
@@ -213,6 +246,65 @@ def _boot_failure_reason(
     if tail:
         reason += f": {tail}"
     return reason
+
+
+def _spool_size(stderr_spool: Any) -> int:
+    """Current end position of the spool (the child appends behind us)."""
+    try:
+        stderr_spool.seek(0, os.SEEK_END)
+        return int(stderr_spool.tell())
+    except Exception:
+        return 0
+
+
+def _read_spool_from(stderr_spool: Any, start: int) -> str:
+    """Best-effort read of everything the subject wrote after ``start``."""
+    try:
+        stderr_spool.seek(start)
+        return stderr_spool.read().decode("utf-8", "replace")
+    except Exception:
+        return ""
+
+
+# Bounded per the issue: the last traceback only, never raw log dumps.
+_TRACEBACK_MAX_CHARS = 2000
+_TRACEBACK_MARKER = "Traceback (most recent call last):"
+
+# The subject's logger flushes the exception traceback asynchronously — the
+# 500 response lands ~50ms before the stderr write (measured). A short grace
+# poll on FAILED probes only; a failure with no traceback (assertion mismatch
+# on a healthy response) pays the full window once, bounded and rare.
+_TRACEBACK_GRACE_S = 0.5
+_TRACEBACK_POLL_S = 0.05
+
+
+def _read_failure_traceback(stderr_spool: Any, start: int) -> str | None:
+    """The failed probe's traceback from its spool delta, with a grace poll."""
+    deadline = time.monotonic() + _TRACEBACK_GRACE_S
+    while True:
+        tb = _extract_last_traceback(_read_spool_from(stderr_spool, start))
+        if tb is not None or time.monotonic() >= deadline:
+            return tb
+        time.sleep(_TRACEBACK_POLL_S)
+
+
+def _extract_last_traceback(text: str) -> str | None:
+    """The last complete traceback block in ``text``, newlines preserved.
+
+    Newlines are kept (unlike the boot-reason tail) because the analyzer
+    reads this as structured evidence — a collapsed one-liner loses the
+    frame that names the defect's file and line.
+    """
+    idx = text.rfind(_TRACEBACK_MARKER)
+    if idx == -1:
+        return None
+    block = text[idx:].strip()
+    if len(block) > _TRACEBACK_MAX_CHARS:
+        # Trim from the FRONT: the exception line and the deepest (app) frame
+        # sit at the tail — a head-kept cap would keep middleware frames and
+        # drop the one line that names the defect.
+        block = "…" + block[-(_TRACEBACK_MAX_CHARS - 1) :]
+    return block
 
 
 def _stderr_tail(stderr_spool: Any, limit: int = 500) -> str:

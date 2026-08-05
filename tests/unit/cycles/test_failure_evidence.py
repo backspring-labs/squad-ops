@@ -499,3 +499,99 @@ class TestRunnerAwareLocus:
             "suite_broken": None,
         }
         assert classify_failure_locus(self._evidence_with_check(row)) == FailureLocus.SUBJECT
+
+
+class TestAppTracebackHoist:
+    """#687: the app-side stack trace must reach the analyzer as structured
+    evidence — shk-2 burned two of five correction attempts on guessed causes
+    while the NameError traceback sat unread in the sandbox spool."""
+
+    def _envelope(self) -> TaskEnvelope:
+        return TaskEnvelope(
+            task_id="t-7",
+            agent_id="eve",
+            cycle_id="cyc_x",
+            pulse_id="pulse",
+            project_id="proj",
+            task_type="qa.test",
+            correlation_id="corr",
+            causation_id=None,
+            trace_id="trace",
+            span_id="span",
+            inputs={},
+            metadata={},
+        )
+
+    def _result_with_checks(self, checks: list[dict]) -> TaskResult:
+        return TaskResult(
+            task_id="t-7",
+            status="FAILED",
+            outputs={"validation_result": {"passed": False, "checks": checks}},
+            error="probe failure",
+        )
+
+    def test_tracebacks_hoisted_to_top_level(self):
+        tb = "Traceback (most recent call last):\n  ...\nNameError: name 'respones' is not defined"
+        checks = [
+            {"check": "vc-probe-runs", "status": "failed", "app_traceback": tb},
+            {"check": "vc-probe-health", "status": "passed"},
+        ]
+        evidence = build_failure_evidence(
+            self._envelope(), self._result_with_checks(checks), prior_plan_deltas_count=0
+        )
+        assert evidence["app_tracebacks"] == [{"check": "vc-probe-runs", "traceback": tb}]
+        assert evidence["failure_category"] == "app_error"
+
+    def test_traceback_count_bounded(self):
+        checks = [
+            {"check": f"vc-{i}", "status": "failed", "app_traceback": f"Traceback {i}"}
+            for i in range(5)
+        ]
+        evidence = build_failure_evidence(
+            self._envelope(), self._result_with_checks(checks), prior_plan_deltas_count=0
+        )
+        assert len(evidence["app_tracebacks"]) == 3  # bounded, never a log dump
+
+    def test_no_tracebacks_no_key(self):
+        checks = [{"check": "vc-probe-runs", "status": "failed", "reason": "status 404 != 200"}]
+        evidence = build_failure_evidence(
+            self._envelope(), self._result_with_checks(checks), prior_plan_deltas_count=0
+        )
+        assert "app_tracebacks" not in evidence
+        assert evidence["failure_category"] == "executed_and_failed"
+
+
+class TestDeriveFailureCategory:
+    """A3 taxonomy precedence: infrastructure/emission facts invalidate
+    downstream product signals — the #431 lesson made deterministic."""
+
+    def test_emission_absent_wins_over_everything(self):
+        from squadops.cycles.failure_evidence import derive_failure_category
+
+        evidence = {
+            "emission_failure": {"kind": "no_fenced_blocks"},
+            "app_tracebacks": [{"check": "x", "traceback": "Traceback ..."}],
+            "validation_result": {"checks": [{"check": "c", "passed": False}]},
+        }
+        assert derive_failure_category(evidence) == "emission_absent"
+
+    def test_boot_failure_is_sandbox_preexec(self):
+        from squadops.cycles.failure_evidence import derive_failure_category
+
+        evidence = {
+            "validation_result": {
+                "checks": [
+                    {
+                        "check": "vc-probe-runs",
+                        "status": "skipped",
+                        "reason": "subject did not boot (exited 1): ModuleNotFoundError",
+                    }
+                ]
+            }
+        }
+        assert derive_failure_category(evidence) == "sandbox_preexec_failure"
+
+    def test_empty_evidence_is_unavailable(self):
+        from squadops.cycles.failure_evidence import derive_failure_category
+
+        assert derive_failure_category({}) == "evidence_unavailable"
