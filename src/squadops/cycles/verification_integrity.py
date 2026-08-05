@@ -607,6 +607,7 @@ def aggregate_cycle_outcome(
     *,
     waived: Collection[WaivedCheck] = (),
     inert: Collection[str] = (),
+    replay: ReplayProvenance | None = None,
 ) -> CycleOutcome:
     """Pure cycle-level roll-up over per-run summaries (SIP-0096 §10).
 
@@ -712,4 +713,5 @@ def aggregate_cycle_outcome(
         waived=tuple(waived),
         criteria_verified=cycle_criteria_verified,
         criteria_total=cycle_criteria_total,
+        replay=replay,
     )

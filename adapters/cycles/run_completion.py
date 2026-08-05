@@ -343,6 +343,38 @@ class RunCompletion:
         )
         return summary
 
+    async def _replay_provenance_for_report(self, cycle: Cycle | None, run) -> Any:
+        """SIP-0101 Slice 3.4: provenance for the report marker, else ``None``.
+
+        Marked when the cycle declares replay and this run's workload matches the
+        source's — including a run that *failed* mid-replay, which is correct: its
+        prefix evidence is still inherited. Best-effort like the report itself;
+        never raises.
+        """
+        from squadops.cycles.replay import (
+            REPLAY_COMPATIBILITY_ELEMENTS,
+            parse_replay_declaration,
+        )
+        from squadops.cycles.verification_integrity import ReplayProvenance
+
+        try:
+            if cycle is None:
+                return None
+            replay_req = parse_replay_declaration(cycle.execution_overrides or {})
+            if replay_req is None:
+                return None
+            source_run = await self._cycle_registry.get_run(replay_req.source_run_id)
+            if run.workload_type != source_run.workload_type:
+                return None
+            return ReplayProvenance(
+                source_run_id=replay_req.source_run_id,
+                boundary_index=replay_req.boundary_index,
+                compatibility_set=REPLAY_COMPATIBILITY_ELEMENTS,
+            )
+        except Exception:
+            logger.warning("replay provenance resolution failed for report", exc_info=True)
+            return None
+
     async def generate_run_report(
         self,
         cycle_id: str,
@@ -370,6 +402,7 @@ class RunCompletion:
             plan=plan,
             pulse_report_entries=list(ledger.pulse_entries) if ledger else None,
             verification_summary=verification_summary,
+            replay=await self._replay_provenance_for_report(cycle, run),
         )
         content_bytes = content.encode("utf-8")
 

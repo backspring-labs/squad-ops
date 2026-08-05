@@ -14,7 +14,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from squadops.cycles.verification_integrity import CycleOutcome, aggregate_cycle_outcome
+from squadops.cycles.replay import (
+    REPLAY_COMPATIBILITY_ELEMENTS,
+    parse_replay_declaration,
+)
+from squadops.cycles.verification_integrity import (
+    CycleOutcome,
+    ReplayProvenance,
+    aggregate_cycle_outcome,
+)
 
 if TYPE_CHECKING:
     from squadops.ports.cycles.cycle_registry import CycleRegistryPort
@@ -26,6 +34,22 @@ async def resolve_cycle_outcome(registry: CycleRegistryPort, cycle_id: str) -> C
     ``waived`` (operator gate waivers, §6.5) and ``inert`` (chronic not-executed, §9)
     stay empty until their Phase-3 slices wire them — the roll-up shape carries them,
     but there is no source yet, so we pass nothing rather than fabricate.
+
+    SIP-0101 Slice 3.4: a replay-mode cycle's outcome carries ``ReplayProvenance``
+    derived from the immutable, create-time-validated declaration — same
+    derive-on-read philosophy as the rest of this module, so a replayed outcome
+    can never render unmarked regardless of which consumer asks.
     """
     summaries = await registry.list_run_verification_summaries(cycle_id)
-    return aggregate_cycle_outcome(summaries)
+    cycle = await registry.get_cycle(cycle_id)
+    replay_req = parse_replay_declaration(cycle.execution_overrides or {})
+    replay = (
+        ReplayProvenance(
+            source_run_id=replay_req.source_run_id,
+            boundary_index=replay_req.boundary_index,
+            compatibility_set=REPLAY_COMPATIBILITY_ELEMENTS,
+        )
+        if replay_req is not None
+        else None
+    )
+    return aggregate_cycle_outcome(summaries, replay=replay)
