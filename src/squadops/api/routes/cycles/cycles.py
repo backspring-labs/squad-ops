@@ -141,6 +141,68 @@ async def _run_create_preflight(
     return decision.warnings
 
 
+async def _validate_replay_declaration(
+    registry, body: CycleCreateRequest, applied_defaults: dict
+) -> None:
+    """SIP-0101 Slice 3.1/3.5 — create-time replay validation + interim gate.
+
+    Rejects (as a preflight rejection, the create path's 422 shape) unless the
+    declaration is well-formed, the source run and boundary checkpoint exist,
+    and source/target agree on every ``REPLAY_COMPATIBILITY_ELEMENTS`` entry —
+    strict equality, more conservative than §3.5's eventual per-boundary sets,
+    so Slice 4 relaxes an existing guard rather than adding a missing one. The
+    refusal names the failing element. Maintainer-only surface (the declaration
+    rides ``execution_overrides``); no-op for normal cycles.
+    """
+    from squadops.cycles.models import RunNotFoundError
+    from squadops.cycles.replay import (
+        check_replay_compatibility,
+        parse_replay_declaration,
+    )
+
+    try:
+        replay_req = parse_replay_declaration(body.execution_overrides or {})
+    except ValueError as e:
+        raise PreflightRejectedError(f"replay_declaration_invalid: {e}") from e
+    if replay_req is None:
+        return
+
+    try:
+        source_run = await registry.get_run(replay_req.source_run_id)
+    except RunNotFoundError as e:
+        raise PreflightRejectedError(
+            f"replay_source_missing: run {replay_req.source_run_id} not found"
+        ) from e
+    source_cycle = await registry.get_cycle(source_run.cycle_id)
+
+    checkpoints = await registry.list_checkpoints(replay_req.source_run_id)
+    if replay_req.boundary_index not in {c.checkpoint_index for c in checkpoints}:
+        raise PreflightRejectedError(
+            f"replay_boundary_missing: run {replay_req.source_run_id} has no "
+            f"checkpoint at boundary {replay_req.boundary_index} (pruned, or never "
+            "written — only Slice-2+ runs retain their phase boundaries)"
+        )
+
+    # Target resolved config mirrors Cycle.resolved_config() for the cycle
+    # about to be built (#426 seam — never applied_defaults alone).
+    target_resolved = {**applied_defaults, **(body.execution_overrides or {})}
+    source_resolved = source_cycle.resolved_config()
+    errors = check_replay_compatibility(
+        {
+            "prd_ref": source_cycle.prd_ref,
+            "build_profile": source_resolved.get("build_profile"),
+            "contract_ref": source_resolved.get("contract_ref"),
+        },
+        {
+            "prd_ref": body.prd_ref,
+            "build_profile": target_resolved.get("build_profile"),
+            "contract_ref": target_resolved.get("contract_ref"),
+        },
+    )
+    if errors:
+        raise PreflightRejectedError("; ".join(errors))
+
+
 @router.post("", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
 async def create_cycle(
     project_id: str, body: CycleCreateRequest, background_tasks: BackgroundTasks
@@ -185,6 +247,10 @@ async def create_cycle(
 
         # SIP-0095: create-time preflight — fail fast (422) before persist/dispatch.
         preflight_warnings = await _run_create_preflight(profile, applied_defaults)
+
+        # SIP-0101 Slice 3: replay declaration validated + interim compatibility
+        # gate, same fail-fast point (moves into the SIP-0095 preflight in Slice 4).
+        await _validate_replay_declaration(get_cycle_registry(), body, applied_defaults)
 
         config_hash = compute_config_hash(applied_defaults, body.execution_overrides)
 

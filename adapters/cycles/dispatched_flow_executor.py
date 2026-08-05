@@ -1265,8 +1265,15 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     f"after {len(completed_task_ids)} tasks"
                 )
 
-        # SIP-0079: Resume from checkpoint — restore prior state
+        # SIP-0079: Resume from checkpoint — restore prior state. Self-resume
+        # wins over replay: a replayed run that checkpointed and crashed resumes
+        # its OWN progress (which already contains the translated prefix).
         checkpoint = await self._cycle_registry.get_latest_checkpoint(run_id)
+        if checkpoint is None:
+            # SIP-0101 Slice 3: a replay-mode cycle's matching run restores the
+            # SOURCE run's boundary checkpoint instead (translated into this
+            # run's task-id namespace); None for normal cycles.
+            checkpoint = await self._resolve_replay_checkpoint(cycle, run_id)
         if checkpoint:
             await self._restore_checkpoint_state(
                 checkpoint,
@@ -1911,6 +1918,48 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 **extra_inputs,
             },
         )
+
+    async def _resolve_replay_checkpoint(self, cycle: Cycle, run_id: str) -> RunCheckpoint | None:
+        """SIP-0101 Slice 3.2/3.3: the source boundary checkpoint for a replay run.
+
+        ``None`` unless the cycle declares replay AND this run's workload matches
+        the source run's (other runs in a replay cycle's sequence execute
+        normally). Fails closed — a declared boundary that cannot be resolved or
+        translated raises ``_ExecutionError`` rather than silently executing the
+        full plan as if earned.
+        """
+        from squadops.cycles.replay import (
+            parse_replay_declaration,
+            translate_checkpoint_for_replay,
+        )
+
+        try:
+            replay_req = parse_replay_declaration(cycle.execution_overrides or {})
+        except ValueError as e:
+            # Validated at create — reaching here means the declaration mutated
+            # or predates validation; never guess.
+            raise _ExecutionError(f"replay declaration invalid at execution: {e}") from e
+        if replay_req is None:
+            return None
+
+        source_run = await self._cycle_registry.get_run(replay_req.source_run_id)
+        run = await self._cycle_registry.get_run(run_id)
+        if run.workload_type != source_run.workload_type:
+            return None
+
+        source_cps = await self._cycle_registry.list_checkpoints(replay_req.source_run_id)
+        source_cp = next(
+            (c for c in source_cps if c.checkpoint_index == replay_req.boundary_index), None
+        )
+        if source_cp is None:
+            raise _ExecutionError(
+                f"replay boundary {replay_req.boundary_index} not found on "
+                f"{replay_req.source_run_id} — pruned since create-time validation?"
+            )
+        try:
+            return translate_checkpoint_for_replay(source_cp, run_id)
+        except ValueError as e:
+            raise _ExecutionError(str(e)) from e
 
     async def _restore_checkpoint_state(
         self,

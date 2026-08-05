@@ -29,8 +29,19 @@ def _run_summary(verdict, *, verified=(), failed=()) -> RunVerificationSummary:
     )
 
 
+def _normal_cycle():
+    # a real Cycle always carries a dict here; a bare AsyncMock's truthy
+    # attribute would read as a malformed replay declaration (SIP-0101)
+    from unittest.mock import MagicMock
+
+    cycle = MagicMock()
+    cycle.execution_overrides = {}
+    return cycle
+
+
 async def test_rolls_up_persisted_summaries_worst_verdict_wins():
     registry = AsyncMock()
+    registry.get_cycle.return_value = _normal_cycle()
     registry.list_run_verification_summaries = AsyncMock(
         return_value=[
             _run_summary(RunVerdict.ACCEPTED, verified=["tests_pass"]),
@@ -49,6 +60,7 @@ async def test_rolls_up_persisted_summaries_worst_verdict_wins():
 
 async def test_empty_cycle_rolls_up_to_accepted():
     registry = AsyncMock()
+    registry.get_cycle.return_value = _normal_cycle()
     registry.list_run_verification_summaries = AsyncMock(return_value=[])
 
     outcome = await resolve_cycle_outcome(registry, "cyc_x")
