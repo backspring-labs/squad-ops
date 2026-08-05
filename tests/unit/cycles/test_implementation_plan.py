@@ -1333,3 +1333,76 @@ summary:
     def test_builderless_plan_needs_no_build_profile(self):
         plan = ImplementationPlan.from_yaml(VALID_MANIFEST_YAML)
         assert plan.validate_build_config({}) == []
+
+
+class TestValidateCheckApplicability:
+    """#715: a qa.test task whose declared artifacts pytest cannot discover
+    fails required tests_pass on any possible content (shk-4: three correction
+    rounds, a placebo .js stub, and silently narrowed coverage — for a defect
+    visible at authoring time)."""
+
+    _CONFIG = {"required_checks": ["tests_pass", "frontend_build"]}
+
+    @staticmethod
+    def _plan_with_qa_artifacts(artifacts_yaml: str) -> ImplementationPlan:
+        return ImplementationPlan.from_yaml(
+            "version: 1\n"
+            "project_id: group_run\n"
+            "cycle_id: cyc_test\n"
+            "prd_hash: abc123\n"
+            "tasks:\n"
+            "  - task_index: 0\n"
+            "    task_type: qa.test\n"
+            "    role: qa\n"
+            '    focus: "Integration smoke"\n'
+            '    description: "Verify the stack"\n'
+            f"    expected_artifacts:{artifacts_yaml}\n"
+            "    depends_on: []\n"
+            "summary:\n"
+            "  total_tasks: 1\n"
+        )
+
+    def test_js_only_qa_task_rejected(self):
+        """The shk-4 task-6 shape must be caught at authoring."""
+        plan = self._plan_with_qa_artifacts('\n      - "backend/tests/test_integration.js"')
+        errors = plan.validate_check_applicability(self._CONFIG)
+        assert len(errors) == 1
+        assert "pytest-discoverable" in errors[0]
+        assert "test_integration.js" in errors[0]
+
+    def test_not_required_means_no_rule(self):
+        plan = self._plan_with_qa_artifacts('\n      - "backend/tests/test_integration.js"')
+        assert plan.validate_check_applicability({"required_checks": ["frontend_build"]}) == []
+        assert plan.validate_check_applicability({}) == []
+
+    @pytest.mark.parametrize(
+        "artifacts_yaml",
+        [
+            '\n      - "backend/tests/test_api.py"',
+            '\n      - "backend/tests/api_test.py"',
+            # Mixed declaration — the shape shk-4's repair invented off-plan,
+            # legal to declare up front: the .py twin satisfies discovery.
+            '\n      - "backend/tests/test_integration.js"\n      - "backend/tests/test_integration.py"',
+        ],
+    )
+    def test_discoverable_artifact_satisfies(self, artifacts_yaml):
+        plan = self._plan_with_qa_artifacts(artifacts_yaml)
+        assert plan.validate_check_applicability(self._CONFIG) == []
+
+    def test_verification_only_task_exempt(self):
+        plan = self._plan_with_qa_artifacts(" []")
+        assert plan.validate_check_applicability(self._CONFIG) == []
+
+    def test_dev_tasks_not_subject(self):
+        """tests_pass judges qa emissions; a dev task shipping a .js view is fine."""
+        plan = ImplementationPlan.from_yaml(VALID_MANIFEST_YAML)
+        assert plan.validate_check_applicability(self._CONFIG) == []
+
+    def test_lookalike_names_are_not_discoverable(self):
+        """conftest.py and tests.py match neither pytest default pattern — a
+        qa task declaring only those has the same unwinnable shape."""
+        plan = self._plan_with_qa_artifacts(
+            '\n      - "backend/tests/conftest.py"\n      - "backend/tests/tests.py"'
+        )
+        errors = plan.validate_check_applicability(self._CONFIG)
+        assert len(errors) == 1

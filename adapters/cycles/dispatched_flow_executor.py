@@ -2823,6 +2823,15 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     # emission) — provable plan-wide right here, and a system
                     # rejection re-rolls framing for free (#522).
                     errors.extend(parsed_plan.validate_unique_expected_artifacts())
+                    # #715: a qa.test task whose declared artifacts can never
+                    # satisfy required tests_pass fails on any content — shk-4
+                    # burned three correction rounds on one. #426: builder
+                    # tasks without a configured build_profile die at the #291
+                    # dispatch guard — this seam (the one multi-workload
+                    # cycles actually traverse) rejects both for a free
+                    # framing re-roll.
+                    errors.extend(parsed_plan.validate_check_applicability(cycle.resolved_config()))
+                    errors.extend(parsed_plan.validate_build_config(cycle.resolved_config()))
             elif ref.filename == "interface_manifest.yaml" or artifact_type == "interface_manifest":
                 interface_content = content_bytes.decode(errors="replace")
 
@@ -3042,6 +3051,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # refused by generate_task_plan anyway, but only after the gate
         # approved the plan and the implementation run was admitted.
         errors += plan.validate_build_config(cycle.resolved_config())
+        # #715: qa.test artifacts that required tests_pass can never judge.
+        errors += plan.validate_check_applicability(cycle.resolved_config())
         if errors:
             raise _ExecutionError(
                 f"Plan rejected at gate(s) {gate_names}: the materialized implementation "

@@ -85,6 +85,12 @@ def _importable_module_surface(paths: frozenset[str] | set[str]) -> frozenset[st
     return frozenset(modules)
 
 
+def _pytest_discoverable(path: str) -> bool:
+    """True when pytest's default discovery would collect this file (#715)."""
+    name = PurePosixPath(path).name
+    return name.endswith(".py") and (name.startswith("test_") or name.endswith("_test.py"))
+
+
 def planner_build_task_types(*, offer_builder: bool) -> set[str]:
     """Build task types the plan-authoring prompt may offer.
 
@@ -338,6 +344,43 @@ class ImplementationPlan:
         for task in self.tasks:
             if task.role not in available_roles:
                 errors.append(f"Task {task.task_index}: role '{task.role}' not in profile")
+        return errors
+
+    def validate_check_applicability(self, resolved_config: dict) -> list[str]:
+        """#715: a ``qa.test`` task's declared artifacts must be able to satisfy the
+        required check that judges them.
+
+        ``tests_pass`` judges a qa task's emission by pytest discovery, so a task
+        declaring only non-discoverable artifacts (shk-4's ``test_integration.js``)
+        fails on **any possible content** — the declared shape, not the work, is the
+        failure. The correction loop cannot fix a shape the plan forbids changing:
+        shk-4 burned three rounds and ~2h before escaping via a placebo ``.js`` stub
+        plus an undeclared ``.py`` twin, with the planned coverage silently narrowed
+        under a green verdict. Statically visible right here, at authoring time.
+
+        Verification-only tasks (``expected_artifacts: []``) are exempt — they emit
+        nothing for pytest to judge. Only applies when ``tests_pass`` is actually
+        required by the resolved config.
+
+        Returns:
+            List of validation error strings (empty = valid).
+        """
+        if "tests_pass" not in (resolved_config.get("required_checks") or ()):
+            return []
+        errors: list[str] = []
+        for task in self.tasks:
+            if task.task_type != "qa.test" or not task.expected_artifacts:
+                continue
+            if any(_pytest_discoverable(path) for path in task.expected_artifacts):
+                continue
+            errors.append(
+                f"Task {task.task_index} ({task.focus}): qa.test declares "
+                f"{task.expected_artifacts} but no pytest-discoverable file "
+                "(test_*.py / *_test.py) — the required tests_pass check judges this "
+                "task's emission by pytest discovery, so it fails for any possible "
+                "content. Include a test_*.py among the expected artifacts, or make "
+                "this a verification-only task (expected_artifacts: [])"
+            )
         return errors
 
     def validate_build_config(self, resolved_config: dict) -> list[str]:

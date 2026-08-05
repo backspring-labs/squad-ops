@@ -1,6 +1,6 @@
 ---
 template_id: request.plan_authoring_rules_appendix
-version: "1"
+version: "2"
 required_variables: []
 ---
 ## PLAN SHAPE RULES (authoritative — a plan that breaks one is rejected)
@@ -46,6 +46,14 @@ of content.
 
 **roles-must-exist** — Every task's `role` is one the squad profile actually staffs. A
 task assigned to an absent role can never be dispatched.
+
+**qa-tests-pytest-discoverable** — When the `tests_pass` check is required, every
+`qa.test` task that declares expected artifacts includes at least one pytest-discoverable
+file (`test_*.py` or `*_test.py`). The suite check judges a qa task's emission by pytest
+discovery, so a task declaring only a script pytest cannot collect (e.g. a `.js` smoke
+runner) fails on any possible content — the declared shape, not the work, is the failure.
+Express non-pytest verification through a pytest wrapper, or through the acceptance
+criteria of a verification-only task.
 
 A verification-only task is legitimate and common: declare `expected_artifacts: []` and
 express what it checks through its acceptance criteria.
