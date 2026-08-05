@@ -560,6 +560,41 @@ class VerificationContract:
         lines.extend(str(exp) for exp in self.behavioral.suite.coverage_expectations)
         return lines
 
+    def pinned_endpoint_statuses(self) -> dict[tuple[str, str], tuple[int, ...]]:
+        """Per-endpoint pinned statuses from probes (#629): ``(METHOD, /path) →
+        sorted statuses``. A rejection-case probe unions into the same
+        endpoint's set — ``POST /runs`` pinned by a create probe (201) and a
+        blank-input probe (422) yields ``{201, 422}``, so a suite asserting
+        either is contract-correct. Three readers: the
+        ``contract_assertions_match`` injection params, the plan-prose status
+        lint, and tests — one derivation so they cannot drift."""
+        from squadops.cycles.acceptance_check_spec import normalize_route
+
+        pinned: dict[tuple[str, str], set[int]] = {}
+        for probe in self.behavioral.probes:
+            method = str(probe.request.get("method", "")).upper()
+            path = normalize_route(str(probe.request.get("path", "")))
+            status = probe.expect.get("status")
+            if not (method and path) or not isinstance(status, int):
+                continue
+            pinned.setdefault((method, path), set()).add(status)
+        return {key: tuple(sorted(statuses)) for key, statuses in pinned.items()}
+
+    def allowed_error_statuses(self) -> tuple[int, ...]:
+        """Suite-wide allowed error statuses (#629): every 4xx/5xx a probe pins
+        plus every 4xx/5xx named in ``coverage_expectations`` (the error-code→
+        status map is authored prose — statuses are extracted, codes ignored).
+        A suite asserting one of these anywhere is exercising a contract-known
+        error path, never a divergence."""
+        statuses: set[int] = set()
+        for probe in self.behavioral.probes:
+            status = probe.expect.get("status")
+            if isinstance(status, int) and status >= 400:
+                statuses.add(status)
+        for exp in self.behavioral.suite.coverage_expectations:
+            statuses.update(int(m) for m in re.findall(r"\b([45]\d{2})\b", str(exp)))
+        return tuple(sorted(statuses))
+
     # --- linting ---------------------------------------------------------- #
 
     def lint(self) -> list[str]:

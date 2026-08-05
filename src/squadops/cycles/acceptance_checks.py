@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Any
 
 from squadops.cycles.acceptance_check_spec import (
+    CHECK_CONTRACT_ASSERTIONS,
     CHECK_ENDPOINT_DEFINED,
     CHECK_SPECS,
     CHECK_UNDEFINED_NAMES,
@@ -38,6 +39,7 @@ from squadops.cycles.acceptance_check_spec import (
     argv_matches_safelist,
     normalize_route,
     parse_method_path,
+    parse_method_path_status,
 )
 
 logger = logging.getLogger(__name__)
@@ -375,6 +377,180 @@ class UndefinedNamesCheck(BaseCheck):
                 reason=f"undefined name(s): {names}",
                 file=str(params["file"]),
                 undefined=undefined,
+            )
+        return CheckOutcome.passed(file=str(params["file"]))
+
+
+def _client_http_call(expr: ast.expr) -> tuple[str, str] | None:
+    """``(METHOD, path)`` when ``expr`` is a client-style HTTP call with a string-
+    literal path — ``client.post("/runs", ...)``, any receiver, ``await`` unwrapped —
+    else ``None``. Style-immune by construction: the receiver is whatever name the
+    suite uses (``harness_boundary`` guarantees it is the scaffold client)."""
+    if isinstance(expr, ast.Await):
+        expr = expr.value
+    if not (isinstance(expr, ast.Call) and isinstance(expr.func, ast.Attribute)):
+        return None
+    if expr.func.attr.lower() not in HTTP_METHODS or not expr.args:
+        return None
+    arg0 = expr.args[0]
+    if isinstance(arg0, ast.Constant) and isinstance(arg0.value, str):
+        return expr.func.attr.upper(), arg0.value
+    return None
+
+
+def _assert_status_triples(
+    node: ast.Assert, bindings: list[tuple[str, int, tuple[str, str]]]
+) -> list[tuple[str, str, int, int]]:
+    """``(METHOD, path, asserted_status, lineno)`` rows an assert deterministically
+    pins: ``assert <resp>.status_code == <int>`` (either operand order, ``Eq`` only),
+    where ``<resp>`` is a name bound from a client call earlier in the function or
+    the client call itself. Anything else is unextractable — out of scope (#629:
+    deterministic where assertions are extractable, never a guess)."""
+    test = node.test
+    if not (
+        isinstance(test, ast.Compare) and len(test.ops) == 1 and isinstance(test.ops[0], ast.Eq)
+    ):
+        return []
+    left, right = test.left, test.comparators[0]
+    if isinstance(right, ast.Constant) and isinstance(right.value, int):
+        attr, status = left, right.value
+    elif isinstance(left, ast.Constant) and isinstance(left.value, int):
+        attr, status = right, left.value
+    else:
+        return []
+    if not (isinstance(attr, ast.Attribute) and attr.attr == "status_code"):
+        return []
+    base = attr.value
+    call = _client_http_call(base)
+    if call is None and isinstance(base, ast.Name):
+        # latest binding of this name before the assert (source order, not walk order)
+        prior = [b for name, line, b in bindings if name == base.id and line < node.lineno]
+        call = prior[-1] if prior else None
+    if call is None:
+        return []
+    return [(call[0], call[1], status, node.lineno)]
+
+
+def _extract_status_assertions(tree: ast.AST) -> list[tuple[str, str, int, int]]:
+    """Every deterministically-extractable ``(METHOD, path, status, lineno)`` a
+    suite asserts, per function (response bindings do not leak across tests)."""
+    out: list[tuple[str, str, int, int]] = []
+    for func in (
+        n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)
+    ):
+        bindings: list[tuple[str, int, tuple[str, str]]] = []
+        nodes = sorted(
+            (n for n in ast.walk(func) if isinstance(n, ast.Assign | ast.Assert)),
+            key=lambda n: n.lineno,
+        )
+        for node in nodes:
+            if isinstance(node, ast.Assign):
+                if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+                    call = _client_http_call(node.value)
+                    if call is not None:
+                        bindings.append((node.targets[0].id, node.lineno, call))
+            else:
+                out.extend(_assert_status_triples(node, bindings))
+    return out
+
+
+def _prefixed_pinned_path(
+    method: str, path: str, pinned: dict[tuple[str, str], set[int]]
+) -> str | None:
+    """The pinned path ``path`` reaches through an undeclared prefix, or ``None``.
+
+    pf-54: three of five suite versions prefixed every call with ``/api`` — the
+    proxy-owned prefix that must not appear in backend paths — making the status
+    rule blind (no pinned match) while every call deterministically 404s against
+    the harness client. A request path that is NOT itself pinned but ends with a
+    pinned path at a segment boundary (``/api`` + ``/runs``) is that violation."""
+    for (m, p), _statuses in pinned.items():
+        if m == method and path != p and path.endswith(p):
+            return p
+    return None
+
+
+@register_check(CHECK_CONTRACT_ASSERTIONS)
+class ContractAssertionsMatchCheck(BaseCheck):
+    """Suite status assertions diffed against the contract's pinned statuses (#629, 1.5 A6/D2).
+
+    pf-54: the contract pinned ``POST /runs → 201``; all five authored suite versions
+    asserted 200-on-create, and five dev-chain repairs of a contract-correct app were
+    honestly rejected against a suite the contract says is wrong — the full correction
+    budget burned on an unwinnable objective. Layer 1 (#629's authoring injection)
+    states the pins to the author; this check is the guarantee.
+
+    A violation requires an exact pinned ``(METHOD, path)`` whose asserted status is
+    outside pinned ∪ allowed-error — asserting 422 after a blank-input POST is
+    contract-correct, never flagged — or a pinned path requested through an
+    undeclared prefix. Unextractable assertions and non-contract paths are out of
+    scope by design: a false positive in a BLOCKING check recreates the unwinnable
+    loop this kills.
+    """
+
+    async def evaluate(
+        self,
+        params: dict[str, Any],
+        workspace_root: Path,
+        *,
+        stack: str | None = None,
+    ) -> CheckOutcome:
+        try:
+            file_path = _safe_resolve(params["file"], workspace_root)
+        except _SafetyError as exc:
+            return CheckOutcome.error(reason=exc.reason)
+        if (skip := _unparseable_source_skip(file_path)) is not None:
+            return skip
+        if not file_path.is_file():
+            return CheckOutcome.failed(reason="file_not_found", file=str(params["file"]))
+        try:
+            source = file_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return CheckOutcome.error(reason="file_unreadable")
+        try:
+            tree = ast.parse(source, filename=str(file_path))
+        except SyntaxError:
+            # The syntax gate owns unparseable emissions (#605 sibling semantics).
+            return CheckOutcome.skipped(reason="unsupported_stack_or_syntax")
+
+        pinned: dict[tuple[str, str], set[int]] = {}
+        for token in params.get("endpoints") or []:
+            parsed = parse_method_path_status(str(token))
+            if parsed is not None:
+                pinned.setdefault((parsed[0], parsed[1]), set()).add(parsed[2])
+        if not pinned:
+            # The injection only fires with pinned endpoints in hand — an empty
+            # or unparseable param set is an evaluator-contract bug (RC-9a).
+            return CheckOutcome.error(reason="invalid_endpoints_param")
+        allowed_errors = {
+            int(s) for s in params.get("allowed_error_statuses") or [] if str(s).isdigit()
+        }
+
+        violations: list[str] = []
+        for method, raw_path, status, lineno in _extract_status_assertions(tree):
+            path = normalize_route(raw_path)
+            statuses = pinned.get((method, path))
+            if statuses is not None:
+                if status not in statuses | allowed_errors:
+                    violations.append(
+                        f"line {lineno}: {method} {path} asserts {status}; "
+                        f"contract pins {sorted(statuses | allowed_errors)}"
+                    )
+            else:
+                hit = _prefixed_pinned_path(method, path, pinned)
+                if hit is not None:
+                    violations.append(
+                        f"line {lineno}: {method} {path} requests pinned path "
+                        f"{hit} through an undeclared prefix"
+                    )
+        if violations:
+            shown = violations[:5]
+            if len(violations) > len(shown):
+                shown.append(f"+{len(violations) - len(shown)} more")
+            return CheckOutcome.failed(
+                reason="; ".join(shown),
+                file=str(params["file"]),
+                violations=len(violations),
             )
         return CheckOutcome.passed(file=str(params["file"]))
 
