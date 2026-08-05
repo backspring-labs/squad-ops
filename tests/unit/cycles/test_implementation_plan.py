@@ -550,14 +550,14 @@ class TestPlannerBuildTaskTypes:
     """
 
     def test_builder_squad_gets_full_known_set(self):
-        assert planner_build_task_types(has_builder=True) == {
+        assert planner_build_task_types(offer_builder=True) == {
             "development.develop",
             "qa.test",
             "builder.assemble",
         }
 
     def test_builderless_squad_drops_builder_assemble_but_keeps_build_path(self):
-        offered = planner_build_task_types(has_builder=False)
+        offered = planner_build_task_types(offer_builder=False)
         # The offending capability is gone...
         assert "builder.assemble" not in offered
         # ...but the dev/qa build path remains, so builder-less squads still build.
@@ -566,10 +566,10 @@ class TestPlannerBuildTaskTypes:
     def test_result_is_a_fresh_set_callers_cannot_corrupt_constants(self):
         """Returning the module constant itself would let one caller's mutation
         leak into the next cycle's offered task types."""
-        result = planner_build_task_types(has_builder=True)
+        result = planner_build_task_types(offer_builder=True)
         result.add("bogus.capability")
-        assert "bogus.capability" not in planner_build_task_types(has_builder=True)
-        assert "bogus.capability" not in planner_build_task_types(has_builder=False)
+        assert "bogus.capability" not in planner_build_task_types(offer_builder=True)
+        assert "bogus.capability" not in planner_build_task_types(offer_builder=False)
 
 
 # ---------------------------------------------------------------------------
@@ -1283,3 +1283,53 @@ class TestValidateExpectedArtifactShapes:
             expected="[]",
         )
         assert empty.validate_expected_artifact_shapes() == []
+
+
+class TestValidateBuildConfig:
+    """#426: builder tasks without a configured build_profile die at
+    generate_task_plan's #291 guard — but only after the gate approved the
+    plan and a full run was admitted. This rule rejects them at the gate."""
+
+    BUILDER_MANIFEST_YAML = """\
+version: 1
+project_id: group_run
+cycle_id: cyc_test
+prd_hash: abc123
+
+tasks:
+  - task_index: 0
+    task_type: development.develop
+    role: dev
+    focus: "Backend"
+    description: "Create backend"
+    expected_artifacts:
+      - "backend/main.py"
+    depends_on: []
+
+  - task_index: 1
+    task_type: builder.assemble
+    role: builder
+    focus: "Package"
+    description: "Assemble packaging"
+    expected_artifacts:
+      - "qa_handoff.md"
+    depends_on: [0]
+
+summary:
+  total_tasks: 2
+"""
+
+    def test_builder_task_without_build_profile_rejected(self):
+        plan = ImplementationPlan.from_yaml(self.BUILDER_MANIFEST_YAML)
+        errors = plan.validate_build_config({"implementation_plan": True})
+        assert len(errors) == 1
+        assert "Task(s) 1" in errors[0]
+        assert "build_profile" in errors[0]
+
+    def test_builder_task_with_build_profile_passes(self):
+        plan = ImplementationPlan.from_yaml(self.BUILDER_MANIFEST_YAML)
+        assert plan.validate_build_config({"build_profile": "python_cli_builder"}) == []
+
+    def test_builderless_plan_needs_no_build_profile(self):
+        plan = ImplementationPlan.from_yaml(VALID_MANIFEST_YAML)
+        assert plan.validate_build_config({}) == []

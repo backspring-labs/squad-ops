@@ -1143,9 +1143,14 @@ class TestProduceManifestRetry:
         assert ctx.ports.llm.chat_stream_with_usage.await_count == 1
 
     async def test_builder_guidance_added_when_builder_role_present(self):
-        """When profile includes builder, prompt directs Max to use builder.assemble."""
+        """When profile includes builder AND build_profile is configured (#426),
+        prompt directs Max to use builder.assemble."""
         ctx = _make_context(_VALID_MANIFEST_YAML)
-        await self._call_produce(ctx, profile_roles=["dev", "qa", "lead", "builder"])
+        await self._call_produce(
+            ctx,
+            profile_roles=["dev", "qa", "lead", "builder"],
+            resolved_config={"build_profile": "python_cli_builder"},
+        )
 
         user_prompt = ctx.ports.llm.chat_stream_with_usage.await_args_list[0].args[0][1].content
         assert "`builder.assemble`" in user_prompt

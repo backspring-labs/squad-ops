@@ -634,7 +634,7 @@ def generate_task_plan(
     # SIP-0093 PR 93.3: framing workload threads plan_authoring_contributors
     # through resolved_config so the proposer steps are added/skipped per
     # cycle config. Other workload types ignore the extra argument.
-    resolved_config = {**cycle.applied_defaults, **cycle.execution_overrides}
+    resolved_config = cycle.resolved_config()
     # #669: a framing re-roll forwards the prior rejection on the §6.6 overrides
     # rail. It is authoring CONTEXT, not config — lift it out so resolved_config
     # stays config-shaped on every envelope, then inject it onto the

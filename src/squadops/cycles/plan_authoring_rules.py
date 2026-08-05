@@ -45,7 +45,16 @@ COVERED_ELSEWHERE: dict[str, str] = {
 
 # Validators with no author-facing rule: nothing the author writes can trip them, or the
 # defect they catch is not expressible in the plan the author is composing.
-NOT_AUTHOR_FACING: dict[str, str] = {}
+NOT_AUTHOR_FACING: dict[str, str] = {
+    # #426: enforced upstream of authoring — when no build_profile is configured, the
+    # offer drops builder task types from the vocabulary AND the builder guideline/example
+    # prose, so a compliant author cannot trip this. The gate check is the net for an
+    # author that broke the use-ONLY-these vocabulary rule, which the task-types section
+    # already teaches inline. Restating "builder needs build_profile" to an author who
+    # was never offered builder tasks would be noise about an unavailable option.
+    "validate_build_config": "enforced-by-offer (#426): unconfigured squads are never "
+    "offered builder task types; the inline task-types vocabulary is the teaching",
+}
 
 
 def rule_ids() -> frozenset[str]:

@@ -1516,7 +1516,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # roll-up reads is emitted at the builder task itself (#399), so an
         # in-loop builder failure is disclosed even though this gate is only
         # reached when every task succeeded.
-        resolved_config = {**cycle.applied_defaults, **cycle.execution_overrides}
+        resolved_config = cycle.resolved_config()
         deficiency = compute_missing_required_files(plan, stored_artifacts, resolved_config)
         if deficiency is not None:
             profile_name, missing = deficiency
@@ -3038,13 +3038,18 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # style-lottery regex costs seconds at the gate, not an hour of
         # correction budget mid-implementation.
         errors += plan.validate_criteria_scope()
+        # #426: same seam again — a builder task without a build_profile is
+        # refused by generate_task_plan anyway, but only after the gate
+        # approved the plan and the implementation run was admitted.
+        errors += plan.validate_build_config(cycle.resolved_config())
         if errors:
             raise _ExecutionError(
                 f"Plan rejected at gate(s) {gate_names}: the materialized implementation "
                 f"plan fails gate validation against squad profile {profile.profile_id!r} — "
                 + "; ".join(errors)
-                + ". Fix the plan: roles must exist in the profile, and regex criteria "
-                "may only target document artifacts."
+                + ". Fix the plan: roles must exist in the profile, regex criteria "
+                "may only target document artifacts, and builder tasks need a "
+                "configured build_profile."
             )
 
     # ------------------------------------------------------------------
