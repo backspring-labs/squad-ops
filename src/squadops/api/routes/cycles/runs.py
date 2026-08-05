@@ -225,12 +225,31 @@ async def gate_decision(
 
     try:
         registry = get_cycle_registry()
+
+        # SIP-0096 §6.5 (#682): accept-with-waiver is explicit, reasoned, and
+        # validated against the run's own unverified disclosure — a waiver
+        # records above the evidence and can never touch a check that ran.
+        if body.waived_checks or body.waiver_reason:
+            from squadops.cycles.models import validate_waiver_request
+
+            summary = await registry.get_run_verification_summary(run_id)
+            unverified_ids = (
+                {u.check_id for u in summary.unverified} if summary is not None else None
+            )
+            waiver_error = validate_waiver_request(
+                body.decision, body.waived_checks, body.waiver_reason, unverified_ids
+            )
+            if waiver_error is not None:
+                raise ValidationError(waiver_error)
+
         decision = GateDecision(
             gate_name=gate_name,
             decision=body.decision,
             decided_by="system",  # TODO: extract from auth context
             decided_at=datetime.now(UTC),
             notes=body.notes,
+            waived_checks=tuple(body.waived_checks),
+            waiver_reason=body.waiver_reason,
         )
         updated = await registry.record_gate_decision(run_id, decision)
 
@@ -259,6 +278,11 @@ async def gate_decision(
                 "decision": body.decision,
                 "decided_by": decision.decided_by,
                 "notes": body.notes,
+                **(
+                    {"waived_checks": list(decision.waived_checks)}
+                    if decision.waived_checks
+                    else {}
+                ),
             },
         )
 

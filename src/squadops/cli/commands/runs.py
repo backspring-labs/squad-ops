@@ -209,12 +209,22 @@ def gate_decision(
         False, "--return-for-revision", help="Return for revision on same workload path"
     ),
     notes: str | None = typer.Option(None, "--notes", help="Decision notes"),
+    waive: list[str] = typer.Option(
+        [],
+        "--waive",
+        help="Waive an unverified check id (repeatable; --approve only, "
+        "requires --waiver-reason). SIP-0096 accept-with-waiver.",
+    ),
+    waiver_reason: str | None = typer.Option(
+        None, "--waiver-reason", help="Reason for the waiver (required with --waive)"
+    ),
 ):
     """Record a gate decision.
 
     Wire mapping: --approve sends "approved", --reject sends "rejected",
     --with-refinements sends "approved_with_refinements",
-    --return-for-revision sends "returned_for_revision".
+    --return-for-revision sends "returned_for_revision". --waive/--waiver-reason
+    ride the approved decision as an explicit accept-with-waiver (§6.5).
     """
     fmt = ctx.obj.get("format", "table") if ctx.obj else "table"
 
@@ -244,6 +254,10 @@ def gate_decision(
     body = {"decision": decision}
     if notes:
         body["notes"] = notes
+    if waive:
+        body["waived_checks"] = list(waive)
+    if waiver_reason:
+        body["waiver_reason"] = waiver_reason
 
     try:
         client = _get_client(ctx)

@@ -899,3 +899,111 @@ class TestCheckpointRetentionSQL:
         sql = delete_call.args[0]
         assert "DELETE FROM run_checkpoints" in sql
         assert "retained = FALSE" in sql  # retained boundaries never pruned
+
+
+class TestGateWaiverSQL:
+    """#682 — the postgres half: waiver columns persisted and read back;
+    pre-migration rows (absent/NULL columns) assemble to the empty defaults."""
+
+    @pytest.fixture
+    def conn(self):
+        return _make_conn()
+
+    @pytest.fixture
+    def registry(self, conn):
+        from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry
+
+        return PostgresCycleRegistry(_make_pool(conn))
+
+    async def test_insert_carries_waiver_columns(self, registry, conn):
+        from datetime import UTC, datetime
+
+        from squadops.cycles.models import GateDecision
+
+        conn.fetchrow = AsyncMock(
+            side_effect=[
+                {"status": "paused", "cycle_id": "cyc_1"},  # run row
+                {"task_flow_policy": '{"gates": [{"name": "g1"}]}'},  # policy
+                None,  # no existing decision
+            ]
+        )
+        registry.get_run = AsyncMock()
+
+        await registry.record_gate_decision(
+            "run_1",
+            GateDecision(
+                gate_name="g1",
+                decision="approved",
+                decided_by="op",
+                decided_at=datetime.now(UTC),
+                waived_checks=("tests_pass",),
+                waiver_reason="node absent",
+            ),
+        )
+
+        insert_sql = conn.execute.call_args_list[0].args[0]
+        assert "waived_checks" in insert_sql and "waiver_reason" in insert_sql
+        args = conn.execute.call_args_list[0].args
+        assert '"tests_pass"' in args[7]  # JSON-encoded list
+        assert args[8] == "node absent"
+
+    async def test_no_waiver_persists_null_not_empty_list(self, registry, conn):
+        from datetime import UTC, datetime
+
+        from squadops.cycles.models import GateDecision
+
+        conn.fetchrow = AsyncMock(
+            side_effect=[
+                {"status": "paused", "cycle_id": "cyc_1"},
+                {"task_flow_policy": '{"gates": [{"name": "g1"}]}'},
+                None,
+            ]
+        )
+        registry.get_run = AsyncMock()
+
+        await registry.record_gate_decision(
+            "run_1",
+            GateDecision(
+                gate_name="g1", decision="approved", decided_by="op", decided_at=datetime.now(UTC)
+            ),
+        )
+        assert conn.execute.call_args_list[0].args[7] is None  # NULL, not []
+
+    def test_assemble_maps_waiver_and_tolerates_old_rows(self, registry):
+        from datetime import UTC, datetime
+
+        base_row = {
+            "run_id": "run_1",
+            "cycle_id": "cyc_1",
+            "run_number": 1,
+            "status": "completed",
+            "initiated_by": "api",
+            "resolved_config_hash": "h",
+            "resolved_config_ref": None,
+            "workload_type": None,
+            "started_at": None,
+            "finished_at": None,
+            "artifact_refs": "[]",
+            "failure_reason": None,
+        }
+        new_gate = {
+            "gate_name": "g1",
+            "decision": "approved",
+            "decided_by": "op",
+            "decided_at": datetime.now(UTC),
+            "notes": None,
+            "waived_checks": '["tests_pass"]',
+            "waiver_reason": "node absent",
+        }
+        old_gate = {  # pre-migration read: columns absent entirely
+            "gate_name": "g0",
+            "decision": "approved",
+            "decided_by": "op",
+            "decided_at": datetime.now(UTC),
+            "notes": None,
+        }
+        run = registry._assemble_run(base_row, [new_gate, old_gate])
+        assert run.gate_decisions[0].waived_checks == ("tests_pass",)
+        assert run.gate_decisions[0].waiver_reason == "node absent"
+        assert run.gate_decisions[1].waived_checks == ()
+        assert run.gate_decisions[1].waiver_reason is None

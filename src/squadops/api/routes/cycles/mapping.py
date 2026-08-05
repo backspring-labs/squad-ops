@@ -17,6 +17,7 @@ from squadops.api.routes.cycles.dtos import (
     SquadProfileResponse,
     TaskFlowPolicyDTO,
     UnverifiedCheckDTO,
+    WaivedCheckDTO,
     WorkloadProgressEntry,
 )
 from squadops.api.runtime.agent_labels import get_role_label
@@ -62,6 +63,8 @@ def run_to_response(run: Run) -> RunResponse:
                 decided_by=gd.decided_by,
                 decided_at=gd.decided_at,
                 notes=gd.notes,
+                waived_checks=list(gd.waived_checks),
+                waiver_reason=gd.waiver_reason,
             )
             for gd in run.gate_decisions
         ],
@@ -154,6 +157,10 @@ def _cycle_outcome_to_dto(outcome: CycleOutcome) -> CycleOutcomeDTO:
         ],
         required_unmet=list(outcome.required_unmet),
         run_count=outcome.run_count,
+        waived=[
+            WaivedCheckDTO(check_id=w.check_id, reason=w.reason, waived_by=w.waived_by)
+            for w in outcome.waived
+        ],
         replay=(
             ReplayProvenanceDTO(
                 source_run_id=outcome.replay.source_run_id,
