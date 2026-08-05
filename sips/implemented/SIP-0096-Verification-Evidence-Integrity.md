@@ -1,17 +1,17 @@
 ---
 title: Verification Evidence Integrity
-status: accepted
+status: implemented
 author: jladd
 created_at: '2026-07-05T00:00:00Z'
 sip_number: 96
-updated_at: '2026-07-06T08:05:29.730876Z'
+updated_at: '2026-08-05T18:36:50.247703Z'
 ---
 # SIP: Verification Evidence Integrity
 
 ## Status
-**Status:** Accepted (2026-07-06, PR #337) — accepted at **revision 2** (incorporates maintainer design review + independent adversarial review; rev 1's account of current behavior contained errors, corrected in §2/§8; load-bearing semantics previously deferred to Phase 0 are decided in-text)
+**Status:** Implemented (2026-08-06, v1.5 line) — accepted 2026-07-06 (PR #337) at **revision 2**; core shipped across the 1.4 windows and live-proven; the audit's remaining normative set (`docs/plans/sip-promotion-audit-2026-08-03.md`) closed in the 1.5 Gate-2 arc: gate-waiver #682 (PR #742), wrap-up consumer #683 (PR #743), §9 inert detection #684 (PR #744), §8 pulse SKIP-only amendment (AC#6, the promotion PR). Full AC→evidence mapping: `docs/plans/SIP-0096-promotion-evidence.md`
 
-**Targets:** v1.4 arc (core shipped across the 1.4 windows and live-proven); remaining slices — gate-waiver #682, wrap-up consumer #683, §9 inert detection #684, §8 pulse amendment #423 — are 1.5-hardening-shaped and must be implemented before v1.8, which gates its scorecard on this SIP (audit: `docs/plans/sip-promotion-audit-2026-08-03.md`)
+**Targets:** shipped v1.4 arc (core) + v1.5 Gate 2 (completion); the v1.8 scorecard's gate on this SIP is now satisfied
 **Motivated by:** the 2026-07-04 health assessment finding that orchestration maturity is outrunning evidence quality. The 2.0 arc (Campaign → Test Bay → capability promotion) automates decisions over cycle evidence; this SIP must land before Campaign continuation automation because Campaign decisions must not consume unclassified or non-creditable verification evidence.
 **Builds on:** SIP-0070 (pulse checks / verification framework, `PulseVerificationRecord`, decisions D13/D18), SIP-0092 (typed acceptance — the check *types* and severity model; **this SIP does not amend SIP-0092 §6.1.4** — see §6.1), SIP-0079 (outcome classes), SIP-0086 (output validation), SIP-0095 (deterministic-gate + doctor-parity precedent), SIP-0077 (cycle event system), SIP-0064 (Cycle/Run/Gate).
 **Proof cases:** #291 (`required_files` declared but unenforced), #306 (agent image lacks Node.js → frontend checks cannot execute and their results merge non-blocking), the SIP-0070 `determine_boundary_decision` SKIP-only→PASS rule, and — as *predecessors whose class this SIP locks* — #276 (stub-fallback, detection shipped in PR #289), #290 (frontend build check, shipped), #296 (source-filter, **closed** `5cb22ce`).
