@@ -83,6 +83,11 @@ class MemoryCycleRegistry(CycleRegistryPort):
                 if derived != status:
                     continue
             results.append(cycle)
+        # Port ordering contract: newest first, so `limit` pages the most recent
+        # cycles — matching the postgres adapter's ORDER BY created_at DESC
+        # (#684: the inert-detection history walk depends on which window a
+        # bounded read returns).
+        results.sort(key=lambda c: c.created_at, reverse=True)
         return results[offset : offset + limit]
 
     async def cancel_cycle(self, cycle_id: str) -> None:

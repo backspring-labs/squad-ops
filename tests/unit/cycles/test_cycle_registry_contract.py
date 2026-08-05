@@ -206,6 +206,24 @@ async def test_list_cycles_with_pagination(registry):
         assert cycle.project_id == "proj_1"
 
 
+async def test_list_cycles_orders_newest_first(registry):
+    """Port ordering contract (#684): newest first, and `limit` pages the most
+    recent cycles — the postgres adapter's ORDER BY created_at DESC. Bug caught:
+    the memory adapter returned insertion order, so a bounded read handed the
+    inert-detection history walk the OLDEST window instead of the newest."""
+    import dataclasses
+    from datetime import timedelta
+
+    for i in range(4):
+        cycle = dataclasses.replace(
+            _make_cycle(cycle_id=f"cyc_{i:03d}"), created_at=NOW + timedelta(hours=i)
+        )
+        await registry.create_cycle(cycle)
+
+    page = await registry.list_cycles("proj_1", limit=2)
+    assert [c.cycle_id for c in page] == ["cyc_003", "cyc_002"]
+
+
 # ---------------------------------------------------------------------------
 # Pulse Verification contract tests (SIP-0070, Phase 1.9)
 # ---------------------------------------------------------------------------

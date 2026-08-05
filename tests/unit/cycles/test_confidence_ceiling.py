@@ -110,6 +110,13 @@ class TestEvidenceSummary:
         assert "maximum honest confidence: partial_completion" in text
         assert "verdict: rejected" in text
 
+    def test_summary_discloses_inert_and_tolerates_its_absence(self):
+        # #684: chronic checks reach the wrap-up prompt; a pre-#684 outcome
+        # dict without the key still renders (fail-open to 'none', never a crash)
+        text = verification_evidence_summary(_outcome(inert=["frontend_build"]))
+        assert "inert: frontend_build" in text
+        assert "inert: none" in verification_evidence_summary(_outcome())
+
 
 class TestExecutorWrapupInjection:
     """#683 threading: a wrap-up run's prior_outputs carry the structured
