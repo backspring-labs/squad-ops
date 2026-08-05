@@ -126,26 +126,33 @@ class LanceDBAdapter(MemoryPort):
             # Generate query embedding via port
             query_embedding = await self._embeddings.embed(query.text)
 
-            # Search
-            results = self._table.search(query_embedding).limit(query.limit).to_list()
+            # #571: filters are pushed into the query with prefilter=True —
+            # filtering in Python AFTER .limit(N) returned the N nearest rows
+            # across ALL namespaces and then discarded the mismatches, so a
+            # query could return far fewer than `limit` (including zero) while
+            # plenty of in-namespace matches sat just past the first N. The
+            # metric is selected explicitly: the default is L2, and the
+            # `1.0 - _distance` score transform is only valid for cosine.
+            search = self._table.search(query_embedding).metric("cosine")
+            predicates = []
+            if query.namespace:
+                ns = str(query.namespace).replace("'", "''")
+                predicates.append(f"namespace = '{ns}'")
+            for tag in query.tags or ():
+                t = str(tag).replace("'", "''")
+                predicates.append(f"array_has(tags, '{t}')")
+            if predicates:
+                search = search.where(" AND ".join(predicates), prefilter=True)
+            results = search.limit(query.limit).to_list()
 
             # Convert to MemoryResult
             memory_results = []
             for row in results:
-                # Filter by threshold
-                score = 1.0 - row.get("_distance", 0.0)  # LanceDB uses distance
+                # Threshold stays a post-filter: it is a quality floor on the
+                # (now valid) cosine score, not a row-identity predicate.
+                score = 1.0 - row.get("_distance", 0.0)
                 if score < query.threshold:
                     continue
-
-                # Filter by namespace if specified
-                if query.namespace and row.get("namespace") != query.namespace:
-                    continue
-
-                # Filter by tags if specified
-                if query.tags:
-                    row_tags = set(row.get("tags", []))
-                    if not all(t in row_tags for t in query.tags):
-                        continue
 
                 entry = MemoryEntry(
                     content=row.get("content", ""),
