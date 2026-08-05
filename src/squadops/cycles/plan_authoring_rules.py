@@ -32,6 +32,7 @@ AUTHOR_FACING: dict[str, str] = {
     "validate_criteria_scope": "regex-only-on-documents",
     "validate_command_checks": "commands-must-run-here",
     "validate_against_profile": "roles-must-exist",
+    "validate_check_applicability": "qa-tests-pytest-discoverable",
 }
 
 # Validators an author is already taught by a different managed asset. Restating them

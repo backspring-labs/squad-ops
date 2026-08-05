@@ -1054,3 +1054,154 @@ class TestGateRejectsBuilderPlanWithoutBuildProfile:
             ["progress_plan_review"],
             gated_cycle,
         )
+
+
+class TestMidRunGateRejectsUnwinnableQaTask:
+    """#715 on the mid-run gate seam — parity with the workload seam."""
+
+    _QA_JS_PLAN_YAML = (
+        TestGateRejectsBuilderPlanWithoutBuildProfile._BUILDER_PLAN_YAML.replace(
+            "builder.assemble", "qa.test"
+        )
+        .replace("role: builder", "role: qa")
+        .replace("qa_handoff.md", "backend/tests/test_e2e.js")
+    )
+
+    async def test_rejected_when_tests_pass_required(self, executor, mock_vault, cycle):
+        import dataclasses
+
+        from adapters.cycles.execution_errors import _ExecutionError
+
+        gated_cycle = dataclasses.replace(
+            cycle,
+            applied_defaults={"implementation_plan": True, "required_checks": ["tests_pass"]},
+        )
+        mock_vault.retrieve.return_value = ("ref", self._QA_JS_PLAN_YAML.encode())
+
+        agent = MagicMock()
+        agent.role = "qa"
+        agent.enabled = True
+        profile = MagicMock()
+        profile.profile_id = "full"
+        profile.agents = [agent]
+
+        with pytest.raises(_ExecutionError) as exc_info:
+            await executor._reject_unsatisfiable_plan_at_gate(
+                TestGateRejectsBuilderPlanWithoutBuildProfile._stored_plan_artifacts(),
+                profile,
+                ["progress_plan_review"],
+                gated_cycle,
+            )
+        assert "pytest-discoverable" in str(exc_info.value)
+
+
+# ---------------------------------------------------------------------------
+# #715 + #426 — the workload-gate seam (the path multi-workload cycles traverse)
+# ---------------------------------------------------------------------------
+
+
+class TestWorkloadGateSeamValidation:
+    """#715/#426 wiring at `_reject_invalid_plan_before_workload_gate` — the
+    seam multi-workload cycles actually traverse (the mid-run gate never fires
+    there, per its own docstring). Errors are RETURNED for a system-REJECTED
+    gate decision and a free framing re-roll, never raised."""
+
+    _QA_JS_PLAN_YAML = (
+        "version: 1\n"
+        "project_id: group_run\n"
+        "cycle_id: cyc_001\n"
+        "prd_hash: abc\n"
+        "tasks:\n"
+        "  - task_index: 0\n"
+        "    task_type: qa.test\n"
+        "    role: qa\n"
+        '    focus: "Integration smoke"\n'
+        '    description: "Node smoke script"\n'
+        "    expected_artifacts:\n"
+        '      - "backend/tests/test_integration.js"\n'
+        "    depends_on: []\n"
+        "summary:\n"
+        "  total_tasks: 1\n"
+    )
+
+    _BUILDER_PLAN_YAML = (
+        "version: 1\n"
+        "project_id: group_run\n"
+        "cycle_id: cyc_001\n"
+        "prd_hash: abc\n"
+        "tasks:\n"
+        "  - task_index: 0\n"
+        "    task_type: builder.assemble\n"
+        "    role: builder\n"
+        '    focus: "Package"\n'
+        '    description: "Assemble"\n'
+        "    expected_artifacts:\n"
+        '      - "qa_handoff.md"\n'
+        "    depends_on: []\n"
+        "summary:\n"
+        "  total_tasks: 1\n"
+    )
+
+    @staticmethod
+    def _wire(mock_vault, run, plan_yaml):
+        import dataclasses
+
+        ref = MagicMock()
+        ref.filename = "implementation_plan.yaml"
+        ref.artifact_type = "control_implementation_plan"
+        mock_vault.retrieve.return_value = (ref, plan_yaml.encode())
+        return dataclasses.replace(run, artifact_refs=("art_plan",))
+
+    async def test_unwinnable_qa_task_rejected_at_workload_gate(
+        self, executor, mock_vault, cycle, run
+    ):
+        """The shk-4 shape: required tests_pass + a .js-only qa task must come
+        back as a validation error (→ free re-roll), reading required_checks
+        from the merged cycle config."""
+        import dataclasses
+
+        gated_cycle = dataclasses.replace(
+            cycle,
+            applied_defaults={"implementation_plan": True, "required_checks": ["tests_pass"]},
+        )
+        gated_run = self._wire(mock_vault, run, self._QA_JS_PLAN_YAML)
+
+        errors = await executor._reject_invalid_plan_before_workload_gate(
+            gated_run, gated_cycle, "progress_plan_review"
+        )
+        assert any("pytest-discoverable" in e for e in errors)
+
+    async def test_qa_js_plan_passes_when_tests_pass_not_required(
+        self, executor, mock_vault, cycle, run
+    ):
+        """Polarity guard: without required tests_pass the same plan is legal —
+        flagging it would reject valid author-mode cycles."""
+        import dataclasses
+
+        gated_cycle = dataclasses.replace(
+            cycle,
+            applied_defaults={"implementation_plan": True},
+        )
+        gated_run = self._wire(mock_vault, run, self._QA_JS_PLAN_YAML)
+
+        errors = await executor._reject_invalid_plan_before_workload_gate(
+            gated_run, gated_cycle, "progress_plan_review"
+        )
+        assert errors == []
+
+    async def test_builder_without_build_profile_rejected_at_workload_gate(
+        self, executor, mock_vault, cycle, run
+    ):
+        """#426 gap closure: the original net landed only on the mid-run gate
+        seam, which multi-workload cycles never traverse — the exact repro
+        shape (framing run, then gate, then implementation run) was still
+        reaching the #291 dispatch guard."""
+        import dataclasses
+
+        gated_cycle = dataclasses.replace(cycle, applied_defaults={"implementation_plan": True})
+        gated_run = self._wire(mock_vault, run, self._BUILDER_PLAN_YAML)
+
+        errors = await executor._reject_invalid_plan_before_workload_gate(
+            gated_run, gated_cycle, "progress_plan_review"
+        )
+        assert any("build_profile" in e for e in errors)
