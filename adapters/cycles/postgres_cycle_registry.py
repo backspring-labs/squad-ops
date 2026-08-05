@@ -179,7 +179,8 @@ class PostgresCycleRegistry(CycleRegistryPort):
             if row is None:
                 raise RunNotFoundError(f"Run not found: {run_id}")
             gate_rows = await conn.fetch(
-                "SELECT gate_name, decision, decided_by, decided_at, notes "
+                "SELECT gate_name, decision, decided_by, decided_at, notes, "
+                "waived_checks, waiver_reason "
                 "FROM cycle_gate_decisions WHERE run_id = $1 ORDER BY id",
                 run_id,
             )
@@ -216,7 +217,8 @@ class PostgresCycleRegistry(CycleRegistryPort):
 
             run_ids = [r["run_id"] for r in run_rows]
             gate_rows = await conn.fetch(
-                "SELECT run_id, gate_name, decision, decided_by, decided_at, notes "
+                "SELECT run_id, gate_name, decision, decided_by, decided_at, notes, "
+                "waived_checks, waiver_reason "
                 "FROM cycle_gate_decisions WHERE run_id = ANY($1) ORDER BY id",
                 run_ids,
             )
@@ -347,14 +349,20 @@ class PostgresCycleRegistry(CycleRegistryPort):
                 try:
                     await conn.execute(
                         "INSERT INTO cycle_gate_decisions "
-                        "(run_id, gate_name, decision, decided_by, decided_at, notes) "
-                        "VALUES ($1, $2, $3, $4, $5, $6)",
+                        "(run_id, gate_name, decision, decided_by, decided_at, notes, "
+                        "waived_checks, waiver_reason) "
+                        "VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
                         run_id,
                         decision.gate_name,
                         decision.decision,
                         decision.decided_by,
                         decision.decided_at,
                         decision.notes,
+                        # NULL (no waiver) stays distinguishable from a recorded one
+                        json.dumps(list(decision.waived_checks))
+                        if decision.waived_checks
+                        else None,
+                        decision.waiver_reason,
                     )
                 except asyncpg.UniqueViolationError as err:
                     # Safety net: concurrent race between two transactions
@@ -418,6 +426,16 @@ class PostgresCycleRegistry(CycleRegistryPort):
                 summary.verdict.value,
                 json.dumps(_verification_summary_to_dict(summary)),
             )
+
+    async def get_run_verification_summary(self, run_id: str) -> RunVerificationSummary | None:
+        """One run's persisted verification roll-up, or None (#682)."""
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT summary FROM run_verification_summaries WHERE run_id = $1", run_id
+            )
+        if row is None:
+            return None
+        return _verification_summary_from_dict(parse_jsonb(row["summary"]))
 
     async def list_run_verification_summaries(self, cycle_id: str) -> list[RunVerificationSummary]:
         """Return a cycle's persisted per-run verification summaries (SIP-0096 §10)."""
@@ -532,6 +550,10 @@ class PostgresCycleRegistry(CycleRegistryPort):
                 decided_by=g["decided_by"],
                 decided_at=g["decided_at"],
                 notes=g.get("notes"),
+                # #682: absent column (pre-migration reads) and NULL both mean
+                # "no waiver" — the model's empty defaults
+                waived_checks=tuple(parse_jsonb(g.get("waived_checks")) or ()),
+                waiver_reason=g.get("waiver_reason"),
             )
             for g in gate_rows
         )

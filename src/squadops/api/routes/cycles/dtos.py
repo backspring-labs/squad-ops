@@ -48,7 +48,11 @@ class CycleCreateRequest(BaseModel):
 
 
 class GateDecisionRequest(BaseModel):
-    """Gate decision (T4+T13: normalized vocab, typed)."""
+    """Gate decision (T4+T13: normalized vocab, typed).
+
+    ``waived_checks``/``waiver_reason`` (SIP-0096 §6.5, #682): explicit
+    accept-with-waiver — validated against the run's unverified disclosure.
+    """
 
     decision: Literal[
         "approved",
@@ -57,6 +61,8 @@ class GateDecisionRequest(BaseModel):
         "rejected",
     ]
     notes: str | None = None
+    waived_checks: list[str] = Field(default_factory=list)
+    waiver_reason: str | None = None
 
     model_config = ConfigDict(extra="forbid")
 
@@ -133,6 +139,8 @@ class GateDecisionResponse(BaseModel):
     decided_by: str
     decided_at: datetime
     notes: str | None = None
+    waived_checks: list[str] = Field(default_factory=list)  # SIP-0096 §6.5 (#682)
+    waiver_reason: str | None = None
 
 
 class RunResponse(BaseModel):
@@ -168,6 +176,14 @@ class UnverifiedCheckDTO(BaseModel):
     required: bool
 
 
+class WaivedCheckDTO(BaseModel):
+    """SIP-0096 §6.5: an operator waiver recorded above the evidence (#682)."""
+
+    check_id: str
+    reason: str
+    waived_by: str | None = None
+
+
 class ReplayProvenanceDTO(BaseModel):
     """SIP-0101 §4.1: the prefix of this outcome was restored from another run's
     checkpoint — inherited evidence, never presentable as earned."""
@@ -191,6 +207,7 @@ class CycleOutcomeDTO(BaseModel):
     unverified: list[UnverifiedCheckDTO] = Field(default_factory=list)
     required_unmet: list[str] = Field(default_factory=list)
     run_count: int = 0
+    waived: list[WaivedCheckDTO] = Field(default_factory=list)  # §6.5 (#682)
     replay: ReplayProvenanceDTO | None = None  # SIP-0101 — present iff replayed
 
 

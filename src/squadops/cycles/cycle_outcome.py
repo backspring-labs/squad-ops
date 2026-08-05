@@ -21,6 +21,7 @@ from squadops.cycles.replay import (
 from squadops.cycles.verification_integrity import (
     CycleOutcome,
     ReplayProvenance,
+    WaivedCheck,
     aggregate_cycle_outcome,
 )
 
@@ -31,9 +32,9 @@ if TYPE_CHECKING:
 async def resolve_cycle_outcome(registry: CycleRegistryPort, cycle_id: str) -> CycleOutcome:
     """Derive a cycle's ``CycleOutcome`` from its persisted per-run summaries (§10).
 
-    ``waived`` (operator gate waivers, §6.5) and ``inert`` (chronic not-executed, §9)
-    stay empty until their Phase-3 slices wire them — the roll-up shape carries them,
-    but there is no source yet, so we pass nothing rather than fabricate.
+    ``waived`` (#682): populated from the cycle's recorded gate decisions — an
+    operator accept-with-waiver sits beside the verdict, never altering it (§6.5).
+    ``inert`` (chronic not-executed, §9) stays empty until #684 wires its source.
 
     SIP-0101 Slice 3.4: a replay-mode cycle's outcome carries ``ReplayProvenance``
     derived from the immutable, create-time-validated declaration — same
@@ -42,6 +43,15 @@ async def resolve_cycle_outcome(registry: CycleRegistryPort, cycle_id: str) -> C
     """
     summaries = await registry.list_run_verification_summaries(cycle_id)
     cycle = await registry.get_cycle(cycle_id)
+    # #682: operator gate waivers (§6.5) — collected off the cycle's recorded
+    # gate decisions, one WaivedCheck per waived id, decided_by as provenance.
+    runs = await registry.list_runs(cycle_id)
+    waived = [
+        WaivedCheck(check_id=check_id, reason=gd.waiver_reason or "", waived_by=gd.decided_by)
+        for run in runs
+        for gd in run.gate_decisions
+        for check_id in gd.waived_checks
+    ]
     replay_req = parse_replay_declaration(cycle.execution_overrides or {})
     replay = (
         ReplayProvenance(
@@ -52,4 +62,4 @@ async def resolve_cycle_outcome(registry: CycleRegistryPort, cycle_id: str) -> C
         if replay_req is not None
         else None
     )
-    return aggregate_cycle_outcome(summaries, replay=replay)
+    return aggregate_cycle_outcome(summaries, waived=waived, replay=replay)

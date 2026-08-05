@@ -7,6 +7,7 @@ Gate Decisions, and Artifact Refs. Enums, constants, and exceptions are co-locat
 
 from __future__ import annotations
 
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
@@ -268,13 +269,50 @@ class TaskFlowPolicy:
 
 @dataclass(frozen=True)
 class GateDecision:
-    """Recorded gate decision on a Run. SIP-0064 §8.4."""
+    """Recorded gate decision on a Run. SIP-0064 §8.4.
+
+    ``waived_checks``/``waiver_reason`` (SIP-0096 §6.5, #682): an explicit
+    accept-with-waiver records the waived check ids and reason ON the decision
+    — above the evidence, never mutating it. Empty/None on ordinary decisions
+    and on all pre-#682 historical rows.
+    """
 
     gate_name: str
     decision: str  # GateDecisionValue value
     decided_by: str
     decided_at: datetime
     notes: str | None = None
+    waived_checks: tuple[str, ...] = ()
+    waiver_reason: str | None = None
+
+
+def validate_waiver_request(
+    decision: str,
+    waived_checks: Sequence[str],
+    waiver_reason: str | None,
+    unverified_ids: Collection[str] | None,
+) -> str | None:
+    """Validate an accept-with-waiver request (§6.5/AC#12) — error text or None.
+
+    A waiver is never implicit and never mutates evidence: it requires an
+    explicit approval, a non-empty reason, and check ids that are actually in
+    the run's unverified disclosure (``unverified_ids``; ``None`` means no
+    summary was ever persisted — then there is nothing to waive against).
+    """
+    if not waived_checks:
+        if waiver_reason:
+            return "waiver_reason requires waived_checks — a waiver names its checks"
+        return None
+    if decision != GateDecisionValue.APPROVED.value:
+        return "a waiver is accept-with-waiver: only valid on an 'approved' decision"
+    if not (waiver_reason or "").strip():
+        return "a waiver requires a non-empty reason (§6.5: never implicit)"
+    if unverified_ids is None:
+        return "no verification summary recorded for this run — nothing to waive against"
+    unknown = sorted(set(waived_checks) - set(unverified_ids))
+    if unknown:
+        return "waived checks are not in the run's unverified disclosure: " + ", ".join(unknown)
+    return None
 
 
 @dataclass(frozen=True)

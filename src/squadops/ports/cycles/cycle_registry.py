@@ -165,6 +165,11 @@ class CycleRegistryPort(ABC):
         """
 
     @abstractmethod
+    async def get_run_verification_summary(self, run_id: str) -> RunVerificationSummary | None:
+        """One run's persisted verification roll-up, or None (#682 waiver validation)."""
+        return None  # default for adapters predating the getter
+
+    @abstractmethod
     async def list_run_verification_summaries(self, cycle_id: str) -> list[RunVerificationSummary]:
         """Return the persisted verification summaries for a cycle's runs (SIP-0096 §10).
 
