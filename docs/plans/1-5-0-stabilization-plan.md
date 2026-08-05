@@ -395,6 +395,15 @@ SIP-0101 minimum slice (C) · A5 registry design · SIP-0092 M2→M3 gate-evalua
 (A2) · #629 per A6's determinism split · #452 · #506 · #724 · **SIP-0096 promotion
 before the release candidate**.
 
+**Gate-2 exit: a confirmation shakedown** (unscored, the shk pattern) on the deployed
+integrated state — after promotion, before the structural quarantine opens. This banks
+the integrity core as green *before* Gate 3's refactors land on top, so a red in the
+cut shakedown is unambiguously structural — the quarantine's own
+regression-attribution logic, applied one level down. It also hands Gate 3 a fresh
+known-good baseline: its stored artifacts become the replay corpus the structural
+anchors verify against (Track C's vocabulary). Gate 3 does not open until this
+shakedown is green.
+
 ### Gate 3 — Execute the structural quarantine
 
 Anchors #663, #331, #481 (release-defining) · then the categorized B4 pool, Track D/E
@@ -484,10 +493,11 @@ during a rolling deploy follow the same rule: new fields ignored, never required
    language, and confirmation the remainder is still a coherent 1.5.
 2. **Capacity roll:** B4 / capacity Track D–E items / riders move to the 1.7 pool
    with a milestone update only (the stated exception to the named-trigger rule).
-3. Full regression green; a confirmation shakedown green on the deployed integrated
-   line **against the promoted repository state** (unscored, the shk pattern);
-   designed-failure probes for behavior changes (A4's termination matrix, like #511's
-   probe).
+3. Full regression green; **both confirmation shakedowns green** — the Gate-2 exit
+   shakedown (banked the integrity core, against the promoted state) and the cut
+   shakedown on the fully integrated line (a red here is attributable to Gate 3's
+   structural work by construction); designed-failure probes for behavior changes
+   (A4's termination matrix, like #511's probe).
 4. Feature-free verification (the behavioral checklist above) + contract v9 /
    manifest v4 hashes unchanged line-wide.
 5. The evidence matrix complete for all release-defining rows.
