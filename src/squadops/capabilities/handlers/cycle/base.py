@@ -50,9 +50,9 @@ def _framework_injected_criteria(
     """Checks the framework applies to this emission regardless of what was authored (#689).
 
     Today that is ``undefined_names`` on every ``.py`` file emitted by a handler that
-    routes through this seam. That is dev and builder, NOT ``qa.test``, which overrides
-    ``_validate_output`` and never calls here (#670, ruled fork 1 for v1.5 — wiring qa
-    into the seam brings authored checks and framework injections alike). Injection —
+    routes through this seam: dev, builder, and — since #670 (ruled fork 1, landed
+    v1.5) — ``qa.test``, whose override now calls the seam like the others, so
+    authored checks and framework injections alike reach qa emissions. Injection —
     rather than adding the check to the contract's per-slot criteria — is what makes
     it reach a BIND-mode cycle at all: bind mode loads the pinned contract from
     ``contract_ref`` instead of regenerating it, so a criterion added to the expander
