@@ -282,6 +282,7 @@ class BuilderAssembleHandler(_CycleTaskHandler):
         )
         from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
         from squadops.cycles.check_registry import CHECK_REQUIRED_FILES
+        from squadops.cycles.emission_integrity import emission_stats
 
         start_time = time.perf_counter()
 
@@ -479,6 +480,8 @@ class BuilderAssembleHandler(_CycleTaskHandler):
             "summary": f"[builder] Assembled {len(artifacts)} deployment artifact(s)",
             "role": self._role,
             "artifacts": artifacts,
+            # #431: generated-vs-stored accounting for extraction-loss diagnosis
+            "emission_stats": emission_stats(len(content), artifacts),
             # #399/#419: per-task required_files + typed-acceptance evidence
             # for the SIP-0096 roll-up (all passed — validation succeeded).
             "validation_result": {"checks": validation_checks},

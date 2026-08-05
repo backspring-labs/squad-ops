@@ -26,6 +26,7 @@ from squadops.cycles.acceptance_evaluation import (
     resolve_check_stack,
     split_acceptance_criteria,
 )
+from squadops.cycles.emission_integrity import emission_stats
 from squadops.cycles.implementation_plan import TypedCheck
 from squadops.cycles.patch_verification import materialize_artifacts
 from squadops.cycles.verification_integrity import ResultStatus
@@ -723,10 +724,15 @@ class _CycleTaskHandler(CapabilityHandler):
             provenance["request_render_hash"] = rendered.render_hash
             provenance["prompt_environment"] = "production"
 
+        artifacts = self._build_artifacts_from_content(content)
         outputs = {
             "summary": f"[{self._role}] {prd_summary}",
             "role": self._role,
-            "artifacts": self._build_artifacts_from_content(content),
+            "artifacts": artifacts,
+            # #431: generated-vs-stored accounting — repair emissions route
+            # through this base handle, and the repair path is where the
+            # production exhibit burned its budget regenerating into a loss
+            "emission_stats": emission_stats(len(content), artifacts),
             "prompt_provenance": provenance,
         }
 

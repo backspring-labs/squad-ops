@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from squadops.cycles.emission_integrity import extraction_loss_suspected
 from squadops.cycles.verification_integrity import ResultStatus
 
 if TYPE_CHECKING:
@@ -74,6 +75,15 @@ def build_failure_evidence(
     emission_failure = result_outputs.get("emission_failure")
     if isinstance(emission_failure, dict):
         evidence["emission_failure"] = emission_failure
+    # #431: generated-vs-stored accounting + the gap rule. The flag is the
+    # machine fact that the diagnostic inputs themselves are suspect — a
+    # partial extraction loss must never be diagnosed as a work-product
+    # failure from the fraction that survived.
+    emission_stats = result_outputs.get("emission_stats")
+    if isinstance(emission_stats, dict):
+        evidence["emission_stats"] = emission_stats
+        if extraction_loss_suspected(emission_stats):
+            evidence["extraction_loss"] = True
     # #687: hoist app-side tracebacks off the probe rows to the evidence top
     # level — the analyzer's prompt renders the evidence dict, and the stack
     # trace is THE diagnosis for a behavioral failure (shk-2: two attempts
@@ -200,6 +210,14 @@ def classify_failure_locus(failure_evidence: Any) -> str:
     if isinstance(failure_evidence.get("emission_failure"), dict):
         return FailureLocus.OWN_ARTIFACT
 
+    # #431: partial extraction loss — the emission never arrived whole, so the
+    # defect belongs to the producing task's own re-emission (with #528's
+    # parser fixes, a re-emit can succeed), NEVER to behavioral repair of the
+    # subject: repairing app source against evidence derived from a truncated
+    # artifact is exactly the budget burn this flag exists to stop.
+    if failure_evidence.get("extraction_loss") is True:
+        return FailureLocus.OWN_ARTIFACT
+
     validation_result = failure_evidence.get("validation_result") or {}
     checks = validation_result.get("checks") or []
     for row in checks:
@@ -210,33 +228,43 @@ def classify_failure_locus(failure_evidence: Any) -> str:
             # The task's own named output files are missing from its emission.
             return FailureLocus.OWN_ARTIFACT
         if check == "tests_pass" and row.get("passed") is False:
-            # #626: prefer the runner's OWN suite-health verdict (test_runner
-            # owns test-framework knowledge; vitest cannot express suite-broken
-            # through exit codes, so pytest exit semantics misrouted every
-            # frontend suite defect to the dev chain — pf-53). Absent/None
-            # falls back to the legacy pytest exit-code table.
-            #
-            # #665: the verdict is read BEFORE the executed guard. A suite that
-            # never ran because it does not exist (zero collectable files) is
-            # the producing role's own artifact, but the old executed gate
-            # skipped every own-artifact signal for exactly that case — fay-13's
-            # missing suite (executed:false, exit -1) fell to UNKNOWN and five
-            # dev-chain repairs churned on files only the qa role could author.
-            suite_broken = row.get("suite_broken")
-            if suite_broken is True:
-                return FailureLocus.OWN_ARTIFACT
-            if not row.get("executed"):
-                # Every other never-executed case (env/runner errors, timeouts,
-                # legacy rows with no verdict) stays ambiguous → dev chain.
-                continue
-            if suite_broken is False:
-                return FailureLocus.SUBJECT
-            exit_code = row.get("exit_code")
-            if exit_code in _SUITE_DEFECT_EXIT_CODES:
-                return FailureLocus.OWN_ARTIFACT
-            if exit_code == 1:
-                return FailureLocus.SUBJECT
+            locus = _locus_from_tests_pass_row(row)
+            if locus is not None:
+                return locus
     return FailureLocus.UNKNOWN
+
+
+def _locus_from_tests_pass_row(row: dict[str, Any]) -> str | None:
+    """Locus signal from a failed ``tests_pass`` row, or None (keep scanning).
+
+    #626: prefer the runner's OWN suite-health verdict (test_runner owns
+    test-framework knowledge; vitest cannot express suite-broken through exit
+    codes, so pytest exit semantics misrouted every frontend suite defect to
+    the dev chain — pf-53). Absent/None falls back to the legacy pytest
+    exit-code table.
+
+    #665: the verdict is read BEFORE the executed guard. A suite that never
+    ran because it does not exist (zero collectable files) is the producing
+    role's own artifact, but the old executed gate skipped every own-artifact
+    signal for exactly that case — fay-13's missing suite (executed:false,
+    exit -1) fell to UNKNOWN and five dev-chain repairs churned on files only
+    the qa role could author.
+    """
+    suite_broken = row.get("suite_broken")
+    if suite_broken is True:
+        return FailureLocus.OWN_ARTIFACT
+    if not row.get("executed"):
+        # Every other never-executed case (env/runner errors, timeouts,
+        # legacy rows with no verdict) stays ambiguous → dev chain.
+        return None
+    if suite_broken is False:
+        return FailureLocus.SUBJECT
+    exit_code = row.get("exit_code")
+    if exit_code in _SUITE_DEFECT_EXIT_CODES:
+        return FailureLocus.OWN_ARTIFACT
+    if exit_code == 1:
+        return FailureLocus.SUBJECT
+    return None
 
 
 def compose_failure_trigger(

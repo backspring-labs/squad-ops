@@ -684,6 +684,13 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         if "validation_result" in evidence_extra:
             outputs["validation_result"] = evidence_extra["validation_result"]
 
+        # #431: generated-vs-stored accounting (primary response; a self-eval
+        # merge changes artifacts, and the stats stay honest against the
+        # response that produced the bulk of them)
+        from squadops.cycles.emission_integrity import emission_stats
+
+        outputs["emission_stats"] = emission_stats(len(content), artifacts)
+
         duration_ms = (time.perf_counter() - start_time) * 1000
         evidence = HandlerEvidence.create(
             handler_name=self._handler_name,
