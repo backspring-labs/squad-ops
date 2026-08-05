@@ -11,11 +11,37 @@ narrative `system_prompt_template` cannot drift away from what the validator
 will accept. Adding a file to `required_files` automatically adds it to the
 prompt; the file list cannot be edited in the prompt without also editing
 the validator's `required_files`.
+
+#452: the narrative TEXT lives in ``src/squadops/prompts/profile_narratives/``
+(one ``.md`` per profile, loaded once at import) — prompt prose is reviewable
+and editable as prose under the prompts seam, never a Python literal (#448).
+The profile dimension stays deliberate contract data rather than a fragment
+layer; extending the fragment model with a non-role dimension is the deferred
+SIP-sized question. Byte-equivalence with the pre-move literals is pinned by
+test (the #452 hard acceptance gate).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
+
+import squadops.prompts as _prompts_pkg
+
+_NARRATIVES_DIR = Path(_prompts_pkg.__file__).parent / "profile_narratives"
+
+
+def _narrative(profile_name: str) -> str:
+    """Load a profile's system-prompt narrative from its packaged ``.md`` file.
+
+    Files are stored with one trailing newline (editor/git hygiene); exactly
+    one is stripped so a future editor auto-adding the final newline cannot
+    change rendered prompt bytes. A missing file raises at module import —
+    loud and immediate, never a silently-empty narrative in a prompt.
+    """
+    text = (_NARRATIVES_DIR / f"{profile_name}.md").read_text(encoding="utf-8")
+    return text[:-1] if text.endswith("\n") else text
+
 
 # ---------------------------------------------------------------------------
 # QA handoff section name constants (D12 — single source of truth)
@@ -176,15 +202,7 @@ class BuildProfile:
 BUILD_PROFILES: dict[str, BuildProfile] = {
     "python_cli_builder": BuildProfile(
         name="python_cli_builder",
-        system_prompt_template=(
-            "You are a Python application assembler. You receive source code "
-            "that a developer has already written and your job is to package "
-            "it into a deployable artifact.\n\n"
-            "DO NOT rewrite or regenerate the source code — it is already done. "
-            "Your outputs are deployment artifacts only: container packaging, "
-            "an entrypoint that wires to the developer's existing main module, "
-            "and a consolidated dependency manifest derived from the source imports."
-        ),
+        system_prompt_template=_narrative("python_cli_builder"),
         required_files=("Dockerfile", "__main__.py", "requirements.txt", "qa_handoff.md"),
         optional_files=(),
         validation_rules=(
@@ -196,12 +214,7 @@ BUILD_PROFILES: dict[str, BuildProfile] = {
     ),
     "static_web_builder": BuildProfile(
         name="static_web_builder",
-        system_prompt_template=(
-            "You are a static web application builder. Generate a complete, "
-            "browser-openable web application from the implementation plan.\n\n"
-            "All assets must use relative paths (no CDN dependencies). The "
-            "result must open by double-clicking the HTML entry point."
-        ),
+        system_prompt_template=_narrative("static_web_builder"),
         required_files=("index.html", "styles.css", "main.js", "qa_handoff.md"),
         optional_files=("favicon.ico", "manifest.json"),
         validation_rules=(
@@ -213,12 +226,7 @@ BUILD_PROFILES: dict[str, BuildProfile] = {
     ),
     "web_app_builder": BuildProfile(
         name="web_app_builder",
-        system_prompt_template=(
-            "You are a web application builder. Generate a complete, "
-            "runnable Python web application from the implementation plan.\n\n"
-            "Use a lightweight framework (Flask preferred). The application "
-            "must start with a single command."
-        ),
+        system_prompt_template=_narrative("web_app_builder"),
         required_files=("app.py", "index.html", "requirements.txt", "qa_handoff.md"),
         optional_files=("static/styles.css", "static/main.js", "templates/"),
         validation_rules=(
@@ -230,20 +238,7 @@ BUILD_PROFILES: dict[str, BuildProfile] = {
     ),
     "fullstack_fastapi_react": BuildProfile(
         name="fullstack_fastapi_react",
-        system_prompt_template=(
-            "You are assembling a fullstack web application with a FastAPI "
-            "backend and a React (Vite) frontend.\n\n"
-            "The source code from the development step is provided as context. "
-            "Do not regenerate application code — focus on packaging, "
-            "configuration, and operational readiness. The container build "
-            "must be multi-stage: a Python base for the backend, a Node build "
-            "stage for the frontend static assets, and a final stage that "
-            "serves both. Keep the app portable: pass the frontend API base as a "
-            "build arg/env (`VITE_API_BASE`) and the backend CORS origins as a "
-            "runtime env (`CORS_ORIGINS`), document both in `.env.example`, and "
-            "never hardcode `localhost` URLs into the image. The QA handoff "
-            "document must include CORS configuration notes for the backend."
-        ),
+        system_prompt_template=_narrative("fullstack_fastapi_react"),
         required_files=("Dockerfile", "qa_handoff.md"),
         optional_files=("docker-compose.yaml", "start.sh", ".env.example", "nginx.conf"),
         validation_rules=(
