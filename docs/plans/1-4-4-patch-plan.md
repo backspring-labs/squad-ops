@@ -224,3 +224,56 @@ store/recall smoke.
 | #424 | manifest exhaustion = framing failure + collapse artifact | plan authoring service + gate | exhaustion path fails fast with persisted reason |
 | #511 | budget gates every dispatch lane incl. corrections | executor + correction runner | tiny-budget probe terminates at first boundary past expiry |
 | #571 | prefilter `.where()` + explicit cosine metric | memory adapter | starvation repro unit test + live recall smoke |
+
+## As built (2026-08-05, amended at the 1.4.4 cut)
+
+Seven fixes, seven PRs, in the planned order: #717 (#427) → #718 (#426) → #719 (#715)
+→ #720 (#423) → #721 (#424) → #722 (#511) → #723 (#571). Design decisions ratified at
+the plan review held: #427 took the **column** (migration 1010, the line's only one);
+#423's error-severity evidence-gaps join `required_unmet` **only when contract-bound**;
+`validation` did not gain a `build_profile`.
+
+### Premise corrections found at build time
+
+1. **#427 was half-fixed already** — the logging half had shipped (`configure_logging`
+   in the API entrypoint); only the persistence half was built.
+2. **#426's two seams**: the executor has TWO gate seams, and multi-workload cycles
+   traverse only `_reject_invalid_plan_before_workload_gate` — #718's net initially
+   landed on the other one; #719 closed the gap and both the #426 and #715 nets now
+   run on both seams.
+3. **#423's aggregation was healthier than the issue's era**: SIP-0096 already made
+   skips non-creditable at cycle_outcome — the surviving false greens were the
+   per-task `passed` flag and the missing required-escalation for contract-bound
+   gaps. Also: `frontend_acceptance_checks_disabled` is not config (no such flag
+   exists) — it marks the unimplemented JS/TS analyzer and is classified as a gap.
+4. **#424's sole-author leg had closed since filing** (exhaustion fails the task
+   loudly); the surviving holes were the silent static fallback at dispatch and the
+   gate approving a plan-less framing. The planned `plan_authoring_collapsed`
+   *artifact* was superseded by the #473 gate-decision recording + #427 persistence.
+5. **#511's mechanism localized**: the budget was checked only at the main task-loop
+   boundary; the fix gates the CorrectionRunner's single dispatch choke point.
+
+### Deploy-window results (2026-08-05, integration deploy of all seven pre-merge)
+
+- Migration 1010 applied idempotently at first boot; contract v9 / manifest v4
+  payload hashes unchanged.
+- **In-container replays**: the deployed #715 validator rejects the *stored shk-4
+  plan* with the named finding (and passes it when `tests_pass` is not required);
+  #426 rejects a builder mutation of the same plan; #423's authored-`.tsx` exhibit
+  row reads `passed: false, evidence_gap: true` with the task not failed; **#571
+  verified against the agent image's pinned lancedb 0.8.2** (namespace starvation
+  repro + exact cosine score) — closing the dev-0.29 vs image-0.8.2 risk.
+- **Designed-failure probe** (`cyc_c110af382480`, 60s budget): terminated at the
+  first dispatch boundary past expiry; `runs show` surfaces
+  `failure_reason: Time budget exhausted (60s) after 1 tasks` (#427 + #511 live).
+- **Confirmation shakedown shk-5** (`cyc_07ae691af9d6`): **green — verdict
+  `accepted`, zero failed, zero unverified, zero correction rounds**; a compliant
+  6-task plan on the first framing roll (both qa tasks pytest-discoverable); the
+  new nets silent throughout — no false reds on a well-formed roll; 9/9 leases
+  released, zero lifecycle residue.
+
+### Filed forward
+
+- **#724** — `time_budget_seconds` (and siblings) read from `applied_defaults`
+  directly, bypassing `Cycle.resolved_config()`; an `execution_overrides` budget is
+  silently ignored. The #426 class; sweep the executor's direct reads with the fix.
