@@ -258,4 +258,20 @@ the strongest argument the window has ever made for its own existence.
   attempt refused with `focus_lease_held_by_other_owner`, and the relaunched run's
   leases were untouched. The exact race the review predicted, demonstrated in
   production shape on the first try.
-- **Confirmation shakedown** (`cyc_c3413e8ed3c3`, shk-4): SHK4-VERDICT-PLACEHOLDER
+- **Confirmation shakedown** (`cyc_c3413e8ed3c3`, shk-4): **green — verdict `accepted`,
+  zero failed, zero unverified, `tests_pass` included; 2 runs, 3 correction rounds.**
+  The patch's own surfaces were clean end-to-end: leases acquired at recruitment in both
+  workloads and all released at finalize (9/9); zero unreleased leases, zero active
+  activities, all agents ambient at terminal; no restart at any point; the only
+  `focus_lease.rejected` events in the window are the five #712 refusals. The three
+  correction rounds all trace to plan-planted defects, not 1.4.3 regressions:
+  round 0 = plan-asserted `created_at` absent from the frozen model (repaired in one
+  round); rounds 1–2 = a plan task whose declared test artifact
+  (`backend/tests/test_integration.js`) can never satisfy pytest-based `tests_pass` —
+  the loop escaped only when the repair emitted a 238-byte placeholder `.js` plus an
+  undeclared `test_integration.py` twin carrying the real tests. Green, but at three
+  rounds' cost for a statically-visible plan defect, with a placebo artifact in the
+  deliverable and the planned Vite-proxy smoke silently narrowed to TestClient
+  coverage. Filed → 1.4.4 (plan-time check-applicability validation) with fresh
+  #426/#427 evidence; #498's evaluator change disturbed nothing (typed checks including
+  `node --check` evaluated cleanly both runs).
