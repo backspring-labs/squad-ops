@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from adapters.cycles.execution_errors import _CancellationError, _ExecutionError
+from adapters.cycles.run_completion import failure_reason_text
 from squadops.cycles.models import ArtifactRef, Cycle, RunStatus
 from squadops.cycles.task_plan import generate_task_plan
 from squadops.ports.cycles.flow_execution import FlowExecutionPort
@@ -111,11 +112,17 @@ class InProcessFlowExecutor(FlowExecutionPort):
             logger.info("Run %s cancelled", run_id)
 
         except _ExecutionError as exc:
-            await self._safe_transition(run_id, RunStatus.FAILED)
+            await self._safe_transition(
+                run_id,
+                RunStatus.FAILED,
+                failure_reason=failure_reason_text(exc, include_type=False),
+            )
             logger.error("Run %s failed: %s", run_id, exc)
 
         except Exception as exc:
-            await self._safe_transition(run_id, RunStatus.FAILED)
+            await self._safe_transition(
+                run_id, RunStatus.FAILED, failure_reason=failure_reason_text(exc)
+            )
             logger.exception("Run %s failed with unexpected error: %s", run_id, exc)
 
     async def cancel_run(self, run_id: str) -> None:
@@ -321,10 +328,14 @@ class InProcessFlowExecutor(FlowExecutionPort):
             logger.warning("Failed to resolve PRD for project %s", project_id, exc_info=True)
             return None
 
-    async def _safe_transition(self, run_id: str, status: RunStatus) -> None:
+    async def _safe_transition(
+        self, run_id: str, status: RunStatus, *, failure_reason: str | None = None
+    ) -> None:
         """Attempt status transition, logging but not raising on failure."""
         try:
-            await self._cycle_registry.update_run_status(run_id, status)
+            await self._cycle_registry.update_run_status(
+                run_id, status, failure_reason=failure_reason
+            )
         except Exception:
             logger.warning(
                 "Failed to transition run %s to %s",

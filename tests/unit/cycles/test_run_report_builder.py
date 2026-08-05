@@ -106,3 +106,36 @@ def test_verification_lines_omit_coverage_when_no_criteria():
     )
     text = "\n".join(_build_verification_lines(summary))
     assert "Contract criteria" not in text
+
+
+class TestFailureReasonLine:
+    """#427: a failed run's report must carry the terminal reason — a
+    pre-dispatch failure has no task artifacts for the reader to check."""
+
+    @staticmethod
+    def _run(reason):
+        from squadops.cycles.models import Run
+
+        return Run(
+            run_id="run_001",
+            cycle_id="cyc_001",
+            run_number=1,
+            status="failed",
+            initiated_by="api",
+            resolved_config_hash="hash",
+            failure_reason=reason,
+        )
+
+    def test_reason_rendered_when_present(self):
+        from squadops.cycles.run_report_builder import build_run_report
+
+        report = build_run_report(
+            "cyc_001", "run_001", self._run("CycleError: build_profile is required"), "FAILED"
+        )
+        assert "- **Failure Reason:** CycleError: build_profile is required" in report
+
+    def test_no_reason_line_when_absent(self):
+        from squadops.cycles.run_report_builder import build_run_report
+
+        report = build_run_report("cyc_001", "run_001", self._run(None), "FAILED")
+        assert "Failure Reason" not in report

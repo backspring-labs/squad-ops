@@ -745,3 +745,44 @@ class TestStrandedActivitySweep:
         await completion.finalize("cyc_001", "run_001", "COMPLETED", None, None)
 
         completion._cycle_registry.record_run_verification_summary.assert_awaited_once()
+
+
+class TestTerminalOutcomeFailureReason:
+    """#427: the FAILED mappings carry the persisted reason; others do not."""
+
+    def test_execution_error_reason_is_message_without_wrapper_type(self):
+        from adapters.cycles.execution_errors import _ExecutionError
+        from adapters.cycles.run_completion import resolve_terminal_outcome
+
+        outcome = resolve_terminal_outcome(
+            _ExecutionError("Max correction attempts (5) exhausted"), "run_x"
+        )
+        assert outcome.failure_reason == "Max correction attempts (5) exhausted"
+
+    def test_unexpected_error_reason_includes_type(self):
+        from adapters.cycles.run_completion import resolve_terminal_outcome
+
+        outcome = resolve_terminal_outcome(KeyError("build_profile"), "run_x")
+        assert outcome.failure_reason == "KeyError: 'build_profile'"
+
+    def test_cancellation_and_pause_carry_no_reason(self):
+        from adapters.cycles.execution_errors import _CancellationError, _PausedError
+        from adapters.cycles.run_completion import resolve_terminal_outcome
+
+        assert resolve_terminal_outcome(_CancellationError(), "run_x").failure_reason is None
+        assert resolve_terminal_outcome(_PausedError(), "run_x").failure_reason is None
+
+    def test_reason_is_bounded(self):
+        from adapters.cycles.run_completion import (
+            _FAILURE_REASON_MAX_CHARS,
+            failure_reason_text,
+        )
+
+        text = failure_reason_text(RuntimeError("x" * 10_000))
+        assert len(text) == _FAILURE_REASON_MAX_CHARS
+        assert text.endswith("…")
+
+    def test_messageless_exception_falls_back_to_type_name(self):
+        from adapters.cycles.run_completion import failure_reason_text
+
+        assert failure_reason_text(RuntimeError(), include_type=False) == "RuntimeError"

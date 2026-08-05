@@ -44,6 +44,11 @@ def _build_report_metadata_lines(
         f"- **Run Number:** {run.run_number}",
         f"- **Status:** {terminal_status}",
     ]
+    # #427: the terminal exception, read off the run row finalize just wrote.
+    # Without it a pre-dispatch failure points readers at task artifacts that
+    # do not exist.
+    if getattr(run, "failure_reason", None):
+        lines.append(f"- **Failure Reason:** {run.failure_reason}")
     if cycle:
         lines.append(f"- **Project ID:** {cycle.project_id}")
         lines.append(f"- **Build Strategy:** {cycle.build_strategy}")

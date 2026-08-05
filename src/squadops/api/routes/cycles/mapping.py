@@ -66,6 +66,7 @@ def run_to_response(run: Run) -> RunResponse:
         ],
         artifact_refs=list(run.artifact_refs),
         workload_type=run.workload_type,
+        failure_reason=run.failure_reason,
     )
 
 

@@ -148,6 +148,7 @@ class RunResponse(BaseModel):
     gate_decisions: list[GateDecisionResponse] = Field(default_factory=list)
     artifact_refs: list[str] = Field(default_factory=list)
     workload_type: str | None = None
+    failure_reason: str | None = None
 
 
 class WorkloadProgressEntry(BaseModel):

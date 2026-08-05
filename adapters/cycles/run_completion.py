@@ -68,6 +68,9 @@ class TerminalOutcome:
     event_payload: dict[str, Any] | None
     log_kind: Literal["info", "error", "exception"]
     log_message: str
+    # #427: persisted on the run row with the terminal transition. Set only by
+    # the FAILED mappings — cancellation and pauses have their own affordances.
+    failure_reason: str | None = None
 
 
 def resolve_terminal_outcome(exc: BaseException, run_id: str) -> TerminalOutcome:
@@ -120,6 +123,7 @@ def resolve_terminal_outcome(exc: BaseException, run_id: str) -> TerminalOutcome
             event_payload={"error": str(exc)},
             log_kind="error",
             log_message=f"Run {run_id} failed: {exc}",
+            failure_reason=failure_reason_text(exc, include_type=False),
         )
     return TerminalOutcome(
         terminal_status="FAILED",
@@ -128,7 +132,29 @@ def resolve_terminal_outcome(exc: BaseException, run_id: str) -> TerminalOutcome
         event_payload={"error": str(exc)},
         log_kind="exception",
         log_message=f"Run {run_id} failed with unexpected error: {exc}",
+        failure_reason=failure_reason_text(exc),
     )
+
+
+# Bound so a pathological exception message cannot bloat the run row; the full
+# text is still in the RUN_FAILED payload and the executor log line.
+_FAILURE_REASON_MAX_CHARS = 2000
+
+
+def failure_reason_text(exc: BaseException, *, include_type: bool = True) -> str:
+    """The persisted reason, bounded (#427).
+
+    ``include_type=False`` for the internal ``_ExecutionError`` wrapper, whose
+    class name is executor plumbing — its message alone is the diagnosis. For
+    unexpected exceptions the type name is the diagnosis (``KeyError: 'x'``).
+    """
+    if include_type:
+        text = f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
+    else:
+        text = str(exc) or type(exc).__name__
+    if len(text) > _FAILURE_REASON_MAX_CHARS:
+        text = text[: _FAILURE_REASON_MAX_CHARS - 1] + "…"
+    return text
 
 
 def _stamp_behavioral_criteria(results: Any, contract: Any) -> Any:

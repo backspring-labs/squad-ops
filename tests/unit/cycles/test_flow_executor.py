@@ -48,7 +48,7 @@ def mock_registry():
         initiated_by="api",
         resolved_config_hash="hash",
     )
-    mock.update_run_status.side_effect = lambda run_id, status: Run(
+    mock.update_run_status.side_effect = lambda run_id, status, **kwargs: Run(
         run_id=run_id,
         cycle_id="cyc_001",
         run_number=1,
@@ -214,6 +214,12 @@ class TestFailFast:
         status_calls = mock_registry.update_run_status.call_args_list
         terminal_statuses = [c.args[1] for c in status_calls]
         assert RunStatus.FAILED in terminal_statuses
+
+        # #427: the FAILED transition carries the diagnosis — without it the
+        # run row is a black box again ("status: failed", reason nowhere).
+        failed_call = next(c for c in status_calls if c.args[1] == RunStatus.FAILED)
+        reason = failed_call.kwargs.get("failure_reason")
+        assert reason is not None and reason.startswith("Task ") and "failed: boom" in reason
 
     async def test_sequential_fail_fast_on_third_task(
         self, executor, mock_orchestrator, mock_registry

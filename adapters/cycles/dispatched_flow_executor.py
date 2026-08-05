@@ -470,7 +470,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             # former per-class handlers).
             outcome = resolve_terminal_outcome(exc, run_id)
             terminal_status = outcome.terminal_status
-            await self._safe_transition(run_id, outcome.run_status)
+            await self._safe_transition(
+                run_id, outcome.run_status, failure_reason=outcome.failure_reason
+            )
             self._cycle_event_bus.emit(
                 outcome.event_type,
                 entity_type="run",
@@ -3143,10 +3145,14 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             logger.warning("Failed to resolve PRD for project %s", project_id, exc_info=True)
             return None
 
-    async def _safe_transition(self, run_id: str, status: RunStatus) -> None:
+    async def _safe_transition(
+        self, run_id: str, status: RunStatus, *, failure_reason: str | None = None
+    ) -> None:
         """Attempt status transition, logging but not raising on failure."""
         try:
-            await self._cycle_registry.update_run_status(run_id, status)
+            await self._cycle_registry.update_run_status(
+                run_id, status, failure_reason=failure_reason
+            )
         except Exception:
             logger.warning(
                 "Failed to transition run %s to %s",

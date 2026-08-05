@@ -117,12 +117,17 @@ class MemoryCycleRegistry(CycleRegistryPort):
             results = [r for r in results if r.workload_type == workload_type]
         return results[offset : offset + limit]
 
-    async def update_run_status(self, run_id: str, status: RunStatus) -> Run:
+    async def update_run_status(
+        self, run_id: str, status: RunStatus, *, failure_reason: str | None = None
+    ) -> Run:
         if run_id not in self._runs:
             raise RunNotFoundError(f"Run not found: {run_id}")
         data = self._runs[run_id]
         validate_run_transition(RunStatus(data["status"]), status)
         data["status"] = status.value
+        # #427: reason rides the terminal transition; never null out a recorded one.
+        if status in TERMINAL_STATES and failure_reason is not None:
+            data["failure_reason"] = failure_reason
         return self._to_run(data)
 
     async def cancel_run(self, run_id: str) -> None:

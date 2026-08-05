@@ -406,3 +406,41 @@ class TestListRunVerificationSummaries:
 
     async def test_unknown_cycle_returns_empty(self, registry):
         assert await registry.list_run_verification_summaries("nope") == []
+
+
+# ---------------------------------------------------------------------------
+# #427: failure reason rides the terminal transition
+# ---------------------------------------------------------------------------
+
+
+async def test_failed_transition_persists_failure_reason(registry):
+    """The reason written with FAILED must round-trip on get_run — a dropped
+    write or unmapped read column would leave runs show blank again (#427)."""
+    await registry.create_run(_make_run())
+    await registry.update_run_status("run_001", RunStatus.RUNNING)
+
+    updated = await registry.update_run_status(
+        "run_001", RunStatus.FAILED, failure_reason="CycleError: build_profile is required"
+    )
+    assert updated.failure_reason == "CycleError: build_profile is required"
+
+    fetched = await registry.get_run("run_001")
+    assert fetched.failure_reason == "CycleError: build_profile is required"
+    assert fetched.status == RunStatus.FAILED.value
+
+
+async def test_non_terminal_transition_ignores_failure_reason(registry):
+    """A reason passed on a non-terminal transition must not stick — otherwise
+    a retried run would carry a stale reason while still RUNNING."""
+    await registry.create_run(_make_run())
+    updated = await registry.update_run_status(
+        "run_001", RunStatus.RUNNING, failure_reason="should not persist"
+    )
+    assert updated.failure_reason is None
+
+
+async def test_completed_run_has_no_failure_reason(registry):
+    await registry.create_run(_make_run())
+    await registry.update_run_status("run_001", RunStatus.RUNNING)
+    updated = await registry.update_run_status("run_001", RunStatus.COMPLETED)
+    assert updated.failure_reason is None
