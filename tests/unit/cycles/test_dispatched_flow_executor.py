@@ -1205,3 +1205,37 @@ class TestWorkloadGateSeamValidation:
             gated_run, gated_cycle, "progress_plan_review"
         )
         assert any("build_profile" in e for e in errors)
+
+
+class TestWorkloadGatePlanAbsent:
+    """#424: a completed framing with NO plan artifact on an
+    implementation_plan profile = authoring collapsed — reject at the gate
+    (free re-roll), never approve into an uninstrumented implementation run."""
+
+    async def test_absent_plan_rejected(self, executor, mock_vault, cycle, run):
+        import dataclasses
+
+        gated_cycle = dataclasses.replace(cycle, applied_defaults={"implementation_plan": True})
+        bare_run = dataclasses.replace(run, artifact_refs=())
+
+        errors = await executor._reject_invalid_plan_before_workload_gate(
+            bare_run, gated_cycle, "progress_plan_review"
+        )
+        assert any("plan_authoring_collapsed" in e for e in errors)
+
+    async def test_unreadable_plan_still_defers(self, executor, mock_vault, cycle, run):
+        """Exists-but-unparseable keeps today's deferral — the dispatch net
+        gives it a full diagnosis; only true absence is a collapse."""
+        import dataclasses
+
+        gated_cycle = dataclasses.replace(cycle, applied_defaults={"implementation_plan": True})
+        ref = MagicMock()
+        ref.filename = "implementation_plan.yaml"
+        ref.artifact_type = "control_implementation_plan"
+        mock_vault.retrieve.return_value = (ref, b"{{{{not yaml")
+        wired_run = dataclasses.replace(run, artifact_refs=("art_plan",))
+
+        errors = await executor._reject_invalid_plan_before_workload_gate(
+            wired_run, gated_cycle, "progress_plan_review"
+        )
+        assert not any("plan_authoring_collapsed" in e for e in errors)

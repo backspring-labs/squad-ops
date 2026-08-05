@@ -105,6 +105,31 @@ def test_validate_unparseable_manifest_is_a_single_error():
 def _executor_for(manifest_yaml: str | None) -> tuple[DispatchedFlowExecutor, Any, Any]:
     stored: dict[str, tuple[Any, bytes]] = {}
     refs: list[str] = []
+    # #424: the seam now rejects a plan-less framing outright
+    # (plan_authoring_collapsed), so these interface-manifest-net tests carry a
+    # minimal valid plan to keep exercising their own net in isolation.
+    plan_ref = MagicMock()
+    plan_ref.filename = "implementation_plan.yaml"
+    plan_ref.artifact_type = "control_implementation_plan"
+    minimal_plan = (
+        "version: 1\n"
+        "project_id: p\n"
+        "cycle_id: c\n"
+        "prd_hash: h\n"
+        "tasks:\n"
+        "  - task_index: 0\n"
+        "    task_type: development.develop\n"
+        "    role: dev\n"
+        '    focus: "Backend"\n'
+        '    description: "Build"\n'
+        "    expected_artifacts:\n"
+        '      - "backend/main.py"\n'
+        "    depends_on: []\n"
+        "summary:\n"
+        "  total_tasks: 1\n"
+    )
+    stored["ref-plan"] = (plan_ref, minimal_plan.encode("utf-8"))
+    refs.append("ref-plan")
     if manifest_yaml is not None:
         ref = MagicMock()
         ref.filename = "interface_manifest.yaml"

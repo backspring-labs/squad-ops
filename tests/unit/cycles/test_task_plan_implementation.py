@@ -217,3 +217,54 @@ class TestDeterministicTaskIds:
         assert plan[0].task_id.endswith("governance.define_done")
         assert plan[1].task_id.endswith("development.develop")
         assert plan[2].task_id.endswith("qa.test")
+
+
+class TestPlanRequiredNoStaticFallback:
+    """#424: an implementation_plan/typed_acceptance cycle whose plan is absent
+    must refuse dispatch — the static-step fallback ran the whole cycle with
+    the profile's instrumentation contract silently missing (cyc_7d2f505e5e8f:
+    caught only by the required-check throttle after the full run was spent)."""
+
+    @staticmethod
+    def _gated_cycle(impl_cycle, **defaults):
+        import dataclasses
+
+        return dataclasses.replace(impl_cycle, applied_defaults=dict(defaults))
+
+    def test_absent_plan_raises_for_implementation_plan_cycle(self, impl_cycle, impl_run, profile):
+        from squadops.cycles.models import CycleError
+
+        cycle = self._gated_cycle(impl_cycle, implementation_plan=True, build_tasks=True)
+        with pytest.raises(CycleError) as exc_info:
+            generate_task_plan(cycle, impl_run, profile, plan=None)
+        assert "implementation plan required but absent" in str(exc_info.value)
+
+    def test_absent_plan_raises_for_typed_acceptance_cycle(self, impl_cycle, impl_run, profile):
+        from squadops.cycles.models import CycleError
+
+        cycle = self._gated_cycle(impl_cycle, typed_acceptance=True, build_tasks=True)
+        with pytest.raises(CycleError):
+            generate_task_plan(cycle, impl_run, profile, plan=None)
+
+    def test_unflagged_cycle_keeps_static_fallback(self, impl_cycle, impl_run, profile):
+        """Legacy/plan-less profiles (smoke, selftest) still get static steps."""
+        cycle = self._gated_cycle(impl_cycle, build_tasks=True)
+        envelopes = generate_task_plan(cycle, impl_run, profile, plan=None)
+        assert envelopes  # static build steps materialized, no raise
+
+    def test_framing_workload_unaffected(self, impl_cycle, profile):
+        """Framing has no build steps — the guard must not fire there."""
+        from squadops.cycles.models import Run, WorkloadType
+
+        cycle = self._gated_cycle(impl_cycle, implementation_plan=True)
+        framing_run = Run(
+            run_id="run_framing",
+            cycle_id="cyc_impl",
+            run_number=1,
+            status="queued",
+            initiated_by="api",
+            resolved_config_hash="hash",
+            workload_type=WorkloadType.FRAMING,
+        )
+        envelopes = generate_task_plan(cycle, framing_run, profile, plan=None)
+        assert envelopes
