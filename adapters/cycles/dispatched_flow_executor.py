@@ -1291,6 +1291,14 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 stored_artifacts,
             )
 
+        # #683 (SIP-0096 §14): wrap-up tasks consume the CycleOutcome — inject
+        # the structured evidence ONCE per wrap-up run into prior_outputs, so
+        # every wrap-up prompt shows the basis (summary) and the closeout
+        # handler enforces the ceiling (raw dict). Data only; best-effort — a
+        # failed derivation is disclosed by absence and the handler fails
+        # closed to an inconclusive ceiling.
+        await self._inject_wrapup_evidence(plan, cycle, prior_outputs)
+
         # Seed from prior plan artifacts for build-only runs (§2.3)
         if seed_artifact_refs:
             await self._seed_prior_artifacts(
@@ -1826,6 +1834,39 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             )
 
         return False
+
+    _WRAPUP_TASK_TYPES: frozenset[str] = frozenset(
+        {
+            "data.gather_evidence",
+            "qa.assess_outcomes",
+            "data.classify_unresolved",
+            "governance.closeout_decision",
+            "governance.publish_handoff",
+        }
+    )
+
+    async def _inject_wrapup_evidence(
+        self, plan: list[TaskEnvelope], cycle: Cycle, prior_outputs: dict[str, Any]
+    ) -> None:
+        """#683: thread the cycle's CycleOutcome into wrap-up task inputs."""
+        if not any(e.task_type in self._WRAPUP_TASK_TYPES for e in plan):
+            return
+        try:
+            from squadops.cycles.cycle_outcome import resolve_cycle_outcome
+            from squadops.cycles.wrapup_models import verification_evidence_summary
+
+            outcome = await resolve_cycle_outcome(self._cycle_registry, cycle.cycle_id)
+            outcome_dict = outcome.to_dict()
+            prior_outputs["verification_evidence"] = {
+                "summary": verification_evidence_summary(outcome_dict),
+                "outcome": outcome_dict,
+            }
+        except Exception:
+            logger.warning(
+                "wrapup verification-evidence injection failed for %s",
+                cycle.cycle_id,
+                exc_info=True,
+            )
 
     async def _enrich_envelope(
         self,

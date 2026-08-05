@@ -366,6 +366,30 @@ class CycleOutcome:
         """
         return tuple(u.check_id for u in self.unverified if u.required)
 
+    def to_dict(self) -> dict[str, Any]:
+        """Wire shape for consumers outside this process (#683: wrap-up task
+        inputs travel the A2A envelope; the confidence ceiling is derived from
+        this dict on the agent side)."""
+        return {
+            "verdict": self.verdict.value,
+            "verified": list(self.verified),
+            "failed": list(self.failed),
+            "unverified": [
+                {"check_id": u.check_id, "reason": u.reason, "required": u.required}
+                for u in self.unverified
+            ],
+            "required_unmet": list(self.required_unmet),
+            "run_count": self.run_count,
+            "inert": list(self.inert),
+            "waived": [
+                {"check_id": w.check_id, "reason": w.reason, "waived_by": w.waived_by}
+                for w in self.waived
+            ],
+            "criteria_verified": list(self.criteria_verified),
+            "criteria_total": list(self.criteria_total),
+            "replay": self.replay.to_dict() if self.replay else None,
+        }
+
 
 def classify(result: CheckResult) -> EvidenceFamily:
     """Map one result to its evidence family — the integrity rule (SIP-0096 §6.1).
