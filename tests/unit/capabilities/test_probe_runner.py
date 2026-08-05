@@ -393,3 +393,67 @@ def test_capture_key_missing_from_response_fails(monkeypatch):
     assert out.status == "failed"
     assert "capture key 'id' missing" in out.reason
     assert context == {}
+
+
+# --------------------------------------------------------------------------- #
+# #687 — app traceback capture on failed probes
+# --------------------------------------------------------------------------- #
+
+
+def test_extract_last_traceback_takes_the_last_block():
+    text = (
+        "INFO: startup\n"
+        "Traceback (most recent call last):\n  File 'a.py'\nValueError: first\n"
+        "INFO: request\n"
+        "Traceback (most recent call last):\n  File 'b.py'\nNameError: name 'respones' is not defined\n"
+    )
+    tb = pr._extract_last_traceback(text)
+    assert tb is not None
+    assert tb.startswith("Traceback (most recent call last):")
+    assert "respones" in tb
+    assert "ValueError" not in tb  # earlier block never shadows the relevant one
+
+
+def test_extract_last_traceback_bounded_and_none_cases():
+    assert pr._extract_last_traceback("INFO: all quiet") is None
+    long = "Traceback (most recent call last):\n" + ("x" * 5000)
+    tb = pr._extract_last_traceback(long)
+    assert tb is not None and len(tb) <= pr._TRACEBACK_MAX_CHARS
+
+
+def test_probe_check_rows_carry_traceback_only_when_present():
+    rows = pr.probe_check_rows(
+        [
+            pr.ProbeOutcome("a", "failed", "status 500 != 200", app_traceback="Traceback ..."),
+            pr.ProbeOutcome("b", "passed", None),
+        ]
+    )
+    assert rows[0]["app_traceback"] == "Traceback ..."
+    assert "app_traceback" not in rows[1]  # a healthy row never grows the key
+
+
+@pytest.mark.slow
+def test_failed_probe_captures_the_apps_own_traceback(tmp_path):
+    # the shk-2 exhibit, live: a request-time NameError 500s the probe and the
+    # captured evidence must carry the app's actual stack trace — the fact the
+    # analyzer previously guessed at
+    (tmp_path / "backend").mkdir()
+    (tmp_path / "backend" / "__init__.py").write_text("")
+    (tmp_path / "backend" / "main.py").write_text(
+        "from fastapi import FastAPI\n"
+        "app = FastAPI()\n"
+        "@app.get('/boom')\n"
+        "def boom():\n"
+        "    return respones\n"  # NameError at request time
+    )
+    probe = Probe(
+        id="vc-probe-boom",
+        subject="backend",
+        request={"method": "GET", "path": "/boom"},
+        expect={"status": 200},
+    )
+    outcomes = run_probes(tmp_path, [probe])
+    assert outcomes[0].status == "failed"
+    assert outcomes[0].app_traceback is not None
+    assert "NameError" in outcomes[0].app_traceback
+    assert "respones" in outcomes[0].app_traceback
