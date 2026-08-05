@@ -30,7 +30,7 @@ from squadops.capabilities.scaffold import (
     is_qa_test_path_for_stack,
     testid_surface_instructions,
 )
-from squadops.cycles.acceptance_check_spec import is_check_applicable
+from squadops.cycles.acceptance_check_spec import CHECK_CONTRACT_ASSERTIONS, is_check_applicable
 from squadops.cycles.agent_config import resolve_agent_config
 from squadops.cycles.failure_evidence import FailureLocus
 from squadops.cycles.implementation_plan import (
@@ -559,6 +559,42 @@ def _inject_contract_inputs(
             inputs["dom_testid_surface"] = testid_lines
 
 
+def _contract_assertion_criteria(
+    task_type: str, plan_task: Any, contract: VerificationContract | None
+) -> list[TypedCheck]:
+    """#629 (1.5 A6/D2): contract-owned ``contract_assertions_match`` checks for a bound
+    qa.test task — one per expected ``.py`` suite file in the stack's QA namespace, params
+    carrying the contract's pinned statuses as self-contained data (``METHOD /path STATUS``
+    tokens + the suite-wide allowed error statuses), so the evaluator needs no contract
+    access. pf-54: five authored suite versions asserted 200 where the probe pinned 201 —
+    the authoring injection (layer 1) states the pins; this check enforces them. Empty in
+    author mode, non-qa tasks, and probe-less contracts (byte-identical plans there)."""
+    if task_type != "qa.test" or contract is None:
+        return []
+    pinned = contract.pinned_endpoint_statuses()
+    if not pinned:
+        return []
+    endpoints = [
+        f"{method} {path} {status}"
+        for (method, path), statuses in sorted(pinned.items())
+        for status in statuses
+    ]
+    params: dict[str, Any] = {"endpoints": endpoints}
+    error_statuses = contract.allowed_error_statuses()
+    if error_statuses:
+        params["allowed_error_statuses"] = list(error_statuses)
+    stack = contract.skeleton.expander
+    return [
+        TypedCheck(
+            check=CHECK_CONTRACT_ASSERTIONS,
+            params={"file": art, **params},
+            id=f"contract-assertions:{art}",
+        )
+        for art in plan_task.expected_artifacts
+        if art.endswith(".py") and is_qa_test_path_for_stack(art, stack)
+    ]
+
+
 def _harness_boundary_criteria(
     task_type: str, plan_task: Any, contract: VerificationContract | None
 ) -> list[TypedCheck]:
@@ -769,6 +805,10 @@ def generate_task_plan(
                 acceptance.extend(resolve_contract_refs(plan_task.criteria_refs, contract))
             # SIP-0100 1.1: bind scaffold-owned harness_boundary checks onto bound qa.test slots.
             acceptance.extend(_harness_boundary_criteria(task_type, plan_task, contract))
+            # #629 (A6/D2): bind contract-owned assertion-vs-contract checks onto
+            # bound qa.test suite files — layer 1's authoring block is guidance,
+            # this is the guarantee.
+            acceptance.extend(_contract_assertion_criteria(task_type, plan_task, contract))
             inputs["acceptance_criteria"] = acceptance
 
         _inject_contract_inputs(inputs, contract, task_type, interface_manifest)

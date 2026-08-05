@@ -247,6 +247,18 @@ CHECK_ENDPOINT_DEFINED = "endpoint_defined"
 # above — a literal there would silently inject nothing after a rename.
 CHECK_UNDEFINED_NAMES = "undefined_names"
 
+# #629 (1.5 A6/D2): the blocking suite-vs-contract check. Multi-reader constant
+# (injection in task_plan, locus routing in failure_evidence, the evaluator,
+# tests) — same single-source rule as the two above.
+CHECK_CONTRACT_ASSERTIONS = "contract_assertions_match"
+
+# #629 (1.5 A6/D2): the ADVISORY prose-vs-contract identity. Deliberately NOT a
+# ``CHECK_SPECS`` entry — that would make it plan-authorable; it names the
+# warning rows the plan-prose lint emits (``implementation_plan``), keeping its
+# lower evidence quality from laundering into the blocking check above. The
+# full governance-registry entry rides #730's attribute backfill.
+PLAN_PROSE_CONTRACT_DIVERGENCE = "plan_prose_contract_divergence"
+
 
 # The `"METHOD /path"` endpoint-token grammar. `endpoint_defined.methods_paths`
 # is authored in it and the evaluator matches route decorators against it; #688
@@ -279,6 +291,26 @@ def parse_method_path(token: str) -> tuple[str, str] | None:
     if method.lower() not in HTTP_METHODS:
         return None
     return method, path
+
+
+def parse_method_path_status(token: str) -> tuple[str, str, int] | None:
+    """Parse a ``"METHOD /path STATUS"`` token (#629's pinned-status grammar).
+
+    The three-field extension of ``parse_method_path`` — the wire shape the
+    ``contract_assertions_match`` injection uses for its ``endpoints`` param,
+    one token per (endpoint, pinned status). Same tolerance rule: ``None`` for
+    anything malformed, so a bad entry is inert instead of fatal.
+    """
+    parts = token.strip().rsplit(maxsplit=1)
+    if len(parts) != 2 or not parts[1].isdigit():
+        return None
+    method_path = parse_method_path(parts[0])
+    if method_path is None:
+        return None
+    status = int(parts[1])
+    if not 100 <= status <= 599:
+        return None
+    return method_path[0], method_path[1], status
 
 
 # Rev 1 vocabulary. Each entry's evaluator implementation lands in M1.2;
@@ -443,6 +475,34 @@ CHECK_SPECS: dict[str, CheckSpec] = {
             "imports) that no static check or `node --check` can see. Missing "
             "npm or a workspace without frontend/package.json skips "
             "(missing_tooling), it does not fail."
+        ),
+    ),
+    CHECK_CONTRACT_ASSERTIONS: CheckSpec(
+        name=CHECK_CONTRACT_ASSERTIONS,
+        applicable_extensions=frozenset({".py"}),
+        required_params=frozenset({"file", "endpoints"}),
+        optional_params=frozenset({"allowed_error_statuses"}),
+        param_types={"file": str, "endpoints": list, "allowed_error_statuses": list},
+        supported_stacks=frozenset({"python"}),
+        requires_stack_context=False,
+        path_params=frozenset({"file"}),
+        framework_injected=True,
+        example={
+            "file": "backend/tests/test_runs.py",
+            "endpoints": ["POST /runs 201", "POST /runs 422"],
+            "allowed_error_statuses": [404, 409, 422],
+        },
+        # #629 / pf-54: five authored suite versions asserted 200-on-create
+        # against a contract-pinned 201 — an unwinnable correction loop no
+        # source repair could satisfy. The authoring injection (layer 1) is
+        # guidance; this is the guarantee, injected by task_plan onto bound
+        # qa.test tasks per expected suite file, never authored.
+        notes=(
+            "Injected by the framework on bind-mode qa.test tasks: asserted "
+            "status codes in the suite are diffed against the contract's pinned "
+            "endpoint statuses (`endpoints` tokens, `METHOD /path STATUS`); a "
+            "pinned path requested through an undeclared prefix is also a "
+            "violation. Never authored."
         ),
     ),
     "module_imports": CheckSpec(

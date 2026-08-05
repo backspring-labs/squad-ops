@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from squadops.cycles.acceptance_check_spec import CHECK_CONTRACT_ASSERTIONS
 from squadops.cycles.emission_integrity import extraction_loss_suspected
 from squadops.cycles.verification_integrity import ResultStatus
 
@@ -219,15 +220,25 @@ def classify_failure_locus(failure_evidence: Any) -> str:
         return FailureLocus.OWN_ARTIFACT
 
     validation_result = failure_evidence.get("validation_result") or {}
-    checks = validation_result.get("checks") or []
+    checks = [row for row in validation_result.get("checks") or [] if isinstance(row, dict)]
+    # Own-artifact signals scan FIRST, regardless of row order (#629 D4): when the
+    # suite both contradicts the contract AND fails, repairing the app against a
+    # contract-contradicting suite is exactly the pf-54 budget burn — the
+    # tests_pass row must not route to the dev chain before these are consulted.
     for row in checks:
-        if not isinstance(row, dict):
-            continue
         check = row.get("check")
         if check == "expected_artifacts" and row.get("passed") is False:
             # The task's own named output files are missing from its emission.
             return FailureLocus.OWN_ARTIFACT
-        if check == "tests_pass" and row.get("passed") is False:
+        # #629: the frozen contract says the suite's own assertions are wrong
+        # (status pinned by a probe, asserted differently — or a pinned path
+        # requested through an undeclared prefix). Safe from the test-gaming
+        # guard: the signal comes from the contract, not from the app failing
+        # the suite — for qa.test, OWN_ARTIFACT = eve re-authors the suite.
+        if check == f"acceptance:{CHECK_CONTRACT_ASSERTIONS}" and row.get("passed") is False:
+            return FailureLocus.OWN_ARTIFACT
+    for row in checks:
+        if row.get("check") == "tests_pass" and row.get("passed") is False:
             locus = _locus_from_tests_pass_row(row)
             if locus is not None:
                 return locus

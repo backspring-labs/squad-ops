@@ -27,8 +27,10 @@ import yaml
 from squadops.cycles.acceptance_check_spec import (
     ALLOWED_SEVERITIES,
     CHECK_SPECS,
+    PLAN_PROSE_CONTRACT_DIVERGENCE,
     argv_matches_safelist,
     command_safelist_names,
+    normalize_route,
     reserved_keys_for,
 )
 
@@ -585,7 +587,9 @@ class ImplementationPlan:
 
         from squadops.cycles.task_plan import resolve_contract_refs
 
-        warnings: list[str] = []
+        # #629 (A6/D2): the ADVISORY status-code rule — its own identity so its
+        # evidence quality never launders into the blocking suite check.
+        warnings: list[str] = _prose_status_divergence_warnings(self.tasks, contract)
         for task in self.tasks:
             if not task.criteria_refs:
                 continue
@@ -936,6 +940,66 @@ class ImplementationPlan:
                 _serialize_acceptance_criterion(c) for c in task.acceptance_criteria
             ]
         return result
+
+
+_PROSE_METHOD_PATH_RE = r"\b(GET|POST|PUT|PATCH|DELETE)\s+(/\S+)"
+
+
+def _prose_status_divergence_warnings(
+    tasks: list[PlanTask], contract: VerificationContract
+) -> list[str]:
+    """#629 (1.5 A6/D2) — ``plan_prose_contract_divergence``: the ADVISORY half.
+
+    **Comparable prose** (A6's precondition for the rule existing at all, stated
+    here): a ``METHOD /path`` token followed on the same line — before any next
+    endpoint token — by an explicit 3-digit HTTP status. **The bound contract is
+    the authoritative artifact.** Prose short of that shape is not comparable
+    and is never flagged; the flag is a warning row on the existing
+    never-rejects channel (the reverted-#552 rule bars hard gates on prose).
+    Promotion to blocking requires a later registry change with proof of a
+    deterministic representation (the D2 ruling) — until then this identity's
+    lower evidence quality stays out of the blocking suite check.
+
+    Same {param}-name-insensitive path normalization as the pf-31 rules: pf-54's
+    plan prose said "returns 200" beside endpoints whose probes pinned 201.
+    """
+    import re as _re
+
+    pinned = contract.pinned_endpoint_statuses()
+    if not pinned:
+        return []
+    allowed = set(contract.allowed_error_statuses())
+    norm_pinned: dict[tuple[str, str], set[int]] = {}
+    for (method, path), statuses in pinned.items():
+        key = (method, _re.sub(r"\{\w+\}", "{}", path))
+        norm_pinned.setdefault(key, set()).update(statuses)
+
+    warnings: list[str] = []
+    for task in tasks:
+        prose = "\n".join([task.description, *[str(c) for c in task.acceptance_criteria]])
+        for line in prose.splitlines():
+            matches = list(_re.finditer(_PROSE_METHOD_PATH_RE, line))
+            for i, m in enumerate(matches):
+                method, raw_path = m.group(1).upper(), m.group(2).rstrip(".,;:)")
+                norm = _re.sub(r"\{\w+\}", "{}", normalize_route(raw_path))
+                statuses = norm_pinned.get((method, norm))
+                if not statuses:
+                    continue
+                # the status must belong to THIS token: same line, before the
+                # next endpoint token — a neighbour's status is not comparable
+                tail_end = matches[i + 1].start() if i + 1 < len(matches) else len(line)
+                status_match = _re.search(r"\b([1-5]\d{2})\b", line[m.end() : tail_end])
+                if status_match is None:
+                    continue
+                status = int(status_match.group(1))
+                if status not in statuses | allowed:
+                    warnings.append(
+                        f"{PLAN_PROSE_CONTRACT_DIVERGENCE}: Task {task.task_index} "
+                        f"({task.focus}): prose says {method} {raw_path} → {status} but "
+                        f"the contract pins {sorted(statuses | allowed)} — the contract "
+                        f"is authoritative (#629)"
+                    )
+    return warnings
 
 
 def resolve_contract_refs(

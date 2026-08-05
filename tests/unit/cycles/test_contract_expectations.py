@@ -246,3 +246,77 @@ class TestProseContractConflictLint:
             summary=PlanSummary(total_dev_tasks=1, total_qa_tasks=0, total_tasks=1),
         )
         assert plan.lint_prose_contract_conflicts(_contract()) == []
+
+
+def _contract_with_probes() -> VerificationContract:
+    """The _contract() shape plus pinned behavior: POST /runs → 201 (create) and
+    422 (blank-input rejection), plus a 409 in coverage_expectations."""
+    from dataclasses import replace
+
+    from squadops.cycles.verification_contract import Behavioral, Probe, Suite
+
+    return replace(
+        _contract(),
+        behavioral=Behavioral(
+            probes=(
+                Probe(
+                    id="p-create",
+                    subject="backend",
+                    request={"method": "POST", "path": "/runs"},
+                    expect={"status": 201},
+                ),
+                Probe(
+                    id="p-blank",
+                    subject="backend",
+                    request={"method": "POST", "path": "/runs"},
+                    expect={"status": 422, "error_code": "validation_error"},
+                ),
+            ),
+            suite=Suite(coverage_expectations=("duplicate_participant → 409",)),
+        ),
+    )
+
+
+class TestProseStatusDivergence:
+    """#629 (1.5 A6/D2) — plan_prose_contract_divergence, the ADVISORY half.
+
+    Comparable prose = a METHOD /path token followed on the same line (before
+    any next endpoint token) by an explicit 3-digit status; the contract is
+    authoritative. The identity stays separate from the blocking suite check
+    so its lower evidence quality never launders into it.
+    """
+
+    def test_divergent_status_warns_under_its_own_identity(self):
+        # the pf-54 prose shape: "returns 200" beside an endpoint pinned 201
+        plan = _plan("Implement POST /runs — returns 200 with the created run.", [])
+        warnings = plan.lint_prose_contract_conflicts(_contract_with_probes())
+        assert any(
+            "plan_prose_contract_divergence" in w and "200" in w and "201" in w for w in warnings
+        )
+
+    @pytest.mark.parametrize(
+        "prose",
+        [
+            "Implement POST /runs → 201 with the created run.",  # pinned
+            "POST /runs returns 422 on blank input.",  # rejection pin
+            "POST /runs yields 409 for duplicates.",  # coverage_expectations
+            "Implement POST /runs to create a run.",  # no status — not comparable
+            "GET /unpinned → 200 somewhere else.",  # endpoint not pinned
+        ],
+    )
+    def test_contract_correct_or_incomparable_prose_is_silent(self, prose):
+        plan = _plan(prose, [])
+        warnings = plan.lint_prose_contract_conflicts(_contract_with_probes())
+        assert not any("plan_prose_contract_divergence" in w for w in warnings)
+
+    def test_neighbouring_endpoint_status_is_not_comparable(self):
+        # the status after the NEXT endpoint token belongs to that token — a
+        # missing status must not borrow the neighbour's and false-flag
+        plan = _plan("Wire POST /runs and GET /health → 200 for monitoring.", [])
+        warnings = plan.lint_prose_contract_conflicts(_contract_with_probes())
+        assert not any("plan_prose_contract_divergence" in w for w in warnings)
+
+    def test_probeless_contract_is_silent(self):
+        plan = _plan("Implement POST /runs — returns 200.", [])
+        warnings = plan.lint_prose_contract_conflicts(_contract())
+        assert not any("plan_prose_contract_divergence" in w for w in warnings)
