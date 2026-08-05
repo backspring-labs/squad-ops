@@ -465,12 +465,32 @@ for stateful changes):
 
 ### The release evidence matrix *(a cut artifact, not a planning aid)*
 
-Instantiated at Gate 1 and maintained per landed item; the completed matrix is part of
-the cut record (as-built section of this doc). Columns: item · behavior class ·
-primary risk · required proof (from the table above) · live validation · replay/golden
-artifact reference · cut status. Every release-defining item has a filled row before
-the cut; every behavior-stricter item's row names the defect ruling that authorizes
-it (the feature-free check).
+Maintained per landed item; the completed matrix is part of the cut record. Every
+release-defining item has a filled row before the cut; every behavior-stricter item's
+row names the defect ruling that authorizes it (the feature-free check).
+
+**Instantiated 2026-08-05 (Gate 1).** Update the row in the PR that lands the item.
+
+| Item | Behavior class | Primary risk | Required proof | Live validation | Replay/golden artifact | Cut status |
+|---|---|---|---|---|---|---|
+| A1 #670 | enforcement expansion (ruling: fork 1, 2026-08-04) | false gates on qa emissions | true-positive replay exhibit + silent-on-clean shakedown | — | — | open |
+| A2 #682 | schema/migration | historical-row compat | real-store + historical fixture + forward-compat | — | — | open |
+| A2 #683 | consumer change | prose fallback survives on a path | outcome-based wrap-up incl. fallback/replay paths | — | — | open |
+| A2 #684 | stateful detection | counter/reset error | multi-cycle real-store sequence | — | — | open |
+| A3 #687 | evidence threading | traceback arrives unstructured | structured-evidence fixture; replay preserves category | — | — | open |
+| A3 #431 | evidence classification | extraction loss enters repair | designed extraction-loss replay | — | — | open |
+| A4 #435+lever | behavior change (ruling: progress-aware termination, 2026-08-04) | premature/false termination | designed-failure probe matrix + no-false-termination shakedown | — | — | open |
+| A6 #629 | enforcement expansion | prose side blocks without determinism | deterministic-side exhibit; prose side ships advisory | — | — | open |
+| B1 #663 | structural | dropped context/seam | replay equivalence + both-seam tests | — | — | open |
+| B2 #331 | structural | task identity drift | handler equivalence replay; stable task names | — | — | open |
+| B3 #481 | recovery behavior | race / non-idempotence | seeded-state test + idempotent rerun + race case | — | — | open |
+| C SIP-0101 slice | new maintainer-only tooling | invalid replay trusted as green | fail-closed on incomplete inputs; category-named evidence | — | — | open |
+| D #506 | lifecycle timing (ruling: SIP-0087 defect, 2026-08-04) | tracker state drift | real Prefect adapter test or contract fixture | — | — | open |
+| D #724 | config resolution | override silently ignored | override-wins probe + regression | — | — | open |
+| F #452 | byte-preserving refactor | prompt drift | `render_hash` before/after equivalence | — | — | open |
+| F #583 | docs only | — | ADR merged | n/a | n/a | **PR #728 in review** |
+| SIP-0096 promotion | status promotion | AC-mapping gaps surface late | promotion PR carries AC mapping; shakedown on promoted state | — | — | open |
+| Gate-2 exit shakedown | line verification | integrity core unbanked | green unscored cycle on promoted state | — | — | open |
 
 ## Rollback seams
 
