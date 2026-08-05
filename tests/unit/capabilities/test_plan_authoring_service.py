@@ -472,12 +472,14 @@ async def test_produce_plan_filters_builder_assemble_by_squad_capability():
     no_builder_render = str(ctx_no_builder.ports.request_renderer.render.call_args)
     assert "builder.assemble" not in no_builder_render
 
+    # #426: the builder role alone no longer suffices — the offer also
+    # requires a configured build_profile (see the offer tests below).
     ctx_builder = _make_context()
     await produce_plan(
         ctx_builder,
         {**base, "profile_roles": ["lead", "dev", "builder", "qa"]},
         planning_content="## Plan",
-        resolved_config=base["resolved_config"],
+        resolved_config={**base["resolved_config"], "build_profile": "python_cli_builder"},
         role="lead",
         handler_name="test_harness",
         chat_kwargs={},
@@ -539,3 +541,44 @@ def test_validate_manifest_candidate_accepts_safelisted_command():
     manifest, error_msg = _validate_manifest_candidate(yaml_content, 1, 15, ["dev"])
     assert error_msg is None
     assert manifest is not None
+
+
+# ---------------------------------------------------------------------------
+# #426 — the builder offer keys off config, not squad composition alone
+# ---------------------------------------------------------------------------
+
+
+async def _render_vars_for(profile_roles, resolved_config):
+    ctx = _make_context()
+    await produce_plan(
+        ctx,
+        {"prd": "Build it", "profile_roles": profile_roles, "resolved_config": resolved_config},
+        planning_content="## Plan",
+        resolved_config=resolved_config,
+        role="lead",
+        handler_name="test_harness",
+        chat_kwargs={},
+    )
+    call = ctx.ports.request_renderer.render.call_args_list[0]
+    return call.args[1]
+
+
+async def test_builder_squad_without_build_profile_is_not_offered_builder_tasks():
+    """#426: lite/full squads on a profile with no build_profile authored
+    builder.assemble plans that generate_task_plan then refused — a
+    deterministically dead plan, knowable at framing time. The offer (task
+    vocabulary AND the guideline/example prose) must key off config too."""
+    variables = await _render_vars_for(
+        ["lead", "dev", "qa", "builder"], {"implementation_plan": True}
+    )
+    assert "builder.assemble" not in variables["task_types_section"]
+    assert variables["builder_guideline"] == ""
+
+
+async def test_builder_squad_with_build_profile_is_offered_builder_tasks():
+    variables = await _render_vars_for(
+        ["lead", "dev", "qa", "builder"],
+        {"implementation_plan": True, "build_profile": "fullstack_fastapi_react"},
+    )
+    assert "builder.assemble" in variables["task_types_section"]
+    assert "builder.assemble" in variables["builder_guideline"]

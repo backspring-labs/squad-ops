@@ -69,17 +69,22 @@ async def produce_plan(
         else ""
     )
 
-    # Only offer task types the squad can actually execute: builder.assemble
-    # needs the builder role, so a builder-less squad must not be offered it
-    # (else the LLM authors a task that aborts at dispatch with
-    # "No handler for capability: builder.assemble").
-    allowed_task_types = sorted(planner_build_task_types(has_builder=has_builder))
+    # Only offer task types the plan can actually execute. builder.assemble
+    # needs BOTH the builder role (else dispatch aborts with "No handler for
+    # capability: builder.assemble") AND a configured build_profile (#426 —
+    # generate_task_plan's #291 guard refuses builder tasks without one, so a
+    # role-only offer invites the author to write a deterministically dead
+    # plan). The guideline/example prompt blocks below key off the same
+    # judgment: dropping the task type while the prose still teaches it would
+    # invite exactly the invalid plan the vocabulary forbids.
+    offer_builder = has_builder and bool(resolved_config.get("build_profile"))
+    allowed_task_types = sorted(planner_build_task_types(offer_builder=offer_builder))
     task_types_section = (
         f"Available task_types (use ONLY these; do NOT invent new ones): "
         f"{', '.join(allowed_task_types)}\n\n"
     )
 
-    if has_builder:
+    if offer_builder:
         builder_guideline = (
             "- Route packaging, entrypoints, requirements.txt/package.json, "
             "Dockerfile/startup scripts, and qa_handoff.md to `builder.assemble` "

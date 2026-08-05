@@ -970,3 +970,87 @@ class TestRunCompletionActivityWiring:
         )
 
         assert executor._focus_lease_port is focus_lease_port
+
+
+# ---------------------------------------------------------------------------
+# #426 — gate-time build-config net
+# ---------------------------------------------------------------------------
+
+
+class TestGateRejectsBuilderPlanWithoutBuildProfile:
+    """#426: a builder-task plan on a config with no build_profile used to
+    pass the gate and die 8ms into the implementation run at the #291 guard.
+    The gate net must reject it where a re-roll is cheap — and must read the
+    SAME merged config generate_task_plan reads, or the two nets disagree."""
+
+    _BUILDER_PLAN_YAML = (
+        "version: 1\n"
+        "project_id: hello_squad\n"
+        "cycle_id: cyc_001\n"
+        "prd_hash: abc\n"
+        "tasks:\n"
+        "  - task_index: 0\n"
+        "    task_type: builder.assemble\n"
+        "    role: builder\n"
+        '    focus: "Package"\n'
+        '    description: "Assemble"\n'
+        "    expected_artifacts:\n"
+        '      - "qa_handoff.md"\n'
+        "    depends_on: []\n"
+        "summary:\n"
+        "  total_tasks: 1\n"
+    )
+
+    @staticmethod
+    def _stored_plan_artifacts():
+        ref = MagicMock()
+        ref.filename = "implementation_plan.yaml"
+        ref.artifact_type = "control_implementation_plan"
+        return [("art_plan", ref)]
+
+    @staticmethod
+    def _profile_with_builder():
+        agent = MagicMock()
+        agent.role = "builder"
+        agent.enabled = True
+        profile = MagicMock()
+        profile.profile_id = "full"
+        profile.agents = [agent]
+        return profile
+
+    async def test_rejected_when_no_build_profile_configured(self, executor, mock_vault, cycle):
+        import dataclasses
+
+        from adapters.cycles.execution_errors import _ExecutionError
+
+        gated_cycle = dataclasses.replace(cycle, applied_defaults={"implementation_plan": True})
+        mock_vault.retrieve.return_value = ("ref", self._BUILDER_PLAN_YAML.encode())
+
+        with pytest.raises(_ExecutionError) as exc_info:
+            await executor._reject_unsatisfiable_plan_at_gate(
+                self._stored_plan_artifacts(),
+                self._profile_with_builder(),
+                ["progress_plan_review"],
+                gated_cycle,
+            )
+        assert "build_profile" in str(exc_info.value)
+
+    async def test_build_profile_via_execution_overrides_passes(self, executor, mock_vault, cycle):
+        """The gate must read the merged config — a build_profile arriving via
+        execution_overrides is configured, and rejecting it would kill valid
+        cycles (the #426 disease with the polarity flipped)."""
+        import dataclasses
+
+        gated_cycle = dataclasses.replace(
+            cycle,
+            applied_defaults={"implementation_plan": True},
+            execution_overrides={"build_profile": "python_cli_builder"},
+        )
+        mock_vault.retrieve.return_value = ("ref", self._BUILDER_PLAN_YAML.encode())
+
+        await executor._reject_unsatisfiable_plan_at_gate(
+            self._stored_plan_artifacts(),
+            self._profile_with_builder(),
+            ["progress_plan_review"],
+            gated_cycle,
+        )

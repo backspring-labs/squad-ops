@@ -85,15 +85,18 @@ def _importable_module_surface(paths: frozenset[str] | set[str]) -> frozenset[st
     return frozenset(modules)
 
 
-def planner_build_task_types(*, has_builder: bool) -> set[str]:
-    """Build task types the plan-authoring prompt may offer for a given squad.
+def planner_build_task_types(*, offer_builder: bool) -> set[str]:
+    """Build task types the plan-authoring prompt may offer.
 
-    Returns the full known set when the squad has a builder role; otherwise
-    drops builder-only task types so packaging/scaffolding is routed to a role
-    the squad actually has (e.g. ``development.develop``) instead of producing a
-    ``builder.assemble`` task no agent can handle.
+    ``offer_builder`` is the caller's judgment that a builder task could
+    actually execute — the squad carries the builder role AND the resolved
+    config carries a ``build_profile`` (#426; squad composition alone invited
+    the author to write tasks ``generate_task_plan``'s #291 guard then refused,
+    a deterministically dead plan). When False, builder-only task types are
+    dropped so packaging/scaffolding routes to a role that can run (e.g.
+    ``development.develop``).
     """
-    if has_builder:
+    if offer_builder:
         return set(_KNOWN_BUILD_TASK_TYPES)
     return _KNOWN_BUILD_TASK_TYPES - _BUILDER_ROLE_BUILD_TASK_TYPES
 
@@ -336,6 +339,30 @@ class ImplementationPlan:
             if task.role not in available_roles:
                 errors.append(f"Task {task.task_index}: role '{task.role}' not in profile")
         return errors
+
+    def validate_build_config(self, resolved_config: dict) -> list[str]:
+        """#426: builder tasks require a configured ``build_profile``.
+
+        The dispatch-time #291 guard already refuses such a plan — but only
+        after the gate approved it and a full implementation run was admitted.
+        This is the same rule at the gate seam, where a rejection costs a
+        re-roll instead of a run.
+        """
+        if resolved_config.get("build_profile"):
+            return []
+        offending = [
+            task.task_index
+            for task in self.tasks
+            if task.task_type in _BUILDER_ROLE_BUILD_TASK_TYPES
+        ]
+        if not offending:
+            return []
+        return [
+            f"Task(s) {', '.join(str(i) for i in offending)}: builder task authored but no "
+            "build_profile is configured — the plan cannot execute (a builder must not "
+            "assemble for an assumed stack). Set build_profile in the cycle request "
+            "profile, or author without builder tasks"
+        ]
 
     def _regex_on_source_criteria(self):
         """Yield ``(task, criterion, target)`` for every ``regex_match`` criterion

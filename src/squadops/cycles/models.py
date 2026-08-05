@@ -316,6 +316,16 @@ class Cycle:
     # regardless of run state.
     cancelled: bool = False
 
+    def resolved_config(self) -> dict:
+        """The cycle's effective execution config: overrides win over defaults.
+
+        The single definition of the merge (#426): plan generation, the plan
+        authoring prompt, and the gate-time validation net must all answer
+        "what is configured?" from the same dict, or they drift into offering
+        work one of them will refuse.
+        """
+        return {**self.applied_defaults, **self.execution_overrides}
+
 
 @dataclass(frozen=True)
 class Run:

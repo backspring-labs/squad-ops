@@ -196,6 +196,19 @@ class TestCycle:
         with pytest.raises(dataclasses.FrozenInstanceError):
             sample_cycle.cycle_id = "changed"
 
+    def test_resolved_config_overrides_win(self, sample_cycle):
+        """#426: the single merge definition — an override must beat the
+        default, or the gate net and generate_task_plan would disagree about
+        what is configured."""
+        cycle = dataclasses.replace(
+            sample_cycle,
+            applied_defaults={"build_profile": "default_profile", "typed_acceptance": True},
+            execution_overrides={"build_profile": "override_profile"},
+        )
+        resolved = cycle.resolved_config()
+        assert resolved["build_profile"] == "override_profile"
+        assert resolved["typed_acceptance"] is True
+
 
 class TestRun:
     def test_defaults(self):
