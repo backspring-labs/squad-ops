@@ -312,20 +312,23 @@ class TestPrefectTaskRuns:
         ):
             await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
 
-        # 5 sequential tasks → 5 create_task_run + 5 set_task_run_state(RUNNING)
+        # 5 sequential tasks → 5 create_task_run; RUNNING is set at creation
+        # AND re-entered per dispatch attempt (#506 — a retry re-attempt
+        # arrives with a prior attempt's already-terminal id, so the transport
+        # always re-enters RUNNING before publish).
         assert mock_prefect.create_task_run.await_count == 5
         running_calls = [
             c for c in mock_prefect.set_task_run_state.await_args_list if c.args[1] == "RUNNING"
         ]
-        assert len(running_calls) == 5
-        # Terminal task states come through PrefectBridge events, not direct
-        # executor calls — the executor only emits RUNNING directly.
+        assert len(running_calls) == 10
+        # #506: terminal task states are transport-owned (dispatch_task sets
+        # them from the result) — the bridge no longer writes task-run state.
         terminal_calls = [
             c
             for c in mock_prefect.set_task_run_state.await_args_list
             if c.args[1] in ("COMPLETED", "FAILED")
         ]
-        assert terminal_calls == []
+        assert len(terminal_calls) == 5
 
     async def test_emits_task_dispatched_events(self, executor, mock_queue, mock_prefect):
         """Executor emits TASK_DISPATCHED for each of the 5 sequential tasks."""

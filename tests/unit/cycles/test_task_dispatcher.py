@@ -13,7 +13,7 @@ from __future__ import annotations
 import asyncio
 import json
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
@@ -222,7 +222,12 @@ class TestDispatchTaskPrefectLifecycle:
         mock_reporter.create_task_run.assert_awaited_once_with(
             "fr_abc", "task_abc", "neo: development.design"
         )
-        mock_reporter.set_task_run_state.assert_awaited_once_with("tr_new", "RUNNING", "Running")
+        # #506: transport-owned lifecycle — RUNNING at creation, terminal from
+        # the result (the bridge no longer writes task-run state).
+        assert mock_reporter.set_task_run_state.await_args_list == [
+            call("tr_new", "RUNNING", "Running"),
+            call("tr_new", "COMPLETED", "Completed"),
+        ]
 
     async def test_no_prefect_calls_when_reporter_missing(self, mock_queue, envelope):
         self._wire_success_reply(mock_queue, envelope.task_id)
@@ -256,7 +261,10 @@ class TestDispatchTaskPrefectLifecycle:
     ):
         # Sequential path pre-creates the task_run (so TASK_DISPATCHED can
         # emit it) and passes task_run_id in. _dispatch_task must not create
-        # a second one.
+        # a second one — but it DOES re-enter RUNNING (#506): the supplied id
+        # may be a prior attempt's already-terminal task run, and the retry
+        # re-attempt was invisible in flight for exactly that reason (the
+        # July-19 develop task heartbeating with no live row).
         self._wire_success_reply(mock_queue, envelope.task_id)
         dispatcher = self._build_dispatcher(mock_queue, mock_reporter)
 
@@ -269,7 +277,45 @@ class TestDispatchTaskPrefectLifecycle:
             )
 
         mock_reporter.create_task_run.assert_not_awaited()
-        mock_reporter.set_task_run_state.assert_not_awaited()
+        assert mock_reporter.set_task_run_state.await_args_list == [
+            call("tr_preallocated", "RUNNING", "Running"),
+            call("tr_preallocated", "COMPLETED", "Completed"),
+        ]
+
+    async def test_failed_result_sets_terminal_failed(self, mock_queue, mock_reporter, envelope):
+        # a FAILED reply must leave the row FAILED — before #506 nothing
+        # transitioned an internally-created task run, so it hung RUNNING
+        mock_queue.reply_router.results[envelope.task_id] = TaskResult(
+            task_id=envelope.task_id, status="FAILED", outputs={}, error="boom"
+        )
+        dispatcher = self._build_dispatcher(mock_queue, mock_reporter)
+
+        with patch(
+            "adapters.cycles.task_dispatcher.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            await dispatcher.dispatch_task(envelope, "run_001", flow_run_id="fr_abc")
+
+        assert mock_reporter.set_task_run_state.await_args_list == [
+            call("tr_new", "RUNNING", "Running"),
+            call("tr_new", "FAILED", "Failed"),
+        ]
+
+    async def test_tracker_failure_never_breaks_dispatch(self, mock_queue, mock_reporter, envelope):
+        # best-effort contract: a tracker transport error is logged, never raised
+        mock_reporter.set_task_run_state = AsyncMock(side_effect=RuntimeError("prefect down"))
+        self._wire_success_reply(mock_queue, envelope.task_id)
+        dispatcher = self._build_dispatcher(mock_queue, mock_reporter)
+
+        with patch(
+            "adapters.cycles.task_dispatcher.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            result = await dispatcher.dispatch_task(
+                envelope, "run_001", flow_run_id="fr_abc", task_run_id="tr_x"
+            )
+
+        assert result.status == "SUCCEEDED"
 
     async def test_published_envelope_carries_run_ids(self, mock_queue, mock_reporter, envelope):
         """SIP-0087 B1: dispatched envelope on the wire carries flow_run_id /
