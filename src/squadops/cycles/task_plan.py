@@ -405,8 +405,8 @@ def _resolve_legacy_steps(
     cycle: Cycle, profile: SquadProfile, profile_roles: set[str]
 ) -> tuple[list, bool]:
     """Select task steps from legacy plan_tasks/build_tasks flags."""
-    include_plan = bool(cycle.applied_defaults.get("plan_tasks", True))
-    include_build = bool(cycle.applied_defaults.get("build_tasks"))
+    include_plan = bool(cycle.resolved_config().get("plan_tasks", True))
+    include_build = bool(cycle.resolved_config().get("build_tasks"))
     builder_used = include_build and _has_builder_role(profile)
 
     steps: list = []

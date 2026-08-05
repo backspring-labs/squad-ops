@@ -30,6 +30,7 @@ from squadops.cycles.models import (
     RunStatus,
     SquadProfile,
     TaskFlowPolicy,
+    resolve_config,
 )
 from squadops.cycles.preflight import (
     Finding,
@@ -109,23 +110,26 @@ async def _sandbox_preflight_decision() -> PreflightDecision:
     )
 
 
-async def _run_create_preflight(
-    profile: SquadProfile, applied_defaults: dict
-) -> tuple[Finding, ...]:
+async def _run_create_preflight(profile: SquadProfile, config: dict) -> tuple[Finding, ...]:
     """SIP-0095 create-time preflight: fail fast BEFORE persist/dispatch.
 
     Blocks (HTTP 422) when the squad can't satisfy the requested workloads' required
     roles or names a model definitively not pulled; an unreachable backend warns and
     allows. Returns the non-blocking warnings so the route can surface them on the
     response (Phase 4); raises on a blocking finding.
+
+    ``config`` is the EFFECTIVE config (the #426 single merge, #724): dispatch
+    honors ``execution_overrides``, so preflight must validate the same merged
+    view — evaluating ``applied_defaults`` alone would approve a shape dispatch
+    never runs (or reject one it would).
     """
     decision = combine(
-        required_roles_decision(profile, applied_defaults),
+        required_roles_decision(profile, config),
         model_availability_decision(profile, await _pulled_model_names()),
         # SIP-0096 §6.5: a required check whose tooling is knowably absent is a
         # create-time reject, never a mid-run blocked_unverified surprise.
         required_check_tooling_decision(
-            applied_defaults.get("required_checks") or (),
+            config.get("required_checks") or (),
             resolve_provisioned_tooling(),
         ),
         # SIP-0102 102.2c: a skewed/unprovisioned sandbox environment is a
@@ -184,8 +188,9 @@ async def _validate_replay_declaration(
         )
 
     # Target resolved config mirrors Cycle.resolved_config() for the cycle
-    # about to be built (#426 seam — never applied_defaults alone).
-    target_resolved = {**applied_defaults, **(body.execution_overrides or {})}
+    # about to be built (#426 seam — never applied_defaults alone). #724: the
+    # hoisted single merge definition, not an inline duplicate of it.
+    target_resolved = resolve_config(applied_defaults, body.execution_overrides or {})
     source_resolved = source_cycle.resolved_config()
     errors = check_replay_compatibility(
         {
@@ -244,9 +249,12 @@ async def create_cycle(
 
         # SIP-0065 D2: use client-supplied applied_defaults (CRP defaults from CLI)
         applied_defaults = body.applied_defaults
+        # #724: the effective config the runtime will read (#426 single merge) —
+        # preflight and position-0 workload resolution must see what dispatch sees.
+        effective_config = resolve_config(applied_defaults, body.execution_overrides or {})
 
         # SIP-0095: create-time preflight — fail fast (422) before persist/dispatch.
-        preflight_warnings = await _run_create_preflight(profile, applied_defaults)
+        preflight_warnings = await _run_create_preflight(profile, effective_config)
 
         # SIP-0101 Slice 3: replay declaration validated + interim compatibility
         # gate, same fail-fast point (moves into the SIP-0095 preflight in Slice 4).
@@ -272,8 +280,9 @@ async def create_cycle(
             notes=body.notes,
         )
 
-        # Resolve workload_type from workload_sequence (fixes #26)
-        ws = applied_defaults.get("workload_sequence", [])
+        # Resolve workload_type from workload_sequence (fixes #26; #724: the
+        # effective sequence, so an overridden sequence types run 1 correctly)
+        ws = effective_config.get("workload_sequence", [])
         workload_type = ws[0]["type"] if ws else None
 
         run = Run(

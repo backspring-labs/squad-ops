@@ -177,7 +177,7 @@ def _cycle_outcome_to_dto(outcome: CycleOutcome) -> CycleOutcomeDTO:
 def cycle_to_response(
     cycle: Cycle, runs: list[Run], cycle_outcome: CycleOutcome | None = None
 ) -> CycleResponse:
-    ws = cycle.applied_defaults.get("workload_sequence", [])
+    ws = cycle.resolved_config().get("workload_sequence", [])
     progress = compute_workload_progress(ws, runs)
     workload_statuses = [e.status for e in progress] if progress else None
     status = resolve_cycle_status(

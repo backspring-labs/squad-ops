@@ -301,11 +301,13 @@ class RunCompletion:
     ) -> RunVerificationSummary:
         """Run the SIP-0096 aggregation over the ledger against the cycle's required set.
 
-        Requiredness comes only from the cycle's ``applied_defaults['required_checks']``
-        (an explicit profile declaration, §6.3 / AC#5) — never inferred. Both the
-        results and the required list default to empty, so a pre-SIP-0096 cycle or
-        a Phase-1 (throttle-off) cycle that *completes* aggregates to an honest
-        `accepted`.
+        Requiredness comes only from the cycle's explicit ``required_checks``
+        declaration, read through the #426 single merge (``resolved_config()``,
+        #724) — never inferred (§6.3 / AC#5). An ``execution_overrides``
+        declaration is an explicit, recorded create-time operator decision and
+        wins over the profile default. Both the results and the required list
+        default to empty, so a pre-SIP-0096 cycle or a Phase-1 (throttle-off)
+        cycle that *completes* aggregates to an honest `accepted`.
 
         ``terminal_status`` supplies the run-level context the pure verdict cannot
         see: only a ``COMPLETED`` run is eligible for `accepted` (#388). A run that
@@ -316,7 +318,7 @@ class RunCompletion:
         """
         required_check_ids: tuple[str, ...] = ()
         if cycle is not None:
-            declared = cycle.applied_defaults.get("required_checks")
+            declared = cycle.resolved_config().get("required_checks")
             if declared:
                 required_check_ids = tuple(declared)
         results = ledger.check_results if ledger else ()

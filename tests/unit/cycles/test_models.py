@@ -209,6 +209,21 @@ class TestCycle:
         assert resolved["build_profile"] == "override_profile"
         assert resolved["typed_acceptance"] is True
 
+    def test_module_level_merge_is_the_same_definition(self, sample_cycle):
+        """#724: pre-persist surfaces (create-route preflight) merge via
+        ``models.resolve_config`` — it must agree with ``Cycle.resolved_config``
+        exactly, or create-time validates a config dispatch never runs."""
+        from squadops.cycles.models import resolve_config
+
+        defaults = {"time_budget_seconds": 3600, "plan_tasks": True}
+        overrides = {"time_budget_seconds": 300}
+        cycle = dataclasses.replace(
+            sample_cycle, applied_defaults=defaults, execution_overrides=overrides
+        )
+        assert resolve_config(defaults, overrides) == cycle.resolved_config()
+        assert resolve_config(defaults, overrides)["time_budget_seconds"] == 300
+        assert resolve_config(defaults, {}) == defaults  # absent overrides = identity
+
 
 class TestRun:
     def test_defaults(self):

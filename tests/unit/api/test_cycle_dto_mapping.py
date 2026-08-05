@@ -120,6 +120,28 @@ def _make_run(
 class TestCycleToResponseStatus:
     """SIP-0083 D5: cycle_to_response uses resolve_cycle_status, not derive."""
 
+    def test_overridden_workload_sequence_drives_progress(self):
+        """#724 (the #426 mismatched-sources class): a workload_sequence set via
+        execution_overrides must drive progress/status exactly as dispatch sees
+        it — before the sweep this read applied_defaults directly, so the view
+        and the executor could disagree about which workloads exist."""
+        import dataclasses
+
+        cycle = dataclasses.replace(
+            _make_cycle(workload_sequence=[{"type": "framing"}]),
+            execution_overrides={
+                "workload_sequence": [{"type": "framing"}, {"type": "implementation"}]
+            },
+        )
+        runs = [_make_run("run_001", 1, "completed", "framing")]
+
+        resp = cycle_to_response(cycle, runs)
+
+        # two workloads in the effective sequence → cycle still active
+        assert resp.status == "active"
+        assert len(resp.workload_progress) == 2
+        assert resp.workload_progress[1].status == "pending"
+
     def test_completed_run_with_pending_workloads_shows_active(self):
         """Bug that motivated SIP-0083 D5: derive returns COMPLETED but
         pending workloads remain — resolve_cycle_status returns ACTIVE."""

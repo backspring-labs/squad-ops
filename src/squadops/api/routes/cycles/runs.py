@@ -54,7 +54,7 @@ def _resolve_retry_workload_type(cycle: Cycle, existing_runs: list[Run]) -> str 
     To re-attempt a failed workload at the same position, cancel the failed
     run first (or pass ``workload_type`` explicitly).
     """
-    workload_sequence = cycle.applied_defaults.get("workload_sequence", [])
+    workload_sequence = cycle.resolved_config().get("workload_sequence", [])
     if not workload_sequence:
         return None
     non_cancelled = [r for r in existing_runs if r.status != RunStatus.CANCELLED.value]
@@ -331,7 +331,7 @@ async def resume_run(
         # 4. Parent cycle must not be terminal
         cycle = await registry.get_cycle(cycle_id)  # validates cycle exists
         runs = await registry.list_runs(cycle_id)
-        ws = cycle.applied_defaults.get("workload_sequence", [])
+        ws = cycle.resolved_config().get("workload_sequence", [])
         progress = compute_workload_progress(ws, runs)
         workload_statuses = [e.status for e in progress] if progress else None
         cycle_status = resolve_cycle_status(runs, False, workload_statuses=workload_statuses)
