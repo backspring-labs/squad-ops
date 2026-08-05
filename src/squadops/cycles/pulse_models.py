@@ -34,6 +34,10 @@ class PulseDecision(str, Enum):  # noqa: UP042 — project convention
     PASS = "pass"
     FAIL = "fail"
     EXHAUSTED = "exhausted"
+    # SIP-0096 AC#6 (§8 named amendment to SIP-0070): SKIP-only records are
+    # ZERO EVIDENCE, not a pass — "0 failed of 0 executed" may not credit.
+    # Mirrors SuiteOutcome.SKIP; dispatches no repair (nothing failed).
+    SKIP = "skip"
 
 
 class SuiteOutcome(str, Enum):  # noqa: UP042 — project convention

@@ -858,12 +858,12 @@ sips:
 - sip_uid: null
   sip_number: 96
   title: Verification Evidence Integrity
-  path: sips/accepted/SIP-0096-Verification-Evidence-Integrity.md
-  status: accepted
+  path: sips/implemented/SIP-0096-Verification-Evidence-Integrity.md
+  status: implemented
   author: jladd
   approver: jladd
   created_at: '2026-07-05T00:00:00Z'
-  updated_at: '2026-07-06T08:05:29.757929Z'
+  updated_at: '2026-08-05T18:36:50.249374Z'
 - sip_uid: null
   sip_number: 97
   title: Dispatched Flow Executor Decomposition Boundaries

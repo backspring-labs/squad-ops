@@ -188,6 +188,7 @@ Key principle: **acceptance is a design commitment on main, not an implementatio
 - **SIP-0071** – Builder Role (Dedicated Product Builder Agent)
 - **SIP-0086** – Build Convergence Loop (Dynamic Task Decomposition, Output Validation, Correction Activation)
 - **SIP-0087** – Prefect Task-Scoped Log Streaming (per-task log forwarding to Prefect UI with heartbeats)
+- **SIP-0096** – Verification Evidence Integrity (only executed-and-passed credits; `blocked_unverified`; the `CycleOutcome` roll-up with waiver/inert disclosure)
 
 ### Moving a SIP (maintainer only)
 
