@@ -3467,3 +3467,115 @@ class TestFrontendBuildProvenanceTargeting:
         }
         artifacts, _, _ = _resolve_repair_target(evidence, dict(self._FAY8_INPUTS))
         assert not any(a.startswith("frontend/") for a in artifacts)
+
+
+# ---------------------------------------------------------------------------
+# #511 — the budget gates correction-chain dispatch
+# ---------------------------------------------------------------------------
+
+
+class TestBudgetGatesCorrectionDispatch:
+    """#511: a run past its time budget must not START correction work.
+    run_57807c247bb4 dispatched a whole repair chain after the 7200s mark;
+    shk-4's round 2 was admitted 2min before expiry and ran 39min past.
+    The guard fires at the runner's single dispatch choke point, BEFORE
+    any transport work."""
+
+    @staticmethod
+    def _bare_runner():
+        from adapters.cycles.correction_runner import CorrectionRunner
+
+        dispatcher = AsyncMock()
+        runner = CorrectionRunner(
+            cycle_registry=AsyncMock(),
+            artifact_vault=AsyncMock(),
+            event_bus=MagicMock(),
+            task_dispatcher=dispatcher,
+            store_artifact=AsyncMock(),
+        )
+        return runner, dispatcher
+
+    @staticmethod
+    def _envelope():
+        from squadops.tasks.models import TaskEnvelope
+
+        return TaskEnvelope(
+            task_id="task-1",
+            agent_id="neo",
+            cycle_id="cyc_001",
+            pulse_id="p1",
+            project_id="proj",
+            task_type="development.develop",
+            correlation_id="c1",
+            causation_id="c1",
+            trace_id="t1",
+            span_id="s1",
+            inputs={},
+            metadata={"role": "dev"},
+        )
+
+    async def test_expired_budget_blocks_correction_before_any_dispatch(self, cycle):
+        from adapters.cycles.execution_errors import _ExecutionError
+        from squadops.tasks.models import TaskResult
+
+        runner, dispatcher = self._bare_runner()
+
+        def expired_guard() -> None:
+            raise _ExecutionError("Time budget exhausted (10s) at correction-chain dispatch")
+
+        with pytest.raises(_ExecutionError, match="Time budget exhausted"):
+            await runner.run_correction_protocol(
+                run_id="run_001",
+                cycle=cycle,
+                envelope=self._envelope(),
+                result=TaskResult(task_id="task-1", status="FAILED", error="boom"),
+                correction_attempts=0,
+                prior_outputs={},
+                all_artifact_refs=[],
+                stored_artifacts=[],
+                completed_task_ids=[],
+                plan_delta_refs=[],
+                budget_guard=expired_guard,
+            )
+        # The guard must fire BEFORE any transport work — no task_run, no dispatch.
+        dispatcher.create_task_run_if_enabled.assert_not_awaited()
+        dispatcher.dispatch_task.assert_not_awaited()
+
+    async def test_unexpired_guard_lets_the_chain_dispatch(self, cycle):
+        """Polarity: a live guard that does not raise must not block the chain."""
+        from squadops.tasks.models import TaskResult
+
+        runner, dispatcher = self._bare_runner()
+        dispatcher.create_task_run_if_enabled.return_value = None
+        dispatcher.dispatch_task.return_value = TaskResult(
+            task_id="corr-1",
+            status="SUCCEEDED",
+            outputs={"classification": "execution", "analysis_summary": "ok", "role": "data"},
+        )
+
+        calls = {"n": 0}
+
+        def live_guard() -> None:
+            calls["n"] += 1
+
+        # The decision step reply lacks a correction_path → protocol raises its
+        # own error AFTER dispatching both chain steps; what this test pins is
+        # that the guard was consulted per dispatch and dispatch happened.
+        try:
+            await runner.run_correction_protocol(
+                run_id="run_001",
+                cycle=cycle,
+                envelope=self._envelope(),
+                result=TaskResult(task_id="task-1", status="FAILED", error="boom"),
+                correction_attempts=0,
+                prior_outputs={},
+                all_artifact_refs=[],
+                stored_artifacts=[],
+                completed_task_ids=[],
+                plan_delta_refs=[],
+                budget_guard=live_guard,
+            )
+        except Exception:
+            pass
+        assert dispatcher.dispatch_task.await_count >= 1
+        assert calls["n"] >= dispatcher.dispatch_task.await_count
