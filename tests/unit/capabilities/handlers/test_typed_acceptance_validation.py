@@ -888,3 +888,70 @@ class TestFrameworkInjectedUndefinedNames:
         assert len(rows) == 1
         assert rows[0]["severity"] == "warning"  # the author's choice survives
         assert result.passed is True  # warning does not block (RC-9)
+
+
+# ---------------------------------------------------------------------------
+# #423 — skip-cause accounting: evidence gaps vs benign skips
+# ---------------------------------------------------------------------------
+
+
+class TestEvidenceGapAccounting:
+    """#423: an authored error-severity check the evaluator cannot run must
+    never read `passed: true` (cyc_bc325a67417d: 7 of 14 evaluations
+    skipped-yet-passed — the whole frontend contract surface unenforced) —
+    but it must not mission a correction either: no code repair closes an
+    evaluator limitation. It blocks at the SIP-0096 roll-up instead."""
+
+    async def test_authored_check_on_unparseable_target_is_evidence_gap(self):
+        """The #423 exhibit: import_present authored at a .tsx file."""
+        h = DevelopmentDevelopHandler()
+        criterion = TypedCheck(
+            check="import_present",
+            params={"file": "frontend/src/App.tsx", "imports": ["react"]},
+            severity="error",
+        )
+        result = await h._validate_output(
+            _inputs([criterion], expected=("frontend/src/App.tsx",)),
+            [_art("frontend/src/App.tsx", "import React from 'react'\n")],
+        )
+        row = next(c for c in result.checks if c.get("check") == "acceptance:import_present")
+        assert row["status"] == "skipped"
+        assert row["passed"] is False
+        assert row["evidence_gap"] is True
+        # No correction mission and no task failure — the gap blocks at the
+        # roll-up, not here.
+        assert result.passed is True
+        assert not any("acceptance:" in m for m in result.missing_components)
+
+    async def test_warning_severity_skip_is_not_a_gap(self):
+        h = DevelopmentDevelopHandler()
+        criterion = TypedCheck(
+            check="import_present",
+            params={"file": "frontend/src/App.tsx", "imports": ["react"]},
+            severity="warning",
+        )
+        result = await h._validate_output(
+            _inputs([criterion], expected=("frontend/src/App.tsx",)),
+            [_art("frontend/src/App.tsx", "import React from 'react'\n")],
+        )
+        row = next(c for c in result.checks if c.get("check") == "acceptance:import_present")
+        assert row["evidence_gap"] is False
+        assert row["passed"] is True
+
+    async def test_config_off_skip_is_benign(self):
+        """Deliberately disabled enforcement is not an evidence gap."""
+        h = DevelopmentDevelopHandler()
+        criterion = TypedCheck(
+            check="import_present",
+            params={"file": "main.py", "imports": ["os"]},
+            severity="error",
+        )
+        result = await h._validate_output(
+            _inputs([criterion], config={"typed_acceptance": False}),
+            [_art("main.py", "import os\n")],
+        )
+        row = next(c for c in result.checks if c.get("check") == "acceptance:import_present")
+        assert row["status"] == "skipped"
+        assert row["reason"] == "typed_acceptance_disabled"
+        assert row["evidence_gap"] is False
+        assert row["passed"] is True

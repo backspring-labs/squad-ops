@@ -110,6 +110,12 @@ class NotExecutedReason(StrEnum):
     TIMEOUT_BEFORE_EXECUTION = "timeout_before_execution"
 
 
+# #423: disclosure prefix for evidence-gap unverified rows — the producer's raw
+# skip reason rides behind it (``evaluator_gap:unsupported_file_extension``),
+# so an operator reads both the class and the diagnosis off one string.
+EVALUATOR_GAP_PREFIX = "evaluator_gap:"
+
+
 # Fallback reason for a producer that emits a not-executed result WITHOUT the
 # mandatory §7 reason. We disclose the gap honestly rather than mask it as a
 # specific diagnosis (the "no fallback that masks a missing data source" rule).
@@ -163,6 +169,13 @@ class CheckResult:
     # (§6.3); ``None`` in author mode / for framework-spine checks. The coverage
     # accounting that consumes it (n-of-m criteria executed-and-passed) lands in 98.4.
     criterion_id: str | None = None
+    # #423: an authored error-severity check the evaluator skipped for a reason
+    # other than deliberate config-off — the author asked for enforcement the
+    # evaluator cannot deliver. Disclosed with an ``evaluator_gap:`` reason
+    # prefix, and REQUIRED-level unverified when contract-bound
+    # (``criterion_id`` set), so a contract criterion can never be silently
+    # unenforceable. False for benign skips and all executed results.
+    evidence_gap: bool = False
     # The producing subject's identity (§6.3) — the plan-task id that emitted this
     # result. DISTINCT from ``provenance.subject_ref`` (the *thing* under test — a
     # file-set hash/artifact/endpoint, which legitimately *differs* between a failed
@@ -465,11 +478,21 @@ def aggregate_verification(
                 )
             )
         else:  # NOT_EXECUTED — non-creditable, always disclosed
+            # #423: an evidence gap is disclosed under its own prefix, and a
+            # CONTRACT-BOUND gap is required-level — a criterion the evaluator
+            # cannot enforce must block acceptance (blocked_unverified), never
+            # ride to green as a free pass. Unbound gaps stay advisory
+            # (disclosed, non-blocking) per the RC-9 decision in the 1.4.4 plan.
             unverified.append(
                 UnverifiedCheck(
                     check_id=r.check_id,
-                    reason=_not_executed_reason(r),
-                    required=r.check_id in required,
+                    reason=(
+                        f"{EVALUATOR_GAP_PREFIX}{r.reason or UNSPECIFIED_REASON}"
+                        if r.evidence_gap
+                        else _not_executed_reason(r)
+                    ),
+                    required=(r.check_id in required)
+                    or (r.evidence_gap and r.criterion_id is not None),
                 )
             )
         if r.criterion_id:

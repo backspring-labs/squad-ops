@@ -129,7 +129,14 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
             inputs, artifacts, checks, missing, typed_error_counts
         )
 
-        passed = all(c.get("passed", True) for c in checks) and not missing
+        # #423: evidence-gap rows (authored check the evaluator could not run)
+        # are honest non-passes but must not fail the task — a correction
+        # cannot repair an evaluator limitation. They block at the SIP-0096
+        # roll-up (unverified; required when contract-bound), not here.
+        passed = (
+            all(c.get("passed", True) or c.get("evidence_gap", False) for c in checks)
+            and not missing
+        )
         passed_count = sum(1 for c in checks if c.get("passed", True))
         coverage = passed_count / len(checks) if checks else 1.0
 

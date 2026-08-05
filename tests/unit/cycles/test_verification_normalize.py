@@ -365,3 +365,34 @@ def test_failed_reason_flows_through_aggregation_to_failed_detail():
     detail = summary.failed_detail[0]
     assert detail.check_id == CHECK_TESTS_PASS
     assert detail.reason == "exit_code 5: no tests collected"
+
+
+def test_typed_row_threads_evidence_gap():
+    """#423: the seam's gap marker must survive normalization — dropped here,
+    a contract-bound unenforceable criterion silently reverts to advisory."""
+    from squadops.cycles.verification_normalize import normalize_task_checks
+
+    rows = normalize_task_checks(
+        {
+            "validation_result": {
+                "checks": [
+                    {
+                        "check": "acceptance:import_present",
+                        "status": "skipped",
+                        "reason": "unsupported_file_extension",
+                        "evidence_gap": True,
+                        "criterion_id": "vc-x",
+                    },
+                    {
+                        "check": "acceptance:endpoint_defined",
+                        "status": "passed",
+                    },
+                ]
+            }
+        },
+        subject="task-1",
+    )
+    gap_row = next(r for r in rows if r.check_id == "acceptance:import_present")
+    assert gap_row.evidence_gap is True
+    plain_row = next(r for r in rows if r.check_id == "acceptance:endpoint_defined")
+    assert plain_row.evidence_gap is False

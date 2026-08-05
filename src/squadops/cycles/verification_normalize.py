@@ -94,6 +94,10 @@ def normalize_task_checks(
                     status=str(row.get("status") or ""),
                     reason=_str_or_none(row.get("reason")),
                     criterion_id=_str_or_none(row.get("criterion_id")),
+                    # #423: authored-check-the-evaluator-could-not-run marker,
+                    # stamped by the typed-acceptance seam; drives the
+                    # evaluator_gap disclosure and contract-bound requiredness.
+                    evidence_gap=bool(row.get("evidence_gap", False)),
                 )
             )
         else:
