@@ -463,7 +463,10 @@ class PulseBoundaryRunner:
             ledger=ledger,
         )
 
-        if decision == PulseDecision.PASS:
+        if decision in (PulseDecision.PASS, PulseDecision.SKIP):
+            # SKIP (SIP-0096 AC#6): zero evidence — disclosed on the ledger and
+            # in the report, but nothing failed, so no repair dispatches
+            # (repairing against zero evidence is the unwinnable-loop class).
             return
 
         # Collect initially-failed suites from records

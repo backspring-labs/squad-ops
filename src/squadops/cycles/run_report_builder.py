@@ -107,10 +107,15 @@ def _build_pulse_report_lines(pulse_report_entries: list[dict[str, Any]]) -> lis
     exhausted_count = sum(
         1 for e in pulse_report_entries if e["decision"] == PulseDecision.EXHAUSTED.value
     )
+    # SIP-0096 AC#6: SKIP-only boundaries are zero evidence — disclosed as
+    # their own count, never silently folded into PASS.
+    skip_count = sum(1 for e in pulse_report_entries if e["decision"] == PulseDecision.SKIP.value)
     total = len(pulse_report_entries)
     lines.append(
         f"Total boundary checks: {total} "
-        f"(PASS: {pass_count}, FAIL: {fail_count}, EXHAUSTED: {exhausted_count})"
+        f"(PASS: {pass_count}, FAIL: {fail_count}, EXHAUSTED: {exhausted_count}"
+        + (f", SKIP: {skip_count}" if skip_count else "")
+        + ")"
     )
     repair_entries = [e for e in pulse_report_entries if e["repair_attempt"] > 0]
     if repair_entries:

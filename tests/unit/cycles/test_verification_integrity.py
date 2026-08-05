@@ -381,6 +381,26 @@ def test_summary_is_frozen():
         s.verdict = RunVerdict.REJECTED  # type: ignore[misc]
 
 
+def test_cycle_outcome_constructible_only_via_the_aggregation_decision():
+    """AC#11 (roll-up integrity, violation #3): ``CycleOutcome(`` is constructed
+    in exactly one production place — ``aggregate_cycle_outcome`` — which
+    receives every recorded summary. Bug caught: a second construction path
+    (a handler building its own roll-up, an API shim) that silently discards
+    not-executed results, reopening the false-green this SIP kills."""
+    repo = Path(vi.__file__).resolve().parents[3]
+    offenders: list[str] = []
+    for root in (repo / "src" / "squadops", repo / "adapters"):
+        for path in root.rglob("*.py"):
+            if path == Path(vi.__file__).resolve():
+                continue
+            for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                if "CycleOutcome(" in line and not line.lstrip().startswith("#"):
+                    offenders.append(f"{path.relative_to(repo)}:{lineno}")
+    assert offenders == [], (
+        f"CycleOutcome constructed outside the aggregation choke point (AC#11): {offenders}"
+    )
+
+
 # --------------------------------------------------------------------------- #
 # Phase 3 slice 1 — aggregate_cycle_outcome (the durable per-cycle roll-up, §10)
 # --------------------------------------------------------------------------- #

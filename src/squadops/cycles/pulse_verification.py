@@ -252,9 +252,16 @@ def determine_boundary_decision(
 ) -> PulseDecision:
     """Derive boundary-level decision from per-suite outcomes.
 
-    - PASS if all ``suite_outcome == PASS``
-    - FAIL if any ``suite_outcome == FAIL``
-    - SKIP-only records → PASS (no guardrail evidence to block)
+    - FAIL if any ``suite_outcome == FAIL`` (D18 timeout-skips already
+      surface as suite FAIL upstream — that rule is unchanged)
+    - PASS if any suite executed and passed, and none failed
+    - **SKIP if records are SKIP-only** (SIP-0096 AC#6, the §8 named
+      amendment to SIP-0070): configured guardrails that produced no
+      evidence may not read as a pass — "0 failed of 0 executed" is zero
+      evidence, never 100%. Disclosed, non-blocking: nothing failed, so
+      no repair dispatches.
+    - Empty ``records`` → PASS (no pulse suites configured at this
+      boundary is a config choice, not silent evidence loss).
 
     EXHAUSTED is set by the caller when repair attempts are exhausted,
     not derived here.
@@ -262,8 +269,9 @@ def determine_boundary_decision(
     if not records:
         return PulseDecision.PASS
 
-    has_fail = any(r.suite_outcome == SuiteOutcome.FAIL for r in records)
-    if has_fail:
+    if any(r.suite_outcome == SuiteOutcome.FAIL for r in records):
         return PulseDecision.FAIL
+    if all(r.suite_outcome == SuiteOutcome.SKIP for r in records):
+        return PulseDecision.SKIP
 
     return PulseDecision.PASS

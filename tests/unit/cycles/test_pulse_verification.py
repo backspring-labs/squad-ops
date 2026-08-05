@@ -4,7 +4,8 @@ Covers:
 - resolve_milestone_bindings(): prefix matching, last-index semantics, unmatched suites
 - collect_cadence_bound_suites(): filters by binding_mode
 - run_pulse_verification(): per-suite records with suite_id, boundary_id, cadence_interval_id
-- determine_boundary_decision(): all PASS → PASS, any FAIL → FAIL, empty → PASS
+- determine_boundary_decision(): all PASS → PASS, any FAIL → FAIL, empty → PASS,
+  SKIP-only → SKIP (SIP-0096 AC#6 — zero evidence never credits as pass)
 """
 
 from __future__ import annotations
@@ -467,8 +468,11 @@ class TestDetermineBoundaryDecision:
     def test_empty_records(self):
         assert determine_boundary_decision([]) == PulseDecision.PASS
 
-    def test_skip_only_is_pass(self):
-        """SKIP-only records should yield PASS (no guardrail evidence to block)."""
+    def test_skip_only_is_skip_not_pass(self):
+        """SIP-0096 AC#6 (§8 named amendment to SIP-0070): SKIP-only records are
+        ZERO EVIDENCE — the old SKIP-only→PASS rule credited configured
+        guardrails that never ran ("0 failed of 0 executed" read as green,
+        the looks-enforced-but-isn't class this SIP exists to kill)."""
         records = [
             PulseVerificationRecord(
                 suite_id="s1",
@@ -478,7 +482,7 @@ class TestDetermineBoundaryDecision:
                 suite_outcome=SuiteOutcome.SKIP,
             ),
         ]
-        assert determine_boundary_decision(records) == PulseDecision.PASS
+        assert determine_boundary_decision(records) == PulseDecision.SKIP
 
     def test_mixed_pass_and_skip(self):
         records = [
