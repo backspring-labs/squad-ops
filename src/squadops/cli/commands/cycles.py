@@ -77,6 +77,21 @@ def _merge_crp_body_fields(body: dict, merged: dict) -> None:
             body[key] = merged[key]
 
 
+def _replay_marker_lines_from_detail(data: dict) -> list[str]:
+    """SIP-0101 §4.1 disclosure lines for a replayed cycle, empty when normal.
+
+    Reads the ``cycle_outcome.replay`` block off the detail response; rendering
+    wording comes from the shared :func:`replay_marker_lines` source so surfaces
+    cannot drift.
+    """
+    replay = ((data.get("cycle_outcome") or {}).get("replay")) or None
+    if not replay:
+        return []
+    from squadops.cycles.replay import ReplayProvenance, replay_marker_lines
+
+    return replay_marker_lines(ReplayProvenance.from_dict(replay))
+
+
 def _parse_set_flags(set_flags: list[str]) -> dict:
     """Parse --set key=value flags into a dict."""
     result = {}
@@ -241,6 +256,10 @@ def show_cycle(
     if fmt == "json":
         print_json(data)
     else:
+        # SIP-0101 §4.1: a replayed cycle is marked before any other detail —
+        # inherited-prefix evidence must be impossible to read as earned.
+        for line in _replay_marker_lines_from_detail(data):
+            typer.secho(line, fg=typer.colors.YELLOW, bold=True)
         # Extract workload_progress for dedicated rendering
         wp = data.pop("workload_progress", [])
         print_detail(data, quiet=quiet)

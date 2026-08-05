@@ -12,6 +12,7 @@ from squadops.api.routes.cycles.dtos import (
     GateDecisionResponse,
     GateDTO,
     ProjectResponse,
+    ReplayProvenanceDTO,
     RunResponse,
     SquadProfileResponse,
     TaskFlowPolicyDTO,
@@ -153,6 +154,15 @@ def _cycle_outcome_to_dto(outcome: CycleOutcome) -> CycleOutcomeDTO:
         ],
         required_unmet=list(outcome.required_unmet),
         run_count=outcome.run_count,
+        replay=(
+            ReplayProvenanceDTO(
+                source_run_id=outcome.replay.source_run_id,
+                boundary_index=outcome.replay.boundary_index,
+                compatibility_set=list(outcome.replay.compatibility_set),
+            )
+            if outcome.replay is not None
+            else None
+        ),
     )
 
 

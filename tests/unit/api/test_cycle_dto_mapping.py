@@ -246,6 +246,34 @@ class TestCycleOutcomeInResponse:
         assert resp.cycle_outcome.required_unmet == ["required_files"]  # derived from unverified
         assert resp.cycle_outcome.unverified[0].check_id == "required_files"
         assert resp.cycle_outcome.unverified[0].required is True
+        # SIP-0101: outcomes built without provenance must serialize replay=None
+        assert resp.cycle_outcome.replay is None
+
+    def test_replay_provenance_survives_the_dto_boundary(self):
+        """SIP-0101 §4.1: a dropped replay field is a replayed cycle the API
+        presents as earned — the exact state the rails exist to make impossible."""
+        from squadops.cycles.replay import ReplayProvenance
+        from squadops.cycles.verification_integrity import CycleOutcome, RunVerdict
+
+        outcome = CycleOutcome(
+            verdict=RunVerdict.ACCEPTED,
+            verified=(),
+            failed=(),
+            unverified=(),
+            run_count=1,
+            replay=ReplayProvenance(
+                source_run_id="run_src",
+                boundary_index=2,
+                compatibility_set=("contract_ref", "prd_ref"),
+            ),
+        )
+
+        resp = cycle_to_response(_make_cycle(), runs=[], cycle_outcome=outcome)
+
+        assert resp.cycle_outcome.replay is not None
+        assert resp.cycle_outcome.replay.source_run_id == "run_src"
+        assert resp.cycle_outcome.replay.boundary_index == 2
+        assert resp.cycle_outcome.replay.compatibility_set == ["contract_ref", "prd_ref"]
 
 
 class TestRunToResponseFailureReason:

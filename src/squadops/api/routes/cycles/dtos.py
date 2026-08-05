@@ -168,6 +168,15 @@ class UnverifiedCheckDTO(BaseModel):
     required: bool
 
 
+class ReplayProvenanceDTO(BaseModel):
+    """SIP-0101 §4.1: the prefix of this outcome was restored from another run's
+    checkpoint — inherited evidence, never presentable as earned."""
+
+    source_run_id: str
+    boundary_index: int
+    compatibility_set: list[str] = Field(default_factory=list)
+
+
 class CycleOutcomeDTO(BaseModel):
     """SIP-0096 §10 per-cycle verification roll-up, derived on read.
 
@@ -182,6 +191,7 @@ class CycleOutcomeDTO(BaseModel):
     unverified: list[UnverifiedCheckDTO] = Field(default_factory=list)
     required_unmet: list[str] = Field(default_factory=list)
     run_count: int = 0
+    replay: ReplayProvenanceDTO | None = None  # SIP-0101 — present iff replayed
 
 
 class CycleResponse(BaseModel):

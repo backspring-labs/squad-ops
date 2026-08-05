@@ -34,9 +34,51 @@ where a profile requires them.
 from __future__ import annotations
 
 from collections.abc import Collection, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
+
+
+@dataclass(frozen=True)
+class ReplayProvenance:
+    """Where a replayed run's prefix came from (SIP-0101 §4.1).
+
+    An evidence-disclosure record like its siblings ``UnverifiedCheck`` and
+    ``WaivedCheck``: non-None on ``CycleOutcome.replay`` iff the outcome's
+    prefix was restored from another run's checkpoint — inherited evidence,
+    marked on every rendering surface. Nothing constructs it until the replay
+    mechanism (SIP-0101 Slice 3) ships; the rails land first so an unlabelled
+    replayed run can never exist (§4).
+
+    ``compatibility_set`` records the elements the create-time gate matched
+    between source and target, so the evidence names what "compatible" meant
+    when the replay was admitted.
+    """
+
+    source_run_id: str
+    boundary_index: int
+    compatibility_set: tuple[str, ...] = field(default_factory=tuple)
+
+    def __post_init__(self) -> None:
+        if not self.source_run_id:
+            raise ValueError("source_run_id must be non-empty")
+        if self.boundary_index < 0:
+            raise ValueError("boundary_index must be >= 0")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "source_run_id": self.source_run_id,
+            "boundary_index": self.boundary_index,
+            "compatibility_set": list(self.compatibility_set),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ReplayProvenance:
+        return cls(
+            source_run_id=str(data["source_run_id"]),
+            boundary_index=int(data["boundary_index"]),
+            compatibility_set=tuple(str(x) for x in data.get("compatibility_set", ())),
+        )
 
 
 class ResultStatus:
@@ -305,6 +347,9 @@ class CycleOutcome:
     # criterion verified in any run is honestly verified, matching verified/failed).
     criteria_verified: tuple[str, ...] = ()
     criteria_total: tuple[str, ...] = ()
+    # SIP-0101 §4.1: non-None iff this outcome's prefix was restored from another
+    # run's checkpoint — inherited evidence, marked on every rendering surface.
+    replay: ReplayProvenance | None = None
 
     @property
     def criteria_coverage(self) -> tuple[int, int]:
