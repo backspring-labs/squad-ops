@@ -44,7 +44,12 @@ class CycleRegistryPort(ABC):
         limit: int = 50,
         offset: int = 0,
     ) -> list[Cycle]:
-        """List cycles for a project, optionally filtered by status."""
+        """List cycles for a project, optionally filtered by status.
+
+        Ordering contract: newest first by ``created_at`` — ``limit``/``offset``
+        page over that ordering, so a bounded read returns the most recent
+        cycles (#684's inert-detection history walk depends on this).
+        """
 
     @abstractmethod
     async def cancel_cycle(self, cycle_id: str) -> None:
