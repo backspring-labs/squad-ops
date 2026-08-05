@@ -246,3 +246,25 @@ class TestCycleOutcomeInResponse:
         assert resp.cycle_outcome.required_unmet == ["required_files"]  # derived from unverified
         assert resp.cycle_outcome.unverified[0].check_id == "required_files"
         assert resp.cycle_outcome.unverified[0].required is True
+
+
+class TestRunToResponseFailureReason:
+    """#427: the reason must survive the DTO boundary — runs show renders
+    whatever the response carries, so a dropped field re-blinds the CLI."""
+
+    def test_failure_reason_carried(self):
+        import dataclasses
+
+        from squadops.api.routes.cycles.mapping import run_to_response
+
+        run = dataclasses.replace(
+            _make_run(status="failed"),
+            failure_reason="CycleError: build_profile is required",
+        )
+        resp = run_to_response(run)
+        assert resp.failure_reason == "CycleError: build_profile is required"
+
+    def test_absent_reason_serializes_none(self):
+        from squadops.api.routes.cycles.mapping import run_to_response
+
+        assert run_to_response(_make_run()).failure_reason is None

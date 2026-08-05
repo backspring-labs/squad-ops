@@ -227,7 +227,9 @@ class PostgresCycleRegistry(CycleRegistryPort):
 
         return [self._assemble_run(r, gates_by_run.get(r["run_id"], [])) for r in run_rows]
 
-    async def update_run_status(self, run_id: str, status: RunStatus) -> Run:
+    async def update_run_status(
+        self, run_id: str, status: RunStatus, *, failure_reason: str | None = None
+    ) -> Run:
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow("SELECT status FROM cycle_runs WHERE run_id = $1", run_id)
             if row is None:
@@ -246,12 +248,17 @@ class PostgresCycleRegistry(CycleRegistryPort):
                     run_id,
                 )
             elif status in TERMINAL_STATES:
+                # #427: the reason commits with the terminal status. COALESCE on
+                # the value side so a later reason-less transition attempt never
+                # nulls out a recorded reason.
                 await conn.execute(
                     "UPDATE cycle_runs SET status = $1, "
-                    "finished_at = COALESCE(finished_at, now()) "
+                    "finished_at = COALESCE(finished_at, now()), "
+                    "failure_reason = COALESCE($3, failure_reason) "
                     "WHERE run_id = $2",
                     status.value,
                     run_id,
+                    failure_reason,
                 )
             else:
                 await conn.execute(
@@ -534,6 +541,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
             gate_decisions=gate_decisions,
             artifact_refs=tuple(row["artifact_refs"] or []),
             workload_type=row.get("workload_type"),
+            failure_reason=row.get("failure_reason"),
         )
 
     def _row_to_checkpoint(self, row: asyncpg.Record) -> RunCheckpoint:

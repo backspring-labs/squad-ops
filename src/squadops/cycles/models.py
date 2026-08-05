@@ -333,6 +333,9 @@ class Run:
     gate_decisions: tuple[GateDecision, ...] = ()
     artifact_refs: tuple[str, ...] = ()
     workload_type: str | None = None
+    # #427: why the run reached FAILED, written once at finalize alongside the
+    # terminal transition. None for non-failed runs and pre-1.4.4 history.
+    failure_reason: str | None = None
 
 
 @dataclass(frozen=True)

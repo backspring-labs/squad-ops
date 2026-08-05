@@ -80,8 +80,15 @@ class CycleRegistryPort(ABC):
         """List runs for a cycle, with optional workload_type filter and pagination."""
 
     @abstractmethod
-    async def update_run_status(self, run_id: str, status: RunStatus) -> Run:
+    async def update_run_status(
+        self, run_id: str, status: RunStatus, *, failure_reason: str | None = None
+    ) -> Run:
         """Transition a run to a new status.
+
+        ``failure_reason`` (#427) is persisted with the transition when given —
+        callers pass it on FAILED so the reason and the status commit together.
+        It is stored only on terminal transitions and never overwrites an
+        already-recorded reason with None.
 
         Raises:
             RunNotFoundError: If the run_id is not found.
