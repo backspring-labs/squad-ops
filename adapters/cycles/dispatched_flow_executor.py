@@ -17,6 +17,7 @@ import dataclasses
 import logging
 import os
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime
 from hashlib import sha256
 from typing import TYPE_CHECKING, Any
@@ -1248,6 +1249,22 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         time_budget = cycle.applied_defaults.get("time_budget_seconds")
         run_start_time = time.monotonic()
 
+        # #511: the budget gates EVERY dispatch lane. The main task loop checks
+        # it in _check_task_preconditions, but correction-chain dispatches
+        # (analyze / decision / repair / retest) previously bypassed it — a run
+        # in late-stage correction churn could overrun its contract
+        # indefinitely (run_57807c247bb4: a whole chain dispatched after the
+        # 7200s mark; shk-4: round 2 ran 39 minutes past a 3h budget). This
+        # guard is handed to the CorrectionRunner and raised at its single
+        # dispatch choke point. In-flight work still completes — the semantic
+        # is "no NEW dispatch past expiry", identical to the main loop's.
+        def _budget_guard() -> None:
+            if time_budget is not None and (time.monotonic() - run_start_time) >= time_budget:
+                raise _ExecutionError(
+                    f"Time budget exhausted ({time_budget}s) at correction-chain dispatch "
+                    f"after {len(completed_task_ids)} tasks"
+                )
+
         # SIP-0079: Resume from checkpoint — restore prior state
         checkpoint = await self._cycle_registry.get_latest_checkpoint(run_id)
         if checkpoint:
@@ -1370,6 +1387,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     flow_run_id=flow_run_id,
                     patched_result_holder=_holder,
                     interface_manifest=interface_manifest,
+                    budget_guard=_budget_guard,
                 )
                 if action in ("continue", "accept_patch"):
                     # #379: this attempt failed — re-dispatched ("continue") or
@@ -1975,8 +1993,13 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         patched_result_holder: dict[str, Any] | None = None,
         enriched_envelope: TaskEnvelope | None = None,
         interface_manifest: Any = None,
+        budget_guard: Callable[[], None] | None = None,
     ) -> str:
         """Route a failed task outcome. Returns an action string.
+
+        ``budget_guard`` (#511) raises when the run's time budget is spent; it
+        is forwarded to every correction-chain dispatch so no lane can start
+        new work past expiry.
 
         ``enriched_envelope`` is the dispatch-time envelope carrying the
         materialized workspace (``artifact_contents``) — the base ``envelope``
@@ -2069,6 +2092,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             profile=profile,
             flow_run_id=flow_run_id,
             interface_manifest=interface_manifest,
+            budget_guard=budget_guard,
             # 3.4b: run-lived restore+signal carry (created beside correction_counter).
             scaffold_enforcement_carry=scaffold_enforcement_carry,
             # RC3 (pf-23): re-resolve the workspace from the LIVE stored_artifacts
@@ -2122,6 +2146,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 plan_delta_refs=plan_delta_refs,
                 profile=profile,
                 flow_run_id=flow_run_id,
+                budget_guard=budget_guard,
             )
             return action
         elif correction_path == "continue":
@@ -2148,6 +2173,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         profile: Any = None,
         flow_run_id: str | None = None,
         enriched_envelope: TaskEnvelope | None = None,
+        budget_guard: Callable[[], None] | None = None,
     ) -> str:
         """Behaviorally verify a patch (#389); return "accept_patch" or "continue".
 
@@ -2263,6 +2289,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 plan_delta_refs=plan_delta_refs if plan_delta_refs is not None else [],
                 profile=profile,
                 flow_run_id=flow_run_id,
+                budget_guard=budget_guard,
             )
             retest_outputs = (retest_result.outputs or {}) if retest_result else {}
             fresh_test_result = retest_outputs.get("test_result")

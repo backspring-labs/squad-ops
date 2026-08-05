@@ -678,8 +678,13 @@ class CorrectionRunner:
         plan_delta_refs: list[str],
         bound_record: Any = None,
         enforcement_carry: list[str] | None = None,
+        budget_guard: Callable[[], None] | None = None,
     ) -> TaskResult:
         """Dispatch one correction/repair step and handle its outcome.
+
+        ``budget_guard`` (#511) fires FIRST — this is the correction lanes'
+        single dispatch boundary, so raising here is what "the budget gates
+        every dispatch decision" means for analyze/decision/repair/retest.
 
         The shared per-step sequence both protocol loops used verbatim:
         create the Prefect task_run (SIP-0087 B2), emit TASK_DISPATCHED,
@@ -698,6 +703,8 @@ class CorrectionRunner:
         authoritative instruction to ``enforcement_carry`` for the next
         attempt's evidence (restore+signal).
         """
+        if budget_guard is not None:
+            budget_guard()
         task_run_id = await self._task_dispatcher.create_task_run_if_enabled(
             flow_run_id, step_envelope
         )
@@ -782,8 +789,14 @@ class CorrectionRunner:
         interface_manifest: Any = None,
         artifact_contents: dict[str, str] | None = None,
         scaffold_enforcement_carry: list[str] | None = None,
+        budget_guard: Callable[[], None] | None = None,
     ) -> CorrectionProtocolResult:
         """Run the correction protocol: analyze → decide → act.
+
+        ``budget_guard`` (#511) raises at the dispatch choke point when the
+        run's time budget is spent — correction chains previously bypassed
+        the budget entirely and could overrun the run's contract
+        indefinitely.
 
         Returns the correction_path chosen by the governance handler plus,
         on the patch path, the repair steps' emitted artifacts (#389).
@@ -888,6 +901,7 @@ class CorrectionRunner:
                 stored_artifacts=stored_artifacts,
                 completed_task_ids=completed_task_ids,
                 plan_delta_refs=plan_delta_refs,
+                budget_guard=budget_guard,
             )
 
             # Collect correction task outputs into the right named bucket so
@@ -1093,6 +1107,7 @@ class CorrectionRunner:
                     # enforcement as regular storage (restore + carry signal).
                     bound_record=bound_record,
                     enforcement_carry=scaffold_enforcement_carry,
+                    budget_guard=budget_guard,
                 )
 
                 # Collect repair outputs under the role key, matching the
@@ -1153,6 +1168,7 @@ class CorrectionRunner:
         plan_delta_refs: list[str],
         profile: Any = None,
         flow_run_id: str | None = None,
+        budget_guard: Callable[[], None] | None = None,
     ) -> TaskResult | None:
         """Re-execute a repaired qa.test suite in the QA agent's environment (#456).
 
@@ -1249,4 +1265,5 @@ class CorrectionRunner:
             stored_artifacts=stored_artifacts,
             completed_task_ids=completed_task_ids,
             plan_delta_refs=plan_delta_refs,
+            budget_guard=budget_guard,
         )
