@@ -2786,6 +2786,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         errors: list[str] = []
         interface_content: str | None = None
         parsed_plan: ImplementationPlan | None = None
+        plan_artifact_seen = False  # #424: exists-but-unreadable ≠ absent
         contract = None  # set in bind mode below; feeds the soft-violation log
         for ref_id in tuple(run.artifact_refs or ()):
             try:
@@ -2796,6 +2797,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             if ref.filename == "implementation_plan.yaml" or (
                 artifact_type == "control_implementation_plan"
             ):
+                plan_artifact_seen = True
                 try:
                     parsed_plan = ImplementationPlan.from_yaml(
                         content_bytes.decode(errors="replace")
@@ -2834,6 +2836,24 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     errors.extend(parsed_plan.validate_build_config(cycle.resolved_config()))
             elif ref.filename == "interface_manifest.yaml" or artifact_type == "interface_manifest":
                 interface_content = content_bytes.decode(errors="replace")
+
+        # #424: this seam's precondition is implementation_plan=true, so a
+        # COMPLETED framing run with no plan artifact at all means plan
+        # authoring collapsed (manifest exhaustion / artifact lost) — the
+        # profile's instrument does not exist, and letting the gate approve
+        # spends a full implementation run to be caught by the SIP-0096
+        # throttle at the very end. Reject here, where a re-roll costs
+        # minutes; generate_task_plan's dispatch net is the raising backstop.
+        # An unreadable plan (parse failure above) still defers — that
+        # artifact exists and the dispatch net gives it a full diagnosis.
+        if not plan_artifact_seen:
+            errors.append(
+                "plan_authoring_collapsed: this framing run produced no "
+                "implementation_plan artifact, but the profile's instrumentation "
+                "contract (typed_acceptance/implementation_plan) lives in the "
+                "authored plan — re-roll framing rather than running "
+                "uninstrumented."
+            )
 
         # SIP-0099 99.2: a framing-emitted interface manifest is validated here — this is
         # its ONLY net (the dispatch-time net in cycles/task_plan.py stays scaffold-free to

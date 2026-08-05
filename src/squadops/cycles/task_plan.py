@@ -651,6 +651,7 @@ def generate_task_plan(
     # SIP-0086: replace static build steps with plan-derived steps.
     # Only applies when the step list actually contains build steps.
     has_build_steps = any(s[0] in _BUILD_TASK_TYPES for s in steps)
+    _require_plan_for_instrumented_cycle(plan, has_build_steps, resolved_config)
     if plan is not None and has_build_steps:
         plan = _bind_plan_criteria(plan, contract)
         steps = _replace_build_steps_with_plan(steps, plan, profile, profile_roles, contract)
@@ -878,6 +879,31 @@ def _validate_plan_against_contract(plan: ImplementationPlan, contract: Verifica
     # the gate reviewer (never a rejection — reverted-#552 lesson).
     for warning in plan.lint_prose_contract_conflicts(contract):
         logger.warning("Plan prose/contract conflict: %s", warning)
+
+
+def _require_plan_for_instrumented_cycle(
+    plan: ImplementationPlan | None, has_build_steps: bool, resolved_config: dict
+) -> None:
+    """#424: refuse the static-step fallback when the plan IS the instrument.
+
+    For a profile with ``typed_acceptance``/``implementation_plan``, a missing
+    plan must never degrade to static steps — the run would spend itself with
+    its instrumentation contract silently absent, caught only by the SIP-0096
+    required-check throttle at the very end (cyc_7d2f505e5e8f). Raising here is
+    the dispatch backstop (the #291/#392 precedent, single point with config in
+    hand); the workload-gate net records the graceful rejection first.
+    """
+    if plan is not None or not has_build_steps:
+        return
+    if not (resolved_config.get("implementation_plan") or resolved_config.get("typed_acceptance")):
+        return
+    raise CycleError(
+        "implementation plan required but absent: this cycle's profile sets "
+        "typed_acceptance/implementation_plan, so its instrumentation contract "
+        "lives in the authored plan — plan authoring collapsed (or the plan "
+        "artifact was not forwarded), and falling back to static task steps "
+        "would run the cycle with that contract silently absent."
+    )
 
 
 def _replace_build_steps_with_plan(
