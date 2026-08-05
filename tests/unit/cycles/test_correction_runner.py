@@ -3579,3 +3579,149 @@ class TestBudgetGatesCorrectionDispatch:
             pass
         assert dispatcher.dispatch_task.await_count >= 1
         assert calls["n"] >= dispatcher.dispatch_task.await_count
+
+
+class TestProgressAwareTermination:
+    """#435 (1.5 A4): an exact adjacent signature repeat with structural
+    candidates on both decisions terminates the chain plan_defect BEFORE any
+    repair dispatch — shk-4 spent three rounds and ~2h escaping a defect this
+    rule names at round 1."""
+
+    @staticmethod
+    def _runner():
+        from adapters.cycles.correction_runner import CorrectionRunner
+
+        runner = CorrectionRunner(
+            cycle_registry=AsyncMock(),
+            artifact_vault=AsyncMock(),
+            event_bus=MagicMock(),
+            task_dispatcher=AsyncMock(),
+            store_artifact=AsyncMock(),
+        )
+        return runner
+
+    @staticmethod
+    def _envelope():
+        from squadops.tasks.models import TaskEnvelope
+
+        return TaskEnvelope(
+            task_id="task-qa-4",
+            agent_id="eve",
+            cycle_id="cyc_001",
+            pulse_id="p1",
+            project_id="proj",
+            task_type="qa.test",
+            correlation_id="c1",
+            causation_id="c1",
+            trace_id="t1",
+            span_id="s1",
+            inputs={},
+            metadata={"role": "qa"},
+        )
+
+    @staticmethod
+    def _failed_result():
+        from squadops.tasks.models import TaskResult
+
+        return TaskResult(
+            task_id="task-qa-4",
+            status="FAILED",
+            outputs={
+                "outcome_class": "semantic_failure",
+                "validation_result": {
+                    "passed": False,
+                    "checks": [
+                        {
+                            "check": "tests_pass",
+                            "passed": False,
+                            "status": "failed",
+                            "reason": "exit 1",
+                            "executed": True,
+                            "exit_code": 1,
+                        }
+                    ],
+                },
+            },
+            error="suite failed",
+        )
+
+    @staticmethod
+    def _wire_steps(runner, candidate: str):
+        from squadops.tasks.models import TaskResult
+
+        def _step(envelope, *args, **kwargs):
+            if envelope.task_type == "data.analyze_failure":
+                outputs = {"classification": "work_product", "analysis_summary": "s"}
+            else:
+                outputs = {
+                    "correction_path": "continue",
+                    "decision_rationale": "r",
+                    "structural_plan_change_candidate": candidate,
+                }
+            return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs=outputs)
+
+        runner._dispatch_protocol_step = AsyncMock(side_effect=_step)
+
+    async def _run_round(self, runner, cycle, state, attempt: int):
+        return await runner.run_correction_protocol(
+            run_id="run_001",
+            cycle=cycle,
+            envelope=self._envelope(),
+            result=self._failed_result(),
+            correction_attempts=attempt,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+            signature_state=state,
+        )
+
+    async def test_adjacent_repeat_with_candidates_terminates(self, cycle):
+        from adapters.cycles.execution_errors import _ExecutionError
+
+        runner = self._runner()
+        self._wire_steps(runner, "tighten_acceptance")
+        state: dict = {}
+
+        await self._run_round(runner, cycle, state, 0)  # round 0: records state
+        with pytest.raises(_ExecutionError, match="plan_defect"):
+            await self._run_round(runner, cycle, state, 1)
+
+        # the typed record was persisted as a correction_termination artifact
+        stored_types = [
+            call.args[0].artifact_type for call in runner._artifact_vault.store.call_args_list
+        ]
+        assert "correction_termination" in stored_types
+
+    async def test_candidate_none_never_terminates(self, cycle):
+        runner = self._runner()
+        self._wire_steps(runner, "none")
+        state: dict = {}
+
+        await self._run_round(runner, cycle, state, 0)
+        await self._run_round(runner, cycle, state, 1)  # same signature — no raise
+
+        stored_types = [
+            call.args[0].artifact_type for call in runner._artifact_vault.store.call_args_list
+        ]
+        assert "correction_termination" not in stored_types
+
+    async def test_no_state_threaded_is_todays_behavior(self, cycle):
+        # legacy callers without signature_state: byte-identical behavior
+        runner = self._runner()
+        self._wire_steps(runner, "tighten_acceptance")
+
+        for attempt in (0, 1):
+            await runner.run_correction_protocol(
+                run_id="run_001",
+                cycle=cycle,
+                envelope=self._envelope(),
+                result=self._failed_result(),
+                correction_attempts=attempt,
+                prior_outputs={},
+                all_artifact_refs=[],
+                stored_artifacts=[],
+                completed_task_ids=[],
+                plan_delta_refs=[],
+            )  # no raise

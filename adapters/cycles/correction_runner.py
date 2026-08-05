@@ -38,11 +38,19 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from typing import TYPE_CHECKING, Any
 
+from adapters.cycles.execution_errors import _ExecutionError
 from squadops.cycles.agent_config import resolve_agent_config
 from squadops.cycles.checkpoint import RunCheckpoint
+from squadops.cycles.correction_signature import (
+    classify_movement,
+    failure_signature,
+    render_signature,
+    should_terminate_plan_defect,
+)
 from squadops.cycles.failure_evidence import build_failure_evidence, compose_failure_trigger
 from squadops.cycles.models import ArtifactRef
 from squadops.cycles.plan_delta import PlanDelta
+from squadops.cycles.task_outcome import CorrectionTermination, CorrectionTerminationReason
 from squadops.events.types import EventType
 from squadops.tasks.models import TaskEnvelope
 
@@ -775,6 +783,93 @@ class CorrectionRunner:
             )
         return result
 
+    async def _check_progress_termination(
+        self,
+        *,
+        signature_state: dict[str, Any],
+        envelope: TaskEnvelope,
+        failure_evidence: dict[str, Any],
+        delta: PlanDelta,
+        delta_artifact_id: str,
+        correction_attempts: int,
+        cycle: Cycle,
+        run_id: str,
+        all_artifact_refs: list[str],
+    ) -> None:
+        """#435 A4.3: terminate the chain as ``plan_defect`` on an exact
+        adjacent repeat with structural candidates on both rounds.
+
+        An infra round (no product signature — A3 owns its routing) CLEARS the
+        task's chain state: adjacency is strict, per the decision table. On
+        termination the typed ``CorrectionTermination`` record is persisted as
+        a ``correction_termination`` artifact and the chain aborts through the
+        normal ``_ExecutionError`` path, so ``failure_reason`` (#427) names it.
+        """
+        current_sig = failure_signature(failure_evidence)
+        state = signature_state.get(envelope.task_id)
+        if current_sig is None:
+            signature_state.pop(envelope.task_id, None)
+            return
+        prev_sig = state["signature"] if state else None
+        prev_candidate = state["candidate"] if state else None
+        candidate = delta.structural_plan_change_candidate
+
+        if should_terminate_plan_defect(prev_sig, current_sig, prev_candidate, candidate):
+            termination = CorrectionTermination(
+                reason=CorrectionTerminationReason.PLAN_DEFECT,
+                failed_task_id=envelope.task_id,
+                repeated_signature=render_signature(current_sig),
+                structural_candidate=candidate,
+                first_seen_round=int(state["first_seen_round"]),
+                terminal_round=correction_attempts,
+                supporting_artifact_ids=tuple(
+                    x for x in (state.get("delta_artifact_id"), delta_artifact_id) if x
+                ),
+            )
+            content = json.dumps(termination.to_dict()).encode()
+            ref = ArtifactRef(
+                artifact_id=f"term_{envelope.task_id[-8:]}_{correction_attempts:02d}",
+                project_id=cycle.project_id,
+                artifact_type="correction_termination",
+                filename="correction_termination.json",
+                content_hash=sha256(content).hexdigest(),
+                size_bytes=len(content),
+                media_type="application/json",
+                created_at=datetime.now(UTC),
+                cycle_id=cycle.cycle_id,
+                run_id=run_id,
+            )
+            await self._artifact_vault.store(ref, content)
+            all_artifact_refs.append(ref.artifact_id)
+            logger.warning(
+                "correction_terminated_plan_defect task=%s rounds=%d..%d candidate=%s signature=%s",
+                envelope.task_id,
+                termination.first_seen_round,
+                termination.terminal_round,
+                candidate,
+                "; ".join(termination.repeated_signature),
+            )
+            raise _ExecutionError(
+                f"plan_defect: correction terminated at round {correction_attempts} — "
+                f"failure signature repeated from round {termination.first_seen_round} "
+                f"with structural plan-change candidate {candidate!r} on both decisions; "
+                f"the plan, not the work product, is the defect "
+                f"(see {ref.artifact_id})"
+            )
+
+        movement = classify_movement(prev_sig, current_sig)
+        first_seen = (
+            int(state["first_seen_round"])
+            if state and movement == "repeat"
+            else correction_attempts
+        )
+        signature_state[envelope.task_id] = {
+            "signature": current_sig,
+            "candidate": candidate,
+            "first_seen_round": first_seen,
+            "delta_artifact_id": delta_artifact_id,
+        }
+
     async def run_correction_protocol(
         self,
         run_id: str,
@@ -793,8 +888,15 @@ class CorrectionRunner:
         artifact_contents: dict[str, str] | None = None,
         scaffold_enforcement_carry: list[str] | None = None,
         budget_guard: Callable[[], None] | None = None,
+        signature_state: dict[str, Any] | None = None,
     ) -> CorrectionProtocolResult:
         """Run the correction protocol: analyze → decide → act.
+
+        ``signature_state`` (#435, 1.5 A4) is the executor-owned, run-lived
+        chain state (failed task id → last signature/candidate/first-seen
+        round). After the decision step, an exact adjacent signature repeat
+        with structural candidates on both rounds terminates the chain as
+        ``plan_defect`` BEFORE any repair dispatch — decision table on #435.
 
         ``budget_guard`` (#511) raises at the dispatch choke point when the
         run's time budget is spent — correction chains previously bypassed
@@ -1003,6 +1105,22 @@ class CorrectionRunner:
         await self._artifact_vault.store(delta_ref, delta_content)
         all_artifact_refs.append(delta_ref.artifact_id)
         plan_delta_refs.append(delta_ref.artifact_id)
+
+        # 6b. #435 (1.5 A4): progress-aware termination. Placed after the
+        # delta is stored (the decision evidence survives) and before any
+        # repair dispatch (maximum budget honored).
+        if signature_state is not None:
+            await self._check_progress_termination(
+                signature_state=signature_state,
+                envelope=envelope,
+                failure_evidence=failure_evidence,
+                delta=delta,
+                delta_artifact_id=delta_ref.artifact_id,
+                correction_attempts=correction_attempts,
+                cycle=cycle,
+                run_id=run_id,
+                all_artifact_refs=all_artifact_refs,
+            )
 
         # 7. Handle patch path: dispatch repair tasks
         # Repair-step selection is keyed on the failed task's task_type
