@@ -14,6 +14,7 @@ Part of SIP-0080.
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from typing import TYPE_CHECKING, Any
@@ -24,9 +25,11 @@ from squadops.capabilities.handlers.base import HandlerResult
 from squadops.capabilities.handlers.planning_tasks import _PlanningTaskHandler
 from squadops.cycles.wrapup_models import (
     ALLOWED_SUGGESTED_OWNERS,
+    CONFIDENCE_RANK,
     CloseoutRecommendation,
     ConfidenceClassification,
     NextCycleRecommendation,
+    confidence_ceiling,
 )
 
 if TYPE_CHECKING:
@@ -221,7 +224,53 @@ class GovernanceCloseoutDecisionHandler(_PlanningTaskHandler):
                 ),
             )
 
+        # #683 (SIP-0096 §6.6(4)/§14): the structured CycleOutcome is the
+        # confidence ceiling — wrap-up prose can never claim above it. The
+        # claimed value survives as disclosure; the enforced value is the
+        # record. Absent outcome (legacy dispatch, replay without threading)
+        # fails closed to the inconclusive ceiling — never a prose free pass.
+        outcome = ((inputs.get("prior_outputs") or {}).get("verification_evidence") or {}).get(
+            "outcome"
+        )
+        ceiling, basis = confidence_ceiling(outcome)
+        claimed = fm["confidence"]
+        if CONFIDENCE_RANK[claimed] > CONFIDENCE_RANK[ceiling]:
+            enforced_content = _clamp_frontmatter_confidence(content, claimed, ceiling, basis)
+            result.outputs["artifacts"][0]["content"] = enforced_content
+            result.outputs["confidence"] = ceiling
+            result.outputs["confidence_claimed"] = claimed
+            result.outputs["confidence_basis"] = basis
+            logger.warning("closeout confidence clamped %s -> %s (%s)", claimed, ceiling, basis)
+        else:
+            result.outputs["confidence"] = claimed
+            result.outputs["confidence_basis"] = basis
+
         return result
+
+
+def _clamp_frontmatter_confidence(content: str, claimed: str, ceiling: str, basis: str) -> str:
+    """Rewrite the frontmatter confidence to the ceiling, with disclosure.
+
+    Never silent: the claimed value and the deterministic basis ride beside the
+    enforced value, so the artifact reads as an enforcement, not an opinion.
+    """
+    replaced = re.sub(
+        r"^(confidence:\s*).*$",
+        lambda m: f"{m.group(1)}{ceiling}",
+        content,
+        count=1,
+        flags=re.MULTILINE,
+    )
+    disclosure = (
+        f"confidence_claimed: {claimed}\n"
+        f"confidence_enforced_by: cycle_outcome\n"
+        f"confidence_basis: {json.dumps(basis)}\n"
+    )
+    # insert before the closing frontmatter fence (the second ---)
+    parts = replaced.split("---", 2)
+    if len(parts) >= 3:
+        return f"{parts[0]}---{parts[1]}{disclosure}---{parts[2]}"
+    return replaced
 
 
 class GovernancePublishHandoffHandler(_PlanningTaskHandler):

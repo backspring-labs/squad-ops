@@ -476,3 +476,77 @@ class TestParseFrontmatter:
         fm, err = _parse_frontmatter("---\n[broken\n---\nBody")
         assert fm is None
         assert "invalid YAML" in err
+
+
+# ---------------------------------------------------------------------------
+# #683: the closeout confidence ceiling (SIP-0096 §6.6(4)/§14)
+# ---------------------------------------------------------------------------
+
+
+def _inputs_with_outcome(outcome: dict | None) -> dict:
+    inputs = dict(VALID_INPUTS)
+    if outcome is not None:
+        inputs["prior_outputs"] = {"verification_evidence": {"outcome": outcome}}
+    return inputs
+
+
+_REJECTED_OUTCOME = {
+    "verdict": "rejected",
+    "verified": [],
+    "failed": ["tests_pass"],
+    "unverified": [],
+    "required_unmet": [],
+    "run_count": 1,
+    "waived": [],
+}
+
+_ACCEPTED_OUTCOME = {
+    "verdict": "accepted",
+    "verified": ["tests_pass"],
+    "failed": [],
+    "unverified": [],
+    "required_unmet": [],
+    "run_count": 1,
+    "waived": [],
+}
+
+
+class TestCloseoutConfidenceCeiling:
+    async def test_overclaim_is_clamped_with_disclosure(self):
+        # verified_complete claimed against a rejected cycle: the §6.6(4)
+        # narrative-override prohibition made mechanical
+        content = "---\nconfidence: verified_complete\nreadiness_recommendation: proceed\n---\nBody"
+        ctx = _make_context(content)
+        h = GovernanceCloseoutDecisionHandler()
+        result = await h.handle(ctx, _inputs_with_outcome(_REJECTED_OUTCOME))
+
+        assert result.success is True
+        assert result.outputs["confidence"] == "partial_completion"
+        assert result.outputs["confidence_claimed"] == "verified_complete"
+        enforced = result.outputs["artifacts"][0]["content"]
+        assert "confidence: partial_completion" in enforced
+        assert "confidence_claimed: verified_complete" in enforced
+        assert "confidence_enforced_by: cycle_outcome" in enforced
+
+    async def test_claim_within_ceiling_is_untouched(self):
+        content = (
+            "---\nconfidence: complete_with_caveats\nreadiness_recommendation: proceed\n---\nBody"
+        )
+        ctx = _make_context(content)
+        h = GovernanceCloseoutDecisionHandler()
+        result = await h.handle(ctx, _inputs_with_outcome(_ACCEPTED_OUTCOME))
+
+        assert result.success is True
+        assert result.outputs["confidence"] == "complete_with_caveats"
+        assert "confidence_claimed" not in result.outputs
+        assert "confidence_claimed" not in result.outputs["artifacts"][0]["content"]
+
+    async def test_absent_outcome_fails_closed(self):
+        # legacy dispatch / replay without threading: prose never stands alone
+        content = "---\nconfidence: verified_complete\nreadiness_recommendation: proceed\n---\nBody"
+        ctx = _make_context(content)
+        h = GovernanceCloseoutDecisionHandler()
+        result = await h.handle(ctx, _inputs_with_outcome(None))
+
+        assert result.outputs["confidence"] == "inconclusive"
+        assert "unavailable" in result.outputs["confidence_basis"]
