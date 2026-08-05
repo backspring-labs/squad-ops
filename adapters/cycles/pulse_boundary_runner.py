@@ -99,8 +99,8 @@ class PulseBoundaryRunner:
         Returns a dict with keys: milestone_bindings, cadence_suites,
         has_pulse_checks, cadence, engine.
         """
-        raw_pulse_checks = cycle.applied_defaults.get("pulse_checks", [])
-        raw_cadence = cycle.applied_defaults.get("cadence_policy", {})
+        raw_pulse_checks = cycle.resolved_config().get("pulse_checks", [])
+        raw_cadence = cycle.resolved_config().get("cadence_policy", {})
 
         pulse_checks = parse_pulse_checks(raw_pulse_checks) if raw_pulse_checks else ()
         cadence = (
@@ -199,7 +199,7 @@ class PulseBoundaryRunner:
             run_id=run_id,
         )
 
-        max_repair_attempts = cycle.applied_defaults.get(
+        max_repair_attempts = cycle.resolved_config().get(
             "max_repair_attempts",
             2,
         )

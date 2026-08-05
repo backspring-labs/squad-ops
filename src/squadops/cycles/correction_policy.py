@@ -84,7 +84,7 @@ def _executed_failed_required(
 def resolve_correction_path(
     decision_path: str,
     failure_evidence: dict[str, Any],
-    applied_defaults: dict[str, Any],
+    resolved_config: dict[str, Any],
     *,
     classification: str = "",
 ) -> CorrectionPathResolution:
@@ -94,7 +94,8 @@ def resolve_correction_path(
         decision_path: ``correction_path`` from the governance decision handler.
         failure_evidence: the payload handed to ``data.analyze_failure``
             (``build_failure_evidence`` shape).
-        applied_defaults: the cycle's resolved defaults (``required_checks``).
+        resolved_config: the cycle's effective config via the #426 single
+            merge (``Cycle.resolved_config()``, #724) — ``required_checks``.
         classification: the analyzer's failure classification. Only consulted for
             the rewind anchor; "" (older callers, missing analysis) never fires it.
 
@@ -113,7 +114,7 @@ def resolve_correction_path(
             )
         return CorrectionPathResolution(path=decision_path)
 
-    required = frozenset(applied_defaults.get("required_checks") or [])
+    required = frozenset(resolved_config.get("required_checks") or [])
     if not required:
         return CorrectionPathResolution(path=decision_path)
 

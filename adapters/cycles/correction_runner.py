@@ -1030,7 +1030,7 @@ class CorrectionRunner:
         resolution = resolve_correction_path(
             decision_outputs.get("correction_path", "abort"),
             failure_evidence,
-            cycle.applied_defaults,
+            cycle.resolved_config(),
             # pf-45: the rewind anchor keys on the analyzer's classification — a
             # work_product rewind dies as a run failure with the repair budget unspent,
             # so the guard substitutes the patch the classification says is possible.

@@ -32,7 +32,10 @@ def _ev(code: str) -> ScaffoldIntegrityEvidence:
 
 
 def _cycle(bound: int = 3) -> SimpleNamespace:
-    return SimpleNamespace(applied_defaults={"contract_compliance_attempts": bound})
+    # #724: the executor reads the bound through resolved_config() (the #426
+    # single merge), so the stub carries the same seam a real Cycle has
+    defaults = {"contract_compliance_attempts": bound}
+    return SimpleNamespace(applied_defaults=defaults, resolved_config=lambda: dict(defaults))
 
 
 def _env() -> SimpleNamespace:
@@ -96,6 +99,8 @@ def test_bound_is_configurable_zero_terminates_on_first():
 def test_default_bound_applies_when_unset():
     """Absent the key, the default (3) is used — a fourth cross-slot write terminates."""
     counter = {"n": 3}
-    cycle = SimpleNamespace(applied_defaults={})  # no contract_compliance_attempts
+    cycle = SimpleNamespace(
+        applied_defaults={}, resolved_config=dict
+    )  # no contract_compliance_attempts
     with pytest.raises(_ExecutionError):
         _call([_ev(_UNAUTH)], counter, cycle)

@@ -233,6 +233,17 @@ def validate_workload_type(value: str | None) -> str | None:
     return trimmed
 
 
+def resolve_config(applied_defaults: dict, execution_overrides: dict) -> dict:
+    """The #426 single merge definition: overrides win over defaults.
+
+    Module-level so pre-persist surfaces (the create route's preflight, which
+    runs before a ``Cycle`` exists) evaluate the SAME effective config the
+    runtime reads via ``Cycle.resolved_config()`` (#724 — two readers keying
+    off different sources of truth is exactly the class this kills).
+    """
+    return {**applied_defaults, **execution_overrides}
+
+
 # =============================================================================
 # Frozen dataclasses — SIP-0064 §8
 # =============================================================================
@@ -362,7 +373,7 @@ class Cycle:
         "what is configured?" from the same dict, or they drift into offering
         work one of them will refuse.
         """
-        return {**self.applied_defaults, **self.execution_overrides}
+        return resolve_config(self.applied_defaults, self.execution_overrides)
 
 
 @dataclass(frozen=True)

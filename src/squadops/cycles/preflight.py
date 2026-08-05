@@ -78,22 +78,23 @@ def combine(*decisions: PreflightDecision) -> PreflightDecision:
     )
 
 
-def required_roles_decision(
-    profile: SquadProfile, applied_defaults: Mapping[str, Any]
-) -> PreflightDecision:
+def required_roles_decision(profile: SquadProfile, config: Mapping[str, Any]) -> PreflightDecision:
     """Block when the squad can't satisfy the roles the requested workloads statically require.
 
-    Reads the same inputs dispatch uses — ``applied_defaults["workload_sequence"]``
-    (a list of ``{"type": ...}`` entries) or, when absent, the legacy
-    ``plan_tasks`` / ``build_tasks`` flags — and the same
-    :data:`WORKLOAD_REQUIRED_ROLES` map, so create-time and dispatch never drift.
+    Reads the same inputs dispatch uses — the EFFECTIVE config's
+    ``workload_sequence`` (a list of ``{"type": ...}`` entries) or, when
+    absent, the legacy ``plan_tasks`` / ``build_tasks`` flags — and the same
+    :data:`WORKLOAD_REQUIRED_ROLES` map, so create-time and dispatch never
+    drift. ``config`` is the #426 single merge (``models.resolve_config``,
+    #724): dispatch honors ``execution_overrides``, so preflight must
+    evaluate the same merged view or the two diverge.
     Emits one ``block`` finding per (workload, missing-role). Never warns (role
     satisfiability is always verifiable from the profile).
     """
     profile_roles = frozenset(a.role for a in profile.agents if a.enabled)
     provided = ", ".join(f"`{r}`" for r in sorted(profile_roles)) or "(none)"
     findings: list[Finding] = []
-    for label, required in _required_roles_by_workload(applied_defaults).items():
+    for label, required in _required_roles_by_workload(config).items():
         for role in sorted(required - profile_roles):
             findings.append(
                 Finding(
@@ -109,7 +110,7 @@ def required_roles_decision(
     return PreflightDecision(blocking=tuple(findings))
 
 
-def _required_roles_by_workload(applied_defaults: Mapping[str, Any]) -> dict[str, frozenset[str]]:
+def _required_roles_by_workload(config: Mapping[str, Any]) -> dict[str, frozenset[str]]:
     """Map each requested workload label → its required role set (create-time static).
 
     Workloads/toggles with no static requirement (``implementation``,
@@ -117,7 +118,7 @@ def _required_roles_by_workload(applied_defaults: Mapping[str, Any]) -> dict[str
     fallback, not a block (SIP §6.1). Unknown workload types are ignored here (the
     executor rejects them at dispatch).
     """
-    sequence = applied_defaults.get("workload_sequence") or []
+    sequence = config.get("workload_sequence") or []
     if sequence:
         result: dict[str, frozenset[str]] = {}
         for entry in sequence:
@@ -127,7 +128,7 @@ def _required_roles_by_workload(applied_defaults: Mapping[str, Any]) -> dict[str
                 result[wtype] = roles
         return result
     # Legacy path: plan_tasks (default true) requires the plan roles; build_tasks requires none.
-    if applied_defaults.get("plan_tasks", True):
+    if config.get("plan_tasks", True):
         return {"plan_tasks": REQUIRED_PLAN_ROLES}
     return {}
 
@@ -218,7 +219,8 @@ def required_check_tooling_decision(
       subset. Checks with no external tooling (the test spine, pure-Python diffs)
       never block.
 
-    ``required_check_ids`` come from ``applied_defaults['required_checks']``; every
+    ``required_check_ids`` come from the effective config's ``required_checks``
+    (the #426 single merge, #724); every
     id is a registered framework check (unknown ids are rejected at CRP load, #395),
     so an unregistered id here simply contributes no tooling requirement.
     """

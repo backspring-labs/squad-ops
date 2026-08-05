@@ -358,8 +358,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 recruited_agent_ids = admission.recruited_agent_ids
 
             # Build-only validation (D6): require plan_artifact_refs
-            include_plan = bool(cycle.applied_defaults.get("plan_tasks", True))
-            include_build = bool(cycle.applied_defaults.get("build_tasks"))
+            include_plan = bool(cycle.resolved_config().get("plan_tasks", True))
+            include_build = bool(cycle.resolved_config().get("build_tasks"))
             seed_artifact_refs: list[str] = []
             if include_build and not include_plan:
                 # Legacy build-only run: plan_artifact_refs are mandatory
@@ -546,7 +546,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         workload gates are interpreted here, not in the polling helper.
         """
         cycle = await self._cycle_registry.get_cycle(cycle_id)
-        workload_sequence = cycle.applied_defaults.get("workload_sequence", [])
+        workload_sequence = cycle.resolved_config().get("workload_sequence", [])
 
         # Single-workload fast path (D7)
         if len(workload_sequence) <= 1:
@@ -576,7 +576,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # re-roll path `continue`s without the tail `i += 1`. Zero re-rolls
         # (default) is byte-identical to the old `for` loop.
         framing_rerolls = 0
-        max_framing_rerolls = cycle.applied_defaults.get("framing_max_rerolls", 0)
+        max_framing_rerolls = cycle.resolved_config().get("framing_max_rerolls", 0)
         i = start_index
         while i < len(workload_sequence):
             workload_entry = workload_sequence[i]
@@ -1250,7 +1250,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         task_attempt_counts: dict[str, int] = {}
 
         # SIP-0079: Time budget enforcement (RC-8)
-        time_budget = cycle.applied_defaults.get("time_budget_seconds")
+        time_budget = cycle.resolved_config().get("time_budget_seconds")
         run_start_time = time.monotonic()
 
         # #511: the budget gates EVERY dispatch lane. The main task loop checks
@@ -1586,7 +1586,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         from squadops.cycles.implementation_plan import ImplementationPlan
 
         # Only load the plan when implementation_plan is enabled in resolved config
-        if not cycle.applied_defaults.get("implementation_plan", False):
+        if not cycle.resolved_config().get("implementation_plan", False):
             return None
 
         # Search forwarded planning artifacts for the plan
@@ -2126,7 +2126,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # D5 fallback table: classify unclassified failures
         if outcome is None:
             task_attempt_counts[envelope.task_id] = task_attempt_counts.get(envelope.task_id, 0) + 1
-            max_retries = cycle.applied_defaults.get("max_task_retries", 2)
+            max_retries = cycle.resolved_config().get("max_task_retries", 2)
             if task_attempt_counts[envelope.task_id] >= max_retries:
                 outcome = TaskOutcome.SEMANTIC_FAILURE
             else:
@@ -2166,7 +2166,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             )
 
         # Trigger correction protocol
-        max_corrections = cycle.applied_defaults.get("max_correction_attempts", 2)
+        max_corrections = cycle.resolved_config().get("max_correction_attempts", 2)
 
         if correction_counter["n"] >= max_corrections:
             raise _ExecutionError(f"Max correction attempts ({max_corrections}) exhausted")
@@ -2518,7 +2518,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         if unauthorized == 0:
             return
         compliance_counter["n"] += unauthorized
-        bound = cycle.applied_defaults.get("contract_compliance_attempts", 3)
+        bound = cycle.resolved_config().get("contract_compliance_attempts", 3)
         if compliance_counter["n"] > bound:
             raise _ExecutionError(
                 f"Contract-compliance budget ({bound}) exceeded: {compliance_counter['n']} "
@@ -2921,7 +2921,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         plans defer to that same net — this check only ever adds an earlier
         rejection, never a pass.
         """
-        if not cycle.applied_defaults.get("implementation_plan", False):
+        if not cycle.resolved_config().get("implementation_plan", False):
             return []
 
         from squadops.cycles.implementation_plan import ImplementationPlan
@@ -3179,7 +3179,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         An absent or unreadable plan defers to the dispatch-time net —
         this check only ever *adds* an earlier rejection, never a pass.
         """
-        if not cycle.applied_defaults.get("implementation_plan", False):
+        if not cycle.resolved_config().get("implementation_plan", False):
             return
 
         from squadops.cycles.implementation_plan import ImplementationPlan
