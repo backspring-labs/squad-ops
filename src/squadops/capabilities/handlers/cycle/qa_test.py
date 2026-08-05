@@ -18,7 +18,7 @@ from squadops.capabilities.handlers.base import (
 )
 from squadops.capabilities.handlers.prompt_guard import _guard_prompt_size
 from squadops.cycles.check_registry import CHECK_FRONTEND_BUILD
-from squadops.cycles.verification_integrity import NotExecutedReason
+from squadops.cycles.verification_integrity import NotExecutedReason, ResultStatus
 from squadops.llm.exceptions import LLMError
 from squadops.llm.models import ChatMessage
 
@@ -77,14 +77,18 @@ class QATestHandler(_CycleTaskHandler):
         *,
         typed_error_counts: dict[str, int] | None = None,
     ) -> ValidationResult:
-        """Validate QA handler output (SIP-0086 §6.4).
+        """Validate QA handler output (SIP-0086 §6.4; #670 typed acceptance).
 
-        SIP-0092 M1.3: signature is async to match the base class. Typed
-        acceptance evaluation in the QA path is out of scope for M1.3 —
-        the SIP focuses on the dev FC3 site. The ``typed_error_counts``
-        kwarg is accepted for caller compatibility but unused here.
+        #670 (owner-ruled fork 1, 2026-08-04): qa joins the shared
+        typed-acceptance seam, retiring M1.3's dev-only scope note. Authored
+        checks on qa.test tasks — including the SIP-0100 ``harness_boundary``
+        bindings that were render-only until this change — AND framework
+        injections (#689 ``undefined_names`` on ``.py`` emissions) both
+        evaluate here, with the same RC-9 blocking matrix and #423
+        evidence-gap accounting as the dev/builder surfaces.
         """
-        del typed_error_counts  # accepted for caller compat; not used in QA
+        if typed_error_counts is None:
+            typed_error_counts = {}
         checks: list[dict] = []
         missing: list[str] = []
 
@@ -132,8 +136,19 @@ class QATestHandler(_CycleTaskHandler):
             }
         )
 
-        passed = all(c["passed"] for c in checks)
-        passed_count = sum(1 for c in checks if c["passed"])
+        # #670: typed acceptance on the qa surface — same seam as dev/builder.
+        await self._evaluate_typed_acceptance(
+            inputs, artifacts, checks, missing, typed_error_counts
+        )
+
+        # #423 parity with dev: evidence-gap rows are honest non-passes that
+        # must not fail the task (a correction cannot repair an evaluator
+        # limitation) — they block at the SIP-0096 roll-up instead.
+        passed = (
+            all(c.get("passed", True) or c.get("evidence_gap", False) for c in checks)
+            and not missing
+        )
+        passed_count = sum(1 for c in checks if c.get("passed", True))
         coverage = passed_count / len(checks) if checks else 1.0
 
         summary_parts = []
@@ -141,6 +156,16 @@ class QATestHandler(_CycleTaskHandler):
             summary_parts.append(f"Missing: {', '.join(missing)}")
         if stubs:
             summary_parts.append(f"Stub files: {', '.join(stubs)}")
+        # #670 diagnosability parity with dev (pf-33: name what failed)
+        typed_failed = [
+            c
+            for c in checks
+            if c.get("check", "").startswith("acceptance:")
+            and c.get("status") in {ResultStatus.FAILED, ResultStatus.ERROR}
+        ]
+        if typed_failed:
+            total_typed = sum(1 for c in checks if c.get("check", "").startswith("acceptance:"))
+            summary_parts.append(f"Typed checks failed: {len(typed_failed)} of {total_typed}")
 
         return ValidationResult(
             passed=passed,
@@ -774,8 +799,14 @@ class QATestHandler(_CycleTaskHandler):
         evidence_extra: dict[str, Any] = {}
         output_validation_enabled = resolved_config.get("output_validation", False)
 
+        # #670 / RC-9b: shared across self-eval passes so per-criterion
+        # evaluator-error counts accumulate (2-strikes escalation), dev parity
+        typed_error_counts: dict[str, int] = {}
+
         if output_validation_enabled:
-            validation = await self._validate_output(inputs, artifacts)
+            validation = await self._validate_output(
+                inputs, artifacts, typed_error_counts=typed_error_counts
+            )
 
             # Self-evaluation loop
             if not validation.passed:
@@ -815,7 +846,9 @@ class QATestHandler(_CycleTaskHandler):
                         for f in new_extracted
                     ]
                     artifacts = self._merge_artifacts(artifacts, new_artifacts, evidence_extra)
-                    validation = await self._validate_output(inputs, artifacts)
+                    validation = await self._validate_output(
+                        inputs, artifacts, typed_error_counts=typed_error_counts
+                    )
 
                 evidence_extra["self_eval_passes"] = self_eval_count
         else:
