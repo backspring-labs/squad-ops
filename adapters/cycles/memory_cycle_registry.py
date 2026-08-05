@@ -43,6 +43,9 @@ class MemoryCycleRegistry(CycleRegistryPort):
         self._pulse_verifications: dict[str, list[dict]] = {}
         self._verification_summaries: dict[str, RunVerificationSummary] = {}
         self._checkpoints: dict[str, list[RunCheckpoint]] = {}
+        # SIP-0101 Slice 2: (run_id, checkpoint_index) pairs excluded from pruning
+        # (the model stays retention-agnostic; postgres carries this as a column)
+        self._retained_checkpoints: set[tuple[str, int]] = set()
 
     # --- Cycle CRUD ---
 
@@ -288,15 +291,28 @@ class MemoryCycleRegistry(CycleRegistryPort):
 
     # --- Checkpoint (SIP-0079) ---
 
-    async def save_checkpoint(self, checkpoint: RunCheckpoint, max_keep: int = 5) -> None:
+    async def save_checkpoint(
+        self, checkpoint: RunCheckpoint, max_keep: int = 5, retain: bool = False
+    ) -> None:
         """Persist a run checkpoint, pruning older checkpoints beyond max_keep."""
         run_id = checkpoint.run_id
         if run_id not in self._checkpoints:
             self._checkpoints[run_id] = []
         self._checkpoints[run_id].append(checkpoint)
-        # Prune: keep only the latest max_keep
-        if len(self._checkpoints[run_id]) > max_keep:
-            self._checkpoints[run_id] = self._checkpoints[run_id][-max_keep:]
+        if retain:
+            self._retained_checkpoints.add((run_id, checkpoint.checkpoint_index))
+        # Prune, postgres-parity (SIP-0101 Slice 2): the survival window is the
+        # latest max_keep of ALL rows; retained boundary checkpoints are never
+        # pruned even when they fall outside it.
+        rows = self._checkpoints[run_id]
+        if len(rows) > max_keep:
+            window = {c.checkpoint_index for c in rows[-max_keep:]}
+            self._checkpoints[run_id] = [
+                c
+                for c in rows
+                if c.checkpoint_index in window
+                or (run_id, c.checkpoint_index) in self._retained_checkpoints
+            ]
 
     async def get_latest_checkpoint(self, run_id: str) -> RunCheckpoint | None:
         """Return the latest checkpoint for a run, or None."""

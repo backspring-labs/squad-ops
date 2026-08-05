@@ -132,13 +132,13 @@ shk-3's exhibit inverted; #605's registry-wide skip property untouched.
 ### A2. SIP-0096 completion — #682 → #683 → #684, then promotion **before the release candidate**
 
 - **#682** gate-waiver slice (§6.5/AC#12): `GateDecision` fields + migration + API +
-  roll-up `waived` population. **This is the line's only expected migration and
-  defines its migration gate:** additive and nullable; historical rows remain
-  interpretable (field-absent distinguishable from `waived=false`); old code reads new
-  rows and new code reads old rows (the 1010/`COALESCE` pattern); forward-only, with
-  the no-downgrade policy stated in the migration header; replay of pre-migration
-  artifacts produces the same roll-up. Range 1000–1099 (Spark-owned). Any *second*
-  migration appearing anywhere in the line is a design-review stop.
+  roll-up `waived` population. **Defines the line's migration gate:** additive and
+  nullable; historical rows remain interpretable (field-absent distinguishable from
+  `waived=false`); old code reads new rows and new code reads old rows (the
+  1010/`COALESCE` pattern); forward-only, with the no-downgrade policy stated in the
+  migration header; replay of pre-migration artifacts produces the same roll-up.
+  Range 1000–1099 (Spark-owned). The line expects **two** migrations (see
+  Migrations below); any further one is a design-review stop.
 - **#683** wrap-up consumes `CycleOutcome` (§10/§14): `ConfidenceClassification` gets
   its structured basis on **every** path — including fallback and replay paths, not
   just the happy path; `wrapup_tasks.py` stops deriving confidence from LLM prose.
@@ -436,9 +436,12 @@ File-ownership pinning applies where surfaces are hot: executor/handlers/framing
 (#663, #331, #567, A4) sit on M-lane-owned files; test-runner/build-check/agent-image/
 deploy-infra (#637, #581, Track C's container pieces) on S-lane files.
 
-**Migrations:** #682 carries the line's only expected migration (Spark range
-1000–1099) and defines the migration gate (A2). Any surprise second migration is a
-design-review stop, not a rider.
+**Migrations:** the line expects exactly **two**, both in the Spark range 1000–1099
+and both bound by A2's migration gate: #682's gate-waiver fields, and SIP-0101
+Slice 2's `retained` column (1020 — in the accepted SIP-0101 plan all along; the
+"only #682" premise here was incomplete, owner-accepted as a scope correction
+2026-08-05 at the #735 review). Any further migration is a design-review stop, not
+a rider.
 
 ## Verification discipline
 

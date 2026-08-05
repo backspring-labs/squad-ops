@@ -177,8 +177,16 @@ class CycleRegistryPort(ABC):
     # --- Checkpoint (SIP-0079) ---
 
     @abstractmethod
-    async def save_checkpoint(self, checkpoint: RunCheckpoint, max_keep: int = 5) -> None:
-        """Persist a run checkpoint, pruning older checkpoints beyond max_keep."""
+    async def save_checkpoint(
+        self, checkpoint: RunCheckpoint, max_keep: int = 5, retain: bool = False
+    ) -> None:
+        """Persist a run checkpoint, pruning older checkpoints beyond max_keep.
+
+        ``retain=True`` marks a workload-boundary checkpoint (SIP-0101 Slice 2):
+        it is excluded from pruning permanently, so the boundaries a replay
+        would restore from survive runs longer than ``max_keep`` tasks.
+        Unretained pruning behavior is unchanged.
+        """
 
     @abstractmethod
     async def get_latest_checkpoint(self, run_id: str) -> RunCheckpoint | None:
