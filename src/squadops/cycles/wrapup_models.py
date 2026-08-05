@@ -177,6 +177,7 @@ def verification_evidence_summary(outcome: dict) -> str:
             else ""
         ),
         f"waived: {', '.join(str(w.get('check_id')) for w in outcome.get('waived') or []) or 'none'}",
+        f"inert: {', '.join(map(str, outcome.get('inert') or [])) or 'none'}",
         f"maximum honest confidence: {ceiling} — {basis}",
     ]
     return "\n".join(lines)

@@ -12,8 +12,15 @@ continuation decision later).
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
+from squadops.cycles.inert_detection import (
+    INERT_CYCLE_THRESHOLD_DEFAULT,
+    INERT_LOOKBACK_CYCLES,
+    cycle_check_state,
+    detect_inert_checks,
+)
 from squadops.cycles.replay import (
     REPLAY_COMPATIBILITY_ELEMENTS,
     parse_replay_declaration,
@@ -26,15 +33,79 @@ from squadops.cycles.verification_integrity import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from squadops.cycles.models import Cycle
+    from squadops.cycles.verification_integrity import RunVerificationSummary
     from squadops.ports.cycles.cycle_registry import CycleRegistryPort
 
+logger = logging.getLogger(__name__)
 
-async def resolve_cycle_outcome(registry: CycleRegistryPort, cycle_id: str) -> CycleOutcome:
+
+def _configured_inert_threshold() -> int:
+    """The §9 N from config, or the SIP default when config isn't loaded.
+
+    ``SQUADOPS__CYCLES__INERT_CYCLE_THRESHOLD`` in deployments; library/test use
+    without a loaded config falls back to the same declared default (a drift
+    test pins the schema default to the constant).
+    """
+    from squadops.config import get_config
+
+    try:
+        return get_config().cycles.inert_cycle_threshold
+    except RuntimeError:
+        return INERT_CYCLE_THRESHOLD_DEFAULT
+
+
+async def _collect_inert(
+    registry: CycleRegistryPort,
+    cycle: Cycle,
+    current_summaries: Sequence[RunVerificationSummary],
+    threshold: int,
+) -> tuple[str, ...]:
+    """Walk the cycle's prior same-project/profile cycles for §9 streaks (#684).
+
+    Series scope is strict: same ``project_id`` + ``squad_profile_id`` +
+    ``request_profile``, created strictly before the perspective cycle — cross-
+    profile history could accrue streaks against checks with different
+    applicability (false inerts). The walk consults at most
+    ``INERT_LOOKBACK_CYCLES`` prior cycles (``list_cycles`` returns newest
+    first — the port's ordering contract); a streak not resolvable within the
+    window is not flagged.
+    """
+    cycles = await registry.list_cycles(cycle.project_id, limit=50)
+    series = [
+        c
+        for c in cycles
+        if c.cycle_id != cycle.cycle_id
+        and c.created_at < cycle.created_at
+        and c.squad_profile_id == cycle.squad_profile_id
+        and c.request_profile == cycle.request_profile
+    ][:INERT_LOOKBACK_CYCLES]
+    states = [cycle_check_state(current_summaries)]
+    for prior in series:
+        states.append(
+            cycle_check_state(await registry.list_run_verification_summaries(prior.cycle_id))
+        )
+    return detect_inert_checks(states, threshold=threshold)
+
+
+async def resolve_cycle_outcome(
+    registry: CycleRegistryPort,
+    cycle_id: str,
+    *,
+    inert_threshold: int | None = None,
+) -> CycleOutcome:
     """Derive a cycle's ``CycleOutcome`` from its persisted per-run summaries (§10).
 
     ``waived`` (#682): populated from the cycle's recorded gate decisions — an
     operator accept-with-waiver sits beside the verdict, never altering it (§6.5).
-    ``inert`` (chronic not-executed, §9) stays empty until #684 wires its source.
+
+    ``inert`` (#684, §9): chronic not-executed streaks derived by walking prior
+    same-project/profile cycles' summaries — disclosure-only enrichment, so a
+    history-read failure logs and yields an empty list, never a failed roll-up;
+    the verdict and the #683 confidence ceiling never depend on it.
+    ``inert_threshold`` overrides the configured N (tests; ``None`` = config).
 
     SIP-0101 Slice 3.4: a replay-mode cycle's outcome carries ``ReplayProvenance``
     derived from the immutable, create-time-validated declaration — same
@@ -62,4 +133,12 @@ async def resolve_cycle_outcome(registry: CycleRegistryPort, cycle_id: str) -> C
         if replay_req is not None
         else None
     )
-    return aggregate_cycle_outcome(summaries, waived=waived, replay=replay)
+    try:
+        threshold = (
+            inert_threshold if inert_threshold is not None else _configured_inert_threshold()
+        )
+        inert = await _collect_inert(registry, cycle, summaries, threshold)
+    except Exception:
+        logger.warning("inert-check detection failed for %s", cycle_id, exc_info=True)
+        inert = ()
+    return aggregate_cycle_outcome(summaries, waived=waived, inert=inert, replay=replay)

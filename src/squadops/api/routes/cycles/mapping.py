@@ -157,6 +157,7 @@ def _cycle_outcome_to_dto(outcome: CycleOutcome) -> CycleOutcomeDTO:
         ],
         required_unmet=list(outcome.required_unmet),
         run_count=outcome.run_count,
+        inert=list(outcome.inert),
         waived=[
             WaivedCheckDTO(check_id=w.check_id, reason=w.reason, waived_by=w.waived_by)
             for w in outcome.waived

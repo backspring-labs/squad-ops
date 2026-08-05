@@ -207,6 +207,7 @@ class CycleOutcomeDTO(BaseModel):
     unverified: list[UnverifiedCheckDTO] = Field(default_factory=list)
     required_unmet: list[str] = Field(default_factory=list)
     run_count: int = 0
+    inert: list[str] = Field(default_factory=list)  # §9 chronic not-executed (#684)
     waived: list[WaivedCheckDTO] = Field(default_factory=list)  # §6.5 (#682)
     replay: ReplayProvenanceDTO | None = None  # SIP-0101 — present iff replayed
 

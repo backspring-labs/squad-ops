@@ -468,6 +468,14 @@ class CyclesConfig(BaseModel):
         default="config",
         description="Squad profile provider: 'config' or 'postgres' (SIP-0075)",
     )
+    inert_cycle_threshold: int = Field(
+        default=3,
+        ge=1,
+        description=(
+            "SIP-0096 §9 N: consecutive not-executed cycles before a stable "
+            "framework check is surfaced as inert (#684)"
+        ),
+    )
 
 
 class SchedulerConfig(BaseModel):
