@@ -1461,7 +1461,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             # Reset consecutive failures on success
             consecutive_failures = 0
 
-            # Collect artifacts + checkpoint after successful task
+            # Collect artifacts + checkpoint after successful task; a checkpoint
+            # that closes a role phase is a replay boundary and survives pruning
+            # (SIP-0101 Slice 2)
             await self._collect_artifacts_and_checkpoint(
                 result=result,
                 envelope=envelope,
@@ -1474,6 +1476,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 plan_delta_refs=plan_delta_refs,
                 bound_record=bound_record,
                 compliance_counter=compliance_counter,
+                retain_checkpoint=self._is_phase_boundary(plan, task_idx),
             )
 
             # ----------------------------------------------------------
@@ -2427,6 +2430,21 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 f"{FailureClassification.CONTRACT_COMPLIANCE}"
             )
 
+    @staticmethod
+    def _is_phase_boundary(plan: list[TaskEnvelope], task_idx: int) -> bool:
+        """True when the task at ``task_idx`` closes a role phase (SIP-0101 Slice 2).
+
+        The last task of the plan, or a task whose successor runs under a
+        different role, ends a phase — its checkpoint is the boundary a replay
+        would restore from, and gets ``retain=True`` so ``max_keep`` pruning
+        cannot destroy it mid-run.
+        """
+        if task_idx + 1 >= len(plan):
+            return True
+        current_role = plan[task_idx].metadata.get("role")
+        next_role = plan[task_idx + 1].metadata.get("role")
+        return current_role != next_role
+
     async def _collect_artifacts_and_checkpoint(
         self,
         result: TaskResult,
@@ -2440,6 +2458,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         plan_delta_refs: list[str],
         bound_record: Any = None,
         compliance_counter: dict[str, int] | None = None,
+        retain_checkpoint: bool = False,
     ) -> None:
         """Collect artifacts from a successful task and save a checkpoint."""
         # Collect artifacts (with producing_task_type metadata)
@@ -2491,7 +2510,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             plan_delta_refs=tuple(plan_delta_refs),
             created_at=datetime.now(UTC),
         )
-        await self._cycle_registry.save_checkpoint(new_checkpoint)
+        await self._cycle_registry.save_checkpoint(new_checkpoint, retain=retain_checkpoint)
         self._cycle_event_bus.emit(
             EventType.CHECKPOINT_CREATED,
             entity_type="run",

@@ -843,3 +843,59 @@ class TestVerificationSummarySerializationFidelity:
         assert rebuilt.failed == ("vc-probe-runs",)
         assert rebuilt.failed_detail == ()
         assert rebuilt.criteria_coverage == (0, 0)
+
+
+class TestCheckpointRetentionSQL:
+    """SIP-0101 Slice 2 — the postgres half of boundary retention.
+
+    SQL-pattern assertions per this file's charter: the INSERT must persist the
+    retain flag and the prune DELETE must exclude retained rows, or a long run
+    destroys its replay boundaries mid-flight exactly as before the fix.
+    """
+
+    @pytest.fixture
+    def conn(self):
+        return _make_conn()
+
+    @pytest.fixture
+    def registry(self, conn):
+        from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry
+
+        return PostgresCycleRegistry(_make_pool(conn))
+
+    @staticmethod
+    def _checkpoint():
+        from datetime import UTC, datetime
+
+        from squadops.cycles.checkpoint import RunCheckpoint
+
+        return RunCheckpoint(
+            run_id="run_1",
+            checkpoint_index=3,
+            completed_task_ids=("t1", "t2", "t3"),
+            prior_outputs={},
+            artifact_refs=(),
+            plan_delta_refs=(),
+            created_at=datetime.now(UTC),
+        )
+
+    async def test_insert_persists_retain_flag(self, registry, conn):
+        await registry.save_checkpoint(self._checkpoint(), retain=True)
+
+        insert_call = conn.execute.call_args_list[0]
+        assert "retained" in insert_call.args[0]
+        assert insert_call.args[-1] is True  # the retain bind param
+
+    async def test_insert_defaults_unretained(self, registry, conn):
+        await registry.save_checkpoint(self._checkpoint())
+
+        insert_call = conn.execute.call_args_list[0]
+        assert insert_call.args[-1] is False
+
+    async def test_prune_excludes_retained_rows(self, registry, conn):
+        await registry.save_checkpoint(self._checkpoint())
+
+        delete_call = conn.execute.call_args_list[1]
+        sql = delete_call.args[0]
+        assert "DELETE FROM run_checkpoints" in sql
+        assert "retained = FALSE" in sql  # retained boundaries never pruned

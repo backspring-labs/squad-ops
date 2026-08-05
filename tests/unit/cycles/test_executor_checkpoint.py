@@ -810,3 +810,36 @@ class TestVerificationEvidenceRecording:
         assert mock_registry.update_run_status.call_args_list[-1].args[1] == RunStatus.COMPLETED
         assert "Verdict: **accepted**" in report
         assert "Failed: tests_pass" not in report
+
+
+class TestBoundaryRetentionThreading:
+    """SIP-0101 Slice 2: the executor marks phase-boundary checkpoints retained.
+
+    Bug caught: retention machinery exists in the registry but the executor
+    never passes the flag — every boundary still gets pruned and replay has
+    nothing to restore from.
+    """
+
+    async def test_every_save_carries_the_retain_kwarg(
+        self, executor, mock_registry, mock_queue
+    ) -> None:
+        with patch(
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
+
+        calls = mock_registry.save_checkpoint.call_args_list
+        assert calls, "no checkpoints saved"
+        assert all("retain" in c.kwargs for c in calls)
+
+    async def test_final_checkpoint_is_retained(self, executor, mock_registry, mock_queue) -> None:
+        # the last task always closes a phase — its checkpoint is the terminal
+        # replay boundary and must survive pruning
+        with patch(
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            await executor.execute_run(cycle_id="cyc_impl", run_id="run_impl")
+
+        assert mock_registry.save_checkpoint.call_args_list[-1].kwargs["retain"] is True

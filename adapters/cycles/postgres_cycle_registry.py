@@ -432,15 +432,17 @@ class PostgresCycleRegistry(CycleRegistryPort):
 
     # --- Checkpoint (SIP-0079) ---
 
-    async def save_checkpoint(self, checkpoint: RunCheckpoint, max_keep: int = 5) -> None:
+    async def save_checkpoint(
+        self, checkpoint: RunCheckpoint, max_keep: int = 5, retain: bool = False
+    ) -> None:
         """Persist a run checkpoint, pruning older checkpoints beyond max_keep."""
         async with self._pool.acquire() as conn:
             async with conn.transaction():
                 await conn.execute(
                     "INSERT INTO run_checkpoints "
                     "(run_id, checkpoint_index, completed_task_ids, prior_outputs, "
-                    "artifact_refs, plan_delta_refs, created_at) "
-                    "VALUES ($1, $2, $3, $4, $5, $6, $7)",
+                    "artifact_refs, plan_delta_refs, created_at, retained) "
+                    "VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
                     checkpoint.run_id,
                     checkpoint.checkpoint_index,
                     json.dumps(list(checkpoint.completed_task_ids)),
@@ -448,10 +450,15 @@ class PostgresCycleRegistry(CycleRegistryPort):
                     json.dumps(list(checkpoint.artifact_refs)),
                     json.dumps(list(checkpoint.plan_delta_refs)),
                     checkpoint.created_at,
+                    retain,
                 )
-                # Prune: keep only the latest max_keep checkpoints
+                # Prune: keep only the latest max_keep checkpoints. SIP-0101
+                # Slice 2: retained boundary checkpoints are never pruned —
+                # unretained pruning is unchanged (window still counted over
+                # ALL rows, so retention widens survival, never narrows it).
                 await conn.execute(
                     "DELETE FROM run_checkpoints WHERE run_id = $1 "
+                    "AND retained = FALSE "
                     "AND checkpoint_index NOT IN ("
                     "  SELECT checkpoint_index FROM run_checkpoints "
                     "  WHERE run_id = $1 ORDER BY checkpoint_index DESC LIMIT $2"

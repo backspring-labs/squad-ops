@@ -552,6 +552,9 @@ class CorrectionRunner:
             plan_delta_refs=tuple(plan_delta_refs),
             created_at=datetime.now(UTC),
         )
+        # SIP-0101 Slice 2: correction-chain checkpoints are iteration state, not
+        # replay boundaries — deliberately unretained (retain defaults False) so a
+        # correction storm cannot pin unbounded rows past the prune window.
         await self._cycle_registry.save_checkpoint(new_checkpoint)
         self._event_bus.emit(
             EventType.CHECKPOINT_CREATED,
