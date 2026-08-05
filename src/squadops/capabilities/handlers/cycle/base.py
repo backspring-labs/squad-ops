@@ -15,7 +15,11 @@ from squadops.capabilities.handlers.base import (
     HandlerEvidence,
     HandlerResult,
 )
-from squadops.cycles.acceptance_check_spec import CHECK_UNDEFINED_NAMES, is_check_applicable
+from squadops.cycles.acceptance_check_spec import (
+    CHECK_UNDEFINED_NAMES,
+    CONFIG_OFF_SKIP_REASONS,
+    is_check_applicable,
+)
 from squadops.cycles.acceptance_checks import CheckOutcome
 from squadops.cycles.acceptance_evaluation import (
     evaluate_criterion,
@@ -24,6 +28,7 @@ from squadops.cycles.acceptance_evaluation import (
 )
 from squadops.cycles.implementation_plan import TypedCheck
 from squadops.cycles.patch_verification import materialize_artifacts
+from squadops.cycles.verification_integrity import ResultStatus
 from squadops.llm.exceptions import LLMError
 from squadops.llm.model_registry import get_model_spec
 from squadops.llm.models import ChatMessage
@@ -406,7 +411,8 @@ class _CycleTaskHandler(CapabilityHandler):
                 }
             )
 
-        typed_criteria = list(split.typed) + _framework_injected_criteria(artifacts, split.typed)
+        authored_criteria = list(split.typed)
+        typed_criteria = authored_criteria + _framework_injected_criteria(artifacts, split.typed)
         if not typed_criteria:
             return
 
@@ -441,6 +447,26 @@ class _CycleTaskHandler(CapabilityHandler):
                     typed_acceptance_enabled=typed_acceptance_enabled,
                     command_acceptance_enabled=command_acceptance_enabled,
                 )
+                # #423: an *authored* error-severity check that the evaluator
+                # skipped for any reason other than deliberate config-off is an
+                # evidence gap — the author asked for enforcement on a concrete
+                # target and the evaluator declared it cannot deliver
+                # (unsupported extension/stack, missing tooling). Distinct from
+                # the benign classes: config-off skips, and framework-injected
+                # checks (which target only files in their own family, #605).
+                # A gap must never read `passed: true` — that is the false
+                # green #423 measured (7 of 14 evaluations skipped-yet-passed,
+                # the whole frontend contract surface unenforced) — but it also
+                # must not mission a correction: no code repair can close an
+                # evaluator limitation. It surfaces as unverified at the
+                # SIP-0096 roll-up instead (see verification_normalize /
+                # aggregate_verification).
+                evidence_gap = (
+                    outcome.status == ResultStatus.SKIPPED
+                    and check_index < len(authored_criteria)
+                    and criterion.severity == "error"
+                    and outcome.reason not in CONFIG_OFF_SKIP_REASONS
+                )
                 check_record = {
                     "check": f"acceptance:{criterion.check}",
                     "severity": criterion.severity,
@@ -450,11 +476,14 @@ class _CycleTaskHandler(CapabilityHandler):
                     "actual": outcome.actual,
                     "reason": outcome.reason,
                     # `passed` flag for compatibility with the legacy
-                    # all-checks-pass aggregator: only severity=error AND
-                    # blocking status counts as not-passed.
+                    # all-checks-pass aggregator: severity=error AND blocking
+                    # status, or an evidence-gap skip (#423), counts as
+                    # not-passed.
                     "passed": not (
                         criterion.severity == "error" and outcome.status in {"failed", "error"}
-                    ),
+                    )
+                    and not evidence_gap,
+                    "evidence_gap": evidence_gap,
                     # Issue #114: identity fields for downstream trigger
                     # composition and per-cycle evaluation persistence.
                     # task_index is None for tasks not driven by an

@@ -695,3 +695,66 @@ def test_bound_contract_with_zero_evidence_reports_zero_of_m():
     assert s.criteria_verified == ()
     assert s.criteria_total == ("vc-a", "vc-b")
     assert s.criteria_coverage == (0, 2)
+
+
+# ---------------------------------------------------------------------------
+# #423 — evidence-gap accounting at the choke point
+# ---------------------------------------------------------------------------
+
+
+class TestEvidenceGapAggregation:
+    """#423: an authored check the evaluator could not run is disclosed under
+    the evaluator_gap prefix; contract-bound gaps are required-level (a
+    criterion that cannot be enforced must never ride to accepted)."""
+
+    def test_contract_bound_gap_blocks_acceptance(self):
+        summary = aggregate_verification(
+            [
+                _passed("acceptance:endpoint_defined", criterion_id="vc-routes-endpoints"),
+                CheckResult(
+                    check_id="acceptance:import_present",
+                    status=ResultStatus.SKIPPED,
+                    reason="unsupported_file_extension",
+                    evidence_gap=True,
+                    criterion_id="vc-view-imports",
+                ),
+            ]
+        )
+        assert summary.verdict == RunVerdict.BLOCKED_UNVERIFIED
+        gap = next(u for u in summary.unverified if u.check_id == "acceptance:import_present")
+        assert gap.required is True
+        assert gap.reason == "evaluator_gap:unsupported_file_extension"
+        assert "acceptance:import_present" in summary.required_unmet
+
+    def test_unbound_gap_is_advisory(self):
+        """Author-mode gap (no criterion_id): disclosed, never blocking."""
+        summary = aggregate_verification(
+            [
+                _passed("tests_pass"),
+                CheckResult(
+                    check_id="acceptance:import_present",
+                    status=ResultStatus.SKIPPED,
+                    reason="frontend_acceptance_checks_disabled",
+                    evidence_gap=True,
+                ),
+            ],
+            required_check_ids=["tests_pass"],
+        )
+        assert summary.verdict == RunVerdict.ACCEPTED
+        gap = next(u for u in summary.unverified if u.check_id == "acceptance:import_present")
+        assert gap.required is False
+        assert gap.reason == "evaluator_gap:frontend_acceptance_checks_disabled"
+
+    def test_benign_skip_keeps_raw_reason_and_stays_advisory(self):
+        """A non-gap skip (config-off, injected family) is unchanged by #423."""
+        summary = aggregate_verification(
+            [
+                _passed("tests_pass"),
+                _skipped("acceptance:import_present", reason="typed_acceptance_disabled"),
+            ],
+            required_check_ids=["tests_pass"],
+        )
+        assert summary.verdict == RunVerdict.ACCEPTED
+        row = next(u for u in summary.unverified if u.check_id == "acceptance:import_present")
+        assert row.required is False
+        assert row.reason == "typed_acceptance_disabled"

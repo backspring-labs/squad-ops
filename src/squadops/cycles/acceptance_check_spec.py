@@ -187,6 +187,21 @@ def argv_matches_safelist(argv: list[str]) -> bool:
     return any(pat.matcher(argv) for pat in COMMAND_SAFELIST)
 
 
+# #423: skip reasons that mean "enforcement is deliberately off by config" —
+# the benign skip class. Every OTHER skip on an *authored* error-severity check
+# is an evidence gap: the author asked for enforcement on a concrete target and
+# the evaluator could not deliver it. That deliberately includes
+# ``frontend_acceptance_checks_disabled`` — despite the name there is no such
+# config flag; it marks the not-yet-implemented JS/TS analyzer, and an authored
+# AST check on a ``.tsx`` file was exactly #423's measured exhibit (7 of 14
+# evaluations skipped-yet-passed, the frontend contract surface unenforced).
+CONFIG_OFF_SKIP_REASONS: frozenset[str] = frozenset(
+    {
+        "typed_acceptance_disabled",
+        "command_acceptance_checks_disabled",
+    }
+)
+
 # #464: regex_match may only target document artifacts. Regexes against
 # source files prescribe another roll's stylistic choices (quote style,
 # identifier names) and have twice produced criteria unwinnable by correct
