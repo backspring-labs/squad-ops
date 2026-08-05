@@ -193,3 +193,69 @@ inspecting the regex source.
 | #573 | literal `\|` in the email character class | telemetry redaction | behavioral pattern test |
 | #605 | (rider) CLOSED 2026-08-04; pin the property | check registry | registry-wide skip test |
 | — | (rider) declare `pyflakes` in the test harness | `tests/requirements.txt` | suite passes without flake8 installed |
+## As built (2026-08-04, amended at the 1.4.3 cut)
+
+Seven fixes shipped, not five — two were found *by the deploy window itself*, which is
+the strongest argument the window has ever made for its own existence.
+
+| PR | Issues | Delta vs plan |
+|---|---|---|
+| #704 | #373 + #529 | as planned, one premise correction (below) |
+| #705 | #561 | as planned, one premise correction (below) |
+| #706 | #498 + riders | as planned (#605 pin + pyflakes declaration rode along) |
+| #708 | #572 | dropped the `delay` claim (and `priority`, same audit); DLX not built |
+| #709 | #573 | as planned, plus a module-wide pattern-hygiene guard |
+| #711 | **#710** | **fix 6, unplanned** — found by pre-deploy state capture |
+| #713 | **#712** | **fix 7, unplanned** — found by pre-deploy code review |
+
+### Premise corrections (each found by reading code/state, not issue titles)
+
+1. **#561's planned population cannot exist.** `task_dispatcher` is the only
+   `start_activity` caller and always passes a `cycle_id`, so "rows with no owning
+   cycle" was a phantom. The fix became the D9-conflict self-heal (supersede + retry
+   in the adapter) plus cancel teardown; the "terminal predicate" question resolved
+   to *no predicate* — at startup every active row is residue.
+2. **#373's planned cycle-terminal gate was self-defeating.** A SIGKILL leaves the run
+   row `running` forever, so gating the startup reap on a terminal owner would spare
+   exactly the leases the issue was filed about. Startup releases **every** held cycle
+   lease; the run lookup feeds the log, not the decision.
+3. **#573 was not cosmetic.** The stray `|` made the class match pipe characters, so
+   the email pattern overran into adjacent pipe-delimited log fields and swallowed
+   them (`email=[REDACTED-PII]=ok` measured before the fix).
+4. **#710 (fix 6):** pre-deploy state capture found 6 agents in `cycle` mode with 0
+   held leases — focus arbitration silently inert for 64 cycles over two weeks
+   (including a green confirmation roll). Mechanism: the #288 same-mode branch finds
+   no conflicting lease → `idempotent_skip` → admitted without acquiring → finalize
+   releases nothing → the mode survives. The #373 reaper iterates *held leases* and
+   structurally cannot see it. Fix: startup stranded-mode sweep.
+5. **#712 (fix 7):** pre-deploy code review found the symmetric half of #288 —
+   ambient entry never owner-checked the lease it released. Cancel detection is a
+   dispatch-boundary poll, so a cancelled run's finalize fires minutes late and would
+   have stripped the *relaunched* run's focus. Unreachable pre-1.4.3 only because
+   cancel never released leases (the #529 deadlock was an accidental guard). Fix:
+   owner-checked release (`focus_lease_held_by_other_owner`).
+
+### Filed forward
+
+- **#707 → 1.5**: the two command allowlists disagree in both directions;
+  `python -m mypy` passes both gates and cannot run. Made deterministic (not created)
+  by #498.
+
+### Deploy window results (2026-08-04)
+
+- First boot: mode reap returned **6** agents to ambient (`mode_stranded_at_startup`
+  WARNING — #710's live evidence); lease reap 0, activity reap 0, matching the banked
+  pre-state. Contract v9 / manifest v4 payload hashes unchanged (no re-seed).
+- **Cancel probe** (`cyc_df79b68c94b3`): recruitment acquired 5 leases — the first
+  acquisitions in 64 cycles (#710 proof). Cancel mid-task: all 5 released
+  (`lease_stranded_at_cancel`), the running activity aborted via the coordinator's
+  mode-change preemption, run `cancelled`, agents `ambient` — 15 s after the cancel,
+  **no restart**. Relaunch acquired all 5 leases within a minute (#373/#529 proof).
+  Note the planned "#561 cycle_id-less row" probe leg was dropped with the premise
+  (correction 1): that population cannot be produced by the live system.
+- **#712 fired live**: 5m48s after the cancel, the cancelled run's executor hit its
+  dispatch boundary and its finalize attempted ambient entry for all 5 agents — every
+  attempt refused with `focus_lease_held_by_other_owner`, and the relaunched run's
+  leases were untouched. The exact race the review predicted, demonstrated in
+  production shape on the first try.
+- **Confirmation shakedown** (`cyc_c3413e8ed3c3`, shk-4): SHK4-VERDICT-PLACEHOLDER
