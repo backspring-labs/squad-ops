@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 from squadops.cycles.models import RunStatus
 from squadops.cycles.pulse_models import PulseDecision
+from squadops.cycles.replay import ReplayProvenance, replay_marker_lines
 from squadops.cycles.verification_integrity import RunVerdict
 
 if TYPE_CHECKING:
@@ -173,9 +174,16 @@ def build_run_report(
     plan: list[TaskEnvelope] | None = None,
     pulse_report_entries: list[dict[str, Any]] | None = None,
     verification_summary: RunVerificationSummary | None = None,
+    replay: ReplayProvenance | None = None,
 ) -> str:
     """Assemble the full run_report.md markdown content (D10)."""
     lines = _build_report_metadata_lines(cycle_id, run_id, run, terminal_status, cycle)
+
+    # SIP-0101 §4.1: a replayed run's report leads with the disclosure — the
+    # marker must be impossible to miss before any inherited evidence is read.
+    if replay is not None:
+        marker, caveat = replay_marker_lines(replay)
+        lines[:0] = [f"## {marker}", caveat, ""]
 
     # Task breakdown
     if plan:
