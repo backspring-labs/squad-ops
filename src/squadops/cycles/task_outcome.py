@@ -6,6 +6,8 @@ Follows the WorkloadType / ArtifactType / EventType constants-class pattern (not
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 
 class TaskOutcome:
     """Structured outcome classification for task results.
@@ -68,3 +70,45 @@ CONTRACT_COMPLIANCE_ACTIONS: dict[str, str] = {
     ContractComplianceViolation.UNDECLARED_PATH_EMISSION: "reject_and_update_plan",
     ContractComplianceViolation.POST_WRITE_INTEGRITY_FAULT: "restore_and_stop_attempt",
 }
+
+
+class CorrectionTerminationReason:
+    """Why a correction chain stopped (1.5 A4; the #557 SIP and the exhaustion
+    path adopt the rest of this vocabulary later — only ``PLAN_DEFECT`` is
+    produced by the A4 lever). Constants-class pattern, like ``TaskOutcome``."""
+
+    PLAN_DEFECT = "plan_defect"
+    EXHAUSTED = "exhausted"
+    CONVERGED = "converged"
+    INFRASTRUCTURE_FAILURE = "infrastructure_failure"
+
+
+@dataclass(frozen=True)
+class CorrectionTermination:
+    """The typed record of a correction chain's early termination (1.5 A4).
+
+    Persisted as a ``correction_termination`` artifact on the run and named in
+    the run's ``failure_reason`` (#427), so wrap-up (#683), replay, and the
+    operator all read the same structured answer to "why did correction stop?".
+    Owned here beside the SIP-0079 §7.7 vocabulary it extends. It does not
+    alter cycle status — the run fails through the normal path.
+    """
+
+    reason: str  # CorrectionTerminationReason value
+    failed_task_id: str
+    repeated_signature: tuple[str, ...]
+    structural_candidate: str
+    first_seen_round: int
+    terminal_round: int
+    supporting_artifact_ids: tuple[str, ...] = ()
+
+    def to_dict(self) -> dict:
+        return {
+            "reason": self.reason,
+            "failed_task_id": self.failed_task_id,
+            "repeated_signature": list(self.repeated_signature),
+            "structural_candidate": self.structural_candidate,
+            "first_seen_round": self.first_seen_round,
+            "terminal_round": self.terminal_round,
+            "supporting_artifact_ids": list(self.supporting_artifact_ids),
+        }

@@ -1233,6 +1233,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # each inner-loop correction (not just once per outer iteration) to bound it
         # (max_correction_attempts) and keep corr-/plan_delta- ids unique across re-runs.
         correction_counter: dict[str, int] = {"n": 0}
+        # #435 (1.5 A4): run-lived correction-chain signature state, keyed by
+        # failed task id — the runner compares adjacent rounds and terminates
+        # plan_defect on an exact repeat with structural candidates both times.
+        correction_signature_state: dict[str, Any] = {}
         # SIP-0100 3.4b (restore+signal): run-lived instruction carry — frozen-path
         # restores on the repair path append here; the next correction attempt's
         # failure_evidence surfaces them so the loop is TOLD the edit was rejected
@@ -1384,6 +1388,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     task_attempt_counts=task_attempt_counts,
                     consecutive_failures=_consecutive_failures,
                     correction_counter=correction_counter,
+                    correction_signature_state=correction_signature_state,
                     scaffold_enforcement_carry=scaffold_enforcement_carry,
                     prior_outputs=prior_outputs,
                     all_artifact_refs=all_artifact_refs,
@@ -2034,6 +2039,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         task_attempt_counts: dict[str, int],
         consecutive_failures: int,
         correction_counter: dict[str, int],
+        correction_signature_state: dict[str, Any],
         scaffold_enforcement_carry: list[str],
         prior_outputs: dict[str, Any],
         all_artifact_refs: list[str],
@@ -2145,6 +2151,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             flow_run_id=flow_run_id,
             interface_manifest=interface_manifest,
             budget_guard=budget_guard,
+            signature_state=correction_signature_state,
             # 3.4b: run-lived restore+signal carry (created beside correction_counter).
             scaffold_enforcement_carry=scaffold_enforcement_carry,
             # RC3 (pf-23): re-resolve the workspace from the LIVE stored_artifacts
