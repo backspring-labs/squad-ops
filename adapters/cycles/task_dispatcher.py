@@ -107,8 +107,24 @@ class TaskDispatcher:
         task_run_id = await self._workflow_tracker.create_task_run(
             flow_run_id, envelope.task_id, task_name
         )
-        await self._workflow_tracker.set_task_run_state(task_run_id, "RUNNING", "Running")
+        await self._set_task_run_state(task_run_id, "RUNNING", "Running")
         return task_run_id
+
+    async def _set_task_run_state(
+        self, task_run_id: str | None, state_type: str, state_name: str
+    ) -> None:
+        """Best-effort task-run state transition; a tracker failure never touches dispatch."""
+        if self._workflow_tracker is None or not task_run_id:
+            return
+        try:
+            await self._workflow_tracker.set_task_run_state(task_run_id, state_type, state_name)
+        except Exception:
+            logger.warning(
+                "best-effort set_task_run_state(%s, %s) failed",
+                task_run_id,
+                state_type,
+                exc_info=True,
+            )
 
     async def _task_heartbeat(
         self,
@@ -168,6 +184,12 @@ class TaskDispatcher:
         :class:`WorkflowTrackerPort` is wired, one is created here — supports
         correction/repair paths that don't pre-create the workflow run.
 
+        #506: the task-run lifecycle is transport-owned end to end — every
+        dispatch (re-)enters ``RUNNING`` (a retry re-attempt arrives with a
+        prior attempt's already-terminal id), and the terminal state is set
+        from the result here, never left to an event bridge that may not know
+        the id. All best-effort; tracker failures never touch dispatch.
+
         Enters a ``CorrelationContext`` scope with flow/task run IDs so the
         ``PrefectLogHandler`` scopes handler logs to the right Prefect task
         pane, and spawns a periodic heartbeat coroutine so long-running LLM
@@ -183,6 +205,13 @@ class TaskDispatcher:
 
         if task_run_id is None:
             task_run_id = await self.create_task_run_if_enabled(flow_run_id, envelope)
+        else:
+            # #506: a SUPPLIED id may be a prior attempt's task run, already
+            # terminal (dispatch_with_retry re-dispatches with the same id) —
+            # re-enter RUNNING so the in-flight attempt is visible. For a
+            # freshly-created id this is an idempotent duplicate. Prefect's own
+            # retry model: one task run, state history carries the attempts.
+            await self._set_task_run_state(task_run_id, "RUNNING", "Running")
 
         # SIP-0087 B1: propagate run IDs to the agent over the wire so the
         # agent's PrefectLogHandler can scope handler logs to the right task
@@ -215,9 +244,18 @@ class TaskDispatcher:
                 # Reply wait raised (rare — _publish_and_await usually returns a
                 # FAILED TaskResult): record the task activity as failed.
                 await self._finish_task_activity(activity_id, None)
+                # #506: terminal task-run state is transport-owned (SIP-0097:
+                # per-task observability starts AND finishes here), so every
+                # dispatch path — including retry re-attempts and internally-
+                # created ids — leaves the row consistent with reality.
+                await self._set_task_run_state(task_run_id, "FAILED", "Failed")
                 raise
             else:
                 await self._finish_task_activity(activity_id, result)
+                if result is not None and result.status == "SUCCEEDED":
+                    await self._set_task_run_state(task_run_id, "COMPLETED", "Completed")
+                else:
+                    await self._set_task_run_state(task_run_id, "FAILED", "Failed")
                 return result
             finally:
                 heartbeat.cancel()

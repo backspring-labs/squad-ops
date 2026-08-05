@@ -1,10 +1,9 @@
 """Tests for WorkflowTrackerBridge subscriber.
 
-As of SIP-0087 the bridge handles only flow-level state transitions and
-terminal task-state transitions — task-run creation + RUNNING is done in
-``TaskDispatcher.dispatch_task``. The bridge therefore expects
-``task_run_id`` to be carried in the event context for TASK_SUCCEEDED /
-TASK_FAILED events.
+As of #506 the bridge handles flow-level state transitions ONLY — the full
+task-run lifecycle (creation, per-attempt RUNNING, terminal state) is
+transport-owned in ``TaskDispatcher.dispatch_task``, so any task event is
+a no-op here.
 """
 
 from datetime import UTC, datetime
@@ -86,9 +85,14 @@ class TestWorkflowTrackerBridgeRunStates:
 
 @pytest.mark.domain_events
 class TestWorkflowTrackerBridgeTaskStates:
-    def test_task_succeeded_sets_completed_using_context_task_run_id(self, bridge, mock_reporter):
+    @pytest.mark.parametrize("event_type", [EventType.TASK_SUCCEEDED, EventType.TASK_FAILED])
+    def test_terminal_task_events_are_noop(self, bridge, mock_reporter, event_type):
+        # #506: the FULL task-run lifecycle is transport-owned in
+        # TaskDispatcher.dispatch_task. A bridge transition here would be a
+        # second writer of the same state — and its context task_run_id was
+        # blank on exactly the paths that needed it (retry re-attempts).
         event = _make_event(
-            event_type=EventType.TASK_SUCCEEDED,
+            event_type=event_type,
             entity_type="task",
             entity_id="task_a",
             context={
@@ -96,34 +100,6 @@ class TestWorkflowTrackerBridgeTaskStates:
                 "run_id": "run_1",
                 "task_run_id": "tr_from_executor",
             },
-        )
-        bridge.on_event(event)
-        mock_reporter.set_task_run_state.assert_called_once_with(
-            "tr_from_executor", "COMPLETED", "Completed"
-        )
-
-    def test_task_failed_sets_failed_using_context_task_run_id(self, bridge, mock_reporter):
-        event = _make_event(
-            event_type=EventType.TASK_FAILED,
-            entity_type="task",
-            entity_id="task_a",
-            context={
-                "cycle_id": "cyc_1",
-                "run_id": "run_1",
-                "task_run_id": "tr_failed",
-            },
-        )
-        bridge.on_event(event)
-        mock_reporter.set_task_run_state.assert_called_once_with("tr_failed", "FAILED", "Failed")
-
-    def test_task_succeeded_without_task_run_id_is_noop(self, bridge, mock_reporter):
-        # Executor didn't create a Prefect task_run (no flow_run_id) — bridge
-        # must not try to transition a missing ID.
-        event = _make_event(
-            event_type=EventType.TASK_SUCCEEDED,
-            entity_type="task",
-            entity_id="task_a",
-            context={"cycle_id": "cyc_1", "run_id": "run_1"},
         )
         bridge.on_event(event)
         mock_reporter.set_task_run_state.assert_not_called()

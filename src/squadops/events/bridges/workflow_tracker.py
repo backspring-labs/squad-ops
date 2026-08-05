@@ -1,12 +1,12 @@
 """WorkflowTrackerBridge — translates CycleEvent to WorkflowTrackerPort state transitions.
 
-Maps run lifecycle events to flow-run state changes. As of SIP-0087,
-task-run lifecycle (creation + state transitions) lives in
-``TaskDispatcher.dispatch_task`` where the ``task_run_id`` is
-available for correlation-context scoping and the long-task heartbeat.
-The bridge still forwards terminal task-state transitions when a
-``task_run_id`` is carried in the event context, but it no longer creates
-task runs itself.
+Maps run lifecycle events to flow-run state changes. The ENTIRE task-run
+lifecycle (creation, per-attempt ``RUNNING``, terminal state) lives in
+``TaskDispatcher.dispatch_task`` (#506, completing the SIP-0097 rule that
+per-task observability starts and finishes in the transport) — the bridge
+acting on terminal task events was a second writer of the same state, and
+its event-context ``task_run_id`` was blank on exactly the paths that
+needed it (retry re-attempts, internally-created ids).
 
 The class name is retained for parity with :class:`LangFuseBridge`, but the
 bridge depends on the vendor-neutral :class:`WorkflowTrackerPort` and works
@@ -37,21 +37,12 @@ _RUN_STATE_MAP: dict[str, tuple[str, str]] = {
     EventType.RUN_RESUMED: ("RUNNING", "Running"),
 }
 
-# Task events → Prefect task run state (state_type, state_name)
-_TASK_STATE_MAP: dict[str, tuple[str, str]] = {
-    EventType.TASK_SUCCEEDED: ("COMPLETED", "Completed"),
-    EventType.TASK_FAILED: ("FAILED", "Failed"),
-}
-
 
 class WorkflowTrackerBridge:
     """Subscriber that forwards CycleEvents to a :class:`WorkflowTrackerPort`.
 
-    Handles run-level state transitions and terminal task-state transitions
-    (when the emitter supplies ``task_run_id`` in the event context).
-    Task-run creation + ``RUNNING`` transitions are driven by
-    ``dispatch_task`` so the ``task_run_id`` is known before the handler
-    starts emitting logs.
+    Handles run-level (flow-run) state transitions only. Task-run lifecycle
+    is transport-owned in ``TaskDispatcher.dispatch_task`` (#506).
     """
 
     def __init__(self, workflow_tracker: WorkflowTrackerPort) -> None:
@@ -63,16 +54,6 @@ class WorkflowTrackerBridge:
         if event.event_type in _RUN_STATE_MAP and flow_run_id:
             state_type, state_name = _RUN_STATE_MAP[event.event_type]
             self._schedule(self._tracker.set_flow_run_state(flow_run_id, state_type, state_name))
-            return
-
-        if event.event_type in _TASK_STATE_MAP:
-            task_run_id = event.context.get("task_run_id", "")
-            if task_run_id:
-                state_type, state_name = _TASK_STATE_MAP[event.event_type]
-                self._schedule(
-                    self._tracker.set_task_run_state(task_run_id, state_type, state_name)
-                )
-            return
 
     @staticmethod
     def _schedule(coro) -> None:  # noqa: ANN001

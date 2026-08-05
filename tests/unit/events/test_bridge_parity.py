@@ -188,8 +188,13 @@ class TestPrefectParity:
         reporter.create_task_run.assert_not_called()
         reporter.set_task_run_state.assert_not_called()
 
-    def test_task_success_sets_completed_when_task_run_id_in_context(self):
-        """Bridge forwards COMPLETED when executor supplies task_run_id."""
+    def test_terminal_task_events_never_touch_task_run_state(self):
+        """#506: task-run state has exactly ONE writer — TaskDispatcher.dispatch_task.
+
+        Bug caught: someone reintroduces a bridge task-state transition, giving
+        the same row two writers whose ordering with the transport's terminal
+        set is a race (and whose context task_run_id is blank on retry paths).
+        """
         reporter = MagicMock()
         reporter.set_task_run_state = AsyncMock()
         bridge = WorkflowTrackerBridge(reporter)
@@ -201,31 +206,7 @@ class TestPrefectParity:
             "task_run_id": "tr_99",
         }
         bridge.on_event(_event(EventType.TASK_SUCCEEDED, "task", "t_1", context=ctx))
-        reporter.set_task_run_state.assert_called_with("tr_99", "COMPLETED", "Completed")
-
-    def test_task_failure_sets_failed_when_task_run_id_in_context(self):
-        """Bridge forwards FAILED when executor supplies task_run_id."""
-        reporter = MagicMock()
-        reporter.set_task_run_state = AsyncMock()
-        bridge = WorkflowTrackerBridge(reporter)
-
-        ctx = {
-            "cycle_id": "cyc_1",
-            "run_id": "run_1",
-            "flow_run_id": "fr_1",
-            "task_run_id": "tr_99",
-        }
         bridge.on_event(_event(EventType.TASK_FAILED, "task", "t_1", context=ctx))
-        reporter.set_task_run_state.assert_called_with("tr_99", "FAILED", "Failed")
-
-    def test_terminal_event_without_task_run_id_is_dropped(self):
-        """Without task_run_id in context, bridge has nothing to address."""
-        reporter = MagicMock()
-        reporter.set_task_run_state = AsyncMock()
-        bridge = WorkflowTrackerBridge(reporter)
-
-        ctx = {"cycle_id": "cyc_1", "run_id": "run_1", "flow_run_id": "fr_1"}
-        bridge.on_event(_event(EventType.TASK_SUCCEEDED, "task", "t_1", context=ctx))
         reporter.set_task_run_state.assert_not_called()
 
 
