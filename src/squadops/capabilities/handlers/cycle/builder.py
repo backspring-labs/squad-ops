@@ -438,7 +438,10 @@ class BuilderAssembleHandler(_CycleTaskHandler):
         # Issue #114: per-task typed-check evaluation evidence, same as the
         # dev seam — emitted whenever typed checks ran, both outcomes.
         tce_artifact = self._build_typed_check_evaluation_artifact(
-            validation_checks, inputs.get("subtask_index"), self._capability_id
+            validation_checks,
+            inputs.get("subtask_index"),
+            self._capability_id,
+            inputs.get("workspace_revision_id"),
         )
         if tce_artifact is not None:
             artifacts.append(tce_artifact)

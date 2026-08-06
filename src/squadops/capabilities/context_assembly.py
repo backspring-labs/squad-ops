@@ -242,6 +242,10 @@ REPAIR_CONTEXT_CONTRACT = ContextAssemblyContract(
 RETEST_PRESENCE_KEYS: tuple[str, ...] = (
     "contract_probes",
     "acceptance_workspace_files",
+    # #734 Slice A: the workspace identity travels WITH the forwarded tree,
+    # so retest evidence shows the forwarded id == the failed task's id —
+    # the forwarded-vs-reassembled distinction, visible for the first time.
+    "workspace_revision_id",
     SURFACE_DOM_TESTID,
 )
 

@@ -28,8 +28,13 @@ class RevisionOrigin:
     SCAFFOLD_SEED = "scaffold_seed"
     AGENT_PATCH = "agent_patch"
     PROMOTED_OUTPUTS = "promoted_outputs"
+    #: #734 Slice A: the executor's acceptance-workspace assembly (#643) —
+    #: content crossing into a verification substrate, cut at dispatch so
+    #: every acceptance verdict names the tree it ran against. Identity-only
+    #: in 1.5 (nothing reconstructs from it until SIP-0102 steps 3-4).
+    ACCEPTANCE_ASSEMBLY = "acceptance_assembly"
 
-    ALL = frozenset({SCAFFOLD_SEED, AGENT_PATCH, PROMOTED_OUTPUTS})
+    ALL = frozenset({SCAFFOLD_SEED, AGENT_PATCH, PROMOTED_OUTPUTS, ACCEPTANCE_ASSEMBLY})
 
 
 class OperationStatus:

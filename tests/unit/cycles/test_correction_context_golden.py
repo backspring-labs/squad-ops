@@ -124,6 +124,9 @@ _QA_FAILED_INPUTS = {
     "acceptance_criteria": [{"check": "expected_artifacts", "params": {}}],
     "artifact_contents": {"backend/routes.py": "def ok(): ..."},
     "acceptance_workspace_files": {"backend/routes.py": "def ok(): ...", "backend/models.py": "x"},
+    # #734: the dispatch-time workspace identity — the retest must forward it
+    # unchanged (forwarded id == failed task's id, visible in evidence).
+    "workspace_revision_id": "a" * 64,
     "contract_probes": [{"probe": "GET /api/runs", "expect_status": 200}],
     "dom_testid_surface": ["run-list", "run-form-submit"],
 }

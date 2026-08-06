@@ -1862,6 +1862,18 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             )
             if workspace_files:
                 extra_inputs["acceptance_workspace_files"] = workspace_files
+            # #734 Slice A: cut a revision from the EXACT post-filter mapping
+            # attached above (never from store state) so every acceptance
+            # verdict names the tree it ran against. An empty context is a
+            # nameable state — evaluation still runs with the task's own
+            # artifacts overlaid, so the id is stamped unconditionally.
+            from squadops.sandbox.models import RevisionOrigin, WorkspaceRevision
+
+            extra_inputs["workspace_revision_id"] = WorkspaceRevision.cut(
+                cycle_id=envelope.cycle_id,
+                origin=RevisionOrigin.ACCEPTANCE_ASSEMBLY,
+                files=workspace_files or {},
+            ).revision_id
 
         return dataclasses.replace(
             envelope,
@@ -2326,6 +2338,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             **(prior_validation if isinstance(prior_validation, dict) else {}),
             "passed": True,
             "patch_verified": True,
+            # #734 Slice A: the repair-acceptance verdict names the workspace
+            # tree it verified against (verify_patched_artifacts computes it
+            # from the exact mapping it materialized).
+            "workspace_revision_id": verification.workspace_revision_id,
             "checks": [r.to_check_row() for r in verification.checks] + retest_rows,
         }
         corrected_outputs.pop("outcome_class", None)

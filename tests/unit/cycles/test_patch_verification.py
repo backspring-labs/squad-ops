@@ -72,6 +72,36 @@ class TestVerifyPatchedArtifacts:
         assert by_name["qa_handoff.md"] == REPAIRED_DOC
         assert set(by_name) == {"qa_handoff.md", "a.txt", "b.txt"}
 
+    async def test_verdict_names_the_exact_workspace_it_evaluated(self):
+        """#734 Slice A: the repair-acceptance verdict is content-addressed to
+        the workspace mapping it materialized — computed from the parameter,
+        never store state (the spike's risk note). Bug caught: hashing
+        upstream state that differs from what the evaluator actually saw."""
+        from squadops.sandbox.models import compute_revision_id
+
+        workspace = {"backend/models.py": "x = 1\n"}
+        result = await verify_patched_artifacts(
+            _heading_criteria(),
+            [{"name": "qa_handoff.md", "content": REPAIRED_DOC}],
+            workspace_files=workspace,
+        )
+        assert result.status == PATCH_PASSED
+        assert result.workspace_revision_id == compute_revision_id(workspace)
+        # The empty context is a nameable state, distinct from None.
+        bare = await verify_patched_artifacts(
+            _heading_criteria(), [{"name": "qa_handoff.md", "content": REPAIRED_DOC}]
+        )
+        assert bare.workspace_revision_id == compute_revision_id({})
+
+    async def test_early_returns_carry_no_workspace_identity(self):
+        """Unparseable/typed-less criteria never materialize a workspace —
+        stamping an id there would claim an evaluation that never ran."""
+        result = await verify_patched_artifacts(
+            ["prose only"], [{"name": "qa_handoff.md", "content": REPAIRED_DOC}]
+        )
+        assert result.status == PATCH_UNVERIFIABLE
+        assert result.workspace_revision_id is None
+
     async def test_unverifiable_when_no_typed_criteria(self):
         """Bug caught: a prose-only contract silently 'passing' with zero
         behavioral evidence — patch acceptance requires executed checks."""

@@ -237,6 +237,7 @@ def _build_typed_check_evaluation_artifact(
     validation_checks: list[dict],
     task_index: Any,
     task_type: str,
+    workspace_revision_id: str | None = None,
 ) -> dict | None:
     """Issue #114: serialize typed-acceptance evaluation rows for the gate evaluator.
 
@@ -260,6 +261,10 @@ def _build_typed_check_evaluation_artifact(
         "task_index": task_index,
         "task_type": task_type,
         "evaluated_at": datetime.now(UTC).isoformat(),
+        # #734 Slice A: the acceptance-workspace assembly these evaluations ran
+        # against, by content-addressed id (the envelope's dispatch-time stamp —
+        # the same mapping this handler materialized as workspace context).
+        "workspace_revision_id": workspace_revision_id,
         "evaluations": typed_rows,
     }
     suffix = f"_task_{task_index}" if task_index is not None else ""

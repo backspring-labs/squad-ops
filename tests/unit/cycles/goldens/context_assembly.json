@@ -17,7 +17,8 @@
    "dev": {
     "summary": "[dev] designed"
    }
-  }
+  },
+  "workspace_revision_id": "1abfd337f2fd108568fb52af333c73573de456c7e560520953d5f70ca723b88c"
  },
  "develop_no_manifest": {
   "acceptance_workspace_files": {
@@ -39,7 +40,8 @@
    "dev": {
     "summary": "[dev] designed"
    }
-  }
+  },
+  "workspace_revision_id": "1abfd337f2fd108568fb52af333c73573de456c7e560520953d5f70ca723b88c"
  },
  "develop_with_manifest": {
   "acceptance_workspace_files": {
@@ -77,7 +79,8 @@
    "`RunsListView` (route `/`): root container `runs-list`; anchors: `runs-list`, `run-item`, `run-participant-count`, `empty-state`, `create-run-link`",
    "`CreateRunView` (route `/create`): root container `create-run-view`; anchors: `create-run-view`, `create-run-form`, `field-title`, `field-datetime`, `field-location`, `field-distance`, `field-pace-target`, `field-route-notes`, `submit-create`, `form-error`",
    "`RunDetailView` (route `/runs/:id`): root container `run-detail`; anchors: `run-detail`, `participant-list`, `participant-item`, `join-form`, `join-name-input`, `join-submit`, `leave-form`, `leave-name-input`, `leave-submit`, `action-error`, `not-found`"
-  ]
+  ],
+  "workspace_revision_id": "1abfd337f2fd108568fb52af333c73573de456c7e560520953d5f70ca723b88c"
  },
  "dispatch_shadows_plan_keys": {
   "acceptance_workspace_files": {
@@ -114,7 +117,8 @@
    "`RunsListView` (route `/`): root container `runs-list`; anchors: `runs-list`, `run-item`, `run-participant-count`, `empty-state`, `create-run-link`",
    "`CreateRunView` (route `/create`): root container `create-run-view`; anchors: `create-run-view`, `create-run-form`, `field-title`, `field-datetime`, `field-location`, `field-distance`, `field-pace-target`, `field-route-notes`, `submit-create`, `form-error`",
    "`RunDetailView` (route `/runs/:id`): root container `run-detail`; anchors: `run-detail`, `participant-list`, `participant-item`, `join-form`, `join-name-input`, `join-submit`, `leave-form`, `leave-name-input`, `leave-submit`, `action-error`, `not-found`"
-  ]
+  ],
+  "workspace_revision_id": "1abfd337f2fd108568fb52af333c73573de456c7e560520953d5f70ca723b88c"
  },
  "planning_brief_author": {
   "artifact_refs": [],
@@ -196,7 +200,8 @@
    "dev": {
     "summary": "[dev] designed"
    }
-  }
+  },
+  "workspace_revision_id": "1abfd337f2fd108568fb52af333c73573de456c7e560520953d5f70ca723b88c"
  },
  "untabled_base_only": {
   "artifact_refs": [

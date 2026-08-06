@@ -96,11 +96,17 @@ class PatchCheckRecord:
 
 @dataclass(frozen=True)
 class PatchVerification:
-    """Aggregate verdict over all typed criteria."""
+    """Aggregate verdict over all typed criteria.
+
+    ``workspace_revision_id`` (#734 Slice A): the content-addressed id of the
+    exact workspace mapping the criteria evaluated against — None only on the
+    early returns that never materialized a workspace.
+    """
 
     status: str  # PATCH_PASSED | PATCH_FAILED | PATCH_UNVERIFIABLE
     checks: tuple[PatchCheckRecord, ...] = ()
     reason: str | None = None
+    workspace_revision_id: str | None = None
 
 
 def rebase_artifact_paths(
@@ -310,6 +316,11 @@ async def verify_patched_artifacts(
     records: list[PatchCheckRecord] = []
     blocking_failure = False
     blocking_passed = 0
+    # #734 Slice A: name the exact workspace mapping evaluated below — computed
+    # from the parameter (the post-filter mapping handed in), never store state.
+    from squadops.sandbox.models import compute_revision_id
+
+    revision_id = compute_revision_id(workspace_files or {})
     with tempfile.TemporaryDirectory(prefix="squadops-patch-verify-") as tmpdir:
         workspace_root = Path(tmpdir)
         if workspace_files:
@@ -334,6 +345,7 @@ async def verify_patched_artifacts(
             return PatchVerification(
                 status=PATCH_FAILED,
                 reason=f"unresolved_imports:{summary}",
+                workspace_revision_id=revision_id,
             )
 
         for criterion in typed:
@@ -365,6 +377,7 @@ async def verify_patched_artifacts(
                     status=PATCH_UNVERIFIABLE,
                     checks=tuple(records),
                     reason=f"evaluator_error:{criterion.check}",
+                    workspace_revision_id=revision_id,
                 )
             if outcome.status == "failed":
                 blocking_failure = True
@@ -372,7 +385,9 @@ async def verify_patched_artifacts(
                 blocking_passed += 1
 
     if blocking_failure:
-        return PatchVerification(status=PATCH_FAILED, checks=tuple(records))
+        return PatchVerification(
+            status=PATCH_FAILED, checks=tuple(records), workspace_revision_id=revision_id
+        )
     if blocking_passed == 0:
         # Every blocking criterion was skipped (disabled config, unset stack).
         # Accepting a patch requires positive executed evidence — "nothing
@@ -381,5 +396,8 @@ async def verify_patched_artifacts(
             status=PATCH_UNVERIFIABLE,
             checks=tuple(records),
             reason=REASON_NO_EXECUTED_BLOCKING_CHECKS,
+            workspace_revision_id=revision_id,
         )
-    return PatchVerification(status=PATCH_PASSED, checks=tuple(records))
+    return PatchVerification(
+        status=PATCH_PASSED, checks=tuple(records), workspace_revision_id=revision_id
+    )
