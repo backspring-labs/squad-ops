@@ -24,11 +24,18 @@ from unittest.mock import AsyncMock
 import pytest
 
 from squadops.api.runtime.startup_reaps import (
+    detect_stranded_cycles,
     reap_stranded_activities,
     reap_stranded_leases,
     reap_stranded_modes,
 )
-from squadops.cycles.models import CycleNotFoundError, Run, RunNotFoundError, RunStatus
+from squadops.cycles.models import (
+    CycleNotFoundError,
+    GateDecision,
+    Run,
+    RunNotFoundError,
+    RunStatus,
+)
 from squadops.runtime.models import FocusLease, RuntimeActivity
 
 pytestmark = [pytest.mark.domain_api]
@@ -259,3 +266,114 @@ async def test_activity_reap_failure_never_blocks_startup():
     activity_port.list_active_activities.side_effect = RuntimeError("db down")
 
     assert await reap_stranded_activities(AsyncMock(), activity_port) == 0
+
+
+# =============================================================================
+# detect_stranded_cycles (#481)
+# =============================================================================
+
+
+def _seq_run(run_number: int, status: str, decisions: tuple = ()) -> Run:
+    return Run(
+        run_id=f"run_{run_number:03d}",
+        cycle_id="cyc_stranded",
+        run_number=run_number,
+        status=status,
+        initiated_by="api",
+        resolved_config_hash="h",
+        gate_decisions=decisions,
+    )
+
+
+def _stranded_fixture(decisions: tuple):
+    """A two-workload cycle whose framing run completed at position 0."""
+    sequence = [{"type": "framing", "gate": "plan-review"}, {"type": "implementation"}]
+    cycle = SimpleNamespace(
+        cycle_id="cyc_stranded",
+        cancelled=False,
+        resolved_config=lambda: {"workload_sequence": sequence},
+    )
+    project_registry = AsyncMock()
+    project_registry.list_projects.return_value = [SimpleNamespace(project_id="proj")]
+    cycle_registry = AsyncMock()
+    cycle_registry.list_cycles.return_value = [cycle]
+    cycle_registry.list_runs.return_value = [_seq_run(1, "completed", decisions)]
+    return cycle_registry, project_registry
+
+
+_APPROVAL = (
+    GateDecision(gate_name="plan-review", decision="approved", decided_by="op", decided_at=NOW),
+)
+
+
+class TestDetectStrandedCycles:
+    """Bug classes guarded: the sweep acting on (or miscounting) states the
+    operator owns; a registry failure aborting boot; and the sweep silently
+    doing nothing when unwired."""
+
+    async def test_stranded_cycle_is_counted_and_names_its_recovery(self, caplog):
+        cycle_registry, project_registry = _stranded_fixture(_APPROVAL)
+
+        with caplog.at_level("WARNING"):
+            count = await detect_stranded_cycles(cycle_registry, project_registry)
+
+        assert count == 1
+        stranded_lines = [r.message for r in caplog.records if "STRANDED" in r.message]
+        assert any("squadops runs retry proj cyc_stranded" in m for m in stranded_lines), (
+            "the warning must name the exact recovery command — detection that "
+            "does not say what to do re-creates the manual-inspection incident"
+        )
+
+    async def test_pending_gate_is_visibility_not_count(self, caplog):
+        cycle_registry, project_registry = _stranded_fixture(())
+
+        with caplog.at_level("INFO"):
+            count = await detect_stranded_cycles(cycle_registry, project_registry)
+
+        assert count == 0
+        assert any("awaits gate" in r.message for r in caplog.records), (
+            "an undecided gate whose poller died must still be surfaced — approval "
+            "alone will not resume it"
+        )
+
+    async def test_sweep_is_read_only(self):
+        cycle_registry, project_registry = _stranded_fixture(_APPROVAL)
+
+        await detect_stranded_cycles(cycle_registry, project_registry)
+
+        called = {c[0] for c in cycle_registry.mock_calls}
+        assert called <= {"list_cycles", "list_runs"}, (
+            f"read-only sweep touched mutating registry surface: {called}"
+        )
+
+    async def test_registry_failure_never_blocks_boot(self):
+        project_registry = AsyncMock()
+        project_registry.list_projects.side_effect = RuntimeError("db down")
+
+        assert await detect_stranded_cycles(AsyncMock(), project_registry) == 0
+
+    async def test_unwired_project_registry_is_a_noop(self):
+        assert await detect_stranded_cycles(AsyncMock(), None) == 0
+
+    async def test_terminal_and_sequenceless_cycles_are_silent(self, caplog):
+        sequence = [{"type": "framing", "gate": "plan-review"}, {"type": "implementation"}]
+        exhausted = SimpleNamespace(
+            cycle_id="cyc_done",
+            cancelled=False,
+            resolved_config=lambda: {"workload_sequence": sequence},
+        )
+        legacy = SimpleNamespace(cycle_id="cyc_legacy", cancelled=False, resolved_config=lambda: {})
+        project_registry = AsyncMock()
+        project_registry.list_projects.return_value = [SimpleNamespace(project_id="proj")]
+        cycle_registry = AsyncMock()
+        cycle_registry.list_cycles.return_value = [exhausted, legacy]
+        cycle_registry.list_runs.return_value = [
+            _seq_run(1, "completed", _APPROVAL),
+            _seq_run(2, "completed"),
+        ]
+
+        with caplog.at_level("INFO"):
+            count = await detect_stranded_cycles(cycle_registry, project_registry)
+
+        assert count == 0
+        assert not caplog.records

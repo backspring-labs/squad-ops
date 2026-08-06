@@ -382,6 +382,7 @@ async def _init_cycle_subsystem(config, pool) -> None:
         # (#373) blocks recruitment outright, a live activity row (#672) kills
         # that agent's activity tracking.
         from squadops.api.runtime.startup_reaps import (
+            detect_stranded_cycles,
             reap_stranded_activities,
             reap_stranded_leases,
             reap_stranded_modes,
@@ -392,6 +393,9 @@ async def _init_cycle_subsystem(config, pool) -> None:
         await reap_stranded_leases(cycle_registry, _runtime_coordinator, focus_lease_port)
         await reap_stranded_modes(_runtime_coordinator, state_port)
         await reap_stranded_activities(cycle_registry, activity_port)
+        # Read-only, last: a post-crash boot immediately names every cycle
+        # stranded between workloads and its recovery command (#481).
+        await detect_stranded_cycles(cycle_registry, project_registry)
 
         flow_executor = create_flow_executor(
             "dispatched",

@@ -2,6 +2,7 @@
 Tests for SIP-0064 lifecycle state machine, status derivation, and hash computation.
 """
 
+import dataclasses
 from datetime import UTC, datetime
 
 import pytest
@@ -9,6 +10,8 @@ import pytest
 from squadops.cycles.lifecycle import (
     GATE_REJECTED_STATES,
     TERMINAL_STATES,
+    WorkloadStranding,
+    classify_workload_stranding,
     compute_config_hash,
     compute_profile_snapshot_hash,
     derive_cycle_status,
@@ -17,6 +20,7 @@ from squadops.cycles.lifecycle import (
 )
 from squadops.cycles.models import (
     CycleStatus,
+    GateDecision,
     IllegalStateTransitionError,
     Run,
     RunStatus,
@@ -413,3 +417,130 @@ class TestResolveCycleStatus:
         runs = [_make_run(status="running")]
         statuses = ["running", "pending", "pending"]
         assert resolve_cycle_status(runs, False, statuses) == CycleStatus.ACTIVE
+
+
+# =============================================================================
+# classify_workload_stranding tests (#481)
+# =============================================================================
+
+_SEQ_GATED = [
+    {"type": "framing", "gate": "plan-review"},
+    {"type": "implementation", "gate": None},
+    {"type": "wrapup"},
+]
+_SEQ_UNGATED = [{"type": "framing"}, {"type": "implementation"}]
+
+
+def _decided(gate_name: str, decision: str) -> GateDecision:
+    return GateDecision(
+        gate_name=gate_name,
+        decision=decision,
+        decided_by="operator",
+        decided_at=NOW,
+    )
+
+
+def _completed_run(run_number: int = 1, decisions: tuple = ()) -> Run:
+    run = _make_run(run_number=run_number, status="completed")
+    return dataclasses.replace(run, gate_decisions=decisions)
+
+
+class TestClassifyWorkloadStranding:
+    """The stranded window is resolve_cycle_status rule 3's own words —
+    'between gate approval and next-Run creation'. Bug classes guarded: a
+    detector that treats an undecided or revision-returned gate as stranded
+    would aim auto-recovery at states the operator deliberately owns; one
+    keyed on derived status would miss every stranded cycle (derive says
+    COMPLETED there)."""
+
+    def test_approved_gate_with_no_successor_is_stranded(self):
+        runs = [_completed_run(decisions=(_decided("plan-review", "approved"),))]
+        verdict = classify_workload_stranding(_SEQ_GATED, runs, cycle_cancelled=False)
+        assert verdict is WorkloadStranding.STRANDED
+
+    def test_approved_with_refinements_also_strands(self):
+        """The executor advances on APPROVED_WITH_REFINEMENTS too (#466) —
+        so its absence after that decision is the same dead-loop evidence."""
+        runs = [_completed_run(decisions=(_decided("plan-review", "approved_with_refinements"),))]
+        verdict = classify_workload_stranding(_SEQ_GATED, runs, cycle_cancelled=False)
+        assert verdict is WorkloadStranding.STRANDED
+
+    def test_ungated_boundary_with_no_successor_is_stranded(self):
+        runs = [_completed_run()]
+        verdict = classify_workload_stranding(_SEQ_UNGATED, runs, cycle_cancelled=False)
+        assert verdict is WorkloadStranding.STRANDED
+
+    def test_gate_none_entry_is_an_ungated_boundary(self):
+        """A literal ``gate: None`` entry (the #682 waiver-specimen shape)
+        strands like a missing key, not like a pending gate."""
+        runs = [
+            _completed_run(1, decisions=(_decided("plan-review", "approved"),)),
+            _completed_run(2),
+        ]
+        verdict = classify_workload_stranding(_SEQ_GATED, runs, cycle_cancelled=False)
+        assert verdict is WorkloadStranding.STRANDED
+
+    def test_undecided_gate_is_pending_not_stranded(self):
+        runs = [_completed_run()]
+        verdict = classify_workload_stranding(_SEQ_GATED, runs, cycle_cancelled=False)
+        assert verdict is WorkloadStranding.GATE_PENDING
+
+    def test_decision_for_another_gate_does_not_satisfy_this_one(self):
+        runs = [_completed_run(decisions=(_decided("other-gate", "approved"),))]
+        verdict = classify_workload_stranding(_SEQ_GATED, runs, cycle_cancelled=False)
+        assert verdict is WorkloadStranding.GATE_PENDING
+
+    def test_rejected_gate_is_visibility_only(self):
+        runs = [_completed_run(decisions=(_decided("plan-review", "rejected"),))]
+        verdict = classify_workload_stranding(_SEQ_GATED, runs, cycle_cancelled=False)
+        assert verdict is WorkloadStranding.GATE_REJECTED
+
+    def test_contradictory_decisions_read_conservatively(self):
+        runs = [
+            _completed_run(
+                decisions=(
+                    _decided("plan-review", "approved"),
+                    _decided("plan-review", "rejected"),
+                )
+            )
+        ]
+        verdict = classify_workload_stranding(_SEQ_GATED, runs, cycle_cancelled=False)
+        assert verdict is WorkloadStranding.GATE_REJECTED
+
+    def test_returned_for_revision_is_a_deliberate_stop(self):
+        """#466: revision requires manual retry BY DESIGN — classifying it as
+        stranded would aim auto-recovery at an operator-owned state."""
+        runs = [_completed_run(decisions=(_decided("plan-review", "returned_for_revision"),))]
+        assert classify_workload_stranding(_SEQ_GATED, runs, cycle_cancelled=False) is None
+
+    def test_unrecognized_decision_value_is_never_stranding(self):
+        runs = [_completed_run(decisions=(_decided("plan-review", "shipped_it"),))]
+        assert classify_workload_stranding(_SEQ_GATED, runs, cycle_cancelled=False) is None
+
+    @pytest.mark.parametrize("status", ["queued", "running", "paused", "failed"])
+    def test_non_completed_latest_run_is_owned_elsewhere(self, status):
+        runs = [_make_run(status=status)]
+        assert classify_workload_stranding(_SEQ_GATED, runs, cycle_cancelled=False) is None
+
+    def test_exhausted_sequence_is_terminal_not_stranded(self):
+        runs = [_completed_run(1), _completed_run(2)]
+        assert classify_workload_stranding(_SEQ_UNGATED, runs, cycle_cancelled=False) is None
+
+    def test_cancelled_cycle_is_silent(self):
+        runs = [_completed_run(decisions=(_decided("plan-review", "approved"),))]
+        assert classify_workload_stranding(_SEQ_GATED, runs, cycle_cancelled=True) is None
+
+    def test_sequenceless_legacy_cycle_is_silent(self):
+        assert classify_workload_stranding([], [_completed_run()], cycle_cancelled=False) is None
+
+    def test_runless_cycle_is_not_between_workloads(self):
+        assert classify_workload_stranding(_SEQ_GATED, [], cycle_cancelled=False) is None
+
+    def test_cancelled_successor_reopens_the_position(self):
+        """A re-roll that cancelled its replacement's predecessor but died
+        before creating the replacement: the cancelled run holds no position
+        (#257/D14), so the completed run at position 0 is stranded again."""
+        cancelled = _make_run(run_number=2, status="cancelled")
+        runs = [_completed_run(1, decisions=(_decided("plan-review", "approved"),)), cancelled]
+        verdict = classify_workload_stranding(_SEQ_GATED, runs, cycle_cancelled=False)
+        assert verdict is WorkloadStranding.STRANDED

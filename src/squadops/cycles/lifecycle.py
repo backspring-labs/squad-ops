@@ -9,9 +9,11 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Sequence
+from enum import Enum
 
 from squadops.cycles.models import (
     CycleStatus,
+    GateDecisionValue,
     IllegalStateTransitionError,
     Run,
     RunStatus,
@@ -163,6 +165,74 @@ def resolve_cycle_status(
         return CycleStatus.ACTIVE
 
     return derived
+
+
+class WorkloadStranding(Enum):
+    """Classification of a cycle stalled between workloads (#481).
+
+    ``STRANDED`` is the only class safe to act on: the sequence owes a
+    successor run, nothing gates it, and only a dead ``execute_cycle`` loop
+    explains its absence. The two gate classes are *visibility* verdicts —
+    an undecided gate is the supported operator path (approve + retry), and a
+    recorded rejection means the supersede/re-roll died with the process;
+    both must never be auto-acted on.
+    """
+
+    STRANDED = "stranded"
+    GATE_PENDING = "gate_pending"
+    GATE_REJECTED = "gate_rejected"
+
+
+def classify_workload_stranding(
+    workload_sequence: Sequence[dict],
+    runs: Sequence[Run],
+    cycle_cancelled: bool,
+) -> WorkloadStranding | None:
+    """Classify a cycle stalled between workloads, or ``None`` (#481).
+
+    Pure function of durable state: the positional run↔workload invariant
+    (#257/D14 — the Nth non-cancelled run occupies sequence position N) plus
+    the latest run's own ``gate_decisions``. A successor's absence is
+    positional: the latest non-cancelled run sitting COMPLETED at a
+    non-final position IS the missing successor.
+
+    ``None`` for everything this predicate does not recognize with high
+    confidence — cancelled cycles, sequence-less (legacy) cycles, exhausted
+    sequences, and any latest-run status other than COMPLETED (a running or
+    failed run has an owner; ``resolve_cycle_status`` rule 3 names the
+    COMPLETED-mid-sequence window this predicate detects).
+    """
+    if cycle_cancelled or not workload_sequence:
+        return None
+
+    non_cancelled = sorted(
+        (r for r in runs if r.status != RunStatus.CANCELLED.value),
+        key=lambda r: r.run_number,
+    )
+    if not non_cancelled or len(non_cancelled) >= len(workload_sequence):
+        return None
+
+    latest = non_cancelled[-1]
+    if latest.status != RunStatus.COMPLETED.value:
+        return None
+
+    gate_name = workload_sequence[len(non_cancelled) - 1].get("gate")
+    if not gate_name:
+        return WorkloadStranding.STRANDED
+
+    decisions = {gd.decision for gd in latest.gate_decisions if gd.gate_name == gate_name}
+    # Mirrors the executor's #466 exhaustive dispatch. Rejection first: if
+    # contradictory decisions somehow coexist, the conservative read wins.
+    if GateDecisionValue.REJECTED in decisions:
+        return WorkloadStranding.GATE_REJECTED
+    if decisions & {GateDecisionValue.APPROVED, GateDecisionValue.APPROVED_WITH_REFINEMENTS}:
+        return WorkloadStranding.STRANDED
+    if not decisions:
+        return WorkloadStranding.GATE_PENDING
+    # RETURNED_FOR_REVISION (a deliberate, recorded stop awaiting a manual
+    # retry — #466) and any unrecognized future value: never treat an
+    # un-approving decision as stranding.
+    return None
 
 
 def _canonical_json(obj: dict) -> str:
