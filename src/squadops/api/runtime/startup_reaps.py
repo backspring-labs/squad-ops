@@ -19,6 +19,10 @@ then turn that residue into a hard block on every later run:
 - :func:`reap_stranded_activities` (#672) — an active activity trips
   ``uq_runtime_activities_one_active_per_agent``, so activity tracking goes
   silently dead for that agent.
+- :func:`detect_stranded_cycles` (#481) — the READ-ONLY sweep: a cycle whose
+  ``execute_cycle`` loop died between workloads strands silently (completed
+  run, gate approved or absent, no successor); nothing detected it until an
+  operator noticed the cycle had stopped moving.
 
 Each owns its own best-effort contract: a reap failure is logged and never
 blocks startup, because a runtime-api that will not boot is worse than one that
@@ -36,6 +40,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from squadops.ports.cycles.cycle_registry import CycleRegistryPort
+    from squadops.ports.cycles.project_registry import ProjectRegistryPort
     from squadops.ports.runtime.activity import RuntimeActivityPort
     from squadops.ports.runtime.focus_lease import FocusLeasePort
     from squadops.ports.runtime.state import RuntimeStatePort
@@ -192,4 +197,107 @@ async def reap_stranded_activities(
         return reaped
     except Exception:
         logger.warning("Startup stranded-activity reap failed", exc_info=True)
+        return 0
+
+
+_STRANDED_SWEEP_CYCLES_PER_PROJECT = 200
+
+
+async def detect_stranded_cycles(
+    cycle_registry: CycleRegistryPort,
+    project_registry: ProjectRegistryPort | None,
+) -> int:
+    """Log every cycle stranded between workloads at startup (#481). READ-ONLY.
+
+    Returns how many STRANDED cycles were surfaced; 0 when unwired or the
+    sweep failed. Unlike its three siblings this sweep writes nothing —
+    idempotent by construction across repeated boots, and racing a concurrent
+    operator ``runs retry`` costs at most one stale warning.
+
+    The classification is the domain's (``classify_workload_stranding``,
+    beside the status derivations), fed runs + sequence directly: the
+    sequence-unaware ``derive_cycle_status`` calls the stranded state
+    COMPLETED, so filtering by a status column would miss every stranded
+    cycle. STRANDED gets the actionable warning (the recovery command —
+    #433 resolves the run's workload type positionally, #434 rebuilds
+    forwarding); GATE_PENDING/GATE_REJECTED get visibility logs and must
+    never be auto-acted on.
+    """
+    if project_registry is None:
+        return 0
+    try:
+        from squadops.cycles.lifecycle import WorkloadStranding, classify_workload_stranding
+        from squadops.cycles.models import RunStatus
+
+        stranded_count = 0
+        for project in await project_registry.list_projects():
+            cycles = await cycle_registry.list_cycles(
+                project.project_id, limit=_STRANDED_SWEEP_CYCLES_PER_PROJECT
+            )
+            if len(cycles) >= _STRANDED_SWEEP_CYCLES_PER_PROJECT:
+                logger.warning(
+                    "Stranded-cycle sweep bounded at %d newest cycles for project %s — "
+                    "older stranded cycles would not be surfaced",
+                    _STRANDED_SWEEP_CYCLES_PER_PROJECT,
+                    project.project_id,
+                )
+            for cycle in cycles:
+                sequence = cycle.resolved_config().get("workload_sequence") or []
+                if not sequence:
+                    continue
+                runs = await cycle_registry.list_runs(cycle.cycle_id)
+                verdict = classify_workload_stranding(sequence, runs, cycle.cancelled)
+                if verdict is None:
+                    continue
+                position = len([r for r in runs if r.status != RunStatus.CANCELLED.value]) - 1
+                if verdict is WorkloadStranding.STRANDED:
+                    stranded_count += 1
+                    logger.warning(
+                        "Cycle %s (project %s) is STRANDED between workloads: position "
+                        "%d/%d (%s) completed%s but its execute_cycle loop died before "
+                        "creating the successor. Recover with: squadops runs retry %s %s",
+                        cycle.cycle_id,
+                        project.project_id,
+                        position,
+                        len(sequence),
+                        sequence[position].get("type", "unknown"),
+                        (
+                            " with gate approved"
+                            if sequence[position].get("gate")
+                            else " (ungated boundary)"
+                        ),
+                        project.project_id,
+                        cycle.cycle_id,
+                    )
+                elif verdict is WorkloadStranding.GATE_PENDING:
+                    logger.info(
+                        "Cycle %s (project %s) awaits gate %r on completed position %d/%d — "
+                        "its gate poller died with the process, so approval alone will not "
+                        "resume it: approve, then squadops runs retry %s %s",
+                        cycle.cycle_id,
+                        project.project_id,
+                        sequence[position].get("gate"),
+                        position,
+                        len(sequence),
+                        project.project_id,
+                        cycle.cycle_id,
+                    )
+                elif verdict is WorkloadStranding.GATE_REJECTED:
+                    logger.info(
+                        "Cycle %s (project %s) carries a rejected gate %r at position %d/%d "
+                        "with no supersede/re-roll recorded — the rejection landed as the "
+                        "process died; it resolves FAILED and stays operator-owned",
+                        cycle.cycle_id,
+                        project.project_id,
+                        sequence[position].get("gate"),
+                        position,
+                        len(sequence),
+                    )
+        if stranded_count:
+            logger.warning(
+                "Startup sweep surfaced %d cycle(s) stranded between workloads", stranded_count
+            )
+        return stranded_count
+    except Exception:
+        logger.warning("Startup stranded-cycle detection failed", exc_info=True)
         return 0
