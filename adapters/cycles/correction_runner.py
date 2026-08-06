@@ -39,6 +39,11 @@ from hashlib import sha256
 from typing import TYPE_CHECKING, Any
 
 from adapters.cycles.execution_errors import _ExecutionError
+from squadops.capabilities.context_assembly import (
+    REPAIR_CONTEXT_CONTRACT,
+    manifest_surface_fragments,
+    retest_forwarded_inputs,
+)
 from squadops.cycles.agent_config import resolve_agent_config
 from squadops.cycles.checkpoint import RunCheckpoint
 from squadops.cycles.correction_signature import (
@@ -1137,10 +1142,13 @@ class CorrectionRunner:
         # the SUBJECT and would point a test re-author at app source files).
         repair_artifacts: list[dict[str, Any]] = []
         if correction_path == "patch":
-            from squadops.capabilities.scaffold import testid_surface_instructions
-
             failed_inputs = envelope.inputs or {}
-            testid_lines = testid_surface_instructions(interface_manifest)
+            # #667/#663 S2: the anchor surface rides every repair envelope,
+            # re-derived from the manifest under both key variants — the
+            # declaration lives with the registry (REPAIR_CONTEXT_CONTRACT).
+            repair_surfaces = manifest_surface_fragments(
+                REPAIR_CONTEXT_CONTRACT, interface_manifest
+            )
             (
                 failure_locus,
                 repair_expected_artifacts,
@@ -1184,17 +1192,11 @@ class CorrectionRunner:
                     "expected_artifacts": repair_expected_artifacts,
                     "acceptance_criteria": failed_inputs.get("acceptance_criteria", []),
                 }
-                # #667: the anchor surface must survive the correction loop —
-                # fay-14's first fill complied with the manifest convention and
-                # every repair regenerated the view blind, stripping the anchors.
-                # Re-derived from the manifest (same deriver as initial dispatch)
-                # rather than copied from the failed envelope: the dev repair
-                # chain is routinely reached from a failed qa.test task (SUBJECT
-                # locus), whose envelope carries only the qa-keyed variant. Both
-                # keys ride every repair envelope; each handler reads its own.
-                if testid_lines:
-                    repair_inputs["testid_surface"] = testid_lines
-                    repair_inputs["dom_testid_surface"] = testid_lines
+                # #667: fay-14's first fill complied with the manifest
+                # convention and every repair regenerated the view blind,
+                # stripping the anchors — hence the registry-declared
+                # re-derivation above (presence-keyed: no manifest, no keys).
+                repair_inputs.update(repair_surfaces)
 
                 repair_envelope = TaskEnvelope(
                     task_id=repair_task_id,
@@ -1331,35 +1333,20 @@ class CorrectionRunner:
             return None
 
         resolved = resolve_agent_config("qa", profile)
+        # #663 S2: which failed-envelope context survives into the retest is a
+        # registry-owned declaration — the workspace/contract identity
+        # unconditionally, plus RETEST_PRESENCE_KEYS presence-keyed (#639
+        # probes: stale probe evidence for a tree the repair changed; #643
+        # acceptance workspace: the scaffold siblings exactly like the original
+        # dispatch; #667 anchor surface: the fay-6 new-dice re-author works
+        # blind to the DOM contract without it).
         retest_inputs: dict[str, Any] = {
             "prd": cycle.prd_ref,
-            "resolved_config": failed_inputs.get("resolved_config", {}),
-            "artifact_contents": failed_inputs.get("artifact_contents", {}),
             "retest_files": retest_files,
             "agent_model": resolved.model,
             "agent_config_overrides": resolved.config_overrides,
-            "subtask_focus": failed_inputs.get("subtask_focus"),
-            "expected_artifacts": failed_inputs.get("expected_artifacts", []),
-            "acceptance_criteria": failed_inputs.get("acceptance_criteria", []),
+            **retest_forwarded_inputs(failed_inputs),
         }
-        # #639: probes ride the retest or the final verdict carries stale
-        # probe evidence for a tree the repair changed. Presence-keyed, like
-        # the bind-mode injection (probe-less contracts thread no key).
-        if failed_inputs.get("contract_probes"):
-            retest_inputs["contract_probes"] = failed_inputs["contract_probes"]
-        # #643: same presence-keyed threading for the typed-acceptance
-        # workspace — the retest's evaluation needs the scaffold siblings
-        # exactly like the original dispatch did.
-        if failed_inputs.get("acceptance_workspace_files"):
-            retest_inputs["acceptance_workspace_files"] = failed_inputs[
-                "acceptance_workspace_files"
-            ]
-        # #667: the retest re-dispatches qa.test, which re-authors the suite
-        # from scratch (the fay-6 new-dice path) — without the anchor surface
-        # the retest author works blind to the DOM contract the original
-        # dispatch carried. Presence-keyed like the probes above.
-        if failed_inputs.get("dom_testid_surface"):
-            retest_inputs["dom_testid_surface"] = failed_inputs["dom_testid_surface"]
 
         retest_envelope = TaskEnvelope(
             task_id=f"retest-{run_id[:12]}-{correction_attempts:02d}-{envelope.task_type}",

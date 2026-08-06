@@ -90,3 +90,68 @@ def test_rc3_default_filter_lane_is_build_landing_only():
     assert ca.dispatch_artifact_filter_spec("qa.test") == ca.ACCEPTANCE_WORKSPACE_FILTER.to_spec()
     assert ca.dispatch_artifact_filter_spec("qa.propose_plan_tasks") is None  # planning landing
     assert ca.dispatch_artifact_filter_spec("strategy.frame_objective") is None  # undeclared
+
+
+def test_repair_contract_threads_the_same_anchor_inventory_under_both_keys():
+    """S2/#667: both testid key variants on a repair envelope must carry the
+    SAME derivation. Bug caught: mapping SURFACE_DOM_TESTID to a different
+    deriver would hand the dev and qa repair handlers divergent anchor
+    surfaces — repairs and retests would then disagree on the DOM contract."""
+    from pathlib import Path
+
+    from squadops.capabilities.scaffold import InterfaceManifest, testid_surface_instructions
+
+    manifest_path = (
+        Path(__file__).resolve().parents[3]
+        / "examples"
+        / "03_group_run"
+        / "interface_manifest.yaml"
+    )
+    manifest = InterfaceManifest.from_yaml(manifest_path.read_text(encoding="utf-8"))
+    expected_lines = testid_surface_instructions(manifest)
+    assert expected_lines, "group_run manifest lost its testid inventory — scenario broken"
+
+    fragments = ca.manifest_surface_fragments(ca.REPAIR_CONTEXT_CONTRACT, manifest)
+
+    assert fragments == {
+        ca.SURFACE_TESTID: expected_lines,
+        ca.SURFACE_DOM_TESTID: expected_lines,
+    }
+    # No manifest → no keys (the presence-gated shape repairs rely on).
+    assert ca.manifest_surface_fragments(ca.REPAIR_CONTEXT_CONTRACT, None) == {}
+
+
+def test_retest_forwarding_is_presence_keyed():
+    """S2: a presence key absent (or empty) on the failed envelope must stay
+    absent on the retest. Bug caught: forwarding an empty value would flip the
+    qa handler's presence-gated sections (probe execution, workspace
+    evaluation, anchor instructions) from 'not applicable' to 'applicable with
+    nothing in it'."""
+    failed = {
+        "resolved_config": {"build_profile": "p"},
+        "artifact_contents": {"a.py": "x"},
+        "subtask_focus": "focus",
+        "expected_artifacts": ["t.py"],
+        "acceptance_criteria": [{"check": "c"}],
+        "contract_probes": [{"probe": "GET /x"}],
+        "acceptance_workspace_files": {},  # present but EMPTY → not forwarded
+        # dom_testid_surface entirely absent
+    }
+
+    forwarded = ca.retest_forwarded_inputs(failed)
+
+    assert forwarded["contract_probes"] == [{"probe": "GET /x"}]
+    assert "acceptance_workspace_files" not in forwarded
+    assert "dom_testid_surface" not in forwarded
+    assert forwarded["resolved_config"] == {"build_profile": "p"}
+    assert forwarded["artifact_contents"] == {"a.py": "x"}
+
+    # Unconditional keys default rather than disappear on a bare envelope.
+    bare = ca.retest_forwarded_inputs({})
+    assert bare == {
+        "resolved_config": {},
+        "artifact_contents": {},
+        "subtask_focus": None,
+        "expected_artifacts": [],
+        "acceptance_criteria": [],
+    }

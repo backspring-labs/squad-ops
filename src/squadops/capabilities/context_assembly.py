@@ -24,6 +24,7 @@ attribute-homed contracts would drag handler imports into runtime-api.)
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -41,6 +42,9 @@ LANDING_PRIOR_OUTPUTS = "prior_outputs"  # envelope-local ``prior_outputs["artif
 SURFACE_ERROR_CONTRACT = "error_contract"
 SURFACE_MODEL = "model_surface"
 SURFACE_TESTID = "testid_surface"
+#: The qa-keyed landing of the SAME testid inventory (#667): identical
+#: deriver, distinct envelope key — each handler reads its own variant.
+SURFACE_DOM_TESTID = "dom_testid_surface"
 
 
 @dataclass(frozen=True)
@@ -187,6 +191,51 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
 }
 
 
+#: #667: the repair envelope's own context declaration (S2) — the anchor
+#: surface must survive the correction loop, RE-DERIVED from the manifest
+#: (same deriver as initial dispatch), never copied from the failed envelope:
+#: the dev repair chain is routinely reached from a failed qa.test task
+#: (SUBJECT locus), whose envelope carries only the qa-keyed variant. Both
+#: key variants ride every repair envelope; each handler reads its own.
+REPAIR_CONTEXT_CONTRACT = ContextAssemblyContract(
+    manifest_surfaces=(SURFACE_TESTID, SURFACE_DOM_TESTID),
+)
+
+#: Presence-keyed retest forwarding (S2): failed-envelope inputs a retest
+#: re-dispatch copies ONLY when present — probe-less contracts thread no key
+#: (#639), the typed-acceptance workspace forwards exactly when the original
+#: dispatch carried it (#643), and the retest's from-scratch suite re-author
+#: needs the DOM anchor surface the original dispatch carried (#667). A key
+#: silently forwarded as empty would flip the handlers' presence-gated
+#: sections.
+RETEST_PRESENCE_KEYS: tuple[str, ...] = (
+    "contract_probes",
+    "acceptance_workspace_files",
+    SURFACE_DOM_TESTID,
+)
+
+
+def retest_forwarded_inputs(failed_inputs: Mapping[str, Any]) -> dict[str, Any]:
+    """The failed task's context a retest re-dispatch carries forward (#456).
+
+    Unconditional keys are the failed task's workspace and contract identity —
+    the retest must evaluate the same tree against the same contract (missing
+    workspace defaults to empty; the runner skips the doomed dispatch before
+    composing). ``RETEST_PRESENCE_KEYS`` forward presence-keyed.
+    """
+    forwarded: dict[str, Any] = {
+        "resolved_config": failed_inputs.get("resolved_config", {}),
+        "artifact_contents": failed_inputs.get("artifact_contents", {}),
+        "subtask_focus": failed_inputs.get("subtask_focus"),
+        "expected_artifacts": failed_inputs.get("expected_artifacts", []),
+        "acceptance_criteria": failed_inputs.get("acceptance_criteria", []),
+    }
+    for key in RETEST_PRESENCE_KEYS:
+        if failed_inputs.get(key):
+            forwarded[key] = failed_inputs[key]
+    return forwarded
+
+
 def get_context_contract(task_type: str) -> ContextAssemblyContract:
     """The task type's declared contract; the empty contract for undeclared
     types (base enrichment only — chain context and artifact refs)."""
@@ -234,6 +283,7 @@ def manifest_surface_fragments(
         SURFACE_ERROR_CONTRACT: error_seam_instructions,
         SURFACE_MODEL: model_surface_instructions,
         SURFACE_TESTID: testid_surface_instructions,
+        SURFACE_DOM_TESTID: testid_surface_instructions,
     }
     fragments: dict[str, list[str]] = {}
     for surface in contract.manifest_surfaces:
