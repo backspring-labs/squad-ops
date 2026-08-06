@@ -1,0 +1,211 @@
+{
+ "builder_assemble": {
+  "acceptance_workspace_files": {
+   ".env.example": "body of .env.example",
+   "backend/routes.py": "body of backend/routes.py",
+   "validation_report.md": "body of validation_report.md"
+  },
+  "artifact_contents": {
+   ".env.example": "body of .env.example",
+   "backend/routes.py": "body of backend/routes.py"
+  },
+  "artifact_refs": [
+   "art_routes",
+   "art_config"
+  ],
+  "prior_outputs": {
+   "dev": {
+    "summary": "[dev] designed"
+   }
+  }
+ },
+ "develop_no_manifest": {
+  "acceptance_workspace_files": {
+   ".env.example": "body of .env.example",
+   "backend/routes.py": "body of backend/routes.py",
+   "validation_report.md": "body of validation_report.md"
+  },
+  "artifact_contents": {
+   ".env.example": "body of .env.example",
+   "backend/routes.py": "body of backend/routes.py",
+   "requirements.md": "body of requirements.md"
+  },
+  "artifact_refs": [
+   "art_routes",
+   "art_config"
+  ],
+  "prd": "PRD",
+  "prior_outputs": {
+   "dev": {
+    "summary": "[dev] designed"
+   }
+  }
+ },
+ "develop_with_manifest": {
+  "acceptance_workspace_files": {
+   ".env.example": "body of .env.example",
+   "backend/routes.py": "body of backend/routes.py",
+   "validation_report.md": "body of validation_report.md"
+  },
+  "artifact_contents": {
+   ".env.example": "body of .env.example",
+   "backend/routes.py": "body of backend/routes.py",
+   "requirements.md": "body of requirements.md"
+  },
+  "artifact_refs": [
+   "art_routes",
+   "art_config"
+  ],
+  "error_contract": [
+   "on failure raise `ApiError(code, message)` (imported from `.errors`): the FIRST argument is the error-code STRING, the second a human message \u2014 never `ApiError(status_code=..., detail=...)` and never `HTTPException` for contract errors; the frozen `errors.py` maps the code to the HTTP status and renders the pinned envelope",
+   "valid error codes (code \u2192 HTTP status, mapped by frozen `errors.py`): `validation_error` \u2192 422, `run_not_found` \u2192 404, `duplicate_participant` \u2192 409, `participant_not_found` \u2192 404"
+  ],
+  "model_surface": [
+   "`backend/models.py` is scaffold-frozen and defines EXACTLY these names: `Participant(id, name)`, `RunEvent(id, title, datetime, location, distance, pace_target, route_notes, participants)`, `RunEventCreate(title, datetime, location, distance, pace_target, route_notes)`, `ParticipantName(name)`. Import only from this list \u2014 these are the complete contents of that module",
+   "field names are exact \u2014 construct and read models with the fields shown above; a near-miss (`pace` for `pace_target`, `meeting_location` for `location`) raises at request time and every affected endpoint returns HTTP 500",
+   "do NOT invent model names or aliases (`Run`, `RunCreate`, `RunResponse`, `RunJoin` and similar do not exist); an import of a name absent from the list above fails at load, the app never starts, and the patch is rejected",
+   "`models.py` is frozen \u2014 if a name you want is missing, use the declared names and shape the response in the fill slot; do not edit or re-emit the model module",
+   "`backend/store.py` is scaffold-frozen and already defines the in-memory stores: `participant_store`, `run_event_store` (plus `reset()` for test isolation). Import them (`from .store import ...`); do NOT declare your own store dicts \u2014 a shadow store is invisible to `reset()`, so state leaks between tests and the suite fails on isolation"
+  ],
+  "prd": "PRD",
+  "prior_outputs": {
+   "dev": {
+    "summary": "[dev] designed"
+   }
+  },
+  "testid_surface": [
+   "`RunsListView` (route `/`): root container `runs-list`; anchors: `runs-list`, `run-item`, `run-participant-count`, `empty-state`, `create-run-link`",
+   "`CreateRunView` (route `/create`): root container `create-run-view`; anchors: `create-run-view`, `create-run-form`, `field-title`, `field-datetime`, `field-location`, `field-distance`, `field-pace-target`, `field-route-notes`, `submit-create`, `form-error`",
+   "`RunDetailView` (route `/runs/:id`): root container `run-detail`; anchors: `run-detail`, `participant-list`, `participant-item`, `join-form`, `join-name-input`, `join-submit`, `leave-form`, `leave-name-input`, `leave-submit`, `action-error`, `not-found`"
+  ]
+ },
+ "dispatch_shadows_plan_keys": {
+  "acceptance_workspace_files": {
+   ".env.example": "body of .env.example",
+   "backend/routes.py": "body of backend/routes.py",
+   "validation_report.md": "body of validation_report.md"
+  },
+  "artifact_contents": {
+   ".env.example": "body of .env.example",
+   "backend/routes.py": "body of backend/routes.py",
+   "requirements.md": "body of requirements.md"
+  },
+  "artifact_refs": [
+   "art_routes",
+   "art_config"
+  ],
+  "error_contract": [
+   "on failure raise `ApiError(code, message)` (imported from `.errors`): the FIRST argument is the error-code STRING, the second a human message \u2014 never `ApiError(status_code=..., detail=...)` and never `HTTPException` for contract errors; the frozen `errors.py` maps the code to the HTTP status and renders the pinned envelope",
+   "valid error codes (code \u2192 HTTP status, mapped by frozen `errors.py`): `validation_error` \u2192 422, `run_not_found` \u2192 404, `duplicate_participant` \u2192 409, `participant_not_found` \u2192 404"
+  ],
+  "model_surface": [
+   "`backend/models.py` is scaffold-frozen and defines EXACTLY these names: `Participant(id, name)`, `RunEvent(id, title, datetime, location, distance, pace_target, route_notes, participants)`, `RunEventCreate(title, datetime, location, distance, pace_target, route_notes)`, `ParticipantName(name)`. Import only from this list \u2014 these are the complete contents of that module",
+   "field names are exact \u2014 construct and read models with the fields shown above; a near-miss (`pace` for `pace_target`, `meeting_location` for `location`) raises at request time and every affected endpoint returns HTTP 500",
+   "do NOT invent model names or aliases (`Run`, `RunCreate`, `RunResponse`, `RunJoin` and similar do not exist); an import of a name absent from the list above fails at load, the app never starts, and the patch is rejected",
+   "`models.py` is frozen \u2014 if a name you want is missing, use the declared names and shape the response in the fill slot; do not edit or re-emit the model module",
+   "`backend/store.py` is scaffold-frozen and already defines the in-memory stores: `participant_store`, `run_event_store` (plus `reset()` for test isolation). Import them (`from .store import ...`); do NOT declare your own store dicts \u2014 a shadow store is invisible to `reset()`, so state leaks between tests and the suite fails on isolation"
+  ],
+  "prior_outputs": {
+   "dev": {
+    "summary": "[dev] designed"
+   }
+  },
+  "testid_surface": [
+   "`RunsListView` (route `/`): root container `runs-list`; anchors: `runs-list`, `run-item`, `run-participant-count`, `empty-state`, `create-run-link`",
+   "`CreateRunView` (route `/create`): root container `create-run-view`; anchors: `create-run-view`, `create-run-form`, `field-title`, `field-datetime`, `field-location`, `field-distance`, `field-pace-target`, `field-route-notes`, `submit-create`, `form-error`",
+   "`RunDetailView` (route `/runs/:id`): root container `run-detail`; anchors: `run-detail`, `participant-list`, `participant-item`, `join-form`, `join-name-input`, `join-submit`, `leave-form`, `leave-name-input`, `leave-submit`, `action-error`, `not-found`"
+  ]
+ },
+ "planning_brief_author": {
+  "artifact_refs": [],
+  "prior_outputs": {
+   "artifact_contents": {
+    "context_research.md": "body of context_research.md",
+    "objective_frame.md": "body of objective_frame.md",
+    "technical_design.md": "body of technical_design.md",
+    "test_strategy.md": "body of test_strategy.md"
+   },
+   "dev": {
+    "summary": "[dev] designed"
+   }
+  }
+ },
+ "planning_dev_proposer": {
+  "artifact_refs": [],
+  "prior_outputs": {
+   "artifact_contents": {
+    "plan_authoring_brief.yaml": "body of plan_authoring_brief.yaml",
+    "technical_design.md": "body of technical_design.md"
+   },
+   "dev": {
+    "summary": "[dev] designed"
+   }
+  }
+ },
+ "planning_merger_excluded": {
+  "artifact_refs": [],
+  "prior_outputs": {
+   "dev": {
+    "summary": "[dev] designed"
+   }
+  }
+ },
+ "planning_qa_proposer": {
+  "artifact_refs": [],
+  "prior_outputs": {
+   "artifact_contents": {
+    "plan_authoring_brief.yaml": "body of plan_authoring_brief.yaml",
+    "proposed_plan_tasks.yaml": "body of proposed_plan_tasks.yaml",
+    "technical_design.md": "body of technical_design.md",
+    "test_strategy.md": "body of test_strategy.md"
+   },
+   "dev": {
+    "summary": "[dev] designed"
+   }
+  }
+ },
+ "planning_strat_guidance": {
+  "artifact_refs": [],
+  "prior_outputs": {
+   "artifact_contents": {
+    "objective_frame.md": "body of objective_frame.md",
+    "plan_authoring_brief.yaml": "body of plan_authoring_brief.yaml"
+   },
+   "dev": {
+    "summary": "[dev] designed"
+   }
+  }
+ },
+ "qa_test": {
+  "acceptance_workspace_files": {
+   ".env.example": "body of .env.example",
+   "backend/routes.py": "body of backend/routes.py",
+   "validation_report.md": "body of validation_report.md"
+  },
+  "artifact_contents": {
+   ".env.example": "body of .env.example",
+   "backend/routes.py": "body of backend/routes.py",
+   "validation_report.md": "body of validation_report.md"
+  },
+  "artifact_refs": [
+   "art_routes",
+   "art_config"
+  ],
+  "prd": "PRD",
+  "prior_outputs": {
+   "dev": {
+    "summary": "[dev] designed"
+   }
+  }
+ },
+ "untabled_base_only": {
+  "artifact_refs": [
+   "art_frame"
+  ],
+  "prior_outputs": {
+   "dev": {
+    "summary": "[dev] designed"
+   }
+  }
+ }
+}
