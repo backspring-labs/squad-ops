@@ -208,7 +208,7 @@ async def produce_plan(
 
     # Issue #140 / SIP-0084: the registered template is the authoritative
     # source in production. The inline fallback below matches the surrounding
-    # planning_tasks.py pattern — test contexts that don't inject a renderer
+    # planning-handler pattern — test contexts that don't inject a renderer
     # exercise the fallback. When the broader SIP-0084 migration retires
     # renderer=None test contexts, this fallback goes away.
     renderer = getattr(context.ports, "request_renderer", None)

@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any
 import yaml
 
 from squadops.capabilities.handlers.base import HandlerResult
-from squadops.capabilities.handlers.planning_tasks import _PlanningTaskHandler
+from squadops.capabilities.handlers.planning import _PlanningTaskHandler
 from squadops.cycles.wrapup_models import (
     ALLOWED_SUGGESTED_OWNERS,
     CONFIDENCE_RANK,
