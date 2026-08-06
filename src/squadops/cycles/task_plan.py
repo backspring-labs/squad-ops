@@ -19,6 +19,7 @@ from collections import Counter
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
+from squadops.capabilities.context_assembly import get_context_contract
 from squadops.capabilities.handlers.build_profiles import (
     ROUTING_BUILDER_PRESENT,
     ROUTING_FALLBACK_NO_BUILDER,
@@ -108,13 +109,6 @@ _PLAN_AUTHORING_PROPOSER_STEPS: dict[str, tuple[str, str]] = {
 # §5.12 — builder-role proposer). Reject early so a typo or premature
 # config doesn't silently drop a proposer.
 _VALID_PLAN_AUTHORING_CONTRIBUTORS = frozenset({"development", "qa", "strategy"})
-
-# SIP-0098 98.3: proposer task types that receive the contract criteria index in
-# bind mode. dev/qa propose build tasks and so bind covered-file criteria; strategy
-# proposes guidance (no build tasks), so it is not indexed.
-_BIND_INDEX_PROPOSER_TASK_TYPES = frozenset(
-    {"development.propose_plan_tasks", "qa.propose_plan_tasks"}
-)
 
 
 def build_planning_steps(
@@ -454,19 +448,6 @@ def _applicable_acceptance(plan_task: Any) -> list:
     return acceptance
 
 
-# #669: the plan-authoring tasks that receive the prior framing's rejection
-# context on a re-roll — the same four the #657 planning-artifact filter feeds.
-# The merger is excluded: its normal merge path is deterministic (no prompt).
-_PLAN_AUTHORING_CONTEXT_TASK_TYPES = frozenset(
-    {
-        "governance.prepare_plan_authoring_brief",
-        "development.propose_plan_tasks",
-        "qa.propose_plan_tasks",
-        "strategy.propose_plan_guidance",
-    }
-)
-
-
 def _inject_rejection_context(
     inputs: dict[str, Any], rejection_context: Any, task_type: str
 ) -> None:
@@ -478,10 +459,14 @@ def _inject_rejection_context(
     (fay-10 tripped the same ownership class on all three framings). Data-only
     keys; the authoring handlers render them through a managed appendix asset
     (CLAUDE.md #448). Non-re-roll runs carry no context and get no keys.
+
+    #663 S3: WHO receives the context is the registry's declaration
+    (``plan_rejection_context`` — the four authoring types, merger excluded);
+    this composer owns only the derivation and injection mechanics.
     """
     if not isinstance(rejection_context, dict):
         return
-    if task_type not in _PLAN_AUTHORING_CONTEXT_TASK_TYPES:
+    if not get_context_contract(task_type).plan_rejection_context:
         return
     reasons = [
         str(r).strip() for r in (rejection_context.get("rejection_reasons") or []) if str(r).strip()
@@ -517,10 +502,15 @@ def _inject_contract_inputs(
 
     Author mode (``contract is None``) injects nothing — contract-less cycles
     stay byte-identical.
+
+    #663 S3: WHO receives each bind-mode input class is the registry's
+    declaration (``bind_criteria_index`` / ``bind_behavioral_surface``); this
+    composer owns only the contract/manifest derivation mechanics.
     """
     if contract is None:
         return
-    if task_type in _BIND_INDEX_PROPOSER_TASK_TYPES:
+    task_contract = get_context_contract(task_type)
+    if task_contract.bind_criteria_index:
         inputs["contract_criteria_index"] = "\n".join(contract.criteria_index_lines())
         # pf-42: the criteria index covers the fill slots only — four files of
         # seventeen. The rest are frozen, and the proposer was never told they exist,
@@ -530,7 +520,7 @@ def _inject_contract_inputs(
         frozen_index = frozen_surface_index_lines(interface_manifest)
         if frozen_index:
             inputs["frozen_surface_index"] = "\n".join(frozen_index)
-    if task_type == "qa.test":
+    if task_contract.bind_behavioral_surface:
         if contract.behavioral.probes:
             inputs["contract_probes"] = [p.to_dict() for p in contract.behavioral.probes]
             # #688: the endpoint→fill-slot ownership map, so a correction born of a

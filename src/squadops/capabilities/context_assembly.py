@@ -70,8 +70,9 @@ class ArtifactFilter:
 
 @dataclass(frozen=True)
 class ContextAssemblyContract:
-    """One task type's dispatch-time context declaration.
+    """One task type's context declaration — dispatch-time and plan-time.
 
+    Dispatch-time (composed by the executor's ``_enrich_envelope``):
     ``artifact_filter``/``artifact_landing``: which stored artifacts the task
     sees and where they land. ``acceptance_workspace``: thread the full
     accepted tree for typed-acceptance evaluation (#643 — rides separately
@@ -79,6 +80,18 @@ class ContextAssemblyContract:
     seam-instruction sets to thread, presence-keyed (#588/pf-45/#659).
     ``wrapup_evidence``: the run-level CycleOutcome injection applies when any
     planned task carries this flag (#683).
+
+    Plan-time (composed by ``generate_task_plan``, S3 — the flags name WHO
+    receives an input class; the derivation mechanics stay with the plan
+    composer): ``plan_rejection_context``: a #522 framing re-roll threads the
+    prior framing's rejection reasons onto this task (#669).
+    ``bind_criteria_index``: in bind mode this proposer receives the
+    contract's criteria index + the frozen-surface index, so it binds
+    covered-file criteria instead of authoring them (SIP-0098 98.3 / pf-42).
+    ``bind_behavioral_surface``: in bind mode this task receives the
+    contract's behavioral surface — serialized probes (98.5), the
+    endpoint→fill-slot ownership map (#688), pinned-status expectation lines
+    (#629/pf-54), and the DOM anchor inventory (#659) — all presence-keyed.
     """
 
     artifact_filter: ArtifactFilter | None = None
@@ -86,6 +99,9 @@ class ContextAssemblyContract:
     acceptance_workspace: bool = False
     manifest_surfaces: tuple[str, ...] = ()
     wrapup_evidence: bool = False
+    plan_rejection_context: bool = False
+    bind_criteria_index: bool = False
+    bind_behavioral_surface: bool = False
 
 
 _EMPTY_CONTRACT = ContextAssemblyContract()
@@ -131,16 +147,25 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
         ),
         acceptance_workspace=True,
     ),
-    # qa.test's prompt context IS the full accepted tree (#644).
+    # qa.test's prompt context IS the full accepted tree (#644); in bind mode
+    # it additionally carries the contract's behavioral surface at PLAN time.
     "qa.test": ContextAssemblyContract(
         artifact_filter=ACCEPTANCE_WORKSPACE_FILTER,
         acceptance_workspace=True,
+        bind_behavioral_surface=True,
     ),
     # --- planning chain (#657): upstream documents on an envelope-local
-    # prior_outputs copy. governance.merge_plan is DELIBERATELY absent: by
-    # merge time both proposals collide on the proposed_plan_tasks.yaml
-    # filename, so threading there would silently drop one proposal — the
-    # merger consumes brief_outcome/proposal_outcome output keys instead.
+    # prior_outputs copy; all four authoring types receive a re-roll's
+    # rejection context (#669 — fresh dice previously meant zero teaching,
+    # fay-10 re-tripped the same class three times). governance.merge_plan is
+    # DELIBERATELY absent from BOTH: by merge time both proposals collide on
+    # the proposed_plan_tasks.yaml filename, so artifact threading would
+    # silently drop one proposal (the merger consumes brief_outcome/
+    # proposal_outcome output keys instead), and its normal merge path is
+    # deterministic — no prompt for rejection context to teach.
+    # bind_criteria_index (SIP-0098 98.3): dev/qa propose BUILD tasks and so
+    # bind covered-file criteria; strategy proposes guidance and the brief
+    # author frames — neither is indexed.
     "governance.prepare_plan_authoring_brief": ContextAssemblyContract(
         artifact_filter=ArtifactFilter(
             by_producing_task=(
@@ -151,6 +176,7 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
             ),
         ),
         artifact_landing=LANDING_PRIOR_OUTPUTS,
+        plan_rejection_context=True,
     ),
     "development.propose_plan_tasks": ContextAssemblyContract(
         artifact_filter=ArtifactFilter(
@@ -160,6 +186,8 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
             ),
         ),
         artifact_landing=LANDING_PRIOR_OUTPUTS,
+        plan_rejection_context=True,
+        bind_criteria_index=True,
     ),
     "qa.propose_plan_tasks": ContextAssemblyContract(
         artifact_filter=ArtifactFilter(
@@ -171,6 +199,8 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
             ),
         ),
         artifact_landing=LANDING_PRIOR_OUTPUTS,
+        plan_rejection_context=True,
+        bind_criteria_index=True,
     ),
     "strategy.propose_plan_guidance": ContextAssemblyContract(
         artifact_filter=ArtifactFilter(
@@ -180,6 +210,7 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
             ),
         ),
         artifact_landing=LANDING_PRIOR_OUTPUTS,
+        plan_rejection_context=True,
     ),
     # --- wrap-up pipeline (#683): the run-level verification_evidence
     # injection fires when any planned task carries the flag.

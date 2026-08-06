@@ -2826,6 +2826,18 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         dispatch-time net in ``generate_task_plan``. Absent or unreadable
         plans defer to that same net — this check only ever adds an earlier
         rejection, never a pass.
+
+        OWNERSHIP (#663 D5): this seam and ``_reject_unsatisfiable_plan_at_gate``
+        are deliberately SEPARATE nets with different error channels — they are
+        plan VALIDATION, not context assembly, and merging them would conflate
+        #473's returns-vs-raises semantics. This one owns the inter-workload
+        promotion decision: errors return, the caller records a system REJECTED
+        gate decision, and the framing re-rolls for free. The other owns in-run
+        dispatch admission and raises. A new plan-validation rule must pick its
+        net by WHERE the reject must land (recorded re-roll vs run failure) —
+        landing a rule on only one seam when both apply is the #718/#719 scar.
+        Both call sites are pinned by
+        ``tests/unit/cycles/test_plan_gate_seams.py``.
         """
         if not cycle.resolved_config().get("implementation_plan", False):
             return []
@@ -2905,9 +2917,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             )
 
         # SIP-0099 99.2: a framing-emitted interface manifest is validated here — this is
-        # its ONLY net (the dispatch-time net in cycles/task_plan.py stays scaffold-free to
-        # preserve the cycles→capabilities layering). Errors join the same returned list,
-        # so they flow into the identical system:plan_validation REJECTED recording.
+        # its ONLY net; generate_task_plan's dispatch-time net validates the PLAN, never
+        # the manifest. Errors join the same returned list, so they flow into the
+        # identical system:plan_validation REJECTED recording.
         # Absent manifest → no-op = today's behavior (byte-identical for plan-only cycles).
         if interface_content is not None:
             errors.extend(self._validate_interface_manifest(interface_content))
@@ -3084,6 +3096,19 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         across the ``progress_plan_review`` / ``plan-review`` naming variants.
         An absent or unreadable plan defers to the dispatch-time net —
         this check only ever *adds* an earlier rejection, never a pass.
+
+        OWNERSHIP (#663 D5): this seam and
+        ``_reject_invalid_plan_before_workload_gate`` are deliberately SEPARATE
+        nets with different error channels — they are plan VALIDATION, not
+        context assembly, and merging them would conflate #473's
+        returns-vs-raises semantics. This one owns in-run dispatch admission:
+        errors RAISE ``_ExecutionError`` and the run fails at the gate. The
+        other owns the inter-workload promotion decision (returns errors for a
+        recorded system REJECTED + free framing re-roll — the path
+        multi-workload cycles actually traverse). A new plan-validation rule
+        must pick its net by WHERE the reject must land — landing a rule on
+        only one seam when both apply is the #718/#719 scar. Both call sites
+        are pinned by ``tests/unit/cycles/test_plan_gate_seams.py``.
         """
         if not cycle.resolved_config().get("implementation_plan", False):
             return
