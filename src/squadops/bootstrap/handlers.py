@@ -35,7 +35,7 @@ from squadops.capabilities.handlers.impl.repair_handlers import (
     DevelopmentCorrectionRepairHandler,
     QATestRepairHandler,
 )
-from squadops.capabilities.handlers.planning_tasks import (
+from squadops.capabilities.handlers.planning import (
     DataResearchContextHandler,
     DevelopmentDesignPlanHandler,
     DevelopmentProposePlanTasksHandler,

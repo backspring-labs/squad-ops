@@ -13,7 +13,7 @@ operator notes verbatim. Unresolved cross-proposal dependencies surface in
 operator notes rather than being auto-stubbed.
 
 This module is intentionally stateless and side-effect-free. The handler
-shell in ``planning_tasks.py`` calls ``merge_proposals(...)`` and wraps
+shell in ``planning/merge.py`` calls ``merge_proposals(...)`` and wraps
 the returned artifacts in a ``HandlerResult``.
 """
 
