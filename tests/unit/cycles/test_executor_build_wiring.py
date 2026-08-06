@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from squadops.capabilities.context_assembly import ACCEPTANCE_WORKSPACE_FILTER
 from squadops.cycles.models import (
     ArtifactRef,
     Cycle,
@@ -262,7 +263,7 @@ class TestAcceptanceWorkspaceResolution:
         workspace = await executor._resolve_artifact_contents(
             "development.develop",
             stored,
-            filter_spec=executor._ACCEPTANCE_WORKSPACE_FILTER,
+            filter_spec=ACCEPTANCE_WORKSPACE_FILTER.to_spec(),
         )
         assert workspace["backend/errors.py"] == "class ApiError(Exception):\n    pass\n"
 
@@ -290,7 +291,7 @@ class TestAcceptanceWorkspaceResolution:
             "development.develop",
             stored,
             include_repair_candidates=False,
-            filter_spec=executor._ACCEPTANCE_WORKSPACE_FILTER,
+            filter_spec=ACCEPTANCE_WORKSPACE_FILTER.to_spec(),
         )
         assert "backend/errors.py" in workspace
         assert "backend/routes.py" not in workspace
