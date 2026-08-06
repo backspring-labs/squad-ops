@@ -1,0 +1,351 @@
+{
+ "repair_dev_no_manifest": {
+  "repair_steps": [
+   {
+    "inputs": {
+     "acceptance_criteria": [
+      {
+       "check": "endpoint_defined",
+       "params": {
+        "method": "GET",
+        "path": "/api/runs"
+       }
+      }
+     ],
+     "agent_config_overrides": {},
+     "agent_model": null,
+     "artifact_refs": [
+      "art_routes",
+      "delta_000000000000"
+     ],
+     "correction_decision": {
+      "affected_task_types": [
+       "development.develop"
+      ],
+      "correction_path": "patch",
+      "decision_rationale": "patch the failing artifact",
+      "structural_plan_change_candidate": "none"
+     },
+     "expected_artifacts": [
+      "backend/routes.py",
+      "backend/models.py"
+     ],
+     "failed_task_type": "development.develop",
+     "failure_analysis": {
+      "analysis_summary": "the emitted routes module fails its endpoint check",
+      "classification": "work_product"
+     },
+     "failure_evidence": {
+      "contract_expectations": [
+       "`` must define exactly these routes (method, absolute path, and path-parameter names are all literal): "
+      ],
+      "error": "validation failed",
+      "failed_task_id": "task-development.develop",
+      "failed_task_type": "development.develop",
+      "failure_category": "executed_and_failed",
+      "outcome_class": "SEMANTIC_FAILURE",
+      "preliminary_failure_classification": "work_product",
+      "prior_plan_deltas_count": 0,
+      "rejected_artifacts": [
+       {
+        "content_snippet": "def broken(): ...",
+        "name": "backend/routes.py",
+        "size": 17,
+        "type": "source"
+       }
+      ],
+      "validation_result": {
+       "checks": [
+        {
+         "check": "endpoint_defined",
+         "detail": "GET /api/runs missing",
+         "passed": false
+        }
+       ],
+       "missing_components": [],
+       "passed": false,
+       "summary": "1/2 checks passed"
+      }
+     },
+     "prd": "PRD-CONTENT",
+     "prior_outputs": {
+      "dev": {
+       "summary": "[dev] built"
+      }
+     },
+     "resolved_config": {
+      "build_profile": "fastapi_react_vite"
+     },
+     "subtask_description": "Create endpoints",
+     "subtask_focus": "Backend API"
+    },
+    "task_type": "development.correction_repair"
+   }
+  ]
+ },
+ "repair_dev_with_manifest": {
+  "repair_steps": [
+   {
+    "inputs": {
+     "acceptance_criteria": [
+      {
+       "check": "endpoint_defined",
+       "params": {
+        "method": "GET",
+        "path": "/api/runs"
+       }
+      }
+     ],
+     "agent_config_overrides": {},
+     "agent_model": null,
+     "artifact_refs": [
+      "art_routes",
+      "delta_000000000000"
+     ],
+     "correction_decision": {
+      "affected_task_types": [
+       "development.develop"
+      ],
+      "correction_path": "patch",
+      "decision_rationale": "patch the failing artifact",
+      "structural_plan_change_candidate": "none"
+     },
+     "dom_testid_surface": [
+      "`RunsListView` (route `/`): root container `runs-list`; anchors: `runs-list`, `run-item`, `run-participant-count`, `empty-state`, `create-run-link`",
+      "`CreateRunView` (route `/create`): root container `create-run-view`; anchors: `create-run-view`, `create-run-form`, `field-title`, `field-datetime`, `field-location`, `field-distance`, `field-pace-target`, `field-route-notes`, `submit-create`, `form-error`",
+      "`RunDetailView` (route `/runs/:id`): root container `run-detail`; anchors: `run-detail`, `participant-list`, `participant-item`, `join-form`, `join-name-input`, `join-submit`, `leave-form`, `leave-name-input`, `leave-submit`, `action-error`, `not-found`"
+     ],
+     "expected_artifacts": [
+      "backend/routes.py",
+      "backend/models.py"
+     ],
+     "failed_task_type": "development.develop",
+     "failure_analysis": {
+      "analysis_summary": "the emitted routes module fails its endpoint check",
+      "classification": "work_product"
+     },
+     "failure_evidence": {
+      "contract_expectations": [
+       "`` must define exactly these routes (method, absolute path, and path-parameter names are all literal): "
+      ],
+      "error": "validation failed",
+      "error_contract": [
+       "on failure raise `ApiError(code, message)` (imported from `.errors`): the FIRST argument is the error-code STRING, the second a human message \u2014 never `ApiError(status_code=..., detail=...)` and never `HTTPException` for contract errors; the frozen `errors.py` maps the code to the HTTP status and renders the pinned envelope",
+       "valid error codes (code \u2192 HTTP status, mapped by frozen `errors.py`): `validation_error` \u2192 422, `run_not_found` \u2192 404, `duplicate_participant` \u2192 409, `participant_not_found` \u2192 404"
+      ],
+      "failed_task_id": "task-development.develop",
+      "failed_task_type": "development.develop",
+      "failure_category": "executed_and_failed",
+      "model_surface": [
+       "`backend/models.py` is scaffold-frozen and defines EXACTLY these names: `Participant(id, name)`, `RunEvent(id, title, datetime, location, distance, pace_target, route_notes, participants)`, `RunEventCreate(title, datetime, location, distance, pace_target, route_notes)`, `ParticipantName(name)`. Import only from this list \u2014 these are the complete contents of that module",
+       "field names are exact \u2014 construct and read models with the fields shown above; a near-miss (`pace` for `pace_target`, `meeting_location` for `location`) raises at request time and every affected endpoint returns HTTP 500",
+       "do NOT invent model names or aliases (`Run`, `RunCreate`, `RunResponse`, `RunJoin` and similar do not exist); an import of a name absent from the list above fails at load, the app never starts, and the patch is rejected",
+       "`models.py` is frozen \u2014 if a name you want is missing, use the declared names and shape the response in the fill slot; do not edit or re-emit the model module",
+       "`backend/store.py` is scaffold-frozen and already defines the in-memory stores: `participant_store`, `run_event_store` (plus `reset()` for test isolation). Import them (`from .store import ...`); do NOT declare your own store dicts \u2014 a shadow store is invisible to `reset()`, so state leaks between tests and the suite fails on isolation"
+      ],
+      "outcome_class": "SEMANTIC_FAILURE",
+      "preliminary_failure_classification": "work_product",
+      "prior_plan_deltas_count": 0,
+      "rejected_artifacts": [
+       {
+        "content_snippet": "def broken(): ...",
+        "name": "backend/routes.py",
+        "size": 17,
+        "type": "source"
+       }
+      ],
+      "scaffold_enforcement": [
+       "restore: backend/app.py is scaffold-owned"
+      ],
+      "validation_result": {
+       "checks": [
+        {
+         "check": "endpoint_defined",
+         "detail": "GET /api/runs missing",
+         "passed": false
+        }
+       ],
+       "missing_components": [],
+       "passed": false,
+       "summary": "1/2 checks passed"
+      }
+     },
+     "prd": "PRD-CONTENT",
+     "prior_outputs": {
+      "dev": {
+       "summary": "[dev] built"
+      }
+     },
+     "resolved_config": {
+      "build_profile": "fastapi_react_vite"
+     },
+     "subtask_description": "Create endpoints",
+     "subtask_focus": "Backend API",
+     "testid_surface": [
+      "`RunsListView` (route `/`): root container `runs-list`; anchors: `runs-list`, `run-item`, `run-participant-count`, `empty-state`, `create-run-link`",
+      "`CreateRunView` (route `/create`): root container `create-run-view`; anchors: `create-run-view`, `create-run-form`, `field-title`, `field-datetime`, `field-location`, `field-distance`, `field-pace-target`, `field-route-notes`, `submit-create`, `form-error`",
+      "`RunDetailView` (route `/runs/:id`): root container `run-detail`; anchors: `run-detail`, `participant-list`, `participant-item`, `join-form`, `join-name-input`, `join-submit`, `leave-form`, `leave-name-input`, `leave-submit`, `action-error`, `not-found`"
+     ]
+    },
+    "task_type": "development.correction_repair"
+   }
+  ]
+ },
+ "repair_qa_own_artifact": {
+  "repair_steps": [
+   {
+    "inputs": {
+     "acceptance_criteria": [
+      {
+       "check": "expected_artifacts",
+       "params": {}
+      }
+     ],
+     "agent_config_overrides": {},
+     "agent_model": null,
+     "artifact_refs": [
+      "art_routes",
+      "delta_000000000000"
+     ],
+     "correction_decision": {
+      "affected_task_types": [
+       "development.develop"
+      ],
+      "correction_path": "patch",
+      "decision_rationale": "patch the failing artifact",
+      "structural_plan_change_candidate": "none"
+     },
+     "dom_testid_surface": [
+      "`RunsListView` (route `/`): root container `runs-list`; anchors: `runs-list`, `run-item`, `run-participant-count`, `empty-state`, `create-run-link`",
+      "`CreateRunView` (route `/create`): root container `create-run-view`; anchors: `create-run-view`, `create-run-form`, `field-title`, `field-datetime`, `field-location`, `field-distance`, `field-pace-target`, `field-route-notes`, `submit-create`, `form-error`",
+      "`RunDetailView` (route `/runs/:id`): root container `run-detail`; anchors: `run-detail`, `participant-list`, `participant-item`, `join-form`, `join-name-input`, `join-submit`, `leave-form`, `leave-name-input`, `leave-submit`, `action-error`, `not-found`"
+     ],
+     "expected_artifacts": [
+      "tests/test_api.py"
+     ],
+     "failed_task_type": "qa.test",
+     "failure_analysis": {
+      "analysis_summary": "the emitted routes module fails its endpoint check",
+      "classification": "work_product"
+     },
+     "failure_evidence": {
+      "contract_expectations": [
+       "expected_artifacts"
+      ],
+      "emission_failure": {
+       "raw_response_chars": 812,
+       "reason": "zero_extraction"
+      },
+      "error": "no artifacts extracted",
+      "error_contract": [
+       "on failure raise `ApiError(code, message)` (imported from `.errors`): the FIRST argument is the error-code STRING, the second a human message \u2014 never `ApiError(status_code=..., detail=...)` and never `HTTPException` for contract errors; the frozen `errors.py` maps the code to the HTTP status and renders the pinned envelope",
+       "valid error codes (code \u2192 HTTP status, mapped by frozen `errors.py`): `validation_error` \u2192 422, `run_not_found` \u2192 404, `duplicate_participant` \u2192 409, `participant_not_found` \u2192 404"
+      ],
+      "failed_task_id": "task-qa.test",
+      "failed_task_type": "qa.test",
+      "failure_category": "emission_absent",
+      "model_surface": [
+       "`backend/models.py` is scaffold-frozen and defines EXACTLY these names: `Participant(id, name)`, `RunEvent(id, title, datetime, location, distance, pace_target, route_notes, participants)`, `RunEventCreate(title, datetime, location, distance, pace_target, route_notes)`, `ParticipantName(name)`. Import only from this list \u2014 these are the complete contents of that module",
+       "field names are exact \u2014 construct and read models with the fields shown above; a near-miss (`pace` for `pace_target`, `meeting_location` for `location`) raises at request time and every affected endpoint returns HTTP 500",
+       "do NOT invent model names or aliases (`Run`, `RunCreate`, `RunResponse`, `RunJoin` and similar do not exist); an import of a name absent from the list above fails at load, the app never starts, and the patch is rejected",
+       "`models.py` is frozen \u2014 if a name you want is missing, use the declared names and shape the response in the fill slot; do not edit or re-emit the model module",
+       "`backend/store.py` is scaffold-frozen and already defines the in-memory stores: `participant_store`, `run_event_store` (plus `reset()` for test isolation). Import them (`from .store import ...`); do NOT declare your own store dicts \u2014 a shadow store is invisible to `reset()`, so state leaks between tests and the suite fails on isolation"
+      ],
+      "outcome_class": "SEMANTIC_FAILURE",
+      "preliminary_failure_classification": "",
+      "prior_plan_deltas_count": 0,
+      "rejected_artifacts": [],
+      "validation_result": {
+       "checks": [],
+       "missing_components": [],
+       "passed": false,
+       "summary": "no artifacts"
+      }
+     },
+     "prd": "PRD-CONTENT",
+     "prior_outputs": {
+      "dev": {
+       "summary": "[dev] built"
+      }
+     },
+     "resolved_config": {
+      "build_profile": "fastapi_react_vite"
+     },
+     "subtask_description": "Write tests",
+     "subtask_focus": "API tests",
+     "testid_surface": [
+      "`RunsListView` (route `/`): root container `runs-list`; anchors: `runs-list`, `run-item`, `run-participant-count`, `empty-state`, `create-run-link`",
+      "`CreateRunView` (route `/create`): root container `create-run-view`; anchors: `create-run-view`, `create-run-form`, `field-title`, `field-datetime`, `field-location`, `field-distance`, `field-pace-target`, `field-route-notes`, `submit-create`, `form-error`",
+      "`RunDetailView` (route `/runs/:id`): root container `run-detail`; anchors: `run-detail`, `participant-list`, `participant-item`, `join-form`, `join-name-input`, `join-submit`, `leave-form`, `leave-name-input`, `leave-submit`, `action-error`, `not-found`"
+     ]
+    },
+    "task_type": "qa.test_repair"
+   }
+  ]
+ },
+ "retest_full": {
+  "retest_inputs": {
+   "acceptance_criteria": [
+    {
+     "check": "expected_artifacts",
+     "params": {}
+    }
+   ],
+   "acceptance_workspace_files": {
+    "backend/models.py": "x",
+    "backend/routes.py": "def ok(): ..."
+   },
+   "agent_config_overrides": {},
+   "agent_model": null,
+   "artifact_contents": {
+    "backend/routes.py": "def ok(): ..."
+   },
+   "contract_probes": [
+    {
+     "expect_status": 200,
+     "probe": "GET /api/runs"
+    }
+   ],
+   "dom_testid_surface": [
+    "run-list",
+    "run-form-submit"
+   ],
+   "expected_artifacts": [
+    "tests/test_api.py"
+   ],
+   "prd": "PRD-CONTENT",
+   "resolved_config": {
+    "build_profile": "fastapi_react_vite"
+   },
+   "retest_files": [
+    {
+     "content": "def test_runs(): pass",
+     "filename": "tests/test_api.py"
+    }
+   ],
+   "subtask_focus": "API tests"
+  }
+ },
+ "retest_minimal": {
+  "retest_inputs": {
+   "acceptance_criteria": [],
+   "agent_config_overrides": {},
+   "agent_model": null,
+   "artifact_contents": {
+    "backend/routes.py": "def ok(): ..."
+   },
+   "expected_artifacts": [
+    "tests/test_api.py"
+   ],
+   "prd": "PRD-CONTENT",
+   "resolved_config": {},
+   "retest_files": [
+    {
+     "content": "def test_runs(): pass",
+     "filename": "tests/test_api.py"
+    }
+   ],
+   "subtask_focus": null
+  }
+ }
+}
