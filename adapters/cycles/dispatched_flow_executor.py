@@ -34,6 +34,14 @@ from adapters.cycles.pulse_boundary_runner import PulseBoundaryRunner
 from adapters.cycles.run_completion import RunCompletion, resolve_terminal_outcome
 from adapters.cycles.task_dispatcher import TaskDispatcher
 from adapters.cycles.task_naming import build_task_name
+from squadops.capabilities.context_assembly import (
+    ACCEPTANCE_WORKSPACE_FILTER,
+    LANDING_PRIOR_OUTPUTS,
+    dispatch_artifact_filter_spec,
+    get_context_contract,
+    manifest_surface_fragments,
+    wrapup_evidence_applies,
+)
 from squadops.cycles.acceptance_evaluation import resolve_check_stack
 from squadops.cycles.agent_config import build_agent_resolver
 from squadops.cycles.build_completeness import compute_missing_required_files
@@ -1014,92 +1022,12 @@ class DispatchedFlowExecutor(FlowExecutionPort):
     # Build task artifact filter (D3, §2.2)
     # ------------------------------------------------------------------
 
-    # Task types that author into the scaffold's fill slots and therefore need the
-    # manifest-derived error seam in their prompt (#588). A table, not a literal
-    # test at the branch — the repair path's equivalent lives in CorrectionRunner's
-    # failure_evidence assembly.
-    _ERROR_SEAM_TASK_TYPES: frozenset[str] = frozenset({"development.develop"})
-
-    # #643: the full accepted source/config tree — scaffold included via
-    # by_type (#443). Threaded to every build task as
-    # ``acceptance_workspace_files``: module_imports is runtime-level, so the
-    # typed-acceptance workspace must hold every sibling a fill file imports —
-    # exactly what the per-task prompt filters below deliberately omit
-    # (prompt diet). fay-1: dev's module_imports evaluated in a
-    # routes.py-only workspace and false-failed every attempt.
-    _ACCEPTANCE_WORKSPACE_FILTER: dict[str, list[str]] = {
-        "by_producing_task": ["qa.validate", "builder.assemble", "development.develop"],
-        "by_type": ["source", "config"],
-        "by_type_fallback": ["document"],
-    }
-
-    # #657: planning-chain context threading (the RC-22 pre-resolution the
-    # proposer handlers were written against). The executor's role-keyed
-    # ``prior_outputs`` strips artifact content, so the brief author and the
-    # plan-task proposers rendered "(brief not yet provided)" and PRD-prefix
-    # stubs while their templates instructed them to operate on the brief and
-    # gap-catch against Development's proposal. Contents resolve into an
-    # ENVELOPE-LOCAL ``prior_outputs["artifact_contents"]`` copy — never the
-    # loop-level dict, which is checkpointed per task (RC-4) and must stay lean.
-    # The merger is deliberately absent: it consumes ``brief_outcome`` /
-    # ``proposal_outcome`` output keys, and by merge time the two proposals
-    # collide on the ``proposed_plan_tasks.yaml`` filename.
-    _PLANNING_ARTIFACT_FILTER: dict[str, dict[str, list[str]]] = {
-        "governance.prepare_plan_authoring_brief": {
-            "by_producing_task": [
-                "data.research_context",
-                "strategy.frame_objective",
-                "development.design_plan",
-                "qa.define_test_strategy",
-            ],
-        },
-        "development.propose_plan_tasks": {
-            "by_producing_task": [
-                "governance.prepare_plan_authoring_brief",
-                "development.design_plan",
-            ],
-        },
-        "qa.propose_plan_tasks": {
-            "by_producing_task": [
-                "governance.prepare_plan_authoring_brief",
-                "development.design_plan",
-                "qa.define_test_strategy",
-                "development.propose_plan_tasks",
-            ],
-        },
-        "strategy.propose_plan_guidance": {
-            "by_producing_task": [
-                "governance.prepare_plan_authoring_brief",
-                "strategy.frame_objective",
-            ],
-        },
-    }
-
-    # Maps build task_type → which prior artifacts to inject.
-    # by_producing_task: match on producing_task_type metadata
-    # by_type / by_type_fallback: match on artifact_type for artifacts without provenance
-    _BUILD_ARTIFACT_FILTER: dict[str, dict[str, list[str]]] = {
-        "development.develop": {
-            # SIP-0086: include prior development.develop for manifest-driven
-            # subtask chaining (dev→dev artifact accumulation)
-            "by_producing_task": [
-                "strategy.analyze_prd",
-                "development.design",
-                "development.develop",
-            ],
-            "by_type_fallback": ["document"],
-        },
-        "builder.assemble": {
-            "by_producing_task": ["development.develop"],
-            "by_type": ["source", "config"],
-            # #443: provenance-less documents are the seeded scaffold (frozen
-            # fill-contract files) — without them assembly packages a partial app.
-            "by_type_fallback": ["document"],
-        },
-        # SIP-0086/#443: QA verification needs the whole accepted tree —
-        # the same selection the acceptance workspace uses (single-sourced).
-        "qa.test": _ACCEPTANCE_WORKSPACE_FILTER,
-    }
+    # #663: per-task-type context opinions (artifact selection, seam surfaces,
+    # workspace composition, wrap-up evidence flags) live in the capability-
+    # owned registry — squadops.capabilities.context_assembly. The executor
+    # keeps the composition MECHANICS (the I/O and the merge point) with zero
+    # task-type opinions of its own; adding a per-task input is a registry
+    # edit beside the capability code, never an executor diff.
 
     async def _resolve_artifact_contents(
         self,
@@ -1124,12 +1052,14 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 the pf-31 endpoint_defined final-verification regression.
             filter_spec: explicit selection override (#643 — the acceptance
                 workspace uses the full-tree spec regardless of task type).
-                Defaults to the task type's prompt-context filter.
+                Defaults to the task type's registry-declared build-lane filter
+                (#663) — the same default the correction loop's RC3
+                re-resolution relies on.
 
         Returns:
             Dict of filename → content string. Empty if task_type not a build task.
         """
-        filter_spec = filter_spec or self._BUILD_ARTIFACT_FILTER.get(task_type)
+        filter_spec = filter_spec or dispatch_artifact_filter_spec(task_type)
         if not filter_spec:
             return {}
 
@@ -1835,21 +1765,16 @@ class DispatchedFlowExecutor(FlowExecutionPort):
 
         return False
 
-    _WRAPUP_TASK_TYPES: frozenset[str] = frozenset(
-        {
-            "data.gather_evidence",
-            "qa.assess_outcomes",
-            "data.classify_unresolved",
-            "governance.closeout_decision",
-            "governance.publish_handoff",
-        }
-    )
-
     async def _inject_wrapup_evidence(
         self, plan: list[TaskEnvelope], cycle: Cycle, prior_outputs: dict[str, Any]
     ) -> None:
-        """#683: thread the cycle's CycleOutcome into wrap-up task inputs."""
-        if not any(e.task_type in self._WRAPUP_TASK_TYPES for e in plan):
+        """#683: thread the cycle's CycleOutcome into wrap-up task inputs.
+
+        Which task types constitute the wrap-up pipeline is a registry
+        declaration (#663 — ``wrapup_evidence`` on the context contract); the
+        run-level injection mechanics stay here.
+        """
+        if not wrapup_evidence_applies(e.task_type for e in plan):
             return
         try:
             from squadops.cycles.cycle_outcome import resolve_cycle_outcome
@@ -1876,74 +1801,55 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         stored_artifacts: list[tuple[str, ArtifactRef]],
         interface_manifest: Any = None,
     ) -> TaskEnvelope:
-        """Build chain context inputs and return an enriched envelope."""
+        """Build chain context inputs and return an enriched envelope.
+
+        #663: the SINGLE composition point. Every per-task-type opinion comes
+        from the capability-owned ``ContextAssemblyContract``; this method owns
+        only the deterministic mechanics — fragment order, the artifact I/O,
+        and the merge (dispatch keys shadow plan-time keys of the same name).
+        """
+        contract = get_context_contract(envelope.task_type)
 
         extra_inputs: dict[str, Any] = {
             "prior_outputs": prior_outputs,
             "artifact_refs": list(all_artifact_refs),
         }
 
-        # #588: the manifest-derived error-seam lines the correction path has
-        # carried since pf-34, threaded to the INITIAL author too. The raise
-        # convention lives in the fill-slot stub's docstring, which the first
-        # fill overwrites — so without this the author guesses the signature,
-        # every error path TypeErrors into a 500, and the run pays a correction
-        # to learn what the scaffold already knew. Data only; the block's prose
-        # lives in a managed prompt asset.
-        if envelope.task_type in self._ERROR_SEAM_TASK_TYPES:
-            from squadops.capabilities.scaffold import (
-                error_seam_instructions,
-                model_surface_instructions,
-                testid_surface_instructions,
-            )
+        # Manifest seam surfaces (#588/pf-45/#659): presence-keyed instruction
+        # sets (error contract, model surface, testid inventory) for task types
+        # that author into scaffold fill slots. Data only; prose lives in
+        # managed prompt assets.
+        extra_inputs.update(manifest_surface_fragments(contract, interface_manifest))
 
-            error_lines = error_seam_instructions(interface_manifest)
-            if error_lines:
-                extra_inputs["error_contract"] = error_lines
-            # pf-45: the model surface, to the INITIAL author on the same transport.
-            # Repairs have carried it since #604; the first fill never did, so the dev
-            # guessed a field name (`pace` for `pace_target`) and every POST /runs
-            # raised into a 500 — a correction spent learning what the scaffold already
-            # knew. Field-level since pf-45 for the same reason.
-            surface_lines = model_surface_instructions(interface_manifest)
-            if surface_lines:
-                extra_inputs["model_surface"] = surface_lines
-            # #659: the DOM anchor inventory, same transport — dev is told the
-            # manifest-pinned testids to attach/preserve so the qa suite (which
-            # receives the same inventory) has a stable surface to query.
-            testid_lines = testid_surface_instructions(interface_manifest)
-            if testid_lines:
-                extra_inputs["testid_surface"] = testid_lines
+        if contract.artifact_filter is not None:
+            if contract.artifact_landing == LANDING_PRIOR_OUTPUTS:
+                # #657: planning-chain tasks get upstream documents on an
+                # ENVELOPE-LOCAL prior_outputs copy — the loop-level dict is
+                # checkpointed per task (RC-4) and must stay lean.
+                planning_contents = await self._resolve_artifact_contents(
+                    envelope.task_type,
+                    stored_artifacts,
+                    filter_spec=contract.artifact_filter.to_spec(),
+                )
+                if planning_contents:
+                    extra_inputs["prior_outputs"] = {
+                        **prior_outputs,
+                        "artifact_contents": planning_contents,
+                    }
+            else:
+                # Build tasks (D3). Fresh dispatches see the ACCEPTED state only
+                # (pf-31 Fix E): rejected repair candidates stay out; the
+                # correction loop's own RC3 re-resolution keeps them.
+                artifact_contents = await self._resolve_artifact_contents(
+                    envelope.task_type,
+                    stored_artifacts,
+                    include_repair_candidates=False,
+                    filter_spec=contract.artifact_filter.to_spec(),
+                )
+                if artifact_contents:
+                    extra_inputs["artifact_contents"] = artifact_contents
 
-        # #657: planning-chain tasks get the upstream framing documents the
-        # RC-22 contract promised them, on an envelope-local prior_outputs
-        # copy (checkpoints keep the lean role-keyed dict). Filename keys
-        # last-win in storage order, so a proposer retry's failure artifact
-        # cannot shadow a successful peer document.
-        if envelope.task_type in self._PLANNING_ARTIFACT_FILTER:
-            planning_contents = await self._resolve_artifact_contents(
-                envelope.task_type,
-                stored_artifacts,
-                filter_spec=self._PLANNING_ARTIFACT_FILTER[envelope.task_type],
-            )
-            if planning_contents:
-                extra_inputs["prior_outputs"] = {
-                    **prior_outputs,
-                    "artifact_contents": planning_contents,
-                }
-
-        # Pre-resolve artifact contents for build tasks (D3). Fresh dispatches
-        # see the ACCEPTED state only (pf-31 Fix E): rejected repair candidates
-        # stay out of task workspaces; the correction loop's own re-resolution
-        # keeps them for RC3.
-        if envelope.task_type in self._BUILD_ARTIFACT_FILTER:
-            artifact_contents = await self._resolve_artifact_contents(
-                envelope.task_type,
-                stored_artifacts,
-                include_repair_candidates=False,
-            )
-            if artifact_contents:
-                extra_inputs["artifact_contents"] = artifact_contents
+        if contract.acceptance_workspace:
             # #643: the typed-acceptance workspace rides separately from the
             # curated prompt context — evaluation needs the full accepted tree
             # (scaffold siblings included) or runtime-level checks false-fail
@@ -1952,7 +1858,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 envelope.task_type,
                 stored_artifacts,
                 include_repair_candidates=False,
-                filter_spec=self._ACCEPTANCE_WORKSPACE_FILTER,
+                filter_spec=ACCEPTANCE_WORKSPACE_FILTER.to_spec(),
             )
             if workspace_files:
                 extra_inputs["acceptance_workspace_files"] = workspace_files

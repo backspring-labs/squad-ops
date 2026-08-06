@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+from squadops.capabilities.context_assembly import get_context_contract
 
 # ---------------------------------------------------------------------------
 # Lightweight fakes
@@ -192,31 +193,31 @@ class TestLoadManifestForRun:
 
 
 # ---------------------------------------------------------------------------
-# Phase 3c: Artifact chaining — dev→dev via _BUILD_ARTIFACT_FILTER
+# Phase 3c: Artifact chaining — dev→dev via the context-assembly registry (#663)
 # ---------------------------------------------------------------------------
 
 
 class TestBuildArtifactFilterChaining:
     def test_dev_develop_filter_includes_prior_dev_develop(self):
         """development.develop must see artifacts from prior development.develop tasks."""
-        filt = DispatchedFlowExecutor._BUILD_ARTIFACT_FILTER["development.develop"]
-        assert "development.develop" in filt["by_producing_task"]
+        filt = get_context_contract("development.develop").artifact_filter
+        assert "development.develop" in filt.by_producing_task
 
     def test_dev_develop_filter_includes_planning_artifacts(self):
         """development.develop must also see strategy and design artifacts."""
-        filt = DispatchedFlowExecutor._BUILD_ARTIFACT_FILTER["development.develop"]
-        assert "strategy.analyze_prd" in filt["by_producing_task"]
-        assert "development.design" in filt["by_producing_task"]
+        filt = get_context_contract("development.develop").artifact_filter
+        assert "strategy.analyze_prd" in filt.by_producing_task
+        assert "development.design" in filt.by_producing_task
 
     def test_qa_test_filter_includes_dev_develop(self):
         """qa.test must see artifacts from development.develop subtasks."""
-        filt = DispatchedFlowExecutor._BUILD_ARTIFACT_FILTER["qa.test"]
-        assert "development.develop" in filt["by_producing_task"]
+        filt = get_context_contract("qa.test").artifact_filter
+        assert "development.develop" in filt.by_producing_task
 
     def test_builder_assemble_unchanged(self):
         """builder.assemble filter should still work as before."""
-        filt = DispatchedFlowExecutor._BUILD_ARTIFACT_FILTER["builder.assemble"]
-        assert "development.develop" in filt["by_producing_task"]
+        filt = get_context_contract("builder.assemble").artifact_filter
+        assert "development.develop" in filt.by_producing_task
 
 
 class TestResolveArtifactContentsChaining:
