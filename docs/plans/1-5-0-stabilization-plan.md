@@ -476,24 +476,24 @@ row names the defect ruling that authorizes it (the feature-free check).
 
 | Item | Behavior class | Primary risk | Required proof | Live validation | Replay/golden artifact | Cut status |
 |---|---|---|---|---|---|---|
-| A1 #670 | enforcement expansion (ruling: fork 1, 2026-08-04) | false gates on qa emissions | true-positive replay exhibit + silent-on-clean shakedown | — | — | open |
-| A2 #682 | schema/migration | historical-row compat | real-store + historical fixture + forward-compat | — | — | open |
-| A2 #683 | consumer change | prose fallback survives on a path | outcome-based wrap-up incl. fallback/replay paths | — | — | open |
-| A2 #684 | stateful detection | counter/reset error | multi-cycle real-store sequence | — | — | open |
-| A3 #687 | evidence threading | traceback arrives unstructured | structured-evidence fixture; replay preserves category | — | — | open |
-| A3 #431 | evidence classification | extraction loss enters repair | designed extraction-loss replay | — | — | open |
-| A4 #435+lever | behavior change (ruling: progress-aware termination, 2026-08-04) | premature/false termination | designed-failure probe matrix + no-false-termination shakedown | — | — | open |
-| A6 #629 | enforcement expansion | prose side blocks without determinism | deterministic-side exhibit; prose side ships advisory | — | — | open |
+| A1 #670 | enforcement expansion (ruling: fork 1, 2026-08-04) | false gates on qa emissions | true-positive replay exhibit + silent-on-clean shakedown | shk-6 green `cyc_ea0b82cfbd17`: qa evaluation artifact carries injected `undefined_names`/`harness_boundary`/`contract_assertions_match`, all passed (silent-on-clean) | qa `typed_check_evaluation` artifact | **green (PR #738 + shk-6)** |
+| A2 #682 | schema/migration | historical-row compat | real-store + historical fixture + forward-compat | migration 1030 boot-applied 2026-08-05; waiver E2E on `cyc_e2e9cfd0a0c4`: accept-with-waiver on a `blocked_unverified` run — 3 `WaivedCheck` rows recorded, verdict UNCHANGED, undisclosed-check waiver refused | waiver-probe cycle + decision row | **green (PR #742 + probe 2026-08-06)** |
+| A2 #683 | consumer change | prose fallback survives on a path | outcome-based wrap-up incl. fallback/replay paths | shk-6 3-workload green `cyc_cc2badb6a6ba`: closeout cites injected `verification_evidence` (17/17) as its confidence basis; ceiling path active | closeout_artifact.md | **green (PR #743 + shk-6)** |
+| A2 #684 | stateful detection | counter/reset error | multi-cycle real-store sequence | inert populated (empty, honestly) on live red + green cycle outcomes; real-store sequence in unit suite | — | **green (PR #744 + shk-6)** |
+| A3 #687 | evidence threading | traceback arrives unstructured | structured-evidence fixture; replay preserves category | shk-6 roll-4 red: both correction rounds carried structured analyses naming the exact defect | failure_analysis artifacts | **green (PR #739 + shk-6)** |
+| A3 #431 | evidence classification | extraction loss enters repair | designed extraction-loss replay | no extraction loss occurred live (correct silence); category machinery unit-proven | — | **green (PR #740; live silence)** |
+| A4 #435+lever | behavior change (ruling: progress-aware termination, 2026-08-04) | premature/false termination | designed-failure probe matrix + no-false-termination shakedown | BOTH-SIDED live: fired on roll-4's zero-progress chain (`term_-qa.test_01`); held fire on wp-roll-1's moving 3-round chain (none-candidate round suppressed) → honest exhaustion | termination artifact + 3 deltas | **green (PR #741 + shk-6)** |
+| A6 #629 | enforcement expansion | prose side blocks without determinism | deterministic-side exhibit; prose side ships advisory | `contract_assertions_match` evaluated on live qa suites (passed — silent on non-contradicting suites); prose side advisory-only by construction | — | **green (PR #745 + shk-6)** |
 | B1 #663 | structural | dropped context/seam | replay equivalence + both-seam tests | — | — | open |
 | B2 #331 | structural | task identity drift | handler equivalence replay; stable task names | — | — | open |
 | B3 #481 | recovery behavior | race / non-idempotence | seeded-state test + idempotent rerun + race case | — | — | open |
-| C SIP-0101 slice | new maintainer-only tooling | invalid replay trusted as green | fail-closed on incomplete inputs; category-named evidence | — | — | open |
-| D #506 | lifecycle timing (ruling: SIP-0087 defect, 2026-08-04) | tracker state drift | real Prefect adapter test or contract fixture | — | — | open |
-| D #724 | config resolution | override silently ignored | override-wins probe + regression | — | — | open |
-| F #452 | byte-preserving refactor | prompt drift | `render_hash` before/after equivalence | — | — | open |
-| F #583 | docs only | — | ADR merged | n/a | n/a | **PR #728 in review** |
-| SIP-0096 promotion | status promotion | AC-mapping gaps surface late | promotion PR carries AC mapping; shakedown on promoted state | — | — | open |
-| Gate-2 exit shakedown | line verification | integrity core unbanked | green unscored cycle on promoted state | — | — | open |
+| C SIP-0101 slice | new maintainer-only tooling | invalid replay trusted as green | fail-closed on incomplete inputs; category-named evidence | Gate-1 demo `cyc_cfe6962e8fc8`: 5-task prefix restored from retained boundary 5, 33min vs ~2.5h, `CycleOutcome.replay` + CLI `⚠ REPLAYED` banner; retention live (cp 1,5,6,7 kept) | the replay cycle itself | **green (PRs #735–#737 + demo)** |
+| D #506 | lifecycle timing (ruling: SIP-0087 defect, 2026-08-04) | tracker state drift | real Prefect adapter test or contract fixture | mid-cycle `task_runs/filter` showed the in-flight task RUNNING (the diagnosis query, now green) | — | **green (PR #746 + shk-6)** |
+| D #724 | config resolution | override silently ignored | override-wins probe + regression | `framing_max_rerolls` + `workload_sequence` overrides honored live (auto-reroll fired; framing-only + implementation-only sequences ran) | — | **green (PR #748 + shk-6)** |
+| F #452 | byte-preserving refactor | prompt drift | `render_hash` before/after equivalence | byte-equivalence pinned by test (8 hashes) | pinned hashes in test | **green (PR #747)** |
+| F #583 | docs only | — | ADR merged | n/a | n/a | **green (PR #728)** |
+| SIP-0096 promotion | status promotion | AC-mapping gaps surface late | promotion PR carries AC mapping; shakedown on promoted state | shakedown ran on the promoted deploy (969f6abf); AC#6 SKIP live disclosure = **owner-accepted surveillance** (2026-08-06): unit-proven; first natural pulse-skip occurrence is the live check | `SIP-0096-promotion-evidence.md` | **green (PR #749 + shk-6)** |
+| Gate-2 exit shakedown | line verification | integrity core unbanked | green unscored cycle on promoted state | **GREEN 2026-08-06**: `cyc_ea0b82cfbd17` (accepted, 17/17, 0 corrections) + replay demo + 3-workload wrap-up green + waiver E2E; 2 honest work-product reds (machinery clean); findings filed forward: coarse `tests_pass` signature, bind+sole-author guaranteed rejection | green cycle = Gate 3's replay corpus | **GREEN — Gate 3 open** |
 
 ## Rollback seams
 
