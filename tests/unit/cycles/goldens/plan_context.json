@@ -1,0 +1,458 @@
+{
+ "framing_bind_with_rejection": {
+  "00:data.research_context": {
+   "agent_config_overrides": {},
+   "agent_model": "m",
+   "config_hash": "confhash",
+   "prd": "PRD-CONTENT",
+   "profile_roles": [
+    "data",
+    "dev",
+    "lead",
+    "qa",
+    "strat"
+   ],
+   "resolved_config": {
+    "contract_ref": "art_c",
+    "plan_authoring_contributors": [
+     "development",
+     "qa",
+     "strategy"
+    ]
+   },
+   "role_index": 1,
+   "role_total": 1
+  },
+  "01:strategy.frame_objective": {
+   "agent_config_overrides": {},
+   "agent_model": "m",
+   "config_hash": "confhash",
+   "prd": "PRD-CONTENT",
+   "profile_roles": [
+    "data",
+    "dev",
+    "lead",
+    "qa",
+    "strat"
+   ],
+   "resolved_config": {
+    "contract_ref": "art_c",
+    "plan_authoring_contributors": [
+     "development",
+     "qa",
+     "strategy"
+    ]
+   },
+   "role_index": 1,
+   "role_total": 2
+  },
+  "02:development.design_plan": {
+   "agent_config_overrides": {},
+   "agent_model": "m",
+   "config_hash": "confhash",
+   "prd": "PRD-CONTENT",
+   "profile_roles": [
+    "data",
+    "dev",
+    "lead",
+    "qa",
+    "strat"
+   ],
+   "resolved_config": {
+    "contract_ref": "art_c",
+    "plan_authoring_contributors": [
+     "development",
+     "qa",
+     "strategy"
+    ]
+   },
+   "role_index": 1,
+   "role_total": 2
+  },
+  "03:qa.define_test_strategy": {
+   "agent_config_overrides": {},
+   "agent_model": "m",
+   "config_hash": "confhash",
+   "prd": "PRD-CONTENT",
+   "profile_roles": [
+    "data",
+    "dev",
+    "lead",
+    "qa",
+    "strat"
+   ],
+   "resolved_config": {
+    "contract_ref": "art_c",
+    "plan_authoring_contributors": [
+     "development",
+     "qa",
+     "strategy"
+    ]
+   },
+   "role_index": 1,
+   "role_total": 2
+  },
+  "04:governance.prepare_plan_authoring_brief": {
+   "agent_config_overrides": {},
+   "agent_model": "m",
+   "config_hash": "confhash",
+   "prd": "PRD-CONTENT",
+   "profile_roles": [
+    "data",
+    "dev",
+    "lead",
+    "qa",
+    "strat"
+   ],
+   "rejected_plan_yaml": "version: 1\ntasks: []\n",
+   "rejection_reasons": [
+    "plan_task 2 claims frozen file backend/app.py",
+    "qa.test task binds no runnable suite artifact"
+   ],
+   "resolved_config": {
+    "contract_ref": "art_c",
+    "plan_authoring_contributors": [
+     "development",
+     "qa",
+     "strategy"
+    ]
+   },
+   "role_index": 1,
+   "role_total": 3
+  },
+  "05:development.propose_plan_tasks": {
+   "agent_config_overrides": {},
+   "agent_model": "m",
+   "config_hash": "confhash",
+   "contract_criteria_index": "- backend/routes.py: bind vc-routes-endpoints (endpoint_defined)",
+   "frozen_surface_index": "- `backend/__init__.py`\n- `backend/main.py` \u2014 functions health; imports `.errors`, `.routes`, `fastapi`, `fastapi.middleware.cors`, `os`\n- `backend/models.py` \u2014 defines Participant(id, name), RunEvent(id, title, datetime, location, distance, pace_target, route_notes, participants), RunEventCreate(title, datetime, location, distance, pace_target, route_notes), ParticipantName(name); imports `pydantic`, `typing`\n- `backend/store.py` \u2014 module state participant_store: dict[str, Participant], run_event_store: dict[str, RunEvent]; functions reset; imports `.models`\n- `backend/errors.py` \u2014 defines ApiError; functions register_error_handlers; imports `fastapi`, `fastapi.exceptions`, `fastapi.responses`\n- `backend/requirements.txt`\n- `conftest.py` \u2014 functions client; imports `backend.main`, `fastapi.testclient`, `os`, `pytest`, `sys`\n- `frontend/index.html`\n- `frontend/package.json`\n- `frontend/vite.config.js`\n- `frontend/src/test-setup.js`\n- `frontend/src/__tests__/harness.test.jsx`\n- `frontend/src/main.jsx`\n- `frontend/src/api.js`\n- `frontend/src/App.jsx`",
+   "prd": "PRD-CONTENT",
+   "profile_roles": [
+    "data",
+    "dev",
+    "lead",
+    "qa",
+    "strat"
+   ],
+   "rejected_plan_yaml": "version: 1\ntasks: []\n",
+   "rejection_reasons": [
+    "plan_task 2 claims frozen file backend/app.py",
+    "qa.test task binds no runnable suite artifact"
+   ],
+   "resolved_config": {
+    "contract_ref": "art_c",
+    "plan_authoring_contributors": [
+     "development",
+     "qa",
+     "strategy"
+    ]
+   },
+   "role_index": 2,
+   "role_total": 2
+  },
+  "06:qa.propose_plan_tasks": {
+   "agent_config_overrides": {},
+   "agent_model": "m",
+   "config_hash": "confhash",
+   "contract_criteria_index": "- backend/routes.py: bind vc-routes-endpoints (endpoint_defined)",
+   "frozen_surface_index": "- `backend/__init__.py`\n- `backend/main.py` \u2014 functions health; imports `.errors`, `.routes`, `fastapi`, `fastapi.middleware.cors`, `os`\n- `backend/models.py` \u2014 defines Participant(id, name), RunEvent(id, title, datetime, location, distance, pace_target, route_notes, participants), RunEventCreate(title, datetime, location, distance, pace_target, route_notes), ParticipantName(name); imports `pydantic`, `typing`\n- `backend/store.py` \u2014 module state participant_store: dict[str, Participant], run_event_store: dict[str, RunEvent]; functions reset; imports `.models`\n- `backend/errors.py` \u2014 defines ApiError; functions register_error_handlers; imports `fastapi`, `fastapi.exceptions`, `fastapi.responses`\n- `backend/requirements.txt`\n- `conftest.py` \u2014 functions client; imports `backend.main`, `fastapi.testclient`, `os`, `pytest`, `sys`\n- `frontend/index.html`\n- `frontend/package.json`\n- `frontend/vite.config.js`\n- `frontend/src/test-setup.js`\n- `frontend/src/__tests__/harness.test.jsx`\n- `frontend/src/main.jsx`\n- `frontend/src/api.js`\n- `frontend/src/App.jsx`",
+   "prd": "PRD-CONTENT",
+   "profile_roles": [
+    "data",
+    "dev",
+    "lead",
+    "qa",
+    "strat"
+   ],
+   "rejected_plan_yaml": "version: 1\ntasks: []\n",
+   "rejection_reasons": [
+    "plan_task 2 claims frozen file backend/app.py",
+    "qa.test task binds no runnable suite artifact"
+   ],
+   "resolved_config": {
+    "contract_ref": "art_c",
+    "plan_authoring_contributors": [
+     "development",
+     "qa",
+     "strategy"
+    ]
+   },
+   "role_index": 2,
+   "role_total": 2
+  },
+  "07:strategy.propose_plan_guidance": {
+   "agent_config_overrides": {},
+   "agent_model": "m",
+   "config_hash": "confhash",
+   "prd": "PRD-CONTENT",
+   "profile_roles": [
+    "data",
+    "dev",
+    "lead",
+    "qa",
+    "strat"
+   ],
+   "rejected_plan_yaml": "version: 1\ntasks: []\n",
+   "rejection_reasons": [
+    "plan_task 2 claims frozen file backend/app.py",
+    "qa.test task binds no runnable suite artifact"
+   ],
+   "resolved_config": {
+    "contract_ref": "art_c",
+    "plan_authoring_contributors": [
+     "development",
+     "qa",
+     "strategy"
+    ]
+   },
+   "role_index": 2,
+   "role_total": 2
+  },
+  "08:governance.merge_plan": {
+   "agent_config_overrides": {},
+   "agent_model": "m",
+   "config_hash": "confhash",
+   "prd": "PRD-CONTENT",
+   "profile_roles": [
+    "data",
+    "dev",
+    "lead",
+    "qa",
+    "strat"
+   ],
+   "resolved_config": {
+    "contract_ref": "art_c",
+    "plan_authoring_contributors": [
+     "development",
+     "qa",
+     "strategy"
+    ]
+   },
+   "role_index": 2,
+   "role_total": 3
+  },
+  "09:governance.review_plan": {
+   "agent_config_overrides": {},
+   "agent_model": "m",
+   "config_hash": "confhash",
+   "prd": "PRD-CONTENT",
+   "profile_roles": [
+    "data",
+    "dev",
+    "lead",
+    "qa",
+    "strat"
+   ],
+   "resolved_config": {
+    "contract_ref": "art_c",
+    "plan_authoring_contributors": [
+     "development",
+     "qa",
+     "strategy"
+    ]
+   },
+   "role_index": 3,
+   "role_total": 3
+  }
+ },
+ "implementation_author": {
+  "00:governance.define_done": {
+   "agent_config_overrides": {},
+   "agent_model": "m",
+   "config_hash": "confhash",
+   "prd": "PRD-CONTENT",
+   "profile_roles": [
+    "data",
+    "dev",
+    "lead",
+    "qa",
+    "strat"
+   ],
+   "resolved_config": {
+    "implementation_plan": true
+   },
+   "role_index": 1,
+   "role_total": 1
+  },
+  "01:development.develop": {
+   "acceptance_criteria": [],
+   "agent_config_overrides": {},
+   "agent_model": "m",
+   "config_hash": "confhash",
+   "expected_artifacts": [
+    "backend/routes.py"
+   ],
+   "prd": "PRD-CONTENT",
+   "profile_roles": [
+    "data",
+    "dev",
+    "lead",
+    "qa",
+    "strat"
+   ],
+   "resolved_config": {
+    "implementation_plan": true
+   },
+   "role_index": 1,
+   "role_total": 1,
+   "subtask_description": "implement the routes fill slot",
+   "subtask_focus": "routes",
+   "subtask_index": 0
+  },
+  "02:qa.test": {
+   "acceptance_criteria": [],
+   "agent_config_overrides": {},
+   "agent_model": "m",
+   "config_hash": "confhash",
+   "expected_artifacts": [
+    "backend/tests/test_items.py"
+   ],
+   "implementation_artifacts": [
+    "backend/routes.py"
+   ],
+   "prd": "PRD-CONTENT",
+   "profile_roles": [
+    "data",
+    "dev",
+    "lead",
+    "qa",
+    "strat"
+   ],
+   "resolved_config": {
+    "implementation_plan": true
+   },
+   "role_index": 1,
+   "role_total": 1,
+   "subtask_description": "author the API suite",
+   "subtask_focus": "suite",
+   "subtask_index": 1
+  }
+ },
+ "implementation_bind": {
+  "00:governance.define_done": {
+   "agent_config_overrides": {},
+   "agent_model": "m",
+   "config_hash": "confhash",
+   "prd": "PRD-CONTENT",
+   "profile_roles": [
+    "data",
+    "dev",
+    "lead",
+    "qa",
+    "strat"
+   ],
+   "resolved_config": {
+    "contract_ref": "art_c",
+    "implementation_plan": true
+   },
+   "role_index": 1,
+   "role_total": 1
+  },
+  "01:development.develop": {
+   "acceptance_criteria": [
+    "TypedCheck(check='endpoint_defined', params={'methods_paths': ['POST /items'], 'file': 'backend/routes.py'}, severity='error', description='', id='vc-routes-endpoints')"
+   ],
+   "agent_config_overrides": {},
+   "agent_model": "m",
+   "config_hash": "confhash",
+   "expected_artifacts": [
+    "backend/routes.py"
+   ],
+   "prd": "PRD-CONTENT",
+   "profile_roles": [
+    "data",
+    "dev",
+    "lead",
+    "qa",
+    "strat"
+   ],
+   "resolved_config": {
+    "contract_ref": "art_c",
+    "implementation_plan": true
+   },
+   "role_index": 1,
+   "role_total": 1,
+   "subtask_description": "implement the routes fill slot",
+   "subtask_focus": "routes",
+   "subtask_index": 0
+  },
+  "02:qa.test": {
+   "acceptance_criteria": [
+    "TypedCheck(check='harness_boundary', params={'file': 'backend/tests/test_items.py', 'entry_modules': ['backend.main', 'app.main', 'main']}, severity='error', description='', id='scaffold-harness:backend/tests/test_items.py')",
+    "TypedCheck(check='contract_assertions_match', params={'file': 'backend/tests/test_items.py', 'endpoints': ['POST /items 201', 'POST /items 409'], 'allowed_error_statuses': [409]}, severity='error', description='', id='contract-assertions:backend/tests/test_items.py')"
+   ],
+   "agent_config_overrides": {},
+   "agent_model": "m",
+   "api_behavior_contract": [
+    "POST /items \u2192 HTTP 201",
+    "POST /items (rejection case) \u2192 HTTP 409 (error_code: duplicate_item)"
+   ],
+   "config_hash": "confhash",
+   "contract_endpoint_owners": {
+    "POST /items": "backend/routes.py"
+   },
+   "contract_probes": [
+    {
+     "expect": {
+      "json_has": [
+       "id"
+      ],
+      "status": 201
+     },
+     "id": "vc-probe-create",
+     "request": {
+      "json": {
+       "title": "x"
+      },
+      "method": "POST",
+      "path": "/items"
+     },
+     "subject": "backend"
+    },
+    {
+     "expect": {
+      "error_code": "duplicate_item",
+      "status": 409
+     },
+     "id": "vc-probe-dup",
+     "request": {
+      "json": {
+       "title": "x"
+      },
+      "method": "POST",
+      "path": "/items"
+     },
+     "subject": "backend"
+    }
+   ],
+   "dom_testid_surface": [
+    "`RunsListView` (route `/`): root container `runs-list`; anchors: `runs-list`, `run-item`, `run-participant-count`, `empty-state`, `create-run-link`",
+    "`CreateRunView` (route `/create`): root container `create-run-view`; anchors: `create-run-view`, `create-run-form`, `field-title`, `field-datetime`, `field-location`, `field-distance`, `field-pace-target`, `field-route-notes`, `submit-create`, `form-error`",
+    "`RunDetailView` (route `/runs/:id`): root container `run-detail`; anchors: `run-detail`, `participant-list`, `participant-item`, `join-form`, `join-name-input`, `join-submit`, `leave-form`, `leave-name-input`, `leave-submit`, `action-error`, `not-found`"
+   ],
+   "expected_artifacts": [
+    "backend/tests/test_items.py"
+   ],
+   "implementation_artifacts": [
+    "backend/routes.py"
+   ],
+   "prd": "PRD-CONTENT",
+   "profile_roles": [
+    "data",
+    "dev",
+    "lead",
+    "qa",
+    "strat"
+   ],
+   "resolved_config": {
+    "contract_ref": "art_c",
+    "implementation_plan": true
+   },
+   "role_index": 1,
+   "role_total": 1,
+   "subtask_description": "author the API suite",
+   "subtask_focus": "suite",
+   "subtask_index": 1
+  }
+ }
+}
