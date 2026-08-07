@@ -30,6 +30,13 @@ to a guard plus wiring; Track M gains an explicit **gates-before-author** build 
 the `success_status` rider is upgraded from a schema-tidiness argument to a live latent
 defect with a reproduction.
 
+**Revised 2026-08-07 — verification cadence added.** The plan named gates but left *when a
+cycle is worth running* to be improvised. V1–V8 below make it explicit, and two of them are
+corrections rather than additions: the seeded-mode control observation **moves earlier**
+(one shakedown at the cut is a claim, not a control — it needs a clean baseline to compare
+against), and a **pre-registration viability run** is added, because pre-registering a
+window for a capability that has never once succeeded wastes the window.
+
 ## Character
 
 An **even minor**: a feature release led by headline SIPs, which gate the version.
@@ -602,9 +609,68 @@ forward," intention 5.
 
 ---
 
+## Verification cadence — when a cycle is actually worth running
+
+Most of this release is **offline and deterministic**: M0a is a fixture test, M0b is
+seed-time wiring, M3/M2/M6 are gates provable against hand-made manifests. Running cycles
+through that stretch burns budget to learn nothing. The first work that *requires* a live
+cycle to mean anything is M1.
+
+Cycles need a deployed image, so the cadence below is also the deploy cadence: batch the
+offline work, deploy, run the verification that fits what just landed.
+
+| # | Trigger | What runs | Kind |
+|---|---|---|---|
+| **V1** | queue front deployed | Two targeted **create probes**, no full cycle: a bind-mode create with no contributors must 422 (#762 live), the implementation-only replay shape must still be accepted (the false-positive check). Plus a boot check that #766's disclosure line appears exactly once and the vendor `ERROR` is gone | diagnostic |
+| **V2** | **after M0b, before M1** | **Guard 1b** (reference manifest → byte-identical downstream artifacts) **+ a full seeded-mode control cycle** | diagnostic — **and it banks the control** |
+| **V3** | M3 / M2 / M6 landing | **No cycles.** Adversarial hand-made manifests against the gates, including #772's `success_status` trap as the designed-failure probe | — |
+| **V4** | M1 lands | **First authored cycles, unscored.** Several, expected | diagnostic |
+| **V5** | M4 / M5 land | Integration shakedown — the full authored path with the HITL gate, provenance stamping, and B1 emitting | diagnostic |
+| **V6** | before pre-registration | **Authored-mode viability run** — has this succeeded even once? | diagnostic; **gates V7** |
+| **V7** | frozen deploy | **The authored-mode FAY window.** Pre-registered N, unfiltered | **evidentiary** |
+| **V8** | at the cut | Confirmation shakedown on the integrated line **+ the seeded control re-run** (compared against V2) | diagnostic |
+
+### The rule that keeps these from blurring
+
+> **A shakedown is diagnostic and you fix what it finds. A window is evidence and you fix
+> nothing until it closes.**
+
+V4–V6 are where reacting to what you see is the *point*. V7 is where reacting invalidates
+the measurement. The 1.4 arc pre-registered its window precisely because those two collapse
+into each other under pressure.
+
+### V4's failures are the product, not a setback
+
+The first authored cycles failing at the winnability gate **is the system working** — the
+gate doing in seconds what would otherwise cost a full implementation to discover. The thing
+to watch at V4 is not the pass rate. It is whether **M6's taxonomy can name which subsystem
+to blame**: authoring defect, schema gap, blueprint limitation, derivation defect, or PRD
+insufficiency. If every V4 failure lands in one undifferentiated bucket, M6 is not finished
+and V7 will produce a number nobody can act on.
+
+### Why V2 sits where it does
+
+M0b changes *which contract a cycle runs against*, on the path **seeded mode uses too**. The
+moment right after M0b is the last one where the pipeline is fully deterministic and any red
+is unambiguously ours rather than ambiguous between our change and model variance. Banking
+the seeded green there, and re-running it at V8, turns one observation at the cut into an
+actual control with a clean baseline between the two. See "Protecting seeded mode" below.
+
+### Why V6 exists
+
+Pre-registering a window for a capability that has **never once succeeded** wastes the
+window. The FAY methodology set its 1.4 bar at ≥4/6 because there was reason to believe it
+was achievable; V6 is the cheap answer to *do we have reason to believe?* It is explicitly
+**not part of the window** and its rolls are not counted — recorded here so a later reader
+cannot mistake it for a filtered first attempt.
+
+---
+
 ## Gates
 
-**Gate 1 — design commitments and enabling proofs.** SIP-0103 §6's open questions resolved
+Each gate names the verification that closes it.
+
+**Gate 1 — design commitments and enabling proofs.** *(Verification: V1, then V2.)* SIP-0103 §6's open questions resolved
 (authoring decomposition first among them); **M0's derivation proof is already banked** (measured
 2026-08-07, zero diffs) — Gate 1 instead requires M0a's standing equivalence guard merged and
 M0b's derive-at-seed landed; S1's consolidation merged; the manifest-v5 migration posture
@@ -612,15 +678,15 @@ recorded. **S2 is already settled** — Node/TypeScript,
 ruled 2026-08-07 at plan time. *Exit:* no release-defining work starts against an unresolved
 design question.
 
-**Gate 2 — the authoring loop closes.** M1–M4 land, with M6's taxonomy in place before any authored manifest is rejected (a rejection recorded without a class is data lost); an authored manifest passes schema and
+**Gate 2 — the authoring loop closes.** *(Verification: V3, then V4.)* M1–M4 land, with M6's taxonomy in place before any authored manifest is rejected (a rejection recorded without a class is data lost); an authored manifest passes schema and
 winnability gates, reaches the HITL gate, and — post-approval — runs the existing pipeline
 end to end with no mode branch below framing (Guard 1's architecture test green).
 
-**Gate 3 — integration.** M5 provenance and M6's taxonomy; S3 promotion with the two-stack schema (bend register + falsification pass) and S5's admission rule recorded; B1 emitting both dimensions;
+**Gate 3 — integration.** *(Verification: V5, then V6.)* M5 provenance and M6's taxonomy; S3 promotion with the two-stack schema (bend register + falsification pass) and S5's admission rule recorded; B1 emitting both dimensions;
 enabling riders (SIP-0093 completion, SIP-0102 steps 3–4) landed. Deploy window with
 loaded-module verification, per the 1.5 precedent.
 
-**Cut gate.**
+**Cut gate.** *(Verification: V7, then V8.)*
 1. **Core-claim gate:** M0–M6 and S1–S3 + S5 complete; B1 emitting both dimensions. Removal of any item requires an
    owner-ratified scope change.
 2. **Capacity roll:** unfinished capacity items → 1.7 pool with a milestone update.
@@ -629,7 +695,7 @@ loaded-module verification, per the 1.5 precedent.
 4. **The measurement:** authored-mode FAY window — pre-registered N, unfiltered, frozen deploy.
    **Gate: FAY repeatably > 0 in authored-manifest mode**, banked as the authored-mode baseline
    that 1.8's memory and campaign work measure against.
-5. **The control is protected** — see below.
+5. **The control is protected** — the V2 seeded baseline and its V8 re-run, see below.
 6. **Confirmation shakedown** on the fully integrated line, green, per the 1.4/1.5 cadence.
 
 ### Protecting seeded mode — the control cannot be left uncontrolled
@@ -645,9 +711,13 @@ measurement cost. Three cheaper mechanisms cover the same class, and they are re
 1. **Guard 1b** — the reference manifest through authored mode must produce byte-identical
    downstream artifacts. This catches transformation regressions structurally, before any
    window runs.
-2. **The confirmation shakedown runs in seeded mode explicitly**, not in whichever mode is
-   convenient. The cut already requires a shakedown; this fixes its configuration so it
-   functions as a control observation.
+2. **Two seeded observations with a clean baseline between them, not one at the cut.**
+   The original form of this item put a single seeded shakedown at the cut, which is a
+   *claim*, not a control: with nothing to compare against, a degraded number is
+   indistinguishable from a number that was always that. So the seeded control cycle runs
+   at **V2** — immediately after M0b, the last moment the pipeline is fully deterministic
+   and a red is unambiguously ours — and is **re-run at V8** on the integrated line. The
+   comparison is the control; either observation alone is not.
 3. **Replay zero-diff over the 1.5 green corpus** — the #734 method, already proven at the
    1.5 cut: stored evaluation rows re-evaluate identically under the new code.
 
