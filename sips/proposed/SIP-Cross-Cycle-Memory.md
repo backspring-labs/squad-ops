@@ -117,6 +117,25 @@ against stored plans via the SIP-0101 replay harness plus live rolls.
    deterministic and class-labeled by construction, so encoding quality is not dependent
    on model judgment on day one.
 
+### 3a. Exhibits — the 1.5 shakedown's recurrence evidence (added 2026-08-07)
+
+Two work-product reds from the Gate-2 exit shakedown (shk-6, 2026-08-05/06) are this
+SIP's failure classes recurring on a fresh deploy, with the enforcement machinery
+verified clean both times:
+
+- **Shadow-store class** (roll-4, the A4 termination's true positive): dev re-implemented
+  an in-memory store parallel to the scaffold-owned one, and the correction chain burned
+  its budget against a defect class prior cycles had already exhibited — the
+  zero-progress chain terminated honestly (`plan_defect`), but nothing *taught* the next
+  cycle's dev what the prior one learned.
+- **Import class** (wrap-up roll-1): the moving failure chain (collection failure →
+  CORS assertion) reprised the unresolved-import family that the #591 pre-gate and #689
+  exist for — caught in-cycle, invisible across cycles.
+
+Both are Phase-1 seed-corpus material by construction (deterministic, class-labeled
+evidence already persisted in gate decisions and failure analyses). Recorded here so the
+acceptance decision weighs live recurrence, not hypotheticals.
+
 ## 4. Design principles
 
 - **Behavioral, not factual.** "The `location` field is required" helps only on re-runs
