@@ -76,7 +76,16 @@ class LangFuseAdapter(LLMObservabilityPort):
     handles all flushing to LangFuse.
     """
 
-    def __init__(self, config: LangFuseConfig) -> None:
+    def __init__(self, config: LangFuseConfig, prompt_asset_provider: str = "filesystem") -> None:
+        """
+        Args:
+            config: resolved LangFuse observability configuration.
+            prompt_asset_provider: the value of ``PromptsConfig.asset_source_provider``
+                (SIP-0084), passed in at the composition root. The adapter is *told*
+                where prompt assets come from rather than reading config itself, so the
+                fact lives in exactly one place (#766). Defaults to ``filesystem`` to
+                match the schema default — the real-world path, not the convenient one.
+        """
         # Lazy-import the SDK — fails here if not installed
         try:
             from langfuse import Langfuse  # noqa: F401
@@ -96,6 +105,25 @@ class LangFuseAdapter(LLMObservabilityPort):
         self._shutdown = threading.Event()
         self._flush_requested = threading.Event()
         self._last_overflow_warning = 0.0  # Protected by _lock
+
+        self._prompt_linkage_enabled = prompt_asset_provider == "langfuse"
+        if not self._prompt_linkage_enabled:
+            # #766: declared, not silently absent. Prompt→generation linkage cannot
+            # work when assets come from anywhere but Langfuse's own prompt registry
+            # — the version namespaces are independent — so state the gap once at
+            # construction rather than emitting a vendor ERROR per generation or,
+            # worse, leaving the feature quietly inert.
+            logger.info(
+                "langfuse_prompt_linkage_disabled",
+                extra={
+                    "prompt_asset_provider": prompt_asset_provider,
+                    "detail": (
+                        "generations will not be linked to prompt versions: prompt "
+                        "assets are sourced from "
+                        f"'{prompt_asset_provider}', not Langfuse's prompt registry"
+                    ),
+                },
+            )
 
         # Redaction applied before enqueue
         self._redaction = get_redaction_strategy(config.redaction_mode)
@@ -461,7 +489,16 @@ class LangFuseAdapter(LLMObservabilityPort):
 
         Returns the prompt object on success, None on any failure (best-effort).
         Called from the background flush thread — must not raise.
+
+        Skipped entirely unless prompt assets are sourced from Langfuse (#766). Under
+        any other provider the name/version pair addresses a registry that has never
+        seen this prompt, so the call cannot succeed for any asset at any version —
+        it only produces a vendor-logged ERROR per generation. A 404 under the
+        ``langfuse`` provider is a different thing: legitimate, informative, and still
+        caught below.
         """
+        if not self._prompt_linkage_enabled:
+            return None
         try:
             kwargs: dict[str, Any] = {"name": prompt_name}
             if prompt_version is not None:

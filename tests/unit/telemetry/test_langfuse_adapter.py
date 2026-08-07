@@ -75,8 +75,12 @@ def _inject_fake_langfuse():
     return fake, mock_client
 
 
-def _create_adapter(config=None):
-    """Create a LangFuseAdapter with injected fake SDK."""
+def _create_adapter(config=None, prompt_asset_provider="filesystem"):
+    """Create a LangFuseAdapter with injected fake SDK.
+
+    ``prompt_asset_provider`` defaults to ``filesystem`` to match PromptsConfig's
+    default — the deployed path (#766), not the convenient one.
+    """
     fake_mod, mock_client = _inject_fake_langfuse()
     old = sys.modules.get("langfuse")
     sys.modules["langfuse"] = fake_mod
@@ -85,7 +89,11 @@ def _create_adapter(config=None):
     try:
         from adapters.telemetry.langfuse.adapter import LangFuseAdapter
 
-        return LangFuseAdapter(config or _make_config()), mock_client, old
+        return (
+            LangFuseAdapter(config or _make_config(), prompt_asset_provider),
+            mock_client,
+            old,
+        )
     except Exception:
         # Restore on failure
         if old is None:
@@ -376,8 +384,12 @@ class TestPromptToGenerationLinkage:
     def test_generation_with_prompt_name_resolves_and_links(self):
         """Bug caught: generation() called without prompt kwarg — Langfuse UI
         never shows prompts as 'used in a generation'.
+
+        Provider made explicit by #766: linkage is only attempted when prompt assets
+        come from Langfuse's own registry. The assertion is unchanged — this still
+        guards "does linkage fire when it should".
         """
-        a, mock_client, old = _create_adapter()
+        a, mock_client, old = _create_adapter(prompt_asset_provider="langfuse")
         try:
             fake_prompt_obj = MagicMock()
             mock_client.get_prompt.return_value = fake_prompt_obj
@@ -427,8 +439,14 @@ class TestPromptToGenerationLinkage:
     def test_prompt_resolution_failure_still_records_generation(self):
         """Bug caught: if get_prompt raises (e.g. prompt not in Langfuse),
         the generation must still be recorded without the prompt link.
+
+        Provider made explicit by #766: a 404 under the ``langfuse`` provider is a
+        legitimate, informative failure — the prompt genuinely is not registered at
+        that version — and this guards that it degrades rather than losing the
+        observation. The filesystem case is a different thing entirely (the call is
+        never made) and is covered by TestPromptLinkageProviderAwareness.
         """
-        a, mock_client, old = _create_adapter()
+        a, mock_client, old = _create_adapter(prompt_asset_provider="langfuse")
         try:
             mock_client.get_prompt.side_effect = Exception("not found")
 
@@ -448,3 +466,93 @@ class TestPromptToGenerationLinkage:
             assert "prompt" not in task_span.generation.call_args[1]
         finally:
             _cleanup_adapter(a, old)
+
+
+class TestPromptLinkageProviderAwareness:
+    """#766: the prompt lookup is skipped when it cannot possibly succeed.
+
+    Bug classes guarded: (a) calling Langfuse's prompt registry with a *filesystem*
+    asset's version — a cross-registry lookup that 404s for every asset at every
+    version and emits a vendor-logged ERROR per generation; (b) losing the
+    generation observation itself while skipping the linkage; (c) the skip being
+    silent, which leaves an inert capability looking like a working one.
+    """
+
+    def test_filesystem_provider_never_calls_the_prompt_registry(self):
+        """The regression that would reintroduce one vendor ERROR per generation.
+
+        prompt_name AND prompt_version are both present — the exact shape that
+        produced `Prompt not found: 'request.planning_task_base' with version 3`
+        on every authoring agent during shk-7.
+        """
+        a, mock_client, old = _create_adapter(prompt_asset_provider="filesystem")
+        try:
+            ctx = _make_ctx()
+            from adapters.telemetry.langfuse.adapter import _BufferEntry, _EventType
+
+            a._process_entry(_BufferEntry(_EventType.START_CYCLE, ctx, None))
+            a._process_entry(_BufferEntry(_EventType.START_TASK, ctx, None))
+
+            record = _make_record(prompt_name="request.planning_task_base", prompt_version=3)
+            a._process_entry(_BufferEntry(_EventType.GENERATION, ctx, (record, _make_layers())))
+
+            mock_client.get_prompt.assert_not_called()
+        finally:
+            _cleanup_adapter(a, old)
+
+    def test_skipping_linkage_never_costs_the_generation(self):
+        """Observability must degrade, not disappear: the generation is still
+        recorded, just without a prompt kwarg.
+        """
+        a, mock_client, old = _create_adapter(prompt_asset_provider="filesystem")
+        try:
+            ctx = _make_ctx()
+            from adapters.telemetry.langfuse.adapter import _BufferEntry, _EventType
+
+            a._process_entry(_BufferEntry(_EventType.START_CYCLE, ctx, None))
+            a._process_entry(_BufferEntry(_EventType.START_TASK, ctx, None))
+
+            record = _make_record(prompt_name="request.planning_task_base", prompt_version=3)
+            a._process_entry(_BufferEntry(_EventType.GENERATION, ctx, (record, _make_layers())))
+
+            tk = ctx.trace_id or ctx.cycle_id
+            task_span = a._span_state[f"task:{tk}:{ctx.task_id}"]
+            task_span.generation.assert_called_once()
+            assert "prompt" not in task_span.generation.call_args[1]
+            # the observation itself is intact
+            assert task_span.generation.call_args[1]["model"] == record.model
+        finally:
+            _cleanup_adapter(a, old)
+
+    def test_disabled_linkage_is_declared_once_at_construction(self, caplog):
+        """A silent skip leaves an inert capability indistinguishable from a working
+        one. Declared once — not per generation, which would trade an ERROR per
+        cycle for an INFO per cycle and fix nothing.
+        """
+        import logging
+
+        with caplog.at_level(logging.INFO, logger="adapters.telemetry.langfuse.adapter"):
+            a, _mock_client, old = _create_adapter(prompt_asset_provider="filesystem")
+            try:
+                disclosures = [
+                    r for r in caplog.records if r.msg == "langfuse_prompt_linkage_disabled"
+                ]
+                assert len(disclosures) == 1
+                assert disclosures[0].prompt_asset_provider == "filesystem"
+            finally:
+                _cleanup_adapter(a, old)
+
+    def test_langfuse_provider_stays_silent_about_disablement(self):
+        """No disclosure when linkage is actually enabled."""
+        import logging
+
+        from _pytest.logging import LogCaptureHandler, catching_logs
+
+        with catching_logs(LogCaptureHandler(), level=logging.INFO) as handler:
+            a, _mock_client, old = _create_adapter(prompt_asset_provider="langfuse")
+            try:
+                assert not [
+                    r for r in handler.records if r.msg == "langfuse_prompt_linkage_disabled"
+                ]
+            finally:
+                _cleanup_adapter(a, old)

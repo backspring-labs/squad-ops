@@ -411,7 +411,10 @@ class AgentRunner:
         metrics, events = create_telemetry_provider(telemetry_backend)
 
         # Create LLM observability (SIP-0061)
-        llm_observability = create_llm_observability_provider(config=config.langfuse)
+        llm_observability = create_llm_observability_provider(
+            config=config.langfuse,
+            prompt_asset_provider=config.prompts.asset_source_provider,
+        )
 
         # Create filesystem adapter
         filesystem = LocalFileSystemAdapter()

@@ -300,7 +300,10 @@ async def _init_cycle_subsystem(config, pool) -> None:
         from adapters.telemetry.factory import create_llm_observability_provider
 
         queue_adapter = RabbitMQAdapter(url=RABBITMQ_URL)
-        llm_obs = create_llm_observability_provider(config=config.langfuse)
+        llm_obs = create_llm_observability_provider(
+            config=config.langfuse,
+            prompt_asset_provider=config.prompts.asset_source_provider,
+        )
 
         # SIP-0094: per-agent reply-queue router. Holds one long-lived
         # subscription per agent (opened lazily on first dispatch) and resolves
