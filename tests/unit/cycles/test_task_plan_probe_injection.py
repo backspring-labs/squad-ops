@@ -366,3 +366,115 @@ def test_probe_less_contract_injects_no_endpoint_owners():
     cycle, run, profile = _implementation_setup()
     envs = generate_task_plan(cycle, run, profile, plan=None, contract=_contract(with_probes=False))
     assert all("contract_endpoint_owners" not in e.inputs for e in envs)
+
+
+# ---------------------------------------------------------------------------
+# #730 D1 / #504: fill_slot_signature injection
+# ---------------------------------------------------------------------------
+
+
+def _plan_claiming(artifacts, task_type="development.develop", role="dev"):
+    import yaml as _yaml
+
+    from squadops.cycles.implementation_plan import ImplementationPlan
+
+    return ImplementationPlan.from_yaml(
+        _yaml.safe_dump(
+            {
+                "version": 1,
+                "project_id": "p",
+                "cycle_id": "cy",
+                "prd_hash": "h",
+                "tasks": [
+                    {
+                        "task_index": 0,
+                        "task_type": task_type,
+                        "role": role,
+                        "focus": "f",
+                        "description": "d",
+                        "expected_artifacts": list(artifacts),
+                        "acceptance_criteria": [],
+                        "depends_on": [],
+                        "criteria_refs": [],
+                    }
+                ],
+                "summary": {"total_dev_tasks": 1, "total_qa_tasks": 0, "total_tasks": 1},
+            }
+        )
+    )
+
+
+def _fill_slot_checks(envs, task_type):
+    return [
+        c
+        for e in envs
+        if e.task_type == task_type
+        for c in e.inputs.get("acceptance_criteria", [])
+        if getattr(c, "check", None) == "fill_slot_signature"
+    ]
+
+
+def test_dev_task_claiming_a_py_fill_slot_gets_the_signature_check():
+    """The pf-40 report, promoted: a dev task authoring backend/routes.py must
+    carry the scaffold's declared signature surface as SELF-CONTAINED params —
+    the evaluator has no scaffold access, so a missing injection silently
+    un-enforces the whole class."""
+    cycle, run, profile = _implementation_setup()
+    envs = generate_task_plan(
+        cycle,
+        run,
+        profile,
+        plan=_plan_claiming(["backend/routes.py"]),
+        contract=_contract(),
+        interface_manifest=_testid_manifest(),
+    )
+    checks = _fill_slot_checks(envs, "development.develop")
+    assert len(checks) == 1
+    assert checks[0].params["file"] == "backend/routes.py"
+    routes = checks[0].params["routes"]
+    assert routes, "declared route surface must be non-empty for the routes slot"
+    assert all({"route", "function", "params"} <= set(r) for r in routes)
+    assert checks[0].id == "fill-slot-signature:backend/routes.py"
+
+
+def test_no_manifest_injects_nothing():
+    cycle, run, profile = _implementation_setup()
+    envs = generate_task_plan(
+        cycle, run, profile, plan=_plan_claiming(["backend/routes.py"]), contract=_contract()
+    )
+    assert _fill_slot_checks(envs, "development.develop") == []
+
+
+def test_non_fill_slot_py_artifact_injects_nothing():
+    """A dev task authoring a NON-slot .py file must not carry the check —
+    there is no scaffold-owned signature to enforce on free files."""
+    cycle, run, profile = _implementation_setup()
+    envs = generate_task_plan(
+        cycle,
+        run,
+        profile,
+        plan=_plan_claiming(["backend/services.py"]),
+        contract=_contract(),
+        interface_manifest=_testid_manifest(),
+    )
+    assert _fill_slot_checks(envs, "development.develop") == []
+
+
+def test_jsx_fill_slots_are_out_of_scope():
+    """The .jsx view slots are #668/D3's territory — a .py-scoped check
+    injected on them could only ever skip (the pf-47/pf-49 dead-weight class)."""
+    cycle, run, profile = _implementation_setup()
+    envs = generate_task_plan(
+        cycle,
+        run,
+        profile,
+        plan=_plan_claiming(["frontend/src/views/RunsListView.jsx"]),
+        contract=_contract(),
+        interface_manifest=_testid_manifest(),
+    )
+    assert _fill_slot_checks(envs, "development.develop") == []
+
+
+# A qa.test task claiming a fill slot is unreachable: the qa-artifact-
+# ownership validation net rejects the plan outright (verified while writing
+# these tests) — the dev-only guard has no reachable counterexample to pin.

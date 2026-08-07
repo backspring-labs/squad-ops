@@ -524,3 +524,71 @@ def divergence_summary(divergences: list[DecoratorDivergence]) -> str:
         f"{'restored' if d.restored else 'observed'} {d.method} {d.path}: {d.detail}"
         for d in ordered
     )
+
+
+def declared_route_signatures(seed_source: str) -> list[dict[str, object]]:
+    """The scaffold-owned signature surface of a fill-slot seed (#730 D1/#504).
+
+    Self-contained check params for ``fill_slot_signature``: one dict per
+    seeded route carrying the reported-not-restored elements (handler name,
+    parameter names, ``response_model`` when declared). status_code and the
+    router assignment are absent on purpose — those are RESTORED at storage
+    (SIP-0100) and checking them here would fail emissions the enforcement
+    layer silently fixes. Empty for a seed with no routes (or unparseable —
+    a scaffold that cannot parse its own seed has bigger problems than this
+    check).
+    """
+    out: list[dict[str, object]] = []
+    for route in _routes(seed_source):
+        sig: dict[str, object] = {
+            "route": f"{route.method.upper()} {route.path}",
+            "function": route.func_name,
+            "params": list(route.arg_names),
+        }
+        if route.response_model:
+            sig["response_model"] = route.response_model
+        out.append(sig)
+    return out
+
+
+def signature_divergences(declared: list[dict], emitted_source: str) -> list[str]:
+    """Diff an emission's routes against declared signature params (#730 D1).
+
+    Matching is by normalized ``(method, path)`` — the same ``_route_key`` the
+    restore path uses, so a renamed path *parameter* still matches its scaffold
+    counterpart. A declared route absent from the emission contributes nothing:
+    that is ``endpoint_defined``'s job, and reporting it twice would make one
+    defect look like two. Unparseable emissions return no divergences — the
+    caller owns the skip (the syntax gate reports those).
+    """
+    emitted = {_route_key(r.method, r.path): r for r in _routes(emitted_source)}
+    details: list[str] = []
+    for sig in declared:
+        if not isinstance(sig, dict):
+            continue
+        route_token = str(sig.get("route", ""))
+        method, _, path = route_token.partition(" ")
+        if not method or not path:
+            continue
+        got = emitted.get(_route_key(method, path))
+        if got is None:
+            continue
+        want_model = sig.get("response_model")
+        if want_model and got.response_model != want_model:
+            details.append(
+                f"{route_token}: response_model={want_model} declared by the scaffold, "
+                f"emitted as {got.response_model or 'absent'}"
+            )
+        want_fn = sig.get("function")
+        if want_fn and got.func_name != want_fn:
+            details.append(
+                f"{route_token}: scaffold-owned handler name {want_fn!r} emitted as "
+                f"{got.func_name!r}"
+            )
+        want_params = sig.get("params")
+        if isinstance(want_params, list) and tuple(str(p) for p in want_params) != got.arg_names:
+            details.append(
+                f"{route_token}: scaffold-owned parameters {[str(p) for p in want_params]} "
+                f"emitted as {list(got.arg_names)}"
+            )
+    return details

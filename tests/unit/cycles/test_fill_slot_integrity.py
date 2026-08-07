@@ -520,3 +520,87 @@ class TestParseBackstop:
         assert len(status_divs) == 1
         assert status_divs[0].restored is False  # the evidence never claims a dead restore
         assert "restore abandoned" in status_divs[0].detail
+
+
+# ---------------------------------------------------------------------------
+# #730 D1 / #504: the reported surface as self-contained check params
+# ---------------------------------------------------------------------------
+
+from squadops.cycles.fill_slot_integrity import (  # noqa: E402
+    declared_route_signatures,
+    signature_divergences,
+)
+
+_SEED = """
+from fastapi import APIRouter
+router = APIRouter(prefix="/api/v1")
+
+@router.post("/runs", response_model=RunEvent, status_code=201)
+def create_run(payload):
+    ...
+
+@router.get("/runs/{run_id}")
+def get_run(run_id):
+    ...
+"""
+
+
+class TestDeclaredRouteSignatures:
+    def test_extracts_the_reported_surface_only(self):
+        """The params must carry exactly the reported-not-restored elements —
+        status_code appearing here would fail emissions the SIP-0100 restore
+        silently fixes (a check fighting its own enforcement layer)."""
+        sigs = declared_route_signatures(_SEED)
+        assert sigs == [
+            {
+                "route": "POST /runs",
+                "function": "create_run",
+                "params": ["payload"],
+                "response_model": "RunEvent",
+            },
+            {"route": "GET /runs/{run_id}", "function": "get_run", "params": ["run_id"]},
+        ]
+
+    def test_routeless_or_unparseable_seed_declares_nothing(self):
+        assert declared_route_signatures("x = 1\n") == []
+        assert declared_route_signatures("def broken(:\n") == []
+
+
+class TestSignatureDivergences:
+    def test_compliant_emission_diverges_nowhere(self):
+        assert signature_divergences(declared_route_signatures(_SEED), _SEED) == []
+
+    def test_each_reported_element_produces_its_divergence(self):
+        """The pf-40 drift classes, now costed: renamed handler, renamed
+        params, dropped response_model — each named individually so the
+        repair evidence says exactly what to put back."""
+        emitted = _SEED.replace("create_run(payload)", "make_run(data)").replace(
+            ", response_model=RunEvent", ""
+        )
+        details = signature_divergences(declared_route_signatures(_SEED), emitted)
+        assert len(details) == 3
+        assert any("response_model=RunEvent" in d and "absent" in d for d in details)
+        assert any("'create_run'" in d and "'make_run'" in d for d in details)
+        assert any("['payload']" in d and "['data']" in d for d in details)
+
+    def test_renamed_path_parameter_still_matches_its_route(self):
+        """The pf-31 rename class: `{run_id}` → `{id}` must still match the
+        scaffold counterpart (normalized key) — and the path-param rename
+        surfaces as a PARAMETER divergence, not a silent non-match."""
+        emitted = _SEED.replace("{run_id}", "{id}").replace("get_run(run_id)", "get_run(id)")
+        details = signature_divergences(declared_route_signatures(_SEED), emitted)
+        assert len(details) == 1
+        assert "['run_id']" in details[0] and "['id']" in details[0]
+
+    def test_dropped_route_is_not_this_checks_failure(self):
+        """A route absent from the emission is endpoint_defined's job —
+        reporting it here would make one defect look like two."""
+        emitted = "\n".join(
+            line for line in _SEED.splitlines() if "get_run" not in line and "{run_id}" not in line
+        )
+        details = signature_divergences(declared_route_signatures(_SEED), emitted)
+        assert details == []
+
+    def test_unparseable_emission_diverges_nowhere(self):
+        # The syntax gate owns broken emissions; the caller owns the skip.
+        assert signature_divergences(declared_route_signatures(_SEED), "def broken(:\n") == []

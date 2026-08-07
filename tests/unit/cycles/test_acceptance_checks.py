@@ -1533,3 +1533,73 @@ def test_undefined_names_is_framework_injected_and_out_of_the_authoring_vocabula
     assert "undefined_names" not in render_typed_acceptance_vocabulary()
     # Every other check stays advertised — the flag must not hide the vocabulary.
     assert "endpoint_defined" in render_typed_acceptance_vocabulary()
+
+
+# ---------------------------------------------------------------------------
+# fill_slot_signature (#730 D1 / #504)
+# ---------------------------------------------------------------------------
+
+_FILL_SEED_ROUTES = [
+    {
+        "route": "POST /runs",
+        "function": "create_run",
+        "params": ["payload"],
+        "response_model": "RunEvent",
+    }
+]
+
+_COMPLIANT_SLOT = """
+from fastapi import APIRouter
+router = APIRouter()
+
+@router.post("/runs", response_model=RunEvent, status_code=201)
+def create_run(payload):
+    return payload
+"""
+
+
+class TestFillSlotSignature:
+    async def test_divergent_signature_fails_with_the_divergence_list(self, tmp_path):
+        """The pf-40 promotion: drift on a reported element now costs the
+        producer an acceptance failure carrying exactly what to put back —
+        instead of a log line nobody's repair ever read."""
+        (tmp_path / "routes.py").write_text(
+            _COMPLIANT_SLOT.replace("create_run(payload)", "make_run(data)")
+        )
+        result = await get_check("fill_slot_signature").evaluate(
+            {"file": "routes.py", "routes": list(_FILL_SEED_ROUTES)}, tmp_path
+        )
+        assert result.status == "failed"
+        assert "'create_run'" in result.reason and "'make_run'" in result.reason
+        assert len(result.actual["divergences"]) == 2  # handler name + params
+
+    async def test_compliant_slot_passes(self, tmp_path):
+        (tmp_path / "routes.py").write_text(_COMPLIANT_SLOT)
+        result = await get_check("fill_slot_signature").evaluate(
+            {"file": "routes.py", "routes": list(_FILL_SEED_ROUTES)}, tmp_path
+        )
+        assert result.status == "passed"
+
+    async def test_syntax_broken_emission_skips_not_fails(self, tmp_path):
+        # The syntax gate owns unparseable emissions (one defect, one report).
+        (tmp_path / "routes.py").write_text("def broken(:\n")
+        result = await get_check("fill_slot_signature").evaluate(
+            {"file": "routes.py", "routes": list(_FILL_SEED_ROUTES)}, tmp_path
+        )
+        assert result.status == "skipped"
+        assert result.reason == "unsupported_stack_or_syntax"
+
+    async def test_missing_declaration_is_an_injection_bug_not_an_app_gap(self, tmp_path):
+        (tmp_path / "routes.py").write_text(_COMPLIANT_SLOT)
+        result = await get_check("fill_slot_signature").evaluate(
+            {"file": "routes.py", "routes": []}, tmp_path
+        )
+        assert result.status == "error"
+        assert result.reason == "missing_route_declaration"
+
+    async def test_missing_file_fails(self, tmp_path):
+        result = await get_check("fill_slot_signature").evaluate(
+            {"file": "routes.py", "routes": list(_FILL_SEED_ROUTES)}, tmp_path
+        )
+        assert result.status == "failed"
+        assert result.reason == "file_not_found"

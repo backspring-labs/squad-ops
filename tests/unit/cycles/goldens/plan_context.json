@@ -350,7 +350,8 @@
   },
   "01:development.develop": {
    "acceptance_criteria": [
-    "TypedCheck(check='endpoint_defined', params={'methods_paths': ['POST /items'], 'file': 'backend/routes.py'}, severity='error', description='', id='vc-routes-endpoints')"
+    "TypedCheck(check='endpoint_defined', params={'methods_paths': ['POST /items'], 'file': 'backend/routes.py'}, severity='error', description='', id='vc-routes-endpoints')",
+    "TypedCheck(check='fill_slot_signature', params={'file': 'backend/routes.py', 'routes': [{'route': 'GET /runs', 'function': 'get_runs', 'params': [], 'response_model': 'list[RunEvent]'}, {'route': 'POST /runs', 'function': 'post_runs', 'params': ['payload'], 'response_model': 'RunEvent'}, {'route': 'GET /runs/{run_id}', 'function': 'get_runs_run_id', 'params': ['run_id'], 'response_model': 'RunEvent'}, {'route': 'POST /runs/{run_id}/join', 'function': 'post_runs_run_id_join', 'params': ['run_id', 'payload'], 'response_model': 'RunEvent'}, {'route': 'POST /runs/{run_id}/leave', 'function': 'post_runs_run_id_leave', 'params': ['run_id', 'payload'], 'response_model': 'RunEvent'}]}, severity='error', description='', id='fill-slot-signature:backend/routes.py')"
    ],
    "agent_config_overrides": {},
    "agent_model": "m",
