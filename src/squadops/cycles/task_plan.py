@@ -31,7 +31,11 @@ from squadops.capabilities.scaffold import (
     is_qa_test_path_for_stack,
     testid_surface_instructions,
 )
-from squadops.cycles.acceptance_check_spec import CHECK_CONTRACT_ASSERTIONS, is_check_applicable
+from squadops.cycles.acceptance_check_spec import (
+    CHECK_CONTRACT_ASSERTIONS,
+    CHECK_FILL_SLOT_SIGNATURE,
+    is_check_applicable,
+)
 from squadops.cycles.agent_config import resolve_agent_config
 from squadops.cycles.failure_evidence import FailureLocus
 from squadops.cycles.implementation_plan import (
@@ -611,6 +615,50 @@ def _harness_boundary_criteria(
     ]
 
 
+def _fill_slot_signature_criteria(
+    task_type: str,
+    plan_task: Any,
+    interface_manifest: InterfaceManifest | None,
+) -> list[TypedCheck]:
+    """#730 D1 / #504: scaffold-owned ``fill_slot_signature`` checks for a dev task
+    authoring ``.py`` fill slots — the pf-40 report promoted to blocking. Params carry
+    the seed's declared signature surface (handler name, parameter names,
+    response_model), derived from the manifest via the same expander the bound record
+    uses, so the evaluator needs no scaffold access. Empty for manifest-less cycles,
+    non-scaffoldable stacks, non-dev tasks, and tasks that claim no ``.py`` fill slot
+    (the ``.jsx`` slots are #668/D3's territory). status_code and the router
+    assignment stay restore-owned (SIP-0100), deliberately outside this check."""
+    if task_type != "development.develop" or interface_manifest is None:
+        return []
+    from squadops.capabilities.scaffold import expand, fill_slot_paths, is_scaffoldable_stack
+    from squadops.cycles.bound_scaffold_record import _normalize
+    from squadops.cycles.fill_slot_integrity import declared_route_signatures
+
+    if not is_scaffoldable_stack(getattr(interface_manifest, "stack", "")):
+        return []
+    fill = {_normalize(p) for p in fill_slot_paths(interface_manifest)}
+    claimed = [
+        art
+        for art in plan_task.expected_artifacts
+        if art.endswith(".py") and _normalize(art) in fill
+    ]
+    if not claimed:
+        return []
+    seeds = {_normalize(f["name"]): f["content"] for f in expand(interface_manifest)}
+    checks: list[TypedCheck] = []
+    for art in claimed:
+        routes = declared_route_signatures(seeds.get(_normalize(art), ""))
+        if routes:
+            checks.append(
+                TypedCheck(
+                    check=CHECK_FILL_SLOT_SIGNATURE,
+                    params={"file": art, "routes": routes},
+                    id=f"fill-slot-signature:{art}",
+                )
+            )
+    return checks
+
+
 def _bind_plan_criteria(plan, contract):
     """#509: same deterministic binding the plan-validation gate applies —
     dispatch and validation must see one plan. Criterion linkage comes from
@@ -799,6 +847,11 @@ def generate_task_plan(
             # bound qa.test suite files — layer 1's authoring block is guidance,
             # this is the guarantee.
             acceptance.extend(_contract_assertion_criteria(task_type, plan_task, contract))
+            # #730 D1 / #504: scaffold-owned signature enforcement on .py fill
+            # slots — the pf-40 report, promoted to blocking.
+            acceptance.extend(
+                _fill_slot_signature_criteria(task_type, plan_task, interface_manifest)
+            )
             inputs["acceptance_criteria"] = acceptance
 
         _inject_contract_inputs(inputs, contract, task_type, interface_manifest)

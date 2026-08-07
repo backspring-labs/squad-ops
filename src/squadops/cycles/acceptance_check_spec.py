@@ -312,6 +312,11 @@ CHECK_UNDEFINED_NAMES = "undefined_names"
 # tests) — same single-source rule as the two above.
 CHECK_CONTRACT_ASSERTIONS = "contract_assertions_match"
 
+# #730 D1 / #504: the fill-slot signature surface, promoted from report to
+# blocking injected check. Constant beside its CHECK_SPECS key so a rename
+# moves both together.
+CHECK_FILL_SLOT_SIGNATURE = "fill_slot_signature"
+
 # #629 (1.5 A6/D2): the ADVISORY prose-vs-contract identity. Deliberately NOT a
 # ``CHECK_SPECS`` entry — that would make it plan-authorable; it names the
 # warning rows the plan-prose lint emits (``implementation_plan``), keeping its
@@ -599,6 +604,49 @@ CHECK_SPECS: dict[str, CheckSpec] = {
         signature_participation=False,
         outcome_contribution=True,
         replayable=False,
+        blocking_default="error",
+    ),
+    CHECK_FILL_SLOT_SIGNATURE: CheckSpec(
+        name=CHECK_FILL_SLOT_SIGNATURE,
+        applicable_extensions=frozenset({".py"}),
+        required_params=frozenset({"file", "routes"}),
+        param_types={"file": str, "routes": list},
+        supported_stacks=frozenset({"python"}),
+        requires_stack_context=False,
+        path_params=frozenset({"file"}),
+        framework_injected=True,
+        example={
+            "file": "backend/routes.py",
+            "routes": [
+                {
+                    "route": "POST /runs",
+                    "function": "create_run",
+                    "params": ["payload"],
+                    "response_model": "RunEvent",
+                }
+            ],
+        },
+        # #730 D1 / #504: pf-40's lesson made blocking. The stub header says
+        # "scaffold-owned signatures, fill-only bodies"; instruction wasn't
+        # enforcement, and SIP-0100's restore covers only the body-independent
+        # elements. The rest was report-only — drift was free. Now it fails
+        # acceptance with the divergence list as evidence, routing repair at
+        # the producer instead of the framework ever rewriting producer code.
+        notes=(
+            "Injected by the framework on tasks that author .py fill slots: the "
+            "slot's scaffold-owned signature surface — handler name, parameter "
+            "names, response_model — is diffed against the seed's declared "
+            "routes (params carry the declaration; the evaluator needs no "
+            "scaffold access). status_code and the router assignment are "
+            "restored at storage (SIP-0100), not checked here; a dropped route "
+            "is endpoint_defined's job. Never authored."
+        ),
+        failure_ownership=OWNERSHIP_PRODUCT,
+        # Fill slots are dev-lane emissions; qa authors suites, never slots.
+        qa_available=False,
+        signature_participation=True,
+        outcome_contribution=True,
+        replayable=True,
         blocking_default="error",
     ),
     CHECK_CONTRACT_ASSERTIONS: CheckSpec(

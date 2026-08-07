@@ -31,6 +31,7 @@ from typing import Any
 from squadops.cycles.acceptance_check_spec import (
     CHECK_CONTRACT_ASSERTIONS,
     CHECK_ENDPOINT_DEFINED,
+    CHECK_FILL_SLOT_SIGNATURE,
     CHECK_SPECS,
     CHECK_UNDEFINED_NAMES,
     FRONTEND_SUFFIXES,
@@ -468,6 +469,69 @@ def _prefixed_pinned_path(
         if m == method and path != p and path.endswith(p):
             return p
     return None
+
+
+@register_check(CHECK_FILL_SLOT_SIGNATURE)
+class FillSlotSignatureCheck(BaseCheck):
+    """The fill slot's scaffold-owned signature surface, enforced (#730 D1/#504).
+
+    pf-40: the stub header's "scaffold-owned signatures, fill-only bodies" was
+    instruction, not enforcement — the producer dropped response_model and
+    renamed the handler and its params, and only the body-independent elements
+    (status_code, router assignment) could be safely RESTORED at storage.
+    The rest was report-only, so the drift was free. This check makes it cost:
+    any divergence on a reported element fails acceptance with the divergence
+    list as evidence, routing repair at the producer — the framework never
+    rewrites producer code.
+
+    Params are self-contained (the #629 pattern): ``routes`` carries the
+    seed's declared signature surface, so evaluation needs no scaffold access.
+    A dropped route is ``endpoint_defined``'s job; an unparseable emission is
+    the syntax gate's.
+    """
+
+    async def evaluate(
+        self,
+        params: dict[str, Any],
+        workspace_root: Path,
+        *,
+        stack: str | None = None,
+    ) -> CheckOutcome:
+        try:
+            file_path = _safe_resolve(params["file"], workspace_root)
+        except _SafetyError as exc:
+            return CheckOutcome.error(reason=exc.reason)
+        if (skip := _unparseable_source_skip(file_path)) is not None:
+            return skip
+        if not file_path.is_file():
+            return CheckOutcome.failed(reason="file_not_found", file=str(params["file"]))
+        try:
+            source = file_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return CheckOutcome.error(reason="file_unreadable")
+        try:
+            ast.parse(source, filename=str(file_path))
+        except SyntaxError:
+            # The syntax gate owns unparseable emissions; reporting it twice
+            # would make one defect look like two.
+            return CheckOutcome.skipped(reason="unsupported_stack_or_syntax")
+
+        declared = params.get("routes")
+        if not isinstance(declared, list) or not declared:
+            # An injected check with no declaration is an injection bug, not
+            # an app gap — never fail the producer for it.
+            return CheckOutcome.error(reason="missing_route_declaration")
+
+        from squadops.cycles.fill_slot_integrity import signature_divergences
+
+        divergences = signature_divergences(declared, source)
+        if divergences:
+            return CheckOutcome.failed(
+                reason="scaffold-owned signature diverged: " + "; ".join(divergences),
+                file=str(params["file"]),
+                divergences=divergences,
+            )
+        return CheckOutcome.passed(file=str(params["file"]))
 
 
 @register_check(CHECK_CONTRACT_ASSERTIONS)
