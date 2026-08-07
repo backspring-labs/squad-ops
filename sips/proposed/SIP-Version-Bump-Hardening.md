@@ -1,3 +1,10 @@
+---
+status: proposed
+title: Version Bump Hardening — Single-Sourced Strings, Guardrails, and Automated
+  Changelog
+author: SquadOps Architecture
+created_at: '2026-04-19T00:00:00Z'
+---
 # SIP-0XXX: Version Bump Hardening — Single-Sourced Strings, Guardrails, and Automated Changelog
 
 **Status:** Proposed

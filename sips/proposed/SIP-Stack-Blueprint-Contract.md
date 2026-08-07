@@ -1,3 +1,7 @@
+---
+status: proposed
+title: Stack Blueprint Contract
+---
 # SIP: Stack Blueprint Contract
 
 ## Status

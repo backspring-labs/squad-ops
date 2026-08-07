@@ -1,3 +1,9 @@
+---
+status: proposed
+title: Skill Layer for Capabilities (Capability → Skill → Tool)
+author: SquadOps Team
+created_at: '2026-07-11T00:00:00Z'
+---
 # SIP: Skill Layer for Capabilities (Capability → Skill → Tool)
 
 **Status**: Proposed (concept reservation — no implementation planned)

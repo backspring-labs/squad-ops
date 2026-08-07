@@ -1,3 +1,9 @@
+---
+status: proposed
+title: Cross-Cycle Memory
+author: Jason Ladd
+created_at: '2026-08-03T00:00:00Z'
+---
 # SIP: Cross-Cycle Memory
 
 ## Status

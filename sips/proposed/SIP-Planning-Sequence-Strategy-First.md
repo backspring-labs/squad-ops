@@ -1,3 +1,9 @@
+---
+status: proposed
+title: Planning Sequence — Strategy Before Research
+author: SquadOps Architecture
+created_at: '2026-04-19T00:00:00Z'
+---
 # SIP-0XXX: Planning Sequence — Strategy Before Research
 
 **Status:** Proposed (stub)

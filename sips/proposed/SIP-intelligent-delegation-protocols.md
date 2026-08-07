@@ -1,3 +1,7 @@
+---
+status: proposed
+title: Intelligent Delegation Protocols for SquadOps
+---
 # SIP-0XXX: Intelligent Delegation Protocols for SquadOps
 
 ## Status

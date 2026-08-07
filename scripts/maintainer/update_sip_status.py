@@ -149,6 +149,23 @@ _BODY_STATUS_RE = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 
+# The OTHER declaration shape drafts actually use: a "## Status" heading with the
+# value on a following line ("## Status\nDraft (proposed)"). #253 closed the
+# inline form; this is the same bug class one form down — SIP-0103 had exactly
+# this shape, so its body would have kept saying "Draft" while the frontmatter and
+# registry said "accepted" (#770).
+#
+# Deliberately conservative: the value line must BEGIN with a status keyword,
+# optionally emphasised ("**Proposed** (draft, ...)" is how one real draft writes
+# it). A heading followed by prose ("## Status\n\nSome explanation") still matches
+# nothing, so the caller still warns rather than rewriting arbitrary text. The
+# emphasis is captured into `heading` so a rewrite preserves it.
+_BODY_STATUS_HEADING_RE = re.compile(
+    r"^(?P<heading>#{1,6}[ \t]+[^\n]*Status[^\n]*\n(?:[ \t]*\n)*\*{0,2})"
+    r"(?P<word>" + "|".join(_STATUS_WORDS) + r")",
+    re.IGNORECASE | re.MULTILINE,
+)
+
 
 def update_sip_body_status(file_path: Path, new_status: str) -> bool:
     """Rewrite the human-readable body ``**Status:**`` line to match new_status.
@@ -177,6 +194,11 @@ def update_sip_body_status(file_path: Path, new_status: str) -> bool:
     canonical = new_status.capitalize()
     new_body, count = _BODY_STATUS_RE.subn(lambda m: m.group("prefix") + canonical, body, count=1)
     if count == 0:
+        # Fall back to the heading form ("## Status" + value on a following line).
+        new_body, count = _BODY_STATUS_HEADING_RE.subn(
+            lambda m: m.group("heading") + canonical, body, count=1
+        )
+    if count == 0:
         return False
 
     try:
@@ -203,6 +225,126 @@ def normalize_filename(sip_number: int, title: str) -> str:
     clean_title = "-".join(words)
 
     return f"SIP-{sip_number:04d}-{clean_title}.md"
+
+
+# --- Frontmatter derivation (#770) ------------------------------------------
+#
+# Most drafts in sips/proposed/ are hand-authored prose with no YAML frontmatter
+# (12 of 13 at the time this landed), so promotion used to die on
+# "Could not extract metadata" at the worst possible moment — mid-promotion, at
+# the opening step of a release line.
+#
+# The fix reads what the author ALREADY WROTE rather than asking them to retype
+# it as YAML. Nothing here invents a value: every field is lifted from the body,
+# and the only hard failure is a status that cannot be read at all.
+
+_H1_RE = re.compile(r"^#[ \t]+(?P<title>[^\n]+)", re.MULTILINE)
+# "# SIP-0103: Foo" / "# SIP-0XXX: Foo" / "# SIP: Foo" / "# IDEA — Foo"
+_H1_PREFIX_RE = re.compile(r"^(?:SIP|IDEA)(?:-[0-9X]{4})?[ \t]*[:\u2014-][ \t]*", re.IGNORECASE)
+_BODY_AUTHOR_RE = re.compile(
+    r"^[ \t]{0,3}\*{0,2}[ \t]*Authors?[ \t]*\*{0,2}[ \t]*:[ \t]*\*{0,2}[ \t]*(?P<author>[^\n*]+)",
+    re.IGNORECASE | re.MULTILINE,
+)
+_BODY_CREATED_RE = re.compile(
+    r"^[ \t]{0,3}\*{0,2}[ \t]*Created(?:_at)?[ \t]*\*{0,2}[ \t]*:[ \t]*\*{0,2}[ \t]*"
+    r"(?P<created>\d{4}-\d{2}-\d{2})",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def _derive_title(body: str) -> str | None:
+    """Title from the H1, with the SIP/IDEA number prefix stripped."""
+    m = _H1_RE.search(body)
+    if not m:
+        return None
+    return _H1_PREFIX_RE.sub("", m.group("title").strip()).strip() or None
+
+
+def _derive_status(body: str) -> str | None:
+    """Status keyword from either body declaration shape, parenthetical dropped.
+
+    ``**Status:** Proposed (stub)`` and ``## Status\nDraft (proposed)`` both
+    yield the bare keyword, lowercased, so it matches the registry vocabulary.
+    """
+    for pattern in (_BODY_STATUS_RE, _BODY_STATUS_HEADING_RE):
+        m = pattern.search(body)
+        if m:
+            word = m.group("word").lower()
+            # "draft" is the drafting synonym for proposed; the registry has no
+            # such state, so normalize rather than emit an invalid transition.
+            return "proposed" if word == "draft" else word
+    return None
+
+
+def derive_frontmatter_from_body(file_path: Path) -> tuple[dict[str, Any] | None, str]:
+    """Synthesize frontmatter for a draft that has none, reading only its body.
+
+    Returns ``(metadata, detail)``. ``metadata`` is None when ``status`` cannot be
+    read — the one field with no sane fallback, since promoting from an unknown
+    state would be a guess about intent. ``detail`` explains what was derived, or
+    what to add, so the caller can print something actionable either way.
+    """
+    try:
+        content = file_path.read_text(encoding="utf-8")
+    except Exception as e:  # pragma: no cover - unreadable file
+        return None, f"could not read {file_path}: {e}"
+
+    status = _derive_status(content)
+    if not status:
+        return None, (
+            "no status declaration found in the body. Add either "
+            "`**Status:** Proposed` or a `## Status` heading followed by "
+            "`Proposed`, then re-run."
+        )
+
+    derived: dict[str, Any] = {"status": status}
+    title = _derive_title(content)
+    if title:
+        derived["title"] = title
+    author = _BODY_AUTHOR_RE.search(content)
+    if author:
+        derived["author"] = author.group("author").strip()
+    created = _BODY_CREATED_RE.search(content)
+    if created:
+        derived["created_at"] = f"{created.group('created')}T00:00:00Z"
+
+    detail = ", ".join(f"{k}={v!r}" for k, v in derived.items())
+    return derived, detail
+
+
+def write_frontmatter(file_path: Path, metadata: dict[str, Any]) -> bool:
+    """Prepend a YAML frontmatter block to a file that has none."""
+    try:
+        content = file_path.read_text(encoding="utf-8")
+        if re.match(r"^---\s*\n", content):
+            return True  # already has one; nothing to do
+        block = yaml.dump(metadata, default_flow_style=False, sort_keys=False, allow_unicode=True)
+        file_path.write_text(f"---\n{block}---\n{content}", encoding="utf-8")
+        return True
+    except Exception as e:
+        print(f"Error: could not write frontmatter to {file_path}: {e}")
+        return False
+
+
+def ensure_frontmatter(file_path: Path) -> dict[str, Any] | None:
+    """Existing frontmatter, or derive-and-stamp one from the body (#770).
+
+    Called on the promotion path so a hand-authored draft is promotable without
+    the maintainer first hand-writing bookkeeping the document already implies.
+    """
+    metadata = extract_metadata_from_file(file_path)
+    if metadata:
+        return metadata
+
+    derived, detail = derive_frontmatter_from_body(file_path)
+    if derived is None:
+        print(f"Error: {file_path} has no YAML frontmatter and {detail}")
+        return None
+
+    if not write_frontmatter(file_path, derived):
+        return None
+    print(f"  Derived frontmatter from the body ({detail})")
+    return derived
 
 
 def validate_transition(current_status: str, new_status: str) -> tuple[bool, str]:
@@ -303,7 +445,10 @@ def find_duplicate_sip_files(
             # Extract metadata from file
             metadata = extract_metadata_from_file(sip_file)
             if not metadata:
-                # Skip files without metadata
+                # #770: a file we cannot read is a file we cannot check. Say so —
+                # a silent skip makes the duplicate net look complete when it has
+                # a blind spot exactly the size of the un-frontmattered drafts.
+                print(f"   ⚠ skipping {sip_file.name}: no YAML frontmatter to compare")
                 continue
 
             file_sip_number = metadata.get("sip_number")
@@ -423,10 +568,10 @@ def update_sip_status(sip_file: Path, new_status: str) -> bool:
         print("Set SQUADOPS_MAINTAINER=1 to proceed.")
         return False
 
-    # Extract metadata
-    metadata = extract_metadata_from_file(sip_file)
+    # Extract metadata — deriving and stamping one from the body when the draft
+    # has none (#770), so a hand-authored SIP is promotable as written.
+    metadata = ensure_frontmatter(sip_file)
     if not metadata:
-        print(f"Error: Could not extract metadata from {sip_file}")
         return False
 
     current_status = metadata.get("status")

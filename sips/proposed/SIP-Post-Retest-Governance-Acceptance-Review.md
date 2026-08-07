@@ -1,3 +1,7 @@
+---
+status: proposed
+title: Post-Retest Governance Acceptance Review
+---
 # SIP: Post-Retest Governance Acceptance Review
 
 ## Status
