@@ -17,6 +17,19 @@ continuation policy automates relaunch over authored-manifest-mode cycles, so th
 authored-mode FAY baseline (the 1.6 exit number) must exist before Campaign tunes
 against it. At 1.8 Campaign lands beside the cycle-evaluation scorecard — both consumers
 of the SIP-0096 `CycleOutcome` seam.)
+**Billing amended 2026-08-07** (`docs/plans/post-1-5-roadmap-reconciliation.md`):
+Campaign is now a **co-headliner** of v1.8 rather than its sole Lane M headline, sharing
+the release with the Cycle Evaluation Scorecard on the 1.4 dual-lane precedent. The
+composition of 1.8 is unchanged; the **ordering inside it** is now explicit — the
+scorecard's grade definitions land **before** this SIP's continuation policy. The reason
+is a dependency, not a preference: without `CycleAssessment`, a continuation policy must
+derive its stopping rule from raw checks, which is precisely what the roadmap forbids of
+self-improvement, and a stopping rule that reduces to "the cycle completed" runs the
+false-green class unattended at scale. Two constraints follow for this SIP's design:
+the **objective envelope owns cycle-lineage identity for the whole release** (inert
+detection's existing same-project/profile series and any memory recall read that one
+definition — Campaign must not introduce a private notion of "related cycles"), and the
+continuation decision consumes the scorecard's grade rather than re-deriving one.
 **Carved from:** `SIP-Campaign-Self-Improvement-and-Test-Bay-Requirements.md` (the 2.0 vision anchor). This SIP is the **near-term, implementable mechanic** — the objective envelope + continuation policy — with no dependency on capability packs, Test Bay, or new agent roles. See `docs/plans/2-0-roadmap-reconciliation.md`.
 **Supersedes:** the "Loop Policy" naming in `docs/ideas/SquadOps-Roadmap-Runtime-Loop-Capability-Backed-Agents.md`. The idea's continuance-decision vocabulary is adopted here as the Campaign continuation decision.
 **Builds on:** SIP-0064 (Cycle/Run/TaskFlowPolicy + gates), SIP-0067 (Postgres cycle registry pattern), SIP-0070 (pulse checks / verification evidence), SIP-0083 (multi-run cycle orchestration), SIP-0089 (runtime state / cycle recruitment via the coordinator + FocusLease), SIP-0069 (Continuum console).
