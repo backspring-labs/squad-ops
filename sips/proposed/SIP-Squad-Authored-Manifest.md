@@ -109,6 +109,74 @@ and the FAY methodology gives the measurement shape.
   is caught by the existing contract machinery; in-cycle manifest renegotiation is
   explicitly out).
 
+## 5a. Amendments from the 1.5 boundary (2026-08-07)
+
+Recorded at the 1.5 cut boundary, after the stabilization line landed machinery this
+draft predates. Three recommendations for design review plus an updated foundation
+inventory.
+
+### Recommendation on Q1 — single author, multi-reviewer (not co-authoring)
+
+The proposer-merge pattern (SIP-0093) works for *task lists* because merging them is
+deterministic set arithmetic. A manifest is one coherent interface: two agents
+co-authoring entities and routes produce collisions that are **semantic, not
+positional** — the `proposed_plan_tasks.yaml` filename-collision class, relocated into
+the type system, with no deterministic merge to save it. Recommended Phase-1 shape:
+
+- **Dev authors**, at the `development.design_plan` stage — the manifest is an
+  architecture artifact (entities, API surface, view surface) and that stage already
+  authors the technical design; it is the best-informed placement (today's author-mode
+  emission sits with the lead at plan-authoring/review, the *least*-informed moment).
+  Strategy's frame constrains scope from above.
+- **QA reviews for verifiability** — every view declares its anchors, every endpoint a
+  probe-able status contract. QA signs the surface it will later be held to testing.
+- **Governance gates** (schema → winnability → HITL review), unchanged from §3.
+
+Collaboration through *review*, not co-authoring. The multi-role dice question (Q1's
+other branch) can be revisited with evidence if single-author quality disappoints —
+the reverse migration (merging co-authored fragments) has no such fallback.
+
+### The chaos-containment frame (supporting §3, for the design review's risk row)
+
+Authoring the manifest does not make the *system* generative — it confines generation
+to **one authoring window with a hard exit**. Three bounds, in order:
+
+1. **Blueprint grammar in** — the author can only declare what the expander can expand
+   (the Stack Blueprint's closed vocabulary; unknown surface is rejected, not
+   improvised).
+2. **Deterministic gates + free re-roll** — schema and winnability failures die at a
+   framing re-roll (system rejection, the #522 free-re-roll class), never at
+   implementation.
+3. **Freeze at approval** — the instant the HITL gate approves, the manifest
+   hash-freezes and the contract derives; everything downstream runs on exactly the
+   rails the 1.4/1.5 arcs hardened. Post-freeze determinism is identical to seeded
+   mode by construction (§3.5's claim, stated as the containment property it is).
+
+### Recommendation on Q5 — seeded mode stays, permanently
+
+Comparability requires frozen hashes: the golden benchmark works *because* the manifest
+is byte-stable across cycles. Authored mode should bank its own baseline series;
+seeded mode remains the permanent measurement rig and regression referent, not a
+transitional configuration. (Replacing it would trade the ability to attribute a
+regression to machinery vs authoring — the exact attribution discipline the odd-minor
+convention exists to protect.)
+
+### Foundation inventory update (what 1.5 banked for this SIP)
+
+- **The enforcement chain is now fully manifest-rooted and *declared*.** Scaffold
+  expansion, fill slots, `fill_slot_signature` (#730 D1), testid surfaces (#659), the
+  criteria index (98.3), and the typed-check governance registry (#730) all derive
+  mechanically from the manifest — an authored manifest propagates into the entire
+  verification stack with **zero new plumbing**.
+- **SIP-0099's validation net is live** and is deliberately the manifest's only net —
+  the seam the winnability gate (§3.3) extends rather than invents.
+- **Workspace-revision provenance (#734)** means every acceptance verdict in an
+  authored-mode experiment names the tree it measured — authored-vs-seeded evidence
+  stays attributable.
+- **Replay (SIP-0101) + stranded-cycle detection (#481)** make authored-mode FAY
+  windows cheap to interrupt and crash-tolerant — relevant because §4's window is the
+  most compute-expensive measurement the project has scheduled.
+
 ## 6. Open questions for design review
 
 1. Authoring decomposition: single merger-authored manifest (spike-rider shape) vs the
