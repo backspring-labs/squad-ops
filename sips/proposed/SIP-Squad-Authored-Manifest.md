@@ -264,6 +264,90 @@ the authoring stage inherits `manifest_max_attempts` as its revision budget; gat
 rejections spend `framing_max_rerolls`. Nothing to invent; the SIP should name the
 two seams so design review doesn't reinvent them.
 
+## 5c. Design-review feedback round (owner, 2026-08-07) — dispositions
+
+Ten points raised; each dispositioned here so the design review inherits positions,
+not open threads.
+
+1. **Authoring input contract (ACCEPT — new normative requirement).** The draft never
+   defines what the authoring stage may consume beyond "the PRD" and the blueprint.
+   That gap turns every future improvement into apparent contamination. Phase 1 must
+   carry an **enumerated input contract**: the PRD, the Stack Blueprint's closed
+   vocabulary, in-cycle rejection context (#669), and *nothing else* — with the
+   reference manifest explicitly excluded (§4) and a declared extension point where
+   cross-cycle memory recalls plug in later **with provenance** (see 9). Undeclared
+   inputs are contamination by definition; declared ones are capability.
+2. **Design-quality heuristics (ACCEPT WITH SHAPE — advisory lane only).** Winnability
+   proves internal consistency, not good design — true. But *blocking* design
+   heuristics (complexity ceilings, cohesion scores) are the style-lottery class the
+   plan-validation family exists to reject (#464's lesson, A6's determinism rule).
+   Disposition: quality heuristics may enter as **advisory-lane checks with their own
+   identity** (the `plan_prose_contract_divergence` pattern — visible, non-gating,
+   never laundering into blocking), promotable only with a deterministic
+   representation. Phase 1's design-quality authority is the HITL gate plus
+   measurement, stated as such.
+3. **Manifest as abstraction vs artifact (ANSWERED — blueprint-owned).** Authored mode
+   binds to *the blueprint's declared design artifact(s)*. Today's blueprint declares
+   one manifest; a future multi-context stack would declare its own design-artifact
+   set in its blueprint, and authored mode inherits that declaration. The coupling is
+   to the blueprint contract, not to "one YAML file" — stated as a design principle so
+   Generalized Build doesn't fork authored mode.
+4. **Derivable vs judgment boundary (ACCEPT — the `decisions[]` rule).** §5b split
+   contract derivability; this is the level above: what the *manifest* can express vs
+   what is engineering judgment (pagination, authz boundaries, idempotency, caching —
+   mostly outside today's schema). Disposition: **every judgment call the schema
+   cannot express mechanically must land in `decisions[]` with a PRD warrant** — the
+   field already exists and v4 already uses it exactly this way (the duplicate-name
+   uniqueness decision). Judgment is thereby explicit, reviewable at the HITL gate,
+   and auditable later; schema growth that promotes a judgment class to a mechanical
+   field is a blueprint-version change, not silent drift.
+5. **Provenance as first-class (ACCEPT — stamp it into the manifest).** The #734
+   pattern applied one level up: a `provenance` block on the manifest itself
+   (authored-vs-seeded mode, authoring task/cycle, attempt count, and — after any
+   operator edit at the gate — the edit's own record). Immutability is already
+   mechanical: the gate approves *bytes*, `content_hash` freezes them, and an
+   operator edit is a **new manifest version with a new hash**, never an in-place
+   mutation. Replay, regression, and memory all read provenance from the artifact,
+   not from cycle-history archaeology.
+6. **Iterative review (ANSWERED — the vocabulary exists; bind it).** The gate is not
+   binary: `RETURNED_FOR_REVISION` is a live third state (#466) and rejection-context
+   injection (#669) already threads reviewer notes into the next attempt. Disposition:
+   the manifest gate adopts exactly this — revision returns the manifest **with the
+   prior artifact and the reviewer's notes as authoring context** (revise, don't
+   re-roll: the fay-6 new-dice lesson argues against from-scratch regeneration), spending
+   `manifest_max_attempts`. Partial approval is deliberately NOT introduced — approval
+   stays whole-artifact because the contract derives from the whole.
+7. **Authoring-specific measurement (ACCEPT WITH SHAPE — diagnostics, not gates).**
+   FAY stays the gate (functional truth). Added as non-gating observables per window:
+   structural diff vs the reference (§5b Q3), revision/attempt counts, gate-rejection
+   reason taxonomy, and manifest size/surface counts. "Maintainability/elegance"
+   metrics are declined — no deterministic representation exists, and an LLM-graded
+   elegance score is the evidence-quality laundering A6 forbids.
+8. **Freeze asymmetry (ANSWERED — attribution is the why; named trigger for
+   evolution).** The freeze is what makes verdicts attributable: every check, probe,
+   and repair in the cycle measures against one hash — a mid-cycle moving target is
+   the #494 stale-binding class systemically. Implementation discoveries that indict
+   the *design* are already representable: the A4 taxonomy terminates such chains as
+   `plan_defect`, and those termination records are the **evidence stream that would
+   justify controlled manifest evolution** in a future release (trigger: a measured
+   rate of plan_defect terminations whose root cause names an authoring-unknowable
+   constraint). Until that evidence exists, evolution stays out.
+9. **Cross-cycle learning (ANSWERED — intentionally stateless, successor named).**
+   Phase 1 authoring is stateless beyond in-cycle rejection context, deliberately: the
+   Cross-Cycle Memory SIP owns the learning channel (its Phase-1 seed corpus is
+   rejection classes — including manifest-gate rejections once this SIP lands), and
+   point 1's input contract is where its recalls plug in *with provenance*. Stating
+   this here keeps "authored mode got smarter across cycles" an intended integration
+   rather than unexplained drift.
+10. **PRD insufficiency representation (ACCEPT — formalize what v4 already does).**
+    The manifest schema's `decisions[]` is already an ambiguity-resolution record
+    (choice + PRD warrant). Disposition: extend it with an explicit
+    `unresolved: true` form — the author surfaces a design question it declines to
+    resolve, and any unresolved-critical entry lands in the HITL gate note as a
+    question rather than silently defaulting. Clarification round-trips to the
+    operator mid-authoring stay out of Phase 1 (async human latency inside a task);
+    the gate is the clarification point.
+
 ## 6. Open questions for design review
 
 1. Authoring decomposition: single merger-authored manifest (spike-rider shape) vs the
