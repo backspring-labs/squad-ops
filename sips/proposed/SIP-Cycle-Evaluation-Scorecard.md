@@ -4,7 +4,13 @@
 **Authors:** SquadOps Architecture
 **Created:** 2026-02-28
 **Revision:** 1
-**Sequences after:** SIP-0096 Verification Evidence Integrity (`sips/implemented/SIP-0096-Verification-Evidence-Integrity.md`, implemented 2026-08-06) — every scorecard dimension presumes the underlying acceptance/verification signals cannot be fabricated by stubbed, skipped, or inert checks; scoring un-integrity-checked evidence would institutionalize exactly the wrong lessons §2 warns about.
+**Sequences after:** SIP-0096 Verification Evidence Integrity (`sips/implemented/SIP-0096-Verification-Evidence-Integrity.md`, implemented 2026-08-06) — every scorecard dimension presumes the underlying acceptance/verification signals cannot be fabricated by stubbed, skipped, or inert checks; scoring un-integrity-checked evidence would institutionalize exactly the wrong lessons §2 warns about. **This dependency is now satisfied**: SIP-0096 shipped in v1.5.0.
+
+**Targets:** v1.8 — **co-headliner** with Campaign Orchestration (assigned 2026-08-07, `docs/plans/post-1-5-roadmap-reconciliation.md`; previously this SIP rode as a non-headline slice while Campaign held Lane M alone). The scoped 1.8 slice is thin and deliberate: `CycleAssessment` over the existing `CycleOutcome` seam, a benchmark registry, first-wave internal eval packs (Dev, QA, Research, Tool Executor), and the squad-vs-single-model comparison harness. The full framework in this SIP — notably the console Scorecard page and the wider experimentation apparatus — is explicitly beyond that slice.
+
+**Why it headlines:** this is the only roadmap item that makes the SquadOps thesis *falsifiable*. The project can today state a functional yield (FAY 6/6 on the 1.4 window); it cannot state that a squad outperforms a single model at equal scaffolding and cost. The comparison harness answers that. It is also the load-bearing dependency for v2.0, whose rule is that self-improvement acts on `CycleAssessment` grades and never on raw checks.
+
+**Ordering inside 1.8:** grade definitions land **before** Campaign's continuation policy, which consumes them as its stopping signal. Two design constraints follow: the failure-attribution vocabulary in §3 must be **one registry of stable ids shared with** the existing plan-validation rejection classes, `FailureEvidenceCategory`, and locus classification (the #730 precedent — declaration required, drift-guarded) rather than a parallel taxonomy; and cycle-lineage identity is owned by Campaign's objective envelope, which this SIP reads rather than redefines.
 
 ## 1. Abstract
 

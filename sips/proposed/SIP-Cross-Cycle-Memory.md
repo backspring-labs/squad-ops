@@ -15,6 +15,21 @@ measurement instrument), Campaign Orchestration (proposed, v1.8 — same-release
 companion; see §7).
 **Absorbs:** the "Hierarchical Cognitive Memory Architecture" idea doc (J. Ladd, 2026-08)
 as the long-term vision (§10); this SIP normatively specifies only Phase 1.
+**Placement amended 2026-08-07** (`docs/plans/post-1-5-roadmap-reconciliation.md`):
+Phase 1 is no longer a committed 1.8 rider. It is a **decision point taken at 1.8 plan
+time** — thin Phase 1 in 1.8, or pushed whole to 2.0 beside Phase 2 — because 1.8's two
+co-headliners (Cycle Evaluation Scorecard + Campaign) are already substantial surface.
+**The rails ship in 1.8 either way**, per the standing rails-before-mechanism rule
+(SIP-0101 Slice 1, SIP-0096 Phase 1 inert core): the recall port is defined, a NoOp is
+injected per the always-inject pattern, and the call site is wired, so whichever way the
+decision goes it is an adapter swap and not a redesign. Four design intentions in that
+record protect this SIP's seams inside 1.8 — one cycle-lineage identity (Campaign's
+envelope, not a private concept), one failure-class vocabulary (not a parallel taxonomy
+in the scorecard), recall through the existing `plan_rejection_context` contract rather
+than a handler branch, and the inert port above. **A fifth intention lands in 1.6, not
+1.8, and is the only one that cannot be retrofitted:** the pre-memory rejection-class
+recurrence baseline must be recorded during the authored-mode window, since once memory
+is live that baseline is unrecoverable and this SIP's value claim becomes unmeasurable.
 **External reference:** CrewAI, "How we built cognitive memory for agentic systems"
 (blog.crewai.com) — adopted for its failure catalog and recall design; deliberately
 diverged from on agent-discretionary memory tools (§6).
