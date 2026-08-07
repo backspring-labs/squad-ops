@@ -28,6 +28,32 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+# Allowed severity values. Anything else → ValueError at parse time.
+ALLOWED_SEVERITIES: frozenset[str] = frozenset({"error", "warning", "info"})
+
+# ---------------------------------------------------------------------------
+# Governance vocabulary (1.5 A5, #730 — the curated menu as a registry
+# extension per docs/plans/1-5-typed-check-governance-design.md)
+# ---------------------------------------------------------------------------
+
+#: What a check's failure *indicts* — the repair-targeting and evidence-
+#: taxonomy axis (#688 lineage / A3).
+OWNERSHIP_PRODUCT = "product"
+OWNERSHIP_SUITE = "suite"
+OWNERSHIP_PLAN = "plan"
+OWNERSHIP_CONTRACT = "contract"
+OWNERSHIP_INFRASTRUCTURE = "infrastructure"
+
+FAILURE_OWNERSHIP_VALUES: frozenset[str] = frozenset(
+    {
+        OWNERSHIP_PRODUCT,
+        OWNERSHIP_SUITE,
+        OWNERSHIP_PLAN,
+        OWNERSHIP_CONTRACT,
+        OWNERSHIP_INFRASTRUCTURE,
+    }
+)
+
 
 @dataclass(frozen=True)
 class CheckSpec:
@@ -84,6 +110,28 @@ class CheckSpec:
             task could never produce an executed verdict. Declared here so the
             authoring vocabulary renders it and dispatch can strip dead checks;
             derived consumers cannot drift from this table.
+
+    Governance attributes (1.5 A5, #730 — required keyword-only so every
+    present and future entry DECLARES its governance; there is no default to
+    slip through on):
+
+        failure_ownership: What the check's failure indicts
+            (``FAILURE_OWNERSHIP_VALUES``) — consumed by repair targeting
+            (#688 lineage) and A3's evidence taxonomy.
+        qa_available: Whether the check can reach ``qa.test`` emissions,
+            authored and injected both (A1/#670's accounting axis).
+        signature_participation: Whether the check's failures may enter the
+            correction failure-signature (A4.1). Environment-variant checks
+            stay out — a failure that does not reproduce deterministically
+            must not key chain-termination identity.
+        outcome_contribution: Whether evaluations feed the SIP-0096
+            ``CycleOutcome`` roll-up.
+        replayable: Whether a stored emission re-evaluates deterministically
+            (Track C): pure static analysis over stored bytes is; anything
+            that executes tooling against a live environment is not.
+        blocking_default: Severity an injected instance runs at
+            (``ALLOWED_SEVERITIES``); authored instances may still set their
+            own severity.
     """
 
     name: str
@@ -97,10 +145,22 @@ class CheckSpec:
     notes: str = ""
     applicable_extensions: frozenset[str] = frozenset()
     framework_injected: bool = False
+    failure_ownership: str = field(kw_only=True)
+    qa_available: bool = field(kw_only=True)
+    signature_participation: bool = field(kw_only=True)
+    outcome_contribution: bool = field(kw_only=True)
+    replayable: bool = field(kw_only=True)
+    blocking_default: str = field(kw_only=True)
 
-
-# Allowed severity values. Anything else → ValueError at parse time.
-ALLOWED_SEVERITIES: frozenset[str] = frozenset({"error", "warning", "info"})
+    def __post_init__(self) -> None:
+        if self.failure_ownership not in FAILURE_OWNERSHIP_VALUES:
+            raise ValueError(
+                f"check {self.name!r}: unknown failure_ownership {self.failure_ownership!r}"
+            )
+        if self.blocking_default not in ALLOWED_SEVERITIES:
+            raise ValueError(
+                f"check {self.name!r}: unknown blocking_default {self.blocking_default!r}"
+            )
 
 
 def is_check_applicable(check_name: str, file_path: str) -> bool:
@@ -330,6 +390,12 @@ CHECK_SPECS: dict[str, CheckSpec] = {
             "Applied by the framework to .py emissions from handlers on the "
             "typed-acceptance seam (dev, builder); never authored."
         ),
+        failure_ownership=OWNERSHIP_PRODUCT,
+        qa_available=True,
+        signature_participation=True,
+        outcome_contribution=True,
+        replayable=True,
+        blocking_default="error",
     ),
     CHECK_ENDPOINT_DEFINED: CheckSpec(
         name=CHECK_ENDPOINT_DEFINED,
@@ -340,6 +406,12 @@ CHECK_SPECS: dict[str, CheckSpec] = {
         requires_stack_context=True,
         path_params=frozenset({"file"}),
         example={"file": "app/main.py", "methods_paths": ["GET /runs", "POST /runs"]},
+        failure_ownership=OWNERSHIP_PRODUCT,
+        qa_available=True,
+        signature_participation=True,
+        outcome_contribution=True,
+        replayable=True,
+        blocking_default="error",
     ),
     "import_present": CheckSpec(
         name="import_present",
@@ -351,6 +423,12 @@ CHECK_SPECS: dict[str, CheckSpec] = {
         requires_stack_context=False,
         path_params=frozenset({"file"}),
         example={"file": "app/main.py", "module": "app.models", "symbol": "RunEvent"},
+        failure_ownership=OWNERSHIP_PRODUCT,
+        qa_available=True,
+        signature_participation=True,
+        outcome_contribution=True,
+        replayable=True,
+        blocking_default="error",
     ),
     "field_present": CheckSpec(
         name="field_present",
@@ -361,6 +439,12 @@ CHECK_SPECS: dict[str, CheckSpec] = {
         requires_stack_context=True,
         path_params=frozenset({"file"}),
         example={"file": "app/models.py", "class_name": "RunEvent", "fields": ["id", "title"]},
+        failure_ownership=OWNERSHIP_PRODUCT,
+        qa_available=True,
+        signature_participation=True,
+        outcome_contribution=True,
+        replayable=True,
+        blocking_default="error",
     ),
     "function_defined": CheckSpec(
         name="function_defined",
@@ -381,6 +465,12 @@ CHECK_SPECS: dict[str, CheckSpec] = {
             "regex_match — to assert a source file defines functions such as "
             "pytest `test_*`."
         ),
+        failure_ownership=OWNERSHIP_PRODUCT,
+        qa_available=True,
+        signature_participation=True,
+        outcome_contribution=True,
+        replayable=True,
+        blocking_default="error",
     ),
     "harness_boundary": CheckSpec(
         name="harness_boundary",
@@ -404,6 +494,12 @@ CHECK_SPECS: dict[str, CheckSpec] = {
             "directly construct the app test client (`client_ctor`, default `TestClient`). "
             "AST-based; a pure unit test that never touches the app passes."
         ),
+        failure_ownership=OWNERSHIP_SUITE,
+        qa_available=True,
+        signature_participation=True,
+        outcome_contribution=True,
+        replayable=True,
+        blocking_default="error",
     ),
     "regex_match": CheckSpec(
         name="regex_match",
@@ -424,6 +520,12 @@ CHECK_SPECS: dict[str, CheckSpec] = {
             "rejected at plan validation (#464). To assert a source file defines "
             "functions (e.g. pytest `test_*`), use `function_defined` instead."
         ),
+        failure_ownership=OWNERSHIP_PRODUCT,
+        qa_available=True,
+        signature_participation=True,
+        outcome_contribution=True,
+        replayable=True,
+        blocking_default="error",
     ),
     "count_at_least": CheckSpec(
         name="count_at_least",
@@ -433,6 +535,12 @@ CHECK_SPECS: dict[str, CheckSpec] = {
         requires_stack_context=False,
         path_params=frozenset({"glob"}),
         example={"glob": "tests/test_*.py", "min_count": 3},
+        failure_ownership=OWNERSHIP_PRODUCT,
+        qa_available=True,
+        signature_participation=True,
+        outcome_contribution=True,
+        replayable=True,
+        blocking_default="error",
     ),
     "command_exit_zero": CheckSpec(
         name="command_exit_zero",
@@ -451,6 +559,16 @@ CHECK_SPECS: dict[str, CheckSpec] = {
             "pytest, npm, make, pip, setup.py, ... — cannot execute and fails "
             "plan validation): " + "; ".join(f"`{p.name}`" for p in COMMAND_SAFELIST)
         ),
+        # #707 DEPENDENCY: ownership is per-command in truth — `python -m mypy`
+        # failing because the tool is absent is an infrastructure failure
+        # masquerading as product. Untrustworthy until #707's allowlist
+        # inventory + precedence ruling; recorded here, not solved here.
+        failure_ownership=OWNERSHIP_PRODUCT,
+        qa_available=True,
+        signature_participation=False,
+        outcome_contribution=True,
+        replayable=False,
+        blocking_default="error",
     ),
     "frontend_compiles": CheckSpec(
         name="frontend_compiles",
@@ -476,6 +594,12 @@ CHECK_SPECS: dict[str, CheckSpec] = {
             "npm or a workspace without frontend/package.json skips "
             "(missing_tooling), it does not fail."
         ),
+        failure_ownership=OWNERSHIP_PRODUCT,
+        qa_available=False,
+        signature_participation=False,
+        outcome_contribution=True,
+        replayable=False,
+        blocking_default="error",
     ),
     CHECK_CONTRACT_ASSERTIONS: CheckSpec(
         name=CHECK_CONTRACT_ASSERTIONS,
@@ -504,6 +628,12 @@ CHECK_SPECS: dict[str, CheckSpec] = {
             "pinned path requested through an undeclared prefix is also a "
             "violation. Never authored."
         ),
+        failure_ownership=OWNERSHIP_SUITE,
+        qa_available=True,
+        signature_participation=True,
+        outcome_contribution=True,
+        replayable=True,
+        blocking_default="error",
     ),
     "module_imports": CheckSpec(
         name="module_imports",
@@ -527,8 +657,44 @@ CHECK_SPECS: dict[str, CheckSpec] = {
             "missing from the evaluating environment skips (missing_tooling), "
             "it does not fail."
         ),
+        failure_ownership=OWNERSHIP_PRODUCT,
+        qa_available=True,
+        signature_participation=True,
+        outcome_contribution=True,
+        replayable=True,
+        blocking_default="error",
     ),
 }
+
+
+@dataclass(frozen=True)
+class DeclaredUnbuiltCheck:
+    """A menu entry that is visible but not evaluable and not authorable (#730 D4).
+
+    The honesty pattern from ``frontend_acceptance_checks_disabled``: the menu
+    names the check, states why it cannot exist yet, and names the trigger that
+    unlocks the build — instead of the capability silently not existing. NOT a
+    ``CHECK_SPECS`` entry: adding it there would make it plan-authorable, and
+    an authorable check that can only ever skip is the pf-47/pf-49 dead-weight
+    class the applicability net exists to strip.
+    """
+
+    name: str
+    reason: str
+    trigger: str
+
+
+DECLARED_UNBUILT_CHECKS: tuple[DeclaredUnbuiltCheck, ...] = (
+    DeclaredUnbuiltCheck(
+        name="package_builds",
+        reason=(
+            "'the emitted container builds and runs' requires docker-in-"
+            "verification (sandbox territory, SIP-0102 steps 3-7) and "
+            "blueprint-owned packaging facts (Generalized Build)"
+        ),
+        trigger="Stack Blueprint lands (1.6)",
+    ),
+)
 
 
 def reserved_keys_for(check_name: str) -> frozenset[str]:
@@ -630,3 +796,56 @@ def render_typed_acceptance_vocabulary() -> str:
         out.append("  ```")
         out.append("")
     return "\n".join(out).rstrip() + "\n"
+
+
+def render_check_governance_menu() -> str:
+    """Render the curated check menu (#730) — the governance table, generated.
+
+    The doc file ``docs/architecture/typed-check-menu.md`` is this function's
+    output, pinned by test: prose documentation is generated FROM the registry,
+    never hand-maintained beside it (the design doc's rule). Two sections —
+    the evaluable menu (every ``CHECK_SPECS`` entry) and the declared-unbuilt
+    entries (visible, not evaluable, with their named triggers).
+    """
+    lines = [
+        "# Typed-Check Menu (generated — do not edit)",
+        "",
+        "Generated from `CHECK_SPECS` / `DECLARED_UNBUILT_CHECKS` in",
+        "`src/squadops/cycles/acceptance_check_spec.py` (1.5 A5, #730; design:",
+        "`docs/plans/1-5-typed-check-governance-design.md`).",
+        "Regenerate: `UPDATE_CHECK_MENU=1 pytest tests/unit/cycles/test_check_governance.py`",
+        "",
+        "## Evaluable checks",
+        "",
+        "| check | origin | ownership | qa | signature | outcome | replayable | blocking default |",
+        "|---|---|---|---|---|---|---|---|",
+    ]
+    for name in sorted(CHECK_SPECS):
+        spec = CHECK_SPECS[name]
+        lines.append(
+            "| `{}` | {} | {} | {} | {} | {} | {} | {} |".format(
+                name,
+                "injected" if spec.framework_injected else "authored",
+                spec.failure_ownership,
+                "yes" if spec.qa_available else "no",
+                "yes" if spec.signature_participation else "no",
+                "yes" if spec.outcome_contribution else "no",
+                "yes" if spec.replayable else "no",
+                spec.blocking_default,
+            )
+        )
+    lines += [
+        "",
+        "Caveat — `command_exit_zero` ownership is per-command in truth and",
+        "untrustworthy until #707's allowlist inventory + precedence ruling",
+        "(recorded in the registry beside the entry).",
+        "",
+        "## Declared-unbuilt (visible, not evaluable, not authorable)",
+        "",
+        "| check | why not yet | trigger |",
+        "|---|---|---|",
+    ]
+    for entry in DECLARED_UNBUILT_CHECKS:
+        lines.append(f"| `{entry.name}` | {entry.reason} | {entry.trigger} |")
+    lines.append("")
+    return "\n".join(lines)
