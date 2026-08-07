@@ -177,6 +177,93 @@ convention exists to protect.)
   windows cheap to interrupt and crash-tolerant — relevant because §4's window is the
   most compute-expensive measurement the project has scheduled.
 
+## 5b. Deep review against main (`df29d45c`, 2026-08-07) — corrections and answers
+
+Premise-verification pass at the 1.5 cut boundary; every claim below checked against
+code, the v9 contract / v4 manifest pair, and the live pipeline.
+
+### Correction 1 — the contract is NOT derived today, and that under-scopes this SIP
+
+The Motivation's "SIP-0098 derives 14 criteria from it mechanically" and §3.5's
+"contract derivation … operate[s] identically" overstate current mechanics: **contract
+v9 is a hand-authored artifact** (ingested as `art_4f368ea08799`), *bound* to the
+manifest by hash — no `derive_contract(manifest)` exists anywhere in the pipeline.
+Consequence: squad-authoring the manifest alone leaves the contract as the remaining
+hand-wired seed, and bind mode without a contract is just author mode. The SIP must
+scope this explicitly. **Recommendation: add mechanical contract derivation to scope**,
+split by derivability (verified against the v9/v4 pair):
+
+- **Fully derivable:** the interface layer — `endpoint_defined` per fill slot from
+  `api.endpoints`, `field_present` from `entities`, `import_present`/`module_imports`
+  from the skeleton; `fill_slot_signature`'s surface already derives (#730 D1 proved
+  the pattern end-to-end).
+- **Largely derivable:** probe skeletons — the manifest declares per-endpoint semantic
+  error codes (`errors: [validation_error]`, 4/5 endpoints in v4) and `success_status`
+  (1/5 in v4 — see Correction 2); method/path/status expectations derive; probe
+  *payloads* and `json_has` fields carry product intent → derive the shape, author the
+  values in the same authoring stage.
+- **Authored residue:** suite/coverage expectations — stays with the authoring stage,
+  not derivation.
+
+The alternative (squad authors *both* artifacts freehand) doubles the chaos surface to
+hand-write what is mostly mechanical — rejected.
+
+### Correction 2 — schema tightening the derivation needs
+
+`success_status` is optional and sparsely used (1/5 endpoints in v4); derivation and
+the winnability gate both want it required-per-endpoint. Cheap schema change, and the
+scaffold already emits the declared status (pf-40's whole arc), so the field is
+load-bearing today in all but name.
+
+### Correction 3 — "every entry cites its PRD derivation" is coarser in the schema
+
+The citation discipline exists but at *decision* granularity, not per-entry:
+`source_prd` plus `decisions[].warrant` (section-cited, e.g. "§5.4 validation — …").
+Per-entry citation fields do not exist. **Recommendation: keep decision-granularity**
+(per-entry citations would bloat authoring for little gate value) and reword §3.2's
+schema-gate bullet to match.
+
+### Correction 4 — the HITL manifest gate needs zero new machinery (good news)
+
+§3.4 reads as if a new gate mechanism is needed. It isn't: `task_flow_policy.gates`
+entries key on `after_task_types`, and the mid-run gate wait already pauses/resumes on
+recorded decisions — the same seam `progress_plan_review` uses. The manifest review
+gate is a policy entry naming the authoring task type, plus CRP defaults. Similarly
+§3.2's schema gate is **partially built**: `InterfaceManifest.lint()` already rejects
+the parses-but-unexpandable class (no endpoints, undeclared request shapes,
+route-without-view, unknown stack) at the SIP-0099 net.
+
+### Q2 answered — winnability depth for Phase 1
+
+Deterministic closed-surface proofs only, all buildable from existing seams:
+`lint()` (exists) · expander dry-run (`expand()` succeeds and `fill_slot_paths()` is
+non-empty — pure and cheap) · derived-contract dry-run (once Correction 1's derivation
+lands: every derived check passes `CHECK_SPECS` validation, #671 module-existence holds
+against the implied skeleton, and no check is dead-on-arrival per
+`is_check_applicable`) · testid coverage (every route declares ≥ 1 testid — the schema
+field exists) · status completeness (per Correction 2). **Deferred:** semantic PRD
+coverage — the `decisions[].warrant` discipline plus the HITL gate carry that judgment
+in Phase 1; a mechanical coverage proof is not a Phase-1 blocker.
+
+### Q3 answered — evaluation referent
+
+Functional outcome gates the window (unchanged). Add a **deterministic manifest-diff
+against the reference as a non-gating diagnostic**: the manifest is a typed, canonical
+surface, so the diff is cheap and mechanical — but it stays out of the gate and out of
+squad inputs (contamination discipline intact). Design-diff *grading* by a model is not
+needed; the structural diff already answers "how far from the human design did the
+squad land."
+
+### Q4 answered — the re-roll budget already exists
+
+`manifest_max_attempts` is live today (`PlanAuthoringService`, default 2,
+profile-configurable — the validated profiles run 4): the in-stage authoring retry
+budget, with corrective feedback per attempt. `framing_max_rerolls` governs
+whole-framing re-rolls after gate rejections. **Keep both, at their existing seams** —
+the authoring stage inherits `manifest_max_attempts` as its revision budget; gate
+rejections spend `framing_max_rerolls`. Nothing to invent; the SIP should name the
+two seams so design review doesn't reinvent them.
+
 ## 6. Open questions for design review
 
 1. Authoring decomposition: single merger-authored manifest (spike-rider shape) vs the
