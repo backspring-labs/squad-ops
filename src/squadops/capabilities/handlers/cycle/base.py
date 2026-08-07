@@ -121,8 +121,11 @@ class _CycleTaskHandler(CapabilityHandler):
         validation_checks: list[dict],
         task_index: Any,
         task_type: str,
+        workspace_revision_id: str | None = None,
     ) -> dict | None:
-        return _build_typed_check_evaluation_artifact(validation_checks, task_index, task_type)
+        return _build_typed_check_evaluation_artifact(
+            validation_checks, task_index, task_type, workspace_revision_id
+        )
 
     def validate_inputs(
         self,

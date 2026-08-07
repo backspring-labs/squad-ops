@@ -323,7 +323,8 @@
      "filename": "tests/test_api.py"
     }
    ],
-   "subtask_focus": "API tests"
+   "subtask_focus": "API tests",
+   "workspace_revision_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   }
  },
  "retest_minimal": {

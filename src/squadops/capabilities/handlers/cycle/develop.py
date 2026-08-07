@@ -639,6 +639,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
                 validation.checks,
                 inputs.get("subtask_index"),
                 self._capability_id,
+                inputs.get("workspace_revision_id"),
             )
             if tce_artifact is not None:
                 artifacts.append(tce_artifact)

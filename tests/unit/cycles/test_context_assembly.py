@@ -9,6 +9,7 @@ serves build-landing filters only.
 
 from __future__ import annotations
 
+import dataclasses
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
@@ -143,8 +144,14 @@ def test_retest_forwarding_is_presence_keyed():
     assert forwarded["contract_probes"] == [{"probe": "GET /x"}]
     assert "acceptance_workspace_files" not in forwarded
     assert "dom_testid_surface" not in forwarded
+    # #734: pre-stamp envelopes forward no identity — a fabricated id would
+    # claim provenance the failed dispatch never recorded.
+    assert "workspace_revision_id" not in forwarded
     assert forwarded["resolved_config"] == {"build_profile": "p"}
     assert forwarded["artifact_contents"] == {"a.py": "x"}
+
+    stamped = ca.retest_forwarded_inputs({**failed, "workspace_revision_id": "c" * 64})
+    assert stamped["workspace_revision_id"] == "c" * 64
 
     # Unconditional keys default rather than disappear on a bare envelope.
     bare = ca.retest_forwarded_inputs({})
@@ -155,3 +162,75 @@ def test_retest_forwarding_is_presence_keyed():
         "expected_artifacts": [],
         "acceptance_criteria": [],
     }
+
+
+def _source_ref(artifact_id, filename):
+    ref = _ref(artifact_id, filename, "development.develop")
+    return dataclasses.replace(ref, artifact_type="source", metadata=dict(ref.metadata))
+
+
+def _executor_with(reply_router, universe):
+    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+
+    by_id = {aid: (ref, body) for aid, ref, body in universe}
+    vault = AsyncMock()
+
+    async def retrieve(art_id):
+        return by_id[art_id]
+
+    vault.retrieve = AsyncMock(side_effect=retrieve)
+    return DispatchedFlowExecutor(
+        cycle_registry=AsyncMock(),
+        artifact_vault=vault,
+        queue=reply_router.bind(AsyncMock()),
+        squad_profile=AsyncMock(),
+        project_registry=AsyncMock(),
+        reply_router=reply_router,
+    )
+
+
+async def _stamped_id(reply_router, universe):
+    executor = _executor_with(reply_router, universe)
+    envelope = TaskEnvelope(
+        task_id="t1",
+        agent_id="a",
+        cycle_id="cyc_734",
+        pulse_id="p",
+        project_id="proj",
+        task_type="development.develop",
+        correlation_id="x",
+        causation_id="x",
+        trace_id="x",
+        span_id="x",
+    )
+    enriched = await executor._enrich_envelope(
+        envelope, {}, [], [(aid, ref) for aid, ref, _ in universe]
+    )
+    return enriched.inputs["workspace_revision_id"]
+
+
+class TestWorkspaceRevisionStamp:
+    """#734 Slice A acceptance criterion 2 at the dispatch surface: the id is
+    content-addressed over the exact post-filter mapping — resolution order
+    must not matter, content must."""
+
+    async def test_permuted_store_order_yields_the_same_id(self, reply_router):
+        a = ("art_a", _source_ref("art_a", "backend/a.py"), b"a-body")
+        b = ("art_b", _source_ref("art_b", "backend/b.py"), b"b-body")
+
+        assert await _stamped_id(reply_router, [a, b]) == await _stamped_id(reply_router, [b, a])
+
+    async def test_content_change_yields_a_new_id(self, reply_router):
+        a = ("art_a", _source_ref("art_a", "backend/a.py"), b"a-body")
+        b1 = ("art_b", _source_ref("art_b", "backend/b.py"), b"b-body")
+        b2 = ("art_b", _source_ref("art_b", "backend/b.py"), b"b-body CHANGED")
+
+        assert await _stamped_id(reply_router, [a, b1]) != await _stamped_id(reply_router, [a, b2])
+
+    async def test_empty_workspace_context_is_still_named(self, reply_router):
+        """Evaluation runs even with no workspace context (the task's own
+        artifacts overlay an empty tree) — the verdict must name that state,
+        not carry null (#734 criterion 1)."""
+        from squadops.sandbox.models import compute_revision_id
+
+        assert await _stamped_id(reply_router, []) == compute_revision_id({})

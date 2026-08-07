@@ -631,6 +631,28 @@ class TestTypedCheckEvaluationArtifactBuilder:
         assert payload["evaluations"][0]["status"] == "failed"
         assert payload["evaluations"][0]["check"] == "acceptance:regex_match"
 
+    def test_payload_names_the_workspace_it_evaluated_against(self):
+        """#734 Slice A: the evaluation artifact carries the envelope's
+        dispatch-time workspace identity. Bug caught: a call site dropping the
+        threading — the verdict silently loses which tree it ran against, the
+        exact assumption-hole the slice exists to close."""
+        import json as _json
+
+        rows = [{"check": "acceptance:regex_match", "passed": True}]
+        artifact = DevelopmentDevelopHandler._build_typed_check_evaluation_artifact(
+            rows, task_index=1, task_type="qa.test", workspace_revision_id="b" * 64
+        )
+        payload = _json.loads(artifact["content"])
+        assert payload["workspace_revision_id"] == "b" * 64
+
+        # Envelope without the stamp (pre-#734 forwarded envelopes): explicit
+        # null, never a missing key — consumers distinguish "no identity
+        # recorded" from an older artifact version by presence.
+        legacy = DevelopmentDevelopHandler._build_typed_check_evaluation_artifact(
+            rows, task_index=1, task_type="qa.test"
+        )
+        assert _json.loads(legacy["content"])["workspace_revision_id"] is None
+
     def test_filename_omits_task_suffix_when_index_unknown(self):
         # Legacy flow without subtask_index — artifact still emits, just
         # without the per-task suffix (no second-task collision possible
