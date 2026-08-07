@@ -35,6 +35,7 @@ from squadops.cycles.models import (
 from squadops.cycles.preflight import (
     Finding,
     PreflightDecision,
+    bind_mode_authoring_decision,
     combine,
     model_availability_decision,
     required_check_tooling_decision,
@@ -125,6 +126,10 @@ async def _run_create_preflight(profile: SquadProfile, config: dict) -> tuple[Fi
     """
     decision = combine(
         required_roles_decision(profile, config),
+        # #762: bind mode with no plan_authoring_contributors is unwinnable by
+        # construction — the sole-author path never receives the criteria index,
+        # so every framing attempt is rejected. Fail in seconds, not per re-roll.
+        bind_mode_authoring_decision(config),
         model_availability_decision(profile, await _pulled_model_names()),
         # SIP-0096 §6.5: a required check whose tooling is knowably absent is a
         # create-time reject, never a mid-run blocked_unverified surprise.

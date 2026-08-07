@@ -21,10 +21,15 @@ from datetime import UTC, datetime
 
 import pytest
 
-from squadops.cycles.models import AgentProfileEntry, SquadProfile
+from squadops.cycles.models import (
+    VALID_PLAN_AUTHORING_CONTRIBUTORS,
+    AgentProfileEntry,
+    SquadProfile,
+)
 from squadops.cycles.preflight import (
     Finding,
     PreflightDecision,
+    bind_mode_authoring_decision,
     combine,
     model_availability_decision,
     required_check_tooling_decision,
@@ -294,3 +299,115 @@ def test_tooling_free_required_checks_never_block():
 def test_empty_required_checks_is_empty_decision():
     decision = required_check_tooling_decision([], available_tooling=None)
     assert decision.blocking == () and decision.warnings == ()
+
+
+# ---------------------------------------------------------------------------
+# #762 — bind mode with no plan_authoring_contributors is unwinnable
+#
+# Bug classes guarded: (a) the doomed configuration reaching dispatch at all —
+# shk-6 rolls 1-3 each burned a full framing workload to reach a deterministic
+# rejection; (b) the net over-reaching onto configurations that DO work, in
+# particular the implementation-only bind-mode shape the SIP-0101 replay
+# demonstration uses; (c) the net missing the legacy no-workload_sequence path,
+# which is exactly how the two config readings drift apart; (d) rejection text
+# that names the fault but not the remedy, reproducing the diagnosis cost the
+# check exists to remove.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("label", "config", "blocks"),
+    [
+        (
+            "bind + framing + no contributors — the shk-6 rolls 1-3 shape",
+            {
+                "contract_ref": "art_4f368ea08799",
+                "workload_sequence": [{"type": "framing"}, {"type": "implementation"}],
+            },
+            True,
+        ),
+        (
+            "bind + framing + contributors — the shk-6 roll-4+ / shk-7 green shape",
+            {
+                "contract_ref": "art_4f368ea08799",
+                "workload_sequence": [{"type": "framing"}, {"type": "implementation"}],
+                "plan_authoring_contributors": ["development", "qa", "strategy"],
+            },
+            False,
+        ),
+        (
+            "bind + implementation-only — the SIP-0101 replay shape, must not block",
+            {
+                "contract_ref": "art_4f368ea08799",
+                "workload_sequence": [{"type": "implementation"}],
+            },
+            False,
+        ),
+        (
+            "author mode sole-author — the common case, no contract to bind",
+            {"workload_sequence": [{"type": "framing"}]},
+            False,
+        ),
+        (
+            "legacy path: bind, no workload_sequence, plan_tasks defaults true",
+            {"contract_ref": "art_4f368ea08799"},
+            True,
+        ),
+        (
+            "legacy path: bind with plan_tasks disabled — nothing authors a plan",
+            {"contract_ref": "art_4f368ea08799", "plan_tasks": False},
+            False,
+        ),
+        (
+            "bind + framing + explicitly empty contributors list",
+            {
+                "contract_ref": "art_4f368ea08799",
+                "workload_sequence": [{"type": "framing"}],
+                "plan_authoring_contributors": [],
+            },
+            True,
+        ),
+    ],
+)
+def test_bind_mode_authoring_truth_table(label, config, blocks):
+    decision = bind_mode_authoring_decision(config)
+    assert decision.rejected is blocks, label
+    assert decision.warnings == ()
+
+
+def test_bind_mode_rejection_names_the_remedy_not_just_the_fault():
+    """A message that says only 'invalid config' rebuilds the cost this check removes."""
+    decision = bind_mode_authoring_decision(
+        {"contract_ref": "art_4f368ea08799", "workload_sequence": [{"type": "framing"}]}
+    )
+    (finding,) = decision.blocking
+    assert finding.code == "bind_mode_without_authoring_contributors"
+    assert finding.severity == "block"
+    # names why it is bind mode, what is missing, every valid role, and both exits
+    assert "contract_ref" in finding.message
+    assert "plan_authoring_contributors" in finding.message
+    for role in VALID_PLAN_AUTHORING_CONTRIBUTORS:
+        assert f"`{role}`" in finding.message
+    assert "execution_overrides" in finding.message
+    assert "author mode" in finding.message
+
+
+def test_contributors_vocabulary_is_single_sourced_with_dispatch():
+    """The preflight and dispatch-time sequence builder must not drift.
+
+    A duplicated literal here is how a role accepted at create time becomes a
+    CycleError at dispatch (or vice versa).
+    """
+    from squadops.cycles import task_plan
+
+    assert task_plan.VALID_PLAN_AUTHORING_CONTRIBUTORS is VALID_PLAN_AUTHORING_CONTRIBUTORS
+
+
+def test_bind_mode_check_is_composed_into_the_create_preflight():
+    """An uncomposed check is a check that never runs — the inert-capability class."""
+    import inspect
+
+    from squadops.api.routes.cycles import cycles as cycles_route
+
+    source = inspect.getsource(cycles_route._run_create_preflight)
+    assert "bind_mode_authoring_decision(config)" in source

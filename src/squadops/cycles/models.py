@@ -210,6 +210,13 @@ WORKLOAD_REQUIRED_ROLES: dict[str, frozenset[str]] = {
     WorkloadType.IMPLEMENTATION: frozenset(),
 }
 
+# Roles that may appear in ``plan_authoring_contributors`` (SIP-0093 Rev 1). Homed
+# here for the same reason as WORKLOAD_REQUIRED_ROLES above: two readers key off it —
+# dispatch-time sequence construction (task_plan.build_planning_steps) and the
+# create-time preflight (cycles.preflight.bind_mode_authoring_decision, #762) — and a
+# duplicated literal is how those two drift.
+VALID_PLAN_AUTHORING_CONTRIBUTORS = frozenset({"development", "qa", "strategy"})
+
 
 # =============================================================================
 # Validation helpers
