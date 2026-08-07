@@ -135,6 +135,7 @@ def create_llm_observability_provider(
     provider: str = "langfuse",
     config: LangFuseConfig | None = None,
     secret_manager: SecretManager | None = None,
+    prompt_asset_provider: str = "filesystem",
 ) -> LLMObservabilityPort:
     """Create LLM observability provider (SIP-0061).
 
@@ -146,6 +147,10 @@ def create_llm_observability_provider(
         provider: Provider name (currently only "langfuse")
         config: LangFuseConfig from AppConfig
         secret_manager: For resolving secret:// references in config
+        prompt_asset_provider: ``PromptsConfig.asset_source_provider`` (SIP-0084).
+            Threaded through so the adapter is told where prompt assets come from
+            instead of reading config itself or carrying a duplicate setting (#766);
+            prompt→generation linkage is only attempted when it is ``langfuse``.
 
     Returns:
         LLMObservabilityPort implementation
@@ -158,7 +163,7 @@ def create_llm_observability_provider(
             from adapters.telemetry.langfuse.adapter import LangFuseAdapter
 
             resolved_config = _resolve_secrets(config, secret_manager)
-            return LangFuseAdapter(resolved_config)
+            return LangFuseAdapter(resolved_config, prompt_asset_provider)
         except ImportError:
             logger.warning(
                 "langfuse SDK not installed; falling back to NoOp adapter. "
