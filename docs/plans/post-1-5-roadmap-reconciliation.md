@@ -134,5 +134,8 @@ is the only one whose omission is permanent rather than merely expensive.
   remaining re-homing — six issues whose premise moved and whose re-scoping is a planning
   decision (#305, #559, #579, #577, #80, #582) — belongs to the backlog pass, not to this
   progression record.
-- **No SIP acceptance.** `SIP-Squad-Authored-Manifest` remains proposed pending its own
-  acceptance decision.
+- **No SIP acceptance.** *(Superseded 2026-08-07, hours after this record: the manifest
+  SIP was accepted as **SIP-0103**, `sips/accepted/SIP-0103-Squad-Authored-Manifest.md`,
+  as the first step of 1.6 planning. `SIP-Stack-Blueprint-Contract` deliberately stays
+  proposed — its own stated acceptance gate is the existence of a second real stack,
+  which 1.6 builds, so it is promoted mid-release rather than up front.)*

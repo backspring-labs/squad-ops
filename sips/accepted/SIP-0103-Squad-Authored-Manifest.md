@@ -1,12 +1,25 @@
-# SIP: Squad-Authored Manifest
+---
+title: Squad-Authored Manifest
+status: accepted
+author: jladd
+created_at: '2026-08-03T00:00:00Z'
+sip_number: 103
+updated_at: '2026-08-07T08:48:31.854142Z'
+---
+# SIP-0103: Squad-Authored Manifest
 
-## Status
-Draft (proposed)
+**Status:** Accepted (2026-08-07 — design commitment on main; implementation follows on
+a feature branch per the CLAUDE.md contributor workflow)
 
 **Author:** Jason Ladd
 **Created:** 2026-08-03
 **Targets:** v1.6 (Lane M headline — the Authorship release, per
-`docs/plans/post-1-4-roadmap-reconciliation.md`)
+`docs/plans/post-1-4-roadmap-reconciliation.md`, with the 1.7/1.8 rows amended by
+`docs/plans/post-1-5-roadmap-reconciliation.md`). Accepted **with §5a/§5b/§5c in
+force** — the design-review rounds are part of the commitment, notably §5b Correction 1
+(mechanical contract derivation enters scope: contract v9 is hand-authored today and no
+`derive_contract(manifest)` exists, so authoring the manifest alone would leave the
+contract as the remaining hand-wired seed).
 **Builds on:** SIP-0099 (Contract-First Build Scaffolding — the expander this feeds),
 SIP-0098 (Verification Contracts — derived from the manifest, so authoring the manifest
 authors the ground truth the contract expands from), SIP-0093 (Multi-Role Plan

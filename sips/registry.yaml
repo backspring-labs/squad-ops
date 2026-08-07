@@ -1,4 +1,4 @@
-last_assigned: 102
+last_assigned: 103
 sips:
 - sip_number: 3
   sip_uid: '17642554775787694'
@@ -918,3 +918,12 @@ sips:
   approver: jladd
   created_at: '2026-07-08T00:00:00Z'
   updated_at: '2026-07-31T09:32:07.082425Z'
+- sip_uid: null
+  sip_number: 103
+  title: Squad-Authored Manifest
+  path: sips/accepted/SIP-0103-Squad-Authored-Manifest.md
+  status: accepted
+  author: jladd
+  approver: jladd
+  created_at: '2026-08-03T00:00:00Z'
+  updated_at: '2026-08-07T08:48:31.883754Z'
