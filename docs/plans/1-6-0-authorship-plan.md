@@ -90,8 +90,9 @@ replay/regression referent — not a legacy path to be retired.
 | Class | Contents |
 |---|---|
 | Release-defining | M1–M6 (SIP-0103's phases + the failure taxonomy) · S1–S3 + S5 (Generalized Build minimum + blueprint governance) · the authored-mode FAY window · **B1** (the memory baseline — see "Owed to 1.8") |
-| Enabling | M0a/M0b (equivalence guard + derive-at-seed; the derivation *proof* is already banked) · SIP-0093 completion (#762, #194 — the authoring pattern SIP-0103 extends) · SIP-0102 steps 3–4 (clean-room verdicts; #376) |
-| Capacity-bound | #668 (both halves) · #761 (A4.1) · #598 structural half · SIP-0092 M3 · #733 Slice B · SIP-0091 · SIP-0090 Phase 2 · SIP-0102 steps 5–7 · agent-comms delivery guarantees · ops riders |
+| Enabling | M0a/M0b (equivalence guard + derive-at-seed; the derivation *proof* is already banked) · SIP-0093 completion (#194 — the authoring pattern SIP-0103 extends; **#762 moved to the queue front**, where its preflight block starts paying immediately rather than waiting on the rest of 93's completion) · SIP-0102 steps 3–4 (clean-room verdicts; #376) |
+| Queue front (pre-work) | #762 · #766 · #770 — see "Queue front" above; cheap, not claim-proving, but they tax every roll |
+| Capacity-bound | #668 (both halves) · #772 (rides M0's schema change) · #761 (A4.1) · #598 structural half · SIP-0092 M3 · #733 Slice B · SIP-0091 · SIP-0090 Phase 2 · SIP-0102 steps 5–7 · agent-comms delivery guarantees · ops riders |
 
 **Scope warning, recorded at plan time.** The ROADMAP's 1.6 row lists five riders
 (SIP-0091, SIP-0090 P2, SIP-0102 steps 3–7, SIP-0093 completion, agent-comms) alongside
@@ -105,13 +106,37 @@ an owner-ratified scope change with a ROADMAP language update.
 
 ---
 
+## Queue front — pre-work hygiene *(ahead of M0a; owner-ruled 2026-08-07)*
+
+Three small fixes land **before** the headline tracks open. They are not release-defining and
+they do not prove the claim; they are here because 1.6's output is measured in **cycle rolls**,
+and each of these taxes every roll the release will run.
+
+| Item | What it costs per roll today | Why now rather than later |
+|---|---|---|
+| **#762** — bind mode with no `plan_authoring_contributors` is a guaranteed plan rejection | a wasted launch; **cost three rolls at shk-6** before diagnosis | 1.6 runs authoring experiments, gate probes, and an **unfiltered** FAY window, where a roll lost to misconfiguration is expensive in a way it is not during development |
+| **#766** — LangFuse prompt linkage is inert under the filesystem asset provider, and logs a vendor `ERROR` per agent per cycle | triage noise on every cycle; prompt→generation linkage silently absent from every trace | 1.6 is a release spent reading traces and triaging authoring failures — this degrades the instrument we will lean on hardest |
+| **#770** — `update_sip_status.py` fails opaquely on drafts without frontmatter | a blocked promotion at the worst moment | 1.6 promotes the Stack Blueprint SIP **mid-release** (S3), so this bites again inside this line |
+
+**This is deliberately not a 1.5.1 patch line.** The population since the v1.5.0 cut is five
+items (these three, plus #761 already homed to 1.6 as A4.1, plus #772), none urgent, three of
+them papercuts — below the bar the 1.4 patch lines set at 5–7 real fixes each, and not worth a
+deploy window, shakedown, bump, tag, and ledger close. 1.6 also opens with **pure offline work**
+(M0a is a fixture test; M0b is seed-time wiring), so a freshly-verified deployed baseline buys
+nothing yet. Same fixes, same order of arrival, none of the release overhead.
+
+**Trigger that would change this ruling:** the population reaching five or six *real defects*
+while 1.6's first deploy window is still far out, or any one of them turning live-breaking.
+
+---
+
 ## Track M — Squad-Authored Manifest (SIP-0103)
 
 ### Build order — **gates before author**
 
 The M-numbers below are section identities, not a sequence. The build order is:
 
-> **M0a → M0b → M3 → M2 → M6 → M1 → M4 → M5**
+> **queue front (#762, #766, #770) → M0a → M0b → M3 → M2 → M6 → M1 → M4 → M5**
 
 M0's collapse (below) made the original M1-first ordering wrong. The reasoning, which is
 the same rails-before-mechanism rule this repo has now applied three times (SIP-0101
@@ -227,8 +252,12 @@ Two consequences:
    available immediately — a hand-made manifest omitting `success_status` on a POST-to-
    collection must be rejected as unwinnable before it ever reaches implementation.
 2. It is a defect in seeded mode too, not only an authored-mode hazard: any future
-   hand-authored manifest hits it. Raised with the owner 2026-08-07; **filing decision
-   pending** (recorded here so it cannot be lost either way).
+   hand-authored manifest hits it. **Filed as #772** (2026-08-07), homed to 1.6 with the
+   preferred resolution recorded as *fix by deletion*: making `success_status` required
+   makes both defaults unreachable, so the underlying REST-semantics question — is the
+   deriver presumptuous, or the scaffold under-specified? — is dissolved rather than
+   answered. If the required-field change ever leaves scope, #772 says explicitly that the
+   question comes back live and needs an owner ruling.
 
 ### M1. Authoring stage
 
