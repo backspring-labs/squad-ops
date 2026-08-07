@@ -208,15 +208,47 @@ Consolidate into one object carrying **today's fields**. Pure refactor, exact te
 unmoved, both emission gates 6/6, regression unchanged. This removes the silent-omission
 failure mode immediately and prejudges nothing.
 
-### S2. Stack #2 — **the release's largest open decision**
+### S2. Stack #2 — **decided: a Node/TypeScript HTTP stack** *(owner ruling 2026-08-07)*
 
-Which second stack is **not decided by this plan**. It is a Gate-1 owner decision, and it
-gates everything after it in this track. The selection criterion that matters: stack #2 must
-differ from `fullstack_fastapi_react` along the axes the blueprint SIP names as
-FastAPI-shaped assumptions, or it will not reveal the mismatches the whole exercise exists
-to find — one analysable language per stack, a Python-style import boundary between tests
-and app, test ownership as directory prefixes, slots derivable from declared entities and
-routes.
+An Express-or-Fastify API with a typed React frontend. The selection criterion was
+cost-per-assumption-broken: stack #2 must differ from `fullstack_fastapi_react` along the
+axes the blueprint SIP names as FastAPI-shaped, or it reveals nothing — but 1.6 already
+carries two headlines and a measurement window, so the break must not drag the verification
+machinery into the experiment alongside the schema.
+
+**What it breaks — three of the four named assumptions:**
+
+| Assumption | How a TS stack breaks it |
+|---|---|
+| `analysable_suffix: str` (singular) | `.ts` + `.tsx` — two analysable suffixes in one stack |
+| `harness_entry_modules` (Python-style import boundary between tests and app) | Node module resolution has no equivalent boundary |
+| `qa_test_namespace` (test ownership as directory prefixes) | co-located `*.test.ts` beside source is the convention, not an option |
+
+**What it deliberately holds constant: HTTP.** Endpoints, probes, and the derived
+verification contract keep working, so what is under test is the **blueprint schema** rather
+than the whole verification stack. That containment matters because M0 is already changing
+contract derivation inside the same release.
+
+**Why the cost is low:** the Node toolchain is already in the tree — `agents/Dockerfile`
+carries Node.js/npm for the frontend build check and vitest (#306, shipped 1.3.1), and the
+sandbox's `EnvironmentContract` is already parameterized by image plus required tools. No new
+language runtime enters the pipeline.
+
+**Rejected alternatives, recorded so they are not relitigated:**
+
+- **Go** breaks *more* — single-binary packaging, and tests living inside the package rather
+  than in a directory — but costs a new toolchain in the agent image, the sandbox env image,
+  the test runner, and the `command_exit_zero` allowlist that #707 already declares
+  untrustworthy. Too much S-lane infrastructure for a release whose S lane must also write a
+  two-stack schema. **Reconsider as stack #3**, where its packaging break is the point.
+- **A Python CLI / non-HTTP stack** breaks the deepest assumption (slots derivable from
+  declared entities and routes) but puts the probe machinery under test simultaneously with
+  the schema. Wrong experiment for this release.
+
+**The latent break this forces into the open.** `analysable_suffix: str` is *already* wrong
+today: the current stack is `.py` backend plus `.jsx` frontend, and the typed checks are
+hardcoded to `.py` — which is exactly why #668's `.jsx` half keeps deferring. Stack #2 does
+not create that mismatch; it makes the schema answer for one that already exists.
 
 ### S3. Promote the Stack Blueprint SIP, schema written against two stacks
 
@@ -234,6 +266,13 @@ map, making the shk-1 dual-claim class *inexpressible* rather than merely reject
 
 Onto the blueprint's declared source language. This is where #668's `.jsx` territory and
 #598's packaging criterion become expressible; both stay capacity-bound.
+
+**Note the coupling S2 creates.** With a TS stack in the tree, "hardcoded `.py`" stops being
+a latent inelegance and becomes a live correctness gap — `fill_slot_signature`, `undefined_names`,
+and their siblings would silently skip the entire second stack. S4 is classified capacity
+because the *release claim* does not depend on it, but if S3's two-stack schema lands and S4
+does not, the plan must record that the second stack ships with a narrower enforced surface
+than the first. That is a disclosure obligation, not an acceptable silence.
 
 ---
 
@@ -258,9 +297,10 @@ forward," intention 5.
 ## Gates
 
 **Gate 1 — design commitments and enabling proofs.** SIP-0103 §6's open questions resolved
-(authoring decomposition first among them); the stack-#2 decision (S2); M0's derivation proof
-banked; S1's consolidation merged. *Exit:* no release-defining work starts against an
-unresolved design question.
+(authoring decomposition first among them); M0's derivation proof banked; S1's consolidation
+merged; the manifest-v5 migration posture recorded. **S2 is already settled** — Node/TypeScript,
+ruled 2026-08-07 at plan time. *Exit:* no release-defining work starts against an unresolved
+design question.
 
 **Gate 2 — the authoring loop closes.** M1–M4 land; an authored manifest passes schema and
 winnability gates, reaches the HITL gate, and — post-approval — runs the existing pipeline
@@ -303,7 +343,8 @@ authority is the HITL gate plus measurement, stated as such (§5c.2).
 |---|---|---|
 | **Derivation can't reproduce v9** | The pair was authored by hand and may encode judgment no deriver can see | M0 runs first, against a fixed target; every diff named or it's a defect |
 | **Authored chaos swamps the window** | An authored manifest can fail in ways a seeded one never could | Blueprint grammar + deterministic gates bound the space; free re-roll and hash-freeze at approval bound the blast radius (§5a) |
-| **Stack #2 chosen for convenience** | A near-twin of FastAPI would validate nothing | S2's selection criterion is stated above and is a Gate-1 owner decision |
+| **Stack #2 too close to FastAPI** | A near-twin would validate nothing | Settled at plan time: Node/TypeScript breaks three of the four named assumptions while holding HTTP constant (S2) |
+| **The TS stack's break is shallower than hoped** | Holding HTTP constant is a deliberate containment, so the slots-derive-from-routes assumption goes untested this release | Recorded, not hidden: that assumption is stack #3's job (a non-HTTP stack), and Go is named as the packaging-break candidate |
 | **Authored mode forks the pipeline** | The easy implementation is a second path | Guard 1's architecture test |
 | **Rider creep** | Five riders were listed against two headlines | Work classes; only claim-serving riders are enabling |
 | **Measurement drift** | A window tuned mid-flight proves nothing | Guard 2's pre-registration, committed before roll 1 |
