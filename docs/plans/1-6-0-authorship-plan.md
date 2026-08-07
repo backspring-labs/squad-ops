@@ -21,6 +21,15 @@ governance**. The review's sharpest finding was that S1 and M0 had proof strateg
 S3 had only a subjective one; the second sharpest was that three separate asks (revision
 reason, memory baseline, window attribution) are one artifact used three ways.
 
+**Revised again 2026-08-07 — M0's premise was wrong.** A pre-build verification pass
+measured the actual artifacts and found that the contract deriver already exists and that
+contract v9 is its exact output for manifest v4. **This plan therefore contradicts accepted
+SIP-0103 §5b Correction 1 on measured evidence**; the SIP stands as the accepted design
+commitment and the correction lives here. Consequences: M0 collapses from "build a deriver"
+to a guard plus wiring; Track M gains an explicit **gates-before-author** build order; and
+the `success_status` rider is upgraded from a schema-tidiness argument to a live latent
+defect with a reproduction.
+
 ## Character
 
 An **even minor**: a feature release led by headline SIPs, which gate the version.
@@ -81,7 +90,7 @@ replay/regression referent — not a legacy path to be retired.
 | Class | Contents |
 |---|---|
 | Release-defining | M1–M6 (SIP-0103's phases + the failure taxonomy) · S1–S3 + S5 (Generalized Build minimum + blueprint governance) · the authored-mode FAY window · **B1** (the memory baseline — see "Owed to 1.8") |
-| Enabling | M0 (contract derivation proof) · SIP-0093 completion (#762, #194 — the authoring pattern SIP-0103 extends) · SIP-0102 steps 3–4 (clean-room verdicts; #376) |
+| Enabling | M0a/M0b (equivalence guard + derive-at-seed; the derivation *proof* is already banked) · SIP-0093 completion (#762, #194 — the authoring pattern SIP-0103 extends) · SIP-0102 steps 3–4 (clean-room verdicts; #376) |
 | Capacity-bound | #668 (both halves) · #761 (A4.1) · #598 structural half · SIP-0092 M3 · #733 Slice B · SIP-0091 · SIP-0090 Phase 2 · SIP-0102 steps 5–7 · agent-comms delivery guarantees · ops riders |
 
 **Scope warning, recorded at plan time.** The ROADMAP's 1.6 row lists five riders
@@ -98,22 +107,76 @@ an owner-ratified scope change with a ROADMAP language update.
 
 ## Track M — Squad-Authored Manifest (SIP-0103)
 
-### M0. Mechanical contract derivation, proven against the known-good pair *(enabling — do this first)*
+### Build order — **gates before author**
 
-§5b Correction 1 is the reason this track cannot start with authoring: **contract v9 is a
-hand-authored artifact bound to the manifest by hash — no `derive_contract(manifest)`
-exists anywhere in the pipeline.** Squad-authoring the manifest alone would leave the
-contract as the remaining hand-wired seed, and bind mode without a derived contract is
-just author mode wearing a costume.
+The M-numbers below are section identities, not a sequence. The build order is:
 
-Build derivation *before* any authored manifest exists, and prove it against the pair the
-1.4 arc already validated:
+> **M0a → M0b → M3 → M2 → M6 → M1 → M4 → M5**
 
-> **M0 exit criterion (deterministic, and the shape of the whole track's risk posture):**
-> `derive_contract(manifest v4 art_8becd104e9fc)` reproduces contract v9
-> (`art_4f368ea08799`) — byte-equivalent, or with every diff **classified** in a committed
-> record. A diff that cannot be classified is a derivation defect, not a contract
-> improvement.
+M0's collapse (below) made the original M1-first ordering wrong. The reasoning, which is
+the same rails-before-mechanism rule this repo has now applied three times (SIP-0101
+Slice 1, SIP-0096's inert core, and M0a here):
+
+- **The gates are deterministic and testable against hand-made adversarial manifests
+  today**, with no authoring stage, no LLM, and no deploy. The `success_status` defaults
+  trap documented under M0 is a designed-failure probe that can be written this week.
+- **M1 is the only piece whose output is a lottery.** Landing it last means it arrives
+  against gates already proven to reject the classes we know about — so a failed authored
+  manifest is attributable to the author rather than ambiguous between author and
+  unproven gate.
+- Ordering M1 first inverts that: every early gate defect would surface *as* an authoring
+  failure, and the window's attribution (M6) would inherit the confusion.
+
+M4 (the HITL gate) follows M1 because there is nothing to review until something is
+authored; M5 (provenance) is last because it stamps a pipeline whose shape is settled by
+then.
+
+### M0. Contract derivation — **premise corrected 2026-08-07; the proof is already banked**
+
+> **PREMISE CORRECTION — this plan contradicts accepted SIP-0103 §5b Correction 1, on
+> measured evidence.** The SIP states: *"contract v9 is a hand-authored artifact … no
+> `derive_contract(manifest)` exists anywhere in the pipeline."* **Both halves are false.**
+> The SIP stays as accepted (it is a design commitment on main, not a living document);
+> the correction lives here, where the work is planned.
+
+The deriver exists and always did: `squadops.capabilities.scaffold_contract.emit_contract_dict()`,
+shipped as SIP-0098 phase 98.2 — *"the criteria are derived deterministically from the same
+interface manifest the skeleton is expanded from, so verification is a fixed property of the
+scaffold rather than a per-roll LLM lottery."*
+
+Run against the artifacts themselves on 2026-08-07:
+
+```
+emit_contract_dict(InterfaceManifest.from_yaml(art_8becd104e9fc))  ==  yaml(art_4f368ea08799)
+→ True   (exact dict equality; all six sections identical; 4 fill_files, 5 probes)
+```
+
+**Contract v9 is a pinned emission of manifest v4, not a hand-authored artifact.** M0's
+exit criterion as originally written — reproduce v9 from v4, byte-equivalent or every diff
+classified — is therefore **met with zero diffs, before any work started.**
+
+#### What is actually missing: wiring, not intelligence
+
+Bind mode loads the pinned contract from `contract_ref` *by design* — `handlers/cycle/base.py`
+states it outright: *"bind mode loads the pinned contract from `contract_ref` instead of
+regenerating it, so a criterion added to the expander would not appear until a re-seed."*
+That is correct for seeded mode and **impossible for authored mode**, where no pinned
+artifact exists yet because the manifest was only just written.
+
+M0 therefore collapses to two small, deterministic pieces:
+
+- **M0a — pin the equivalence as a standing guard.** A test over committed fixtures asserting
+  `emit_contract_dict(v4) == v9`. This converts a one-off measurement into an invariant, so
+  the deriver can never silently drift away from the contract the 1.4 evidence was measured
+  against. Cheap, and the entire track now rests on it.
+- **M0b — derive-at-seed.** When a cycle supplies a manifest and no `contract_ref`, derive
+  the contract at seed time and pin it, so authored mode gets the same frozen-by-hash
+  guarantee seeded mode has. No LLM, no new intelligence, fully testable offline.
+
+The divergence taxonomy below is **retained deliberately**, not deleted as spent. It now
+governs M0b (an authored manifest's derived contract vs what the scaffold actually emits)
+and any future change to the deriver — the classes are what keep "we changed the contract"
+from becoming an unexamined act.
 
 **Every accepted divergence is classified, not merely justified.** "Justified" degrades
 into a rubber stamp under schedule pressure; a required class does not. The taxonomy —
@@ -124,18 +187,14 @@ and note that v9 is the *incumbent*, not automatically the gold standard:
 | `normalization` | same semantics, different serialization (ordering, whitespace, defaulted field made explicit) | accept; pin the normal form so it never drifts again |
 | `ambiguity_removal` | v9 left something implicit that derivation must make explicit | accept; record the resolution as the new reference |
 | `derivation_defect` | the deriver is wrong | **fix the deriver** — never the record |
-| `v9_defect` | the hand-authored contract is wrong and derivation found it | accept the derived form **and** see below |
-| `underivable` | v9 encodes intent the manifest cannot express | the manifest schema gap is named; the check moves to authored residue |
+| `reference_defect` | the pinned reference is wrong and a deriver change found it | accept the new form **and** see below |
+| `underivable` | the reference encodes intent the manifest cannot express | the manifest schema gap is named; the check moves to authored residue |
 
-**The `v9_defect` class carries a retrospective obligation.** The 1.4 FAY window
-(6/6, five consecutive) was measured *against v9*. A genuine defect there is not merely a
-contract note — it qualifies a published number, and the plan must record the
-qualification in the same PR rather than absorbing it silently. This is unlikely and
-cheap to state; discovering it later without a stated policy is neither.
-
-This is *rails before mechanism* applied a third time (SIP-0101 Slice 1, SIP-0096's inert
-Phase 1 core). If derivation cannot reproduce a contract a human wrote for a manifest a
-human wrote, we learn it against a fixed target instead of inside authoring chaos.
+**The `reference_defect` class carries a retrospective obligation.** The 1.4 FAY window
+(6/6, five consecutive) was measured *against v9*. A defect there is not merely a contract
+note — it qualifies a published number, and the plan must record the qualification in the
+same PR rather than absorbing it silently. This is unlikely and cheap to state; discovering
+it later without a stated policy is neither.
 
 Scope split by verified derivability (§5b):
 
@@ -145,10 +204,31 @@ Scope split by verified derivability (§5b):
 | Probe skeletons — method/path/status from declared `errors` + `success_status` | **largely derivable**; probe *payloads* and `json_has` values carry product intent → derive the shape, author the values in the same authoring stage |
 | Suite/coverage expectations | **authored residue** — stays with the authoring stage |
 
-Rider: **`success_status` becomes required-per-endpoint** (§5b Correction 2 — optional and
-1/5-used in v4, but the scaffold already emits the declared status, so it is load-bearing
-today in all but name). Manifest schema change ⇒ **manifest v5**; the version bump is
-expected here and nowhere else in the track.
+Rider: **`success_status` becomes required-per-endpoint** (§5b Correction 2). Manifest schema
+change ⇒ **manifest v5**; the version bump is expected here and nowhere else in the track.
+
+**The empirical case is stronger than the SIP's, and it is a live latent defect.** Measured
+2026-08-07: `success_status` is declared on **1 of 5** endpoints in v4. Where it is absent,
+two components default *differently*:
+
+- the deriver asserts a status — `ep.success_status or 201` for POST-to-collection
+  (`scaffold_contract.py:267`), `or 200` for child routes (line 327);
+- the scaffold omits `status_code=` from the route decorator entirely when it is undeclared
+  (`scaffold.py:901`), so **FastAPI's own default (200) applies.**
+
+For a POST-to-collection with no declared status, the contract asserts **201** against a
+scaffold that emits **200** — an unwinnable contract, authored innocently. Today this is
+masked *only* because the single endpoint reaching that branch (`POST /runs`) happens to
+declare 201 explicitly. Nothing enforces that coincidence.
+
+Two consequences:
+
+1. This is the **first designed-failure probe for the M3 winnability gate**, and it is
+   available immediately — a hand-made manifest omitting `success_status` on a POST-to-
+   collection must be rejected as unwinnable before it ever reaches implementation.
+2. It is a defect in seeded mode too, not only an authored-mode hazard: any future
+   hand-authored manifest hits it. Raised with the owner 2026-08-07; **filing decision
+   pending** (recorded here so it cannot be lost either way).
 
 ### M1. Authoring stage
 
@@ -496,8 +576,10 @@ forward," intention 5.
 ## Gates
 
 **Gate 1 — design commitments and enabling proofs.** SIP-0103 §6's open questions resolved
-(authoring decomposition first among them); M0's derivation proof banked; S1's consolidation
-merged; the manifest-v5 migration posture recorded. **S2 is already settled** — Node/TypeScript,
+(authoring decomposition first among them); **M0's derivation proof is already banked** (measured
+2026-08-07, zero diffs) — Gate 1 instead requires M0a's standing equivalence guard merged and
+M0b's derive-at-seed landed; S1's consolidation merged; the manifest-v5 migration posture
+recorded. **S2 is already settled** — Node/TypeScript,
 ruled 2026-08-07 at plan time. *Exit:* no release-defining work starts against an unresolved
 design question.
 
@@ -565,7 +647,7 @@ authority is the HITL gate plus measurement, stated as such (§5c.2).
 
 | Risk | Why it is real here | Containment |
 |---|---|---|
-| **Derivation can't reproduce v9** | The pair was authored by hand and may encode judgment no deriver can see | M0 runs first, against a fixed target; every diff named or it's a defect |
+| ~~Derivation can't reproduce v9~~ **RETIRED 2026-08-07** | Premise was false — v9 *is* the deriver's output for v4, exact equality | Replaced by: *the deriver silently drifts from the pinned reference* → M0a's standing equivalence guard |
 | **Authored chaos swamps the window** | An authored manifest can fail in ways a seeded one never could | Blueprint grammar + deterministic gates bound the space; free re-roll and hash-freeze at approval bound the blast radius (§5a) |
 | **Stack #2 too close to FastAPI** | A near-twin would validate nothing | Settled at plan time: Node/TypeScript breaks three of the four named assumptions while holding HTTP constant (S2) |
 | **The TS stack's break is shallower than hoped** | Holding HTTP constant is a deliberate containment, so the slots-derive-from-routes assumption goes untested this release | Recorded, not hidden: that assumption is stack #3's job (a non-HTTP stack), and Go is named as the packaging-break candidate |
