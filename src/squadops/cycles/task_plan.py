@@ -45,6 +45,7 @@ from squadops.cycles.implementation_plan import (
 )
 from squadops.cycles.models import (
     REQUIRED_PLAN_ROLES,
+    VALID_PLAN_AUTHORING_CONTRIBUTORS,
     WORKLOAD_REQUIRED_ROLES,
     Cycle,
     CycleError,
@@ -109,12 +110,10 @@ _PLAN_AUTHORING_PROPOSER_STEPS: dict[str, tuple[str, str]] = {
     "strategy": ("strategy.propose_plan_guidance", role_to_id("strategy")),
 }
 
+
 # Rev 1 contributor vocabulary. ``build`` is reserved for Rev 2 (SIP-0093
 # §5.12 — builder-role proposer). Reject early so a typo or premature
 # config doesn't silently drop a proposer.
-_VALID_PLAN_AUTHORING_CONTRIBUTORS = frozenset({"development", "qa", "strategy"})
-
-
 def build_planning_steps(
     plan_authoring_contributors: list[str] | None,
 ) -> list[tuple[str, str]]:
@@ -134,17 +133,17 @@ def build_planning_steps(
 
     Raises:
         CycleError: if any contributor in the list isn't in
-            ``_VALID_PLAN_AUTHORING_CONTRIBUTORS``. Rejecting at sequence-
+            ``VALID_PLAN_AUTHORING_CONTRIBUTORS``. Rejecting at sequence-
             build time fails the cycle early rather than running a partial
             pipeline that drops the misconfigured proposer.
     """
     contributors = list(plan_authoring_contributors or [])
-    unknown = set(contributors) - _VALID_PLAN_AUTHORING_CONTRIBUTORS
+    unknown = set(contributors) - VALID_PLAN_AUTHORING_CONTRIBUTORS
     if unknown:
         raise CycleError(
             "plan_authoring_contributors contains unsupported roles: "
             f"{sorted(unknown)}. Rev 1 supports "
-            f"{sorted(_VALID_PLAN_AUTHORING_CONTRIBUTORS)}."
+            f"{sorted(VALID_PLAN_AUTHORING_CONTRIBUTORS)}."
         )
 
     steps: list[tuple[str, str]] = [

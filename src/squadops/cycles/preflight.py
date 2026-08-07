@@ -32,7 +32,12 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from squadops.cycles.check_registry import get_framework_check
-from squadops.cycles.models import REQUIRED_PLAN_ROLES, WORKLOAD_REQUIRED_ROLES
+from squadops.cycles.models import (
+    REQUIRED_PLAN_ROLES,
+    VALID_PLAN_AUTHORING_CONTRIBUTORS,
+    WORKLOAD_REQUIRED_ROLES,
+    WorkloadType,
+)
 
 if TYPE_CHECKING:
     from squadops.cycles.models import SquadProfile
@@ -131,6 +136,76 @@ def _required_roles_by_workload(config: Mapping[str, Any]) -> dict[str, frozense
     if config.get("plan_tasks", True):
         return {"plan_tasks": REQUIRED_PLAN_ROLES}
     return {}
+
+
+def _authors_a_plan(config: Mapping[str, Any]) -> bool:
+    """True iff this cycle's requested workloads will actually author a plan.
+
+    Mirrors :func:`_required_roles_by_workload`'s reading of the same surface,
+    including its legacy fallback, so the two never disagree about whether
+    planning happens.
+    """
+    sequence = config.get("workload_sequence") or []
+    if sequence:
+        return any(
+            (entry.get("type") if isinstance(entry, Mapping) else None) == WorkloadType.FRAMING
+            for entry in sequence
+        )
+    return bool(config.get("plan_tasks", True))
+
+
+def bind_mode_authoring_decision(config: Mapping[str, Any]) -> PreflightDecision:
+    """Block a bind-mode cycle whose framing cannot produce a bindable plan (#762).
+
+    In bind mode (``contract_ref`` present) the plan is validated to *bind* the
+    contract's criteria by id. Only the proposer task types carry the criteria
+    index — ``bind_criteria_index`` is set on ``development.propose_plan_tasks`` and
+    ``qa.propose_plan_tasks`` in ``capabilities.context_assembly``, and
+    ``governance.merge_plan`` is deliberately excluded there. So with no
+    ``plan_authoring_contributors`` there are no proposers, *nothing* in the framing
+    workload ever receives the index, and every plan the sole-author merger can
+    produce (frozen-surface claims, zero ``criteria_refs``) is rejected by bind-mode
+    validation. The configuration is unwinnable by construction, and it costs a full
+    framing workload per attempt to discover — shk-6 rolls 1-3 burned three.
+
+    **Scoped to configurations that actually author a plan.** An implementation-only
+    bind-mode cycle is legitimate and used: the SIP-0101 replay demonstration
+    (``cyc_cfe6962e8fc8``) skipped framing via a ``workload_sequence`` override to
+    resume from a checkpoint. Blocking on ``contract_ref`` alone would have rejected
+    it, and a net that false-positives on a working configuration is worse than the
+    gap it closes.
+
+    Blocks rather than warns: every input is present in the resolved config at create
+    time (knowable, per this module's block-vs-warn rule), and the downstream
+    rejection is deterministic rather than probable — warning would spend a framing
+    workload to reach a certain failure.
+    """
+    if not config.get("contract_ref"):
+        return PreflightDecision()
+    if config.get("plan_authoring_contributors"):
+        return PreflightDecision()
+    if not _authors_a_plan(config):
+        return PreflightDecision()
+
+    roles = ", ".join(f"`{r}`" for r in sorted(VALID_PLAN_AUTHORING_CONTRIBUTORS))
+    return PreflightDecision(
+        blocking=(
+            Finding(
+                code="bind_mode_without_authoring_contributors",
+                severity="block",
+                message=(
+                    "this cycle is in bind mode (`contract_ref` is set) but "
+                    "`plan_authoring_contributors` is empty, so plan authoring would run "
+                    "sole-author — a path that never receives the contract's criteria "
+                    "index and therefore cannot produce a plan that binds it. Every "
+                    "framing attempt would be rejected. Set "
+                    f"`plan_authoring_contributors` (any of {roles}) in the request "
+                    "profile or `execution_overrides`, or drop `contract_ref` to run in "
+                    "author mode."
+                ),
+            ),
+        )
+    )
 
 
 def _canonical_model(name: str) -> str:
