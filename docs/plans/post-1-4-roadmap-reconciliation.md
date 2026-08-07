@@ -40,7 +40,7 @@ the same release.
 ## Per-release rationale
 
 - **1.6 — Authorship.** Squad-Authored Manifest is the 1.4 gate's own deferred
-  condition and the earned next rung (`sips/proposed/SIP-Squad-Authored-Manifest.md`).
+  condition and the earned next rung (accepted 2026-08-07 as **SIP-0103**, `sips/accepted/SIP-0103-Squad-Authored-Manifest.md`).
   Generalized Build (Stack Blueprint pluginization, second stack) is the natural S
   headline: both headliners extend the golden path, so a 1.6 regression is unambiguously
   golden-path work. Gate: authored-mode FAY repeatably > 0, banked as the authored-mode
@@ -62,7 +62,8 @@ the same release.
 
 ## Moves executed with this record (one PR)
 
-1. `sips/proposed/SIP-Squad-Authored-Manifest.md` drafted — the 1.6 M headline
+1. `SIP-Squad-Authored-Manifest.md` drafted in `sips/proposed/` — the 1.6 M headline
+   (accepted 2026-08-07 as `sips/accepted/SIP-0103-Squad-Authored-Manifest.md`)
    previously existed only as a roadmap sentence.
 2. `sips/proposed/SIP-Campaign-Orchestration.md` retargeted v1.6 → v1.8 (header +
    phasing section).
