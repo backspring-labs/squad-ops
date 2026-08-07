@@ -10,6 +10,17 @@ Roadmap position: `docs/plans/post-1-4-roadmap-reconciliation.md` (the 1.6 row, 
 and `docs/plans/post-1-5-roadmap-reconciliation.md` (1.7/1.8 rows, plus the design
 intention this release owns).
 
+**Revised 2026-08-07** after an owner review round (twelve points). They are folded in
+where they act rather than appended as a list, because an appendix gets skimmed and a
+gate criterion does not. What they changed, for traceability: M0 gained a divergence
+taxonomy; M2 gained the unresolved-decision lifecycle; M5 gained a structured revision
+reason; Guard 1 gained an **equivalence** half; S3 gained the exit criterion it was
+missing; B1 gained time-to-resolution; and three sections are new — **the authoring
+failure taxonomy**, **generalization debt after 1.6**, and **blueprint vocabulary
+governance**. The review's sharpest finding was that S1 and M0 had proof strategies and
+S3 had only a subjective one; the second sharpest was that three separate asks (revision
+reason, memory baseline, window attribution) are one artifact used three ways.
+
 ## Character
 
 An **even minor**: a feature release led by headline SIPs, which gate the version.
@@ -33,9 +44,21 @@ different guards. Two, both testable:
 > **Guard 1 — authored mode is a mode of manifest *provenance*, not a second pipeline.**
 > Post-approval, an authored manifest enters `plan_artifact_refs` exactly as a seeded one
 > does; expander, contract derivation, bind-mode plan validation, and every 1.4/1.5
-> enforcement surface operate identically. **Verification at cut:** no execution path
-> branches on authoring mode below the framing workload — pinned by an architecture test,
-> the `test_plan_gate_seams.py` precedent.
+> enforcement surface operate identically.
+>
+> **Verification at cut, in two halves — structure and output:**
+>
+> - **1a, no fork:** no execution path branches on authoring mode below the framing
+>   workload — pinned by an architecture test, the `test_plan_gate_seams.py` precedent.
+> - **1b, equivalence:** feed the **reference manifest** through authored mode's
+>   post-approval path; the expansion, the derived contract, and every verification
+>   artifact must be **byte-identical** to seeded mode's. Same input, same output,
+>   different provenance.
+>
+> 1a alone is not sufficient and the distinction matters: a structural test proves nothing
+> *branches*, not that the transformation is the same. 1b is what isolates a provenance
+> change from a transformation defect, and it is cheap — the golden/replay machinery from
+> 1.5 already does exactly this comparison.
 
 > **Guard 2 — the measurement cannot be tuned by the thing it measures.** The authored-mode
 > FAY window is pre-registered (N, PRD, deploy hash, scoring discipline) before the first
@@ -57,7 +80,7 @@ replay/regression referent — not a legacy path to be retired.
 
 | Class | Contents |
 |---|---|
-| Release-defining | M1–M5 (SIP-0103's phases) · S1–S3 (Generalized Build minimum) · the authored-mode FAY window · **B1** (the memory baseline — see "Owed to 1.8") |
+| Release-defining | M1–M6 (SIP-0103's phases + the failure taxonomy) · S1–S3 + S5 (Generalized Build minimum + blueprint governance) · the authored-mode FAY window · **B1** (the memory baseline — see "Owed to 1.8") |
 | Enabling | M0 (contract derivation proof) · SIP-0093 completion (#762, #194 — the authoring pattern SIP-0103 extends) · SIP-0102 steps 3–4 (clean-room verdicts; #376) |
 | Capacity-bound | #668 (both halves) · #761 (A4.1) · #598 structural half · SIP-0092 M3 · #733 Slice B · SIP-0091 · SIP-0090 Phase 2 · SIP-0102 steps 5–7 · agent-comms delivery guarantees · ops riders |
 
@@ -88,9 +111,27 @@ Build derivation *before* any authored manifest exists, and prove it against the
 
 > **M0 exit criterion (deterministic, and the shape of the whole track's risk posture):**
 > `derive_contract(manifest v4 art_8becd104e9fc)` reproduces contract v9
-> (`art_4f368ea08799`) — byte-equivalent, or with every diff named and justified as an
-> improvement in a committed record. A diff that cannot be explained is a derivation
-> defect, not a contract improvement.
+> (`art_4f368ea08799`) — byte-equivalent, or with every diff **classified** in a committed
+> record. A diff that cannot be classified is a derivation defect, not a contract
+> improvement.
+
+**Every accepted divergence is classified, not merely justified.** "Justified" degrades
+into a rubber stamp under schedule pressure; a required class does not. The taxonomy —
+and note that v9 is the *incumbent*, not automatically the gold standard:
+
+| Class | Meaning | Consequence |
+|---|---|---|
+| `normalization` | same semantics, different serialization (ordering, whitespace, defaulted field made explicit) | accept; pin the normal form so it never drifts again |
+| `ambiguity_removal` | v9 left something implicit that derivation must make explicit | accept; record the resolution as the new reference |
+| `derivation_defect` | the deriver is wrong | **fix the deriver** — never the record |
+| `v9_defect` | the hand-authored contract is wrong and derivation found it | accept the derived form **and** see below |
+| `underivable` | v9 encodes intent the manifest cannot express | the manifest schema gap is named; the check moves to authored residue |
+
+**The `v9_defect` class carries a retrospective obligation.** The 1.4 FAY window
+(6/6, five consecutive) was measured *against v9*. A genuine defect there is not merely a
+contract note — it qualifies a published number, and the plan must record the
+qualification in the same PR rather than absorbing it silently. This is unlikely and
+cheap to state; discovering it later without a stated policy is neither.
 
 This is *rails before mechanism* applied a third time (SIP-0101 Slice 1, SIP-0096's inert
 Phase 1 core). If derivation cannot reproduce a contract a human wrote for a manifest a
@@ -145,6 +186,36 @@ Two schema extensions land here:
   with a PRD warrant** (§5c.4) — pagination, authz boundaries, idempotency, caching. Judgment
   becomes explicit, reviewable at the gate, and auditable later.
 
+#### The lifecycle of an unresolved decision *(otherwise it propagates silently)*
+
+Three rules, so an unresolved entry can never become an implementation surprise:
+
+1. **Preserved, never consumed.** An unresolved entry stays in the manifest as part of the
+   design record and its provenance. Approval does **not** silently drop it.
+2. **Approval does not resolve it.** The operator approving a manifest approves the design
+   *including its stated open questions*; resolution is a separate act that produces a new
+   manifest version with a new hash (M5's immutability rule). Nothing may read "approved"
+   as "all questions answered."
+3. **Derivation may not depend on one.** If a derived check would depend on an unresolved
+   decision, that is a **winnability failure (M3), not an approval question** — the gate
+   rejects before a human ever sees it.
+
+Rule 3 is the load-bearing one: it keeps the invariant in deterministic machinery rather
+than in reviewer discipline, which is the difference between a rule and a hope.
+
+#### The judgment ratchet *(the surface must shrink, not grow)*
+
+§5c.4 defines *what* may be judgment — anything the schema cannot express mechanically.
+What it does not do is create any pressure for that set to get smaller, so an
+implementation can satisfy every deterministic gate while quietly relocating more and
+more engineering reasoning into `decisions[]`.
+
+The ratchet: **`decisions[] entries are counted by class in the window diagnostics, and a
+recurring judgment class is a schema-gap signal**, not a standing accommodation. A class
+that appears in most authored manifests is a candidate for promotion to a mechanical
+field — adjudicated by the blueprint governance rule below, since promotion is a
+blueprint-version change rather than silent drift.
+
 ### M3. Winnability gate (deterministic — the new validator family)
 
 The authored manifest must be provably winnable before anything downstream spends on it.
@@ -185,10 +256,50 @@ and an operator edit is a **new manifest version with a new hash**, never an in-
 mutation. Replay, regression, and memory read provenance from the artifact rather than from
 cycle-history archaeology.
 
+**Provenance records *why* it changed, not only where it came from.** Attempt count alone
+says a manifest took three tries; it does not say whether those tries were a schema failure,
+a winnability rejection, reviewer feedback, or the author's own refinement — and every
+downstream consumer (replay comparison, the window's attribution, 1.8's memory) wants
+exactly that distinction. Each revision therefore carries a **structured reason drawn from
+the shared authoring failure taxonomy below** — one vocabulary, not a free-text field that
+each reader parses differently.
+
 **Manifest evolution stays out** (§5c.8). The freeze is what makes verdicts attributable:
 every check, probe, and repair measures against one hash, and a mid-cycle moving target is
 the #494 stale-binding class systemically. The named trigger for revisiting: a measured rate
 of A4 `plan_defect` terminations whose root cause names an authoring-unknowable constraint.
+
+### M6. The authoring failure taxonomy — **one artifact, three consumers**
+
+Three separate needs in this plan turn out to be the same record, and building it three
+times would recreate exactly the taxonomy-reconciliation problem the 1.8 reconciliation
+exists to prevent (intention 2 — one failure-class vocabulary, not parallel ones):
+
+| Consumer | Needs |
+|---|---|
+| M5 provenance | why each revision happened |
+| B1 baseline | rejection classes and their recurrence, per cycle |
+| the FAY window | which subsystem a failure is attributable to |
+
+**Build it once, in M6, before the window opens.** Without it, the window's output
+collapses into a single "manifest rejected" bucket, and a bucket cannot tell us whether
+authored mode is limited by the *author*, the *schema*, the *blueprint*, or the *deriver* —
+which is the entire question the release exists to answer.
+
+The taxonomy keys off the vocabulary that already exists — `failure_ownership` (#730's
+registry attrs), locus classification (#568), `FailureEvidenceCategory` — extended with
+the authoring-specific dimension:
+
+| Class | Meaning | Who fixes it |
+|---|---|---|
+| `authoring_defect` | the manifest is wrong; the schema, blueprint, and deriver are fine | the author (retry with rejection context is the right response) |
+| `schema_gap` | the manifest could not express something the design needs | schema change ⇒ blueprint version |
+| `blueprint_limitation` | the stack's closed vocabulary cannot express the design | blueprint governance (below) |
+| `derivation_defect` | authoring was sound; the deriver mishandled it | M0's code |
+| `prd_insufficiency` | the PRD does not determine the answer | `decisions[]`, `unresolved: true`, the HITL gate |
+
+The last class is the one that most needs to exist: without it, a PRD that under-specifies
+looks identical to a squad that cannot design — and those have opposite remedies.
 
 ---
 
@@ -258,6 +369,30 @@ than no contract, because it looks authoritative and the second stack will quiet
 itself to fit rather than reveal the mismatch." Promotion is therefore a **mid-release
 milestone**, and the schema is reconciled across both stack vocabularies.
 
+#### S3 exit criterion — the proof this step was missing
+
+M0 proves derivation against a known-good reference and S1 proves consolidation by exact
+byte-equivalence. S3 originally had neither: "the schema works for two stacks" is a
+subjective claim, and *accommodating* two stacks is not the same as *modelling* them. The
+proof is the inverse of the failure mode the SIP itself names:
+
+1. **The bend register.** Every point where the TS stack had to adopt a convention it would
+   not otherwise use — a directory layout, a naming rule, an entry-module shape — purely to
+   satisfy the schema is recorded as a **bend**, with the field that forced it. Exit
+   criterion: **zero unexplained bends.** A bend that survives must be argued as a genuine
+   cross-stack convention, not as a concession, and that argument is reviewable.
+2. **The falsification pass.** For each blueprint field, remove or corrupt it and confirm
+   something *breaks* in at least one stack. A field whose removal breaks nothing is
+   decorative — it is describing a fact no consumer reads, and it should be deleted before
+   the schema is frozen rather than after it has accreted meaning.
+3. **No single-stack fields by accident.** A field populated meaningfully by exactly one
+   blueprint is either a genuine optional capability (**declared as such, with the reason**)
+   or a FastAPI assumption wearing a general name. The schema must say which.
+
+Together these convert "works for two stacks" from a judgment call into a reviewable
+artifact — which is the same move #730 made for typed checks, where declaration is required
+and drift is guarded.
+
 Riding here (ROADMAP's 1.6 S scope): the **QA-decomposition anchor's structural derivation** —
 tasks declare produce-vs-verify and `expected_artifacts` derive from the blueprint's ownership
 map, making the shk-1 dual-claim class *inexpressible* rather than merely rejected.
@@ -274,6 +409,59 @@ because the *release claim* does not depend on it, but if S3's two-stack schema 
 does not, the plan must record that the second stack ships with a narrower enforced surface
 than the first. That is a disclosure obligation, not an acceptable silence.
 
+### S5. Blueprint vocabulary governance — **who may add a field**
+
+The plan repeatedly treats the blueprint as *the closed vocabulary that bounds authoring*.
+A closed vocabulary with no admission rule is not closed: the path of least resistance,
+every time authoring hits a limit, is to add a blueprint field — and the abstraction decays
+into a union of stack-specific features while still looking general.
+
+**Admission rule: a new blueprint field must be demonstrated on at least two stacks before
+admission.** This is the SIP's own argument applied to its successors — if generalizing from
+one instance produces FastAPI-with-generic-names, then *extending* from one instance does
+the same thing one field at a time.
+
+Consequences, stated so they are not surprises:
+
+- A one-stack need is expressed as a **declared optional capability with its reason**, not as
+  a general field. The schema says "this stack has X" rather than implying every stack does.
+- A `blueprint_limitation` from the M6 taxonomy does **not** automatically authorize a new
+  field. It authorizes the *question*, which this rule adjudicates.
+- Judgment classes promoted out of `decisions[]` by the M2 ratchet enter through this same
+  gate. The ratchet identifies candidates; governance admits them.
+
+The rule can be waived, but only explicitly and with the waiver recorded on the field —
+the #682 pattern, where a waiver discloses rather than rewrites.
+
+---
+
+## Generalization debt after 1.6 — **what stays unvalidated, stated plainly**
+
+The S lane's headline is "Generalized Build Capability." Honesty about the release claim
+requires saying *how* generalized, because holding HTTP constant (S2) is a deliberate
+containment and not a completed generalization.
+
+**Validated by 1.6** (two real instances exercise them): source-language plurality
+(`.py`/`.jsx` vs `.ts`/`.tsx`), the test/app import boundary, test-ownership convention,
+and the build/test command surface.
+
+**Deliberately unvalidated after 1.6**, each with the stack that would settle it:
+
+| Assumption still resting on one instance | What would test it |
+|---|---|
+| Fill slots derive from declared entities and routes | a non-HTTP stack (CLI, library, batch) — the deepest assumption, untouched here |
+| The routing model is expressible as method + path | any non-REST transport (GraphQL, RPC, event-driven) |
+| Endpoint discovery is static and declared up front | a framework with dynamic or convention-based routing |
+| Packaging is a container with a long-running server | a single-binary or serverless target — **Go, the named stack-#3 candidate** |
+| One deployable unit per application | anything multi-service |
+
+**The standing stack-selection rule**, so future expansion is coverage-driven rather than
+language-driven: **each additional stack must invalidate at least one assumption still on
+this list, and the list is updated when it does.** A stack that adds a language while
+breaking nothing on the list adds maintenance and proves nothing. This is why S2 chose
+Node/TypeScript over a FastAPI near-twin, and it is why Go is queued rather than dropped —
+its packaging break is a row above.
+
 ---
 
 ## Owed to 1.8 — the one intention this release owns
@@ -286,8 +474,19 @@ needs a baseline captured from the authored-mode window, **before memory exists*
 is live the baseline is unrecoverable and the claim becomes unmeasurable.
 
 Concretely: durable per-cycle counts of rejection classes — plan-validation rejections and the
-new manifest-gate rejection taxonomy — emitted as a first-class output of the authored-mode
-window, read by nothing in 1.6. Cheap while building authored mode; impossible afterward.
+M6 authoring failure taxonomy — emitted as a first-class output of the authored-mode window,
+read by nothing in 1.6. Cheap while building authored mode; impossible afterward.
+
+**Two dimensions, not one.** Memory should reduce both how often a mistake recurs *and* how
+expensively it is recovered from, so the baseline records both:
+
+- **recurrence** — occurrences per rejection class, per cycle;
+- **time-to-resolution** — attempts and re-rolls consumed before that class cleared.
+
+The second is equally unrecoverable after the fact and equally cheap now, since the
+instrumentation is already being added for M5 and M6. A memory implementation that halves
+recovery cost without changing recurrence is a real win that a recurrence-only baseline
+would score as zero.
 
 Full rationale: `docs/plans/post-1-5-roadmap-reconciliation.md`, "Design intentions carried
 forward," intention 5.
@@ -302,24 +501,49 @@ merged; the manifest-v5 migration posture recorded. **S2 is already settled** �
 ruled 2026-08-07 at plan time. *Exit:* no release-defining work starts against an unresolved
 design question.
 
-**Gate 2 — the authoring loop closes.** M1–M4 land; an authored manifest passes schema and
+**Gate 2 — the authoring loop closes.** M1–M4 land, with M6's taxonomy in place before any authored manifest is rejected (a rejection recorded without a class is data lost); an authored manifest passes schema and
 winnability gates, reaches the HITL gate, and — post-approval — runs the existing pipeline
 end to end with no mode branch below framing (Guard 1's architecture test green).
 
-**Gate 3 — integration.** M5 provenance; S3 promotion with the two-stack schema; B1 emitting;
+**Gate 3 — integration.** M5 provenance and M6's taxonomy; S3 promotion with the two-stack schema (bend register + falsification pass) and S5's admission rule recorded; B1 emitting both dimensions;
 enabling riders (SIP-0093 completion, SIP-0102 steps 3–4) landed. Deploy window with
 loaded-module verification, per the 1.5 precedent.
 
 **Cut gate.**
-1. **Core-claim gate:** M0–M5 and S1–S3 complete; B1 emitting. Removal of any item requires an
+1. **Core-claim gate:** M0–M6 and S1–S3 + S5 complete; B1 emitting both dimensions. Removal of any item requires an
    owner-ratified scope change.
 2. **Capacity roll:** unfinished capacity items → 1.7 pool with a milestone update.
-3. **Full regression green**, and both guards verified (the no-branch architecture test; the
-   committed pre-registration record).
+3. **Full regression green**, and all three guard halves verified (1a no-branch architecture
+   test; 1b reference-manifest equivalence; 2's committed pre-registration record).
 4. **The measurement:** authored-mode FAY window — pre-registered N, unfiltered, frozen deploy.
    **Gate: FAY repeatably > 0 in authored-manifest mode**, banked as the authored-mode baseline
    that 1.8's memory and campaign work measure against.
-5. **Confirmation shakedown** on the fully integrated line, green, per the 1.4/1.5 cadence.
+5. **The control is protected** — see below.
+6. **Confirmation shakedown** on the fully integrated line, green, per the 1.4/1.5 cadence.
+
+### Protecting seeded mode — the control cannot be left uncontrolled
+
+Seeded mode is the permanent control configuration and the replay referent for every future
+release. Unit regression does not cover it: a change can keep every test green and still
+degrade live seeded yield, and if that happens undetected, 1.8 measures its memory work
+against a baseline that quietly moved.
+
+A second full FAY window in seeded mode would answer this and roughly doubles the release's
+measurement cost. Three cheaper mechanisms cover the same class, and they are required:
+
+1. **Guard 1b** — the reference manifest through authored mode must produce byte-identical
+   downstream artifacts. This catches transformation regressions structurally, before any
+   window runs.
+2. **The confirmation shakedown runs in seeded mode explicitly**, not in whichever mode is
+   convenient. The cut already requires a shakedown; this fixes its configuration so it
+   functions as a control observation.
+3. **Replay zero-diff over the 1.5 green corpus** — the #734 method, already proven at the
+   1.5 cut: stored evaluation rows re-evaluate identically under the new code.
+
+If all three pass and seeded yield has still degraded, the cause is model or environment
+drift rather than this release's changes — and a fresh seeded window would not have
+attributed it either. That is the honest limit of what the cheap mechanisms buy, stated
+rather than glossed.
 
 ### Non-gating diagnostics for the window (§5c.7)
 
