@@ -8,9 +8,11 @@ Uses a fake langfuse module injection so the SDK is not required.
 
 from __future__ import annotations
 
+import dataclasses
 import sys
 import time
 import types
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 import pytest
@@ -266,6 +268,106 @@ class TestPayloadShapes:
         adapter.record_event(ctx, StructuredEvent(name="task.started", message="go"))
         entry = adapter._buffer.get_nowait()
         assert entry.payload.name == "task.started"
+
+
+class TestRedactionPreservesEveryOtherField:
+    """#793: redaction rebuilt each record field-by-field and dropped
+    ``tokens_per_second`` — one of eleven. It defaults to None, so the omission
+    raised nothing and LangFuse reported null throughput for every generation
+    from SIP-0061 until the fix.
+
+    These tests pin both halves: the value that was lost, and the class of loss.
+    """
+
+    def test_tokens_per_second_survives_redaction(self, adapter):
+        """The exact #793 defect. A populated throughput must reach the buffer."""
+        adapter.record_generation(_make_ctx(), _make_record(tokens_per_second=10.6), _make_layers())
+        assert adapter._buffer.get_nowait().payload[0].tokens_per_second == 10.6
+
+    def test_every_generation_field_but_the_redacted_pair_is_carried_through(self, adapter):
+        """The drift guard, and the reason this is `replace` rather than one more
+        keyword: a field added to GenerationRecord tomorrow is carried without
+        touching this adapter. Every field gets a distinct non-default value, so a
+        silently-dropped one shows up as None rather than coinciding with a default.
+        """
+        record = GenerationRecord(
+            generation_id="gen-793",
+            model="qwen3.6:27b",
+            prompt_text="prompt with no secrets",
+            response_text="response with no secrets",
+            prompt_tokens=1234,
+            completion_tokens=4866,
+            total_tokens=6100,
+            latency_ms=459_100.0,
+            tokens_per_second=10.6,
+            prompt_name="request.development_develop",
+            prompt_version=7,
+        )
+        adapter.record_generation(_make_ctx(), record, _make_layers())
+        buffered = adapter._buffer.get_nowait().payload[0]
+
+        redacted = {"prompt_text", "response_text"}
+        for field in dataclasses.fields(GenerationRecord):
+            if field.name in redacted:
+                continue
+            assert getattr(buffered, field.name) == getattr(record, field.name), (
+                f"{field.name} was dropped or altered by the redaction copy"
+            )
+
+    def test_every_event_field_but_the_message_is_carried_through(self, adapter):
+        """``record_event`` had the same hand-copy shape and was complete only
+        because no field had been added to StructuredEvent since it was written.
+        """
+        event = StructuredEvent(
+            name="task.failed",
+            message="message with no secrets",
+            level="error",
+            attributes=(("attempt", 3),),
+            timestamp=datetime(2026, 8, 8, 12, 0, 0, tzinfo=UTC),
+            span_id="span-793",
+        )
+        adapter.record_event(_make_ctx(), event)
+        buffered = adapter._buffer.get_nowait().payload
+
+        for field in dataclasses.fields(StructuredEvent):
+            if field.name == "message":
+                continue
+            assert getattr(buffered, field.name) == getattr(event, field.name), (
+                f"{field.name} was dropped or altered by the redaction copy"
+            )
+
+    def test_redaction_still_happens(self, adapter):
+        """`replace` copies everything — including, if misapplied, the raw text.
+        Guards the fix against trading a dropped field for a leaked secret.
+        """
+        adapter.record_generation(
+            _make_ctx(),
+            _make_record(
+                prompt_text="Use Bearer abc123456789012345678901 token",
+                response_text="key is sk-secret1234567890123456",
+            ),
+            _make_layers(),
+        )
+        buffered = adapter._buffer.get_nowait().payload[0]
+        assert "abc123456789012345678901" not in buffered.prompt_text
+        assert "sk-secret1234567890123456" not in buffered.response_text
+
+    def test_tokens_per_second_reaches_the_langfuse_generation_call(self, adapter):
+        """The second hop. Surviving redaction is necessary but not sufficient —
+        the value has to land in the payload actually handed to the SDK, which is
+        where a reader would look for it in the LangFuse UI.
+        """
+        ctx = _make_ctx()
+        parent = MagicMock()
+        adapter._span_state[f"task:{adapter._resolve_trace_key(ctx)}:{ctx.task_id}"] = parent
+
+        adapter.record_generation(
+            ctx, _make_record(tokens_per_second=10.6, completion_tokens=4866), _make_layers()
+        )
+        adapter._handle_generation(adapter._buffer.get_nowait())
+
+        metadata = parent.generation.call_args.kwargs["metadata"]
+        assert metadata["tokens_per_second"] == 10.6
 
 
 class TestConcurrentTaskSpans:
