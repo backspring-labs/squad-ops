@@ -1,0 +1,208 @@
+"""Can this interface manifest actually be won? (#781, M3)
+
+A manifest that *parses* is not a manifest that can be *satisfied*. It can name a route
+the expander cannot place, promise a view with no DOM anchor to query, or imply a
+contract holding a check that is dead on arrival — and each of those costs a full
+implementation workload to discover.
+
+This module answers the question deterministically, before anything downstream spends
+on it. **Closed-surface proofs only** (SIP-0103 §5b Q2): every finding is mechanical
+and reproducible. Whether the design actually *satisfies the PRD* is judgment, and it
+stays with the ``decisions[].warrant`` discipline and the human review gate.
+
+Pure by construction — manifest text in, findings out. No vault, no cycle, no deploy —
+so the gate is provable against adversarial manifests long before an authoring stage
+exists to produce one.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+#: Stable finding classes. Typed rather than free text so M6's authoring failure
+#: taxonomy can attribute a rejection without parsing prose — the "one vocabulary, not
+#: three" intention from the post-1.5 reconciliation, applied before there is anything
+#: to reconcile.
+PROOF_PARSES = "parses"
+PROOF_LINT = "lint"
+PROOF_EXPANDS = "expands"
+PROOF_CONTRACT_DERIVES = "contract_derives"
+PROOF_CHECKS_LIVE = "checks_live"
+PROOF_TESTID_COVERAGE = "testid_coverage"
+PROOF_STATUS_DECLARED = "status_declared"
+
+
+@dataclass(frozen=True)
+class WinnabilityFinding:
+    """One reason a manifest could not be won, and what to do about it."""
+
+    proof: str
+    detail: str
+
+
+def assess_winnability(manifest_content: str) -> tuple[WinnabilityFinding, ...]:
+    """Every closed-surface proof this manifest fails, in order.
+
+    All proofs run; findings accumulate. Short-circuiting on the first failure would
+    make an author fix one problem per revision and burn ``manifest_max_attempts`` on a
+    manifest that had three.
+
+    A parse failure is the one exception — nothing downstream can run without a parsed
+    manifest, so it returns alone.
+    """
+    from squadops.capabilities.scaffold import InterfaceManifest
+
+    try:
+        manifest = InterfaceManifest.from_yaml(manifest_content)
+    except Exception as exc:  # noqa: BLE001 - untrusted authored output: one rejection
+        return (
+            WinnabilityFinding(
+                PROOF_PARSES,
+                f"the manifest is not valid YAML or does not match the interface-manifest "
+                f"shape ({exc}). Fix the document structure before the other checks can run.",
+            ),
+        )
+
+    findings: list[WinnabilityFinding] = []
+    findings.extend(_lint_findings(manifest))
+    findings.extend(_expander_findings(manifest))
+    findings.extend(_contract_findings(manifest))
+    findings.extend(_testid_findings(manifest))
+    findings.extend(_status_findings(manifest))
+    return tuple(findings)
+
+
+def _lint_findings(manifest) -> list[WinnabilityFinding]:
+    """The SIP-0099 net: parses-but-unexpandable classes the linter already names."""
+    return [WinnabilityFinding(PROOF_LINT, e) for e in manifest.lint()]
+
+
+def _expander_findings(manifest) -> list[WinnabilityFinding]:
+    """The skeleton this manifest implies must be expressible, with slots to fill.
+
+    A manifest that expands to zero fill slots describes an application nobody can be
+    asked to build: every file would be frozen, so the squad has nothing to write and
+    the cycle would 'succeed' having produced nothing (the pf-26 wrong-root class, one
+    level up from where it was found).
+    """
+    from squadops.capabilities.scaffold import expand, fill_slot_paths
+
+    try:
+        expand(manifest)
+    except Exception as exc:  # noqa: BLE001 - expander refusal is a finding, not a crash
+        return [
+            WinnabilityFinding(
+                PROOF_EXPANDS,
+                f"the expander cannot build a skeleton from this manifest ({exc}). Check "
+                f"that routes and endpoints use paths the stack's scaffold roots allow.",
+            )
+        ]
+
+    if not fill_slot_paths(manifest):
+        return [
+            WinnabilityFinding(
+                PROOF_EXPANDS,
+                "this manifest expands to a skeleton with no fill slots — every file "
+                "would be frozen, leaving the squad nothing to implement. Declare at "
+                "least one endpoint or route that requires authored code.",
+            )
+        ]
+    return []
+
+
+def _contract_findings(manifest) -> list[WinnabilityFinding]:
+    """The derived contract must exist and must be satisfiable by construction.
+
+    Two distinct failures: derivation refusing outright, and derivation producing a
+    check that can never execute. The second is the #671 class one level up — a check
+    that skips at every evaluation forever is dead weight the plan still has to carry.
+    """
+    from squadops.capabilities.scaffold_contract import emit_contract_dict
+    from squadops.cycles.acceptance_check_spec import CHECK_SPECS, is_check_applicable
+
+    try:
+        contract = emit_contract_dict(manifest)
+    except Exception as exc:  # noqa: BLE001 - derivation refusal is a finding
+        return [
+            WinnabilityFinding(
+                PROOF_CONTRACT_DERIVES,
+                f"no verification contract could be derived from this manifest ({exc}), "
+                f"so nothing downstream could state what 'done' means.",
+            )
+        ]
+
+    findings: list[WinnabilityFinding] = []
+    for slot_path, sections in (contract.get("fill_files") or {}).items():
+        for section in ("interface", "implementation"):
+            for entry in sections.get(section) or []:
+                name = entry.get("check")
+                if name not in CHECK_SPECS:
+                    findings.append(
+                        WinnabilityFinding(
+                            PROOF_CHECKS_LIVE,
+                            f"the contract this manifest implies uses check `{name}` on "
+                            f"`{slot_path}`, which is not a registered check.",
+                        )
+                    )
+                elif not is_check_applicable(name, str(entry.get("file") or slot_path)):
+                    findings.append(
+                        WinnabilityFinding(
+                            PROOF_CHECKS_LIVE,
+                            f"check `{name}` can never evaluate `{slot_path}` — it would "
+                            f"skip at every evaluation, so the slot would ship unverified "
+                            f"while appearing covered.",
+                        )
+                    )
+    return findings
+
+
+def _testid_findings(manifest) -> list[WinnabilityFinding]:
+    """Every route needs at least one DOM anchor, or its view cannot be tested.
+
+    A view with no declared testid gives qa nothing stable to query, so any test
+    written against it is guessing at markup the dev was free to change.
+    """
+    missing = [r.path for r in manifest.frontend.routes if not r.testids]
+    if not missing:
+        return []
+    return [
+        WinnabilityFinding(
+            PROOF_TESTID_COVERAGE,
+            f"route(s) {', '.join(f'`{p}`' for p in missing)} declare no `testids`, so "
+            f"qa has no stable anchor to query and any test written against them guesses "
+            f"at markup. Declare at least one testid per route.",
+        )
+    ]
+
+
+def _status_findings(manifest) -> list[WinnabilityFinding]:
+    """A collection POST must declare its success status, or the contract is unwinnable.
+
+    Measured, not assumed (#772). The contract deriver expects ``success_status or 201``
+    for a collection POST, while the scaffold omits ``status_code=`` when it is
+    undeclared — so FastAPI returns 200 and the probe asserts 201 against a correctly
+    implemented app. The field's own docstring records this costing a roll at pf-39:
+    green depended on the dev agent volunteering ``status_code=201``, "and that single
+    token was the whole difference."
+
+    Deliberately narrow. Child-action POSTs default to 200 on *both* sides and agree;
+    GETs derive no status probe at all. Requiring the field everywhere would reject the
+    reference manifest — which declares it on 1 of 5 endpoints — and a rule that rejects
+    the artifact the 1.4 evidence was measured against is the wrong rule.
+    """
+    missing = [
+        ep.path
+        for ep in manifest.api.endpoints
+        if ep.method == "POST" and "{" not in ep.path and ep.success_status is None
+    ]
+    if not missing:
+        return []
+    return [
+        WinnabilityFinding(
+            PROOF_STATUS_DECLARED,
+            f"endpoint(s) POST {', '.join(f'`{p}`' for p in missing)} do not declare "
+            f"`success_status`. The derived contract would assert 201 while the scaffold "
+            f"emits a route returning 200, so the probe fails against a correct "
+            f"implementation. Declare the status the endpoint returns on success.",
+        )
+    ]
