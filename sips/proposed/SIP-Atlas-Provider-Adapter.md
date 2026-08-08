@@ -51,10 +51,12 @@ four moves:
 > provider, branch on an adapter type, or assume a capability the port has not
 > declared.**
 
-> **Release boundary, stated once so it never has to be reconstructed: this SIP lands the
-> provider-neutrality groundwork and a dark Atlas adapter in 1.7. Cutover to Atlas — any
-> change to a shipped default — is a separate 1.8+ decision (§4.2), taken against evidence
-> this SIP produces but does not act on.**
+> **The one binding constraint (owner ruling, 2026-08-08): do not disturb the 1.6 feature
+> work.** Release placement is explicitly *not* load-bearing — this may ship formally dark
+> in 1.7 or simply land inert whenever it is ready; strict even/odd compliance is waived
+> for this change on the grounds that it is well insulated. **The target is that Atlas is
+> selectable and measured in time for 1.8.** Everything in §4.1 exists to serve the 1.6
+> guardrail, and that checklist is the real acceptance bar of this document.
 
 **Operational constraint, load-bearing and non-negotiable (§4):** every phase here is
 **inert on merge**. No shipped default, compose file, `.env.example` value, agent image,
@@ -65,8 +67,30 @@ separate cutover decision (§4.2).
 ## 1.1 Decision summary — blocked, diagnostic, deferred
 
 The policy in one place, so it does not have to be reconstructed from five sections.
-Design-review positions below are adopted into this draft; **items marked ⓞ still need
-Jason's explicit word**, per the standing rule that a SIP's position is not a ruling.
+
+### Owner rulings (2026-08-08) — both previously ⓞ, now settled
+
+**Ruling 1 — release placement is not load-bearing.** Strict even/odd compliance is
+**waived** for this change on the grounds that it is well insulated. It may ship formally
+dark in 1.7 or simply land inert whenever ready. **The single binding constraint is the
+1.6 guardrail (§4.1); the target is Atlas selectable and measured for 1.8.** §4.3's
+placement argument is retained only as background — it no longer gates anything.
+
+**Ruling 2 — no formalized cutover framework.** The interest is in **raw observed
+performance**, not a threshold gate: *"the story should tell itself once I run a cycle
+against the new adapter."* The deliverable is therefore **a working provider switch plus
+honest numbers**, and the decision is owner judgment on reading them. Consequences:
+
+- **§C.4's threshold tables are removed.** The benchmark *reports*; it does not adjudicate.
+- **§4.2's precondition list is deflated** — no gate stands between a measured Atlas and a
+  config change.
+- **What survives is measurement hygiene, not governance** (§C.5): cold-vs-warm, arm
+  ordering, token-count shift, and quantization mismatch each fake a result convincingly.
+  These are kept because they are what make an observed number *real* — not because they
+  gate anything.
+- **P2 is promoted from plumbing to the headline deliverable.** `LLMConfig.provider` *is*
+  the config flexibility the ruling asks for; without it there is no way to point a cycle
+  at Atlas without hacking the composition root.
 
 **Blocked — nothing proceeds until answered:**
 
@@ -74,8 +98,8 @@ Jason's explicit word**, per the standing rule that a SIP's position is not a ru
   worth having even if Atlas never ships.
 - **P4** is blocked on §10.2 — Atlas's endpoint shape confirmed, not assumed.
 - **P5** is blocked on a live Atlas endpoint on the Spark.
-- **The cutover** is blocked on all five §4.2 preconditions, including the §10.3a
-  telemetry fix. ⓞ
+- **Nothing blocks the switch itself** beyond P2 existing and Atlas answering. Per Ruling 2
+  the cutover is a config change made on observed results, not a gated event.
 
 **Diagnostic — informs, never gates:**
 
@@ -102,9 +126,11 @@ Jason's explicit word**, per the standing rule that a SIP's position is not a ru
 - **Per-provider `MODEL_SPECS` restructuring** → deferred until a concrete second use
   (§3.4).
 
-**Settled in this draft, recorded so review can contest rather than rediscover:** the
-release boundary is 1.7-dark / 1.8+-cutover ⓞ (§4.3); P2 references #301 without closing
-it (§10.1); the A/B decision field is `wall_clock_ms`, not t/s (§3.6.1).
+**Settled in this draft, recorded so review can contest rather than rediscover:** P2
+references #301 without closing it (§10.1); the headline throughput number is
+`wall_clock_ms`, with decode t/s as its diagnostic (§3.6.1); #793 is a real bug worth
+fixing but **no longer a precondition of anything** under Ruling 2 — the Prefect log line
+carries throughput adequately for an owner reading results.
 
 ## 2. Problem Statement
 
@@ -491,8 +517,9 @@ governing precedent: an unrunnable check is an evidence gap, never a verdict.
 - **Live tier** — `@pytest.mark.integration`, against a real endpoint from an env var,
   skipped when absent. Same assertions, real wire.
 - **A/B tier** — same prompts, same models, same box, through both adapters. **This is the
-  migration decision instrument** and the reason the SIP exists (§2.5). It reports two
-  numbers, and both gate the cutover:
+  migration decision instrument** and the reason the SIP exists (§2.5). Per Ruling 2 it
+  **reports** rather than gates — the numbers go in front of owner judgment (§C.4). It
+  carries two:
   - **Throughput, recorded as three numbers rather than one.** Tokens produced against
     the time taken is the right measure and needs no reinterpretation — including
     thinking tokens, which cost real time and are legitimately part of what the engine
@@ -594,23 +621,29 @@ like a squad regression.
 
 ### 4.2 Cutover is a separate, later, owner decision
 
-Changing any default is **out of scope for this SIP**. The cutover requires, at minimum:
+**Amended by Ruling 2 (§1.1).** The earlier draft gated the cutover behind five
+preconditions. That framework is withdrawn: the owner's stated interest is raw observed
+performance, decided by judgment on the results, not by a threshold gate.
 
-1. the conformance suite green against a live Atlas endpoint on the Spark (P5);
-2. **the §3.6.1 A/B artifact recorded, both halves** — a throughput win *and* quality
-   parity. Either alone is insufficient: no speed win means no reason to switch, no parity
-   means the measurement lineage breaks (§8);
-3. **the throughput-telemetry gap fixed and deployed** (**#793**, §10.3a). The cutover is decided on
-   throughput evidence, and today `tokens_per_second` never reaches LangFuse while nothing
-   persists it at all. Deciding a migration on a log-scraped number is the evidence
-   posture SIP-0096 exists to forbid. **This is a hard precondition of the cutover, and it
-   gates none of P0–P5** — it has its own issue and lands on its own schedule, it simply
-   must be done *before* the decision, not before the adapter;
-4. a shakedown cycle on the deployed stack, green, under the new engine;
-5. a release window where the Spark lane is not mid-validation.
+What remains is a **sequence, not a gate**:
 
-This SIP delivers the *ability* to switch and the *evidence* to decide. It does not
-switch, and it does not pre-authorize switching.
+1. **P2 exists**, so a provider is selectable by config rather than by editing the
+   composition root. This is the deliverable — everything else is measurement.
+2. **Atlas answers on the Spark** and passes the conformance suite (P4/P5) — this stays,
+   because an adapter that mistranslates errors or miscounts usage produces numbers that
+   are wrong rather than merely unflattering.
+3. **A cycle runs against it**, and the results are read.
+
+Then the switch is a config change, made on what was observed.
+
+**What the SIP still asserts, because it is measurement integrity rather than governance:**
+the numbers must be *real* before they are read. §C.5's traps — cold-vs-warm engines, arm
+ordering, token-count shift, quantization mismatch — each produce a clean-looking result
+that is simply false. Those guards are cheap and stay. The thresholds that used to sit on
+top of them are gone.
+
+**Not pre-authorized, still:** this SIP changes no default. It delivers the switch and the
+instrument; pulling the switch remains a separate, deliberate act.
 
 ### 4.2a Rollback boundaries — what unwinds, and when
 
@@ -626,42 +659,43 @@ failed P5. **Each phase is separately revertible, and the surface grows monotoni
 The middle row is the one worth internalizing: **a failed P5 costs no revert at all.** The
 adapter is inert by construction until a default names it, so "Atlas is not faster" is a
 decision not to flip a config value — not a rollback. That property is bought entirely by
-the dark-ship rule, and it is the strongest practical argument for §4.3's placement.
+the dark-ship rule, and it is what makes Ruling 1's waiver safe: placement stops mattering
+precisely because nothing here can act until someone chooses it.
 
-### 4.3 Release placement
+### 4.3 Release placement — waived, and why that is safe
 
-Proposed: **the groundwork and the adapter land in 1.7, dark; the cutover is 1.8+.**
+**Ruled 2026-08-08 (§1.1, Ruling 1): strict even/odd compliance is waived for this change.**
+It may ship formally dark in 1.7 or simply land inert whenever ready. **Target: Atlas
+selectable and measured for 1.8.**
 
-The even/odd convention makes this the question the review must actually settle, so the
-argument is stated rather than assumed. 1.7 is feature-free by rule, and "a new provider
-adapter" sounds like a feature. The case that it is not:
+The waiver is safe for the same reason §4.2a's middle row holds — **nothing here can act
+until someone selects it.** The parity convention exists to keep a regression attributable
+to one cause; a change that no default reaches cannot be the cause of anything. The
+convention is not being bent, it simply has no purchase on inert code.
 
-- A second implementation of an existing port, which no default selects and no shipped
-  config reaches, changes nothing about what the running system does. That is the
-  definition 1.5 used at its own feature-free audit (no new contract fields, manifest
-  fields, request-profile capabilities, or squad-facing surfaces — this SIP adds none of
-  those).
-- It is the *rails-before-mechanism* pattern the repo has now applied three times:
-  SIP-0101 shipped evidence rails before the harness, SIP-0096 Phase 1 shipped its pure
-  core inert, and 1.8's memory recall port ships with a NoOp before any implementation
-  exists.
-- 1.7's stated identity is **"every port is actually a port."** Sites 1–6 are precisely
-  that release's thesis, and the adapter is the proof the thesis holds.
+That is *only* true while §4.1 holds. **The waiver is on release parity, not on the
+guardrail** — if a phase stops being inert, it is a feature again and the convention
+reapplies with full force.
 
-If the review rejects this reading, the fallback is that §5's P0–P2 (the neutrality
-groundwork, unambiguously 1.7 debt) land in 1.7 and P3–P4 (adapter + suite) wait for 1.8.
-That is a worse outcome — it re-separates the claim from its proof — but it is not a
-blocked one, and the phases are ordered so the split is clean.
+Recorded because it remains true and may matter to a future reader: the earlier argument
+for 1.7 specifically was that 1.7's identity is *"every port is actually a port,"* that
+sites 1–6 are exactly that release's thesis, and that a second implementation no default
+selects meets the same feature-free test 1.5 applied at its own cut. That argument is now
+background rather than a gate.
 
 ## 5. Phasing
 
 Each phase is independently shippable, inert per §4.1, and one PR.
 
-**The release boundary runs between P5 and cutover, and it is a hard line.** Everything in
-the table below ships dark in **1.7**; nothing in it changes which engine serves a single
-token. The switch is a **1.8+** decision governed by §4.2, taken against evidence this SIP
-produces but does not act on. A PR from this SIP that changes a default has left the SIP's
-scope, regardless of how green its tests are.
+**Every phase below is inert on merge and none changes which engine serves a token.**
+Release placement is waived (§4.3); phases land when ready, targeting Atlas selectable and
+measured for 1.8. The line that *is* hard: a PR from this SIP that changes a shipped
+default has left the SIP's scope, regardless of how green its tests are.
+
+**P2 is the headline deliverable, not plumbing** (Ruling 2). `LLMConfig.provider` is the
+config flexibility the ruling asks for — without it there is no way to point a cycle at
+Atlas short of editing the composition root. It is also the phase touching the hottest 1.6
+files, so it is the one to time deliberately against §4.1.5.
 
 | Phase | Content | Size | Depends on | Release |
 |---|---|---|---|---|
@@ -982,19 +1016,21 @@ The larger question — a *durable, queryable* per-generation throughput record 
 a restored metadata field — is surfaced here and deliberately not solved. It plausibly
 belongs with the 1.8 scorecard, which needs to grade over exactly this kind of series.
 
-**10.4 — Release placement. ⓞ Needs Jason's explicit word.** §4.3's argument for 1.7-dark
-is a reading of the feature-free rule, and readings of a release convention are the owner's
-to make, not an implementer's.
+**10.4 — Release placement. RULED 2026-08-08 — waived.** Strict even/odd compliance does
+not apply to this change; it is well insulated. Ships dark in 1.7 or lands inert whenever
+ready, targeting Atlas selectable and measured for 1.8. **The binding constraint is the 1.6
+guardrail (§4.1), not release parity.** Full reasoning and the limits of the waiver: §4.3.
 
-Design review's recommendation: **keep the 1.7-groundwork / 1.8+-cutover split unless the
-review explicitly overrides it.** Adopted into this draft — §5's phasing table carries the
-release column, and §4.2a shows the split is what makes a failed P5 cost nothing.
+**10.5 — Cutover framework. RULED 2026-08-08 — not wanted.** No threshold gate; the
+interest is raw observed performance read by owner judgment, with config flexibility to
+choose the provider afterwards. §C.4's threshold tables are removed and §4.2's precondition
+list is deflated to a sequence. Measurement *hygiene* survives (§C.5) because it is what
+makes an observed number real, not because it governs a decision.
 
-§4.3's fallback (P0–P2 in 1.7, adapter and suite deferred) stays available as a **clean
-fallback, not a competing interpretation.** If the split is overridden, P0–P2 still land as
-1.7 debt-paydown on their own merits — they close #313 and make the port honest with no
-reference to Atlas at all. That is a smaller plan, not a different one, and nothing in
-P0–P2 changes if it is taken.
+Consequence worth recording: **#793 stops being a precondition of anything.** It remains a
+real bug worth fixing — throughput reads null in LangFuse for every generation — but under
+this ruling the Prefect log line carries throughput adequately for an owner reading
+results, so nothing waits on it.
 
 ## Appendix A — Coupling inventory verification
 
@@ -1152,50 +1188,31 @@ Where feasible, use SIP-0101 replay from a common boundary to constrain inputs �
 (§6.1a) that the shipped slice is cycle-prefix restore, so it constrains inputs without
 equalizing them.
 
-### C.4 Decision thresholds
+### C.4 Reading the result
 
-**A runbook that produces a number but not a decision has failed.** "Materially faster" and
-"≈" must be defined *before* the data exists, or the thresholds get fitted to the result.
+**Amended by Ruling 2 (§1.1): the threshold tables that stood here are removed.** The
+benchmark *reports*; it does not adjudicate. No margin is defined in advance, because the
+decision is owner judgment on observed results — *"the story should tell itself once I run
+a cycle against the new adapter."*
 
-**ⓞ The numbers below are a starting proposal for owner ratification, not derived from
-measurement.** They are stated so review can contest them; what is not negotiable is that
-*some* threshold is fixed before Phase A runs.
+**What to put in front of that judgment**, in the order it should be read:
 
-**Gate 1 — throughput (Phase A), on median paired `wall_clock_ms` improvement:**
+| # | Number | Why it is read in this position |
+|---|---|---|
+| 1 | **`completion_tokens`, both arms** | read *first*, before any speed claim. If the arms produced materially different token counts, every downstream comparison needs normalizing per token — a thinking-posture difference otherwise reads as speed (§10.3) |
+| 2 | **median paired `wall_clock_ms`** | the headline. Same prompt, both arms, paired |
+| 3 | **`decode_tokens_per_second`** | the diagnostic: is a wall-clock difference decode speed, or something else? |
+| 4 | **`prefill_ms` / `load_ms` / `total_ms`** | *where* the difference lives — decode, prompt processing, or model residency. Answers "why" when 2 and 3 disagree |
+| 5 | **Phase B: corrections consumed, extraction health, verdict** | the half a generation benchmark cannot see |
 
-| Margin | Verdict |
-|---|---|
-| **< 10%** | **No.** Inside box-to-box noise on a thermally variable machine, and below the cost of migrating and maintaining an engine. Stop here |
-| **10–25%** | **Owner judgment**, weighed explicitly against maintenance burden. Record the reasoning in the artifact |
-| **> 25%** | **Material.** Proceed to Phase B — at 1–2.5 h per cycle this is ≥15–35 min per cycle, which compounds across every measurement window |
+**The one asymmetry worth stating plainly, since no threshold now enforces it:** a
+throughput win and a quality regression are not comparable quantities. Extra wall-clock
+costs minutes; a degraded verdict costs the comparison base for every measurement banked on
+the Ollama substrate (FAY 6/6, the 98.5 lineage — §8). Speed is recoverable, an
+invalidated baseline is not. Worth weighing asymmetrically even in a judgment call.
 
-**Gate 2 — parity (Phase B). Not a single number; any one of these fails it:**
-
-| Signal | Threshold |
-|---|---|
-| **Verdict** | **binary, no tolerance.** A cycle Ollama accepts and Atlas rejects on the same inputs blocks the cutover pending investigation. "No false verdicts" is not a budget to spend |
-| **Correction attempts consumed** | **> 20% more** fails. A burned correction costs more wall-clock than decode speed saves — this is where a Phase A win gets erased |
-| **Extraction `failed:` rate** | **any increase beyond noise** fails. This is emission integrity, not performance |
-| **Extraction `recovered:` rate** | an increase is a **yellow flag** — investigate, does not fail on its own |
-
-**Gate 3 — operational overrides. These can veto a passing Gate 1 + Gate 2:**
-
-- **Maintenance burden.** An in-house engine is a standing cost. A 12% win may not justify
-  owning an inference engine.
-- **The vLLM reading (§3.5a), if P6 ran.** If Atlas ≈ vLLM — **within 10% of each other** —
-  prefer the externally maintained engine. The win was Ollama's baseline, not the tuning.
-- **Model coverage.** Atlas must serve every model the active squad profiles pin, or the
-  cutover is partial and the profiles need revisiting first.
-- **Sustained-load stability.** A throughput lead that degrades over a multi-hour cycle is
-  not a lead. Phase B is where this surfaces.
-
-**Decision rule:** cut over only on **Gate 1 passed AND Gate 2 passed AND no Gate 3 veto**.
-Any other combination is a recorded negative result (§4.2a) — which is a successful
-outcome of this procedure, not a failed one.
-
-A win with degraded parity is a loss regardless of margin: every banked measurement
-(FAY 6/6, the 98.5 lineage) was taken on the Ollama substrate, and parity is what preserves
-the comparison base for 1.8's scorecard (§8).
+**If P6 ran**, apply §3.5a's three-outcome reading before attributing a win to Atlas's
+tuning rather than to Ollama's baseline.
 
 ### C.5 The traps, ranked by how easily they fake a result
 
