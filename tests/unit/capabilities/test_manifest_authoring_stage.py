@@ -92,6 +92,10 @@ def _context(*responses: str) -> Any:
     ctx = MagicMock()
     ctx.ports = ports
     ctx.correlation_context = None
+    # Real ids: the provenance stamp records them, and a MagicMock here would only ever
+    # surface as an unserialisable object rather than as the wrong id.
+    ctx.cycle_id = "cyc_test"
+    ctx.task_id = "task-authoring-1"
     return ctx
 
 
@@ -180,7 +184,7 @@ async def test_a_rejected_manifest_is_revised_with_the_specific_defect_named():
     assert result.success is True
     assert result.outputs["authoring_outcome"]["gates_passed"] is True
     (feedback,) = _feedback_renders(ctx)
-    assert "provenance" in feedback["findings"]
+    assert "source_prd" in feedback["findings"]
     assert "source_prd" in feedback["findings"]
 
 
@@ -197,7 +201,7 @@ async def test_every_defect_is_reported_in_one_revision_not_one_per_attempt():
     await DevelopmentAuthorManifestHandler().handle(ctx, _inputs())
 
     findings = _feedback_renders(ctx)[0]["findings"]
-    assert "provenance" in findings
+    assert "source_prd" in findings
     assert "decision_record" in findings
     assert len(findings.strip().splitlines()) >= 2
 

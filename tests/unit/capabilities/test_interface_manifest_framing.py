@@ -124,7 +124,7 @@ def test_validate_widened_beyond_lint_to_the_full_gates():
 
     assert InterfaceManifest.from_yaml(no_provenance).lint() == []  # the old net saw nothing
     errors = DispatchedFlowExecutor._validate_interface_manifest(no_provenance)
-    assert any("[provenance]" in e for e in errors)
+    assert any("[source_prd]" in e for e in errors)
 
 
 def test_validate_unparseable_manifest_is_a_single_error():

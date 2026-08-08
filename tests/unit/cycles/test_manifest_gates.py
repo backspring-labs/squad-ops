@@ -169,7 +169,7 @@ def test_structurally_doomed_manifests_are_rejected(mutation):
 from squadops.capabilities.scaffold import InterfaceManifest  # noqa: E402
 from squadops.cycles.manifest_gates import (  # noqa: E402
     PROOF_DECISION_RECORD,
-    PROOF_PROVENANCE,
+    PROOF_SOURCE_PRD,
     assess_schema,
 )
 
@@ -268,4 +268,4 @@ def test_manifest_without_source_prd_is_rejected():
 
     findings = assess_schema(_as_yaml(data))
 
-    assert PROOF_PROVENANCE in _proofs(findings)
+    assert PROOF_SOURCE_PRD in _proofs(findings)

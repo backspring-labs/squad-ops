@@ -34,6 +34,11 @@ from squadops.capabilities.scaffold import is_scaffoldable_stack
 AUTHOR_MANIFEST_CAPABILITY = "development.author_manifest"
 AUTHOR_MANIFEST_ROLE = "dev"
 
+#: The ``provenance.mode`` a squad-authored manifest carries (#803). Presence of the block
+#: at all is the signal — a manifest without one did not come from this system — so this
+#: names what wrote it rather than switching any behavior.
+AUTHORED_MODE = "authored"
+
 #: The stored artifact's type. Identical to the seeded rail's, deliberately — see the
 #: module docstring's Guard 1a note. Single-sourced here because three layers previously
 #: spelled it as a bare literal (emitter, forwarding filter, loader).

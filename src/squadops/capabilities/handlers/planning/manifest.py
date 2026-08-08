@@ -23,6 +23,8 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any
 
+import yaml
+
 from squadops.capabilities.handlers.base import HandlerEvidence, HandlerResult
 from squadops.capabilities.handlers.planning.base import _PlanningTaskHandler
 from squadops.cycles.authoring_failure import AuthoringOutcome, assess_authoring_outcome
@@ -30,6 +32,7 @@ from squadops.cycles.contract_derivation import SEEDED_MANIFEST_FILENAME
 from squadops.cycles.manifest_authoring import (
     AUTHOR_MANIFEST_CAPABILITY,
     AUTHOR_MANIFEST_ROLE,
+    AUTHORED_MODE,
     MANIFEST_ARTIFACT_TYPE,
 )
 
@@ -130,6 +133,7 @@ class DevelopmentAuthorManifestHandler(_PlanningTaskHandler):
             )
 
         outcome = outcomes[-1] if outcomes else AuthoringOutcome()
+        content = _stamp_provenance(content, context, outcomes)
         if accepted is None:
             # Emitted deliberately (see the module docstring): the framing gate owns
             # acceptance, and a rejected manifest in hand is what makes the rejection
@@ -207,6 +211,76 @@ class DevelopmentAuthorManifestHandler(_PlanningTaskHandler):
             ),
             error=error,
         )
+
+
+def _stamp_provenance(
+    content: str, context: ExecutionContext, outcomes: list[AuthoringOutcome]
+) -> str:
+    """Append the system-owned provenance block to the authored document (#803, M5).
+
+    **Appended, never re-emitted.** Round-tripping the manifest through the parser and
+    re-serialising would discard the author's comments, key order and grouping — this is a
+    design document a human reads, not a wire format. Everything above the block stays
+    byte-identical to what the squad wrote.
+
+    **Observed, not claimed.** Attempts and their rejection classes come from the loop that
+    just ran, so the record cannot flatter itself. An author-supplied block is discarded
+    rather than rejected: the field is system-owned, so overwriting it costs nothing, while a
+    rejection would spend a revision on bookkeeping the system replaces anyway — and the same
+    gate runs again at the framing net, where a stamped block is entirely legitimate.
+
+    Excluded from ``_canonical`` at the model, so stamping cannot move the manifest hash the
+    verification contract binds (pinned by test — the M2 ``decisions`` lesson).
+    """
+    revisions = [
+        {
+            "attempt": i,
+            "classes": o.class_counts(),
+            "proofs": sorted({f.proof for f in o.findings}),
+        }
+        for i, o in enumerate(outcomes, start=1)
+        if o.rejected
+    ]
+    block = {
+        "provenance": {
+            "mode": AUTHORED_MODE,
+            "cycle_id": context.cycle_id,
+            "task_id": context.task_id,
+            "attempts": len(outcomes),
+            "revisions": revisions,
+        }
+    }
+    body = _without_authored_provenance(content).rstrip("\n")
+    return f"{body}\n\n{yaml.safe_dump(block, sort_keys=False)}"
+
+
+def _without_authored_provenance(content: str) -> str:
+    """Drop a top-level ``provenance:`` block the author wrote, if any.
+
+    Line-scoped so the rest of the document is untouched: from the ``provenance:`` line to
+    the next top-level key (or the end). Duplicate top-level keys would otherwise leave two
+    blocks in one document — parseable (last wins) and unreadable.
+    """
+    lines = content.splitlines()
+    out: list[str] = []
+    skipping = False
+    for line in lines:
+        if skipping:
+            # A new top-level key ends the block; blanks and indented lines belong to it.
+            if line and not line[0].isspace():
+                skipping = False
+            else:
+                continue
+        if line.startswith("provenance:"):
+            logger.info(
+                "%s: discarding an author-supplied provenance block — the field is "
+                "system-owned and is stamped from the observed authoring loop",
+                DevelopmentAuthorManifestHandler._handler_name,
+            )
+            skipping = True
+            continue
+        out.append(line)
+    return "\n".join(out)
 
 
 def _findings_lines(outcome: AuthoringOutcome) -> str:
