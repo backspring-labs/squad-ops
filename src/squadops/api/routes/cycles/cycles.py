@@ -150,6 +150,54 @@ async def _run_create_preflight(profile: SquadProfile, config: dict) -> tuple[Fi
     return decision.warnings
 
 
+async def _seed_derived_contract(body: CycleCreateRequest, project_id: str) -> str | None:
+    """Derive and pin a contract when a manifest is seeded without one (#779, M0b).
+
+    Bind mode is keyed on ``contract_ref``, so a cycle that seeds only a manifest runs
+    UNBOUND today — the operator asked for contract verification by seeding the
+    manifest and would silently get none. The contract is mechanically derivable from
+    that manifest (#777 pins the equality as exact), so derive it here, store it, and
+    let the rest of the pipeline see an ordinary ``contract_ref``.
+
+    Never overrides a supplied ref: an operator who passes one is pinning a SPECIFIC
+    contract — possibly deliberately unlike what today's deriver emits, as when
+    replaying an older run — and replay compatibility keys on ``contract_ref``.
+
+    Returns the new artifact id, or None when nothing was derived. An unusable
+    manifest raises :class:`PreflightRejectedError`: falling through to author mode
+    would hand back a green carrying none of the criteria that were asked for.
+    """
+    from squadops.api.runtime.deps import get_artifact_vault
+    from squadops.cycles.contract_derivation import (
+        ContractDerivationError,
+        derive_and_store_contract,
+        load_seeded_manifest_content,
+    )
+
+    overrides = body.execution_overrides or {}
+    if overrides.get("contract_ref"):
+        return None
+    if not overrides.get("plan_artifact_refs"):
+        # Nothing seeded to derive from. Checked before reaching for the vault so a
+        # cycle that never had a manifest does not depend on vault wiring at all.
+        return None
+
+    vault = get_artifact_vault()
+    manifest_content = await load_seeded_manifest_content(
+        vault, overrides.get("plan_artifact_refs")
+    )
+    if manifest_content is None:
+        return None
+
+    try:
+        return await derive_and_store_contract(vault, project_id, manifest_content)
+    except ContractDerivationError as exc:
+        raise PreflightRejectedError(
+            f"a manifest is seeded in plan_artifact_refs but no verification contract "
+            f"could be derived from it, so the cycle would run unbound: {exc}"
+        ) from exc
+
+
 async def _validate_replay_declaration(
     registry, body: CycleCreateRequest, applied_defaults: dict
 ) -> None:
@@ -264,6 +312,22 @@ async def create_cycle(
         # SIP-0101 Slice 3: replay declaration validated + interim compatibility
         # gate, same fail-fast point (moves into the SIP-0095 preflight in Slice 4).
         await _validate_replay_declaration(get_cycle_registry(), body, applied_defaults)
+
+        # #779 (M0b): a seeded manifest with no contract_ref would run UNBOUND. Derive
+        # the contract it implies and pin it as an artifact, so bind mode engages
+        # exactly as it does for an operator who ingested one by hand. After this the
+        # effective config must be recomputed — the new ref is part of it.
+        derived_ref = await _seed_derived_contract(body, project_id)
+        if derived_ref is not None:
+            body.execution_overrides = {
+                **(body.execution_overrides or {}),
+                "contract_ref": derived_ref,
+            }
+            effective_config = resolve_config(applied_defaults, body.execution_overrides)
+            logger.info(
+                "cycle_create_derived_contract",
+                extra={"project_id": project_id, "contract_ref": derived_ref},
+            )
 
         config_hash = compute_config_hash(applied_defaults, body.execution_overrides)
 
