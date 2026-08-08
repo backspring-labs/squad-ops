@@ -159,7 +159,7 @@ Slice 1, SIP-0096's inert core, and M0a here):
 - Ordering M1 first inverts that: every early gate defect would surface *as* an authoring
   failure, and the window's attribution (M6) would inherit the confusion.
 
-M4 (the HITL gate) follows M1 because there is nothing to review until something is
+M4 (the review path) follows M1 because there is nothing to ask about until something is
 authored; M5 (provenance) is last because it stamps a pipeline whose shape is settled by
 then.
 
@@ -386,22 +386,72 @@ an existing seam:
 | testid coverage — every route declares ≥ 1 testid | schema field exists |
 | status completeness — per-endpoint `success_status` | M0's rider |
 
-Deferred: semantic PRD coverage. The `decisions[].warrant` discipline plus the HITL gate
+Deferred: semantic PRD coverage. The `decisions[].warrant` discipline plus M4's question path
 carry that judgment in Phase 1; a mechanical coverage proof is not a Phase-1 blocker.
 
-### M4. Manifest review gate (HITL) — zero new machinery
+### M4. Manifest review — **question-gated, not review-gated** *(scope narrowed 2026-08-08)*
 
-§5b Correction 4: `task_flow_policy.gates` entries key on `after_task_types`, and the mid-run
-gate wait already pauses and resumes on recorded decisions — the same seam
-`progress_plan_review` uses. The manifest gate is **a policy entry naming the authoring task
-type, plus CRP defaults.**
+> **DIVERGENCE FROM ACCEPTED SIP-0103 §3.4, on owner ruling and V4 evidence.** §3.4 specifies
+> *"a named gate between manifest acceptance and implementation: the operator approves the
+> authored design the way `progress_plan_review` approves the plan."* **Every authored
+> manifest is no longer reviewed.** The SIP stays as accepted — it is a design commitment on
+> main, not a living document — and the correction lives here, the same treatment M0's
+> premise correction got.
 
-Iterative review, not binary (§5c.6): `RETURNED_FOR_REVISION` is a live third state (#466),
-and rejection-context injection (#669) already threads reviewer notes into the next attempt.
-Revision returns the manifest **with the prior artifact and the reviewer's notes as authoring
-context — revise, don't re-roll** (the fay-6 new-dice lesson), spending `manifest_max_attempts`.
-**Partial approval is deliberately not introduced**: approval stays whole-artifact because
-the contract derives from the whole.
+**What V4 measured.** V4 roll 2's framing bundle went through `progress_plan_review` and a
+human approved it. The approval note discussed fill slots and criteria counts — facts the
+deterministic gates had already proven. Meanwhile the manifest carried one genuinely
+unresolved question (`expansion-gating`: *the PRD requires expansion only after core
+stability but defines no checkpoint*) and **nothing surfaced it to the reviewer.** The design
+was then implemented with 15/15 criteria verified, zero corrections, and a delivered app that
+installs, builds, boots and answers every probe.
+
+So the mandatory review contributed nothing, and the one thing a human uniquely held went
+unasked. **A gate that gets rubber-stamped is worse than no gate: it manufactures the
+appearance of review**, and a later reader cannot tell a considered approval from a reflex.
+
+**The inversion.** The trigger becomes the *design's own question*, not the pipeline's
+schedule:
+
+| | shape |
+|---|---|
+| **Default** | **No gate.** The deterministic gates (M2 schema, M3 winnability) approve the design and the cycle proceeds. |
+| **Blocks** | **Only an unresolved-critical decision** — the author declaring the PRD does not determine something and declining to guess. The gate note is the *question*, and answering it is the whole interaction. |
+| **Everything else** | Readable after the fact from the artifact; never blocking. |
+
+This is a narrowing of §3.4 rather than a contradiction: §5c.10 already has an
+unresolved-critical entry *"land in the HITL gate note as a question rather than silently
+defaulting."* M4 promotes that from a passenger on a mandatory review to the trigger itself.
+
+**Iterative review, when it does fire** (§5c.6, unchanged): `RETURNED_FOR_REVISION` is a live
+third state (#466) and rejection-context injection (#669) already threads reviewer notes into
+the next attempt. Revision returns the manifest **with the prior artifact and the reviewer's
+notes as authoring context — revise, don't re-roll** (the fay-6 new-dice lesson), spending
+`manifest_max_attempts`. **Partial approval is deliberately not introduced**: approval stays
+whole-artifact because the contract derives from the whole. Machinery is still nil — §5b
+Correction 4 holds; a `task_flow_policy.gates` entry keyed on `after_task_types` plus CRP
+defaults, now with a *conditional* firing rule.
+
+#### What replaces the review as the design-quality signal
+
+Removing a gate removes an observation, and design quality that nobody looks at drifts
+unobserved. **FAY yield does not cover this**: V4 roll 2 flattened the reference's typed
+`Participant` entity into an untyped list and still went green — a design regression yield is
+structurally blind to.
+
+The answer is **sampling, not gating**, carried by diagnostics §5c.7 already requires:
+structural diff against the human reference, revision/attempt counts, the gate-rejection
+taxonomy (M6), and manifest size/surface counts. Those move when design quality moves,
+without anyone reading a manifest. A design gets read when a number looks wrong — an operator
+choice, not a pipeline stall.
+
+**The freeze moment moved, and §5a's wording no longer matches the code.** §5a's third
+containment bound says the manifest hash-freezes and the contract derives *"the instant the
+HITL gate approves."* Since #796 it derives at **authoring acceptance, mid-framing**, because
+the plan authors need it to bind — without that, V4 roll 1's plan hit zero of nine fill slots.
+Approval therefore gates whether *implementation proceeds*, not whether the contract exists;
+a revision produces a new manifest and a new derived contract. Post-freeze determinism is
+unchanged, which is what the bound was actually protecting.
 
 ### M5. Provenance + freeze
 
@@ -665,7 +715,7 @@ offline work, deploy, run the verification that fits what just landed.
 | **V2** | **after M0b, before M1** | **Guard 1b** (reference manifest → byte-identical downstream artifacts) **+ a full seeded-mode control cycle** | diagnostic — **and it banks the control** |
 | **V3** | M3 / M2 / M6 landing | **No cycles.** Adversarial hand-made manifests against the gates, including #772's `success_status` trap as the designed-failure probe | — |
 | **V4** | M1 lands | **First authored cycles, unscored.** Several, expected | diagnostic |
-| **V5** | M4 / M5 land | Integration shakedown — the full authored path with the HITL gate, provenance stamping, and B1 emitting | diagnostic |
+| **V5** | M4 / M5 land | Integration shakedown — the full authored path with provenance stamping, B1 emitting, and **a manifest carrying an unresolved-critical decision, to prove the question-gate fires and the answer reaches the revision** | diagnostic |
 | **V6** | before pre-registration | **Authored-mode viability run** — has this succeeded even once? | diagnostic; **gates V7** |
 | **V7** | frozen deploy | **The authored-mode FAY window.** Pre-registered N, unfiltered | **evidentiary** |
 | **V8** | at the cut | Confirmation shakedown on the integrated line **+ the seeded control re-run** (compared against V2) | diagnostic |
@@ -719,8 +769,11 @@ ruled 2026-08-07 at plan time. *Exit:* no release-defining work starts against a
 design question.
 
 **Gate 2 — the authoring loop closes.** *(Verification: V3, then V4.)* M1–M4 land, with M6's taxonomy in place before any authored manifest is rejected (a rejection recorded without a class is data lost); an authored manifest passes schema and
-winnability gates, reaches the HITL gate, and — post-approval — runs the existing pipeline
-end to end with no mode branch below framing (Guard 1's architecture test green).
+winnability gates and runs the existing pipeline end to end with no mode branch below
+framing (Guard 1's architecture test green). **M4's question-gate is exercised, not merely
+present** — one manifest carrying an unresolved-critical decision must stop, surface its
+question, and revise on the answer; a release where the path never fired has not shown it
+works.
 
 **Gate 3 — integration.** *(Verification: V5, then V6.)* M5 provenance and M6's taxonomy; S3 promotion with the two-stack schema (bend register + falsification pass) and S5's admission rule recorded; B1 emitting both dimensions;
 enabling riders (SIP-0093 completion, SIP-0102 steps 3–4) landed. Deploy window with
@@ -778,7 +831,11 @@ exactly the evidence-quality laundering A6 forbids.
 Design-quality heuristics may enter only as **advisory-lane checks with their own identity**
 (the `plan_prose_contract_divergence` pattern — visible, non-gating, never laundering into
 blocking), promotable only with a deterministic representation. Phase 1's design-quality
-authority is the HITL gate plus measurement, stated as such (§5c.2).
+authority is **measurement plus a sampled read**, with the human gate reduced to answering
+the design's own declared questions (M4's narrowing, 2026-08-08). §5c.2 assigned that
+authority to the HITL gate; V4 showed a mandatory review contributing nothing while the one
+question a human uniquely held went unasked, so the diagnostics above carry the weight and a
+design is read when a number moves.
 
 ---
 
