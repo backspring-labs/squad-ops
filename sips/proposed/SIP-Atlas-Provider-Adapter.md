@@ -14,6 +14,12 @@ created_at: '2026-08-08T00:00:00Z'
 
 ## 1. Abstract
 
+**Atlas is an open-source LLM inference engine, hand-tuned in-house for NVIDIA DGX
+Spark** (§2.0 — recorded there because nothing else in the tree defines it). Adopting it
+targets the throughput ceiling that bounds every yield window, every shakedown, and the
+falsifiability of the small-model thesis itself (§2.5). That is the motive; provider
+neutrality is the prerequisite.
+
 SquadOps has one inference provider and no way to select a second. `LLMPort` looks like
 a seam and mostly is one, but provider selection is not configurable, the composition
 root constructs a vendor adapter directly, and two API route modules branch on
@@ -52,6 +58,25 @@ validation sprints against Ollama; this work must be invisible to them until an 
 separate cutover decision (§4.2).
 
 ## 2. Problem Statement
+
+### 2.0 What Atlas is (recorded here because nothing else records it)
+
+**Atlas is an open-source LLM inference engine, hand-tuned in-house for NVIDIA DGX
+Spark.** It is a local engine — a direct replacement for Ollama on the Spark box, not a
+hosted service. No API key, no egress, no per-token cost, no rate limits.
+
+This definition is stated here because it exists nowhere else in the tree. Atlas is named
+in SIP-0101, SIP-LLM-Emission-Contracts (§2.3, §3.2, Appendix A), and the 1.7 roadmap
+entry — always as an assumed shared referent, never defined. Any reader arriving at those
+references cold has to ask. This SIP is the canonical record; the others should link here.
+
+**Why that matters for scope:** because Atlas is local and self-hosted, this migration
+carries none of the concerns a hosted provider would force into the design — credentials,
+network egress of PRDs and source, per-token billing, 429 backoff, multi-tenant latency
+variance. The design below is smaller and more honest for it. If Atlas ever grows an auth
+surface, it enters through `SecretManager` as a `secret://` ref, which the factory already
+resolves for `base_url` — but nothing in this SIP anticipates that, per the standing rule
+against building for a second use that does not exist.
 
 ### 2.1 Provider selection does not exist
 
@@ -126,6 +151,32 @@ would mean touching `checks.py` twice.
 See §9 for why, and §10.3 for the #410 question that is genuinely open.
 
 ### 2.5 Why now, and why on this lane
+
+**The driver is throughput, and throughput is the binding constraint on the entire
+measurement program.** Atlas is hand-tuned for the exact hardware the squad runs on, so
+it targets the one number that bounds everything else. The repo's own evidence, all of it
+recorded before this SIP existed:
+
+- `#410`: *"At the Spark's 11.4 t/s ceiling this is roughly 35 min of a 77-min run."*
+- SIP-LLM-Emission-Contracts §2.1: *"On a bandwidth-bound box (~10-16 t/s on the full
+  profile), every discarded emission is minutes of wall-clock."*
+- `model_registry.py`'s own comment: *"qwen3.6:27b at ~10 t/s on Spark takes ~13 min for
+  8K tokens"* — the reason the completion clamp exists at all.
+- The post-1.5 reconciliation, on why Campaign is tempting: *"hand-launching them has been
+  the human bottleneck through every FAY window and shakedown."*
+
+Every one of those is the same constraint wearing a different hat. Token throughput sets
+how long a cycle takes, which sets how many cycles fit in a window, which sets whether a
+yield measurement is a statistic or an anecdote. The scorecard's squad-vs-single-model
+comparison (1.8) needs *many* cycles to say anything. An engine tuned for this box is the
+most direct lever on that, and it is a lever nothing else in the roadmap pulls.
+
+That reframes the migration: it is not provider-neutrality for its own sake, it is an
+instrument for the thesis. Which also sets the acceptance bar — **§3.6's A/B tier must
+establish quality parity, not just speed.** A faster engine that degrades emission quality
+buys nothing, and every prior measurement (the FAY 6/6 window, the 98.5 lineage) was taken
+on the Ollama substrate. Changing engines without a parity baseline silently invalidates
+the comparison base for everything measured so far. See §8's thesis-discontinuity risk.
 
 The two documents that name Atlas both defer it for the same reason and to the same
 place: SIP-LLM-Emission-Contracts §2.3 ("the port must own the contract **before** the
@@ -269,12 +320,17 @@ second use exists.
 `chat_stream_with_usage` streaming-for-liveness pattern that keeps long generations from
 idling out.
 
-**The wire dialect is deliberately not fixed by this SIP** (§10.2). The port surface,
-capability declaration, and conformance suite are the normative content; the dialect is an
-implementation detail resolved when Atlas's API is pinned, and *verified* by the
-conformance suite rather than assumed. This follows SIP-LLM-Emission-Contracts §3.2's
-existing rule that an adapter's tier is "discovered by the conformance suite, never
-assumed — including the Atlas adapter's at migration time."
+**Working assumption: Atlas exposes an OpenAI-compatible HTTP surface**
+(`/v1/chat/completions`, `/v1/models`). This is the one assumption in the SIP, and it is
+not invented here — SIP-LLM-Emission-Contracts Appendix A already names OpenAI-compatible
+as "the *expected* Atlas path." Since Atlas is in-house, this is a fact to confirm rather
+than a risk to manage, and it is confined to P4: if wrong, the transport layer of one file
+changes and nothing else in this SIP moves.
+
+The dialect is still *verified rather than assumed*, per SIP-LLM-Emission-Contracts
+§3.2's rule that an adapter's tier is "discovered by the conformance suite, never assumed
+— including the Atlas adapter's at migration time." The assumption sets the starting
+implementation; the suite decides what is true.
 
 What the SIP does fix, dialect-independent:
 
@@ -325,9 +381,19 @@ queue port.
   dimension above.
 - **Live tier** — `@pytest.mark.integration`, against a real endpoint from an env var,
   skipped when absent. Same assertions, real wire.
-- **A/B tier** — same prompts through both adapters, comparing usage accounting and
-  extraction health. This is the migration instrument, not a pass/fail gate; it produces
-  the before/after baseline that SIP-LLM-Emission-Contracts §3.4 asks for.
+- **A/B tier** — same prompts, same models, same box, through both adapters. **This is the
+  migration decision instrument** and the reason the SIP exists (§2.5). It reports two
+  numbers, and both gate the cutover:
+  - **Throughput** — tokens/sec and wall-clock per generation. The expected win, and the
+    only reason to switch engines.
+  - **Quality parity** — extraction health (clean / recovered / failed rates per
+    SIP-LLM-Emission-Contracts §3.4) and usage-accounting consistency. **A throughput win
+    with a quality regression is a loss**, and without this half the FAY and 98.5 lineages
+    lose their comparison base (§8).
+
+  It is not a unit-test pass/fail gate; it is a recorded artifact that the cutover decision
+  (§4.2) reads. SIP-0101's replay harness should drive it — identical replayed inputs
+  through two adapters is precisely the use it already names.
 
 **The gate**: `create_llm_provider` returns an adapter only if its conformance run is
 green. Enforced as a CI-blocking test over the adapter registry, not a runtime check — a
@@ -362,10 +428,16 @@ like a squad regression.
 ### 4.2 Cutover is a separate, later, owner decision
 
 Changing any default is **out of scope for this SIP**. The cutover requires, at minimum:
-the conformance suite green on a live Atlas endpoint, the A/B baseline recorded, and a
-shakedown cycle on the deployed stack — and it lands no earlier than a release where the
-Spark lane is not mid-validation. This SIP delivers the *ability* to switch and the
-*evidence* to decide; it does not switch.
+
+1. the conformance suite green against a live Atlas endpoint on the Spark (P5);
+2. **the A/B artifact recorded, both halves** — a throughput win *and* quality parity
+   (§3.6). Either alone is insufficient: no speed win means no reason to switch, no parity
+   means the measurement lineage breaks (§8);
+3. a shakedown cycle on the deployed stack, green, under the new engine;
+4. a release window where the Spark lane is not mid-validation.
+
+This SIP delivers the *ability* to switch and the *evidence* to decide. It does not
+switch, and it does not pre-authorize switching.
 
 ### 4.3 Release placement
 
@@ -428,21 +500,31 @@ $ curl -s http://localhost:11434/v1/models
 {"object":"list","data":[{"id":"qwen2.5:14b","object":"model","created":...,"owned_by":"library"}, ...]}
 ```
 
-If Atlas is OpenAI-compatible (§10.2's leading candidate), the Atlas adapter can be
-pointed at `http://localhost:11434/v1` and run the **full live-tier conformance suite on
-the Mac** against real models — real generation, real streaming, real usage accounting,
-real error translation — with no Atlas instance, no Spark contact, and no default changed.
-The A/B tier becomes genuinely meaningful too: the same weights through two adapters
-isolates *adapter* differences from *model* differences, which a cross-machine comparison
-never could.
+**Atlas itself is tuned for DGX Spark and is not expected to run on this Mac** — the same
+hardware split that makes the `full` squad profile hard-fail here. So the Mac cannot test
+the *engine*. It can fully test the *adapter*, which is what P0–P4 actually deliver.
 
-This is a rough test and the SIP says so plainly: it proves the adapter speaks the
-dialect correctly, not that Atlas behaves like Ollama. Real Atlas conformance is P5 and
-needs a real endpoint.
+Under §3.5's OpenAI-compatible assumption, the Atlas adapter points at
+`http://localhost:11434/v1` and runs the **entire live-tier conformance suite on this Mac**
+against real models: real generation, real streaming, real usage accounting, real error
+translation — with no Atlas instance, no Spark contact, and no default changed.
 
-If Atlas is *not* OpenAI-compatible, the fallback is a recorded-transcript fixture harness
-at the unit tier plus a deferred live tier — weaker, and a reason to prefer resolving
-§10.2 early.
+**Be precise about what that proves and what it does not:**
+
+| Proven on the Mac | Requires the Spark |
+|---|---|
+| the adapter speaks the dialect correctly | Atlas's own conformance (P5) |
+| capability declarations are honest | the throughput number (§2.5's entire point) |
+| error translation maps to the right exception types | quality-parity A/B on real workloads |
+| usage accounting is populated and self-consistent | the cutover decision (§4.2) |
+
+The left column is genuine engineering verification, not a smoke test, and it is the part
+that historically breaks. The right column is the Spark lane's, later, on its own
+schedule — which is the whole point of §4's dark-ship rule.
+
+If Atlas turns out not to be OpenAI-compatible, the fallback is a recorded-transcript
+fixture harness at the unit tier plus a live tier deferred to the Spark — weaker, and the
+reason §3.5's assumption is worth confirming early even though it blocks only P4.
 
 ### 6.2 Acceptance per phase
 
@@ -501,6 +583,20 @@ proving the default path is untouched.
   acceptance running doctor green on this Mac before merge.
 - **Risk: this SIP and 1.6 collide on `capabilities/handlers/cycle/base.py`.** One
   two-line addition; §4.1.5 makes checking it a pre-PR step.
+- **Risk: thesis-measurement discontinuity — the one that outlives this SIP.** Every
+  measurement the project has banked (the FAY 6/6 window, the 98.5 lineage, shakedown
+  greens, correction-rate baselines) was taken on the Ollama substrate. Switching engines
+  changes the substrate under all of them at once. If the cutover happens without §3.6's
+  quality-parity baseline, a later regression cannot be attributed — engine, or squad? —
+  and the comparison base for the 1.8 scorecard is silently gone. This is the same class
+  of reasoning the odd-minor convention already encodes (quarantine risky refactors so a
+  regression is unambiguously the refactor). Mitigated by making parity a recorded,
+  gating artifact of the cutover decision, never a post-hoc rationalization.
+- **Risk: the throughput win does not materialize.** The SIP's justification (§2.5) is
+  throughput; if Atlas is not meaningfully faster on real workloads, P0–P3 are still worth
+  having (they close #313 and #301's LLM half and make the port honest) but the cutover
+  should not happen. The A/B tier is what makes that a decidable question rather than a
+  sunk-cost argument.
 - **Risk to the Spark lane: none by construction, if §4.1 holds.** §4.1 is the mitigation
   and it is checkable per PR. That is the whole design of the dark-ship rule.
 
@@ -539,13 +635,14 @@ needs an explicit ruling: close #301 here with a scoped title change, or referen
 without `Closes` and file the queue half separately. *Recommendation: the latter — a
 partial fix references without closing, per the standing rule.*
 
-**10.2 — What Atlas is.** Not recorded anywhere in the repo; every reference defers the
-question. SIP-LLM-Emission-Contracts Appendix A calls OpenAI-compatible
-(`response_format: {type: "json_schema"}`) "the *expected* Atlas path, to be verified by
-the conformance suite at adoption, never assumed." **This blocks P4 only** — P0–P3 proceed
-regardless — and it is what decides whether §6.1's Mac rough-test path works as described.
-Needed at P4: base URL shape, auth (bearer? none?), model-listing endpoint, and whether
-model management (pull/delete) exists at all, since that sets `model_management`.
+**10.2 — Atlas's API surface.** §3.5 assumes OpenAI-compatible (`/v1/chat/completions`,
+`/v1/models`), matching SIP-LLM-Emission-Contracts Appendix A's stated expectation.
+Since Atlas is in-house, this is a confirmation, not an investigation. **It blocks P4
+only** — P0–P3 proceed regardless — and it decides whether §6.1's Mac live tier works as
+described. Four facts settle it: endpoint paths, whether model listing exists (sets
+`model_listing`), whether any model load/unload management exists (sets
+`model_management`), and what usage fields the response carries (sets `streaming_usage`
+and whether tokens/sec is native or computed client-side).
 
 **10.3 — #410 (thinking tokens), in or out.** Currently out. The case for pulling it in:
 it is provider-shaped, the port has no way to express "return reasoning separately," and
@@ -595,8 +692,15 @@ Recorded for implementation convenience only; the normative surface is §3.2, §
   `/api/pull`, `/api/delete`. Usage via `prompt_eval_count` / `eval_count` /
   `eval_duration` (ns). Native JSON-Schema constrained decoding via `format` (v0.5+).
   **Also serves an OpenAI-compatible surface at `/v1`** — the §6.1 rough-test path.
-- **OpenAI-compatible** (§10.2's leading candidate): `/v1/chat/completions` with SSE
-  streaming, `/v1/models`, `usage.{prompt,completion,total}_tokens` (no native rate — t/s
-  is computed client-side or declared unsupported), `response_format:
-  {type: "json_schema"}`. No pull/delete equivalent, so `model_management: False`.
+- **Atlas** (in-house engine, DGX Spark-tuned; §2.0): assumed OpenAI-compatible per §3.5 —
+  `/v1/chat/completions` with SSE streaming, `/v1/models`,
+  `usage.{prompt,completion,total}_tokens`. Note that the OpenAI shape carries **no native
+  tokens/sec field**, unlike Ollama's `eval_count`/`eval_duration`. Since throughput is
+  this SIP's entire justification (§2.5), the adapter must either compute t/s client-side
+  from wall-clock and completion tokens — the honest option, and adequate for A/B
+  comparison — or Atlas exposes a native timing field, which is the better answer if it is
+  cheap to add on the engine side. **Worth deciding before P4**: an in-house engine can
+  simply report it, and a native number beats one inferred across an HTTP boundary.
 - **vLLM / llama.cpp**: OpenAI-compatible plus guided decoding (`guided_json`, GBNF).
+  Listed only as dialect precedent for the structured-output work that
+  SIP-LLM-Emission-Contracts owns, not as candidate providers.
