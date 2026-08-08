@@ -20,7 +20,7 @@ regression waiting for a quiet afternoon.
 * the deriver must still reproduce the *ingested* contract from it — the bytes bind-mode
   cycles actually load, not a copy regenerated from the deriver under test.
 
-**No regeneration hatch, deliberately.** ``verification_contract.yaml`` here is not a
+**No regeneration hatch, deliberately.** The pinned contract here is not a
 golden that tracks code evolution; it is a reference tied to banked evidence — the 1.4
 Functional App Yield window (6/6, five consecutive) was measured against this contract.
 A one-env-var regen would invite exactly the casual update the plan's M0 divergence
@@ -42,9 +42,18 @@ import yaml
 from squadops.capabilities.scaffold import InterfaceManifest
 from squadops.capabilities.scaffold_contract import emit_contract_dict, emit_contract_yaml
 
-_EXAMPLE = Path(__file__).resolve().parents[3] / "examples" / "03_group_run"
-_MANIFEST = _EXAMPLE / "interface_manifest.yaml"
-_CONTRACT = _EXAMPLE / "verification_contract.yaml"
+_REPO = Path(__file__).resolve().parents[3]
+# The manifest is a genuine product input: scripts/dev/contract_gate.py defaults to
+# it, and it is the file ingested to the vault as art_8becd104e9fc. It stays in
+# examples/ where a human can read and copy it.
+_MANIFEST = _REPO / "examples" / "03_group_run" / "interface_manifest.yaml"
+# The contract is NOT an input. contract_gate.py *generates* it from the manifest
+# and prints the `artifacts ingest` command; committing it beside the manifest put
+# a generated artifact in the source tree, in a directory that reads as
+# user-facing examples. It lives here instead: its only consumer is this test.
+_CONTRACT = (
+    _REPO / "tests" / "fixtures" / "reference_contract" / "contract_v9_art_4f368ea08799.yaml"
+)
 
 # The ingested artifacts, by content hash. Measured 2026-08-07 against the vault:
 #   art_8becd104e9fc — interface manifest v4
@@ -78,7 +87,8 @@ def test_reference_contract_is_still_the_ingested_artifact():
     what stops that.
     """
     assert _sha256(_CONTRACT) == _CONTRACT_SHA256, (
-        "examples/03_group_run/verification_contract.yaml no longer matches ingested "
+        "tests/fixtures/reference_contract/contract_v9_art_4f368ea08799.yaml no longer "
+        "matches ingested "
         "contract v9 (art_4f368ea08799). These are the bytes bind-mode cycles load; "
         "regenerating them locally would make the derivation test tautological."
     )
