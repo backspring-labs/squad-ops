@@ -33,8 +33,8 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 
     from squadops.ports.cycles.artifact_vault import ArtifactVaultPort
 
-#: The filename an operator-seeded interface manifest carries. Matched alongside the
-#: ``interface_manifest`` artifact type because both rails exist in the wild.
+#: The filename an interface manifest carries, whichever rail it arrived on. Matched
+#: alongside the ``interface_manifest`` artifact type because both exist in the wild.
 SEEDED_MANIFEST_FILENAME = "interface_manifest.yaml"
 
 #: Artifact type for a derived contract — deliberately the SAME type the manual
@@ -46,19 +46,40 @@ CONTRACT_FILENAME = "verification_contract.yaml"
 
 
 class ContractDerivationError(Exception):
-    """The seeded manifest could not produce a contract."""
+    """The manifest could not produce a contract."""
 
 
-def is_seeded_manifest(ref: Any) -> bool:
-    """True when an artifact ref is an operator-seeded interface manifest.
+def is_interface_manifest(ref: Any) -> bool:
+    """True when an artifact ref is an interface manifest — **whoever wrote it**.
 
-    One rule, shared by the executor's seeded-manifest lookup and the create path. A
-    second copy of this predicate is how the two ends start disagreeing about which
+    Provenance-neutral by design. It was ``is_seeded_manifest`` until #791 made a
+    squad-authored manifest possible, at which point a name asserting the operator put
+    it there described only half the callers. The predicate never checked provenance and
+    must not start: the create path, the executor's seeded lookup, and #796's
+    authored-manifest lookup all ask the same question — *is this the manifest?*
+
+    One rule, one copy. A second copy is how the ends start disagreeing about which
     artifact is the manifest.
     """
     return ref.filename == SEEDED_MANIFEST_FILENAME or (
         getattr(ref, "artifact_type", None) == "interface_manifest"
     )
+
+
+def find_interface_manifest(stored: Iterable[tuple[str, Any]]) -> str | None:
+    """The artifact id of the interface manifest among ``(artifact_id, ref)`` pairs.
+
+    The in-run counterpart of :func:`load_seeded_manifest_content`, which reads the
+    cycle's seeded rail. This one reads what the current run has produced so far, which
+    is where an authored manifest lives before any promotion or forwarding has happened
+    (#796). Last match wins: a re-rolled authoring stage stores a new manifest, and the
+    later one is the design in force.
+    """
+    found: str | None = None
+    for artifact_id, ref in stored:
+        if is_interface_manifest(ref):
+            found = artifact_id
+    return found
 
 
 async def load_seeded_manifest_content(
@@ -75,7 +96,7 @@ async def load_seeded_manifest_content(
             ref, content_bytes = await vault.retrieve(ref_id)
         except Exception:
             continue
-        if is_seeded_manifest(ref):
+        if is_interface_manifest(ref):
             return content_bytes.decode(errors="replace")
     return None
 
@@ -110,6 +131,7 @@ async def derive_and_store_contract(
     manifest_content: str,
     *,
     cycle_id: str | None = None,
+    run_id: str | None = None,
 ) -> str:
     """Derive the contract, store it as an artifact, return its id.
 
@@ -129,6 +151,10 @@ async def derive_and_store_contract(
         media_type="application/yaml",
         created_at=datetime.now(UTC),
         cycle_id=cycle_id,
+        # #796: an in-run derivation attaches to the run, so the contract is promoted
+        # with the rest of the framing output at gate approval and forwards to the
+        # implementation workload on the rails a seeded contract already uses.
+        run_id=run_id,
         metadata={"derived_from": "interface_manifest", "derivation": "scaffold_contract"},
     )
     stored = await vault.store(ref, content)

@@ -46,7 +46,7 @@ from squadops.cycles.acceptance_evaluation import resolve_check_stack
 from squadops.cycles.agent_config import build_agent_resolver
 from squadops.cycles.build_completeness import compute_missing_required_files
 from squadops.cycles.checkpoint import RunCheckpoint
-from squadops.cycles.contract_derivation import SEEDED_MANIFEST_FILENAME
+from squadops.cycles.contract_derivation import CONTRACT_ARTIFACT_TYPE, SEEDED_MANIFEST_FILENAME
 from squadops.cycles.frozen_check_validation import frozen_check_violations
 from squadops.cycles.manifest_authoring import MANIFEST_ARTIFACT_TYPE
 from squadops.cycles.models import (
@@ -67,7 +67,7 @@ from squadops.cycles.patch_verification import (
 )
 from squadops.cycles.run_ledger import RunLedger
 from squadops.cycles.task_outcome import TaskOutcome
-from squadops.cycles.task_plan import generate_task_plan
+from squadops.cycles.task_plan import generate_task_plan, inject_contract_inputs
 from squadops.cycles.verification_normalize import normalize_task_checks
 from squadops.events.types import EventType
 from squadops.ports.cycles.flow_execution import FlowExecutionPort
@@ -975,6 +975,13 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 overrides["plan_artifact_refs"] = merged
             else:
                 overrides["plan_artifact_refs"] = plan_refs
+            # #796: a contract the framing run derived from its own authored manifest
+            # becomes the next workload's contract_ref, exactly as a seeded one would be.
+            # An operator-supplied ref always wins — the merge rule for every other key.
+            if not overrides.get("contract_ref"):
+                derived = [a for a in promoted if a.artifact_type == CONTRACT_ARTIFACT_TYPE]
+                if derived:
+                    overrides["contract_ref"] = max(derived, key=lambda a: a.created_at).artifact_id
         elif wt == "implementation":
             if "impl_run_id" not in overrides:
                 overrides["impl_run_id"] = completed_run.run_id
@@ -1160,6 +1167,12 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # None for unbound/legacy runs → no enforcement (plan §10).
         bound_record = self._build_bound_record_for_run(interface_manifest, run_id)
 
+        # #796: in authored mode the contract does not exist when the plan is generated —
+        # the squad has not designed anything yet. It comes into being mid-run, the moment
+        # the authoring stage lands a manifest, and every task dispatched after that point
+        # binds to it. Empty for seeded runs, whose contract was pinned at creation.
+        authored: tuple[Any, Any] = (None, None)
+
         # SIP-0079: Checkpoint/resume state tracking
         completed_task_ids: list[str] = []
         plan_delta_refs: list[str] = []
@@ -1271,12 +1284,14 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 continue
 
             # Enrich envelope with chain context and dispatch
+            authored_contract, authored_manifest = authored
             enriched = await self._enrich_envelope(
                 envelope,
                 prior_outputs,
                 all_artifact_refs,
                 stored_artifacts,
-                interface_manifest=interface_manifest,
+                interface_manifest=interface_manifest or authored_manifest,
+                run_derived_contract=authored_contract,
             )
 
             # SIP-0087: executor owns Prefect task-run creation so task_run_id
@@ -1437,6 +1452,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 compliance_counter=compliance_counter,
                 retain_checkpoint=self._is_phase_boundary(plan, task_idx),
             )
+
+            # #796: the authoring stage may have just stored a manifest. Derive here — after
+            # collection, before the next dispatch — so the very next task binds.
+            authored = await self._bind_authored_manifest(cycle, run_id, stored_artifacts, authored)
 
             # ----------------------------------------------------------
             # SIP-0070: Pulse boundary evaluation (after task, before gate)
@@ -1673,11 +1692,95 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         author mode = today's behavior exactly."""
         return bool(cycle.execution_overrides.get("contract_ref"))
 
-    async def _load_contract_for_run(self, cycle: Any, run: Any) -> Any:
-        """Load the seeded verification contract for a run (SIP-0098 98.3).
+    async def _bind_authored_manifest(
+        self,
+        cycle: Any,
+        run_id: str,
+        stored_artifacts: list[tuple[str, ArtifactRef]],
+        current: tuple[Any, Any],
+    ) -> tuple[Any, Any]:
+        """Derive and pin the contract the moment this run has authored a manifest (#796).
+
+        The instant the design exists it is fixed, so the cycle stops being author mode and
+        becomes exactly what a seeded cycle is: a manifest, and the contract derived from
+        it. Everything downstream is then the machinery 1.4/1.5 hardened, unchanged —
+        SIP-0103 §3.5's "authored mode is a mode of manifest provenance, not a second
+        pipeline", made true rather than asserted.
+
+        Without it, authored mode ran with every contract-gated net switched off. V4 roll 1
+        measured the cost: the proposers, told nothing about the skeleton their own squad
+        had just designed, put **zero of nine** expected artifacts on a fill slot — four
+        claimed scaffold-frozen files and five named paths the skeleton does not contain.
+
+        Derives ONCE per run. A re-rolled authoring stage produces a new run, so "the design
+        is fixed" needs no mid-run invalidation rule — and a second derivation inside one run
+        would be a moving target, which is the #494 stale-binding class by construction.
+
+        Never raises. A manifest that cannot derive is already a winnability finding, so the
+        gate rejects it with the deriver's own reason (``contract_derives``, attributed to
+        infrastructure by M6) rather than this seam inventing a second verdict.
+        """
+        from squadops.capabilities.scaffold import InterfaceManifest
+        from squadops.cycles.contract_derivation import (
+            derive_and_store_contract,
+            find_interface_manifest,
+        )
+        from squadops.cycles.verification_contract import VerificationContract
+
+        contract, _manifest = current
+        if contract is not None or self._is_bind_mode(cycle):
+            # Already derived, or seeded at creation — the seeded path is untouched.
+            return current
+
+        manifest_id = find_interface_manifest(stored_artifacts)
+        if manifest_id is None:
+            return current
+
+        try:
+            _, manifest_bytes = await self._artifact_vault.retrieve(manifest_id)
+            manifest_content = manifest_bytes.decode(errors="replace")
+            contract_ref = await derive_and_store_contract(
+                self._artifact_vault,
+                cycle.project_id,
+                manifest_content,
+                cycle_id=cycle.cycle_id,
+                run_id=run_id,
+            )
+            _, contract_bytes = await self._artifact_vault.retrieve(contract_ref)
+            derived = VerificationContract.from_yaml(contract_bytes.decode(errors="replace"))
+            manifest = InterfaceManifest.from_yaml(manifest_content)
+            # On the run's own ref list, like any other output: it is then visible in
+            # `artifacts list`, seen by the gate's plan-validation net, promoted with the
+            # rest of the framing output on approval, and forwarded to the implementation
+            # workload. A contract only this loop knew about would bind the plan and then
+            # vanish at the gate.
+            await self._cycle_registry.append_artifact_refs(run_id, (contract_ref,))
+        except Exception:
+            logger.warning(
+                "Could not derive a contract from the manifest authored by run %s; the "
+                "framing gate will reject it with the deriver's own reason",
+                run_id,
+                exc_info=True,
+            )
+            return current
+
+        logger.info(
+            "Derived contract %s from the manifest authored by run %s "
+            "(manifest_hash=%s, %d fill files) — the run binds from here",
+            contract_ref,
+            run_id,
+            manifest.content_hash()[:12],
+            len(derived.fill_files),
+        )
+        return derived, manifest
+
+    async def _load_contract_for_run(self, cycle: Any, run: Any, ref: str | None = None) -> Any:
+        """Load the verification contract governing a run (SIP-0098 98.3).
 
         Reads the ``contract_ref`` artifact id from ``execution_overrides`` (a bare
         id or a single-element list) and parses it into a ``VerificationContract``.
+        ``ref`` overrides that lookup with a contract the run itself derived from an
+        authored manifest (#796) — the same artifact, arriving on a different rail.
         Returns the contract, or ``None`` when no ref is seeded (author mode) or the
         seeded ref is unreadable/unparseable. A seeded-but-broken ref is NOT silently
         treated as author mode — ``_is_bind_mode`` stays true, so the plan-validation
@@ -1685,7 +1788,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         (the stale-binding class, SIP §10)."""
         from squadops.cycles.verification_contract import VerificationContract
 
-        ref = cycle.execution_overrides.get("contract_ref")
+        ref = ref or cycle.execution_overrides.get("contract_ref")
         if not ref:
             return None
         ref_id = ref[0] if isinstance(ref, (list, tuple)) and ref else ref
@@ -1809,6 +1912,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         all_artifact_refs: list[str],
         stored_artifacts: list[tuple[str, ArtifactRef]],
         interface_manifest: Any = None,
+        run_derived_contract: Any = None,
     ) -> TaskEnvelope:
         """Build chain context inputs and return an enriched envelope.
 
@@ -1816,6 +1920,12 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         from the capability-owned ``ContextAssemblyContract``; this method owns
         only the deterministic mechanics — fragment order, the artifact I/O,
         and the merge (dispatch keys shadow plan-time keys of the same name).
+
+        ``run_derived_contract`` is #796's authored-mode path: a seeded contract exists
+        when the plan is generated and its inputs are injected there, but an authored one
+        does not exist yet, so its injection has to happen here — which is exactly what the
+        shadowing rule above was built for. Passed only when the contract was derived during
+        THIS run, so a seeded run is byte-identical.
         """
         contract = get_context_contract(envelope.task_type)
 
@@ -1823,6 +1933,15 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             "prior_outputs": prior_outputs,
             "artifact_refs": list(all_artifact_refs),
         }
+
+        # The same injector the plan-generation path calls, keyed by the same registry —
+        # one implementation of "who receives the contract's surfaces", two moments it can
+        # run. The two are mutually exclusive by construction: plan-time gets the contract
+        # when it is seeded, this gets it when it is authored.
+        if run_derived_contract is not None:
+            inject_contract_inputs(
+                extra_inputs, run_derived_contract, envelope.task_type, interface_manifest
+            )
 
         # Manifest seam surfaces (#588/pf-45/#659): presence-keyed instruction
         # sets (error contract, model surface, testid inventory) for task types
@@ -2873,6 +2992,12 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         interface_content: str | None = None
         parsed_plan: ImplementationPlan | None = None
         plan_artifact_seen = False  # #424: exists-but-unreadable ≠ absent
+        # #796: an authored cycle's contract was derived DURING this run, so it lives on the
+        # run's refs rather than in execution_overrides. Without this the bind-mode nets —
+        # frozen-artifact ownership, qa ownership, module existence, criteria binding — stay
+        # switched off for exactly the plans that need them most (V4 roll 1: four tasks
+        # claimed scaffold-frozen files and nothing caught it).
+        run_contract_ref: str | None = None
         contract = None  # set in bind mode below; feeds the soft-violation log
         for ref_id in tuple(run.artifact_refs or ()):
             try:
@@ -2924,6 +3049,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 ref.filename == SEEDED_MANIFEST_FILENAME or artifact_type == MANIFEST_ARTIFACT_TYPE
             ):
                 interface_content = content_bytes.decode(errors="replace")
+            elif artifact_type == CONTRACT_ARTIFACT_TYPE:
+                run_contract_ref = ref_id
 
         # #424: this seam's precondition is implementation_plan=true, so a
         # COMPLETED framing run with no plan artifact at all means plan
@@ -2958,7 +3085,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # a hard rejection, never a silent fall-through to author mode (§10). Errors join
         # the same returned list → identical system:plan_validation REJECTED recording.
         # Contract absent (author mode) → no-op = today's behavior.
-        if self._is_bind_mode(cycle):
+        if self._is_bind_mode(cycle) or run_contract_ref is not None:
             # #494/#496: the contract binds to a skeleton, so bind mode REQUIRES an
             # interface manifest — without one, no skeleton is expanded at the
             # implementation run and contract checks would measure from-scratch code
@@ -2979,7 +3106,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     "implementation would run unscaffolded while claiming contract "
                     "verification (#494, #496)"
                 )
-            contract = await self._load_contract_for_run(cycle, run)
+            contract = await self._load_contract_for_run(cycle, run, ref=run_contract_ref)
             if contract is None:
                 errors.append(
                     "verification_contract: contract_ref is seeded but the contract is "
