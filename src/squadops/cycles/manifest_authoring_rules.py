@@ -29,7 +29,7 @@ from squadops.cycles.manifest_gates import (
     PROOF_EXPANDS,
     PROOF_LINT,
     PROOF_PARSES,
-    PROOF_PROVENANCE,
+    PROOF_SOURCE_PRD,
     PROOF_STATUS_DECLARED,
     PROOF_TESTID_COVERAGE,
 )
@@ -44,7 +44,7 @@ AUTHOR_FACING: dict[str, tuple[str, ...]] = {
     PROOF_EXPANDS: ("paths-under-scaffold-roots",),
     PROOF_TESTID_COVERAGE: ("every-view-declares-anchors",),
     PROOF_STATUS_DECLARED: ("declare-the-success-status",),
-    PROOF_PROVENANCE: ("name-the-source-prd",),
+    PROOF_SOURCE_PRD: ("name-the-source-prd",),
     PROOF_DECISION_RECORD: ("record-judgments-with-warrants",),
 }
 

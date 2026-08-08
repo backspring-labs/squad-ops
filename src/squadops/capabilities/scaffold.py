@@ -151,6 +151,45 @@ class Decision:
 
 
 @dataclass(frozen=True)
+class Revision:
+    """Why one authoring attempt was rejected (#803, M5).
+
+    Classes come from M6's taxonomy, never free text: "took three tries" cannot say whether
+    those were schema failures, winnability rejections, or the author's own refinement, and
+    the three have opposite remedies. The proofs are kept alongside so a reader can see the
+    specific finding without re-deriving it from the class.
+    """
+
+    attempt: int
+    classes: dict[str, int] = field(default_factory=dict)
+    proofs: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class Provenance:
+    """How this manifest came to be (SIP-0103 §5c.5, #803).
+
+    **System-owned and observed, never claimed.** The one part of the document an author may
+    not write: an attempt count the author asserts about itself is a lie surface, and the
+    schema gate rejects an author-supplied block for that reason.
+
+    **Presence is the signal.** A manifest with provenance was authored by a squad and this
+    block says how; one without did not come from this system (operator-seeded, including the
+    reference instance). Data-driven, like every other mode decision here — no flag.
+
+    Deliberately NOT part of the structural projection — see ``_canonical``. The expander
+    ignores it, and a manifest whose only change is *how it was written* must expand to the
+    same skeleton and keep the contract bound to it valid.
+    """
+
+    mode: str = ""
+    cycle_id: str = ""
+    task_id: str = ""
+    attempts: int = 0
+    revisions: tuple[Revision, ...] = ()
+
+
+@dataclass(frozen=True)
 class InterfaceManifest:
     """The typed interface contract framing emits and the expander consumes."""
 
@@ -168,6 +207,9 @@ class InterfaceManifest:
     #: structure: excluded from ``_canonical`` so revising an explanation never moves
     #: the hash the verification contract is bound to.
     decisions: tuple[Decision, ...] = ()
+    #: How the document was authored (#803). ``None`` for anything this system did not
+    #: author. Excluded from ``_canonical`` for the same reason ``decisions`` is.
+    provenance: Provenance | None = None
 
     @classmethod
     def from_yaml(cls, content: str) -> InterfaceManifest:
@@ -220,6 +262,7 @@ class InterfaceManifest:
                 for d in (data.get("decisions") or [])
                 if isinstance(d, dict)
             ),
+            provenance=_parse_provenance(data.get("provenance")),
         )
 
     def _canonical(self) -> dict[str, Any]:
@@ -348,6 +391,33 @@ class InterfaceManifest:
                 errors.append(f"frontend route {route.path!r}: view is required")
 
         return errors
+
+
+def _parse_provenance(raw: Any) -> Provenance | None:
+    """Parse the system-owned provenance block, or ``None`` when absent.
+
+    Tolerant by design: provenance is a record, not a contract. A malformed block must not
+    make an otherwise-valid design unparseable, because that would let a bookkeeping defect
+    reject a manifest the squad got right.
+    """
+    if not isinstance(raw, dict):
+        return None
+    revisions = tuple(
+        Revision(
+            attempt=int(r.get("attempt", 0)),
+            classes={str(k): int(v) for k, v in (r.get("classes") or {}).items()},
+            proofs=tuple(str(x) for x in (r.get("proofs") or [])),
+        )
+        for r in (raw.get("revisions") or [])
+        if isinstance(r, dict)
+    )
+    return Provenance(
+        mode=str(raw.get("mode", "")),
+        cycle_id=str(raw.get("cycle_id", "")),
+        task_id=str(raw.get("task_id", "")),
+        attempts=int(raw.get("attempts", 0)),
+        revisions=revisions,
+    )
 
 
 def _parse_entity(raw: dict[str, Any]) -> Entity:

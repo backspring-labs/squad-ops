@@ -39,8 +39,11 @@ PROOF_CHECKS_LIVE = "checks_live"
 PROOF_TESTID_COVERAGE = "testid_coverage"
 PROOF_STATUS_DECLARED = "status_declared"
 
-#: Schema-gate proof classes (M2).
-PROOF_PROVENANCE = "provenance"
+#: Schema-gate proof classes (M2). ``PROOF_SOURCE_PRD`` was ``PROOF_PROVENANCE`` until #803
+#: gave the manifest an actual ``provenance`` block — one word for "where the design came
+#: from" and "how the document was authored" is two meanings in one module. It now names the
+#: field it checks, like every proof around it.
+PROOF_SOURCE_PRD = "source_prd"
 PROOF_DECISION_RECORD = "decision_record"
 
 
@@ -114,7 +117,7 @@ def assess_schema(manifest_content: str) -> tuple[WinnabilityFinding, ...]:
     if not manifest.source_prd.strip():
         findings.append(
             WinnabilityFinding(
-                PROOF_PROVENANCE,
+                PROOF_SOURCE_PRD,
                 "`source_prd` is empty — the manifest does not say which requirements "
                 "document it was designed from, so no reviewer can check the design "
                 "against its source. Name the PRD this manifest derives from.",
