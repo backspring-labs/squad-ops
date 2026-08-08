@@ -151,7 +151,11 @@ async def _run_create_preflight(profile: SquadProfile, config: dict) -> tuple[Fi
 
 
 async def _seed_derived_contract(body: CycleCreateRequest, project_id: str) -> str | None:
-    """Derive and pin a contract when a manifest is seeded without one (#779, M0b).
+    """Derive a verification contract from a seeded manifest (#779, M0b).
+
+    Fires only when the cycle supplies an interface manifest but **no**
+    ``contract_ref`` — the manifest says what the app's interface is, and the contract
+    is the checklist derived from it.
 
     Bind mode is keyed on ``contract_ref``, so a cycle that seeds only a manifest runs
     UNBOUND today — the operator asked for contract verification by seeding the

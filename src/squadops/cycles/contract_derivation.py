@@ -1,5 +1,11 @@
 """Derive a verification contract from a seeded interface manifest (#779, M0b).
 
+Two artifacts, and the distinction matters throughout this module: the **interface
+manifest** is the design — endpoints, entities, views — and the **verification
+contract** is the checklist derived from it, naming every criterion the finished app
+must satisfy. A cycle can be given both, or only the manifest. This module handles the
+second case by producing the contract the manifest implies.
+
 Bind mode is keyed on a seeded ``contract_ref``, which is correct for seeded mode and
 impossible for authored mode: a manifest the squad has just written has no
 pre-existing contract to point at. Producing one was three manual steps
