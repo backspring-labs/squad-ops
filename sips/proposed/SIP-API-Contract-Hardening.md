@@ -1,3 +1,9 @@
+---
+status: proposed
+title: API Contract Hardening
+author: SquadOps Architecture
+created_at: '2026-02-28T00:00:00Z'
+---
 # SIP-0XXX: API Contract Hardening
 
 **Status:** Proposed

@@ -42,6 +42,13 @@ def _write(tmp_path: Path, body: str) -> Path:
     return f
 
 
+def _write_bare(tmp_path: Path, body: str) -> Path:
+    """A hand-authored draft: body only, no frontmatter block (#770)."""
+    f = tmp_path / "SIP-Hand-Authored.md"
+    f.write_text(body, encoding="utf-8")
+    return f
+
+
 def test_rewrites_canonical_body_line_without_touching_frontmatter(tmp_path):
     """The reported bug: accepted→implemented must flip the body line. The
     frontmatter ``status: accepted`` must be left exactly as-is (it's handled
@@ -134,3 +141,135 @@ def test_frontmatter_status_is_never_rewritten_as_body(tmp_path):
 
     assert update_sip_body_status(f, "implemented") is False
     assert f.read_text(encoding="utf-8") == before
+
+
+# ---------------------------------------------------------------------------
+# #770 — frontmatter derivation for hand-authored drafts
+#
+# Bug classes guarded: promotion dying on "Could not extract metadata" for a
+# draft whose body already states everything the frontmatter needs (12 of 13
+# proposed SIPs at the time this landed); a deriver that INVENTS a status rather
+# than failing when none is declared; the heading-form status declaration being
+# left stale after promotion (the #253 class, one form down — SIP-0103 had this
+# exact shape); and a rewrite that eats the emphasis around an emphasised value.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("body", "expected_title", "expected_status"),
+    [
+        # the three real H1 shapes in sips/proposed/
+        (
+            "# SIP-0XXX: API Contract Hardening\n\n**Status:** Proposed\n",
+            "API Contract Hardening",
+            "proposed",
+        ),
+        (
+            "# SIP: Stack Blueprint Contract\n\n## Status\nDraft (proposed)\n",
+            "Stack Blueprint Contract",
+            "proposed",
+        ),
+        (
+            "# SIP-0103: Squad-Authored Manifest\n\n**Status:** Accepted\n",
+            "Squad-Authored Manifest",
+            "accepted",
+        ),
+        # emphasised value under a heading — the shape that failed the first
+        # implementation and was only caught by running over the real corpus
+        (
+            "# SIP: Post-Retest Review\n\n## Status\n\n**Proposed** (draft, 2026-08-07).\n",
+            "Post-Retest Review",
+            "proposed",
+        ),
+        # parenthetical annotations must not leak into the keyword
+        (
+            "# SIP-0XXX: Planning Sequence\n\n**Status:** Proposed (stub)\n",
+            "Planning Sequence",
+            "proposed",
+        ),
+        (
+            "# SIP: Skill Layer\n\n**Status**: Proposed (concept reservation)\n",
+            "Skill Layer",
+            "proposed",
+        ),
+    ],
+)
+def test_derives_title_and_status_from_real_body_shapes(
+    tmp_path, body, expected_title, expected_status
+):
+    f = _write_bare(tmp_path, body)
+    derived, _detail = update_sip_status.derive_frontmatter_from_body(f)
+    assert derived["title"] == expected_title
+    assert derived["status"] == expected_status
+
+
+def test_derives_author_and_created_when_the_body_states_them(tmp_path):
+    f = _write(
+        tmp_path,
+        "# SIP: Cross-Cycle Memory\n\n## Status\nDraft (proposed)\n\n"
+        "**Author:** Jason Ladd\n**Created:** 2026-08-03\n",
+    )
+    derived, _ = update_sip_status.derive_frontmatter_from_body(f)
+    assert derived["author"] == "Jason Ladd"
+    assert derived["created_at"] == "2026-08-03T00:00:00Z"
+
+
+def test_missing_author_and_created_are_omitted_not_invented(tmp_path):
+    """The promotion path already defaults these; a guessed value is worse than
+    an absent one because it looks authoritative."""
+    f = _write_bare(tmp_path, "# SIP: Bare\n\n**Status:** Proposed\n")
+    derived, _ = update_sip_status.derive_frontmatter_from_body(f)
+    assert "author" not in derived
+    assert "created_at" not in derived
+
+
+def test_underivable_status_fails_with_an_actionable_message(tmp_path):
+    """The one field with no sane fallback: promoting from an unknown state
+    would be a guess about intent."""
+    f = _write_bare(tmp_path, "# SIP: No Status Here\n\nJust prose about a design.\n")
+    derived, detail = update_sip_status.derive_frontmatter_from_body(f)
+    assert derived is None
+    assert "**Status:**" in detail and "## Status" in detail
+
+
+def test_ensure_frontmatter_stamps_a_parsable_block(tmp_path):
+    """End-to-end: a draft that previously died at 'Could not extract metadata'
+    now round-trips through the real extractor."""
+    f = _write_bare(tmp_path, "# SIP: Stack Blueprint Contract\n\n## Status\nDraft (proposed)\n")
+    assert update_sip_status.extract_metadata_from_file(f) is None
+
+    meta = update_sip_status.ensure_frontmatter(f)
+    assert meta["status"] == "proposed"
+
+    reparsed = update_sip_status.extract_metadata_from_file(f)
+    assert reparsed["status"] == "proposed"
+    assert reparsed["title"] == "Stack Blueprint Contract"
+    assert f.read_text(encoding="utf-8").startswith("---\n")
+
+
+def test_ensure_frontmatter_leaves_an_existing_block_alone(tmp_path):
+    """Derivation must never overwrite what a maintainer hand-wrote."""
+    f = _write(tmp_path, "# SIP: Already Stamped\n\n**Status:** Proposed\n")
+    before = f.read_text(encoding="utf-8")
+
+    meta = update_sip_status.ensure_frontmatter(f)
+
+    assert meta["title"] == "Demo"  # from the frontmatter, not the H1
+    assert meta["sip_number"] == 89
+    assert f.read_text(encoding="utf-8") == before
+
+
+def test_heading_form_body_status_is_rewritten_on_promotion(tmp_path):
+    """The #253 class one form down: SIP-0103 declared status as a '## Status'
+    heading, so its body would have kept saying Draft while the frontmatter and
+    registry said accepted.
+    """
+    f = _write(tmp_path, "# SIP: Demo\n\n## Status\nProposed\n\nBody text.\n")
+    assert update_sip_body_status(f, "accepted") is True
+    assert "## Status\nAccepted\n" in f.read_text(encoding="utf-8")
+
+
+def test_heading_form_rewrite_preserves_emphasis_and_annotation(tmp_path):
+    f = _write(tmp_path, "# SIP: Demo\n\n## Status\n\n**Proposed** (draft, 2026-08-07).\n")
+    assert update_sip_body_status(f, "accepted") is True
+    assert "**Accepted** (draft, 2026-08-07)." in f.read_text(encoding="utf-8")

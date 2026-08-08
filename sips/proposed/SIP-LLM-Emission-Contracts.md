@@ -1,3 +1,10 @@
+---
+status: proposed
+title: LLM Emission Contracts — Typed Response Handling with Provider-Agnostic Structured
+  Output
+author: SquadOps Architecture
+created_at: '2026-07-25T00:00:00Z'
+---
 # SIP-0XXX: LLM Emission Contracts — Typed Response Handling with Provider-Agnostic Structured Output
 
 **Status:** Proposed

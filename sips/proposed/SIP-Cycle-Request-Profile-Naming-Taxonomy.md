@@ -1,3 +1,9 @@
+---
+status: proposed
+title: Cycle Request-Profile Naming Taxonomy
+author: SquadOps Architecture (Spark lane)
+created_at: '2026-07-01T00:00:00Z'
+---
 # SIP-0XXX: Cycle Request-Profile Naming Taxonomy
 
 **Status:** Proposed
