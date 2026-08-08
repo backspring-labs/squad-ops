@@ -37,8 +37,10 @@ class TestPullModel:
         mock_client.post.return_value = _mock_response(200, {"status": "success"})
         adapter._client = mock_client
 
-        result = await adapter.pull_model("qwen2.5:7b")
-        assert result == {"status": "success"}
+        # None, not the provider's response body: a payload returned through the
+        # port would make every caller Ollama-shaped (#313). The wire assertion
+        # below is what this test is actually for.
+        assert await adapter.pull_model("qwen2.5:7b") is None
         mock_client.post.assert_awaited_once_with(
             "/api/pull",
             json={"name": "qwen2.5:7b", "stream": False},
@@ -76,8 +78,8 @@ class TestDeleteModel:
         mock_client.request.return_value = _mock_response(200)
         adapter._client = mock_client
 
-        result = await adapter.delete_model("qwen2.5:7b")
-        assert result == {}
+        # See pull_model: None is the port contract, the wire assertion is the point.
+        assert await adapter.delete_model("qwen2.5:7b") is None
         mock_client.request.assert_awaited_once_with(
             "DELETE",
             "/api/delete",
@@ -102,6 +104,10 @@ class TestDeleteModel:
 
 
 class TestListPulledModels:
+    """The deprecated raw-dict shim (#313). Still covered because
+    ``cycles.py``'s preflight depends on it until that file is migrated —
+    an untested shim is how a silent warn-and-allow gets shipped."""
+
     async def test_returns_models(self, adapter):
         mock_client = AsyncMock()
         models_data = [

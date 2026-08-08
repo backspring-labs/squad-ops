@@ -38,6 +38,21 @@ class LLMResponse:
 
 
 @dataclass(frozen=True)
+class ModelInfo:
+    """A model the provider can serve, with whatever metadata it supplies.
+
+    Returned by ``LLMPort.list_available_models()``. The optional fields are
+    genuinely optional: a provider that cannot report size or modification time
+    leaves them ``None`` rather than fabricating a value, so a caller can tell
+    "not reported" from "zero" (#572's honesty rule applied to metadata).
+    """
+
+    name: str
+    size_bytes: int | None = None
+    modified_at: str | None = None
+
+
+@dataclass(frozen=True)
 class ChatMessage:
     """Chat message for conversational LLM interactions.
 

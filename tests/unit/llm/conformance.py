@@ -45,13 +45,15 @@ class AdapterCase:
     """One provider under conformance test.
 
     ``build`` returns a fresh adapter; ``ok`` answers requests the way a healthy
-    server of that dialect would. Registering a second provider means adding one
-    of these — no shared assertion changes.
+    server of that dialect would; ``nameless_model`` answers a listing request
+    with an entry carrying no usable name. Registering a second provider means
+    adding one of these — no shared assertion changes.
     """
 
     name: str
     build: Callable[[], LLMPort]
     ok: DialectHandler
+    nameless_model: DialectHandler
 
     def __str__(self) -> str:  # pytest id
         return self.name
@@ -159,6 +161,9 @@ def ollama_ok(request: httpx.Request) -> httpx.Response:
     if path == "/api/tags":
         return httpx.Response(200, json={"models": [{"name": m} for m in OLLAMA_MODELS]})
 
+    if path in ("/api/pull", "/api/delete"):
+        return httpx.Response(200, json={"status": "success"})
+
     if path == "/api/generate":
         return httpx.Response(
             200,
@@ -199,6 +204,17 @@ def ollama_ok(request: httpx.Request) -> httpx.Response:
     return httpx.Response(404, json={"error": f"unexpected route {path}"})
 
 
+def ollama_nameless_model(request: httpx.Request) -> httpx.Response:
+    """A listing whose single entry has no usable name.
+
+    Real servers do return junk rows; the port contract is that an unnamed model
+    is dropped rather than surfaced as an empty-named one.
+    """
+    if request.url.path == "/api/tags":
+        return httpx.Response(200, json={"models": [{"size": 42, "modified_at": "2026-01-01"}]})
+    return ollama_ok(request)
+
+
 # ---------------------------------------------------------------------------
 # The registry — one entry per adapter under conformance.
 #
@@ -211,6 +227,7 @@ ADAPTER_CASES: list[AdapterCase] = [
         name="ollama",
         build=lambda: OllamaAdapter(default_model="qwen2.5:7b", timeout_seconds=5.0),
         ok=ollama_ok,
+        nameless_model=ollama_nameless_model,
     ),
 ]
 
