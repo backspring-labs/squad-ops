@@ -502,7 +502,7 @@ Changing any default is **out of scope for this SIP**. The cutover requires, at 
 2. **the §3.6.1 A/B artifact recorded, both halves** — a throughput win *and* quality
    parity. Either alone is insufficient: no speed win means no reason to switch, no parity
    means the measurement lineage breaks (§8);
-3. **the throughput-telemetry gap fixed and deployed** (§10.3a). The cutover is decided on
+3. **the throughput-telemetry gap fixed and deployed** (**#793**, §10.3a). The cutover is decided on
    throughput evidence, and today `tokens_per_second` never reaches LangFuse while nothing
    persists it at all. Deciding a migration on a log-scraped number is the evidence
    posture SIP-0096 exists to forbid. **This is a hard precondition of the cutover, and it
@@ -824,7 +824,7 @@ port surface is being touched anyway) so the port can express the concept when a
 supports it. Leave #410's observability half in its own issue, on its own schedule,
 depending on nothing here.*
 
-**10.3a — the throughput telemetry gap, found while drafting.** Separately from #410:
+**10.3a — the throughput telemetry gap (#793), found while drafting.** Separately from #410:
 `tokens_per_second` is computed by the Ollama adapter, threaded onto `GenerationRecord`
 by the handlers — and then **dropped** by `LangFuseAdapter.record_generation`
 (`adapters/telemetry/langfuse/adapter.py:188`), which rebuilds the record field-by-field
@@ -840,9 +840,11 @@ persisted nowhere (zero hits in `adapters/persistence/`, `cycles/`, `infra/`).
 migration on a log-scraped number is precisely the evidence posture SIP-0096 forbids, so
 this cannot stay a footnote:
 
-- **Own issue, own owner, own schedule.** Filed as a bug (issue-before-fix), independent of
-  #410 — that one is thinking tokens missing from LangFuse; this is *throughput* reading
-  null for every generation since SIP-0061. The redaction fix is one line.
+- **Own issue, own owner, own schedule — filed as #793** (2026-08-08), independent of
+  #410: that one is thinking tokens missing from LangFuse; this is *throughput* reading
+  null for every generation since SIP-0061. The repair is `dataclasses.replace()` in the
+  redaction copy rather than adding the missing keyword, so a future field addition cannot
+  regress it the same way, plus a round-trip completeness test on both records.
 - **Blocks nothing in P0–P5.** The adapter, suite, and A/B harness all proceed regardless.
 - **Precondition of the cutover** — §4.2 item 3. Fixed and deployed before the decision
   reads throughput evidence, not before the adapter is written.
