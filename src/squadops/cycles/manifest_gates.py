@@ -1,4 +1,12 @@
-"""Can this interface manifest actually be won? (#781, M3)
+"""The two deterministic gates an authored manifest passes (#781 M3, #783 M2).
+
+Both are pure predicates over a manifest, so they live together and share one finding
+type: :func:`assess_schema` (M2 — is the document well-formed and does it carry its
+provenance?) and :func:`assess_winnability` (M3 — can what it describes actually be
+built and verified?). The authoring loop runs schema first: a document that has not
+declared where its design came from is not worth asking harder questions of.
+
+Can this interface manifest actually be won? (#781, M3)
 
 A manifest that *parses* is not a manifest that can be *satisfied*. It can name a route
 the expander cannot place, promise a view with no DOM anchor to query, or imply a
@@ -30,6 +38,10 @@ PROOF_CONTRACT_DERIVES = "contract_derives"
 PROOF_CHECKS_LIVE = "checks_live"
 PROOF_TESTID_COVERAGE = "testid_coverage"
 PROOF_STATUS_DECLARED = "status_declared"
+
+#: Schema-gate proof classes (M2).
+PROOF_PROVENANCE = "provenance"
+PROOF_DECISION_RECORD = "decision_record"
 
 
 @dataclass(frozen=True)
@@ -70,6 +82,96 @@ def assess_winnability(manifest_content: str) -> tuple[WinnabilityFinding, ...]:
     findings.extend(_testid_findings(manifest))
     findings.extend(_status_findings(manifest))
     return tuple(findings)
+
+
+def assess_schema(manifest_content: str) -> tuple[WinnabilityFinding, ...]:
+    """The M2 schema gate: is this document well-formed and does it cite its origin?
+
+    Distinct from winnability on purpose. This asks whether the manifest is a
+    *legible design document* — it parses, it says which PRD it came from, and every
+    judgment it made is recorded with a warrant. Whether the design can be BUILT is
+    :func:`assess_winnability`, and asking that of a document with no stated provenance
+    wastes the harder analysis.
+
+    Citation is at **decision granularity**, not per entry: ``source_prd`` plus
+    ``decisions[].warrant``. §5b Correction 3 ruled per-entry citation would bloat
+    authoring for little gate value, and the schema has no field for it anyway.
+    """
+    from squadops.capabilities.scaffold import InterfaceManifest
+
+    try:
+        manifest = InterfaceManifest.from_yaml(manifest_content)
+    except Exception as exc:  # noqa: BLE001 - untrusted authored output: one rejection
+        return (
+            WinnabilityFinding(
+                PROOF_PARSES,
+                f"the manifest is not valid YAML or does not match the interface-manifest "
+                f"shape ({exc}). Fix the document structure before anything else can run.",
+            ),
+        )
+
+    findings: list[WinnabilityFinding] = []
+    if not manifest.source_prd.strip():
+        findings.append(
+            WinnabilityFinding(
+                PROOF_PROVENANCE,
+                "`source_prd` is empty — the manifest does not say which requirements "
+                "document it was designed from, so no reviewer can check the design "
+                "against its source. Name the PRD this manifest derives from.",
+            )
+        )
+    findings.extend(_decision_findings(manifest))
+    return tuple(findings)
+
+
+def _decision_findings(manifest) -> list[WinnabilityFinding]:
+    """Every recorded judgment must be attributable, or answerable.
+
+    A resolved decision needs its PRD ``warrant`` — that is the whole point of recording
+    it, and a choice with no citation is indistinguishable from an invention. An
+    unresolved one needs its ``question``, or it defers something without saying what,
+    which is worse than defaulting silently: it looks like diligence.
+    """
+    findings: list[WinnabilityFinding] = []
+    for index, decision in enumerate(manifest.decisions):
+        label = f"`{decision.id}`" if decision.id else f"entry {index}"
+        if not decision.id.strip():
+            findings.append(
+                WinnabilityFinding(
+                    PROOF_DECISION_RECORD,
+                    f"decision {label} has no `id`, so it cannot be referenced in review "
+                    f"or tracked across revisions.",
+                )
+            )
+        if decision.unresolved:
+            if not decision.question.strip():
+                findings.append(
+                    WinnabilityFinding(
+                        PROOF_DECISION_RECORD,
+                        f"decision {label} is marked `unresolved` but states no "
+                        f"`question` — it defers a design choice without saying which "
+                        f"one, which reads as diligence while communicating nothing.",
+                    )
+                )
+        else:
+            if not decision.choice.strip():
+                findings.append(
+                    WinnabilityFinding(
+                        PROOF_DECISION_RECORD,
+                        f"decision {label} records no `choice`. Either state the choice "
+                        f"made, or mark it `unresolved: true` with the question.",
+                    )
+                )
+            if not decision.warrant.strip():
+                findings.append(
+                    WinnabilityFinding(
+                        PROOF_DECISION_RECORD,
+                        f"decision {label} has no `warrant` — a choice with no citation "
+                        f"back to the PRD is indistinguishable from an invention. Cite "
+                        f"the section it follows from.",
+                    )
+                )
+    return findings
 
 
 def _lint_findings(manifest) -> list[WinnabilityFinding]:
