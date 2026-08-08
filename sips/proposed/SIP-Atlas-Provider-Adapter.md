@@ -384,20 +384,32 @@ queue port.
 - **A/B tier** — same prompts, same models, same box, through both adapters. **This is the
   migration decision instrument** and the reason the SIP exists (§2.5). It reports two
   numbers, and both gate the cutover:
-  - **Wall-clock to a validated artifact** — time to an accepted output, the honest
-    headline. **Not tokens/sec.** t/s counts tokens *generated*, and `eval_count`
-    includes thinking tokens the system discards unread (#410), so t/s misreads the
-    comparison in both directions: an engine that thinks *less* delivers the same
-    artifact faster at equal-or-lower t/s (a win scored neutral), and one that is faster
-    per-token but thinks *more* shows higher t/s and worse wall-clock (a regression
-    scored a win). t/s stays as a diagnostic underneath, never the verdict.
+  - **Throughput, recorded as three numbers rather than one.** Tokens produced against
+    the time taken is the right measure and needs no reinterpretation — including
+    thinking tokens, which cost real time and are legitimately part of what the engine
+    produced. What it needs is *completeness*, because today's single number measures
+    less than it appears to:
 
-    Worked example from a live qa run — `qa_test_handler LLM throughput: 10.6 t/s
-    (4866 tokens)` = ~7.6 minutes for one generation, of which #410's measured 13–81%
-    thinking range means somewhere between ~1 and ~6 minutes is unreadable reasoning.
-    Nothing today can narrow that interval for a given call, which is exactly the
-    problem: **the A/B is uninterpretable until thinking and content tokens are counted
-    separately** (§10.3).
+    | Number | What it is | Status today |
+    |---|---|---|
+    | **t/s** (`eval_count / eval_duration`) | **decode speed only** | computed; the primary engine-speed metric |
+    | **`latency_ms`** | true end-to-end wall-clock for the call | already captured by the handler, already on `GenerationRecord` |
+    | **token count** (`eval_count`) | how much was produced | already captured |
+
+    **t/s excludes prefill, model load, and queueing.** `prompt_eval_duration`,
+    `total_duration`, and `load_duration` are returned by Ollama in the same response and
+    read **zero times** by the adapter. That matters here specifically: prompts are large
+    (contract + skeleton + prior outputs), and six agents on different models share one
+    box, so model residency is not free. Two engines can post identical t/s and differ
+    materially in wall-clock if the tuning win lands in prefill or load rather than
+    decode — and t/s is blind to that by construction.
+
+    Recording all three makes the comparison self-interpreting. A token-count change
+    (from a different thinking posture, or terser generation) shows up as a token-count
+    change; a prefill or residency win shows up as latency moving while t/s holds. No
+    inference required, and no separate thinking-token accounting needed to read the
+    result. **P4 should capture the three discarded duration fields** — free, same
+    response, and the difference between an attributable result and a mystery.
   - **Quality parity** — extraction health (clean / recovered / failed rates per
     SIP-LLM-Emission-Contracts §3.4) and usage-accounting consistency. **A throughput win
     with a quality regression is a loss**, and without this half the FAY and 98.5 lineages
@@ -656,22 +668,24 @@ described. Four facts settle it: endpoint paths, whether model listing exists (s
 `model_management`), and what usage fields the response carries (sets `streaming_usage`
 and whether tokens/sec is native or computed client-side).
 
-**10.3 — #410 (thinking tokens): now load-bearing, not adjacent.** This SIP's first draft
-left #410 out as related-but-separable. That was wrong, and the reason is §3.6's worked
-example: `eval_count` conflates thinking and content, so **a wall-clock difference between
-Ollama and Atlas cannot be attributed** — engine speed, or thinking posture? A cutover
-decided on an unattributable number is the false-verdict class the 1.4.4 line exists to
-prevent.
+**10.3 — #410 (thinking tokens): diagnostic, not gating.** Recorded position, after this
+was argued in both directions during drafting.
 
-What the A/B minimally needs is the *split*: thinking tokens counted separately from
-content tokens, per generation. That is #410's observability half, and it is a
-precondition for §4.2's cutover rather than a nice-to-have. Its own ruling (thinking stays
-ON, only observability ships) is unchanged and compatible.
+An intermediate revision made #410 a precondition for the cutover, reasoning that
+`eval_count` conflates thinking with content so a wall-clock difference could not be
+attributed. **That was an overcorrection.** Thinking tokens cost real time and are
+legitimately part of throughput; and once token count is recorded alongside latency
+(§3.6), a different thinking posture simply *appears* as a different token count. The A/B
+is interpretable without splitting them.
+
+The split remains genuinely useful — knowing that 60% of a 7.6-minute generation bought
+unread reasoning is actionable, and it is why #410 exists — but it diagnoses *why* a
+number moved, and does not gate deciding *whether* to switch.
 
 *Recommendation: declare the `thinking_tokens` capability flag at P0 (§3.2, cheap — the
-port surface is being touched anyway), and make #410's observability half a **dependency of
-P5**, not of P0–P4. The adapter work proceeds either way; only the A/B interpretation is
-gated.*
+port surface is being touched anyway) so the port can express the concept when a provider
+supports it. Leave #410's observability half in its own issue, on its own schedule,
+depending on nothing here.*
 
 **10.3a — the throughput telemetry gap, found while drafting.** Separately from #410:
 `tokens_per_second` is computed by the Ollama adapter, threaded onto `GenerationRecord`
