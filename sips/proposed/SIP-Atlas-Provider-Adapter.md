@@ -442,12 +442,36 @@ that nobody here can tune to flatter the result.
 
 Any of the three is worth knowing before committing to maintain an in-house engine.
 
-**Why it is cheap, and only once P4 exists.** If Atlas and vLLM are both
-OpenAI-compatible, they differ mainly in capability declarations, not transport.
-**That second OpenAI-compatible provider is what justifies extracting a shared
-`OpenAICompatibleAdapter` base** — with only Atlas it would be speculative
-generality, which the standing no-gold-plating rule forbids. With two, the base earns
-itself and vLLM costs roughly a capability table plus a factory branch.
+**One adapter per provider. No shared dialect base — amended 2026-08-08.**
+
+An earlier revision proposed a shared `OpenAICompatibleAdapter` serving both vLLM and
+Atlas, on the theory that a common dialect makes them differ only in capability
+declarations. **That is withdrawn**, for two reasons that only became clear once the
+dialect was examined rather than assumed:
+
+1. **Atlas is already expected to diverge.** §10.2 asks Atlas to emit duration fields the
+   standard OpenAI response shape does not carry (see there for why the A/B needs them).
+   A class shared with vLLM would need Atlas-specific handling inside it on day one —
+   a conditional keyed on which provider you are, which is exactly the identity-branching
+   #559 bans. Separate types *are* the polymorphic answer.
+2. **It inverts the no-gold-plating rule.** Extracting a base on the *expectation* that
+   Atlas matches vLLM builds shared structure on the same §10.2 assumption this SIP
+   otherwise refuses to rely on. Extraction is something done *after* two implementations
+   exist and their overlap is demonstrated — not before, from a guess about one of them.
+
+So: `OllamaAdapter`, `VLLMAdapter`, `AtlasAdapter`, each implementing `LLMPort`
+independently, each declaring its own capabilities, none aware of the others. If real
+overlap appears once two exist, extracting shared helpers then is cheap and evidence-based.
+
+**What makes per-provider adapters affordable is the conformance suite (§3.6).** The usual
+objection is duplicated bug surface — fix a streaming defect in one adapter, forget the
+other. Every adapter runs the *same* assertions, so a defect in any of them fails the same
+test. That is why P3 precedes P4, and why three adapters is a manageable number rather than
+three times the risk.
+
+**Naming:** `VLLMAdapter` in code (every adapter class in the tree is CapWords —
+`LangFuseAdapter` normalizes a product branded "Langfuse"; PEP 8 N801 agrees), `"vllm"` as
+the provider string alongside `"ollama"`, and "vLLM" in prose where the brand belongs.
 
 **Secondary value:** it makes the conformance suite honest. Two adapters can silently
 encode "whatever these two happen to do." A third that the team does not control tests the
@@ -974,7 +998,32 @@ dialect is discovered wrong at integration, which is the most expensive place to
 | 2 | streaming: supported? SSE or NDJSON? | `chat_stream` / `chat_stream_with_usage` |
 | 3 | model-listing endpoint, or none | `model_listing` |
 | 4 | model load/unload management, or none | `model_management` |
-| 5 | usage fields returned, incl. any timing/duration fields | `streaming_usage`, and §3.6.1's `prefill_ms` / `load_ms` / `total_ms` |
+| 5 | usage fields returned, **and specifically whether prefill / load / total durations are emitted** — see below | `streaming_usage`, and §3.6.1's `prefill_ms` / `load_ms` / `total_ms` |
+
+**Item 5 is an ask, not just a question — measured, not assumed.** The standard OpenAI
+response shape carries **no duration fields at all**. Confirmed against this box's Ollama,
+which serves both dialects:
+
+| Field | Ollama native `/api/chat` | the same server's `/v1` shim |
+|---|---|---|
+| token counts | yes | yes |
+| `eval_duration` (decode) | yes | **absent** |
+| `prompt_eval_duration` (prefill) | yes | **absent** |
+| `load_duration` (model residency) | yes | **absent** |
+| `total_duration` | yes | **absent** |
+
+Those four are exactly §3.6.1's `prefill_ms` / `load_ms` / `total_ms`. Two consequences:
+
+1. **Ollama keeps its native adapter.** Moving it onto the OpenAI shape would delete the
+   attribution half of the A/B *on the baseline arm*, and drop `model_management` to False.
+2. **If Atlas ships the plain OpenAI shape, the A/B is asymmetric** — full attribution on
+   the Ollama arm, wall-clock and token counts only on the Atlas arm. `wall_clock_ms`
+   survives (the handler measures it client-side), so a decision is still possible, but
+   "is the win in decode, prefill, or residency?" becomes answerable for one side only.
+
+Atlas is in-house, so this is cheap to fix at the source: **emit the durations.** Recorded
+here as an explicit ask on whoever owns the engine, to be settled before P4 opens rather
+than discovered when the A/B artifact comes back half-populated.
 
 **Failure mode if it is not OpenAI-compatible** — bounded, and worth stating so the
 assumption is not load-bearing beyond its blast radius: the transport layer of
