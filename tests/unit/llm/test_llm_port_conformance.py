@@ -24,7 +24,8 @@ from squadops.llm.exceptions import (
     LLMModelNotFoundError,
     LLMTimeoutError,
 )
-from squadops.llm.models import ChatMessage, LLMRequest
+from squadops.llm.models import ChatMessage, LLMRequest, ModelInfo
+from squadops.ports.llm.provider import LLMCapability
 from tests.unit.llm.conformance import (
     ADAPTER_CASES,
     EXPECTED_COMPLETION_TOKENS,
@@ -243,6 +244,95 @@ class TestErrorTranslation:
         with wire(wire_failure), pytest.raises(expected):
             async for _ in case.build().chat_stream(_messages()):
                 pass
+
+
+class TestCapabilityHonesty:
+    """The load-bearing dimension: declarations must match reality.
+
+    Without this, ``capabilities()`` is aspirational — a flag nobody verified,
+    which is strictly worse than no flag at all because callers build on it
+    (#572, the defect this pattern was copied from).
+    """
+
+    async def test_declared_capabilities_are_exactly_the_known_names(self, case):
+        """An adapter inventing or misspelling a key makes `supports()` answer
+        False for a feature it actually has — a silent capability outage."""
+        declared = set(case.build().capabilities())
+        assert declared == {
+            LLMCapability.MODEL_LISTING,
+            LLMCapability.MODEL_MANAGEMENT,
+            LLMCapability.STREAMING_USAGE,
+            LLMCapability.THINKING_TOKENS,
+        }
+
+    async def test_supports_is_false_for_an_undeclared_capability(self, case):
+        assert case.build().supports("no_such_capability") is False
+
+    async def test_model_listing_declaration_matches_behavior(self, case):
+        """Declared True ⇒ it works. Declared False ⇒ it raises rather than
+        returning [], because an empty list reads downstream as *no models
+        present* and would block work that should proceed."""
+        adapter = case.build()
+        with wire(case.ok):
+            if adapter.supports(LLMCapability.MODEL_LISTING):
+                assert [m.name for m in await adapter.list_available_models()] == EXPECTED_MODELS[
+                    case.name
+                ]
+            else:
+                with pytest.raises(NotImplementedError):
+                    await adapter.list_available_models()
+
+    async def test_model_management_declaration_matches_behavior(self, case):
+        adapter = case.build()
+        with wire(case.ok):
+            if adapter.supports(LLMCapability.MODEL_MANAGEMENT):
+                assert await adapter.pull_model("qwen2.5:7b") is None
+                assert await adapter.delete_model("qwen2.5:7b") is None
+            else:
+                with pytest.raises(NotImplementedError):
+                    await adapter.pull_model("qwen2.5:7b")
+                with pytest.raises(NotImplementedError):
+                    await adapter.delete_model("qwen2.5:7b")
+
+    async def test_streaming_usage_declaration_matches_behavior(self, case):
+        """Declared True means real counts, not the port's chat() fallback —
+        which returns a valid message carrying no streaming usage at all."""
+        adapter = case.build()
+        if not adapter.supports(LLMCapability.STREAMING_USAGE):
+            pytest.skip("streaming_usage not declared")
+
+        with wire(case.ok):
+            message = await adapter.chat_stream_with_usage(_messages())
+
+        assert message.completion_tokens == EXPECTED_COMPLETION_TOKENS[case.name]
+
+
+class TestModelInfoShape:
+    """``list_available_models`` speaks the port's vocabulary, not a dialect's."""
+
+    async def test_listing_returns_model_info_with_names_populated(self, case):
+        if not case.build().supports(LLMCapability.MODEL_LISTING):
+            pytest.skip("model_listing not declared")
+
+        with wire(case.ok):
+            models = await case.build().list_available_models()
+
+        assert [m.name for m in models] == EXPECTED_MODELS[case.name]
+        assert all(isinstance(m, ModelInfo) for m in models)
+
+    async def test_unnamed_entries_are_dropped_not_surfaced_as_blanks(self, case):
+        """A nameless model is unusable — surfacing it as `name=""` puts an
+        un-selectable row in the operator's model list and, worse, lets an
+        availability check match the empty string."""
+        if not case.build().supports(LLMCapability.MODEL_LISTING):
+            pytest.skip("model_listing not declared")
+
+        with wire(case.ok) as live:
+            adapter = case.build()
+            live.set(case.nameless_model)
+            models = await adapter.list_available_models()
+
+        assert models == []
 
 
 class TestHealth:

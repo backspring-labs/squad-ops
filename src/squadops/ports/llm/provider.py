@@ -8,13 +8,30 @@ from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from typing import Any
 
-from squadops.llm.models import ChatMessage, LLMRequest, LLMResponse
+from squadops.llm.models import ChatMessage, LLMRequest, LLMResponse, ModelInfo
+
+
+class LLMCapability:
+    """Capability names declared by :meth:`LLMPort.capabilities`.
+
+    Constants, not bare strings, so a caller cannot ask about a capability that
+    does not exist by mistyping it (#559's strings-boundary rule).
+    """
+
+    MODEL_LISTING = "model_listing"
+    MODEL_MANAGEMENT = "model_management"
+    STREAMING_USAGE = "streaming_usage"
+    THINKING_TOKENS = "thinking_tokens"
 
 
 class LLMPort(ABC):
     """Port interface for LLM providers.
 
     Adapters must implement generate, chat, list_models, refresh_models, and health.
+
+    Optional surfaces — model listing and model management — are declared through
+    :meth:`capabilities` and default to unsupported, so callers ask the port what
+    it can do rather than inspecting which adapter class they were handed.
     """
 
     @property
@@ -146,3 +163,82 @@ class LLMPort(ABC):
             Health status dictionary with at least {"healthy": bool}
         """
         ...
+
+    # -------------------------------------------------------------------
+    # Optional surfaces — declared, never inferred
+    # -------------------------------------------------------------------
+
+    def capabilities(self) -> dict[str, bool]:
+        """Return which optional surfaces this provider actually supports.
+
+        Every flag is a contract with future callers: it must describe what the
+        provider *does*, not what its backend could be configured to do. A flag
+        that overstates the implementation is worse than a missing feature — the
+        caller builds on it and fails at runtime instead of at the boundary
+        (#572, the same rule the queue port carries).
+
+        Keys are :class:`LLMCapability` constants:
+
+        - ``model_listing``: :meth:`list_available_models` is implemented.
+        - ``model_management``: :meth:`pull_model` / :meth:`delete_model` are
+          implemented. Hosted providers generally cannot manage local weights.
+        - ``streaming_usage``: :meth:`chat_stream_with_usage` reports real token
+          counts rather than falling back to :meth:`chat`.
+        - ``thinking_tokens``: reasoning tokens are reported separately from
+          content. False here does not mean the model does not think — only that
+          this adapter cannot distinguish the two (#410).
+
+        Defaults to all-False: an adapter that declares nothing is treated as
+        supporting nothing. Failing closed keeps a silent omission from
+        presenting as a working feature.
+        """
+        return {
+            LLMCapability.MODEL_LISTING: False,
+            LLMCapability.MODEL_MANAGEMENT: False,
+            LLMCapability.STREAMING_USAGE: False,
+            LLMCapability.THINKING_TOKENS: False,
+        }
+
+    def supports(self, capability: str) -> bool:
+        """Whether ``capability`` is declared. Unknown names are False."""
+        return self.capabilities().get(capability, False)
+
+    async def list_available_models(self) -> list[ModelInfo]:
+        """List models the provider can serve, with metadata where available.
+
+        Distinct from :meth:`refresh_models`, which maintains the name-only cache
+        read by :meth:`list_models`. This is the metadata-bearing listing used by
+        operator surfaces that show size and modification time.
+
+        Raises:
+            NotImplementedError: when ``model_listing`` is not declared. Raising
+                rather than returning ``[]`` keeps "cannot enumerate" distinct
+                from "enumerated nothing" — an empty list would read downstream
+                as *no models present* and block work that should proceed.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support model listing; "
+            f"capabilities()['{LLMCapability.MODEL_LISTING}'] is False."
+        )
+
+    async def pull_model(self, model_name: str) -> None:
+        """Fetch a model into the provider's local store.
+
+        Raises:
+            NotImplementedError: when ``model_management`` is not declared.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support model management; "
+            f"capabilities()['{LLMCapability.MODEL_MANAGEMENT}'] is False."
+        )
+
+    async def delete_model(self, model_name: str) -> None:
+        """Remove a model from the provider's local store.
+
+        Raises:
+            NotImplementedError: when ``model_management`` is not declared.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support model management; "
+            f"capabilities()['{LLMCapability.MODEL_MANAGEMENT}'] is False."
+        )

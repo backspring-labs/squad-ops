@@ -21,6 +21,7 @@ from squadops.api.routes.cycles.dtos import (
     PullStatusResponse,
 )
 from squadops.auth.models import Scope
+from squadops.ports.llm.provider import LLMCapability
 
 logger = logging.getLogger(__name__)
 
@@ -45,9 +46,18 @@ async def list_models():
     return JSONResponse(content=specs, headers=_CACHE_HEADERS)
 
 
-def _get_ollama_adapter():
-    """Get the OllamaAdapter from DI, raising 503 if not configured."""
-    from adapters.llm.ollama import OllamaAdapter
+def _llm_port_supporting(capability: str):
+    """Get the LLM port from DI, requiring a declared capability.
+
+    Asks the port what it can do rather than which adapter class it is. The
+    former ``isinstance(port, OllamaAdapter)`` check made every one of these
+    routes 503 under any other provider — including one that supports the
+    operation perfectly well (#313, #559 applied to adapter identity).
+
+    The 503 stays: it is the honest answer for a provider that genuinely cannot
+    manage models. What changes is that the reason is a declared capability
+    rather than a vendor name.
+    """
     from squadops.api.runtime.deps import get_llm_port
 
     try:
@@ -55,8 +65,11 @@ def _get_ollama_adapter():
     except RuntimeError:
         raise HTTPException(status_code=503, detail="LLM port not configured") from None
 
-    if not isinstance(port, OllamaAdapter):
-        raise HTTPException(status_code=503, detail="Model management requires Ollama adapter")
+    if not port.supports(capability):
+        raise HTTPException(
+            status_code=503,
+            detail=f"The configured LLM provider does not support '{capability}'",
+        )
     return port
 
 
@@ -65,22 +78,22 @@ async def list_pulled_models():
     """List locally pulled models with active profile cross-reference."""
     from squadops.llm.model_registry import MODEL_SPECS
 
-    adapter = _get_ollama_adapter()
+    port = _llm_port_supporting(LLMCapability.MODEL_LISTING)
 
     try:
-        raw_models = await adapter.list_pulled_models()
+        available = await port.list_available_models()
     except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Ollama unreachable: {e}") from e
+        raise HTTPException(status_code=503, detail=f"LLM provider unreachable: {e}") from e
 
     # Cross-reference against active squad profile
     active_agents: dict[str, list[str]] = {}  # model -> [agent_id, ...]
     try:
         from squadops.api.runtime.deps import get_squad_profile_port
 
-        port = get_squad_profile_port()
-        active_id = await port.get_active_profile_id()
+        profile_port = get_squad_profile_port()
+        active_id = await profile_port.get_active_profile_id()
         if active_id:
-            profile = await port.get_profile(active_id)
+            profile = await profile_port.get_profile(active_id)
             for agent in profile.agents:
                 if agent.model:
                     active_agents.setdefault(agent.model, []).append(agent.agent_id)
@@ -88,14 +101,14 @@ async def list_pulled_models():
         logger.debug("Could not resolve active profile for model cross-ref")
 
     results = []
-    for m in raw_models:
-        name = m.get("name", "")
+    for model in available:
+        name = model.name
         spec = MODEL_SPECS.get(name)
         results.append(
             PulledModelResponse(
                 name=name,
-                size_bytes=m.get("size"),
-                modified_at=m.get("modified_at"),
+                size_bytes=model.size_bytes,
+                modified_at=model.modified_at,
                 in_active_profile=name in active_agents,
                 used_by_active_profile=active_agents.get(name, []),
                 registry_spec=(
@@ -121,12 +134,12 @@ async def pull_model(body: PullModelRequest):
         fail_pull_job,
     )
 
-    adapter = _get_ollama_adapter()
+    port = _llm_port_supporting(LLMCapability.MODEL_MANAGEMENT)
     job = create_pull_job(body.name)
 
     async def _do_pull():
         try:
-            await adapter.pull_model(body.name)
+            await port.pull_model(body.name)
             complete_pull_job(job.pull_id)
         except Exception as e:
             fail_pull_job(job.pull_id, str(e))
@@ -162,10 +175,10 @@ async def delete_model(model_name: str):
     """Delete a locally pulled model."""
     from squadops.llm.exceptions import LLMConnectionError, LLMModelNotFoundError
 
-    adapter = _get_ollama_adapter()
+    port = _llm_port_supporting(LLMCapability.MODEL_MANAGEMENT)
 
     try:
-        await adapter.delete_model(model_name)
+        await port.delete_model(model_name)
         return {"status": "deleted", "model_name": model_name}
     except LLMModelNotFoundError as e:
         raise HTTPException(

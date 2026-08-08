@@ -18,8 +18,8 @@ from squadops.llm.exceptions import (
     LLMModelNotFoundError,
     LLMTimeoutError,
 )
-from squadops.llm.models import ChatMessage, LLMRequest, LLMResponse
-from squadops.ports.llm.provider import LLMPort
+from squadops.llm.models import ChatMessage, LLMRequest, LLMResponse, ModelInfo
+from squadops.ports.llm.provider import LLMCapability, LLMPort
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +74,23 @@ class OllamaAdapter(LLMPort):
     def default_model(self) -> str:
         """Return the default model name."""
         return self._default_model
+
+    def capabilities(self) -> dict[str, bool]:
+        """Declare what this adapter actually does (#572's rule, see the port).
+
+        ``thinking_tokens`` is False deliberately, and it is not a statement
+        about the models: qwen3-family models emit ``message.thinking`` through
+        Ollama by default, but this adapter never sends a ``think`` parameter and
+        reads only ``message.content``. Reasoning tokens are paid for and cannot
+        be separated from content here (#410). Declaring True would tell a caller
+        it could split them.
+        """
+        return {
+            LLMCapability.MODEL_LISTING: True,
+            LLMCapability.MODEL_MANAGEMENT: True,
+            LLMCapability.STREAMING_USAGE: True,
+            LLMCapability.THINKING_TOKENS: False,
+        }
 
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create async HTTP client."""
@@ -444,14 +461,14 @@ class OllamaAdapter(LLMPort):
                 "error": str(e),
             }
 
-    async def pull_model(self, model_name: str) -> dict[str, Any]:
+    async def pull_model(self, model_name: str) -> None:
         """Pull a model from the Ollama registry.
+
+        Returns None per the port contract: a provider response body handed back
+        through the port would make every caller Ollama-shaped (#313).
 
         Args:
             model_name: Model name to pull (e.g. "qwen2.5:7b")
-
-        Returns:
-            Ollama response dict with pull status
         """
         client = await self._get_client()
         try:
@@ -461,7 +478,6 @@ class OllamaAdapter(LLMPort):
                 timeout=600.0,
             )
             response.raise_for_status()
-            return response.json()
         except httpx.TimeoutException as e:
             raise LLMTimeoutError(f"Model pull timed out for '{model_name}'") from e
         except httpx.ConnectError as e:
@@ -471,14 +487,11 @@ class OllamaAdapter(LLMPort):
                 raise LLMModelNotFoundError(f"Model '{model_name}' not found in registry") from e
             raise LLMConnectionError(f"Ollama pull failed: {e}") from e
 
-    async def delete_model(self, model_name: str) -> dict[str, Any]:
+    async def delete_model(self, model_name: str) -> None:
         """Delete a locally pulled model.
 
         Args:
             model_name: Model name to delete
-
-        Returns:
-            Empty dict on success
         """
         client = await self._get_client()
         try:
@@ -488,7 +501,6 @@ class OllamaAdapter(LLMPort):
                 json={"name": model_name},
             )
             response.raise_for_status()
-            return {}
         except httpx.ConnectError as e:
             raise LLMConnectionError(f"Failed to connect to Ollama at {self._base_url}") from e
         except httpx.HTTPStatusError as e:
@@ -496,20 +508,43 @@ class OllamaAdapter(LLMPort):
                 raise LLMModelNotFoundError(f"Model '{model_name}' not found locally") from e
             raise LLMConnectionError(f"Ollama delete failed: {e}") from e
 
-    async def list_pulled_models(self) -> list[dict[str, Any]]:
-        """List pulled models with full metadata (size, modified_at).
+    async def list_available_models(self) -> list[ModelInfo]:
+        """List pulled models with metadata (#313).
 
-        Returns:
-            List of model dicts from Ollama /api/tags
+        Replaces the former ``list_pulled_models``, whose raw ``/api/tags`` dicts
+        were the coupling: every caller had to know Ollama's payload keys, so
+        reaching for model metadata made the caller Ollama-specific by
+        construction. ``ModelInfo`` is the port's vocabulary; translating to it
+        is this adapter's job.
         """
         client = await self._get_client()
         try:
             response = await client.get("/api/tags", timeout=self._model_list_timeout)
             response.raise_for_status()
             data = response.json()
-            return data.get("models", [])
         except httpx.ConnectError as e:
             raise LLMConnectionError(f"Failed to connect to Ollama at {self._base_url}") from e
+
+        return [
+            ModelInfo(name=name, size_bytes=m.get("size"), modified_at=m.get("modified_at"))
+            for m in data.get("models", [])
+            if (name := m.get("name"))
+        ]
+
+    async def list_pulled_models(self) -> list[dict[str, Any]]:
+        """DEPRECATED (#313) — use :meth:`list_available_models`.
+
+        Kept solely for ``api/routes/cycles/cycles.py``'s model-availability
+        preflight, not migrated here because that file is under active edit by
+        the 1.6 line. **Delete this with that migration.** It exists so the
+        removal cannot land as an AttributeError that the preflight's broad
+        ``except Exception`` swallows into a silent warn-and-allow — a false
+        green rather than a visible break.
+        """
+        return [
+            {"name": m.name, "size": m.size_bytes, "modified_at": m.modified_at}
+            for m in await self.list_available_models()
+        ]
 
     async def close(self) -> None:
         """Close the HTTP client."""
