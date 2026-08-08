@@ -51,11 +51,60 @@ four moves:
 > provider, branch on an adapter type, or assume a capability the port has not
 > declared.**
 
+> **Release boundary, stated once so it never has to be reconstructed: this SIP lands the
+> provider-neutrality groundwork and a dark Atlas adapter in 1.7. Cutover to Atlas — any
+> change to a shipped default — is a separate 1.8+ decision (§4.2), taken against evidence
+> this SIP produces but does not act on.**
+
 **Operational constraint, load-bearing and non-negotiable (§4):** every phase here is
 **inert on merge**. No shipped default, compose file, `.env.example` value, agent image,
 or profile changes the model runner. The Spark lane is running 1.6 authored-manifest
 validation sprints against Ollama; this work must be invisible to them until an explicit,
 separate cutover decision (§4.2).
+
+## 1.1 Decision summary — blocked, diagnostic, deferred
+
+The policy in one place, so it does not have to be reconstructed from five sections.
+Design-review positions below are adopted into this draft; **items marked ⓞ still need
+Jason's explicit word**, per the standing rule that a SIP's position is not a ruling.
+
+**Blocked — nothing proceeds until answered:**
+
+- *Nothing blocks P0–P3.* The neutrality groundwork stands on its own, closes #313, and is
+  worth having even if Atlas never ships.
+- **P4** is blocked on §10.2 — Atlas's endpoint shape confirmed, not assumed.
+- **P5** is blocked on a live Atlas endpoint on the Spark.
+- **The cutover** is blocked on all five §4.2 preconditions, including the §10.3a
+  telemetry fix. ⓞ
+
+**Diagnostic — informs, never gates:**
+
+- **#410 thinking tokens** (§10.3). Explains *why* a throughput number moved; does not
+  decide *whether* to switch. Capability flag declared at P0; the observability half keeps
+  its own issue and schedule, depending on nothing here.
+- **`decode_tokens_per_second`** (§3.6.1). The diagnostic beneath `wall_clock_ms`, which is
+  the decision field.
+
+**Deferred — named home, deliberately not here:**
+
+- **Structured output / `response_schema`** → SIP-LLM-Emission-Contracts (§9).
+- **#301's queue half** → the 1.7 composition-root cluster, behind its own design gate
+  (§10.1).
+- **#707 command allowlists** → the typed-check-menu lineage; on the 1.5 Track E list by
+  filing accident, not by subject (§9).
+- **Provider-aware routing** (small model for verdicts, large for authoring) → successor
+  SIP; needs two working providers first (§7).
+- **Adopting vLLM as a provider** → a separate decision. P6 runs it as an A/B *control*
+  (§3.5a); nothing here commits to shipping it. If the control arm reveals Atlas ≈ vLLM,
+  that decision becomes live on its own merits.
+- **A durable per-generation throughput record** → surfaced by §10.3a, not solved by it;
+  plausibly scorecard/1.8 territory.
+- **Per-provider `MODEL_SPECS` restructuring** → deferred until a concrete second use
+  (§3.4).
+
+**Settled in this draft, recorded so review can contest rather than rediscover:** the
+release boundary is 1.7-dark / 1.8+-cutover ⓞ (§4.3); P2 references #301 without closing
+it (§10.1); the A/B decision field is `wall_clock_ms`, not t/s (§3.6.1).
 
 ## 2. Problem Statement
 
@@ -479,7 +528,14 @@ governing precedent: an unrunnable check is an evidence gap, never a verdict.
   (§4.2) reads. SIP-0101's replay harness should drive it — identical replayed inputs
   through two adapters is precisely the use it already names.
 
-#### 3.6.1 The A/B artifact contract
+#### 3.6.1 The A/B artifact — the single source of truth
+
+**The cutover decision reads one named artifact and nothing else.** Not a PR description,
+not a summary in a comment, not a remembered number from a run. Appendix C's runbook
+**must emit this artifact verbatim**, and §4.2's decision is taken against it.
+
+Everything else in this SIP is reasoning about what to measure; this is the record that
+survives. A migration reviewed a year later has only this.
 
 The comparison is a **named artifact with fixed fields**, not a PR-description summary.
 Without this, a later reader re-interprets the numbers to suit whatever question they
@@ -615,7 +671,6 @@ scope, regardless of how green its tests are.
 | **P3** | Conformance suite, unit + live tiers, run green against Ollama as the only adapter | M | P0–P2 | 1.7 |
 | **P4** | Atlas adapter + conformance run + capability declarations + capture the three discarded duration fields (§3.6) | M | P3, **§10.2 confirmed** | 1.7 |
 | **P5** | A/B tier + the artifact contract of §3.6.1 recorded, per Appendix C | S | P4, live Atlas endpoint on Spark | 1.7 |
-| **P6** | *(optional, non-gating)* vLLM adapter as a **third conformance subject and A/B control arm** (§3.5a) | S–M | P4 | 1.7 |
 | — | **Cutover — changing the default** | — | **not this SIP** (§4.2) | **1.8+** |
 
 **Issue linkage, stated precisely so a PR cannot overclaim it:** P1 carries
@@ -633,6 +688,24 @@ P3 before P4 is deliberate: the suite must be written against the *contract*, wi
 as its first subject. Writing it after the Atlas adapter exists guarantees it encodes
 whatever that adapter happens to do — the exact mistake the 1.5 plan warned about
 ("**not** enshrine Ollama transport behavior as the contract"), inverted.
+
+**P0–P3 are Atlas-independent, literally.** They reference no vendor, need no endpoint, and
+close #313 on their own merits. If Atlas slips, is descoped, or never ships, P0–P3 still
+land as 1.7 debt paydown. Nothing added since — the runbook, the control arm — weakens
+this; both attach at P4 or later by construction.
+
+### 5.1 Out of the phase ladder — P6, the optional control arm
+
+**P6 is not part of the migration.** It is deliberately outside the table above so this SIP
+does not read as two migrations. **One SIP, one migration target: Atlas.**
+
+| | |
+|---|---|
+| **What** | a vLLM adapter as a third conformance subject and A/B control arm (§3.5a) |
+| **Size / depends on** | S–M · P4 (needs the OpenAI-compatible base to exist first) |
+| **Gates** | **nothing.** Not P4, not P5, not the cutover, not this SIP's acceptance |
+| **Default position** | **may inform the cutover decision; never blocks it.** If P6 is not run, §C.4's decision proceeds on the two-arm comparison with its interpretive limit (§3.5a) stated in the artifact |
+| **Adoption** | out of scope — P6 runs vLLM as a *control*, not a migration target (§1.1, deferred) |
 
 ## 6. Verification
 
@@ -822,49 +895,8 @@ proving the default path is untouched.
 
 ## 10. Open decisions (draft — resolve before acceptance)
 
-### 10.0 Decision summary
-
-The policy in one place, so it does not have to be reconstructed from five sections.
-Design-review positions below are adopted into this draft; **items marked ⓞ still need
-Jason's explicit word**, per the standing rule that a SIP's position is not a ruling.
-
-**Blocked — nothing proceeds until answered:**
-
-- *Nothing blocks P0–P3.* The neutrality groundwork stands on its own, closes #313, and is
-  worth having even if Atlas never ships.
-- **P4** is blocked on §10.2 — Atlas's endpoint shape confirmed, not assumed.
-- **P5** is blocked on a live Atlas endpoint on the Spark.
-- **The cutover** is blocked on all five §4.2 preconditions, including the §10.3a
-  telemetry fix. ⓞ
-
-**Diagnostic — informs, never gates:**
-
-- **#410 thinking tokens** (§10.3). Explains *why* a throughput number moved; does not
-  decide *whether* to switch. Capability flag declared at P0; the observability half keeps
-  its own issue and schedule, depending on nothing here.
-- **`decode_tokens_per_second`** (§3.6.1). The diagnostic beneath `wall_clock_ms`, which is
-  the decision field.
-
-**Deferred — named home, deliberately not here:**
-
-- **Structured output / `response_schema`** → SIP-LLM-Emission-Contracts (§9).
-- **#301's queue half** → the 1.7 composition-root cluster, behind its own design gate
-  (§10.1).
-- **#707 command allowlists** → the typed-check-menu lineage; on the 1.5 Track E list by
-  filing accident, not by subject (§9).
-- **Provider-aware routing** (small model for verdicts, large for authoring) → successor
-  SIP; needs two working providers first (§7).
-- **Adopting vLLM as a provider** → a separate decision. P6 runs it as an A/B *control*
-  (§3.5a); nothing here commits to shipping it. If the control arm reveals Atlas ≈ vLLM,
-  that decision becomes live on its own merits.
-- **A durable per-generation throughput record** → surfaced by §10.3a, not solved by it;
-  plausibly scorecard/1.8 territory.
-- **Per-provider `MODEL_SPECS` restructuring** → deferred until a concrete second use
-  (§3.4).
-
-**Settled in this draft, recorded so review can contest rather than rediscover:** the
-release boundary is 1.7-dark / 1.8+-cutover ⓞ (§4.3); P2 references #301 without closing
-it (§10.1); the A/B decision field is `wall_clock_ms`, not t/s (§3.6.1).
+*The blocked / diagnostic / deferred policy these decisions produce is summarized up
+front in §1.1. This section carries the reasoning behind each.*
 
 **10.1 — #301's scope.** #301 covers the composition root bypassing *both* the LLM and
 queue factories. This SIP proposes closing the LLM half at P2 and leaving the queue half
@@ -881,7 +913,9 @@ an investigation — but **P4 stays blocked until it is confirmed in writing**, 
 adapter written against a guessed dialect is discovered wrong at integration, which is the
 most expensive place to find out.
 
-*Confirmed* means these five recorded in this SIP (Appendix B) before P4 opens:
+**This table is the *only* gate on opening P4.** Not "mostly confirmed," not "confirmed in
+conversation" — five facts recorded in Appendix B. An adapter built against a guessed
+dialect is discovered wrong at integration, which is the most expensive place to find out.
 
 | # | Fact | Sets |
 |---|---|---|
@@ -1055,15 +1089,34 @@ naive corpus × reps × arms is 28+ hours. Separate the two things being measure
 
 ~28 hours becomes ~4.
 
-**Per arm** (`ollama`, `atlas`, and `vllm` if P6):
+**Isolation — the distinction that makes or breaks this.** §6.1a says the benchmark runs
+"both adapters in one process." That is about **client objects**, not servers, and the two
+must not be confused:
+
+| Layer | State during a measured arm | Why |
+|---|---|---|
+| **Adapter** (client object, `httpx`) | **all arms' adapters instantiated in the one benchmark process** | they are ordinary objects holding a connection pool. Zero GPU, zero contention. This is what makes the benchmark a test run rather than a deploy |
+| **Engine** (the server process holding weights) | **exactly one running and holding weights** | GPU memory and thermal headroom are the shared resource. Two resident engines contend, and the contention lands inside the interval being measured |
+
+So: one benchmark process, N adapters, **one live engine at a time** — every other engine
+stopped (not merely idle; a stopped engine cannot hold weights). Idle-but-running is *not*
+sufficient: an engine that has previously served still holds its model resident.
+
+**Per arm** (`ollama`, `atlas`, and `vllm` only if P6 is run):
 
 ```
-1. stop every other engine              # one serving at a time — GPU/thermal contention
-2. load model; run 3 discard prompts    # warm-up
-3. assert load_ms ~ 0                   # the cold/warm guard — do not skip
-4. corpus x 3 reps, fixed order, temperature 0
-5. record one §3.6.1 row per generation
+1. stop every other engine process      # not "idle" — stopped. Weights must be released
+2. verify: only this engine holds GPU memory
+3. start it; load the model; run 3 discard generations     # warm-up
+4. assert load_ms ~ 0 on the next call  # the cold/warm guard — the warm-up landed
+5. corpus x 3 reps, fixed order, temperature 0
+6. record one §3.6.1 artifact row per generation — including the discarded warm-ups,
+   flagged `warmup: true`, so the discard is auditable rather than assumed
 ```
+
+Step 6 matters more than it looks: **warm-ups are recorded and flagged, never silently
+dropped.** A reviewer must be able to see that the discard happened and that `load_ms`
+fell where claimed. Deleting them makes the guard unverifiable.
 
 **Then reverse the arm order and run the whole thing again.** Whichever engine goes second
 inherits a warmer, more thermally loaded box. Running both orderings makes that effect
@@ -1099,14 +1152,50 @@ Where feasible, use SIP-0101 replay from a common boundary to constrain inputs �
 (§6.1a) that the shipped slice is cycle-prefix restore, so it constrains inputs without
 equalizing them.
 
-### C.4 Decision
+### C.4 Decision thresholds
 
-Cut over only on **a real throughput win AND parity**. A win with degraded parity is a
-loss: every banked measurement (FAY 6/6, the 98.5 lineage) was taken on the Ollama
-substrate, and parity is what preserves the comparison base for 1.8's scorecard (§8).
+**A runbook that produces a number but not a decision has failed.** "Materially faster" and
+"≈" must be defined *before* the data exists, or the thresholds get fitted to the result.
 
-With the P6 control arm, apply §3.5a's three-outcome reading before concluding that the
-tuning — rather than Ollama's baseline — produced the win.
+**ⓞ The numbers below are a starting proposal for owner ratification, not derived from
+measurement.** They are stated so review can contest them; what is not negotiable is that
+*some* threshold is fixed before Phase A runs.
+
+**Gate 1 — throughput (Phase A), on median paired `wall_clock_ms` improvement:**
+
+| Margin | Verdict |
+|---|---|
+| **< 10%** | **No.** Inside box-to-box noise on a thermally variable machine, and below the cost of migrating and maintaining an engine. Stop here |
+| **10–25%** | **Owner judgment**, weighed explicitly against maintenance burden. Record the reasoning in the artifact |
+| **> 25%** | **Material.** Proceed to Phase B — at 1–2.5 h per cycle this is ≥15–35 min per cycle, which compounds across every measurement window |
+
+**Gate 2 — parity (Phase B). Not a single number; any one of these fails it:**
+
+| Signal | Threshold |
+|---|---|
+| **Verdict** | **binary, no tolerance.** A cycle Ollama accepts and Atlas rejects on the same inputs blocks the cutover pending investigation. "No false verdicts" is not a budget to spend |
+| **Correction attempts consumed** | **> 20% more** fails. A burned correction costs more wall-clock than decode speed saves — this is where a Phase A win gets erased |
+| **Extraction `failed:` rate** | **any increase beyond noise** fails. This is emission integrity, not performance |
+| **Extraction `recovered:` rate** | an increase is a **yellow flag** — investigate, does not fail on its own |
+
+**Gate 3 — operational overrides. These can veto a passing Gate 1 + Gate 2:**
+
+- **Maintenance burden.** An in-house engine is a standing cost. A 12% win may not justify
+  owning an inference engine.
+- **The vLLM reading (§3.5a), if P6 ran.** If Atlas ≈ vLLM — **within 10% of each other** —
+  prefer the externally maintained engine. The win was Ollama's baseline, not the tuning.
+- **Model coverage.** Atlas must serve every model the active squad profiles pin, or the
+  cutover is partial and the profiles need revisiting first.
+- **Sustained-load stability.** A throughput lead that degrades over a multi-hour cycle is
+  not a lead. Phase B is where this surfaces.
+
+**Decision rule:** cut over only on **Gate 1 passed AND Gate 2 passed AND no Gate 3 veto**.
+Any other combination is a recorded negative result (§4.2a) — which is a successful
+outcome of this procedure, not a failed one.
+
+A win with degraded parity is a loss regardless of margin: every banked measurement
+(FAY 6/6, the 98.5 lineage) was taken on the Ollama substrate, and parity is what preserves
+the comparison base for 1.8's scorecard (§8).
 
 ### C.5 The traps, ranked by how easily they fake a result
 
