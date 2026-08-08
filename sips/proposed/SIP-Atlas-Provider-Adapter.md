@@ -753,6 +753,23 @@ $ curl -s http://localhost:11434/v1/models
 {"object":"list","data":[{"id":"qwen2.5:14b","object":"model","created":...,"owned_by":"library"}, ...]}
 ```
 
+**The live tier exists and this claim is no longer hypothetical** — P3 shipped
+`tests/integration/llm/test_llm_port_conformance_live.py`, run green against real
+local Ollama (14 checks, ~4s). It names no vendor: the adapter comes from
+`create_llm_provider`, so pointing it at Atlas on the Spark is an env change, not
+an edit.
+
+```
+SQUADOPS_CONFORMANCE_PROVIDER=ollama \
+SQUADOPS_CONFORMANCE_BASE_URL=http://localhost:11434 \
+SQUADOPS_CONFORMANCE_MODEL=qwen2.5:3b-instruct \
+  pytest tests/integration/llm -v
+```
+
+Skipped entirely when those are unset, so it never blocks a normal run.
+Generations are capped at 16 tokens — this is a contract check, not the §C.2
+benchmark, and the two must not be confused.
+
 **Atlas itself is tuned for DGX Spark and is not expected to run on this Mac** — the same
 hardware split that makes the `full` squad profile hard-fail here. So the Mac cannot test
 the *engine*. It can fully test the *adapter*, which is what P0–P4 actually deliver.
