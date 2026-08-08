@@ -1,6 +1,6 @@
 ---
 template_id: request.development_propose_plan_tasks
-version: "3"
+version: "4"
 required_variables:
   - brief_content
   - planning_content
@@ -11,7 +11,6 @@ optional_variables:
   - roles_section
   - builder_section
   - typed_acceptance_vocabulary
-  - scaffold_section
   - bind_criteria_section
   - frozen_surface_section
   - rejection_context_section
@@ -74,7 +73,6 @@ gaps_not_covered: []
 confidence: ""  # low | medium | high
 ```
 
-{{scaffold_section}}
 {{bind_criteria_section}}
 
 {{frozen_surface_section}}

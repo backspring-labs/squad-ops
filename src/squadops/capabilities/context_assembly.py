@@ -178,6 +178,23 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
         artifact_landing=LANDING_PRIOR_OUTPUTS,
         plan_rejection_context=True,
     ),
+    # SIP-0103 §5c.1 (#791): the manifest author's input contract, as data. The PRD and
+    # the blueprint's vocabulary arrive on the envelope; what lands here is the cycle's
+    # OWN framing — strategy's frame (which §5a has constraining scope from above) and
+    # dev's technical design, which the manifest is the typed expression of. Summaries
+    # alone are 240 characters and would make the author re-derive a design it just wrote.
+    # Nothing from outside the cycle: the reference manifest is excluded by §4, and
+    # cross-cycle recall is a declared future extension, not an omission.
+    "development.author_manifest": ContextAssemblyContract(
+        artifact_filter=ArtifactFilter(
+            by_producing_task=(
+                "strategy.frame_objective",
+                "development.design_plan",
+            ),
+        ),
+        artifact_landing=LANDING_PRIOR_OUTPUTS,
+        plan_rejection_context=True,
+    ),
     "development.propose_plan_tasks": ContextAssemblyContract(
         artifact_filter=ArtifactFilter(
             by_producing_task=(

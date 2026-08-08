@@ -43,6 +43,11 @@ from squadops.cycles.implementation_plan import (
     TypedCheck,
     resolve_contract_refs,
 )
+from squadops.cycles.manifest_authoring import (
+    AUTHOR_MANIFEST_CAPABILITY,
+    AUTHOR_MANIFEST_ROLE,
+    authors_interface_manifest,
+)
 from squadops.cycles.models import (
     REQUIRED_PLAN_ROLES,
     VALID_PLAN_AUTHORING_CONTRIBUTORS,
@@ -116,20 +121,28 @@ _PLAN_AUTHORING_PROPOSER_STEPS: dict[str, tuple[str, str]] = {
 # config doesn't silently drop a proposer.
 def build_planning_steps(
     plan_authoring_contributors: list[str] | None,
+    authors_manifest: bool = False,
 ) -> list[tuple[str, str]]:
     """Return the framing task sequence per SIP-0093 PR 93.3 cutover.
 
     The sequence is:
     1. Framing tail (data → strategy → dev → qa) — always.
-    2. ``governance.prepare_plan_authoring_brief`` — always.
-    3. Proposer steps for each role in ``plan_authoring_contributors``,
+    2. ``development.author_manifest`` — authored mode only (SIP-0103 §3.1).
+    3. ``governance.prepare_plan_authoring_brief`` — always.
+    4. Proposer steps for each role in ``plan_authoring_contributors``,
        in canonical order (development, qa, strategy). Sequential per
        Rev 1 (parallel fan-out deferred — see plan-doc amendment).
-    4. ``governance.merge_plan`` — always.
-    5. ``governance.review_plan`` (sign-off only) — always.
+    5. ``governance.merge_plan`` — always.
+    6. ``governance.review_plan`` (sign-off only) — always.
 
     Empty contributors list → no proposer steps; the merger runs in
     sole-author mode (``no_contributors_configured``).
+
+    ``authors_manifest`` inserts the authoring stage after dev's technical
+    design and BEFORE qa's test strategy (#791): dev is best-informed there,
+    and qa then writes its strategy against the interface it will be held to
+    — §5a's "QA reviews for verifiability" obtained without adding a second
+    judgment gate over proofs M3 already makes mechanically.
 
     Raises:
         CycleError: if any contributor in the list isn't in
@@ -150,9 +163,15 @@ def build_planning_steps(
         ("data.research_context", "data"),
         ("strategy.frame_objective", "strat"),
         ("development.design_plan", "dev"),
-        ("qa.define_test_strategy", "qa"),
-        ("governance.prepare_plan_authoring_brief", "lead"),
     ]
+    if authors_manifest:
+        steps.append((AUTHOR_MANIFEST_CAPABILITY, AUTHOR_MANIFEST_ROLE))
+    steps.extend(
+        [
+            ("qa.define_test_strategy", "qa"),
+            ("governance.prepare_plan_authoring_brief", "lead"),
+        ]
+    )
     # Canonical order: development first (largest contribution surface),
     # then qa (gap-catching pen), then strategy (overlay).
     for role in ("development", "qa", "strategy"):
@@ -370,7 +389,10 @@ def _resolve_workload_steps(
         # plan_authoring_contributors config. Empty/missing contributors
         # → sole-author route through the merger.
         contributors = (resolved_config or {}).get("plan_authoring_contributors")
-        steps = build_planning_steps(contributors)
+        steps = build_planning_steps(
+            contributors,
+            authors_manifest=authors_interface_manifest(resolved_config),
+        )
     elif workload_type == WorkloadType.REFINEMENT:
         _check_required_roles(
             profile.profile_id, WORKLOAD_REQUIRED_ROLES[workload_type], profile_roles, "refinement"

@@ -79,6 +79,12 @@ fragments:
   roles:
   - dev
   sha256: 260bc70b3cc5c73beb7e6618afb5dae8206a8de9b8fc55527525c9ca84fb0e7f
+- fragment_id: task_type.development.author_manifest
+  path: shared/task_type/task_type.development.author_manifest.md
+  layer: task_type
+  roles:
+  - dev
+  sha256: e6a38b3698a2ddee73e712af8489e50167e83395a251765a1991960d42bde8d1
 - fragment_id: task_type.qa.define_test_strategy
   path: shared/task_type/task_type.qa.define_test_strategy.md
   layer: task_type
@@ -187,4 +193,4 @@ fragments:
   roles:
   - data
   sha256: fd44a28f65e449c6320b5ee5f1d8121013a03c7baa757965334c4e19c7904779
-manifest_hash: 4506ea215761b7d46b669d02d08ec4fa02487c35ceb4da4f5e2bce44fc0e42dc
+manifest_hash: d46aec070f542e23ab194772a1a49b3512fea4d87ddb96cf7b4b6e912ff15311

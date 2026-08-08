@@ -8,6 +8,7 @@ import from ``squadops.capabilities.handlers.planning`` directly.
 
 from squadops.capabilities.handlers.planning import (
     DataResearchContextHandler,
+    DevelopmentAuthorManifestHandler,
     DevelopmentDesignPlanHandler,
     DevelopmentProposePlanTasksHandler,
     GovernanceIncorporateFeedbackHandler,
@@ -29,6 +30,7 @@ from squadops.capabilities.handlers.planning import (
 
 __all__ = [
     "DataResearchContextHandler",
+    "DevelopmentAuthorManifestHandler",
     "DevelopmentDesignPlanHandler",
     "DevelopmentProposePlanTasksHandler",
     "GovernanceIncorporateFeedbackHandler",

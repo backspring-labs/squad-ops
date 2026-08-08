@@ -209,7 +209,7 @@ class TestPlanningFragmentsContent:
         assert len(content) > 50, f"Fragment content too short: {len(content)} chars"
 
     def test_task_type_fragments_total(self):
-        """Exactly 21 task_type fragments exist:
+        """Exactly 22 task_type fragments exist:
         5 planning + 2 refinement + 5 wrap-up + 3 SIP-0079 impl
         (analyze_failure, correction_decision, define_done —
         moved out of hardcoded constants in impl/*.py) +
@@ -217,7 +217,8 @@ class TestPlanningFragmentsContent:
         development.propose_plan_tasks, qa.propose_plan_tasks,
         strategy.propose_plan_guidance) +
         1 build-segment (qa.test — #448, first build handler routed
-        through the fragment system instead of inline prompt literals)."""
+        through the fragment system instead of inline prompt literals) +
+        1 SIP-0103 (development.author_manifest — #791's authoring stage)."""
         task_type_dir = FRAGMENTS_DIR / "shared" / "task_type"
         md_files = list(task_type_dir.glob("*.md"))
-        assert len(md_files) == 21
+        assert len(md_files) == 22

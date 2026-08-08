@@ -776,9 +776,10 @@ def harness_entry_modules(stack: str) -> tuple[str, ...]:
 
 def is_scaffoldable_stack(stack: str) -> bool:
     """True when ``stack`` has a registered walking-skeleton expander — i.e. a cycle on
-    this stack can be scaffolded. The data-driven gate for the framing instruction
-    (SIP-0099 99.2): only scaffoldable cycles are asked to author an interface manifest,
-    so a non-scaffoldable stack never emits one that plan validation would then reject."""
+    this stack can be scaffolded. Half of the authored-mode predicate
+    (``cycles.manifest_authoring.authors_interface_manifest``): only scaffoldable cycles
+    dispatch an authoring stage, so a non-scaffoldable stack never produces a manifest
+    describing a skeleton nothing can build."""
     return bool(stack) and stack in _EXPANDERS
 
 

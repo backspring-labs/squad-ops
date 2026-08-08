@@ -173,20 +173,7 @@ class GovernanceMergePlanHandler(_CycleTaskHandler):
             plan_yaml=emit_plan_yaml(plan),
             decisions_yaml=emit_merge_decisions_yaml(decisions),
             authoring_mode=decisions.authoring_mode,
-            interface_manifest_yaml=self._read_interface_manifest(prior_outputs),
         )
-
-    @staticmethod
-    def _read_interface_manifest(prior_outputs: dict[str, Any]) -> str | None:
-        """Raw ``interface_manifest.yaml`` a framing proposer emitted (dev preferred, qa
-        fallback), or ``None`` (SIP-0099 99.2). Data-driven: absence = today's behavior,
-        no flag."""
-        for role_key in ("dev", "qa"):
-            outcome = (prior_outputs.get(role_key) or {}).get("proposal_outcome") or {}
-            raw = outcome.get("interface_manifest_yaml")
-            if raw:
-                return raw
-        return None
 
     def _parse_proposal_outcome(
         self,
@@ -311,9 +298,6 @@ class GovernanceMergePlanHandler(_CycleTaskHandler):
             plan_yaml=emit_plan_yaml(plan),
             decisions_yaml=emit_merge_decisions_yaml(decisions),
             authoring_mode="sole_author",
-            # sole-author path: the interface manifest, if any, rides produce_plan's
-            # return (SIP-0099 99.2).
-            interface_manifest_yaml=manifest.get("interface_manifest_yaml"),
         )
 
     def _build_planning_content_from_framing(
@@ -344,7 +328,6 @@ class GovernanceMergePlanHandler(_CycleTaskHandler):
         plan_yaml: str,
         decisions_yaml: str,
         authoring_mode: str,
-        interface_manifest_yaml: str | None = None,
     ) -> HandlerResult:
         artifacts: list[dict[str, Any]] = [
             {
@@ -360,21 +343,6 @@ class GovernanceMergePlanHandler(_CycleTaskHandler):
                 "type": "merge_decisions",
             },
         ]
-        # SIP-0099 99.2: the framing-authored interface manifest rides alongside the plan
-        # as a sibling artifact — surfaced in the gate package for operator review and
-        # loaded by the executor (99.3). Emitted only when a proposer/sole-author authored
-        # one; absent → the artifact set is byte-identical to today. The merger does NOT
-        # validate it — that is net-b's job (dispatched_flow_executor), keeping emission
-        # and validation cleanly separated.
-        if interface_manifest_yaml:
-            artifacts.append(
-                {
-                    "name": "interface_manifest.yaml",
-                    "content": interface_manifest_yaml,
-                    "media_type": "text/yaml",
-                    "type": "interface_manifest",
-                }
-            )
         outputs = {
             "summary": f"[{self._role}] merged plan produced ({authoring_mode})",
             "role": self._role,

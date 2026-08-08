@@ -132,11 +132,19 @@ def test_findings_and_open_questions_are_counted_together():
 
 def test_unparseable_manifest_does_not_double_report():
     """The parse failure is already a finding; adding 'and it has no decisions' would
-    misdirect the fix."""
+    misdirect the fix.
+
+    #791: and it must be reported exactly ONCE. Both gates parse independently, so
+    composing them naively gives the operator two identical rejection lines and gives B1's
+    baseline ``authoring_defect: 2`` for a single defect — a counted class that inflates
+    with every unparseable roll.
+    """
     outcome = assess_authoring_outcome("not: [valid\n yaml")
 
     assert outcome.rejected is True
     assert outcome.open_questions == ()
+    assert [f.proof for f in outcome.findings] == [manifest_gates.PROOF_PARSES]
+    assert outcome.class_counts() == {AUTHORING_DEFECT: 1}
 
 
 @pytest.mark.parametrize("failure_class", sorted(CLASS_OWNERSHIP))
