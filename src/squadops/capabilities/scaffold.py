@@ -127,6 +127,30 @@ class Frontend:
 
 
 @dataclass(frozen=True)
+class Decision:
+    """One design judgment the schema cannot express mechanically (SIP-0103 §5c.4).
+
+    Pagination behavior, authorization boundaries, idempotency, caching — decisions a
+    designer must make and the manifest's structural fields cannot hold. Recording them
+    with a PRD ``warrant`` makes the judgment explicit, reviewable at the human gate,
+    and auditable afterwards.
+
+    ``unresolved`` marks a question the author declines to answer (§5c.10): a PRD that
+    does not determine something should surface as a stated question rather than a
+    silent default. An unresolved entry carries its ``question`` instead of a
+    ``choice``.
+
+    Deliberately NOT part of the structural projection — see ``_canonical``.
+    """
+
+    id: str
+    choice: str = ""
+    warrant: str = ""
+    unresolved: bool = False
+    question: str = ""
+
+
+@dataclass(frozen=True)
 class InterfaceManifest:
     """The typed interface contract framing emits and the expander consumes."""
 
@@ -140,6 +164,10 @@ class InterfaceManifest:
     api: Api = field(default_factory=Api)
     frontend: Frontend = field(default_factory=Frontend)
     persistence: str = "in_memory"
+    #: Design judgments and open questions (SIP-0103 §5c.4/§5c.10). Provenance, not
+    #: structure: excluded from ``_canonical`` so revising an explanation never moves
+    #: the hash the verification contract is bound to.
+    decisions: tuple[Decision, ...] = ()
 
     @classmethod
     def from_yaml(cls, content: str) -> InterfaceManifest:
@@ -181,6 +209,17 @@ class InterfaceManifest:
             api=api,
             frontend=frontend,
             persistence=str(data.get("persistence", "in_memory")),
+            decisions=tuple(
+                Decision(
+                    id=str(d.get("id", "")),
+                    choice=str(d.get("choice", "")),
+                    warrant=str(d.get("warrant", "")),
+                    unresolved=bool(d.get("unresolved", False)),
+                    question=str(d.get("question", "")),
+                )
+                for d in (data.get("decisions") or [])
+                if isinstance(d, dict)
+            ),
         )
 
     def _canonical(self) -> dict[str, Any]:

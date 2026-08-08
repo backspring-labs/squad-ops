@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from squadops.cycles.manifest_winnability import (
+from squadops.cycles.manifest_gates import (
     PROOF_EXPANDS,
     PROOF_PARSES,
     PROOF_STATUS_DECLARED,
@@ -153,3 +153,119 @@ def test_structurally_doomed_manifests_are_rejected(mutation):
     mutation(data)
 
     assert assess_winnability(_as_yaml(data)) != ()
+
+
+# ---------------------------------------------------------------------------
+# M2 — the schema gate: provenance and the decisions[] record (#783)
+#
+# Bug classes guarded: adding `decisions` to the model moving the manifest's
+# structural hash, which would invalidate the contract bound to it and break every
+# bind-mode cycle; a choice recorded with no citation back to the PRD, which is
+# indistinguishable from an invention; an `unresolved` marker that defers a design
+# question without saying which one; and a decision leaking into the derived contract,
+# where it could become something a check depends on.
+# ---------------------------------------------------------------------------
+
+from squadops.capabilities.scaffold import InterfaceManifest  # noqa: E402
+from squadops.cycles.manifest_gates import (  # noqa: E402
+    PROOF_DECISION_RECORD,
+    PROOF_PROVENANCE,
+    assess_schema,
+)
+
+# The manifest hash contract v9 is bound to (`skeleton.interface_manifest_hash`).
+_BOUND_MANIFEST_HASH = "bb472e267e53d5ad29406663b4340de45613dd68fa091fe7f2d06a99b7267530"
+
+
+def test_reference_manifest_passes_the_schema_gate():
+    assert assess_schema(_REFERENCE.read_text(encoding="utf-8")) == ()
+
+
+def test_decisions_do_not_move_the_structural_hash():
+    """The constraint that governs this whole item.
+
+    `_canonical()` is "every field the expander reads, and nothing else" — provenance is
+    excluded so a provenance-only edit cannot invalidate the contract bound to the hash.
+    Decisions are judgment, not structure. If they entered the projection, contract v9's
+    binding would break and every bind-mode cycle with it.
+    """
+    manifest = InterfaceManifest.from_yaml(_REFERENCE.read_text(encoding="utf-8"))
+
+    assert manifest.decisions  # the field is populated, not silently empty
+    assert manifest.content_hash() == _BOUND_MANIFEST_HASH
+
+
+def test_revising_a_decision_never_invalidates_the_contract():
+    """The consequence worth stating: an author may improve an explanation without
+    re-deriving anything, because the design did not change."""
+    data = _reference_dict()
+    data["decisions"][0]["warrant"] = "§9.9 — a completely different citation"
+    data["decisions"].append(
+        {"id": "added-later", "choice": "something", "warrant": "§1.1 — anything"}
+    )
+
+    revised = InterfaceManifest.from_yaml(_as_yaml(data))
+
+    assert revised.content_hash() == _BOUND_MANIFEST_HASH
+
+
+def test_decisions_never_reach_the_derived_contract():
+    """Lifecycle rule 3 holds *by construction*: since decisions are absent from the
+    contract, no derived check can depend on an unresolved one. Pinned rather than
+    re-checked — a detector for an impossible condition is the pattern this repo rejects.
+    """
+    from squadops.capabilities.scaffold_contract import emit_contract_yaml
+
+    data = _reference_dict()
+    data["decisions"].append(
+        {"id": "open-question", "unresolved": True, "question": "should runs expire?"}
+    )
+
+    emitted = emit_contract_yaml(InterfaceManifest.from_yaml(_as_yaml(data)))
+
+    assert "open-question" not in emitted
+    assert "should runs expire" not in emitted
+
+
+def test_unresolved_decision_round_trips_and_is_preserved():
+    """Preserved, never consumed: approval does not silently drop the open question."""
+    data = _reference_dict()
+    data["decisions"].append(
+        {"id": "pagination", "unresolved": True, "question": "page size for GET /runs?"}
+    )
+
+    manifest = InterfaceManifest.from_yaml(_as_yaml(data))
+
+    (open_one,) = [d for d in manifest.decisions if d.unresolved]
+    assert open_one.id == "pagination"
+    assert open_one.question == "page size for GET /runs?"
+    assert assess_schema(_as_yaml(data)) == ()
+
+
+@pytest.mark.parametrize(
+    ("entry", "expected_fragment"),
+    [
+        ({"id": "no-warrant", "choice": "did a thing"}, "warrant"),
+        ({"id": "no-choice", "warrant": "§1.1"}, "choice"),
+        ({"id": "silent-defer", "unresolved": True}, "question"),
+        ({"choice": "x", "warrant": "§1.1"}, "id"),
+    ],
+)
+def test_malformed_decision_records_are_rejected(entry, expected_fragment):
+    data = _reference_dict()
+    data["decisions"].append(entry)
+
+    findings = assess_schema(_as_yaml(data))
+
+    assert PROOF_DECISION_RECORD in _proofs(findings)
+    assert any(expected_fragment in f.detail for f in findings)
+
+
+def test_manifest_without_source_prd_is_rejected():
+    """A design that does not say what it was designed from cannot be reviewed."""
+    data = _reference_dict()
+    data["source_prd"] = ""
+
+    findings = assess_schema(_as_yaml(data))
+
+    assert PROOF_PROVENANCE in _proofs(findings)
