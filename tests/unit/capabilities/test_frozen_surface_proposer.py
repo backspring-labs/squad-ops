@@ -23,7 +23,7 @@ from squadops.capabilities.handlers.planning_tasks import (
 )
 from squadops.capabilities.scaffold import InterfaceManifest
 from squadops.capabilities.scaffold_contract import emit_contract_dict
-from squadops.cycles.task_plan import _inject_contract_inputs
+from squadops.cycles.task_plan import inject_contract_inputs
 from squadops.cycles.verification_contract import VerificationContract
 
 pytestmark = [pytest.mark.domain_capabilities]
@@ -46,7 +46,7 @@ def _contract() -> VerificationContract:
 
 def test_proposer_envelope_carries_the_frozen_surface():
     inputs: dict = {}
-    _inject_contract_inputs(inputs, _contract(), "development.propose_plan_tasks", _manifest())
+    inject_contract_inputs(inputs, _contract(), "development.propose_plan_tasks", _manifest())
 
     index = inputs["frozen_surface_index"]
     assert "RunEvent(id, title, datetime, location" in index
@@ -57,14 +57,14 @@ def test_proposer_envelope_carries_the_frozen_surface():
 def test_build_tasks_do_not_carry_it():
     """Only the proposers author checks; a develop task has no use for the index."""
     inputs: dict = {}
-    _inject_contract_inputs(inputs, _contract(), "development.develop", _manifest())
+    inject_contract_inputs(inputs, _contract(), "development.develop", _manifest())
 
     assert "frozen_surface_index" not in inputs
 
 
 def test_author_mode_injects_nothing():
     inputs: dict = {}
-    _inject_contract_inputs(inputs, None, "development.propose_plan_tasks", _manifest())
+    inject_contract_inputs(inputs, None, "development.propose_plan_tasks", _manifest())
 
     assert inputs == {}
 
@@ -72,7 +72,7 @@ def test_author_mode_injects_nothing():
 def test_bind_mode_without_a_manifest_still_injects_the_criteria_index():
     """The frozen surface is additive — losing it must not cost the bind index."""
     inputs: dict = {}
-    _inject_contract_inputs(inputs, _contract(), "development.propose_plan_tasks", None)
+    inject_contract_inputs(inputs, _contract(), "development.propose_plan_tasks", None)
 
     assert "frozen_surface_index" not in inputs
     assert inputs["contract_criteria_index"]
@@ -137,7 +137,7 @@ async def test_real_asset_renders_the_declarations_into_the_prompt():
     )
 
     inputs: dict = {}
-    _inject_contract_inputs(inputs, _contract(), "development.propose_plan_tasks", _manifest())
+    inject_contract_inputs(inputs, _contract(), "development.propose_plan_tasks", _manifest())
     section = await DevelopmentProposePlanTasksHandler()._frozen_surface_section(renderer, inputs)
 
     # the two facts pf-42 invented

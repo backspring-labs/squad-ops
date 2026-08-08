@@ -1,0 +1,79 @@
+version: 1
+kind: interface_manifest
+project_id: group_run
+source_prd: group_run_prd_v0.4.md
+stack: fullstack_fastapi_react
+scope: Core MVP for group run coordination (create, list, detail, join, leave) with in-memory persistence; excludes auth, persistent DB, external APIs, and Tier 2/3 expansions.
+entities:
+  - name: Run
+    fields:
+      - { name: id, type: string, required: true, generated: true }
+      - { name: title, type: string, required: true }
+      - { name: datetime, type: string, required: true }
+      - { name: location, type: string, required: true }
+      - { name: distance, type: string, required: false }
+      - { name: pace, type: string, required: false }
+      - { name: notes, type: string, required: false }
+      - { name: capacity, type: integer, required: false }
+      - name: participants
+        type: list
+        required: false
+        default: []
+api:
+  base_path: ""
+  request_shapes:
+    RunCreate:
+      required: [title, datetime, location]
+      optional: [distance, pace, notes, capacity]
+    ParticipantJoin:
+      required: [participant_name]
+      optional: []
+    ParticipantLeave:
+      required: [participant_name]
+      optional: []
+  endpoints:
+    - { method: POST, path: /runs, summary: create run, request: RunCreate, response: Run, success_status: 201, errors: [validation_error] }
+    - { method: GET, path: /runs, summary: list runs, response: "list[Run]" }
+    - { method: GET, path: "/runs/{run_id}", summary: run details, response: Run, errors: [run_not_found] }
+    - { method: POST, path: "/runs/{run_id}/join", summary: join run, request: ParticipantJoin, response: Run, errors: [run_not_found, validation_error, participant_already_joined, capacity_reached] }
+    - { method: POST, path: "/runs/{run_id}/leave", summary: leave run, request: ParticipantLeave, response: Run, errors: [run_not_found, validation_error, participant_not_found] }
+  error_contract:
+    shape: '{"detail": "string"}'
+    codes:
+      validation_error: { http: 422 }
+      run_not_found: { http: 404 }
+      participant_already_joined: { http: 400 }
+      participant_not_found: { http: 400 }
+      capacity_reached: { http: 400 }
+frontend:
+  framework: react_vite
+  routes:
+    - path: /
+      view: RunListView
+      purpose: list upcoming runs and link to create
+      testids: [runs-view, run-list, run-row, create-run-link]
+    - path: /new
+      view: CreateRunView
+      purpose: form to create a new run event
+      testids: [create-run-view, create-run-form, create-run-title, create-run-datetime, create-run-location, create-run-submit]
+    - path: /runs/:run_id
+      view: RunDetailView
+      purpose: view details, participants, join/leave forms
+      testids: [run-detail-view, run-title, run-datetime, run-location, participants-list, participant-name, join-run-form, join-run-submit, leave-run-form, leave-run-submit]
+persistence: in_memory
+decisions:
+  - id: participant-uniqueness
+    choice: case-insensitive comparison with original casing preserved for display
+    warrant: "PRD §5.4 / objective_frame.md Key Decisions — prevents 'Alex' vs 'alex' duplicates"
+  - id: leave-behavior
+    choice: return 400 when participant name not found on run
+    warrant: "technical_design.md Unknown Classification — explicit error preferred over silent no-op"
+  - id: datetime-sorting
+    choice: lexicographical sort on frontend, no backend parsing
+    warrant: "PRD §4.1 Expansion Tier 1 — best-effort lexical sort acceptable for MVP"
+  - id: capacity-enforcement
+    choice: capacity is optional; if set, joins are rejected when participant count reaches capacity
+    warrant: "PRD §4.1 Expansion Tier 1 — preferred if time permits"
+  - id: persistence-boundary
+    choice: data is lost on backend restart
+    warrant: "PRD §8 / objective_frame.md — in-memory only for 2-hour cycle, DB deferred"

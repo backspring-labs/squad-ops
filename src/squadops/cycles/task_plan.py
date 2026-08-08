@@ -504,13 +504,19 @@ def _inject_rejection_context(
         inputs["rejected_plan_yaml"] = plan_yaml
 
 
-def _inject_contract_inputs(
+def inject_contract_inputs(
     inputs: dict,
     contract: VerificationContract | None,
     task_type: str,
     interface_manifest: InterfaceManifest | None = None,
 ) -> None:
-    """Bind-mode envelope inputs derived from the seeded contract (SIP-0098).
+    """Bind-mode envelope inputs derived from the contract (SIP-0098).
+
+    Public because it has two callers at two moments (#796): plan generation, when the
+    contract was seeded at cycle creation, and dispatch-time enrichment, when the squad
+    authored the manifest mid-run and the contract could not have existed any earlier. One
+    implementation of "who receives which contract surface" — a second copy is how the two
+    modes would start disagreeing about what an author is told.
 
     98.3 (§6.3): dev/qa proposers receive the criteria index so they *bind*
     (list ``criteria_refs``) rather than author covered-file criteria; only the
@@ -875,7 +881,7 @@ def generate_task_plan(
             )
             inputs["acceptance_criteria"] = acceptance
 
-        _inject_contract_inputs(inputs, contract, task_type, interface_manifest)
+        inject_contract_inputs(inputs, contract, task_type, interface_manifest)
         _inject_rejection_context(inputs, framing_rejection_context, task_type)
 
         envelope = TaskEnvelope(
