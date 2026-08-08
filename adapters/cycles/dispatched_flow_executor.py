@@ -3047,17 +3047,16 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         ``_load_interface_manifest_for_run`` reads at the implementation run — so the
         manifest the gate hash-checks against the contract is the same one the
         skeleton will expand from. Unreadable refs are skipped, not fatal: an absent
-        seeded manifest is reported by the caller as the #494/#496 rejection."""
-        for ref_id in cycle.execution_overrides.get("plan_artifact_refs") or []:
-            try:
-                ref, content_bytes = await self._artifact_vault.retrieve(ref_id)
-            except Exception:
-                continue
-            if ref.filename == "interface_manifest.yaml" or (
-                getattr(ref, "artifact_type", None) == "interface_manifest"
-            ):
-                return content_bytes.decode(errors="replace")
-        return None
+        seeded manifest is reported by the caller as the #494/#496 rejection.
+
+        The selection rule itself lives in ``cycles.contract_derivation`` (#779) so the
+        create path, which derives a contract from this same artifact, cannot disagree
+        with the executor about which ref is the manifest."""
+        from squadops.cycles.contract_derivation import load_seeded_manifest_content
+
+        return await load_seeded_manifest_content(
+            self._artifact_vault, cycle.execution_overrides.get("plan_artifact_refs")
+        )
 
     async def _seeded_manifest_for_authoring(self, cycle: Cycle) -> Any:
         """The seeded manifest parsed, for describing the frozen surface to a proposer.
