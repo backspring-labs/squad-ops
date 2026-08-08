@@ -14,8 +14,11 @@ Landed so far, gates before author: the queue-front fixes (#762 bind-mode prefli
 #766 Langfuse prompt linkage, #770 SIP promotion), then the M-ladder — M0a contract
 derivation pinned to the deployed reference pair (#777), M0b derive-at-seed when a cycle
 seeds a manifest but no contract (#779), M3 winnability gate (#781), M2 schema gate and
-the `decisions[]` judgment record (#783), M6 authoring failure taxonomy (#785). The
-authoring stage itself (M1) is next. Plan: `docs/plans/1-6-0-authorship-plan.md`.
+the `decisions[]` judgment record (#783), M6 authoring failure taxonomy (#785), and **M1
+the authoring stage itself (#791)** — a dedicated `development.author_manifest` framing
+step that revises against the gates, replacing the ungated proposer-side emission it
+relocates. M4 (the human manifest gate) and M5 (provenance) follow.
+Plan: `docs/plans/1-6-0-authorship-plan.md`.
 
 ## [1.5.0] — 2026-08-07
 

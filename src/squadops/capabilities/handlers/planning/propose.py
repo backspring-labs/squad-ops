@@ -154,33 +154,6 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
             "typed_acceptance_vocabulary": render_typed_acceptance_vocabulary(),
         }
 
-    async def _scaffold_section(self, renderer: Any, inputs: dict[str, Any]) -> str:
-        """The interface-manifest instruction, or "" (SIP-0099 99.2 Slice B).
-
-        Non-empty ONLY for the dev proposer on a scaffoldable stack — dev owns the
-        interface section, and a non-scaffoldable cycle must not be asked to emit a
-        manifest that plan validation would reject. The instruction text lives in a
-        managed prompt asset (``request.development_interface_manifest_appendix``), not
-        inline here (CLAUDE.md #448)."""
-        from squadops.capabilities.scaffold import is_scaffoldable_stack
-
-        if self._proposer_role != "development":
-            return ""
-        # #496: bind mode (a contract_criteria_index was injected) means the manifest
-        # already exists — the contract was emitted from it and binds its exact hash.
-        # Asking framing to re-derive it from a product-only PRD is unwinnable (any
-        # naming drift breaks the hash), so emission is author-mode only.
-        if inputs.get("contract_criteria_index"):
-            return ""
-        resolved_config = inputs.get("resolved_config") or {}
-        stack = str(resolved_config.get("build_profile") or "")
-        if not is_scaffoldable_stack(stack):
-            return ""
-        rendered = await renderer.render(
-            "request.development_interface_manifest_appendix", {"stack": stack}
-        )
-        return rendered.content
-
     async def _bind_criteria_section(self, renderer: Any, inputs: dict[str, Any]) -> str:
         """The *bind, don't author* instruction + contract criteria index, or ""
         (SIP-0098 98.3).
@@ -231,10 +204,7 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
         context: ExecutionContext,
         inputs: dict[str, Any],
     ) -> HandlerResult:
-        from squadops.capabilities.handlers._plan_authoring import (
-            extract_interface_manifest_yaml,
-            retry_yaml_call,
-        )
+        from squadops.capabilities.handlers._plan_authoring import retry_yaml_call
 
         start_time = time.perf_counter()
 
@@ -258,14 +228,6 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
             )
 
         variables = self._build_render_variables(prd, prior_outputs, inputs)
-        # SIP-0099 99.2 (Slice B): on a scaffoldable stack, the dev proposer is asked to
-        # ALSO author an interface manifest. Data-driven — a non-scaffoldable cycle gets
-        # "" and stays on today's path — and the instruction lives in a managed prompt
-        # asset, not an inline literal (CLAUDE.md #448). Only set when non-empty so qa/
-        # strategy renders don't log an unknown-variable warning.
-        scaffold_section = await self._scaffold_section(renderer, inputs)
-        if scaffold_section:
-            variables["scaffold_section"] = scaffold_section
         # SIP-0098 98.3: in bind mode the dev/qa proposer is told to bind the contract's
         # covered-file criteria by id (not author them). Data-driven — only set when the
         # executor injected the criteria index (contract seeded) — and the instruction is
@@ -307,11 +269,6 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
         def parse_and_validate(yaml_or_none: str | None) -> tuple[Any | None, str | None]:
             return self._parse_and_validate(yaml_or_none, expected_brief_id)
 
-        captured: dict[str, str] = {}
-
-        def _capture_content(content: str) -> None:
-            captured["content"] = content
-
         parsed, last_yaml, last_error = await retry_yaml_call(
             llm=context.ports.llm,
             chat_kwargs=chat_kwargs,
@@ -320,7 +277,6 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
             parse_and_validate=parse_and_validate,
             max_attempts=max_attempts,
             handler_name=self._handler_name,
-            on_success_content=_capture_content,
         )
 
         if parsed is None:
@@ -332,13 +288,7 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
                 last_error or "exhausted retry budget without parseable output",
             )
 
-        # SIP-0099 99.2: a framing proposer may emit interface_manifest.yaml alongside
-        # its proposed_plan_tasks.yaml; carry the raw block for the merger (data-driven —
-        # absent = today's behavior).
-        interface_manifest_yaml = extract_interface_manifest_yaml(captured.get("content", ""))
-        return self._build_success_result(
-            start_time, inputs, last_yaml or "", interface_manifest_yaml
-        )
+        return self._build_success_result(start_time, inputs, last_yaml or "")
 
     def _classify_failure(self, last_error: str | None, last_yaml: str | None) -> str:
         """Map the retry loop's last error to a ProposalFailure failure_reason."""
@@ -358,7 +308,6 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
         start_time: float,
         inputs: dict[str, Any],
         yaml_content: str,
-        interface_manifest_yaml: str | None = None,
     ) -> HandlerResult:
         # The merger consumes this via prior_outputs (PR 93.3). The cycle
         # executor strips "artifacts" from prior_outputs by design, so we
@@ -370,10 +319,6 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
             "yaml_content": yaml_content,
             "artifact_name": self._success_artifact_name,
         }
-        # SIP-0099 99.2: carry the raw interface manifest for the merger, only when the
-        # proposer emitted one (no key = no interface manifest = today's behavior).
-        if interface_manifest_yaml:
-            proposal_outcome["interface_manifest_yaml"] = interface_manifest_yaml
         outputs = {
             "summary": f"[{self._role}] proposal produced for {self._capability_id}",
             "role": self._role,

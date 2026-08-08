@@ -286,6 +286,46 @@ Budget seams already exist and are **not** reinvented (§5b Q4): the authoring s
 inherits `manifest_max_attempts` as its in-stage revision budget; gate rejections spend
 `framing_max_rerolls`.
 
+#### As built — #791, resolutions and three premise corrections
+
+**§6 open question 1 is resolved: single author, and the reviewers are the gates.** §5a's
+recommendation, with one amendment measured against main. The two things §5a assigns a QA
+reviewer — *every view declares its anchors, every endpoint a probe-able status contract* —
+are **already proven mechanically** by M3's `testid_coverage` and `status_declared`. Adding
+an LLM reviewer on top would put judgment where determinism already holds, which is the
+§5c.2 / #464 style-lottery class the plan-validation family exists to reject. So: one author
+(dev, at a dedicated stage after `development.design_plan`), reviewed by M3's proofs and
+M4's human gate, with `qa.define_test_strategy` reading the manifest downstream as a free
+non-gating lane. Multi-role proposers remain the recorded fallback — that migration
+direction has one; the reverse does not.
+
+Three things the plan assumed, corrected against `d4c3f9a2`:
+
+1. **Authoring already existed, in the wrong place and ungated.** SIP-0099 99.2 asked the
+   dev *proposer* to emit the manifest as a second fenced block beside its plan tasks, and
+   the merger re-emitted it (dev preferred, qa fallback). M1 is therefore a **relocation**,
+   and the old path is deleted rather than left beside the new one.
+2. **A framing-authored manifest never reached the implementation run.** The framing→
+   implementation forwarding filtered promoted artifacts to
+   `{document, control_implementation_plan}`, dropping `interface_manifest` — so the
+   manifest was stored, gate-validated, promoted, and then silently not carried, leaving
+   the implementation unscaffolded. Dormant because every cycle since ran bind mode, where
+   the manifest rides `plan_artifact_refs` from creation (#496). Authored mode could not
+   have worked without this fix.
+3. **The taught schema would have failed the new gates.** The authoring asset predated M2
+   and M3 and showed no `source_prd`, `decisions[]`, `success_status` or `testids` — the
+   #629 pattern, where the system holds the rule and the author is shown only the
+   rejection. Closed the way #686 closed it for plans: a `manifest_authoring_rules`
+   classification table keyed to the `PROOF_*` constants, bound by test to the managed
+   asset, with derivation-owned proofs required to be **absent** so no author is taught to
+   work around a defect that is ours.
+
+M2/M3/M6 were pure modules with no callers until here; M1 wires all three — the gates as
+the revision loop's in-stage verdict and as the framing gate's rejection, the taxonomy as
+the outcome record. Wiring them surfaced one defect in M6's composition: both gates parse
+independently, so an unparseable manifest was reported twice and counted as
+`authoring_defect: 2` in a baseline measuring one. Fixed at the composition.
+
 ### M2. Schema gate (deterministic) — partially built
 
 `InterfaceManifest.lint()` already rejects the parses-but-unexpandable class (no endpoints,

@@ -37,6 +37,7 @@ from squadops.capabilities.handlers.impl.repair_handlers import (
 )
 from squadops.capabilities.handlers.planning import (
     DataResearchContextHandler,
+    DevelopmentAuthorManifestHandler,
     DevelopmentDesignPlanHandler,
     DevelopmentProposePlanTasksHandler,
     GovernanceIncorporateFeedbackHandler,
@@ -106,6 +107,10 @@ HANDLER_CONFIGS: list[tuple[type[CapabilityHandler], tuple[str, ...]]] = [
     (DataResearchContextHandler, ("data",)),
     (StrategyFrameObjectiveHandler, ("strat",)),
     (DevelopmentDesignPlanHandler, ("dev",)),
+    # SIP-0103 §3.1 (#791): the authored-manifest stage. Dispatched only in authored
+    # mode — a scaffoldable stack with no pinned contract (see
+    # ``cycles.manifest_authoring.authors_interface_manifest``).
+    (DevelopmentAuthorManifestHandler, ("dev",)),
     (QADefineTestStrategyHandler, ("qa",)),
     (GovernanceReviewPlanHandler, ("lead",)),
     # SIP-0093 PR 93.0: brief handler registered but not yet wired into

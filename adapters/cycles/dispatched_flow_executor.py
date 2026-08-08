@@ -46,7 +46,9 @@ from squadops.cycles.acceptance_evaluation import resolve_check_stack
 from squadops.cycles.agent_config import build_agent_resolver
 from squadops.cycles.build_completeness import compute_missing_required_files
 from squadops.cycles.checkpoint import RunCheckpoint
+from squadops.cycles.contract_derivation import SEEDED_MANIFEST_FILENAME
 from squadops.cycles.frozen_check_validation import frozen_check_violations
+from squadops.cycles.manifest_authoring import MANIFEST_ARTIFACT_TYPE
 from squadops.cycles.models import (
     ArtifactRef,
     Cycle,
@@ -956,7 +958,14 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             # SIP-0086 / SIP-0092: include control_implementation_plan
             # alongside documents so the implementation_plan.yaml reaches the
             # implementation workload.
-            plan_types = {"document", "control_implementation_plan"}
+            #
+            # #791: and interface_manifest, without which an AUTHORED manifest is
+            # promoted and then dropped here — `_load_interface_manifest_for_run` reads
+            # this list, finds nothing, and the implementation runs unscaffolded while
+            # framing believed it had designed a skeleton. Dormant since 99.2 shipped
+            # because a seeded manifest rides `plan_artifact_refs` from cycle creation
+            # (#496) and never travels this seam.
+            plan_types = {"document", "control_implementation_plan", MANIFEST_ARTIFACT_TYPE}
             plan_candidates = [a for a in promoted if a.artifact_type in plan_types]
             plan_refs = [a.artifact_id for a in sorted(plan_candidates, key=lambda a: a.created_at)]
             if "plan_artifact_refs" in overrides:
@@ -1557,7 +1566,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         """Load the framing-emitted interface manifest for a run (SIP-0099 99.3).
 
         Mirrors ``_load_plan_for_run``: searches the forwarded ``plan_artifact_refs``
-        for the ``interface_manifest.yaml`` a scaffolded framing run emitted (99.2) and
+        for the ``interface_manifest.yaml`` a scaffolded framing run authored (#791) and
         parses it. Returns ``InterfaceManifest`` or ``None`` — a missing or unparseable
         manifest leaves the run on today's non-scaffolded path (graceful, data-driven).
 
@@ -1579,8 +1588,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         for ref_id in plan_refs:
             try:
                 ref, content_bytes = await self._artifact_vault.retrieve(ref_id)
-                if ref.filename == "interface_manifest.yaml" or (
-                    getattr(ref, "artifact_type", None) == "interface_manifest"
+                if ref.filename == SEEDED_MANIFEST_FILENAME or (
+                    getattr(ref, "artifact_type", None) == MANIFEST_ARTIFACT_TYPE
                 ):
                     manifest = InterfaceManifest.from_yaml(content_bytes.decode(errors="replace"))
                     logger.info(
@@ -2911,7 +2920,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     # framing re-roll.
                     errors.extend(parsed_plan.validate_check_applicability(cycle.resolved_config()))
                     errors.extend(parsed_plan.validate_build_config(cycle.resolved_config()))
-            elif ref.filename == "interface_manifest.yaml" or artifact_type == "interface_manifest":
+            elif (
+                ref.filename == SEEDED_MANIFEST_FILENAME or artifact_type == MANIFEST_ARTIFACT_TYPE
+            ):
                 interface_content = content_bytes.decode(errors="replace")
 
         # #424: this seam's precondition is implementation_plan=true, so a
@@ -2932,7 +2943,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 "uninstrumented."
             )
 
-        # SIP-0099 99.2: a framing-emitted interface manifest is validated here — this is
+        # A framing-authored interface manifest is validated here — this is
         # its ONLY net; generate_task_plan's dispatch-time net validates the PLAN, never
         # the manifest. Errors join the same returned list, so they flow into the
         # identical system:plan_validation REJECTED recording.
@@ -3083,17 +3094,30 @@ class DispatchedFlowExecutor(FlowExecutionPort):
 
     @staticmethod
     def _validate_interface_manifest(content: str) -> list[str]:
-        """Parse + lint a framing-emitted interface manifest, returning errors prefixed
-        for the REJECTED gate note (SIP-0099 99.2). ``scaffold`` is imported lazily —
-        the adapter layer may depend on capabilities, and this keeps the module import
-        light and the dependency out of the cycles domain."""
-        from squadops.capabilities.scaffold import InterfaceManifest
+        """Run both manifest gates over a framing-emitted manifest, returning errors
+        prefixed for the REJECTED gate note.
 
-        try:
-            manifest = InterfaceManifest.from_yaml(content)
-        except Exception as exc:  # noqa: BLE001 — untrusted LLM output: any parse/shape failure is one rejection, never a crash
-            return [f"interface_manifest: unparseable ({exc})"]
-        return [f"interface_manifest: {e}" for e in manifest.lint()]
+        #791 (M1) widened this from ``lint()`` alone to the full M2/M3 assessment: the
+        authoring stage runs the same two gates in-stage, and a manifest that exhausts
+        its revision budget is emitted anyway (see ``DevelopmentAuthorManifestHandler``)
+        precisely so this seam can reject it — a system rejection re-rolls framing for
+        free (#522), where letting it through spends a whole implementation workload on a
+        design already proven unwinnable.
+
+        Only a *framing-emitted* manifest reaches here — the scan reads ``run.artifact_refs``,
+        and a seeded manifest lives on the cycle's ``plan_artifact_refs`` rail — so bind-mode
+        cycles are unaffected by the widening.
+
+        The proof classes are logged rather than returned: the gate note is for the
+        operator, and the ownership attribution is M6's ledger (#785).
+        """
+        from squadops.cycles.authoring_failure import assess_authoring_outcome
+
+        outcome = assess_authoring_outcome(content)
+        if not outcome.rejected:
+            return []
+        logger.info("interface_manifest rejected at gate: classes=%s", outcome.class_counts())
+        return [f"interface_manifest [{f.proof}]: {f.detail}" for f in outcome.findings]
 
     async def _reject_unsatisfiable_plan_at_gate(
         self,

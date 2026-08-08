@@ -19,8 +19,9 @@ handlers are the agents; this module is their toolbox.
 
 from __future__ import annotations
 
+import inspect
 import logging
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
@@ -35,10 +36,12 @@ async def retry_yaml_call(
     chat_kwargs: dict[str, Any],
     system_prompt: str,
     user_prompt: str,
-    parse_and_validate: Callable[[str | None], tuple[Any | None, str | None]],
+    parse_and_validate: Callable[
+        [str | None],
+        tuple[Any | None, str | None] | Awaitable[tuple[Any | None, str | None]],
+    ],
     max_attempts: int,
     handler_name: str,
-    on_success_content: Callable[[str], None] | None = None,
 ) -> tuple[Any | None, str | None, str | None]:
     """Drive an LLM call with up to ``max_attempts`` retries.
 
@@ -51,10 +54,6 @@ async def retry_yaml_call(
     ``None`` if all attempts failed; ``last_yaml`` carries the most
     recent raw YAML for diagnostic logging.
 
-    ``on_success_content``, if given, is called with the full raw response of
-    the accepted attempt — the caller can then pull additional fenced blocks
-    the primary YAML extractor discards (SIP-0099 99.2: the interface manifest
-    a framing proposer may emit alongside ``proposed_plan_tasks.yaml``).
     """
     messages: list[ChatMessage] = [
         ChatMessage(role="system", content=system_prompt),
@@ -86,11 +85,16 @@ async def retry_yaml_call(
         # raw YAML or None.
         last_yaml = _first_yaml_block_or_none(content)
 
-        parsed, err = parse_and_validate(last_yaml)
+        verdict = parse_and_validate(last_yaml)
+        # An async callback is accepted so a handler can render its corrective feedback
+        # through a managed prompt asset rather than assembling the prose inline
+        # (CLAUDE.md #448) — the manifest-authoring loop needs that, the plan loops do
+        # not, and a sync callback is unaffected.
+        if inspect.isawaitable(verdict):
+            verdict = await verdict
+        parsed, err = verdict
         if err is None and parsed is not None:
             logger.info("%s: produced valid output on attempt %d", handler_name, attempt)
-            if on_success_content is not None:
-                on_success_content(content)
             return parsed, last_yaml, None
 
         logger.warning(
@@ -111,17 +115,6 @@ async def retry_yaml_call(
         ]
 
     return None, last_yaml, last_error
-
-
-def extract_interface_manifest_yaml(content: str) -> str | None:
-    """Return the raw ``interface_manifest.yaml`` fenced block a framing role emitted,
-    or ``None`` if it did not (SIP-0099 phase 99.2). Data-driven: absence means the
-    cycle keeps today's non-scaffolded behavior. Selected by filename, so it is robust
-    to block ordering (unlike the first-yaml-block plan extraction)."""
-    for f in extract_fenced_files(content or ""):
-        if f["filename"] == "interface_manifest.yaml":
-            return f["content"]
-    return None
 
 
 def _first_yaml_block_or_none(content: str) -> str | None:

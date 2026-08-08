@@ -23,6 +23,9 @@ from squadops.capabilities.handlers.planning.framing import (
     QADefineTestStrategyHandler,
     StrategyFrameObjectiveHandler,
 )
+from squadops.capabilities.handlers.planning.manifest import (
+    DevelopmentAuthorManifestHandler,
+)
 from squadops.capabilities.handlers.planning.merge import GovernanceMergePlanHandler
 from squadops.capabilities.handlers.planning.propose import (
     DevelopmentProposePlanTasksHandler,
@@ -39,6 +42,7 @@ from squadops.capabilities.handlers.planning.review import GovernanceReviewPlanH
 
 __all__ = [
     "DataResearchContextHandler",
+    "DevelopmentAuthorManifestHandler",
     "DevelopmentDesignPlanHandler",
     "DevelopmentProposePlanTasksHandler",
     "GovernanceIncorporateFeedbackHandler",

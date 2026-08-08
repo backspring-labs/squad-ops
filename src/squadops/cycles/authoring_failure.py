@@ -169,10 +169,16 @@ def assess_authoring_outcome(manifest_content: str) -> AuthoringOutcome:
     identical to a squad that cannot design, because the remedies are opposite — one
     needs a better PRD, the other a better author.
     """
-    findings = tuple(
-        classify_finding(f)
-        for f in (*assess_schema(manifest_content), *assess_winnability(manifest_content))
-    )
+    schema = assess_schema(manifest_content)
+    if any(f.proof == PROOF_PARSES for f in schema):
+        # Both gates parse independently and both report the failure, so composing them
+        # naively double-reports it: two identical rejection lines in the operator's note,
+        # and ``authoring_defect: 2`` in a baseline counting one defect (#791 found this by
+        # wiring the gates to the framing rejection). Nothing downstream can run without a
+        # parsed manifest, so the parse failure returns alone.
+        return AuthoringOutcome(findings=tuple(classify_finding(f) for f in schema))
+
+    findings = tuple(classify_finding(f) for f in (*schema, *assess_winnability(manifest_content)))
     return AuthoringOutcome(findings=findings, open_questions=_open_questions(manifest_content))
 
 
