@@ -15,7 +15,7 @@ import queue
 import random
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import Any
 
@@ -185,18 +185,17 @@ class LangFuseAdapter(LLMObservabilityPort):
             if random.randint(1, 100) > self._config.sample_rate_percent:
                 return  # Sampled out — silently dropped
 
-        # Redact prompt/response text before buffering
-        redacted_record = GenerationRecord(
-            generation_id=record.generation_id,
-            model=record.model,
+        # Redact prompt/response text before buffering.
+        #
+        # `replace` rather than a field-by-field rebuild (#793): the rebuild copied
+        # ten of eleven fields and silently dropped `tokens_per_second`, which
+        # defaults to None — so LangFuse reported null throughput for every
+        # generation from SIP-0061 until the fix. Copy-everything-redact-two states
+        # the actual intent and cannot drift when a field is added.
+        redacted_record = replace(
+            record,
             prompt_text=self._redaction.redact(record.prompt_text),
             response_text=self._redaction.redact(record.response_text),
-            prompt_tokens=record.prompt_tokens,
-            completion_tokens=record.completion_tokens,
-            total_tokens=record.total_tokens,
-            latency_ms=record.latency_ms,
-            prompt_name=record.prompt_name,
-            prompt_version=record.prompt_version,
         )
         self._enqueue(
             _BufferEntry(
@@ -207,15 +206,10 @@ class LangFuseAdapter(LLMObservabilityPort):
         )
 
     def record_event(self, ctx: CorrelationContext, event: StructuredEvent) -> None:
-        # Redact event message before buffering
-        redacted_event = StructuredEvent(
-            name=event.name,
-            message=self._redaction.redact(event.message),
-            level=event.level,
-            attributes=event.attributes,
-            timestamp=event.timestamp,
-            span_id=event.span_id,
-        )
+        # Redact event message before buffering. `replace` for the same reason as
+        # record_generation (#793) — complete today only because no field has been
+        # added since it was written.
+        redacted_event = replace(event, message=self._redaction.redact(event.message))
         self._enqueue(_BufferEntry(event_type=_EventType.EVENT, ctx=ctx, payload=redacted_event))
 
     def flush(self) -> None:
