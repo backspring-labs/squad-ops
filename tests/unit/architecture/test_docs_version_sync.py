@@ -18,6 +18,12 @@ Three rules:
 3. Repo paths referenced from the living planning docs (ROADMAP + the
    docs/plans/ set) exist in the tree — committed docs must not cite files
    that live only in someone's working copy.
+4. The version in pyproject.toml has a dated CHANGELOG section. Tagging
+   discipline held for five straight cuts (v1.4.0 through v1.5.0) while the
+   changelog half of the checklist was skipped every time, leaving
+   ``[Unreleased]`` asserting things that went false at the 1.4.0 cut
+   (#789). Rules 1-3 guard the markers a bump *edits*; nothing guarded the
+   file a bump must *rotate*.
 """
 
 from __future__ import annotations
@@ -134,6 +140,49 @@ class TestAcceptedSipTargetsParity:
         """Bug caught: an over-eager regex flagging SIP-0092-style body prose
         or the legitimate stabilization escape hatch."""
         assert _odd_target_offenders(text) == [], reason
+
+
+CHANGELOG_SECTION_RE = re.compile(
+    r"^## \[(\d+\.\d+\.\d+)\] +[—-] +(\d{4}-\d{2}-\d{2})\s*$", re.MULTILINE
+)
+
+
+class TestChangelogRotated:
+    """Rule 4: the released version has a dated CHANGELOG section."""
+
+    def test_current_version_has_a_dated_changelog_section(self) -> None:
+        """Bug caught: #789 — five cuts tagged without rotating the changelog, so
+        ``[Unreleased]`` still claimed "Nothing below has shipped in a release" and
+        "Lane S has not started" long after both went false. A bump now cannot merge
+        until its section exists."""
+        expected = _pyproject_version()
+        sections = dict(CHANGELOG_SECTION_RE.findall(_read("CHANGELOG.md")))
+        assert expected in sections, (
+            f"CHANGELOG.md has no `## [{expected}] — YYYY-MM-DD` section but "
+            f"pyproject.toml says {expected}. Rotate the changelog as part of the cut "
+            f"(see CLAUDE.md 'Versioning & Release Cadence'); found: {sorted(sections)}"
+        )
+
+    def test_unreleased_section_exists_and_is_not_the_released_content(self) -> None:
+        """Bug caught: rotating by renaming ``[Unreleased]`` and never opening a fresh
+        one, which silently makes the next line's work invisible until someone notices."""
+        text = _read("CHANGELOG.md")
+        assert "## [Unreleased]" in text, "CHANGELOG.md lost its [Unreleased] section"
+        released = _pyproject_version()
+        unreleased_body = text.split("## [Unreleased]", 1)[1].split("\n## [", 1)[0]
+        assert released not in unreleased_body, (
+            f"the [Unreleased] section still describes {released}, which has shipped — "
+            "move it into its dated section and open a fresh [Unreleased]"
+        )
+
+    def test_section_regex_matches_the_committed_shapes(self) -> None:
+        """Guards the guard: both dash styles in the file must parse."""
+        found = dict(
+            CHANGELOG_SECTION_RE.findall(
+                "## [1.5.0] — 2026-08-07\n\n## [1.3.1] - 2026-07-08\n## [Unreleased]\n"
+            )
+        )
+        assert found == {"1.5.0": "2026-08-07", "1.3.1": "2026-07-08"}
 
 
 SIP_NUMBER_RE = re.compile(r"SIP-(\d{4})")

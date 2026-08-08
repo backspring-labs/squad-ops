@@ -5,11 +5,176 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
-In-flight **1.4 arc — the Verified Canonical App Build** (133 merges since 1.3.1).
-Nothing below has shipped in a release. Lane M's golden-path stack (scaffold +
-verification contracts + frozen-file enforcement) is largely landed and under live
-measurement; **Lane S — the Ephemeral Application Sandbox — has not started and is the
-arc's critical path.** Entries are grouped by arc rather than listed per-PR; the volume
+In-flight **1.6 — the Authorship release**. The rung above 1.4: from *filling* a given
+interface design to **authoring the design from the PRD**. Lane M is SIP-0103
+(Squad-Authored Manifest, accepted 2026-08-07); Lane S is Generalized Build Capability,
+whose Stack Blueprint SIP is deliberately held until a second real stack exists.
+
+Landed so far, gates before author: the queue-front fixes (#762 bind-mode preflight,
+#766 Langfuse prompt linkage, #770 SIP promotion), then the M-ladder — M0a contract
+derivation pinned to the deployed reference pair (#777), M0b derive-at-seed when a cycle
+seeds a manifest but no contract (#779), M3 winnability gate (#781), M2 schema gate and
+the `decisions[]` judgment record (#783), M6 authoring failure taxonomy (#785). The
+authoring stage itself (M1) is next. Plan: `docs/plans/1-6-0-authorship-plan.md`.
+
+## [1.5.0] — 2026-08-07
+
+**Finish the Promises, Extract the Proven** — the odd-minor stabilization release.
+Feature-free by rule and verified as such at the cut: no new contract fields, manifest
+fields, request-profile capabilities, or squad-facing handler/workflow surfaces, and
+**contract v9 / manifest v4 byte-stable line-wide**. 34 PRs, one per issue, across three
+gates. Plan: `docs/plans/1-5-0-stabilization-plan.md`.
+
+### Added — verification integrity, finished
+- **SIP-0096 implemented**, not merely promoted. Gate waivers as additive schema plus CLI
+  `--waive/--waiver-reason`, where a waived check is recorded and disclosed but the
+  verdict itself is never rewritten (#682, migration 1030); wrap-up consumes the
+  `CycleOutcome` seam and **clamps** over-claiming closeout prose to the evidence it cites
+  (#683); inert-cycle detection derived on read — a squad that stops producing evidence is
+  detected rather than read as passing (#684). The promotion PR also caught its own
+  premise delta: the audit's fourth normative item (a SKIP-only pulse is zero evidence,
+  not a pass) had been dropped from the plan and was implemented rather than waved through.
+- **qa joins the typed-acceptance seam (#670)** — authored checks *and* framework
+  injections now reach both authoring surfaces, closing the gap shk-3 found where
+  `undefined_names` stopped at the qa boundary.
+- **SIP-0101 Cycle Replay Harness, minimum slice** — maintainer-only replay from a
+  recorded execution boundary, rails before mechanism (#735–#737, migration 1020).
+
+### Added — correction evidence and termination
+- **#687** captures the application's real traceback from the probe runner's spool delta;
+  **#431** makes emission accounting explicit at four producer seams so extraction loss is
+  *named* rather than silently truncated. Together: the correction loop's long-standing
+  diagnosis blindness.
+- **#435** progress-aware correction termination — a moving chain is never cut short, a
+  repeating one never burns the budget.
+- **#629** a test suite whose assertions contradict the frozen contract is a blocking
+  failure; the prose half ships advisory by construction.
+
+### Changed — the structural quarantine
+- **#663** the executor's context assembly becomes a declared `ContextAssemblyContract`
+  per task type, replacing five tables and three branches — landed in three golden-first
+  slices, 19 goldens captured *before* each refactor and byte-identical through.
+- **#331** the 1,887-line planning handler splits into a package by authoring stage; a
+  pure move, AST-verified 20/20 top-level names, every pre-split test passing unmodified.
+- **#730 + #504** every typed check declares its own governance metadata in one registry
+  with required, no-default fields — a new check cannot be added without declaring who
+  owns its failures and whether it replays — plus the blocking `fill_slot_signature` check
+  and a generated menu pinned by drift tests.
+- **#481** stranded-cycle detection as a fourth startup sweep, read-only, emitting the
+  exact recovery command. Its first live boot surfaced two genuinely stranded cycles that
+  had been invisible for weeks.
+- **#734** every acceptance verdict names the workspace revision it measured.
+- **#506** transport owns the full task lifecycle, fixing retry attempts that never
+  re-entered RUNNING; **#724** ~20 config reads swept onto `resolved_config`; **#452** the
+  last live-path prompt prose moved into managed assets with byte-equivalence pinned.
+
+### Verified as a line
+Two green confirmation shakedowns on integrated deploys — the Gate-2 exit
+(`cyc_ea0b82cfbd17`, accepted, 17/17, zero corrections) and the cut shakedown
+(`cyc_b07183b3cf5c`, accepted, 36/36 checks, 15/15 contract criteria, zero corrections,
+zero machinery defects) — plus a live replay demonstration, a waiver end-to-end probe, and
+a replay zero-diff over the stored green corpus.
+
+### Filed forward
+#761, #762, #668's suite half, #707, `package_builds` (declared-unbuilt with its trigger
+recorded in the registry), SIP-0102 migration steps 3–7, SIP-0092's M3, and the #557
+post-retest governance review (SIP drafted) → v1.6+.
+
+## [1.4.4] — 2026-08-05
+
+**No False Verdicts** (verification integrity). Every verdict is earned: greens are
+enforced, reds are explained, budgets are honored. Seven premise-verified fixes, one PR
+each — **#427** terminal failure reason persisted on the run row and surfaced by
+`runs show` (migration 1010); **#426** builder offer and gate net both key off configured
+`build_profile` via the new single-source `Cycle.resolved_config()`; **#715** a qa task
+whose declared artifacts can never satisfy required `tests_pass` is rejected at authoring,
+on both gate seams; **#423** an authored check the evaluator cannot run is an evidence gap
+and never `passed: true`; **#424** plan-authoring collapse is a gate rejection, never a
+silent static-step fallback; **#511** the time budget gates every dispatch lane including
+correction chains; **#571** semantic-memory recall prefilters in-query with a valid cosine
+metric.
+
+Verified as a line on an integrated overnight deploy: in-container validator replays
+against stored artifacts, a designed-failure probe budget-killed at the first boundary,
+and confirmation shakedown **shk-5 green** — verdict accepted, zero corrections, the new
+nets silent on a well-formed roll.
+
+## [1.4.3] — 2026-08-04
+
+**Lifecycle Hygiene** — a cycle can neither strand the next one nor fail silently. Seven
+hash-stable fixes, five planned plus two found *by the deploy window itself*: **#373+#529**
+focus-lease reaper across cancel routes, executor finalize, and startup sweep; **#561**
+activity self-heal; **#498** interpreter resolution (bare `python` resolves to
+`sys.executable`, strictly after the safelist gate); **#572** queue capability honesty;
+**#573** a redaction char-class overrun that swallowed adjacent log fields; **#710**
+stranded-mode sweep; **#712** owner-checked lease release.
+
+**Found by the window, not the tests:** #710 — pre-deploy capture showed six agents in
+`cycle` mode holding zero leases, so focus arbitration had been silently inert for 64
+cycles over two weeks. #712 — a cancelled run's late finalize would have stripped the
+*relaunched* run's focus, unreachable before this patch only because #529's leak was an
+accidental guard.
+
+Confirmation **shk-4 green**; 9/9 leases released, zero residue, no restart.
+
+## [1.4.2] — 2026-08-04
+
+**Correction Aim + Authoring Prevention** — the correction chain aims true, and known
+authoring classes can't be authored. Every fix traces to shk-2's diagnosed loss chain,
+where a one-line defect survived two correction attempts: **#688** repair targeting now
+leads with the owning fill slot (failed probe → endpoint → contract's endpoint→slot map);
+**#691** scaffold-frozen paths excluded from interface-drift detection; **#689**
+`undefined_names` (pyflakes F821) framework-injected at emission acceptance on `.py` fill
+slots — the call-time NameError class every prior gate missed; **#686** plan-shape rules
+rendered into the four authoring prompts.
+
+**Corrected premise, recorded:** #691's filing blamed an unauthorized dev write;
+provenance showed the artifacts were scaffold-seeded and hash-identical to the contract's
+frozen entries. The real defect was drift detection reporting the scaffold's own probe as
+producer drift — a permanent false positive on every bind-mode cycle that corrects. The
+issue was rewritten before it was built.
+
+Confirmation **shk-3 green**, zero corrections; #686 confirmed at framing in its strongest
+form (a compliant plan on the first roll, where shk-1 needed a rejection plus a re-roll).
+
+## [1.4.1] — 2026-08-03
+
+**Hardening Patch** — the five hash-stable fixes filed as known-open at the 1.4.0 cut, one
+PR per issue: **#672** runtime_activities reaper (startup + finalize sweeps through the
+abort choke point); **#671** module-existence validation at the gate; **#673** the first
+plan-wide cross-task rule, rejecting two tasks that claim the same expected artifact;
+**#667** repair-envelope testid threading, with the surface re-derived from the manifest at
+repair-input construction; **#669** framing re-rolls revise instead of re-dicing, turning
+`framing_max_rerolls` into a revision budget.
+
+Contract v9 / manifest v4 unchanged (hash-stable by construction). #668/#670 deliberately
+held for the next window. Plan: `docs/plans/1-4-1-hardening-patch-plan.md`.
+
+Confirmation shakedowns unscored by pre-declaration: **shk-1 green** — framing authored a
+real dual claim, #673 auto-rejected it (a live true positive), #669 threaded the rejection
+into a surgically revised re-roll, and implementation cleared all 14 criteria with zero
+corrections. **shk-2** fired #667's trigger live, then surfaced a *pre-existing*
+correction-chain loss mode diagnosed to root cause and filed as #687/#688/#689.
+
+## [1.4.0] — 2026-07-31
+
+**The Verified Canonical App Build** (133 merges since 1.3.1) — first dual-lane-headline
+feature release. Lane M's golden-path stack (scaffold + verification contracts +
+frozen-file enforcement) plus Lane S's Ephemeral Application Sandbox 1.4 floor.
+
+**Exit evidence, pre-registered:** Functional App Yield window 3 — **6/6 functional
+(100%), 5/6 fully green, five consecutive greens**, unfiltered, on frozen deploy
+`9522ef4d`, in **seeded-manifest (bind) mode**; the bar was ≥4/6. The cut gate's original
+condition ("≥3 consecutive golden-benchmark runs, squad-authored-manifest mode") was
+superseded by owner decision 2026-07-28 and executed at the cut.
+
+**What this honestly demonstrates:** given a PRD **and a fully specified interface
+manifest**, the squad implements, verifies, and delivers a working app. What remains
+unmeasured — by the original gate's own correct reasoning — is squad-authored-manifest
+mode; that rung moved to v1.6 as a headline. The claim is *a specified contract, not
+PRD-to-app*.
+
+Entries are grouped by arc rather than listed per-PR; the volume
 here is dominated by the correction/repair loop, which had to converge before any of the
 scaffold work could be measured at all. Bare `#NNN` references in this section are **pull
 requests**; the issues they close are named in the PR bodies.
