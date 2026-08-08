@@ -24,7 +24,7 @@ from squadops.cycles.contract_derivation import (
     ContractDerivationError,
     derive_and_store_contract,
     derive_contract_bytes,
-    is_seeded_manifest,
+    is_interface_manifest,
     load_seeded_manifest_content,
 )
 
@@ -72,7 +72,7 @@ def _manifest_text() -> str:
 )
 def test_seeded_manifest_selection_matches_both_rails(filename, artifact_type, expected):
     """Both rails exist in the wild; a rule that knows only one silently picks nothing."""
-    assert is_seeded_manifest(_Ref(filename, artifact_type)) is expected
+    assert is_interface_manifest(_Ref(filename, artifact_type)) is expected
 
 
 async def test_derived_contract_equals_what_the_expander_emits():

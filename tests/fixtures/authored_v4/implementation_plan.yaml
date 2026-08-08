@@ -1,0 +1,316 @@
+version: 1
+project_id: group_run
+cycle_id: cyc_9c8c98ea3171
+prd_hash: e464ea4a0931c9107a532ffdb6e6839ea2cf6b40f9cbe5ce166cb578ff4b640e
+tasks:
+- task_index: 0
+  task_type: development.develop
+  role: dev
+  focus: backend pydantic models
+  description: Define Pydantic v2 models for the Run entity and all request/response
+    schemas. Includes RunCreate, RunResponse, RunDetail, JoinRequest, LeaveRequest,
+    and ErrorResponse. Run model carries id (UUID4), title, datetime (ISO8601 string),
+    location, optional distance/pace/notes, and a participants list. All required
+    fields enforced at schema level.
+  expected_artifacts:
+  - backend/models.py
+  acceptance_criteria:
+  - check: field_present
+    file: backend/models.py
+    class_name: RunCreate
+    fields:
+    - title
+    - datetime
+    - location
+  - check: field_present
+    file: backend/models.py
+    class_name: JoinRequest
+    fields:
+    - participant_name
+  - check: field_present
+    file: backend/models.py
+    class_name: LeaveRequest
+    fields:
+    - participant_name
+  - check: field_present
+    file: backend/models.py
+    class_name: RunResponse
+    fields:
+    - id
+    - title
+    - datetime
+    - location
+    - participants
+  - check: command_exit_zero
+    argv:
+    - python
+    - -m
+    - py_compile
+    - backend/models.py
+  depends_on: []
+- task_index: 1
+  task_type: development.develop
+  role: dev
+  focus: backend main entry point
+  description: Create the FastAPI application entry point with in-memory store (dict
+    of runs, nested participant lists), asyncio.Lock for concurrency safety on join/leave
+    mutations, CORS middleware (AllowAllOrigins as dev fallback), and router mounting.
+    Includes a lightweight in-memory store module inline or as a submodule with lock-guarded
+    mutation helpers.
+  expected_artifacts:
+  - backend/main.py
+  acceptance_criteria:
+  - check: import_present
+    file: backend/main.py
+    module: fastapi
+    symbol: FastAPI
+  - check: import_present
+    file: backend/main.py
+    module: asyncio
+  - check: import_present
+    file: backend/main.py
+    module: backend.routes.runs
+  - check: module_imports
+    severity: warning
+    file: backend/main.py
+  - check: command_exit_zero
+    argv:
+    - python
+    - -m
+    - py_compile
+    - backend/main.py
+  depends_on:
+  - 0
+- task_index: 2
+  task_type: development.develop
+  role: dev
+  focus: backend runs crud endpoints
+  description: Implement POST /runs (create with required-field validation → 201 or
+    422), GET /runs (list all runs with participant counts → 200, empty list when
+    none), and GET /runs/{id} (detail with participants → 200 or 404). All routes
+    use the in-memory store. Created runs appear immediately in the list.
+  expected_artifacts:
+  - backend/routes/runs.py
+  acceptance_criteria:
+  - check: endpoint_defined
+    file: backend/routes/runs.py
+    methods_paths:
+    - POST /runs
+    - GET /runs
+    - GET /runs/{id}
+  - check: import_present
+    file: backend/routes/runs.py
+    module: backend.models
+  - check: command_exit_zero
+    argv:
+    - python
+    - -m
+    - py_compile
+    - backend/routes/runs.py
+  depends_on:
+  - 0
+  - 1
+- task_index: 3
+  task_type: development.develop
+  role: dev
+  focus: backend join leave endpoints
+  description: Implement POST /runs/{id}/join (accepts participant_name, rejects empty
+    names with 400, rejects case-insensitive duplicates with 409, returns 404 for
+    missing run) and POST /runs/{id}/leave (removes participant, rejects empty names
+    with 400, returns 404 for missing run or missing participant). Both endpoints
+    use the asyncio.Lock from main.py to prevent race conditions during concurrent
+    mutations. Duplicate check normalizes via lower().strip() but preserves original
+    casing for display.
+  expected_artifacts:
+  - backend/routes/runs.py
+  acceptance_criteria:
+  - check: endpoint_defined
+    file: backend/routes/runs.py
+    methods_paths:
+    - POST /runs/{id}/join
+    - POST /runs/{id}/leave
+  - check: command_exit_zero
+    argv:
+    - python
+    - -m
+    - py_compile
+    - backend/routes/runs.py
+  depends_on:
+  - 0
+  - 1
+  - 2
+- task_index: 4
+  task_type: development.develop
+  role: dev
+  focus: frontend vite react setup
+  description: Scaffold the Vite + React frontend with HashRouter for client-side
+    routing. Configure Vite dev server proxy to forward /api/* to localhost:8000 (backend)
+    to bypass CORS. Set up the app shell with route definitions for /, /new, and /run/:id.
+    Import and render placeholder view components.
+  expected_artifacts:
+  - frontend/src/main.jsx
+  acceptance_criteria:
+  - check: import_present
+    file: frontend/src/main.jsx
+    module: react
+  - check: frontend_compiles
+    severity: warning
+    file: frontend/src/main.jsx
+  depends_on: []
+- task_index: 5
+  task_type: development.develop
+  role: dev
+  focus: frontend runlist view
+  description: Implement the RunList view component at frontend/src/components/RunList.jsx.
+    Fetches GET /runs (proxied via /api/runs), renders each run's title, datetime,
+    location, and participant count. Shows empty-state message when no runs exist.
+    Includes a link/button to navigate to the CreateRun view (/new) and to individual
+    run detail pages.
+  expected_artifacts:
+  - frontend/src/components/RunList.jsx
+  acceptance_criteria:
+  - check: frontend_compiles
+    severity: warning
+    file: frontend/src/components/RunList.jsx
+  depends_on:
+  - 2
+  - 4
+- task_index: 6
+  task_type: development.develop
+  role: dev
+  focus: frontend create run view
+  description: Implement the CreateRun view component at frontend/src/components/CreateRun.jsx.
+    Form with required fields (title, datetime, location) and optional fields (distance,
+    pace, notes). Client-side validation rejects empty required fields before submit.
+    On successful POST /runs, navigates to the run list view. Displays error message
+    on failure.
+  expected_artifacts:
+  - frontend/src/components/CreateRun.jsx
+  acceptance_criteria:
+  - check: frontend_compiles
+    severity: warning
+    file: frontend/src/components/CreateRun.jsx
+  depends_on:
+  - 2
+  - 4
+- task_index: 7
+  task_type: development.develop
+  role: dev
+  focus: frontend run detail view
+  description: Implement the RunDetail view component at frontend/src/components/RunDetail.jsx.
+    Displays run details and participant list. Includes join form (POST /runs/{id}/join
+    with participant_name) and leave form (POST /runs/{id}/leave with participant_name).
+    Shows error messages for duplicate name (409), empty name (400), and missing run/participant
+    (404). Re-fetches run data after mutations to keep state consistent.
+  expected_artifacts:
+  - frontend/src/components/RunDetail.jsx
+  acceptance_criteria:
+  - check: frontend_compiles
+    severity: warning
+    file: frontend/src/components/RunDetail.jsx
+  depends_on:
+  - 2
+  - 3
+  - 4
+- task_index: 8
+  task_type: development.develop
+  role: dev
+  focus: backend pytest suite
+  description: 'Write pytest test suite in backend/tests/test_runs.py using httpx/Starlette
+    TestClient. Covers: happy-path create + list + detail, required-field validation
+    rejection (422), join with valid name, duplicate-name rejection (409/400), case-insensitive
+    duplicate detection (Alice vs alice), empty name rejection, leave valid participant,
+    leave missing participant (404), missing run 404 on all endpoints, and empty-state
+    list returns empty array. Lightweight fixtures only — in-memory store resets per
+    test via fresh app client.'
+  expected_artifacts:
+  - backend/tests/test_runs.py
+  acceptance_criteria:
+  - check: function_defined
+    file: backend/tests/test_runs.py
+    name_prefix: test_
+    min_count: 6
+  - check: import_present
+    file: backend/tests/test_runs.py
+    module: backend.main
+  - check: command_exit_zero
+    argv:
+    - python
+    - -m
+    - py_compile
+    - backend/tests/test_runs.py
+  depends_on:
+  - 2
+  - 3
+- task_index: 9
+  task_type: qa.test
+  role: qa
+  focus: backend test suite verification
+  description: Verify that backend/tests/test_runs.py contains sufficient test functions
+    covering happy paths, required-field validation (422), case-insensitive duplicate
+    rejection (409/400), and 404 handling. Validates file compiles cleanly and imports
+    the FastAPI test client from backend.main.
+  expected_artifacts: []
+  acceptance_criteria:
+  - check: function_defined
+    file: backend/tests/test_runs.py
+    name_prefix: test_
+    min_count: 8
+  - check: import_present
+    file: backend/tests/test_runs.py
+    module: backend.main
+  - check: command_exit_zero
+    argv:
+    - python
+    - -m
+    - py_compile
+    - backend/tests/test_runs.py
+  depends_on:
+  - 8
+- task_index: 10
+  task_type: qa.test
+  role: qa
+  focus: frontend view compilation checks
+  description: Verify that the three required frontend views (RunList, CreateRun,
+    RunDetail) compile successfully without bundler-level errors. Ensures routing,
+    imports, and component structure are sound before manual FE/BE integration smoke
+    testing.
+  expected_artifacts: []
+  acceptance_criteria:
+  - check: frontend_compiles
+    file: frontend/src/components/RunList.jsx
+  - check: frontend_compiles
+    file: frontend/src/components/CreateRun.jsx
+  - check: frontend_compiles
+    file: frontend/src/components/RunDetail.jsx
+  depends_on:
+  - 5
+  - 6
+  - 7
+- task_index: 11
+  task_type: qa.test
+  role: qa
+  focus: qa_handoff documentation validation
+  description: 'Verify that qa_handoff.md contains all mandatory sections required
+    for cycle closure: start/run commands, verification steps, implemented scope,
+    and known limitations. Ensures the handoff artifact meets QA readiness standards.'
+  expected_artifacts: []
+  acceptance_criteria:
+  - check: regex_match
+    file: qa_handoff.md
+    pattern: '## How to (Start|Run|Verify|Test)'
+    count_min: 2
+  - check: regex_match
+    file: qa_handoff.md
+    pattern: '## Implemented Scope'
+    count_min: 1
+  - check: regex_match
+    file: qa_handoff.md
+    pattern: '## Known Limitations'
+    count_min: 1
+  depends_on: []
+summary:
+  total_dev_tasks: 9
+  total_qa_tasks: 3
+  total_tasks: 12
+  estimated_layers: []
