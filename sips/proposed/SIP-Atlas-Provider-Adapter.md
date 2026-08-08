@@ -368,12 +368,30 @@ This SIP is that second provider, so the suite ships in its conformance form.
 | Streaming | `chat_stream()` yields ≥1 chunk; concatenation equals the non-streamed content for a deterministic prompt (temperature 0) |
 | Usage accounting | token counts present and internally consistent (`total == prompt + completion`), or all `None` — never partial, never zero-filled |
 | Model listing | `list_available_models()` returns names matching the declared capability |
+| **Listing vs. absence** | **three distinct outcomes, asserted separately and never collapsed** — see below |
+| Model management | `model_management: True` → pull/delete round-trip; `False` → the method raises, and callers surface an honest 503 rather than a silent no-op |
 | Error translation | unknown model → `LLMModelNotFoundError`; unreachable host → `LLMConnectionError`; sub-second timeout → `LLMTimeoutError` |
 | Capability honesty | every declared-`True` flag is exercised and observed to work; every declared-`False` flag's method raises rather than degrading silently (#572's rule) |
 
 **Capability honesty is the load-bearing row.** It is what makes §3.2's declarations
 trustworthy instead of aspirational, and it is the row that would have caught #572 in the
 queue port.
+
+**The listing-vs-absence row exists because these three collapse into one vague check the
+moment nobody is watching**, and the collapse is invisible — it looks like a passing test.
+The suite asserts each separately, and doctor and the create-time preflight (§3.2 site 3,
+§3.3) must agree with it:
+
+| Situation | `list_available_models()` | Preflight decision | Doctor |
+|---|---|---|---|
+| provider **cannot** enumerate (`model_listing: False`) | raises | `None` → warn and allow | **skipped**, cause stated |
+| provider **can** enumerate, model **present** | list contains it | allow | pass |
+| provider **can** enumerate, model **absent** | list omits it | **block** | **fail**, names the model |
+
+Row 1 must never be reported as row 3, and row 3 must never be softened into row 1. The
+first is a false red that blocks a valid cycle; the second is the false green that lets a
+cycle launch against a model that does not exist. The #423 skip-cause split is the
+governing precedent: an unrunnable check is an evidence gap, never a verdict.
 
 **Tiering, so the suite is runnable in three places:**
 
@@ -419,6 +437,33 @@ queue port.
   (§4.2) reads. SIP-0101's replay harness should drive it — identical replayed inputs
   through two adapters is precisely the use it already names.
 
+#### 3.6.1 The A/B artifact contract
+
+The comparison is a **named artifact with fixed fields**, not a PR-description summary.
+Without this, a later reader re-interprets the numbers to suit whatever question they
+arrived with — and a migration decision reviewed a year on is exactly that reader.
+
+One row per (prompt, model, adapter) pair, all fields required, `None` permitted only
+where the provider genuinely cannot supply the value (and then declared, never zero-filled
+— §3.5's usage-accounting rule):
+
+| Field | Source | Why it is in the contract |
+|---|---|---|
+| `adapter` | conformance harness | which side of the A/B |
+| `model` | resolved model | naming differs per provider (§2.3), so record the resolved value verbatim |
+| `prompt_tokens` | `prompt_eval_count` | prompt size — the prefill workload |
+| `completion_tokens` | `eval_count` | how much was produced; a thinking-posture change surfaces here (§10.3) |
+| `wall_clock_ms` | handler-measured `latency_ms` | **the decision number** — end to end, nothing excluded |
+| `decode_tokens_per_second` | `eval_count / eval_duration` | engine decode speed |
+| `prefill_ms` | `prompt_eval_duration` | **not captured today** — P4 adds it |
+| `load_ms` | `load_duration` | **not captured today** — P4 adds it; model residency across a 6-agent box |
+| `total_ms` | `total_duration` | **not captured today** — P4 adds it; reconciles against `wall_clock_ms` |
+| `artifact_validated` | the cycle's own verdict | throughput is meaningless without it — §3.6's quality-parity half |
+
+`wall_clock_ms` is the decision field and `decode_tokens_per_second` is the diagnostic. If
+the two disagree — decode flat, wall-clock improved — the duration breakdown says why, and
+that is the entire reason the three uncaptured fields are in P4 rather than deferred.
+
 **The gate**: `create_llm_provider` returns an adapter only if its conformance run is
 green. Enforced as a CI-blocking test over the adapter registry, not a runtime check — a
 runtime check would make every process pay for a build-time property.
@@ -454,14 +499,36 @@ like a squad regression.
 Changing any default is **out of scope for this SIP**. The cutover requires, at minimum:
 
 1. the conformance suite green against a live Atlas endpoint on the Spark (P5);
-2. **the A/B artifact recorded, both halves** — a throughput win *and* quality parity
-   (§3.6). Either alone is insufficient: no speed win means no reason to switch, no parity
+2. **the §3.6.1 A/B artifact recorded, both halves** — a throughput win *and* quality
+   parity. Either alone is insufficient: no speed win means no reason to switch, no parity
    means the measurement lineage breaks (§8);
-3. a shakedown cycle on the deployed stack, green, under the new engine;
-4. a release window where the Spark lane is not mid-validation.
+3. **the throughput-telemetry gap fixed and deployed** (§10.3a). The cutover is decided on
+   throughput evidence, and today `tokens_per_second` never reaches LangFuse while nothing
+   persists it at all. Deciding a migration on a log-scraped number is the evidence
+   posture SIP-0096 exists to forbid. **This is a hard precondition of the cutover, and it
+   gates none of P0–P5** — it has its own issue and lands on its own schedule, it simply
+   must be done *before* the decision, not before the adapter;
+4. a shakedown cycle on the deployed stack, green, under the new engine;
+5. a release window where the Spark lane is not mid-validation.
 
 This SIP delivers the *ability* to switch and the *evidence* to decide. It does not
 switch, and it does not pre-authorize switching.
+
+### 4.2a Rollback boundaries — what unwinds, and when
+
+Stated in advance, because the expensive time to discover the blast radius is after a
+failed P5. **Each phase is separately revertible, and the surface grows monotonically:**
+
+| Failure point | What reverts | What stays |
+|---|---|---|
+| **P4 fails** (adapter cannot pass conformance) | `adapters/llm/atlas.py` and its registration — one file plus a factory branch | everything in P0–P3. The port is honest, #313 is closed, doctor is provider-aware. **None of it was Atlas-specific**, which is the point of building the neutrality work first |
+| **P4 green, P5 fails** (adapter conforms; engine loses on throughput or parity) | **nothing in the tree.** The adapter stays, dark and unselected | the A/B artifact — a *recorded negative result*, which is the most valuable output of a failed migration and must not be discarded. It says which dimension lost and by how much, and it is the baseline the next attempt is measured against |
+| **Cutover made, then regretted** | flip `SQUADOPS__LLM__PROVIDER` back to `ollama` and redeploy | model aliases (§3.4 — additive, harmless), config wiring, persisted A/B artifacts. **No DDL and no data migration**, by §4.1.4's additive-only rule |
+
+The middle row is the one worth internalizing: **a failed P5 costs no revert at all.** The
+adapter is inert by construction until a default names it, so "Atlas is not faster" is a
+decision not to flip a config value — not a rollback. That property is bought entirely by
+the dark-ship rule, and it is the strongest practical argument for §4.3's placement.
 
 ### 4.3 Release placement
 
@@ -492,15 +559,27 @@ blocked one, and the phases are ordered so the split is clean.
 
 Each phase is independently shippable, inert per §4.1, and one PR.
 
-| Phase | Content | Size | Depends on |
-|---|---|---|---|
-| **P0** | `capabilities()` on `LLMPort` + Ollama declarations + sites 2/3 stop using `isinstance` | S | — |
-| **P1** | `list_available_models()` on-port + `ModelInfo` + Ollama impl + doctor provider-aware + #423-style skip cause (**closes #313**) | M | P0 |
-| **P2** | `LLMConfig.provider` + factory wiring at both composition roots + unknown-provider raises (**closes #301's LLM half**) | S | P0 |
-| **P3** | Conformance suite, unit + live tiers, run green against Ollama as the only adapter | M | P0–P2 |
-| **P4** | Atlas adapter + conformance run + capability declarations | M | P3, §10.2 resolved |
-| **P5** | A/B tier + malformation/usage baseline recorded | S | P4, live endpoint |
-| — | **Cutover** | — | **not this SIP** (§4.2) |
+**The release boundary runs between P5 and cutover, and it is a hard line.** Everything in
+the table below ships dark in **1.7**; nothing in it changes which engine serves a single
+token. The switch is a **1.8+** decision governed by §4.2, taken against evidence this SIP
+produces but does not act on. A PR from this SIP that changes a default has left the SIP's
+scope, regardless of how green its tests are.
+
+| Phase | Content | Size | Depends on | Release |
+|---|---|---|---|---|
+| **P0** | `capabilities()` on `LLMPort` + Ollama declarations + sites 2/3 stop using `isinstance` + `thinking_tokens` flag declared (§10.3) | S | — | 1.7 |
+| **P1** | `list_available_models()` on-port + `ModelInfo` + Ollama impl + doctor provider-aware + #423-style skip cause — **`Closes #313`** | M | P0 | 1.7 |
+| **P2** | `LLMConfig.provider` + factory wiring at both composition roots + unknown-provider raises — **references #301, does NOT close it** (§10.1) | S | P0 | 1.7 |
+| **P3** | Conformance suite, unit + live tiers, run green against Ollama as the only adapter | M | P0–P2 | 1.7 |
+| **P4** | Atlas adapter + conformance run + capability declarations + capture the three discarded duration fields (§3.6) | M | P3, **§10.2 confirmed** | 1.7 |
+| **P5** | A/B tier + the artifact contract of §3.6.1 recorded | S | P4, live Atlas endpoint on Spark | 1.7 |
+| — | **Cutover — changing the default** | — | **not this SIP** (§4.2) | **1.8+** |
+
+**Issue linkage, stated precisely so a PR cannot overclaim it:** P1 carries
+`Closes #313`. **P2 carries a bare `#301` reference and no `Closes`**, because it fixes
+only the LLM half of a two-part issue (§10.1) — the queue half stays in the 1.7
+composition-root cluster behind its own design gate. P2's PR body must say what remains,
+per the standing partial-fix rule.
 
 **P0–P3 have no dependency on knowing what Atlas is.** They are the neutrality work, they
 close two 1.7-pool issues, and they are independently valuable if Atlas never arrives.
@@ -651,6 +730,47 @@ proving the default path is untouched.
 
 ## 10. Open decisions (draft — resolve before acceptance)
 
+### 10.0 Decision summary
+
+The policy in one place, so it does not have to be reconstructed from five sections.
+Design-review positions below are adopted into this draft; **items marked ⓞ still need
+Jason's explicit word**, per the standing rule that a SIP's position is not a ruling.
+
+**Blocked — nothing proceeds until answered:**
+
+- *Nothing blocks P0–P3.* The neutrality groundwork stands on its own, closes #313, and is
+  worth having even if Atlas never ships.
+- **P4** is blocked on §10.2 — Atlas's endpoint shape confirmed, not assumed.
+- **P5** is blocked on a live Atlas endpoint on the Spark.
+- **The cutover** is blocked on all five §4.2 preconditions, including the §10.3a
+  telemetry fix. ⓞ
+
+**Diagnostic — informs, never gates:**
+
+- **#410 thinking tokens** (§10.3). Explains *why* a throughput number moved; does not
+  decide *whether* to switch. Capability flag declared at P0; the observability half keeps
+  its own issue and schedule, depending on nothing here.
+- **`decode_tokens_per_second`** (§3.6.1). The diagnostic beneath `wall_clock_ms`, which is
+  the decision field.
+
+**Deferred — named home, deliberately not here:**
+
+- **Structured output / `response_schema`** → SIP-LLM-Emission-Contracts (§9).
+- **#301's queue half** → the 1.7 composition-root cluster, behind its own design gate
+  (§10.1).
+- **#707 command allowlists** → the typed-check-menu lineage; on the 1.5 Track E list by
+  filing accident, not by subject (§9).
+- **Provider-aware routing** (small model for verdicts, large for authoring) → successor
+  SIP; needs two working providers first (§7).
+- **A durable per-generation throughput record** → surfaced by §10.3a, not solved by it;
+  plausibly scorecard/1.8 territory.
+- **Per-provider `MODEL_SPECS` restructuring** → deferred until a concrete second use
+  (§3.4).
+
+**Settled in this draft, recorded so review can contest rather than rediscover:** the
+release boundary is 1.7-dark / 1.8+-cutover ⓞ (§4.3); P2 references #301 without closing
+it (§10.1); the A/B decision field is `wall_clock_ms`, not t/s (§3.6.1).
+
 **10.1 — #301's scope.** #301 covers the composition root bypassing *both* the LLM and
 queue factories. This SIP proposes closing the LLM half at P2 and leaving the queue half
 in the 1.7 composition-root cluster, which the 1.5 plan flagged as needing a **design gate
@@ -659,14 +779,31 @@ needs an explicit ruling: close #301 here with a scoped title change, or referen
 without `Closes` and file the queue half separately. *Recommendation: the latter — a
 partial fix references without closing, per the standing rule.*
 
-**10.2 — Atlas's API surface.** §3.5 assumes OpenAI-compatible (`/v1/chat/completions`,
-`/v1/models`), matching SIP-LLM-Emission-Contracts Appendix A's stated expectation.
-Since Atlas is in-house, this is a confirmation, not an investigation. **It blocks P4
-only** — P0–P3 proceed regardless — and it decides whether §6.1's Mac live tier works as
-described. Four facts settle it: endpoint paths, whether model listing exists (sets
-`model_listing`), whether any model load/unload management exists (sets
-`model_management`), and what usage fields the response carries (sets `streaming_usage`
-and whether tokens/sec is native or computed client-side).
+**10.2 — Atlas's API surface. Confirmation rule, not an assumption held indefinitely.**
+§3.5 assumes OpenAI-compatible (`/v1/chat/completions`, `/v1/models`), matching
+SIP-LLM-Emission-Contracts Appendix A. Since Atlas is in-house this is a confirmation, not
+an investigation — but **P4 stays blocked until it is confirmed in writing**, because an
+adapter written against a guessed dialect is discovered wrong at integration, which is the
+most expensive place to find out.
+
+*Confirmed* means these five recorded in this SIP (Appendix B) before P4 opens:
+
+| # | Fact | Sets |
+|---|---|---|
+| 1 | chat/generation endpoint path + request shape | the adapter's transport |
+| 2 | streaming: supported? SSE or NDJSON? | `chat_stream` / `chat_stream_with_usage` |
+| 3 | model-listing endpoint, or none | `model_listing` |
+| 4 | model load/unload management, or none | `model_management` |
+| 5 | usage fields returned, incl. any timing/duration fields | `streaming_usage`, and §3.6.1's `prefill_ms` / `load_ms` / `total_ms` |
+
+**Failure mode if it is not OpenAI-compatible** — bounded, and worth stating so the
+assumption is not load-bearing beyond its blast radius: the transport layer of
+`adapters/llm/atlas.py` changes, one file. Nothing in P0–P3 moves, the port surface does
+not move, and the conformance suite does not move — it is written against the *contract*,
+which is why P3 precedes P4 (§5). The one real casualty is §6.1's Mac live tier, which
+depends on Ollama's `/v1` compatibility surface as a stand-in; that would fall back to a
+recorded-transcript fixture harness at the unit tier, with the live tier deferred to the
+Spark. Strictly weaker, and the reason to confirm early even though it blocks only P4.
 
 **10.3 — #410 (thinking tokens): diagnostic, not gating.** Recorded position, after this
 was argued in both directions during drafting.
@@ -697,15 +834,36 @@ SIP-0061. `parent.generation()` also passes no `start_time`/`end_time`, so LangF
 derive it either, and the emission runs on a buffered daemon thread well after the call.
 
 Consequence: **the only working throughput surface is the Prefect log line**, and t/s is
-persisted nowhere (zero hits in `adapters/persistence/`, `cycles/`, `infra/`). Gating a
-cutover on a log-scraped number is precisely what SIP-0096's evidence doctrine forbids.
-The redaction fix is one line and should be filed as its own bug (issue-before-fix); a
-durable per-generation throughput record is the larger question this SIP surfaces but does
-not resolve.
+persisted nowhere (zero hits in `adapters/persistence/`, `cycles/`, `infra/`).
 
-**10.4 — Release placement.** §4.3's argument for 1.7-dark needs an owner ruling against
-the feature-free rule, since it is the kind of reading that should be decided explicitly
-rather than assumed by an implementer.
+**Disposition — non-gating for the adapter, hard-gating for the cutover.** Deciding a
+migration on a log-scraped number is precisely the evidence posture SIP-0096 forbids, so
+this cannot stay a footnote:
+
+- **Own issue, own owner, own schedule.** Filed as a bug (issue-before-fix), independent of
+  #410 — that one is thinking tokens missing from LangFuse; this is *throughput* reading
+  null for every generation since SIP-0061. The redaction fix is one line.
+- **Blocks nothing in P0–P5.** The adapter, suite, and A/B harness all proceed regardless.
+- **Precondition of the cutover** — §4.2 item 3. Fixed and deployed before the decision
+  reads throughput evidence, not before the adapter is written.
+
+The larger question — a *durable, queryable* per-generation throughput record rather than
+a restored metadata field — is surfaced here and deliberately not solved. It plausibly
+belongs with the 1.8 scorecard, which needs to grade over exactly this kind of series.
+
+**10.4 — Release placement. ⓞ Needs Jason's explicit word.** §4.3's argument for 1.7-dark
+is a reading of the feature-free rule, and readings of a release convention are the owner's
+to make, not an implementer's.
+
+Design review's recommendation: **keep the 1.7-groundwork / 1.8+-cutover split unless the
+review explicitly overrides it.** Adopted into this draft — §5's phasing table carries the
+release column, and §4.2a shows the split is what makes a failed P5 cost nothing.
+
+§4.3's fallback (P0–P2 in 1.7, adapter and suite deferred) stays available as a **clean
+fallback, not a competing interpretation.** If the split is overridden, P0–P2 still land as
+1.7 debt-paydown on their own merits — they close #313 and make the port honest with no
+reference to Atlas at all. That is a smaller plan, not a different one, and nothing in
+P0–P2 changes if it is taken.
 
 ## Appendix A — Coupling inventory verification
 
