@@ -384,8 +384,20 @@ queue port.
 - **A/B tier** — same prompts, same models, same box, through both adapters. **This is the
   migration decision instrument** and the reason the SIP exists (§2.5). It reports two
   numbers, and both gate the cutover:
-  - **Throughput** — tokens/sec and wall-clock per generation. The expected win, and the
-    only reason to switch engines.
+  - **Wall-clock to a validated artifact** — time to an accepted output, the honest
+    headline. **Not tokens/sec.** t/s counts tokens *generated*, and `eval_count`
+    includes thinking tokens the system discards unread (#410), so t/s misreads the
+    comparison in both directions: an engine that thinks *less* delivers the same
+    artifact faster at equal-or-lower t/s (a win scored neutral), and one that is faster
+    per-token but thinks *more* shows higher t/s and worse wall-clock (a regression
+    scored a win). t/s stays as a diagnostic underneath, never the verdict.
+
+    Worked example from a live qa run — `qa_test_handler LLM throughput: 10.6 t/s
+    (4866 tokens)` = ~7.6 minutes for one generation, of which #410's measured 13–81%
+    thinking range means somewhere between ~1 and ~6 minutes is unreadable reasoning.
+    Nothing today can narrow that interval for a given call, which is exactly the
+    problem: **the A/B is uninterpretable until thinking and content tokens are counted
+    separately** (§10.3).
   - **Quality parity** — extraction health (clean / recovered / failed rates per
     SIP-LLM-Emission-Contracts §3.4) and usage-accounting consistency. **A throughput win
     with a quality regression is a loss**, and without this half the FAY and 98.5 lineages
@@ -644,14 +656,38 @@ described. Four facts settle it: endpoint paths, whether model listing exists (s
 `model_management`), and what usage fields the response carries (sets `streaming_usage`
 and whether tokens/sec is native or computed client-side).
 
-**10.3 — #410 (thinking tokens), in or out.** Currently out. The case for pulling it in:
-it is provider-shaped, the port has no way to express "return reasoning separately," and
-it will recur verbatim at Atlas — §3.2 already reserves a `thinking_tokens` flag for it.
-The case for leaving it out: its *ruling* was that thinking stays ON and only the
-observability half ships, which is a LangFuse-emission change with its own redaction
-questions, and it never gates a cut. *Recommendation: declare the `thinking_tokens`
-capability flag here (cheap, and the port surface is being touched anyway), implement the
-observability half in its own PR against #410.*
+**10.3 — #410 (thinking tokens): now load-bearing, not adjacent.** This SIP's first draft
+left #410 out as related-but-separable. That was wrong, and the reason is §3.6's worked
+example: `eval_count` conflates thinking and content, so **a wall-clock difference between
+Ollama and Atlas cannot be attributed** — engine speed, or thinking posture? A cutover
+decided on an unattributable number is the false-verdict class the 1.4.4 line exists to
+prevent.
+
+What the A/B minimally needs is the *split*: thinking tokens counted separately from
+content tokens, per generation. That is #410's observability half, and it is a
+precondition for §4.2's cutover rather than a nice-to-have. Its own ruling (thinking stays
+ON, only observability ships) is unchanged and compatible.
+
+*Recommendation: declare the `thinking_tokens` capability flag at P0 (§3.2, cheap — the
+port surface is being touched anyway), and make #410's observability half a **dependency of
+P5**, not of P0–P4. The adapter work proceeds either way; only the A/B interpretation is
+gated.*
+
+**10.3a — the throughput telemetry gap, found while drafting.** Separately from #410:
+`tokens_per_second` is computed by the Ollama adapter, threaded onto `GenerationRecord`
+by the handlers — and then **dropped** by `LangFuseAdapter.record_generation`
+(`adapters/telemetry/langfuse/adapter.py:188`), which rebuilds the record field-by-field
+for redaction and copies ten of eleven fields, omitting that one. It silently defaults to
+`None`, so LangFuse metadata has carried a null throughput for every generation since
+SIP-0061. `parent.generation()` also passes no `start_time`/`end_time`, so LangFuse cannot
+derive it either, and the emission runs on a buffered daemon thread well after the call.
+
+Consequence: **the only working throughput surface is the Prefect log line**, and t/s is
+persisted nowhere (zero hits in `adapters/persistence/`, `cycles/`, `infra/`). Gating a
+cutover on a log-scraped number is precisely what SIP-0096's evidence doctrine forbids.
+The redaction fix is one line and should be filed as its own bug (issue-before-fix); a
+durable per-generation throughput record is the larger question this SIP surfaces but does
+not resolve.
 
 **10.4 — Release placement.** §4.3's argument for 1.7-dark needs an owner ruling against
 the feature-free rule, since it is the kind of reading that should be decided explicitly
