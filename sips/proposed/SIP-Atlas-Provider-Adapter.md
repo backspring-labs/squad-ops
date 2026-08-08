@@ -629,6 +629,55 @@ If Atlas turns out not to be OpenAI-compatible, the fallback is a recorded-trans
 fixture harness at the unit tier plus a live tier deferred to the Spark — weaker, and the
 reason §3.5's assumption is worth confirming early even though it blocks only P4.
 
+### 6.1a A/B execution protocol — how the comparison is actually run
+
+Provider selection is resolved **once per process, at container boot**
+(`agents/entrypoint.py:362`, in `_create_ports()`). Each agent is its own container, so
+switching providers is an env change plus a restart of the agent containers — **there is
+no per-cycle provider knob, and this SIP deliberately does not add one** (§7 defers
+provider-aware routing to a successor SIP).
+
+That constraint sounds limiting and mostly is not, because **the primary measurement does
+not run cycles at all.** Three levels, each answering a different question:
+
+| Level | Instrument | Answers | Restart? | Cost |
+|---|---|---|---|---|
+| **1 — Generation** | conformance A/B tier: one process, **both adapters instantiated**, identical stored prompts to each | *Is the engine faster?* | **No** | a test run |
+| **2 — Cycle** | two full cycles, same request profile, one per provider | *Does emission quality hold end to end?* | Yes, between | two cycle runs + a redeploy |
+| **3 — Shakedown** | one cycle under Atlas on the deployed stack | *Does it work in situ?* | Yes — it **is** the cutover | §4.2 item 4 |
+
+**Level 1 carries the throughput verdict** and produces §3.6.1's artifact rows. Adapters
+are ordinary objects: instantiate both, point them at two endpoints, send byte-identical
+prompts. Inputs are identical by construction, which no cycle-level comparison can
+promise.
+
+**Level 2 measures what Level 1 structurally cannot** — whether work products survive the
+engine change (extraction health, malformation classes, correction rates). Use the
+SIP-0101 replay harness to control inputs: restore the same boundary checkpoint and run
+the remainder under each provider, so the comparison is not confounded by divergent
+upstream generations. Note the shipped 1.5 slice does **cycle-prefix restore**, not
+prompt-level replay — it constrains the inputs, it does not equalize them.
+
+**Protocol rules — these are the difference between a measurement and a number:**
+
+1. **One engine serving at a time**, even though both are installed. Two engines resident
+   on one box contend for GPU memory and thermal headroom, and the contention lands in the
+   timing being measured.
+2. **Discard warm-up runs; assert `load_ms ≈ 0` on every measured call.** A cold engine's
+   first call pays model load. Comparing a warm Ollama against a cold Atlas manufactures a
+   throughput win. This is why `load_ms` is a required artifact field (§3.6.1) rather than
+   a nice-to-have — it makes the confound *detectable* instead of merely avoidable.
+3. **Same model weights, same quantization, both sides.** Model naming differs per provider
+   (§2.3), so record the resolved name verbatim on each row and verify they refer to the
+   same weights. An unnoticed quantization difference invalidates everything.
+4. **Interleave Level 2 cycles** (A, B, A, B) rather than running all of one then all of
+   the other, so box-state drift does not alias onto the provider variable.
+
+Rule 4 is where a per-cycle provider knob would genuinely help — it would allow
+interleaving without a redeploy between every run. That is a real argument for the
+successor routing SIP, and **not** a reason to build it here: for a one-time migration
+decision, redeploying between cycles is adequate and vastly cheaper than the machinery.
+
 ### 6.2 Acceptance per phase
 
 - **P0–P2:** regression suite green; the byte-identical-default test (§4.1.3); doctor
