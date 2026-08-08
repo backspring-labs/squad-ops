@@ -348,6 +348,48 @@ What the SIP does fix, dialect-independent:
   SIP-LLM-Emission-Contracts, which is still proposed. This SIP must not foreclose it —
   §9 states the seam — but must not pre-implement an unaccepted design either.
 
+### 3.5a vLLM as a control arm (P6 — optional, non-gating)
+
+**The problem a two-provider A/B cannot solve.** Ollama is a convenience wrapper over
+llama.cpp; it does not compete on raw throughput. So "Atlas beat Ollama" is consistent with
+two very different worlds — Atlas is exceptionally well tuned, or Ollama was simply a low
+bar. **A two-point comparison cannot tell those apart, and the difference decides whether
+Atlas is worth maintaining.**
+
+vLLM resolves it as a **control**: a serious, externally-maintained performance baseline
+that nobody here can tune to flatter the result.
+
+| Outcome | Honest reading |
+|---|---|
+| Atlas > vLLM > Ollama | the hand-tuning is real and Spark-specific. Adopt Atlas |
+| Atlas ≈ vLLM > Ollama | the win was "Ollama is slow," not tuning skill. **Consider deploying vLLM and retiring the Atlas maintenance burden** |
+| vLLM > Atlas | the tuning is behind a commodity engine. Strong signal, cheaply bought |
+
+Any of the three is worth knowing before committing to maintain an in-house engine.
+
+**Why it is cheap, and only once P4 exists.** If Atlas and vLLM are both
+OpenAI-compatible, they differ mainly in capability declarations, not transport.
+**That second OpenAI-compatible provider is what justifies extracting a shared
+`OpenAICompatibleAdapter` base** — with only Atlas it would be speculative
+generality, which the standing no-gold-plating rule forbids. With two, the base earns
+itself and vLLM costs roughly a capability table plus a factory branch.
+
+**Secondary value:** it makes the conformance suite honest. Two adapters can silently
+encode "whatever these two happen to do." A third that the team does not control tests the
+*contract* rather than the house style. And it hedges P4/P5 failure — a second migration
+target already proven through the same gate.
+
+**Lineage:** this is #313's original motivating case. Its title reads *"blocks vLLM/alt-
+backend swap,"* and its body anticipates exactly this step: *"adding the actual vLLM
+adapter + factory branch is a separate, follow-on step when a backend switch is real — the
+factory is built for it."*
+
+**Open risk, stated rather than assumed:** vLLM's maturity on DGX Spark's GB10
+Grace Blackwell / ARM64 platform is **unverified here**. Its optimization lineage is
+datacenter x86 + CUDA. If it will not run well on the box, the control arm is unavailable
+and P6 drops — which costs nothing, because P6 gates nothing. Verify before scheduling it,
+not after.
+
 ### 3.6 The conformance suite — the gate
 
 A shared, adapter-parameterized behavioral suite that every adapter must pass **before the
@@ -572,7 +614,8 @@ scope, regardless of how green its tests are.
 | **P2** | `LLMConfig.provider` + factory wiring at both composition roots + unknown-provider raises — **references #301, does NOT close it** (§10.1) | S | P0 | 1.7 |
 | **P3** | Conformance suite, unit + live tiers, run green against Ollama as the only adapter | M | P0–P2 | 1.7 |
 | **P4** | Atlas adapter + conformance run + capability declarations + capture the three discarded duration fields (§3.6) | M | P3, **§10.2 confirmed** | 1.7 |
-| **P5** | A/B tier + the artifact contract of §3.6.1 recorded | S | P4, live Atlas endpoint on Spark | 1.7 |
+| **P5** | A/B tier + the artifact contract of §3.6.1 recorded, per Appendix C | S | P4, live Atlas endpoint on Spark | 1.7 |
+| **P6** | *(optional, non-gating)* vLLM adapter as a **third conformance subject and A/B control arm** (§3.5a) | S–M | P4 | 1.7 |
 | — | **Cutover — changing the default** | — | **not this SIP** (§4.2) | **1.8+** |
 
 **Issue linkage, stated precisely so a PR cannot overclaim it:** P1 carries
@@ -811,6 +854,9 @@ Jason's explicit word**, per the standing rule that a SIP's position is not a ru
   filing accident, not by subject (§9).
 - **Provider-aware routing** (small model for verdicts, large for authoring) → successor
   SIP; needs two working providers first (§7).
+- **Adopting vLLM as a provider** → a separate decision. P6 runs it as an A/B *control*
+  (§3.5a); nothing here commits to shipping it. If the control arm reveals Atlas ≈ vLLM,
+  that decision becomes live on its own merits.
 - **A durable per-generation throughput record** → surfaced by §10.3a, not solved by it;
   plausibly scorecard/1.8 territory.
 - **Per-provider `MODEL_SPECS` restructuring** → deferred until a concrete second use
@@ -960,6 +1006,119 @@ Recorded for implementation convenience only; the normative surface is §3.2, §
   comparison — or Atlas exposes a native timing field, which is the better answer if it is
   cheap to add on the engine side. **Worth deciding before P4**: an in-house engine can
   simply report it, and a native number beats one inferred across an HTTP boundary.
-- **vLLM / llama.cpp**: OpenAI-compatible plus guided decoding (`guided_json`, GBNF).
-  Listed only as dialect precedent for the structured-output work that
-  SIP-LLM-Emission-Contracts owns, not as candidate providers.
+- **vLLM**: OpenAI-compatible (`/v1/chat/completions`, `/v1/models`) plus guided decoding
+  (`guided_json`). **A candidate third arm, not merely dialect precedent** — see §3.5a
+  (P6) for the control-arm rationale. `usage` carries token counts; like all
+  OpenAI-shaped responses it has no native tokens/sec field. No pull/delete equivalent, so
+  `model_management: False`. **Platform maturity on GB10 Grace Blackwell / ARM64 is
+  unverified here** — its optimization lineage is datacenter x86 + CUDA (§3.5a).
+- **llama.cpp**: OpenAI-compatible plus GBNF grammars. Dialect precedent only; Ollama
+  already wraps it, so it is not an independent arm.
+
+
+## Appendix C — A/B runbook (operational; §6.1a is the design)
+
+§6.1a says *what* is measured and why. This is *how to run it*. Normative only in that the
+cutover decision (§4.2) reads an artifact produced by this procedure.
+
+**Two claims, two instruments. Run the cheap one first — it is a kill gate.**
+
+| Claim | Instrument | Cost |
+|---|---|---|
+| **A — the engine is faster** | paired generation benchmark, no cycles | hours |
+| **B — quality holds** | interleaved cycle pairs | days |
+
+A negative Phase A ends the migration for the price of an afternoon. Never run B first.
+
+### C.1 Preconditions — all four, or the numbers lie
+
+1. Engines installed on the Spark with **the same weights at the same quantization** —
+   verified, not assumed. Model naming differs per provider (§2.3), so identical-looking
+   names prove nothing.
+2. **#793 fixed and deployed** — otherwise throughput never reaches telemetry (§10.3a).
+3. **P4 capturing** `prefill_ms` / `load_ms` / `total_ms` (§3.6.1).
+4. **Frozen prompt corpus** — 6–8 real prompts from stored runs, stratified short/medium/
+   long, spanning the handler mix (framing, dev, qa, governance). Frozen means
+   content-hashed and reused verbatim across every arm.
+
+### C.2 Phase A — throughput benchmark
+
+**Budget trap, addressed first.** Real generations run ~7.6 min (§3.6's worked example). A
+naive corpus × reps × arms is 28+ hours. Separate the two things being measured:
+
+- **Prompt size stays realistic** — that is the prefill workload, and where a tuned engine
+  may win.
+- **Cap completion at ~500–1000 tokens** for the rate measurement. Decode rate is being
+  sampled; the full 5,000 tokens are not needed to measure it.
+- **Add 2–3 uncapped full-length runs per arm** to confirm the rate holds as the KV cache
+  grows.
+
+~28 hours becomes ~4.
+
+**Per arm** (`ollama`, `atlas`, and `vllm` if P6):
+
+```
+1. stop every other engine              # one serving at a time — GPU/thermal contention
+2. load model; run 3 discard prompts    # warm-up
+3. assert load_ms ~ 0                   # the cold/warm guard — do not skip
+4. corpus x 3 reps, fixed order, temperature 0
+5. record one §3.6.1 row per generation
+```
+
+**Then reverse the arm order and run the whole thing again.** Whichever engine goes second
+inherits a warmer, more thermally loaded box. Running both orderings makes that effect
+visible instead of silently crediting one side.
+
+**Reading the result:**
+
+- **Pair by prompt.** Same prompt, both arms, paired difference on `wall_clock_ms`.
+- **Medians and spread, never means** — thermal and GC outliers skew a mean.
+- **Check `completion_tokens` before interpreting anything.** Materially fewer tokens is a
+  thinking-posture difference (§10.3), not raw speed; normalize per token before claiming
+  a win.
+- **Reconcile** `prefill_ms + decode + load_ms ≈ total_ms ≈ wall_clock_ms`. If they do not
+  reconcile, the instrument is wrong and the result is void.
+
+### C.3 Phase B — cycle parity
+
+Only if Phase A shows a real win. Same PRD, same request profile, same squad profile.
+
+**Interleave A, B, A, B** — never all of one then all of the other; box-state drift would
+alias onto the provider variable. Restart the agent containers between each (§6.1a).
+Minimum 3 pairs; at 1–2.5 h per cycle this is the real budget line.
+
+Compare: verdict (accepted/rejected) · checks executed vs passed · **correction attempts
+consumed** · extraction health (clean / recovered / failed) · wall-clock per cycle.
+
+> **`correction attempts consumed` is the sleeper metric.** An engine emitting slightly
+> worse-formed output burns correction budget, and a burned correction costs far more
+> wall-clock than decode speed saves. **A Phase A throughput win can be entirely erased
+> here, and it is invisible until Phase B.**
+
+Where feasible, use SIP-0101 replay from a common boundary to constrain inputs — noting
+(§6.1a) that the shipped slice is cycle-prefix restore, so it constrains inputs without
+equalizing them.
+
+### C.4 Decision
+
+Cut over only on **a real throughput win AND parity**. A win with degraded parity is a
+loss: every banked measurement (FAY 6/6, the 98.5 lineage) was taken on the Ollama
+substrate, and parity is what preserves the comparison base for 1.8's scorecard (§8).
+
+With the P6 control arm, apply §3.5a's three-outcome reading before concluding that the
+tuning — rather than Ollama's baseline — produced the win.
+
+### C.5 The traps, ranked by how easily they fake a result
+
+| # | Trap | Guard |
+|---|---|---|
+| 1 | **Cold vs warm** — a warm Ollama against a cold Atlas manufactures a win | `load_ms ≈ 0` asserted on every measured call |
+| 2 | **Ordering effects** — the second arm inherits a hotter box | run both orderings |
+| 3 | **Token-count shift** — fewer tokens reads as speed | check `completion_tokens` before interpreting |
+| 4 | **Correction burn** — inverts the whole result | only visible in Phase B; never skip B |
+| 5 | **Quantization mismatch** — invalidates everything silently | C.1 precondition 1, verified |
+
+Trap 1 is first because it produces a clean-looking number that survives review: nothing
+in the artifact reveals which engine had weights resident unless `load_ms` is recorded.
+That is why it is a **required** field in §3.6.1 rather than a diagnostic — it converts an
+avoidable mistake into a detectable one.
