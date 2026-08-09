@@ -483,8 +483,29 @@ backend swap,"* and its body anticipates exactly this step: *"adding the actual 
 adapter + factory branch is a separate, follow-on step when a backend switch is real — the
 factory is built for it."*
 
+**Status: P6's adapter is built and validated (2026-08-08).** `VLLMAdapter` ships and
+passes the full conformance suite — unit tier plus **live tier against a real
+`vllm-metal` server on Apple Silicon** (vLLM 0.26.0, MLX backend, Metal paged
+attention), 14/14. That is the value §3.5a claimed and could not previously demonstrate:
+the contract now holds against an OpenAI-compatible implementation **nobody on this team
+wrote**, rather than against Ollama's own `/v1` surface.
+
+It also earned its keep on contact: registering a second adapter exposed four "shared"
+assertions in the conformance suite with Ollama's model name baked in — the suite was
+provider-neutral in intent and Ollama-shaped in fact, exactly the trap the 1.5 plan named.
+
+**What the Mac run is NOT.** A local `vllm-metal` server is *adapter* validation, never
+the §3.5a control arm. Different chip, different backend (MLX vs CUDA), different memory
+architecture — no throughput number from this box informs the Spark comparison. An
+indicative side-by-side was collected and is deliberately **not** recorded as a result:
+both engines were resident at once (§C.5 trap 1), the quantizations differ (trap 5), and
+the two rate figures measure different things (Ollama decode-only from native timings,
+vLLM wall-clock-derived including prefill). It demonstrated that the artifact fields
+collect end to end; it measured nothing.
+
 **Open risk, stated rather than assumed:** vLLM's maturity on DGX Spark's GB10
-Grace Blackwell / ARM64 platform is **unverified here**. Its optimization lineage is
+Grace Blackwell / ARM64 platform is **unverified here** — the Apple Silicon result above
+says nothing about it. Its optimization lineage is
 datacenter x86 + CUDA. If it will not run well on the box, the control arm is unavailable
 and P6 drops — which costs nothing, because P6 gates nothing. Verify before scheduling it,
 not after.
