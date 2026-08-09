@@ -70,6 +70,40 @@ AUTHORING_INPUT_CONTRACT: frozenset[str] = frozenset(
 INPUT_CONTRACT_EXTENSION_POINTS: tuple[str, ...] = ("cross_cycle_recall",)
 
 
+#: Recorded as ``GateDecision.decided_by`` when the design asked nothing and the gate passed
+#: itself. Distinct from a human's approval on purpose: the argument for question-gating is
+#: that a rubber stamp cannot be told from a considered decision, and an unrecorded machine
+#: pass-through would reproduce that defect from the other side.
+GATE_DECIDED_BY_NO_QUESTIONS = "system:no_open_questions"
+
+
+def open_questions(manifest_content: str | None) -> tuple[str, ...]:
+    """The design questions this manifest declined to answer, in the author's own words.
+
+    The M4 firing rule (SIP-0103 §3.4 as narrowed 2026-08-08). An `unresolved: true` decision
+    is the author saying the PRD does not determine something and refusing to guess — the one
+    input a human uniquely holds, and the only thing worth stopping a cycle for.
+
+    **Keyed on the design, never on who wrote it.** Guard 1a forbids branching on authoring
+    mode, and a seeded manifest can carry an open question exactly as an authored one can.
+
+    Unparseable or absent content yields no questions: the gate's own plan-validation net
+    already rejects a manifest that cannot be read, and inventing a second opinion here would
+    stop a cycle for a defect that is already being reported.
+    """
+    if not manifest_content:
+        return ()
+    from squadops.capabilities.scaffold import InterfaceManifest
+
+    try:
+        manifest = InterfaceManifest.from_yaml(manifest_content)
+    except Exception:  # noqa: BLE001 - unreadable manifests are the gate net's to report
+        return ()
+    return tuple(
+        d.question.strip() for d in manifest.decisions if d.unresolved and d.question.strip()
+    )
+
+
 def authors_interface_manifest(resolved_config: Mapping[str, Any] | None) -> bool:
     """True when the squad writes the manifest rather than binding a seeded one.
 

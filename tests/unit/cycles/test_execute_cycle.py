@@ -1325,6 +1325,24 @@ tasks:
 """
 
 
+def _assert_gate_reached_without_rejection(mock_registry, mock_event_bus) -> None:
+    """The run reached a gate decision, and that decision was not a rejection.
+
+    What the #494/#496/#509 inverse guards are actually about: plan validation must not
+    auto-reject a bound plan. They expressed it as "no decision recorded, and AWAITING was
+    emitted" — both of which M4 (#807) changed without changing what they guard. A design
+    that declares no open question now records a *system approval* and never emits AWAITING,
+    because there is nothing for an operator to be asked. Asserting the decision instead of
+    the wait keeps the guard pointed at the rejection it was written for.
+    """
+    decisions = [call.args[1] for call in mock_registry.record_gate_decision.await_args_list]
+    rejected = [d for d in decisions if d.decision == GateDecisionValue.REJECTED.value]
+    assert not rejected, f"plan validation auto-rejected: {[d.notes for d in rejected]}"
+
+    reached = decisions or EventType.WORKLOAD_GATE_AWAITING in _emit_types(mock_event_bus)
+    assert reached, "the run never reached its gate at all"
+
+
 class TestInterWorkloadGatePlanValidation:
     """#464 at the seam cycles ACTUALLY traverse: multi-workload runs gate
     between workloads on a COMPLETED framing run — the mid-run gate check
@@ -1636,8 +1654,7 @@ class TestInterWorkloadGatePlanValidation:
 
         await executor.execute_cycle("cyc_001", "run_001")
 
-        mock_registry.record_gate_decision.assert_not_awaited()
-        assert EventType.WORKLOAD_GATE_AWAITING in _emit_types(mock_event_bus)
+        _assert_gate_reached_without_rejection(mock_registry, mock_event_bus)
 
     async def test_bind_mode_with_manifest_and_bound_plan_gates_normally(
         self, executor, mock_registry, mock_event_bus
@@ -1719,8 +1736,7 @@ class TestInterWorkloadGatePlanValidation:
 
         await executor.execute_cycle("cyc_001", "run_001")
 
-        mock_registry.record_gate_decision.assert_not_awaited()
-        assert EventType.WORKLOAD_GATE_AWAITING in _emit_types(mock_event_bus)
+        _assert_gate_reached_without_rejection(mock_registry, mock_event_bus)
 
     async def test_bind_mode_with_seeded_manifest_gates_normally(
         self, executor, mock_registry, mock_event_bus
@@ -1808,8 +1824,7 @@ class TestInterWorkloadGatePlanValidation:
 
         await executor.execute_cycle("cyc_001", "run_001")
 
-        mock_registry.record_gate_decision.assert_not_awaited()
-        assert EventType.WORKLOAD_GATE_AWAITING in _emit_types(mock_event_bus)
+        _assert_gate_reached_without_rejection(mock_registry, mock_event_bus)
 
     async def test_document_regex_plan_gates_normally(
         self, executor, mock_registry, mock_event_bus

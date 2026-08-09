@@ -20,7 +20,9 @@ step that revises against the gates, replacing the ungated proposer-side emissio
 relocates, and **#796** — the fix V4 roll 1 exposed: an authored manifest now derives and
 pins its contract mid-framing, so the plan authors bind to the design their own squad just
 wrote instead of inventing paths, and every contract-gated net engages. M4 (the human
-manifest gate, narrowed to question-gated review) and **M5 authoring provenance (#803)** —
+manifest gate, narrowed to question-gated review — #807: the gate stops only when the
+design declares an unresolved decision, and the question itself is what the operator is
+shown; a design that asks nothing records a distinguishable system approval and proceeds) and **M5 authoring provenance (#803)** —
 a system-owned block recording mode, cycle, task, attempt count and the *classified* reason
 for each revision, excluded from the manifest's canonical projection so recording how a
 design was written can never move the hash its contract binds.

@@ -46,9 +46,16 @@ from squadops.cycles.acceptance_evaluation import resolve_check_stack
 from squadops.cycles.agent_config import build_agent_resolver
 from squadops.cycles.build_completeness import compute_missing_required_files
 from squadops.cycles.checkpoint import RunCheckpoint
-from squadops.cycles.contract_derivation import CONTRACT_ARTIFACT_TYPE, SEEDED_MANIFEST_FILENAME
+from squadops.cycles.contract_derivation import (
+    CONTRACT_ARTIFACT_TYPE,
+    SEEDED_MANIFEST_FILENAME,
+    is_interface_manifest,
+)
 from squadops.cycles.frozen_check_validation import frozen_check_violations
-from squadops.cycles.manifest_authoring import MANIFEST_ARTIFACT_TYPE
+from squadops.cycles.manifest_authoring import (
+    GATE_DECIDED_BY_NO_QUESTIONS,
+    MANIFEST_ARTIFACT_TYPE,
+)
 from squadops.cycles.models import (
     ArtifactRef,
     Cycle,
@@ -728,18 +735,46 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                         )
                         continue  # same index — re-execute framing
                     break
-                self._cycle_event_bus.emit(
-                    EventType.WORKLOAD_GATE_AWAITING,
-                    entity_type="workload",
-                    entity_id=current_run_id,
-                    context={"cycle_id": cycle_id, "run_id": current_run_id},
-                    payload={"gate_name": gate_name},
-                )
-                decision = await self._poll_inter_workload_gate(
-                    current_run_id,
-                    cycle,
-                    gate_name,
-                )
+                # M4 (#807): the gate stops only when the DESIGN asks a question. A
+                # manifest that declares no unresolved decision has already been approved by
+                # the deterministic gates, and a review that adds nothing is worse than no
+                # review — it manufactures the appearance of one. Keyed on the design, never
+                # on who wrote it (Guard 1a).
+                questions = await self._design_questions_for_gate(run, cycle)
+                if questions is not None and not questions:
+                    # Synthesized, not short-circuited: the decision runs through the SAME
+                    # exhaustive dispatch below that a human's answer does, so a
+                    # pass-through cannot reach a path an approval would not.
+                    decision = await self._approve_gate_without_questions(
+                        current_run_id, cycle_id, gate_name
+                    )
+                else:
+                    self._cycle_event_bus.emit(
+                        EventType.WORKLOAD_GATE_AWAITING,
+                        entity_type="workload",
+                        entity_id=current_run_id,
+                        context={"cycle_id": cycle_id, "run_id": current_run_id},
+                        # The questions ARE the review request (§5c.10): an operator shown
+                        # "approve?" reviews nothing; one shown "the PRD does not define the
+                        # expansion checkpoint — which is it?" answers what only they know.
+                        payload={
+                            "gate_name": gate_name,
+                            "open_questions": list(questions or ()),
+                        },
+                    )
+                    if questions:
+                        logger.info(
+                            "Gate %r on run %s is waiting on %d design question(s): %s",
+                            gate_name,
+                            current_run_id,
+                            len(questions),
+                            "; ".join(questions),
+                        )
+                    decision = await self._poll_inter_workload_gate(
+                        current_run_id,
+                        cycle,
+                        gate_name,
+                    )
 
                 if decision.decision == GateDecisionValue.REJECTED:
                     break  # Run stays COMPLETED; rejection in gate_decisions
@@ -1691,6 +1726,88 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         ``execution_overrides`` — no feature flag (house rule). Absence is
         author mode = today's behavior exactly."""
         return bool(cycle.execution_overrides.get("contract_ref"))
+
+    async def _design_questions_for_gate(self, run: Any, cycle: Any) -> tuple[str, ...] | None:
+        """The design questions this run's manifest declined to answer (#807, M4).
+
+        Three-valued, and the third value is the point:
+
+        - ``None`` — **the cycle has no manifest at all.** A plan-only or non-scaffolded
+          cycle has no design artifact, so its gate is a plan review and keeps today's
+          behavior. Narrowing to design-bearing cycles keeps M4 from silently removing a
+          human checkpoint from cycles it never claimed to be about.
+        - ``()`` — a design that asks nothing. The deterministic gates are its approval.
+        - non-empty — the author declared the PRD does not determine something and refused to
+          guess. That is the one input a human uniquely holds.
+
+        **Both rails are read, and that is Guard 1a.** A manifest this run authored lives on
+        the run's refs; an operator-seeded one lives on the cycle's ``plan_artifact_refs``.
+        Reading only the first would make seeded cycles keep a mandatory review while
+        authored ones lost it — behavior correlated with authoring mode, which the release's
+        first guard exists to forbid. The question is a property of the design, not of who
+        supplied it.
+        """
+        from squadops.cycles.contract_derivation import load_seeded_manifest_content
+        from squadops.cycles.manifest_authoring import open_questions
+
+        # The completed run the caller already fetched — re-reading it here would add a
+        # registry round-trip per gate for a value the loop is holding.
+        for ref_id in tuple(run.artifact_refs or ()):
+            try:
+                ref, content_bytes = await self._artifact_vault.retrieve(ref_id)
+            except Exception:
+                continue
+            if is_interface_manifest(ref):
+                return open_questions(content_bytes.decode(errors="replace"))
+
+        seeded = await load_seeded_manifest_content(
+            self._artifact_vault, cycle.execution_overrides.get("plan_artifact_refs")
+        )
+        return None if seeded is None else open_questions(seeded)
+
+    async def _approve_gate_without_questions(
+        self, run_id: str, cycle_id: str, gate_name: str
+    ) -> GateDecision:
+        """Record the pass-through as a decision and return it.
+
+        **Recorded, not implied.** The argument for question-gating is that a rubber stamp
+        cannot be told from a considered approval; a machine pass-through leaving no row
+        would reproduce exactly that, one level down. ``decided_by`` distinguishes the two
+        for `runs show` and for anyone reading the history later.
+
+        Returned rather than acted on, so the caller runs it through the same exhaustive
+        decision dispatch a human's answer takes — a pass-through cannot reach a path an
+        approval would not.
+        """
+        decision = GateDecision(
+            gate_name=gate_name,
+            decision=GateDecisionValue.APPROVED.value,
+            decided_by=GATE_DECIDED_BY_NO_QUESTIONS,
+            decided_at=datetime.now(UTC),
+            notes=(
+                "The manifest declares no unresolved decision, so the design asked nothing "
+                "a human uniquely answers. Schema and winnability gates are the approval; "
+                "plan validation passed at this gate."
+            ),
+        )
+        await self._cycle_registry.record_gate_decision(run_id, decision)
+        self._cycle_event_bus.emit(
+            EventType.GATE_DECIDED,
+            entity_type="run",
+            entity_id=run_id,
+            context={"cycle_id": cycle_id, "run_id": run_id},
+            payload={
+                "gate_name": gate_name,
+                "decision": GateDecisionValue.APPROVED.value,
+                "decided_by": GATE_DECIDED_BY_NO_QUESTIONS,
+            },
+        )
+        logger.info(
+            "Gate %r on run %s auto-approved: the design declares no open question",
+            gate_name,
+            run_id,
+        )
+        return decision
 
     async def _bind_authored_manifest(
         self,
