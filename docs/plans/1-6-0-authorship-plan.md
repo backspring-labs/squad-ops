@@ -481,10 +481,42 @@ carry that judgment in Phase 1; a mechanical coverage proof is not a Phase-1 blo
 > closed-surface proof over the manifest's own declarations, which is exactly the Phase-1 class.
 > It was not deferred by a decision; it was lost between the SIP and this table.
 >
-> **Owner decision owed:** build it (cheap — the naming-prior check is string coherence over
-> declared paths and testids), or record the deferral explicitly so a §3.3 reader is not misled.
-> Not silently, either way. Noted that V4/V5 produced coherent `{run_id}` naming unprompted, so
-> the class has not fired in authored mode — evidence for deferring, not for pretending it shipped.
+> **DEFERRED — owner ruling 2026-08-09, filed as #820 with a named trigger.** §3.3's third
+> bullet does not ship in 1.6. The disclosure obligation is discharged here and on the issue, so
+> a §3.3 reader is not left inferring a proof that does not exist.
+
+#### Why deferring interface self-consistency is defensible *(and where it stops being so)*
+
+**What M3 does prove:** `PROOF_TESTID_COVERAGE` — every frontend route declares ≥ 1 testid
+(`cycles/manifest_gates.py::_testid_findings`). Coverage, not coherence.
+
+**What stays unproven:** that a path parameter for the same logical entity is named consistently
+across endpoints; that declared testids correspond to anything the endpoints or views promise;
+endpoint/param mutual coherence generally.
+
+**The argument for deferring, which is stronger than "it hasn't fired":**
+
+- The motivating instance was **PR #565 — *"rename group_run path param `{id}` → `{run_id}`"*** — a
+  fix applied to the **hand-authored** reference manifest. The class fires when a *human* declares
+  a name that fights the model's prior, and the implementation then writes the prior instead of
+  the declaration.
+- **Authored mode structurally shrinks that class**: when the squad authors the manifest, the
+  declaration and the implementation are generated from the same prior, so they agree by
+  construction rather than by discipline. V4 rolls 1 and 2 and V5 each derived `{run_id}`
+  unprompted from behavioral prose — three rolls, zero occurrences.
+- **It does not eliminate it.** Nothing forces cross-endpoint consistency, so an authored manifest
+  could still declare `{id}` on one endpoint and `{run_id}` on another. The class is narrowed,
+  not closed — which is exactly why this is a deferral with a trigger rather than a deletion.
+
+**Named triggers that bring it back** (any one):
+
+1. An authored manifest naming the same logical entity's path parameter two ways across endpoints.
+2. Any live-roll loss or A4 `plan_defect` whose root cause names a manifest naming incoherence.
+3. **The second stack introducing a second path-parameter convention.** Express-style `:runId`
+   against the manifest's `{run_id}` means a translation seam that does not exist today, and a
+   mismatch there is this same failure wearing different clothes. *Marked as a prediction, not a
+   verified claim — the Node expander does not exist yet* (this plan's own citation rule: a claim
+   about code that has not been written is labelled as such).
 
 ### M4. Manifest review — **question-gated, not review-gated** *(scope narrowed 2026-08-08)*
 
@@ -944,6 +976,10 @@ loaded-module verification, per the 1.5 precedent.
 **Cut gate.** *(Verification: V7, then V8.)*
 1. **Core-claim gate:** M0–M6 and S1–S3 + S5 complete; B1 emitting both dimensions. Removal of any item requires an
    owner-ratified scope change.
+   **One such change is on the record:** SIP-0103 §3.3's third bullet — the interface
+   self-consistency proof — is **deferred to 1.7 (#820, owner ruling 2026-08-09)** with named
+   triggers. M3 is otherwise complete. Recorded here because "M0–M6 complete" would otherwise
+   read as covering a normative bullet that does not ship.
 2. **Capacity roll:** unfinished capacity items → 1.7 pool with a milestone update.
 3. **Full regression green**, and all three guard halves verified (1a no-branch architecture
    test; 1b reference-manifest equivalence; 2's committed pre-registration record).
