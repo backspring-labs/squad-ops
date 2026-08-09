@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import json
 import logging
 import os
 import time
@@ -71,6 +72,11 @@ from squadops.cycles.patch_verification import (
     STRUCTURALLY_UNEVALUABLE_REASONS,
     overlay_artifacts,
     verify_patched_artifacts,
+)
+from squadops.cycles.rejection_baseline import (
+    REJECTION_ARTIFACT_TYPE,
+    REJECTION_FILENAME,
+    RejectionClassifier,
 )
 from squadops.cycles.run_ledger import RunLedger
 from squadops.cycles.task_outcome import TaskOutcome
@@ -1727,6 +1733,52 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         author mode = today's behavior exactly."""
         return bool(cycle.execution_overrides.get("contract_ref"))
 
+    async def _store_rejection_record(
+        self,
+        run: Any,
+        cycle: Any,
+        gate_name: str,
+        classifier: Any,
+        errors: list[str],
+    ) -> None:
+        """Persist which classes rejected this plan (#809, B1).
+
+        Written at the moment of rejection because that is the only moment the producing
+        validator is known without parsing prose back out of a joined error string. Nothing
+        in 1.6 reads it — the pre-memory baseline is unrecoverable once Cross-Cycle Memory
+        exists, so it is captured now and aggregated whenever the window is scored.
+
+        Never raises. A baseline is a record, not a gate: losing one cycle's bookkeeping is a
+        gap in a dataset, while failing the rejection path would turn it into a lost cycle.
+        """
+        payload = classifier.record(gate_name, errors)
+        if not payload:
+            return
+        content = json.dumps(payload, indent=2).encode("utf-8")
+        try:
+            await self._artifact_vault.store(
+                ArtifactRef(
+                    artifact_id=f"art_{uuid4().hex[:12]}",
+                    project_id=cycle.project_id,
+                    artifact_type=REJECTION_ARTIFACT_TYPE,
+                    filename=REJECTION_FILENAME,
+                    content_hash=sha256(content).hexdigest(),
+                    size_bytes=len(content),
+                    media_type="application/json",
+                    created_at=datetime.now(UTC),
+                    cycle_id=cycle.cycle_id,
+                    run_id=run.run_id,
+                ),
+                content,
+            )
+        except Exception:
+            logger.warning(
+                "Could not store the rejection record for run %s; the baseline loses this "
+                "cycle's plan-validation classes",
+                run.run_id,
+                exc_info=True,
+            )
+
     async def _design_questions_for_gate(self, run: Any, cycle: Any) -> tuple[str, ...] | None:
         """The design questions this run's manifest declined to answer (#807, M4).
 
@@ -3115,6 +3167,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # switched off for exactly the plans that need them most (V4 roll 1: four tasks
         # claimed scaffold-frozen files and nothing caught it).
         run_contract_ref: str | None = None
+        # B1 (#809): which validator rejected, recorded where it is known. The gate calls its
+        # validators one at a time, so no signature changes and no prose to parse back — the
+        # names are the same vocabulary the authoring-rules asset teaches.
+        classifier = RejectionClassifier()
         contract = None  # set in bind mode below; feeds the soft-violation log
         for ref_id in tuple(run.artifact_refs or ()):
             try:
@@ -3139,20 +3195,38 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                         exc_info=True,
                     )
                 else:
-                    errors.extend(parsed_plan.validate_criteria_scope())
+                    errors.extend(
+                        classifier.collect(
+                            "validate_criteria_scope", parsed_plan.validate_criteria_scope()
+                        )
+                    )
                     # #645: contract-independent winnability nets — an
                     # unexecutable command check or a directory-shaped
                     # expected artifact dooms the roll deterministically;
                     # both are provable here in microseconds, and a system
                     # rejection re-rolls framing for free where a human
                     # rejection would end the cycle (#522).
-                    errors.extend(parsed_plan.validate_command_checks())
-                    errors.extend(parsed_plan.validate_expected_artifact_shapes())
+                    errors.extend(
+                        classifier.collect(
+                            "validate_command_checks", parsed_plan.validate_command_checks()
+                        )
+                    )
+                    errors.extend(
+                        classifier.collect(
+                            "validate_expected_artifact_shapes",
+                            parsed_plan.validate_expected_artifact_shapes(),
+                        )
+                    )
                     # #673: a dual-claimed expected artifact aliases two tasks
                     # onto one file's fate (repair mis-scoping, last-wins
                     # emission) — provable plan-wide right here, and a system
                     # rejection re-rolls framing for free (#522).
-                    errors.extend(parsed_plan.validate_unique_expected_artifacts())
+                    errors.extend(
+                        classifier.collect(
+                            "validate_unique_expected_artifacts",
+                            parsed_plan.validate_unique_expected_artifacts(),
+                        )
+                    )
                     # #715: a qa.test task whose declared artifacts can never
                     # satisfy required tests_pass fails on any content — shk-4
                     # burned three correction rounds on one. #426: builder
@@ -3160,8 +3234,18 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     # dispatch guard — this seam (the one multi-workload
                     # cycles actually traverse) rejects both for a free
                     # framing re-roll.
-                    errors.extend(parsed_plan.validate_check_applicability(cycle.resolved_config()))
-                    errors.extend(parsed_plan.validate_build_config(cycle.resolved_config()))
+                    errors.extend(
+                        classifier.collect(
+                            "validate_check_applicability",
+                            parsed_plan.validate_check_applicability(cycle.resolved_config()),
+                        )
+                    )
+                    errors.extend(
+                        classifier.collect(
+                            "validate_build_config",
+                            parsed_plan.validate_build_config(cycle.resolved_config()),
+                        )
+                    )
             elif (
                 ref.filename == SEEDED_MANIFEST_FILENAME or artifact_type == MANIFEST_ARTIFACT_TYPE
             ):
@@ -3293,6 +3377,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     len(soft),
                     "; ".join(soft),
                 )
+        await self._store_rejection_record(run, cycle, gate_name, classifier, errors)
         return errors
 
     async def _load_seeded_manifest_content(self, cycle: Cycle) -> str | None:
