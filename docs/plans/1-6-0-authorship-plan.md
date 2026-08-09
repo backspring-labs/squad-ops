@@ -139,6 +139,24 @@ while 1.6's first deploy window is still far out, or any one of them turning liv
 
 ## Track M — Squad-Authored Manifest (SIP-0103)
 
+### Remaining sequence *(recorded 2026-08-09, after V5)*
+
+Track M and B1 are complete. What is left, in order:
+
+> **#811 (close the revision loop) + Gate 2 wording → #812 (gate attribution) → S1 →
+> build the Node/TS stack → VS → S3 + S5 → riders → V6 → pre-registration → freeze → V7 → cut**
+
+Why M's leftovers come first: #811 is a behavioural gap in the gate that just shipped — the
+system can ask a question and cannot act on the answer — and deferring it past an entire
+second stack is how it becomes 1.6.1, then 1.7, then a thing someone rediscovers from a log
+line. #812 is small and blocks V7 from being able to state its own configuration.
+
+**Two decisions still open before pre-registration**, both from V4/V5 and both cheap now:
+whether the window records **contract size per roll** (verification depth varies with an
+authoring judgment — roll 1's 400-for-conflict bought 4 probes where roll 2's 409 bought 5),
+and whether the authoring prompt's **worked example should be made unlike the benchmark
+domain**, since a CRUD example measured on a CRUD product flatters the convergence result.
+
 ### Build order — **gates before author**
 
 The M-numbers below are section identities, not a sequence. The build order is:
@@ -718,7 +736,8 @@ offline work, deploy, run the verification that fits what just landed.
 | **V5** | M4 / M5 land | Integration shakedown — the full authored path with provenance stamping, B1 emitting, and **a manifest carrying an unresolved-critical decision, to prove the question-gate fires and the answer reaches the revision** | diagnostic |
 | **V6** | before pre-registration | **Authored-mode viability run** — has this succeeded even once? | diagnostic; **gates V7** |
 | **V7** | frozen deploy | **The authored-mode FAY window.** Pre-registered N, unfiltered | **evidentiary** |
-| **V8** | at the cut | Confirmation shakedown on the integrated line **+ the seeded control re-run** (compared against V2) | diagnostic |
+| **VS** | stack #2 expands | **Track S's missing verification point** *(added 2026-08-09)* — does the Node/TS stack expand, derive a satisfiable contract, and carry a cycle end to end? S3's schema is written against two stacks, so one of them being unproven would make it a schema against one stack and a hope | diagnostic; **gates S3** |
+| **V8** | at the cut | Confirmation shakedown on the integrated line. **The seeded control re-run is conditional** — run it if the window disappoints or something looks off, not as a checkbox | diagnostic |
 
 ### The rule that keeps these from blurring
 
@@ -788,36 +807,70 @@ loaded-module verification, per the 1.5 precedent.
 4. **The measurement:** authored-mode FAY window — pre-registered N, unfiltered, frozen deploy.
    **Gate: FAY repeatably > 0 in authored-manifest mode**, banked as the authored-mode baseline
    that 1.8's memory and campaign work measure against.
-5. **The control is protected** — the V2 seeded baseline and its V8 re-run, see below.
+5. **The offline guards pass** — Guard 1b, replay zero-diff, and M0a's equivalence guard. The
+   seeded control is **conditional**, not a cut item (see "The seeded control" below).
 6. **Confirmation shakedown** on the fully integrated line, green, per the 1.4/1.5 cadence.
 
-### Protecting seeded mode — the control cannot be left uncontrolled
+### The seeded control — **conditional, not scheduled** *(revised 2026-08-09)*
 
-Seeded mode is the permanent control configuration and the replay referent for every future
-release. Unit regression does not cover it: a change can keep every test green and still
-degrade live seeded yield, and if that happens undetected, 1.8 measures its memory work
-against a baseline that quietly moved.
+> **SUPERSEDES the original "Protecting seeded mode" requirement**, which made a V2/V8 paired
+> seeded control a cut-gate item. Owner-ruled after V5, on the argument below. The frozen pair
+> survives as an **offline test fixture**; what is retired is spending *cycles* on it.
 
-A second full FAY window in seeded mode would answer this and roughly doubles the release's
-measurement cost. Three cheaper mechanisms cover the same class, and they are required:
+**The control's unique coverage is a strict subset of an authored cycle's.** Seeded and
+authored runs differ only in the framing half — below framing they are one code path *by
+construction*, which is Guard 1a, and #796 made it literal by having an authored cycle derive
+its contract and become bind mode. Expansion, contract binding, plan validation, dispatch,
+checks and corrections are exercised identically by both.
 
-1. **Guard 1b** — the reference manifest through authored mode must produce byte-identical
-   downstream artifacts. This catches transformation regressions structurally, before any
-   window runs.
-2. **Two seeded observations with a clean baseline between them, not one at the cut.**
-   The original form of this item put a single seeded shakedown at the cut, which is a
-   *claim*, not a control: with nothing to compare against, a degraded number is
-   indistinguishable from a number that was always that. So the seeded control cycle runs
-   at **V2** — immediately after M0b, the last moment the pipeline is fully deterministic
-   and a red is unambiguously ours — and is **re-run at V8** on the integrated line. The
-   comparison is the control; either observation alone is not.
-3. **Replay zero-diff over the 1.5 green corpus** — the #734 method, already proven at the
-   1.5 cut: stored evaluation rows re-evaluate identically under the new code.
+So a seeded run adds no coverage. It adds **lower variance on the shared part**: design held
+constant means a yield change is attributable to code rather than to that roll's design. That
+is precision-per-cycle, not reach — and with a multi-roll authored window there are already N
+observations of the same machinery.
 
-If all three pass and seeded yield has still degraded, the cause is model or environment
-drift rather than this release's changes — and a fresh seeded window would not have
-attributed it either. That is the honest limit of what the cheap mechanisms buy, stated
-rather than glossed.
+Two further facts, stated because they are what actually decided this:
+
+- **The control has never fired.** V2 banked one seeded observation (43/43) and nothing has
+  been compared against it. A detector that has never fired is either useless or means nothing
+  regressed, and one observation cannot distinguish those.
+- **It measures a configuration the release does not ship.** 1.6's claim is authored mode. A
+  scheduled regression detector for the fill-in-a-supplied-design path spends the cut's budget
+  proving the 1.4 capability still works.
+
+#### What replaces it
+
+| mechanism | cost | what it catches |
+|---|---|---|
+| **Guard 1b** — reference manifest through authored mode → byte-identical downstream artifacts | offline, milliseconds | transformation regressions, structurally, before any window |
+| **Replay zero-diff** over the 1.5 green corpus (#734 method) | offline | stored evaluation rows re-evaluating differently under new code |
+| **M0a's standing equivalence guard** | offline | the deriver drifting from the pinned reference |
+
+All three are offline. That is where most of the control's value already lived; the cycles
+were buying variance reduction on top.
+
+#### The seeded cycle stays available as a diagnostic
+
+**Retire the schedule, keep the capability.** The question a seeded run uniquely answers is
+*"is it the design step or the machinery?"* — and that question only arises when a window
+disappoints. If V7 comes back poor, one seeded cycle separates the two directly, because
+design is held constant. Deleting the capability would remove the only instrument for that
+moment, which is exactly when you least want to be building one.
+
+So: **V8's seeded re-run becomes conditional.** Run it when the window disappoints or
+something looks off; not as a checkbox at the cut.
+
+#### The frozen pair is a fixture, not an anchor
+
+`examples/03_group_run/interface_manifest.yaml` (content hash `bb472e267e53…`) and contract v9
+(`tests/fixtures/reference_contract/…`) are pinned by exactly two sha256 constants in M0a's
+test, one committed fixture, and two vault artifact ids. Their remaining job is offline: the
+deriver guard, Guard 1b, and the gate tests.
+
+**Consequence worth stating, since it was previously treated as a constraint:** re-basing the
+pair is a fixture update — re-derive, re-pin two constants, re-ingest — not a measurement
+event. The prohibition on the hash moving was always about it moving *incidentally* (a
+provenance edit silently invalidating a binding, the #494 class), never about a deliberate
+versioned re-base. That distinction unblocks #795 and #772, whose fixes move the hash.
 
 ### Non-gating diagnostics for the window (§5c.7)
 
