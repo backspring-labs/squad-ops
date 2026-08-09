@@ -68,6 +68,19 @@ class ExecutionProfile:
     startup_timeout_s: float = 25.0
     request_timeout_s: float = 10.0
     poll_interval_s: float = 0.1
+    #: #822: a one-time command run in the workspace *before* boot, for stacks whose subject
+    #: cannot run from source. Empty means none — which is every stack that exists today, so
+    #: this is inert until one declares it.
+    #:
+    #: **Why this is not just a longer boot timeout.** Compiling and starting are different
+    #: failures with different diagnoses: "the app is slow to start" and "the app does not
+    #: build" would otherwise arrive as the same `subject did not boot` reason, and the
+    #: build's own output — the only thing that explains it — is on a process that already
+    #: exited. Separating them keeps `_boot_failure_reason` meaning what it says.
+    prepare_argv: tuple[str, ...] = ()
+    #: Generous on purpose: a cold `npm ci` plus a production build is minutes, and this
+    #: bound exists to stop a hang, not to police build speed. Boot keeps its 25s.
+    prepare_timeout_s: float = 600.0
 
 
 # The default profile: boot the FastAPI backend with uvicorn on an allocated port, using the
@@ -222,6 +235,12 @@ def probe_check_rows(outcomes: list[ProbeOutcome]) -> list[dict[str, Any]]:
 def _run_backend_probes(
     workspace: Path, probes: list[Probe], profile: ExecutionProfile
 ) -> list[ProbeOutcome]:
+    # #822: stacks whose subject cannot run from source build first. Inert for every stack
+    # that declares no prepare_argv, which is all of them today.
+    prepare_failure = _prepare(workspace, profile)
+    if prepare_failure is not None:
+        return [ProbeOutcome(p.id, "skipped", prepare_failure) for p in probes]
+
     port = _free_port(profile.host)
     try:
         proc, stderr_spool = _boot(workspace, profile, port)
@@ -265,6 +284,56 @@ def _free_port(host: str) -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind((host, 0))
         return int(s.getsockname()[1])
+
+
+#: The prefix every preparation failure carries, so a reader (and the failure analyzer) can
+#: tell "it would not build" from "it would not start" without parsing the rest.
+PREPARE_FAILURE_PREFIX = "subject preparation failed"
+
+
+def _prepare(workspace: Path, profile: ExecutionProfile) -> str | None:
+    """Run the stack's one-time build, or ``None`` if it declares none (#822).
+
+    Returns a **reason string on failure** rather than raising: a subject that cannot be built
+    is not-executed, exactly as a subject that cannot boot is — never a probe failure and never
+    a crashed task. The caller turns it into ``skipped`` outcomes.
+
+    Output is captured and tailed for the same reason boot stderr is (#512): a build failure
+    disclosed as "preparation failed" and nothing else is undiagnosable, and unlike a boot
+    failure there is no surviving process to interrogate afterwards — if the output is not
+    captured here it does not exist anywhere.
+    """
+    if not profile.prepare_argv:
+        return None
+    try:
+        completed = subprocess.run(  # noqa: S603 — fixed profile argv, workspace-scoped
+            list(profile.prepare_argv),
+            cwd=str(workspace),
+            capture_output=True,
+            timeout=profile.prepare_timeout_s,
+        )
+    except subprocess.TimeoutExpired:
+        return (
+            f"{PREPARE_FAILURE_PREFIX} (no exit within {profile.prepare_timeout_s}s): "
+            f"{' '.join(profile.prepare_argv)}"
+        )
+    except OSError as exc:
+        # The build tool is not on PATH, or the workspace is gone. Same class as a boot
+        # launch failure, reported at the stage that actually hit it.
+        return f"{PREPARE_FAILURE_PREFIX} (could not launch): {exc}"
+    if completed.returncode == 0:
+        return None
+    tail = _output_tail(completed.stderr) or _output_tail(completed.stdout)
+    reason = f"{PREPARE_FAILURE_PREFIX} (exited {completed.returncode})"
+    return f"{reason}: {tail}" if tail else reason
+
+
+def _output_tail(raw: bytes | None, limit: int = 500) -> str:
+    """Whitespace-collapsed tail of captured build output. Bounded like ``_stderr_tail``:
+    a build's full log would swamp the evidence row it has to ride on."""
+    if not raw:
+        return ""
+    return " ".join(raw.decode("utf-8", "replace").split())[-limit:]
 
 
 def _boot(workspace: Path, profile: ExecutionProfile, port: int) -> tuple[subprocess.Popen, Any]:
