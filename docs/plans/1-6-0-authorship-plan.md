@@ -571,11 +571,29 @@ unobserved. **FAY yield does not cover this**: V4 roll 2 flattened the reference
 `Participant` entity into an untyped list and still went green — a design regression yield is
 structurally blind to.
 
-The answer is **sampling, not gating**, carried by diagnostics §5c.7 already requires:
+The answer is **sampling, not gating**, carried by the four diagnostics §5c.7 requires:
 structural diff against the human reference, revision/attempt counts, the gate-rejection
 taxonomy (M6), and manifest size/surface counts. Those move when design quality moves,
 without anyone reading a manifest. A design gets read when a number looks wrong — an operator
 choice, not a pipeline stall.
+
+> **Correction 2026-08-09 — this paragraph originally read "diagnostics §5c.7 *already
+> requires*", which a reader takes as "already has". Two of the four had never been built.**
+> Revision/attempt counts (M5, #803) and the gate-rejection taxonomy (M6, #785) existed; the
+> structural diff and the size/surface counts did not. So the argument for removing a human
+> gate was half-funded from the moment it was made — the same shape as the seeded control's
+> retirement resting on two unbuilt guards, and the second instance of it in this document.
+>
+> Now built: `cycles/manifest_diagnostics.py` plus `scripts/dev/emit_manifest_diagnostics.py`.
+> **Operator-run, never a pipeline stage** — the reference manifest is excluded from squad
+> inputs (§4/§5c.1), so a diff computed inside a cycle would make it an input; an architecture
+> test pins that nothing under `src/squadops` or `adapters/` can reach the module.
+>
+> It reproduces the case it was built for on the first run: against V4 roll 2 it reports
+> `entities → only in reference: Participant` — the typed entity flattened into an untyped list
+> by a roll that then went green on every probe. It also surfaces `/runs/:run_id` vs the
+> reference's `/runs/:id`, which is #820's deferred naming-prior class showing up as a visible
+> non-gating signal rather than a silence.
 
 **The freeze moment moved, and §5a's wording no longer matches the code.** §5a's third
 containment bound says the manifest hash-freezes and the contract derives *"the instant the
