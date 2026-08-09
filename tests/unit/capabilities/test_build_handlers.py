@@ -1448,8 +1448,9 @@ class TestQAContractProbeEmission:
     def _fake_run_probes(self, captured):
         from squadops.capabilities.handlers.probe_runner import ProbeOutcome
 
-        def fake(workspace, probes):
+        def fake(workspace, probes, *, stack=""):
             captured["probe_ids"] = [p.id for p in probes]
+            captured["stack"] = stack
             captured["files"] = sorted(
                 str(p.relative_to(workspace)) for p in workspace.rglob("*") if p.is_file()
             )
@@ -1459,6 +1460,33 @@ class TestQAContractProbeEmission:
             ]
 
         return fake
+
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
+    async def test_the_handler_names_the_stack_it_is_probing(
+        self, _mock_run, mock_context, qa_inputs, monkeypatch
+    ):
+        """#822 end to end. The runner can only boot the right app if the handler tells it
+        which stack this cycle builds; before this, nothing did, and every stack was booted
+        with `uvicorn backend.main:app`."""
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
+        )
+        captured = {}
+        monkeypatch.setattr(
+            "squadops.capabilities.handlers.probe_runner.run_probes",
+            self._fake_run_probes(captured),
+        )
+
+        await QATestHandler().handle(
+            mock_context,
+            {
+                **qa_inputs,
+                "contract_probes": self._PROBES,
+                "resolved_config": {"build_profile": "fullstack_fastapi_react"},
+            },
+        )
+
+        assert captured["stack"] == "fullstack_fastapi_react"
 
     @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
     async def test_generate_path_appends_probe_rows(
@@ -1479,6 +1507,10 @@ class TestQAContractProbeEmission:
         # source workspace (the same artifacts the suite validated).
         assert captured["probe_ids"] == ["vc-probe-create", "vc-probe-dup"]
         assert captured["files"] == ["src/main.py", "src/utils.py"]
+        # #822: the handler names the stack it is probing. Empty here because this
+        # fixture declares no build_profile — which is the fallback path, and the
+        # runner keeps booting the historical FastAPI profile for it.
+        assert captured["stack"] == ""
         # Exact evidence rows: per-probe check rows, criterion-ID-stamped, with the
         # status key normalize_task_checks requires to carry criterion_id through.
         rows = result.outputs["validation_result"]["checks"]
@@ -1915,7 +1947,7 @@ class TestRetestProbesPatchedTree:
     ):
         captured = {}
 
-        def fake_run_probes(workspace, probes):
+        def fake_run_probes(workspace, probes, *, stack=""):
             from squadops.capabilities.handlers.probe_runner import ProbeOutcome
 
             captured["probe_ids"] = [p.id for p in probes]

@@ -26,7 +26,7 @@ from __future__ import annotations
 import ast
 import hashlib
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -1477,6 +1477,18 @@ class ScaffoldStack:
     #: that every gate accepted. Visible-and-unverified has a safe default; silently-wrong
     #: does not.
     criteria_pack: str = ""
+    #: #822: the probe-boot profile ``handlers.probe_runner`` uses to stand this stack's app
+    #: up for behavioral probes — the launcher and entry point (``uvicorn backend.main:app``
+    #: vs ``node dist/server.js``) and the readiness path. A *name*, like ``criteria_pack``,
+    #: so the boot vocabulary stays in the runner layer.
+    #:
+    #: **Not derived from the sandbox ``EnvironmentContract``**, which also carries a
+    #: ``START_APPLICATION`` command: that argv runs *inside the sandbox container*, where
+    #: ``INSTALL_DEPENDENCIES`` built ``.sandbox-venv``. Probes run in the qa container
+    #: against a fresh temp dir with no venv, on ``sys.executable``. Two execution contexts,
+    #: not one fact duplicated — the interpreter is context-specific, only the launcher and
+    #: entry point are stack-specific.
+    probe_profile: str = ""
 
 
 _STACKS: dict[str, ScaffoldStack] = {
@@ -1491,6 +1503,7 @@ _STACKS: dict[str, ScaffoldStack] = {
         # later stack can share one (a FastAPI+Vue stack wants these same backend criteria)
         # without minting a fourth stack vocabulary to express it.
         criteria_pack="fullstack_fastapi_react",
+        probe_profile="fastapi_uvicorn",
     ),
 }
 
@@ -1525,3 +1538,28 @@ def criteria_pack_for(stack: str) -> str:
     """
     known = _STACKS.get(stack)
     return known.criteria_pack if known else ""
+
+
+def probe_profile_for(stack: str) -> str:
+    """The probe-boot profile ``stack`` declares, or ``""`` (#822).
+
+    Total, like :func:`criteria_pack_for`: what to *do* about an undeclared profile belongs
+    to the probe runner, whose caller treats probes as additive evidence that may report
+    not-executed but must never raise.
+    """
+    known = _STACKS.get(stack)
+    return known.probe_profile if known else ""
+
+
+def scaffold_stack_for(resolved_config: Mapping[str, Any] | None) -> str:
+    """The scaffold stack a cycle's config names, or ``""`` (#822).
+
+    Sibling of ``cycles.acceptance_evaluation.resolve_check_stack``, and deliberately not the
+    same function: that one maps ``build_profile`` through to the *evaluator* vocabulary
+    (``"fastapi"``), while boot profiles are keyed on the scaffold stack itself
+    (``"fullstack_fastapi_react"``). Collapsing them would reintroduce the vocabulary
+    confusion S3 still owes a reconciliation for.
+    """
+    config = resolved_config or {}
+    profile = config.get("build_profile")
+    return str(profile) if profile and str(profile) in _STACKS else ""

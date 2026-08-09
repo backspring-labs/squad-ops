@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import contextlib
 import dataclasses
+import logging
 import os
 import socket
 import subprocess
@@ -44,6 +45,8 @@ from squadops.cycles.verification_contract import (
     resolve_probe_path,
 )
 from squadops.cycles.verification_integrity import ResultStatus
+
+logger = logging.getLogger(__name__)
 
 # The one subject the default profile knows how to boot: a FastAPI backend. A probe whose
 # subject the active profile cannot boot is reported skipped (not-executed), never a false pass.
@@ -82,6 +85,32 @@ DEFAULT_PROFILE = ExecutionProfile(
     ),
 )
 
+#: #822: per-stack boot, keyed by the ``probe_profile`` name a ``ScaffoldStack`` declares.
+#: Registered here rather than derived from the sandbox ``EnvironmentContract``: that contract's
+#: ``START_APPLICATION`` argv runs inside the sandbox container against ``.sandbox-venv``, while
+#: this boots in the qa container against a fresh temp dir on ``sys.executable``. Two execution
+#: contexts, so the interpreter is context-specific and only the launcher and entry point are
+#: stack-specific.
+_PROFILES: dict[str, ExecutionProfile] = {
+    "fastapi_uvicorn": DEFAULT_PROFILE,
+}
+
+
+def profile_for_stack(stack: str) -> ExecutionProfile | None:
+    """The boot profile ``stack`` declares, or ``None`` if it declares none (#822).
+
+    ``None`` is the signal to report the backend probes not-executed rather than to boot
+    something else: before this, ``run_probes`` took ``DEFAULT_PROFILE`` as a default argument
+    and no caller overrode it, so **every stack was booted as FastAPI**. That is loud rather
+    than silent — a Node app does not start under ``uvicorn backend.main:app``, so the probes
+    skip and SIP-0096 declines to credit them — but "boot the wrong thing and let it fail" is
+    a diagnosis the reader has to reconstruct, and a declared refusal is one they are handed.
+    """
+    from squadops.capabilities.scaffold import probe_profile_for
+
+    name = probe_profile_for(stack)
+    return _PROFILES.get(name) if name else None
+
 
 @dataclass(frozen=True)
 class ProbeOutcome:
@@ -106,7 +135,8 @@ def run_probes(
     workspace: Path,
     probes: tuple[Probe, ...] | list[Probe],
     *,
-    profile: ExecutionProfile = DEFAULT_PROFILE,
+    profile: ExecutionProfile | None = None,
+    stack: str = "",
 ) -> list[ProbeOutcome]:
     """Boot the subject once, run every probe against it, tear it down.
 
@@ -115,6 +145,17 @@ def run_probes(
     ready, every backend probe is ``skipped`` with a boot reason — a boot failure is a
     not-executed result, not a probe failure. Returns one ``ProbeOutcome`` per probe, in
     contract order.
+
+    **How the subject gets booted (#822).** An explicit ``profile`` wins (the test seam); else
+    ``stack``'s declared profile; else ``DEFAULT_PROFILE``, which is today's behavior for every
+    caller that cannot name a stack and keeps this change inert for them.
+
+    A *registered* stack declaring no profile is the one case that reports not-executed instead
+    of booting something: it means a stack was added without saying how to start it, and the
+    completeness test in ``test_stack_seams`` is what makes that a build-time error rather than
+    a runtime surprise. **This does not raise**, unlike the emitter's refusal in #818, because
+    the caller's contract forbids it — ``qa_test`` treats probes as additive evidence that
+    "surfaces at the run verdict/rollup, not as a task failure here."
     """
     backend = [p for p in probes if p.subject == SUBJECT_BACKEND]
     other = [p for p in probes if p.subject != SUBJECT_BACKEND]
@@ -123,8 +164,25 @@ def run_probes(
         for p in other
     }
 
+    resolved = profile
+    if resolved is None:
+        resolved = profile_for_stack(stack) if stack else DEFAULT_PROFILE
+    if resolved is None:
+        logger.warning(
+            "probe_boot_profile_missing stack=%s — stack declares no probe_profile, so its "
+            "backend probes report not-executed rather than booting another stack's app",
+            stack,
+        )
+        outcomes.update(
+            {
+                p.id: ProbeOutcome(p.id, "skipped", f"stack {stack!r} declares no probe profile")
+                for p in backend
+            }
+        )
+        backend = []
+
     if backend:
-        outcomes.update({o.id: o for o in _run_backend_probes(workspace, backend, profile)})
+        outcomes.update({o.id: o for o in _run_backend_probes(workspace, backend, resolved)})
 
     # preserve contract order
     return [outcomes[p.id] for p in probes]
