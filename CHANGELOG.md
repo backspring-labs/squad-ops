@@ -26,6 +26,10 @@ shown; a design that asks nothing records a distinguishable system approval and 
 a system-owned block recording mode, cycle, task, attempt count and the *classified* reason
 for each revision, excluded from the manifest's canonical projection so recording how a
 design was written can never move the hash its contract binds.
+**B1 (#809)** closes the one item whose omission would have been permanent: rejections are
+now classified at the moment they happen — plan-validation by producing validator, authoring
+by M6 class — so the pre-memory recurrence baseline Cross-Cycle Memory will be measured
+against is capturable. Read by nothing in 1.6, deliberately.
 Plan: `docs/plans/1-6-0-authorship-plan.md`.
 
 ## [1.5.0] — 2026-08-07
