@@ -61,6 +61,10 @@ class GateDecisionRequest(BaseModel):
         "rejected",
     ]
     notes: str | None = None
+    #: #812: who is deciding, when the token cannot say. An agent authenticating as a
+    #: person is invisible to the token, so declaring is the only way the record can be
+    #: true. Omitted → the identity's own type is used; never inferred from behavior.
+    decided_by_kind: Literal["human", "agent"] | None = None
     waived_checks: list[str] = Field(default_factory=list)
     waiver_reason: str | None = None
 

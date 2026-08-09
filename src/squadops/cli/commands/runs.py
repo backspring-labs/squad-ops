@@ -218,6 +218,13 @@ def gate_decision(
     waiver_reason: str | None = typer.Option(
         None, "--waiver-reason", help="Reason for the waiver (required with --waive)"
     ),
+    as_agent: bool = typer.Option(
+        False,
+        "--as-agent",
+        help="Record this decision as made by an autonomous agent, not a person (#812). "
+        "An agent using a human's credentials is invisible to the token, so declaring is "
+        "the only way the record can be true.",
+    ),
 ):
     """Record a gate decision.
 
@@ -252,6 +259,10 @@ def gate_decision(
         decision = "returned_for_revision"
 
     body = {"decision": decision}
+    # #812: only sent when declared. Omitted → the API uses the token's own identity type,
+    # which is the truthful default for a person and the known gap for an undeclared agent.
+    if as_agent:
+        body["decided_by_kind"] = "agent"
     if notes:
         body["notes"] = notes
     if waive:

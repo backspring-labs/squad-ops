@@ -33,6 +33,11 @@ manual retry run. It **restores the prefix the note does not invalidate** via SI
 checkpoint translation — enabled by framing task ids becoming deterministic in the same
 change — and re-runs from the technical design, so the design answers the note rather than
 describing an interface the revised manifest no longer has.
+**#812** makes a gate decision say who made it. `decided_by` was a hardcoded `"system"` with
+a TODO beside it, so all 140 human approvals in the project's history carried the word that
+means *no human was involved* — in the same namespace the machine paths use. It now composes
+`{actor}:{principal}` from the request identity, and an agent can declare itself
+(`--as-agent`) since a token cannot tell.
 **B1 (#809)** closes the one item whose omission would have been permanent: rejections are
 now classified at the moment they happen — plan-validation by producing validator, authoring
 by M6 class — so the pre-memory recurrence baseline Cross-Cycle Memory will be measured
