@@ -772,8 +772,16 @@ def generate_task_plan(
 
     # RC-1 (SIP-0079): Deterministic task IDs for implementation runs.
     # RC-2 (SIP-0086): Manifest-derived IDs use -m{index}- namespace.
-    use_deterministic_ids = (
-        run.workload_type is not None and run.workload_type == WorkloadType.IMPLEMENTATION
+    # #811: FRAMING joins IMPLEMENTATION here. Replay's checkpoint translation rebinds the
+    # run prefix of a deterministic id (``task-{run}-{index}-{type}``) and *raises* on
+    # anything else, so a framing run whose ids were ``uuid4().hex`` could never be replayed
+    # or resumed onto a new run — which is what made an operator-requested manifest revision
+    # cost a full 58-minute re-execution. Ids stay unique within a run and now carry their
+    # position and type, which is also what makes a checkpoint boundary selectable by task
+    # type rather than by guesswork.
+    use_deterministic_ids = run.workload_type in (
+        WorkloadType.IMPLEMENTATION,
+        WorkloadType.FRAMING,
     )
 
     envelopes: list[TaskEnvelope] = []

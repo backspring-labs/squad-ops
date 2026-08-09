@@ -73,6 +73,17 @@ AUTHORING_INPUT_CONTRACT: frozenset[str] = frozenset(
 INPUT_CONTRACT_EXTENSION_POINTS: tuple[str, ...] = ("cross_cycle_recall",)
 
 
+#: Where an operator-requested revision re-enters the framing sequence (#811).
+#:
+#: NOT the authoring stage itself. A reviewer's note is a change to the *design*, so the
+#: technical design must answer it too — restarting at the manifest alone would leave
+#: `technical_design.md` describing an interface the revised manifest no longer has, and the
+#: next reader could not tell which one the squad meant.
+#:
+#: Everything before this point is restored from the superseded run's checkpoint: research and
+#: the objective frame are upstream of the design and unaffected by a note about it.
+REVISION_RESTART_TASK_TYPE = "development.design_plan"
+
 #: Recorded as ``GateDecision.decided_by`` when the design asked nothing and the gate passed
 #: itself. Distinct from a human's approval on purpose: the argument for question-gating is
 #: that a rubber stamp cannot be told from a considered decision, and an unrecorded machine

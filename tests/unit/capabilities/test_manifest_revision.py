@@ -16,7 +16,15 @@ Bug classes guarded:
   write, describing rules that do not apply to them;
 - the revision context escaping the declared input contract, which would make it
   contamination rather than capability;
-- a first-roll authoring run rendering a revision appendix it has no reason to see.
+- a first-roll authoring run rendering a revision appendix it has no reason to see;
+- **the revision re-earning a framing prefix its note did not invalidate** — 58 minutes to
+  change one document, when research and the objective frame are upstream of the design and
+  unaffected by a note about it;
+- the technical design NOT answering the note, which would leave `technical_design.md`
+  describing an interface the revised manifest no longer has;
+- a revision failing closed when its boundary is unresolvable. Replay fails closed because it
+  would otherwise claim a saved prefix it never earned; a revision claims nothing, so the
+  full re-run is simply the slower correct answer.
 """
 
 from __future__ import annotations
@@ -156,3 +164,185 @@ def test_a_task_type_outside_the_registry_gets_no_revision_context():
     )
 
     assert inputs == {}
+
+
+# --------------------------------------------------------------------------- #
+# The replay half: restore the prefix a revision does not invalidate
+# --------------------------------------------------------------------------- #
+
+
+def _checkpoint(index: int, task_ids: tuple[str, ...]) -> Any:
+    from datetime import UTC, datetime
+
+    from squadops.cycles.checkpoint import RunCheckpoint
+
+    return RunCheckpoint(
+        run_id="run_source0001",
+        checkpoint_index=index,
+        completed_task_ids=task_ids,
+        prior_outputs={"data": {"summary": "research"}},
+        artifact_refs=(),
+        plan_delta_refs=(),
+        created_at=datetime(2026, 8, 9, tzinfo=UTC),
+    )
+
+
+def _executor_with_checkpoints(checkpoints: list[Any]) -> Any:
+    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+
+    executor = DispatchedFlowExecutor(artifact_vault=AsyncMock())
+    executor._cycle_registry = AsyncMock()
+    executor._cycle_registry.list_checkpoints.return_value = checkpoints
+    return executor
+
+
+def _cycle(**overrides: Any) -> Any:
+    cycle = MagicMock()
+    cycle.execution_overrides = dict(overrides)
+    return cycle
+
+
+async def test_the_revision_restores_the_prefix_before_the_design():
+    """Research and the objective frame are upstream of the design, so a note about the
+    design cannot invalidate them. Re-earning them costs ~20 of the 58 minutes for nothing."""
+    executor = _executor_with_checkpoints(
+        [
+            _checkpoint(0, ("task-run_source00-000-data.research_context",)),
+            _checkpoint(
+                1,
+                (
+                    "task-run_source00-000-data.research_context",
+                    "task-run_source00-001-strategy.frame_objective",
+                ),
+            ),
+        ]
+    )
+
+    restored = await executor._resolve_revision_checkpoint(
+        _cycle(framing_revision_source="run_source0001"), "run_target0002"
+    )
+
+    assert restored is not None
+    assert len(restored.completed_task_ids) == 2
+    assert all(t.startswith("task-run_target00-") for t in restored.completed_task_ids), (
+        "ids must be rebound into the target run's namespace or suppression matches nothing"
+    )
+
+
+async def test_a_checkpoint_that_already_did_the_design_is_not_restorable():
+    """The design must re-run — it is the first thing a revision invalidates. Restoring past
+    it would skip the stage that answers the note."""
+    executor = _executor_with_checkpoints(
+        [
+            _checkpoint(0, ("task-run_source00-000-data.research_context",)),
+            _checkpoint(
+                2,
+                (
+                    "task-run_source00-000-data.research_context",
+                    "task-run_source00-002-development.design_plan",
+                ),
+            ),
+        ]
+    )
+
+    restored = await executor._resolve_revision_checkpoint(
+        _cycle(framing_revision_source="run_source0001"), "run_target0002"
+    )
+
+    assert restored is not None
+    assert restored.checkpoint_index == 0, "the latest boundary BEFORE the design, not after"
+
+
+@pytest.mark.parametrize(
+    ("checkpoints", "why"),
+    [
+        ([], "no checkpoints survived pruning"),
+        (
+            [_checkpoint(0, ("opaque-uuid4-id-from-before-deterministic-framing-ids",))],
+            "a source run predating deterministic framing ids cannot be translated",
+        ),
+    ],
+)
+async def test_an_unresolvable_boundary_degrades_instead_of_failing(checkpoints, why):
+    """Replay fails closed because a replay that ran the full plan would claim a prefix it
+    never earned. A revision claims nothing — the full re-run is the slower correct answer,
+    and it is exactly what this did before the optimisation existed."""
+    executor = _executor_with_checkpoints(checkpoints)
+
+    restored = await executor._resolve_revision_checkpoint(
+        _cycle(framing_revision_source="run_source0001"), "run_target0002"
+    )
+
+    assert restored is None, why
+
+
+async def test_a_normal_run_resolves_no_revision_checkpoint():
+    """Every framing run passes through this seam; only a revision names a source."""
+    executor = _executor_with_checkpoints([_checkpoint(0, ("task-run_source00-000-x",))])
+
+    assert await executor._resolve_revision_checkpoint(_cycle(), "run_target0002") is None
+
+
+async def test_framing_task_ids_are_deterministic_so_a_checkpoint_can_translate():
+    """The enabling change. `translate_checkpoint_for_replay` rebinds a run prefix and RAISES
+    on anything else, so framing's old `uuid4().hex` ids could never be replayed onto a new
+    run — which is what made a revision cost a full re-execution."""
+    from datetime import UTC, datetime
+
+    from squadops.cycles.models import (
+        AgentProfileEntry,
+        Cycle,
+        Run,
+        SquadProfile,
+        TaskFlowPolicy,
+    )
+    from squadops.cycles.task_plan import generate_task_plan
+
+    now = datetime(2026, 8, 9, tzinfo=UTC)
+    profile = SquadProfile(
+        profile_id="full",
+        name="f",
+        description="d",
+        version=1,
+        agents=tuple(
+            AgentProfileEntry(agent_id=a, role=r, model="m", enabled=True)
+            for a, r in (
+                ("nat", "strat"),
+                ("neo", "dev"),
+                ("eve", "qa"),
+                ("d", "data"),
+                ("max", "lead"),
+            )
+        ),
+        created_at=now,
+    )
+    cycle = Cycle(
+        cycle_id="cyc_1",
+        project_id="p",
+        created_at=now,
+        created_by="s",
+        prd_ref="prd",
+        squad_profile_id="full",
+        squad_profile_snapshot_ref="sha256:a",
+        task_flow_policy=TaskFlowPolicy(mode="sequential"),
+        build_strategy="fresh",
+        applied_defaults={},
+        execution_overrides={},
+    )
+    run = Run(
+        run_id="run_abcdef123456",
+        cycle_id="cyc_1",
+        run_number=1,
+        status="queued",
+        initiated_by="api",
+        resolved_config_hash="h",
+        workload_type="framing",
+    )
+
+    envelopes = generate_task_plan(cycle, run, profile)
+
+    assert envelopes, "framing must produce a plan"
+    for env in envelopes:
+        assert env.task_id.startswith("task-run_abcdef12-"), env.task_id
+        assert env.task_id.endswith(env.task_type), env.task_id
+    assert len({e.task_id for e in envelopes}) == len(envelopes), "ids stay unique within a run"

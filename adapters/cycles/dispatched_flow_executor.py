@@ -826,6 +826,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                         forwarding_overrides = {
                             **(forwarding_overrides or {}),
                             "framing_rejection_context": revision_context,
+                            # #811: the superseded run whose completed prefix the revision
+                            # restores instead of re-earning.
+                            "framing_revision_source": run.run_id,
                         }
                         revision_run = await self._create_next_workload_run(
                             cycle,
@@ -1340,6 +1343,11 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             # SOURCE run's boundary checkpoint instead (translated into this
             # run's task-id namespace); None for normal cycles.
             checkpoint = await self._resolve_replay_checkpoint(cycle, run_id)
+        if checkpoint is None:
+            # #811: an operator-requested revision restores the framing prefix its note
+            # does not invalidate. Distinct from replay above: replay fails closed, a
+            # revision degrades to the full re-run it used to do.
+            checkpoint = await self._resolve_revision_checkpoint(cycle, run_id)
         if checkpoint:
             await self._restore_checkpoint_state(
                 checkpoint,
@@ -2301,6 +2309,84 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             return translate_checkpoint_for_replay(source_cp, run_id)
         except ValueError as e:
             raise _ExecutionError(str(e)) from e
+
+    async def _resolve_revision_checkpoint(self, cycle: Cycle, run_id: str) -> RunCheckpoint | None:
+        """#811: the framing prefix an operator-requested revision does not need to redo.
+
+        A revision changes the design, so everything from the technical design onward is
+        stale and re-runs. Everything *before* it — the context research and the objective
+        frame — is upstream of the design and unaffected by a note about it, so the
+        superseded run's boundary checkpoint is restored instead of re-earned.
+
+        This is SIP-0101's replay mechanism pointed at a different source. It only became
+        possible when framing task ids turned deterministic in the same change:
+        ``translate_checkpoint_for_replay`` rebinds a run prefix and raises on anything else,
+        so ``uuid4().hex`` framing ids could never be translated onto a new run.
+
+        **Degrades, never fails closed.** Replay fails closed because a replay that silently
+        executed the full plan would claim a saved prefix it did not earn. A revision claims
+        nothing — the full re-execution is simply the slower correct answer, and it is what
+        this did before the optimisation existed. So an unresolvable boundary logs and
+        returns ``None``.
+        """
+        from squadops.cycles.manifest_authoring import REVISION_RESTART_TASK_TYPE
+        from squadops.cycles.replay import translate_checkpoint_for_replay
+
+        source_run_id = (cycle.execution_overrides or {}).get("framing_revision_source")
+        if not source_run_id:
+            return None
+
+        try:
+            checkpoints = await self._cycle_registry.list_checkpoints(source_run_id)
+        except Exception:
+            logger.warning(
+                "Revision run %s could not read checkpoints from %s; re-running the whole "
+                "framing workload instead",
+                run_id,
+                source_run_id,
+                exc_info=True,
+            )
+            return None
+
+        # The latest boundary that has NOT yet done the work a revision invalidates.
+        usable = [
+            c
+            for c in checkpoints
+            if not any(tid.endswith(REVISION_RESTART_TASK_TYPE) for tid in c.completed_task_ids)
+        ]
+        if not usable:
+            logger.info(
+                "Revision run %s found no checkpoint before %s on %s (pruned, or the source "
+                "predates deterministic framing ids); re-running the whole framing workload",
+                run_id,
+                REVISION_RESTART_TASK_TYPE,
+                source_run_id,
+            )
+            return None
+
+        boundary = max(usable, key=lambda c: c.checkpoint_index)
+        try:
+            translated = translate_checkpoint_for_replay(boundary, run_id)
+        except ValueError as exc:
+            logger.info(
+                "Revision run %s could not translate boundary %d from %s (%s); re-running "
+                "the whole framing workload",
+                run_id,
+                boundary.checkpoint_index,
+                source_run_id,
+                exc,
+            )
+            return None
+
+        logger.info(
+            "Revision run %s restores %d task(s) from %s boundary %d — re-running from %s",
+            run_id,
+            len(translated.completed_task_ids),
+            source_run_id,
+            boundary.checkpoint_index,
+            REVISION_RESTART_TASK_TYPE,
+        )
+        return translated
 
     async def _restore_checkpoint_state(
         self,
