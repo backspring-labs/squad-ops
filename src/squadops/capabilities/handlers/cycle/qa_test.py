@@ -265,6 +265,7 @@ class QATestHandler(_CycleTaskHandler):
             return
 
         from squadops.capabilities.handlers.probe_runner import probe_check_rows, run_probes
+        from squadops.capabilities.scaffold import scaffold_stack_for
         from squadops.cycles.patch_verification import materialize_artifacts
         from squadops.cycles.verification_contract import Probe
 
@@ -295,7 +296,11 @@ class QATestHandler(_CycleTaskHandler):
         with tempfile.TemporaryDirectory(prefix="qa_probes_") as tmp:
             workspace = Path(tmp)
             materialize_artifacts(artifacts, workspace)
-            outcomes = await asyncio.to_thread(run_probes, workspace, probes)
+            # #822: boot the stack this cycle actually builds. Before this, `run_probes`
+            # took the FastAPI profile as a default argument and nothing overrode it, so
+            # every stack was booted with `uvicorn backend.main:app`.
+            stack = scaffold_stack_for(inputs.get("resolved_config"))
+            outcomes = await asyncio.to_thread(run_probes, workspace, probes, stack=stack)
 
         vr = outputs.setdefault("validation_result", {})
         vr.setdefault("checks", []).extend(probe_check_rows(outcomes))
