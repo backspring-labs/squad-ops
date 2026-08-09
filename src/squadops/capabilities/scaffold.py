@@ -26,6 +26,7 @@ from __future__ import annotations
 import ast
 import hashlib
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -362,9 +363,9 @@ class InterfaceManifest:
         errors: list[str] = []
         if not self.project_id:
             errors.append("project_id is required")
-        if self.stack not in _EXPANDERS:
+        if self.stack not in _STACKS:
             errors.append(
-                f"stack {self.stack!r} has no scaffold expander (known: {sorted(_EXPANDERS)})"
+                f"stack {self.stack!r} has no scaffold expander (known: {sorted(_STACKS)})"
             )
         if not self.api.endpoints:
             errors.append("api.endpoints is empty — declare at least one endpoint to scaffold")
@@ -503,12 +504,7 @@ def expand(manifest: InterfaceManifest) -> list[dict[str, str]]:
     Returns a list of ``{"name": <workspace-relative path>, "content": <str>}`` —
     the shape ``patch_verification.materialize_artifacts`` writes to disk.
     """
-    expander = _EXPANDERS.get(manifest.stack)
-    if expander is None:
-        raise ValueError(
-            f"no scaffold expander for stack {manifest.stack!r}; available: {sorted(_EXPANDERS)}"
-        )
-    return expander(manifest)
+    return _stack(manifest.stack).expand(manifest)
 
 
 def materialize(manifest: InterfaceManifest, dest: Path) -> int:
@@ -540,15 +536,12 @@ def fill_slot_paths(manifest: InterfaceManifest) -> tuple[str, ...]:
     SIP-0098 verification contract pins those by hash and hangs per-file criteria only
     on these slots. Same stack dispatch as ``expand``; raises for an unknown stack.
 
-    (fullstack_fastapi_react: the route bodies + one component per declared route. As
-    more stacks land in 99.4 they carry their own slot map alongside their expander.)
+    Each stack answers this for itself (#S1). It used to be answered inline behind a guard
+    that only checked whether the stack was *registered*, so a second stack would silently
+    have inherited ``backend/routes.py`` and ``.jsx`` view paths — a wrong answer that
+    nothing would have objected to, because the guard it passed asks a different question.
     """
-    if manifest.stack not in _EXPANDERS:
-        raise ValueError(
-            f"no scaffold expander for stack {manifest.stack!r}; available: {sorted(_EXPANDERS)}"
-        )
-    views = tuple(f"frontend/src/views/{r.view}.jsx" for r in manifest.frontend.routes)
-    return ("backend/routes.py", *dict.fromkeys(views))
+    return _stack(manifest.stack).fill_slots(manifest)
 
 
 def error_seam_instructions(manifest: InterfaceManifest | None) -> list[str]:
@@ -789,35 +782,13 @@ def frozen_surface_index_lines(manifest: InterfaceManifest | None) -> list[str]:
     return lines
 
 
-# SIP-0100 D1 (bounded-hybrid QA test ownership): the scaffold owns the *namespace* — the
-# deterministic directory prefixes a bound plan may declare concrete QA test files within — while
-# the plan declares the concrete paths. A QA producer may write only inside this surface; a QA
-# file at an undeclared path outside it is an unauthorized write (Phase 2). Per-stack, like the
-# slot map (99.4 stacks carry their own).
-_QA_TEST_NAMESPACES: dict[str, tuple[str, ...]] = {
-    "fullstack_fastapi_react": ("backend/tests/", "frontend/src/tests/"),
-}
-
-# SIP-0100 harness boundary: the app entry modules a QA test must NOT import — it must consume
-# the scaffold-owned `client` fixture instead. Per stack, like the namespace. The scaffold roots
-# the app at `backend.main` (main.py); `app.main`/`main` are the recurring wrong guesses that
-# killed pf-25/26. The `harness_boundary` acceptance check is authored with this list.
-_HARNESS_ENTRY_MODULES: dict[str, tuple[str, ...]] = {
-    "fullstack_fastapi_react": ("backend.main", "app.main", "main"),
-}
-
-
 def qa_test_namespace(manifest: InterfaceManifest) -> tuple[str, ...]:
     """Workspace-relative directory prefixes that own QA test files for ``manifest.stack``.
 
     Deterministic for a given stack (no dependence on the manifest contents), so plan
     validation and Phase-2 write authorization derive the same surface. Raises for an unknown
     stack (parity with ``expand`` / ``fill_slot_paths``)."""
-    if manifest.stack not in _EXPANDERS:
-        raise ValueError(
-            f"no scaffold expander for stack {manifest.stack!r}; available: {sorted(_EXPANDERS)}"
-        )
-    return _QA_TEST_NAMESPACES.get(manifest.stack, ())
+    return _stack(manifest.stack).qa_test_namespace
 
 
 def is_qa_test_path_for_stack(path: str, stack: str) -> bool:
@@ -828,7 +799,8 @@ def is_qa_test_path_for_stack(path: str, stack: str) -> bool:
     (tolerant: unknown stack → no namespace) so bind-mode dispatch, which has the stack from the
     contract, can use it without a manifest."""
     norm = str(path).strip().lstrip("./").replace("//", "/")
-    return any(norm.startswith(ns) for ns in _QA_TEST_NAMESPACES.get(stack, ()))
+    known = _STACKS.get(stack)
+    return bool(known) and any(norm.startswith(ns) for ns in known.qa_test_namespace)
 
 
 def is_qa_test_path(path: str, manifest: InterfaceManifest) -> bool:
@@ -841,7 +813,8 @@ def harness_entry_modules(stack: str) -> tuple[str, ...]:
 
     Empty for a stack without a declared boundary — dispatch then binds no ``harness_boundary``
     check (author-mode / non-scaffolded parity)."""
-    return _HARNESS_ENTRY_MODULES.get(stack, ())
+    known = _STACKS.get(stack)
+    return known.harness_entry_modules if known else ()
 
 
 def is_scaffoldable_stack(stack: str) -> bool:
@@ -850,7 +823,7 @@ def is_scaffoldable_stack(stack: str) -> bool:
     (``cycles.manifest_authoring.authors_interface_manifest``): only scaffoldable cycles
     dispatch an authoring stage, so a non-scaffoldable stack never produces a manifest
     describing a skeleton nothing can build."""
-    return bool(stack) and stack in _EXPANDERS
+    return bool(stack) and stack in _STACKS
 
 
 # ------------------------------------------------- fullstack_fastapi_react templates
@@ -1451,6 +1424,73 @@ def _expand_fullstack_fastapi_react(manifest: InterfaceManifest) -> list[dict[st
     return files
 
 
-_EXPANDERS = {
-    "fullstack_fastapi_react": _expand_fullstack_fastapi_react,
+def _fill_slots_fullstack_fastapi_react(manifest: InterfaceManifest) -> tuple[str, ...]:
+    """The route bodies, plus one component per declared route."""
+    views = tuple(f"frontend/src/views/{r.view}.jsx" for r in manifest.frontend.routes)
+    return ("backend/routes.py", *dict.fromkeys(views))
+
+
+@dataclass(frozen=True)
+class ScaffoldStack:
+    """Everything the scaffold knows about one stack, in one place (#S1).
+
+    These five facts were four module-level dicts and one function with the answer written
+    inline. Spread out, each new stack had to remember to appear in five places, and
+    forgetting produced a *plausible* wrong answer rather than an error — ``fill_slot_paths``
+    guarded on whether a stack was registered and then returned FastAPI's slot map to
+    whoever asked, so a second stack would have inherited ``backend/routes.py`` silently.
+
+    Deliberately **today's fields and nothing more**. Naming it ``ScaffoldStack`` rather than
+    a blueprint is also deliberate: the Stack Blueprint SIP is not accepted, its schema is
+    meant to be written against two real stacks, and a consolidation that quietly minted its
+    vocabulary would prejudge exactly the question that SIP exists to answer.
+    """
+
+    name: str
+    #: Manifest → the walking skeleton, as ``{"name", "content"}`` files.
+    expand: Callable[[InterfaceManifest], list[dict[str, str]]]
+    #: Manifest → the files a dev fills bodies into. Everything else ``expand`` emits is
+    #: frozen; the verification contract pins those by hash and hangs criteria only on these.
+    fill_slots: Callable[[InterfaceManifest], tuple[str, ...]]
+    #: SIP-0100 D1: workspace-relative directory prefixes that own QA test files. A QA file
+    #: outside this surface is an unauthorized write.
+    qa_test_namespace: tuple[str, ...] = ()
+    #: SIP-0100 harness boundary: app entry modules a QA test must NOT import — it consumes
+    #: the scaffold-owned ``client`` fixture instead. ``app.main``/``main`` are the recurring
+    #: wrong guesses that killed pf-25/26.
+    harness_entry_modules: tuple[str, ...] = ()
+    #: #503: the stack name the typed-check evaluators are keyed on, which is the CHECK
+    #: implementation's vocabulary rather than the scaffold's — "fastapi", not the profile
+    #: name. Empty means the checks skip, which is the conservative default #503 chose.
+    check_stack: str = ""
+
+
+_STACKS: dict[str, ScaffoldStack] = {
+    "fullstack_fastapi_react": ScaffoldStack(
+        name="fullstack_fastapi_react",
+        expand=_expand_fullstack_fastapi_react,
+        fill_slots=_fill_slots_fullstack_fastapi_react,
+        qa_test_namespace=("backend/tests/", "frontend/src/tests/"),
+        harness_entry_modules=("backend.main", "app.main", "main"),
+        check_stack="fastapi",
+    ),
 }
+
+
+def _stack(stack: str) -> ScaffoldStack:
+    """The registered stack, or the same refusal every accessor used to raise separately."""
+    known = _STACKS.get(stack)
+    if known is None:
+        raise ValueError(f"no scaffold expander for stack {stack!r}; available: {sorted(_STACKS)}")
+    return known
+
+
+def check_stack_for(stack: str) -> str | None:
+    """The typed-check evaluator vocabulary for ``stack``, or ``None`` (#503).
+
+    Lives here so "which stacks does this system know?" has one answer. The mapping is
+    conservative by design: an unmapped stack yields ``None`` and its checks skip, rather
+    than being fed a guess the evaluators were never verified against.
+    """
+    known = _STACKS.get(stack)
+    return (known.check_stack or None) if known else None

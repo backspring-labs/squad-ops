@@ -54,24 +54,28 @@ _SERIALIZED_ROW_KEYS = frozenset({"check", "params", "severity", "description", 
 # skipped in every live cycle — while CI passed them via an explicit stack.
 # Conservative mapping: only profiles deliberately verified against the check
 # implementations; unmapped profiles keep today's skip behavior.
-_BUILD_PROFILE_CHECK_STACKS: dict[str, str] = {
-    "fullstack_fastapi_react": "fastapi",
-}
+# #S1: sourced from the scaffold's stack registry rather than declared a second time here —
+# "which stacks does this system know?" now has one answer. The lookup is still keyed on the
+# BUILD PROFILE, which today is the same string as the stack name; a stack whose profile is
+# named differently is exactly the assumption stack #2 will test, and it will fail visibly
+# (checks skip) rather than silently mapping to the wrong evaluator vocabulary.
 
 
 def resolve_check_stack(resolved_config: Mapping[str, Any]) -> str | None:
     """The stack passed to typed-check evaluators, derived in ONE place (#503).
 
     An explicit ``stack`` key wins (operator override / future configs); else the
-    ``build_profile`` maps through ``_BUILD_PROFILE_CHECK_STACKS``; else ``None``
+    ``build_profile`` maps through the scaffold's stack registry; else ``None``
     (checks skip with ``unsupported_stack_or_syntax``, today's behavior).
     """
+    from squadops.capabilities.scaffold import check_stack_for
+
     explicit = resolved_config.get("stack")
     if explicit:
         return str(explicit)
     profile = resolved_config.get("build_profile")
     if profile:
-        return _BUILD_PROFILE_CHECK_STACKS.get(str(profile))
+        return check_stack_for(str(profile))
     return None
 
 
