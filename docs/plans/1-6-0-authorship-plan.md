@@ -680,7 +680,86 @@ Consolidate into one object carrying **today's fields**. Pure refactor, exact te
 unmoved, both emission gates 6/6, regression unchanged. This removes the silent-omission
 failure mode immediately and prejudges nothing.
 
-### S2. Stack #2 — **decided: a Node/TypeScript HTTP stack** *(owner ruling 2026-08-07)*
+### S2. Stack #2 — **AMENDED: Next.js + TypeScript** *(owner ruling 2026-08-09, superseding 2026-08-07)*
+
+> **The 2026-08-07 ruling below — an Express-or-Fastify API with a typed React frontend — is
+> superseded.** Its reasoning is retained unedited because the *criterion* still governs and
+> the rejected alternatives still stand; only the selected instance changed. The trigger was
+> the owner's observation that the original choice **barely changes the frontend at all**.
+
+**Why the original selection was too narrow.** Express + typed React holds React, the component
+model, `frontend/`, npm, vite, and the bundler-as-only-check all constant. Measured against the
+hardwiring this repo actually carries, it exercises the backend axes and leaves the frontend
+ones — `frontend_dir = workspace_root / "frontend"` (`cycles/acceptance_checks.py`, the
+`frontend_build` evaluator) and the `npm run build`-in-a-subdirectory assumption — untouched.
+The plan's own risk row warns about a near-twin validating nothing; the original pick was a
+near-twin on one half.
+
+**What Next.js + TypeScript breaks**, verified against source 2026-08-09:
+
+| Hardwired assumption | Broken by |
+|---|---|
+| server code is Python, so the 9 `ast.parse` checks apply | TypeScript (`tsc --noEmit` becomes the hygiene tier) |
+| boot is `uvicorn backend.main:app` | `next start` |
+| **the app boots from source** | `next build` is required first — no build exists anywhere in today's probe path |
+| tests under `backend/tests/`, Python import boundary | co-located, no equivalent boundary |
+| build runs in `frontend/` via `npm run build` | one build at the project root |
+| backend and frontend are separate trees | one tree |
+| the manifest has an `api` half and a `frontend` half | both are routes; some return JSON, some markup |
+
+**Corrections to claims made while deciding, recorded so they are not inherited:**
+
+- **File-system routing does *not* break "endpoint discovery is static and declared up front,"**
+  which was asserted twice during selection. Next discovers routes from the filesystem, but the
+  expander still works from a manifest that *declares* paths and places files at derived
+  locations (`POST /runs` → `app/api/runs/route.ts`). Declared-then-placed is what an expander
+  does. That assumption stays on the unvalidated list.
+- **The manifest maps onto Next.js better than the selection discussion implied**, which lowers
+  the release risk that was repeatedly cited against it.
+- `[run_id]` is a **third** path-parameter convention after FastAPI's `{run_id}` and Express's
+  `:run_id` — #820's trigger 3 fires here regardless of which candidate had been chosen.
+
+**What the owner released to make this possible.** The 2026-08-07 framing assumed a rigid
+backend/frontend split. Ruled 2026-08-09: *"I am good with breaking the frontend vs backend
+rigid thinking so long as the squad can compose an app with a viable stack — it doesn't have to
+be structured as front end vs backend."* That, plus *"I don't want to force decisions to make
+the manifest comfortable; if the manifest pattern needs to break down then so be it,"* converts
+the manifest's two-section shape from a constraint on selection into **a thing under test**.
+
+**The risk that remains is attribution, not mapping.** Next.js moves the most variables at once,
+so a poor VS makes "the blueprint schema does not generalize" hard to separate from "the squad
+cannot write server components correctly." M6's taxonomy is the instrument; **at VS, watch
+attribution, not pass rate** — the same discipline V4 was given.
+
+**Alternatives considered and rejected in this round** (the 2026-08-07 rejections below still
+stand and are not relitigated):
+
+- **NestJS + React-TSX in `apps/api`/`apps/web`.** A genuine backend framework, lower release
+  risk, breaks every backend axis plus the backend-build one. Rejected because it preserves the
+  split and the manifest's domain shape, which are two of the three things only a unified stack
+  reaches. **Recorded as the fallback** if Next.js fails to land: it would still give S3 a second
+  instance. Its decorator routing (`@Controller('/runs')`) is structurally analogous to
+  FastAPI's, which would make a TypeScript `endpoint_defined` tractable — relevant to S4.
+- **Express + server-rendered templates.** Breaks the frontend build cleanly, but almost nobody
+  starts a new app with it in 2026; it fails the "viable stack to build with" criterion.
+- **FastAPI + React-TS as a "pack combo."** Breaks roughly one thing: the frontend authoring
+  language. Everything the hardwiring complaint is actually about — the AST tier, boot,
+  boots-from-source, the import boundary, the test convention, the manifest shape — is on the
+  backend and would go untouched. **The composability idea it came from is kept** (see below).
+
+**The pack-combo idea, deferred deliberately.** The owner raised decomposing a stack into
+independently-variable packs — `(backend, frontend)` — so `(fastapi, react_ts)` would be a
+recombination rather than a new stack. Good idea, wrong order: deriving a composition model now
+means generalizing from **one and a half** instances, which is weaker footing than the two the
+Blueprint SIP already insists on. Once `(nextjs_ts)` lands, attempting a cross-combo is nearly
+free and *is* the composability test, with real packs instead of an abstraction designed for it.
+**Consequence for the build:** while writing stack #2's pack, record backend/frontend
+entanglement in the bend register. Entanglement that cannot be separated later is cheap to
+notice now and expensive to reconstruct.
+
+---
+
+*The original 2026-08-07 ruling follows, retained for its criterion and its rejections.*
 
 An Express-or-Fastify API with a typed React frontend. The selection criterion was
 cost-per-assumption-broken: stack #2 must differ from `fullstack_fastapi_react` along the
