@@ -335,9 +335,10 @@ class TestEmitCallSitePayloadFields:
         assert with_payload >= 35
 
     def test_total_emit_call_count(self) -> None:
-        """Sanity check: 21 executor + 9 correction-runner +
-        8 pulse-boundary-runner + 2 task-dispatcher + 7 route = 47 total
-        emit calls (#807 added M4's question-gate GATE_DECIDED emit for a
+        """Sanity check: 22 executor + 9 correction-runner +
+        8 pulse-boundary-runner + 2 task-dispatcher + 7 route = 48 total
+        emit calls (#811 added the operator-revision WORKLOAD_ADVANCED emit,
+        47 -> 48; #807 added M4's question-gate GATE_DECIDED emit for a
         design that declares no open question, 46 → 47;
         #473 added the pre-gate rejection's GATE_DECIDED emit;
         #522 added the framing re-roll's WORKLOAD_ADVANCED emit; SIP-0100 3.3
@@ -357,4 +358,4 @@ class TestEmitCallSitePayloadFields:
         total = 0
         for path in _ALL_EMISSION_FILES:
             total += len(self._extract_emit_calls(path))
-        assert total == 47
+        assert total == 48

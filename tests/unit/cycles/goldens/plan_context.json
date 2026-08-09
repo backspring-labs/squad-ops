@@ -58,6 +58,11 @@
     "qa",
     "strat"
    ],
+   "rejected_plan_yaml": "version: 1\ntasks: []\n",
+   "rejection_reasons": [
+    "plan_task 2 claims frozen file backend/app.py",
+    "qa.test task binds no runnable suite artifact"
+   ],
    "resolved_config": {
     "contract_ref": "art_c",
     "plan_authoring_contributors": [

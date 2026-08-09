@@ -58,6 +58,9 @@ AUTHORING_INPUT_CONTRACT: frozenset[str] = frozenset(
         # #669 in-cycle rejection context — the revise-don't-re-dice rail.
         "rejection_reasons",
         "rejected_plan_yaml",
+        # #811: the design an operator returned for revision. In-cycle by definition — it
+        # is this cycle's own prior output, not an external input.
+        "prior_manifest_yaml",
         # Dispatch mechanics, not design inputs: model selection and chat kwargs.
         "agent_model",
         "agent_config_overrides",
@@ -69,6 +72,17 @@ AUTHORING_INPUT_CONTRACT: frozenset[str] = frozenset(
 #: its provenance; anything that appears without an entry is contamination by the rule above.
 INPUT_CONTRACT_EXTENSION_POINTS: tuple[str, ...] = ("cross_cycle_recall",)
 
+
+#: Where an operator-requested revision re-enters the framing sequence (#811).
+#:
+#: NOT the authoring stage itself. A reviewer's note is a change to the *design*, so the
+#: technical design must answer it too — restarting at the manifest alone would leave
+#: `technical_design.md` describing an interface the revised manifest no longer has, and the
+#: next reader could not tell which one the squad meant.
+#:
+#: Everything before this point is restored from the superseded run's checkpoint: research and
+#: the objective frame are upstream of the design and unaffected by a note about it.
+REVISION_RESTART_TASK_TYPE = "development.design_plan"
 
 #: Recorded as ``GateDecision.decided_by`` when the design asked nothing and the gate passed
 #: itself. Distinct from a human's approval on purpose: the argument for question-gating is

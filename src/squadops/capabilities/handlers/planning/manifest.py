@@ -83,7 +83,7 @@ class DevelopmentAuthorManifestHandler(_PlanningTaskHandler):
         variables["authoring_rules_section"] = (
             await renderer.render("request.manifest_authoring_rules_appendix", {})
         ).content
-        rejection_section = await self._rejection_context_section(renderer, inputs)
+        rejection_section = await self._revision_context_section(renderer, inputs)
         if rejection_section:
             variables["rejection_context_section"] = rejection_section
 
@@ -146,6 +146,32 @@ class DevelopmentAuthorManifestHandler(_PlanningTaskHandler):
             )
 
         return self._success(start_time, inputs, content, outcome, assembled, rendered)
+
+    async def _revision_context_section(self, renderer: Any, inputs: dict[str, Any]) -> str:
+        """The revision appendix on a re-roll or an operator-requested revision, or "".
+
+        Overrides the planning base's version, which renders the *plan* re-roll appendix —
+        wrong for a manifest author, and it would show them a rejected plan they did not
+        write. Same #669 rail, a document-appropriate asset.
+
+        The prior manifest is what makes this a revision rather than a re-roll (§5c.6,
+        #811): shown the design being revised, the author changes what was asked about;
+        shown only a note, it re-derives everything and the reviewer reads a new design.
+        """
+        reasons = [
+            str(r).strip() for r in (inputs.get("rejection_reasons") or []) if str(r).strip()
+        ]
+        if not reasons:
+            return ""
+        variables: dict[str, str] = {"reviewer_notes": "\n".join(f"- {r}" for r in reasons)}
+        prior = str(inputs.get("prior_manifest_yaml") or "").strip()
+        if prior:
+            variables["prior_manifest"] = (
+                "\n### The design you are revising\n\n"
+                f"```yaml:interface_manifest.yaml\n{prior}\n```\n"
+            )
+        rendered = await renderer.render("request.manifest_revision_request_appendix", variables)
+        return rendered.content
 
     # -- results ------------------------------------------------------------------
 

@@ -26,6 +26,13 @@ shown; a design that asks nothing records a distinguishable system approval and 
 a system-owned block recording mode, cycle, task, attempt count and the *classified* reason
 for each revision, excluded from the manifest's canonical projection so recording how a
 design was written can never move the hash its contract binds.
+**#811** closes the revision loop: a design question the gate asks can now be *answered* —
+`RETURNED_FOR_REVISION` re-executes framing with the notes and the prior manifest as
+authoring context, bounded by `manifest_max_attempts`, instead of stopping the sequence for a
+manual retry run. It **restores the prefix the note does not invalidate** via SIP-0101's
+checkpoint translation — enabled by framing task ids becoming deterministic in the same
+change — and re-runs from the technical design, so the design answers the note rather than
+describing an interface the revised manifest no longer has.
 **B1 (#809)** closes the one item whose omission would have been permanent: rejections are
 now classified at the moment they happen — plan-validation by producing validator, authoring
 by M6 class — so the pre-memory recurrence baseline Cross-Cycle Memory will be measured

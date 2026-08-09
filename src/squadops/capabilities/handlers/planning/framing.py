@@ -6,10 +6,8 @@ specializations of the shared base; all behavior lives there.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import Any
 
-if TYPE_CHECKING:
-    pass
 from squadops.capabilities.handlers.planning.base import _PlanningTaskHandler
 
 # ---------------------------------------------------------------------------
@@ -42,6 +40,24 @@ class DevelopmentDesignPlanHandler(_PlanningTaskHandler):
     _capability_id = "development.design_plan"
     _role = "dev"
     _artifact_name = "technical_design.md"
+
+    async def _rejection_context_section(self, renderer: Any, inputs: dict[str, Any]) -> str:
+        """The revision request, or "" (#811).
+
+        Overrides the planning base, which renders the *plan* re-roll appendix — a rejected
+        `implementation_plan.yaml` this stage did not write, under rules about task shape that
+        say nothing about a technical design. Same #669 rail, a document-appropriate asset.
+        """
+        reasons = [
+            str(r).strip() for r in (inputs.get("rejection_reasons") or []) if str(r).strip()
+        ]
+        if not reasons:
+            return ""
+        rendered = await renderer.render(
+            "request.design_revision_request_appendix",
+            {"reviewer_notes": "\n".join(f"- {r}" for r in reasons)},
+        )
+        return rendered.content
 
 
 class QADefineTestStrategyHandler(_PlanningTaskHandler):

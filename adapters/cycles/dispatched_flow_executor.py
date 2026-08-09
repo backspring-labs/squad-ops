@@ -600,6 +600,13 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # (default) is byte-identical to the old `for` loop.
         framing_rerolls = 0
         max_framing_rerolls = cycle.resolved_config().get("framing_max_rerolls", 0)
+        # #811: operator-requested revisions are counted SEPARATELY from system re-rolls and
+        # bounded by ``manifest_max_attempts`` (§5c.6), not ``framing_max_rerolls``. The
+        # latter defaults to 0 and the validated profiles do not set it, so sharing it would
+        # ship this switched off — and it conflates a stochastic framing fault the system
+        # retries with a deliberate instruction from a human.
+        framing_revisions = 0
+        max_framing_revisions = int(cycle.resolved_config().get("manifest_max_attempts", 2))
         i = start_index
         while i < len(workload_sequence):
             workload_entry = workload_sequence[i]
@@ -786,18 +793,83 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     break  # Run stays COMPLETED; rejection in gate_decisions
 
                 if decision.decision == GateDecisionValue.RETURNED_FOR_REVISION:
-                    # #466: revision is NOT an approval — do not advance the
-                    # sequence with the un-revised plan (the 3.10 false-approve).
-                    # Parity with the mid-run gate path: revision requires
-                    # manual retry-run creation; the decision + notes stay in
-                    # gate_decisions for whoever creates it.
+                    # #466: revision is NOT an approval — the sequence must never advance
+                    # with the un-revised plan (the 3.10 false-approve). #811 makes the
+                    # revision actually happen instead of stopping: without it the gate could
+                    # ask a design question and then do nothing with the answer, which is the
+                    # rubber stamp it replaced wearing a better costume.
+                    #
+                    # Deliberately the SAME path a system rejection takes (#522/#669), driven
+                    # by a different trigger — a second re-execution loop beside a proven one
+                    # is how they drift.
+                    if (
+                        workload_entry.get("type") == "framing"
+                        and framing_revisions < max_framing_revisions
+                    ):
+                        framing_revisions += 1
+                        # Cancel FIRST: the positional run↔workload invariant (#257/D14) is
+                        # exactly one non-cancelled run per position, and the superseded run
+                        # still occupies this one.
+                        await self._cycle_registry.cancel_run(current_run_id)
+                        revision_context: dict[str, Any] = {
+                            "rejection_reasons": [
+                                decision.notes.strip()
+                                or "The reviewer returned this design for revision."
+                            ]
+                        }
+                        # §5c.6's "revise, don't re-roll": without the prior manifest the new
+                        # framing re-authors from scratch with a hint attached, which is the
+                        # fay-6 new-dice failure in disguise.
+                        prior_manifest = await self._run_manifest_content(run, cycle)
+                        if prior_manifest:
+                            revision_context["prior_manifest_yaml"] = prior_manifest
+                        forwarding_overrides = {
+                            **(forwarding_overrides or {}),
+                            "framing_rejection_context": revision_context,
+                            # #811: the superseded run whose completed prefix the revision
+                            # restores instead of re-earning.
+                            "framing_revision_source": run.run_id,
+                        }
+                        revision_run = await self._create_next_workload_run(
+                            cycle,
+                            run,
+                            workload_entry,
+                            config_hash=run.resolved_config_hash,
+                        )
+                        current_run_id = revision_run.run_id
+                        self._cycle_event_bus.emit(
+                            EventType.WORKLOAD_ADVANCED,
+                            entity_type="workload",
+                            entity_id=current_run_id,
+                            context={"cycle_id": cycle_id, "run_id": current_run_id},
+                            payload={
+                                "workload_type": "framing",
+                                "reason": "framing_revision_on_operator_request",
+                                "revision": framing_revisions,
+                            },
+                        )
+                        logger.info(
+                            "Gate %r returned_for_revision on run %s: revising (%d/%d) in "
+                            "new framing run %s with the reviewer's notes as authoring "
+                            "context",
+                            gate_name,
+                            run.run_id,
+                            framing_revisions,
+                            max_framing_revisions,
+                            current_run_id,
+                        )
+                        continue  # same index — re-execute framing, revised
                     logger.info(
-                        "Gate %r returned_for_revision on run %s: stopping the "
-                        "workload sequence; revision requires manual retry-run "
-                        "creation (automatic retry-in-same-phase is not "
-                        "implemented in this version)",
+                        "Gate %r returned_for_revision on run %s: stopping the workload "
+                        "sequence — %s",
                         gate_name,
                         current_run_id,
+                        (
+                            f"the revision budget is spent ({framing_revisions}/"
+                            f"{max_framing_revisions})"
+                            if workload_entry.get("type") == "framing"
+                            else "only a framing workload can be revised"
+                        ),
                     )
                     break
 
@@ -1271,6 +1343,11 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             # SOURCE run's boundary checkpoint instead (translated into this
             # run's task-id namespace); None for normal cycles.
             checkpoint = await self._resolve_replay_checkpoint(cycle, run_id)
+        if checkpoint is None:
+            # #811: an operator-requested revision restores the framing prefix its note
+            # does not invalidate. Distinct from replay above: replay fails closed, a
+            # revision degrades to the full re-run it used to do.
+            checkpoint = await self._resolve_revision_checkpoint(cycle, run_id)
         if checkpoint:
             await self._restore_checkpoint_state(
                 checkpoint,
@@ -1799,8 +1876,20 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         first guard exists to forbid. The question is a property of the design, not of who
         supplied it.
         """
-        from squadops.cycles.contract_derivation import load_seeded_manifest_content
         from squadops.cycles.manifest_authoring import open_questions
+
+        content = await self._run_manifest_content(run, cycle)
+        return None if content is None else open_questions(content)
+
+    async def _run_manifest_content(self, run: Any, cycle: Any) -> str | None:
+        """The interface manifest governing this run, from either rail, or ``None``.
+
+        One lookup, two readers (#807's question-gate and #811's revision context). Both
+        rails are read — the manifest this run authored lives on the run's own refs, an
+        operator-seeded one on the cycle's ``plan_artifact_refs`` — because behavior keyed on
+        *who supplied the design* is the authoring-mode branch Guard 1a forbids.
+        """
+        from squadops.cycles.contract_derivation import load_seeded_manifest_content
 
         # The completed run the caller already fetched — re-reading it here would add a
         # registry round-trip per gate for a value the loop is holding.
@@ -1810,12 +1899,11 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             except Exception:
                 continue
             if is_interface_manifest(ref):
-                return open_questions(content_bytes.decode(errors="replace"))
+                return content_bytes.decode(errors="replace")
 
-        seeded = await load_seeded_manifest_content(
+        return await load_seeded_manifest_content(
             self._artifact_vault, cycle.execution_overrides.get("plan_artifact_refs")
         )
-        return None if seeded is None else open_questions(seeded)
 
     async def _approve_gate_without_questions(
         self, run_id: str, cycle_id: str, gate_name: str
@@ -2221,6 +2309,84 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             return translate_checkpoint_for_replay(source_cp, run_id)
         except ValueError as e:
             raise _ExecutionError(str(e)) from e
+
+    async def _resolve_revision_checkpoint(self, cycle: Cycle, run_id: str) -> RunCheckpoint | None:
+        """#811: the framing prefix an operator-requested revision does not need to redo.
+
+        A revision changes the design, so everything from the technical design onward is
+        stale and re-runs. Everything *before* it — the context research and the objective
+        frame — is upstream of the design and unaffected by a note about it, so the
+        superseded run's boundary checkpoint is restored instead of re-earned.
+
+        This is SIP-0101's replay mechanism pointed at a different source. It only became
+        possible when framing task ids turned deterministic in the same change:
+        ``translate_checkpoint_for_replay`` rebinds a run prefix and raises on anything else,
+        so ``uuid4().hex`` framing ids could never be translated onto a new run.
+
+        **Degrades, never fails closed.** Replay fails closed because a replay that silently
+        executed the full plan would claim a saved prefix it did not earn. A revision claims
+        nothing — the full re-execution is simply the slower correct answer, and it is what
+        this did before the optimisation existed. So an unresolvable boundary logs and
+        returns ``None``.
+        """
+        from squadops.cycles.manifest_authoring import REVISION_RESTART_TASK_TYPE
+        from squadops.cycles.replay import translate_checkpoint_for_replay
+
+        source_run_id = (cycle.execution_overrides or {}).get("framing_revision_source")
+        if not source_run_id:
+            return None
+
+        try:
+            checkpoints = await self._cycle_registry.list_checkpoints(source_run_id)
+        except Exception:
+            logger.warning(
+                "Revision run %s could not read checkpoints from %s; re-running the whole "
+                "framing workload instead",
+                run_id,
+                source_run_id,
+                exc_info=True,
+            )
+            return None
+
+        # The latest boundary that has NOT yet done the work a revision invalidates.
+        usable = [
+            c
+            for c in checkpoints
+            if not any(tid.endswith(REVISION_RESTART_TASK_TYPE) for tid in c.completed_task_ids)
+        ]
+        if not usable:
+            logger.info(
+                "Revision run %s found no checkpoint before %s on %s (pruned, or the source "
+                "predates deterministic framing ids); re-running the whole framing workload",
+                run_id,
+                REVISION_RESTART_TASK_TYPE,
+                source_run_id,
+            )
+            return None
+
+        boundary = max(usable, key=lambda c: c.checkpoint_index)
+        try:
+            translated = translate_checkpoint_for_replay(boundary, run_id)
+        except ValueError as exc:
+            logger.info(
+                "Revision run %s could not translate boundary %d from %s (%s); re-running "
+                "the whole framing workload",
+                run_id,
+                boundary.checkpoint_index,
+                source_run_id,
+                exc,
+            )
+            return None
+
+        logger.info(
+            "Revision run %s restores %d task(s) from %s boundary %d — re-running from %s",
+            run_id,
+            len(translated.completed_task_ids),
+            source_run_id,
+            boundary.checkpoint_index,
+            REVISION_RESTART_TASK_TYPE,
+        )
+        return translated
 
     async def _restore_checkpoint_state(
         self,

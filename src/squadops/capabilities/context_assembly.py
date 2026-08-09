@@ -178,6 +178,10 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
         artifact_landing=LANDING_PRIOR_OUTPUTS,
         plan_rejection_context=True,
     ),
+    # #811: the technical design answers an operator's revision request too. A note about
+    # the interface is a note about the design, and a revision that changed only the manifest
+    # would leave `technical_design.md` describing an interface that no longer exists.
+    "development.design_plan": ContextAssemblyContract(plan_rejection_context=True),
     # SIP-0103 §5c.1 (#791): the manifest author's input contract, as data. The PRD and
     # the blueprint's vocabulary arrive on the envelope; what lands here is the cycle's
     # OWN framing — strategy's frame (which §5a has constraining scope from above) and
