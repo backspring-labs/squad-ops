@@ -42,6 +42,12 @@ means *no human was involved* — in the same namespace the machine paths use. I
 now classified at the moment they happen — plan-validation by producing validator, authoring
 by M6 class — so the pre-memory recurrence baseline Cross-Cycle Memory will be measured
 against is capturable. Read by nothing in 1.6, deliberately.
+**Track S opens with S1**: the five per-stack facts — expander, fill slots, QA namespace,
+harness boundary, check-stack vocabulary — collapse from four module-level dicts plus one
+inline answer into a single `ScaffoldStack` registration. Pure refactor; the reference
+manifest and contract hashes are unmoved. It removes a silent-omission trap: `fill_slot_paths`
+guarded on whether a stack was *registered* and then returned FastAPI's slot map to whoever
+asked, so a second stack would have inherited `backend/routes.py` with nothing objecting.
 Plan: `docs/plans/1-6-0-authorship-plan.md`.
 
 ## [1.5.0] — 2026-08-07
