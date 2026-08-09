@@ -502,6 +502,12 @@ def _inject_rejection_context(
     plan_yaml = str(rejection_context.get("rejected_plan_yaml") or "")
     if plan_yaml.strip():
         inputs["rejected_plan_yaml"] = plan_yaml
+    # #811: an operator-requested revision carries the design being revised. Without it a
+    # revision run re-authors from scratch with a note attached — the fay-6 new-dice failure
+    # in disguise, and the thing §5c.6's "revise, don't re-roll" exists to forbid.
+    manifest_yaml = str(rejection_context.get("prior_manifest_yaml") or "")
+    if manifest_yaml.strip():
+        inputs["prior_manifest_yaml"] = manifest_yaml
 
 
 def inject_contract_inputs(

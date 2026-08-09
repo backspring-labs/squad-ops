@@ -565,46 +565,87 @@ class TestInterWorkloadGates:
         executor.execute_run.assert_awaited_once()
         mock_registry.create_run.assert_not_called()
 
-    async def test_returned_for_revision_stops_orchestration(
+    async def test_returned_for_revision_revises_framing_and_never_advances(
         self, executor, mock_registry, mock_event_bus
     ):
-        """#466, the 3.10 false-approve: returned_for_revision advanced the
-        sequence and spawned implementation with the un-revised plan. Revision
-        is not an approval — no next workload Run may be created."""
+        """#466's guard, preserved through #811's change of mechanism.
+
+        The defect #466 fixed was the 3.10 false-approve: revision advanced the sequence
+        and spawned implementation with the un-revised plan. That must still be
+        impossible. What changed is what happens *instead* — #811 re-executes framing
+        with the reviewer's notes rather than stopping, so the assertion moves from "no
+        run is created" to "the run created is a FRAMING revision, never implementation".
+        """
         cycle = _make_cycle(
             workload_sequence=[
                 {"type": "framing", "gate": "progress_plan_review"},
                 {"type": "implementation"},
-            ]
+            ],
+            applied_defaults_extra={"manifest_max_attempts": 1},
         )
         mock_registry.get_cycle.return_value = cycle
 
-        run1 = _make_run("run_001", 1, "completed", "framing")
-        run1_with_revision = _make_run(
-            "run_001",
-            1,
-            "completed",
-            "framing",
-            gate_decisions=(
-                _gate_decision(
-                    "progress_plan_review",
-                    GateDecisionValue.RETURNED_FOR_REVISION,
-                    notes="remove three style regexes",
-                ),
-            ),
+        revision = _gate_decision(
+            "progress_plan_review",
+            GateDecisionValue.RETURNED_FOR_REVISION,
+            notes="drop the pagination assumption and ask instead",
         )
+        run1 = _make_run("run_001", 1, "completed", "framing", gate_decisions=(revision,))
+        run2 = _make_run("run_002", 2, "completed", "framing", gate_decisions=(revision,))
 
-        mock_registry.get_run.side_effect = [
-            run1,  # status check after execute_run
-            run1,  # _is_cancelled in _poll (not cancelled)
-            run1_with_revision,  # _poll finds the revision decision
-        ]
+        async def _get_run(run_id):
+            return run1 if run_id == "run_001" else run2
+
+        mock_registry.get_run.side_effect = _get_run
+        mock_registry.list_runs.return_value = [run1]
+        mock_registry.create_run.side_effect = lambda r: r
 
         with patch.object(asyncio, "sleep", new_callable=AsyncMock):
             await executor.execute_cycle("cyc_001", "run_001")
 
-        executor.execute_run.assert_awaited_once()
-        mock_registry.create_run.assert_not_called()
+        created = [c.args[0] for c in mock_registry.create_run.await_args_list]
+        assert len(created) == 1, "budget is 1, so exactly one revision may be created"
+        assert created[0].workload_type == "framing"
+        assert not [r for r in created if r.workload_type == "implementation"], (
+            "revision is not an approval — implementation must never start on the un-revised design"
+        )
+        # The superseded run is cancelled, or two non-cancelled runs occupy one
+        # workload position (#257/D14).
+        mock_registry.cancel_run.assert_awaited_once_with("run_001")
+
+    async def test_revision_stops_once_its_budget_is_spent(
+        self, executor, mock_registry, mock_event_bus
+    ):
+        """An unbounded revision loop would let a reviewer who keeps returning the design
+        spin framing forever. The second request, with a budget of 1 already spent, stops
+        the sequence instead of creating a third run."""
+        cycle = _make_cycle(
+            workload_sequence=[
+                {"type": "framing", "gate": "progress_plan_review"},
+                {"type": "implementation"},
+            ],
+            applied_defaults_extra={"manifest_max_attempts": 1},
+        )
+        mock_registry.get_cycle.return_value = cycle
+
+        revision = _gate_decision(
+            "progress_plan_review", GateDecisionValue.RETURNED_FOR_REVISION, notes="again"
+        )
+        run1 = _make_run("run_001", 1, "completed", "framing", gate_decisions=(revision,))
+        # The revision run's id is generated, so match on anything-but-the-first.
+        run2 = _make_run("run_002", 2, "completed", "framing", gate_decisions=(revision,))
+
+        async def _get_run(run_id):
+            return run1 if run_id == "run_001" else run2
+
+        mock_registry.get_run.side_effect = _get_run
+        mock_registry.list_runs.return_value = [run1]
+        mock_registry.create_run.side_effect = lambda r: r
+
+        with patch.object(asyncio, "sleep", new_callable=AsyncMock):
+            await executor.execute_cycle("cyc_001", "run_001")
+
+        assert mock_registry.create_run.await_count == 1, "the budget bounds the loop"
 
     async def test_unrecognized_decision_never_advances(
         self, executor, mock_registry, mock_event_bus

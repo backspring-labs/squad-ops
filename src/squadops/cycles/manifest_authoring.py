@@ -58,6 +58,9 @@ AUTHORING_INPUT_CONTRACT: frozenset[str] = frozenset(
         # #669 in-cycle rejection context — the revise-don't-re-dice rail.
         "rejection_reasons",
         "rejected_plan_yaml",
+        # #811: the design an operator returned for revision. In-cycle by definition — it
+        # is this cycle's own prior output, not an external input.
+        "prior_manifest_yaml",
         # Dispatch mechanics, not design inputs: model selection and chat kwargs.
         "agent_model",
         "agent_config_overrides",

@@ -325,4 +325,6 @@ async def test_rejection_context_is_inside_the_contract_and_actually_reaches_the
     )
 
     rendered = [c.args[0] for c in ctx.ports.request_renderer.render.call_args_list]
-    assert "request.plan_reroll_rejection_appendix" in rendered
+    # A manifest author gets a manifest-shaped appendix, not the plan re-roll one — that
+    # asset shows a rejected PLAN, which this author did not write (#811).
+    assert "request.manifest_revision_request_appendix" in rendered
