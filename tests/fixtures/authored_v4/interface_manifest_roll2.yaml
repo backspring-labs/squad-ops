@@ -1,0 +1,70 @@
+version: 1
+kind: interface_manifest
+project_id: group_run
+source_prd: "PRD: group_run (1-Hour Cycle MVP+)"
+stack: fullstack_fastapi_react
+scope: "Core group run event management (create, list, detail, join, leave) with in-memory persistence; explicitly excludes authentication, database migrations, external integrations, real-time sync, and UI polish."
+entities:
+  - name: Run
+    fields:
+      - { name: id, type: string, required: true, generated: true }
+      - { name: title, type: string, required: true }
+      - { name: datetime, type: string, required: true }
+      - { name: location, type: string, required: true }
+      - { name: distance, type: string, required: false }
+      - { name: pace, type: string, required: false }
+      - { name: route_notes, type: string, required: false }
+      - { name: participants, type: "list[string]", required: true, default: [] }
+api:
+  base_path: ""
+  request_shapes:
+    RunCreate:
+      required: [title, datetime, location]
+      optional: [distance, pace, route_notes]
+    ParticipantAction:
+      required: [name]
+  endpoints:
+    - { method: POST, path: /runs, summary: create run event, request: RunCreate, response: Run, success_status: 201, errors: [validation_error] }
+    - { method: GET, path: /runs, summary: list upcoming runs, response: "list[Run]" }
+    - { method: GET, path: "/runs/{run_id}", summary: get run details, response: Run, errors: [run_not_found] }
+    - { method: POST, path: "/runs/{run_id}/join", summary: join run with participant name, request: ParticipantAction, response: Run, success_status: 200, errors: [run_not_found, participant_already_joined, validation_error] }
+    - { method: POST, path: "/runs/{run_id}/leave", summary: leave run by participant name, request: ParticipantAction, response: Run, success_status: 200, errors: [run_not_found, participant_not_found, validation_error] }
+  error_contract:
+    shape: '{"detail": "message"}'
+    codes:
+      validation_error: { http: 422 }
+      run_not_found: { http: 404 }
+      participant_already_joined: { http: 409 }
+      participant_not_found: { http: 404 }
+frontend:
+  framework: react_vite
+  routes:
+    - path: /
+      view: RunListView
+      purpose: display upcoming runs and navigate to create/detail
+      testids: [runs-view, run-list, run-row, run-title, run-datetime, run-location, run-participant-count, create-run-link]
+    - path: /create
+      view: CreateRunView
+      purpose: form to create a new run event
+      testids: [create-run-view, create-run-form, title-input, datetime-input, location-input, distance-input, pace-input, route-notes-input, submit-btn]
+    - path: /runs/:run_id
+      view: RunDetailView
+      purpose: view run details and manage participation (join/leave)
+      testids: [run-detail-view, run-details, participant-list, participant-name, join-form, join-name-input, join-submit, leave-form, leave-name-input, leave-submit]
+persistence: in_memory
+decisions:
+  - id: duplicate-name-comparison
+    choice: case-insensitive comparison
+    warrant: "PRD §5.4 default recommendation: 'case-insensitive uniqueness'"
+  - id: datetime-handling
+    choice: store and return raw string; client sorts lexicographically
+    warrant: "PRD §4.1 Tier 1 allows 'best-effort lexical sort acceptable for MVP'; §5.1 permits 'string input acceptable'"
+  - id: leave-unknown-participant
+    choice: return 404 with participant_not_found error
+    warrant: "Technical design resolves PRD §5.5 ambiguity: 'Return 404 with clear error; clearer for UI error handling'"
+  - id: expansion-gating
+    unresolved: true
+    question: "PRD §4.1 specifies expansion only after core stability, but does not define the exact checkpoint or time threshold for triggering Tier 1 items."
+  - id: id-generation
+    choice: UUID4 strings
+    warrant: "Technical design §2 specifies 'id: str # UUID4'; standard for uncoordinated distributed IDs"
