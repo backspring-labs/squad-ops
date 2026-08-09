@@ -23,17 +23,56 @@ from __future__ import annotations
 
 import hashlib
 import re
+from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 import yaml
 
-from squadops.capabilities.scaffold import InterfaceManifest, expand, fill_slot_paths
+from squadops.capabilities.scaffold import (
+    InterfaceManifest,
+    criteria_pack_for,
+    expand,
+    fill_slot_paths,
+)
 
 CONTRACT_VERSION = 1
 CAP_PYTHON = "python"
 CAP_NODE = "node"
 
 _ROUTES_PATH = "backend/routes.py"
+
+
+@dataclass(frozen=True)
+class CriteriaPack:
+    """What proves a filled slot of each kind correct, for one stack (#818).
+
+    Before this, the emitter was FastAPI end to end with no registration point:
+    ``_ROUTES_PATH`` was hardcoded and the slot partition was a single inline
+    conditional. A second stack's fill slots are ``.ts``, so nothing matched, and **every
+    slot — including the API routes file — fell through to the view branch**.
+    ``endpoint_defined`` was never emitted, so the guards that refuse to credit a check
+    which cannot run (``manifest_gates`` ``PROOF_CHECKS_LIVE``, and the dispatch-time strip
+    in ``task_plan``) had nothing to catch: the contract was not *incomplete*, it was
+    *wrong*, and every gate accepted it.
+
+    ``slot_criteria`` therefore owns **the partition as well as the criteria** — "what
+    kinds of fill slot does this stack have, and how do I tell them apart" is the
+    stack-specific claim that inline conditional was making silently.
+
+    Deliberately NOT covering the manifest-derived tiers. Probes, coverage expectations,
+    the frozen-file hashing, and ``skeleton.expander`` are language-agnostic already, which
+    is why this seam is small — and is S2's HTTP-constant containment argument paying off
+    exactly where it was meant to.
+    """
+
+    name: str
+    #: ``(manifest, fill_slot_path) -> {"interface": [...], "implementation": [...]}``.
+    slot_criteria: Callable[[InterfaceManifest, str], dict[str, Any]]
+    #: ``behavioral.build`` — what proves the deliverable builds.
+    build_criteria: Callable[[], list[dict[str, Any]]]
+    #: ``behavioral.suite.checks`` — what proves its test suite ran.
+    suite_criteria: Callable[[], list[dict[str, Any]]]
 
 
 def emit_contract_dict(manifest: InterfaceManifest) -> dict[str, Any]:
@@ -43,6 +82,7 @@ def emit_contract_dict(manifest: InterfaceManifest) -> dict[str, Any]:
     the same ``content_hash``), so the frozen hash the yield baseline measures against
     is reproducible.
     """
+    pack = _pack_for(manifest.stack)
     files = {f["name"]: f["content"] for f in expand(manifest)}
     fill = fill_slot_paths(manifest)
     fill_set = set(fill)
@@ -53,13 +93,9 @@ def emit_contract_dict(manifest: InterfaceManifest) -> dict[str, Any]:
         if name not in fill_set
     ]
 
-    fill_files: dict[str, Any] = {}
-    for path in fill:
-        fill_files[path] = (
-            _routes_criteria(manifest) if path == _ROUTES_PATH else _view_criteria(path)
-        )
+    fill_files: dict[str, Any] = {path: pack.slot_criteria(manifest, path) for path in fill}
 
-    behavioral = _behavioral(manifest)
+    behavioral = _behavioral(manifest, pack)
 
     contract = {
         "contract_version": CONTRACT_VERSION,
@@ -163,19 +199,67 @@ def _view_criteria(path: str) -> dict[str, Any]:
     }
 
 
-def _behavioral(manifest: InterfaceManifest) -> dict[str, Any]:
+def _behavioral(manifest: InterfaceManifest, pack: CriteriaPack) -> dict[str, Any]:
+    """Build and suite come from the pack; coverage and probes are manifest-derived."""
     return {
-        "build": [
-            {"check": "frontend_build", "id": "vc-frontend-builds", "requires": CAP_NODE},
-        ],
+        "build": pack.build_criteria(),
         "suite": {
-            "checks": [
-                {"check": "tests_pass", "id": "vc-suite-passes", "requires": CAP_PYTHON},
-            ],
+            "checks": pack.suite_criteria(),
             "coverage_expectations": _coverage_expectations(manifest),
         },
         "probes": _probes(manifest),
     }
+
+
+def _fastapi_react_slot_criteria(manifest: InterfaceManifest, path: str) -> dict[str, Any]:
+    """This stack has two kinds of fill slot: one designated routes file, and views.
+
+    The partition was previously an inline conditional in ``emit_contract_dict``, which
+    made it look like a property of contracts rather than a claim about *this* stack.
+    """
+    return _routes_criteria(manifest) if path == _ROUTES_PATH else _view_criteria(path)
+
+
+_CRITERIA_PACKS: dict[str, CriteriaPack] = {
+    "fullstack_fastapi_react": CriteriaPack(
+        name="fullstack_fastapi_react",
+        slot_criteria=_fastapi_react_slot_criteria,
+        build_criteria=lambda: [
+            {"check": "frontend_build", "id": "vc-frontend-builds", "requires": CAP_NODE},
+        ],
+        suite_criteria=lambda: [
+            {"check": "tests_pass", "id": "vc-suite-passes", "requires": CAP_PYTHON},
+        ],
+    ),
+}
+
+
+def _pack_for(stack: str) -> CriteriaPack:
+    """The stack's criteria pack, or a refusal (#818).
+
+    Refusal rather than a fallback, and this is the whole point of the issue: the previous
+    behavior *was* the fallback — an unregistered stack's slots quietly took the FastAPI
+    view branch and produced a contract that asserted the wrong things and was believed.
+    Emission is deterministic and offline, so raising here lands before a cycle spends
+    anything, and it is the same refusal ``scaffold._stack`` already raises for a stack
+    with no expander.
+    """
+    name = criteria_pack_for(stack)
+    if not name:
+        raise ValueError(
+            f"stack {stack!r} declares no criteria_pack, so no verification contract can be "
+            f"derived for it. Register one in scaffold_contract._CRITERIA_PACKS and name it "
+            f"on the stack's ScaffoldStack — do not let it inherit another stack's criteria "
+            f"(#818: that produced a contract asserting the wrong things, which every gate "
+            f"accepted)."
+        )
+    pack = _CRITERIA_PACKS.get(name)
+    if pack is None:
+        raise ValueError(
+            f"stack {stack!r} names criteria_pack {name!r}, which is not registered "
+            f"(known: {sorted(_CRITERIA_PACKS)})."
+        )
+    return pack
 
 
 def _coverage_expectations(manifest: InterfaceManifest) -> list[str]:
@@ -357,5 +441,10 @@ def _required_capabilities(fill_files: dict[str, Any], behavioral: dict[str, Any
     for crit in behavioral.get("suite", {}).get("checks", []):
         if crit.get("requires"):
             found.add(crit["requires"])
-    # Stable order: python before node.
-    return [c for c in (CAP_PYTHON, CAP_NODE) if c in found]
+    # Stable order: the known capabilities first, in their historical order, then anything
+    # else sorted. #818: this used to be `[c for c in (CAP_PYTHON, CAP_NODE) if c in found]`,
+    # a closed two-element universe that silently DROPPED a third — so a pack declaring
+    # `requires: "go"` would under-declare its capabilities, in a field whose whole claim is
+    # that it is "declared from what the criteria actually require, so the two can't drift".
+    known = [c for c in (CAP_PYTHON, CAP_NODE) if c in found]
+    return known + sorted(found - set(known))
