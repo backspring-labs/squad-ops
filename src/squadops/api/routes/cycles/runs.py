@@ -6,7 +6,7 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, BackgroundTasks, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends, Request
 
 from squadops.api.middleware.auth import require_scopes
 from squadops.api.routes.cycles.dtos import (
@@ -17,6 +17,7 @@ from squadops.api.routes.cycles.dtos import (
 from squadops.api.routes.cycles.errors import handle_cycle_error
 from squadops.api.routes.cycles.mapping import compute_workload_progress, run_to_response
 from squadops.auth.models import Scope
+from squadops.cycles.gate_attribution import compose_decided_by
 from squadops.cycles.lifecycle import (
     TERMINAL_STATES,
     compute_config_hash,
@@ -220,6 +221,7 @@ async def gate_decision(
     run_id: str,
     gate_name: str,
     body: GateDecisionRequest,
+    request: Request,
 ):
     from squadops.api.runtime.deps import get_cycle_registry
 
@@ -242,10 +244,15 @@ async def gate_decision(
             if waiver_error is not None:
                 raise ValidationError(waiver_error)
 
+        # #812: was a hardcoded "system" with a TODO beside it, so every human approval
+        # carried the word that means "no human was involved" — the same namespace the
+        # machine paths use. The identity was available the whole time.
         decision = GateDecision(
             gate_name=gate_name,
             decision=body.decision,
-            decided_by="system",  # TODO: extract from auth context
+            decided_by=compose_decided_by(
+                getattr(request.state, "identity", None), body.decided_by_kind
+            ),
             decided_at=datetime.now(UTC),
             notes=body.notes,
             waived_checks=tuple(body.waived_checks),
