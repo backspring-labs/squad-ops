@@ -168,11 +168,20 @@ SIPs govern architectural decisions. Located in `sips/` with lifecycle:
 | 3. Accept | Merge to main | Maintainer | Runs `update_sip_status.py ... accepted`, merges |
 | 4. Branch | Feature branch off main | Implementer | `git checkout -b feature/sip-NNNN-...` from main (which now has the accepted SIP) |
 | 5. Implement | Feature branch | Implementer | Incremental commits per phase |
+| **5a. Amend** | **The diverging PR** | **Implementer** | **Implementation showed the accepted design was wrong, or a decision narrowed it → add an amendment section to the SIP *in the PR that diverges*** |
 | 6. Code review | PR to main | Maintainer + team | Review the implementation |
 | 7. Merge | main | Maintainer | Merge the feature PR |
 | 8. Promote | main | Maintainer | Runs `update_sip_status.py ... implemented` after verification |
 
 Key principle: **acceptance is a design commitment on main, not an implementation artifact.** The feature branch starts from a main that already has the accepted SIP, so the implementer works from an approved spec. This separates "we agree this is the right design" from "the implementation is correct."
+
+**Step 5a is not optional, and it is the step that gets skipped.** Acceptance being a *commitment* is a statement about sequencing — the spec is approved before the branch starts. It is **not** a licence to leave the SIP stale once implementation contradicts it. A SIP whose accepted text no longer describes main is worse than no SIP: it reads as authoritative, and the next implementer builds against a design that was abandoned.
+
+- **Amend in the SIP itself, as a new numbered section** (`## 5d. Post-acceptance amendments`, then `5e`, …). SIP-0103's own `§5a`/`§5b`/`§5c` are exactly this shape — the mechanism already exists and is demonstrated.
+- **A release plan is not an amendment.** Plans are superseded at the cut; the SIP is permanent. Recording a divergence only in `docs/plans/*` means it is gone the moment the release closes — the failure that produced SIP-0103's `§5d` (2026-08-09), where three divergences and four unimplemented dispositions lived only in the 1.6 plan.
+- **A code comment is not an amendment either.** Necessary, not sufficient: a reader of the SIP never sees it.
+- Each amendment names **what changed, the evidence, and who ruled it.** "We decided otherwise" without evidence is how a spec becomes advisory.
+- **A disposition that is deliberately not built is an amendment too** — silence reads as "shipped."
 
 ### Key Implemented SIPs
 

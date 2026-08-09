@@ -361,6 +361,106 @@ not open threads.
     operator mid-authoring stay out of Phase 1 (async human latency inside a task);
     the gate is the clarification point.
 
+## 5d. Post-acceptance amendments (2026-08-09)
+
+Everything above §5d was written **before** acceptance on 2026-08-07. This section records
+what changed after it, and it exists because the changes had been recorded only in
+`docs/plans/1-6-0-authorship-plan.md` — a document superseded at the release cut, after which
+this SIP would have been the sole surviving description of a design it no longer matched.
+SIP-0093's Phase-1 successor and the Cross-Cycle Memory SIP both read this document (§5c.9
+hands the learning channel to the latter explicitly), so a stale §3 is a live defect and not
+an untidiness.
+
+The mechanism is not new: §5a, §5b and §5c are themselves amendment rounds. It simply stopped
+being used at the moment acceptance made it matter. CLAUDE.md's contributor workflow now
+carries step 5a so the next implementer amends in the diverging PR rather than in a plan.
+
+### A. Premises falsified after acceptance
+
+**A1 — §5b Correction 1 is wrong in both halves.** It states *"contract v9 is a hand-authored
+artifact … no `derive_contract(manifest)` exists anywhere in the pipeline."* Measured
+2026-08-07 against the live artifacts: the deriver **does** exist
+(`capabilities/scaffold_contract.py::emit_contract_dict`, shipped as SIP-0098 phase 98.2), and
+`emit_contract_dict(manifest v4 art_8becd104e9fc)` equals contract v9 (`art_4f368ea08799`)
+**exactly** — all six sections, 4 `fill_files`, 5 probes. Contract v9 is a *pinned emission*,
+not a hand-authored artifact.
+
+*Consequence:* the SIP's headline scope addition — "add mechanical contract derivation to
+scope" — was already satisfied before work started. It collapsed to a standing equivalence
+guard (M0a, #777) plus derive-at-seed wiring (M0b, #779). Pinned by
+`tests/unit/capabilities/test_contract_derivation_reference.py`.
+
+**A2 — §5b Correction 1's derivability split is wrong in detail.** It lists as "fully
+derivable" the interface layer, *"`endpoint_defined` **per fill slot** from `api.endpoints`,
+`field_present` from `entities`."* Measured: `endpoint_defined` is emitted **once**, on the
+routes slot only (1 occurrence across 4 `fill_files`), and **`field_present` is not emitted at
+all**. The deriver's entire emitted vocabulary is `command_exit_zero`, `endpoint_defined`,
+`frontend_build`, `frontend_compiles`, `import_present`, `module_imports`, `tests_pass`.
+
+**A3 — §5a's foundation inventory overstates readiness, and this is the costly one.** It
+claims an authored manifest *"propagates into the entire verification stack with **zero new
+plumbing**."* The opposite held: framing→implementation forwarding filtered promoted artifacts
+to `{document, control_implementation_plan}` and **dropped `interface_manifest`**, so an
+authored manifest was stored, gate-validated, promoted, and then silently not carried.
+**Authored mode was dead on arrival** and V4 roll 1 failed on it — the plan hit 0 of 9 fill
+slots. Fixed as #796. The claim was invisible because every cycle since SIP-0099 99.2 ran bind
+mode, where the manifest rides `plan_artifact_refs` from creation (#496).
+
+### B. Design narrowed by owner ruling
+
+**B1 — §3.4's manifest review gate is question-gated, not mandatory.** §3.4 specifies *"a named
+gate between manifest acceptance and implementation: the operator approves the authored design
+the way `progress_plan_review` approves the plan."* **Every authored manifest is no longer
+reviewed.** The gate now stops the cycle **only** when the design declares an
+`unresolved: true` decision — the author saying the PRD does not determine something and
+declining to guess.
+
+*Ruled by:* the owner, 2026-08-08, on V4 evidence. V4 roll 2's framing bundle went through
+`progress_plan_review` and a human approved it; the approval note discussed fill slots and
+criteria counts, facts the deterministic gates had already proven. Meanwhile the manifest
+carried one genuinely unresolved question (`expansion-gating`) and **nothing surfaced it to the
+reviewer.** The design then implemented with 15/15 criteria verified and zero corrections. A
+gate that is rubber-stamped manufactures the appearance of review, and a later reader cannot
+tell a considered approval from a reflex.
+
+*Consistency with this SIP:* §5c.10 already required an unresolved-critical entry to *"land in
+the HITL gate note as a question rather than silently defaulting."* B1 promotes that from a
+passenger on a mandatory review to the trigger itself — a narrowing of §3.4, not a
+contradiction of §5c.10.
+
+*Coded at:* `cycles/manifest_authoring.py::open_questions` (the firing rule),
+`adapters/cycles/dispatched_flow_executor.py` (the gate branch), and
+`GATE_DECIDED_BY_NO_QUESTIONS = "system:no_open_questions"` (the audit trail, kept distinct
+from a human's approval on purpose). The machine pass-through runs through the **same**
+exhaustive dispatch a human's answer does. Keyed on the design, never on who wrote it, so a
+seeded manifest carrying an open question stops the cycle exactly as an authored one does
+(Guard 1a). #807 / PR #808.
+
+### C. Dispositions not implemented
+
+Recorded because silence reads as "shipped."
+
+| § | Disposition | Status |
+|---|---|---|
+| **5c.7** | structural manifest diff vs the reference; manifest size/surface counts | **being built** — see below |
+| 5c.7 | revision/attempt counts; gate-rejection reason taxonomy | built (M5 #803, M6 #785) |
+| **5c.5** | *"after any operator edit at the gate — the edit's own record"* | **not built, and neither is the path.** `Provenance` carries `mode`, `cycle_id`, `task_id`, `attempts`, `revisions`; no operator-edit code path exists anywhere. The immutability rule it states ("an operator edit is a new manifest version with a new hash") therefore describes an act the system cannot currently perform |
+| **5c.3** | manifest is **blueprint-owned** — *"the coupling is to the blueprint contract, not to 'one YAML file'"* | **not built.** One universal `InterfaceManifest` schema is still assumed, and its domain half (`persistence`, `entities`, `api`, `frontend`) is FastAPI+React-shaped. Deferred to **1.7**, deliberately: generalising the schema from one stack would produce the FastAPI manifest with generic field names, the exact failure the Stack Blueprint SIP declines acceptance over. The second stack's bend register is the evidence it should be written from |
+| **3.3** (3rd bullet) | interface self-consistency — the `{id}`/`{run_id}` naming-prior class as an authoring-time check | **not built.** Deferred to 1.7 with named triggers → **#820** |
+
+**On §5c.7 specifically, because a control was removed citing it.** B1's argument for dropping
+the mandatory review was that design quality moves to *sampling, not gating*, carried by four
+diagnostics this SIP "already requires." **Two of the four were never built.** That makes B1's
+justification half-funded, and it is the one item in this section where the delivered system is
+weaker than the ruling authorized. Being built ahead of the pre-registered measurement window,
+which is the one place nothing may be fixed mid-flight.
+
+### D. What this section does not change
+
+The measurement (§4), the input contract (§5c.1), the freeze rule (§5c.8), the stateless-Phase-1
+ruling (§5c.9, extension point declared as `INPUT_CONTRACT_EXTENSION_POINTS`), and the
+`decisions[]` discipline (§5c.4/§5c.10) all stand as accepted and are implemented.
+
 ## 6. Open questions for design review
 
 1. Authoring decomposition: single merger-authored manifest (spike-rider shape) vs the
