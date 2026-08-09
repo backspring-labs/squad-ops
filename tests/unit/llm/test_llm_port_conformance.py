@@ -26,17 +26,13 @@ from squadops.llm.exceptions import (
 )
 from squadops.llm.models import ChatMessage, LLMRequest, ModelInfo
 from squadops.ports.llm.provider import LLMCapability
-from tests.unit.llm.conformance import (
-    ADAPTER_CASES,
-    EXPECTED_COMPLETION_TOKENS,
-    EXPECTED_CONTENT,
-    EXPECTED_MODELS,
-    EXPECTED_PROMPT_TOKENS,
-    EXPECTED_TOKENS_PER_SECOND,
-    raises,
-    status,
-    wire,
-)
+from tests.unit.llm.conformance import ADAPTER_CASES, raises, status, wire
+
+# A wall-clock-derived rate is machine-dependent, so it is bounded rather than
+# pinned. The window is wide because the defect it guards against — a duration
+# unit error — lands ~1e9 out, not a few percent.
+MIN_PLAUSIBLE_TPS = 0.01
+MAX_PLAUSIBLE_TPS = 1_000_000.0
 
 pytestmark = pytest.mark.parametrize("case", ADAPTER_CASES, ids=str)
 
@@ -58,15 +54,15 @@ class TestGeneration:
         with wire(case.ok):
             response = await case.build().generate(LLMRequest(prompt="the question"))
 
-        assert response.text == EXPECTED_CONTENT[case.name]
-        assert response.model == "qwen2.5:7b"
+        assert response.text == case.content
+        assert response.model == case.default_model
 
     async def test_chat_returns_assistant_role_and_content(self, case):
         with wire(case.ok):
             message = await case.build().chat(_messages())
 
         assert message.role == "assistant"
-        assert message.content == EXPECTED_CONTENT[case.name]
+        assert message.content == case.content
 
     async def test_chat_stream_reassembles_to_the_same_content(self, case):
         """Streaming is a transport detail; callers must not be able to tell.
@@ -78,7 +74,7 @@ class TestGeneration:
                 chunks.append(chunk)
 
         assert len(chunks) > 1, "single chunk cannot demonstrate reassembly"
-        assert "".join(chunks) == EXPECTED_CONTENT[case.name]
+        assert "".join(chunks) == case.content
 
     async def test_chat_stream_with_usage_returns_whole_message_not_chunks(self, case):
         """The streaming-for-liveness path: stream the wire to hold the
@@ -87,7 +83,7 @@ class TestGeneration:
             message = await case.build().chat_stream_with_usage(_messages())
 
         assert message.role == "assistant"
-        assert message.content == EXPECTED_CONTENT[case.name]
+        assert message.content == case.content
 
 
 class TestUsageAccounting:
@@ -104,8 +100,8 @@ class TestUsageAccounting:
                 else adapter.chat_stream_with_usage(_messages())
             )
 
-        assert message.prompt_tokens == EXPECTED_PROMPT_TOKENS[case.name]
-        assert message.completion_tokens == EXPECTED_COMPLETION_TOKENS[case.name]
+        assert message.prompt_tokens == case.prompt_tokens
+        assert message.completion_tokens == case.completion_tokens
         assert message.total_tokens == message.prompt_tokens + message.completion_tokens
 
     @pytest.mark.parametrize("via", ["chat", "stream_with_usage"])
@@ -121,7 +117,12 @@ class TestUsageAccounting:
                 else adapter.chat_stream_with_usage(_messages())
             )
 
-        assert message.tokens_per_second == EXPECTED_TOKENS_PER_SECOND[case.name]
+        if case.tokens_per_second is not None:
+            assert message.tokens_per_second == case.tokens_per_second
+        else:
+            # No timing field in this dialect — the adapter derives the rate from
+            # wall-clock, so bound it instead of pinning it.
+            assert MIN_PLAUSIBLE_TPS < message.tokens_per_second < MAX_PLAUSIBLE_TPS
 
     async def test_generate_reports_the_same_usage_as_chat(self, case):
         """Two entry points, one accounting contract. An adapter that populates
@@ -130,8 +131,8 @@ class TestUsageAccounting:
         with wire(case.ok):
             response = await case.build().generate(LLMRequest(prompt="the question"))
 
-        assert response.prompt_tokens == EXPECTED_PROMPT_TOKENS[case.name]
-        assert response.completion_tokens == EXPECTED_COMPLETION_TOKENS[case.name]
+        assert response.prompt_tokens == case.prompt_tokens
+        assert response.completion_tokens == case.completion_tokens
         assert response.total_tokens == response.prompt_tokens + response.completion_tokens
 
     async def test_usage_absent_from_the_wire_is_none_never_zero(self, case):
@@ -156,8 +157,8 @@ class TestModelListing:
             assert adapter.list_models() == [], "cache must start empty, not pre-populated"
             refreshed = await adapter.refresh_models()
 
-        assert refreshed == EXPECTED_MODELS[case.name]
-        assert adapter.list_models() == EXPECTED_MODELS[case.name]
+        assert refreshed == case.models
+        assert adapter.list_models() == case.models
 
     async def test_list_models_performs_no_network_io(self, case):
         """The port documents this as a MUST NOT and nothing tested it. A sync
@@ -171,7 +172,7 @@ class TestModelListing:
             await adapter.refresh_models()
 
             live.set(raises(AssertionError("list_models() performed network I/O")))
-            assert adapter.list_models() == EXPECTED_MODELS[case.name]
+            assert adapter.list_models() == case.models
 
     async def test_list_models_returns_a_copy(self, case):
         """Handing out the internal list lets any caller corrupt every other
@@ -181,7 +182,7 @@ class TestModelListing:
             await adapter.refresh_models()
 
         adapter.list_models().append("not-a-real-model")
-        assert adapter.list_models() == EXPECTED_MODELS[case.name]
+        assert adapter.list_models() == case.models
 
     async def test_refresh_failure_preserves_the_last_known_list(self, case):
         """A transient backend blip must not empty the cache — a downstream
@@ -192,8 +193,8 @@ class TestModelListing:
             await adapter.refresh_models()
 
             live.set(raises(httpx.ConnectError("backend down")))
-            assert await adapter.refresh_models() == EXPECTED_MODELS[case.name]
-            assert adapter.list_models() == EXPECTED_MODELS[case.name]
+            assert await adapter.refresh_models() == case.models
+            assert adapter.list_models() == case.models
 
 
 class TestErrorTranslation:
@@ -275,9 +276,7 @@ class TestCapabilityHonesty:
         adapter = case.build()
         with wire(case.ok):
             if adapter.supports(LLMCapability.MODEL_LISTING):
-                assert [m.name for m in await adapter.list_available_models()] == EXPECTED_MODELS[
-                    case.name
-                ]
+                assert [m.name for m in await adapter.list_available_models()] == case.models
             else:
                 with pytest.raises(NotImplementedError):
                     await adapter.list_available_models()
@@ -304,7 +303,7 @@ class TestCapabilityHonesty:
         with wire(case.ok):
             message = await adapter.chat_stream_with_usage(_messages())
 
-        assert message.completion_tokens == EXPECTED_COMPLETION_TOKENS[case.name]
+        assert message.completion_tokens == case.completion_tokens
 
 
 class TestModelInfoShape:
@@ -317,7 +316,7 @@ class TestModelInfoShape:
         with wire(case.ok):
             models = await case.build().list_available_models()
 
-        assert [m.name for m in models] == EXPECTED_MODELS[case.name]
+        assert [m.name for m in models] == case.models
         assert all(isinstance(m, ModelInfo) for m in models)
 
     async def test_unnamed_entries_are_dropped_not_surfaced_as_blanks(self, case):
@@ -358,14 +357,14 @@ class TestPortSurface:
     async def test_default_model_is_the_configured_one(self, case):
         """Handlers resolve their model as `agent_model or port.default_model`,
         so a placeholder here silently becomes the model that actually runs."""
-        assert case.build().default_model == "qwen2.5:7b"
+        assert case.build().default_model == case.default_model
 
     async def test_request_model_overrides_the_adapter_default(self, case):
         """Per-agent model pinning (squad profiles) rides this override. If it
         is ignored, every agent quietly runs the adapter default instead."""
         with wire(case.ok):
             response = await case.build().generate(
-                LLMRequest(prompt="the question", model="llama3.2")
+                LLMRequest(prompt="the question", model=case.override_model)
             )
 
-        assert response.model == "llama3.2"
+        assert response.model == case.override_model

@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from adapters.llm.ollama import OllamaAdapter
+from adapters.llm.vllm import VLLMAdapter
 from squadops.ports.llm.provider import LLMPort
 
 if TYPE_CHECKING:
@@ -26,7 +27,7 @@ def create_llm_provider(
     """Create an LLM provider.
 
     Args:
-        provider: Provider name ("ollama")
+        provider: Provider name ("ollama" or "vllm")
         secret_manager: Optional secret manager for resolving secret:// refs
         base_url: Base URL for the LLM server (may be secret:// ref)
         default_model: Default model to use
@@ -50,4 +51,15 @@ def create_llm_provider(
             timeout_seconds=timeout_seconds,
         )
 
+    if provider == "vllm":
+        return VLLMAdapter(
+            base_url=base_url,
+            default_model=default_model,
+            timeout_seconds=timeout_seconds,
+            api_key=config.get("api_key"),
+        )
+
+    # No fallback: an unknown provider name must fail loudly at startup rather
+    # than silently running the previous one (the standing no-masking-fallbacks
+    # rule). A typo in configuration is a misconfiguration, not a default.
     raise ValueError(f"Unknown LLM provider: {provider}")

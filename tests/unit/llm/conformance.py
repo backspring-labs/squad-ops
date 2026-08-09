@@ -34,6 +34,7 @@ from unittest.mock import patch
 import httpx
 
 from adapters.llm.ollama import OllamaAdapter
+from adapters.llm.vllm import VLLMAdapter
 from squadops.ports.llm.provider import LLMPort
 
 # A dialect handler answers a request the way its provider's server would.
@@ -54,6 +55,19 @@ class AdapterCase:
     build: Callable[[], LLMPort]
     ok: DialectHandler
     nameless_model: DialectHandler
+
+    # Expectations for this provider's `ok` handler. On the case rather than in
+    # parallel name-keyed dicts: one entry fully describes a provider, so adding
+    # Atlas is one object and no shared assertion learns a new name.
+    default_model: str
+    override_model: str
+    models: list[str]
+    content: str
+    prompt_tokens: int
+    completion_tokens: int
+    # Exact rate when the provider reports timings; None when the adapter derives
+    # it from wall-clock, which is machine-dependent and range-checked instead.
+    tokens_per_second: float | None
 
     def __str__(self) -> str:  # pytest id
         return self.name
@@ -216,6 +230,82 @@ def ollama_nameless_model(request: httpx.Request) -> httpx.Response:
 
 
 # ---------------------------------------------------------------------------
+# vLLM dialect — OpenAI-compatible
+#
+# Shaped from a live OpenAI-compatible server, not from documentation: SSE
+# `data: {json}` frames terminated by `data: [DONE]`, `choices[0].delta.content`
+# while streaming and `choices[0].message.content` when not, `/v1/models`
+# returning entries keyed on `id`, and a 404 with an `{"error": {...}}` body for
+# an unknown model.
+# ---------------------------------------------------------------------------
+
+VLLM_MODELS = ["Qwen/Qwen2.5-7B-Instruct", "meta-llama/Llama-3.2-3B-Instruct"]
+VLLM_CONTENT = "the assembled answer"
+VLLM_STREAM_PARTS = ["the ", "assembled ", "answer"]
+
+# The usage frame rides its own terminal chunk (stream_options.include_usage),
+# separate from the content frames — a real structural difference from Ollama's
+# NDJSON, where usage shares the final content frame.
+_VLLM_PROMPT_TOKENS = 5
+_VLLM_COMPLETION_TOKENS = 12
+
+
+def _vllm_usage() -> dict:
+    return {
+        "prompt_tokens": _VLLM_PROMPT_TOKENS,
+        "completion_tokens": _VLLM_COMPLETION_TOKENS,
+        "total_tokens": _VLLM_PROMPT_TOKENS + _VLLM_COMPLETION_TOKENS,
+    }
+
+
+def _sse(frames: list[dict]) -> bytes:
+    body = "".join(f"data: {json.dumps(f)}\n\n" for f in frames)
+    return (body + "data: [DONE]\n\n").encode()
+
+
+def vllm_ok(request: httpx.Request) -> httpx.Response:
+    """Answer as a healthy vLLM server."""
+    path = request.url.path
+
+    if path == "/v1/models":
+        return httpx.Response(
+            200,
+            json={"object": "list", "data": [{"id": m, "object": "model"} for m in VLLM_MODELS]},
+        )
+
+    if path == "/v1/chat/completions":
+        body = json.loads(request.content)
+        model = body["model"]
+        if not body.get("stream"):
+            return httpx.Response(
+                200,
+                json={
+                    "id": "chatcmpl-1",
+                    "model": model,
+                    "choices": [
+                        {"index": 0, "message": {"role": "assistant", "content": VLLM_CONTENT}}
+                    ],
+                    "usage": _vllm_usage(),
+                },
+            )
+        frames = [
+            {"choices": [{"index": 0, "delta": {"role": "assistant", "content": part}}]}
+            for part in VLLM_STREAM_PARTS
+        ]
+        frames.append({"choices": [], "usage": _vllm_usage()})
+        return httpx.Response(200, content=_sse(frames))
+
+    return httpx.Response(404, json={"error": {"message": f"unexpected route {path}"}})
+
+
+def vllm_nameless_model(request: httpx.Request) -> httpx.Response:
+    """A listing entry with no usable id."""
+    if request.url.path == "/v1/models":
+        return httpx.Response(200, json={"object": "list", "data": [{"object": "model"}]})
+    return vllm_ok(request)
+
+
+# ---------------------------------------------------------------------------
 # The registry — one entry per adapter under conformance.
 #
 # Atlas (P4) and vLLM (P6) each land here as one AdapterCase with their own
@@ -228,13 +318,32 @@ ADAPTER_CASES: list[AdapterCase] = [
         build=lambda: OllamaAdapter(default_model="qwen2.5:7b", timeout_seconds=5.0),
         ok=ollama_ok,
         nameless_model=ollama_nameless_model,
+        default_model="qwen2.5:7b",
+        override_model="llama3.2",
+        models=OLLAMA_MODELS,
+        content=OLLAMA_CONTENT,
+        prompt_tokens=_PROMPT_EVAL_COUNT,
+        completion_tokens=_EVAL_COUNT,
+        tokens_per_second=6.0,  # exact: derived from reported ns timings
+    ),
+    AdapterCase(
+        name="vllm",
+        build=lambda: VLLMAdapter(
+            base_url="http://localhost:8000",
+            default_model="Qwen/Qwen2.5-7B-Instruct",
+            timeout_seconds=5.0,
+        ),
+        ok=vllm_ok,
+        nameless_model=vllm_nameless_model,
+        default_model="Qwen/Qwen2.5-7B-Instruct",
+        override_model="meta-llama/Llama-3.2-3B-Instruct",
+        models=VLLM_MODELS,
+        content=VLLM_CONTENT,
+        prompt_tokens=_VLLM_PROMPT_TOKENS,
+        completion_tokens=_VLLM_COMPLETION_TOKENS,
+        tokens_per_second=None,  # wall-clock derived; no timing field in the shape
     ),
 ]
 
 # Expected tokens/sec for a case's `ok` handler. Keyed by adapter name because the
 # rate is computed from provider-supplied timings, which are dialect-shaped.
-EXPECTED_TOKENS_PER_SECOND = {"ollama": 6.0}
-EXPECTED_COMPLETION_TOKENS = {"ollama": _EVAL_COUNT}
-EXPECTED_PROMPT_TOKENS = {"ollama": _PROMPT_EVAL_COUNT}
-EXPECTED_MODELS = {"ollama": OLLAMA_MODELS}
-EXPECTED_CONTENT = {"ollama": OLLAMA_CONTENT}
