@@ -613,6 +613,39 @@ proof is the inverse of the failure mode the SIP itself names:
    blueprint is either a genuine optional capability (**declared as such, with the reason**)
    or a FastAPI assumption wearing a general name. The schema must say which.
 
+#### What S3 will NOT have validated — disclose at promotion, do not imply generality
+
+Two gaps, both structural consequences of choices already made. Recording them here so the
+promotion states them, rather than having a later reader infer a generality the schema does
+not have.
+
+**1. Criteria-family variation is untested by construction.** The SIP records that the
+contract emitter's criteria families are **pack-parameterized, not universal**: a
+server-rendered stack has no frontend build, so `vc-frontend-builds` is meaningless for LAMP
+while HTTP probes and suite checks transfer untouched. A blueprint must therefore declare
+*which criteria families the emission gate may draw from*.
+
+**Stack #2 cannot surface this.** Node/TS was chosen to break three FastAPI-shaped
+assumptions while **holding HTTP constant** (S2's containment argument, which still stands) —
+and it also has a frontend build. So both stacks agree on precisely the axis the criteria
+family question turns on. S3's schema will be written against two stacks that cannot
+disagree about it.
+
+Consequence: either the schema declares a criteria-family field it has **not** falsified
+(and says so, per the falsification pass above, which would otherwise delete it as
+decorative), or it omits the field and the first server-rendered pack is a schema change.
+Both are acceptable; silently shipping the first while implying the second is not. The
+honest resolution is a **declared, deliberately un-falsified field with the reason recorded**
+— the `DECLARED_UNBUILT_CHECKS` pattern applied to a schema.
+
+**2. The two stack vocabularies are still two.** The SIP names them: the manifest says
+`fullstack_fastapi_react`, the acceptance checks branch on `stack != "fastapi"`, and
+`resolve_check_stack()` bridges them. **S1 removed the duplicate declaration, not the drift**
+— the mapping is now sourced from the one stack registry, so there is a single answer to
+"which stacks exist", but a stack still has two names and S3 still owes the reconciliation
+the SIP asks for. Recorded because "S1 consolidated the per-stack facts" could otherwise be
+read as having closed this, and it did not.
+
 Together these convert "works for two stacks" from a judgment call into a reviewable
 artifact — which is the same move #730 made for typed checks, where declaration is required
 and drift is guarded.
