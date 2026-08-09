@@ -37,6 +37,19 @@ corrections rather than additions: the seeded-mode control observation **moves e
 against), and a **pre-registration viability run** is added, because pre-registering a
 window for a capability that has never once succeeded wastes the window.
 
+**Claim sweep 2026-08-09 — every load-bearing code claim in this document was checked against
+source.** Prompted by a defect in this plan's own S4 section, which described a failure mode it
+had never verified. **Nine claims were wrong; seven overstated what exists.** All nine shared
+one origin: a claim about code sourced from a *document about the code* — this plan's earlier
+sections, the SIP's prose, an issue number from memory, a test file cited as precedent. Not one
+was a misreading of source. Corrections are inline below, each marked `Correction 2026-08-09`
+and carrying a `file:line`.
+
+**Standing rule adopted from it:** a load-bearing claim about code behavior in this document
+carries a `file:line`, or it is marked unverified. Bounding claims — *narrower*, *only*,
+*already*, *merely*, *does not affect* — carry it first, because those are the ones that stop
+further investigation, and a wrong one is not discovered until the code runs.
+
 ## Character
 
 An **even minor**: a feature release led by headline SIPs, which gate the version.
@@ -65,11 +78,18 @@ different guards. Two, both testable:
 > **Verification at cut, in two halves — structure and output:**
 >
 > - **1a, no fork:** no execution path branches on authoring mode below the framing
->   workload — pinned by an architecture test, the `test_plan_gate_seams.py` precedent.
+>   workload. **The invariant holds today and is unpinned** (verified 2026-08-09):
+>   `authors_interface_manifest` has exactly one production call site,
+>   `cycles/task_plan.py:394`, inside framing. **The architecture test does not exist** —
+>   `tests/unit/cycles/test_plan_gate_seams.py` is cited as the *precedent for the shape*
+>   and contains no authoring-mode coverage. Owed before the cut.
 > - **1b, equivalence:** feed the **reference manifest** through authored mode's
 >   post-approval path; the expansion, the derived contract, and every verification
 >   artifact must be **byte-identical** to seeded mode's. Same input, same output,
->   different provenance.
+>   different provenance. **NOT BUILT** (verified 2026-08-09): no test asserts this.
+>   `tests/unit/capabilities/test_contract_derivation_reference.py` (M0a) names Guard 1b
+>   as a *dependent* — "Guard 1b **requires** the reference manifest to produce
+>   byte-identical downstream artifacts" — not as itself. Owed before the cut.
 >
 > 1a alone is not sufficient and the distinction matters: a structural test proves nothing
 > *branches*, not that the transformation is the same. 1b is what isolates a provenance
@@ -250,7 +270,7 @@ Scope split by verified derivability (§5b):
 
 | Layer | Disposition |
 |---|---|
-| Interface — `endpoint_defined` per fill slot from `api.endpoints`, `field_present` from `entities`, `import_present`/`module_imports` from the skeleton | **fully derivable** (`fill_slot_signature`'s surface already derives — #730 D1 proved the pattern end-to-end) |
+| Interface — `endpoint_defined`, `import_present`/`module_imports` from the skeleton | **derived today.** *Corrected 2026-08-09:* `endpoint_defined` is emitted **once**, on the routes slot only — not per fill slot (measured: 1 occurrence across 4 `fill_files`). **`field_present` is not emitted at all**; the deriver's entire emitted vocabulary is `command_exit_zero`, `endpoint_defined`, `frontend_build`, `frontend_compiles`, `import_present`, `module_imports`, `tests_pass`. Deriving per-entity field checks from `entities` remains *possible* and unbuilt |
 | Probe skeletons — method/path/status from declared `errors` + `success_status` | **largely derivable**; probe *payloads* and `json_has` values carry product intent → derive the shape, author the values in the same authoring stage |
 | Suite/coverage expectations | **authored residue** — stays with the authoring stage |
 
@@ -402,7 +422,16 @@ an existing seam:
 | expander dry-run — `expand()` succeeds, `fill_slot_paths()` non-empty, paths under scaffold roots | exists, pure and cheap (the pf-26 wrong-root class, one level up) |
 | derived-contract dry-run — every derived check passes `CHECK_SPECS` validation, #671 module-existence holds against the implied skeleton, no check dead-on-arrival per `is_check_applicable` | **depends on M0** |
 | testid coverage — every route declares ≥ 1 testid | schema field exists |
-| status completeness — per-endpoint `success_status` | M0's rider |
+| status completeness — **a collection POST** declares `success_status` | as built (#781) |
+
+> **Correction 2026-08-09 — the status proof is narrower than this table originally said.**
+> It read "per-endpoint `success_status`", which is the schema rider's shape, not the gate's.
+> `cycles/manifest_gates.py::_status_findings` is *"deliberately narrow"* by its own
+> docstring: only a **collection POST** (no `{` in the path) must declare a status. Child-action
+> POSTs default to 200 on both sides and agree; GETs derive no status probe. Requiring it
+> everywhere **would reject the reference manifest**, which declares it on 1 of 5 endpoints.
+> This delivers #772's protection without waiting on manifest v5 — which is why the v5 bump
+> is not in 1.6.
 
 Deferred: semantic PRD coverage. The `decisions[].warrant` discipline plus M4's question path
 carry that judgment in Phase 1; a mechanical coverage proof is not a Phase-1 blocker.
@@ -442,8 +471,11 @@ unresolved-critical entry *"land in the HITL gate note as a question rather than
 defaulting."* M4 promotes that from a passenger on a mandatory review to the trigger itself.
 
 **Iterative review, when it does fire** (§5c.6, unchanged): `RETURNED_FOR_REVISION` is a live
-third state (#466) and rejection-context injection (#669) already threads reviewer notes into
-the next attempt. Revision returns the manifest **with the prior artifact and the reviewer's
+third state (#466) and rejection-context injection (#669) threads reviewer notes into the next
+attempt. *(The word here was originally "already," which was false when written: V5 found that
+`RETURNED_FOR_REVISION` stopped the sequence and needed a manual retry run. **#811 made it
+true** — the revision now re-executes framing from `development.design_plan` with the notes and
+the prior manifest, replaying the prefix it does not invalidate.)* Revision returns the manifest **with the prior artifact and the reviewer's
 notes as authoring context — revise, don't re-roll** (the fay-6 new-dice lesson), spending
 `manifest_max_attempts`. **Partial approval is deliberately not introduced**: approval stays
 whole-artifact because the contract derives from the whole. Machinery is still nil — §5b
@@ -473,11 +505,16 @@ unchanged, which is what the bound was actually protecting.
 
 ### M5. Provenance + freeze
 
-A `provenance` block on the manifest itself (§5c.5 — the #734 pattern one level up): authored
-vs seeded mode, authoring task and cycle, attempt count, and any operator edit's own record.
-Immutability is already mechanical — the gate approves *bytes*, `content_hash` freezes them,
-and an operator edit is a **new manifest version with a new hash**, never an in-place
-mutation. Replay, regression, and memory read provenance from the artifact rather than from
+A `provenance` block on the manifest itself (§5c.5): authored vs seeded mode, authoring task
+and cycle, attempt count, and classified revisions. Immutability is mechanical — the gate
+approves *bytes* and `content_hash` freezes them.
+
+> **Correction 2026-08-09 — the operator-edit record is not built, and neither is the path.**
+> As built (#803), `capabilities/scaffold.py::Provenance` carries exactly `mode`, `cycle_id`,
+> `task_id`, `attempts`, `revisions`. There is **no operator-edit field**, and no operator-edit
+> code path exists anywhere to record. The immutability rule ("an operator edit is a new
+> manifest version with a new hash") therefore describes an act the system cannot currently
+> perform — it is a design commitment for whenever that path is built, not a live guarantee. Replay, regression, and memory read provenance from the artifact rather than from
 cycle-history archaeology.
 
 **Provenance records *why* it changed, not only where it came from.** Attempt count alone
@@ -659,12 +696,35 @@ map, making the shk-1 dual-claim class *inexpressible* rather than merely reject
 Onto the blueprint's declared source language. This is where #668's `.jsx` territory and
 #598's packaging criterion become expressible; both stay capacity-bound.
 
-**Note the coupling S2 creates.** With a TS stack in the tree, "hardcoded `.py`" stops being
-a latent inelegance and becomes a live correctness gap — `fill_slot_signature`, `undefined_names`,
-and their siblings would silently skip the entire second stack. S4 is classified capacity
-because the *release claim* does not depend on it, but if S3's two-stack schema lands and S4
-does not, the plan must record that the second stack ships with a narrower enforced surface
-than the first. That is a disclosure obligation, not an acceptable silence.
+**Note the coupling S2 creates.** With a TS stack in the tree, "hardcoded `.py`" stops being a
+latent inelegance and becomes a live correctness gap.
+
+> **Correction 2026-08-09 — this section named the wrong failure mode, in the reassuring
+> direction, and the real one is #818.** It said the typed checks "would **silently skip** the
+> entire second stack," making S4 a disclosure obligation about a *narrower* enforced surface.
+> Both halves are wrong, verified against source:
+>
+> 1. **They would not skip silently.** `fill_slot_signature`, `undefined_names`,
+>    `endpoint_defined` and `module_imports` all declare `applicable_extensions={".py"}`, so
+>    `is_check_applicable(name, "*.ts")` is **False** — which `cycles/manifest_gates.py:252`
+>    turns into a winnability **rejection** and `cycles/task_plan.py:462` turns into a
+>    **stripped check with a WARNING**. The repo already refuses to credit a check that cannot
+>    run.
+> 2. **The real failure is upstream of the checks and worse (#818).**
+>    `capabilities/scaffold_contract.py:59` dispatches
+>    `_routes_criteria if path == _ROUTES_PATH else _view_criteria`, with
+>    `_ROUTES_PATH = "backend/routes.py"` hardcoded at `:36`. A TS stack's slots are `.ts`, so
+>    **nothing matches and every slot — including the API routes file — derives view
+>    criteria.** `endpoint_defined` is never *emitted*, so there is nothing for the guards in
+>    (1) to catch. The second stack would not ship with a narrower enforced surface; it would
+>    ship with an **incorrect contract that every gate accepts**.
+>
+> Consequence: **#818 is on the critical path ahead of the Node stack**, and S4 is no longer a
+> disclosure obligation — it is the residual coverage question after #818 lands.
+
+S4 proper — teaching the typed checks a non-`.py` source language — stays capacity, because
+once #818 makes the emitter refuse a stack it has no criteria pack for, the remaining gap is
+visible rather than silent.
 
 ### S5. Blueprint vocabulary governance — **who may add a field**
 
@@ -840,8 +900,14 @@ loaded-module verification, per the 1.5 precedent.
 4. **The measurement:** authored-mode FAY window — pre-registered N, unfiltered, frozen deploy.
    **Gate: FAY repeatably > 0 in authored-manifest mode**, banked as the authored-mode baseline
    that 1.8's memory and campaign work measure against.
-5. **The offline guards pass** — Guard 1b, replay zero-diff, and M0a's equivalence guard. The
-   seeded control is **conditional**, not a cut item (see "The seeded control" below).
+5. **The offline guards pass** — M0a's equivalence guard (built), **plus Guard 1a's
+   architecture test and Guard 1b, both of which must be *built* first** (see Guard 1;
+   verified unbuilt 2026-08-09). Replay zero-diff is **dropped** — it never existed and
+   inventing it at the tail of a release is new scope, not a guard. The seeded control is a
+   **comparison instrument available on demand, never a checkbox** (owner ruling, reaffirmed
+   2026-08-09 after the claim sweep): run it against the seeded pair when the window
+   disappoints or a number looks off, so design is held constant and "design step or
+   machinery?" is answered directly. It does not gate the cut.
 6. **Confirmation shakedown** on the fully integrated line, green, per the 1.4/1.5 cadence.
 
 ### The seeded control — **conditional, not scheduled** *(revised 2026-08-09)*
@@ -872,11 +938,29 @@ Two further facts, stated because they are what actually decided this:
 
 #### What replaces it
 
-| mechanism | cost | what it catches |
-|---|---|---|
-| **Guard 1b** — reference manifest through authored mode → byte-identical downstream artifacts | offline, milliseconds | transformation regressions, structurally, before any window |
-| **Replay zero-diff** over the 1.5 green corpus (#734 method) | offline | stored evaluation rows re-evaluating differently under new code |
-| **M0a's standing equivalence guard** | offline | the deriver drifting from the pinned reference |
+| mechanism | status *(verified 2026-08-09)* | cost | what it catches |
+|---|---|---|---|
+| **M0a's standing equivalence guard** | **BUILT** — `tests/unit/capabilities/test_contract_derivation_reference.py` | offline | the deriver drifting from the pinned reference |
+| **Guard 1b** — reference manifest through authored mode → byte-identical downstream artifacts | **NOT BUILT** | offline, milliseconds | transformation regressions, structurally, before any window |
+| **Replay zero-diff** over the 1.5 green corpus | **NOT BUILT**, and never was | offline | stored evaluation rows re-evaluating differently under new code |
+
+> **Correction 2026-08-09 — this table originally presented all three as existing, and two do
+> not.** It also cited "(#734 method)" for the replay row; #734 is *"workspace-revision
+> provenance — stamp revision identity on every acceptance verdict,"* which is a different
+> thing. No replay-zero-diff-over-a-corpus script or test exists.
+>
+> **The retirement stands, and the correction does not weaken it** — because this table was
+> never the load-bearing argument. The load-bearing argument is structural and survives the
+> sweep intact: *the control's unique coverage is a strict subset of an authored cycle's,*
+> since below framing the two are one code path by construction (Guard 1a, verified above —
+> one call site, inside framing) and #796 made it literal by having an authored cycle derive
+> its contract and become bind mode. A mechanism that is unbuilt cannot make a subset into a
+> superset.
+>
+> What the correction *does* change is honesty about coverage in the meantime: until Guard 1b
+> exists, nothing offline isolates a provenance change from a transformation defect. Guard 1b
+> is small and worth building; the replay corpus is new scope at the tail of a release and is
+> **dropped** rather than invented now.
 
 All three are offline. That is where most of the control's value already lived; the cycles
 were buying variance reduction on top.
