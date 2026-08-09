@@ -1463,6 +1463,20 @@ class ScaffoldStack:
     #: implementation's vocabulary rather than the scaffold's — "fastapi", not the profile
     #: name. Empty means the checks skip, which is the conservative default #503 chose.
     check_stack: str = ""
+    #: #818: the verification-criteria pack ``scaffold_contract`` emits for this stack —
+    #: which kinds of fill slot it has, what evidence proves each kind, and what proves the
+    #: deliverable builds and its suite ran. A *name*, not a callable, so the check
+    #: vocabulary stays in the emitter layer; same indirection as ``check_stack``.
+    #:
+    #: **The default is deliberately asymmetric with ``check_stack``.** An unset
+    #: ``check_stack`` means the typed checks *skip*, and a skip is safe because
+    #: ``CheckOutcome.skipped`` is not executed-and-passed under SIP-0096 — it surfaces as
+    #: unverified. An unset ``criteria_pack`` means the emitter **refuses**, because the
+    #: failure it prevents is not a missing check but a *wrong* contract: before #818 a
+    #: stack with no pack fell through to the FastAPI view branch and derived a contract
+    #: that every gate accepted. Visible-and-unverified has a safe default; silently-wrong
+    #: does not.
+    criteria_pack: str = ""
 
 
 _STACKS: dict[str, ScaffoldStack] = {
@@ -1473,6 +1487,10 @@ _STACKS: dict[str, ScaffoldStack] = {
         qa_test_namespace=("backend/tests/", "frontend/src/tests/"),
         harness_entry_modules=("backend.main", "app.main", "main"),
         check_stack="fastapi",
+        # Today a pack is named for the stack that needs it; the indirection exists so a
+        # later stack can share one (a FastAPI+Vue stack wants these same backend criteria)
+        # without minting a fourth stack vocabulary to express it.
+        criteria_pack="fullstack_fastapi_react",
     ),
 }
 
@@ -1494,3 +1512,16 @@ def check_stack_for(stack: str) -> str | None:
     """
     known = _STACKS.get(stack)
     return (known.check_stack or None) if known else None
+
+
+def criteria_pack_for(stack: str) -> str:
+    """The verification-criteria pack ``stack`` declares, or ``""`` (#818).
+
+    Companion to :func:`check_stack_for`, and the same reason for existing: the stack
+    registry is the one place that answers "what does this stack use". Returning the empty
+    string for an unknown or undeclaring stack keeps this accessor total; the *refusal*
+    belongs to the emitter, which is the layer that knows a missing pack means it cannot
+    produce a correct contract.
+    """
+    known = _STACKS.get(stack)
+    return known.criteria_pack if known else ""

@@ -69,11 +69,15 @@ class CheckSpec:
         param_types: Map of param key → expected Python type (or tuple of
             types). The parser does an ``isinstance`` check; mismatches →
             ValueError.
-        supported_stacks: Frozen set of stack identifiers (e.g., ``fastapi``,
-            ``python``) on which the M1.2 evaluator can act. Empty set means
-            stack-agnostic. The parser does NOT enforce stack compatibility —
-            stack-unsupported but well-formed checks are valid plans (RC-11)
-            that the evaluator returns ``skipped`` for at runtime (RC-12).
+        (``supported_stacks`` was removed by #818: declared on 11 specs and read
+            by nothing, repo-wide. It was also a *third* stack vocabulary, and an
+            internally inconsistent one — ``{"fastapi"}`` named a framework,
+            ``{"python"}`` a language, ``{"python", "javascript", "typescript"}``
+            languages. What it appeared to do is done by ``applicable_extensions``,
+            which is read at two live call sites, plus each evaluator's own stack
+            branch. Deleted rather than wired: wiring an unvalidated vocabulary
+            would have minted the stack-blueprint schema by accident, which is
+            exactly what S1 declined to do when it named its type ``ScaffoldStack``.)
         requires_stack_context: When true, the M1.2 evaluator needs declared
             stack context (from ``HandlerContext``) to evaluate. When false,
             language-level cues (file extension) are sufficient. Per RC-12a,
@@ -138,7 +142,6 @@ class CheckSpec:
     required_params: frozenset[str]
     optional_params: frozenset[str] = frozenset()
     param_types: dict[str, type | tuple[type, ...]] = field(default_factory=dict)
-    supported_stacks: frozenset[str] = frozenset()
     requires_stack_context: bool = False
     path_params: frozenset[str] = frozenset()
     example: dict[str, object] = field(default_factory=dict)
@@ -407,7 +410,6 @@ CHECK_SPECS: dict[str, CheckSpec] = {
         applicable_extensions=frozenset({".py"}),
         required_params=frozenset({"file", "methods_paths"}),
         param_types={"file": str, "methods_paths": list},
-        supported_stacks=frozenset({"fastapi"}),
         requires_stack_context=True,
         path_params=frozenset({"file"}),
         example={"file": "app/main.py", "methods_paths": ["GET /runs", "POST /runs"]},
@@ -424,7 +426,6 @@ CHECK_SPECS: dict[str, CheckSpec] = {
         required_params=frozenset({"file", "module"}),
         optional_params=frozenset({"symbol"}),
         param_types={"file": str, "module": str, "symbol": str},
-        supported_stacks=frozenset({"python", "javascript", "typescript"}),
         requires_stack_context=False,
         path_params=frozenset({"file"}),
         example={"file": "app/main.py", "module": "app.models", "symbol": "RunEvent"},
@@ -440,7 +441,6 @@ CHECK_SPECS: dict[str, CheckSpec] = {
         applicable_extensions=frozenset({".py"}),
         required_params=frozenset({"file", "class_name", "fields"}),
         param_types={"file": str, "class_name": str, "fields": list},
-        supported_stacks=frozenset({"python"}),
         requires_stack_context=True,
         path_params=frozenset({"file"}),
         example={"file": "app/models.py", "class_name": "RunEvent", "fields": ["id", "title"]},
@@ -457,7 +457,6 @@ CHECK_SPECS: dict[str, CheckSpec] = {
         required_params=frozenset({"file", "name_prefix"}),
         optional_params=frozenset({"min_count"}),
         param_types={"file": str, "name_prefix": str, "min_count": int},
-        supported_stacks=frozenset({"python"}),
         requires_stack_context=True,
         path_params=frozenset({"file"}),
         example={"file": "backend/tests/test_runs.py", "name_prefix": "test_", "min_count": 3},
@@ -483,7 +482,6 @@ CHECK_SPECS: dict[str, CheckSpec] = {
         required_params=frozenset({"file", "entry_modules"}),
         optional_params=frozenset({"client_ctor"}),
         param_types={"file": str, "entry_modules": list, "client_ctor": str},
-        supported_stacks=frozenset({"python"}),
         requires_stack_context=True,
         path_params=frozenset({"file"}),
         example={
@@ -511,7 +509,6 @@ CHECK_SPECS: dict[str, CheckSpec] = {
         required_params=frozenset({"file", "pattern"}),
         optional_params=frozenset({"count_min"}),
         param_types={"file": str, "pattern": str, "count_min": int},
-        supported_stacks=frozenset(),
         requires_stack_context=False,
         path_params=frozenset({"file"}),
         # pattern carries a backslash escape on purpose: the rendered example
@@ -536,7 +533,6 @@ CHECK_SPECS: dict[str, CheckSpec] = {
         name="count_at_least",
         required_params=frozenset({"glob", "min_count"}),
         param_types={"glob": str, "min_count": int},
-        supported_stacks=frozenset(),
         requires_stack_context=False,
         path_params=frozenset({"glob"}),
         example={"glob": "tests/test_*.py", "min_count": 3},
@@ -552,7 +548,6 @@ CHECK_SPECS: dict[str, CheckSpec] = {
         required_params=frozenset({"argv"}),
         optional_params=frozenset({"cwd", "timeout_s"}),
         param_types={"argv": list, "cwd": str, "timeout_s": int},
-        supported_stacks=frozenset(),
         requires_stack_context=False,
         # argv elements are not single paths; the RC-10a safelist above
         # validates argv shapes pattern-by-pattern. cwd is path-checked at
@@ -581,7 +576,6 @@ CHECK_SPECS: dict[str, CheckSpec] = {
         required_params=frozenset({"file"}),
         optional_params=frozenset({"timeout_s"}),
         param_types={"file": str, "timeout_s": int},
-        supported_stacks=frozenset(),
         requires_stack_context=False,
         path_params=frozenset({"file"}),
         example={"file": "frontend/src/views/RunsListView.jsx"},
@@ -611,7 +605,6 @@ CHECK_SPECS: dict[str, CheckSpec] = {
         applicable_extensions=frozenset({".py"}),
         required_params=frozenset({"file", "routes"}),
         param_types={"file": str, "routes": list},
-        supported_stacks=frozenset({"python"}),
         requires_stack_context=False,
         path_params=frozenset({"file"}),
         framework_injected=True,
@@ -655,7 +648,6 @@ CHECK_SPECS: dict[str, CheckSpec] = {
         required_params=frozenset({"file", "endpoints"}),
         optional_params=frozenset({"allowed_error_statuses"}),
         param_types={"file": str, "endpoints": list, "allowed_error_statuses": list},
-        supported_stacks=frozenset({"python"}),
         requires_stack_context=False,
         path_params=frozenset({"file"}),
         framework_injected=True,
@@ -689,7 +681,6 @@ CHECK_SPECS: dict[str, CheckSpec] = {
         required_params=frozenset({"file"}),
         optional_params=frozenset({"timeout_s"}),
         param_types={"file": str, "timeout_s": int},
-        supported_stacks=frozenset({"python"}),
         requires_stack_context=False,
         path_params=frozenset({"file"}),
         example={"file": "backend/routes.py"},
