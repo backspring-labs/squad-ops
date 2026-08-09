@@ -182,6 +182,7 @@ Key principle: **acceptance is a design commitment on main, not an implementatio
 - **A code comment is not an amendment either.** Necessary, not sufficient: a reader of the SIP never sees it.
 - Each amendment names **what changed, the evidence, and who ruled it.** "We decided otherwise" without evidence is how a spec becomes advisory.
 - **A disposition that is deliberately not built is an amendment too** — silence reads as "shipped."
+- **Do not touch `updated_at`.** It means *last status transition*, not last content change: `update_sip_status.py` is the only writer (frontmatter and registry are stamped separately, hence the millisecond skew between them), so a hand edit invents drift. **The amendment section's own date is the content record** — and it is the better one, since it says *what* changed rather than only when.
 
 ### Key Implemented SIPs
 
