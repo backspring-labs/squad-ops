@@ -40,6 +40,7 @@ from squadops.cycles.preflight import (
     model_availability_decision,
     required_check_tooling_decision,
     required_roles_decision,
+    stack_dev_capability_decision,
 )
 
 logger = logging.getLogger(__name__)
@@ -130,6 +131,11 @@ async def _run_create_preflight(profile: SquadProfile, config: dict) -> tuple[Fi
         # construction — the sole-author path never receives the criteria index,
         # so every framing attempt is rejected. Fail in seconds, not per re-roll.
         bind_mode_authoring_decision(config),
+        # #832: build_profile and dev_capability both name the stack. Disagreement expands
+        # one stack's skeleton while prompting the dev agent for another's files — every
+        # emission outside the fill slots, surfacing as "the plan claims nothing" a full
+        # framing workload later.
+        stack_dev_capability_decision(config),
         model_availability_decision(profile, await _pulled_model_names()),
         # SIP-0096 §6.5: a required check whose tooling is knowably absent is a
         # create-time reject, never a mid-run blocked_unverified surprise.
