@@ -215,11 +215,45 @@ accident, each while fixing the last. 1a closes the set instead of discovering i
 **Decision owed at 1c:** does stack #2 build the same `group_run` PRD? Recommended **yes** —
 it keeps VS comparable to V5 and reuses `audit_delivered_app.py`.
 
-#### Stage 2 — close the S headline
+#### Stage 2 — close the S headline *(decomposed 2026-08-10)*
 
-**S3** — promote the Stack Blueprint SIP against two stacks: bend register reviewed,
-falsification pass (remove or corrupt each field, confirm something breaks in at least one
-stack), no accidental single-stack fields. **S5** — the admission rule recorded.
+> **This stage was three lines of prose while Stages 1, 3 and 4 had lettered steps, and the
+> imbalance was backwards on the merits:** Stage 2 is where the release's S claim is actually
+> *made*. Stage 1 got five steps because work was happening in it; Stage 2 got a paragraph
+> because none was. "S3" read like a single task and is not one.
+
+| Step | Work | Gate |
+|---|---|---|
+| **2a** | **The stack inventory.** One place answering "which stacks exist and what does each declare", with today's six registries as members | S3 has a subject rather than a scavenger hunt |
+| **2b** | Draft the blueprint schema against **both** stacks | every field traced to a real declaration in each |
+| **2c** | **Falsification pass** — remove or corrupt each field, confirm something breaks in at least one stack | a field whose removal breaks nothing is decorative and is deleted *before* the schema freezes, not after it accretes meaning |
+| **2d** | **Bend register review** (`docs/plans/stack-2-bend-register.md`) | **zero unexplained bends** — one true bend to argue, plus a schema defect and a field with no home |
+| **2e** | The two recorded disclosures + the `fullstack_fastapi_react` / `fastapi` vocabulary reconciliation S3 still owes | stated at promotion, never implied away |
+| **2f** | **S5** — the admission rule recorded | a new blueprint field must be demonstrated on two stacks |
+| **2g** | Promote the Stack Blueprint SIP | its acceptance gate — a second real stack — is met |
+
+**Why 2a is here and not folded into #838.** #838 fixes a broken cycle; 2a is schema
+preparation. Bundling them would hold a blocking fix hostage to a design question. But 2a is
+what #838 exposed: **six per-stack registries, of which three are reached by an explicit field
+on `ScaffoldStack` (`criteria_pack`, `probe_profile`, `dev_capability`) and two by naming
+convention alone (`sandbox._CONTRACTS`, `BUILD_PROFILES`) — and both convention-bound ones are
+where it broke.** Which registries got a pointer is not a design distinction; it is the order
+the bugs arrived in.
+
+**2c is the step most likely to bite**, and the raw material already exists. Measured
+2026-08-10, two `ScaffoldStack` fields are populated by exactly one stack:
+
+| field | `fullstack_fastapi_react` | `nextjs_ts` |
+|---|---|---|
+| `harness_entry_modules` | `('backend.main', 'app.main', 'main')` | `()` |
+| `check_stack` | `fastapi` | `""` |
+
+Under 2c's own rule each is either **a declared optional capability with its reason recorded**,
+or **a FastAPI assumption wearing a general name**. Both have a defensible answer today —
+Node module resolution has no test/app import boundary, and the typed-check evaluators are
+Python implementations never verified against stack #2 — but "defensible" is what the
+falsification pass exists to demand in writing rather than accept by assertion. Not answerable
+until 2b exists.
 
 #### Stage 3 — release-wide *(runs in parallel with Stage 1)*
 
