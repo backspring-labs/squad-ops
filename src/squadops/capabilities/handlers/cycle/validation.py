@@ -325,10 +325,15 @@ def _classify_file(filename: str) -> tuple[str, str]:
 def _is_test_file(path: str, patterns: tuple[str, ...]) -> bool:
     """Check if *path* matches any test file pattern or resides in __tests__/.
 
-    Uses fnmatch for glob-style pattern matching (D4).
-    """
-    from fnmatch import fnmatch
-    from pathlib import PurePosixPath
+    The basename match is ``dev_capabilities.matches_test_file_patterns`` — shared with
+    plan validation (#846) so both read the stack's declared conventions rather than
+    each carrying its own idea of what a test file looks like.
 
-    name = PurePosixPath(path).name
-    return any(fnmatch(name, pat) for pat in patterns) or "/__tests__/" in path
+    The ``__tests__/`` clause stays local and is not shared. Callers here use this to
+    *exclude* files from a source set, where over-matching is the safe direction; plan
+    validation asks the stricter question "will the runner discover this?", and a
+    ``__tests__/helpers.py`` pytest never collects must not count there.
+    """
+    from squadops.capabilities.dev_capabilities import matches_test_file_patterns
+
+    return matches_test_file_patterns(path, patterns) or "/__tests__/" in path

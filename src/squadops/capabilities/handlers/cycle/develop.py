@@ -8,7 +8,10 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any
 
-from squadops.capabilities.dev_capabilities import get_capability
+from squadops.capabilities.dev_capabilities import (
+    effective_capability_name,
+    get_capability,
+)
 from squadops.capabilities.handlers.base import (
     HandlerEvidence,
     HandlerResult,
@@ -28,7 +31,6 @@ from squadops.capabilities.handlers.cycle.validation import (
     _detect_stubs,
     _estimate_min_artifacts,
 )
-from squadops.capabilities.scaffold import resolve_dev_capability
 
 logger = logging.getLogger(__name__)
 
@@ -270,7 +272,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         strategy: str | None = None,
     ) -> str:
         """Build prompt with PRD + plan artifacts for code generation."""
-        capability = get_capability(resolve_dev_capability(self._resolved_config) or "python_cli")
+        capability = get_capability(effective_capability_name(self._resolved_config))
 
         parts = [f"## Product Requirements Document\n\n{prd}"]
 
@@ -423,9 +425,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
             )
             rendered = None
             try:
-                capability = get_capability(
-                    resolve_dev_capability(self._resolved_config) or "python_cli"
-                )
+                capability = get_capability(effective_capability_name(self._resolved_config))
             except ValueError as exc:
                 return self._fail_result(start_time, inputs, str(exc))
         else:
@@ -433,9 +433,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
 
             # Resolve capability (fail fast on unknown dev_capability)
             try:
-                capability = get_capability(
-                    resolve_dev_capability(self._resolved_config) or "python_cli"
-                )
+                capability = get_capability(effective_capability_name(self._resolved_config))
             except ValueError as exc:
                 return self._fail_result(start_time, inputs, str(exc))
 

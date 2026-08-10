@@ -32,7 +32,10 @@ AUTHOR_FACING: dict[str, str] = {
     "validate_criteria_scope": "regex-only-on-documents",
     "validate_command_checks": "commands-must-run-here",
     "validate_against_profile": "roles-must-exist",
-    "validate_check_applicability": "qa-tests-pytest-discoverable",
+    # Renamed from "qa-tests-pytest-discoverable" by #846: the rule reads the stack's
+    # declared test conventions, and a rule id naming one stack's runner is how the
+    # validator came to assert pytest's patterns against a vitest suite in the first place.
+    "validate_check_applicability": "qa-tests-must-be-discoverable",
 }
 
 # Validators an author is already taught by a different managed asset. Restating them

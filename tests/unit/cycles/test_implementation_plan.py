@@ -1387,7 +1387,7 @@ class TestValidateCheckApplicability:
         plan = self._plan_with_qa_artifacts('\n      - "backend/tests/test_integration.js"')
         errors = plan.validate_check_applicability(self._CONFIG)
         assert len(errors) == 1
-        assert "pytest-discoverable" in errors[0]
+        assert "test_*.py" in errors[0]
         assert "test_integration.js" in errors[0]
 
     def test_not_required_means_no_rule(self):
@@ -1426,3 +1426,61 @@ class TestValidateCheckApplicability:
         )
         errors = plan.validate_check_applicability(self._CONFIG)
         assert len(errors) == 1
+
+    # -- #846: the rule reads the stack's conventions, not pytest's ------------
+
+    _NEXTJS_CONFIG = {
+        "required_checks": ["tests_pass"],
+        "build_profile": "nextjs_ts",
+    }
+
+    def test_vitest_suite_accepted_on_a_typescript_stack(self):
+        """The exact rejection that cost VS's re-roll (`cyc_0edb55919384`).
+
+        `__tests__/store.test.ts` is what a correct Next.js qa task declares, and vitest
+        discovers it. Judged by pytest's patterns it is unwinnable, so EVERY correct qa
+        task on this stack was rejected — and the message told the author to add a
+        `test_*.py`, which would have been wrong.
+        """
+        plan = self._plan_with_qa_artifacts(
+            '\n      - "__tests__/store.test.ts"\n      - "__tests__/api.test.ts"'
+        )
+        assert plan.validate_check_applicability(self._NEXTJS_CONFIG) == []
+
+    def test_python_suite_rejected_on_a_typescript_stack(self):
+        """The rule has to bite in the new direction too, or it is only half moved.
+
+        A `test_api.py` on a Next.js stack is undiscoverable by vitest for exactly the
+        reason the `.js` file was undiscoverable by pytest. A validator that accepted
+        both would have stopped catching anything.
+        """
+        plan = self._plan_with_qa_artifacts('\n      - "__tests__/test_api.py"')
+        errors = plan.validate_check_applicability(self._NEXTJS_CONFIG)
+        assert len(errors) == 1
+        assert "*.test.ts" in errors[0]
+        assert "test_api.py" in errors[0]
+
+    def test_message_names_the_stacks_own_conventions(self):
+        """The remedy must be actionable on the stack the author is building for.
+
+        The old text hardcoded "include a test_*.py" and would have sent a Next.js
+        author to write a Python file the runner never collects — the correction loop
+        following advice that cannot work.
+        """
+        plan = self._plan_with_qa_artifacts('\n      - "__tests__/helpers.ts"')
+        (error,) = plan.validate_check_applicability(self._NEXTJS_CONFIG)
+        assert "test_*.py" not in error
+        assert "*.test.ts" in error and "*.spec.tsx" in error
+
+    def test_tests_dir_membership_alone_does_not_satisfy(self):
+        """`__tests__/` is not a free pass, even though the sibling matcher in
+        `handlers.cycle.validation` treats it as one.
+
+        That helper is generous on purpose — it EXCLUDES files from a source set. Here
+        the question is "will the runner collect this?", and `__tests__/helpers.py` is
+        collected by neither pytest nor vitest. Sharing the directory clause would have
+        quietly widened #715's guard for every stack.
+        """
+        plan = self._plan_with_qa_artifacts('\n      - "__tests__/helpers.py"')
+        assert len(plan.validate_check_applicability(self._CONFIG)) == 1
+        assert len(plan.validate_check_applicability(self._NEXTJS_CONFIG)) == 1
