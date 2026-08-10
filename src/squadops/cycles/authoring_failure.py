@@ -35,6 +35,7 @@ from squadops.cycles.manifest_gates import (
     PROOF_LINT,
     PROOF_PARSES,
     PROOF_SOURCE_PRD,
+    PROOF_STACK_MATCHES_CONFIG,
     PROOF_STATUS_DECLARED,
     PROOF_TESTID_COVERAGE,
     WinnabilityFinding,
@@ -86,6 +87,13 @@ _PROOF_CLASS: dict[str, str] = {
     PROOF_TESTID_COVERAGE: AUTHORING_DEFECT,
     PROOF_STATUS_DECLARED: AUTHORING_DEFECT,
     PROOF_EXPANDS: AUTHORING_DEFECT,
+    # #838: the author wrote another stack's name. Classified as an authoring defect
+    # because a retry with the rejection in hand is the right response -- but VS showed
+    # the cause upstream: the design stage is never told the stack, so the author
+    # inherited the wrong architecture from a technical design that named it eight
+    # times. If this class RECURS once that plumbing lands, it is a blueprint_limitation
+    # instead, and B1's recurrence data is what tells the two apart.
+    PROOF_STACK_MATCHES_CONFIG: AUTHORING_DEFECT,
     # Derivation succeeded structurally but produced something unusable, on a manifest
     # that already passed lint and expansion. That is the deriver's problem by
     # elimination, not the author's.
@@ -155,7 +163,7 @@ def classify_finding(finding: WinnabilityFinding) -> ClassifiedFinding:
     )
 
 
-def assess_authoring_outcome(manifest_content: str) -> AuthoringOutcome:
+def assess_authoring_outcome(manifest_content: str, expected_stack: str = "") -> AuthoringOutcome:
     """Run both gates and classify everything they say about this manifest.
 
     Also reads the manifest's **declared uncertainty**. An ``unresolved`` decision
@@ -178,7 +186,10 @@ def assess_authoring_outcome(manifest_content: str) -> AuthoringOutcome:
         # parsed manifest, so the parse failure returns alone.
         return AuthoringOutcome(findings=tuple(classify_finding(f) for f in schema))
 
-    findings = tuple(classify_finding(f) for f in (*schema, *assess_winnability(manifest_content)))
+    findings = tuple(
+        classify_finding(f)
+        for f in (*schema, *assess_winnability(manifest_content, expected_stack))
+    )
     return AuthoringOutcome(findings=findings, open_questions=_open_questions(manifest_content))
 
 

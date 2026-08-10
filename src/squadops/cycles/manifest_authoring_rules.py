@@ -30,6 +30,7 @@ from squadops.cycles.manifest_gates import (
     PROOF_LINT,
     PROOF_PARSES,
     PROOF_SOURCE_PRD,
+    PROOF_STACK_MATCHES_CONFIG,
     PROOF_STATUS_DECLARED,
     PROOF_TESTID_COVERAGE,
 )
@@ -46,6 +47,12 @@ AUTHOR_FACING: dict[str, tuple[str, ...]] = {
     PROOF_STATUS_DECLARED: ("declare-the-success-status",),
     PROOF_SOURCE_PRD: ("name-the-source-prd",),
     PROOF_DECISION_RECORD: ("record-judgments-with-warrants",),
+    # #838: AUTHOR_FACING rather than COVERED_ELSEWHERE, though the authoring request's
+    # schema block does render `stack: {{stack}}`. VS falsified the idea that rendering
+    # it is teaching it: the author saw that line and wrote another stack's name anyway,
+    # having inherited it from a technical design that named the other one eight times.
+    # Filing it as already-covered would assert a teaching that has been measured failing.
+    PROOF_STACK_MATCHES_CONFIG: ("use-the-stack-you-were-given",),
 }
 
 # Proofs an author is already taught by a different managed asset. Restating them would put
