@@ -209,8 +209,12 @@ class TestTokenBudgetFields:
 
 
 class TestRegistryCompleteness:
-    def test_registry_has_four_capabilities(self):
-        assert len(DEV_CAPABILITIES) == 4
+    # #822: `assert len(DEV_CAPABILITIES) == 4` was removed rather than bumped to 5. A count
+    # names no bug class, breaks on every legitimate addition, and is the shape
+    # docs/TEST_QUALITY_STANDARD.md rules out. What it appeared to protect — that every
+    # registered capability is well formed and reachable — is covered by the tests below, and
+    # the binding that actually matters (every scaffold stack names a capability that exists)
+    # is pinned in tests/unit/cycles/test_stack_dev_capability.py (#832).
 
     def test_all_are_capability_instances(self):
         for name, cap in DEV_CAPABILITIES.items():

@@ -334,6 +334,87 @@ DEV_CAPABILITIES: dict[str, DevelopmentCapability] = {
         max_completion_tokens=12000,
         test_timeout_seconds=180,
     ),
+    # #822 stack #2. Bound to the scaffold stack of the same name by
+    # ``ScaffoldStack.dev_capability`` (#832), so the two registries can no longer disagree
+    # about which stack a cycle is building.
+    "nextjs_ts": DevelopmentCapability(
+        name="nextjs_ts",
+        system_prompt_supplement=(
+            "You are generating source code for a Next.js (App Router) application in "
+            "TypeScript. One project at the repository root — there is no separate backend "
+            "or frontend tree.\n"
+            "Emit each file as a fenced code block with the language and path separated by "
+            "a colon. Examples:\n"
+            "```typescript:app/api/runs/route.ts\n"
+            "```tsx:app/runs/page.tsx\n\n"
+            "Paths must be clean relative paths with no colons in the path or spaces."
+        ),
+        file_structure_guidance=(
+            "\n\nGenerate complete, runnable source for a Next.js App Router application in "
+            "TypeScript.\n\n"
+            "### Routing\n"
+            "- Server endpoints are ROUTE HANDLERS at app/api/<path>/route.ts, exporting one "
+            "async function per HTTP method (`export async function GET(request: Request)`).\n"
+            "- Do NOT use server actions for endpoints the design declares: they have no "
+            "stable URL, so nothing can address them over HTTP.\n"
+            "- A path parameter is a DIRECTORY in brackets: `/runs/{run_id}` is "
+            "app/api/runs/[run_id]/route.ts. Read it from the second handler argument, "
+            "`{ params }`.\n"
+            "- Pages are app/<path>/page.tsx with a default-exported component. The URL comes "
+            "from the directory; the filename is always page.tsx.\n\n"
+            "### Conventions\n"
+            "- Server-first. Add `'use client'` only to a component that genuinely needs "
+            "browser interactivity — anything rendered on the client is absent from the "
+            "initial HTML.\n"
+            "- Import through the `@/` alias (`@/lib/store`), not long relative chains.\n"
+            "- Return errors through the scaffold-owned envelope in lib/errors.ts. Never "
+            "invent a second error shape.\n"
+            "- Every declared testid must appear as a `data-testid` attribute on the element "
+            "it names.\n"
+            "- TypeScript is strict and `next build` fails on type errors; it is the only "
+            "static check this stack has.\n\n"
+            "### General\n"
+            "- Forward slashes, no colons, no spaces; paths relative to the project root."
+        ),
+        example_structure=(
+            "package.json\n"
+            "tsconfig.json\n"
+            "app/\n"
+            "  layout.tsx\n"
+            "  page.tsx\n"
+            "  api/\n"
+            "    runs/\n"
+            "      route.ts\n"
+            "lib/\n"
+            "  models.ts\n"
+            "  store.ts"
+        ),
+        expected_extensions=(".ts", ".tsx", ".json", ".css"),
+        test_framework=TEST_FRAMEWORK_VITEST,
+        test_prompt_supplement=(
+            "You are generating vitest test files for a Next.js TypeScript application.\n\n"
+            "Import ONLY packages the shipped package.json declares — a suite that fails to "
+            "load fails the whole tests_pass check (#448).\n"
+            "Consume the scaffold-owned store seam (`reset`, `insert`, `all` from "
+            "@/lib/store) rather than reaching into the app entry.\n"
+            "Place tests in __tests__/ with a .test.ts suffix, e.g. "
+            "__tests__/runs.test.ts.\n\n"
+            "Emit each file as a fenced code block with the language and path separated by a "
+            "colon:\n"
+            "```typescript:__tests__/runs.test.ts\n\n"
+            "Paths must be clean relative paths — no colons, no spaces."
+        ),
+        source_filter=(".ts", ".tsx"),
+        test_file_patterns=("*.test.ts", "*.test.tsx", "*.spec.ts", "*.spec.tsx"),
+        build_support_files=(
+            "package.json",
+            "tsconfig.json",
+            "next.config.mjs",
+            "vitest.config.ts",
+        ),
+        max_completion_tokens=12000,
+        test_timeout_seconds=180,
+    ),
 }
 
 

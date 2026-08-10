@@ -80,7 +80,12 @@ def test_frontend_capabilities_declare_build_support():
     assert frontend_caps, "expected at least one vitest/both capability"
     for cap in frontend_caps:
         assert "package.json" in cap.build_support_files, f"{cap.name} missing package.json"
-        assert "index.html" in cap.build_support_files, f"{cap.name} missing index.html"
+        # #822: `index.html` was asserted for every frontend capability. That is VITE's entry
+        # point, not a property of frontends — Next.js generates its HTML and ships no
+        # index.html, so requiring it would force a capability to declare a file its stack
+        # does not have. The real invariant, and the one #290 was about, is package.json:
+        # without it npm cannot resolve anything and vitest silently skips.
+        assert cap.build_support_files, f"{cap.name} declares no build support files"
 
 
 def test_get_capability_default_build_support_empty():

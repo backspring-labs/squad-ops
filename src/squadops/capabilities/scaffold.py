@@ -33,6 +33,15 @@ from typing import Any
 
 import yaml
 
+# #822: stack #2's expander lives in its own module — a second one inline would push this
+# file past 2000 lines and interleave two stacks' source templates. No cycle: it annotates
+# against ``InterfaceManifest`` under ``TYPE_CHECKING`` and imports nothing here at runtime.
+from squadops.capabilities.stack_nextjs_ts import STACK_NAME as _NEXTJS_TS_NAME
+from squadops.capabilities.stack_nextjs_ts import expand_nextjs_ts as _expand_nextjs_ts
+from squadops.capabilities.stack_nextjs_ts import (
+    fill_slots_nextjs_ts as _fill_slots_nextjs_ts,
+)
+
 # Schema v1 is frozen (SIP-0099 phase 99.1): the shape below is the canonical
 # interface-manifest contract the fullstack_fastapi_react expander was proven against
 # in the Phase-0.5 spike. A manifest declaring any other version/kind is rejected at
@@ -1519,6 +1528,28 @@ _STACKS: dict[str, ScaffoldStack] = {
         criteria_pack="fullstack_fastapi_react",
         probe_profile="fastapi_uvicorn",
         dev_capability="fullstack_fastapi_react",
+    ),
+    # #822 stack #2. Imported below rather than defined here: a second expander inline would
+    # push this module past 2000 lines and interleave two stacks' source templates. Extracting
+    # stack #1 to match is a follow-up refactor, deliberately not bundled — it would move
+    # bytes the reference contract is pinned to.
+    _NEXTJS_TS_NAME: ScaffoldStack(
+        name=_NEXTJS_TS_NAME,
+        expand=_expand_nextjs_ts,
+        fill_slots=_fill_slots_nextjs_ts,
+        # Co-located `__tests__/` beside source, not a directory prefix at the tree root —
+        # one of the three FastAPI-shaped assumptions S2 selected this stack to break.
+        qa_test_namespace=("__tests__/", "app/", "lib/"),
+        # Node module resolution has no import boundary between tests and app, so there is
+        # no equivalent of `backend.main` to forbid. Declared empty as a fact, not an omission.
+        harness_entry_modules=(),
+        # Empty: the typed-check evaluators are Python AST implementations and were never
+        # verified against this stack, so they skip rather than being fed a guess (#503's
+        # conservative default, and #822 bend 6).
+        check_stack="",
+        criteria_pack=_NEXTJS_TS_NAME,
+        probe_profile="nextjs_next_start",
+        dev_capability=_NEXTJS_TS_NAME,
     ),
 }
 

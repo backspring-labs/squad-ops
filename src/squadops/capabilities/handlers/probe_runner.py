@@ -106,6 +106,17 @@ DEFAULT_PROFILE = ExecutionProfile(
 #: stack-specific.
 _PROFILES: dict[str, ExecutionProfile] = {
     "fastapi_uvicorn": DEFAULT_PROFILE,
+    # #822 stack #2, and the first consumer of `prepare_argv` (#827). A Next app cannot run
+    # from source: `next build` compiles it, and only then does `next start` serve. Stack #1
+    # is interpreted, so its profile declares no preparation and the step stays inert for it.
+    "nextjs_next_start": ExecutionProfile(
+        # Install *and* build: `next start` serves `.next/`, which only `next build` produces,
+        # so a prepare step that stopped at install would boot into "no production build
+        # found" and report as a boot failure — the exact conflation #827 separated. `sh -c`
+        # for the two-step, matching the sandbox contract's INSTALL_DEPENDENCIES precedent.
+        prepare_argv=("sh", "-c", "npm ci --no-audit --no-fund && npx next build"),
+        boot_argv=("npx", "next", "start", "--port", "{port}"),
+    ),
 }
 
 
