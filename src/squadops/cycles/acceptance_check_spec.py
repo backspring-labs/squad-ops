@@ -320,6 +320,12 @@ CHECK_CONTRACT_ASSERTIONS = "contract_assertions_match"
 # moves both together.
 CHECK_FILL_SLOT_SIGNATURE = "fill_slot_signature"
 
+# SIP-0100 / #833: the QA harness-boundary check. Named here because `task_plan` filters its
+# injection on the check's own applicability — the same single-source rule as the constants
+# above, and it earns one for the same reason they do: a literal in an injection filter
+# silently injects nothing after a rename.
+CHECK_HARNESS_BOUNDARY = "harness_boundary"
+
 # #822: the per-view bundler check. Named here because `VerificationContract.view_slots`
 # filters on it to identify a stack's view files for repair targeting — the same
 # single-source rule as the constants above, and the same failure mode if it drifts: a
