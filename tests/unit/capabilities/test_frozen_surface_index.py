@@ -102,10 +102,36 @@ def test_no_manifest_yields_no_index():
     assert frozen_surface_index_lines(None) == []
 
 
-def test_non_python_frozen_files_are_listed_without_a_surface():
-    # vite.config.js is frozen and load-bearing (it strips the /api prefix), but the
-    # index does not parse JS — it must still name the file rather than omit it.
-    assert _line_for("frontend/vite.config.js") == "- `frontend/vite.config.js`"
+def test_javascript_frozen_files_now_carry_a_surface_too():
+    """This test asserted the opposite until 2a, and the assertion was the limitation.
+
+    It read *"the index does not parse JS — it must still name the file"*, which describes
+    the renderer accurately and reads as a decision. It was not one: pf-42 built a Python
+    reader and nothing was ever written for the other half of stack #1. The consequence
+    stayed invisible for the same reason it always does — the checks that would trip on a
+    frontend guess are bundler-level, not declaration-level.
+
+    2a's inventory measured it: stack #1 rendered **10 of 15** frozen entries bare, all of
+    `frontend/` among them, and stack #2 rendered **every** entry bare — leaving the plan
+    appendix's "do not check a frozen file unless the line proves it passes" with no line to
+    point at. `api.js` declaring `apiFetch` is exactly the name pf-42 exists to stop an
+    author inventing.
+    """
+    assert _line_for("frontend/vite.config.js") == (
+        "- `frontend/vite.config.js` — imports `@vitejs/plugin-react`, `vite`"
+    )
+    assert "functions apiFetch" in _line_for("frontend/src/api.js")
+
+
+def test_a_file_in_a_language_the_index_cannot_read_is_still_named():
+    """The half of the old test that was always right, kept.
+
+    Being unable to describe a file is never a reason to omit it — an author that cannot see
+    the file at all will assume the slot is theirs to write. `index.html` and `package.json`
+    have no declarations to give and must still appear.
+    """
+    assert _line_for("frontend/index.html") == "- `frontend/index.html`"
+    assert _line_for("frontend/package.json") == "- `frontend/package.json`"
 
 
 def test_unparseable_python_degrades_to_a_bare_path(monkeypatch):

@@ -763,8 +763,8 @@ _TS_FIELD = re.compile(r"^\s{2}(\w+)\??:", re.M)
 _TS_IMPORT = re.compile(r"""^import\s+[^'"]*from\s+['"]([^'"]+)['"]""", re.M)
 
 
-def _typescript_surface(source: str) -> str:
-    """One line describing what a frozen TypeScript module declares, or ``""``.
+def _ecmascript_surface(source: str) -> str:
+    """One line describing what a frozen JS/TS module declares, or ``""``.
 
     The ``_python_surface`` counterpart, and the same reason for existing: pf-43 died
     because ``store.py``'s module state was omitted and the author wrote a task to build a
@@ -772,9 +772,16 @@ def _typescript_surface(source: str) -> str:
     holds regardless of language, and stack #2 had no reader at all.
 
     Regex rather than a parser, which is safe *here specifically*: these files are emitted
-    by ``stack_nextjs_ts``' own templates, so the shapes are known and fixed. This is not a
-    general TypeScript reader and must not be reused as one — teaching the typed CHECKS to
-    parse TS is S4's work and needs a real parser, because those read code the squad wrote.
+    by the stacks' own expander templates, so the shapes are known and fixed. This is not a
+    general JS/TS reader and must not be reused as one — teaching the typed CHECKS to parse
+    TS is S4's work and needs a real parser, because those read code the squad wrote.
+
+    Named for ECMAScript rather than TypeScript because it covers both, and it covers both
+    because the first version did not. It was written for stack #2 and read `.ts`/`.tsx`
+    only, which left **stack #1's entire frontend still bare** — `App.jsx`, `main.jsx`,
+    `api.js` — after a commit whose own message said the gap was on both stacks. The
+    TypeScript-only constructs simply do not match in a `.js` file; nothing else needed to
+    change.
     """
     interfaces: list[str] = []
     for match in _TS_INTERFACE.finditer(source):
@@ -814,7 +821,7 @@ def _typescript_surface(source: str) -> str:
 #: entry bare — the appendix's escape hatch had no line anywhere on that stack, so no frozen
 #: file could be checked at all. Still short of complete: `.json`, `.html`, `.mjs` and
 #: `.js` remain undescribed on both stacks.
-DESCRIBED_FROZEN_SUFFIXES: tuple[str, ...] = (".py", ".ts", ".tsx")
+DESCRIBED_FROZEN_SUFFIXES: tuple[str, ...] = (".py", ".ts", ".tsx", ".js", ".jsx", ".mjs")
 
 
 def frozen_surface_index_lines(manifest: InterfaceManifest | None) -> list[str]:
@@ -850,8 +857,8 @@ def frozen_surface_index_lines(manifest: InterfaceManifest | None) -> list[str]:
             continue
         if name.endswith(".py"):
             detail = _python_surface(f["content"])
-        elif name.endswith((".ts", ".tsx")):
-            detail = _typescript_surface(f["content"])
+        elif name.endswith((".ts", ".tsx", ".js", ".jsx", ".mjs")):
+            detail = _ecmascript_surface(f["content"])
         else:
             detail = ""
         lines.append(f"- `{name}` — {detail}" if detail else f"- `{name}`")

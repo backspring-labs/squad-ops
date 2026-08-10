@@ -293,7 +293,7 @@ def test_frozen_index_describes_exactly_the_declared_suffixes(stack):
     )
 
 
-def test_the_typescript_surface_names_fields_not_just_types():
+def test_the_ecmascript_surface_names_fields_not_just_types():
     """pf-42/pf-43's actual lesson, applied to the second stack.
 
     Those rolls did not fail because the author did not know `models.py` existed — they
@@ -303,7 +303,7 @@ def test_the_typescript_surface_names_fields_not_just_types():
     index that lists `RunEvent` without its fields is the same defect one level up, which is
     why the interface-name assertion below is not enough on its own.
     """
-    surface = scaffold._typescript_surface(
+    surface = scaffold._ecmascript_surface(
         "import { z } from 'zod'\n"
         "export interface RunEvent {\n"
         "  id: string\n"
@@ -320,7 +320,7 @@ def test_the_typescript_surface_names_fields_not_just_types():
     assert "`zod`" in surface
 
 
-def test_the_typescript_surface_is_empty_for_files_that_declare_nothing():
+def test_the_ecmascript_surface_is_empty_for_files_that_declare_nothing():
     """Config and data files must render bare rather than as noise — the bare/described
     split is what the appendix's rule keys on."""
-    assert scaffold._typescript_surface("// a comment only\nconst private = 1\n") == ""
+    assert scaffold._ecmascript_surface("// a comment only\nconst private = 1\n") == ""
