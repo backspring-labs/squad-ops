@@ -409,14 +409,14 @@ async def list_checkpoints(project_id: str, cycle_id: str, run_id: str):
 
 
 async def _promote_run_artifacts(run_id: str) -> None:
-    """Promote all `working` artifacts produced by a run.
+    """Promote the run's artifacts on gate approval (SIP-0086).
 
-    Called from gate_decision() on approval. Idempotent: already-promoted
-    artifacts are skipped by the vault. Errors are logged but do not fail
-    the gate decision — the decision is the source of truth; promotion is
-    a downstream effect that can be retried.
+    Thin delegate: the operation moved to ``cycles.gate_promotion`` at #854 because it was
+    reachable only through this route, and the executor's question-gate auto-approval
+    (#807) is a second approval path that never arrives here.
     """
     from squadops.api.runtime.deps import get_artifact_vault
+    from squadops.cycles.gate_promotion import promote_run_artifacts
 
     try:
         vault = get_artifact_vault()
@@ -424,16 +424,4 @@ async def _promote_run_artifacts(run_id: str) -> None:
         logger.warning("artifact_vault unavailable; skipping promotion for run %s", run_id)
         return
 
-    try:
-        artifacts = await vault.list_artifacts(run_id=run_id)
-    except Exception:
-        logger.exception("failed to list artifacts for run %s during promotion", run_id)
-        return
-
-    for art in artifacts:
-        if art.promotion_status == "promoted":
-            continue
-        try:
-            await vault.promote_artifact(art.artifact_id)
-        except Exception:
-            logger.exception("failed to promote artifact %s for run %s", art.artifact_id, run_id)
+    await promote_run_artifacts(vault, run_id)
