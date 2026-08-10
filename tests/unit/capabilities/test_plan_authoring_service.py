@@ -582,3 +582,120 @@ async def test_builder_squad_with_build_profile_is_offered_builder_tasks():
     )
     assert "builder.assemble" in variables["task_types_section"]
     assert "builder.assemble" in variables["builder_guideline"]
+
+
+# ---------------------------------------------------------------------------
+# #846 — the sole author receives the contract's surfaces
+#
+# This path authors the plan that reaches implementation whenever no
+# ``plan_authoring_contributors`` are configured, which is the default for every CRP
+# but ``validation-multirole``. Until #846 it was the ONLY authoring path never given
+# the criteria index or the frozen-surface index: the proposers rendered both, and the
+# proposers were not running.
+#
+# Measured on VS's Next.js re-roll (`cyc_0edb55919384`, `authoring_mode: sole_author`,
+# every task `gap_filled`): 0 criteria_refs in the emitted plan, 3 frozen files claimed
+# as deliverables, 8 invented paths, 3 fill slots claimed by no task.
+# ---------------------------------------------------------------------------
+
+
+def _rendered_prompt(ctx) -> str:
+    """The user message the LLM actually saw."""
+    return ctx.ports.llm.chat_stream_with_usage.call_args[0][0][1].content
+
+
+async def _fake_render(template_id, variables):
+    """Render each template distinguishably, so the assertions can tell them apart.
+
+    The shared fixture returns one canned string for every template; the appendices have
+    to be separable from the base prompt or "the index reached the LLM" is unfalsifiable.
+    """
+    out = MagicMock()
+    out.template_id = template_id
+    out.template_version = "1"
+    if template_id == "request.governance_review_plan_manifest":
+        out.content = "user prompt (rendered from request.governance_review_plan_manifest)"
+    else:
+        out.content = "\n\n[{}]\n{}".format(template_id, "\n".join(variables.values()))
+    return out
+
+
+async def test_sole_author_prompt_carries_the_criteria_and_frozen_indexes(seeded_inputs):
+    """Both surfaces reach the LLM, not merely the inputs dict.
+
+    Asserting on the message the model received is the point: the contract was reaching
+    `inject_contract_inputs` correctly all along and stopping one layer short, so a test
+    that checked injection would have passed while the author stayed blind.
+    """
+    ctx = _make_context()
+    seeded_inputs = {
+        **seeded_inputs,
+        "contract_criteria_index": "- app/api/runs/route.ts: bind vc-runs (frontend_compiles)",
+        "frozen_surface_index": "- `lib/store.ts`\n- `package.json`",
+    }
+
+    ctx.ports.request_renderer.render.side_effect = None
+    ctx.ports.request_renderer.render.side_effect = _fake_render
+
+    result = await produce_plan(
+        ctx,
+        seeded_inputs,
+        planning_content="planning",
+        resolved_config=seeded_inputs["resolved_config"],
+        role="lead",
+        handler_name="test",
+        chat_kwargs={},
+    )
+    assert result is not None
+
+    prompt = _rendered_prompt(ctx)
+    assert "app/api/runs/route.ts" in prompt, "the fill-slot criteria index never arrived"
+    assert "lib/store.ts" in prompt, "the frozen-surface index never arrived"
+
+
+async def test_author_mode_prompt_is_unchanged_without_a_contract(seeded_inputs):
+    """No contract, no appendices — author-mode cycles stay byte-identical.
+
+    The polarity guard for the fix above: appending unconditionally would have changed
+    every contract-less cycle's prompt, which is the class of silent behavior change the
+    plan-context golden exists to catch.
+    """
+    ctx = _make_context()
+    ctx.ports.request_renderer.render.side_effect = _fake_render
+
+    await produce_plan(
+        ctx,
+        seeded_inputs,
+        planning_content="planning",
+        resolved_config=seeded_inputs["resolved_config"],
+        role="lead",
+        handler_name="test",
+        chat_kwargs={},
+    )
+
+    prompt = _rendered_prompt(ctx)
+    assert prompt == "user prompt (rendered from request.governance_review_plan_manifest)"
+
+
+async def test_an_empty_index_is_not_rendered_as_an_empty_section(seeded_inputs):
+    """A present-but-empty key must behave like an absent one.
+
+    `frozen_surface_index_lines` returns [] for a stack whose skeleton is all fill slots,
+    and `"\\n".join([])` is `""`. Rendering the appendix's prose over no data would tell
+    an author "these files are frozen:" followed by nothing.
+    """
+    ctx = _make_context()
+    ctx.ports.request_renderer.render.side_effect = _fake_render
+
+    await produce_plan(
+        ctx,
+        {**seeded_inputs, "contract_criteria_index": "", "frozen_surface_index": ""},
+        planning_content="planning",
+        resolved_config=seeded_inputs["resolved_config"],
+        role="lead",
+        handler_name="test",
+        chat_kwargs={},
+    )
+
+    prompt = _rendered_prompt(ctx)
+    assert prompt == "user prompt (rendered from request.governance_review_plan_manifest)"

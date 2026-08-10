@@ -93,12 +93,6 @@ def _importable_module_surface(paths: frozenset[str] | set[str]) -> frozenset[st
     return frozenset(modules)
 
 
-def _pytest_discoverable(path: str) -> bool:
-    """True when pytest's default discovery would collect this file (#715)."""
-    name = PurePosixPath(path).name
-    return name.endswith(".py") and (name.startswith("test_") or name.endswith("_test.py"))
-
-
 def planner_build_task_types(*, offer_builder: bool) -> set[str]:
     """Build task types the plan-authoring prompt may offer.
 
@@ -358,16 +352,25 @@ class ImplementationPlan:
         """#715: a ``qa.test`` task's declared artifacts must be able to satisfy the
         required check that judges them.
 
-        ``tests_pass`` judges a qa task's emission by pytest discovery, so a task
-        declaring only non-discoverable artifacts (shk-4's ``test_integration.js``)
-        fails on **any possible content** — the declared shape, not the work, is the
-        failure. The correction loop cannot fix a shape the plan forbids changing:
-        shk-4 burned three rounds and ~2h before escaping via a placebo ``.js`` stub
-        plus an undeclared ``.py`` twin, with the planned coverage silently narrowed
+        ``tests_pass`` judges a qa task's emission by the runner's discovery rules, so a
+        task declaring only undiscoverable artifacts (shk-4's ``test_integration.js`` on a
+        Python stack) fails on **any possible content** — the declared shape, not the
+        work, is the failure. The correction loop cannot fix a shape the plan forbids
+        changing: shk-4 burned three rounds and ~2h before escaping via a placebo ``.js``
+        stub plus an undeclared ``.py`` twin, with the planned coverage silently narrowed
         under a green verdict. Statically visible right here, at authoring time.
 
+        **The discovery rules are the stack's, not pytest's (#846).** This asserted
+        ``test_*.py``/``*_test.py`` unconditionally, so for a vitest stack *every correct
+        qa task failed it* — VS's Next.js re-roll was rejected for declaring
+        ``__tests__/store.test.ts``, and the remedy the message suggested ("include a
+        test_*.py") would have been wrong. The stack has declared its conventions since
+        SIP-0072 (``DevelopmentCapability.test_file_patterns``); nothing asked it. Reached
+        through ``ScaffoldStack.dev_capability`` (#832) — an explicit declared pointer
+        rather than a naming convention, which is the distinction Stage 2a exists to close.
+
         Verification-only tasks (``expected_artifacts: []``) are exempt — they emit
-        nothing for pytest to judge. Only applies when ``tests_pass`` is actually
+        nothing for the runner to judge. Only applies when ``tests_pass`` is actually
         required by the resolved config.
 
         Returns:
@@ -375,19 +378,26 @@ class ImplementationPlan:
         """
         if "tests_pass" not in (resolved_config.get("required_checks") or ()):
             return []
+        from squadops.capabilities.dev_capabilities import (
+            matches_test_file_patterns,
+            test_file_patterns_for,
+        )
+
+        patterns = test_file_patterns_for(resolved_config)
         errors: list[str] = []
         for task in self.tasks:
             if task.task_type != "qa.test" or not task.expected_artifacts:
                 continue
-            if any(_pytest_discoverable(path) for path in task.expected_artifacts):
+            if any(matches_test_file_patterns(p, patterns) for p in task.expected_artifacts):
                 continue
+            shown = " / ".join(patterns)
             errors.append(
                 f"Task {task.task_index} ({task.focus}): qa.test declares "
-                f"{task.expected_artifacts} but no pytest-discoverable file "
-                "(test_*.py / *_test.py) — the required tests_pass check judges this "
-                "task's emission by pytest discovery, so it fails for any possible "
-                "content. Include a test_*.py among the expected artifacts, or make "
-                "this a verification-only task (expected_artifacts: [])"
+                f"{task.expected_artifacts} but no file this stack's test runner "
+                f"discovers ({shown}) — the required tests_pass check judges this task's "
+                f"emission by those conventions, so it fails for any possible content. "
+                f"Name at least one expected artifact matching {shown}, or make this a "
+                f"verification-only task (expected_artifacts: [])"
             )
         return errors
 

@@ -21,6 +21,7 @@ import logging
 import re
 from typing import TYPE_CHECKING, Any
 
+from squadops.capabilities.handlers._plan_authoring import contract_surface_sections
 from squadops.capabilities.handlers.cycle_tasks import (
     _PRD_COVERAGE_DISCIPLINE_SECTION,
     _rewrite_manifest_identifiers,
@@ -225,6 +226,14 @@ async def produce_plan(
         manifest_prompt = rendered.content
     else:
         manifest_prompt = _build_manifest_user_prompt_inline(template_variables)
+
+    # #846: the sole author gets the contract's surfaces, same as a proposer would.
+    # This path runs whenever no plan_authoring_contributors are configured — which is
+    # every CRP but one — so until now the plan that reaches implementation was authored
+    # by the one path that had never been told the fill-slot paths, the criteria index,
+    # or which files are frozen. Absent keys render nothing (author mode stays
+    # byte-identical); the prose lives in the two managed assets.
+    manifest_prompt += await contract_surface_sections(renderer, inputs)
 
     assembled = context.ports.prompt_service.assemble(
         role=role,

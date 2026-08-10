@@ -9,7 +9,9 @@ Mirrors the BuildProfile registry pattern in build_profiles.py.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Test framework constants (D5)
@@ -437,3 +439,54 @@ def get_capability(name: str) -> DevelopmentCapability:
             f"Unknown development capability {name!r}. Available capabilities: {available}"
         )
     return capability
+
+
+#: What a cycle that names no capability gets: free-form Python generation, the
+#: pre-SIP-0072 behavior. Named because the literal was written out at six call sites
+#: as ``resolve_dev_capability(cfg) or "python_cli"`` (#846).
+DEFAULT_DEV_CAPABILITY = "python_cli"
+
+
+def effective_capability_name(resolved_config: Mapping[str, Any] | None) -> str:
+    """The capability a cycle actually runs under, defaulted.
+
+    ``scaffold.resolve_dev_capability`` answers "what does this config *declare*", and
+    returns ``None`` for a contradiction so preflight can reject rather than silently pick
+    a side. This wraps it with the fallback every consumer applied by hand, so "which
+    capability is in force" has one answer instead of six copies of one expression.
+
+    A contradiction resolves to the default here rather than raising: the callers are
+    validators and prompt builders that must not crash on a config preflight already
+    refuses, and picking the conservative Python capability is what they did before.
+    """
+    from squadops.capabilities.scaffold import resolve_dev_capability
+
+    return resolve_dev_capability(resolved_config) or DEFAULT_DEV_CAPABILITY
+
+
+def matches_test_file_patterns(path: str, patterns: tuple[str, ...]) -> bool:
+    """True when ``path``'s basename matches any of the stack's test-file conventions.
+
+    Basename globbing only — deliberately narrower than
+    ``handlers.cycle.validation._is_test_file``, which additionally treats anything under
+    ``__tests__/`` as a test file. That generosity is right for *excluding* files from a
+    source set, and wrong for asking "will the runner discover this?": ``__tests__/
+    helpers.py`` is not collected by pytest, and counting it would weaken #715's guard for
+    Python stacks. One matcher, two callers, each with its own answer about directories.
+    """
+    from fnmatch import fnmatch
+    from pathlib import PurePosixPath
+
+    name = PurePosixPath(path).name
+    return any(fnmatch(name, pat) for pat in patterns)
+
+
+def test_file_patterns_for(resolved_config: Mapping[str, Any] | None) -> tuple[str, ...]:
+    """The test-file conventions a cycle's stack actually uses (#846).
+
+    ``pytest``'s ``test_*.py``/``*_test.py`` was hardcoded into plan validation, so a
+    correct vitest suite (``__tests__/store.test.ts``) was rejected for containing no
+    pytest-discoverable file — and the remedy the error suggested, "include a test_*.py",
+    would have been wrong. The stack has always declared this; nothing asked it.
+    """
+    return get_capability(effective_capability_name(resolved_config)).test_file_patterns

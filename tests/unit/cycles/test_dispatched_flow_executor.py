@@ -1092,7 +1092,7 @@ class TestMidRunGateRejectsUnwinnableQaTask:
                 ["progress_plan_review"],
                 gated_cycle,
             )
-        assert "pytest-discoverable" in str(exc_info.value)
+        assert "test_*.py" in str(exc_info.value)
 
 
 # ---------------------------------------------------------------------------
@@ -1169,7 +1169,7 @@ class TestWorkloadGateSeamValidation:
         errors = await executor._reject_invalid_plan_before_workload_gate(
             gated_run, gated_cycle, "progress_plan_review"
         )
-        assert any("pytest-discoverable" in e for e in errors)
+        assert any("test_*.py" in e for e in errors)
 
     async def test_qa_js_plan_passes_when_tests_pass_not_required(
         self, executor, mock_vault, cycle, run

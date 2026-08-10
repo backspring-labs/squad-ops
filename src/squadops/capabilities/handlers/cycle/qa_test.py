@@ -11,7 +11,11 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from squadops.capabilities.dev_capabilities import get_capability
+from squadops.capabilities.dev_capabilities import (
+    DEFAULT_DEV_CAPABILITY,
+    effective_capability_name,
+    get_capability,
+)
 from squadops.capabilities.handlers.base import (
     HandlerEvidence,
     HandlerResult,
@@ -34,7 +38,6 @@ from squadops.capabilities.handlers.cycle.validation import (
     _detect_stubs,
     _is_test_file,
 )
-from squadops.capabilities.scaffold import resolve_dev_capability
 
 logger = logging.getLogger(__name__)
 
@@ -186,9 +189,7 @@ class QATestHandler(_CycleTaskHandler):
         support files the QA build/test workspace can't build the deliverable and
         the frontend build check (#290) + vitest skip on "no package.json" (#296).
         """
-        capability = get_capability(
-            resolve_dev_capability(inputs.get("resolved_config")) or "python_cli"
-        )
+        capability = get_capability(effective_capability_name(inputs.get("resolved_config")))
         contents = inputs.get("artifact_contents", {})
         support = set(getattr(capability, "build_support_files", ()))
         sources = {}
@@ -216,7 +217,7 @@ class QATestHandler(_CycleTaskHandler):
         prior_outputs: dict[str, Any] | None,
         val_plan: str | None = None,
         sources: dict[str, str] | None = None,
-        capability_name: str = "python_cli",
+        capability_name: str = DEFAULT_DEV_CAPABILITY,
     ) -> str:
         """Build prompt with validation plan + source code for test generation."""
         capability = get_capability(capability_name)
@@ -650,7 +651,7 @@ class QATestHandler(_CycleTaskHandler):
         prd = inputs.get("prd", "")
         prior_outputs = inputs.get("prior_outputs")
         resolved_config = inputs.get("resolved_config", {})
-        capability_name = resolve_dev_capability(resolved_config) or "python_cli"
+        capability_name = effective_capability_name(resolved_config)
 
         # Resolve capability (fail fast on unknown dev_capability)
         try:

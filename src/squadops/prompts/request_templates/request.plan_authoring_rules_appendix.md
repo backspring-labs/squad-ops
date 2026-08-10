@@ -50,13 +50,15 @@ too. TypeScript has no command form at all; the frontend build type-checks it.
 **roles-must-exist** — Every task's `role` is one the squad profile actually staffs. A
 task assigned to an absent role can never be dispatched.
 
-**qa-tests-pytest-discoverable** — When the `tests_pass` check is required, every
-`qa.test` task that declares expected artifacts includes at least one pytest-discoverable
-file (`test_*.py` or `*_test.py`). The suite check judges a qa task's emission by pytest
-discovery, so a task declaring only a script pytest cannot collect (e.g. a `.js` smoke
-runner) fails on any possible content — the declared shape, not the work, is the failure.
-Express non-pytest verification through a pytest wrapper, or through the acceptance
-criteria of a verification-only task.
+**qa-tests-must-be-discoverable** — When the `tests_pass` check is required, every
+`qa.test` task that declares expected artifacts includes at least one file **this stack's
+test runner discovers**. The suite check judges a qa task's emission by that runner's
+conventions, so a task declaring only files it cannot collect fails on any possible
+content — the declared shape, not the work, is the failure. Follow the file-naming
+conventions your stack's guidance states (`test_*.py` / `*_test.py` under pytest,
+`*.test.ts` / `*.spec.ts` and their `.tsx` forms under vitest); a directory named
+`__tests__/` is not itself enough. Express verification that produces no such file
+through the acceptance criteria of a verification-only task instead.
 
 A verification-only task is legitimate and common: declare `expected_artifacts: []` and
 express what it checks through its acceptance criteria.
