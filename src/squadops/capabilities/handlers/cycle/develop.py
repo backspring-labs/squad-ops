@@ -28,6 +28,7 @@ from squadops.capabilities.handlers.cycle.validation import (
     _detect_stubs,
     _estimate_min_artifacts,
 )
+from squadops.capabilities.scaffold import resolve_dev_capability
 
 logger = logging.getLogger(__name__)
 
@@ -269,7 +270,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         strategy: str | None = None,
     ) -> str:
         """Build prompt with PRD + plan artifacts for code generation."""
-        capability = get_capability(self._resolved_config.get("dev_capability", "python_cli"))
+        capability = get_capability(resolve_dev_capability(self._resolved_config) or "python_cli")
 
         parts = [f"## Product Requirements Document\n\n{prd}"]
 
@@ -423,7 +424,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
             rendered = None
             try:
                 capability = get_capability(
-                    self._resolved_config.get("dev_capability", "python_cli")
+                    resolve_dev_capability(self._resolved_config) or "python_cli"
                 )
             except ValueError as exc:
                 return self._fail_result(start_time, inputs, str(exc))
@@ -433,7 +434,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
             # Resolve capability (fail fast on unknown dev_capability)
             try:
                 capability = get_capability(
-                    self._resolved_config.get("dev_capability", "python_cli")
+                    resolve_dev_capability(self._resolved_config) or "python_cli"
                 )
             except ValueError as exc:
                 return self._fail_result(start_time, inputs, str(exc))

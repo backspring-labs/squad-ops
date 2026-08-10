@@ -1489,6 +1489,20 @@ class ScaffoldStack:
     #: not one fact duplicated — the interpreter is context-specific, only the launcher and
     #: entry point are stack-specific.
     probe_profile: str = ""
+    #: #832: the ``DEV_CAPABILITIES`` entry this stack requires — the prompt text,
+    #: ``expected_extensions``, ``source_filter`` and ``test_framework`` a dev agent is given.
+    #: A *name*, like the two fields above, so the capability vocabulary stays in its layer.
+    #:
+    #: Exists because a cycle declared its stack **twice**: ``build_profile`` selecting this
+    #: registry and ``dev_capability`` selecting that one, the same literal on adjacent CRP
+    #: lines, bound by convention alone. Nothing stopped a cycle from expanding one stack's
+    #: skeleton while instructing the dev agent to write another stack's files — every
+    #: emission landing outside the fill slots, surfacing only as a plan that claims nothing.
+    #:
+    #: Not a collapse of the two registries: ``python_cli``, ``python_api`` and ``react_app``
+    #: are free-form capabilities for cycles with no scaffold stack at all. Not every dev
+    #: capability is a stack; every stack needs one.
+    dev_capability: str = ""
 
 
 _STACKS: dict[str, ScaffoldStack] = {
@@ -1504,6 +1518,7 @@ _STACKS: dict[str, ScaffoldStack] = {
         # without minting a fourth stack vocabulary to express it.
         criteria_pack="fullstack_fastapi_react",
         probe_profile="fastapi_uvicorn",
+        dev_capability="fullstack_fastapi_react",
     ),
 }
 
@@ -1549,6 +1564,37 @@ def probe_profile_for(stack: str) -> str:
     """
     known = _STACKS.get(stack)
     return known.probe_profile if known else ""
+
+
+def dev_capability_for(stack: str) -> str:
+    """The ``DEV_CAPABILITIES`` entry ``stack`` requires, or ``""`` (#832)."""
+    known = _STACKS.get(stack)
+    return known.dev_capability if known else ""
+
+
+def resolve_dev_capability(resolved_config: Mapping[str, Any] | None) -> str | None:
+    """The dev capability a cycle actually runs, or ``None`` if its config contradicts itself.
+
+    One rule (#832): **the stack declares it; the config may restate it but not contradict
+    it.** A ``build_profile`` naming a scaffoldable stack is the authority, so an absent
+    ``dev_capability`` is derived rather than defaulted to ``python_cli`` — which is how a
+    fullstack cycle could otherwise be handed CLI prompts.
+
+    ``None`` means *contradiction*, and is deliberately distinguished from ``""``: the caller
+    is preflight, which must reject rather than silently pick a side. Overriding an explicit
+    config value would hide the drift instead of ending it.
+
+    A cycle with no scaffoldable ``build_profile`` is a free-form generation cycle
+    (``python_cli``, ``react_app``); its ``dev_capability`` is returned untouched.
+    """
+    config = resolved_config or {}
+    declared = str(config.get("dev_capability") or "")
+    required = dev_capability_for(str(config.get("build_profile") or ""))
+    if not required:
+        return declared
+    if declared and declared != required:
+        return None
+    return required
 
 
 def scaffold_stack_for(resolved_config: Mapping[str, Any] | None) -> str:

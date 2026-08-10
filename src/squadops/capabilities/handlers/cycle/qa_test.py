@@ -34,6 +34,7 @@ from squadops.capabilities.handlers.cycle.validation import (
     _detect_stubs,
     _is_test_file,
 )
+from squadops.capabilities.scaffold import resolve_dev_capability
 
 logger = logging.getLogger(__name__)
 
@@ -186,7 +187,7 @@ class QATestHandler(_CycleTaskHandler):
         the frontend build check (#290) + vitest skip on "no package.json" (#296).
         """
         capability = get_capability(
-            inputs.get("resolved_config", {}).get("dev_capability", "python_cli")
+            resolve_dev_capability(inputs.get("resolved_config")) or "python_cli"
         )
         contents = inputs.get("artifact_contents", {})
         support = set(getattr(capability, "build_support_files", ()))
@@ -649,7 +650,7 @@ class QATestHandler(_CycleTaskHandler):
         prd = inputs.get("prd", "")
         prior_outputs = inputs.get("prior_outputs")
         resolved_config = inputs.get("resolved_config", {})
-        capability_name = resolved_config.get("dev_capability", "python_cli")
+        capability_name = resolve_dev_capability(resolved_config) or "python_cli"
 
         # Resolve capability (fail fast on unknown dev_capability)
         try:
