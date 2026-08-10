@@ -220,7 +220,53 @@ def _fastapi_react_slot_criteria(manifest: InterfaceManifest, path: str) -> dict
     return _routes_criteria(manifest) if path == _ROUTES_PATH else _view_criteria(path)
 
 
+def _nextjs_ts_slot_criteria(manifest: InterfaceManifest, path: str) -> dict[str, Any]:
+    """Stack #2 has two kinds of fill slot — API route handlers and pages (#822).
+
+    **Both get the same criterion, and that is the disclosure, not an oversight.** The nine
+    AST checks parse Python by construction, and ``tsc --noEmit`` is safelisted but not
+    provisionable (``tsc`` lives in ``node_modules/.bin``, never on PATH — #707's
+    "passes the allowlist but cannot run" class). ``next build`` runs tsc itself, so
+    ``frontend_compiles`` *is* the type check here, for server and client files alike.
+
+    Anchored per slot rather than once for the tree even though the build is whole-tree:
+    #641/#648 attach it to the file under evaluation so a failure repairs where the defect
+    lives. Bend 5 records the cost — stack #1 pays 3 builds, stack #2 pays 7.
+
+    Consequence stated plainly: **no criterion here proves the declared endpoints exist in
+    the source.** ``endpoint_defined`` is Python-only, so that claim is carried by the
+    behavioral probes alone — late and functionally, rather than early and structurally.
+    """
+    return {
+        "interface": [],
+        "implementation": [
+            {
+                "check": "frontend_compiles",
+                "id": f"vc-compiles-{_slug(path.rsplit('/', 1)[-1].rsplit('.', 1)[0]) or 'root'}",
+                "file": path,
+                "project_dir": ".",
+                "requires": CAP_NODE,
+            }
+        ],
+    }
+
+
 _CRITERIA_PACKS: dict[str, CriteriaPack] = {
+    "nextjs_ts": CriteriaPack(
+        name="nextjs_ts",
+        slot_criteria=_nextjs_ts_slot_criteria,
+        # `next build` at the project root, not `npm run build` in `frontend/` — the
+        # assumption #828 parameterised, exercised here for the first time.
+        build_criteria=lambda: [
+            {"check": "frontend_build", "id": "vc-frontend-builds", "requires": CAP_NODE},
+        ],
+        # vitest, so the suite check requires node rather than python. Stack #1's pack
+        # emitted CAP_PYTHON unconditionally, which would have demanded a Python toolchain
+        # of a stack that has none.
+        suite_criteria=lambda: [
+            {"check": "tests_pass", "id": "vc-suite-passes", "requires": CAP_NODE},
+        ],
+    ),
     "fullstack_fastapi_react": CriteriaPack(
         name="fullstack_fastapi_react",
         slot_criteria=_fastapi_react_slot_criteria,

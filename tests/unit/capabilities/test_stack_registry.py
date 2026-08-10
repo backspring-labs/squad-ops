@@ -162,7 +162,13 @@ def test_the_manifest_hash_every_bound_cycle_keys_on_did_not_move():
 
 def test_the_registry_is_the_single_answer_to_which_stacks_exist():
     """The point of the consolidation. A second declaration elsewhere is how the five facts
-    drifted apart in the first place."""
-    assert set(scaffold._STACKS) == {"fullstack_fastapi_react"}
+    drifted apart in the first place.
+
+    #822: pinned to a single stack until stack #2 registered. The invariant was never the
+    *count* — it is that membership has one source — so it now asserts both known stacks are
+    answered from here and that the accessor still refuses everything else."""
+    assert set(scaffold._STACKS) == {"fullstack_fastapi_react", "nextjs_ts"}
     assert is_scaffoldable_stack("fullstack_fastapi_react")
+    assert is_scaffoldable_stack("nextjs_ts")
     assert not is_scaffoldable_stack("")
+    assert not is_scaffoldable_stack("nextjs")

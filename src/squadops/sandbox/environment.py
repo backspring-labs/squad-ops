@@ -123,8 +123,38 @@ FULLSTACK_FASTAPI_REACT = EnvironmentContract(
     install_network="bridge",
 )
 
+# #822 stack #2. Same image family as stack #1 — the sandbox env already carries Node 20 and
+# npm 10 for the frontend build, so no new language runtime enters the pipeline. What differs
+# is every command: one project at the root instead of two trees, and a build step the
+# application itself cannot start without.
+NEXTJS_TS = EnvironmentContract(
+    stack="nextjs_ts",
+    image="squadops-sandbox-env:fastapi-react-1.4-dev",
+    required_tools=(("node", "20"), ("npm", "10")),
+    operation_commands=(
+        (OperationName.INSTALL_DEPENDENCIES, ("npm", "ci", "--no-audit", "--no-fund")),
+        (OperationName.BUILD_FRONTEND, ("npx", "next", "build")),
+        (OperationName.RUN_BACKEND_TESTS, ("npx", "vitest", "run")),
+        (
+            OperationName.START_APPLICATION,
+            (
+                "npx",
+                "next",
+                "start",
+                "--hostname",
+                "0.0.0.0",  # noqa: S104 — inside the container; host publish is loopback-only
+                "--port",
+                "8000",
+            ),
+        ),
+    ),
+    app_port=8000,
+    install_network="bridge",
+)
+
+
 _CONTRACTS: dict[str, EnvironmentContract] = {
-    contract.stack: contract for contract in (FULLSTACK_FASTAPI_REACT,)
+    contract.stack: contract for contract in (FULLSTACK_FASTAPI_REACT, NEXTJS_TS)
 }
 
 
