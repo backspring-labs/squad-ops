@@ -26,6 +26,7 @@ from __future__ import annotations
 import ast
 import hashlib
 import json
+import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -755,6 +756,74 @@ def _python_surface(source: str) -> str:
     return "; ".join(parts)
 
 
+_TS_INTERFACE = re.compile(r"^export\s+(?:interface|type)\s+(\w+)", re.M)
+_TS_FUNCTION = re.compile(r"^export\s+(?:async\s+)?function\s+(\w+)", re.M)
+_TS_CONST = re.compile(r"^export\s+const\s+(\w+)", re.M)
+_TS_FIELD = re.compile(r"^\s{2}(\w+)\??:", re.M)
+_TS_IMPORT = re.compile(r"""^import\s+[^'"]*from\s+['"]([^'"]+)['"]""", re.M)
+
+
+def _ecmascript_surface(source: str) -> str:
+    """One line describing what a frozen JS/TS module declares, or ``""``.
+
+    The ``_python_surface`` counterpart, and the same reason for existing: pf-43 died
+    because ``store.py``'s module state was omitted and the author wrote a task to build a
+    store it already had. **A name the author cannot see is a name it will invent** — that
+    holds regardless of language, and stack #2 had no reader at all.
+
+    Regex rather than a parser, which is safe *here specifically*: these files are emitted
+    by the stacks' own expander templates, so the shapes are known and fixed. This is not a
+    general JS/TS reader and must not be reused as one — teaching the typed CHECKS to parse
+    TS is S4's work and needs a real parser, because those read code the squad wrote.
+
+    Named for ECMAScript rather than TypeScript because it covers both, and it covers both
+    because the first version did not. It was written for stack #2 and read `.ts`/`.tsx`
+    only, which left **stack #1's entire frontend still bare** — `App.jsx`, `main.jsx`,
+    `api.js` — after a commit whose own message said the gap was on both stacks. The
+    TypeScript-only constructs simply do not match in a `.js` file; nothing else needed to
+    change.
+    """
+    interfaces: list[str] = []
+    for match in _TS_INTERFACE.finditer(source):
+        body = source[match.end() :].split("}", 1)[0]
+        fields = _TS_FIELD.findall(body)
+        interfaces.append(f"{match.group(1)}({', '.join(fields)})" if fields else match.group(1))
+    functions = _TS_FUNCTION.findall(source)
+    consts = _TS_CONST.findall(source)
+    modules = sorted(set(_TS_IMPORT.findall(source)))
+
+    parts = []
+    if interfaces:
+        parts.append("defines " + ", ".join(interfaces))
+    if consts:
+        parts.append("exports " + ", ".join(consts))
+    if functions:
+        parts.append("functions " + ", ".join(functions))
+    if modules:
+        parts.append("imports " + ", ".join(f"`{m}`" for m in modules))
+    return "; ".join(parts)
+
+
+#: File suffixes whose *interior* ``frozen_surface_index_lines`` can describe. Everything
+#: else is listed by name alone.
+#:
+#: Declared rather than left implicit in an ``endswith(".py")`` (2a). The limit was read as
+#: a stack-#2 gap when #849 found a Next.js author guessing at a frozen file it had no
+#: declarations for — but the inventory shows **stack #1 renders 10 of its 15 frozen entries
+#: bare too**, including the whole of `frontend/` (`App.jsx`, `api.js`, `main.jsx`). pf-42's
+#: index has only ever described the Python half, on both stacks, and nobody noticed because
+#: the checks that would trip on a frontend guess are bundler-level rather than
+#: declaration-level.
+#:
+#: Naming it makes the gap countable and gives the appendix's "may not be checked at all"
+#: rule a mechanical referent, and a test asserts the declaration and the renderers stay in
+#: step. ``.ts``/``.tsx`` were added when 2a's inventory showed stack #2 rendering **every**
+#: entry bare — the appendix's escape hatch had no line anywhere on that stack, so no frozen
+#: file could be checked at all. Still short of complete: `.json`, `.html`, `.mjs` and
+#: `.js` remain undescribed on both stacks.
+DESCRIBED_FROZEN_SUFFIXES: tuple[str, ...] = (".py", ".ts", ".tsx", ".js", ".jsx", ".mjs")
+
+
 def frozen_surface_index_lines(manifest: InterfaceManifest | None) -> list[str]:
     """One line per scaffold-frozen file, naming exactly what it declares (pf-42).
 
@@ -786,7 +855,12 @@ def frozen_surface_index_lines(manifest: InterfaceManifest | None) -> list[str]:
         name = f["name"]
         if name in fills:
             continue
-        detail = _python_surface(f["content"]) if name.endswith(".py") else ""
+        if name.endswith(".py"):
+            detail = _python_surface(f["content"])
+        elif name.endswith((".ts", ".tsx", ".js", ".jsx", ".mjs")):
+            detail = _ecmascript_surface(f["content"])
+        else:
+            detail = ""
         lines.append(f"- `{name}` — {detail}" if detail else f"- `{name}`")
     return lines
 
