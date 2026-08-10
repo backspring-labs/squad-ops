@@ -100,7 +100,9 @@ class DevelopmentAuthorManifestHandler(_PlanningTaskHandler):
                     f"No `{SEEDED_MANIFEST_FILENAME}` block was found in your response. "
                     f"Emit exactly one fenced block whose header carries that filename."
                 )
-            outcome = assess_authoring_outcome(yaml_or_none)
+            # #838: the gate compares the declared stack to the one this cycle is
+            # configured for. `stack` is already resolved above for the prompt.
+            outcome = assess_authoring_outcome(yaml_or_none, stack)
             outcomes.append(outcome)
             if not outcome.rejected:
                 return yaml_or_none, None

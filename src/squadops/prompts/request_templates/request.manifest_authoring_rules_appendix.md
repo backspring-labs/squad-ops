@@ -10,6 +10,15 @@ checkable from the document you are writing — none depend on how the build tur
 manifest that breaks one is rejected before any code is written, and the rejection is
 returned to you with the specific defect.
 
+**use-the-stack-you-were-given** — The `stack:` field carries exactly the value the
+request gave you, and nothing else. It is not a design choice: it names the scaffold that
+will expand your manifest, and it has already been decided by the cycle. Declaring a
+different one produces a working manifest for an application nobody asked for — the expander
+builds that other stack's files, the plan claims them correctly, and the mismatch surfaces
+hours later as an unrelated failure. If the technical design you were given describes a
+different architecture than the stack you were given, **the stack wins** and the design is
+the thing that was wrong.
+
 **nothing-undeclared** — Every name the manifest uses is declared inside it. An endpoint's
 `request` names a declared `request_shapes` entry or entity; an endpoint's `response` names
 a declared entity (write `list[Entity]` for a collection, unquoted); every frontend route

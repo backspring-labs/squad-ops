@@ -38,6 +38,10 @@ PROOF_CONTRACT_DERIVES = "contract_derives"
 PROOF_CHECKS_LIVE = "checks_live"
 PROOF_TESTID_COVERAGE = "testid_coverage"
 PROOF_STATUS_DECLARED = "status_declared"
+#: #838: the manifest declares its own stack, and until VS nothing compared that to the
+#: stack the CYCLE was configured for. A manifest for another stack is unwinnable in the
+#: most literal sense — the expander builds a different application.
+PROOF_STACK_MATCHES_CONFIG = "stack_matches_config"
 
 #: Schema-gate proof classes (M2). ``PROOF_SOURCE_PRD`` was ``PROOF_PROVENANCE`` until #803
 #: gave the manifest an actual ``provenance`` block — one word for "where the design came
@@ -55,7 +59,9 @@ class WinnabilityFinding:
     detail: str
 
 
-def assess_winnability(manifest_content: str) -> tuple[WinnabilityFinding, ...]:
+def assess_winnability(
+    manifest_content: str, expected_stack: str = ""
+) -> tuple[WinnabilityFinding, ...]:
     """Every closed-surface proof this manifest fails, in order.
 
     All proofs run; findings accumulate. Short-circuiting on the first failure would
@@ -64,6 +70,10 @@ def assess_winnability(manifest_content: str) -> tuple[WinnabilityFinding, ...]:
 
     A parse failure is the one exception — nothing downstream can run without a parsed
     manifest, so it returns alone.
+
+    ``expected_stack`` is the cycle's configured ``build_profile``. Empty skips the check —
+    a seeded cycle and the gate's own adversarial fixtures have no cycle config to compare
+    against, and inventing a mismatch for them would reject manifests that are correct.
     """
     from squadops.capabilities.scaffold import InterfaceManifest
 
@@ -77,6 +87,15 @@ def assess_winnability(manifest_content: str) -> tuple[WinnabilityFinding, ...]:
                 f"shape ({exc}). Fix the document structure before the other checks can run.",
             ),
         )
+
+    # #838: a wrong stack returns ALONE, like a parse failure and for the same reason —
+    # it invalidates the frame every other proof reasons in. The remaining proofs would run
+    # happily against the wrong application and report real-looking findings about testids
+    # and statuses for a design that is about to be replaced wholesale. Telling an author to
+    # fix a testid in a manifest whose stack is wrong is worse than telling them nothing.
+    stack_findings = _stack_findings(manifest, expected_stack)
+    if stack_findings:
+        return tuple(stack_findings)
 
     findings: list[WinnabilityFinding] = []
     findings.extend(_lint_findings(manifest))
@@ -259,6 +278,34 @@ def _contract_findings(manifest) -> list[WinnabilityFinding]:
                         )
                     )
     return findings
+
+
+def _stack_findings(manifest, expected_stack: str) -> list[WinnabilityFinding]:
+    """The manifest must be for the stack this cycle is building (#838).
+
+    Found by VS: `cyc_afa934886acd` was configured `build_profile=nextjs_ts`, the manifest
+    declared `fullstack_fastapi_react`, and **every component behaved correctly while building
+    the wrong application for 75 minutes**. `lint()` accepts any *registered* stack — is it
+    known, never is it the one asked for — so nothing downstream had a reason to object.
+
+    The author is told the target (the authoring template renders it), but it lost to a
+    technical design that named the other stack eight times; the design stage is not told the
+    stack at all. That plumbing is a separate fix. This proof is the deterministic backstop
+    that holds regardless of what any model writes, and it turns a 75-minute discovery into a
+    seconds-long one.
+    """
+    declared = str(getattr(manifest, "stack", "") or "")
+    if not expected_stack or declared == expected_stack:
+        return []
+    return [
+        WinnabilityFinding(
+            PROOF_STACK_MATCHES_CONFIG,
+            f"this manifest declares `stack: {declared}` but the cycle is configured to build "
+            f"`{expected_stack}`. The expander would produce a different application than the "
+            f"one requested — every file, every fill slot, and every derived check would be "
+            f"for the wrong stack. Declare `stack: {expected_stack}`.",
+        )
+    ]
 
 
 def _testid_findings(manifest) -> list[WinnabilityFinding]:
