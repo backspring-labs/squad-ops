@@ -43,6 +43,21 @@ def _narrative(profile_name: str) -> str:
     return text[:-1] if text.endswith("\n") else text
 
 
+def narrative_for_stack(stack: str) -> str:
+    """The architecture narrative for a scaffold stack, or ``""`` if it has none (#838).
+
+    Deliberately tolerant where :func:`_narrative` is loud. That one raises at import for a
+    BUILD_PROFILES entry missing its file — a registration error. This answers a different
+    question, asked at prompt-assembly time about a stack that may legitimately not have one
+    yet, and a framing stage must not die because a narrative is absent.
+    """
+    path = _NARRATIVES_DIR / f"{stack}.md"
+    if not path.is_file():
+        return ""
+    text = path.read_text(encoding="utf-8")
+    return text[:-1] if text.endswith("\n") else text
+
+
 # ---------------------------------------------------------------------------
 # QA handoff section name constants (D12 — single source of truth)
 # ---------------------------------------------------------------------------
