@@ -1,5 +1,6 @@
 # PRD: group_run (1-Hour Cycle MVP+)
-**Version:** v0.4 (SIP-0098 §6.7 split — product-only content; technical contract externalized)
+**Version:** v0.5 (SIP-0098 §6.7 split, completed — product-only content; technical contract
+externalized. v0.4 declared the stack externalized in §1 and then specified it in §2; #843.)
 **Purpose:** Define a testable full-stack MVP for a 1-hour SquadOps cycle
 **Status:** Draft for cycle planning
 **Timebox Target:** 1-hour autonomous cycle (5-agent squad)
@@ -33,13 +34,13 @@ resolve.
 - view event details and participants
 
 This PRD is intentionally scoped to support a **1-hour autonomous build attempt** by an agent squad.
-The goal is a **coherent, runnable full-stack vertical slice** (FastAPI + React) with validation and basic tests.
+The goal is a **coherent, runnable full-stack vertical slice** with validation and basic tests.
 
 ---
 
 ## 2) Objective (for this cycle)
 
-Deliver a runnable full-stack MVP (FastAPI backend + React frontend) that allows a user to:
+Deliver a runnable full-stack MVP that allows a user to:
 
 1. Create a group run event
 2. View a list of upcoming group runs
@@ -50,7 +51,7 @@ Deliver a runnable full-stack MVP (FastAPI backend + React frontend) that allows
 
 ### Success Definition (Cycle-Level)
 A reviewer can:
-- start backend and frontend locally
+- start the application locally
 - create at least one run from the UI
 - view the run in the list and open the detail page
 - join the run with a participant name
@@ -260,7 +261,7 @@ Routes, view names, and view purposes are owned by `interface_manifest.yaml`
 - No UI component library required
 - No animations
 - No auth/session state
-- Prefer simple `fetch` calls over heavier client abstractions
+- Avoid heavy client-side data-fetching libraries
 
 ---
 
