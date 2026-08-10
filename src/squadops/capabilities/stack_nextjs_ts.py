@@ -17,35 +17,15 @@ schema generalises" and "stack #2's skeleton is better".
 stacks' source templates. Extracting stack #1 to match is a follow-up refactor, deliberately
 not bundled — it would move bytes the reference contract is pinned to.
 
-### Bend register (S3's exit criterion — zero *unexplained* bends)
+### Bends
 
-1. **The API is many fill slots, not one.** FastAPI holds every endpoint in a single
-   ``backend/routes.py``; Next.js requires one file per path segment, so the reference
-   manifest's 5 endpoints become 4 route files, split by path rather than by choice. The
-   blueprint has never expressed this — ``_ROUTES_PATH`` was singular. **Argued as a genuine
-   cross-stack convention:** an API is a set of addressable operations, and how many files
-   hold them is the stack's business. ``endpoint_owners()`` already returns a dict and
-   survives unchanged, which is evidence the relation was modelled correctly even though the
-   partition was not.
-2. **A third path-parameter convention.** ``{run_id}`` (manifest) · ``:run_id`` (Express) ·
-   ``[run_id]`` (Next.js, as a *directory*). The manifest's form stays canonical and the
-   expander translates declared → placed. #820's trigger 3, as predicted.
-3. **``frontend.routes[].view`` has no natural home.** Next derives the URL from the directory
-   and the file is always ``page.tsx``, so a declared component name cannot be a filename. It
-   becomes the exported component's name instead. Recorded as a strain on the manifest —
-   §5c.3's blueprint-owned-design-artifact territory, routed to 1.7.
-4. **Route handlers, not server actions** (#822 gate decision 2). An idiomatic Next app often
-   uses server actions for mutations; they have no stable path, so probes could not address
-   them. Constrained because the manifest speaks HTTP.
-5. **The per-slot bundler check costs a whole-tree build each.** Stack #1 pays 3, stack #2
-   pays 7. Kept at parity anyway: #641/#648 anchor the check to each slot so a failure repairs
-   *where the defect lives*, and dropping that to save builds would trade repair targeting for
-   wall-clock.
-6. **No static check on the API route slots beyond the build.** The nine AST checks are
-   Python-only by construction, and ``tsc --noEmit`` is safelisted but not provisionable —
-   ``tsc`` lives in ``node_modules/.bin``, not on PATH, so emitting it would produce #707's
-   "passes the allowlist but cannot run" class. ``next build`` type-checks by default, so the
-   bundler check is the type check. Disclosed, not worked around: this is S4's territory.
+Recorded in **`docs/plans/stack-2-bend-register.md`**, not here. S3 evaluates "zero unexplained
+bends" against that document, and a second copy in this docstring would be the release's own
+recurring failure — a claim maintained in two places, drifting the moment one is edited.
+
+Read it before changing the partition, the path translation, or what a fill slot is: four of
+its six entries are about exactly those, and one of them (`frontend.routes[].view`) is an open
+strain on the manifest schema rather than a settled decision.
 """
 
 from __future__ import annotations

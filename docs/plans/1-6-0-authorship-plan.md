@@ -201,7 +201,7 @@ against these stage/step labels.
 | **1a** | **Hardwiring sweep.** Enumerate every stack-#1 assumption in deliverable-facing modules and classify each: already-a-seam · needs-parameterizing · belongs-in-the-FastAPI-pack · not-on-stack-2's-path | every hit classified; the "needs" class filed |
 | **1b** | Parameterization PRs for the "needs" class | each: FastAPI byte-unmoved, regression green |
 | **1c** | **The Next.js stack** — expander, criteria pack, probe profile, environment contract, completeness test across all four per-stack registries | `expand()` yields a tree; `emit_contract_dict` yields a satisfiable contract |
-| **1d** | **Bend register**, written *during* 1c | zero unexplained bends (S3's exit criterion) |
+| **1d** | **Bend register** — `docs/plans/stack-2-bend-register.md`, written *during* 1c | zero unexplained bends (S3's exit criterion). **Landed**: six findings, of which **one is a true bend** — the rest split into a schema defect, a cleared check, a field with no home, and two disclosures |
 | **1e** | **VS** — a Next.js cycle end to end | gates S3 |
 
 **Why 1a leads, and why it is not a new invention.** It is the S lane's missing **M0a**: a
