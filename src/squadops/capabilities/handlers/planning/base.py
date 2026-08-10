@@ -108,6 +108,41 @@ class _PlanningTaskHandler(_CycleTaskHandler):
             variables["time_budget_section"] = budget_section
         return variables
 
+    async def _target_stack_section(self, renderer: Any, inputs: dict[str, Any]) -> str:
+        """The stack this cycle builds, stated as a decision (#838).
+
+        VS (`cyc_afa934886acd`) framed for 75 minutes and designed the wrong application.
+        Nothing had misbehaved: the group_run PRD names its stack in prose — *"a coherent,
+        runnable full-stack vertical slice (FastAPI + React)"* — the research stage summarised
+        it, the design stage designed it, and the manifest author inherited it. **Every stage
+        was obediently following the requirements**, which disagreed with the cycle's
+        configuration and won because they were the louder input.
+
+        So this is not "tell the design stage the stack"; it is *"the stack the cycle
+        configures outranks anything the PRD says about architecture"* — a precedence rule,
+        stated once, on the shared base so every framing stage inherits it rather than the
+        design stage alone. Research frames the design stage's inputs, and objective framing
+        frames both.
+
+        Empty for a cycle with no scaffoldable ``build_profile``: a free-form generation cycle
+        has no stack to be decided for it, and asserting one would be a fiction.
+        """
+        from squadops.capabilities.handlers.build_profiles import narrative_for_stack
+        from squadops.capabilities.scaffold import scaffold_stack_for
+
+        stack = scaffold_stack_for(inputs.get("resolved_config"))
+        if not stack:
+            return ""
+        narrative = narrative_for_stack(stack)
+        if not narrative:
+            # A registered stack with no narrative would render a bare heading and teach
+            # nothing. Silence beats an authoritative-looking empty section.
+            return ""
+        rendered = await renderer.render(
+            "request.target_stack_section", {"stack": stack, "stack_narrative": narrative}
+        )
+        return rendered.content
+
     async def _authoring_rules_section(self, renderer: Any) -> str:
         """The plan-shape rules every deterministic validator enforces (#686).
 
@@ -183,6 +218,13 @@ class _PlanningTaskHandler(_CycleTaskHandler):
         renderer = getattr(context.ports, "request_renderer", None)
         if renderer is not None:
             variables = self._build_render_variables(prd, prior_outputs, inputs)
+            # #838: attached here rather than in `_build_render_variables` because rendering
+            # the section is itself async. Every framing stage inherits it — research frames
+            # the design stage's inputs and objective framing frames both, so telling only
+            # the design stage would leave the contamination path open one step upstream.
+            stack_section = await self._target_stack_section(renderer, inputs)
+            if stack_section:
+                variables["target_stack_section"] = stack_section
             rendered = await renderer.render(self._request_template_id, variables)
             user_prompt = rendered.content
         else:
