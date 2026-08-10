@@ -20,6 +20,7 @@ import pytest
 import yaml
 
 from squadops.cycles.manifest_gates import (
+    PROOF_CONTRACT_DERIVES,
     PROOF_EXPANDS,
     PROOF_PARSES,
     PROOF_STATUS_DECLARED,
@@ -269,3 +270,76 @@ def test_manifest_without_source_prd_is_rejected():
     findings = assess_schema(_as_yaml(data))
 
     assert PROOF_SOURCE_PRD in _proofs(findings)
+
+
+# --------------------------------------------------------------------------- #
+# #849 — a contract that fails its own linter never reaches a run
+# --------------------------------------------------------------------------- #
+
+
+def test_a_structurally_invalid_contract_is_a_winnability_finding(monkeypatch):
+    """`VerificationContract.lint()` existed throughout and had no production caller.
+
+    Its only callers were `scripts/dev/contract_gate.py` and unit tests, both running
+    against the reference FastAPI manifest — whose criterion ids cannot collide. So the
+    guard was exercised solely by the one input incapable of failing it, and stack #2's
+    contract reached a live run with nine criteria under four ids.
+
+    The pack is monkeypatched to re-create the defect rather than reverting the emitter
+    fix, so this stays a test of the GATE. Otherwise it would silently become a duplicate
+    of the emitter's own uniqueness test and stop covering the wiring, which is the half
+    that was actually missing.
+    """
+    from squadops.capabilities import scaffold_contract
+
+    real = scaffold_contract.emit_contract_dict
+
+    def colliding(manifest):
+        contract = real(manifest)
+        for sections in (contract.get("fill_files") or {}).values():
+            for entry in sections.get("implementation") or []:
+                entry["id"] = "vc-same"
+        return contract
+
+    monkeypatch.setattr(scaffold_contract, "emit_contract_dict", colliding)
+
+    findings = assess_winnability(_REFERENCE.read_text(encoding="utf-8"))
+
+    assert PROOF_CONTRACT_DERIVES in _proofs(findings)
+    detail = next(f.detail for f in findings if f.proof == PROOF_CONTRACT_DERIVES)
+    assert "duplicate criterion id" in detail
+    assert "'vc-same'" in detail or "vc-same" in detail
+
+
+def test_the_rejection_says_why_a_duplicate_id_matters(monkeypatch):
+    """ "Structurally invalid" is not actionable on its own.
+
+    A duplicate id does not fail loudly — `criterion_index()` drops the losers and the plan
+    still reads as fully bound. The message has to name that, or the next reader files it as
+    cosmetic and waives it.
+    """
+    from squadops.capabilities import scaffold_contract
+
+    real = scaffold_contract.emit_contract_dict
+
+    def colliding(manifest):
+        contract = real(manifest)
+        for sections in (contract.get("fill_files") or {}).values():
+            for entry in sections.get("implementation") or []:
+                entry["id"] = "vc-same"
+        return contract
+
+    monkeypatch.setattr(scaffold_contract, "emit_contract_dict", colliding)
+
+    detail = next(
+        f.detail
+        for f in assess_winnability(_REFERENCE.read_text(encoding="utf-8"))
+        if f.proof == PROOF_CONTRACT_DERIVES
+    )
+    assert "silently" in detail and "unverified" in detail
+
+
+def test_the_reference_contract_still_passes_the_new_lint_gate():
+    """Polarity guard. A lint step wired into the winnability gate can reject manifests that
+    were previously fine, and the reference pair is what every other pin rests on."""
+    assert assess_winnability(_REFERENCE.read_text(encoding="utf-8")) == ()

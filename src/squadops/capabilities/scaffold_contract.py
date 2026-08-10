@@ -236,13 +236,31 @@ def _nextjs_ts_slot_criteria(manifest: InterfaceManifest, path: str) -> dict[str
     Consequence stated plainly: **no criterion here proves the declared endpoints exist in
     the source.** ``endpoint_defined`` is Python-only, so that claim is carried by the
     behavioral probes alone — late and functionally, rather than early and structurally.
+
+    **The criterion id is derived from the whole slot path, not the basename (#849).** It was
+    the basename, copied from ``_view_criteria``, and on this stack that produced *colliding
+    ids*: App Router fixes the filename and puts identity in the directory, so all four route
+    files slugged to ``route`` and all three pages to ``page`` — nine criteria, four distinct
+    ids. ``VerificationContract.criterion_index()`` is keyed on id and documents itself as
+    last-writer-wins, so five of seven fill slots resolved to no criterion while a plan that
+    bound all seven refs read as fully covered and every gate passed. Measured on
+    ``cyc_7899ed1feae5``. Not a coverage gap — #818's "incorrect contract that is believed",
+    one layer down, and the same FastAPI-shaped assumption as ``_ROUTES_PATH``: that a
+    filename identifies a file.
+
+    ``_view_criteria`` still slugs the basename and is deliberately left alone. Stack #1's
+    views are emitted into one flat directory, so its basenames are unique *by construction of
+    its own expander* rather than by luck — and changing it would move the contract hash
+    ``7622f570c949fe95`` that #777's guard and every bind-mode cycle are pinned to. The
+    general protection against a future stack repeating this is the id linter, now wired at
+    derivation, not a second hand-audit of the emitters.
     """
     return {
         "interface": [],
         "implementation": [
             {
                 "check": "frontend_compiles",
-                "id": f"vc-compiles-{_slug(path.rsplit('/', 1)[-1].rsplit('.', 1)[0]) or 'root'}",
+                "id": f"vc-compiles-{_slug(path.rsplit('.', 1)[0]) or 'root'}",
                 "file": path,
                 "project_dir": ".",
                 "requires": CAP_NODE,
