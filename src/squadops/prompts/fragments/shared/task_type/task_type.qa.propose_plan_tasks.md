@@ -74,11 +74,14 @@ Prefer **typed checks** for qa assertions:
   by plan validation, failing the whole plan. Test-file behavior is
   verified by executing the suite, not by pattern-matching it.
 - `count_at_least` for test-file/spec-file counts via glob
-- `command_exit_zero` for invoking a test runner (argv-only safelist:
-  `python -m py_compile`, `ruff check`, `tsc --noEmit`, etc.). The command
-  runs in the container of the role that executes the task — only author
-  commands whose binary exists there. Node tooling (`node`, `npm`, `npx`)
-  exists only in the QA container; dev-role tasks get Python tooling only.
+- `command_exit_zero` for static checkers. These three forms are the whole
+  universe — there is no "etc.": `python -m py_compile <file>`, `node --check
+  <file>`, `pyflakes <file>`. Any other command is REJECTED at plan
+  validation, because a command the environment cannot run fails identically
+  on every correction attempt. Do NOT reach for the test runner here; the
+  suite is executed by the required `tests_pass` check. **TypeScript has no
+  form here** — `node --check` rejects `.ts`/`.tsx` before parsing them. Do
+  not substitute another tool; the frontend build type-checks it.
 - `import_present` to verify a test file imports the production module
   it should be exercising
 

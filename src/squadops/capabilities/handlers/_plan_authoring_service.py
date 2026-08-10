@@ -26,6 +26,7 @@ from squadops.capabilities.handlers.cycle_tasks import (
     _rewrite_manifest_identifiers,
 )
 from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
+from squadops.cycles.acceptance_check_spec import command_safelist_names
 from squadops.cycles.implementation_plan import (
     ImplementationPlan,
     planner_build_task_types,
@@ -170,10 +171,14 @@ async def produce_plan(
         "```\n\n"
         "**Safety rules for `command_exit_zero`:**\n"
         '- `argv` MUST be a YAML list, not a string. `"ruff check src/"` is rejected.\n'
-        "- Only safelisted argv shapes run: `python -m py_compile <file>`, `python -m mypy <args>`, "
-        "`node --check <file>`, `ruff check <args>`, `tsc --noEmit`, `eslint <args>`, `pyflakes <file>`. "
-        "Anything else (notably `python -c`, `python -m pip`, shell strings) errors at evaluation time — "
-        "treat the safelist as the universe.\n"
+        # #707: rendered from COMMAND_SAFELIST, never restated. This block used to
+        # hand-copy seven forms, four of which no image could run — the drift that
+        # cost #846's re-roll its framing run. Prose stays; the vocabulary is sourced.
+        "- Only safelisted argv shapes run: "
+        + ", ".join(f"`{name}`" for name in command_safelist_names())
+        + ". Anything else (notably `python -c`, `python -m pip`, shell strings) is rejected at "
+        "plan validation — treat the safelist as the universe. There is no form for TypeScript; "
+        "`next build` type-checks it via the required frontend build.\n"
         "- Per-command timeout is bounded; do not author long-running builds as acceptance checks.\n\n"
         "**Check-selection hierarchy — behavioral > structural > textual:**\n"
         "- Prefer checks that execute or parse code (`command_exit_zero`, `endpoint_defined`, "

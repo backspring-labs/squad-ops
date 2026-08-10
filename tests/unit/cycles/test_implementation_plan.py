@@ -6,7 +6,11 @@ from dataclasses import dataclass
 
 import pytest
 
-from squadops.cycles.acceptance_check_spec import CHECK_SPECS
+from squadops.cycles.acceptance_check_spec import (
+    CHECK_SPECS,
+    COMMAND_SAFELIST,
+    argv_matches_safelist,
+)
 from squadops.cycles.implementation_plan import (
     ImplementationPlan,
     TypedCheck,
@@ -601,6 +605,18 @@ summary:
 """
 
 
+#: One concrete, authorable argv per entry in ``COMMAND_SAFELIST``. Kept beside the
+#: safelist's own test so the pairing is visible; the count is asserted below (#707).
+_SAFELISTED_FORM_CASES = [
+    (
+        '["python", "-m", "py_compile", "backend/main.py"]',
+        ["python", "-m", "py_compile", "backend/main.py"],
+    ),
+    ('["node", "--check", "app.js"]', ["node", "--check", "app.js"]),
+    ('["pyflakes", "main.py"]', ["pyflakes", "main.py"]),
+]
+
+
 class TestCommandSafelistLint:
     """Authoring-boundary rejection of commands the evaluator can never run.
 
@@ -634,21 +650,7 @@ class TestCommandSafelistLint:
                 _plan_yaml_with_command('["npm", "test"]'), enforce_command_safelist=True
             )
 
-    @pytest.mark.parametrize(
-        "argv,parsed_argv",
-        [
-            (
-                '["python", "-m", "py_compile", "backend/main.py"]',
-                ["python", "-m", "py_compile", "backend/main.py"],
-            ),
-            ('["python", "-m", "mypy", "src/"]', ["python", "-m", "mypy", "src/"]),
-            ('["node", "--check", "app.js"]', ["node", "--check", "app.js"]),
-            ('["ruff", "check", "."]', ["ruff", "check", "."]),
-            ('["tsc", "--noEmit"]', ["tsc", "--noEmit"]),
-            ('["eslint", "src/"]', ["eslint", "src/"]),
-            ('["pyflakes", "main.py"]', ["pyflakes", "main.py"]),
-        ],
-    )
+    @pytest.mark.parametrize("argv,parsed_argv", _SAFELISTED_FORM_CASES)
     def test_authoring_accepts_every_safelisted_form(self, argv, parsed_argv):
         plan = ImplementationPlan.from_yaml(
             _plan_yaml_with_command(argv), enforce_command_safelist=True
@@ -656,6 +658,24 @@ class TestCommandSafelistLint:
         criterion = plan.tasks[0].acceptance_criteria[0]
         assert isinstance(criterion, TypedCheck)
         assert criterion.params["argv"] == parsed_argv
+
+    def test_every_safelisted_form_has_an_authoring_case(self):
+        """#707's drift guard, pointed at the fixtures rather than the code.
+
+        The case list is hand-written by necessity — each case needs a concrete argv its
+        pattern accepts, which cannot be derived from a matcher function. That is how the
+        old seven-form list stayed green for eight months while four of its forms could
+        not run anywhere: the fixtures agreed with the safelist, and neither agreed with
+        the images. Asserting the count means a form added without a case fails here
+        instead of shipping untested, and each fixture is confirmed against the live
+        matcher rather than assumed.
+        """
+        assert len(_SAFELISTED_FORM_CASES) == len(COMMAND_SAFELIST), (
+            f"{len(COMMAND_SAFELIST)} safelisted forms but {len(_SAFELISTED_FORM_CASES)} "
+            f"authoring cases — add a case for the new form (or drop the stale one)"
+        )
+        for _, parsed_argv in _SAFELISTED_FORM_CASES:
+            assert argv_matches_safelist(parsed_argv), f"fixture {parsed_argv} is not safelisted"
 
     def test_default_parse_accepts_non_safelisted_command(self):
         """Dispatch-time re-parse must stay permissive: flipping the default

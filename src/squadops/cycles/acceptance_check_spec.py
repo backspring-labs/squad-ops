@@ -184,26 +184,81 @@ def is_check_applicable(check_name: str, file_path: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Command safelist (RC-10a) — single source for the ``command_exit_zero``
+# Command safelist (RC-10a) — the single source for the ``command_exit_zero``
 # argv contract. Consumed by the runtime evaluator (``acceptance_checks.py``),
-# the authoring-time lint (``implementation_plan.py``, #422), and the proposer
-# vocabulary below, so the three surfaces cannot drift.
+# the authoring-time lint (``implementation_plan.py``, #422), the plan-validation
+# net (``validate_command_checks``), and the proposer vocabulary, so no surface
+# can hold a private opinion about what a plan may ask for.
+#
+# **#707: it used to be two sources, and they disagreed in both directions.**
+# ``implementation_plan`` carried ``_CHECK_ENV_EXECUTABLES`` — the tools the check
+# environment provides — and of eleven plausible forms, nine were rejected by exactly
+# one of the two gates. The two rejection messages recommended *disjoint* sets, so an
+# author who followed one was refused by the other. #846 is the bill: VS's Next.js
+# re-roll lost a 75-minute framing run because the squad reached for the obvious
+# TypeScript check, ``tsc --noEmit``, exactly as this list advertised it, and plan
+# validation refused it.
+#
+# The reconciliation is structural, not a one-time resync. Each form declares the
+# ``tool`` it needs; ``CHECK_ENV_TOOLS`` declares what the images provide; and
+# ``_assert_safelist_is_runnable`` (below) refuses to import a self-contradictory
+# vocabulary. The old executable-name gate is gone — asking the safelist is strictly
+# stronger, since it also catches ``python -c`` and other argv that shares a
+# provisioned argv[0] with a legitimate form.
+#
+# Entries are MEASURED, not intended. Every form below was run in both agent
+# containers (squadops-eve, squadops-neo, 2026-08-10). What the measurement removed:
+#
+#   ``ruff check <args...>``  — absent from both images. ``pyflakes`` is the one
+#                               Python linter actually installed (requirements/
+#                               base.txt, for the ``undefined_names`` evaluator) and
+#                               was the one form the old env gate refused.
+#   ``python -m mypy <args>`` — mypy is in no requirements file, so the module import
+#                               fails. argv[0] is ``python``, which is why an
+#                               executable-name gate could never have caught it and
+#                               why this list now keys on the tool a form NEEDS.
+#   ``tsc --noEmit``          — never on PATH; TypeScript lives in the app's own
+#                               ``node_modules/.bin``. ``scaffold_contract``'s
+#                               ``_nextjs_ts_slot_criteria`` had already reached this
+#                               conclusion for stack #2's criteria pack (#822) —
+#                               ``next build`` runs tsc, so ``frontend_compiles`` IS
+#                               the type check. The safelist never got the memo.
+#   ``eslint <args...>``      — present (Debian's npm pulls in v6.4.0) but unusable:
+#                               with no eslint config in the tree it exits 2 before
+#                               reading a line of source, which is #645's "fails on
+#                               any content, correct or not" class.
+#
+# Adding a form back is a measurement, not a preference: run it in the agent image
+# against a representative tree, then declare its tool here.
 # ---------------------------------------------------------------------------
+
+#: The tools the check environment provides, measured in both agent images
+#: (squadops-eve, squadops-neo, 2026-08-10). Not a policy preference — a fact about
+#: the images, and the reason it lives beside the safelist rather than in the
+#: validator is #707: two modules cannot hold one fact without eventually disagreeing
+#: about it.
+#:
+#: ``pytest``/``npm``/``npx`` are provisioned but reach no safelisted form. They stay
+#: because this set describes the environment, not the vocabulary; the subset rule
+#: runs one way only. (``pytest`` is also qa-only — absent from the dev image — so a
+#: form needing it would want a per-role declaration this set does not carry.)
+CHECK_ENV_TOOLS: frozenset[str] = frozenset(
+    {"python", "python3", "pytest", "node", "npm", "npx", "pyflakes"}
+)
 
 
 @dataclass(frozen=True)
 class CommandPattern:
+    """One authorable ``command_exit_zero`` argv form.
+
+    ``tool`` is the executable the form needs present, which is NOT always ``argv[0]``
+    — ``python -m mypy`` needs mypy, not python. Declaring it per form is what makes
+    "authorable" and "runnable" the same question (#707).
+    """
+
     name: str
     matcher: Callable[[list[str]], bool]
-
-
-def _exact(*expected: str) -> Callable[[list[str]], bool]:
-    expected_list = list(expected)
-
-    def matcher(argv: list[str]) -> bool:
-        return list(argv) == expected_list
-
-    return matcher
+    tool: str
 
 
 def _exact_then_one_path(*prefix: str) -> Callable[[list[str]], bool]:
@@ -215,34 +270,39 @@ def _exact_then_one_path(*prefix: str) -> Callable[[list[str]], bool]:
     return matcher
 
 
-def _prefix_with_args(*prefix: str) -> Callable[[list[str]], bool]:
-    prefix_list = list(prefix)
-
-    def matcher(argv: list[str]) -> bool:
-        return len(argv) > len(prefix_list) and list(argv[: len(prefix_list)]) == prefix_list
-
-    return matcher
-
-
-def _argv0_with_args(name: str) -> Callable[[list[str]], bool]:
-    def matcher(argv: list[str]) -> bool:
-        return len(argv) >= 1 and argv[0] == name
-
-    return matcher
-
-
 # Order matters only for human readability; the matcher is `any(...)`.
 COMMAND_SAFELIST: tuple[CommandPattern, ...] = (
     CommandPattern(
-        "python -m py_compile <file>", _exact_then_one_path("python", "-m", "py_compile")
+        "python -m py_compile <file>",
+        _exact_then_one_path("python", "-m", "py_compile"),
+        tool="python",
     ),
-    CommandPattern("python -m mypy <args...>", _prefix_with_args("python", "-m", "mypy")),
-    CommandPattern("node --check <file>", _exact_then_one_path("node", "--check")),
-    CommandPattern("ruff check <args...>", _prefix_with_args("ruff", "check")),
-    CommandPattern("tsc --noEmit", _exact("tsc", "--noEmit")),
-    CommandPattern("eslint <args...>", _argv0_with_args("eslint")),
-    CommandPattern("pyflakes <file>", _exact_then_one_path("pyflakes")),
+    CommandPattern("node --check <file>", _exact_then_one_path("node", "--check"), tool="node"),
+    CommandPattern("pyflakes <file>", _exact_then_one_path("pyflakes"), tool="pyflakes"),
 )
+
+
+def _assert_safelist_is_runnable() -> None:
+    """Refuse to import a vocabulary that advertises what the environment cannot run.
+
+    #707's acceptance is *"the set of authorable command forms equals the set of
+    runnable command forms"*, and the way that was violated for eight months was a
+    second list drifting quietly. A test would catch the drift; raising here means the
+    contradictory state cannot exist at all — the #845 precedent, where a missing build
+    profile stopped being swallowed. The condition is static module content, so this can
+    only fire on an edit to this file, never on runtime data.
+    """
+    missing = sorted({pat.tool for pat in COMMAND_SAFELIST} - CHECK_ENV_TOOLS)
+    if missing:
+        raise RuntimeError(
+            f"command safelist advertises {missing}, which CHECK_ENV_TOOLS does not "
+            f"provide — an authored check using it can never execute, so it fails "
+            f"identically on every correction attempt (#707). Either provision the tool "
+            f"in agents/instances/<role>/ and declare it, or drop the form."
+        )
+
+
+_assert_safelist_is_runnable()
 
 
 def argv_matches_safelist(argv: list[str]) -> bool:
@@ -750,6 +810,52 @@ DECLARED_UNBUILT_CHECKS: tuple[DeclaredUnbuiltCheck, ...] = (
 )
 
 
+@dataclass(frozen=True)
+class LanguageWithoutCommandForm:
+    """A source language no safelisted ``command_exit_zero`` form can reach (#707).
+
+    The same honesty pattern as ``DeclaredUnbuiltCheck``, applied one level down — to a
+    check that *exists* but has no authorable form for some of the code it is offered
+    against. It is declared rather than merely absent because of the argument the Stack
+    Blueprint SIP makes against its own ``analysable_suffix`` sketch: that field encoded
+    *a limitation of the tooling as a property of the domain*, and the frontend "was not
+    modeled as a second language without checkers; it was silently absent, and absence
+    demands no handling." **A partial model is worse than none: it implies the rest does
+    not exist.** A shorter safelist with nothing said about TypeScript would repeat that
+    exactly — the reader infers the list is complete rather than that a language fell off it.
+
+    ``verified_by`` is the load-bearing field. An empty command surface is only acceptable
+    while something else carries the claim, and naming that something is what forces the
+    "then what verifies this language?" question the SIP asks downstream consumers to
+    answer explicitly.
+    """
+
+    language: str
+    reason: str
+    verified_by: str
+
+
+#: Languages the command safelist cannot reach. Rendered into the generated check menu,
+#: so the gap is visible where the vocabulary is documented rather than inferred from a
+#: list that happens not to mention it.
+LANGUAGES_WITHOUT_COMMAND_FORM: tuple[LanguageWithoutCommandForm, ...] = (
+    LanguageWithoutCommandForm(
+        language="TypeScript (.ts/.tsx)",
+        reason=(
+            "no TypeScript checker is provisionable — tsc lives in the app's own "
+            "node_modules/.bin and never on PATH, and `node --check` refuses both "
+            "extensions before parsing (ERR_UNKNOWN_FILE_EXTENSION, node v20.19.2, "
+            "measured 2026-08-10)"
+        ),
+        verified_by=(
+            "frontend_compiles / frontend_build — `next build` runs tsc itself and "
+            "next.config.mjs declines to ignore type errors, so the bundler check IS "
+            "the type check (#822 bend register entry 6)"
+        ),
+    ),
+)
+
+
 def reserved_keys_for(check_name: str) -> frozenset[str]:
     """Return the keys reserved for the wrapper (not part of params).
 
@@ -889,9 +995,35 @@ def render_check_governance_menu() -> str:
         )
     lines += [
         "",
-        "Caveat — `command_exit_zero` ownership is per-command in truth and",
-        "untrustworthy until #707's allowlist inventory + precedence ruling",
-        "(recorded in the registry beside the entry).",
+        "`command_exit_zero` ownership is per-command in truth. The forms it may take",
+        "are inventoried below — this replaces the standing caveat that called the",
+        "surface untrustworthy pending #707's allowlist inventory.",
+        "",
+        "## Authorable `command_exit_zero` forms",
+        "",
+        "One list, not two (#707): a form is authorable exactly when the tool it needs is",
+        "provisioned, and `acceptance_check_spec` refuses to import if that stops being true.",
+        "Entries are measured in the agent images, never assumed.",
+        "",
+        "| form | tool needed |",
+        "|---|---|",
+    ]
+    for pat in COMMAND_SAFELIST:
+        lines.append(f"| `{pat.name}` | `{pat.tool}` |")
+    lines += [
+        "",
+        "### Languages no form reaches",
+        "",
+        "Declared, not omitted — a list that simply fails to mention a language reads as",
+        "complete. What carries the claim instead is named, because an empty command",
+        "surface is only acceptable while something else verifies the code.",
+        "",
+        "| language | why no form | verified instead by |",
+        "|---|---|---|",
+    ]
+    for gap in LANGUAGES_WITHOUT_COMMAND_FORM:
+        lines.append(f"| {gap.language} | {gap.reason} | {gap.verified_by} |")
+    lines += [
         "",
         "## Declared-unbuilt (visible, not evaluable, not authorable)",
         "",

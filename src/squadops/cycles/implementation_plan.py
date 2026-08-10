@@ -51,18 +51,24 @@ _KNOWN_BUILD_TASK_TYPES = {
 # regardless of the authoring squad.
 _BUILDER_ROLE_BUILD_TASK_TYPES = {"builder.assemble"}
 
-# #645: the executable surface of the environment typed checks run in (the QA
-# agent image). A command check whose argv[0] is not here can never execute
-# where checks execute — it fails identically on every correction attempt
-# (fay-2's plan wanted `tsc`; two later plans reached for it again). This
-# mirrors the image's installed tooling, not a policy preference; extend it
-# when the image gains a tool.
-_CHECK_ENV_EXECUTABLES = frozenset({"python", "python3", "pytest", "node", "npm", "npx"})
+# #645 lived here as `_CHECK_ENV_EXECUTABLES`, a second opinion about what a command
+# check may ask for. #707 deleted it rather than resynchronising it: the safelist in
+# `acceptance_check_spec` now declares the tool each form needs and refuses to import
+# unless the environment provides it, so "is this tool present" and "is this argv
+# permitted" are one question with one answer. Asking the safelist is also strictly
+# stronger than the old test, which passed `["python", "-c", "1"]` on argv[0] alone and
+# left the refusal to evaluation time, an hour of correction budget later.
 
-# #645: node refuses these extensions outright (ERR_UNKNOWN_FILE_EXTENSION,
-# exit 1 before parsing) — `node --check view.jsx` fails on ANY content,
-# correct or not (fay-2's killer; verified in the QA container).
-_NODE_UNPARSEABLE_SUFFIXES = (".jsx", ".tsx")
+# #645: node refuses these extensions outright (ERR_UNKNOWN_FILE_EXTENSION, exit 1
+# before parsing) — `node --check view.jsx` fails on ANY content, correct or not
+# (fay-2's killer; verified in the QA container).
+#
+# `.ts` added by #707. It was missing, and the omission was invisible while the tree
+# held one Python stack: `node --check route.ts` exits 1 on node v20.19.2 exactly as
+# `.tsx` does (measured in squadops-eve, 2026-08-10). With stack #2 in the tree this is
+# the one form a TypeScript author could still reach, so the hole sat directly under
+# #846's Family A — a correct plan rejected, or worse, admitted and unwinnable.
+_NODE_UNPARSEABLE_SUFFIXES = (".jsx", ".tsx", ".ts")
 
 
 def _importable_module_surface(paths: frozenset[str] | set[str]) -> frozenset[str]:
@@ -465,11 +471,17 @@ class ImplementationPlan:
         Two deterministic classes from the FAY measurement window, both provable
         at authoring time without running anything:
 
-        - an executable the check environment does not ship (fay-2's ``tsc``) —
-          the spawn fails on every attempt until the correction budget is spent;
-        - ``node`` pointed at a ``.jsx``/``.tsx`` file — node refuses the
+        - a form the check environment cannot run (fay-2's ``tsc``) — the spawn fails
+          on every attempt until the correction budget is spent;
+        - ``node`` pointed at a ``.jsx``/``.tsx``/``.ts`` file — node refuses the
           extension before parsing (``ERR_UNKNOWN_FILE_EXTENSION``), so the check
           fails on ANY content, correct or not.
+
+        #707 replaced the first test's private executable list with the safelist itself.
+        That is not a simplification for its own sake: the two lists recommended disjoint
+        sets in their rejection messages, so an author who took one gate's advice was
+        refused by the other. It is also stricter — an argv sharing a provisioned argv[0]
+        with a legitimate form (``python -c``) used to pass here and fail at evaluation.
 
         Only ``severity=error`` rejects (RC-9: a warning cannot block a build, so
         a doomed warning check costs nothing — fay-6 and fay-8 both carried one
@@ -485,24 +497,24 @@ class ImplementationPlan:
                 argv = criterion.params.get("argv") or []
                 if not argv or not all(isinstance(a, str) for a in argv):
                     continue
-                executable = argv[0]
-                if executable not in _CHECK_ENV_EXECUTABLES:
+                if not argv_matches_safelist(argv):
                     errors.append(
-                        f"Task {task.task_index} ({task.focus}): command_exit_zero invokes "
-                        f"{executable!r}, which the check environment does not provide — "
-                        f"the check can never execute, so no repair can fix it and the "
-                        f"task fails identically on every correction attempt. Use one of "
-                        f"{sorted(_CHECK_ENV_EXECUTABLES)} or a named check"
+                        f"Task {task.task_index} ({task.focus}): command_exit_zero argv "
+                        f"{argv} is not a form the check environment can run — the check "
+                        f"can never execute, so no repair can fix it and the task fails "
+                        f"identically on every correction attempt. Use one of: "
+                        f"{'; '.join(command_safelist_names())} — or a named check"
                     )
-                elif executable == "node" and any(
+                elif argv[0] == "node" and any(
                     arg.endswith(_NODE_UNPARSEABLE_SUFFIXES) for arg in argv[1:]
                 ):
                     errors.append(
                         f"Task {task.task_index} ({task.focus}): command_exit_zero runs "
-                        f"node against a .jsx/.tsx file — node refuses the extension "
+                        f"node against a .jsx/.tsx/.ts file — node refuses the extension "
                         f"before parsing (ERR_UNKNOWN_FILE_EXTENSION), so this fails on "
-                        f"any content, correct or not. JSX compilation is verified by "
-                        f"the frontend build; drop the check or target plain .js"
+                        f"any content, correct or not. TypeScript and JSX are compiled by "
+                        f"the frontend build, which type-checks them; drop the check or "
+                        f"target plain .js"
                     )
         return errors
 

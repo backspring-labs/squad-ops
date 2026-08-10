@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pytest
 
+from squadops.cycles.acceptance_check_spec import COMMAND_SAFELIST
 from squadops.cycles.implementation_plan import ImplementationPlan
 from squadops.cycles.plan_authoring_rules import (
     AUTHOR_FACING,
@@ -27,9 +28,9 @@ from squadops.cycles.plan_authoring_rules import (
 
 pytestmark = [pytest.mark.domain_contracts]
 
-_TEMPLATES = (
-    Path(__file__).resolve().parents[3] / "src" / "squadops" / "prompts" / "request_templates"
-)
+_PROMPTS = Path(__file__).resolve().parents[3] / "src" / "squadops" / "prompts"
+_TEMPLATES = _PROMPTS / "request_templates"
+_FRAGMENTS = _PROMPTS / "fragments" / "shared" / "task_type"
 _ASSET = _TEMPLATES / "request.plan_authoring_rules_appendix.md"
 
 
@@ -96,3 +97,41 @@ def test_the_asset_teaches_the_shk1_defect_and_its_legitimate_alternative():
     assert "one-file-one-owner" in asset
     assert "expected_artifacts: []" in asset
     assert "verif" in asset.lower()
+
+
+#: Assets that name concrete `command_exit_zero` forms to an author. Prose, so they must
+#: restate rather than render — which is precisely how they drifted (#707).
+_COMMAND_FORM_ASSETS = (
+    _FRAGMENTS / "task_type.development.propose_plan_tasks.md",
+    _FRAGMENTS / "task_type.qa.propose_plan_tasks.md",
+)
+
+
+@pytest.mark.parametrize("asset", _COMMAND_FORM_ASSETS, ids=lambda p: p.name)
+def test_proposer_assets_name_only_runnable_command_forms(asset):
+    """#707/#846: the authoring prompts advertised commands no image could run.
+
+    This is the defect that cost VS's Next.js re-roll a 75-minute framing run — the qa
+    fragment offered ``tsc --noEmit`` and ``ruff check``, the squad took the offer, and
+    plan validation rejected the result. These fragments are prose and cannot render from
+    ``COMMAND_SAFELIST``, so the binding has to be a test.
+
+    Asserted in both directions. Naming a retired tool is the trap that fired; failing to
+    name a live form is the quieter half — an author who is never shown a form does not
+    author it, and the check goes unused rather than wrong.
+    """
+    text = asset.read_text(encoding="utf-8")
+    live_tools = {pat.tool for pat in COMMAND_SAFELIST}
+
+    for tool in ("ruff", "tsc", "eslint", "mypy"):
+        assert tool not in live_tools, "update this list — the tool is safelisted again"
+        assert tool not in text, (
+            f"{asset.name} still offers `{tool}`, which no agent image can run. An author "
+            f"who takes the offer is rejected at plan validation (#707)"
+        )
+
+    for tool in sorted(live_tools):
+        assert tool in text, (
+            f"{asset.name} never mentions `{tool}`, a form the author may legitimately "
+            f"use — an unadvertised check is an unused one"
+        )

@@ -805,11 +805,11 @@ class TestCommandExitZero:
 
         monkeypatch.setattr("asyncio.create_subprocess_exec", fake_create_subprocess_exec)
         result = await get_check("command_exit_zero").evaluate(
-            {"argv": ["tsc", "--noEmit"], "timeout_s": 9999},
+            {"argv": ["pyflakes", "app.py"], "timeout_s": 9999},
             tmp_path,
         )
         assert result.status == "passed"
-        assert captured["argv"] == ["tsc", "--noEmit"]
+        assert captured["argv"] == ["pyflakes", "app.py"]
 
 
 # ---------------------------------------------------------------------------
@@ -822,13 +822,7 @@ class TestCommandExitZero:
     [
         # Allowed shapes
         (["python", "-m", "py_compile", "backend/main.py"], True),
-        (["python", "-m", "mypy", "src/"], True),
-        (["python", "-m", "mypy", "--strict", "src/"], True),
         (["node", "--check", "app.js"], True),
-        (["ruff", "check", "src/"], True),
-        (["ruff", "check", "src/", "--select", "E"], True),
-        (["tsc", "--noEmit"], True),
-        (["eslint", "src/"], True),
         (["pyflakes", "main.py"], True),
         # Rejected shapes
         (["python", "-c", "print(1)"], False),
@@ -840,6 +834,14 @@ class TestCommandExitZero:
         (["pyflakes", "a.py", "b.py"], False),  # exact-then-ONE-path
         (["bash", "-c", "echo hi"], False),
         (["sh", "echo hi"], False),
+        # #707: forms this list advertised while no agent image could run them.
+        # Measured absent (ruff, tsc) or present-but-unusable (eslint v6.4.0 exits 2
+        # with no config); `python -m mypy` cleared BOTH old gates and then failed at
+        # evaluation with "No module named mypy" — the case an argv[0] check is blind to.
+        (["python", "-m", "mypy", "src/"], False),
+        (["ruff", "check", "src/"], False),
+        (["tsc", "--noEmit"], False),
+        (["eslint", "src/"], False),
     ],
 )
 def test_argv_matches_safelist(argv, expected):
