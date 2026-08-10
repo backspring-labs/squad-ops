@@ -204,6 +204,31 @@ against these stage/step labels.
 | **1d** | **Bend register** — `docs/plans/stack-2-bend-register.md`, written *during* 1c | zero unexplained bends (S3's exit criterion). **Landed**: six findings, of which **one is a true bend** — the rest split into a schema defect, a cleared check, a field with no home, and two disclosures |
 | **1e** | **VS** — a Next.js cycle end to end | gates S3 |
 
+**1e is not one step — it acquired a prerequisite after this plan was written.** VS ran on
+2026-08-10 (`cyc_afa934886acd`), framed for 75m33s, and was rejected: the cycle built **stack
+#1** while configured for stack #2, and every component behaved correctly while doing so. The
+causal chain is **#838**.
+
+| Step | Work | Gate |
+|---|---|---|
+| **1e-i** | **#838's three fixes.** (a) `PROOF_STACK_MATCHES_CONFIG` — compare `manifest.stack` to the cycle's `build_profile`; (b) the design stage learns the stack — `DevelopmentDesignPlanHandler` has no reference to it today, so it designed FastAPI from the only architecture prose that exists, and `profile_narratives/` needs a `nextjs_ts` entry; (c) a `BUILD_PROFILES` entry for `nextjs_ts`, **and the `except Exception` around `_seed_skeleton_artifacts`' `get_profile(...).expand(...)` must stop hiding a missing one** | a stack mismatch fails in seconds, not 75 minutes |
+| **1e-ii** | Re-roll VS on a rebuilt, loaded-verified deploy | reaches expansion for `nextjs_ts` |
+| **1e-iii** | Read the result | see below |
+
+**Take (a) first.** It is the cheapest of the three, independently valuable, and it converts a
+75-minute discovery into a seconds-long one for every re-roll after — including the re-rolls
+(b) and (c) will need.
+
+**What 1e-iii must show**, in priority order, and *none of it is the pass rate*: does the
+authored manifest declare `nextjs_ts` and pass both gates · does the plan claim all **seven**
+fill slots (four route files, three pages — a plan claiming fewer means bend 1 did not survive
+contact) · do the three required checks *execute* (`tests_pass`, `frontend_build`,
+`required_files` — inferred from reading the vitest dispatch, never observed; `builder.assemble`
+was never in the 1a sweep) · and can **M6's taxonomy name the subsystem** if it fails.
+
+**Nothing is yet known about whether the Next.js stack works.** The 2026-08-10 run never
+reached expansion for it.
+
 **Why 1a leads, and why it is not a new invention.** It is the S lane's missing **M0a**: a
 measurement of the surface before anything has to cross it, and the fourth application of the
 rails-before-mechanism rule this plan already names three times (SIP-0101 Slice 1, SIP-0096's
@@ -275,7 +300,30 @@ until 2b exists.
 | **4d** | Pre-registration committed (N, PRD, deploy hash, scoring) → **freeze** | Guard 2 |
 | **4e** | **V7** — the FAY window, unfiltered, **fix nothing until it closes** | the evidence |
 | **4f** | **V8** confirmation shakedown | green |
-| **4g** | Cut | — |
+| **4g** | Cut — **decomposed below** | the release is advertised, not merely tagged |
+
+**Why 4g is the one step that earns a checklist.** This plan carries cut *criteria* — the
+six-item cut gate — and had no cut *procedure*. That distinction is not academic: **#789
+records six consecutive releases tagged but never advertised** (v1.4.0 through v1.5.0, with
+`gh release list` still showing v1.3.1 as Latest and `CHANGELOG.md` last rotated at 1.3.1).
+The backfill landed — v1.5.0 is Latest today — but **#789's item 3, the CI guard that was to
+prevent recurrence, never did**: verified 2026-08-10, no workflow or dev script references
+`CHANGELOG` at all. So the class is fixed historically and **unprevented going forward**, and
+a step represented by the single word "Cut" will be skipped a seventh time.
+
+| Step | Work |
+|---|---|
+| **4g-i** | `scripts/maintainer/version_cli.py bump 1.6.0` — the only sanctioned bump path |
+| **4g-ii** | Version markers in sync: `CLAUDE.md`, `README.md`, `docs/ROADMAP.md` (they drifted at 1.1.x; the marker guards cover these three) |
+| **4g-iii** | **Rotate `CHANGELOG.md`** — `[Unreleased]` → `[1.6.0] — <date>`, leaving a fresh `[Unreleased]`. **No guard exists for this**, per #789 item 3 |
+| **4g-iv** | ROADMAP timeline entry for the release |
+| **4g-v** | **SIP-0103 status decision.** Recommended: **stays `accepted`**, with §5d's divergences standing. Main implements a corrected, narrowed version of the document — three falsified premises, one owner-ruled narrowing, four unimplemented dispositions — and promoting it would assert otherwise. Precedent: the 2026-08-03 audit kept four SIPs at `accepted` with gaps named |
+| **4g-vi** | `git tag v1.6.0` **and** a GitHub Release from the CHANGELOG section, marked **Latest**. The tag alone is what six cuts did |
+
+**Standing candidate, not scheduled here:** #789's item-3 guard — a version bump or new `v*`
+tag without a matching CHANGELOG section should fail CI, the way the marker-sync guards already
+work for README/ROADMAP. Until it exists, 4g-iii is the step most likely to be skipped, which
+is precisely why it is written down.
 
 **The two open decisions, restated with their evidence.** 4a: a CRUD-shaped worked example
 measured on a CRUD product flatters the convergence result — V4 roll 2's REST spine was
