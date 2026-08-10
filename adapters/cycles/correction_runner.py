@@ -180,12 +180,13 @@ def _widen_target_for_frontend_build(
     """
     if not _frontend_build_failed(failure_evidence):
         return target
-    frontend_source = [
-        p
-        for p in (failed_inputs.get("implementation_artifacts") or [])
-        if isinstance(p, str) and p.startswith("frontend/")
-    ]
-    return list(dict.fromkeys([*target, *frontend_source]))
+    # #822: which files are views is the CONTRACT's answer, not a directory prefix. This read
+    # `p.startswith("frontend/")` — stack #1's layout stated as a property of views. A stack
+    # that builds at the project root would union nothing, and the fay-8 trap this function
+    # exists to close would reopen intact for it. Same authoring-independent relation
+    # `_probe_owned_slots` uses (#688), one criterion over.
+    view_slots = [p for p in (failed_inputs.get("contract_view_slots") or []) if isinstance(p, str)]
+    return list(dict.fromkeys([*target, *view_slots]))
 
 
 def _failed_probe_ids(failure_evidence: Any) -> list[str]:

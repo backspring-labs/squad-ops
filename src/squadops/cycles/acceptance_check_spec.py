@@ -320,6 +320,12 @@ CHECK_CONTRACT_ASSERTIONS = "contract_assertions_match"
 # moves both together.
 CHECK_FILL_SLOT_SIGNATURE = "fill_slot_signature"
 
+# #822: the per-view bundler check. Named here because `VerificationContract.view_slots`
+# filters on it to identify a stack's view files for repair targeting — the same
+# single-source rule as the constants above, and the same failure mode if it drifts: a
+# literal that stops matching resolves to "this stack has no views" rather than erroring.
+CHECK_FRONTEND_COMPILES = "frontend_compiles"
+
 # #629 (1.5 A6/D2): the ADVISORY prose-vs-contract identity. Deliberately NOT a
 # ``CHECK_SPECS`` entry — that would make it plan-authorable; it names the
 # warning rows the plan-prose lint emits (``implementation_plan``), keeping its

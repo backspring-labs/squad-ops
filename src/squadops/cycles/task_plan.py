@@ -568,6 +568,14 @@ def inject_contract_inputs(
             endpoint_owners = contract.endpoint_owners()
             if endpoint_owners:
                 inputs["contract_endpoint_owners"] = endpoint_owners
+        # #822: the view slots, for the same reason and by the same route — a correction born
+        # of a FAILING frontend build must reach the view that broke it. Threaded outside the
+        # probe branch because a stack can have views and no probes; absent when the contract
+        # bundler-checks nothing, which is the same condition under which no frontend_build
+        # row can fail. Data only; no prose (#448).
+        view_slots = contract.view_slots()
+        if view_slots:
+            inputs["contract_view_slots"] = list(view_slots)
         # #629 / pf-54: the contract's pinned statuses (probe expects + the
         # error-code→status map) never reached suite AUTHORING — five authored
         # suite versions asserted 200 where the probe pinned 201, an unwinnable

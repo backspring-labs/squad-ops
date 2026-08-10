@@ -488,6 +488,33 @@ class VerificationContract:
                         owners.setdefault(f"{parsed[0]} {parsed[1]}", ff.path)
         return owners
 
+    def view_slots(self) -> tuple[str, ...]:
+        """Fill files whose acceptance runs the bundler — the stack's *view* slots (#822).
+
+        Read off the ``frontend_compiles`` criteria the expander attaches per fill slot, in
+        document order. Same relation ``endpoint_owners`` reads, one criterion over: only the
+        contract joins "the manifest declared these views" to "the blueprint put them here".
+
+        Exists because the repair-target widening for a failing frontend build identified view
+        source as ``path.startswith("frontend/")``. That is stack #1's layout, not a property
+        of views: a stack that builds at the project root would union nothing, and #650's
+        fay-8 trap — five correction rounds polishing a passing backend while the
+        build-breaking view sat outside every target — would return intact for stack #2.
+
+        Empty for a contract with no bundler-checked slot, which is the same condition under
+        which no ``frontend_build`` row can fail, so the caller's behavior is unchanged.
+        """
+        from squadops.cycles.acceptance_check_spec import CHECK_FRONTEND_COMPILES
+
+        return tuple(
+            ff.path
+            for ff in self.fill_files
+            if any(
+                crit.check == CHECK_FRONTEND_COMPILES
+                for crit in (*ff.interface, *ff.implementation)
+            )
+        )
+
     def covered_fill_paths(self) -> frozenset[str]:
         """The set of fill-file paths this contract owns the acceptance of. A plan
         task whose ``expected_artifacts`` names one of these must bind that file's

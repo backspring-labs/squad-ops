@@ -3389,6 +3389,16 @@ class TestFrontendBuildProvenanceTargeting:
             "frontend/src/views/CreateRunView.jsx",
             "frontend/src/views/RunDetailView.jsx",
         ],
+        # #822: which files are views now comes from the contract rather than from a
+        # `frontend/` prefix over implementation_artifacts — a prefix is stack #1's layout,
+        # not a property of views, and a root-built stack would union nothing. These are the
+        # reference contract's actual `view_slots()`, so the assertions below are unchanged
+        # and the fixture is closer to a real qa.test envelope, which carries this key.
+        "contract_view_slots": [
+            "frontend/src/views/RunsListView.jsx",
+            "frontend/src/views/CreateRunView.jsx",
+            "frontend/src/views/RunDetailView.jsx",
+        ],
         "subtask_focus": "Backend API test suite",
         "subtask_description": "pytest suites",
     }
