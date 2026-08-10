@@ -28,6 +28,13 @@ restored, and the check fails identically until the correction budget is gone. P
 validation now runs these checks against the real skeleton before dispatch and rejects
 the plan if one cannot pass — so a guess here costs the whole framing, not just the task.
 
+**A file listed below with no declarations after its name may not be checked at all.**
+The listing states what a frozen file declares only for languages this system can read
+today; for the rest it can state that the file exists and nothing more. That is a limit of
+the tooling, not evidence that the file is empty — so for those entries you have no line
+proving anything passes, and the rule above applies with no exception available. Write your
+check against a fill slot instead, or verify the behavior through the suite.
+
 **What the frozen files actually declare:**
 
 {{frozen_surface_index}}

@@ -235,14 +235,28 @@ def _expander_findings(manifest) -> list[WinnabilityFinding]:
 
 
 def _contract_findings(manifest) -> list[WinnabilityFinding]:
-    """The derived contract must exist and must be satisfiable by construction.
+    """The derived contract must exist, be structurally valid, and be satisfiable.
 
-    Two distinct failures: derivation refusing outright, and derivation producing a
-    check that can never execute. The second is the #671 class one level up — a check
-    that skips at every evaluation forever is dead weight the plan still has to carry.
+    Three distinct failures: derivation refusing outright, derivation producing a contract
+    that fails its own linter, and derivation producing a check that can never execute. The
+    third is the #671 class one level up — a check that skips at every evaluation forever is
+    dead weight the plan still has to carry.
+
+    **The linter call is #849, and its absence is the more interesting half of that bug.**
+    ``VerificationContract.lint()`` has existed throughout, and ``_lint_ids`` detects the
+    duplicate-id defect precisely — but repo-wide its only callers were
+    ``scripts/dev/contract_gate.py`` and unit tests. Both run against the *reference FastAPI
+    manifest*, whose criterion ids cannot collide, so the guard was exercised only by the one
+    input incapable of failing it and was absent from every path that derives a contract at
+    cycle time. Stack #2's contract reached a live run malformed.
+
+    Linting here rather than at the storage seam is deliberate: this is the gate that already
+    answers "is this manifest winnable", a malformed contract is exactly a way for it not to
+    be, and a rejection here re-rolls framing for free (#522) instead of failing mid-run.
     """
     from squadops.capabilities.scaffold_contract import emit_contract_dict
     from squadops.cycles.acceptance_check_spec import CHECK_SPECS, is_check_applicable
+    from squadops.cycles.verification_contract import VerificationContract
 
     try:
         contract = emit_contract_dict(manifest)
@@ -252,6 +266,30 @@ def _contract_findings(manifest) -> list[WinnabilityFinding]:
                 PROOF_CONTRACT_DERIVES,
                 f"no verification contract could be derived from this manifest ({exc}), "
                 f"so nothing downstream could state what 'done' means.",
+            )
+        ]
+
+    # Structural validity, before anything reads the contract's contents. A contract whose
+    # own linter rejects it is not a contract the rest of this function can reason about —
+    # duplicate ids in particular make `criterion_index()` silently lossy, so the
+    # per-check findings below would be computed over criteria no ref can ever resolve to.
+    try:
+        lint_errors = VerificationContract.from_dict(contract).lint()
+    except Exception as exc:  # noqa: BLE001 - a contract that will not even load is a finding
+        return [
+            WinnabilityFinding(
+                PROOF_CONTRACT_DERIVES,
+                f"the contract derived from this manifest could not be loaded ({exc}).",
+            )
+        ]
+    if lint_errors:
+        return [
+            WinnabilityFinding(
+                PROOF_CONTRACT_DERIVES,
+                f"the contract derived from this manifest is structurally invalid: "
+                f"{'; '.join(lint_errors)}. Downstream binding resolves criteria by id and "
+                f"would silently drop what it cannot address, so the plan would read as "
+                f"fully covered while part of the surface went unverified.",
             )
         ]
 

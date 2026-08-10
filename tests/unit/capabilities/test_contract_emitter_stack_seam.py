@@ -273,3 +273,70 @@ def test_every_registered_stack_declares_a_pack_that_exists():
         assert stack.criteria_pack in scaffold_contract._CRITERIA_PACKS, (
             f"stack {name!r} names pack {stack.criteria_pack!r}, which is not registered"
         )
+
+
+# --------------------------------------------------------------------------- #
+# #849 — criterion ids must identify a slot, not a filename
+# --------------------------------------------------------------------------- #
+
+
+def _contract_for(stack: str):
+    """The reference manifest's contract, re-stacked. One manifest, two emitters."""
+    import pathlib
+
+    import yaml
+
+    from squadops.capabilities.scaffold import InterfaceManifest
+    from squadops.cycles.verification_contract import VerificationContract
+
+    raw = yaml.safe_load(pathlib.Path("examples/03_group_run/interface_manifest.yaml").read_text())
+    raw["stack"] = stack
+    manifest = InterfaceManifest.from_yaml(yaml.safe_dump(raw, sort_keys=False))
+    return VerificationContract.from_dict(scaffold_contract.emit_contract_dict(manifest))
+
+
+@pytest.mark.parametrize("stack", sorted(scaffold._STACKS))
+def test_every_stack_emits_unique_criterion_ids(stack):
+    """The defect that shipped a malformed contract into `cyc_7899ed1feae5`.
+
+    `nextjs_ts` slugged the BASENAME, and App Router fixes the filename — every route file
+    is `route.ts`, every page `page.tsx` — so four route criteria and three page criteria
+    collapsed onto two ids. `criterion_index()` is keyed on id and is last-writer-wins, so
+    five of seven fill slots resolved to no criterion at all while a plan binding all seven
+    refs read as fully covered.
+
+    Parameterized over the registry rather than written against one stack: the assumption
+    "a filename identifies a file" is FastAPI-shaped, and the next stack gets to break it
+    too. Stack #1 passes by construction (its views share one flat directory), which is
+    exactly why a stack-specific test would have proved nothing.
+    """
+    ids = [i for i in _contract_for(stack).criterion_ids() if i]
+    dupes = sorted({i for i in ids if ids.count(i) > 1})
+    assert not dupes, (
+        f"stack {stack!r} emits duplicate criterion id(s) {dupes} — criterion_index() is "
+        f"keyed on id and last-writer-wins, so every slot but one silently loses its criteria"
+    )
+
+
+@pytest.mark.parametrize("stack", sorted(scaffold._STACKS))
+def test_every_stack_emits_a_contract_that_passes_its_own_linter(stack):
+    """The generalization of the test above, and the one that would have caught it first.
+
+    `lint()` already checked id uniqueness; nothing outside CI and unit tests ever ran it,
+    and CI runs it only against the reference FastAPI manifest, which cannot collide. This
+    puts every registered stack through the linter, so a new stack's structural defects are
+    a test failure rather than a live-run discovery.
+    """
+    assert _contract_for(stack).lint() == []
+
+
+def test_next_js_ids_name_the_directory_that_distinguishes_the_slot():
+    """Uniqueness alone is satisfiable by a counter (`vc-compiles-1`), which would be stable
+    only until a slot is added in the middle. The id has to carry the path that makes the
+    slot distinct, so a diff of two contracts stays readable and a criterion id in evidence
+    still says which file it judged."""
+    ids = {i for i in _contract_for("nextjs_ts").criterion_ids() if i.startswith("vc-compiles-")}
+    assert "vc-compiles-app-api-runs-route" in ids
+    assert "vc-compiles-app-api-runs-run-id-join-route" in ids
+    assert "vc-compiles-app-api-runs-run-id-leave-route" in ids
+    assert len({i for i in ids if i.endswith("-route")}) == 4
