@@ -217,6 +217,8 @@
    "agent_config_overrides": {},
    "agent_model": "m",
    "config_hash": "confhash",
+   "contract_criteria_index": "- backend/routes.py: bind vc-routes-endpoints (endpoint_defined)",
+   "frozen_surface_index": "- `backend/__init__.py`\n- `backend/main.py` \u2014 functions health; imports `.errors`, `.routes`, `fastapi`, `fastapi.middleware.cors`, `os`\n- `backend/models.py` \u2014 defines Participant(id, name), RunEvent(id, title, datetime, location, distance, pace_target, route_notes, participants), RunEventCreate(title, datetime, location, distance, pace_target, route_notes), ParticipantName(name); imports `pydantic`, `typing`\n- `backend/store.py` \u2014 module state participant_store: dict[str, Participant], run_event_store: dict[str, RunEvent]; functions reset; imports `.models`\n- `backend/errors.py` \u2014 defines ApiError; functions register_error_handlers; imports `fastapi`, `fastapi.exceptions`, `fastapi.responses`\n- `backend/requirements.txt`\n- `conftest.py` \u2014 functions client; imports `backend.main`, `fastapi.testclient`, `os`, `pytest`, `sys`\n- `frontend/index.html`\n- `frontend/package.json`\n- `frontend/vite.config.js`\n- `frontend/src/test-setup.js`\n- `frontend/src/__tests__/harness.test.jsx`\n- `frontend/src/main.jsx`\n- `frontend/src/api.js`\n- `frontend/src/App.jsx`",
    "prd": "PRD-CONTENT",
    "profile_roles": [
     "data",

@@ -157,15 +157,25 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
     # --- planning chain (#657): upstream documents on an envelope-local
     # prior_outputs copy; all four authoring types receive a re-roll's
     # rejection context (#669 — fresh dice previously meant zero teaching,
-    # fay-10 re-tripped the same class three times). governance.merge_plan is
-    # DELIBERATELY absent from BOTH: by merge time both proposals collide on
-    # the proposed_plan_tasks.yaml filename, so artifact threading would
+    # fay-10 re-tripped the same class three times). governance.merge_plan takes
+    # NEITHER artifact threading nor rejection context: by merge time both proposals
+    # collide on the proposed_plan_tasks.yaml filename, so artifact threading would
     # silently drop one proposal (the merger consumes brief_outcome/
     # proposal_outcome output keys instead), and its normal merge path is
     # deterministic — no prompt for rejection context to teach.
     # bind_criteria_index (SIP-0098 98.3): dev/qa propose BUILD tasks and so
     # bind covered-file criteria; strategy proposes guidance and the brief
     # author frames — neither is indexed.
+    #
+    # #846: "its normal merge path is deterministic" was true of the merge and hid the
+    # case that matters. When no plan_authoring_contributors are configured the proposers
+    # never run, and merge_plan authors the whole plan itself through an LLM — the
+    # sole-author fallback, which is the DEFAULT for every CRP but validation-multirole.
+    # Reading merge_plan's absence here as "this task type has no prompt" left the one
+    # author that actually reaches implementation as the only one never given the
+    # contract. Measured on cyc_0edb55919384: 0 criteria_refs, 3 frozen files claimed,
+    # 8 invented paths. So it is present now, for the index alone.
+    "governance.merge_plan": ContextAssemblyContract(bind_criteria_index=True),
     "governance.prepare_plan_authoring_brief": ContextAssemblyContract(
         artifact_filter=ArtifactFilter(
             by_producing_task=(

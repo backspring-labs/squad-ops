@@ -242,13 +242,43 @@ async def test_a_run_without_a_derived_contract_is_byte_identical():
 
 
 async def test_injection_follows_the_registry_not_the_task_name():
-    """Who receives what stays the context-assembly registry's declaration — the merger
-    consumes proposer outputs and is deliberately excluded."""
+    """Who receives what stays the context-assembly registry's declaration.
+
+    **This test asserted the opposite until #846, and the assertion was the defect.**
+    It read "the merger consumes proposer outputs and is deliberately excluded", which is
+    true of the merge path and silent about the one that matters: with no
+    ``plan_authoring_contributors`` configured — the default for every CRP but
+    ``validation-multirole`` — the proposers never run and ``governance.merge_plan``
+    authors the entire plan itself through an LLM. So the only author that reaches
+    implementation was the only one never given the contract. Measured on
+    ``cyc_0edb55919384``: 0 criteria_refs, 3 frozen files claimed as deliverables,
+    8 invented fill-slot paths.
+
+    A test that pins an exclusion has to be read as a claim about every path through the
+    excluded task type, not just the one its author had in mind.
+    """
     contract, manifest = _derived()
 
     inputs = await _enriched("governance.merge_plan", contract, manifest)
 
+    assert "backend/routes.py" in inputs["contract_criteria_index"]
+    assert "backend/models.py" in inputs["frozen_surface_index"]
+
+
+async def test_strategy_proposer_is_still_excluded():
+    """The registry's exclusions are not all wrong — this one holds.
+
+    Strategy proposes *guidance*, never build tasks, so it binds no covered-file criteria
+    and a criteria index would be context it cannot act on. Kept as the polarity guard
+    #846 left behind: the fix above widened who receives the contract, and without this
+    "everyone gets everything" would pass the suite.
+    """
+    contract, manifest = _derived()
+
+    inputs = await _enriched("strategy.propose_plan_guidance", contract, manifest)
+
     assert "contract_criteria_index" not in inputs
+    assert "frozen_surface_index" not in inputs
 
 
 # --------------------------------------------------------------------------- #

@@ -31,6 +31,50 @@ from squadops.llm.models import ChatMessage
 logger = logging.getLogger(__name__)
 
 
+async def contract_surface_sections(renderer: Any, inputs: dict[str, Any]) -> str:
+    """The contract surfaces an author needs, rendered, or ``""``.
+
+    Two managed assets (#448 — the prose is theirs, only the index data is a variable):
+
+    - ``request.plan_bind_criteria_appendix`` — *bind, don't author* plus the criteria
+      index, so covered-file criteria arrive as ``criteria_refs`` (SIP-0098 98.3);
+    - ``request.plan_frozen_surface_appendix`` — what the scaffold froze, so a check is
+      not written against an invented interior and a frozen file is not claimed as a
+      deliverable (pf-42).
+
+    **Shared because it had two authors and reached one (#846).** Only
+    ``*.propose_plan_tasks`` rendered these. When no ``plan_authoring_contributors`` are
+    configured — every CRP but ``validation-multirole``  — the proposers do not run at all
+    and ``governance.merge_plan`` authors the plan alone through
+    ``_plan_authoring_service.produce_plan``, which had no access to either surface.
+
+    Measured on VS's Next.js re-roll (``cyc_0edb55919384``), whose plan was
+    ``authoring_mode: sole_author`` with every task ``gap_filled``: **0 criteria_refs**
+    (it could not bind an index it never saw), 3 frozen files claimed as deliverables,
+    8 invented paths and 3 fill slots claimed by nothing. The paths it invented were
+    plausible variants of the real ones — ``app/api/runs/[id]/route.ts`` for the slot's
+    ``[run_id]`` — which is what an author with the manifest's endpoints and none of the
+    contract's file list produces.
+
+    Empty when the keys are absent, which is author mode with no derived contract: the
+    prompt stays byte-identical there.
+    """
+    if renderer is None:
+        return ""
+    surfaces = (
+        ("request.plan_bind_criteria_appendix", "criteria_index", "contract_criteria_index"),
+        ("request.plan_frozen_surface_appendix", "frozen_surface_index", "frozen_surface_index"),
+    )
+    sections: list[str] = []
+    for template_id, variable, input_key in surfaces:
+        index = inputs.get(input_key)
+        if not index:
+            continue
+        rendered = await renderer.render(template_id, {variable: index})
+        sections.append(rendered.content)
+    return "".join(sections)
+
+
 async def retry_yaml_call(
     llm: Any,
     chat_kwargs: dict[str, Any],
