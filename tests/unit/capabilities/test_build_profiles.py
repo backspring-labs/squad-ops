@@ -176,9 +176,12 @@ class TestFullstackFastapiReactProfile:
 
 
 class TestBuildProfilesRegistry:
-    def test_registry_has_four_profiles(self):
-        assert len(BUILD_PROFILES) == 4
-
+    # #838: `assert len(BUILD_PROFILES) == 4` removed rather than bumped to 5 — a count
+    # names no bug class, breaks on every legitimate registration, and is the shape
+    # docs/TEST_QUALITY_STANDARD.md rules out. Same removal as the DEV_CAPABILITIES
+    # count in #836. What matters is the BINDING, pinned in
+    # tests/unit/cycles/test_build_profile_registration.py: every scaffoldable stack
+    # has a profile, and its absence raises instead of being swallowed.
     def test_all_profiles_are_build_profile_instances(self):
         for name, profile in BUILD_PROFILES.items():
             assert isinstance(profile, BuildProfile), f"{name} is not a BuildProfile"
@@ -267,8 +270,15 @@ class TestProfileSourceOfTruthInvariants:
         # Forbidden patterns: anything that looks like a file with an
         # extension, or known extension-less structural files.
         forbidden = []
+        # #838: framework names containing a dot are not filenames. The heuristic below
+        # cannot tell `Next.js` from `main.js`, and the existing narratives only escaped it
+        # by naming frameworks that happen to have no dot (FastAPI, React, Vite). Naming the
+        # framework is not what #92 forbids — enumerating the files the validator grades is.
+        product_names = {"Next.js", "Node.js", "Vue.js", "Nuxt.js", "Express.js"}
         # Simple file-with-extension regex (word chars + dot + 2-5 letter ext)
         for match in re.finditer(r"\b[\w./-]+\.[a-zA-Z]{2,5}\b", stripped):
+            if match.group(0) in product_names:
+                continue
             forbidden.append(match.group(0))
         for sentinel in ("Dockerfile", "Makefile"):
             if sentinel in stripped:

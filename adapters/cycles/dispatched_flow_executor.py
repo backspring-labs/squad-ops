@@ -1764,9 +1764,32 @@ class DispatchedFlowExecutor(FlowExecutionPort):
 
         if not is_scaffoldable_stack(manifest.stack):
             return []
+
+        # #838: a REGISTRATION failure and an EXPANSION failure are different defects with
+        # different diagnoses, and one broad `except` conflated them. `is_scaffoldable_stack`
+        # has already passed, so the stack is in `_STACKS`; if it is absent from
+        # `BUILD_PROFILES` those two registries disagree, and swallowing that produced the
+        # inversion VS found — a *correct* `nextjs_ts` manifest would have been silently
+        # unscaffolded, leaving the wrong manifest as the only one that worked. An
+        # unscaffolded cycle has no contract, no fill slots and no frozen files: it is not a
+        # degraded run, it is a run whose entire verification story is absent. Loud.
         try:
-            files = get_profile(manifest.stack).expand(manifest)
+            profile = get_profile(manifest.stack)
+        except ValueError:
+            logger.error(
+                "stack %s is registered as scaffoldable but has no build profile — the two "
+                "registries disagree, and proceeding would produce an unscaffolded cycle with "
+                "no contract, no fill slots and no frozen files",
+                manifest.stack,
+            )
+            raise
+
+        try:
+            files = profile.expand(manifest)
         except Exception:
+            # An expansion failure on a properly registered stack stays tolerant: the run
+            # proceeds on the non-scaffolded path, which is the pre-SIP-0099 behavior this
+            # helper was written to fall back to.
             logger.warning(
                 "Failed to expand interface manifest (stack=%s); skipping scaffold seed",
                 manifest.stack,

@@ -35,12 +35,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from squadops.capabilities.handlers.build_profiles import narrative_for_stack
 from squadops.capabilities.handlers.planning.framing import (
     DataResearchContextHandler,
     DevelopmentDesignPlanHandler,
     StrategyFrameObjectiveHandler,
 )
+from squadops.capabilities.stack_narratives import stack_narrative
 
 pytestmark = [pytest.mark.domain_capabilities]
 
@@ -107,9 +107,7 @@ async def test_no_section_when_the_cycle_has_no_stack(config):
 async def test_a_registered_stack_with_no_narrative_renders_nothing(monkeypatch):
     """Silence beats an authoritative-looking empty section — a heading with no content reads
     as instruction while teaching nothing."""
-    monkeypatch.setattr(
-        "squadops.capabilities.handlers.build_profiles.narrative_for_stack", lambda s: ""
-    )
+    monkeypatch.setattr("squadops.capabilities.stack_narratives.stack_narrative", lambda s: "")
 
     assert await _section(DevelopmentDesignPlanHandler(), {"build_profile": "nextjs_ts"}) == ""
 
@@ -153,11 +151,11 @@ def test_both_registered_stacks_have_a_narrative():
     from squadops.capabilities.scaffold import _STACKS
 
     for name in _STACKS:
-        assert narrative_for_stack(name), f"stack {name!r} has no profile narrative"
+        assert stack_narrative(name), f"stack {name!r} has no profile narrative"
 
 
 def test_narrative_lookup_is_tolerant_where_registration_is_loud():
     """`_narrative` raises at import for a BUILD_PROFILES entry missing its file — a
     registration error. This answers a different question at prompt-assembly time, about a
     stack that may legitimately not have one, and must not kill a framing stage."""
-    assert narrative_for_stack("definitely_not_a_stack") == ""
+    assert stack_narrative("definitely_not_a_stack") == ""

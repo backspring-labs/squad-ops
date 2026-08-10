@@ -31,6 +31,7 @@ _PINNED_NARRATIVE = {
     "static_web_builder": "c6582150bb6af350f93ac00e7e8ad028bad8d5935e3ce56f0cc999d84ff652eb",
     "web_app_builder": "3e11df5924d41749d00fb6b8a22e281eb4e775af206d560a70d144e6a0ec21fe",
     "fullstack_fastapi_react": "2250e64354f268bdc605e05137a3d61bd7de7e9116c5c1b648a5f8a6444b4639",
+    "nextjs_ts": "8a541ffcd4077959770018cfb17eeba5e7ab584fca6ac34061ad4373b7cdf053",
 }
 
 # sha256 of each pre-move COMPOSED full_system_prompt — the seam the builder
@@ -41,6 +42,11 @@ _PINNED_COMPOSED = {
     "static_web_builder": "10d0efbc5c8c158529b37e5d1da66a49e9fe3a55de9ed75109f471ed55ec3a1f",
     "web_app_builder": "b242252619ccc82c6fc081b6d657a41903174274ca387e576e9171cb878a6e1b",
     "fullstack_fastapi_react": "748c4e740fafe63f39cc94eec91d1e842050dcf5d1e070919e6f0680402b1957",
+    # #838: nextjs_ts has NO pre-move inline literal — it was authored for stack #2,
+    # after the #452 externalization. Its pin therefore establishes a baseline rather
+    # than verifying a move, which is the same guarantee going forward: a change to
+    # this prompt shows honestly in the diff instead of arriving as a silent edit.
+    "nextjs_ts": "5d8855d96521e1098b191421f20f43dba9c1f729a05df5b0eb601082336e6dda",
 }
 
 
