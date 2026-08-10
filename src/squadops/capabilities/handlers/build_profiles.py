@@ -43,21 +43,6 @@ def _narrative(profile_name: str) -> str:
     return text[:-1] if text.endswith("\n") else text
 
 
-def narrative_for_stack(stack: str) -> str:
-    """The architecture narrative for a scaffold stack, or ``""`` if it has none (#838).
-
-    Deliberately tolerant where :func:`_narrative` is loud. That one raises at import for a
-    BUILD_PROFILES entry missing its file — a registration error. This answers a different
-    question, asked at prompt-assembly time about a stack that may legitimately not have one
-    yet, and a framing stage must not die because a narrative is absent.
-    """
-    path = _NARRATIVES_DIR / f"{stack}.md"
-    if not path.is_file():
-        return ""
-    text = path.read_text(encoding="utf-8")
-    return text[:-1] if text.endswith("\n") else text
-
-
 # ---------------------------------------------------------------------------
 # QA handoff section name constants (D12 — single source of truth)
 # ---------------------------------------------------------------------------
@@ -260,6 +245,25 @@ BUILD_PROFILES: dict[str, BuildProfile] = {
             "Dockerfile must use multi-stage build",
             "docker-compose.yaml must define backend and frontend services",
             "qa_handoff.md must include startup and test instructions for both stacks",
+        ),
+        artifact_output_mode=ARTIFACT_MODE_MULTI_FILE,
+        qa_handoff_expectations=QA_HANDOFF_REQUIRED_SECTIONS,
+    ),
+    # #838 stack #2. The SIXTH per-stack registry, and the one VS found by its absence:
+    # `_seed_skeleton_artifacts` resolves `get_profile(manifest.stack)`, which raises for an
+    # unregistered name — and the call site swallowed it. A correct `nextjs_ts` manifest would
+    # therefore have produced a silently UNSCAFFOLDED cycle, so the wrong manifest was the
+    # only one that worked.
+    "nextjs_ts": BuildProfile(
+        name="nextjs_ts",
+        system_prompt_template=_narrative("nextjs_ts"),
+        # One project at the root: no docker-compose pairing two services, and the packaging
+        # story is a single container serving `next start`.
+        required_files=("Dockerfile", "qa_handoff.md"),
+        optional_files=(".dockerignore", ".env.example", "start.sh"),
+        validation_rules=(
+            "Dockerfile must build the Next.js app and run `next start`",
+            "qa_handoff.md must include startup and test instructions",
         ),
         artifact_output_mode=ARTIFACT_MODE_MULTI_FILE,
         qa_handoff_expectations=QA_HANDOFF_REQUIRED_SECTIONS,
