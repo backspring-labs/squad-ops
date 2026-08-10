@@ -1273,7 +1273,17 @@ class FrontendCompilesCheck(BaseCheck):
         if not file_path.is_file():
             return CheckOutcome.failed(reason="file_not_found", file=str(params["file"]))
 
-        frontend_dir = workspace_root / "frontend"
+        # #822: which directory holds the buildable project is a STACK fact, not a property
+        # of frontends. `fullstack_fastapi_react` builds in `frontend/`; a Next.js app builds
+        # at the root. Hardcoding it meant a second stack's every view check reported
+        # `no_frontend_tree` — not-executed for the whole stack, which SIP-0096 declines to
+        # credit but which also silently removes the only bundler-level coverage those views
+        # have. The default preserves stack #1 byte-for-byte: its criteria pack emits no
+        # `project_dir`, so its contract is unchanged.
+        try:
+            frontend_dir = _safe_resolve(str(params.get("project_dir", "frontend")), workspace_root)
+        except _SafetyError as exc:
+            return CheckOutcome.error(reason=exc.reason)
         if not (frontend_dir / "package.json").is_file():
             return CheckOutcome.skipped(reason="no_frontend_tree")
         if shutil.which("npm") is None:

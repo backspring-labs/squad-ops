@@ -574,10 +574,10 @@ CHECK_SPECS: dict[str, CheckSpec] = {
         name="frontend_compiles",
         applicable_extensions=frozenset({".js", ".jsx", ".ts", ".tsx"}),
         required_params=frozenset({"file"}),
-        optional_params=frozenset({"timeout_s"}),
-        param_types={"file": str, "timeout_s": int},
+        optional_params=frozenset({"timeout_s", "project_dir"}),
+        param_types={"file": str, "timeout_s": int, "project_dir": str},
         requires_stack_context=False,
-        path_params=frozenset({"file"}),
+        path_params=frozenset({"file", "project_dir"}),
         example={"file": "frontend/src/views/RunsListView.jsx"},
         # #648: fay-4 and fay-8 both shipped a view with a rollup bind-time
         # error (an undefined identifier) — invisible to every static check
@@ -587,11 +587,13 @@ CHECK_SPECS: dict[str, CheckSpec] = {
         # workspace's full tree (#643).
         notes=(
             "Runs the actual frontend build (npm install + npm run build) in "
-            "the workspace's frontend/ tree and anchors blame to `file`. "
+            "the buildable project directory and anchors blame to `file`. "
             "Catches bundler-level errors (undefined identifiers, broken "
-            "imports) that no static check or `node --check` can see. Missing "
-            "npm or a workspace without frontend/package.json skips "
-            "(missing_tooling), it does not fail."
+            "imports) that no static check or `node --check` can see. "
+            "`project_dir` is the workspace-relative directory holding "
+            "package.json, defaulting to `frontend/` — a stack that builds at "
+            "the root declares `.` (#822). Missing npm or a directory without "
+            "package.json skips (missing_tooling), it does not fail."
         ),
         failure_ownership=OWNERSHIP_PRODUCT,
         qa_available=False,
