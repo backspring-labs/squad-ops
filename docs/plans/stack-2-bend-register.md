@@ -125,13 +125,33 @@ targeting for wall-clock, and repair targeting is what #650 and #688 were both w
 
 ## 6 — No static check on the API route slots beyond the build · *disclosure*
 
-The nine AST checks parse Python by construction (`ast.parse`). `tsc --noEmit` **is** on the
-`command_exit_zero` safelist but is **not provisionable** — `tsc` lives in `node_modules/.bin`,
+The nine AST checks parse Python by construction (`ast.parse`). `tsc --noEmit` **was** on the
+`command_exit_zero` safelist and was **not provisionable** — `tsc` lives in `node_modules/.bin`,
 never on `PATH` — so emitting it would produce #707's *"passes the allowlist but cannot run"*
 class: a check that is always `skipped`.
 
 `next build` runs tsc itself and `next.config.mjs` declines to ignore type errors, so **the
 bundler check is the type check.**
+
+> **Amended 2026-08-10 (#707, prompted by #846).** The emitter reached this conclusion; the
+> *safelist* never did, and the gap between them was not free. VS's re-roll
+> (`cyc_0edb55919384`) lost a framing run because the squad reached for `tsc --noEmit`
+> **exactly as the safelist advertised it** and plan validation refused it. The safelist now
+> declares the tool each form needs and refuses to import unless the images provide it, so
+> the four unrunnable forms (`tsc`, `ruff`, `eslint`, `python -m mypy`) are gone.
+>
+> **A second, unrecorded hole surfaced in the same measurement:** `node --check` refuses `.ts`
+> with `ERR_UNKNOWN_FILE_EXTENSION` just as it does `.tsx` (node v20.19.2, squadops-eve), but
+> `_NODE_UNPARSEABLE_SUFFIXES` listed only `.jsx`/`.tsx`. After the prune that was the *one*
+> form a TypeScript author could still reach, and it fails on correct code. Now covered.
+>
+> **The disclosure is therefore stronger, not weaker: stack #2 has no authorable
+> `command_exit_zero` form at all.** That is declared in code
+> (`LANGUAGES_WITHOUT_COMMAND_FORM`) and rendered into `docs/architecture/typed-check-menu.md`
+> rather than left as a list that happens not to mention TypeScript — the Stack Blueprint
+> SIP's own argument against `analysable_suffix`, which failed because the frontend "was not
+> modeled as a second language without checkers; it was silently absent, and absence demands
+> no handling." A shorter safelist with nothing said about TypeScript would have repeated it.
 
 **What remains genuinely uncovered:** no criterion proves the declared endpoints *exist in the
 source*. `endpoint_defined` is Python-only, so that claim rests on the behavioral probes alone —

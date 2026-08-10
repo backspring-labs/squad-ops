@@ -39,10 +39,13 @@ only. A regex against source prescribes another author's stylistic choices — q
 identifier spelling — and rejects correct code. Verify source with the structural checks
 instead.
 
-**commands-must-run-here** — An error-severity `command_exit_zero` runs the tooling the
-check environment actually ships, against a file type that tool accepts. A missing
-executable, or `node --check` pointed at `.jsx`/`.tsx`, fails on every attempt regardless
-of content.
+**commands-must-run-here** — An error-severity `command_exit_zero` uses one of the
+safelisted forms, against a file type that tool accepts. The safelist is the entire
+universe of runnable commands — every form on it is provisioned in every role container,
+and anything outside it is rejected here rather than left to fail on every correction
+attempt. `node --check` pointed at `.ts`/`.tsx`/`.jsx` is rejected for the same reason:
+node refuses those extensions before it parses a line, so the check fails on correct code
+too. TypeScript has no command form at all; the frontend build type-checks it.
 
 **roles-must-exist** — Every task's `role` is one the squad profile actually staffs. A
 task assigned to an absent role can never be dispatched.

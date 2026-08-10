@@ -73,11 +73,14 @@ informational only. The user prompt lists the vocabulary with examples
   implementation is free to make differently, and plan validation
   REJECTS it. Verify source files with the AST/behavioral checks below.
 - `endpoint_defined` for HTTP route presence
-- `command_exit_zero` for static checkers (argv-only safelist). The command
-  runs in the container of the role that executes the task — only author
-  commands whose binary exists there. Dev-role containers carry the Python
-  toolchain ONLY (`python`, `ruff`); `node`/`npm` exist only in the QA
-  container. A missing binary is skipped, not failed — it verifies nothing.
+- `command_exit_zero` for static checkers. These three forms are the whole
+  universe, and each is provisioned in every role container: `python -m
+  py_compile <file>`, `node --check <file>`, `pyflakes <file>`. Any other
+  command is REJECTED at plan validation, not skipped at runtime — a command
+  the environment cannot run fails identically on every correction attempt, so
+  it is refused before it can spend the budget. **TypeScript has no form
+  here** — `node --check` rejects `.ts`/`.tsx` before parsing them. Do not
+  reach for another tool to cover it; the frontend build type-checks it.
 - `count_at_least` for glob match counts
 
 ### Output shape
