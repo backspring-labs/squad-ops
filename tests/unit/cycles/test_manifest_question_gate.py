@@ -19,6 +19,7 @@ Bug classes guarded:
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -206,3 +207,64 @@ def test_unreadable_content_asks_nothing(content):
     deriver's own reason. A second opinion here would stop a cycle for a defect that is
     already being reported."""
     assert open_questions(content) == ()
+
+
+async def test_the_pass_through_promotes_the_runs_artifacts(monkeypatch):
+    """#854: an approval promotes, and this path recorded an approval that promoted nothing.
+
+    The chain, measured on VS roll 4 (`cyc_c82a401a21f8`): the gate approved, all eleven
+    framing artifacts stayed at `promotion_status="working"`, the next-workload override
+    builder reads `list_artifacts(promotion_status="promoted")` and got an empty list, so
+    `plan_artifact_refs` was never written, `_load_plan_for_run` returned None, and #424
+    refused to run implementation with its instrumentation contract absent.
+
+    Every link behaved correctly. Only the first one never fired — promotion lived solely in
+    the HTTP gate route, and M4's question gate (#807) approves inside the executor. Roll 4
+    is the first cycle in the repo's history to take that path: one `no_open_questions` row
+    against 37 `plan_validation` rejections.
+
+    Asserted on the vault rather than on a call count, because "did we promote" is the
+    question the failure turned on — a mock assertion would pass against a call that
+    promoted nothing.
+    """
+    executor, _, _ = _executor()
+
+    promoted: list[str] = []
+    working = [
+        SimpleNamespace(artifact_id="art_plan", promotion_status="working"),
+        SimpleNamespace(artifact_id="art_manifest", promotion_status="working"),
+        SimpleNamespace(artifact_id="art_done", promotion_status="promoted"),
+    ]
+    executor._artifact_vault = SimpleNamespace(
+        list_artifacts=AsyncMock(return_value=working),
+        promote_artifact=AsyncMock(side_effect=lambda aid: promoted.append(aid)),
+    )
+
+    await executor._approve_gate_without_questions("run_1", "cyc_1", "progress_plan_review")
+
+    assert promoted == ["art_plan", "art_manifest"], (
+        "the approval must promote the run's working artifacts — without this the next "
+        "workload's plan_artifact_refs is built from an empty promoted set"
+    )
+
+
+async def test_a_vault_failure_does_not_lose_the_approval():
+    """The decision is the source of truth and is already recorded when promotion runs.
+
+    Letting a transient vault error propagate would turn a recorded approval into a failed
+    gate — trading a loud downstream refusal (#424, which is exactly how this bug surfaced)
+    for a lost decision. A promotion that did not happen is recoverable; an approval that
+    did not stick is not.
+    """
+    executor, _, _ = _executor()
+    executor._artifact_vault = SimpleNamespace(
+        list_artifacts=AsyncMock(side_effect=RuntimeError("vault down")),
+        promote_artifact=AsyncMock(),
+    )
+
+    decision = await executor._approve_gate_without_questions(
+        "run_1", "cyc_1", "progress_plan_review"
+    )
+
+    assert decision.decision == GateDecisionValue.APPROVED.value
+    executor._cycle_registry.record_gate_decision.assert_awaited_once()

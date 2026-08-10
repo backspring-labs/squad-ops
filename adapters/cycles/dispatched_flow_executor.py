@@ -1954,6 +1954,16 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             ),
         )
         await self._cycle_registry.record_gate_decision(run_id, decision)
+        # #854: an approval promotes the run's artifacts, and that is a consequence of the
+        # gate being APPROVED rather than of how it was approved. It lived only in the HTTP
+        # gate route, so this path — the one M4 added — recorded an approval and forwarded
+        # nothing. VS roll 4 is the first cycle to take it: framing passed, the plan
+        # validated, the gate approved, and the implementation run then refused because
+        # `plan_artifact_refs` was never written (#424 correctly declining to build with
+        # its instrumentation contract absent).
+        from squadops.cycles.gate_promotion import promote_run_artifacts
+
+        await promote_run_artifacts(self._artifact_vault, run_id)
         self._cycle_event_bus.emit(
             EventType.GATE_DECIDED,
             entity_type="run",
