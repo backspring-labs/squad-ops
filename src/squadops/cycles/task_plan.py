@@ -34,6 +34,7 @@ from squadops.capabilities.scaffold import (
 from squadops.cycles.acceptance_check_spec import (
     CHECK_CONTRACT_ASSERTIONS,
     CHECK_FILL_SLOT_SIGNATURE,
+    CHECK_HARNESS_BOUNDARY,
     is_check_applicable,
 )
 from squadops.cycles.agent_config import resolve_agent_config
@@ -626,7 +627,12 @@ def _contract_assertion_criteria(
             id=f"contract-assertions:{art}",
         )
         for art in plan_task.expected_artifacts
-        if art.endswith(".py") and is_qa_test_path_for_stack(art, stack)
+        # #833: ask the check whether it can parse this artifact rather than asserting
+        # `.py`. Same boundary, single-sourced at the seam `manifest_gates` and the
+        # dispatch-time strip already use — and it adapts on its own if a non-Python
+        # implementation of the check ever lands.
+        if is_check_applicable(CHECK_CONTRACT_ASSERTIONS, art)
+        and is_qa_test_path_for_stack(art, stack)
     ]
 
 
@@ -652,7 +658,8 @@ def _harness_boundary_criteria(
             id=f"scaffold-harness:{art}",
         )
         for art in plan_task.expected_artifacts
-        if art.endswith(".py") and is_qa_test_path_for_stack(art, stack)
+        if is_check_applicable(CHECK_HARNESS_BOUNDARY, art)
+        and is_qa_test_path_for_stack(art, stack)
     ]
 
 
@@ -681,7 +688,7 @@ def _fill_slot_signature_criteria(
     claimed = [
         art
         for art in plan_task.expected_artifacts
-        if art.endswith(".py") and _normalize(art) in fill
+        if is_check_applicable(CHECK_FILL_SLOT_SIGNATURE, art) and _normalize(art) in fill
     ]
     if not claimed:
         return []
