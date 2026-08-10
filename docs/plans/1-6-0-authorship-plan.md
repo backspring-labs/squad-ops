@@ -183,23 +183,72 @@ while 1.6's first deploy window is still far out, or any one of them turning liv
 
 ## Track M — Squad-Authored Manifest (SIP-0103)
 
-### Remaining sequence *(recorded 2026-08-09, after V5)*
+### Remaining sequence — **staged, recorded 2026-08-09 after the S-lane seam run**
 
-Track M and B1 are complete. What is left, in order:
+**Scope confirmed unchanged**: 1.6.0 cuts on both headlines, S1–S3 + S5 release-defining. A
+split into a manifest-only 1.6.0 with the stack at 1.6.2 was considered and **declined by the
+owner**; recorded so it is not relitigated, and because the version arithmetic it required —
+a patch carrying a headline feature SIP — contradicts the even/odd convention.
 
-> **#811 (close the revision loop) + Gate 2 wording → #812 (gate attribution) → S1 →
-> build the Node/TS stack → VS → S3 + S5 → riders → V6 → pre-registration → freeze → V7 → cut**
+Track M, B1, and the S lane's five seam fixes are complete. **Everything touching code must
+land before pre-registration, because V7 requires a frozen deploy.** Progress is reported
+against these stage/step labels.
 
-Why M's leftovers come first: #811 is a behavioural gap in the gate that just shipped — the
-system can ask a question and cannot act on the answer — and deferring it past an entire
-second stack is how it becomes 1.6.1, then 1.7, then a thing someone rediscovers from a log
-line. #812 is small and blocks V7 from being able to state its own configuration.
+#### Stage 1 — finish the S lane *(the bulk)*
 
-**Two decisions still open before pre-registration**, both from V4/V5 and both cheap now:
-whether the window records **contract size per roll** (verification depth varies with an
-authoring judgment — roll 1's 400-for-conflict bought 4 probes where roll 2's 409 bought 5),
-and whether the authoring prompt's **worked example should be made unlike the benchmark
-domain**, since a CRUD example measured on a CRUD product flatters the convergence result.
+| Step | Work | Gate |
+|---|---|---|
+| **1a** | **Hardwiring sweep.** Enumerate every stack-#1 assumption in deliverable-facing modules and classify each: already-a-seam · needs-parameterizing · belongs-in-the-FastAPI-pack · not-on-stack-2's-path | every hit classified; the "needs" class filed |
+| **1b** | Parameterization PRs for the "needs" class | each: FastAPI byte-unmoved, regression green |
+| **1c** | **The Next.js stack** — expander, criteria pack, probe profile, environment contract, completeness test across all four per-stack registries | `expand()` yields a tree; `emit_contract_dict` yields a satisfiable contract |
+| **1d** | **Bend register**, written *during* 1c | zero unexplained bends (S3's exit criterion) |
+| **1e** | **VS** — a Next.js cycle end to end | gates S3 |
+
+**Why 1a leads, and why it is not a new invention.** It is the S lane's missing **M0a**: a
+measurement of the surface before anything has to cross it, and the fourth application of the
+rails-before-mechanism rule this plan already names three times (SIP-0101 Slice 1, SIP-0096's
+inert core, M0a). S1's framing — *"an identifier indexing four module-level dicts plus one
+function"* — was accurate about `scaffold.py` and was used as though it described the system;
+four further per-stack surfaces (#818, #823, #828, #829) were then found one at a time, by
+accident, each while fixing the last. 1a closes the set instead of discovering it.
+
+**Decision owed at 1c:** does stack #2 build the same `group_run` PRD? Recommended **yes** —
+it keeps VS comparable to V5 and reuses `audit_delivered_app.py`.
+
+#### Stage 2 — close the S headline
+
+**S3** — promote the Stack Blueprint SIP against two stacks: bend register reviewed,
+falsification pass (remove or corrupt each field, confirm something breaks in at least one
+stack), no accidental single-stack fields. **S5** — the admission rule recorded.
+
+#### Stage 3 — release-wide *(runs in parallel with Stage 1)*
+
+| Step | Work |
+|---|---|
+| **3a** | **Guard 1a** architecture test — nothing branches on authoring mode below framing. The invariant holds today at one call site (`task_plan.py`); nothing pins it |
+| **3b** | **Guard 1b** — reference manifest through authored mode, byte-identical downstream artifacts |
+| **3c** | **Rider #376** (SIP-0102 3–4): the repair path discards final-state verification. Enabling — V5 took 2 corrections and the verdict field inherits the gap |
+| **3d** | **#194** → capacity unless it fires |
+| **3e** | Capacity roll → 1.7 pool with a milestone update |
+
+#### Stage 4 — the measurement
+
+| Step | Work | Note |
+|---|---|---|
+| **4a** | Decide the **worked example** — non-CRUD or keep | must precede V6; it changes what V6 measures |
+| **4b** | **V6** viability run | gates V7 |
+| **4c** | Decide **contract size per roll** in the window record | must precede pre-registration |
+| **4d** | Pre-registration committed (N, PRD, deploy hash, scoring) → **freeze** | Guard 2 |
+| **4e** | **V7** — the FAY window, unfiltered, **fix nothing until it closes** | the evidence |
+| **4f** | **V8** confirmation shakedown | green |
+| **4g** | Cut | — |
+
+**The two open decisions, restated with their evidence.** 4a: a CRUD-shaped worked example
+measured on a CRUD product flatters the convergence result — V4 roll 2's REST spine was
+*patterned* from the example while its domain surface was derived. 4c: verification depth
+varies with an authoring judgment (roll 1's 400-for-conflict bought 4 probes where roll 2's
+409 bought 5; 29 executed checks on roll 2 against 57 on V5, same PRD), so without it a green
+roll that shrank its own exam is indistinguishable from one that passed a hard one.
 
 ### Build order — **gates before author**
 
