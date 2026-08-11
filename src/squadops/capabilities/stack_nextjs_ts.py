@@ -82,16 +82,85 @@ def _segments(path: str) -> str:
     return "/".join(out)
 
 
+def _dir_shape(directory: str) -> str:
+    """``app/runs/[run_id]`` → ``app/runs/[]``. Two paths sharing a shape occupy the same
+    position in Next's routing tree, whatever their slug names are called."""
+    return "/".join("[]" if s.startswith("[") else s for s in directory.split("/"))
+
+
+def _assert_routing_tree_is_coherent(routes: dict[str, list[Any]], pages: tuple[str, ...]) -> None:
+    """Refuse a manifest whose API and page paths cannot coexist in one App Router tree (#859).
+
+    **This is the other half of dropping the ``app/api/`` prefix.** That prefix used to keep
+    API handlers and pages in disjoint subtrees, so a collision was structurally impossible
+    and nobody had to think about it. Deriving the file from the declared URL is correct —
+    ``/api/runs`` now yields ``app/api/runs/route.ts``, which serves ``/api/runs`` — but it
+    puts both kinds of file in one tree, where Next has rules we must not silently violate:
+
+    - a directory cannot hold both ``route.ts`` and ``page.tsx``;
+    - two paths cannot use different slug names at the same dynamic position
+      (``app/runs/[run_id]`` beside ``app/runs/[id]``).
+
+    Raising rather than repairing is deliberate. The manifest states what the app serves, and
+    two declarations that cannot both be served is a design defect the author must resolve —
+    silently relocating one would produce an app that answers different URLs than its own
+    contract probes, which is exactly the failure this change exists to end (roll 6 burned a
+    full 7200s budget on it). M3's ``PROOF_EXPANDS`` turns this into a framing rejection, so
+    it costs a free re-roll rather than an implementation run.
+
+    The reference manifest fails this check by design of its own paths — its API is ``/runs``
+    and its page is ``/runs/:id`` — which is why declaring API endpoints under ``/api`` is now
+    a stated requirement of this stack rather than a convention the expander supplied.
+    """
+    route_dirs = {p.rsplit("/", 1)[0]: p for p in routes}
+    page_dirs = {p.rsplit("/", 1)[0]: p for p in pages}
+
+    both = sorted(set(route_dirs) & set(page_dirs))
+    if both:
+        raise ValueError(
+            f"directory {both[0]!r} would hold both a route handler and a page — Next serves "
+            f"one path from one file, so an API endpoint and a frontend route cannot share a "
+            f"path on this stack. Declare the API under a distinct prefix (conventionally "
+            f"`/api/...`) so the two occupy separate directories."
+        )
+
+    by_shape: dict[str, str] = {}
+    for directory in list(route_dirs) + list(page_dirs):
+        shape = _dir_shape(directory)
+        clash = by_shape.setdefault(shape, directory)
+        if clash != directory:
+            raise ValueError(
+                f"{clash!r} and {directory!r} occupy the same position in the routing tree "
+                f"with different parameter names — Next requires one slug name per dynamic "
+                f"segment. Use the same parameter name in both paths, or declare the API "
+                f"under a distinct prefix (conventionally `/api/...`)."
+            )
+
+
 def _route_groups(manifest: Any) -> dict[str, list[Any]]:
     """Endpoints grouped by the file that will own them — **bend 1**.
 
     Insertion-ordered so the emitted file list is deterministic, which the contract's frozen
     hashes and the golden benchmark both depend on.
+
+    **The path is derived from the declared URL, with no ``app/api/`` prefix (#859).** It used
+    to prefix unconditionally, so a manifest declaring the true Next URL — ``/api/runs``, which
+    is what an App Router author writes and what the frontend fetches — produced
+    ``app/api/api/runs/route.ts``. That file serves ``/api/api/runs`` while the contract's
+    probes request ``/api/runs``, so the application could never answer its own verification.
+    Every gate passed it and roll 6's correction chain looped until the time budget ended it.
+
+    ``path`` now means the same thing on every stack: the URL the app serves. Where the file
+    lives is the stack's business, and here it is a direct function of that URL.
     """
     groups: dict[str, list[Any]] = {}
     for ep in manifest.api.endpoints:
-        path = f"app/api/{_segments(ep.path)}/route.ts".replace("//", "/")
+        path = f"app/{_segments(ep.path)}/route.ts".replace("//", "/")
         groups.setdefault(path, []).append(ep)
+    _assert_routing_tree_is_coherent(
+        groups,
+        tuple(_page_path(r) for r in (getattr(manifest.frontend, "routes", ()) or ())),
+    )
     return groups
 
 

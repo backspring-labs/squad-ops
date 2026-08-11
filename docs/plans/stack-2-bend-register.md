@@ -28,8 +28,11 @@ here" and "the stack conceded here" demand opposite responses.**
 | 4 | route handlers, not server actions | **bend** | the stack conceded |
 | 5 | seven whole-tree builds per acceptance pass | disclosure | a cost, not a concession |
 | 6 | no static check on route slots | disclosure | a coverage gap, already known |
+| 7 | the API prefix is the manifest's to declare | **bend** | the stack conceded |
 
-**One true bend.** That is the number S3 has to argue, and #4 is argued below.
+**Two true bends.** #4 was the only one until VS roll 6 produced #7 — which is the first bend found
+by *running* the stack rather than by building it, and the only one whose evidence is a manifest
+that cannot be built at all.
 
 ---
 
@@ -157,6 +160,48 @@ bundler check is the type check.**
 source*. `endpoint_defined` is Python-only, so that claim rests on the behavioral probes alone —
 late and functionally, rather than early and structurally. This is S4's territory and was
 disclosed before the stack was built.
+
+---
+
+## 7 — The API prefix is the manifest's to declare, not the expander's to supply · **the second bend**
+
+**What happened.** `_route_groups` built each handler's path as `app/api/{segments(ep.path)}`,
+prefixing unconditionally. VS roll 6's authored manifest declared its endpoints as the URLs Next
+actually serves — `/api/runs` — and got **`app/api/api/runs/route.ts`**, as a fill slot in the
+derived contract rather than as a dev error. That file serves `/api/api/runs` while the
+contract's probes request `/api/runs`, so the application could not answer its own
+verification. Every gate passed it; the correction chain looped until the 7200s budget ended
+the run after 16 tasks.
+
+**The field that forced it.** `api.endpoints[].path`, read as *unprefixed* — true of the
+reference manifest and FastAPI-shaped, where routes mount wherever they are told and stack #1's
+flat `backend/routes.py` makes double-prefixing structurally impossible. On App Router
+`app/api/` **is** the URL prefix, so the stack imposes a segment the manifest may or may not
+repeat, and nothing decided which.
+
+**The resolution, and why it is a bend rather than a schema defect.** `path` now means the same
+thing on every stack — the URL the app serves — and the file is derived from it directly. That
+is the schema doing its job. What the stack concedes is the *converse*: because handlers and
+pages now share one `app/` tree, an API path that collides with a page path is unbuildable, so
+**stack #2 requires its API to be declared under a distinct prefix.** Stack #1 has no such
+requirement; its two halves live in separate trees and cannot interfere.
+
+**The evidence is unusually sharp: the reference manifest fails the new rule.** Its API is
+`/runs` and its page is `/runs/:id`, which under one tree ask Next for two slug names at the
+same dynamic position. So the constraint is not hypothetical — it invalidates the very design
+every other stack test is built from, which is why the test fixtures now express the reference
+*per stack* rather than re-stacking it.
+
+**Argued as a genuine cross-stack convention:** a design declares the URLs it serves, and each
+stack decides where the code for a URL lives. The counter-argument, recorded so the decision is
+real: this stack additionally demands that two *different kinds* of declaration not collide in
+URL space, which is a constraint on the manifest that stack #1 does not impose. A schema that
+says nothing about it leaves stack #2 with a rule enforced only by its expander raising.
+
+**Status: argued, not settled. S3 decides** whether "API and page routes share a routing tree"
+is a blueprint declaration or stays the pack's own business. Today it is the latter — the rule
+lives in `_assert_routing_tree_is_coherent`, and M3's `PROOF_EXPANDS` turns it into a framing
+rejection costing a free re-roll.
 
 ---
 

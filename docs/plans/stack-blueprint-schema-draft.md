@@ -103,6 +103,24 @@ Regenerate with the extractor in `tests/unit/capabilities/test_stack_inventory.p
 
 ---
 
+## 4b. A per-stack fact this schema does not carry (#859)
+
+**"Do API routes and page routes share a routing tree?"** Stack #1: no — `backend/` and
+`frontend/src/` cannot interfere. Stack #2: yes — both are directories under `app/`, so an API
+path colliding with a page path is unbuildable and the manifest must declare its API under a
+distinct prefix.
+
+Demonstrated on two stacks with opposite values, which is exactly what S5's admission rule asks
+of a candidate field. It is **not** in Tier 1 above: the fix expressed it as *behavior* in the
+pack's own expander (`_assert_routing_tree_is_coherent`, surfaced through M3's `PROOF_EXPANDS`)
+rather than as declared data.
+
+That is a defensible Tier 2 reading — the rule is Next's, and enforcing it needs the stack's
+own knowledge of `route.ts`/`page.tsx` conflicts, not a boolean. But it means a reader of the
+schema cannot tell that stack #2 constrains its author's URL space and stack #1 does not.
+**2c owes this a disposition**: promote it to a declared field, or record it as pack behavior
+with the reason. Left undecided it becomes the thing a third stack discovers by failing.
+
 ## 5. Open questions carried to 2g
 
 1. **Does the blueprint own the packaging set?** `required_files` and `qa_handoff_expectations` are identical across both stacks — weak evidence they are universal rather than blueprint-owned. Tier 3 above takes that reading; a third stack could overturn it.

@@ -43,7 +43,6 @@ import ast
 import pathlib
 
 import pytest
-import yaml
 
 from squadops.capabilities import dev_capabilities, scaffold, scaffold_contract
 from squadops.capabilities.handlers import build_profiles, probe_runner
@@ -97,10 +96,16 @@ def _registry_key(stack_name: str, field: str | None) -> str:
 
 
 def _manifest_for(stack: str) -> InterfaceManifest:
-    """The reference manifest, re-stacked. One design, every emitter."""
-    raw = yaml.safe_load(_REFERENCE.read_text(encoding="utf-8"))
-    raw["stack"] = stack
-    return InterfaceManifest.from_yaml(yaml.safe_dump(raw, sort_keys=False))
+    """The reference design, expressed as ``stack`` requires it (#859).
+
+    Not a plain re-stack any more. Stack #2 serves API handlers and pages from one routing
+    tree, so its API paths must be distinguishable from its page paths — the reference's
+    `/runs` API beside its `/runs/:id` page is a collision Next refuses. The shared fixture
+    owns that per-stack clause so a third stack adds one there rather than here.
+    """
+    from tests.unit.capabilities._stack_fixtures import manifest_for_stack
+
+    return manifest_for_stack(stack)
 
 
 def _contract_for(stack: str) -> VerificationContract:
