@@ -52,12 +52,26 @@ def test_model_fields_are_named_exactly_so_none_need_inventing():
     assert "meeting_location" not in line
 
 
-def test_imports_render_as_written_so_relative_is_visible():
-    """pf-42 asserted ``backend.routes``; the file says ``from .routes``."""
+def test_own_imports_render_as_written_and_the_reachable_path_is_stated():
+    """Two consumers, two facts, and the line now carries both (#787).
+
+    pf-42's plan author writes ``import_present`` checks against what the file actually
+    writes — ``from .routes`` — so the file's own imports render as written. But that
+    field was the only import guidance on the line, and V2's qa suite mirrored it:
+    ``from .store import reset``, twice, chain terminated as plan_defect. The reachable
+    module path is now stated explicitly and the interior imports are labelled as the
+    file's own, so neither consumer has to misread the other's fact."""
     line = _line_for("backend/main.py")
 
+    assert "its own imports" in line
     assert "`.routes`" in line
-    assert "`backend.routes`" not in line
+    assert "import as `backend.main`" in line
+
+
+def test_conftest_gets_no_import_as_line():
+    """conftest.py is pytest plumbing loaded by discovery — an ``import as `conftest```
+    line would teach exactly the anti-pattern its own header forbids."""
+    assert "import as" not in _line_for("conftest.py")
 
 
 # --- derived from the skeleton, not described by hand -------------------------- #
@@ -85,7 +99,7 @@ def test_index_tracks_the_expander_rather_than_a_hand_written_description(monkey
         lambda _m: [{"name": "backend/invented.py", "content": "class Widget:\n    size: int\n"}],
     )
     assert frozen_surface_index_lines(_manifest()) == [
-        "- `backend/invented.py` — defines Widget(size)"
+        "- `backend/invented.py` — import as `backend.invented`; defines Widget(size)"
     ]
 
 
@@ -118,7 +132,7 @@ def test_javascript_frozen_files_now_carry_a_surface_too():
     author inventing.
     """
     assert _line_for("frontend/vite.config.js") == (
-        "- `frontend/vite.config.js` — imports `@vitejs/plugin-react`, `vite`"
+        "- `frontend/vite.config.js` — its own imports `@vitejs/plugin-react`, `vite`"
     )
     assert "functions apiFetch" in _line_for("frontend/src/api.js")
 
@@ -127,11 +141,24 @@ def test_a_file_in_a_language_the_index_cannot_read_is_still_named():
     """The half of the old test that was always right, kept.
 
     Being unable to describe a file is never a reason to omit it — an author that cannot see
-    the file at all will assume the slot is theirs to write. `index.html` and `package.json`
-    have no declarations to give and must still appear.
+    the file at all will assume the slot is theirs to write. `index.html` has no declarations
+    to give and must still appear.
     """
     assert _line_for("frontend/index.html") == "- `frontend/index.html`"
-    assert _line_for("frontend/package.json") == "- `frontend/package.json`"
+
+
+def test_package_json_declares_its_dependency_surface():
+    """This test previously asserted the bare form and CALLED it a decision —
+    "`package.json` [has] no declarations to give" — and roll 9 falsified it: the
+    dependency list is the closed set of packages a suite may import, the qa author was
+    never shown it, and the emitted suite opened with `import request from 'supertest'`.
+    A dependency name the author cannot see is a dependency it will invent."""
+    line = _line_for("frontend/package.json")
+
+    assert "dependencies" in line
+    assert line != "- `frontend/package.json`"
+    # names, not versions — the index must not churn on template version bumps
+    assert "^" not in line and "~" not in line
 
 
 def test_unparseable_python_degrades_to_a_bare_path(monkeypatch):

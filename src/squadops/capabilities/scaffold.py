@@ -712,8 +712,18 @@ def _imported_modules(tree: ast.AST) -> list[str]:
     return [m for m in modules if m != "__future__"]
 
 
-def _python_surface(source: str) -> str:
-    """One line describing what a frozen Python module declares, or "" if nothing useful."""
+def _python_surface(source: str, name: str = "") -> str:
+    """One line describing what a frozen Python module declares, or "" if nothing useful.
+
+    ``name`` is the workspace-relative path; when given, the line opens with the module
+    path a consumer imports the file BY (#787). The index always rendered the file's
+    *own* imports — accurate for the plan author writing ``import_present`` checks, but
+    the one available reading for an author reaching for a symbol was usage guidance,
+    and the modeled form is relative (``.models``): V2's qa suite wrote
+    ``from .store import reset`` twice and the chain terminated as plan_defect. The
+    reachable form is derivable from the path alone, so the line now states it instead
+    of leaving it to be guessed from a field that means something else.
+    """
     try:
         tree = ast.parse(source)
     except SyntaxError:  # pragma: no cover - the expander emits valid Python
@@ -753,6 +763,12 @@ def _python_surface(source: str) -> str:
     modules = sorted(set(_imported_modules(tree)))
 
     parts = []
+    # conftest.py is pytest plumbing loaded by discovery, never imported — an
+    # "import as `conftest`" line would teach exactly the anti-pattern its own
+    # header forbids.
+    if name and name.rsplit("/", 1)[-1] != "conftest.py":
+        dotted = name.removesuffix(".py").replace("/", ".").removesuffix(".__init__")
+        parts.append(f"import as `{dotted}`")
     if classes:
         parts.append("defines " + ", ".join(classes))
     if state:
@@ -760,7 +776,7 @@ def _python_surface(source: str) -> str:
     if functions:
         parts.append("functions " + ", ".join(functions))
     if modules:
-        parts.append("imports " + ", ".join(f"`{m}`" for m in modules))
+        parts.append("its own imports " + ", ".join(f"`{m}`" for m in modules))
     return "; ".join(parts)
 
 
@@ -842,7 +858,34 @@ def _ecmascript_surface(source: str) -> str:
     if functions:
         parts.append("functions " + ", ".join(functions))
     if modules:
-        parts.append("imports " + ", ".join(f"`{m}`" for m in modules))
+        # Labelled as the file's OWN imports for the same reason as the Python
+        # reader (#787) — though here mimicry is usually correct, since sibling
+        # files model the alias form (`@/lib/store`) the consumer should use.
+        parts.append("its own imports " + ", ".join(f"`{m}`" for m in modules))
+    return "; ".join(parts)
+
+
+def _package_json_surface(source: str) -> str:
+    """One line naming the dependency surface a ``package.json`` declares, or ``""``.
+
+    A dependency list is a declaration surface exactly as a module's exports are: roll 9's
+    qa suite opened with ``import request from 'supertest'`` against a manifest declaring
+    no such package, and the suite could never collect. The index rendered the file as a
+    bare name, so the closed set of importable packages was a fact no author was shown.
+    Versions are dropped — the author needs the names, and pinning prose to versions
+    would churn the index on every template bump.
+    """
+    try:
+        data = json.loads(source)
+    except ValueError:
+        return ""
+    if not isinstance(data, dict):
+        return ""
+    parts = []
+    for key, label in (("dependencies", "dependencies"), ("devDependencies", "devDependencies")):
+        section = data.get(key)
+        if isinstance(section, dict) and section:
+            parts.append(f"{label} " + ", ".join(sorted(section)))
     return "; ".join(parts)
 
 
@@ -861,9 +904,18 @@ def _ecmascript_surface(source: str) -> str:
 #: rule a mechanical referent, and a test asserts the declaration and the renderers stay in
 #: step. ``.ts``/``.tsx`` were added when 2a's inventory showed stack #2 rendering **every**
 #: entry bare — the appendix's escape hatch had no line anywhere on that stack, so no frozen
-#: file could be checked at all. Still short of complete: `.json`, `.html`, `.mjs` and
-#: `.js` remain undescribed on both stacks.
+#: file could be checked at all. ``.js``/``.jsx``/``.mjs`` followed in the same PR (this
+#: comment previously still listed them as undescribed — stale the moment it merged).
+#: Still short of complete: `.html` and `.json`-other-than-``package.json`` remain
+#: undescribed on both stacks.
 DESCRIBED_FROZEN_SUFFIXES: tuple[str, ...] = (".py", ".ts", ".tsx", ".js", ".jsx", ".mjs")
+
+#: Basenames described regardless of suffix. ``package.json`` earned its entry at roll 9:
+#: its dependency list is the closed set of packages a suite may import, the qa author was
+#: never shown it, and the emitted suite opened with a package the manifest does not
+#: declare. The prior reading — "``.json`` has no declarations to give" — was wrong in
+#: exactly the way this index exists to prevent.
+DESCRIBED_FROZEN_BASENAMES: tuple[str, ...] = ("package.json",)
 
 
 def frozen_surface_index_lines(manifest: InterfaceManifest | None) -> list[str]:
@@ -897,8 +949,10 @@ def frozen_surface_index_lines(manifest: InterfaceManifest | None) -> list[str]:
         name = f["name"]
         if name in fills:
             continue
-        if name.endswith(".py"):
-            detail = _python_surface(f["content"])
+        if name.rsplit("/", 1)[-1] in DESCRIBED_FROZEN_BASENAMES:
+            detail = _package_json_surface(f["content"])
+        elif name.endswith(".py"):
+            detail = _python_surface(f["content"], name)
         elif name.endswith((".ts", ".tsx", ".js", ".jsx", ".mjs")):
             detail = _ecmascript_surface(f["content"])
         else:

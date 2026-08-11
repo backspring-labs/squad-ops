@@ -213,6 +213,10 @@ class _RepairPromptMixin:
             # #667: the qa DOM anchor contract, rendered in handle(); "" for
             # non-qa repairs or when no anchor surface was threaded.
             "dom_anchor_section": str(inputs.get("dom_anchor_section") or ""),
+            # Roll 9: the frozen index (import-as forms + package.json's dependency
+            # surface), rendered in handle() for qa repairs; dev repairs receive the
+            # same block inside fill_only_section. "" when no surface was threaded.
+            "frozen_surface_section": str(inputs.get("frozen_surface_section") or ""),
         }
 
     async def handle(
@@ -240,6 +244,9 @@ class _RepairPromptMixin:
         dom_anchor = await self._render_dom_anchor_section(context, inputs)
         if dom_anchor:
             inputs = {**inputs, "dom_anchor_section": dom_anchor}
+        frozen = await self._render_qa_frozen_surface_section(context, inputs)
+        if frozen:
+            inputs = {**inputs, "frozen_surface_section": frozen}
         return await super().handle(context, inputs)
 
     async def _render_contract_expectations_section(
@@ -288,8 +295,58 @@ class _RepairPromptMixin:
         testid_surface = await self._render_testid_surface_section(renderer, inputs)
         if testid_surface:
             variables["testid_surface"] = testid_surface
+        # Roll 7 (cyc_0e301961f099): #861 gave the INITIAL dev the frozen index and
+        # the repair stayed blind — it re-invented `runStore` against the same module
+        # and the chain terminated as plan_defect on a defect no repair could see.
+        # Same section the develop handler builds, from the same threaded lines.
+        frozen_surface = await self._render_frozen_surface_block(renderer, inputs)
+        if frozen_surface:
+            variables["frozen_surface"] = frozen_surface
         rendered = await renderer.render(
             "request.development_develop_fill_only_appendix", variables
+        )
+        return rendered.content
+
+    @staticmethod
+    async def _render_frozen_surface_block(renderer: Any, inputs: dict[str, Any]) -> str:
+        """Render the FROZEN FILES block from threaded lines, or "".
+
+        Mirrors ``DevelopHandler._frozen_surface_section``: the lines are
+        manifest-derived data (``scaffold.frozen_surface_index_lines``); all
+        prose lives in the appendix asset (CLAUDE.md #448).
+        """
+        lines = [str(line).strip() for line in (inputs.get("frozen_surface") or [])]
+        lines = [line for line in lines if line]
+        if not lines:
+            return ""
+        rendered = await renderer.render(
+            "request.development_develop_frozen_surface_appendix",
+            {"frozen_lines": "\n".join(lines)},
+        )
+        return rendered.content
+
+    async def _render_qa_frozen_surface_section(
+        self, context: ExecutionContext, inputs: dict[str, Any]
+    ) -> str:
+        """The qa frozen-surface appendix, or "" (non-qa role, no surface, no renderer).
+
+        Roll 9 (cyc_a92eaa4f4052): the suite imported a package ``package.json`` does
+        not declare, and a re-authoring repair would have been blind identically. The
+        dev flavor rides inside the fill-only appendix; builder repairs re-emit
+        packaging artifacts and import nothing, so they carry no block.
+        """
+        if self._role != "qa":
+            return ""
+        renderer = getattr(context.ports, "request_renderer", None)
+        if renderer is None:
+            return ""
+        lines = [str(line).strip() for line in (inputs.get("frozen_surface") or [])]
+        lines = [line for line in lines if line]
+        if not lines:
+            return ""
+        rendered = await renderer.render(
+            "request.qa_test_frozen_surface_appendix",
+            {"frozen_lines": "\n".join(lines)},
         )
         return rendered.content
 

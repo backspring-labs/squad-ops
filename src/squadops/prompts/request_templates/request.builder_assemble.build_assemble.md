@@ -1,16 +1,20 @@
 ---
 template_id: request.builder_assemble.build_assemble
-version: "2"
+version: "3"
 required_variables:
   - prd
   - source_files
 optional_variables:
   - prior_outputs
   - task_tags
+  - task_section
+  - contract_expectations
 ---
 ## Product Requirements Document
 
 {{prd}}
+{{task_section}}
+{{contract_expectations}}
 
 ## Source Files (from developer)
 
@@ -60,3 +64,9 @@ Output that does NOT use this exact `<language>:<filepath>` header will be rejec
 The exact set of required and optional files for this build, plus the
 `qa_handoff.md` required sections, is given in the system prompt for the
 build profile. Produce exactly that set — no more, no less.
+
+Where a Contract Expectations block appears above, every one of its checks is
+evaluated against your output exactly as written. A `regex_match` on
+`qa_handoff.md` means that pattern must appear in the file you emit — sections
+it names are required for THIS task even where the profile lists them as
+optional, on top of the profile's own non-negotiable set.
