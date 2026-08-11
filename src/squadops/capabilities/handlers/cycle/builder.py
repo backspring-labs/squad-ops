@@ -127,6 +127,46 @@ class BuilderAssembleHandler(_CycleTaskHandler):
                     )
         return task_tags
 
+    @staticmethod
+    def _task_contract_blocks(inputs: dict[str, Any]) -> tuple[str, str]:
+        """The plan's own contract for THIS builder task: (task section, expectations).
+
+        Roll 9 (cyc_a92eaa4f4052): the plan authored five `regex_match` checks on
+        `qa_handoff.md` — two of them sections the profile treats as optional — and
+        the builder's prompt carried neither its task description nor a single one of
+        those checks, so it emitted the profile's three-section skeleton and failed
+        typed acceptance on the other two. The same disagreement is documented on
+        `system_prompt_for_files` from cycle 1 (2026-05-03) and was closed one-sidedly:
+        the VALIDATOR's section list was surfaced, the plan's authored checks never
+        were. Same A2 treatment develop (#588) and qa (#585) got: typed criteria as an
+        authoritative block, narrative prose demoted beside it.
+        """
+        from squadops.cycles.contract_expectations import expectation_lines, prose_criteria
+
+        task_parts: list[str] = []
+        focus = str(inputs.get("subtask_focus") or "")
+        description = str(inputs.get("subtask_description") or "")
+        if focus:
+            task_parts.append(f"\n\n## This Task\n\nFocus: {focus}")
+        if description:
+            task_parts.append(
+                f"\n{description}" if task_parts else f"\n\n## This Task\n\n{description}"
+            )
+
+        criteria = inputs.get("acceptance_criteria") or []
+        expectation_parts: list[str] = []
+        typed_lines = expectation_lines(criteria)
+        if typed_lines:
+            expectation_parts.append(
+                "\n\n## Contract Expectations (authoritative — apply exactly)\n"
+            )
+            expectation_parts.extend(f"- {line}\n" for line in typed_lines)
+        narrative = prose_criteria(criteria)
+        if narrative:
+            expectation_parts.append("\n## Acceptance Criteria (narrative)\n")
+            expectation_parts.extend(f"- {c}\n" for c in narrative)
+        return "".join(task_parts), "".join(expectation_parts)
+
     async def _build_assembly_prompt(
         self,
         context: ExecutionContext,
@@ -134,9 +174,11 @@ class BuilderAssembleHandler(_CycleTaskHandler):
         prior_outputs: dict | None,
         sources: dict[str, str],
         task_tags: dict[str, str],
+        inputs: dict[str, Any],
     ) -> tuple[Any, str]:
         """Build the assembly prompt via renderer or fallback. Returns (rendered, user_prompt)."""
         rendered = None
+        task_section, contract_expectations = self._task_contract_blocks(inputs)
         renderer = getattr(context.ports, "request_renderer", None)
         if renderer is not None:
             source_parts = []
@@ -147,6 +189,10 @@ class BuilderAssembleHandler(_CycleTaskHandler):
                 "source_files": "\n".join(source_parts),
                 "prior_outputs": self._format_prior_outputs(prior_outputs),
             }
+            if task_section:
+                variables["task_section"] = task_section
+            if contract_expectations:
+                variables["contract_expectations"] = contract_expectations
             if task_tags:
                 tag_parts = ["\n\n## Builder Tags\n"]
                 for tag_key, tag_value in sorted(task_tags.items()):
@@ -158,7 +204,25 @@ class BuilderAssembleHandler(_CycleTaskHandler):
             )
             return rendered, rendered.content
 
+        return None, self._assembly_prompt_fallback(
+            prd, prior_outputs, sources, task_tags, task_section, contract_expectations
+        )
+
+    @staticmethod
+    def _assembly_prompt_fallback(
+        prd: str,
+        prior_outputs: dict | None,
+        sources: dict[str, str],
+        task_tags: dict[str, str],
+        task_section: str,
+        contract_expectations: str,
+    ) -> str:
+        """The renderer-less prompt, carrying the same blocks the template renders."""
         parts = [f"## Product Requirements Document\n\n{prd}"]
+        if task_section:
+            parts.append(task_section)
+        if contract_expectations:
+            parts.append(contract_expectations)
         parts.append("\n\n## Source Files (from developer)\n")
         for path, code in sorted(sources.items()):
             parts.append(f"\n### {path}\n```\n{code}\n```\n")
@@ -190,7 +254,7 @@ class BuilderAssembleHandler(_CycleTaskHandler):
             "- The required and optional file list, plus qa_handoff.md required "
             "sections, is given in the system prompt — produce exactly that set."
         )
-        return None, "\n".join(parts)
+        return "\n".join(parts)
 
     @staticmethod
     def _dedup_and_classify(
@@ -341,7 +405,7 @@ class BuilderAssembleHandler(_CycleTaskHandler):
 
         # Step 3: Build assembly prompt
         rendered, user_prompt = await self._build_assembly_prompt(
-            context, prd, prior_outputs, sources, task_tags
+            context, prd, prior_outputs, sources, task_tags, inputs
         )
 
         assembled = context.ports.prompt_service.get_system_prompt(self._role)

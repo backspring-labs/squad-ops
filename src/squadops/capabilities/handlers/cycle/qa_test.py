@@ -430,6 +430,33 @@ class QATestHandler(_CycleTaskHandler):
         )
         return rendered.content
 
+    async def _frozen_surface_section(
+        self, context: ExecutionContext, inputs: dict[str, Any]
+    ) -> str:
+        """Render the APPLICATION TREE block from executor-threaded lines, or "".
+
+        Roll 9 (cyc_a92eaa4f4052): the suite author imports app modules and packages,
+        but its prompt-scoped artifact view is cut to the suite's own package prefix —
+        so the tree it imports FROM is exactly what it cannot see. The emitted suite
+        opened with `import request from 'supertest'` against a package.json declaring
+        no such package, and V2's wrote `from .store import reset` against a module
+        reachable only as `backend.store` (#787). The lines are manifest-derived data
+        (``scaffold.frozen_surface_index_lines``), the same index dev receives (#861);
+        all instruction prose lives in the appendix asset (CLAUDE.md #448).
+        """
+        lines = [str(line).strip() for line in (inputs.get("frozen_surface") or [])]
+        lines = [line for line in lines if line]
+        if not lines:
+            return ""
+        renderer = getattr(context.ports, "request_renderer", None)
+        if renderer is None:
+            return ""
+        rendered = await renderer.render(
+            "request.qa_test_frozen_surface_appendix",
+            {"frozen_lines": "\n".join(lines)},
+        )
+        return rendered.content
+
     def _build_focused_prompt(self, inputs: dict[str, Any]) -> str:
         """Build a focused prompt for manifest-driven QA subtasks (SIP-0086).
 
@@ -675,6 +702,9 @@ class QATestHandler(_CycleTaskHandler):
             dom_anchor_section = await self._dom_anchor_section(context, inputs)
             if dom_anchor_section:
                 user_prompt = f"{user_prompt}\n{dom_anchor_section}"
+            frozen_section = await self._frozen_surface_section(context, inputs)
+            if frozen_section:
+                user_prompt = f"{user_prompt}\n{frozen_section}"
             rendered = None
             sources = self._get_source_artifacts(inputs)
         else:

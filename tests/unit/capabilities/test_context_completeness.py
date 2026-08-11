@@ -1,0 +1,370 @@
+"""Context completeness: an agent is shown every fact its judging checks depend on.
+
+Seven defects in the 1.6 line were one shape — correct machinery wired to fewer paths
+than it claims, so an agent is judged against a constraint it was never shown: the sole
+plan author never given the contract (#846), the developer never told what the frozen
+files export (#861) or how to call them (#863), the suite author importing a package
+``package.json`` does not declare (roll 9), the builder failing plan-authored regex
+checks its prompt never carried (roll 9), the repair re-inventing the exact name the
+initial author was corrected on (roll 7). Each was individually cheap and each was found
+by a two-hour roll.
+
+This file is the instrument that makes the NEXT omission a test failure instead:
+
+1. **The context decision is total.** Every task type the planner can dispatch is either
+   in ``CONTEXT_CONTRACTS`` or in ``DECLARED_NO_CONTEXT`` — an absent entry stops being
+   readable as either "needs nothing" or "nobody decided", which is the ambiguity #846
+   grew in.
+2. **The judged-fact → surface mapping holds** for the task types with typed judges.
+3. **The facts actually render** — a declared surface that no handler puts into a prompt
+   is #846's shape one layer down (the ``VerificationContract.lint()`` lesson from #849:
+   a guard with no production caller).
+
+The registry-membership half follows ``test_stack_inventory.py`` (2a); the render half
+follows the fill-only wiring tests.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
+from squadops.capabilities.context_assembly import (
+    CONTEXT_CONTRACTS,
+    DECLARED_NO_CONTEXT,
+    REPAIR_CONTEXT_CONTRACT,
+    SURFACE_DOM_TESTID,
+    SURFACE_FROZEN,
+    SURFACE_TESTID,
+    get_context_contract,
+    manifest_surface_fragments,
+)
+from squadops.cycles.task_plan import (
+    BUILD_TASK_STEPS,
+    BUILDER_ASSEMBLY_TASK_STEPS,
+    CORRECTION_TASK_STEPS,
+    CYCLE_TASK_STEPS,
+    IMPLEMENTATION_TASK_STEPS,
+    REFINEMENT_TASK_STEPS,
+    REPAIR_TASK_TYPES,
+    WRAPUP_TASK_STEPS,
+    build_planning_steps,
+)
+from tests.unit.capabilities._stack_fixtures import manifest_for_stack
+
+pytestmark = [pytest.mark.domain_capabilities]
+
+_TEMPLATES = (
+    Path(__file__).resolve().parents[3] / "src" / "squadops" / "prompts" / "request_templates"
+)
+
+
+def _dispatched_task_types() -> set[str]:
+    """Every task type the planner can put on an envelope, from the step lists it uses.
+
+    Derived from the same constants ``generate_task_plan`` selects from — never re-typed
+    (#559) — so a new step list entry lands in this set without this file changing.
+    The framing sequence is built with every contributor and authored mode on, which is
+    its maximal shape (proposers + ``development.author_manifest`` included).
+    """
+    steps = (
+        CYCLE_TASK_STEPS
+        + BUILD_TASK_STEPS
+        + BUILDER_ASSEMBLY_TASK_STEPS
+        + IMPLEMENTATION_TASK_STEPS
+        + REFINEMENT_TASK_STEPS
+        + CORRECTION_TASK_STEPS
+        + WRAPUP_TASK_STEPS
+        + build_planning_steps(["development", "qa", "strategy"], authors_manifest=True)
+    )
+    return {task_type for task_type, _role in steps} | set(REPAIR_TASK_TYPES)
+
+
+# --- 1. the context decision is total ------------------------------------------ #
+
+
+def test_every_dispatched_task_type_has_a_recorded_context_decision():
+    """No task type may fall to the empty contract silently.
+
+    Repair task types are dispatched by the correction runner under
+    ``REPAIR_CONTEXT_CONTRACT`` — their curated context is declared there, so they are
+    exempt from the registry requirement but still enumerated (a NEW repair type would
+    land in this set and be accounted for the same way).
+    """
+    undecided = (
+        _dispatched_task_types() - set(CONTEXT_CONTRACTS) - DECLARED_NO_CONTEXT - REPAIR_TASK_TYPES
+    )
+    assert not undecided, (
+        f"task types dispatched with no recorded context decision: {sorted(undecided)}. "
+        "Add a CONTEXT_CONTRACTS entry, or add to DECLARED_NO_CONTEXT with the reason."
+    )
+
+
+def test_a_task_type_is_declared_exactly_once():
+    both = set(CONTEXT_CONTRACTS) & DECLARED_NO_CONTEXT
+    assert not both, f"in CONTEXT_CONTRACTS and DECLARED_NO_CONTEXT at once: {sorted(both)}"
+
+
+def test_declared_no_context_carries_no_stale_entries():
+    """A member that nothing dispatches is a claim about a task type that does not
+    exist — exactly the drift this file polices in the other direction."""
+    stale = DECLARED_NO_CONTEXT - _dispatched_task_types()
+    assert not stale, f"DECLARED_NO_CONTEXT entries no step list dispatches: {sorted(stale)}"
+
+
+# --- 2. the judged-fact → surface mapping -------------------------------------- #
+#
+# One row per (judge, fact) pair with live roll evidence. These are pins: each names
+# the roll that failed without it, and reverting the surface re-opens that roll.
+
+
+def test_the_suite_author_sees_the_tree_it_imports_from():
+    """qa.test is judged by ``tests_pass``, which requires its imports to resolve.
+
+    Roll 9 (cyc_a92eaa4f4052): `import request from 'supertest'` against a package.json
+    declaring no such package. V2 (cyc_dd3855f353c0, #787): `from .store import reset`
+    against a module reachable only as `backend.store`. The frozen index carries both
+    facts; the suite author's prompt-scoped artifact view is cut to its own package
+    prefix and cannot substitute."""
+    contract = get_context_contract("qa.test")
+    assert SURFACE_FROZEN in contract.manifest_surfaces
+    # judged by contract_assertions_match → the behavioral surface stays bound too
+    assert contract.bind_behavioral_surface
+
+
+def test_the_repair_sees_what_the_initial_author_was_corrected_with():
+    """Roll 7 (cyc_0e301961f099): #861 gave the initial dev the frozen index; the
+    repair re-invented `runStore` because it was blind identically, and the chain
+    terminated as plan_defect on a defect no repair could see."""
+    assert SURFACE_FROZEN in REPAIR_CONTEXT_CONTRACT.manifest_surfaces
+    # #667's anchor surface must survive alongside, not be displaced
+    assert SURFACE_TESTID in REPAIR_CONTEXT_CONTRACT.manifest_surfaces
+    assert SURFACE_DOM_TESTID in REPAIR_CONTEXT_CONTRACT.manifest_surfaces
+
+
+def test_the_initial_developer_keeps_its_four_surfaces():
+    """#588 / pf-45 / #659 / #861 — each surface names the roll that failed without it."""
+    contract = get_context_contract("development.develop")
+    assert SURFACE_FROZEN in contract.manifest_surfaces
+    assert len(contract.manifest_surfaces) >= 4
+
+
+def test_the_sole_author_keeps_the_criteria_index():
+    """#846's fix: `governance.merge_plan` authors the whole plan on every CRP without
+    contributors, and binds criteria it can only bind if shown the index."""
+    assert get_context_contract("governance.merge_plan").bind_criteria_index
+
+
+# --- 3. the facts actually render ----------------------------------------------- #
+
+
+def test_the_frozen_surface_reaches_qa_test_inputs_with_the_dependency_set():
+    """The full chain for roll 9's failure: registry declares → fragments derive →
+    the package.json line names the closed dependency set."""
+    fragments = manifest_surface_fragments(
+        get_context_contract("qa.test"), manifest_for_stack("nextjs_ts")
+    )
+    assert "frozen_surface" in fragments
+    package_line = next(line for line in fragments["frozen_surface"] if "`package.json`" in line)
+    assert "dependencies" in package_line
+    assert "next" in package_line
+    assert "vitest" in package_line
+    assert "supertest" not in package_line
+
+
+async def test_qa_frozen_section_renders_lines_and_gates_on_presence():
+    from squadops.capabilities.handlers.cycle.qa_test import QATestHandler
+
+    handler = QATestHandler()
+    context = MagicMock()
+    renderer = MagicMock()
+    renderer.render = AsyncMock(return_value=MagicMock(content="FROZEN BLOCK"))
+    context.ports.request_renderer = renderer
+
+    lines = [
+        "- `package.json` — dependencies next, react",
+        "- `lib/store.ts` — functions all(table)",
+    ]
+    out = await handler._frozen_surface_section(context, {"frozen_surface": lines})
+    assert out == "FROZEN BLOCK"
+    renderer.render.assert_awaited_once_with(
+        "request.qa_test_frozen_surface_appendix",
+        {"frozen_lines": "\n".join(lines)},
+    )
+
+    renderer.render.reset_mock()
+    assert await handler._frozen_surface_section(context, {}) == ""
+    renderer.render.assert_not_awaited()
+
+
+async def test_the_builder_prompt_carries_the_plan_authored_checks():
+    """Roll 9's exact shape: five regex_match checks on qa_handoff.md, two of them
+    sections the profile lists as optional. The builder's prompt carried none of them
+    — nor its own task description — and failed typed acceptance on the two it was
+    never shown. Asserted on the fallback prompt (the complete composed text)."""
+    from squadops.capabilities.handlers.cycle.builder import BuilderAssembleHandler
+
+    handler = BuilderAssembleHandler()
+    context = MagicMock()
+    context.ports.request_renderer = None
+
+    inputs = {
+        "subtask_focus": "Assemble QA Handoff & Startup Docs",
+        "subtask_description": "Produce qa_handoff.md documenting the build.",
+        "acceptance_criteria": [
+            {
+                "check": "regex_match",
+                "file": "qa_handoff.md",
+                "pattern": "## Implemented Scope",
+                "count_min": 1,
+                "description": "Contains Implemented Scope section",
+            },
+            {
+                "check": "regex_match",
+                "file": "qa_handoff.md",
+                "pattern": "## Known Limitations",
+                "count_min": 1,
+                "description": "Contains Known Limitations section",
+            },
+            "Verify all dev artifacts are integrated.",
+        ],
+    }
+    _rendered, prompt = await handler._build_assembly_prompt(
+        context, "PRD TEXT", None, {"app/page.tsx": "code"}, {}, inputs
+    )
+
+    assert "Assemble QA Handoff & Startup Docs" in prompt
+    assert "Produce qa_handoff.md documenting the build." in prompt
+    assert "## Implemented Scope" in prompt
+    assert "## Known Limitations" in prompt
+    assert "Verify all dev artifacts are integrated." in prompt
+    # typed checks render through the authoritative block, not dict-repr soup
+    assert "Contract Expectations" in prompt
+    assert "{'check'" not in prompt and '{"check"' not in prompt
+
+
+async def test_the_builder_renderer_path_binds_the_same_blocks():
+    from squadops.capabilities.handlers.cycle.builder import BuilderAssembleHandler
+
+    handler = BuilderAssembleHandler()
+    context = MagicMock()
+    renderer = MagicMock()
+    renderer.render = AsyncMock(return_value=MagicMock(content="RENDERED"))
+    context.ports.request_renderer = renderer
+
+    inputs = {
+        "subtask_focus": "Assemble QA Handoff",
+        "acceptance_criteria": [
+            {"check": "regex_match", "file": "qa_handoff.md", "pattern": "## Implemented Scope"}
+        ],
+    }
+    await handler._build_assembly_prompt(context, "PRD", None, {"a.py": "x"}, {}, inputs)
+
+    (template_id, variables) = renderer.render.await_args.args
+    assert template_id == "request.builder_assemble.build_assemble"
+    assert "Assemble QA Handoff" in variables["task_section"]
+    assert "## Implemented Scope" in variables["contract_expectations"]
+
+
+async def test_dev_repair_fill_only_carries_the_frozen_block():
+    """The registry pin alone is #849's shape — declared, read by nothing. This is the
+    render half: the dev repair's fill-only appendix must receive the frozen block from
+    the threaded lines, or roll 7's repair is blind again with the surface 'wired'."""
+    from squadops.capabilities.handlers.impl.repair_handlers import (
+        DevelopmentCorrectionRepairHandler,
+    )
+
+    handler = DevelopmentCorrectionRepairHandler()
+    context = MagicMock()
+    renderer = AsyncMock()
+    renderer.render.return_value = MagicMock(content="BLOCK")
+    context.ports.request_renderer = renderer
+
+    inputs = {
+        "resolved_config": {"build_profile": "fullstack_fastapi_react"},
+        "frozen_surface": ["- `backend/store.py` — import as `backend.store`; functions reset()"],
+    }
+    await handler._render_fill_only_section(context, inputs)
+
+    fill_only_call = next(
+        c
+        for c in renderer.render.await_args_list
+        if c.args[0] == "request.development_develop_fill_only_appendix"
+    )
+    assert "frozen_surface" in fill_only_call.args[1]
+    frozen_call = next(
+        c
+        for c in renderer.render.await_args_list
+        if c.args[0] == "request.development_develop_frozen_surface_appendix"
+    )
+    assert "backend.store" in frozen_call.args[1]["frozen_lines"]
+
+
+async def test_qa_repair_renders_the_frozen_surface_through_the_qa_appendix():
+    """Roll 9's failure repaired blind would re-import the phantom package; the qa
+    re-authoring repair gets the same closed-set block the initial suite author gets."""
+    from squadops.capabilities.handlers.impl.repair_handlers import (
+        DevelopmentCorrectionRepairHandler,
+        QATestRepairHandler,
+    )
+
+    handler = QATestRepairHandler()
+    context = MagicMock()
+    renderer = AsyncMock()
+    renderer.render.return_value = MagicMock(content="QA FROZEN BLOCK")
+    context.ports.request_renderer = renderer
+
+    lines = ["- `package.json` — dependencies next, react"]
+    out = await handler._render_qa_frozen_surface_section(context, {"frozen_surface": lines})
+    assert out == "QA FROZEN BLOCK"
+    (template_id, variables) = renderer.render.await_args.args
+    assert template_id == "request.qa_test_frozen_surface_appendix"
+    assert "package.json" in variables["frozen_lines"]
+
+    # role gate: the dev repair's flavor rides inside fill_only_section instead
+    renderer.render.reset_mock()
+    dev = DevelopmentCorrectionRepairHandler()
+    assert await dev._render_qa_frozen_surface_section(context, {"frozen_surface": lines}) == ""
+    renderer.render.assert_not_awaited()
+
+
+def test_the_developer_is_shown_the_criteria_it_is_judged_by():
+    """The one cell of the 2026-08-11 matrix that was WRONG when re-measured: the
+    develop envelope resolves its ``criteria_refs`` into ``acceptance_criteria``
+    (task_plan) and the handler renders them as the Contract Expectations block. Pinned
+    here so the working path cannot regress into the predicted defect."""
+    from squadops.cycles.contract_expectations import expectation_lines
+
+    resolved = [
+        {
+            "check": "endpoint_defined",
+            "params": {"path": "/api/runs", "methods_paths": [["POST", "/api/runs"]]},
+        }
+    ]
+    lines = expectation_lines(resolved)
+    assert lines, "resolved contract criteria must render as expectation lines"
+    assert any("endpoint_defined" in line or "/api/runs" in line for line in lines)
+
+
+# --- the appendix assets exist and carry the load-bearing prose ------------------ #
+
+
+def test_qa_frozen_appendix_asset_is_well_formed():
+    text = (_TEMPLATES / "request.qa_test_frozen_surface_appendix.md").read_text(encoding="utf-8")
+    assert "template_id: request.qa_test_frozen_surface_appendix" in text
+    assert "{{frozen_lines}}" in text
+    # the two facts roll 9 and #787 each lacked, stated as rules
+    assert "closed set of installed packages" in text
+    assert "import as" in text
+    # the file's own imports must be marked as description, not guidance (#787)
+    assert "its own imports" in text
+
+
+def test_builder_template_declares_the_new_blocks():
+    text = (_TEMPLATES / "request.builder_assemble.build_assemble.md").read_text(encoding="utf-8")
+    assert "{{task_section}}" in text
+    assert "{{contract_expectations}}" in text
+    # the instruction that plan-named sections are required on top of the profile's
+    assert "required for THIS task" in text

@@ -1,6 +1,6 @@
 ---
 template_id: request.plan_frozen_surface_appendix
-version: "1"
+version: "2"
 required_variables:
   - frozen_surface_index
 optional_variables: []
@@ -40,10 +40,12 @@ check against a fill slot instead, or verify the behavior through the suite.
 {{frozen_surface_index}}
 
 Read that index literally. The names in it are the only names that exist. If a model
-lists `location`, there is no `meeting_location`. If a module imports `` `.routes` ``,
-then `backend.routes` is not what it imports. Field names, class names and import paths
-are all exact — none of them are yours to choose, and near-misses fail as hard as
-inventions.
+lists `location`, there is no `meeting_location`. A line's `its own imports` states what
+that file imports — if it lists `` `.routes` ``, then `backend.routes` is not what it
+imports, and an `import_present` check must match the listed form. Where a line says
+`import as`, that is the module path OTHER files reach it by, not what it imports. Field
+names, class names and import paths are all exact — none of them are yours to choose, and
+near-misses fail as hard as inventions.
 
 Where the interface is not what the work needs, say so in prose in the task description.
 Do not encode the disagreement as a check: the check will simply fail.

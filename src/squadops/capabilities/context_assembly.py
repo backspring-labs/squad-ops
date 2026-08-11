@@ -155,10 +155,20 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
     ),
     # qa.test's prompt context IS the full accepted tree (#644); in bind mode
     # it additionally carries the contract's behavioral surface at PLAN time.
+    #
+    # frozen_surface (roll 9, cyc_a92eaa4f4052): the suite author imports app modules
+    # and packages, and the prompt-scoped artifact view is cut to the suite's own
+    # package prefix — so the tree it imports FROM is exactly what it cannot see.
+    # Roll 9's suite opened with `import request from 'supertest'` against a
+    # package.json declaring no such package, and V2's wrote `from .store import reset`
+    # against a module reachable only as `backend.store`. Same transport dev has
+    # had since #861; the index's per-file lines carry the import-as form and the
+    # dependency surface for precisely these two failures.
     "qa.test": ContextAssemblyContract(
         artifact_filter=ACCEPTANCE_WORKSPACE_FILTER,
         acceptance_workspace=True,
         bind_behavioral_surface=True,
+        manifest_surfaces=(SURFACE_FROZEN,),
     ),
     # --- planning chain (#657): upstream documents on an envelope-local
     # prior_outputs copy; all four authoring types receive a re-roll's
@@ -259,14 +269,65 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
 }
 
 
+#: Task types that dispatch with NO curated context, on purpose — each with the reason.
+#:
+#: Before this set existed, an absent registry entry was unreadable: it meant either "this
+#: task needs nothing" or "nobody decided", and the two are indistinguishable exactly when
+#: it matters. That ambiguity is how #846 happened — `governance.merge_plan`'s absence was
+#: read as "the merger consumes proposer outputs, no prompt to curate", which was true of
+#: the merge path and silently wrong about the sole-author path that reaches
+#: implementation on every default CRP. A task type in NEITHER structure fails the
+#: context-completeness test, so adding a task type forces the decision to be recorded
+#: here rather than defaulted invisibly.
+#:
+#: Repair task types are deliberately not listed: they dispatch through the correction
+#: runner with ``REPAIR_CONTEXT_CONTRACT`` (their curated context IS declared, above).
+DECLARED_NO_CONTEXT: frozenset[str] = frozenset(
+    {
+        # Basic-cycle document chain (SIP-0066 §5.4): prompts build from the PRD and
+        # prior_outputs on the envelope; no typed acceptance judges these outputs.
+        "strategy.analyze_prd",
+        "development.design",
+        "qa.validate",
+        "data.report",
+        "governance.review",
+        # Framing backbone upstream of the planning chain: these AUTHOR the documents
+        # the planning filters above select; their own inputs are envelope-native.
+        "data.research_context",
+        "strategy.frame_objective",
+        "qa.define_test_strategy",
+        # Sign-off only (SIP-0093): the gate package rides prior_outputs, and plan
+        # validation is deterministic and upstream of this task.
+        "governance.review_plan",
+        # Implementation-workload framing head: emits the done-definition from the
+        # PRD and plan already on the envelope.
+        "governance.define_done",
+        # Refinement pair (SIP-0078 §5.10): feedback and validation both arrive as
+        # explicit envelope inputs from the refinement request.
+        "governance.incorporate_feedback",
+        "qa.validate_refinement",
+        # Correction protocol (SIP-0079 §7.7): the correction runner composes their
+        # evidence inputs (failure_evidence, correction context) explicitly per failure.
+        "data.analyze_failure",
+        "governance.correction_decision",
+    }
+)
+
+
 #: #667: the repair envelope's own context declaration (S2) — the anchor
 #: surface must survive the correction loop, RE-DERIVED from the manifest
 #: (same deriver as initial dispatch), never copied from the failed envelope:
 #: the dev repair chain is routinely reached from a failed qa.test task
 #: (SUBJECT locus), whose envelope carries only the qa-keyed variant. Both
 #: key variants ride every repair envelope; each handler reads its own.
+#: SURFACE_FROZEN (roll 7, cyc_0e301961f099): #861 gave the INITIAL dev author the
+#: frozen index and left the repair envelope without it — so the repair that followed
+#: roll 7's invented `runStore` import "invented the same name again because it was
+#: blind identically" and the chain terminated as plan_defect on a defect no repair
+#: could see. This threads the key; the repair mixin renders it (dev: inside the
+#: fill-only appendix; qa: its own appendix — ``_RepairPromptMixin``).
 REPAIR_CONTEXT_CONTRACT = ContextAssemblyContract(
-    manifest_surfaces=(SURFACE_TESTID, SURFACE_DOM_TESTID),
+    manifest_surfaces=(SURFACE_TESTID, SURFACE_DOM_TESTID, SURFACE_FROZEN),
 )
 
 #: Presence-keyed retest forwarding (S2): failed-envelope inputs a retest
