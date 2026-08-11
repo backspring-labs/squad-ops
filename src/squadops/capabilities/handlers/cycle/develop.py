@@ -788,8 +788,33 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         testid_surface = await self._testid_surface_section(renderer, inputs)
         if testid_surface:
             variables["testid_surface"] = testid_surface
+        # #861: what the frozen files DECLARE, same transport and same reasoning as the
+        # three above. Roll 7 emitted `import { runStore } from '@/lib/store'` against a
+        # module exporting `reset, all, insert, find, nextId`, and the repair invented the
+        # same name again because it was blind identically — so the correction terminated
+        # as plan_defect on a defect no repair could see. The plan author has had this
+        # index since pf-42; the agent that must import from those files had not.
+        frozen_surface = await self._frozen_surface_section(renderer, inputs)
+        if frozen_surface:
+            variables["frozen_surface"] = frozen_surface
         rendered = await renderer.render(
             "request.development_develop_fill_only_appendix", variables
+        )
+        return rendered.content
+
+    async def _frozen_surface_section(self, renderer: Any, inputs: dict | None) -> str:
+        """Render the FROZEN FILES block from executor-threaded lines, or "".
+
+        The lines are manifest-derived data (``scaffold.frozen_surface_index_lines``); all
+        prose lives in the appendix asset (CLAUDE.md #448).
+        """
+        lines = [str(line).strip() for line in ((inputs or {}).get("frozen_surface") or [])]
+        lines = [line for line in lines if line]
+        if not lines:
+            return ""
+        rendered = await renderer.render(
+            "request.development_develop_frozen_surface_appendix",
+            {"frozen_lines": "\n".join(lines)},
         )
         return rendered.content
 

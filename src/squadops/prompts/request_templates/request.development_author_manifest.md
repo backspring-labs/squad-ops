@@ -48,6 +48,7 @@ entities:                          # the data types the app stores and returns
       - { name: id,      type: string,  required: true, generated: true }
       - { name: title,   type: string,  required: true }
       - { name: done,    type: boolean, required: false, default: false }
+      - { name: tags,    type: "list[Tag]", required: false, default: [] }   # QUOTE bracket types
 api:
   base_path: ""                    # "" when the PRD's paths are unprefixed (/items)
   request_shapes:                  # request BODIES — a projection of entity fields
@@ -88,6 +89,11 @@ decisions:                         # judgments the schema cannot express mechani
     unresolved: true
     question: "PRD does not state a page size or whether listing is paginated at all"
 ```
+
+**A type containing brackets must be quoted.** `type: list[Tag]` inside a `{ ... }`
+entry is invalid YAML — the `[` opens a flow sequence and the document fails to parse
+before any gate can read it. Write `type: "list[Tag]"`. This is the single most
+common reason a first manifest attempt is rejected.
 
 The example is illustrative. Replace it with THIS build's real entities, endpoints,
 routes, anchors and decisions, drawn from the PRD and the framing documents above.
