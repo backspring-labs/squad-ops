@@ -62,6 +62,23 @@
    "on failure raise `ApiError(code, message)` (imported from `.errors`): the FIRST argument is the error-code STRING, the second a human message \u2014 never `ApiError(status_code=..., detail=...)` and never `HTTPException` for contract errors; the frozen `errors.py` maps the code to the HTTP status and renders the pinned envelope",
    "valid error codes (code \u2192 HTTP status, mapped by frozen `errors.py`): `validation_error` \u2192 422, `run_not_found` \u2192 404, `duplicate_participant` \u2192 409, `participant_not_found` \u2192 404"
   ],
+  "frozen_surface": [
+   "- `backend/__init__.py`",
+   "- `backend/main.py` \u2014 functions health; imports `.errors`, `.routes`, `fastapi`, `fastapi.middleware.cors`, `os`",
+   "- `backend/models.py` \u2014 defines Participant(id, name), RunEvent(id, title, datetime, location, distance, pace_target, route_notes, participants), RunEventCreate(title, datetime, location, distance, pace_target, route_notes), ParticipantName(name); imports `pydantic`, `typing`",
+   "- `backend/store.py` \u2014 module state participant_store: dict[str, Participant], run_event_store: dict[str, RunEvent]; functions reset; imports `.models`",
+   "- `backend/errors.py` \u2014 defines ApiError; functions register_error_handlers; imports `fastapi`, `fastapi.exceptions`, `fastapi.responses`",
+   "- `backend/requirements.txt`",
+   "- `conftest.py` \u2014 functions client; imports `backend.main`, `fastapi.testclient`, `os`, `pytest`, `sys`",
+   "- `frontend/index.html`",
+   "- `frontend/package.json`",
+   "- `frontend/vite.config.js` \u2014 imports `@vitejs/plugin-react`, `vite`",
+   "- `frontend/src/test-setup.js`",
+   "- `frontend/src/__tests__/harness.test.jsx` \u2014 imports `../App.jsx`, `@testing-library/react`, `react-router-dom`, `vitest`",
+   "- `frontend/src/main.jsx` \u2014 imports `./App.jsx`, `react`, `react-dom/client`, `react-router-dom`",
+   "- `frontend/src/api.js` \u2014 functions apiFetch",
+   "- `frontend/src/App.jsx` \u2014 imports `./views/CreateRunView.jsx`, `./views/RunDetailView.jsx`, `./views/RunsListView.jsx`, `react-router-dom`"
+  ],
   "model_surface": [
    "`backend/models.py` is scaffold-frozen and defines EXACTLY these names: `Participant(id, name)`, `RunEvent(id, title, datetime, location, distance, pace_target, route_notes, participants)`, `RunEventCreate(title, datetime, location, distance, pace_target, route_notes)`, `ParticipantName(name)`. Import only from this list \u2014 these are the complete contents of that module",
    "field names are exact \u2014 construct and read models with the fields shown above; a near-miss (`pace` for `pace_target`, `meeting_location` for `location`) raises at request time and every affected endpoint returns HTTP 500",
@@ -100,6 +117,23 @@
   "error_contract": [
    "on failure raise `ApiError(code, message)` (imported from `.errors`): the FIRST argument is the error-code STRING, the second a human message \u2014 never `ApiError(status_code=..., detail=...)` and never `HTTPException` for contract errors; the frozen `errors.py` maps the code to the HTTP status and renders the pinned envelope",
    "valid error codes (code \u2192 HTTP status, mapped by frozen `errors.py`): `validation_error` \u2192 422, `run_not_found` \u2192 404, `duplicate_participant` \u2192 409, `participant_not_found` \u2192 404"
+  ],
+  "frozen_surface": [
+   "- `backend/__init__.py`",
+   "- `backend/main.py` \u2014 functions health; imports `.errors`, `.routes`, `fastapi`, `fastapi.middleware.cors`, `os`",
+   "- `backend/models.py` \u2014 defines Participant(id, name), RunEvent(id, title, datetime, location, distance, pace_target, route_notes, participants), RunEventCreate(title, datetime, location, distance, pace_target, route_notes), ParticipantName(name); imports `pydantic`, `typing`",
+   "- `backend/store.py` \u2014 module state participant_store: dict[str, Participant], run_event_store: dict[str, RunEvent]; functions reset; imports `.models`",
+   "- `backend/errors.py` \u2014 defines ApiError; functions register_error_handlers; imports `fastapi`, `fastapi.exceptions`, `fastapi.responses`",
+   "- `backend/requirements.txt`",
+   "- `conftest.py` \u2014 functions client; imports `backend.main`, `fastapi.testclient`, `os`, `pytest`, `sys`",
+   "- `frontend/index.html`",
+   "- `frontend/package.json`",
+   "- `frontend/vite.config.js` \u2014 imports `@vitejs/plugin-react`, `vite`",
+   "- `frontend/src/test-setup.js`",
+   "- `frontend/src/__tests__/harness.test.jsx` \u2014 imports `../App.jsx`, `@testing-library/react`, `react-router-dom`, `vitest`",
+   "- `frontend/src/main.jsx` \u2014 imports `./App.jsx`, `react`, `react-dom/client`, `react-router-dom`",
+   "- `frontend/src/api.js` \u2014 functions apiFetch",
+   "- `frontend/src/App.jsx` \u2014 imports `./views/CreateRunView.jsx`, `./views/RunDetailView.jsx`, `./views/RunsListView.jsx`, `react-router-dom`"
   ],
   "model_surface": [
    "`backend/models.py` is scaffold-frozen and defines EXACTLY these names: `Participant(id, name)`, `RunEvent(id, title, datetime, location, distance, pace_target, route_notes, participants)`, `RunEventCreate(title, datetime, location, distance, pace_target, route_notes)`, `ParticipantName(name)`. Import only from this list \u2014 these are the complete contents of that module",

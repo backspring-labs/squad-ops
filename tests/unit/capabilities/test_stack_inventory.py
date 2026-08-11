@@ -329,3 +329,56 @@ def test_the_ecmascript_surface_is_empty_for_files_that_declare_nothing():
     """Config and data files must render bare rather than as noise — the bare/described
     split is what the appendix's rule keys on."""
     assert scaffold._ecmascript_surface("// a comment only\nconst private = 1\n") == ""
+
+
+# --------------------------------------------------------------------------- #
+# #861 — the developer receives what the frozen files declare
+# --------------------------------------------------------------------------- #
+
+
+def test_the_developer_is_told_what_the_frozen_files_declare():
+    """Roll 7 died of this. `development.develop` writes `app/api/runs/route.ts`, whose job
+    is calling into the frozen `lib/store.ts`, and emitted
+    `import { runStore } from '@/lib/store'` against a module exporting
+    `reset, all, insert, find, nextId`. The repair invented the same name again, because it
+    was blind identically, so the correction terminated as `plan_defect` on a defect no
+    repair could see.
+
+    The index carrying the answer has existed since pf-42 and reached the plan author only.
+    Asserted on the derived fragment rather than on the registry flag: the question is
+    whether the exports reach the prompt, and a flag can be set while the deriver returns
+    nothing (which is what `.py`-only rendering did to this stack before #851).
+    """
+    from squadops.capabilities.context_assembly import (
+        CONTEXT_CONTRACTS,
+        SURFACE_FROZEN,
+        manifest_surface_fragments,
+    )
+
+    contract = CONTEXT_CONTRACTS["development.develop"]
+    assert SURFACE_FROZEN in contract.manifest_surfaces
+
+    fragments = manifest_surface_fragments(contract, _manifest_for("nextjs_ts"))
+    rendered = "\n".join(fragments.get(SURFACE_FROZEN, []))
+    assert "lib/store.ts" in rendered
+    assert "reset" in rendered and "insert" in rendered, (
+        "the developer must be told which symbols the frozen store exports — this is the "
+        "exact line roll 7 needed and did not have"
+    )
+
+
+@pytest.mark.parametrize("stack", _STACK_NAMES)
+def test_the_frozen_surface_reaches_the_developer_on_every_stack(stack):
+    """Parameterized over the registry: a third stack inherits the wiring or fails here."""
+    from squadops.capabilities.context_assembly import (
+        CONTEXT_CONTRACTS,
+        SURFACE_FROZEN,
+        manifest_surface_fragments,
+    )
+
+    fragments = manifest_surface_fragments(
+        CONTEXT_CONTRACTS["development.develop"], _manifest_for(stack)
+    )
+    assert fragments.get(SURFACE_FROZEN), (
+        f"stack {stack!r} threads no frozen-surface lines to the developer"
+    )

@@ -45,6 +45,12 @@ SURFACE_TESTID = "testid_surface"
 #: The qa-keyed landing of the SAME testid inventory (#667): identical
 #: deriver, distinct envelope key — each handler reads its own variant.
 SURFACE_DOM_TESTID = "dom_testid_surface"
+#: #861: what each scaffold-frozen file declares. The plan author has had this since pf-42;
+#: the developer that must IMPORT from those files had not, and roll 7 died of it — it wrote
+#: `import { runStore } from '@/lib/store'` against a module exporting
+#: `reset, all, insert, find, nextId`, then repaired to the same invented name because the
+#: repair path was blind identically. A name the author cannot see is a name it will invent.
+SURFACE_FROZEN = "frozen_surface"
 
 
 @dataclass(frozen=True)
@@ -120,7 +126,7 @@ ACCEPTANCE_WORKSPACE_FILTER = ArtifactFilter(
     by_type_fallback=("document",),
 )
 
-_DEV_SURFACES = (SURFACE_ERROR_CONTRACT, SURFACE_MODEL, SURFACE_TESTID)
+_DEV_SURFACES = (SURFACE_ERROR_CONTRACT, SURFACE_MODEL, SURFACE_TESTID, SURFACE_FROZEN)
 
 CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
     # --- build tasks (D3): curated prompt context + acceptance workspace ----
@@ -341,6 +347,7 @@ def manifest_surface_fragments(
         return {}
     from squadops.capabilities.scaffold import (
         error_seam_instructions,
+        frozen_surface_index_lines,
         model_surface_instructions,
         testid_surface_instructions,
     )
@@ -350,6 +357,7 @@ def manifest_surface_fragments(
         SURFACE_MODEL: model_surface_instructions,
         SURFACE_TESTID: testid_surface_instructions,
         SURFACE_DOM_TESTID: testid_surface_instructions,
+        SURFACE_FROZEN: frozen_surface_index_lines,
     }
     fragments: dict[str, list[str]] = {}
     for surface in contract.manifest_surfaces:

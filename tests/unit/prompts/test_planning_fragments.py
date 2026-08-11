@@ -222,3 +222,33 @@ class TestPlanningFragmentsContent:
         task_type_dir = FRAGMENTS_DIR / "shared" / "task_type"
         md_files = list(task_type_dir.glob("*.md"))
         assert len(md_files) == 22
+
+
+def test_the_manifest_example_shows_a_quoted_collection_type():
+    """#858: two of roll 7's four authoring attempts died on `type: list[X]` unquoted.
+
+    Inside a `{ ... }` flow mapping an unquoted `[` opens a flow sequence and the document
+    fails to parse before any gate reads it. The example taught flow style with three scalar
+    fields and no collection type at all, so the first list an author needed hit the trap —
+    while the reference manifest, which SIP-0103 §4 keeps out of squad inputs, has had the
+    quoted form all along.
+    """
+    from pathlib import Path
+
+    asset = (
+        Path(__file__).resolve().parents[3]
+        / "src/squadops/prompts/request_templates/request.development_author_manifest.md"
+    )
+    text = asset.read_text(encoding="utf-8")
+
+    # Scoped to the fenced example, not the file. The prose below it also contains
+    # `type: "list[Tag]"`, so a file-wide check passes with the example field deleted —
+    # which is exactly what a mutation test caught it doing.
+    example = text.split("```yaml:interface_manifest.yaml", 1)[1].split("```", 1)[0]
+    assert 'type: "list[' in example, (
+        "the EXAMPLE must show a quoted bracket type — an author copies the block, not the "
+        "prose around it"
+    )
+    assert "must be quoted" in text, (
+        "a trailing comment is dropped when an author copies the block — the rule needs prose"
+    )
