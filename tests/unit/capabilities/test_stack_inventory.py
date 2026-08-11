@@ -283,11 +283,16 @@ def test_frozen_index_describes_exactly_the_declared_suffixes(stack):
     # rendering none does NOT: `backend/__init__.py` is empty, and an empty Python file
     # correctly has nothing to declare. Asserting both ways would have forced this test to
     # claim that every .py file declares something, which is false.
+    # Coverage is declared on two axes: by suffix, and by basename for files whose
+    # declaration surface is not a language's (package.json's dependency set, roll 9).
     for name in described:
-        assert name.endswith(scaffold.DESCRIBED_FROZEN_SUFFIXES), (
-            f"{name} renders declarations but its suffix is not in "
-            f"DESCRIBED_FROZEN_SUFFIXES {scaffold.DESCRIBED_FROZEN_SUFFIXES} — the "
-            f"declaration is now narrower than the renderer"
+        assert name.endswith(scaffold.DESCRIBED_FROZEN_SUFFIXES) or (
+            name.rsplit("/", 1)[-1] in scaffold.DESCRIBED_FROZEN_BASENAMES
+        ), (
+            f"{name} renders declarations but is in neither DESCRIBED_FROZEN_SUFFIXES "
+            f"{scaffold.DESCRIBED_FROZEN_SUFFIXES} nor DESCRIBED_FROZEN_BASENAMES "
+            f"{scaffold.DESCRIBED_FROZEN_BASENAMES} — the declaration is now narrower "
+            f"than the renderer"
         )
 
     # The reader must actually work on at least one file, or "everything is bare" would

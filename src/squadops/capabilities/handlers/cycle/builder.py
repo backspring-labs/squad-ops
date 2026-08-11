@@ -149,13 +149,17 @@ class BuilderAssembleHandler(_CycleTaskHandler):
         if focus:
             task_parts.append(f"\n\n## This Task\n\nFocus: {focus}")
         if description:
-            task_parts.append(f"\n{description}" if task_parts else f"\n\n## This Task\n\n{description}")
+            task_parts.append(
+                f"\n{description}" if task_parts else f"\n\n## This Task\n\n{description}"
+            )
 
         criteria = inputs.get("acceptance_criteria") or []
         expectation_parts: list[str] = []
         typed_lines = expectation_lines(criteria)
         if typed_lines:
-            expectation_parts.append("\n\n## Contract Expectations (authoritative — apply exactly)\n")
+            expectation_parts.append(
+                "\n\n## Contract Expectations (authoritative — apply exactly)\n"
+            )
             expectation_parts.extend(f"- {line}\n" for line in typed_lines)
         narrative = prose_criteria(criteria)
         if narrative:
@@ -200,6 +204,20 @@ class BuilderAssembleHandler(_CycleTaskHandler):
             )
             return rendered, rendered.content
 
+        return None, self._assembly_prompt_fallback(
+            prd, prior_outputs, sources, task_tags, task_section, contract_expectations
+        )
+
+    @staticmethod
+    def _assembly_prompt_fallback(
+        prd: str,
+        prior_outputs: dict | None,
+        sources: dict[str, str],
+        task_tags: dict[str, str],
+        task_section: str,
+        contract_expectations: str,
+    ) -> str:
+        """The renderer-less prompt, carrying the same blocks the template renders."""
         parts = [f"## Product Requirements Document\n\n{prd}"]
         if task_section:
             parts.append(task_section)
@@ -236,7 +254,7 @@ class BuilderAssembleHandler(_CycleTaskHandler):
             "- The required and optional file list, plus qa_handoff.md required "
             "sections, is given in the system prompt — produce exactly that set."
         )
-        return None, "\n".join(parts)
+        return "\n".join(parts)
 
     @staticmethod
     def _dedup_and_classify(

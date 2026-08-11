@@ -112,11 +112,16 @@ def test_repair_contract_threads_the_same_anchor_inventory_under_both_keys():
     expected_lines = testid_surface_instructions(manifest)
     assert expected_lines, "group_run manifest lost its testid inventory — scenario broken"
 
+    from squadops.capabilities.scaffold import frozen_surface_index_lines
+
     fragments = ca.manifest_surface_fragments(ca.REPAIR_CONTEXT_CONTRACT, manifest)
 
+    # Roll 7: the frozen index rides the repair envelope too — #861 fixed the initial
+    # author and the repair stayed blind, re-inventing the exact corrected name.
     assert fragments == {
         ca.SURFACE_TESTID: expected_lines,
         ca.SURFACE_DOM_TESTID: expected_lines,
+        ca.SURFACE_FROZEN: frozen_surface_index_lines(manifest),
     }
     # No manifest → no keys (the presence-gated shape repairs rely on).
     assert ca.manifest_surface_fragments(ca.REPAIR_CONTEXT_CONTRACT, None) == {}

@@ -52,12 +52,13 @@ from squadops.cycles.task_plan import (
     WRAPUP_TASK_STEPS,
     build_planning_steps,
 )
-
 from tests.unit.capabilities._stack_fixtures import manifest_for_stack
 
 pytestmark = [pytest.mark.domain_capabilities]
 
-_TEMPLATES = Path(__file__).resolve().parents[3] / "src" / "squadops" / "prompts" / "request_templates"
+_TEMPLATES = (
+    Path(__file__).resolve().parents[3] / "src" / "squadops" / "prompts" / "request_templates"
+)
 
 
 def _dispatched_task_types() -> set[str]:
@@ -92,7 +93,9 @@ def test_every_dispatched_task_type_has_a_recorded_context_decision():
     exempt from the registry requirement but still enumerated (a NEW repair type would
     land in this set and be accounted for the same way).
     """
-    undecided = _dispatched_task_types() - set(CONTEXT_CONTRACTS) - DECLARED_NO_CONTEXT - REPAIR_TASK_TYPES
+    undecided = (
+        _dispatched_task_types() - set(CONTEXT_CONTRACTS) - DECLARED_NO_CONTEXT - REPAIR_TASK_TYPES
+    )
     assert not undecided, (
         f"task types dispatched with no recorded context decision: {sorted(undecided)}. "
         "Add a CONTEXT_CONTRACTS entry, or add to DECLARED_NO_CONTEXT with the reason."
@@ -164,9 +167,7 @@ def test_the_frozen_surface_reaches_qa_test_inputs_with_the_dependency_set():
         get_context_contract("qa.test"), manifest_for_stack("nextjs_ts")
     )
     assert "frozen_surface" in fragments
-    package_line = next(
-        line for line in fragments["frozen_surface"] if "`package.json`" in line
-    )
+    package_line = next(line for line in fragments["frozen_surface"] if "`package.json`" in line)
     assert "dependencies" in package_line
     assert "next" in package_line
     assert "vitest" in package_line
@@ -182,7 +183,10 @@ async def test_qa_frozen_section_renders_lines_and_gates_on_presence():
     renderer.render = AsyncMock(return_value=MagicMock(content="FROZEN BLOCK"))
     context.ports.request_renderer = renderer
 
-    lines = ["- `package.json` — dependencies next, react", "- `lib/store.ts` — functions all(table)"]
+    lines = [
+        "- `package.json` — dependencies next, react",
+        "- `lib/store.ts` — functions all(table)",
+    ]
     out = await handler._frozen_surface_section(context, {"frozen_surface": lines})
     assert out == "FROZEN BLOCK"
     renderer.render.assert_awaited_once_with(
@@ -262,6 +266,68 @@ async def test_the_builder_renderer_path_binds_the_same_blocks():
     assert template_id == "request.builder_assemble.build_assemble"
     assert "Assemble QA Handoff" in variables["task_section"]
     assert "## Implemented Scope" in variables["contract_expectations"]
+
+
+async def test_dev_repair_fill_only_carries_the_frozen_block():
+    """The registry pin alone is #849's shape — declared, read by nothing. This is the
+    render half: the dev repair's fill-only appendix must receive the frozen block from
+    the threaded lines, or roll 7's repair is blind again with the surface 'wired'."""
+    from squadops.capabilities.handlers.impl.repair_handlers import (
+        DevelopmentCorrectionRepairHandler,
+    )
+
+    handler = DevelopmentCorrectionRepairHandler()
+    context = MagicMock()
+    renderer = AsyncMock()
+    renderer.render.return_value = MagicMock(content="BLOCK")
+    context.ports.request_renderer = renderer
+
+    inputs = {
+        "resolved_config": {"build_profile": "fullstack_fastapi_react"},
+        "frozen_surface": ["- `backend/store.py` — import as `backend.store`; functions reset()"],
+    }
+    await handler._render_fill_only_section(context, inputs)
+
+    fill_only_call = next(
+        c
+        for c in renderer.render.await_args_list
+        if c.args[0] == "request.development_develop_fill_only_appendix"
+    )
+    assert "frozen_surface" in fill_only_call.args[1]
+    frozen_call = next(
+        c
+        for c in renderer.render.await_args_list
+        if c.args[0] == "request.development_develop_frozen_surface_appendix"
+    )
+    assert "backend.store" in frozen_call.args[1]["frozen_lines"]
+
+
+async def test_qa_repair_renders_the_frozen_surface_through_the_qa_appendix():
+    """Roll 9's failure repaired blind would re-import the phantom package; the qa
+    re-authoring repair gets the same closed-set block the initial suite author gets."""
+    from squadops.capabilities.handlers.impl.repair_handlers import (
+        DevelopmentCorrectionRepairHandler,
+        QATestRepairHandler,
+    )
+
+    handler = QATestRepairHandler()
+    context = MagicMock()
+    renderer = AsyncMock()
+    renderer.render.return_value = MagicMock(content="QA FROZEN BLOCK")
+    context.ports.request_renderer = renderer
+
+    lines = ["- `package.json` — dependencies next, react"]
+    out = await handler._render_qa_frozen_surface_section(context, {"frozen_surface": lines})
+    assert out == "QA FROZEN BLOCK"
+    (template_id, variables) = renderer.render.await_args.args
+    assert template_id == "request.qa_test_frozen_surface_appendix"
+    assert "package.json" in variables["frozen_lines"]
+
+    # role gate: the dev repair's flavor rides inside fill_only_section instead
+    renderer.render.reset_mock()
+    dev = DevelopmentCorrectionRepairHandler()
+    assert await dev._render_qa_frozen_surface_section(context, {"frozen_surface": lines}) == ""
+    renderer.render.assert_not_awaited()
 
 
 def test_the_developer_is_shown_the_criteria_it_is_judged_by():

@@ -430,7 +430,9 @@ class QATestHandler(_CycleTaskHandler):
         )
         return rendered.content
 
-    async def _frozen_surface_section(self, context: ExecutionContext, inputs: dict[str, Any]) -> str:
+    async def _frozen_surface_section(
+        self, context: ExecutionContext, inputs: dict[str, Any]
+    ) -> str:
         """Render the APPLICATION TREE block from executor-threaded lines, or "".
 
         Roll 9 (cyc_a92eaa4f4052): the suite author imports app modules and packages,
