@@ -346,8 +346,10 @@ async def test_produce_plan_renders_manifest_template(seeded_inputs):
     )
 
     assert artifact is not None
-    ctx.ports.request_renderer.render.assert_called_once()
-    call_args = ctx.ports.request_renderer.render.call_args
+    # #856: two renders now — the manifest template, then the unconditional authoring
+    # rules appendix. The first is the one under test.
+    assert ctx.ports.request_renderer.render.call_count == 2
+    call_args = ctx.ports.request_renderer.render.call_args_list[0]
     assert call_args.args[0] == "request.governance_review_plan_manifest"
 
     variables = call_args.args[1]
@@ -469,7 +471,7 @@ async def test_produce_plan_filters_builder_assemble_by_squad_capability():
         handler_name="test_harness",
         chat_kwargs={},
     )
-    no_builder_render = str(ctx_no_builder.ports.request_renderer.render.call_args)
+    no_builder_render = str(ctx_no_builder.ports.request_renderer.render.call_args_list[0])
     assert "builder.assemble" not in no_builder_render
 
     # #426: the builder role alone no longer suffices — the offer also
@@ -484,7 +486,7 @@ async def test_produce_plan_filters_builder_assemble_by_squad_capability():
         handler_name="test_harness",
         chat_kwargs={},
     )
-    builder_render = str(ctx_builder.ports.request_renderer.render.call_args)
+    builder_render = str(ctx_builder.ports.request_renderer.render.call_args_list[0])
     assert "builder.assemble" in builder_render
 
 
@@ -674,7 +676,11 @@ async def test_author_mode_prompt_is_unchanged_without_a_contract(seeded_inputs)
     )
 
     prompt = _rendered_prompt(ctx)
-    assert prompt == "user prompt (rendered from request.governance_review_plan_manifest)"
+    # #856 made the authoring-rules appendix unconditional, so exact equality with the base
+    # prompt is no longer the right assertion — what this guards is that no CONTRACT
+    # appendix appears when there is no contract.
+    assert "request.plan_bind_criteria_appendix" not in prompt
+    assert "request.plan_frozen_surface_appendix" not in prompt
 
 
 async def test_an_empty_index_is_not_rendered_as_an_empty_section(seeded_inputs):
@@ -698,4 +704,70 @@ async def test_an_empty_index_is_not_rendered_as_an_empty_section(seeded_inputs)
     )
 
     prompt = _rendered_prompt(ctx)
-    assert prompt == "user prompt (rendered from request.governance_review_plan_manifest)"
+    assert "request.plan_bind_criteria_appendix" not in prompt
+    assert "request.plan_frozen_surface_appendix" not in prompt
+
+
+# ---------------------------------------------------------------------------
+# #856 — the sole author is shown the rules its plan is validated against
+# ---------------------------------------------------------------------------
+
+
+async def test_sole_author_prompt_carries_the_plan_authoring_rules(seeded_inputs):
+    """VS roll 5 (`cyc_d430f25fd01d`) was rejected by a rule the author never saw.
+
+    Its `qa.test` task declared `expected_artifacts: ['__tests__/qa_execution_report.md']`
+    — a report, no test file — and `validate_check_applicability` refused it. The rule
+    covering that case, `qa-tests-must-be-discoverable`, states the correct form in its own
+    second sentence. `_authoring_rules_section` was rendered by the proposers and the brief
+    author and by nothing on this path, which is the path that writes the plan on every CRP
+    except `validation-multirole`.
+
+    Asserted on the message the LLM received, not on the render call: the question the
+    failure turned on is whether the rules reached the model, and a call-count assertion
+    passes against a render whose output is dropped.
+    """
+    ctx = _make_context()
+    ctx.ports.request_renderer.render.side_effect = _fake_render
+
+    await produce_plan(
+        ctx,
+        seeded_inputs,
+        planning_content="planning",
+        resolved_config=seeded_inputs["resolved_config"],
+        role="lead",
+        handler_name="test",
+        chat_kwargs={},
+    )
+
+    prompt = _rendered_prompt(ctx)
+    assert "request.plan_authoring_rules_appendix" in prompt, (
+        "the sole author must be shown the plan-shape rules its output is validated "
+        "against — the validator knowing a rule the author never sees is #686's defect"
+    )
+
+
+async def test_the_rules_precede_the_cycle_specific_surfaces(seeded_inputs):
+    """Ordering is deliberate, not incidental: general rules, then this cycle's contract.
+
+    Both are appended to the same prompt, and a reader that meets the fill-slot list before
+    the rule about what a qa task may declare has to hold the specifics without the frame.
+    Pinned so a later append does not silently invert it.
+    """
+    ctx = _make_context()
+    ctx.ports.request_renderer.render.side_effect = _fake_render
+
+    await produce_plan(
+        ctx,
+        {**seeded_inputs, "contract_criteria_index": "- app/api/runs/route.ts: bind vc-runs"},
+        planning_content="planning",
+        resolved_config=seeded_inputs["resolved_config"],
+        role="lead",
+        handler_name="test",
+        chat_kwargs={},
+    )
+
+    prompt = _rendered_prompt(ctx)
+    assert prompt.index("request.plan_authoring_rules_appendix") < prompt.index(
+        "request.plan_bind_criteria_appendix"
+    )

@@ -21,7 +21,10 @@ import logging
 import re
 from typing import TYPE_CHECKING, Any
 
-from squadops.capabilities.handlers._plan_authoring import contract_surface_sections
+from squadops.capabilities.handlers._plan_authoring import (
+    authoring_rules_section,
+    contract_surface_sections,
+)
 from squadops.capabilities.handlers.cycle_tasks import (
     _PRD_COVERAGE_DISCIPLINE_SECTION,
     _rewrite_manifest_identifiers,
@@ -226,6 +229,14 @@ async def produce_plan(
         manifest_prompt = rendered.content
     else:
         manifest_prompt = _build_manifest_user_prompt_inline(template_variables)
+
+    # #856: the plan-shape rules the deterministic validators enforce. Unconditional —
+    # they hold for every plan on every roll. The proposers and the brief author have
+    # rendered these since #686; this path did not, so the author that actually writes the
+    # plan on every CRP but `validation-multirole` was the one never shown them. VS roll 5
+    # authored a qa.test task emitting only a report and was rejected by a rule whose own
+    # text states the correct form. General rules first, then the cycle-specific surfaces.
+    manifest_prompt += await authoring_rules_section(renderer)
 
     # #846: the sole author gets the contract's surfaces, same as a proposer would.
     # This path runs whenever no plan_authoring_contributors are configured — which is
