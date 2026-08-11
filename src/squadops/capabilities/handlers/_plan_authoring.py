@@ -31,6 +31,34 @@ from squadops.llm.models import ChatMessage
 logger = logging.getLogger(__name__)
 
 
+async def authoring_rules_section(renderer: Any) -> str:
+    """The plan-shape rules every deterministic validator enforces (#686), or ``""``.
+
+    Unconditional — unlike the contract surfaces below there is no input to key on, because
+    these rules hold for every plan on every roll.
+
+    **Shared because it had three authors and reached two (#856.)** The proposers render it
+    (`planning/propose.py`) and the brief author renders it (`planning/brief.py`); the
+    sole-author path in `_plan_authoring_service.produce_plan` did not, and that is the path
+    that authors the plan on every CRP except ``validation-multirole``.
+
+    VS roll 5 (`cyc_d430f25fd01d`) is the measurement: a `qa.test` task declared
+    `expected_artifacts: ['__tests__/qa_execution_report.md']` — a report, no test file — and
+    `validate_check_applicability` rejected it. The rule that covers it,
+    ``qa-tests-must-be-discoverable``, states the correct form in its second sentence
+    ("through the acceptance criteria of a verification-only task"). The author never saw it.
+
+    That is the exact failure the asset was written for, quoted from its own docstring:
+    *"shk-1's first framing authored the #673 dual-claim shape with the contract, the manifest
+    and the typed-acceptance vocabulary all present, because the rules themselves appeared in
+    no prompt: the validator knew, the author never did."*
+    """
+    if renderer is None:
+        return ""
+    rendered = await renderer.render("request.plan_authoring_rules_appendix", {})
+    return rendered.content
+
+
 async def contract_surface_sections(renderer: Any, inputs: dict[str, Any]) -> str:
     """The contract surfaces an author needs, rendered, or ``""``.
 

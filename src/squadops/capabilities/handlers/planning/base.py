@@ -154,8 +154,9 @@ class _PlanningTaskHandler(_CycleTaskHandler):
         is the managed asset; which validators are author-facing is the data table in
         ``squadops.cycles.plan_authoring_rules``, and a test binds the two (#448).
         """
-        rendered = await renderer.render("request.plan_authoring_rules_appendix", {})
-        return rendered.content
+        from squadops.capabilities.handlers._plan_authoring import authoring_rules_section
+
+        return await authoring_rules_section(renderer)
 
     async def _rejection_context_section(self, renderer: Any, inputs: dict[str, Any]) -> str:
         """The prior-rejection appendix on a framing re-roll, or "" (#669).
