@@ -282,16 +282,11 @@ def test_every_registered_stack_declares_a_pack_that_exists():
 
 def _contract_for(stack: str):
     """The reference manifest's contract, re-stacked. One manifest, two emitters."""
-    import pathlib
 
-    import yaml
-
-    from squadops.capabilities.scaffold import InterfaceManifest
     from squadops.cycles.verification_contract import VerificationContract
+    from tests.unit.capabilities._stack_fixtures import manifest_for_stack
 
-    raw = yaml.safe_load(pathlib.Path("examples/03_group_run/interface_manifest.yaml").read_text())
-    raw["stack"] = stack
-    manifest = InterfaceManifest.from_yaml(yaml.safe_dump(raw, sort_keys=False))
+    manifest = manifest_for_stack(stack)
     return VerificationContract.from_dict(scaffold_contract.emit_contract_dict(manifest))
 
 

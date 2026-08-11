@@ -46,7 +46,11 @@ _REFERENCE_SRC = (
 
 
 def _manifest(stack: str = _STACK) -> InterfaceManifest:
-    return InterfaceManifest.from_yaml(_REFERENCE_SRC.replace("fullstack_fastapi_react", stack))
+    """The reference design as this stack requires it declared (#859): API under `/api`,
+    because App Router serves route handlers and pages from one tree."""
+    from tests.unit.capabilities._stack_fixtures import manifest_for_stack
+
+    return manifest_for_stack(stack)
 
 
 def _names(manifest: InterfaceManifest) -> list[str]:
@@ -238,3 +242,73 @@ def test_the_typed_check_vocabulary_is_declared_empty_not_guessed():
     verified against this stack, so its checks must skip rather than be fed a guess."""
     assert scaffold.check_stack_for(_STACK) is None
     assert scaffold.check_stack_for("fullstack_fastapi_react") == "fastapi"
+
+
+# --------------------------------------------------------------------------- #
+# #859 — the file path is derived from the URL, and the tree must be coherent
+# --------------------------------------------------------------------------- #
+
+
+def _with_api_paths(paths: list[str], routes: list[str] | None = None) -> InterfaceManifest:
+    """The reference design with its API paths (and optionally its pages) replaced."""
+    from tests.unit.capabilities._stack_fixtures import manifest_dict_for_stack
+
+    raw = manifest_dict_for_stack(_STACK)
+    raw["api"]["endpoints"] = [
+        {**raw["api"]["endpoints"][i], "path": p} for i, p in enumerate(paths)
+    ]
+    if routes is not None:
+        raw["frontend"]["routes"] = [{**raw["frontend"]["routes"][0], "path": p} for p in routes]
+    import yaml
+
+    return InterfaceManifest.from_yaml(yaml.safe_dump(raw, sort_keys=False))
+
+
+def test_the_route_file_serves_the_url_the_manifest_declared():
+    """Roll 6's defect, stated as the invariant it violated.
+
+    The expander used to prefix `app/api/` unconditionally, so a manifest declaring the true
+    Next URL — `/api/runs`, which is what an App Router author writes and what the frontend
+    fetches — produced `app/api/api/runs/route.ts`. That file serves `/api/api/runs` while
+    the contract's probes request `/api/runs`, so the app could never answer its own
+    verification and the correction chain looped until the 7200s budget ended the run.
+    """
+    slots = fill_slot_paths(_with_api_paths(["/api/runs"]))
+
+    assert "app/api/runs/route.ts" in slots
+    assert not any("api/api" in s for s in slots), (
+        "the declared URL was prefixed twice — the emitted file cannot serve the path the "
+        "contract probes request"
+    )
+
+
+def test_an_unprefixed_api_path_is_placed_where_it_will_actually_serve():
+    """`path` means the served URL on every stack, so `/runs` yields `app/runs/route.ts`.
+
+    The correctness of that placement is the reason the collision guard below has to exist:
+    the prefix is no longer supplied silently, so nothing keeps API files out of the page
+    tree except the manifest's own paths.
+    """
+    slots = fill_slot_paths(_with_api_paths(["/runs"], routes=["/"]))
+
+    assert "app/runs/route.ts" in slots
+
+
+def test_an_api_path_colliding_with_a_page_is_refused():
+    """A directory cannot hold both `route.ts` and `page.tsx`; Next serves one path from one
+    file. Refusing is deliberate — silently relocating one would ship an app answering
+    different URLs than its own contract, which is the failure this change ends."""
+    with pytest.raises(ValueError, match="both a route handler and a page"):
+        fill_slot_paths(_with_api_paths(["/runs"], routes=["/runs"]))
+
+
+def test_two_paths_disagreeing_on_a_slug_name_are_refused():
+    """The reference manifest's own shape: API `/runs/{run_id}` beside page `/runs/:id`.
+
+    Next requires one slug name per dynamic segment, so these cannot coexist — which is why
+    declaring the API under `/api` is now a requirement of this stack rather than a
+    convention the expander supplied. Pinned with the exact pair that would otherwise have
+    shipped, since the reference is the design every other stack test is built from.
+    """
+    with pytest.raises(ValueError, match="same position in the routing tree"):
+        fill_slot_paths(_with_api_paths(["/runs/{run_id}"], routes=["/runs/:id"]))
