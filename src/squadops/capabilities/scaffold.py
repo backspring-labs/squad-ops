@@ -736,8 +736,16 @@ def _python_surface(source: str) -> str:
         and isinstance(stmt.target, ast.Name)
         and not stmt.target.id.startswith("_")
     ]
+    # #863: parameters, not just names. pf-42 gave classes their fields
+    # (`User(id, email)`) and left functions as bare names, so the index published a
+    # symbol's existence and withheld how to call it. Roll 8 imported the right function
+    # from the right module and wrote `all()` against `all(table)`; tsc rejected it and the
+    # correction chain terminated. Same sentence as pf-42, one level down — a signature the
+    # author cannot see is a signature it will guess. Names only, not annotations: the index
+    # is prose for an author, and `insert(table, row)` carries the arity and the meaning
+    # while the full type costs a line's readability for something the caller never restates.
     functions = [
-        node.name
+        f"{node.name}({', '.join(a.arg for a in node.args.args if a.arg != 'self')})"
         for node in tree.body
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
         and not node.name.startswith("_")
@@ -757,10 +765,38 @@ def _python_surface(source: str) -> str:
 
 
 _TS_INTERFACE = re.compile(r"^export\s+(?:interface|type)\s+(\w+)", re.M)
-_TS_FUNCTION = re.compile(r"^export\s+(?:async\s+)?function\s+(\w+)", re.M)
+#: Name, then an optional generic list, then the arguments. The generic clause is not
+#: optional in practice — `lib/api.ts` declares `export async function api<T>(...)`, and a
+#: pattern without it silently rendered that file as a bare name (caught before commit).
+_TS_FUNCTION = re.compile(
+    r"^export\s+(?:async\s+)?function\s+(\w+)\s*(?:<[^>]*>)?\s*\(([^)]*)\)", re.M
+)
 _TS_CONST = re.compile(r"^export\s+const\s+(\w+)", re.M)
 _TS_FIELD = re.compile(r"^\s{2}(\w+)\??:", re.M)
 _TS_IMPORT = re.compile(r"""^import\s+[^'"]*from\s+['"]([^'"]+)['"]""", re.M)
+
+
+def _ts_param_names(params: str) -> list[str]:
+    """``table: string, row: Record<string, unknown> = {}`` → ``["table", "row"]``.
+
+    Splits on top-level commas only: a generic or object type carries its own commas
+    (``Record<string, unknown>``), and splitting naively would invent parameters.
+    """
+    names: list[str] = []
+    depth = 0
+    current = ""
+    for ch in params:
+        if ch in "<([{":
+            depth += 1
+        elif ch in ">)]}":
+            depth -= 1
+        if ch == "," and depth == 0:
+            names.append(current)
+            current = ""
+        else:
+            current += ch
+    names.append(current)
+    return [n.split(":")[0].split("=")[0].strip() for n in names if n.strip()]
 
 
 def _ecmascript_surface(source: str) -> str:
@@ -788,7 +824,13 @@ def _ecmascript_surface(source: str) -> str:
         body = source[match.end() :].split("}", 1)[0]
         fields = _TS_FIELD.findall(body)
         interfaces.append(f"{match.group(1)}({', '.join(fields)})" if fields else match.group(1))
-    functions = _TS_FUNCTION.findall(source)
+    # #863: name plus parameter names, for the reason recorded on `_python_surface`.
+    # Each param arrives as `table: string` or `row: Record<string, unknown> = {}`; the
+    # index keeps the name and drops the annotation and default.
+    functions = [
+        f"{name}({', '.join(_ts_param_names(params))})"
+        for name, params in _TS_FUNCTION.findall(source)
+    ]
     consts = _TS_CONST.findall(source)
     modules = sorted(set(_TS_IMPORT.findall(source)))
 

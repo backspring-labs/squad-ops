@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import ast
 import pathlib
+import re
 
 import pytest
 
@@ -321,7 +322,7 @@ def test_the_ecmascript_surface_names_fields_not_just_types():
     )
     assert "RunEvent(id, location, distance)" in surface
     assert "exports ERROR_STATUS" in surface
-    assert "functions reset, load" in surface
+    assert "functions reset(), load()" in surface
     assert "`zod`" in surface
 
 
@@ -382,3 +383,74 @@ def test_the_frozen_surface_reaches_the_developer_on_every_stack(stack):
     assert fragments.get(SURFACE_FROZEN), (
         f"stack {stack!r} threads no frozen-surface lines to the developer"
     )
+
+
+# --------------------------------------------------------------------------- #
+# #863 — the index publishes how to CALL a frozen function, not just its name
+# --------------------------------------------------------------------------- #
+
+
+def test_the_frozen_store_publishes_its_call_signatures():
+    """Roll 8's defect. The developer imported the right symbol from the right module and
+    wrote `all()` against `all(table)`; tsc rejected it and the correction terminated.
+
+    pf-42 gave classes their fields and left functions as bare names, so the index published
+    a symbol's existence and withheld how to call it — in both language readers. Same
+    sentence as pf-42, one level down: a signature the author cannot see is a signature it
+    will guess.
+    """
+    line = next(
+        line
+        for line in scaffold.frozen_surface_index_lines(_manifest_for("nextjs_ts"))
+        if "lib/store.ts" in line
+    )
+    assert "all(table)" in line, "the arity roll 8 guessed wrong must be visible"
+    assert "insert(table, row)" in line
+    assert "reset()" in line, "a zero-argument function must show empty parens, not a bare name"
+
+
+def test_a_generic_function_still_publishes_its_parameters():
+    """`lib/api.ts` declares `export async function api<T>(path, init?)`.
+
+    A first version of the #863 pattern required the argument list to follow the name
+    directly, so the generic clause made this file render as a bare name — a file that had
+    been described before the fix became undescribed by it. Caught before commit; pinned so
+    it cannot return.
+    """
+    line = next(
+        line
+        for line in scaffold.frozen_surface_index_lines(_manifest_for("nextjs_ts"))
+        if "lib/api.ts" in line
+    )
+    assert "api(path, init?)" in line
+
+
+@pytest.mark.parametrize("stack", _STACK_NAMES)
+def test_no_frozen_function_is_published_without_parentheses(stack):
+    """Every stack, every frozen file: a function named without parens is a signature the
+    author has to guess. Parameterized over the registry so a third stack's reader inherits
+    the requirement or fails here."""
+    for line in scaffold.frozen_surface_index_lines(_manifest_for(stack)):
+        if "functions " not in line:
+            continue
+        listed = line.split("functions ", 1)[1].split(";")[0]
+        # Strip every well-formed `name(params)` and require only separators to remain.
+        # Splitting on ", " would cut `insert(table, row)` in half — which the first version
+        # of this test did, reporting the code broken when the test was.
+        remainder = re.sub(r"\w+\([^)]*\)", "", listed).strip(" ,")
+        assert not remainder, (
+            f"{stack}: {remainder!r} is published without a call signature — {line}"
+        )
+
+
+def test_a_type_containing_commas_does_not_invent_parameters():
+    """`insert(table: string, row: Record<string, unknown>)` has two parameters, not three.
+
+    Splitting the argument list on every comma would read the generic's comma as a separator
+    and publish a parameter that does not exist — teaching an author to pass three arguments
+    to a two-argument function, which is the same defect this fix exists to remove.
+    """
+    surface = scaffold._ecmascript_surface(
+        "export function insert(table: string, row: Record<string, unknown>): void {}\n"
+    )
+    assert "insert(table, row)" in surface
