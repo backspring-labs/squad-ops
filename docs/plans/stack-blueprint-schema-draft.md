@@ -121,10 +121,65 @@ schema cannot tell that stack #2 constrains its author's URL space and stack #1 
 **2c owes this a disposition**: promote it to a declared field, or record it as pack behavior
 with the reason. Left undecided it becomes the thing a third stack discovers by failing.
 
+## 4c. Capability assembly — the axes and the trigger *(owner direction, 2026-08-11)*
+
+**The direction:** dev, qa, and build capabilities are not three parallel per-stack
+declarations; each is *assembled* from axes, and the axes differ per capability. Measured
+against the live registries, the three split cleanly:
+
+**Dev capability — derived, already done.** #832 made the stack the authority:
+`resolve_dev_capability` derives it from `ScaffoldStack.dev_capability`, preflight rejects a
+contradiction (`stack_dev_capability_mismatch`). Language and framework conventions *are* the
+stack; there is no second axis. The `--set dev_capability` launch flag is a pre-#832 habit —
+redundant on every scaffolded stack.
+
+**QA capability — does not exist as an object; assembly requires consolidation first.**
+"How QA works on this stack" is currently smeared across four surfaces:
+`dev_capability.test_file_patterns`, `ScaffoldStack.qa_test_namespace`,
+`harness_entry_modules`, and the criteria pack's suite checks. S1's move applied to the QA
+half is owed before any assembly question is even expressible. The boundary that governs the
+consolidation comes from SIP-0102: the *execution* half (toolchain, runner — the #306 qa-Node
+branch that step 6 retires) migrates to the sandbox's environment contract; only *authoring
+conventions* stay agent-side and blueprint-declared. Mixing those halves is how the toolchain
+ended up in agent images.
+
+**Build capability — the genuine two-axis case: `stack × deployment target`.**
+`BUILD_PROFILES` conflates them today: the `nextjs_ts` profile hardcodes "single container
+serving `next start`", but static export is the same stack with a different Dockerfile, a
+different typed-op sequence (no `start_application`; serve static), and a different probe
+story. Stack #1 ships one container; a compose pair is equally coherent. Deriving build
+capability from stack alone bakes a single-target assumption into a general name — the exact
+failure class this SIP exists to kill.
+
+**The deployment-target declaration must be single-sourced with two named consumers.**
+Today there are two packaging surfaces: the builder-emitted Dockerfile (the deliverable's
+packaging — verified by no criterion, #598) and the sandbox's environment definition (how
+verification builds, boots, and probes). Deriving them separately lets the sandbox verify one
+deployment shape while the builder packages another — a false-green seam. SIP-0102 §4.2 is
+the receiving hook, and it is already waiting: the environment definition is blueprint-owned
+by that SIP's own status note (*"migrates into the blueprint when that SIP is accepted"*),
+deterministic and never LLM-authored. `audit_delivered_app.py` is a third reader — it encodes
+one deployment shape per stack, so the target axis propagates to the audit.
+
+**Vocabulary rule:** "deployment profile" is taken — it names infra profiles
+(dev/local/lab/cloud, Keycloak realms, token policy). The app-side axis is the **deployment
+target**. Do not overload a second term the way "build" already is.
+
+**Timing — this section records, S3 does not build it.** The pack-combo ruling applies
+verbatim: deriving an assembly model now generalizes from one-and-a-half instances; after
+stack #2 lands, the cross-combo is nearly free and is the composability test. This direction
+*extends* that ruling — the axes are (backend, frontend, **deployment target**), not two —
+and 2c supplies the evidence: fields that fail per-stack falsification because they are
+deployment-target facts wearing stack names are this section's candidates. **S3's promotion
+must disclose that the schema's build-capability fields are single-target**, with this
+section as the declared successor design and the pack-combo test as its trigger.
+
+---
+
 ## 5. Open questions carried to 2g
 
-1. **Does the blueprint own the packaging set?** `required_files` and `qa_handoff_expectations` are identical across both stacks — weak evidence they are universal rather than blueprint-owned. Tier 3 above takes that reading; a third stack could overturn it.
-2. **One blueprint per stack, or backend + frontend composition?** Next.js **collapses the split entirely** — one project, one tree, one build. Evidence against composition as the primary shape, and it came from the stack chosen to stress the manifest's api/frontend split.
+1. **Does the blueprint own the packaging set?** `required_files` and `qa_handoff_expectations` are identical across both stacks — weak evidence they are universal rather than blueprint-owned. Tier 3 above takes that reading; a third stack could overturn it. §4c sharpens the question: the packaging set is plausibly a **deployment-target** fact, not a stack fact.
+2. **One blueprint per stack, or backend + frontend composition?** Next.js **collapses the split entirely** — one project, one tree, one build. Evidence against composition as the primary shape, and it came from the stack chosen to stress the manifest's api/frontend split. §4c adds a third candidate axis (deployment target) to whatever composition model the pack-combo test produces.
 3. **`expand` as callable or data?** Tier 2 takes the callable side, on the directory-as-identity evidence above.
 4. **Two stack vocabularies remain two** — `fullstack_fastapi_react` vs `fastapi`. S1 removed the duplicate declaration, not the drift. Owed at 2e.
 5. **Where does a blueprint live?** `stack_nextjs_ts.py` is already a pack shipping its own expander; stack #1 is still inline in `scaffold.py`. The asymmetry resolves by pushing S1 out, not pulling S2 in.
