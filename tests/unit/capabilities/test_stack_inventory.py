@@ -325,9 +325,9 @@ def test_the_ecmascript_surface_names_fields_not_just_types():
         "export function reset(): void {}\n"
         "export async function load(): Promise<void> {}\n"
     )
-    assert "RunEvent(id, location, distance)" in surface
+    assert "`RunEvent(id: string, location: string, distance?: string)`" in surface
     assert "exports ERROR_STATUS" in surface
-    assert "functions reset(), load()" in surface
+    assert "functions `reset(): void`, `load(): Promise<void>`" in surface
     assert "`zod`" in surface
 
 
@@ -409,9 +409,9 @@ def test_the_frozen_store_publishes_its_call_signatures():
         for line in scaffold.frozen_surface_index_lines(_manifest_for("nextjs_ts"))
         if "lib/store.ts" in line
     )
-    assert "all(table)" in line, "the arity roll 8 guessed wrong must be visible"
-    assert "insert(table, row)" in line
-    assert "reset()" in line, "a zero-argument function must show empty parens, not a bare name"
+    assert "`all(table: string)" in line, "the arity roll 8 guessed wrong must be visible"
+    assert "`insert(table: string, row: Record<string, unknown>)" in line
+    assert "`reset()" in line, "a zero-argument function must show empty parens, not a bare name"
 
 
 def test_a_generic_function_still_publishes_its_parameters():
@@ -427,7 +427,7 @@ def test_a_generic_function_still_publishes_its_parameters():
         for line in scaffold.frozen_surface_index_lines(_manifest_for("nextjs_ts"))
         if "lib/api.ts" in line
     )
-    assert "api(path, init?)" in line
+    assert "`api(path: string, init?: RequestInit): Promise<T>`" in line
 
 
 @pytest.mark.parametrize("stack", _STACK_NAMES)
@@ -439,10 +439,22 @@ def test_no_frozen_function_is_published_without_parentheses(stack):
         if "functions " not in line:
             continue
         listed = line.split("functions ", 1)[1].split(";")[0]
-        # Strip every well-formed `name(params)` and require only separators to remain.
-        # Splitting on ", " would cut `insert(table, row)` in half — which the first version
-        # of this test did, reporting the code broken when the test was.
-        remainder = re.sub(r"\w+\([^)]*\)", "", listed).strip(" ,")
+        # Two legitimate formats (#871): the ECMAScript reader wraps each typed signature
+        # in backticks (commas inside `Record<string, unknown>` would otherwise read as
+        # list separators); the Python reader stays names-only and bare. Splitting on
+        # ", " would cut `insert(table, row)` in half — which the first version of this
+        # test did, reporting the code broken when the test was.
+        if "`" in listed:
+            signatures = re.findall(r"`([^`]+)`", listed)
+            for signature in signatures:
+                assert re.match(r"\w+\(.*\)", signature), (
+                    f"{stack}: {signature!r} is published without a call signature — {line}"
+                )
+            remainder = re.sub(r"`[^`]+`", "", listed).strip(" ,")
+        else:
+            signatures = re.findall(r"\w+\([^)]*\)", listed)
+            remainder = re.sub(r"\w+\([^)]*\)", "", listed).strip(" ,")
+        assert signatures, f"{stack}: no signatures published — {line}"
         assert not remainder, (
             f"{stack}: {remainder!r} is published without a call signature — {line}"
         )
@@ -458,4 +470,60 @@ def test_a_type_containing_commas_does_not_invent_parameters():
     surface = scaffold._ecmascript_surface(
         "export function insert(table: string, row: Record<string, unknown>): void {}\n"
     )
-    assert "insert(table, row)" in surface
+    assert "`insert(table: string, row: Record<string, unknown>): void`" in surface
+
+
+# --------------------------------------------------------------------------- #
+# #871 — the TS surface publishes types, returns, and classes (roll 12)
+# --------------------------------------------------------------------------- #
+
+
+def test_the_frozen_store_publishes_its_types_and_returns():
+    """Roll 12's repair invented a numeric-id scheme in exactly the blind spot names-only
+    left: `find(table, id)` concealed `id: string` and `nextId()` concealed its `string`
+    return, so the repair wrote `find('runs', Number(run_id))`, the tree stopped compiling,
+    and the run terminated. The types are literal in the frozen source — publishing them is
+    the same sentence as #863, one level down: a type the author cannot see is a type it
+    will guess."""
+    line = next(
+        line
+        for line in scaffold.frozen_surface_index_lines(_manifest_for("nextjs_ts"))
+        if "lib/store.ts" in line
+    )
+    assert "`find(table: string, id: string)" in line, (
+        "the parameter type roll 12's repair guessed wrong must be visible"
+    )
+    assert "`nextId(): string`" in line, (
+        "the return type the invented numeric-id scheme contradicts must be visible"
+    )
+
+
+def test_the_frozen_error_class_is_named_with_its_constructor():
+    """`export class` had no reader clause, so `ApiError` — the one seam the error contract
+    expects every route to use — was absent from the errors.ts line. Roll 12's original
+    defect is the invention that predicts: the route passed a bare string to
+    `errorResponse()` (TypeScript-legal, the param is `unknown`), `instanceof ApiError`
+    failed at runtime, and every error path returned 500 where the contract pins 422/409."""
+    line = next(
+        line
+        for line in scaffold.frozen_surface_index_lines(_manifest_for("nextjs_ts"))
+        if "lib/errors.ts" in line
+    )
+    assert "classes `ApiError(code: string, detail: string = '')`" in line
+    assert "`errorResponse(err: unknown): Response`" in line, (
+        "the catch-seam signature must publish the type that forbids bare-string calls"
+    )
+
+
+def test_a_constructor_is_attributed_to_its_own_class():
+    """The constructor search is bounded at the next top-level export: without the bound, a
+    constructor-less first class would claim the NEXT class's constructor and publish a call
+    signature that throws at runtime."""
+    surface = scaffold._ecmascript_surface(
+        "export class Marker extends Error {}\n"
+        "export class Payload {\n"
+        "  constructor(public body: string) {}\n"
+        "}\n"
+    )
+    assert "`Marker()`" in surface
+    assert "`Payload(body: string)`" in surface

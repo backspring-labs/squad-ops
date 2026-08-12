@@ -134,7 +134,10 @@ def test_javascript_frozen_files_now_carry_a_surface_too():
     assert _line_for("frontend/vite.config.js") == (
         "- `frontend/vite.config.js` — its own imports `@vitejs/plugin-react`, `vite`"
     )
-    assert "functions apiFetch" in _line_for("frontend/src/api.js")
+    assert "functions `apiFetch(path, options = {})`" in _line_for("frontend/src/api.js")
+    # #871's class clause surfaced stack #1's own invisible seam the moment it landed:
+    # `api.js` exports an ApiError class no surface line had ever named.
+    assert "classes `ApiError(code, message, status)`" in _line_for("frontend/src/api.js")
 
 
 def test_a_file_in_a_language_the_index_cannot_read_is_still_named():
