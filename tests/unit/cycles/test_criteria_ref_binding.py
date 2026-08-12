@@ -468,3 +468,46 @@ def test_author_mode_and_missing_qa_are_no_ops():
     assert "acceptance_criteria" not in dev.inputs
     _attach_unbound_contract_criteria([dev], None, _contract())  # no qa.test envelope
     assert "acceptance_criteria" not in dev.inputs
+
+
+# --------------------------------------------------------------------------- #
+# #870 — resolve_criteria_for_files: the criteria a set of files OWNS
+# --------------------------------------------------------------------------- #
+
+
+def test_criteria_for_files_selects_exactly_the_owning_files_checks():
+    """Bug caught: a repair judged only by the failed task's criteria — roll 12's
+    dev repair for a qa.test failure rewrote routes no criterion ever re-checked."""
+    from squadops.cycles.implementation_plan import resolve_criteria_for_files
+
+    checks = resolve_criteria_for_files(_contract(), ["backend/routes.py"])
+    assert {c.id for c in checks} == {
+        "vc-routes-endpoints",
+        "vc-routes-apierror",
+        "vc-routes-compiles",
+    }
+    # File-param checks carry their owning file so evaluation targets the right
+    # path (command checks name their target inside argv instead).
+    file_params = {c.id: c.params.get("file") for c in checks if "file" in c.params}
+    assert file_params == {
+        "vc-routes-endpoints": "backend/routes.py",
+        "vc-routes-apierror": "backend/routes.py",
+    }
+
+
+def test_criteria_for_files_ignores_files_the_contract_does_not_own():
+    """Bug caught: net-new or doc files dragging in someone else's criteria —
+    a repair emitting qa_handoff.md must not be judged by the routes' checks."""
+    from squadops.cycles.implementation_plan import resolve_criteria_for_files
+
+    assert resolve_criteria_for_files(_contract(), ["qa_handoff.md", "README.md"]) == []
+
+
+def test_criteria_for_files_never_selects_behavioral_checks():
+    """Bug caught: a file-less behavioral check (frontend_build) materialized as a
+    typed gate row — those run through the qa/build handlers, not typed acceptance."""
+    from squadops.cycles.implementation_plan import resolve_criteria_for_files
+
+    all_files = ["backend/routes.py", "frontend/src/views/ItemView.jsx"]
+    checks = resolve_criteria_for_files(_contract(), all_files)
+    assert "vc-frontend-builds" not in {c.id for c in checks}

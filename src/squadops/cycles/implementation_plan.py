@@ -18,6 +18,7 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import json
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
@@ -1057,6 +1058,25 @@ def resolve_contract_refs(
             params.setdefault("file", owning_path)
         checks.append(TypedCheck(check=criterion.check, params=params, id=criterion.id))
     return checks
+
+
+def resolve_criteria_for_files(
+    contract: VerificationContract, filenames: Iterable[str]
+) -> list[TypedCheck]:
+    """The contract criteria OWNED by a set of files, as executable ``TypedCheck``s (#870).
+
+    Patch verification judges a repair against the *failed task's* criteria; a repair
+    that rewrites files the failed task does not own is judged against nothing — roll 12's
+    dev repair for a qa.test failure re-emitted four routes that no longer compiled and
+    patch verification was structurally silent. This selects every criterion whose owning
+    ``fill_files`` path is among *filenames*, so a repair can be gated by the criteria that
+    governed those files' original authoring. Refs are sorted for determinism; the ref →
+    ``TypedCheck`` materialization is ``resolve_contract_refs`` unchanged.
+    """
+    names = {name for name in filenames if isinstance(name, str)}
+    index = contract.criterion_index()
+    refs = sorted(ref for ref, (_criterion, owning_path) in index.items() if owning_path in names)
+    return resolve_contract_refs(refs, contract)
 
 
 def _check_dependency_dag(tasks: list[PlanTask]) -> None:

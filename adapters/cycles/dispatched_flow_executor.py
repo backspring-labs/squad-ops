@@ -110,6 +110,25 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+#: #870: per-entry and per-task bounds on the rejected-repair record — evidence for a
+#: prompt block, not a transcript. Three entries covers every correction attempt any
+#: profile currently budgets; 500 chars keeps a verbose check reason from bloating it.
+_REPAIR_REJECTION_ENTRY_LIMIT = 3
+_REPAIR_REJECTION_CHAR_LIMIT = 500
+
+
+def _record_repair_rejection(carry: dict[str, list[str]] | None, task_id: str, entry: str) -> None:
+    """Append a rejected-repair fact to the run-lived carry (#870), bounded.
+
+    ``None`` carry (legacy call paths, tests) is a no-op — recording evidence is
+    additive and must never fail the acceptance path it documents.
+    """
+    if carry is None:
+        return
+    entries = carry.setdefault(task_id, [])
+    entries.append(entry[:_REPAIR_REJECTION_CHAR_LIMIT])
+    del entries[:-_REPAIR_REJECTION_ENTRY_LIMIT]
+
 
 class DispatchedFlowExecutor(FlowExecutionPort):
     """Flow executor that dispatches tasks to agent containers via RabbitMQ.
@@ -1307,6 +1326,13 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # failure_evidence surfaces them so the loop is TOLD the edit was rejected
         # instead of silently fighting the restore.
         scaffold_enforcement_carry: list[str] = []
+        # #870: run-lived rejected-repair record, keyed by failed task id. A repair
+        # that patch verification or the behavioral retest rejects was previously
+        # discarded with only "patch_retest status=FAILED" in the log — the next
+        # correction round re-analyzed the task blind to WHY the last repair was
+        # rejected (roll 12: a non-compiling repair, and nothing downstream was ever
+        # told it didn't compile). Same transport as scaffold_enforcement_carry.
+        repair_rejection_carry: dict[str, list[str]] = {}
         # SIP-0100 3.4a: run-level contract-compliance counter, SEPARATE from the convergence
         # counter (D6) — cross-lane (unauthorized-slot) emissions don't fail a task on their own,
         # so this bounded budget is the only thing that stops a producer chronically writing
@@ -1480,6 +1506,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     patched_result_holder=_holder,
                     interface_manifest=interface_manifest,
                     budget_guard=_budget_guard,
+                    repair_rejection_carry=repair_rejection_carry,
                 )
                 if action in ("continue", "accept_patch"):
                     # #379: this attempt failed — re-dispatched ("continue") or
@@ -2507,6 +2534,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         enriched_envelope: TaskEnvelope | None = None,
         interface_manifest: Any = None,
         budget_guard: Callable[[], None] | None = None,
+        repair_rejection_carry: dict[str, list[str]] | None = None,
     ) -> str:
         """Route a failed task outcome. Returns an action string.
 
@@ -2609,6 +2637,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             signature_state=correction_signature_state,
             # 3.4b: run-lived restore+signal carry (created beside correction_counter).
             scaffold_enforcement_carry=scaffold_enforcement_carry,
+            # #870: what happened to this task's PREVIOUS repair, so analysis and the
+            # next repair are told instead of re-deriving the failure blind.
+            repair_rejections=(repair_rejection_carry or {}).get(envelope.task_id),
             # RC3 (pf-23): re-resolve the workspace from the LIVE stored_artifacts
             # instead of the enriched envelope's copy captured once at the original
             # dispatch. stored_artifacts accumulates each attempt's repair outputs
@@ -2661,6 +2692,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 profile=profile,
                 flow_run_id=flow_run_id,
                 budget_guard=budget_guard,
+                interface_manifest=interface_manifest,
+                repair_rejection_carry=repair_rejection_carry,
             )
             return action
         elif correction_path == "continue":
@@ -2688,6 +2721,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         flow_run_id: str | None = None,
         enriched_envelope: TaskEnvelope | None = None,
         budget_guard: Callable[[], None] | None = None,
+        interface_manifest: Any = None,
+        repair_rejection_carry: dict[str, list[str]] | None = None,
     ) -> str:
         """Behaviorally verify a patch (#389); return "accept_patch" or "continue".
 
@@ -2725,6 +2760,29 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         workspace_files = ((enriched_envelope or envelope).inputs or {}).get(
             "acceptance_workspace_files"
         ) or {}
+        # #870: the criteria OWNED by the files the repair rewrote, derived from the
+        # canonical contract emission (M0a: emission equals the pinned artifact).
+        # Presence-keyed on the manifest like every other manifest surface; a
+        # derivation failure disables the gate rather than the verification.
+        file_owned: list[Any] = []
+        if interface_manifest is not None:
+            try:
+                from squadops.capabilities.scaffold_contract import emit_contract_dict
+                from squadops.cycles.implementation_plan import resolve_criteria_for_files
+                from squadops.cycles.verification_contract import VerificationContract
+
+                file_owned = resolve_criteria_for_files(
+                    VerificationContract.from_dict(emit_contract_dict(interface_manifest)),
+                    [a.get("name") for a in patched_artifacts if isinstance(a, dict)],
+                )
+            except Exception as exc:
+                logger.warning("patch file-owned gate unavailable: %s", exc)
+        if file_owned:
+            logger.info(
+                "patch file-owned gate: %d criteria own the repaired files (task=%s)",
+                len(file_owned),
+                envelope.task_id,
+            )
         verification = await verify_patched_artifacts(
             criteria,
             patched_artifacts,
@@ -2732,14 +2790,18 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             stack=resolve_check_stack(resolved_config),
             typed_acceptance_enabled=resolved_config.get("typed_acceptance", True),
             command_acceptance_enabled=resolved_config.get("command_acceptance_checks", True),
+            file_owned_criteria=file_owned,
         )
         # pf-33: name the failed checks — "status=failed reason= checks=7" forced
         # a by-hand artifact replay to learn WHICH check rejected the patch.
-        failed_checks = [
-            str(c.get("check", "?"))
-            for c in verification.checks
-            if isinstance(c, dict) and c.get("passed") is False
+        # (#870: the rows are PatchCheckRecord dataclasses; the original dict-shaped
+        # comprehension matched nothing and logged "failed=-" on every rejection.)
+        failed_records = [
+            record
+            for record in verification.checks
+            if record.severity == "error" and record.status in ("failed", "error")
         ]
+        failed_checks = [record.check for record in failed_records]
         logger.info(
             "patch_verification task=%s task_type=%s status=%s reason=%s checks=%d failed=%s",
             envelope.task_id,
@@ -2771,6 +2833,18 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 verification.reason,
             )
         if verification.status != PATCH_PASSED and not retest_decides:
+            # #870: tell the next round WHY this repair was rejected — the named
+            # failed checks with reasons, not just a status in the log.
+            failed_detail = "; ".join(
+                f"{record.check}: {record.reason or 'failed'}" for record in failed_records
+            )
+            _record_repair_rejection(
+                repair_rejection_carry,
+                envelope.task_id,
+                f"correction attempt {correction_attempts}: repair REJECTED by patch "
+                f"verification ({verification.reason or 'failed checks'})"
+                + (f" — {failed_detail}" if failed_detail else ""),
+            )
             return "continue"
 
         corrected_outputs = dict(result.outputs or {})
@@ -2813,13 +2887,41 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 and isinstance(fresh_test_result, dict)
                 and fresh_test_result.get("tests_passed") is True
             )
+            # #870: the retest's own verdict text — previously only a bare
+            # status; roll 12's non-compiling repair died as "status=FAILED
+            # passed=False" and nothing downstream ever learned it didn't build.
+            retest_validation_rows = (retest_outputs.get("validation_result") or {}).get(
+                "checks"
+            ) or []
+            failing_rows = "; ".join(
+                f"{row.get('check', '?')}: {row.get('reason') or 'failed'}"
+                for row in retest_validation_rows
+                if isinstance(row, dict) and row.get("passed") is False
+            )
+            retest_reason = str(
+                (retest_outputs.get("validation_result") or {}).get("summary")
+                or (fresh_test_result or {}).get("summary")
+                or (retest_result.error if retest_result else "")
+                or ""
+            )
+            if failing_rows:
+                retest_reason = (
+                    f"{retest_reason} [{failing_rows}]" if retest_reason else failing_rows
+                )
             logger.info(
-                "patch_retest task=%s status=%s passed=%s",
+                "patch_retest task=%s status=%s passed=%s reason=%s",
                 envelope.task_id,
                 retest_result.status if retest_result else "not_dispatched",
                 retest_passed,
+                retest_reason or "-",
             )
             if not retest_passed:
+                _record_repair_rejection(
+                    repair_rejection_carry,
+                    envelope.task_id,
+                    f"correction attempt {correction_attempts}: repaired suite retest "
+                    f"FAILED — {retest_reason or 'no verdict detail'}",
+                )
                 return "continue"
             corrected_outputs["test_result"] = fresh_test_result
             retest_validation = retest_outputs.get("validation_result")

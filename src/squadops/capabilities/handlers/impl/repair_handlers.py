@@ -96,6 +96,11 @@ _AUTHORITATIVE_EVIDENCE_BLOCKS: tuple[tuple[str, str], ...] = (
     ("scaffold_enforcement", "FROZEN OWNERSHIP"),
     ("error_contract", "ERROR CONTRACT"),
     ("model_surface", "MODEL SURFACE"),
+    # #870: the fate of this task's previous repair — the rejection's named
+    # evidence (failed checks / retest verdict), so a re-repair addresses what
+    # was actually rejected instead of re-rolling blind (roll 12: a repair that
+    # fixed the diagnosed axis and stopped compiling; the next round never knew).
+    ("prior_repair_rejections", "PRIOR REPAIR REJECTED"),
 )
 
 
