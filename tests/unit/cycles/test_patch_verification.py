@@ -393,3 +393,105 @@ class TestWorkspaceFiles:
             },
         )
         assert result.status == PATCH_PASSED
+
+
+def _fill_slot_criterion(pattern: str = "def register") -> TypedCheck:
+    return TypedCheck(
+        check="regex_match",
+        params={"file": "backend/routes.py", "pattern": pattern},
+        severity="error",
+        description="file-owned: routes defines its registration entrypoint",
+        id="vc-routes-entrypoint",
+    )
+
+
+class TestFileOwnedGate:
+    """#870: a repair is gated by the criteria that OWN the files it rewrote.
+
+    Roll 12 (cyc_e4b2444fa300): a dev repair for a qa.test failure re-emitted four
+    routes that no longer compiled. qa.test has no typed criteria, so patch
+    verification was structurally silent and the broken tree sailed into the
+    behavioral retest. The files' own contract criteria — which gated their
+    original authoring — were never consulted.
+    """
+
+    async def test_gate_rejects_a_repair_that_fails_its_files_own_criteria(self):
+        """Bug caught: the roll-12 shape — no task criteria at all, and a repair
+        that violates the rewritten file's own contract reaches the retest."""
+        result = await verify_patched_artifacts(
+            ["prose only"],
+            [{"name": "backend/routes.py", "content": "x = 1\n"}],
+            file_owned_criteria=[_fill_slot_criterion()],
+        )
+        assert result.status == PATCH_FAILED
+        assert result.reason == "file_owned_criteria"
+        assert [r.status for r in result.checks] == ["failed"]
+
+    async def test_gate_pass_still_leaves_the_retest_to_decide(self):
+        """Bug caught: a compiling repair auto-accepted on gate evidence alone —
+        compiling is necessary, never sufficient; with no task criteria the
+        structurally-unevaluable verdict must survive so the retest decides."""
+        result = await verify_patched_artifacts(
+            ["prose only"],
+            [{"name": "backend/routes.py", "content": "def register():\n    pass\n"}],
+            file_owned_criteria=[_fill_slot_criterion()],
+        )
+        assert result.status == PATCH_UNVERIFIABLE
+        assert result.reason == "no_typed_criteria"
+        # The gate's executed evidence still rides on the verdict.
+        assert [r.status for r in result.checks] == ["passed"]
+
+    async def test_an_unevaluable_gate_row_changes_nothing(self):
+        """Bug caught: a gate row this environment cannot execute (stack #2's
+        compile checks — runtime-api has no node) flipping the verdict and
+        severing the retest path. The gate is monotone: only executed failures
+        reject."""
+        skipped_gate = TypedCheck(
+            check="command_exit_zero",
+            params={"argv": ["true"]},
+            severity="error",
+            description="file-owned: needs a toolchain this environment may lack",
+            id="vc-routes-compiles",
+        )
+        result = await verify_patched_artifacts(
+            ["prose only"],
+            [{"name": "backend/routes.py", "content": "x = 1\n"}],
+            file_owned_criteria=[skipped_gate],
+            command_acceptance_enabled=False,
+        )
+        assert result.status == PATCH_UNVERIFIABLE
+        assert result.reason == "no_typed_criteria"
+
+    async def test_gate_dedupes_criteria_the_task_already_carries(self):
+        """Bug caught: a dev-task repair (whose task criteria ARE its file's
+        criteria) evaluating and reporting every check twice."""
+        shared = _fill_slot_criterion()
+        result = await verify_patched_artifacts(
+            [shared],
+            [{"name": "backend/routes.py", "content": "def register():\n    pass\n"}],
+            file_owned_criteria=[shared],
+        )
+        assert result.status == PATCH_PASSED
+        assert len(result.checks) == 1
+
+    async def test_gate_failure_is_named_beside_the_task_criteria(self):
+        """Bug caught: a repair that satisfies the failed task's own criteria but
+        breaks the rewritten file's contract being accepted — the roll-12 shape
+        one level up, where task criteria exist and pass."""
+        result = await verify_patched_artifacts(
+            [
+                TypedCheck(
+                    check="regex_match",
+                    params={"file": "qa_handoff.md", "pattern": "## How to Test"},
+                    severity="error",
+                    description="Contains How to Test section",
+                )
+            ],
+            [
+                {"name": "qa_handoff.md", "content": "# QA Handoff\n## How to Test\n"},
+                {"name": "backend/routes.py", "content": "x = 1\n"},
+            ],
+            file_owned_criteria=[_fill_slot_criterion()],
+        )
+        assert result.status == PATCH_FAILED
+        assert result.reason == "file_owned_criteria"

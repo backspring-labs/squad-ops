@@ -1075,3 +1075,219 @@ class TestAcceptPatchStructurallyUnevaluable:
         )
         assert action == "continue"
         executor._correction_runner.reexecute_repaired_suite.assert_not_awaited()
+
+
+class TestRepairRejectionCarry:
+    """#870: a rejected repair's WHY must survive into the next correction round.
+
+    Roll 12 (cyc_e4b2444fa300): the retest honestly rejected a non-compiling
+    repair, the entire record was "patch_retest status=FAILED passed=False", and
+    the follow-up attempt re-derived the failure blind. These tests pin that
+    every rejection path writes its named evidence to the run-lived carry.
+    """
+
+    def _failed_builder_result(self):
+        return TaskResult(
+            task_id="task_5",
+            status="FAILED",
+            outputs={
+                "artifacts": [
+                    {"name": "qa_handoff.md", "content": "# QA Handoff\n## How to Run\n"}
+                ],
+                "outcome_class": TaskOutcome.SEMANTIC_FAILURE,
+            },
+            error="acceptance failed",
+        )
+
+    def _builder_envelope(self):
+        from squadops.cycles.implementation_plan import TypedCheck
+        from squadops.tasks.models import TaskEnvelope
+
+        return TaskEnvelope(
+            task_id="task_5",
+            agent_id="bob",
+            cycle_id="cyc_001",
+            pulse_id="p",
+            project_id="hello_squad",
+            task_type="builder.assemble",
+            correlation_id="corr",
+            causation_id=None,
+            trace_id="t",
+            span_id="s",
+            inputs={
+                "resolved_config": {},
+                "acceptance_criteria": [
+                    TypedCheck(
+                        check="regex_match",
+                        params={"file": "qa_handoff.md", "pattern": "## How to Test"},
+                        severity="error",
+                        description="Contains How to Test section",
+                    )
+                ],
+            },
+            metadata={"role": "builder"},
+        )
+
+    async def test_rejected_patch_names_its_failed_checks_in_the_carry(self, executor):
+        """Bug caught: a patch-verification rejection recorded as nothing at all —
+        the next round's analysis never told which named check rejected it."""
+        carry: dict = {}
+        action = await executor._try_accept_patch(
+            self._builder_envelope(),
+            self._failed_builder_result(),
+            [{"name": "qa_handoff.md", "content": "# QA Handoff\nstill missing\n"}],
+            {},
+            repair_rejection_carry=carry,
+        )
+        assert action == "continue"
+        (entry,) = carry["task_5"]
+        assert "REJECTED by patch verification" in entry
+        assert "regex_match" in entry
+
+    async def test_accepted_patch_records_nothing(self, executor):
+        """Bug caught: acceptance polluting the carry — a later unrelated failure
+        of the same task would then render a stale 'rejected' block."""
+        carry: dict = {}
+        action = await executor._try_accept_patch(
+            self._builder_envelope(),
+            self._failed_builder_result(),
+            [{"name": "qa_handoff.md", "content": "# QA Handoff\n## How to Test\nok\n"}],
+            {},
+            repair_rejection_carry=carry,
+        )
+        assert action == "accept_patch"
+        assert carry == {}
+
+    async def test_failed_retest_verdict_lands_in_the_carry(self, executor, cycle):
+        """Bug caught: the roll-12 record itself — retest FAILED with the verdict
+        text and failing rows discarded on the spot."""
+        import dataclasses as _dc
+
+        from squadops.cycles.implementation_plan import TypedCheck
+
+        envelope = self._builder_envelope()
+        envelope = _dc.replace(
+            envelope,
+            task_id="task_9",
+            task_type="qa.test",
+            inputs={
+                "resolved_config": {},
+                "artifact_contents": {"src/main.py": "def main():\n    pass\n"},
+                "acceptance_criteria": [
+                    TypedCheck(
+                        check="regex_match",
+                        params={"file": "tests/test_api.py", "pattern": "def test_"},
+                        severity="error",
+                        description="Suite defines tests",
+                    )
+                ],
+            },
+        )
+        failed = TaskResult(
+            task_id="task_9",
+            status="FAILED",
+            outputs={
+                "artifacts": [
+                    {
+                        "name": "tests/test_api.py",
+                        "content": "def test_x():\n    assert 0\n",
+                        "type": "test",
+                    }
+                ],
+                "test_result": {"executed": True, "exit_code": 1, "tests_passed": False},
+                "validation_result": {"passed": False, "checks": []},
+                "outcome_class": TaskOutcome.SEMANTIC_FAILURE,
+            },
+            error="tests failed",
+        )
+        executor._correction_runner.reexecute_repaired_suite = AsyncMock(
+            return_value=TaskResult(
+                task_id="retest",
+                status="FAILED",
+                outputs={
+                    "test_result": {"executed": True, "exit_code": 1, "tests_passed": False},
+                    "validation_result": {
+                        "passed": False,
+                        "summary": "Repaired suite still fails (exit 1)",
+                        "checks": [
+                            {
+                                "check": "frontend_build",
+                                "passed": False,
+                                "reason": "frontend build failed (exit 1)",
+                            }
+                        ],
+                    },
+                },
+                error="still failing",
+            )
+        )
+        carry: dict = {}
+        action = await executor._try_accept_patch(
+            envelope,
+            failed,
+            [{"name": "tests/test_api.py", "content": "def test_x():\n    assert 1\n"}],
+            {},
+            run_id="run_001",
+            cycle=cycle,
+            correction_attempts=2,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+            repair_rejection_carry=carry,
+        )
+        assert action == "continue"
+        (entry,) = carry["task_9"]
+        assert "retest FAILED" in entry
+        assert "Repaired suite still fails (exit 1)" in entry
+        assert "frontend build failed (exit 1)" in entry
+
+    async def test_file_owned_gate_fires_through_the_executor_wiring(self, executor):
+        """Bug caught: the gate existing in patch_verification but the executor
+        never deriving file-owned criteria from the manifest — declared, read by
+        nothing (the #849 class)."""
+        import dataclasses as _dc
+        from pathlib import Path
+
+        from squadops.capabilities.scaffold import InterfaceManifest
+
+        manifest = InterfaceManifest.from_yaml(
+            (
+                Path(__file__).resolve().parents[3]
+                / "examples"
+                / "03_group_run"
+                / "interface_manifest.yaml"
+            ).read_text(encoding="utf-8")
+        )
+        envelope = self._builder_envelope()
+        envelope = _dc.replace(
+            envelope,
+            inputs={"resolved_config": {}, "acceptance_criteria": ["prose only"]},
+        )
+        carry: dict = {}
+        action = await executor._try_accept_patch(
+            envelope,
+            self._failed_builder_result(),
+            [{"name": "backend/routes.py", "content": "x = 1\n"}],
+            {},
+            interface_manifest=manifest,
+            repair_rejection_carry=carry,
+        )
+        assert action == "continue"
+        (entry,) = carry["task_5"]
+        assert "file_owned_criteria" in entry
+
+    def test_the_carry_is_bounded(self):
+        """Bug caught: an unbounded carry growing into the prompt budget."""
+        from adapters.cycles.dispatched_flow_executor import _record_repair_rejection
+
+        carry: dict = {}
+        for n in range(5):
+            _record_repair_rejection(carry, "task_x", f"rejection {n}: " + "y" * 600)
+        entries = carry["task_x"]
+        assert len(entries) == 3
+        assert entries[0].startswith("rejection 2")
+        assert all(len(e) <= 500 for e in entries)
+        # None carry (legacy call paths) is a no-op, never an error.
+        _record_repair_rejection(None, "task_x", "entry")

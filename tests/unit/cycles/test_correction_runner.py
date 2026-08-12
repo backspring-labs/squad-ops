@@ -3735,3 +3735,90 @@ class TestProgressAwareTermination:
                 completed_task_ids=[],
                 plan_delta_refs=[],
             )  # no raise
+
+
+class TestRepairRejectionEvidence(TestCorrectionRunnerStandalone):
+    """#870: the executor's rejected-repair record reaches this attempt's evidence."""
+
+    async def test_prior_rejections_reach_failure_evidence(self, cycle):
+        """Bug caught: a rejected repair leaving no trace — roll 12's follow-up
+        round re-analyzed the task blind to the fact (and the named reason) that
+        the previous repair had been rejected as non-compiling."""
+        captured: list = []
+
+        def responder(envelope):
+            if envelope.task_type == "data.analyze_failure":
+                captured.append(envelope)
+            if envelope.task_type == "governance.correction_decision":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={
+                        "correction_path": "continue",
+                        "decision_rationale": "keep going",
+                        "affected_task_types": [],
+                    },
+                )
+            return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs={})
+
+        runner, _registry, _vault, _bus = self._make_runner(responder)
+        rejections = [
+            "correction attempt 2: repaired suite retest FAILED — Repaired suite "
+            "still fails (exit 1) [frontend_build: frontend build failed (exit 1)]"
+        ]
+
+        await runner.run_correction_protocol(
+            run_id="run_001",
+            cycle=cycle,
+            envelope=self._failed_envelope(),
+            result=TaskResult(task_id="task_failed", status="FAILED", error="bad"),
+            correction_attempts=3,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+            repair_rejections=rejections,
+        )
+
+        assert len(captured) == 1
+        evidence = captured[0].inputs["failure_evidence"]
+        assert evidence["prior_repair_rejections"] == rejections
+
+    async def test_no_rejections_add_no_key(self, cycle):
+        """Bug caught: an empty block rendering a bare authoritative header on
+        every first-time correction."""
+        captured: list = []
+
+        def responder(envelope):
+            if envelope.task_type == "data.analyze_failure":
+                captured.append(envelope)
+            if envelope.task_type == "governance.correction_decision":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={
+                        "correction_path": "continue",
+                        "decision_rationale": "keep going",
+                        "affected_task_types": [],
+                    },
+                )
+            return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs={})
+
+        runner, _registry, _vault, _bus = self._make_runner(responder)
+
+        await runner.run_correction_protocol(
+            run_id="run_001",
+            cycle=cycle,
+            envelope=self._failed_envelope(),
+            result=TaskResult(task_id="task_failed", status="FAILED", error="bad"),
+            correction_attempts=0,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+        )
+
+        assert len(captured) == 1
+        assert "prior_repair_rejections" not in captured[0].inputs["failure_evidence"]

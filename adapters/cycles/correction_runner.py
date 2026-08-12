@@ -368,6 +368,7 @@ def _inject_deterministic_evidence(
     artifact_contents: dict[str, str] | None,
     scaffold_enforcement_carry: list[str] | None,
     bound_record: Any = None,
+    repair_rejections: list[str] | None = None,
 ) -> None:
     """Deterministic authoritative-evidence injection for the correction chain.
 
@@ -380,6 +381,8 @@ def _inject_deterministic_evidence(
       cannot drift, and reporting that it does aims repairs at bytes the producer
       may not write; shk-2 lost three attempts to exactly that).
     - ``scaffold_enforcement`` (3.4b): prior attempts' frozen-emission instructions.
+    - ``prior_repair_rejections`` (#870): what happened to this task's previous
+      repair — patch-verification's named failed checks or the retest verdict.
     - ``contract_expectations`` (pf-31 Fix A): the failed task's typed criteria
       as exact expectation lines.
     - ``error_contract`` (pf-34): the ApiError raise convention + code→status
@@ -419,6 +422,12 @@ def _inject_deterministic_evidence(
 
     if scaffold_enforcement_carry:
         failure_evidence["scaffold_enforcement"] = list(scaffold_enforcement_carry)
+
+    # #870: the fate of this task's previous repair(s) — same transport as
+    # scaffold_enforcement, same reason: the loop must be TOLD an attempt was
+    # rejected (and by which named evidence) rather than silently re-deriving.
+    if repair_rejections:
+        failure_evidence["prior_repair_rejections"] = list(repair_rejections)
 
     expectations = expectation_lines((envelope.inputs or {}).get("acceptance_criteria"))
     if expectations:
@@ -895,6 +904,7 @@ class CorrectionRunner:
         scaffold_enforcement_carry: list[str] | None = None,
         budget_guard: Callable[[], None] | None = None,
         signature_state: dict[str, Any] | None = None,
+        repair_rejections: list[str] | None = None,
     ) -> CorrectionProtocolResult:
         """Run the correction protocol: analyze → decide → act.
 
@@ -918,6 +928,14 @@ class CorrectionRunner:
         (3.4b restore+signal): instructions from prior attempts' frozen-path
         restores are injected into this attempt's ``failure_evidence``, and
         this attempt's restores append new instructions for the next.
+
+        ``repair_rejections`` (#870) is this task's slice of the executor-owned
+        rejected-repair record: what happened to the PREVIOUS attempt's repair
+        (patch verification named checks, or the behavioral retest verdict).
+        Injected as an authoritative evidence block so analysis and the next
+        repair reason about the rejection instead of re-deriving the failure
+        blind — roll 12's non-compiling repair was rejected honestly and
+        nothing downstream was ever told why.
         """
         from uuid import uuid4
 
@@ -952,6 +970,7 @@ class CorrectionRunner:
             artifact_contents=artifact_contents,
             scaffold_enforcement_carry=scaffold_enforcement_carry,
             bound_record=bound_record,
+            repair_rejections=repair_rejections,
         )
 
         # Issue #95: capture each correction step's outputs in its own variable

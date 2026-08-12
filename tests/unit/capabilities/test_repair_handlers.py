@@ -244,3 +244,29 @@ class TestModelSurfaceReachesTheRepairPrompt:
 
         assert evidence.get("model_surface"), "model_surface must be injected for a bound run"
         assert "RunEvent" in " ".join(evidence["model_surface"])
+
+
+class TestPriorRepairRejectionReachesThePrompt:
+    """#870: the rejected-repair record renders as an authoritative block."""
+
+    def test_rejection_entries_render_into_the_failure_summary(self):
+        """Bug caught: evidence threaded to the envelope but rendered by nothing
+        (#849's declared-read-by-nothing shape) — the repair agent still re-rolls
+        blind while the carry claims otherwise."""
+        from squadops.capabilities.handlers.impl.repair_handlers import _format_failure_summary
+
+        evidence = {
+            "error": "tests failed",
+            "prior_repair_rejections": [
+                "correction attempt 2: repaired suite retest FAILED — frontend build "
+                "failed (exit 1)"
+            ],
+        }
+        rendered = _format_failure_summary(evidence, None)
+        assert "PRIOR REPAIR REJECTED" in rendered
+        assert "frontend build failed (exit 1)" in rendered
+
+    def test_absent_rejections_render_no_block(self):
+        from squadops.capabilities.handlers.impl.repair_handlers import _format_failure_summary
+
+        assert "PRIOR REPAIR REJECTED" not in _format_failure_summary({"error": "x"}, None)

@@ -285,6 +285,108 @@ def _coerce_typed_criteria(criteria: list[Any]) -> list[TypedCheck] | None:
     return list(split.typed)
 
 
+def _dedupe_file_owned(
+    file_owned_criteria: list[TypedCheck] | None, typed: list[TypedCheck]
+) -> list[TypedCheck]:
+    """Drop file-owned criteria the failed task already carries (by contract id).
+
+    A dev-task repair's task criteria ARE its file's criteria — without this the
+    same check evaluates and reports twice on every dev patch.
+    """
+    task_criterion_ids = {check.id for check in typed if check.id}
+    return [
+        check
+        for check in (file_owned_criteria or [])
+        if not (check.id and check.id in task_criterion_ids)
+    ]
+
+
+async def _evaluate_file_owned_gate(
+    gate: list[TypedCheck],
+    workspace_root: Path,
+    *,
+    stack: str | None,
+    typed_acceptance_enabled: bool,
+    command_acceptance_enabled: bool,
+) -> tuple[list[PatchCheckRecord], bool]:
+    """Evaluate the #870 file-owned criteria; returns (records, any executed blocking failure).
+
+    Monotone by design (see ``verify_patched_artifacts``): only ``severity=error``
+    + ``status=failed`` counts as a gate failure — evaluator errors and skips are
+    recorded and change nothing, because this environment may lack the stack's
+    toolchain and the behavioral retest still covers those checks where it runs.
+    """
+    records: list[PatchCheckRecord] = []
+    failed = False
+    for criterion in gate:
+        outcome = await evaluate_criterion(
+            criterion,
+            workspace_root,
+            stack=stack,
+            typed_acceptance_enabled=typed_acceptance_enabled,
+            command_acceptance_enabled=command_acceptance_enabled,
+        )
+        records.append(
+            PatchCheckRecord(
+                check=criterion.check,
+                severity=criterion.severity,
+                status=outcome.status,
+                description=criterion.description or "file-owned criterion (#870)",
+                reason=outcome.reason,
+                actual=outcome.actual,
+            )
+        )
+        if criterion.severity == "error" and outcome.status == "failed":
+            failed = True
+    return records, failed
+
+
+async def _evaluate_task_criteria(
+    typed: list[TypedCheck],
+    workspace_root: Path,
+    records: list[PatchCheckRecord],
+    *,
+    stack: str | None,
+    typed_acceptance_enabled: bool,
+    command_acceptance_enabled: bool,
+) -> tuple[bool, int, str | None]:
+    """Evaluate the failed task's own criteria, appending rows to *records*.
+
+    Returns ``(blocking_failure, blocking_passed, evaluator_error_check)`` for the
+    RC-9 verdict logic in ``verify_patched_artifacts``; a non-None third element
+    aborts evaluation (evaluator broke — the whole verification is untrustworthy).
+    """
+    blocking_failure = False
+    blocking_passed = 0
+    for criterion in typed:
+        outcome = await evaluate_criterion(
+            criterion,
+            workspace_root,
+            stack=stack,
+            typed_acceptance_enabled=typed_acceptance_enabled,
+            command_acceptance_enabled=command_acceptance_enabled,
+        )
+        records.append(
+            PatchCheckRecord(
+                check=criterion.check,
+                severity=criterion.severity,
+                status=outcome.status,
+                description=criterion.description or "",
+                reason=outcome.reason,
+                actual=outcome.actual,
+            )
+        )
+        if criterion.severity != "error":
+            continue
+        if outcome.status == "error":
+            return blocking_failure, blocking_passed, criterion.check
+        if outcome.status == "failed":
+            blocking_failure = True
+        elif outcome.status == "passed":
+            blocking_passed += 1
+    return blocking_failure, blocking_passed, None
+
+
 async def verify_patched_artifacts(
     criteria: list[Any],
     artifacts: list[dict[str, Any]],
@@ -293,6 +395,7 @@ async def verify_patched_artifacts(
     stack: str | None = None,
     typed_acceptance_enabled: bool = True,
     command_acceptance_enabled: bool = True,
+    file_owned_criteria: list[TypedCheck] | None = None,
 ) -> PatchVerification:
     """Re-run the failed task's typed acceptance criteria against *artifacts*.
 
@@ -306,16 +409,26 @@ async def verify_patched_artifacts(
     verification substrate only — never part of what an accepted patch stores.
     Runtime-level checks (module_imports, the #591 import pre-gate) are
     meaningless without the scaffold siblings the patched file imports.
+
+    ``file_owned_criteria`` (#870) are the contract criteria owned by the files
+    the repair rewrote (``resolve_criteria_for_files``) — a repair for a
+    qa.test failure is otherwise judged against nothing structural at all
+    (roll 12: four re-emitted routes that no longer compiled sailed to the
+    retest). The gate is deliberately MONOTONE: an executed blocking failure
+    rejects the patch; an evaluator error or skip changes nothing (this
+    environment may lack the stack's toolchain — runtime-api has no node, so
+    stack #2's compile checks cannot execute here today; the behavioral retest
+    remains the compile gate in the qa environment). Gate rows never count as
+    positive acceptance evidence — compiling is necessary, not sufficient.
     """
     typed = _coerce_typed_criteria(criteria)
     if typed is None:
         return PatchVerification(status=PATCH_UNVERIFIABLE, reason="unparseable_criteria")
-    if not typed:
+    gate = _dedupe_file_owned(file_owned_criteria, typed)
+    if not typed and not gate:
         return PatchVerification(status=PATCH_UNVERIFIABLE, reason=REASON_NO_TYPED_CRITERIA)
 
     records: list[PatchCheckRecord] = []
-    blocking_failure = False
-    blocking_passed = 0
     # #734 Slice A: name the exact workspace mapping evaluated below — computed
     # from the parameter (the post-filter mapping handed in), never store state.
     from squadops.sandbox.models import compute_revision_id
@@ -348,41 +461,53 @@ async def verify_patched_artifacts(
                 workspace_revision_id=revision_id,
             )
 
-        for criterion in typed:
-            outcome = await evaluate_criterion(
-                criterion,
-                workspace_root,
-                stack=stack,
-                typed_acceptance_enabled=typed_acceptance_enabled,
-                command_acceptance_enabled=command_acceptance_enabled,
+        # #870 file-owned gate, BEFORE the task-criteria loop: an executed blocking
+        # failure rejects the patch outright; anything else (pass / skip / evaluator
+        # error) falls through to the existing logic unchanged, and gate rows never
+        # feed ``blocking_passed`` — rejection power only, per the docstring.
+        gate_records, gate_failed = await _evaluate_file_owned_gate(
+            gate,
+            workspace_root,
+            stack=stack,
+            typed_acceptance_enabled=typed_acceptance_enabled,
+            command_acceptance_enabled=command_acceptance_enabled,
+        )
+        records.extend(gate_records)
+        if gate_failed:
+            return PatchVerification(
+                status=PATCH_FAILED,
+                checks=tuple(records),
+                reason="file_owned_criteria",
+                workspace_revision_id=revision_id,
+            )
+        if not typed:
+            # The gate could not reject and the failed task itself has no typed
+            # criteria — same structurally-unevaluable verdict as before the gate
+            # existed, so the behavioral retest still decides (pf-47/pf-49).
+            return PatchVerification(
+                status=PATCH_UNVERIFIABLE,
+                checks=tuple(records),
+                reason=REASON_NO_TYPED_CRITERIA,
+                workspace_revision_id=revision_id,
             )
 
-            records.append(
-                PatchCheckRecord(
-                    check=criterion.check,
-                    severity=criterion.severity,
-                    status=outcome.status,
-                    description=criterion.description or "",
-                    reason=outcome.reason,
-                    actual=outcome.actual,
-                )
+        blocking_failure, blocking_passed, evaluator_error = await _evaluate_task_criteria(
+            typed,
+            workspace_root,
+            records,
+            stack=stack,
+            typed_acceptance_enabled=typed_acceptance_enabled,
+            command_acceptance_enabled=command_acceptance_enabled,
+        )
+        if evaluator_error is not None:
+            # Evaluator couldn't run in this environment — the whole
+            # verification is untrustworthy, not just this row.
+            return PatchVerification(
+                status=PATCH_UNVERIFIABLE,
+                checks=tuple(records),
+                reason=f"evaluator_error:{evaluator_error}",
+                workspace_revision_id=revision_id,
             )
-
-            if criterion.severity != "error":
-                continue
-            if outcome.status == "error":
-                # Evaluator couldn't run in this environment — the whole
-                # verification is untrustworthy, not just this row.
-                return PatchVerification(
-                    status=PATCH_UNVERIFIABLE,
-                    checks=tuple(records),
-                    reason=f"evaluator_error:{criterion.check}",
-                    workspace_revision_id=revision_id,
-                )
-            if outcome.status == "failed":
-                blocking_failure = True
-            elif outcome.status == "passed":
-                blocking_passed += 1
 
     if blocking_failure:
         return PatchVerification(
