@@ -335,3 +335,81 @@ def test_next_js_ids_name_the_directory_that_distinguishes_the_slot():
     assert "vc-compiles-app-api-runs-run-id-join-route" in ids
     assert "vc-compiles-app-api-runs-run-id-leave-route" in ids
     assert len({i for i in ids if i.endswith("-route")}) == 4
+
+
+# --------------------------------------------------------------------------- #
+# #874 — the rejects-blank expectation is the pack's call
+# --------------------------------------------------------------------------- #
+
+
+def _remap_validation(manifest: InterfaceManifest, http: int | None) -> InterfaceManifest:
+    """The manifest with validation_error remapped to *http* (None = removed)."""
+    import dataclasses
+
+    ec = manifest.api.error_contract
+    assert ec is not None
+    codes = tuple(
+        dataclasses.replace(code, http=http) if code.code == "validation_error" else code
+        for code in ec.codes
+        if not (code.code == "validation_error" and http is None)
+    )
+    return dataclasses.replace(
+        manifest,
+        api=dataclasses.replace(manifest.api, error_contract=dataclasses.replace(ec, codes=codes)),
+    )
+
+
+def _rejection_expects(contract: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        probe["expect"]
+        for probe in contract["behavioral"]["probes"]
+        if probe["id"].endswith("rejects-blank")
+    ]
+
+
+def test_a_seam_owned_stack_derives_the_rejection_status_from_the_authored_mapping():
+    """Roll 13 (cyc_732b773cf323): the author mapped validation_error to 400, the frozen
+    seam therefore returns 400, and the hardcoded-422 probe made the contract contradict
+    itself in one YAML — unwinnable by construction, one correction burned before triage.
+    On a stack whose frozen error seam owns validation status, the probe must expect what
+    the seam will deliver."""
+    from tests.unit.capabilities._stack_fixtures import manifest_for_stack
+
+    manifest = _remap_validation(manifest_for_stack("nextjs_ts"), 400)
+    expects = _rejection_expects(emit_contract_dict(manifest))
+    assert expects and all(e["status"] == 400 for e in expects)
+
+
+def test_a_framework_fixed_stack_keeps_422_whatever_the_author_declares():
+    """The inverse trap: pydantic rejects a blank required field with its native 422
+    before any app code runs, so on stack #1 deriving from a 400 mapping would emit a
+    probe no correct app can pass — the same defect, mirrored."""
+    manifest = _remap_validation(_manifest(), 400)
+    expects = _rejection_expects(emit_contract_dict(manifest))
+    assert expects and all(e["status"] == 422 for e in expects)
+
+
+def test_an_unmapped_validation_error_omits_the_probe_on_a_seam_owned_stack():
+    """An expectation the seam cannot deliver is the same defect with extra steps: the
+    frozen handler resolves an unmapped code to 500, so any declared status loses."""
+    from tests.unit.capabilities._stack_fixtures import manifest_for_stack
+
+    manifest = _remap_validation(manifest_for_stack("nextjs_ts"), None)
+    assert _rejection_expects(emit_contract_dict(manifest)) == []
+
+
+def test_the_probe_and_the_coverage_expectation_cannot_disagree_on_a_seam_owned_stack():
+    """The self-consistency roll 13 lacked: the same derived YAML said
+    'validation_error -> HTTP 400' in coverage_expectations and 'status: 422' in the
+    probe. Whatever the author maps, both lines must say the same number."""
+    import re
+
+    from tests.unit.capabilities._stack_fixtures import manifest_for_stack
+
+    for http in (400, 422):
+        contract = emit_contract_dict(_remap_validation(manifest_for_stack("nextjs_ts"), http))
+        expects = _rejection_expects(contract)
+        coverage = "\n".join(contract["behavioral"]["suite"]["coverage_expectations"])
+        stated = re.search(r"validation_error -> HTTP (\d+)", coverage)
+        assert stated is not None
+        assert expects and all(e["status"] == int(stated.group(1)) for e in expects)
