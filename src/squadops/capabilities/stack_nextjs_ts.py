@@ -229,9 +229,19 @@ const nextConfig = { typescript: { ignoreBuildErrors: false } }
 export default nextConfig
 """
 
-_VITEST_CONFIG = """import { defineConfig } from 'vitest/config'
+_VITEST_CONFIG = """// The `@` alias is declared twice by necessity: tsconfig.json `paths` covers `tsc` and
+// `next build`, but vitest resolves through vite, which does not read tsconfig paths —
+// without this block every suite importing app code the way this stack teaches it
+// (`@/lib/store`) fails collection with "Failed to load url", including the scaffold's
+// own harness test. The two declarations must agree; a test pins them together.
+import { defineConfig } from 'vitest/config'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const root = path.dirname(fileURLToPath(import.meta.url))
 
 export default defineConfig({
+  resolve: { alias: { '@': root } },
   test: { environment: 'node', include: ['**/__tests__/**/*.test.ts'] },
 })
 """

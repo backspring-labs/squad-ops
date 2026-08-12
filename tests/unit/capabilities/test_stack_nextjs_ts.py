@@ -237,6 +237,40 @@ def test_the_probe_profile_builds_before_it_boots():
     assert "start" in profile.boot_argv
 
 
+def test_the_probe_prepare_installs_without_a_lockfile():
+    """Roll 10 (cyc_43a216d43e1e): the scaffold emits no `package-lock.json` — an
+    offline-deterministic expansion cannot produce one — and `npm ci` EUSAGE-refuses
+    without a lockfile, so every probe reported "subject preparation failed" and 4 of 11
+    contract criteria went unverified. Two facts pinned together: as long as the expansion
+    carries no lockfile, preparation must not use the lockfile-only installer."""
+    names = _names(_manifest())
+    profile = pr.profile_for_stack(_STACK)
+    prepare = " ".join(profile.prepare_argv)
+
+    assert not any(n.endswith(("package-lock.json", "npm-shrinkwrap.json")) for n in names)
+    assert "npm ci" not in prepare
+    assert "npm install" in prepare
+
+
+def test_vitest_resolves_the_alias_the_stack_teaches():
+    """Roll 10 (cyc_43a216d43e1e): every frozen file imports via `@/` and tsconfig declares
+    the alias, but vitest resolves through vite, which does not read tsconfig paths — so the
+    scaffold's own harness test failed collection ("Failed to load url @/lib/store") and
+    `tests_pass` was unwinnable by construction. Three facts must agree, pinned from the
+    EXPANDED files so a template edit cannot silently split them: tsconfig declares `@/*`,
+    vitest.config declares the resolve alias, and the harness test uses the taught form."""
+    files = {f["name"]: f["content"] for f in expand(_manifest())}
+
+    tsconfig = json.loads(files["tsconfig.json"])
+    assert "@/*" in tsconfig["compilerOptions"]["paths"]
+
+    vitest_cfg = files["vitest.config.ts"]
+    assert "resolve" in vitest_cfg and "alias" in vitest_cfg
+    assert "'@': root" in vitest_cfg
+
+    assert "from '@/lib/store'" in files["__tests__/harness.test.ts"]
+
+
 def test_the_typed_check_vocabulary_is_declared_empty_not_guessed():
     """#503's conservative default. The AST evaluators are Python implementations never
     verified against this stack, so its checks must skip rather than be fed a guess."""

@@ -114,7 +114,14 @@ _PROFILES: dict[str, ExecutionProfile] = {
         # so a prepare step that stopped at install would boot into "no production build
         # found" and report as a boot failure — the exact conflation #827 separated. `sh -c`
         # for the two-step, matching the sandbox contract's INSTALL_DEPENDENCIES precedent.
-        prepare_argv=("sh", "-c", "npm ci --no-audit --no-fund && npx next build"),
+        #
+        # `npm install`, NOT `npm ci` (roll 10, cyc_43a216d43e1e): the scaffold emits no
+        # `package-lock.json` — an offline-deterministic expansion cannot produce one — and
+        # `npm ci` EUSAGE-refuses without a lockfile, so every probe on this stack reported
+        # "subject preparation failed" with npm's usage text as the tail. Install is also
+        # what every other surface runs (the frontend build check and the vitest runner),
+        # so preparation cannot succeed or fail differently from the checks beside it.
+        prepare_argv=("sh", "-c", "npm install --no-audit --no-fund && npx next build"),
         boot_argv=("npx", "next", "start", "--port", "{port}"),
     ),
 }
