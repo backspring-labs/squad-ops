@@ -184,7 +184,7 @@
       "- `frontend/src/test-setup.js`",
       "- `frontend/src/__tests__/harness.test.jsx` \u2014 its own imports `../App.jsx`, `@testing-library/react`, `react-router-dom`, `vitest`",
       "- `frontend/src/main.jsx` \u2014 its own imports `./App.jsx`, `react`, `react-dom/client`, `react-router-dom`",
-      "- `frontend/src/api.js` \u2014 functions apiFetch(path, options)",
+      "- `frontend/src/api.js` \u2014 classes `ApiError(code, message, status)`; functions `apiFetch(path, options = {})`",
       "- `frontend/src/App.jsx` \u2014 its own imports `./views/CreateRunView.jsx`, `./views/RunDetailView.jsx`, `./views/RunsListView.jsx`, `react-router-dom`"
      ],
      "prd": "PRD-CONTENT",
@@ -293,7 +293,7 @@
       "- `frontend/src/test-setup.js`",
       "- `frontend/src/__tests__/harness.test.jsx` \u2014 its own imports `../App.jsx`, `@testing-library/react`, `react-router-dom`, `vitest`",
       "- `frontend/src/main.jsx` \u2014 its own imports `./App.jsx`, `react`, `react-dom/client`, `react-router-dom`",
-      "- `frontend/src/api.js` \u2014 functions apiFetch(path, options)",
+      "- `frontend/src/api.js` \u2014 classes `ApiError(code, message, status)`; functions `apiFetch(path, options = {})`",
       "- `frontend/src/App.jsx` \u2014 its own imports `./views/CreateRunView.jsx`, `./views/RunDetailView.jsx`, `./views/RunsListView.jsx`, `react-router-dom`"
      ],
      "prd": "PRD-CONTENT",

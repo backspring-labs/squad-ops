@@ -754,6 +754,10 @@ def _python_surface(source: str, name: str = "") -> str:
     # author cannot see is a signature it will guess. Names only, not annotations: the index
     # is prose for an author, and `insert(table, row)` carries the arity and the meaning
     # while the full type costs a line's readability for something the caller never restates.
+    # #871 revised that trade for the ECMAScript reader only (roll 12: `find(table, id)`
+    # concealed `id: string`, the repair invented numeric ids, the tree stopped compiling).
+    # This reader stays names-only until a Python roll fails on a concealed type — its
+    # frozen sources annotate optionally, so rendered types would be intermittent anyway.
     functions = [
         f"{node.name}({', '.join(a.arg for a in node.args.args if a.arg != 'self')})"
         for node in tree.body
@@ -781,24 +785,40 @@ def _python_surface(source: str, name: str = "") -> str:
 
 
 _TS_INTERFACE = re.compile(r"^export\s+(?:interface|type)\s+(\w+)", re.M)
-#: Name, then an optional generic list, then the arguments. The generic clause is not
-#: optional in practice — `lib/api.ts` declares `export async function api<T>(...)`, and a
-#: pattern without it silently rendered that file as a bare name (caught before commit).
+#: Name, then an optional generic list, the arguments, then an optional return type up to
+#: the body brace. The generic clause is not optional in practice — `lib/api.ts` declares
+#: `export async function api<T>(...)`, and a pattern without it silently rendered that
+#: file as a bare name (caught before commit). The return-type clause stops at `{` or
+#: newline, so an object-literal return type would truncate — no emitted file declares
+#: one, and this reader is scoped to the expanders' known shapes by design.
 _TS_FUNCTION = re.compile(
-    r"^export\s+(?:async\s+)?function\s+(\w+)\s*(?:<[^>]*>)?\s*\(([^)]*)\)", re.M
+    r"^export\s+(?:async\s+)?function\s+(\w+)\s*(?:<[^>]*>)?\s*\(([^)]*)\)\s*(?::\s*([^{\n]+?))?\s*\{",
+    re.M,
 )
+#: #871: `export class` had no clause at all, so frozen `lib/errors.ts` rendered as
+#: "exports ERROR_STATUS; functions errorResponse(err)" — `ApiError`, the one seam the
+#: error contract expects every route to use, was never named. Roll 12's original defect
+#: is the invention that predicts: m001 passed a bare string to `errorResponse()`
+#: (TypeScript-legal, the param is `unknown`) and every error path returned 500.
+_TS_CLASS = re.compile(r"^export\s+(?:abstract\s+)?class\s+(\w+)", re.M)
+_TS_CONSTRUCTOR = re.compile(r"constructor\s*\(([^)]*)\)", re.S)
+#: Constructor parameter-property modifiers (`public code: string`) — stripped so the
+#: rendered signature is the call form, not the declaration form.
+_TS_PARAM_MODIFIERS = re.compile(r"^(?:(?:public|private|protected|readonly)\s+)+")
 _TS_CONST = re.compile(r"^export\s+const\s+(\w+)", re.M)
-_TS_FIELD = re.compile(r"^\s{2}(\w+)\??:", re.M)
+_TS_FIELD = re.compile(r"^\s{2}(\w+\??: *[^\n;,]+)", re.M)
 _TS_IMPORT = re.compile(r"""^import\s+[^'"]*from\s+['"]([^'"]+)['"]""", re.M)
 
 
-def _ts_param_names(params: str) -> list[str]:
-    """``table: string, row: Record<string, unknown> = {}`` → ``["table", "row"]``.
+def _ts_param_list(params: str) -> list[str]:
+    """``table: string,\n  row: Record<string, unknown> = {}`` → the params, one string each.
 
     Splits on top-level commas only: a generic or object type carries its own commas
     (``Record<string, unknown>``), and splitting naively would invent parameters.
+    Whitespace is collapsed; types and defaults are KEPT (#871) — see the revision note
+    on the rendering site below.
     """
-    names: list[str] = []
+    segments: list[str] = []
     depth = 0
     current = ""
     for ch in params:
@@ -807,12 +827,12 @@ def _ts_param_names(params: str) -> list[str]:
         elif ch in ">)]}":
             depth -= 1
         if ch == "," and depth == 0:
-            names.append(current)
+            segments.append(current)
             current = ""
         else:
             current += ch
-    names.append(current)
-    return [n.split(":")[0].split("=")[0].strip() for n in names if n.strip()]
+    segments.append(current)
+    return [" ".join(seg.split()) for seg in segments if seg.strip()]
 
 
 def _ecmascript_surface(source: str) -> str:
@@ -838,21 +858,47 @@ def _ecmascript_surface(source: str) -> str:
     interfaces: list[str] = []
     for match in _TS_INTERFACE.finditer(source):
         body = source[match.end() :].split("}", 1)[0]
-        fields = _TS_FIELD.findall(body)
-        interfaces.append(f"{match.group(1)}({', '.join(fields)})" if fields else match.group(1))
-    # #863: name plus parameter names, for the reason recorded on `_python_surface`.
-    # Each param arrives as `table: string` or `row: Record<string, unknown> = {}`; the
-    # index keeps the name and drops the annotation and default.
-    functions = [
-        f"{name}({', '.join(_ts_param_names(params))})"
-        for name, params in _TS_FUNCTION.findall(source)
-    ]
+        fields = [" ".join(f.split()).rstrip(",;") for f in _TS_FIELD.findall(body)]
+        interfaces.append(
+            f"`{match.group(1)}({', '.join(fields)})`" if fields else f"`{match.group(1)}`"
+        )
+    # #871 revises the #863 names-only ruling FOR THIS READER: types and defaults are
+    # kept, and the return type is rendered. Roll 12's repair invented a numeric-id
+    # scheme in exactly the blind spot names-only leaves — `find(table, id)` concealed
+    # `id: string` and `nextId()` concealed its `string` return, so the repair wrote
+    # `find('runs', Number(run_id))` and the tree stopped compiling. The types are
+    # literal in the frozen source; concealing them traded a line's readability for a
+    # terminal run. `_python_surface` deliberately stays names-only — no Python roll
+    # has failed on a concealed type, and its frozen sources annotate optionally.
+    # Signatures are backtick-wrapped so commas inside types (`Record<string, unknown>`)
+    # never read as list separators.
+    functions = []
+    for name, params, ret in _TS_FUNCTION.findall(source):
+        signature = f"{name}({', '.join(_ts_param_list(params))})"
+        if ret.strip():
+            signature += f": {ret.strip()}"
+        functions.append(f"`{signature}`")
+    # #871: a class's call surface is its constructor. Bounded at the next top-level
+    # `export` so one class's constructor is never attributed to the class before it.
+    classes: list[str] = []
+    for match in _TS_CLASS.finditer(source):
+        body = source[match.end() :]
+        next_export = re.search(r"^export\s", body, re.M)
+        if next_export:
+            body = body[: next_export.start()]
+        ctor = _TS_CONSTRUCTOR.search(body)
+        ctor_params = [
+            _TS_PARAM_MODIFIERS.sub("", p) for p in _ts_param_list(ctor.group(1) if ctor else "")
+        ]
+        classes.append(f"`{match.group(1)}({', '.join(ctor_params)})`")
     consts = _TS_CONST.findall(source)
     modules = sorted(set(_TS_IMPORT.findall(source)))
 
     parts = []
     if interfaces:
         parts.append("defines " + ", ".join(interfaces))
+    if classes:
+        parts.append("classes " + ", ".join(classes))
     if consts:
         parts.append("exports " + ", ".join(consts))
     if functions:
