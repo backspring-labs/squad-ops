@@ -346,3 +346,33 @@ def test_two_paths_disagreeing_on_a_slug_name_are_refused():
     """
     with pytest.raises(ValueError, match="same position in the routing tree"):
         fill_slot_paths(_with_api_paths(["/runs/{run_id}"], routes=["/runs/:id"]))
+
+
+# --------------------------------------------------------------------------- #
+# The qa supplement states how the suite executes (#877)
+# --------------------------------------------------------------------------- #
+
+
+def test_the_test_supplement_states_the_serverless_execution_model():
+    """Roll 14 (cyc_25b4a9b0b637): the qa author wrote live-`fetch` tests against
+    localhost because nothing it was shown said the suite runs in a plain Node
+    process with no server. The supplement is the stack-conditioned seam that owns
+    this fact — if a rewrite drops it, that loss mode returns silently.
+    """
+    supplement = DEV_CAPABILITIES[_STACK].test_prompt_supplement
+
+    assert "NO server" in supplement
+    assert "localhost" in supplement  # the prohibition names the thing authors reach for
+    assert "vitest run" in supplement
+
+
+def test_the_test_supplement_shows_in_process_handler_invocation():
+    """The prohibition alone leaves the author with no replacement strategy; the
+    supplement must also show the working pattern — import the route handler,
+    invoke it with a Request, including the params form for dynamic routes.
+    """
+    supplement = DEV_CAPABILITIES[_STACK].test_prompt_supplement
+
+    assert "from '@/app/api/runs/route'" in supplement
+    assert "new Request(" in supplement
+    assert "{ params:" in supplement
