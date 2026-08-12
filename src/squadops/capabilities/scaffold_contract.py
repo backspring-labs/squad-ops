@@ -63,7 +63,8 @@ class CriteriaPack:
     Deliberately NOT covering the manifest-derived tiers. Probes, coverage expectations,
     the frozen-file hashing, and ``skeleton.expander`` are language-agnostic already, which
     is why this seam is small — and is S2's HTTP-constant containment argument paying off
-    exactly where it was meant to.
+    exactly where it was meant to. (#874 carved out one probe fact: the blank-rejection
+    status is framework-dependent, so it lives here — see ``blank_rejection_status``.)
     """
 
     name: str
@@ -73,6 +74,16 @@ class CriteriaPack:
     build_criteria: Callable[[], list[dict[str, Any]]]
     #: ``behavioral.suite.checks`` — what proves its test suite ran.
     suite_criteria: Callable[[], list[dict[str, Any]]]
+    #: #874: what the rejects-blank probe expects. An ``int`` is a framework-FIXED status
+    #: (stack #1: pydantic rejects blank required fields with its native 422 *before* any
+    #: app code runs, so the manifest's declared mapping is unenforceable for this probe).
+    #: ``None`` means the stack's frozen error seam owns validation status, so the
+    #: expectation derives from ``error_contract.codes[validation_error].http`` — roll 13
+    #: (cyc_732b773cf323) authored that mapping as 400, the hardcoded 422 contradicted the
+    #: seam in the same derived YAML, and the probe was unwinnable by construction. When
+    #: deriving and the mapping is absent, the probe is omitted: an expectation the seam
+    #: cannot deliver is the same defect with extra steps.
+    blank_rejection_status: int | None = None
 
 
 def emit_contract_dict(manifest: InterfaceManifest) -> dict[str, Any]:
@@ -207,7 +218,7 @@ def _behavioral(manifest: InterfaceManifest, pack: CriteriaPack) -> dict[str, An
             "checks": pack.suite_criteria(),
             "coverage_expectations": _coverage_expectations(manifest),
         },
-        "probes": _probes(manifest),
+        "probes": _probes(manifest, pack),
     }
 
 
@@ -284,6 +295,9 @@ _CRITERIA_PACKS: dict[str, CriteriaPack] = {
         suite_criteria=lambda: [
             {"check": "tests_pass", "id": "vc-suite-passes", "requires": CAP_NODE},
         ],
+        # #874: no framework preempts the frozen error seam — route handlers shape every
+        # status — so the rejects-blank expectation derives from the authored mapping.
+        blank_rejection_status=None,
     ),
     "fullstack_fastapi_react": CriteriaPack(
         name="fullstack_fastapi_react",
@@ -294,6 +308,9 @@ _CRITERIA_PACKS: dict[str, CriteriaPack] = {
         suite_criteria=lambda: [
             {"check": "tests_pass", "id": "vc-suite-passes", "requires": CAP_PYTHON},
         ],
+        # #874: pydantic 422s a blank required field before any stub or fill body runs;
+        # the declared error-contract mapping cannot change what the framework emits.
+        blank_rejection_status=422,
     ),
 }
 
@@ -366,7 +383,7 @@ def _probe_sample_value(field_name: str, field_type: str) -> Any:
     return "sample"
 
 
-def _probes(manifest: InterfaceManifest) -> list[dict[str, Any]]:
+def _probes(manifest: InterfaceManifest, pack: CriteriaPack) -> list[dict[str, Any]]:
     """POST-create probes plus their sequenced child-action probes (#651, v8).
 
     fay-3 shipped a broken join as "functional": v7 probed create + blank
@@ -417,27 +434,44 @@ def _probes(manifest: InterfaceManifest) -> list[dict[str, Any]]:
         probes.append(create_probe)
         # #593: the blank-input rejection probe. pf-38 volunteered blank-field
         # guards and pf-39 didn't — both green, because nothing required OR
-        # tested the behavior. The scaffold model now owns the constraint
-        # (NonBlankStr on required request fields), so this probe is a
-        # scaffold-owned regression guard: pydantic rejects the blank body
-        # before any stub or fill body runs, hence guards="scaffold" (passes
-        # on the bare skeleton by design — the frontend_build class, not the
-        # tests_pass class). Emitted only alongside an error contract, whose
-        # frozen handler shapes the 422 validation_error envelope.
+        # tested the behavior. The scaffold owns the constraint (stack #1:
+        # NonBlankStr on required request fields; stack #2: the frozen route
+        # stub's required-field guard), so this probe is a scaffold-owned
+        # regression guard, hence guards="scaffold" (passes on the bare
+        # skeleton by design — the frontend_build class, not the tests_pass
+        # class). Emitted only alongside an error contract.
+        #
+        # #874: the expected status is the pack's call, pf-39's lesson applied
+        # to the rejection side (that comment above records the SUCCESS status
+        # being un-hardcoded; this one stayed hardcoded 422 and roll 13's
+        # authored `validation_error: 400` derived a contract that contradicted
+        # its own frozen seam — unwinnable by construction, masked before by
+        # every author happening to declare 422). A framework-fixed status
+        # (pydantic's 422) stays fixed; a seam-owned stack derives from the
+        # authored mapping, and an unmapped code omits the probe.
         if shape and shape.required and manifest.api.error_contract:
-            probes.append(
-                {
-                    "id": f"vc-probe-{_slug(ep.path) or 'root'}-rejects-blank",
-                    "subject": "backend",
-                    "request": {
-                        "method": ep.method,
-                        "path": ep.path,
-                        "json": dict.fromkeys(shape.required, ""),
-                    },
-                    "expect": {"status": 422, "error_code": "validation_error"},
-                    "guards": "scaffold",
-                }
+            expected_rejection = (
+                pack.blank_rejection_status
+                if pack.blank_rejection_status is not None
+                else error_http.get("validation_error")
             )
+            if expected_rejection is not None:
+                probes.append(
+                    {
+                        "id": f"vc-probe-{_slug(ep.path) or 'root'}-rejects-blank",
+                        "subject": "backend",
+                        "request": {
+                            "method": ep.method,
+                            "path": ep.path,
+                            "json": dict.fromkeys(shape.required, ""),
+                        },
+                        "expect": {
+                            "status": expected_rejection,
+                            "error_code": "validation_error",
+                        },
+                        "guards": "scaffold",
+                    }
+                )
 
         # #651 (v8): sequenced child-action probes. A child is a POST under
         # this create's path with exactly one path parameter
