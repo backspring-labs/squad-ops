@@ -38,6 +38,16 @@ def failure_signature(failure_evidence: dict[str, Any]) -> frozenset[tuple[str, 
     no product signature: an infra round (``extraction_loss`` /
     ``emission_failure`` — the A3 categories own its routing) or no failing
     rows at all.
+
+    #878 (minimum): the runner's structured ``suite_broken`` verdict joins the
+    reason token when present. It is a machine fact, not prose, so the
+    evidence-text rule above is intact — and without it a behavioral failure
+    (suite ran, assertions failed) and a discovery failure (no collectable
+    suite) collapse into one ``tests_pass||failed`` element: roll 15
+    (run_783f50a2d564) was terminated as a false exact-repeat across exactly
+    that pair, one round before the #886 own-artifact routing would have
+    repaired the second failure. Absent/None (legacy rows, non-suite checks)
+    leaves the token byte-identical to the pre-#878 form.
     """
     if not isinstance(failure_evidence, dict):
         return None
@@ -66,6 +76,10 @@ def failure_signature(failure_evidence: dict[str, Any]) -> frozenset[tuple[str, 
             if isinstance(reason, str) and reason
             else str(row.get("status", ResultStatus.FAILED))
         )
+        suite_broken = row.get("suite_broken")
+        if suite_broken is not None:
+            health = "broken" if suite_broken else "ran"
+            reason_token = f"{reason_token};suite_health={health}"
         elements.add((check_id, subject, reason_token))
     return frozenset(elements) if elements else None
 
