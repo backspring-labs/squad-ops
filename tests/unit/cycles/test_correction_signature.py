@@ -125,3 +125,45 @@ class TestTerminationRule:
     def test_render_is_stable_and_sorted(self):
         sig = frozenset({("b", "f2", "r2"), ("a", "f1", "r1")})
         assert render_signature(sig) == ("a|f1|r1", "b|f2|r2")
+
+
+class TestSuiteHealthDiscriminator:
+    """#878 (minimum): the runner's structured suite_broken verdict joins the
+    tests_pass reason token. Roll 15 (run_783f50a2d564): round 0 = suite RAN,
+    assertions failed; round 1 = "No test files found" (suite_broken=True) —
+    two different defects collapsed into one `tests_pass||failed` element and
+    the run was terminated as a false exact-repeat, one round before the #886
+    own-artifact routing would have repaired the second failure.
+    """
+
+    def test_behavioral_vs_discovery_rounds_are_not_a_repeat(self):
+        ran = _evidence([{**_TESTS_FAIL_ROW, "reason": "failed", "suite_broken": False}])
+        broken = _evidence([{**_TESTS_FAIL_ROW, "reason": "failed", "suite_broken": True}])
+        sig_ran, sig_broken = failure_signature(ran), failure_signature(broken)
+
+        assert sig_ran != sig_broken
+        # the roll-15 shape: candidates on both rounds must STILL not fire
+        assert not should_terminate_plan_defect(
+            sig_ran, sig_broken, "tighten_acceptance", "tighten_acceptance"
+        )
+
+    def test_same_health_repeat_still_terminates(self):
+        """The shk-4 true positive is preserved: two suite-ran rounds with the
+        same aggregate reason remain an exact repeat."""
+        a = failure_signature(
+            _evidence([{**_TESTS_FAIL_ROW, "reason": "failed", "suite_broken": False}])
+        )
+        b = failure_signature(
+            _evidence([{**_TESTS_FAIL_ROW, "reason": "failed", "suite_broken": False}])
+        )
+
+        assert a == b
+        assert should_terminate_plan_defect(a, b, "tighten_acceptance", "add_task")
+
+    def test_legacy_rows_without_verdict_are_byte_identical(self):
+        """Absent suite_broken (None / pre-#626 rows, non-suite checks) the
+        element must not change — signatures recorded before this fix still
+        compare correctly against ones recorded after."""
+        sig = failure_signature(_evidence([_TESTS_FAIL_ROW]))
+
+        assert sig == frozenset({("tests_pass", "backend/tests/test_integration.js", "exit 1")})

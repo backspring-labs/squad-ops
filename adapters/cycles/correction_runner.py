@@ -913,10 +913,14 @@ class CorrectionRunner:
                 candidate,
                 "; ".join(termination.repeated_signature),
             )
+            # #878 rider: the rule needs a structural candidate PRESENT on both
+            # decisions, not the same one — naming only the terminal candidate
+            # "on both" misstated roll 14's add_task/tighten_acceptance pair.
             raise _ExecutionError(
                 f"plan_defect: correction terminated at round {correction_attempts} — "
-                f"failure signature repeated from round {termination.first_seen_round} "
-                f"with structural plan-change candidate {candidate!r} on both decisions; "
+                f"failure signature repeated from round {termination.first_seen_round}, "
+                f"structural plan-change candidates on both decisions "
+                f"(terminal: {candidate!r}); "
                 f"the plan, not the work product, is the defect "
                 f"(see {ref.artifact_id})"
             )
