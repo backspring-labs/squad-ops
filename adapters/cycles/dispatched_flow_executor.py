@@ -420,8 +420,13 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             # Data-driven: no manifest -> seed_artifact_refs unchanged = byte-identical to
             # today (the manifest itself is already among plan_artifact_refs; this ADDS the
             # expanded skeleton). Logic lives in helpers (#290 god-file rule).
+            # #881: never on resume. The checkpoint's artifact_refs already carry the
+            # original seed set, and a fresh set stores NEW artifact ids that
+            # _seed_prior_artifacts appends AFTER the restored state — last-writer-wins
+            # per filename then hands every fill slot back to a stub that throws by
+            # design, so the resumed run tests the skeleton instead of the app.
             interface_manifest = await self._load_interface_manifest_for_run(cycle, run)
-            if interface_manifest is not None:
+            if interface_manifest is not None and existing_checkpoint is None:
                 seed_artifact_refs.extend(
                     await self._seed_skeleton_artifacts(interface_manifest, cycle, run_id)
                 )
@@ -2499,8 +2504,16 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         stored_artifacts: list[tuple[str, ArtifactRef]],
         all_artifact_refs: list[str],
     ) -> None:
-        """Load seed artifacts for build-only runs (section 2.3)."""
+        """Load seed artifacts for build-only runs (section 2.3).
+
+        #881: ids already restored from a checkpoint are skipped — plan refs are
+        id-stable across resume, and re-appending them after the restored state
+        would let a seed-era version win last-writer-wins over later produced
+        versions of the same filename.
+        """
         for art_id in seed_artifact_refs:
+            if art_id in all_artifact_refs:
+                continue
             try:
                 ref, _ = await self._artifact_vault.retrieve(art_id)
                 stored_artifacts.append((art_id, ref))

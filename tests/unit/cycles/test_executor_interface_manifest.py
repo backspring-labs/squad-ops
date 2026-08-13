@@ -149,3 +149,36 @@ class TestSeedSkeletonArtifacts:
 
         assert ids == []
         executor._artifact_vault.store.assert_not_awaited()
+
+
+class TestSeedPriorArtifactsDedupe:
+    """#881: ids already restored from a checkpoint must not be re-appended.
+
+    Plan refs are id-stable across resume; re-appending one after the restored
+    state would put a seed-era version of a filename AFTER later produced
+    versions in ``stored_artifacts``, and ``_resolve_artifact_contents`` is
+    last-writer-wins per filename.
+    """
+
+    async def test_already_restored_id_is_skipped(self):
+        executor = _make_executor()
+        executor._artifact_vault.retrieve.return_value = (_FakePlanRef(), b"content")
+        stored: list = []
+        all_refs = ["art_plan"]  # restored from checkpoint
+
+        await executor._seed_prior_artifacts(["art_plan"], stored, all_refs)
+
+        assert stored == []
+        assert all_refs == ["art_plan"]
+        executor._artifact_vault.retrieve.assert_not_awaited()
+
+    async def test_fresh_id_is_seeded(self):
+        executor = _make_executor()
+        executor._artifact_vault.retrieve.return_value = (_FakePlanRef(), b"content")
+        stored: list = []
+        all_refs: list = []
+
+        await executor._seed_prior_artifacts(["art_plan"], stored, all_refs)
+
+        assert [a for a, _ in stored] == ["art_plan"]
+        assert all_refs == ["art_plan"]

@@ -359,6 +359,27 @@ def list_checkpoints(
 _BUILD_ARTIFACT_TYPES = {"source", "test", "config"}
 
 
+def _is_scaffold_seeded(meta: dict) -> bool:
+    return bool((meta.get("metadata") or {}).get("scaffold_seeded"))
+
+
+def _prefer_artifact(candidate: dict, incumbent: dict) -> bool:
+    """True when *candidate* should replace *incumbent* for the same filename (#881).
+
+    Produced code beats a scaffold-seeded version regardless of recency — a
+    resumed run can carry re-seeded stubs stored AFTER the dev fills, and
+    write-in-list-order would ship the stub. Among equals, the later
+    ``created_at`` wins (ISO timestamps compare lexicographically).
+    """
+    seeded_candidate, seeded_incumbent = (
+        _is_scaffold_seeded(candidate),
+        _is_scaffold_seeded(incumbent),
+    )
+    if seeded_candidate != seeded_incumbent:
+        return seeded_incumbent
+    return str(candidate.get("created_at") or "") >= str(incumbent.get("created_at") or "")
+
+
 @app.command("assemble")
 def assemble_run(
     ctx: typer.Context,
@@ -407,6 +428,16 @@ def assemble_run(
                 "this run may only contain planning artifacts"
             )
             raise typer.Exit(code=exit_codes.NOT_FOUND)
+
+        # 3b. #881: one artifact per filename — produced code over scaffold stubs,
+        # then latest. A plain write-in-list-order ships whichever version was
+        # stored last, which on a resumed run is the re-seeded stub.
+        by_filename: dict[str, dict] = {}
+        for meta in build_artifacts:
+            incumbent = by_filename.get(meta["filename"])
+            if incumbent is None or _prefer_artifact(meta, incumbent):
+                by_filename[meta["filename"]] = meta
+        build_artifacts = list(by_filename.values())
 
         # 4. Create output directory and download each artifact
         target_dir = out / output_dir_name

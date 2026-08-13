@@ -210,3 +210,67 @@ class TestRunsCheckpoints:
         )
         assert result.exit_code == 0
         assert "checkpoint_index" in result.output
+
+
+class TestAssembleArtifactPreference:
+    """#881: a resumed run's artifact list carries re-seeded scaffold stubs stored
+    AFTER the dev fills — write-in-list-order would assemble the skeleton, not
+    the app. One artifact per filename: produced code beats scaffold-seeded,
+    then latest created_at."""
+
+    @staticmethod
+    def _meta(art_id, filename, created_at, seeded=False):
+        meta = {
+            "artifact_id": art_id,
+            "filename": filename,
+            "artifact_type": "source",
+            "created_at": created_at,
+        }
+        if seeded:
+            meta["metadata"] = {"scaffold_seeded": True}
+        return meta
+
+    def test_produced_beats_newer_scaffold_stub(self):
+        """The roll-14 resume shape: the re-seeded stub is NEWEST but must lose."""
+        from squadops.cli.commands.runs import _prefer_artifact
+
+        fill = self._meta("art_fill", "app/api/runs/route.ts", "2026-08-12 18:43:01+00:00")
+        reseeded_stub = self._meta(
+            "art_stub2", "app/api/runs/route.ts", "2026-08-13 00:07:25+00:00", seeded=True
+        )
+
+        assert _prefer_artifact(fill, reseeded_stub) is True
+        assert _prefer_artifact(reseeded_stub, fill) is False
+
+    def test_among_produced_versions_latest_wins(self):
+        from squadops.cli.commands.runs import _prefer_artifact
+
+        older = self._meta("art_a", "lib/store.ts", "2026-08-12 18:40:00+00:00")
+        newer = self._meta("art_b", "lib/store.ts", "2026-08-12 19:10:00+00:00")
+
+        assert _prefer_artifact(newer, older) is True
+        assert _prefer_artifact(older, newer) is False
+
+    def test_among_scaffold_versions_latest_wins(self):
+        """Frozen files exist only as scaffold artifacts — the newest seed set
+        must still be assemblable when no produced version exists."""
+        from squadops.cli.commands.runs import _prefer_artifact
+
+        old_seed = self._meta("art_s1", "lib/errors.ts", "2026-08-12 18:34:13+00:00", seeded=True)
+        new_seed = self._meta("art_s2", "lib/errors.ts", "2026-08-13 00:07:25+00:00", seeded=True)
+
+        assert _prefer_artifact(new_seed, old_seed) is True
+
+    def test_missing_metadata_treated_as_produced(self):
+        """Artifacts predating the scaffold_seeded marker (or with metadata absent
+        entirely) must not be mistaken for stubs and shadowed by one."""
+        from squadops.cli.commands.runs import _prefer_artifact
+
+        legacy = {
+            "artifact_id": "art_x",
+            "filename": "main.py",
+            "created_at": "2026-08-12 18:00:00+00:00",
+        }
+        stub = self._meta("art_s", "main.py", "2026-08-13 00:00:00+00:00", seeded=True)
+
+        assert _prefer_artifact(legacy, stub) is True
