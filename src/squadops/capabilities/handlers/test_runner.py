@@ -706,6 +706,13 @@ async def run_backend_import_check(
 
 _VITEST_SUITE_BROKEN_MARKERS = (
     "No test suite found",
+    # #884: vitest's OTHER no-suite message — the include glob matched zero
+    # files (suite emitted at an undiscoverable path). "No test suite found"
+    # is a file that collects but contains no tests; missing either marker
+    # sends a producing-role defect down the dev repair chain (roll 14
+    # resume #4: a suite-placement failure became a dev rewrite of 7 app
+    # files that shipped a compile break).
+    "No test files found",
     "Failed to resolve import",
     "Failed to load",
     "Transform failed",

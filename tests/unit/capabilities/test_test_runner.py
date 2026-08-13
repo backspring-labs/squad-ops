@@ -390,6 +390,18 @@ class TestVitestSuiteBroken:
 
         assert _vitest_suite_broken(1, "", "Error: Failed to resolve import '../Appp.jsx'") is True
 
+    def test_no_test_files_found_is_broken(self):
+        """#884: vitest's OTHER no-suite message — the include glob matched zero
+        files. Roll 14 resume #4: the suite was emitted at an undiscoverable
+        path, this marker was missing, suite_broken stayed None, and the
+        placement defect routed to the dev chain — whose repair shipped a
+        compile break that blocked the verdict."""
+        from squadops.capabilities.handlers.test_runner import _vitest_suite_broken
+
+        assert (
+            _vitest_suite_broken(1, "", "No test files found, exiting with code 1") is True
+        )
+
     def test_real_test_failures_are_not_broken(self):
         from squadops.capabilities.handlers.test_runner import _vitest_suite_broken
 

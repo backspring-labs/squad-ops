@@ -476,6 +476,55 @@ def _locus_and_repair_target(
     return (failure_locus, expected, focus, description)
 
 
+def _apply_ownership_veto(
+    target: list[str],
+    failed_task_type: str,
+    step_role: str,
+    failed_own_artifacts: list[str],
+) -> list[str]:
+    """#884: a repair step may not receive another role's artifacts.
+
+    ``_resolve_repair_target`` unions the failed task's own artifacts into
+    every target (the pf-21 lesson: the failing artifact can carry its own
+    bug) — but when the repair chain runs under a DIFFERENT role than the one
+    that produced those artifacts, handing them over invites a guidance-less
+    cross-role rewrite: roll 14's resume #3/#4 (#884) had the dev chain
+    rewrite the qa suite into a live-fetch version, and its page rewrites
+    shipped a compile break that blocked the verdict. Ownership comes from
+    the own-artifact repair table (``own_artifact_role``); task types without
+    an entry are already repaired by their own role and pass through
+    untouched. If the veto empties the target, the locus classifier missed an
+    own-artifact case — logged as such, and the repair proceeds empty rather
+    than handing the artifacts across the boundary.
+    """
+    from squadops.cycles.task_plan import own_artifact_role
+
+    owner = own_artifact_role(failed_task_type)
+    if owner is None or step_role == owner:
+        return target
+    own = {str(a) for a in failed_own_artifacts if a}
+    if not own:
+        return target
+    stripped = [t for t in target if t not in own]
+    if len(stripped) != len(target):
+        removed = [t for t in target if t in own]
+        logger.info(
+            "correction_repair_target: ownership veto (#884) — %s-owned %s removed "
+            "from %s-role repair target",
+            owner,
+            ", ".join(removed),
+            step_role,
+        )
+        if not stripped:
+            logger.warning(
+                "correction_repair_target: ownership veto emptied the %s-role target for "
+                "failed %s — the locus classifier missed an own-artifact case (#884)",
+                step_role,
+                failed_task_type,
+            )
+    return stripped
+
+
 @dataclass(frozen=True)
 class CorrectionProtocolResult:
     """Outcome of one correction-protocol run.
@@ -1179,6 +1228,15 @@ class CorrectionRunner:
             for step_idx, (task_type, role) in enumerate(
                 repair_steps_for(envelope.task_type, failure_locus)
             ):
+                # #884: the target union may carry the failed task's own
+                # artifacts (pf-21); a step running under a foreign role must
+                # not receive them.
+                step_expected_artifacts = _apply_ownership_veto(
+                    repair_expected_artifacts,
+                    envelope.task_type,
+                    role,
+                    [str(e) for e in (failed_inputs.get("expected_artifacts") or [])],
+                )
                 repair_task_id = f"repair-{run_id[:12]}-{correction_attempts:02d}-{task_type}"
                 resolved = resolve_agent_config(role, profile)
                 agent_id = resolved.agent_id
@@ -1209,7 +1267,7 @@ class CorrectionRunner:
                     "resolved_config": failed_inputs.get("resolved_config", {}),
                     "subtask_focus": repair_focus,
                     "subtask_description": repair_description,
-                    "expected_artifacts": repair_expected_artifacts,
+                    "expected_artifacts": step_expected_artifacts,
                     "acceptance_criteria": failed_inputs.get("acceptance_criteria", []),
                 }
                 # #667: fay-14's first fill complied with the manifest
