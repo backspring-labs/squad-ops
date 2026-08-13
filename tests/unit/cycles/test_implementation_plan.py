@@ -1355,6 +1355,97 @@ summary:
         assert plan.validate_build_config({}) == []
 
 
+class TestValidateBuilderFloor:
+    """#888: the build profile's required_files are a run-level floor the plan
+    must assign an owner for. Roll 15's plan listed qa_handoff.md but not
+    Dockerfile on its builder task — bob passed (#107 honors the task list),
+    the suite converged, and the run died at the #291 completion gate, which
+    has no repair path and no incomplete builder task left on resume."""
+
+    @staticmethod
+    def _plan(builder_artifacts: list[str]) -> ImplementationPlan:
+        artifacts = "".join(f'\n      - "{a}"' for a in builder_artifacts)
+        return ImplementationPlan.from_yaml(
+            "version: 1\n"
+            "project_id: group_run\n"
+            "cycle_id: cyc_test\n"
+            "prd_hash: abc123\n"
+            "tasks:\n"
+            "  - task_index: 0\n"
+            "    task_type: builder.assemble\n"
+            "    role: builder\n"
+            '    focus: "Package"\n'
+            '    description: "Assemble packaging"\n'
+            f"    expected_artifacts:{artifacts}\n"
+            "    depends_on: []\n"
+            "summary:\n"
+            "  total_tasks: 1\n"
+        )
+
+    def test_roll_15_shape_missing_dockerfile_rejected(self):
+        errors = self._plan(["qa_handoff.md"]).validate_builder_floor(
+            {"build_profile": "nextjs_ts"}
+        )
+        assert len(errors) == 1
+        assert "Dockerfile" in errors[0]
+        assert "floor" in errors[0]
+
+    def test_full_floor_coverage_passes(self):
+        errors = self._plan(["qa_handoff.md", "Dockerfile"]).validate_builder_floor(
+            {"build_profile": "nextjs_ts"}
+        )
+        assert errors == []
+
+    def test_basename_match_accepts_subdir_paths(self):
+        """The #291 gate and the builder validator both compare basenames — a
+        Dockerfile owned at a subpath must satisfy the floor the same way."""
+        errors = self._plan(["docs/qa_handoff.md", "deploy/Dockerfile"]).validate_builder_floor(
+            {"build_profile": "nextjs_ts"}
+        )
+        assert errors == []
+
+    def test_floor_may_be_covered_by_any_task_not_only_builder(self):
+        plan = ImplementationPlan.from_yaml(
+            "version: 1\n"
+            "project_id: group_run\n"
+            "cycle_id: cyc_test\n"
+            "prd_hash: abc123\n"
+            "tasks:\n"
+            "  - task_index: 0\n"
+            "    task_type: development.develop\n"
+            "    role: dev\n"
+            '    focus: "App"\n'
+            '    description: "Build app"\n'
+            "    expected_artifacts:\n"
+            '      - "Dockerfile"\n'
+            "    depends_on: []\n"
+            "  - task_index: 1\n"
+            "    task_type: builder.assemble\n"
+            "    role: builder\n"
+            '    focus: "Package"\n'
+            '    description: "Assemble"\n'
+            "    expected_artifacts:\n"
+            '      - "qa_handoff.md"\n'
+            "    depends_on: [0]\n"
+            "summary:\n"
+            "  total_tasks: 2\n"
+        )
+        assert plan.validate_builder_floor({"build_profile": "nextjs_ts"}) == []
+
+    def test_no_build_profile_defers_to_426(self):
+        assert self._plan(["qa_handoff.md"]).validate_builder_floor({}) == []
+
+    def test_unknown_profile_defers_to_other_nets(self):
+        errors = self._plan(["qa_handoff.md"]).validate_builder_floor(
+            {"build_profile": "no_such_profile"}
+        )
+        assert errors == []
+
+    def test_builderless_plan_owes_no_floor(self):
+        plan = ImplementationPlan.from_yaml(VALID_MANIFEST_YAML)
+        assert plan.validate_builder_floor({"build_profile": "nextjs_ts"}) == []
+
+
 class TestValidateCheckApplicability:
     """#715: a qa.test task whose declared artifacts pytest cannot discover
     fails required tests_pass on any possible content (shk-4: three correction
