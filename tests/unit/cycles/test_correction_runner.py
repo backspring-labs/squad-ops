@@ -3840,9 +3840,7 @@ class TestOwnershipVeto:
             "app/api/runs/route.ts",
             "app/runs/new/page.tsx",
         ]
-        result = _apply_ownership_veto(
-            target, "qa.test", "dev", ["__tests__/api_runs.test.ts"]
-        )
+        result = _apply_ownership_veto(target, "qa.test", "dev", ["__tests__/api_runs.test.ts"])
 
         assert result == ["app/api/runs/route.ts", "app/runs/new/page.tsx"]
 
@@ -3850,9 +3848,7 @@ class TestOwnershipVeto:
         from adapters.cycles.correction_runner import _apply_ownership_veto
 
         target = ["__tests__/api_runs.test.ts"]
-        result = _apply_ownership_veto(
-            target, "qa.test", "qa", ["__tests__/api_runs.test.ts"]
-        )
+        result = _apply_ownership_veto(target, "qa.test", "qa", ["__tests__/api_runs.test.ts"])
 
         assert result == target
 
@@ -3886,3 +3882,69 @@ class TestOwnershipVeto:
 
         assert own_artifact_role("qa.test") == "qa"
         assert own_artifact_role("development.develop") is None
+
+
+class TestOwnershipVetoWiring(TestCorrectionRunnerStandalone):
+    """#884 wiring: the veto must reach the dispatched repair envelope — a
+    veto computed but not wired leaves the dev chain holding the qa suite
+    exactly as before (the mutation this class exists to kill)."""
+
+    async def test_dev_repair_envelope_excludes_qa_owned_suite(self, cycle):
+        import dataclasses as _dc
+
+        captured: list = []
+
+        def responder(envelope):
+            if envelope.task_type == "governance.correction_decision":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={
+                        "correction_path": "patch",
+                        "decision_rationale": "patchable",
+                        "affected_task_types": ["development.develop"],
+                    },
+                )
+            if envelope.task_type == "development.correction_repair":
+                captured.append(envelope)
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={"artifacts": [], "summary": "repaired"},
+                )
+            return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs={})
+
+        runner, _registry, _vault, _bus = self._make_runner(responder)
+        # The resume-#3/#4 shape: qa.test failed with NO own-artifact signal
+        # (empty checks → UNKNOWN locus → dev chain), suite + implementation
+        # source in the union via the same-language fallback.
+        failed = _dc.replace(
+            self._failed_envelope(),
+            task_type="qa.test",
+            inputs={
+                "expected_artifacts": ["__tests__/api_runs.test.ts"],
+                "implementation_artifacts": [
+                    "app/api/runs/route.ts",
+                    "app/runs/new/page.tsx",
+                ],
+            },
+        )
+
+        await runner.run_correction_protocol(
+            run_id="run_001",
+            cycle=cycle,
+            envelope=failed,
+            result=TaskResult(task_id="task_failed", status="FAILED", error="suite failed"),
+            correction_attempts=0,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+        )
+
+        assert len(captured) == 1
+        target = captured[0].inputs["expected_artifacts"]
+        assert "__tests__/api_runs.test.ts" not in target
+        assert "app/api/runs/route.ts" in target
+        assert "app/runs/new/page.tsx" in target

@@ -398,9 +398,7 @@ class TestVitestSuiteBroken:
         compile break that blocked the verdict."""
         from squadops.capabilities.handlers.test_runner import _vitest_suite_broken
 
-        assert (
-            _vitest_suite_broken(1, "", "No test files found, exiting with code 1") is True
-        )
+        assert _vitest_suite_broken(1, "", "No test files found, exiting with code 1") is True
 
     def test_real_test_failures_are_not_broken(self):
         from squadops.capabilities.handlers.test_runner import _vitest_suite_broken

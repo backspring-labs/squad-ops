@@ -251,6 +251,7 @@ _REPAIR_STEPS_BY_FAILED_TASK_TYPE_OWN_ARTIFACT: dict[str, list[tuple[str, str]]]
     "qa.test": QA_TEST_REPAIR_STEPS,
 }
 
+
 def own_artifact_role(failed_task_type: str) -> str | None:
     """The role that owns *failed_task_type*'s own artifacts, when declared (#884).
 
