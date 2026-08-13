@@ -36,6 +36,9 @@ AUTHOR_FACING: dict[str, str] = {
     # declared test conventions, and a rule id naming one stack's runner is how the
     # validator came to assert pytest's patterns against a vitest suite in the first place.
     "validate_check_applicability": "qa-tests-must-be-discoverable",
+    # #888: the plan author owns the builder task's expected_artifacts, so an
+    # under-covered floor is an authorable — and authored (roll 15) — defect.
+    "validate_builder_floor": "builder-floor-coverage",
 }
 
 # Validators an author is already taught by a different managed asset. Restating them

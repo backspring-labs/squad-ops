@@ -92,3 +92,23 @@ def test_seam_error_channels_stay_distinct():
         f"{_DISPATCH_SEAM} no longer raises — the in-run net's rejection channel "
         "is the raise; a returned value would be silently discarded at its call site"
     )
+
+
+def test_builder_floor_rule_is_wired_at_both_seams():
+    """#888 (the #718/#719 rule applied): the builder-floor validator must be
+    called from BOTH seams — dropping either lets an under-covered plan reach
+    the #291 completion gate, which has no repair path (roll 15's dead end)."""
+    tree = ast.parse(_EXECUTOR_PATH.read_text(encoding="utf-8"))
+
+    seam_sources = {
+        node.name: ast.unparse(node)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.AsyncFunctionDef | ast.FunctionDef)
+        and node.name in (_PROMOTION_SEAM, _DISPATCH_SEAM)
+    }
+
+    for seam in (_PROMOTION_SEAM, _DISPATCH_SEAM):
+        assert "validate_builder_floor" in seam_sources[seam], (
+            f"{seam} no longer calls validate_builder_floor — an under-covered "
+            "builder plan on this path dies at run completion with no repair path"
+        )

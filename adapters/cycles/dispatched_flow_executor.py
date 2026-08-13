@@ -3575,6 +3575,17 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                             parsed_plan.validate_build_config(cycle.resolved_config()),
                         )
                     )
+                    # Roll 15: a plan whose builder task under-covers the build
+                    # profile's required_files converges its whole suite and then
+                    # dies at the #291 completion gate — which has no repair path
+                    # and no incomplete builder task left on resume. Provable
+                    # here; rejection re-rolls framing for free.
+                    errors.extend(
+                        classifier.collect(
+                            "validate_builder_floor",
+                            parsed_plan.validate_builder_floor(cycle.resolved_config()),
+                        )
+                    )
             elif (
                 ref.filename == SEEDED_MANIFEST_FILENAME or artifact_type == MANIFEST_ARTIFACT_TYPE
             ):
@@ -3842,6 +3853,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # refused by generate_task_plan anyway, but only after the gate
         # approved the plan and the implementation run was admitted.
         errors += plan.validate_build_config(cycle.resolved_config())
+        # Roll 15: builder floor coverage — both seams per the #718/#719 rule.
+        errors += plan.validate_builder_floor(cycle.resolved_config())
         # #715: qa.test artifacts that required tests_pass can never judge.
         errors += plan.validate_check_applicability(cycle.resolved_config())
         if errors:

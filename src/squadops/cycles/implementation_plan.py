@@ -426,6 +426,52 @@ class ImplementationPlan:
             "profile, or author without builder tasks"
         ]
 
+    def validate_builder_floor(self, resolved_config: dict) -> list[str]:
+        """The build profile's ``required_files`` are a run-level FLOOR the plan
+        must assign an owner for — a per-task list may add files, never subtract.
+
+        Roll 15 (run_783f50a2d564): the plan's builder task listed
+        ``qa_handoff.md`` but not ``Dockerfile``; the builder validator honors
+        the active task's list (#107), so bob passed without it, the suite
+        converged after two correction sessions — and the run then died at the
+        #291 completion gate, which has NO repair path and, on any resume, no
+        incomplete builder task left to re-run. A plan that under-covers the
+        floor is deterministically doomed and provable here in microseconds;
+        rejecting re-rolls framing for free (#522).
+
+        Unknown/missing profile returns [] — #426 and the handler's own
+        ``get_profile`` failure own those. Basename comparison on both sides,
+        matching the builder validator and the #291 gate.
+        """
+        import os
+
+        profile_name = resolved_config.get("build_profile")
+        if not profile_name:
+            return []
+        if not any(task.task_type in _BUILDER_ROLE_BUILD_TASK_TYPES for task in self.tasks):
+            return []
+        from squadops.capabilities.handlers.build_profiles import get_profile
+
+        try:
+            profile = get_profile(profile_name)
+        except ValueError:
+            return []
+        owned = {
+            os.path.basename(artifact)
+            for task in self.tasks
+            for artifact in task.expected_artifacts
+        }
+        missing = [rf for rf in profile.required_files if os.path.basename(rf) not in owned]
+        if not missing:
+            return []
+        return [
+            f"Build profile {profile_name!r} requires {list(profile.required_files)} but no "
+            f"plan task's expected_artifacts owns: {missing}. The profile list is a floor — "
+            "a builder task must own every required file (per-task lists may add, never "
+            "subtract), or the run completes its build and still fails the #291 "
+            "deliverable-completeness gate with no repair path."
+        ]
+
     def _regex_on_source_criteria(self):
         """Yield ``(task, criterion, target)`` for every ``regex_match`` criterion
         that targets a non-document file — the #464 violation shared by the fatal
