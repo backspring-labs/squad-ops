@@ -3822,3 +3822,129 @@ class TestRepairRejectionEvidence(TestCorrectionRunnerStandalone):
 
         assert len(captured) == 1
         assert "prior_repair_rejections" not in captured[0].inputs["failure_evidence"]
+
+
+class TestOwnershipVeto:
+    """#884: a repair step running under a foreign role must not receive the
+    failed task's own artifacts. Roll 14 resumes #3/#4: the dev chain was
+    handed eve's suite (rewrote it live-fetch, reversed #877) and 7 app files
+    (its page rewrite shipped an undefined-variable compile break that blocked
+    the verdict). The veto is table-derived from the own-artifact repair map.
+    """
+
+    def test_dev_step_loses_qa_owned_suite_but_keeps_app_files(self):
+        from adapters.cycles.correction_runner import _apply_ownership_veto
+
+        target = [
+            "__tests__/api_runs.test.ts",
+            "app/api/runs/route.ts",
+            "app/runs/new/page.tsx",
+        ]
+        result = _apply_ownership_veto(target, "qa.test", "dev", ["__tests__/api_runs.test.ts"])
+
+        assert result == ["app/api/runs/route.ts", "app/runs/new/page.tsx"]
+
+    def test_own_role_step_keeps_its_own_artifacts(self):
+        from adapters.cycles.correction_runner import _apply_ownership_veto
+
+        target = ["__tests__/api_runs.test.ts"]
+        result = _apply_ownership_veto(target, "qa.test", "qa", ["__tests__/api_runs.test.ts"])
+
+        assert result == target
+
+    def test_task_without_own_artifact_entry_is_untouched(self):
+        """development.develop has no own-artifact table entry — its default
+        chain already runs under the producing role, so the veto must no-op
+        even when its own artifacts ride the target."""
+        from adapters.cycles.correction_runner import _apply_ownership_veto
+
+        target = ["app/api/runs/route.ts", "lib/store_use.ts"]
+        result = _apply_ownership_veto(
+            target, "development.develop", "dev", ["app/api/runs/route.ts"]
+        )
+
+        assert result == target
+
+    def test_veto_may_empty_the_target(self):
+        """A dev-chain target consisting ONLY of qa-owned artifacts means the
+        locus classifier missed an own-artifact case — the veto still holds
+        the boundary (empty target) rather than handing the suite across."""
+        from adapters.cycles.correction_runner import _apply_ownership_veto
+
+        result = _apply_ownership_veto(
+            ["__tests__/api_runs.test.ts"], "qa.test", "dev", ["__tests__/api_runs.test.ts"]
+        )
+
+        assert result == []
+
+    def test_owner_role_derives_from_the_own_artifact_table(self):
+        from squadops.cycles.task_plan import own_artifact_role
+
+        assert own_artifact_role("qa.test") == "qa"
+        assert own_artifact_role("development.develop") is None
+
+
+class TestOwnershipVetoWiring(TestCorrectionRunnerStandalone):
+    """#884 wiring: the veto must reach the dispatched repair envelope — a
+    veto computed but not wired leaves the dev chain holding the qa suite
+    exactly as before (the mutation this class exists to kill)."""
+
+    async def test_dev_repair_envelope_excludes_qa_owned_suite(self, cycle):
+        import dataclasses as _dc
+
+        captured: list = []
+
+        def responder(envelope):
+            if envelope.task_type == "governance.correction_decision":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={
+                        "correction_path": "patch",
+                        "decision_rationale": "patchable",
+                        "affected_task_types": ["development.develop"],
+                    },
+                )
+            if envelope.task_type == "development.correction_repair":
+                captured.append(envelope)
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={"artifacts": [], "summary": "repaired"},
+                )
+            return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs={})
+
+        runner, _registry, _vault, _bus = self._make_runner(responder)
+        # The resume-#3/#4 shape: qa.test failed with NO own-artifact signal
+        # (empty checks → UNKNOWN locus → dev chain), suite + implementation
+        # source in the union via the same-language fallback.
+        failed = _dc.replace(
+            self._failed_envelope(),
+            task_type="qa.test",
+            inputs={
+                "expected_artifacts": ["__tests__/api_runs.test.ts"],
+                "implementation_artifacts": [
+                    "app/api/runs/route.ts",
+                    "app/runs/new/page.tsx",
+                ],
+            },
+        )
+
+        await runner.run_correction_protocol(
+            run_id="run_001",
+            cycle=cycle,
+            envelope=failed,
+            result=TaskResult(task_id="task_failed", status="FAILED", error="suite failed"),
+            correction_attempts=0,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+        )
+
+        assert len(captured) == 1
+        target = captured[0].inputs["expected_artifacts"]
+        assert "__tests__/api_runs.test.ts" not in target
+        assert "app/api/runs/route.ts" in target
+        assert "app/runs/new/page.tsx" in target

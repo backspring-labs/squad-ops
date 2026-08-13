@@ -251,6 +251,22 @@ _REPAIR_STEPS_BY_FAILED_TASK_TYPE_OWN_ARTIFACT: dict[str, list[tuple[str, str]]]
     "qa.test": QA_TEST_REPAIR_STEPS,
 }
 
+
+def own_artifact_role(failed_task_type: str) -> str | None:
+    """The role that owns *failed_task_type*'s own artifacts, when declared (#884).
+
+    Derived from the own-artifact repair table (never re-typed — the #559
+    rule): the role registered to re-produce a task's own artifacts IS that
+    task's producing role. ``None`` for task types without an entry — their
+    default repair chain already runs under the producing role, so no
+    ownership boundary needs enforcing.
+    """
+    steps = _REPAIR_STEPS_BY_FAILED_TASK_TYPE_OWN_ARTIFACT.get(failed_task_type)
+    if not steps:
+        return None
+    return steps[0][1]
+
+
 # pf-31 Fix E: every task type that produces repair-CANDIDATE emissions, derived
 # from the dispatch tables above (never re-typed — #559). Candidates land in the
 # artifact store for the correction loop's accumulation (RC3), but an ACCEPTED
