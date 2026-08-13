@@ -1,6 +1,6 @@
 ---
 template_id: request.plan_authoring_rules_appendix
-version: "2"
+version: "3"
 required_variables: []
 ---
 ## PLAN SHAPE RULES (authoritative — a plan that breaks one is rejected)
@@ -59,6 +59,12 @@ conventions your stack's guidance states (`test_*.py` / `*_test.py` under pytest
 `*.test.ts` / `*.spec.ts` and their `.tsx` forms under vitest); a directory named
 `__tests__/` is not itself enough. Express verification that produces no such file
 through the acceptance criteria of a verification-only task instead.
+
+**builder-floor-coverage** — When the plan carries a builder task, every file the build
+profile's `required_files` lists appears in SOME task's `expected_artifacts` (usually the
+builder's). The profile list is a floor — a per-task list may add files, never subtract
+one. A plan that leaves a required file unowned passes every task and then fails the
+deliverable-completeness gate at run completion, where nothing can repair it.
 
 A verification-only task is legitimate and common: declare `expected_artifacts: []` and
 express what it checks through its acceptance criteria.

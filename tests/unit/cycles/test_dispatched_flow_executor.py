@@ -994,8 +994,14 @@ class TestGateRejectsBuilderPlanWithoutBuildProfile:
         "    role: builder\n"
         '    focus: "Package"\n'
         '    description: "Assemble"\n'
+        # #888: floor-compliant for python_cli_builder — the "passes" test
+        # asserts the profile-configured outcome, so its plan must cover the
+        # profile's required_files or the floor rule (correctly) rejects it.
         "    expected_artifacts:\n"
         '      - "qa_handoff.md"\n'
+        '      - "Dockerfile"\n'
+        '      - "__main__.py"\n'
+        '      - "requirements.txt"\n'
         "    depends_on: []\n"
         "summary:\n"
         "  total_tasks: 1\n"
