@@ -1239,3 +1239,95 @@ class TestWorkloadGatePlanAbsent:
             wired_run, gated_cycle, "progress_plan_review"
         )
         assert not any("plan_authoring_collapsed" in e for e in errors)
+
+
+# ---------------------------------------------------------------------------
+# #881: resume must not re-seed the walking skeleton
+# ---------------------------------------------------------------------------
+
+
+class TestResumeDoesNotReseedSkeleton:
+    """#881: skeleton seeding is a run-START act. On resume, the checkpoint's
+    artifact_refs already carry the original seed set; a fresh set stores NEW
+    artifact ids that are appended AFTER the restored state, and per-filename
+    last-writer-wins then hands every fill slot back to a stub that throws by
+    design — the resumed run tests the skeleton instead of the app (roll 14's
+    resume: probes that passed 38/39 began returning 500 the moment it resumed).
+    """
+
+    @staticmethod
+    def _manifest_bytes() -> bytes:
+        from pathlib import Path
+
+        return (
+            Path(__file__).resolve().parents[3]
+            / "examples"
+            / "03_group_run"
+            / "interface_manifest.yaml"
+        ).read_bytes()
+
+    def _wire(self, mock_registry, mock_vault, mock_queue, cycle, run):
+        import dataclasses
+
+        TestSequentialHappyPath._wire_canned_replies(mock_queue)
+        seeded_cycle = dataclasses.replace(
+            cycle, execution_overrides={"plan_artifact_refs": ["art_iface"]}
+        )
+        mock_registry.get_cycle.return_value = seeded_cycle
+        ref = MagicMock()
+        ref.artifact_id = "art_iface"
+        ref.filename = "interface_manifest.yaml"
+        ref.artifact_type = "interface_manifest"
+        ref.metadata = {}
+        mock_vault.retrieve = AsyncMock(return_value=(ref, self._manifest_bytes()))
+
+    @staticmethod
+    def _seeded_store_calls(mock_vault) -> list:
+        return [
+            call.args[0]
+            for call in mock_vault.store.await_args_list
+            if getattr(call.args[0], "metadata", None)
+            and call.args[0].metadata.get("scaffold_seeded")
+        ]
+
+    async def test_fresh_run_seeds_the_skeleton(
+        self, executor, mock_registry, mock_vault, mock_queue, cycle, run
+    ) -> None:
+        """Guard for the guard: if seeding stopped happening at all, the resume
+        test below would pass vacuously."""
+        self._wire(mock_registry, mock_vault, mock_queue, cycle, run)
+
+        with patch(
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        assert len(self._seeded_store_calls(mock_vault)) > 0
+
+    async def test_resumed_run_does_not_reseed(
+        self, executor, mock_registry, mock_vault, mock_queue, cycle, run
+    ) -> None:
+        from squadops.cycles.checkpoint import RunCheckpoint
+
+        self._wire(mock_registry, mock_vault, mock_queue, cycle, run)
+        mock_registry.get_latest_checkpoint.return_value = RunCheckpoint(
+            run_id="run_001",
+            checkpoint_index=1,
+            completed_task_ids=(),
+            prior_outputs={},
+            artifact_refs=(),
+            plan_delta_refs=(),
+            created_at=NOW,
+        )
+
+        with patch(
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        assert self._seeded_store_calls(mock_vault) == []
+        # the guard must not break execution — the resumed run still finishes
+        statuses = [c.args[1] for c in mock_registry.update_run_status.call_args_list]
+        assert statuses[-1] == RunStatus.COMPLETED
