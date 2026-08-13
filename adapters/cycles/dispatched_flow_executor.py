@@ -1246,8 +1246,16 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 if art_id not in selected_ids:
                     selected_ids.append(art_id)
 
-        # Resolve content (D3: 512KB limit)
+        # Resolve content (D3: 512KB limit). Per filename, later-in-order wins
+        # (RC3: the latest correction attempt supersedes earlier ones) with ONE
+        # exception (#881): a scaffold-seeded artifact never shadows produced
+        # content. The run's artifact list is a log, not a manifest — a resumed
+        # run's checkpoint can carry a re-seeded stub set AFTER the dev fills,
+        # and stubs throw by design, so order alone would hand every fill slot
+        # back to the skeleton. Frozen files exist only as seeded artifacts and
+        # are unaffected; among seeded versions the latest still wins.
         contents: dict[str, str] = {}
+        seeded_holder: set[str] = set()
         total_bytes = 0
         limit = 512 * 1024
 
@@ -1264,7 +1272,14 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                         task_type,
                     )
                     break
+                is_seeded = bool(ref.metadata.get("scaffold_seeded"))
+                if is_seeded and ref.filename in contents and ref.filename not in seeded_holder:
+                    continue
                 contents[ref.filename] = decoded
+                if is_seeded:
+                    seeded_holder.add(ref.filename)
+                else:
+                    seeded_holder.discard(ref.filename)
             except Exception:
                 logger.warning(
                     "Failed to retrieve artifact %s for build task %s",
