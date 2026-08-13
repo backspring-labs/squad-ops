@@ -154,6 +154,78 @@ class TestArtifactContentsPreResolution:
         assert "validation_plan.md" in contents
         assert "src/main.py" in contents
 
+    # ------------------------------------------------------------------
+    # #881 consumer side: a scaffold-seeded stub never shadows produced code
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _source_ref(art_id: str, filename: str, *, seeded: bool = False) -> ArtifactRef:
+        metadata: dict = (
+            {"producing_task_type": "scaffold.expand", "scaffold_seeded": True}
+            if seeded
+            else {"producing_task_type": "development.develop"}
+        )
+        return ArtifactRef(
+            artifact_id=art_id,
+            project_id="test",
+            artifact_type="source",
+            filename=filename,
+            content_hash="abc",
+            size_bytes=100,
+            media_type="text/plain",
+            created_at=NOW,
+            metadata=metadata,
+        )
+
+    async def _resolve(self, executor, entries):
+        stored = [(ref.artifact_id, ref) for ref, _ in entries]
+        executor._artifact_vault.retrieve = AsyncMock(
+            side_effect=[(ref, content) for ref, content in entries]
+        )
+        return await executor._resolve_artifact_contents("qa.test", stored)
+
+    async def test_reseeded_stub_after_fill_loses(self, executor):
+        """The checkpoint-21 shape from roll 14's resume: the re-seeded stub sits
+        AFTER the dev fill in the restored order and previously won last-writer-
+        wins, so the qa workspace materialized a route that throws by design."""
+        fill = self._source_ref("art_fill", "app/api/runs/route.ts")
+        stub = self._source_ref("art_stub", "app/api/runs/route.ts", seeded=True)
+
+        contents = await self._resolve(
+            executor, [(fill, b"export async function POST() {}"), (stub, b"throw stub")]
+        )
+
+        assert contents["app/api/runs/route.ts"] == "export async function POST() {}"
+
+    async def test_produced_after_stub_wins(self, executor):
+        """The normal fresh-run shape: seed first, develop fills later."""
+        stub = self._source_ref("art_stub", "app/api/runs/route.ts", seeded=True)
+        fill = self._source_ref("art_fill", "app/api/runs/route.ts")
+
+        contents = await self._resolve(executor, [(stub, b"throw stub"), (fill, b"filled")])
+
+        assert contents["app/api/runs/route.ts"] == "filled"
+
+    async def test_latest_produced_version_still_wins(self, executor):
+        """RC3: the latest correction attempt supersedes earlier produced
+        versions — the #881 rule must not freeze the first fill."""
+        v1 = self._source_ref("art_v1", "lib/store_use.ts")
+        v2 = self._source_ref("art_v2", "lib/store_use.ts")
+
+        contents = await self._resolve(executor, [(v1, b"attempt 1"), (v2, b"attempt 2")])
+
+        assert contents["lib/store_use.ts"] == "attempt 2"
+
+    async def test_frozen_file_latest_seeded_wins(self, executor):
+        """Frozen files exist ONLY as seeded artifacts — among seeded versions
+        the latest must still win, or a re-seeded frozen fix would be invisible."""
+        s1 = self._source_ref("art_s1", "lib/errors.ts", seeded=True)
+        s2 = self._source_ref("art_s2", "lib/errors.ts", seeded=True)
+
+        contents = await self._resolve(executor, [(s1, b"frozen v1"), (s2, b"frozen v2")])
+
+        assert contents["lib/errors.ts"] == "frozen v2"
+
     async def test_size_limit_stops_resolution(self, executor):
         """If content exceeds 512KB, resolution stops early."""
         big_content = b"x" * (256 * 1024)  # 256KB each, 2 = 512KB
