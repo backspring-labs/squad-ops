@@ -67,8 +67,7 @@ async def test_a_garbage_fill_degrades_one_file_and_the_rest_still_execute(refer
     assert verdict.executed, verdict.error
     assert not verdict.scaffold_valid
     assert all(
-        "vc-probe-api-runs.scaffold.test.ts" in failure
-        for failure in verdict.mechanical_failures
+        "vc-probe-api-runs.scaffold.test.ts" in failure for failure in verdict.mechanical_failures
     ), verdict.mechanical_failures
     # the other seven shells collected and executed to their expected stub failures
     assert verdict.assertion_failures == 7
