@@ -53,6 +53,12 @@ class RunTestsResult:
     # run_build_validation — exactly the #306 not-executed case that must not read
     # green once frontend_build is a required check.
     frontend_build: BuildCheckResult | None = None
+    # SIP-0104 P5: per-failure observation rows from the runner's machine report
+    # (vitest JSON reporter): {file, title, messages, line, suite_level}. The evidence
+    # pipeline classifies scaffold-shell failures from these; empty when the runner
+    # produced no machine report (pytest runs, report write failure) — additive, never
+    # load-bearing for the pass/fail verdict.
+    test_failures: tuple[dict, ...] = ()
 
     @property
     def tests_passed(self) -> bool:
@@ -335,13 +341,19 @@ async def run_node_tests(
                 source_file_count=len(source_files),
             )
 
-        # npx vitest run
+        # npx vitest run. The JSON reporter writes the machine report to a file while
+        # verbose keeps stdout human-shaped — the suite-health markers (#626) and the
+        # report readers both stay fed. A missing/unwritable report degrades to
+        # test_failures=() (SIP-0104 P5: observation is additive, never load-bearing).
+        report_path = os.path.join(cwd, _VITEST_REPORT_FILENAME)
         try:
             proc = await asyncio.create_subprocess_exec(
                 "npx",
                 "vitest",
                 "run",
                 "--reporter=verbose",
+                "--reporter=json",
+                f"--outputFile.json={report_path}",
                 cwd=cwd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
@@ -386,6 +398,7 @@ async def run_node_tests(
             # "No test suite found" routed repairs to dev for a defect in the
             # qa role's own file).
             suite_broken=_vitest_suite_broken(exit_code, stdout, stderr),
+            test_failures=tuple(_read_vitest_failure_rows(report_path, cwd)),
         )
 
     except Exception as exc:
@@ -704,6 +717,65 @@ async def run_backend_import_check(
         shutil.rmtree(workspace, ignore_errors=True)
 
 
+#: Where run_node_tests asks vitest's JSON reporter to write the machine report.
+_VITEST_REPORT_FILENAME = ".vitest_report.json"
+
+
+def parse_vitest_failure_rows(report: dict, workspace_root: str) -> list[dict]:
+    """Per-failure observation rows from a vitest JSON report (SIP-0104 P5).
+
+    One row per failed test — ``{file, title, messages, line, suite_level}`` with
+    ``file`` workspace-relative — plus one ``suite_level`` row per suite that died
+    before any test ran (unresolved import / transform crash). Pure, so the evidence
+    pipeline's corpus runs against synthesized and captured reports alike.
+    """
+    from squadops.capabilities.handlers.scaffold_execution import _VITEST_STATUS_FAILED
+
+    root = workspace_root.rstrip("/") + "/"
+    rows: list[dict] = []
+    for suite in report.get("testResults", ()):
+        name = str(suite.get("name", ""))
+        rel = name[len(root) :] if name.startswith(root) else name
+        results = suite.get("assertionResults") or []
+        if suite.get("status") == _VITEST_STATUS_FAILED and not results:
+            rows.append(
+                {
+                    "file": rel,
+                    "title": "",
+                    "messages": [str(suite.get("message", ""))[:2000]],
+                    "line": None,
+                    "suite_level": True,
+                }
+            )
+            continue
+        for result in results:
+            if result.get("status") != _VITEST_STATUS_FAILED:
+                continue
+            location = result.get("location") or {}
+            rows.append(
+                {
+                    "file": rel,
+                    "title": str(result.get("title", "")),
+                    "messages": [str(m)[:2000] for m in (result.get("failureMessages") or [])],
+                    "line": location.get("line"),
+                    "suite_level": False,
+                }
+            )
+    return rows
+
+
+def _read_vitest_failure_rows(report_path: str, workspace_root: str) -> list[dict]:
+    """The observation rows from the written report, or [] (additive, never fatal)."""
+    import json
+
+    try:
+        with open(report_path, encoding="utf-8") as fh:
+            report = json.load(fh)
+    except (OSError, ValueError):
+        return []
+    return parse_vitest_failure_rows(report, workspace_root)
+
+
 _VITEST_SUITE_BROKEN_MARKERS = (
     "No test suite found",
     # #884: vitest's OTHER no-suite message — the include glob matched zero
@@ -830,6 +902,7 @@ async def run_fullstack_tests(
         exit_code=combined_exit_code,
         runner=controlling.runner,
         suite_broken=controlling.suite_broken,
+        test_failures=controlling.test_failures,
         stdout="\n\n".join(combined_stdout_parts)[:_STDOUT_LIMIT],
         stderr="\n\n".join(combined_stderr_parts)[:_STDOUT_LIMIT],
         error="; ".join(error_parts) if error_parts else "",

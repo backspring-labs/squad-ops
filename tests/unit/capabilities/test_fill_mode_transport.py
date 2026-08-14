@@ -211,3 +211,79 @@ async def test_a_fills_only_emission_is_not_a_zero_extraction_failure(scaffold_i
         if a["name"].endswith("vc-probe-api-runs.scaffold.test.ts")
     )
     assert "expect(body.id).toBeTruthy()" in create_shell["content"]
+
+
+async def test_the_evidence_pipeline_lands_in_outputs(scaffold_input, monkeypatch):
+    """P5 wiring: a spine failure among the runner's observation rows classifies as
+    app_contract and lands in BOTH outputs['scaffold_evidence'] (the banked summary)
+    and the validation_result classification row the locus classifier consults."""
+    from squadops.capabilities.handlers.cycle import qa_test as qa_test_module
+    from squadops.capabilities.handlers.test_runner import RunTestsResult
+
+    fill_text = "```fill:slot-vc-probe-api-runs\n    expect(body.id).toBeTruthy()\n```\n"
+    shell_path = "__tests__/scaffold/vc-probe-api-runs.scaffold.test.ts"
+
+    async def _canned_suite(capability, sources, extracted):
+        merged_content = next(f["content"] for f in extracted if f["filename"] == shell_path)
+        status_line = next(
+            i
+            for i, line in enumerate(merged_content.split("\n"), start=1)
+            if "expect(res.status).toBe(201)" in line
+        )
+        result = RunTestsResult(
+            executed=True,
+            exit_code=1,
+            runner="vitest",
+            suite_broken=False,
+            test_failures=(
+                {
+                    "file": shell_path,
+                    "title": "POST /api/runs -> 201 [vc-probe-api-runs]",
+                    "messages": ["expected 500 to be 201 // Object.is equality"],
+                    "line": status_line,
+                    "suite_level": False,
+                },
+            ),
+        )
+        return result, {
+            "name": "test_report.md",
+            "content": "r",
+            "media_type": "text/markdown",
+            "type": "document",
+        }
+
+    monkeypatch.setattr(
+        qa_test_module.QATestHandler, "_run_test_suite", staticmethod(_canned_suite)
+    )
+
+    context = MagicMock()
+    context.ports.llm.chat_stream_with_usage = AsyncMock(return_value=MagicMock(content=fill_text))
+    context.ports.llm.default_model = "m"
+    assembled = MagicMock()
+    assembled.content = "system"
+    context.ports.prompt_service.assemble = MagicMock(return_value=assembled)
+    context.ports.request_renderer = None
+
+    result = await QATestHandler().handle(
+        context,
+        {
+            "prd": "group_run",
+            "artifact_contents": {},
+            "resolved_config": {"dev_capability": "nextjs_ts"},
+            "subtask_focus": "fill the scaffold",
+            "expected_artifacts": [],
+            "verification_scaffold": scaffold_input,
+        },
+    )
+
+    evidence = result.outputs["scaffold_evidence"]
+    assert evidence["failure_classes"] == {"app_contract": 1}
+    assert evidence["observations"][0]["criterion_id"] == "vc-probe-api-runs"
+    assert evidence["observations"][0]["owner"] == "dev"
+    assert evidence["fill_dispositions"] == {"filled": 1, "missing": 7}
+    rows = result.outputs["validation_result"]["checks"]
+    classification_row = next(
+        r for r in rows if r.get("check") == "scaffold_failure_classification"
+    )
+    assert classification_row["classes"] == {"app_contract": 1}
+    assert "passed" not in classification_row  # informational — SIP-0096 credit untouched

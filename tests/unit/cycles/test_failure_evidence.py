@@ -663,3 +663,43 @@ class TestExtractionLossSignal:
             self._envelope(), self._result(stats), prior_plan_deltas_count=0
         )
         assert "extraction_loss" not in evidence
+
+
+class TestScaffoldClassificationLocus:
+    """SIP-0104 P5: the scaffold classification row is consulted before tests_pass —
+    it is finer-grained, and misreading it re-opens the exact misrouting (#626/pf-53
+    shaped) the classification exists to end."""
+
+    @staticmethod
+    def _evidence(classes: dict, tests_pass_row: dict | None = None) -> dict:
+        checks = [
+            {"check": "scaffold_failure_classification", "status": "info", "classes": classes}
+        ]
+        if tests_pass_row is not None:
+            checks.append(tests_pass_row)
+        return {"validation_result": {"checks": checks}}
+
+    def test_app_contract_routes_to_subject(self):
+        evidence = self._evidence({"app_contract": 2, "fill": 1})
+        assert classify_failure_locus(evidence) == FailureLocus.SUBJECT
+
+    def test_all_fill_routes_to_own_artifact(self):
+        evidence = self._evidence({"fill": 3})
+        assert classify_failure_locus(evidence) == FailureLocus.OWN_ARTIFACT
+
+    def test_scaffold_invalid_falls_through_not_an_llm_locus(self):
+        """A generator surface is neither qa's nor dev's to repair — the class falls
+        through to the legacy signals rather than inventing a repair target."""
+        evidence = self._evidence(
+            {"scaffold_invalid": 1},
+            {"check": "tests_pass", "passed": False, "executed": True, "suite_broken": False},
+        )
+        assert classify_failure_locus(evidence) == FailureLocus.SUBJECT  # legacy row decides
+
+    def test_infrastructure_with_fill_stays_conservative(self):
+        evidence = self._evidence({"fill": 1, "test_infrastructure": 1})
+        assert classify_failure_locus(evidence) == FailureLocus.UNKNOWN
+
+    def test_an_empty_classification_changes_nothing(self):
+        evidence = self._evidence({})
+        assert classify_failure_locus(evidence) == FailureLocus.UNKNOWN
