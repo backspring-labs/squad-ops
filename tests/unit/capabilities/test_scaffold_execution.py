@@ -51,6 +51,11 @@ class TestClassifier:
             ("expected [ ] to have a length of 1 but got +0", "assertion"),
             ("TypeError: routeApiRuns.GET is not a function", "mechanical"),
             ("ReferenceError: Requests is not defined", "mechanical"),
+            # Measured (defect gate run, 2026-08-14): vitest strips the error-name
+            # prefix from a thrown ReferenceError too — the bare message is all there
+            # is. A blocklist of error-name prefixes would have read this as expected;
+            # the assertion-shape allowlist is what catches it.
+            ("Requests is not defined", "mechanical"),
             ("SyntaxError: Unexpected token", "mechanical"),
             # Unknown shape → mechanical: the safe misclassification direction.
             ("something entirely unrecognized", "mechanical"),
