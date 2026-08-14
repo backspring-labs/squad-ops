@@ -1,0 +1,97 @@
+# Test-scaffold manifest — emitted by the scaffold generator (SIP-0104).
+# The frozen-spine record region enforcement verifies against; regenerate with
+# the generator, never hand-edit (a tampered record refuses to load).
+scaffold_manifest_version: 1
+generator_version: 1
+stack: nextjs_ts
+interface_manifest_hash: ac1e7be378c54d5966680b85824c6f2c2e4d158eb8dec14d081209223e07053a
+criteria_pack: nextjs_ts
+expanded_tree_hash: 6141646f442850aeb79675d56c58e2393c91ab771b92bc6994f55c38205ca4b9
+aggregate_spine_hash: 550ecfdd4ab8dde20f696d744ffff32647dfb19749930fa01af714e8399c449f
+scaffold_hash: 8aa15406e13468f453063007c43afee17d6b2cccb5a616b2be10d79031095f9e
+files:
+- path: __tests__/scaffold/vc-probe-api-runs.scaffold.test.ts
+  content_hash: fd7bacf35c234b63d5dc316971477b590607f4dacd9e83a73c94dcfa70da00f8
+  spine_hash: 1a27cef04731bf50cd3abbf943b0693d19f79451ffc826ebf4aceb2a594611e3
+  slots:
+  - slot_id: slot-vc-probe-api-runs
+    behavior: POST /api/runs -> 201
+    probe_id: vc-probe-api-runs
+    criterion_ids:
+    - vc-probe-api-runs
+    begin_line: 23
+    end_line: 27
+- path: __tests__/scaffold/vc-probe-api-runs-rejects-blank.scaffold.test.ts
+  content_hash: 00815dd3cdfad1999c07b3fe61948a87a6fea408d8320abf58e70e291b336ab9
+  spine_hash: 671c508176d8aa7246f52b04eef876a230be380c068dfaca2dd39fce094b2261
+  slots:
+  - slot_id: slot-vc-probe-api-runs-rejects-blank
+    behavior: POST /api/runs blank required fields -> 422
+    probe_id: vc-probe-api-runs-rejects-blank
+    criterion_ids:
+    - vc-probe-api-runs-rejects-blank
+    begin_line: 23
+    end_line: 27
+- path: __tests__/scaffold/vc-probe-api-runs-join.scaffold.test.ts
+  content_hash: f8be55162d36b812738d547dbfe96981e3261e91c86c10b5335936b30fc7a82b
+  spine_hash: 1ba37caa2f6f199a76d776dbf09f9dc66fb0a33d4ab946537fe08f8446eb3627
+  slots:
+  - slot_id: slot-vc-probe-api-runs-join
+    behavior: POST /api/runs/{run_id}/join -> 200
+    probe_id: vc-probe-api-runs-join
+    criterion_ids:
+    - vc-probe-api-runs-join
+    begin_line: 33
+    end_line: 37
+- path: __tests__/scaffold/vc-probe-api-runs-join-duplicate.scaffold.test.ts
+  content_hash: b5c9b4c617c6a212971403db843f1dd08157f88dbc08a07d11a107876b32277c
+  spine_hash: ad50663bb2f2cbb14f4dfb6dd783f197ada85ceda6ef1f223e3772779f6ccb60
+  slots:
+  - slot_id: slot-vc-probe-api-runs-join-duplicate
+    behavior: POST /api/runs/{run_id}/join duplicate -> 409
+    probe_id: vc-probe-api-runs-join-duplicate
+    criterion_ids:
+    - vc-probe-api-runs-join-duplicate
+    begin_line: 41
+    end_line: 45
+- path: __tests__/scaffold/vc-probe-api-runs-leave.scaffold.test.ts
+  content_hash: 81ac86bf6dcd57ad5ecaabd7c3cf65f29cff18e984c91e5a87c9413301eebd95
+  spine_hash: 7bcaf8481ca240e06891a65511bb16724ffaedfcdcff7688660c1f60a2241b42
+  slots:
+  - slot_id: slot-vc-probe-api-runs-leave
+    behavior: POST /api/runs/{run_id}/leave -> 200
+    probe_id: vc-probe-api-runs-leave
+    criterion_ids:
+    - vc-probe-api-runs-leave
+    begin_line: 42
+    end_line: 46
+- path: __tests__/scaffold/vs-get-api-runs.scaffold.test.ts
+  content_hash: 4368ab125564a6abf63234294a1b12006a1c281950f12a12e83253960a4efc46
+  spine_hash: ce04267e0d277e89b5f2735e6623443b7dbde6242c6f7dae027476fd7994f487
+  slots:
+  - slot_id: slot-vs-get-api-runs
+    behavior: GET /api/runs -> 200
+    probe_id: ''
+    criterion_ids: []
+    begin_line: 19
+    end_line: 23
+- path: __tests__/scaffold/vs-get-api-runs-run-id.scaffold.test.ts
+  content_hash: 28b0e05e06ca79ee21accf51e6b8d0c552581a46c582079b001bf86af07e2906
+  spine_hash: f939f2144ebd4e9751f6fdfafc5c204555056e9b166cd4385d5eb9546e167e1b
+  slots:
+  - slot_id: slot-vs-get-api-runs-run-id
+    behavior: GET /api/runs/{run_id} -> 200
+    probe_id: ''
+    criterion_ids: []
+    begin_line: 29
+    end_line: 33
+- path: __tests__/scaffold/vs-get-api-runs-run-id-not-found.scaffold.test.ts
+  content_hash: 47748bb81f33da0e1aa42c0341da63aca4a3364f8e06aad23f1ff359866f9bb2
+  spine_hash: 2e990d4a11c73805b72ec8cf03649ee3e03f91dfe5a9c631b8315eac38b7c87e
+  slots:
+  - slot_id: slot-vs-get-api-runs-run-id-not-found
+    behavior: GET /api/runs/{run_id} unknown id -> 404
+    probe_id: ''
+    criterion_ids: []
+    begin_line: 20
+    end_line: 24

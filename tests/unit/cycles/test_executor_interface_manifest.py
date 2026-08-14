@@ -151,6 +151,73 @@ class TestSeedSkeletonArtifacts:
         executor._artifact_vault.store.assert_not_awaited()
 
 
+class TestSeedVerificationScaffoldArtifacts:
+    """SIP-0104 P1: the test scaffold rides the seed act, opt-in gated, loud on failure."""
+
+    async def test_opted_in_stack_seeds_shells_and_stores_the_manifest_record(self):
+        from squadops.capabilities.verification_scaffold_emission import (
+            emit_verification_scaffold,
+        )
+        from tests.unit.capabilities._stack_fixtures import manifest_for_stack
+
+        manifest = manifest_for_stack("nextjs_ts")
+        expected = emit_verification_scaffold(manifest)
+
+        executor = _make_executor()
+        ids = await executor._seed_verification_scaffold_artifacts(manifest, _make_cycle(), "run_x")
+
+        stored_refs = [call.args[0] for call in executor._artifact_vault.store.await_args_list]
+        # every shell is a source artifact; the manifest record is stored but NOT among
+        # the returned seed ids (it is evidence, not a workspace file)
+        shell_refs = [r for r in stored_refs if r.artifact_type == "source"]
+        record_refs = [
+            r for r in stored_refs if r.artifact_type == "verification_scaffold_manifest"
+        ]
+        assert [r.artifact_id for r in shell_refs] == ids
+        assert {r.filename for r in shell_refs} == {f["name"] for f in expected.files}
+        assert all(r.metadata["verification_scaffold"] for r in shell_refs)
+        assert all(r.metadata["scaffold_seeded"] for r in shell_refs)
+        assert len(record_refs) == 1
+        record = record_refs[0]
+        assert record.filename == "verification_scaffold_manifest.yaml"
+        assert record.artifact_id not in ids
+        assert record.metadata["aggregate_spine_hash"] == expected.manifest.aggregate_spine_hash()
+        assert record.metadata["generator_version"] == expected.manifest.generator_version
+
+    async def test_a_stack_that_has_not_opted_in_seeds_nothing(self):
+        from tests.unit.capabilities._stack_fixtures import manifest_for_stack
+
+        executor = _make_executor()
+        ids = await executor._seed_verification_scaffold_artifacts(
+            manifest_for_stack("fullstack_fastapi_react"), _make_cycle(), "run_x"
+        )
+        assert ids == []
+        executor._artifact_vault.store.assert_not_awaited()
+
+    async def test_emission_failure_on_an_opted_in_stack_fails_run_setup_loudly(self, monkeypatch):
+        """The #845 doctrine: an invalid scaffold is not a degraded run. Bug caught: a
+        tolerant except here would hand qa a run with no deterministic verification story
+        and let the failure surface as burned LLM rounds instead of a setup rejection."""
+        import pytest
+
+        from squadops.capabilities import verification_scaffold_emission as emission_module
+        from squadops.capabilities.verification_scaffold import ScaffoldValidationError
+        from tests.unit.capabilities._stack_fixtures import manifest_for_stack
+
+        def _boom(manifest, **kwargs):
+            raise ScaffoldValidationError("injected generator defect")
+
+        monkeypatch.setattr(emission_module, "emit_verification_scaffold", _boom)
+        # the executor imports the symbol inside the helper, so patch the module attr
+        # it resolves at call time
+        executor = _make_executor()
+        with pytest.raises(ScaffoldValidationError, match="injected generator defect"):
+            await executor._seed_verification_scaffold_artifacts(
+                manifest_for_stack("nextjs_ts"), _make_cycle(), "run_x"
+            )
+        executor._artifact_vault.store.assert_not_awaited()
+
+
 class TestSeedPriorArtifactsDedupe:
     """#881: ids already restored from a checkpoint must not be re-appended.
 
