@@ -90,11 +90,32 @@ async def produce_plan(
     )
 
     if offer_builder:
+        # #890: the example is the strongest teaching surface (rolls 15/16 both
+        # reproduced its expected_artifacts verbatim), so it must SHOW the
+        # profile's required-files floor, not hedge it in description prose —
+        # the floor rendered here is the same list validate_builder_floor
+        # rejects on (#888), stated as data per the pf-34 pattern.
+        from squadops.capabilities.handlers.build_profiles import get_profile
+
+        try:
+            floor = list(get_profile(resolved_config["build_profile"]).required_files)
+        except (KeyError, ValueError):
+            floor = []
+        example_artifacts = floor or ["qa_handoff.md"]
+        floor_guideline = (
+            (
+                f"- The build profile requires these files; EVERY one must appear in "
+                f"some task's expected_artifacts (the floor — a per-task list may add "
+                f"files, never subtract one): {', '.join(floor)}\n"
+            )
+            if floor
+            else ""
+        )
         builder_guideline = (
             "- Route packaging, entrypoints, requirements.txt/package.json, "
             "Dockerfile/startup scripts, and qa_handoff.md to `builder.assemble` "
             "tasks (role: builder). Place AFTER all `development.develop` tasks "
-            "and BEFORE any `qa.test` tasks.\n"
+            "and BEFORE any `qa.test` tasks.\n" + floor_guideline
         )
         qa_handoff_guideline = ""
         builder_example = (
@@ -107,8 +128,8 @@ async def produce_plan(
             "Dockerfile if applicable) and write qa_handoff.md summarizing "
             "how to run and test the build.\n"
             "    expected_artifacts:\n"
-            '      - "qa_handoff.md"\n'
-            "    acceptance_criteria:\n"
+            + "".join(f'      - "{name}"\n' for name in example_artifacts)
+            + "    acceptance_criteria:\n"
             '      - "..."\n'
             "    depends_on: [0]\n"
         )
