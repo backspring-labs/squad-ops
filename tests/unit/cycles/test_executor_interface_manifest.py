@@ -164,9 +164,7 @@ class TestSeedVerificationScaffoldArtifacts:
         expected = emit_verification_scaffold(manifest)
 
         executor = _make_executor()
-        ids = await executor._seed_verification_scaffold_artifacts(
-            manifest, _make_cycle(), "run_x"
-        )
+        ids = await executor._seed_verification_scaffold_artifacts(manifest, _make_cycle(), "run_x")
 
         stored_refs = [call.args[0] for call in executor._artifact_vault.store.await_args_list]
         # every shell is a source artifact; the manifest record is stored but NOT among
@@ -196,9 +194,7 @@ class TestSeedVerificationScaffoldArtifacts:
         assert ids == []
         executor._artifact_vault.store.assert_not_awaited()
 
-    async def test_emission_failure_on_an_opted_in_stack_fails_run_setup_loudly(
-        self, monkeypatch
-    ):
+    async def test_emission_failure_on_an_opted_in_stack_fails_run_setup_loudly(self, monkeypatch):
         """The #845 doctrine: an invalid scaffold is not a degraded run. Bug caught: a
         tolerant except here would hand qa a run with no deterministic verification story
         and let the failure surface as burned LLM rounds instead of a setup rejection."""
