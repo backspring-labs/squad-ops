@@ -235,12 +235,17 @@ def correlate(
     Different criterion ids are never merged; observations without a criterion id
     (fill/generator/infrastructure classes) are never pulled into a finding.
     """
+    from squadops.cycles.verification_integrity import ResultStatus
+
+    # Probe rows speak ResultStatus (probe_runner emits its literals) — compare against
+    # the owning vocabulary, never raw strings (#380).
+    failing_statuses = {ResultStatus.FAILED, ResultStatus.ERROR}
     failed_probe_rows = [
         row
         for row in probe_rows
         if isinstance(row, dict)
         and row.get("criterion_id")
-        and str(row.get("status", "")).lower() in ("fail", "failed", "error")
+        and str(row.get("status", "")).lower() in failing_statuses
     ]
     by_criterion: dict[str, CorrelatedFinding] = {}
     for observation in observations:

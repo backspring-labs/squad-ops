@@ -237,12 +237,45 @@ def classify_failure_locus(failure_evidence: Any) -> str:
         # the suite — for qa.test, OWN_ARTIFACT = eve re-authors the suite.
         if check == f"acceptance:{CHECK_CONTRACT_ASSERTIONS}" and row.get("passed") is False:
             return FailureLocus.OWN_ARTIFACT
+    scaffold_locus = _locus_from_scaffold_classification(checks)
+    if scaffold_locus is not None:
+        return scaffold_locus
     for row in checks:
         if row.get("check") == "tests_pass" and row.get("passed") is False:
             locus = _locus_from_tests_pass_row(row)
             if locus is not None:
                 return locus
     return FailureLocus.UNKNOWN
+
+
+def _locus_from_scaffold_classification(checks: list[dict]) -> str | None:
+    """SIP-0104 P5: the scaffold classification is finer than tests_pass semantics —
+    consulted first when present. app_contract wins over fill (the shell's frozen
+    assertion says the APP violated the contract; repairing the app is the §5 route and
+    the conservative direction); all-fill routes to the fill author. The generator
+    (scaffold_invalid) and infrastructure classes deliberately return None — neither is
+    an LLM-repairable locus, so the legacy signals (or UNKNOWN) decide."""
+    for row in checks:
+        if row.get("check") != "scaffold_failure_classification":
+            continue
+        from squadops.cycles.scaffold_evidence import (
+            CLASS_APP_CONTRACT,
+            CLASS_FILL,
+            CLASS_INFRASTRUCTURE,
+            CLASS_SCAFFOLD_INVALID,
+        )
+
+        classes = row.get("classes") or {}
+        if classes.get(CLASS_APP_CONTRACT):
+            return FailureLocus.SUBJECT
+        if (
+            classes.get(CLASS_FILL)
+            and not classes.get(CLASS_SCAFFOLD_INVALID)
+            and not classes.get(CLASS_INFRASTRUCTURE)
+        ):
+            return FailureLocus.OWN_ARTIFACT
+        return None
+    return None
 
 
 def _locus_from_tests_pass_row(row: dict[str, Any]) -> str | None:

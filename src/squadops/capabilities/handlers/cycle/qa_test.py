@@ -531,6 +531,71 @@ class QATestHandler(_CycleTaskHandler):
         merged_suite_files = [{"filename": f.path, "content": f.content} for f in merged.files]
         return kept + merged_artifacts, merged_suite_files, evidence
 
+    def _append_scaffold_evidence(
+        self,
+        outputs: dict[str, Any],
+        test_result: Any,
+        merged_suite_files: list[dict[str, Any]],
+        fill_merge_evidence: dict[str, Any],
+        scaffold_input: dict[str, Any],
+        artifacts: list[dict],
+    ) -> None:
+        """Run the P5 pipeline and land its outputs (SIP-0104 §5/§6).
+
+        Two landings: ``outputs["scaffold_evidence"]`` (the full summary — the promotion
+        model's banked fields) and an informational ``scaffold_failure_classification``
+        row in ``validation_result.checks`` (status-bearing like the probe rows, no
+        ``passed`` bool — SIP-0096 credit semantics untouched) so the locus classifier
+        and the correction loop's failure evidence read the classes without re-deriving.
+        """
+        from squadops.capabilities.verification_scaffold import VerificationScaffoldManifest
+        from squadops.cycles.scaffold_evidence import (
+            build_scaffold_evidence_summary,
+            classify_shell_failures,
+            correlate,
+        )
+
+        record = VerificationScaffoldManifest.from_dict(scaffold_input["manifest"])
+        dispositions = {
+            d["slot_id"]: d["disposition"]
+            for d in fill_merge_evidence.get("dispositions", [])
+            if isinstance(d, dict)
+        }
+        merged_contents = {m["filename"]: m["content"] for m in merged_suite_files}
+        observations = classify_shell_failures(
+            list(getattr(test_result, "test_failures", ()) or ()),
+            merged_contents,
+            record,
+            dispositions,
+            runner_executed=bool(getattr(test_result, "executed", False)),
+        )
+        probe_rows = [
+            row
+            for row in (outputs.get("validation_result") or {}).get("checks") or []
+            if isinstance(row, dict) and row.get("criterion_id")
+        ]
+        correlations = correlate(observations, probe_rows)
+        shell_paths = set(merged_contents)
+        additive_count = sum(
+            1
+            for a in artifacts
+            if a.get("type") == "test"
+            and str(a.get("name", "")).endswith((".test.ts", ".spec.ts"))
+            and a.get("name") not in shell_paths
+        )
+        summary = build_scaffold_evidence_summary(
+            record, dispositions, observations, correlations, additive_count
+        )
+        outputs["scaffold_evidence"] = summary.to_dict()
+        vr = outputs.setdefault("validation_result", {})
+        vr.setdefault("checks", []).append(
+            {
+                "check": "scaffold_failure_classification",
+                "status": "info",
+                "classes": dict(summary.failure_classes),
+            }
+        )
+
     def _build_focused_prompt(self, inputs: dict[str, Any]) -> str:
         """Build a focused prompt for manifest-driven QA subtasks (SIP-0086).
 
@@ -1177,6 +1242,19 @@ class QATestHandler(_CycleTaskHandler):
         # SIP-0098 98.5: execute seeded behavioral probes and append their rows
         # (both verdict paths, like frontend_build above — additive evidence).
         await self._append_contract_probe_rows(inputs, outputs)
+
+        # SIP-0104 P5: classify shell failures, correlate with the probe rows just
+        # appended, and bank the evidence summary. After the probes on purpose —
+        # correlation joins on the shared criterion id.
+        if scaffold_input:
+            self._append_scaffold_evidence(
+                outputs,
+                test_result,
+                merged_suite_files,
+                fill_merge_evidence,
+                scaffold_input,
+                artifacts,
+            )
 
         duration_ms = (time.perf_counter() - start_time) * 1000
         evidence = HandlerEvidence.create(
