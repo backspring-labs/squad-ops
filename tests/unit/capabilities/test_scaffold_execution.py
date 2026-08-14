@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+import pytest
+
 from squadops.capabilities.handlers.scaffold_execution import (
     SkeletonExecutionVerdict,
     classify_vitest_report,
@@ -39,14 +41,42 @@ def _report(*suites: dict) -> dict:
 
 
 class TestClassifier:
+    @pytest.mark.parametrize(
+        ("message", "expected_kind"),
+        [
+            # Measured (node:20-alpine, vitest 1.6, 2026-08-14): chai emits the BARE
+            # message. The prefixed form is kept for reporter variants that do prefix.
+            ("expected 500 to be 201 // Object.is equality", "assertion"),
+            ("AssertionError: expected 500 to be 201", "assertion"),
+            ("expected [ ] to have a length of 1 but got +0", "assertion"),
+            ("TypeError: routeApiRuns.GET is not a function", "mechanical"),
+            ("ReferenceError: Requests is not defined", "mechanical"),
+            ("SyntaxError: Unexpected token", "mechanical"),
+            # Unknown shape → mechanical: the safe misclassification direction.
+            ("something entirely unrecognized", "mechanical"),
+        ],
+    )
+    def test_failure_shape_classification(self, message, expected_kind):
+        verdict = classify_vitest_report(
+            _report(_suite(_SHELL_A, [_failed("t", message)])), [_SHELL_A]
+        )
+        if expected_kind == "assertion":
+            assert verdict.scaffold_valid and verdict.assertion_failures == 1
+        else:
+            assert not verdict.scaffold_valid and verdict.mechanical_failures
+
     def test_stub_assertion_failures_are_expected_and_the_scaffold_is_valid(self):
         """The bare skeleton MUST fail its shells (SIP-0098 §7) — that is not a defect."""
         verdict = classify_vitest_report(
             _report(
                 _suite(
-                    _SHELL_A, [_failed("POST -> 201", "AssertionError: expected 500 to be 201")]
+                    _SHELL_A,
+                    [_failed("POST -> 201", "expected 500 to be 201 // Object.is equality")],
                 ),
-                _suite(_SHELL_B, [_failed("GET -> 200", "AssertionError: expected 500 to be 200")]),
+                _suite(
+                    _SHELL_B,
+                    [_failed("GET -> 200", "expected 500 to be 200 // Object.is equality")],
+                ),
             ),
             [_SHELL_A, _SHELL_B],
         )
@@ -58,7 +88,8 @@ class TestClassifier:
         verdict = classify_vitest_report(
             _report(
                 _suite(
-                    _SHELL_A, [_failed("POST -> 201", "AssertionError: expected 500 to be 201")]
+                    _SHELL_A,
+                    [_failed("POST -> 201", "expected 500 to be 201 // Object.is equality")],
                 ),
                 _suite(
                     _SHELL_B,
@@ -90,7 +121,7 @@ class TestClassifier:
         """Silent non-collection must not read as valid — a missing shell is missing
         coverage that every other signal would report as green (the #884 class)."""
         verdict = classify_vitest_report(
-            _report(_suite(_SHELL_A, [_failed("t", "AssertionError: x")])),
+            _report(_suite(_SHELL_A, [_failed("t", "expected 500 to be 200")])),
             [_SHELL_A, _SHELL_B],
         )
         assert not verdict.scaffold_valid
@@ -117,7 +148,7 @@ class TestClassifier:
         failures must not condemn the generator."""
         verdict = classify_vitest_report(
             _report(
-                _suite(_SHELL_A, [_failed("t", "AssertionError: x")]),
+                _suite(_SHELL_A, [_failed("t", "expected 500 to be 200")]),
                 _suite("__tests__/harness.test.ts", [_failed("h", "TypeError: boom")]),
             ),
             [_SHELL_A],
@@ -140,7 +171,7 @@ class TestClassifier:
                     [
                         _failed(
                             "t",
-                            "AssertionError: expected",
+                            "expected 500 to be 200",
                             "ReferenceError: Requests is not defined",
                         )
                     ],
@@ -166,7 +197,7 @@ class TestRunnerLevelFailures:
 
     def test_summary_states_the_outcome_plainly(self):
         valid = classify_vitest_report(
-            _report(_suite(_SHELL_A, [_failed("t", "AssertionError: x")])), [_SHELL_A]
+            _report(_suite(_SHELL_A, [_failed("t", "expected 500 to be 200")])), [_SHELL_A]
         )
         assert "1 expected stub assertion failure" in valid.summary
         invalid = classify_vitest_report(_report(), [_SHELL_A])

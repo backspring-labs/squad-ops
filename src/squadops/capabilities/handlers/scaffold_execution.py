@@ -25,6 +25,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import shutil
 import tempfile
 from dataclasses import dataclass
@@ -69,14 +70,23 @@ def _first_line(message: str) -> str:
     return message.strip().split("\n", 1)[0][:_MESSAGE_LIMIT]
 
 
+#: The shapes vitest's JSON reporter gives an ``expect()`` mismatch. Measured against a
+#: real gate run (node:20-alpine, vitest 1.6, 2026-08-14): chai serializes the failure as
+#: the BARE message — ``expected 500 to be 201 // Object.is equality`` — with no error-name
+#: prefix; the ``AssertionError:`` form is kept for reporter variants that do prefix.
+_ASSERTION_SHAPES = re.compile(r"^\s*(?:AssertionError\b|expected\b)")
+
+
 def _is_assertion_failure(failure_messages: list[str]) -> bool:
     """An expected stub-behavior failure, as vitest reports expect() mismatches.
 
-    Anything else — TypeError, ReferenceError, SyntaxError, a transform crash — is a
-    mechanical death of the shell itself.
+    Deliberately an ALLOWLIST of assertion shapes, not a blocklist of error names: the
+    gate's safe misclassification direction is expected-as-mechanical (a valid scaffold
+    fails loudly), never mechanical-as-expected (a broken shell ships — the exact tail
+    this SIP exists to end). An unrecognized failure shape is therefore mechanical.
     """
     return bool(failure_messages) and all(
-        message.lstrip().startswith("AssertionError") for message in failure_messages
+        _ASSERTION_SHAPES.match(message) for message in failure_messages
     )
 
 
