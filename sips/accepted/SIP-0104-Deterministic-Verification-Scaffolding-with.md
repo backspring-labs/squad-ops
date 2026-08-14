@@ -1,13 +1,15 @@
 ---
 title: Deterministic Verification Scaffolding with Semantic Fill Slots
-status: proposed
+status: accepted
 author: jladd
 created_at: '2026-08-13T00:00:00Z'
+sip_number: 104
+updated_at: '2026-08-14T08:49:42.757556Z'
 ---
-# SIP: Deterministic Verification Scaffolding with Semantic Fill Slots
+# SIP-0104: Deterministic Verification Scaffolding with Semantic Fill Slots
 
 ## Status
-Proposed (rev 3 — §10.4 Stage-1e baseline amended at Phase 0; rev 2 design-review feedback in PR #885)
+Accepted (rev 3 — §10.4 Stage-1e baseline amended at Phase 0; rev 2 design-review feedback in PR #885)
 
 **Targets:** acceptance decision in the open, against the 1e ledger through roll 17 — per the §10.4 amendment (2026-08-14); implementation in whatever feature window the owner assigns. The change is qa-surface-scoped and stack-opt-in (§8), so it can ride as an even-minor feature or land per-stack.
 **Builds on:** SIP-0100 (scaffold ownership, fill slots, the frozen harness — this SIP is its test-side counterpart), SIP-0098 (verification contract; shells derive from the same manifest facts as the behavioral probes), #818 (criteria packs — the per-stack seam, including its asymmetric-default ruling), #877 (execution-model guidance — the experiment whose measured result motivates this), #866 (context completeness), #884 (the cross-role suite rewrite this SIP's frozen spine bounds).
