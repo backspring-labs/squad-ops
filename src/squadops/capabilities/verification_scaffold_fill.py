@@ -342,3 +342,29 @@ def merge_fills(
         dispositions=tuple(dispositions),
         misaddressed=misaddressed,
     )
+
+
+def strip_fill_blocks(text: str) -> str:
+    """The emission with every fill fence removed — what the file extractor may see.
+
+    The fenced-file parser reads ``<language>:<path>`` info strings, so a ``fill:slot-…``
+    fence left in place would extract as a file named ``slot-…`` and the protocol's blocks
+    would compete with the additive-file surface for the same bytes.
+    """
+    return _FILL_FENCE_RE.sub("", text)
+
+
+def coverage_inventory_lines(record: VerificationScaffoldManifest) -> list[str]:
+    """The deterministic layer's coverage, one line per slot — the semantic brief's data.
+
+    Coverage inventory ONLY (SIP §4.5): what is already covered, derived from the slot
+    table. No generated coaching, no semantic planning — the instruction prose around
+    these lines is a managed prompt asset (#448), and richer inference-generated briefs
+    are named follow-on work (SIP §12).
+    """
+    lines: list[str] = []
+    for file_record in record.files:
+        for slot in file_record.slots:
+            bound = f" (mirrors probe {slot.probe_id})" if slot.probe_id else ""
+            lines.append(f"{slot.slot_id} — {slot.behavior}{bound}")
+    return lines

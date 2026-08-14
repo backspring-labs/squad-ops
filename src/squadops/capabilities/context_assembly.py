@@ -108,6 +108,11 @@ class ContextAssemblyContract:
     plan_rejection_context: bool = False
     bind_criteria_index: bool = False
     bind_behavioral_surface: bool = False
+    #: SIP-0104 P3: this task receives the deterministic test scaffold (slot table +
+    #: shell files) and authors in fill mode when the stack opts in. Derived from the
+    #: interface manifest at injection (Gate 1 byte-equivalence makes re-derivation
+    #: exact); presence-keyed like every surface here.
+    bind_verification_scaffold: bool = False
 
 
 _EMPTY_CONTRACT = ContextAssemblyContract()
@@ -169,6 +174,7 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
         acceptance_workspace=True,
         bind_behavioral_surface=True,
         manifest_surfaces=(SURFACE_FROZEN,),
+        bind_verification_scaffold=True,
     ),
     # --- planning chain (#657): upstream documents on an envelope-local
     # prior_outputs copy; all four authoring types receive a re-roll's
@@ -345,6 +351,9 @@ RETEST_PRESENCE_KEYS: tuple[str, ...] = (
     # the forwarded-vs-reassembled distinction, visible for the first time.
     "workspace_revision_id",
     SURFACE_DOM_TESTID,
+    # SIP-0104 P3: a retest that re-authors from scratch must still be in fill
+    # mode — losing the key would flip it back to whole-suite authorship.
+    "verification_scaffold",
 )
 
 

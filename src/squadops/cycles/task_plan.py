@@ -609,6 +609,24 @@ def inject_contract_inputs(
         testid_lines = testid_surface_instructions(interface_manifest)
         if testid_lines:
             inputs["dom_testid_surface"] = testid_lines
+        # SIP-0104 P3: the deterministic test scaffold — slot table + shell files —
+        # so qa.test authors in fill mode. Re-derived from the manifest here rather
+        # than threaded from the seed artifacts: Gate 1's byte-equivalence pin makes
+        # the derivation exact within a process, and this composer's every other
+        # surface already derives the same way. Presence-keyed: unopted stacks and
+        # manifest-less calls inject nothing and stay byte-identical.
+        if task_contract.bind_verification_scaffold and interface_manifest is not None:
+            from squadops.capabilities.scaffold import verification_scaffold_for
+            from squadops.capabilities.verification_scaffold_emission import (
+                emit_verification_scaffold,
+            )
+
+            if verification_scaffold_for(interface_manifest.stack):
+                emission = emit_verification_scaffold(interface_manifest)
+                inputs["verification_scaffold"] = {
+                    "manifest": emission.manifest.to_dict(),
+                    "files": [dict(f) for f in emission.files],
+                }
 
 
 def _contract_assertion_criteria(
