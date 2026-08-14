@@ -1,6 +1,6 @@
 # Implementation Plan — Deterministic Verification Scaffolding with Semantic Fill Slots
 
-**SIP:** `sips/proposed/SIP-Deterministic-Verification-Scaffolding.md` (rev 2, PR #885)
+**SIP:** `sips/accepted/SIP-0104-Deterministic-Verification-Scaffolding-with.md` (accepted 2026-08-14 with the Phase 0 §10.4 amendment; rev 2 was PR #885)
 **Plan revision:** 2 — design-review feedback incorporated (PR #892).
 **Ordering principle:** sequencing and exit gates only, no dates. Each phase lands as its own PR with incremental commits; nothing merges without the owner.
 
