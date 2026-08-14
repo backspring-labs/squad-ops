@@ -48,6 +48,31 @@ async def test_the_reference_scaffold_executes_cleanly_against_the_skeleton(refe
     assert verdict.missing_files == ()
 
 
+async def test_a_garbage_fill_degrades_one_file_and_the_rest_still_execute(reference):
+    """Gate 3's blast-radius exit, executed for real: a containment-clean but
+    syntactically broken fill merges into its slot, that ONE file dies at collection,
+    and every other shell still executes its expected stub assertion."""
+    from squadops.capabilities.verification_scaffold_fill import merge_fills, parse_fill_emission
+
+    tree, emission = reference
+    merged = merge_fills(
+        list(emission.files),
+        emission.manifest,
+        parse_fill_emission(
+            "```fill:slot-vc-probe-api-runs\n))) this is not TypeScript {{{\n```\n"
+        ),
+    )
+    files = [{"name": f.path, "content": f.content} for f in merged.files]
+    verdict = await run_skeleton_execution_gate(tree, files, timeout_seconds=_TIMEOUT)
+    assert verdict.executed, verdict.error
+    assert not verdict.scaffold_valid
+    assert all(
+        "vc-probe-api-runs.scaffold.test.ts" in failure for failure in verdict.mechanical_failures
+    ), verdict.mechanical_failures
+    # the other seven shells collected and executed to their expected stub failures
+    assert verdict.assertion_failures == 7
+
+
 async def test_an_injected_runtime_defect_is_caught_as_mechanical(reference):
     """The dynamic decisive case: statically well-formed (imports resolve, handlers
     exported, statuses declared) but runtime-broken — a defect only execution can see."""

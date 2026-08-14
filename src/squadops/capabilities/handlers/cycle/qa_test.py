@@ -457,6 +457,80 @@ class QATestHandler(_CycleTaskHandler):
         )
         return rendered.content
 
+    async def _fill_mode_section(self, context: ExecutionContext, inputs: dict[str, Any]) -> str:
+        """Render the FILL MODE block when the envelope carries the scaffold, or "".
+
+        SIP-0104 §4.5: the author receives the shells (read-only) and the coverage
+        inventory — data derived from the slot table by the fill module; every
+        instruction lives in the managed asset (#448). Coverage inventory only: no
+        generated coaching (SIP §12 keeps richer briefs as follow-on work).
+        """
+        scaffold_input = inputs.get("verification_scaffold") or {}
+        manifest_dict = scaffold_input.get("manifest")
+        files = scaffold_input.get("files") or []
+        if not manifest_dict or not files:
+            return ""
+        renderer = getattr(context.ports, "request_renderer", None)
+        if renderer is None:
+            return ""
+        from squadops.capabilities.verification_scaffold import VerificationScaffoldManifest
+        from squadops.capabilities.verification_scaffold_fill import coverage_inventory_lines
+
+        record = VerificationScaffoldManifest.from_dict(manifest_dict)
+        slot_lines = "\n".join(f"- {line}" for line in coverage_inventory_lines(record))
+        shell_parts = [f"**{f['name']}:**\n```typescript\n{f['content']}\n```" for f in files]
+        rendered = await renderer.render(
+            "request.qa_test_fill_mode_appendix",
+            {"slot_lines": slot_lines, "shell_files": "\n\n".join(shell_parts)},
+        )
+        return rendered.content
+
+    def _merge_fill_artifacts(
+        self,
+        scaffold_input: dict[str, Any],
+        fill_emission: Any,
+        artifacts: list[dict],
+    ) -> tuple[list[dict], list[dict], dict[str, Any]]:
+        """Merge parsed fills into the scaffold and bound the additive surface.
+
+        Returns ``(artifacts, merged_suite_files, fill_merge_evidence)``. A
+        path-addressed emission at a scaffold shell path is DROPPED and recorded — in
+        fill mode the slot protocol is the only way to touch a shell (the SIP §4.3
+        posture; region-level enforcement itself lands in P4). Every declared slot ends
+        in exactly one disposition; missing and rejected slots render as failing states
+        inside the merged shells, attributed to the fill layer.
+        """
+        from squadops.capabilities.verification_scaffold import VerificationScaffoldManifest
+        from squadops.capabilities.verification_scaffold_fill import merge_fills
+
+        record = VerificationScaffoldManifest.from_dict(scaffold_input["manifest"])
+        shell_paths = {f.path for f in record.files}
+        dropped = sorted(a["name"] for a in artifacts if a["name"] in shell_paths)
+        kept = [a for a in artifacts if a["name"] not in shell_paths]
+        merged = merge_fills(list(scaffold_input["files"]), record, fill_emission)
+        merged_artifacts = [
+            {
+                "name": f.path,
+                "content": f.content,
+                "media_type": _classify_file(f.path)[1],
+                "type": "test",
+            }
+            for f in merged.files
+        ]
+        evidence = {
+            "dispositions": [
+                {"slot_id": d.slot_id, "disposition": d.disposition, "detail": d.detail}
+                for d in merged.dispositions
+            ],
+            "counts": merged.disposition_counts(),
+            "misaddressed": [
+                {"slot_id": d.slot_id, "detail": d.detail} for d in merged.misaddressed
+            ],
+            "dropped_shell_rewrites": dropped,
+        }
+        merged_suite_files = [{"filename": f.path, "content": f.content} for f in merged.files]
+        return kept + merged_artifacts, merged_suite_files, evidence
+
     def _build_focused_prompt(self, inputs: dict[str, Any]) -> str:
         """Build a focused prompt for manifest-driven QA subtasks (SIP-0086).
 
@@ -730,6 +804,12 @@ class QATestHandler(_CycleTaskHandler):
                 capability_name,
             )
 
+        # SIP-0104 P3: fill mode rides both prompt paths, presence-gated on the
+        # scaffold input — absent input renders nothing and stays byte-identical.
+        fill_section = await self._fill_mode_section(context, inputs)
+        if fill_section:
+            user_prompt = f"{user_prompt}\n{fill_section}"
+
         # #448: include the qa.test task_type fragment (dependency constraint,
         # scope discipline) in the assembled system prompt. The fragment is the
         # externalized owner of task-content guidance — not inline literals.
@@ -794,10 +874,24 @@ class QATestHandler(_CycleTaskHandler):
             chat_response=response,
         )
 
+        scaffold_input = inputs.get("verification_scaffold")
+        fill_emission = None
+        extraction_source = content
+        if scaffold_input:
+            from squadops.capabilities.verification_scaffold_fill import (
+                parse_fill_emission,
+                strip_fill_blocks,
+            )
+
+            # Fill fences would otherwise extract as files named "slot-…" — the fill
+            # protocol and the additive-file surface must not compete for bytes.
+            fill_emission = parse_fill_emission(content)
+            extraction_source = strip_fill_blocks(content)
+
         extracted = extract_fenced_files(
-            content, expected_artifacts=inputs.get("expected_artifacts")
+            extraction_source, expected_artifacts=inputs.get("expected_artifacts")
         )
-        if not extracted:
+        if not extracted and not (fill_emission and fill_emission.fills):
             from squadops.cycles.emission_integrity import no_fenced_blocks_failure
 
             self._log_no_fenced_blocks(content)
@@ -836,6 +930,21 @@ class QATestHandler(_CycleTaskHandler):
         # SIP-0086: Output validation + self-evaluation
         evidence_extra: dict[str, Any] = {}
         output_validation_enabled = resolved_config.get("output_validation", False)
+
+        # SIP-0104 P3: merge fills into the scaffold. The merged shells join BOTH the
+        # stored artifacts and the suite-execution set; shell-path rewrites are dropped
+        # and recorded. shell_drop_paths also guards the self-eval merge below.
+        shell_drop_paths: set[str] = set()
+        if scaffold_input:
+            artifacts, merged_suite_files, fill_merge_evidence = self._merge_fill_artifacts(
+                scaffold_input, fill_emission, artifacts
+            )
+            merged_names = {m["filename"] for m in merged_suite_files}
+            shell_drop_paths = merged_names
+            extracted = [
+                f for f in extracted if f["filename"] not in merged_names
+            ] + merged_suite_files
+            evidence_extra["fill_merge"] = fill_merge_evidence
 
         # #670 / RC-9b: shared across self-eval passes so per-criterion
         # evaluator-error counts accumulate (2-strikes escalation), dev parity
@@ -882,6 +991,9 @@ class QATestHandler(_CycleTaskHandler):
                             "type": "test",
                         }
                         for f in new_extracted
+                        # SIP-0104 P3: a self-eval pass must not rewrite merged shells
+                        # either — the slot protocol is the only shell surface.
+                        if f["filename"] not in shell_drop_paths
                     ]
                     artifacts = self._merge_artifacts(artifacts, new_artifacts, evidence_extra)
                     validation = await self._validate_output(
