@@ -35,6 +35,10 @@ logger = logging.getLogger(__name__)
 _REPORT_FILENAME = ".scaffold_gate_report.json"
 _MESSAGE_LIMIT = 400
 
+#: vitest's OWN report vocabulary (jest-compatible JSON reporter), named so it cannot be
+#: mistaken for — or drift with — this codebase's status enums (#380).
+_VITEST_STATUS_FAILED = "failed"
+
 
 @dataclass(frozen=True)
 class SkeletonExecutionVerdict:
@@ -113,7 +117,7 @@ def classify_vitest_report(report: dict, scaffold_paths: list[str]) -> SkeletonE
             continue
         collected.append(path)
         results = suite.get("assertionResults") or []
-        if suite.get("status") == "failed" and not results:
+        if suite.get("status") == _VITEST_STATUS_FAILED and not results:
             # The suite died before any test ran: unresolved import, transform
             # failure, a top-level throw — the collection-level mechanical class.
             mechanical.append(
@@ -121,7 +125,7 @@ def classify_vitest_report(report: dict, scaffold_paths: list[str]) -> SkeletonE
             )
             continue
         for result in results:
-            if result.get("status") != "failed":
+            if result.get("status") != _VITEST_STATUS_FAILED:
                 continue
             messages = [str(m) for m in result.get("failureMessages") or []]
             if _is_assertion_failure(messages):
