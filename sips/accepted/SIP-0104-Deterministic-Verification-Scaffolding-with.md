@@ -1,15 +1,17 @@
 ---
 title: Deterministic Verification Scaffolding with Semantic Fill Slots
-status: proposed
+status: accepted
 author: jladd
 created_at: '2026-08-13T00:00:00Z'
+sip_number: 104
+updated_at: '2026-08-14T08:49:42.757556Z'
 ---
-# SIP: Deterministic Verification Scaffolding with Semantic Fill Slots
+# SIP-0104: Deterministic Verification Scaffolding with Semantic Fill Slots
 
 ## Status
-Proposed (rev 2 — design-review feedback incorporated; see PR #885)
+Accepted (rev 3 — §10.4 Stage-1e baseline amended at Phase 0; rev 2 design-review feedback in PR #885)
 
-**Targets:** acceptance decision after Stage 1e closes — the dependency §10.4 makes explicit; implementation in whatever feature window the owner assigns. The change is qa-surface-scoped and stack-opt-in (§8), so it can ride as an even-minor feature or land per-stack.
+**Targets:** acceptance decision in the open, against the 1e ledger through roll 17 — per the §10.4 amendment (2026-08-14); implementation in whatever feature window the owner assigns. The change is qa-surface-scoped and stack-opt-in (§8), so it can ride as an even-minor feature or land per-stack.
 **Builds on:** SIP-0100 (scaffold ownership, fill slots, the frozen harness — this SIP is its test-side counterpart), SIP-0098 (verification contract; shells derive from the same manifest facts as the behavioral probes), #818 (criteria packs — the per-stack seam, including its asymmetric-default ruling), #877 (execution-model guidance — the experiment whose measured result motivates this), #866 (context completeness), #884 (the cross-role suite rewrite this SIP's frozen spine bounds).
 
 ## 1. Abstract
@@ -143,7 +145,7 @@ Promotion is evidence-driven (recurrence, stable semantics, deterministic deriva
 1. **Structural (every roll):** the §4.4 validity gate passes on every scaffold emission, and the byte-equivalence pin holds. Reference stack-#1 contract and manifest hashes unmoved (the M0a guard).
 2. **Longitudinal:** **N = 6 consecutive stack-#2 rolls with zero run-terminating mechanical suite failures**, attribution per the §5 taxonomy in the run ledger. N is set *now*, matching the observed baseline window (4 mechanical deaths across ~6 rolls); the owner may adjust it at design review — before results exist, not after.
 3. **Economics:** correction rounds and generation-minutes attributable to qa mechanics, before vs. after — the §3 cost claim (~20 min of 27B per mechanical round) captured as a metric, demonstrating the intervention removed the spend and not just the label.
-4. **Stage 1e dependency, stated:** acceptance requires the closed Stage 1e ledger as the baseline corpus — specifically the roll-by-roll failure attributions §3 cites. If 1e closes with new mechanical failure modes, they join the §5 matrix before acceptance; acceptance is a reading of a closed ledger, not a retrospective interpretation of a live one.
+4. **Stage 1e baseline (amended 2026-08-14 — owner ruling at Phase 0 of the implementation plan):** the baseline corpus is the **open** Stage 1e ledger through roll 17 — the roll-by-roll failure attributions §3 cites. As proposed, this item required a *closed* 1e ledger ("acceptance is a reading of a closed ledger, not a retrospective interpretation of a live one"). The owner amended it to accept in the open. Evidence: the trigger the owner named for acting — repeated mechanical suite deaths *despite* the execution-model guidance (#877) and the repair-locus fixes (#884) — has already fired within the recorded ledger; waiting for 1e to close adds rolls to the baseline without changing the attributions this SIP reads. The closed-ledger safeguard is retained in equivalent form as Gate 6's window protocol (implementation plan): any new mechanical failure mode observed after this baseline — before or after 1e closes — names its uncovered surface, joins the §5 matrix, and resets the N=6 window.
 5. **Non-goals:** replacing the probes (they remain the boot-and-HTTP layer); capping authored tests; changing `tests_pass` credit semantics (SIP-0096 untouched).
 
 ## 11. Alternatives considered
