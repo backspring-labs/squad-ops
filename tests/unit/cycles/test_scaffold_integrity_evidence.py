@@ -122,6 +122,7 @@ def test_to_dict_is_stable_and_complete():
         "disposition",
         "siblings_retained",
         "correction_requested",
+        "detail",
     }
     assert d["stage"] == "artifact_storage"
 

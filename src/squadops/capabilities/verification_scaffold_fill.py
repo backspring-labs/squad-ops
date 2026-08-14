@@ -64,6 +64,7 @@ import re
 from dataclasses import dataclass
 
 from squadops.capabilities.verification_scaffold import (
+    ScaffoldSpineError,
     ScaffoldValidationError,
     VerificationScaffoldManifest,
     parse_slot_regions,
@@ -368,3 +369,51 @@ def coverage_inventory_lines(record: VerificationScaffoldManifest) -> list[str]:
             bound = f" (mirrors probe {slot.probe_id})" if slot.probe_id else ""
             lines.append(f"{slot.slot_id} — {slot.behavior}{bound}")
     return lines
+
+
+#: Violation kinds for a stored shell emission (P4 region enforcement). ``region`` is the
+#: adversarial/structural class (frozen spine or slot structure changed); ``containment``
+#: is the prohibited-fill class (spine intact, slot body smuggles forbidden content).
+SHELL_VIOLATION_REGION = "region"
+SHELL_VIOLATION_CONTAINMENT = "containment"
+
+
+def shell_emission_violation(file_record, content: str) -> tuple[str, str] | None:
+    """Judge one stored emission against its shell's bound record — ``None`` = legal.
+
+    The single content-based rule P4 enforces on every landing path, any role, any locus
+    (SIP §4.3): the spine and slot structure must be byte-identical to the bound record's,
+    and every slot body must satisfy the fill containment rules. A legal emission is
+    exactly a fill-merge product: body edits inside the markers, nothing else.
+
+    Ordered so the strongest claim wins attribution: unparseable structure, then a changed
+    slot set, then a spine mutation — each ``region`` (the adversarial class) — then body
+    containment (``containment``, the correctable prohibited-fill class). Returns
+    ``(kind, detail)`` for the first violation.
+    """
+    try:
+        regions = parse_slot_regions(content)
+    except ScaffoldSpineError as exc:
+        return (SHELL_VIOLATION_REGION, f"slot structure malformed: {exc}")
+    declared = {slot.slot_id for slot in file_record.slots}
+    parsed = {region.slot_id for region in regions}
+    if parsed != declared:
+        return (
+            SHELL_VIOLATION_REGION,
+            f"slot set changed: bound {sorted(declared)}, emitted {sorted(parsed)}",
+        )
+    emitted_spine = spine_hash(content)
+    if emitted_spine != file_record.spine_hash:
+        return (
+            SHELL_VIOLATION_REGION,
+            f"frozen spine mutated: emitted spine {emitted_spine[:12]}… != bound "
+            f"{file_record.spine_hash[:12]}… (imports, invocation, status assertion and "
+            f"slot markers are frozen; only slot bodies are writable)",
+        )
+    lines = content.split("\n")
+    for region in regions:
+        body = "\n".join(lines[region.begin_line : region.end_line - 1])
+        for pattern, reason in _FORBIDDEN:
+            if pattern.search(body):
+                return (SHELL_VIOLATION_CONTAINMENT, f"slot {region.slot_id}: {reason}")
+    return None
