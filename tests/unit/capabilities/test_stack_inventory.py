@@ -45,7 +45,12 @@ import re
 
 import pytest
 
-from squadops.capabilities import dev_capabilities, scaffold, scaffold_contract
+from squadops.capabilities import (
+    dev_capabilities,
+    scaffold,
+    scaffold_contract,
+    verification_scaffold_emission,
+)
 from squadops.capabilities.handlers import build_profiles, probe_runner
 from squadops.capabilities.scaffold import InterfaceManifest
 from squadops.cycles.verification_contract import VerificationContract
@@ -82,7 +87,17 @@ _REGISTRIES: dict[str, tuple[dict, str | None]] = {
     "dev_capability": (dev_capabilities.DEV_CAPABILITIES, "dev_capability"),
     "sandbox contract": (environment._CONTRACTS, None),
     "build profile": (build_profiles.BUILD_PROFILES, None),
+    "verification_scaffold (test-scaffold emitter)": (
+        verification_scaffold_emission._EMITTERS,
+        "verification_scaffold",
+    ),
 }
+
+#: Registries a stack joins by explicit opt-in (SIP-0104 §8): an EMPTY field is a declared
+#: state — the stack has not opted in and emission skips — not a membership gap. A
+#: NON-empty field must still resolve (declared-but-unregistered is the #838 class and
+#: fails membership below). Pinned like _CONVENTION_BOUND so growth is deliberate.
+_OPT_IN = frozenset({"verification_scaffold (test-scaffold emitter)"})
 
 #: Registries with no declaring field. Pinned so the count can only shrink: converting one
 #: to an explicit ``ScaffoldStack`` field is an improvement and updates this set, while
@@ -128,6 +143,8 @@ def test_every_stack_has_a_member_in_every_registry(stack, registry):
     build — the wrong answer being the only one that worked."""
     mapping, field = _REGISTRIES[registry]
     key = _registry_key(stack, field)
+    if not key and registry in _OPT_IN:
+        return  # declared non-membership: the stack has not opted in (SIP-0104 §8)
     assert key, f"stack {stack!r} resolves an empty key for {registry!r}"
     assert key in mapping, (
         f"stack {stack!r} addresses {registry!r} as {key!r}, which is not registered "

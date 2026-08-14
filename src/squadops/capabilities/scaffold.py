@@ -1728,6 +1728,18 @@ class ScaffoldStack:
     #: are free-form capabilities for cycles with no scaffold stack at all. Not every dev
     #: capability is a stack; every stack needs one.
     dev_capability: str = ""
+    #: SIP-0104: the test-scaffold emitter this stack opts into — deterministic behavior
+    #: shells with fill slots, emitted beside the skeleton at seed time. A *name* pointing
+    #: at ``verification_scaffold_emission._EMITTERS``, like the three fields above.
+    #:
+    #: The default sides with ``check_stack``, not ``criteria_pack``: an unset field means
+    #: the stack has NOT opted in (SIP-0104 §8 — opt-in is explicit and all-or-nothing) and
+    #: emission is skipped, which is today's behavior — the qa author writes the whole
+    #: suite, visibly. A partial or guessed scaffold is the silently-wrong class, which is
+    #: why a stack whose facts cannot support every derivation must refuse to declare this
+    #: rather than declare it approximately. Set-but-unregistered refuses at emission
+    #: (the #838 two-registries-disagree class).
+    verification_scaffold: str = ""
 
 
 _STACKS: dict[str, ScaffoldStack] = {
@@ -1766,6 +1778,9 @@ _STACKS: dict[str, ScaffoldStack] = {
         criteria_pack=_NEXTJS_TS_NAME,
         probe_profile="nextjs_next_start",
         dev_capability=_NEXTJS_TS_NAME,
+        # SIP-0104: the first (and so far only) stack with a deterministic test scaffold.
+        # Stack #1 deliberately does not declare one — opt-in is explicit, never inherited.
+        verification_scaffold=_NEXTJS_TS_NAME,
     ),
 }
 
@@ -1817,6 +1832,18 @@ def dev_capability_for(stack: str) -> str:
     """The ``DEV_CAPABILITIES`` entry ``stack`` requires, or ``""`` (#832)."""
     known = _STACKS.get(stack)
     return known.dev_capability if known else ""
+
+
+def verification_scaffold_for(stack: str) -> str:
+    """The test-scaffold emitter ``stack`` opts into, or ``""`` (SIP-0104).
+
+    Total, like its three siblings: ``""`` means the stack has not opted in and callers
+    skip emission (today's authored-suite path). The refusal for a *declared but
+    unregistered* emitter belongs to ``verification_scaffold_emission``, the layer that
+    knows the registries disagree.
+    """
+    known = _STACKS.get(stack)
+    return known.verification_scaffold if known else ""
 
 
 def resolve_dev_capability(resolved_config: Mapping[str, Any] | None) -> str | None:

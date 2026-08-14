@@ -11,12 +11,12 @@ from __future__ import annotations
 import pytest
 
 from squadops.capabilities.verification_scaffold import (
-    TEST_SCAFFOLD_MANIFEST_VERSION,
+    SCAFFOLD_MANIFEST_VERSION,
     BehaviorSlot,
     ScaffoldSpineError,
     ScaffoldValidationError,
-    TestScaffoldFile,
-    TestScaffoldManifest,
+    VerificationScaffoldFile,
+    VerificationScaffoldManifest,
     build_scaffold_file,
     elide_slot_bodies,
     expanded_tree_hash,
@@ -177,9 +177,9 @@ class TestBuildScaffoldFile:
             build_scaffold_file("x.ts", _SHELL, (_slot("slot-vc-probe-api-runs"),))
 
 
-def _manifest(files: tuple[TestScaffoldFile, ...]) -> TestScaffoldManifest:
-    return TestScaffoldManifest(
-        scaffold_manifest_version=TEST_SCAFFOLD_MANIFEST_VERSION,
+def _manifest(files: tuple[VerificationScaffoldFile, ...]) -> VerificationScaffoldManifest:
+    return VerificationScaffoldManifest(
+        scaffold_manifest_version=SCAFFOLD_MANIFEST_VERSION,
         generator_version=1,
         stack="nextjs_ts",
         interface_manifest_hash="m" * 64,
@@ -189,8 +189,8 @@ def _manifest(files: tuple[TestScaffoldFile, ...]) -> TestScaffoldManifest:
     )
 
 
-def _file(path: str, slot_id: str, spine: str = "s1") -> TestScaffoldFile:
-    return TestScaffoldFile(
+def _file(path: str, slot_id: str, spine: str = "s1") -> VerificationScaffoldFile:
+    return VerificationScaffoldFile(
         path=path, content_hash="c" * 64, spine_hash=spine, slots=(_slot(slot_id),)
     )
 
@@ -207,7 +207,7 @@ class TestManifest:
             (
                 _file("a.ts", "slot-a1"),
                 _file("b.ts", "slot-a1"),
-                TestScaffoldFile(path="c.ts", content_hash="c" * 64, spine_hash="s"),
+                VerificationScaffoldFile(path="c.ts", content_hash="c" * 64, spine_hash="s"),
             )
         )
         findings = m.lint()
@@ -215,7 +215,7 @@ class TestManifest:
         assert any("c.ts: scaffold file with no behavior slots" in f for f in findings)
 
     def test_lint_flags_an_unknown_schema_version(self):
-        m = TestScaffoldManifest(
+        m = VerificationScaffoldManifest(
             scaffold_manifest_version=99,
             generator_version=1,
             stack="nextjs_ts",
@@ -227,14 +227,14 @@ class TestManifest:
 
     def test_round_trip_preserves_identity(self):
         m = _manifest((_file("a.ts", "slot-a1"),))
-        assert TestScaffoldManifest.from_dict(m.to_dict()) == m
+        assert VerificationScaffoldManifest.from_dict(m.to_dict()) == m
 
     def test_a_tampered_stored_aggregate_refuses_to_load(self):
         """A hand-edited record must not launder itself into an enforcement authority."""
         d = _manifest((_file("a.ts", "slot-a1"),)).to_dict()
         d["aggregate_spine_hash"] = "0" * 64
         with pytest.raises(ScaffoldValidationError, match="mutated"):
-            TestScaffoldManifest.from_dict(d)
+            VerificationScaffoldManifest.from_dict(d)
 
     def test_find_slot_returns_owning_file(self):
         m = _manifest((_file("a.ts", "slot-a1"), _file("b.ts", "slot-b2", spine="s2")))

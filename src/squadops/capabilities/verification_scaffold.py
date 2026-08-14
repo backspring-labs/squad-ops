@@ -32,7 +32,7 @@ line)::
 
 ``slot-<id>`` must match ``slot-[a-z0-9][a-z0-9-]*``. Structure rules, enforced by
 :func:`parse_slot_regions`: begin/end ids must match; no nesting; no duplicate slot id in a
-file (cross-file uniqueness is :meth:`TestScaffoldManifest.lint`'s job); no unclosed region.
+file (cross-file uniqueness is :meth:`VerificationScaffoldManifest.lint`'s job); no unclosed region.
 A line that *mentions* ``[scaffold-slot:`` without being a well-formed marker is an error,
 not spine text — a typo'd marker silently frozen into the spine would freeze the author's
 slot shut.
@@ -82,7 +82,7 @@ from dataclasses import dataclass, field
 
 #: Schema version of the test-scaffold manifest this module defines. Bumped when the
 #: manifest's shape changes; the generator's own version lives with the generator.
-TEST_SCAFFOLD_MANIFEST_VERSION = 1
+SCAFFOLD_MANIFEST_VERSION = 1
 
 #: The order authoritative sources are consulted, and the order disagreements are named in.
 DERIVATION_PRECEDENCE = ("interface_manifest", "criteria_pack", "expanded_tree")
@@ -270,7 +270,7 @@ class BehaviorSlot:
 
 
 @dataclass(frozen=True)
-class TestScaffoldFile:
+class VerificationScaffoldFile:
     """One emitted scaffold file: full-content hash, spine hash, and its slots."""
 
     path: str
@@ -287,7 +287,7 @@ class TestScaffoldFile:
         }
 
     @classmethod
-    def from_dict(cls, d: Mapping) -> TestScaffoldFile:
+    def from_dict(cls, d: Mapping) -> VerificationScaffoldFile:
         return cls(
             path=d["path"],
             content_hash=d["content_hash"],
@@ -298,7 +298,7 @@ class TestScaffoldFile:
 
 def build_scaffold_file(
     path: str, content: str, slots: tuple[BehaviorSlot, ...]
-) -> TestScaffoldFile:
+) -> VerificationScaffoldFile:
     """Pin one emitted file: hashes computed here so generator and validator cannot drift.
 
     ``slots`` supply provenance (behavior, probe/criterion bindings); their region bounds
@@ -323,7 +323,7 @@ def build_scaffold_file(
         )
         for s in slots
     )
-    return TestScaffoldFile(
+    return VerificationScaffoldFile(
         path=path,
         content_hash=_sha256(content),
         spine_hash=spine_hash(content),
@@ -332,7 +332,7 @@ def build_scaffold_file(
 
 
 @dataclass(frozen=True)
-class TestScaffoldManifest:
+class VerificationScaffoldManifest:
     """The scaffold manifest: what the generator emitted, pinned for diagnosis (SIP §4.3).
 
     Everything violation attribution needs (module docstring), nothing more. Aggregates are
@@ -346,7 +346,7 @@ class TestScaffoldManifest:
     interface_manifest_hash: str
     criteria_pack: str
     expanded_tree_hash: str
-    files: tuple[TestScaffoldFile, ...] = field(default=())
+    files: tuple[VerificationScaffoldFile, ...] = field(default=())
 
     def aggregate_spine_hash(self) -> str:
         """SHA-256 over sorted ``path:spine_hash`` lines — the frozen spine's identity."""
@@ -359,7 +359,7 @@ class TestScaffoldManifest:
     def slot_ids(self) -> tuple[str, ...]:
         return tuple(s.slot_id for f in self.files for s in f.slots)
 
-    def find_slot(self, slot_id: str) -> tuple[TestScaffoldFile, BehaviorSlot] | None:
+    def find_slot(self, slot_id: str) -> tuple[VerificationScaffoldFile, BehaviorSlot] | None:
         for f in self.files:
             for s in f.slots:
                 if s.slot_id == slot_id:
@@ -375,10 +375,10 @@ class TestScaffoldManifest:
         and no reason to exist), and a version this schema does not define.
         """
         findings: list[str] = []
-        if self.scaffold_manifest_version != TEST_SCAFFOLD_MANIFEST_VERSION:
+        if self.scaffold_manifest_version != SCAFFOLD_MANIFEST_VERSION:
             findings.append(
                 f"scaffold_manifest_version {self.scaffold_manifest_version} != "
-                f"{TEST_SCAFFOLD_MANIFEST_VERSION} (this schema)"
+                f"{SCAFFOLD_MANIFEST_VERSION} (this schema)"
             )
         seen: dict[str, str] = {}
         for f in self.files:
@@ -407,7 +407,7 @@ class TestScaffoldManifest:
         }
 
     @classmethod
-    def from_dict(cls, d: Mapping) -> TestScaffoldManifest:
+    def from_dict(cls, d: Mapping) -> VerificationScaffoldManifest:
         """Load a stored manifest. Stored aggregates are *verified*, not trusted: a record
         whose derived hashes disagree with its own file table has been hand-edited, and
         loading it quietly would launder the edit into an authority."""
@@ -418,7 +418,7 @@ class TestScaffoldManifest:
             interface_manifest_hash=d["interface_manifest_hash"],
             criteria_pack=d["criteria_pack"],
             expanded_tree_hash=d["expanded_tree_hash"],
-            files=tuple(TestScaffoldFile.from_dict(f) for f in d.get("files", ())),
+            files=tuple(VerificationScaffoldFile.from_dict(f) for f in d.get("files", ())),
         )
         for key, derived in (
             ("aggregate_spine_hash", manifest.aggregate_spine_hash()),
