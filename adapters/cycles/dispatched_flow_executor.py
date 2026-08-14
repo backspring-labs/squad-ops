@@ -427,9 +427,20 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             # design, so the resumed run tests the skeleton instead of the app.
             interface_manifest = await self._load_interface_manifest_for_run(cycle, run)
             if interface_manifest is not None and existing_checkpoint is None:
-                seed_artifact_refs.extend(
-                    await self._seed_skeleton_artifacts(interface_manifest, cycle, run_id)
+                skeleton_refs = await self._seed_skeleton_artifacts(
+                    interface_manifest, cycle, run_id
                 )
+                seed_artifact_refs.extend(skeleton_refs)
+                # SIP-0104: the deterministic test scaffold rides the same seed act, and
+                # only on top of an actually-seeded skeleton — the tree its shells'
+                # imports resolve against is the tree this run carries. Same #881
+                # no-resume rule by construction (this whole branch is seed-time only).
+                if skeleton_refs:
+                    seed_artifact_refs.extend(
+                        await self._seed_verification_scaffold_artifacts(
+                            interface_manifest, cycle, run_id
+                        )
+                    )
 
             # LangFuse + Prefect observability setup
             obs_ctx, flow_run_id = await self._init_run_observability(
@@ -1867,6 +1878,110 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             "Seeded %d walking-skeleton files (stack=%s) for run %s",
             len(seeded_ids),
             manifest.stack,
+            run_id,
+        )
+        return seeded_ids
+
+    async def _seed_verification_scaffold_artifacts(
+        self,
+        manifest: Any,
+        cycle: Cycle,
+        run_id: str,
+    ) -> list[str]:
+        """Emit, validate, and persist the deterministic test scaffold (SIP-0104 P1).
+
+        The lifecycle is explicit — expand → emit → **validate** → persist → expose —
+        and ``emit_verification_scaffold`` refuses before persistence, so an unvalidated
+        scaffold never becomes part of the run's artifact set and nothing downstream
+        needs an invalid-scaffold special case.
+
+        Opt-in gated (SIP-0104 §8): a stack declaring no ``verification_scaffold``
+        seeds nothing and qa authors the whole suite — today's path, silently. Once a
+        stack HAS opted in, an emission failure fails run setup **loudly** (the #845
+        doctrine, same branch as the registry-disagreement raise above): a run whose
+        deterministic verification story cannot be validly emitted is not a degraded
+        run, and it must never consume an LLM correction round (SIP-0104 §4.4).
+
+        Returns the seeded shell artifact ids (workspace files). The scaffold manifest
+        record is stored as its own artifact but deliberately NOT returned: seed refs
+        become workspace files, and the record is evidence for enforcement/diagnosis
+        (P4), not a file the app tree should carry. It is reachable by run id +
+        artifact type.
+        """
+        from squadops.capabilities.scaffold import verification_scaffold_for
+        from squadops.capabilities.verification_scaffold_emission import (
+            VERIFICATION_SCAFFOLD_MANIFEST_ARTIFACT_TYPE,
+            VERIFICATION_SCAFFOLD_MANIFEST_FILENAME,
+            emit_verification_scaffold,
+        )
+
+        if not verification_scaffold_for(manifest.stack):
+            return []
+
+        try:
+            emission = emit_verification_scaffold(manifest)
+        except Exception:
+            logger.error(
+                "test-scaffold emission failed for opted-in stack %s (run %s) — failing "
+                "run setup: an invalid scaffold must never become the run's qa artifact "
+                "or consume an LLM round (SIP-0104 §4.4)",
+                manifest.stack,
+                run_id,
+            )
+            raise
+
+        seeded_ids: list[str] = []
+        for f in emission.files:
+            content = f["content"].encode("utf-8")
+            ref = ArtifactRef(
+                artifact_id=f"art_{uuid4().hex[:12]}",
+                project_id=cycle.project_id,
+                cycle_id=cycle.cycle_id,
+                run_id=run_id,
+                artifact_type="source",
+                filename=f["name"],
+                content_hash=sha256(content).hexdigest(),
+                size_bytes=len(content),
+                media_type="text/plain",
+                created_at=datetime.now(UTC),
+                metadata={
+                    "producing_task_type": "scaffold.test_emit",
+                    "scaffold_seeded": True,
+                    "verification_scaffold": True,
+                },
+            )
+            await self._artifact_vault.store(ref, content)
+            seeded_ids.append(ref.artifact_id)
+
+        record_bytes = emission.manifest_yaml.encode("utf-8")
+        record_ref = ArtifactRef(
+            artifact_id=f"art_{uuid4().hex[:12]}",
+            project_id=cycle.project_id,
+            cycle_id=cycle.cycle_id,
+            run_id=run_id,
+            artifact_type=VERIFICATION_SCAFFOLD_MANIFEST_ARTIFACT_TYPE,
+            filename=VERIFICATION_SCAFFOLD_MANIFEST_FILENAME,
+            content_hash=sha256(record_bytes).hexdigest(),
+            size_bytes=len(record_bytes),
+            media_type="application/yaml",
+            created_at=datetime.now(UTC),
+            metadata={
+                "derived_from": "interface_manifest",
+                "derivation": "verification_scaffold_emission",
+                "generator_version": emission.manifest.generator_version,
+                "aggregate_spine_hash": emission.manifest.aggregate_spine_hash(),
+                "scaffold_hash": emission.manifest.scaffold_hash(),
+            },
+        )
+        await self._artifact_vault.store(record_ref, record_bytes)
+
+        logger.info(
+            "Seeded %d test-scaffold shells + manifest record (stack=%s, generator v%d, "
+            "spine %s) for run %s",
+            len(emission.files),
+            manifest.stack,
+            emission.manifest.generator_version,
+            emission.manifest.aggregate_spine_hash()[:12],
             run_id,
         )
         return seeded_ids
