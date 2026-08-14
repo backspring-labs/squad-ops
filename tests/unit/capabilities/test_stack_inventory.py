@@ -208,6 +208,10 @@ _GUARD_MODULES = (
     "src/squadops/cycles/implementation_plan.py",
     "src/squadops/cycles/authoring_failure.py",
     "src/squadops/cycles/preflight.py",
+    # SIP-0104 P2: the scaffold execution-readiness gate. assess_* is consumed by the
+    # winnability boundary, validate_* by the executor's seed path — losing either caller
+    # reopens the exact "guard that cannot fire" hole this test exists to close.
+    "src/squadops/capabilities/verification_scaffold_gate.py",
 )
 
 

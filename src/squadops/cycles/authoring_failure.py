@@ -34,6 +34,7 @@ from squadops.cycles.manifest_gates import (
     PROOF_EXPANDS,
     PROOF_LINT,
     PROOF_PARSES,
+    PROOF_SCAFFOLD_READY,
     PROOF_SOURCE_PRD,
     PROOF_STACK_MATCHES_CONFIG,
     PROOF_STATUS_DECLARED,
@@ -99,6 +100,12 @@ _PROOF_CLASS: dict[str, str] = {
     # elimination, not the author's.
     PROOF_CONTRACT_DERIVES: DERIVATION_DEFECT,
     PROOF_CHECKS_LIVE: DERIVATION_DEFECT,
+    # SIP-0104 P2: the manifest already parsed, linted, expanded, and derived a contract;
+    # a scaffold that cannot be validly emitted from it is the GENERATOR's problem by the
+    # same elimination as `contract_derives` — never taught to the author (scaffold
+    # self-repair prohibition, SIP-0104 §4.3: a scaffold defect routes to the scaffold
+    # owner, not to an LLM round).
+    PROOF_SCAFFOLD_READY: DERIVATION_DEFECT,
 }
 
 

@@ -1908,18 +1908,27 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         (P4), not a file the app tree should carry. It is reachable by run id +
         artifact type.
         """
-        from squadops.capabilities.scaffold import verification_scaffold_for
+        from squadops.capabilities.scaffold import expand, verification_scaffold_for
         from squadops.capabilities.verification_scaffold_emission import (
             VERIFICATION_SCAFFOLD_MANIFEST_ARTIFACT_TYPE,
             VERIFICATION_SCAFFOLD_MANIFEST_FILENAME,
             emit_verification_scaffold,
+        )
+        from squadops.capabilities.verification_scaffold_gate import (
+            validate_execution_readiness,
         )
 
         if not verification_scaffold_for(manifest.stack):
             return []
 
         try:
-            emission = emit_verification_scaffold(manifest)
+            # One tree for emission AND the readiness gate, so the two cannot check
+            # against different expansions. The gate re-reads the EMITTED BYTES (P2):
+            # emission's own validation proves record/output agreement; this proves the
+            # output's mechanical claims hold against the tree and contract.
+            tree = expand(manifest)
+            emission = emit_verification_scaffold(manifest, expanded=tree)
+            validate_execution_readiness(emission, tree, manifest)
         except Exception:
             logger.error(
                 "test-scaffold emission failed for opted-in stack %s (run %s) — failing "

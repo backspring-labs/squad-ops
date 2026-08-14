@@ -29,6 +29,7 @@ from squadops.cycles.manifest_gates import (
     PROOF_EXPANDS,
     PROOF_LINT,
     PROOF_PARSES,
+    PROOF_SCAFFOLD_READY,
     PROOF_SOURCE_PRD,
     PROOF_STACK_MATCHES_CONFIG,
     PROOF_STATUS_DECLARED,
@@ -74,6 +75,11 @@ NOT_AUTHOR_FACING: dict[str, str] = {
     "deriver, never in the manifest",
     PROOF_CHECKS_LIVE: "derivation-owned (M6 DERIVATION_DEFECT): a dead-on-arrival check "
     "is emitted by the deriver, not authored",
+    # SIP-0104 P2: an opted-in stack whose test scaffold cannot be validly emitted.
+    # The generator's defect by elimination (the manifest already expanded and derived
+    # a contract); teaching the author anything here would teach a superstition.
+    PROOF_SCAFFOLD_READY: "derivation-owned (M6 DERIVATION_DEFECT): the fix is in the "
+    "scaffold generator or its readiness gate (SIP-0104), never in the manifest",
 }
 
 

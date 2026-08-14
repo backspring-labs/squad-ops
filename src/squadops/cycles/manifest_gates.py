@@ -42,6 +42,10 @@ PROOF_STATUS_DECLARED = "status_declared"
 #: stack the CYCLE was configured for. A manifest for another stack is unwinnable in the
 #: most literal sense — the expander builds a different application.
 PROOF_STACK_MATCHES_CONFIG = "stack_matches_config"
+#: SIP-0104 P2: a stack that opted into the deterministic test scaffold must be able to
+#: emit one that passes the execution-readiness gate. A manifest whose scaffold cannot be
+#: validly emitted fails here — a free framing re-roll (#522) — rather than at run setup.
+PROOF_SCAFFOLD_READY = "scaffold_ready"
 
 #: Schema-gate proof classes (M2). ``PROOF_SOURCE_PRD`` was ``PROOF_PROVENANCE`` until #803
 #: gave the manifest an actual ``provenance`` block — one word for "where the design came
@@ -103,6 +107,7 @@ def assess_winnability(
     findings.extend(_contract_findings(manifest))
     findings.extend(_testid_findings(manifest))
     findings.extend(_status_findings(manifest))
+    findings.extend(_scaffold_findings(manifest))
     return tuple(findings)
 
 
@@ -316,6 +321,47 @@ def _contract_findings(manifest) -> list[WinnabilityFinding]:
                         )
                     )
     return findings
+
+
+def _scaffold_findings(manifest) -> list[WinnabilityFinding]:
+    """An opted-in stack's test scaffold must emit and pass the readiness gate (SIP-0104).
+
+    Skips silently for a stack with no ``verification_scaffold`` declaration — no scaffold
+    is a declared state, not a defect. An expansion failure also reports nothing here:
+    ``_expander_findings`` owns that root cause, and a second finding for the same defect
+    would read as two problems. What this proof owns is the scaffold-specific tail: a
+    derivation refusal, or emitted bytes that fail the execution-readiness gate — each a
+    run-setup death (SIP-0104 §4.4) converted into a free framing re-roll (#522).
+    """
+    from squadops.capabilities.scaffold import expand, verification_scaffold_for
+
+    if not verification_scaffold_for(str(getattr(manifest, "stack", "") or "")):
+        return []
+    from squadops.capabilities.verification_scaffold_emission import emit_verification_scaffold
+    from squadops.capabilities.verification_scaffold_gate import assess_execution_readiness
+
+    try:
+        tree = expand(manifest)
+    except Exception:  # noqa: BLE001 - PROOF_EXPANDS owns expansion failures
+        return []
+    try:
+        emission = emit_verification_scaffold(manifest, expanded=tree)
+    except Exception as exc:  # noqa: BLE001 - untrusted authored input: one finding
+        return [
+            WinnabilityFinding(
+                PROOF_SCAFFOLD_READY,
+                f"this stack opted into the deterministic test scaffold, but no valid "
+                f"scaffold can be emitted from this manifest ({exc}). The run would die "
+                f"at setup with no deterministic verification story.",
+            )
+        ]
+    return [
+        WinnabilityFinding(
+            PROOF_SCAFFOLD_READY,
+            f"the emitted test scaffold fails its execution-readiness gate: {finding}",
+        )
+        for finding in assess_execution_readiness(emission, tree, manifest)
+    ]
 
 
 def _stack_findings(manifest, expected_stack: str) -> list[WinnabilityFinding]:
