@@ -343,3 +343,43 @@ def test_the_reference_contract_still_passes_the_new_lint_gate():
     """Polarity guard. A lint step wired into the winnability gate can reject manifests that
     were previously fine, and the reference pair is what every other pin rests on."""
     assert assess_winnability(_REFERENCE.read_text(encoding="utf-8")) == ()
+
+
+class TestScaffoldReadinessProof:
+    """SIP-0104 P2: PROOF_SCAFFOLD_READY converts a run-setup scaffold death into a free
+    framing re-roll. Bug classes: the proof firing on an unopted stack (stack #1 would be
+    rejected for lacking a scaffold it never declared), and an emission failure surfacing
+    only at run setup after the framing gate read the manifest as winnable."""
+
+    def test_the_nextjs_reference_manifest_is_winnable_with_its_scaffold(self):
+        from tests.unit.capabilities._stack_fixtures import manifest_dict_for_stack
+
+        content = yaml.safe_dump(manifest_dict_for_stack("nextjs_ts"), sort_keys=False)
+        assert assess_winnability(content) == ()
+
+    def test_stack_one_never_reaches_the_scaffold_proof(self):
+        """The reference manifest (stack #1) already asserts zero findings above; this
+        pins the reason — no verification_scaffold declaration means the proof skips,
+        not that it passes by luck."""
+        from squadops.capabilities.scaffold import verification_scaffold_for
+        from squadops.cycles.manifest_gates import PROOF_SCAFFOLD_READY
+
+        assert verification_scaffold_for("fullstack_fastapi_react") == ""
+        findings = assess_winnability(_REFERENCE.read_text(encoding="utf-8"))
+        assert PROOF_SCAFFOLD_READY not in _proofs(findings)
+
+    def test_an_emission_refusal_is_a_winnability_finding(self, monkeypatch):
+        from squadops.capabilities import verification_scaffold_emission as emission_module
+        from squadops.capabilities.verification_scaffold import ScaffoldDerivationError
+        from squadops.cycles.manifest_gates import PROOF_SCAFFOLD_READY
+        from tests.unit.capabilities._stack_fixtures import manifest_dict_for_stack
+
+        def _refuse(manifest, **kwargs):
+            raise ScaffoldDerivationError("injected derivation refusal")
+
+        monkeypatch.setattr(emission_module, "emit_verification_scaffold", _refuse)
+        content = yaml.safe_dump(manifest_dict_for_stack("nextjs_ts"), sort_keys=False)
+        findings = assess_winnability(content)
+        assert PROOF_SCAFFOLD_READY in _proofs(findings)
+        detail = next(f.detail for f in findings if f.proof == PROOF_SCAFFOLD_READY)
+        assert "injected derivation refusal" in detail
