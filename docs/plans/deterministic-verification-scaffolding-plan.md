@@ -1,89 +1,114 @@
 # Implementation Plan — Deterministic Verification Scaffolding with Semantic Fill Slots
 
 **SIP:** `sips/proposed/SIP-Deterministic-Verification-Scaffolding.md` (rev 2, PR #885)
-**Status:** plan drafted ahead of acceptance; the owner's pull-in trigger fired 2026-08-13 (roll 17 — third consecutive roll where the app passed its probes and build while the freshly generated qa suite failed on new mechanical mistakes).
-**Ordering principle:** sequencing and exit criteria only, no dates. Each phase lands as its own PR with incremental commits; nothing merges without the owner.
+**Plan revision:** 2 — design-review feedback incorporated (PR #892).
+**Ordering principle:** sequencing and exit gates only, no dates. Each phase lands as its own PR with incremental commits; nothing merges without the owner.
 
-## Why now (one paragraph, then the ledger reference)
+## Why now
 
-The generated test suite is the last artifact whose boilerplate — imports, function-call shapes, file placement, response-field paths — is re-invented by an LLM every roll. Across rolls 9–17 that layer produced a different small mistake nearly every generation, while every deterministic layer added this release stayed reliable and the apps themselves converged. The SIP moves the boilerplate into the scaffold (pre-written, frozen, derived from the same manifest facts the probes already use) and leaves the qa author only the judgment content: assertion bodies. The full failure catalog is in the SIP's §3; the roll-by-roll record is the v1.6 ledger.
+The generated test suite is the last artifact whose boilerplate — imports, function-call shapes, file placement, response-field paths — is re-invented by an LLM every roll. Across rolls 9–17 that layer produced a different small mistake nearly every generation, while every deterministic layer added this release stayed reliable and the apps themselves converged. The SIP moves the boilerplate into the scaffold and leaves the qa author the judgment content: assertion bodies. The failure catalog is the SIP's §3; the roll-by-roll record is the v1.6 ledger.
 
-## Phase 0 — Acceptance mechanics (owner + maintainer)
+## Execution shape
 
-The SIP's acceptance evidence section (§10.4) currently requires a *closed* Stage 1e ledger. Implementing before 1e closes therefore needs a pre-acceptance amendment, made in the open per the SIP's own discipline:
+**Gates 1–4 are the architectural proof** (the LLM cannot mechanically rewrite the scaffold); **Gate 5 is the observability/convergence layer**; **Gate 6 is empirical validation**. Strictly sequential: `P0 → P1 → P2 → P3 → P4 → P5 → P6`. P5 *design/schema* work may proceed during P4; no P5 runtime lands before P4 is proven (P5 consumes the enforcement signals P4 produces). No experimental roll before the minimum validation boundary — **P1–P4 deployed and proven** — is met; cheap local/deterministic validation runs continuously throughout.
 
-- Amend §10.4: the baseline corpus is the **open** 1e ledger through roll 17 (the trigger the owner named — repeated mechanical suite deaths despite the guidance and routing fixes — is the amendment's evidence).
-- Owner accepts: `update_sip_status.py` assigns the number; body H1/Status synced by hand (known papercut).
-- Exit: SIP numbered in `sips/accepted/`, amendment section in the SIP itself (not only here — plans are superseded at the cut; the SIP is permanent).
+## Phase 0 — SIP amendment + acceptance (blocking gate; owner + maintainer)
 
-## Phase 1 — Scaffold emission (the generator; the bulk of the work)
+The SIP's acceptance evidence (§10.4) requires a *closed* Stage 1e ledger; this plan proposes implementing while 1e is open. **One ruling resolves it, made in the SIP, not here:** amend §10.4 in the open (baseline = the open 1e ledger through roll 17; the amendment's evidence is the owner-named trigger — repeated mechanical suite deaths despite the guidance and routing fixes), then accept normally (`update_sip_status.py` assigns the number; H1/Status synced by hand).
 
-Extend the nextjs_ts stack expansion (`stack_nextjs_ts.py` / the `expand()` seam) to additionally emit a test scaffold:
+- **This plan never overrides the SIP.** If the owner declines the amendment, the plan shelves until 1e closes.
+- Exit: amended SIP numbered in `sips/accepted/`, amendment recorded in the SIP itself (plans are superseded; the SIP is permanent).
 
-- One scaffold suite file (e.g. `__tests__/api.test.ts`), scaffold-owned, containing one **behavior shell** per contract-derived behavior (create → declared success status, blank rejection → the derived rejection status, not-found → declared 404, one per declared endpoint). Every shell carries: imports resolved against the actual expanded tree (bracket directories included), `beforeEach(reset)`, the invocation call pre-written (`new Request(...)`, the `{ params }` argument for dynamic routes), the declared-status assertion, and a **fill slot** for domain assertions with a stable `slot_id` bound to the criterion/probe id it derives from.
-- A **scaffold manifest** artifact: frozen file list, per-file spine hashes computed with slot bodies elided, and the slot table (`slot_id` → file, region, bound criterion).
-- **Derivability rule enforced in code**: any element the generator cannot derive from the manifest/tree/criteria pack is demoted into the slot, never frozen as a guess.
+## Phase 1 — Gate 1: the deterministic artifact
 
-Exit criteria:
-- Byte-equivalence pin: reference manifest + generator → byte-identical scaffold (the same test shape that pins the app scaffold).
-- The scaffold **with empty fills collects cleanly** under `vitest run` in the agent image (extends the existing frozen-harness proof).
-- Stack #1 contract and manifest hashes unmoved; stack #1 emits no test scaffold (opt-in is per-stack and explicit).
-- Mutation checks: removing a derivation source (e.g. an endpoint's declared status) changes the scaffold deterministically or fails generation — never silently guesses.
+**First commit is the scaffold contract, not the generator** — otherwise the generator becomes the de facto specification:
 
-## Phase 2 — The validity gate (rails before the author sees it)
+- scaffold manifest schema; file/region ownership model; `slot_id` schema and provenance; frozen-spine hash definition (canonicalization stated); derivability source precedence (manifest → criteria pack → expanded tree; the generator never reconciles disagreements by inference); scaffold version + generator version.
+- The manifest records the structural facts violation diagnosis needs, not hashes alone: generator version, scaffold version, source manifest / criteria-pack identity, expanded-tree hash, per-file frozen regions, slot ids with region bounds, bound criterion/probe ids. A hash mismatch must be attributable to generator drift vs. workspace mutation vs. producer edit.
 
-At seed time, before any qa authoring: verify every import resolves, every referenced handler exists in the expanded tree, every asserted status exists in the contract, and the empty-fill scaffold collects. A failure **fails run setup loudly** (the same posture as a missing build profile) — it must never consume an LLM correction round.
+Then implement emission against that contract: one behavior shell per contract-derived behavior (imports resolved against the actual expanded tree, `beforeEach(reset)`, the invocation call with `{ params }` for dynamic routes, the declared-status assertion, a fill slot per shell). **Lifecycle is explicit: expand → emit → validate → persist → expose to qa.test** — an unvalidated scaffold never becomes the run's current qa artifact, so nothing downstream needs an invalid-scaffold special case.
 
-Exit: mutation tests — break each derivation, assert run setup fails with the named cause.
+P1 owns **generation correctness**: deterministic output, authoritative derivation, manifest production.
 
-## Phase 3 — `qa.test` fill mode (the author's new surface)
+Exit (Gate 1):
+- Byte-equivalence: reference manifest + generator version → byte-identical scaffold and manifest.
+- Derivability mutations: removing a derivation source changes output deterministically or fails generation — never a guess.
+- Stack #1 contract/manifest hashes unmoved; no stack-1 scaffold (opt-in explicit).
 
-When the workspace carries a valid scaffold:
+## Phase 2 — Gate 2: the executable artifact
 
-- eve's envelope presents the scaffold with its slots plus a **semantic brief**: the list of behaviors the deterministic layer already covers (derived free from the slot table), framing her job as residual semantics — state effects, cross-operation behavior, edge cases. Richer brief content is follow-on work, per the SIP.
-- eve emits **slot fills only** (plus optional additive test files under the existing rules: declared dependencies, in-process execution, no frozen-file edits). The merge of fills into scaffold files happens deterministically on the framework side.
-- Structural consequence to pin in tests: zero-byte emissions, invented fence paths, and wrong placement can no longer produce a broken suite — a bad fill degrades one slot.
+P2 owns **execution readiness** — proving the generated artifact can execute before any author sees it:
 
-Exit: envelope test (slots + brief present), fill-merge round-trip test, and a test demonstrating a garbage fill emission still yields a collecting suite with only that slot failing.
+- imports resolve; referenced handlers exist; asserted statuses exist in the contract; the empty-fill scaffold collects under the stack's runner;
+- **collection is not sufficient**: every shell's invocation is *executed against the walking skeleton* and must complete without a mechanical crash (assertion failures against stub handlers are expected and ignored by the gate; a `TypeError`/unresolved-symbol crash is a gate failure); slot boundaries are structurally valid; bound criterion identity survives into the emitted file.
+- **The decisive negative test:** internally consistent inputs plus an injected generator defect (e.g. the manifest and tree agree a route exists, the generator emits the wrong import path) must be caught here as `scaffold-invalid` — the gate detects generator bugs, not merely missing inputs.
 
-## Phase 4 — Region-level enforcement (the spine stays frozen)
+A validity failure fails run setup loudly and never consumes an LLM round.
 
-Whole-file freezing exists (SIP-0100 §2.4); slots inside frozen files need region-level verification:
+Exit (Gate 2): the mutation corpus above, including the consistent-inputs/broken-generator case.
 
-- On every stored emission touching a scaffold file: recompute the slot-elided spine hash; a frozen-region mutation is rejected and restored, with a structured scaffold-violation signal riding the existing enforcement-carry transport.
-- No repair path — any role, any locus — may edit frozen regions. This closes at region level what the ownership veto (#886) closed at file level, and it is required for honesty: without it, spine integrity would rest on prompt compliance, which is the lottery this SIP exists to end.
+## Phase 3 — Gate 3: the bounded agent surface
 
-Exit: mutation tests — a fill emission that rewrites an import or invocation is restored and signaled; the repair path cannot mutate the spine.
+**The merge contract is defined before implementation** (or P3 becomes another mini code-generation pipeline): slot id is the only addressing mechanism; one fill per slot; duplicate slot ids rejected; a malformed fill cannot alter bytes outside its slot; fills cannot introduce imports or dependencies into frozen regions; merge is deterministic and reproducible; merged output gets its own evidence/hash record.
 
-## Phase 5 — Failure attribution and routing
+- **Missing-slot rule:** a required slot receives a valid fill or an explicit `not_applicable` disposition with a reason. A missing fill is never silent success — it renders as a failing state attributed to the fill layer.
+- **Fill validation before execution:** each fill parses, occupies only its slot, carries no forbidden imports/dependencies, no frozen-structure mutation, no external-server access. Deterministic rejection is cheaper than a qa repair round.
+- The semantic brief is **coverage inventory only** — the list of behaviors the deterministic layer covers, derived from the slot table. No generated coaching, no semantic test planning (SIP §12 follow-on).
+- Additive test files remain allowed under existing rules.
 
-`tests_pass` evidence rows carry slot ids, so failures split into the SIP's four classes with distinct routing:
+Exit (Gate 3): fill-merge round-trip determinism; the negative corpus (garbage fill degrades one slot and the suite still collects; oversized/duplicate/misaddressed fills rejected); slot containment proven. **P4 does not begin until this gate passes** — region enforcement must not debug an unstable fill protocol.
 
-- **scaffold-invalid** → generator defect, run-setup failure (never an LLM round);
-- **app-contract** (a frozen shell's status assertion fails) → dev repair — and a shell failure and its bound probe's failure deduplicate on the shared criterion id (one defect, one round);
-- **fill failure** → qa repair, slot-scoped;
-- **infrastructure** → environment triage.
+## Phase 4 — Gate 4: enforcement against adversarial producers
 
-Exit: routing tests per class; the shell/probe dedupe test; the run report's per-layer counts (scaffold-derived, authored fills, additive tests, unique findings by layer — the SIP §6 evidence).
+Region-level verification on every stored emission touching a scaffold file, with two protected classes:
 
-## Phase 6 — Live validation
+1. **Frozen-spine mutation** — slot-elided spine hash mismatch → rejected, restored, structured scaffold-violation signal on the existing enforcement-carry transport.
+2. **Slot-boundary manipulation** — moving delimiters, enlarging a region, nesting or duplicating slots, injecting statements adjacent to a slot. Slot markers are frozen structure under the canonicalization; the mutation corpus covers each of these explicitly.
 
-Deploy, then roll. Success reads per the SIP's own criteria:
+No repair path — any role, any locus — may modify frozen regions or slot boundaries.
 
-- The validity gate is green on every scaffold emission (structural criterion, checked every roll from here on).
-- The roll's suite cannot die mechanically; whatever fails is attributable by layer.
-- **1e credit is unchanged by this SIP**: a green roll still boot-validates via `audit_delivered_app.py` before Stage 1e closes — shells prove manifest-consistency, not intent, and the SIP says so (§4/§6). The N=6 zero-mechanical-death window keeps accruing across subsequent rolls; it is the SIP's promotion evidence, not 1e's gate.
+- **Hash-sufficiency boundary stated now:** hash-based enforcement is accepted when the adversarial mutation corpus is fully caught by the chosen canonicalization; AST-level verification remains the named escalation *on evidence* (a mutation the corpus shows hashing misses), not an undefined future.
+- **The adversarial-producer end-to-end test** (the architectural claim's single strongest check): one fixture attempts, in turn — changing an import, changing the invocation strategy, modifying a status assertion, moving a slot, adding a dependency, pointing at a live server, rewriting another test file — and each attempt lands in its expected failure class deterministically.
+
+Exit (Gate 4): the adversarial corpus, hash-sufficiency demonstrated against it, restore-and-signal proven on the repair path. **Gates 1–4 together establish the core invariant: the LLM cannot mechanically rewrite the scaffold.** This is the checkpoint before any expensive roll.
+
+## Phase 5 — Gate 5: evidence and convergence (observability layer, not a prerequisite)
+
+Pipeline kept explicit and separate: `observation → classification → correlation → owner → repair route`.
+
+- Evidence rows carry slot ids; classification lands each failure in the SIP's four classes (scaffold-invalid / app-contract / fill / infrastructure); ownership is assigned from classification; routing consumes ownership.
+- **Correlation, not causal equivalence:** a shell failure and a probe failure sharing a criterion id are *correlated* for the router — grouped, both observations retained — never auto-collapsed into one defect. Different criterion ids are never auto-merged.
+- Run-report counts preserve the fields the future promotion model needs (slot/category, assertion type, unique finding, probe redundancy, defect class, cycle/stack identity) — schema preserved, workflow not built (SIP §12).
+- No change to `tests_pass` credit semantics or SIP-0096.
+
+Exit (Gate 5): routing tests per class; correlation tests (grouped, not collapsed); report fields present.
+
+## Phase 6 — Gate 6: empirical validation
+
+Deploy, then roll. The structural success criterion, stated falsifiably:
+
+> All known scaffold-owned mechanical surfaces are deterministically validated and mutation-protected; any remaining mechanical failure is, by definition, a **new uncovered surface** and is classified and added to the enforced set.
+
+The N=6 zero-mechanical-death window measures whether reality matches that claim. **Window protocol, fixed now:**
+
+- only rolls generated with the final Gate 1–4 behavior count;
+- partial or hand-assembled scaffolds do not count; resumed runs carrying pre-SIP artifacts do not count;
+- a roll that never reaches qa (unrelated failure) neither counts nor resets;
+- a new mechanical suite failure resets the window and names the uncovered surface.
+
+**The semantic-value end-to-end test rides this phase**: a crafted defect the scaffold and probes cannot catch (behavior the contract does not pin — e.g. a state effect across operations) must be caught by a valid fill. The acceptance evidence the SIP wants is the pair: mechanical/contract errors caught deterministically, and a semantic defect caught only by the authored layer — proof the system has not reduced qa to consistency checking.
+
+**1e credit is unchanged**: a green roll still boot-validates via `audit_delivered_app.py` before Stage 1e closes — shells prove manifest-consistency, not intent.
 
 ## Scope boundaries
 
-- nextjs_ts only; stack #1 untouched until its pack opts in (all-or-nothing opt-in per the SIP §8).
-- Follow-on work stays out (SIP §12): inference-generated semantic briefs, the full QA evidence schema, the promotion workflow, cross-stack scaffolds.
-- No changes to probes, `tests_pass` credit semantics, or SIP-0096.
+- nextjs_ts only; stack #1 untouched until its pack opts in (all-or-nothing, SIP §8).
+- Deferred per SIP §12 and *not quietly re-entered here*: inference-generated semantic briefs, the full qa evidence schema, the promotion workflow, cross-stack scaffolds, the Cycle Data Store loop.
 
 ## Roll policy while building
 
-No new rolls until Phase 3 deploys — each roll costs ~2.5h against odds this work exists to change. Roll 17 stays failed-and-resumable as a fallback specimen; if the owner wants lottery draws in parallel, resuming it is cheap and independent of this plan.
+No experimental roll before the P1–P4 boundary is deployed and proven. Local/deterministic validation (unit suites, in-container collection runs, adversarial corpus) runs continuously through every phase. Roll 17 stays failed-and-resumable as a fallback specimen, independent of this plan.
 
-## Phase → effort shape (not dates)
+## Effort shape (not dates)
 
-P1 large (generator + manifest + pins) · P2 small · P3 medium (envelope + merge path) · P4 medium (region hashing + enforcement wiring) · P5 medium (routing + evidence) · P6 = a roll. P1→P2→P3 are strictly sequential; P4 and P5 follow P3 and can interleave; the minimal honest deploy for a roll is **P1–P4** (P5's attribution improves convergence but existing qa-side repair routing already works).
+P1 large (contract + generator + manifest + pins) · P2 medium (skeleton-execution gate + negative corpus) · P3 medium-large (merge contract + fill validation + envelope) · P4 medium (canonicalization + adversarial corpus) · P5 medium (classification/correlation/report) · P6 = rolls. Strictly sequential with the P3→P4 rollback gate; P5 schema design may run during P4.
