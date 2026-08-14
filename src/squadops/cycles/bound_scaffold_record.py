@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
+from typing import Any
 
 from squadops.capabilities.scaffold import (
     InterfaceManifest,
@@ -68,6 +69,13 @@ class BoundScaffoldRecord:
     # restoration must never re-derive (D2). Defaults empty so records bound before this
     # field existed deserialize cleanly and simply enforce nothing.
     fill_seeds: tuple[FrozenArtifact, ...] = ()
+    # SIP-0104 P4: the verification-scaffold manifest record for an opted-in stack —
+    # per-shell spine hashes and slot tables, the authority region enforcement verifies
+    # every stored shell emission against. None for unopted stacks and records bound
+    # before this field existed (deserialize cleanly, enforce nothing at region level).
+    # The record's own from_dict refuses tampered aggregates, so a hand-edited stored
+    # record cannot launder itself into an enforcement authority.
+    verification_scaffold: Any = None
 
     def frozen_paths(self) -> frozenset[str]:
         return frozenset(f.path for f in self.frozen)
@@ -102,6 +110,11 @@ class BoundScaffoldRecord:
             "fill_slots": list(self.fill_slots),
             "qa_namespace": list(self.qa_namespace),
             "fill_seeds": [f.to_dict() for f in self.fill_seeds],
+            "verification_scaffold": (
+                self.verification_scaffold.to_dict()
+                if self.verification_scaffold is not None
+                else None
+            ),
         }
 
     @classmethod
@@ -118,7 +131,47 @@ class BoundScaffoldRecord:
             fill_slots=tuple(d.get("fill_slots", [])),
             qa_namespace=tuple(d.get("qa_namespace", [])),
             fill_seeds=tuple(FrozenArtifact.from_dict(f) for f in d.get("fill_seeds", [])),
+            verification_scaffold=_scaffold_record_from(d.get("verification_scaffold")),
         )
+
+
+def _scaffold_record_from(raw: dict | None):
+    if not raw:
+        return None
+    from squadops.capabilities.verification_scaffold import VerificationScaffoldManifest
+
+    return VerificationScaffoldManifest.from_dict(raw)
+
+
+def _derive_verification_scaffold(manifest: InterfaceManifest):
+    """The scaffold manifest record for an opted-in stack, or None (SIP-0104 P4).
+
+    Fail-soft by design: a derivation failure here must degrade to file-level
+    enforcement (verification_scaffold=None), never disable the whole bound record —
+    losing frozen-file enforcement to a region-level derivation bug would widen the
+    attack surface exactly when something is already wrong.
+    """
+    from squadops.capabilities.scaffold import verification_scaffold_for
+
+    if not verification_scaffold_for(manifest.stack):
+        return None
+    try:
+        from squadops.capabilities.verification_scaffold_emission import (
+            emit_verification_scaffold,
+        )
+
+        return emit_verification_scaffold(manifest).manifest
+    except Exception:  # pragma: no cover - defensive; seed-time already validated
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "SIP-0104: could not derive the verification-scaffold record for stack %s; "
+            "region-level enforcement disabled for this binding (file-level enforcement "
+            "unaffected)",
+            manifest.stack,
+            exc_info=True,
+        )
+        return None
 
 
 def build_bound_record(
@@ -156,4 +209,5 @@ def build_bound_record(
             for name in sorted(fill_set)
             if name in files
         ),
+        verification_scaffold=_derive_verification_scaffold(manifest),
     )

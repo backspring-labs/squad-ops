@@ -677,9 +677,8 @@ class CorrectionRunner:
         if bound_record is not None and step_artifacts:
             from squadops.cycles.scaffold_enforcement import (
                 enforce_frozen_ownership,
-                frozen_emission_instruction,
+                enforcement_instruction,
             )
-            from squadops.cycles.task_outcome import ContractComplianceViolation
 
             enforced, integrity_evidence = enforce_frozen_ownership(
                 step_artifacts, bound_record, step_envelope
@@ -689,14 +688,17 @@ class CorrectionRunner:
                 step_artifacts = enforced
                 for record in integrity_evidence:
                     self._emit_scaffold_integrity_evidence(record, step_envelope)
+                    # SIP-0104 P4: one selector covers the frozen-file AND the
+                    # region-level codes — the next attempt is TOLD what enforcement
+                    # rejected instead of fighting it blind (#691; the #884 repair
+                    # class §4.3 prohibits).
+                    instruction = enforcement_instruction(record)
                     if (
-                        enforcement_carry is not None
-                        and record.violation_code
-                        == ContractComplianceViolation.FROZEN_PATH_EMISSION
+                        instruction is not None
+                        and enforcement_carry is not None
+                        and instruction not in enforcement_carry
                     ):
-                        instruction = frozen_emission_instruction(record)
-                        if instruction not in enforcement_carry:
-                            enforcement_carry.append(instruction)
+                        enforcement_carry.append(instruction)
 
         # pf-31 Fix D: drop syntactically invalid .py emissions (truncation
         # guard) — the prior stored version (last known parseable) stays

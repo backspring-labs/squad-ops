@@ -59,6 +59,14 @@ class ContractComplianceViolation:
     # Frozen bytes changed AFTER materialization despite no accepted frozen emission — a system
     # enforcement fault (bypass / concurrent writer / bug), NOT producer misconduct (plan D4).
     POST_WRITE_INTEGRITY_FAULT = "post_write_integrity_fault"
+    # SIP-0104 P4: an emission to a verification-scaffold shell that mutates its frozen
+    # spine or slot structure (moved/nested/duplicated markers, edited imports/invocation/
+    # status assertion). The adversarial class the region canonicalization exists to catch.
+    SCAFFOLD_REGION_VIOLATION = "scaffold_region_violation"
+    # SIP-0104 P4: a shell emission whose spine is intact but whose slot BODY smuggles
+    # prohibited content (imports, require(), live-server access). Correctable by the fill
+    # author — SIP §5's prohibited-fill class, distinct from the adversarial one above.
+    PROHIBITED_FILL_EMISSION = "prohibited_fill_emission"
 
 
 # Reason code -> corrective disposition. The producer-fault codes are correctable; the
@@ -69,6 +77,8 @@ CONTRACT_COMPLIANCE_ACTIONS: dict[str, str] = {
     ContractComplianceViolation.UNAUTHORIZED_SLOT_EMISSION: "reject_and_route_to_owner",
     ContractComplianceViolation.UNDECLARED_PATH_EMISSION: "reject_and_update_plan",
     ContractComplianceViolation.POST_WRITE_INTEGRITY_FAULT: "restore_and_stop_attempt",
+    ContractComplianceViolation.SCAFFOLD_REGION_VIOLATION: "reject_and_edit_slot_bodies_only",
+    ContractComplianceViolation.PROHIBITED_FILL_EMISSION: "reject_and_fix_fill_content",
 }
 
 

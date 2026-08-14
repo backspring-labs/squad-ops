@@ -87,6 +87,9 @@ class ScaffoldIntegrityEvidence:
     siblings_retained: int  # sibling artifacts in the SAME response left untouched
     # Set by 3.4 when a targeted correction is issued for this violation.
     correction_requested: bool = False
+    # SIP-0104 P4: the region verdict's human-readable specifics (which check failed and
+    # how) — attribution beyond the hash pair. Empty for the whole-file codes.
+    detail: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -105,6 +108,7 @@ class ScaffoldIntegrityEvidence:
             "disposition": self.disposition,
             "siblings_retained": self.siblings_retained,
             "correction_requested": self.correction_requested,
+            "detail": self.detail,
         }
 
 
@@ -186,4 +190,64 @@ def unauthorized_slot_evidence(
         attempted_sha256=sha256_of(attempted_content),
         disposition=DISPOSITION_DROPPED,
         siblings_retained=siblings_retained,
+    )
+
+
+def shell_region_evidence(
+    *,
+    producer_task_id: str,
+    producer_task_type: str,
+    record: BoundScaffoldRecord,
+    shell: Any,
+    attempted_path: str,
+    normalized_path: str | None,
+    attempted_content: Any,
+    siblings_retained: int,
+    violation_kind: str,
+    detail: str,
+    stage: str = "artifact_storage",
+) -> ScaffoldIntegrityEvidence:
+    """Build the SIP-0104 P4 case: an emission to a verification-scaffold shell violated
+    region rules. ``violation_kind`` maps to the reason code: ``region`` (spine/slot
+    structure mutated — the adversarial class) vs ``containment`` (spine intact, slot
+    body carries prohibited content — the correctable prohibited-fill class).
+
+    The hash pair carries SPINE hashes, not content hashes: the bound spine against the
+    emitted spine when it is computable (structure parsed), else the emitted content's
+    plain hash — so a mismatch names WHICH layer moved, which is the whole point of the
+    attribution fields (SIP §4.3).
+    """
+    from squadops.capabilities.verification_scaffold import (
+        ScaffoldSpineError,
+        spine_hash,
+    )
+    from squadops.cycles.task_outcome import ContractComplianceViolation
+
+    attempted_spine: str | None
+    try:
+        attempted_spine = (
+            spine_hash(attempted_content) if isinstance(attempted_content, str) else None
+        )
+    except ScaffoldSpineError:
+        attempted_spine = sha256_of(attempted_content)
+    return ScaffoldIntegrityEvidence(
+        producer_task_id=producer_task_id,
+        producer_task_type=producer_task_type,
+        stage=stage,
+        kind=KIND_ATTEMPTED_EMISSION,
+        violation_code=(
+            ContractComplianceViolation.SCAFFOLD_REGION_VIOLATION
+            if violation_kind == "region"
+            else ContractComplianceViolation.PROHIBITED_FILL_EMISSION
+        ),
+        attempted_path=attempted_path,
+        normalized_path=normalized_path,
+        bound_run_id=record.run_id,
+        bound_attempt_id=record.attempt_id,
+        manifest_hash=record.manifest_hash,
+        expected_sha256=shell.spine_hash,
+        attempted_sha256=attempted_spine,
+        disposition=DISPOSITION_DROPPED,
+        siblings_retained=siblings_retained,
+        detail=detail,
     )

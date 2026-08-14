@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 # Per-artifact enforcement dispositions (internal protocol; named so comparison
 # sites never carry raw literals that shadow unrelated enums — #380/#559).
 _DISP_DROP_FROZEN = "drop_frozen"
+_DISP_DROP_SHELL = "drop_shell"
 _DISP_DROP = "drop"
 _DISP_PASS = "pass"
 
@@ -72,6 +73,103 @@ def bound_record_or_none(interface_manifest: Any, run_id: str) -> Any:
         return None
 
 
+def _producer_grants(envelope: Any, bound_record: Any) -> tuple[Any, Any]:
+    """The (qa, builder) write authorizations for this producer, or (None, None).
+
+    A QA producer gets a namespace-scoped grant; the 2.1 authorization classes decide
+    whether a non-frozen emission is inside its lane (allow), another producer's slot
+    (drop), or undeclared (allow — could be a deliverable; §4.6 undeclared-reject stays
+    gated on 3.4). #649: a builder producer gets a fill-surface grant — net-new SOURCE
+    and QA-namespace writes drop with evidence; undeclared non-source paths (handoff
+    docs, reports) remain deliverables and pass.
+    """
+    from squadops.cycles.write_authorization import (
+        WorkspaceOwnership,
+        WriteAuthorization,
+        WriteGrant,
+    )
+
+    qa_authz = None
+    if _is_qa_producer(envelope.task_type):
+        ownership = WorkspaceOwnership.from_record(bound_record)
+        qa_authz = WriteAuthorization(ownership, WriteGrant.for_qa(envelope.task_type, ownership))
+    builder_authz = None
+    if _is_builder_producer(envelope.task_type):
+        ownership = WorkspaceOwnership.from_record(bound_record)
+        builder_authz = WriteAuthorization(
+            ownership, WriteGrant.for_builder(envelope.task_type, ownership)
+        )
+    return qa_authz, builder_authz
+
+
+def _shell_map(bound_record: Any) -> dict[str, Any]:
+    """SIP-0104 P4: the region-frozen verification-scaffold shells, keyed by normalized
+    path — mutable slot bodies inside a frozen, hash-verified spine. Content-based and
+    role-independent: the rule is what the bytes are, not who emitted them (§4.3's "any
+    role, any locus"). Empty for unopted stacks and pre-P4 bound records (no region
+    enforcement; the file-level rules are unchanged)."""
+    from squadops.cycles.write_authorization import normalize_ws_path
+
+    scaffold_record = getattr(bound_record, "verification_scaffold", None)
+    if scaffold_record is None:
+        return {}
+    return {
+        n: shell
+        for shell in scaffold_record.files
+        if (n := normalize_ws_path(shell.path)) is not None
+    }
+
+
+def _shell_verdict(shell: Any, art: dict) -> tuple[str, str] | None:
+    """The region verdict for one emission against its bound shell, or None = legal."""
+    from squadops.capabilities.verification_scaffold_fill import (
+        SHELL_VIOLATION_REGION,
+        shell_emission_violation,
+    )
+
+    content = art.get("content")
+    if not isinstance(content, str):
+        return (SHELL_VIOLATION_REGION, "non-text emission for a shell path")
+    return shell_emission_violation(shell, content)
+
+
+def enforcement_instruction(record: Any) -> str | None:
+    """The next-attempt carry instruction for an enforcement record, or None.
+
+    One selector for both call sites (executor + correction runner), keyed on the
+    violation code so the vocabulary and its transports cannot drift apart.
+    """
+    from squadops.cycles.task_outcome import ContractComplianceViolation
+
+    if record.violation_code == ContractComplianceViolation.FROZEN_PATH_EMISSION:
+        return frozen_emission_instruction(record)
+    if record.violation_code in (
+        ContractComplianceViolation.SCAFFOLD_REGION_VIOLATION,
+        ContractComplianceViolation.PROHIBITED_FILL_EMISSION,
+    ):
+        return shell_emission_instruction(record)
+    return None
+
+
+def shell_emission_instruction(record: Any) -> str:
+    """Authoritative next-attempt instruction for a rejected shell emission (SIP-0104 P4).
+
+    The region-level counterpart of :func:`frozen_emission_instruction`, on the same carry
+    transport: the next repair attempt must be TOLD the spine is frozen and verified, or it
+    fights enforcement blind (#691's lesson at region granularity — and the #884 class this
+    SIP §4.3 exists to end: no repair path, any role, any locus, may modify frozen regions
+    or slot boundaries)."""
+    path = record.normalized_path or record.attempted_path
+    return (
+        f"`{path}` is a verification-scaffold shell: its spine — imports, invocation, "
+        f"status assertion, and the slot markers — is frozen and hash-verified. A prior "
+        f"emission to it was rejected and DISCARDED ({record.detail}). To change this "
+        f"file, edit ONLY the lines between its [scaffold-slot:begin]/[scaffold-slot:end] "
+        f"markers (domain assertions; no imports, no require(), no network access) and "
+        f"keep every other byte exactly as-is."
+    )
+
+
 def frozen_emission_instruction(record: Any) -> str:
     """Authoritative next-attempt instruction for a discarded frozen emission (3.4b signal).
 
@@ -122,36 +220,12 @@ def enforce_frozen_ownership(
     source under test to agree with its own test (the pf-26 class, one step past ``main.py``).
     QA emissions in its namespace, and undeclared paths (deliverables like ``test_report.md``),
     pass through. Non-QA producers are unaffected here (frozen-path drop only)."""
-    from squadops.cycles.scaffold_integrity_evidence import (
-        frozen_path_evidence,
-        unauthorized_slot_evidence,
-    )
-    from squadops.cycles.write_authorization import (
-        AuthzDecision,
-        WorkspaceOwnership,
-        WriteAuthorization,
-        WriteGrant,
-        normalize_ws_path,
-    )
+    from squadops.cycles.write_authorization import normalize_ws_path
 
     frozen = {n for fa in bound_record.frozen if (n := normalize_ws_path(fa.path)) is not None}
-    # A QA producer gets a namespace-scoped grant; the 2.1 authorization classes decide whether
-    # a non-frozen emission is inside its lane (allow), another producer's slot (drop), or
-    # undeclared (allow — could be a deliverable, §4.6 undeclared-reject stays gated on 3.4).
-    qa_authz = None
-    if _is_qa_producer(envelope.task_type):
-        ownership = WorkspaceOwnership.from_record(bound_record)
-        grant = WriteGrant.for_qa(envelope.task_type, ownership)
-        qa_authz = WriteAuthorization(ownership, grant)
-
-    # #649: a builder producer gets a fill-surface grant. Net-new SOURCE and
-    # QA-namespace writes are dropped with evidence; undeclared non-source
-    # paths (handoff docs, reports) remain deliverables and pass.
-    builder_authz = None
-    if _is_builder_producer(envelope.task_type):
-        ownership = WorkspaceOwnership.from_record(bound_record)
-        grant = WriteGrant.for_builder(envelope.task_type, ownership)
-        builder_authz = WriteAuthorization(ownership, grant)
+    shells = _shell_map(bound_record)
+    shell_verdicts: dict[int, tuple[str, str]] = {}
+    qa_authz, builder_authz = _producer_grants(envelope, bound_record)
 
     # Classify first so each evidence record can report how many sibling artifacts in the SAME
     # response were left untouched (per-artifact disposition — restore/drop keep the rest; a
@@ -161,59 +235,130 @@ def enforce_frozen_ownership(
         for art in artifacts
     ]
 
-    def _disposition(art: dict, norm: str | None) -> str:
-        if norm is not None and norm in frozen:
-            return _DISP_DROP_FROZEN
-        if qa_authz is not None and (
-            qa_authz.authorize(_artifact_raw_path(art) or "")
-            == AuthzDecision.FORBIDDEN_UNAUTHORIZED
-        ):
-            return _DISP_DROP
-        if builder_authz is not None:
-            decision = builder_authz.authorize(_artifact_raw_path(art) or "")
-            if decision == AuthzDecision.FORBIDDEN_UNAUTHORIZED:
-                return _DISP_DROP  # another producer's lane (e.g. the QA namespace)
-            if decision == AuthzDecision.FORBIDDEN_UNDECLARED and (norm or "").endswith(
-                _BUILDER_FORBIDDEN_SOURCE_SUFFIXES
-            ):
-                return _DISP_DROP  # net-new source (the fay-7 start.py class)
-        return _DISP_PASS
-
-    dispositions = [_disposition(art, norm) for art, norm in zip(artifacts, norms, strict=True)]
+    dispositions = [
+        _classify(
+            index,
+            art,
+            norm,
+            frozen=frozen,
+            shells=shells,
+            shell_verdicts=shell_verdicts,
+            qa_authz=qa_authz,
+            builder_authz=builder_authz,
+        )
+        for index, (art, norm) in enumerate(zip(artifacts, norms, strict=True))
+    ]
     siblings_retained = sum(1 for d in dispositions if d == _DISP_PASS)
 
     enforced: list[dict] = []
     evidence: list[Any] = []
-    for art, norm, disposition in zip(artifacts, norms, dispositions, strict=True):
-        if disposition == _DISP_DROP_FROZEN:
-            evidence.append(
-                frozen_path_evidence(
-                    producer_task_id=envelope.task_id,
-                    producer_task_type=envelope.task_type,
-                    record=bound_record,
-                    attempted_path=_artifact_raw_path(art) or norm,
-                    normalized_path=norm,
-                    attempted_content=art.get("content"),
-                    siblings_retained=siblings_retained,
-                )
-            )
-            # dropped: NOT appended — the scaffold's own seeded artifact is the copy.
-        elif disposition == _DISP_DROP:
-            evidence.append(
-                unauthorized_slot_evidence(
-                    producer_task_id=envelope.task_id,
-                    producer_task_type=envelope.task_type,
-                    record=bound_record,
-                    attempted_path=_artifact_raw_path(art) or (norm or ""),
-                    normalized_path=norm,
-                    attempted_content=art.get("content"),
-                    siblings_retained=siblings_retained,
-                )
-            )
-            # dropped: NOT appended — the owning producer's already-stored version stays.
+    for index, (art, norm, disposition) in enumerate(
+        zip(artifacts, norms, dispositions, strict=True)
+    ):
+        record_evidence = _drop_evidence(
+            index,
+            art,
+            norm,
+            disposition,
+            envelope=envelope,
+            bound_record=bound_record,
+            shells=shells,
+            shell_verdicts=shell_verdicts,
+            siblings_retained=siblings_retained,
+        )
+        if record_evidence is not None:
+            evidence.append(record_evidence)
         else:
             enforced.append(_restore_fill_slot_ownership(art, norm, bound_record, envelope))
     return enforced, evidence
+
+
+def _classify(
+    index: int,
+    art: dict,
+    norm: str | None,
+    *,
+    frozen: set[str],
+    shells: dict[str, Any],
+    shell_verdicts: dict[int, tuple[str, str]],
+    qa_authz: Any,
+    builder_authz: Any,
+) -> str:
+    """One artifact's enforcement disposition (records shell verdicts as a side table)."""
+    from squadops.cycles.write_authorization import AuthzDecision
+
+    if norm is not None and norm in frozen:
+        return _DISP_DROP_FROZEN
+    if norm is not None and norm in shells:
+        verdict = _shell_verdict(shells[norm], art)
+        if verdict is not None:
+            shell_verdicts[index] = verdict
+            return _DISP_DROP_SHELL
+        # Legal — a fill-merge product (body edits inside intact markers). Falls
+        # through to the producer lanes below like any other writable emission.
+    if qa_authz is not None and (
+        qa_authz.authorize(_artifact_raw_path(art) or "") == AuthzDecision.FORBIDDEN_UNAUTHORIZED
+    ):
+        return _DISP_DROP
+    if builder_authz is not None:
+        decision = builder_authz.authorize(_artifact_raw_path(art) or "")
+        if decision == AuthzDecision.FORBIDDEN_UNAUTHORIZED:
+            return _DISP_DROP  # another producer's lane (e.g. the QA namespace)
+        if decision == AuthzDecision.FORBIDDEN_UNDECLARED and (norm or "").endswith(
+            _BUILDER_FORBIDDEN_SOURCE_SUFFIXES
+        ):
+            return _DISP_DROP  # net-new source (the fay-7 start.py class)
+    return _DISP_PASS
+
+
+def _drop_evidence(
+    index: int,
+    art: dict,
+    norm: str | None,
+    disposition: str,
+    *,
+    envelope: Any,
+    bound_record: Any,
+    shells: dict[str, Any],
+    shell_verdicts: dict[int, tuple[str, str]],
+    siblings_retained: int,
+) -> Any:
+    """The evidence record for a dropped emission (None = pass-through).
+
+    Every drop retains rather than restores (#691): the prior valid version — the
+    scaffold's seeded artifact for frozen paths and shells, the owning producer's
+    stored version for slot lanes — remains the workspace copy.
+    """
+    from squadops.cycles.scaffold_integrity_evidence import (
+        frozen_path_evidence,
+        shell_region_evidence,
+        unauthorized_slot_evidence,
+    )
+
+    common = {
+        "producer_task_id": envelope.task_id,
+        "producer_task_type": envelope.task_type,
+        "record": bound_record,
+        "normalized_path": norm,
+        "attempted_content": art.get("content"),
+        "siblings_retained": siblings_retained,
+    }
+    if disposition == _DISP_DROP_SHELL:
+        kind, detail = shell_verdicts[index]
+        return shell_region_evidence(
+            shell=shells[norm],
+            attempted_path=_artifact_raw_path(art) or (norm or ""),
+            violation_kind=kind,
+            detail=detail,
+            **common,
+        )
+    if disposition == _DISP_DROP_FROZEN:
+        return frozen_path_evidence(attempted_path=_artifact_raw_path(art) or norm, **common)
+    if disposition == _DISP_DROP:
+        return unauthorized_slot_evidence(
+            attempted_path=_artifact_raw_path(art) or (norm or ""), **common
+        )
+    return None
 
 
 def _restore_fill_slot_ownership(
