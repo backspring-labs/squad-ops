@@ -78,6 +78,7 @@ class ContainerBackend(NoOpExecutionSandbox):
         http_client_factory: Callable[[], httpx.AsyncClient] | None = None,
         environment_contract_id: str | None = None,
         cache_root: Path | None = None,
+        build_mutates_source: bool = False,
     ) -> None:
         self._container = container
         self._store = store
@@ -91,6 +92,7 @@ class ContainerBackend(NoOpExecutionSandbox):
         self._app_port = app_port
         self._ready_path = ready_path
         self._environment_contract_id = environment_contract_id
+        self._build_mutates_source = build_mutates_source
         self._cache_root = cache_root
         self._readiness_timeout = readiness_timeout_seconds
         self._poll_interval = poll_interval_seconds
@@ -161,18 +163,32 @@ class ContainerBackend(NoOpExecutionSandbox):
         st = self._store.workspace_dir(cycle_id).stat()
         return f"{st.st_uid}:{st.st_gid}"
 
+    def _require_pinned(self, operation: str, revision: WorkspaceRevision) -> None:
+        """§7 item 3: executing against undeclared content is a caller error, not an
+        operation outcome — with the SIP-0102 §11 amendment for stacks whose build
+        rewrites its own source.
+
+        Where the build does not mutate source (the canonical stack), every operation
+        verifies, exactly as before. Where it does, only the operation that runs BEFORE
+        any build can verify: after `next build` has generated `next-env.d.ts` and
+        rewritten `tsconfig.json`, the live tree cannot match the pin, and re-asserting
+        it there was never a true claim about this stack. The guarantee kept is the one
+        that means something — the source we declared is the source we built.
+        """
+        if self._build_mutates_source and operation != OperationName.INSTALL_DEPENDENCIES:
+            return
+        if not self._store.verify_pinned(revision.cycle_id, revision.revision_id):
+            raise WorkspaceStoreError(
+                f"live tree for {revision.cycle_id} does not match declared "
+                f"revision {revision.revision_id}"
+            )
+
     async def _one_shot(
         self, operation: str, revision: WorkspaceRevision
     ) -> tuple[dict, ContainerResult | None]:
         """Run one typed operation; returns the common result fields plus the
         raw container result (None when nothing executed)."""
-        if not self._store.verify_pinned(revision.cycle_id, revision.revision_id):
-            # §7 item 3: executing against undeclared content is a caller
-            # error, not an operation outcome.
-            raise WorkspaceStoreError(
-                f"live tree for {revision.cycle_id} does not match declared "
-                f"revision {revision.revision_id}"
-            )
+        self._require_pinned(operation, revision)
         base = {
             "operation": operation,
             "workspace_revision_id": revision.revision_id,
@@ -279,11 +295,7 @@ class ContainerBackend(NoOpExecutionSandbox):
             await asyncio.sleep(self._poll_interval)
 
     async def start_application(self, *, revision: WorkspaceRevision) -> StartResult:
-        if not self._store.verify_pinned(revision.cycle_id, revision.revision_id):
-            raise WorkspaceStoreError(
-                f"live tree for {revision.cycle_id} does not match declared "
-                f"revision {revision.revision_id}"
-            )
+        self._require_pinned(OperationName.START_APPLICATION, revision)
         base = {
             "operation": OperationName.START_APPLICATION,
             "workspace_revision_id": revision.revision_id,

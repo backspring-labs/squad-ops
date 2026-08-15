@@ -47,6 +47,13 @@ _EXCLUDED_SEGMENTS = frozenset(
         ".sandbox-venv",
         "node_modules",
         "dist",
+        # `next build`'s output, stack #2's equivalent of `dist` (measured 2026-08-15
+        # auditing SIP-0104 window roll 1): omitting it did not merely over-pin, it
+        # CRASHED pin verification — `.next/` holds webpack caches and compiled chunks,
+        # and `current_files` reads every unexcluded file as UTF-8, so the first
+        # non-text byte raised UnicodeDecodeError and the app never reached boot. Added
+        # when #822 brought a second stack whose build output is not named `dist`.
+        ".next",
         "__pycache__",
         ".pytest_cache",
         ".git",

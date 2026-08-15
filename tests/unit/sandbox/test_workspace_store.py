@@ -118,6 +118,21 @@ class TestDerivedStateExclusion:
         )
         assert store.verify_pinned("cyc_1", rev.revision_id)
 
+    def test_stack_two_build_output_including_binaries_does_not_break_the_pin(self, store):
+        """Bug caught (SIP-0104 window roll 1, 2026-08-15): `.next/` — stack #2's build
+        output, the analogue of `dist` — was not excluded, and `current_files` reads
+        every unexcluded file as UTF-8. A webpack cache byte (0xa1) raised
+        UnicodeDecodeError, so pin verification CRASHED and the audited app never
+        reached boot. The binary content is the point of this test: the pre-existing
+        exclusion test wrote its derived state as text and could not catch it."""
+        seed = store.seed("cyc_1", FILES, origin=RevisionOrigin.SCAFFOLD_SEED)
+        ws = store.workspace_dir("cyc_1")
+        (ws / ".next/cache/webpack").mkdir(parents=True)
+        (ws / ".next/cache/webpack/0.pack").write_bytes(b"\x00\xa1\xff binary chunk")
+        (ws / ".next/BUILD_ID").write_text("abc123", encoding="utf-8")
+
+        assert store.verify_pinned("cyc_1", seed.revision_id)
+
     def test_patching_derived_state_paths_is_rejected(self, store):
         """Bug caught: a patch writing into node_modules/dist — content that
         would exist on disk but never in any revision, silently diverging the
