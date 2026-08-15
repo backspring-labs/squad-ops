@@ -204,3 +204,32 @@ prevent.
 **Ruled by the owner, 2026-08-15**, on the reasoning that banking six mechanically-clean
 rolls whose deliverables nobody can use would undercut what the window is meant to
 demonstrate.
+
+### 13b. The final claim is stated by rule, not by roll number (2026-08-15)
+
+**What changed.** §13a's closing sentence gives the required form of the final evidence as
+*"six rolls with zero mechanical suite failures; rolls 3–6 additionally audited as working
+applications."* The **rule** it derives from — stated correctly two paragraphs above, and
+unchanged here — is *from window roll 3 onward, a roll counts only if the delivered app
+also passes the audit*. The phrase "rolls 3–6" was arithmetic on the assumption that rolls
+2 through 6 would each count. They did not.
+
+**Evidence.** Of the first four rolls: roll 1 banked clean; roll 2 (`cyc_62ce2fd83bca`) was
+terminated by a correction-signature defect and did not count; roll 3
+(`cyc_b20f58cc7cbc`) exhausted its correction budget and did not count; roll 4
+(`cyc_92c44f8704ab`) was system-rejected at the framing gate without ever reaching qa, so
+under the window protocol it neither counts nor resets. The window's sixth counting roll is
+therefore not the sixth roll launched, and any fixed numbering in the claim will keep
+drifting as rolls are lost.
+
+**The correction.** The final evidence is stated as: *six counting rolls with zero
+mechanical suite failures; every counting roll from roll 3 onward additionally audited as a
+working application.* Nothing about the criterion changes — §10.2's mechanical claim still
+spans all six counting rolls, the audit gate still begins at roll 3, and the two are still
+recorded separately and never collapsed. What changes is that the claim no longer names
+roll numbers it cannot guarantee.
+
+**Recorded rather than edited in place**, because §13a's sentence is the wording the
+acceptance evidence will be quoted from, and a silent correction to a quotable claim is
+indistinguishable from the claim having always said this. The 1.6 plan and the
+implementation plan were updated to match.
