@@ -306,24 +306,36 @@ until 2b exists.
 six-item cut gate — and had no cut *procedure*. That distinction is not academic: **#789
 records six consecutive releases tagged but never advertised** (v1.4.0 through v1.5.0, with
 `gh release list` still showing v1.3.1 as Latest and `CHANGELOG.md` last rotated at 1.3.1).
-The backfill landed — v1.5.0 is Latest today — but **#789's item 3, the CI guard that was to
-prevent recurrence, never did**: verified 2026-08-10, no workflow or dev script references
-`CHANGELOG` at all. So the class is fixed historically and **unprevented going forward**, and
-a step represented by the single word "Cut" will be skipped a seventh time.
+The backfill landed — v1.5.0 is Latest today — and so did **#789's item 3, the guard against
+recurrence**, which this section originally recorded as missing. The 2026-08-10 check looked in
+`.github/` and `scripts/` and found nothing; **the guard is in the regression gate**, as rule 4
+of `tests/unit/architecture/test_docs_version_sync.py` (corrected 2026-08-15). That file's own
+rationale is why it lives there: *"what a test enforces stays true; what discipline enforces
+drifts."* It asserts the pyproject version has a dated CHANGELOG section, that `[Unreleased]`
+exists and no longer describes the shipped version — the rotate-by-renaming failure — and it
+guards its own regex. So the class is fixed historically **and** prevented going forward.
+
+The checklist still earns its place: guards cover 4g-i through 4g-iii, and **nothing enforces
+4g-iv, 4g-v or 4g-vi.** The GitHub Release in particular is what six consecutive cuts skipped,
+and a step represented by the single word "Cut" will skip it a seventh time.
 
 | Step | Work |
 |---|---|
 | **4g-i** | `scripts/maintainer/version_cli.py bump 1.6.0` — the only sanctioned bump path |
 | **4g-ii** | Version markers in sync: `CLAUDE.md`, `README.md`, `docs/ROADMAP.md` (they drifted at 1.1.x; the marker guards cover these three) |
-| **4g-iii** | **Rotate `CHANGELOG.md`** — `[Unreleased]` → `[1.6.0] — <date>`, leaving a fresh `[Unreleased]`. **No guard exists for this**, per #789 item 3 |
+| **4g-iii** | **Rotate `CHANGELOG.md`** — `[Unreleased]` → `[1.6.0] — <date>`, leaving a fresh `[Unreleased]`. Guarded: `test_docs_version_sync.py` rule 4 fails the bump without it, and separately fails a rotation that renames `[Unreleased]` without opening a fresh one |
 | **4g-iv** | ROADMAP timeline entry for the release |
-| **4g-v** | **SIP-0103 status decision.** Recommended: **stays `accepted`**, with §5d's divergences standing. Main implements a corrected, narrowed version of the document — three falsified premises, one owner-ruled narrowing, four unimplemented dispositions — and promoting it would assert otherwise. Precedent: the 2026-08-03 audit kept four SIPs at `accepted` with gaps named |
+| **4g-v** | **SIP-0103 status decision.** Recommended: **stays `accepted`**, with §5d's divergences standing. Main implements a corrected, narrowed version of the document — three falsified premises, one owner-ruled narrowing, **three** unimplemented dispositions — and promoting it would assert otherwise. Precedent: the 2026-08-03 audit kept four SIPs at `accepted` with gaps named. **Weigh the three on their merits, not their count** (updated 2026-08-15): §5c.3 and §3.3 are *deliberate* 1.7 deferrals with named triggers (#820, and the second stack's bend register as the evidence the schema should be written from); only §5c.5's operator-edit record is an unbuilt path rather than a scheduled one. The fourth — §5c.7's two diagnostics — closed on 2026-08-09 (`43754d6d`), which matters more than the arithmetic: it was the item §5d called the one place *"the delivered system is weaker than the ruling authorized"*, since B1 removed the mandatory manifest review citing four diagnostics of which two then existed. That argument is now fully funded |
 | **4g-vi** | `git tag v1.6.0` **and** a GitHub Release from the CHANGELOG section, marked **Latest**. The tag alone is what six cuts did |
 
-**Standing candidate, not scheduled here:** #789's item-3 guard — a version bump or new `v*`
-tag without a matching CHANGELOG section should fail CI, the way the marker-sync guards already
-work for README/ROADMAP. Until it exists, 4g-iii is the step most likely to be skipped, which
-is precisely why it is written down.
+**Standing candidate, not scheduled here** (rewritten 2026-08-15 — the original proposed
+building #789's item-3 guard, which already exists; see above): the guard chain stops at the
+CHANGELOG. **Nothing enforces that a `v*` tag has a GitHub Release**, which is the step six
+consecutive cuts actually skipped — the tag is what they all remembered. A guard would have to
+reach the GitHub API rather than the tree, so it belongs in CI rather than the regression gate,
+which is why it is a candidate and not simply the next rule in `test_docs_version_sync.py`.
+Until it exists, 4g-vi is the step most likely to be skipped, which is precisely why it is
+written down.
 
 **The two open decisions, restated with their evidence.** 4a: a CRUD-shaped worked example
 measured on a CRUD product flatters the convergence result — V4 roll 2's REST spine was
