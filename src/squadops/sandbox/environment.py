@@ -132,7 +132,17 @@ NEXTJS_TS = EnvironmentContract(
     image="squadops-sandbox-env:fastapi-react-1.4-dev",
     required_tools=(("node", "20"), ("npm", "10")),
     operation_commands=(
-        (OperationName.INSTALL_DEPENDENCIES, ("npm", "ci", "--no-audit", "--no-fund")),
+        # `npm install`, NOT `npm ci` — the same correction the probe runner's
+        # `nextjs_next_start` profile already carries (roll 10, cyc_43a216d43e1e), and the
+        # rule stack #1's contract states three declarations above ("no lockfile → npm
+        # install"). The scaffold emits no `package-lock.json` (an offline-deterministic
+        # expansion cannot produce one) and `npm ci` EUSAGE-refuses without a lockfile, so
+        # this operation could never succeed on this stack: the sandbox path was
+        # unreachable-green by construction. Measured 2026-08-15 auditing the SIP-0104
+        # window's roll 1 (cyc_04d36309d793), whose deliverable failed install here while
+        # passing every probe on the runner's `npm install` path. Fixing one surface and
+        # not its sibling is the #838 shape; both now match the vitest runner too.
+        (OperationName.INSTALL_DEPENDENCIES, ("npm", "install", "--no-audit", "--no-fund")),
         (OperationName.BUILD_FRONTEND, ("npx", "next", "build")),
         (OperationName.RUN_BACKEND_TESTS, ("npx", "vitest", "run")),
         (

@@ -672,12 +672,13 @@ class TestScaffoldClassificationLocus:
 
     @staticmethod
     def _evidence(classes: dict, tests_pass_row: dict | None = None) -> dict:
-        checks = [
-            {"check": "scaffold_failure_classification", "status": "info", "classes": classes}
-        ]
-        if tests_pass_row is not None:
-            checks.append(tests_pass_row)
-        return {"validation_result": {"checks": checks}}
+        """The classification rides the evidence payload, NOT a check row — a
+        diagnostic must never aggregate as a verification check (roll 1's finding)."""
+        checks = [tests_pass_row] if tests_pass_row is not None else []
+        return {
+            "scaffold_evidence": {"failure_classes": classes},
+            "validation_result": {"checks": checks},
+        }
 
     def test_app_contract_routes_to_subject(self):
         evidence = self._evidence({"app_contract": 2, "fill": 1})

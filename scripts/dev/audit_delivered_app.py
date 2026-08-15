@@ -49,9 +49,17 @@ from squadops.cycles.verification_contract import (
     capture_probe_values,
     resolve_probe_path,
 )
-from squadops.sandbox.environment import FULLSTACK_FASTAPI_REACT
+from squadops.sandbox.environment import get_environment_contract
 from squadops.sandbox.models import RevisionOrigin
 from squadops.sandbox.workspace import WorkspaceStore
+
+#: One file per stack whose absence means assembly itself failed — the deliverable's
+#: irreducible entry surface. Keyed by stack so a third stack declares its own rather
+#: than inheriting a check that silently cannot hold.
+_ASSEMBLY_SENTINELS: dict[str, str] = {
+    "fullstack_fastapi_react": "backend/routes.py",
+    "nextjs_ts": "package.json",
+}
 
 _VAULT_CONTAINER = "squadops-runtime-api"
 _WORKSPACE_ARTIFACT_TYPES = frozenset({"source", "test", "config"})
@@ -156,15 +164,24 @@ async def _audit(args: argparse.Namespace) -> int:
         files = _select_deliverable(pulled)
     finally:
         shutil.rmtree(pulled, ignore_errors=True)
-    if "backend/routes.py" not in files:
-        print(f"AUDITOR ERROR: no backend/routes.py among {len(files)} selected files")
+    # The stack is the contract's own fact (``skeleton.expander``), never assumed: this
+    # auditor was FastAPI-only until SIP-0104's window needed it for stack #2, and a
+    # hardcoded environment would have stood a Next.js tree up with uvicorn and reported
+    # the AUDITOR's defect as the app's.
+    stack = contract.skeleton.expander
+    sentinel = _ASSEMBLY_SENTINELS.get(stack)
+    if sentinel is None:
+        print(f"AUDITOR ERROR: no assembly sentinel for stack {stack!r}")
         return 2
-    print(f"assembled {len(files)} files (acceptance-aware last-wins)")
+    if sentinel not in files:
+        print(f"AUDITOR ERROR: no {sentinel} among {len(files)} selected files")
+        return 2
+    print(f"assembled {len(files)} files for stack {stack} (acceptance-aware last-wins)")
 
     audit_cycle = f"audit_{args.run_id[:16]}"
     shutil.rmtree(_AUDIT_ROOT / "cycles" / audit_cycle, ignore_errors=True)
     store = WorkspaceStore(_AUDIT_ROOT / "cycles")
-    env = FULLSTACK_FASTAPI_REACT
+    env = get_environment_contract(stack)
     backend = ContainerBackend(
         container=DockerAdapter(),
         store=store,

@@ -59,6 +59,14 @@ class RunTestsResult:
     # produced no machine report (pytest runs, report write failure) — additive, never
     # load-bearing for the pass/fail verdict.
     test_failures: tuple[dict, ...] = ()
+    # Test files handed to the runner that it never collected — authored suites that
+    # cannot run and therefore verify nothing, while the surrounding suite reads green.
+    # Measured on SIP-0104 window roll 1 (cyc_04d36309d793): qa authored a ~9KB suite at
+    # `tests/api/runs.test.ts`, outside this stack's `**/__tests__/**/*.test.ts` include,
+    # so 9 files went in and 8 collected — the semantic layer's additive half evaporated
+    # silently. Reported, not verdict-changing (promotion to a blocking check is a
+    # deliberate decision, not a side effect of detection).
+    uncollected_test_files: tuple[str, ...] = ()
 
     @property
     def tests_passed(self) -> bool:
@@ -384,6 +392,19 @@ async def run_node_tests(
         stdout = raw_stdout.decode(errors="replace")[:_STDOUT_LIMIT]
         stderr = raw_stderr.decode(errors="replace")[:_STDOUT_LIMIT]
 
+        report = _read_vitest_report(report_path)
+        failure_rows = parse_vitest_failure_rows(report, cwd) if report else []
+        uncollected = (
+            uncollected_test_files(report, cwd, [f["path"] for f in test_files]) if report else []
+        )
+        if uncollected:
+            logger.warning(
+                "vitest collected no suite for %d handed-in test file(s): %s — these "
+                "verify nothing while the collected suites read green",
+                len(uncollected),
+                ", ".join(uncollected),
+            )
+
         exit_code = proc.returncode or 0
         return RunTestsResult(
             executed=True,
@@ -398,7 +419,8 @@ async def run_node_tests(
             # "No test suite found" routed repairs to dev for a defect in the
             # qa role's own file).
             suite_broken=_vitest_suite_broken(exit_code, stdout, stderr),
-            test_failures=tuple(_read_vitest_failure_rows(report_path, cwd)),
+            test_failures=tuple(failure_rows),
+            uncollected_test_files=tuple(uncollected),
         )
 
     except Exception as exc:
@@ -764,16 +786,41 @@ def parse_vitest_failure_rows(report: dict, workspace_root: str) -> list[dict]:
     return rows
 
 
-def _read_vitest_failure_rows(report_path: str, workspace_root: str) -> list[dict]:
-    """The observation rows from the written report, or [] (additive, never fatal)."""
+#: Suffixes that make a handed-in file unambiguously a suite meant to run. A helper
+#: module beside the tests is legitimately uncollected; a `*.test.ts` never is.
+_RUNNABLE_TEST_SUFFIXES = (".test.ts", ".test.tsx", ".spec.ts", ".spec.tsx")
+
+
+def _read_vitest_report(report_path: str) -> dict | None:
     import json
 
     try:
         with open(report_path, encoding="utf-8") as fh:
-            report = json.load(fh)
+            return json.load(fh)
     except (OSError, ValueError):
-        return []
-    return parse_vitest_failure_rows(report, workspace_root)
+        return None
+
+
+def collected_files(report: dict, workspace_root: str) -> set[str]:
+    """Workspace-relative paths of every suite the runner actually collected."""
+    root = workspace_root.rstrip("/") + "/"
+    names = {str(suite.get("name", "")) for suite in report.get("testResults", ())}
+    return {name[len(root) :] if name.startswith(root) else name for name in names}
+
+
+def uncollected_test_files(report: dict, workspace_root: str, handed_in: list[str]) -> list[str]:
+    """Handed-in runnable suites the runner never collected (SIP-0104, roll 1).
+
+    Silent non-collection is the #884 class one step down: not "no test files found"
+    but "this one was ignored", which every other signal reports as green because the
+    files that DID collect passed.
+    """
+    collected = collected_files(report, workspace_root)
+    return sorted(
+        path
+        for path in handed_in
+        if path.endswith(_RUNNABLE_TEST_SUFFIXES) and path not in collected
+    )
 
 
 _VITEST_SUITE_BROKEN_MARKERS = (
@@ -903,6 +950,7 @@ async def run_fullstack_tests(
         runner=controlling.runner,
         suite_broken=controlling.suite_broken,
         test_failures=controlling.test_failures,
+        uncollected_test_files=controlling.uncollected_test_files,
         stdout="\n\n".join(combined_stdout_parts)[:_STDOUT_LIMIT],
         stderr="\n\n".join(combined_stderr_parts)[:_STDOUT_LIMIT],
         error="; ".join(error_parts) if error_parts else "",

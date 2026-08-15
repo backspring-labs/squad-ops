@@ -281,9 +281,14 @@ async def test_the_evidence_pipeline_lands_in_outputs(scaffold_input, monkeypatc
     assert evidence["observations"][0]["criterion_id"] == "vc-probe-api-runs"
     assert evidence["observations"][0]["owner"] == "dev"
     assert evidence["fill_dispositions"] == {"filled": 1, "missing": 7}
-    rows = result.outputs["validation_result"]["checks"]
-    classification_row = next(
-        r for r in rows if r.get("check") == "scaffold_failure_classification"
-    )
-    assert classification_row["classes"] == {"app_contract": 1}
-    assert "passed" not in classification_row  # informational — SIP-0096 credit untouched
+    # The summary is diagnostic, NOT a verification check: it must not appear among
+    # validation_result.checks, or normalize_task_checks records it and the cycle
+    # outcome reports it as an unverified check (roll 1, cyc_04d36309d793).
+    rows = (result.outputs.get("validation_result") or {}).get("checks") or []
+    assert not any("scaffold" in str(r.get("check", "")) for r in rows)
+
+    # ...and it reaches the correction loop on the failure-evidence transport instead.
+    from squadops.cycles.failure_evidence import FailureLocus, classify_failure_locus
+
+    evidence = {"scaffold_evidence": evidence, "validation_result": {"checks": rows}}
+    assert classify_failure_locus(evidence) == FailureLocus.SUBJECT

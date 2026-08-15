@@ -338,3 +338,52 @@ class TestObservationParser:
             ]
         }
         assert parse_vitest_failure_rows(report, "/ws") == []
+
+
+class TestUncollectedTestFiles:
+    """SIP-0104 roll 1 (cyc_04d36309d793): qa authored ~9KB at `tests/api/runs.test.ts`,
+    outside the stack's `**/__tests__/**/*.test.ts` include — 9 files handed in, 8
+    collected, and the surrounding suite read green. Silent non-coverage of the authored
+    layer is the #884 class one step down, and nothing reported it."""
+
+    _REPORT = {
+        "testResults": [
+            {"name": "/ws/__tests__/scaffold/a.scaffold.test.ts", "status": "passed"},
+            {"name": "/ws/__tests__/extra.test.ts", "status": "passed"},
+        ]
+    }
+
+    def test_a_runnable_suite_the_runner_ignored_is_named(self):
+        from squadops.capabilities.handlers.test_runner import uncollected_test_files
+
+        handed_in = [
+            "__tests__/scaffold/a.scaffold.test.ts",
+            "__tests__/extra.test.ts",
+            "tests/api/runs.test.ts",  # outside the include → never collected
+        ]
+        assert uncollected_test_files(self._REPORT, "/ws", handed_in) == ["tests/api/runs.test.ts"]
+
+    def test_a_non_test_helper_is_not_flagged(self):
+        """A helper module beside the suite is legitimately uncollected; only files that
+        declare themselves suites (`*.test.ts` / `*.spec.ts`) are."""
+        from squadops.capabilities.handlers.test_runner import uncollected_test_files
+
+        handed_in = ["__tests__/helpers/factory.ts", "__tests__/extra.test.ts"]
+        assert uncollected_test_files(self._REPORT, "/ws", handed_in) == []
+
+    def test_everything_collected_reports_nothing(self):
+        from squadops.capabilities.handlers.test_runner import uncollected_test_files
+
+        handed_in = ["__tests__/scaffold/a.scaffold.test.ts", "__tests__/extra.test.ts"]
+        assert uncollected_test_files(self._REPORT, "/ws", handed_in) == []
+
+    def test_the_summary_banks_it(self, emission, dispositions):
+        summary = build_scaffold_evidence_summary(
+            emission.manifest,
+            dispositions,
+            [],
+            [],
+            additive_test_count=1,
+            uncollected_test_files=("tests/api/runs.test.ts",),
+        )
+        assert summary.to_dict()["uncollected_test_files"] == ["tests/api/runs.test.ts"]
