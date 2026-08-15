@@ -1218,6 +1218,16 @@ roll 3 and plausibly moves yield, so rolls 1–2 and rolls 3–6 are not the sam
 A yield number spanning that boundary is not evidence. **V7 remains a separate,
 properly pre-registered window on a frozen post-P6 deploy**, with 4a and 4c decided first.
 
+**The roll-3 rebuild carries #902 and nothing else** (owner ruling 2026-08-15). One deploy
+boundary already exists at roll 3; what makes rolls 3–6 attributable is that it is a boundary
+of *exactly one named change*. Anything else riding that rebuild — however inert it looks —
+converts a clean four-roll observation into one with a confound nobody can subtract later.
+Changes that are ready but unrelated wait for the window to close and are held as unmerged
+PRs; the discipline that forbids mid-window edits to the expander, the fill-only appendix and
+the scaffold fixture is also what keeps those branches from rotting, since nothing may move
+underneath them. First applied to the baseline-stylesheet PR (#906), which is ready, verified,
+and deliberately parked: the stylesheet has no deadline and the window does.
+
 ### 4a decided — the worked example is held constant, and the claim is narrowed instead
 
 *(Owner ruling 2026-08-15. Supersedes "change the example to non-CRUD before V6 and hold",
