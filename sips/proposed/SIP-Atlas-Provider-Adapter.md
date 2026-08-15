@@ -14,7 +14,7 @@ created_at: '2026-08-08T00:00:00Z'
 
 ## 1. Abstract
 
-**Atlas is an open-source LLM inference engine, hand-tuned in-house for NVIDIA DGX
+**Atlas is a third-party open-source LLM inference engine, hand-tuned for NVIDIA DGX
 Spark** (§2.0 — recorded there because nothing else in the tree defines it). Adopting it
 targets the throughput ceiling that bounds every yield window, every shakedown, and the
 falsifiability of the small-model thesis itself (§2.5). That is the motive; provider
@@ -136,9 +136,34 @@ carries throughput adequately for an owner reading results.
 
 ### 2.0 What Atlas is (recorded here because nothing else records it)
 
-**Atlas is an open-source LLM inference engine, hand-tuned in-house for NVIDIA DGX
+**Atlas is a third-party open-source LLM inference engine, hand-tuned for NVIDIA DGX
 Spark.** It is a local engine — a direct replacement for Ollama on the Spark box, not a
 hosted service. No API key, no egress, no per-token cost, no rate limits.
+
+| | |
+|---|---|
+| **Publisher** | Avarok Cybersecurity — `github.com/Avarok-Cybersecurity/atlas`, `atlasinference.io` |
+| **Built with** | pure Rust + CUDA; ships as a single binary, no Python, no PyTorch |
+| **Primary target** | **NVIDIA DGX Spark (GB10, SM121)** — fully verified, not a port. AMD Strix Halo (gfx1151) via SCALE from the same CUDA source; Apple/Intel named as future contributions |
+| **License** | **dual: Community Edition AGPLv3, Enterprise commercial** |
+| **Models** | tuned recipes across Qwen3/3.5/3.6/3-Next/3-VL, Gemma, Mistral, MiniMax, Nemotron — **including `qwen3.6-27b-fp8`, the model the `full` profile pins** |
+
+**Corrected 2026-08-15.** This section previously read "hand-tuned **in-house**," and that
+error propagated to seven other sites in this SIP. Its provenance is worth recording,
+because the mechanism matters more than the fact: the first draft (`6d7409a3`) correctly
+left Atlas undefined and §10.2 read *"What Atlas is. Not recorded anywhere in the repo."*
+The next commit (`ac956222`, titled *"correct Atlas premise"*) closed that open question by
+**assumption rather than research**, and simultaneously wrote the same claim to session
+memory — so every later reading was reinforced by the invention instead of checking it. An
+open question was more honest than the answer that replaced it.
+
+*What survives the correction:* local, self-hosted, open-source, DGX Spark-tuned, and the
+throughput motive (§2.5) — all confirmed, and the Spark being Atlas's *primary verified
+target* is stronger than this SIP previously claimed. *What changes:* §10.2 item 5 is no
+longer cheap-at-the-source (see there), the "maintenance burden" framing in §3.5a inverts
+into third-party dependency risk (§8), and **the AGPLv3/commercial split is a deployment
+decision this SIP previously had no reason to surface** — it is an owner call, recorded
+here so it is made deliberately rather than discovered at adoption.
 
 This definition is stated here because it exists nowhere else in the tree. Atlas is named
 in SIP-0101, SIP-LLM-Emission-Contracts (§2.3, §3.2, Appendix A), and the 1.7 roadmap
@@ -398,9 +423,10 @@ idling out.
 **Working assumption: Atlas exposes an OpenAI-compatible HTTP surface**
 (`/v1/chat/completions`, `/v1/models`). This is the one assumption in the SIP, and it is
 not invented here — SIP-LLM-Emission-Contracts Appendix A already names OpenAI-compatible
-as "the *expected* Atlas path." Since Atlas is in-house, this is a fact to confirm rather
-than a risk to manage, and it is confined to P4: if wrong, the transport layer of one file
-changes and nothing else in this SIP moves.
+as "the *expected* Atlas path." **Confirmed from vendor documentation 2026-08-15** (§10.2
+table, Appendix B): Atlas serves `POST /v1/chat/completions` and `GET /v1/models` on port
+8888, OpenAI-shaped. It is confined to P4 regardless: if some detail is wrong, the
+transport layer of one file changes and nothing else in this SIP moves.
 
 The dialect is still *verified rather than assumed*, per SIP-LLM-Emission-Contracts
 §3.2's rule that an adapter's tier is "discovered by the conformance suite, never assumed
@@ -437,10 +463,16 @@ that nobody here can tune to flatter the result.
 | Outcome | Honest reading |
 |---|---|
 | Atlas > vLLM > Ollama | the hand-tuning is real and Spark-specific. Adopt Atlas |
-| Atlas ≈ vLLM > Ollama | the win was "Ollama is slow," not tuning skill. **Consider deploying vLLM and retiring the Atlas maintenance burden** |
+| Atlas ≈ vLLM > Ollama | the win was "Ollama is slow," not tuning skill. **Consider deploying vLLM and avoiding the Atlas dependency** |
 | vLLM > Atlas | the tuning is behind a commodity engine. Strong signal, cheaply bought |
 
-Any of the three is worth knowing before committing to maintain an in-house engine.
+Any of the three is worth knowing before taking on the dependency. **Amended 2026-08-15:**
+this row previously read "retiring the Atlas *maintenance burden*," which assumed we owned
+the engine. We do not (§2.0). The cost being weighed is therefore not maintenance effort
+but **third-party dependency risk** — upstream release cadence, the AGPLv3/commercial
+license split, and no ability to fix the engine ourselves on our own schedule. That is a
+different trade, and on the middle row it argues *more* strongly for vLLM, which carries
+Apache-2.0 and a far larger contributor base.
 
 **One adapter per provider. No shared dialect base — amended 2026-08-08.**
 
@@ -947,6 +979,16 @@ proving the default path is untouched.
   acceptance running doctor green on this Mac before merge.
 - **Risk: this SIP and 1.6 collide on `capabilities/handlers/cycle/base.py`.** One
   two-line addition; §4.1.5 makes checking it a pre-PR step.
+- **Risk: third-party dependency on Atlas — added 2026-08-15, and previously invisible.**
+  While this SIP believed Atlas was in-house (§2.0), adoption looked like taking on
+  maintenance we controlled. It is an external project: upstream sets the release cadence,
+  we cannot fix the engine on our own schedule, and **the Community Edition is AGPLv3 with
+  a separate commercial Enterprise tier** — a licensing question this SIP had no reason to
+  raise while the premise was wrong, and an owner decision rather than a technical one.
+  Partly mitigated by the design already in place: `provider` is config-selected and
+  defaults to `ollama` (§3.2/P2), so the dependency is reversible by configuration rather
+  than by a code migration. Note this cuts against Atlas on §3.5a's middle row, where vLLM
+  carries Apache-2.0 and a much larger contributor base.
 - **Risk: thesis-measurement discontinuity — the one that outlives this SIP.** Every
   measurement the project has banked (the FAY 6/6 window, the 98.5 lineage, shakedown
   greens, correction-rate baselines) was taken on the Ollama substrate. Switching engines
@@ -1004,22 +1046,31 @@ partial fix references without closing, per the standing rule.*
 
 **10.2 — Atlas's API surface. Confirmation rule, not an assumption held indefinitely.**
 §3.5 assumes OpenAI-compatible (`/v1/chat/completions`, `/v1/models`), matching
-SIP-LLM-Emission-Contracts Appendix A. Since Atlas is in-house this is a confirmation, not
-an investigation — but **P4 stays blocked until it is confirmed in writing**, because an
-adapter written against a guessed dialect is discovered wrong at integration, which is the
-most expensive place to find out.
+SIP-LLM-Emission-Contracts Appendix A. **Amended 2026-08-15: Atlas is third-party (§2.0),
+so this is an investigation after all** — against published documentation and then a live
+endpoint, not a question to a colleague. **P4 stays blocked until confirmed in writing**,
+because an adapter written against a guessed dialect is discovered wrong at integration,
+which is the most expensive place to find out.
 
 **This table is the *only* gate on opening P4.** Not "mostly confirmed," not "confirmed in
-conversation" — five facts recorded in Appendix B. An adapter built against a guessed
-dialect is discovered wrong at integration, which is the most expensive place to find out.
+conversation" — five facts recorded in Appendix B.
 
-| # | Fact | Sets |
-|---|---|---|
-| 1 | chat/generation endpoint path + request shape | the adapter's transport |
-| 2 | streaming: supported? SSE or NDJSON? | `chat_stream` / `chat_stream_with_usage` |
-| 3 | model-listing endpoint, or none | `model_listing` |
-| 4 | model load/unload management, or none | `model_management` |
-| 5 | usage fields returned, **and specifically whether prefill / load / total durations are emitted** — see below | `streaming_usage`, and §3.6.1's `prefill_ms` / `load_ms` / `total_ms` |
+Four are now answered **from vendor documentation** (`atlasinference.io`, the repo README
+and `QUICKSTART.md`, read 2026-08-15). Doc-derived is not the same standard as measured:
+each is marked with what would upgrade it, and **only item 5 remains genuinely open.**
+
+| # | Fact | Sets | Status (2026-08-15) |
+|---|---|---|---|
+| 1 | chat/generation endpoint path + request shape | the adapter's transport | ✅ **docs** — `POST /v1/chat/completions`, OpenAI request shape, default port **8888** bound to `127.0.0.1` (`--bind 0.0.0.0` to expose). Model identifier is the HuggingFace path (e.g. `Sehyo/Qwen3.5-35B-A3B-NVFP4`), *not* a fixed literal — the marketing example's `"model":"atlas"` appears to be an alias, and which form the adapter must send is a live-verification item |
+| 2 | streaming: supported? SSE or NDJSON? | `chat_stream` / `chat_stream_with_usage` | ⚠️ **docs, partial** — `"stream": true` supported and described as OpenAI-compatible, implying SSE `data:` frames terminated by `[DONE]`. The frame shape is *not* documented; verify before relying on `VLLMAdapter`'s parser shape |
+| 3 | model-listing endpoint, or none | `model_listing` | ✅ **docs** — `GET /v1/models` is served. Response shape undocumented; if it matches OpenAI's `{"object":"list","data":[{"id":…}]}` then `ModelInfo` carries `None` for size and modified-at, exactly as vLLM does |
+| 4 | model load/unload management, or none | `model_management` | ⚠️ **inferred** — no load/unload API appears in the docs; models are launched process-side via `serve <HF-ID>` / recipes. Expect `model_management: False`, but §3.2's capability-honesty rule requires this be *observed*, not assumed |
+| 5 | usage fields returned, **and specifically whether prefill / load / total durations are emitted** — see below | `streaming_usage`, and §3.6.1's `prefill_ms` / `load_ms` / `total_ms` | ❌ **OPEN — the one real blocker.** Docs show the standard `usage` object and no timing metadata; benchmark tok/s figures are measurement methodology, not response fields. Neither confirmed nor denied in writing |
+
+**Anything marked ⚠️ or ❌ is settled the same way: one session against a live Atlas on the
+Spark.** Atlas is CUDA/GB10 — it cannot run on the Mac, so unlike the vLLM control arm
+(§3.5a, validated locally) there is no local shortcut. That session is the whole remaining
+cost of opening P4.
 
 **Item 5 is an ask, not just a question — measured, not assumed.** The standard OpenAI
 response shape carries **no duration fields at all**. Confirmed against this box's Ollama,
@@ -1042,9 +1093,22 @@ Those four are exactly §3.6.1's `prefill_ms` / `load_ms` / `total_ms`. Two cons
    survives (the handler measures it client-side), so a decision is still possible, but
    "is the win in decode, prefill, or residency?" becomes answerable for one side only.
 
-Atlas is in-house, so this is cheap to fix at the source: **emit the durations.** Recorded
-here as an explicit ask on whoever owns the engine, to be settled before P4 opens rather
-than discovered when the A/B artifact comes back half-populated.
+**Amended 2026-08-15 — this was the costliest consequence of the in-house error.** The
+original read: *"Atlas is in-house, so this is cheap to fix at the source: emit the
+durations. Recorded here as an explicit ask on whoever owns the engine."* There is no
+in-house owner to ask (§2.0). The ask does not disappear, but it changes shape and price:
+
+1. **Upstream feature request** to Avarok — free to file, no control over whether or when
+   it lands, and it cannot be a precondition for our own schedule.
+2. **Accept wall-clock derivation**, exactly as `VLLMAdapter` already does — and inherit
+   the limitation that adapter documents in its own module docstring: the number is
+   *inclusive of prefill and queueing* where Ollama's native figure is decode-only, so
+   **the two are not interchangeable.** That is precisely why §3.6.1 makes `wall_clock_ms`
+   the decision field and treats rate as a diagnostic.
+
+**Option 2 is the default and requires no one's cooperation**, so item 5's answer coming
+back "no durations" does not block P4 — it makes the A/B asymmetric in the way consequence
+2 below already anticipates. File the request; do not wait on it.
 
 **Failure mode if it is not OpenAI-compatible** — bounded, and worth stating so the
 assumption is not load-bearing beyond its blast radius: the transport layer of
@@ -1154,15 +1218,19 @@ Recorded for implementation convenience only; the normative surface is §3.2, §
   `/api/pull`, `/api/delete`. Usage via `prompt_eval_count` / `eval_count` /
   `eval_duration` (ns). Native JSON-Schema constrained decoding via `format` (v0.5+).
   **Also serves an OpenAI-compatible surface at `/v1`** — the §6.1 rough-test path.
-- **Atlas** (in-house engine, DGX Spark-tuned; §2.0): assumed OpenAI-compatible per §3.5 —
-  `/v1/chat/completions` with SSE streaming, `/v1/models`,
-  `usage.{prompt,completion,total}_tokens`. Note that the OpenAI shape carries **no native
-  tokens/sec field**, unlike Ollama's `eval_count`/`eval_duration`. Since throughput is
-  this SIP's entire justification (§2.5), the adapter must either compute t/s client-side
-  from wall-clock and completion tokens — the honest option, and adequate for A/B
-  comparison — or Atlas exposes a native timing field, which is the better answer if it is
-  cheap to add on the engine side. **Worth deciding before P4**: an in-house engine can
-  simply report it, and a native number beats one inferred across an HTTP boundary.
+- **Atlas** (third-party engine by Avarok Cybersecurity, DGX Spark-tuned; §2.0) — **updated
+  2026-08-15 from vendor documentation; see §10.2's table for per-item confidence.**
+  OpenAI-compatible: `POST /v1/chat/completions`, `GET /v1/models`, default port **8888**
+  bound to `127.0.0.1`. Also serves **Anthropic (`/v1/messages`) and Responses dialects on
+  the same port** — irrelevant to `LLMPort`, recorded so a future reader does not mistake
+  the OpenAI surface for the only one. A `/tokenize` endpoint exists. No auth is
+  documented; if one appears it enters via `SecretManager` as a `secret://` ref, which the
+  factory already supports. No documented health endpoint — `health()` will likely probe
+  `/v1/models`, as the vLLM adapter does. Models are launched process-side
+  (`serve <HF-ID>`, recipes), so expect `model_management: False`. Usage is the standard
+  `usage.{prompt,completion,total}_tokens` with **no native tokens/sec or duration
+  fields** — so, exactly as with vLLM, the adapter computes t/s client-side from
+  wall-clock, inclusive of prefill (§10.2 item 5).
 - **vLLM**: OpenAI-compatible (`/v1/chat/completions`, `/v1/models`) plus guided decoding
   (`guided_json`). **A candidate third arm, not merely dialect precedent** — see §3.5a
   (P6) for the control-arm rationale. `usage` carries token counts; like all
