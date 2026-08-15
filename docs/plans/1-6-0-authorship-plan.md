@@ -229,9 +229,12 @@ was never in the 1a sweep) · and can **M6's taxonomy name the subsystem** if it
 **Nothing is yet known about whether the Next.js stack works.** The 2026-08-10 run never
 reached expansion for it.
 
-**1e is credited at SIP-0104 P6 roll 3 (owner ruling 2026-08-15).** The P6 window's rolls
-*are* authored-mode `nextjs_ts` cycles on this PRD, so 1e needs no separate roll — but which
-one closes it is a judgment, and this is the ruling.
+**1e is credited at the first SIP-0104 P6 roll that passes the delivered-app audit
+(owner ruling 2026-08-15).** The P6 window's rolls *are* authored-mode `nextjs_ts` cycles on
+this PRD, so 1e needs no separate roll — but which one closes it is a judgment, and this is
+the ruling. The ruling originally named roll 3, which was the first roll the audit gate
+applied to; roll 3 did not pass, so the credit travels to the first roll that does rather
+than to a roll number fixed in advance.
 
 P6 roll 1 (`cyc_04d36309d793`) met 1e's stated bar on 2026-08-15: end to end, verdict
 accepted, 36/36 checks, all five probes, and a passing `audit_delivered_app.py` boot
@@ -312,7 +315,7 @@ until 2b exists.
 | Step | Work | Note |
 |---|---|---|
 | **4a** | **DECIDED 2026-08-15: keep the example, hold it constant, narrow the claim.** Pinned by test | closed; see below |
-| **4b** | **V6** viability run — **served by SIP-0104 P6 rolls 3–6**, not separately scheduled (owner ruling 2026-08-15) | gates V7 |
+| **4b** | **V6** viability run — **served by the SIP-0104 P6 window's counting rolls from roll 3 onward**, not separately scheduled (owner ruling 2026-08-15) | gates V7 |
 | **4c** | Decide **contract size per roll** in the window record | must precede pre-registration |
 | **4d** | Pre-registration committed (N, PRD, deploy hash, scoring) → **freeze** | Guard 2 |
 | **4e** | **V7** — the FAY window, unfiltered, **fix nothing until it closes** | the evidence |
@@ -1166,7 +1169,7 @@ offline work, deploy, run the verification that fits what just landed.
 | **V3** | M3 / M2 / M6 landing | **No cycles.** Adversarial hand-made manifests against the gates, including #772's `success_status` trap as the designed-failure probe | — |
 | **V4** | M1 lands | **First authored cycles, unscored.** Several, expected | diagnostic |
 | **V5** | M4 / M5 land | Integration shakedown — the full authored path with provenance stamping, B1 emitting, and **a manifest carrying an unresolved-critical decision, to prove the question-gate fires and the answer reaches the revision** | diagnostic |
-| **V6** | before pre-registration | **Authored-mode viability run** — has this succeeded even once? **Served by SIP-0104 P6 rolls 3–6** (owner ruling 2026-08-15); reads their outcome, never intervenes mid-window | diagnostic; **gates V7** |
+| **V6** | before pre-registration | **Authored-mode viability run** — has this succeeded even once? **Served by the SIP-0104 P6 window's counting rolls from roll 3 onward** (owner ruling 2026-08-15); reads their outcome, never intervenes mid-window | diagnostic; **gates V7** |
 | **V7** | frozen deploy | **The authored-mode FAY window.** Pre-registered N, unfiltered | **evidentiary** |
 | **VS** | stack #2 expands | **Track S's missing verification point** *(added 2026-08-09)* — does the Node/TS stack expand, derive a satisfiable contract, and carry a cycle end to end? S3's schema is written against two stacks, so one of them being unproven would make it a schema against one stack and a hope | diagnostic; **gates S3** |
 | **V8** | at the cut | Confirmation shakedown on the integrated line. **The seeded control re-run is conditional** — run it if the window disappoints or something looks off, not as a checkbox | diagnostic |
@@ -1205,7 +1208,7 @@ was achievable; V6 is the cheap answer to *do we have reason to believe?* It is 
 **not part of the window** and its rolls are not counted — recorded here so a later reader
 cannot mistake it for a filtered first attempt.
 
-**V6 is served by SIP-0104 P6 rolls 3–6 (owner ruling 2026-08-15).** Those rolls are
+**V6 is served by the SIP-0104 P6 window's counting rolls from roll 3 onward (owner ruling 2026-08-15).** Those rolls are
 authored-mode `nextjs_ts` cycles on this PRD against a post-#902 deploy, and from roll 3 a
 roll counts only if its delivered app passes `audit_delivered_app.py` including the UI
 data-path check (SIP-0104 §13a). That is V6's question — *has authored mode on stack #2
@@ -1214,12 +1217,13 @@ viability run is scheduled.
 
 **They are not V7, and the reason is the deploy.** V7 requires a frozen deploy; the P6
 window's is not frozen across its six rolls — #902's per-stack fill-only guidance lands at
-roll 3 and plausibly moves yield, so rolls 1–2 and rolls 3–6 are not the same experiment.
+roll 3 and plausibly moves yield, so the rolls before that boundary and those after it are
+not the same experiment.
 A yield number spanning that boundary is not evidence. **V7 remains a separate,
 properly pre-registered window on a frozen post-P6 deploy**, with 4a and 4c decided first.
 
 **The roll-3 rebuild carries #902 and nothing else** (owner ruling 2026-08-15). One deploy
-boundary already exists at roll 3; what makes rolls 3–6 attributable is that it is a boundary
+boundary already exists at roll 3; what makes the rolls after it attributable is that it is a boundary
 of *exactly one named change*. Anything else riding that rebuild — however inert it looks —
 converts a clean four-roll observation into one with a confound nobody can subtract later.
 Changes that are ready but unrelated wait for the window to close and are held as unmerged
