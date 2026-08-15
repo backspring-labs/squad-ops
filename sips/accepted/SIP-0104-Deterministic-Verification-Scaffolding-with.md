@@ -162,3 +162,45 @@ Promotion is evidence-driven (recurrence, stable semantics, deterministic deriva
 - The promotion workflow and lifecycle (EXPLORATORY → OBSERVED → CANDIDATE → DETERMINISTIC), integrated with the Cross-Cycle Memory SIP.
 - Cross-stack scaffold designs, one per stack instance, under the §2 invariant.
 - Cycle Data Store queries over §6 evidence (which semantic patterns find defects; which are redundant with probes; which mechanics still consume rounds).
+
+## 13. Post-acceptance amendments
+
+### 13a. A window roll must also pass the delivered-app audit (2026-08-15, from roll 3)
+
+**What changed.** §10.2 defines the longitudinal criterion as *"N = 6 consecutive stack-#2
+rolls with zero run-terminating mechanical suite failures"*. That remains the mechanical
+claim, unchanged and applying to all six rolls. **Added:** from window roll 3 onward, a
+roll counts only if the delivered app also passes `audit_delivered_app.py`, which now
+includes the UI data-path check. Rolls 1–2 are grandfathered under the original criterion
+alone — they were authored before the guidance defect below was fixed, so holding them to
+a bar their inputs made unreachable would measure the fix, not the rolls.
+
+**Evidence — why the mechanical criterion alone proved insufficient.** Window roll 1
+(`cyc_04d36309d793`) satisfied every existing signal: verdict `accepted`, 36/36 checks
+executed and passed, all five contract probes green, `tests_pass` on eight scaffold shells
+that collected and executed cleanly, `frontend_build` green, **and the boot audit passing**
+(*"installs, builds, boots, answers 5 contract probe(s)"*). Its UI was entirely
+non-functional: all five page data calls requested unprefixed paths (`api('/runs')`)
+against routes mounted at `/api/runs`, so list, create, detail, join and leave each failed
+for every user. The defect was found by a human opening the app in a browser — no
+automated layer detected it, because every layer exercises the API *directly* while none
+followed the path the UI itself takes.
+
+The root cause was a build-side defect, not a verification one: a single fill-only prompt
+appendix served both stacks, so a `nextjs_ts` author was instructed to fill
+`backend/routes.py` and `frontend/src/views/*.jsx` — neither of which exists on this stack
+— and told that the client seam *"prefixes `/api`"*, which is stack #1's helper. It
+followed its instructions exactly. Fixed by per-stack guidance (#902); the detection gap
+closed by the UI data-path check (#903).
+
+**Why this does not weaken §10.2.** The two criteria are independent and both are
+recorded per roll. The mechanical claim — the one this SIP exists to prove — still spans
+all six rolls. The audit criterion is an additional gate from roll 3, so the final
+evidence must be stated as it is, never collapsed: *six rolls with zero mechanical suite
+failures; rolls 3–6 additionally audited as working applications.* Reading "six clean
+rolls" as "six working apps" would be exactly the false-green this amendment exists to
+prevent.
+
+**Ruled by the owner, 2026-08-15**, on the reasoning that banking six mechanically-clean
+rolls whose deliverables nobody can use would undercut what the window is meant to
+demonstrate.
