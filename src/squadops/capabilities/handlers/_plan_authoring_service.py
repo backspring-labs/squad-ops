@@ -30,7 +30,10 @@ from squadops.capabilities.handlers.cycle_tasks import (
     _rewrite_manifest_identifiers,
 )
 from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
-from squadops.cycles.acceptance_check_spec import command_safelist_names
+from squadops.cycles.acceptance_check_spec import (
+    command_safelist_names,
+    render_typed_acceptance_vocabulary,
+)
 from squadops.cycles.implementation_plan import (
     ImplementationPlan,
     planner_build_task_types,
@@ -151,49 +154,18 @@ async def produce_plan(
         "A `severity: error` typed check that fails BLOCKS the build (triggers self-eval / correction).\n\n"
         "Typed-check shape: a flat YAML map with `check`, optional `severity` (`error` "
         "default | `warning` | `info`), optional `description`, plus check-specific keys.\n\n"
-        "**Vocabulary (one example each):**\n\n"
-        "```yaml\n"
-        "# endpoint_defined — FastAPI route presence (stack: fastapi)\n"
-        "- check: endpoint_defined\n"
-        "  severity: error\n"
-        '  description: "Backend exposes the user CRUD routes"\n'
-        "  file: backend/main.py\n"
-        '  methods_paths: ["GET /users", "POST /users", "DELETE /users/{uid}"]\n'
-        "\n"
-        "# import_present — Python import (or .ts/.js with frontend flag)\n"
-        "- check: import_present\n"
-        '  description: "Pydantic is wired in for request models"\n'
-        "  file: backend/main.py\n"
-        "  module: pydantic\n"
-        "  symbol: BaseModel\n"
-        "\n"
-        "# field_present — class fields on a Python dataclass / Pydantic v2 model\n"
-        "- check: field_present\n"
-        '  description: "User model carries id and email"\n'
-        "  file: backend/models.py\n"
-        "  class_name: User\n"
-        "  fields: [id, email]\n"
-        "\n"
-        "# regex_match — pattern present count_min times in a file (stack-agnostic)\n"
-        "- check: regex_match\n"
-        '  description: "At least three test functions exist"\n'
-        "  file: tests/test_users.py\n"
-        # Single-quote regex patterns: double quotes interpret backslash escapes
-        # (\w, \.) and break yaml.safe_load. See acceptance_check_spec.CHECK_SPECS.
-        "  pattern: 'def test_\\w+'\n"
-        "  count_min: 3\n"
-        "\n"
-        "# count_at_least — glob match count under workspace (stack-agnostic)\n"
-        "- check: count_at_least\n"
-        '  description: "Non-trivial component coverage on the frontend"\n'
-        '  glob: "frontend/src/components/**/*.tsx"\n'
-        "  min_count: 3\n"
-        "\n"
-        "# command_exit_zero — argv-only safelist of static checkers; cannot run shell strings\n"
-        "- check: command_exit_zero\n"
-        '  description: "Backend file syntactically valid"\n'
-        "  argv: [python, -m, py_compile, backend/main.py]\n"
-        "```\n\n"
+        # #918: the vocabulary is RENDERED from CHECK_SPECS, never restated. A
+        # hand-written copy lived here and drifted from the registry the gate reads:
+        # it labelled `regex_match` "stack-agnostic", demonstrated it on
+        # `tests/test_users.py` (a SOURCE file), and omitted the document-only note
+        # the registry carries. Window roll 4 copied that example near-verbatim —
+        # "At least three test functions exist" became "At least five test functions
+        # exist" against a .ts file — and was system-rejected at the framing gate.
+        # The proposers have rendered the derived vocabulary since #182; this path,
+        # which authors the plan on every CRP but `validation-multirole`, had a
+        # private duplicate. Same class as #856 on the same path.
+        + render_typed_acceptance_vocabulary()
+        + "\n"
         "**Safety rules for `command_exit_zero`:**\n"
         '- `argv` MUST be a YAML list, not a string. `"ruff check src/"` is rejected.\n'
         # #707: rendered from COMMAND_SAFELIST, never restated. This block used to
