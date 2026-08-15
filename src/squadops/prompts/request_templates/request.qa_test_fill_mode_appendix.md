@@ -4,7 +4,8 @@ version: "1"
 required_variables:
   - slot_lines
   - shell_files
-optional_variables: []
+optional_variables:
+  - error_envelope
 ---
 ## FILL MODE: a deterministic test scaffold already covers the mechanics (SIP-0104)
 
@@ -15,8 +16,13 @@ mechanical layer is done. Your job is the residual semantic layer only: response
 store effects, cross-operation semantics, PRD-derived properties the contract cannot
 express.
 
-**Already covered deterministically (do not re-test these behaviors mechanically):**
+**YOUR SLOTS — fill every one of these:**
 {{slot_lines}}
+
+Each line names a slot and the behavior its shell already invokes and status-asserts.
+That mechanical half is done, so do not re-assert placement, invocation or the declared
+status inside a fill. **The slot itself still needs your assertions**: what the response
+should CONTAIN and what the store should look like afterwards.
 
 **For the scaffold, emit FILL BLOCKS addressed by slot id — nothing else can address a
 slot:**
@@ -24,6 +30,14 @@ slot:**
 ```fill:slot-<id>
     expect(body.id).toBeTruthy()
     expect(all('runs')).toHaveLength(1)
+```
+
+**Error responses — read the envelope, do not guess it:**
+{{error_envelope}}
+
+```fill:slot-<id>
+    expect(body.error.code).toBe('validation_error')
+    expect(all('runs')).toHaveLength(0)
 ```
 
 Fill EVERY slot listed above — with domain assertions, or with an explicit

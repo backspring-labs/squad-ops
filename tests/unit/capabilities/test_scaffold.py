@@ -926,3 +926,122 @@ class TestDomAnchorContract:
         bare_routes = tuple(dataclasses.replace(r, testids=()) for r in m.frontend.routes)
         bare = dataclasses.replace(m, frontend=dataclasses.replace(m.frontend, routes=bare_routes))
         assert scaffold.testid_surface_instructions(bare) == []
+
+
+class TestErrorSeamIsPerStack:
+    """#912 — one shared text asserted stack #1's Python facts for every stack."""
+
+    def test_each_stack_names_its_own_module_import_and_parameter(self):
+        """Bug caught: a nextjs_ts repair is told to edit `errors.py` and pass `message`.
+
+        The file is `lib/errors.ts` and the constructor parameter is `detail`. This is
+        the #902 class in a second location — a shared prompt surface stating one
+        stack's facts as universal — and it fires exactly when a repair is trying to fix
+        an error-envelope defect, which is what window rolls 2 and 3 were both doing.
+        """
+        from squadops.capabilities.scaffold import error_seam_for
+
+        fastapi = error_seam_for("fullstack_fastapi_react")
+        nextjs = error_seam_for("nextjs_ts")
+
+        assert (fastapi.module, fastapi.body_field) == ("errors.py", "message")
+        assert (nextjs.module, nextjs.body_field) == ("lib/errors.ts", "detail")
+        assert "@/lib/errors" in nextjs.import_form
+        assert "ApiError(code, detail)" == nextjs.raise_form
+
+    def test_the_framework_exception_clause_is_named_only_where_one_exists(self):
+        """Bug caught: generalizing the prohibition loses the name that made it work.
+
+        `HTTPException` is what pf-33/pf-34 devs actually reached for on stack #1, so
+        naming it is the point. Next.js has no equivalent attractor, and inventing one
+        would teach a nonexistent fact — the clause is omitted instead.
+        """
+        from squadops.capabilities.scaffold import error_seam_for
+
+        assert error_seam_for("fullstack_fastapi_react").framework_exception == "HTTPException"
+        assert error_seam_for("nextjs_ts").framework_exception == ""
+
+
+class TestErrorEnvelopeLines:
+    """#911 — the envelope's body shape, stated instead of guessed."""
+
+    def test_the_nested_path_is_stated_and_the_invented_one_named(self):
+        """Bug caught: the author asserts `body.error_code` and reads undefined.
+
+        It did exactly that on two consecutive window rolls. Naming the wrong form
+        explicitly is deliberate — #902 established that showing the correct form alone
+        is weaker than showing correct-and-wrong side by side, because the wrong form is
+        what the model already believes.
+        """
+        from squadops.capabilities.scaffold import error_envelope_lines
+
+        lines = error_envelope_lines("nextjs_ts")
+        joined = " ".join(lines)
+
+        assert '{"error": {"code": "validation_error", "detail": "..."}}' in joined
+        assert "body.error.code" in joined
+        assert "error_code" in joined  # the invented form, named as wrong
+
+    def test_each_stack_describes_its_own_envelope(self):
+        """Bug caught: one envelope described for both stacks.
+
+        They genuinely differ — stack #1 emits `message`, stack #2 emits `detail` — so a
+        single description would be wrong for one of them, which is the defect this
+        whole seam exists to stop.
+        """
+        from squadops.capabilities.scaffold import error_envelope_lines
+
+        assert '"message"' in " ".join(error_envelope_lines("fullstack_fastapi_react"))
+        assert '"detail"' in " ".join(error_envelope_lines("nextjs_ts"))
+
+    def test_an_unknown_stack_says_nothing_rather_than_guessing(self):
+        """A stack with no declared seam must produce no lines. A guessed envelope is
+        worse than silence: the author would assert against a shape nothing emits and
+        the failure would look like an application defect."""
+        from squadops.capabilities.scaffold import error_envelope_lines
+
+        assert error_envelope_lines("") == []
+        assert error_envelope_lines("some_future_stack") == []
+
+
+class TestTypeScriptConstSurface:
+    """#875 — a const's type and values are facts, not decoration."""
+
+    def test_a_record_const_renders_its_type_and_values(self):
+        """Bug caught: `exports ERROR_STATUS` tells an author the name and nothing else.
+
+        Roll 13's qa suite called `.get()` on it — a runtime TypeError, since it is a
+        Record and not a Map — and asserted a status the map does not contain. Both
+        facts are in the frozen source the surface is derived from.
+        """
+        from squadops.capabilities.scaffold import _ecmascript_surface
+
+        rendered = _ecmascript_surface(
+            "export const ERROR_STATUS: Record<string, number> = {\n"
+            "  validation_error: 400,\n"
+            "  run_not_found: 404\n"
+            "}\n"
+        )
+
+        assert "Record<string, number>" in rendered
+        assert "validation_error: 400" in rendered
+        assert "run_not_found: 404" in rendered
+
+    def test_a_long_or_computed_const_degrades_to_name_and_type(self):
+        """The surface index is a reminder of declarations, not a second copy of the
+        file. A const built by a call has no literal to show, and an oversized literal
+        would crowd out every other line — both degrade to name-and-type, which is still
+        strictly more than the bare name."""
+        from squadops.capabilities.scaffold import _ecmascript_surface
+
+        computed = _ecmascript_surface("export const CONFIG: AppConfig = buildConfig()\n")
+        assert "CONFIG: AppConfig" in computed
+        assert "buildConfig" not in computed
+
+        long_literal = _ecmascript_surface(
+            "export const BIG: Record<string, string> = {\n"
+            + "".join(f"  key_{i}: 'value_{i}',\n" for i in range(20))
+            + "}\n"
+        )
+        assert "BIG: Record<string, string>" in long_literal
+        assert "key_19" not in long_literal

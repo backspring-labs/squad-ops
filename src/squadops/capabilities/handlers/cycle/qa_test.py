@@ -481,15 +481,25 @@ class QATestHandler(_CycleTaskHandler):
         renderer = getattr(context.ports, "request_renderer", None)
         if renderer is None:
             return ""
+        from squadops.capabilities.scaffold import error_envelope_lines
         from squadops.capabilities.verification_scaffold import VerificationScaffoldManifest
         from squadops.capabilities.verification_scaffold_fill import coverage_inventory_lines
 
         record = VerificationScaffoldManifest.from_dict(manifest_dict)
         slot_lines = "\n".join(f"- {line}" for line in coverage_inventory_lines(record))
         shell_parts = [f"**{f['name']}:**\n```typescript\n{f['content']}\n```" for f in files]
+        # #911: half the slots are error behaviors and nothing showed the author the
+        # envelope, so it invented `body.error_code` on two consecutive window rolls.
+        # Keyed on the scaffold record's own stack — the fact is the stack's, not the
+        # run's, so it stays correct when the brief is rendered without a manifest.
+        envelope = "\n".join(f"- {line}" for line in error_envelope_lines(record.stack))
         rendered = await renderer.render(
             "request.qa_test_fill_mode_appendix",
-            {"slot_lines": slot_lines, "shell_files": "\n\n".join(shell_parts)},
+            {
+                "slot_lines": slot_lines,
+                "shell_files": "\n\n".join(shell_parts),
+                "error_envelope": envelope,
+            },
         )
         return rendered.content
 

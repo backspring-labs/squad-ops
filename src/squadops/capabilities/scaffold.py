@@ -27,7 +27,7 @@ import ast
 import hashlib
 import json
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -554,6 +554,96 @@ def fill_slot_paths(manifest: InterfaceManifest) -> tuple[str, ...]:
     return _stack(manifest.stack).fill_slots(manifest)
 
 
+@dataclass(frozen=True)
+class ErrorSeam:
+    """How one stack renders the error contract — the facts prompts must not guess.
+
+    The envelope is scaffold-owned: the expander writes it, freezes it, and every probe
+    and fill asserts against it. It was nonetheless absent from every surface an author
+    is shown (#911), and the one surface that described the *raise* convention asserted
+    stack #1's Python facts for every stack (#912). Both prompt surfaces now render from
+    this one declaration, so they cannot disagree with each other or drift from the
+    template that actually emits the bytes.
+
+    ``body_field`` is deliberately per-stack rather than read from the manifest's
+    declared ``error_contract.shape``: the two currently disagree for ``nextjs_ts``
+    (the manifest declares ``message``, the emitted ``lib/errors.ts`` writes ``detail``)
+    and #795 owns that reconciliation. Until it is settled, describing what the code
+    ACTUALLY emits is the only honest thing to tell an author — a brief that quoted the
+    declared shape would be confidently wrong.
+    """
+
+    #: The frozen module, as the author sees it on disk.
+    module: str
+    #: The import form that resolves to it in this stack.
+    import_form: str
+    #: The raise convention, with the constructor's REAL parameter names.
+    raise_form: str
+    #: The second field inside ``error`` — ``message`` (stack #1) or ``detail``.
+    body_field: str
+    #: The framework exception a dev wrongly reaches for on THIS stack, named so the
+    #: prohibition stays specific. ``HTTPException`` is what pf-33/pf-34 actually
+    #: produced; a generic "never a framework exception" would have lost that. Empty
+    #: when the stack has no such attractor — the clause is then omitted rather than
+    #: invented.
+    framework_exception: str = ""
+
+    def envelope_example(self, code: str) -> str:
+        """The literal JSON body a failing request returns, for a real declared code."""
+        return f'{{"error": {{"code": "{code}", "{self.body_field}": "..."}}}}'
+
+
+ERROR_SEAM_FASTAPI = ErrorSeam(
+    module="errors.py",
+    import_form="from .errors import ApiError",
+    raise_form="ApiError(code, message)",
+    body_field="message",
+    framework_exception="HTTPException",
+)
+
+ERROR_SEAM_NEXTJS_TS = ErrorSeam(
+    module="lib/errors.ts",
+    import_form="import { ApiError, errorResponse } from '@/lib/errors'",
+    raise_form="ApiError(code, detail)",
+    body_field="detail",
+)
+
+
+def error_seam_for(stack: str) -> ErrorSeam | None:
+    """The error seam for a stack, or ``None`` when it declares none."""
+    known = _STACKS.get(stack)
+    return known.error_seam if known else None
+
+
+def error_envelope_lines(stack: str, codes: Sequence[ErrorCode] = ()) -> list[str]:
+    """What a failing request's JSON body looks like — for the qa fill author (#911).
+
+    Half the fill slots in a typical build are error behaviors, and nothing the author
+    was shown stated this: the fill brief's only example was a success field, the frozen
+    surface rendered ``errorResponse(err: unknown): Response`` (a return type that
+    reveals nothing), and ``ERROR_STATUS`` rendered as a bare name. So the author
+    invented the path — ``body.error_code`` — on two consecutive window rolls, and no
+    downstream layer could tell the invention from an application defect, because an
+    assertion failure inside a fill is exactly what "the app is wrong" looks like.
+    """
+    seam = error_seam_for(stack)
+    if seam is None:
+        return []
+    sample = codes[0].code if codes else "validation_error"
+    lines = [
+        f"A failing request's JSON body is `{seam.envelope_example(sample)}`. The code is "
+        f"**nested under `error`** — read it as `body.error.code`. There is no top-level "
+        f"`error_code` field; asserting one reads `undefined` and fails.",
+        f"The frozen `{seam.module}` renders this envelope for every contract error; a "
+        f"route cannot vary it.",
+    ]
+    if codes:
+        lines.append(
+            "Declared codes → status: " + ", ".join(f"`{c.code}` → {c.http}" for c in codes) + "."
+        )
+    return lines
+
+
 def error_seam_instructions(manifest: InterfaceManifest | None) -> list[str]:
     """Authoritative error-contract lines for correction/repair prompts (pf-34).
 
@@ -570,18 +660,20 @@ def error_seam_instructions(manifest: InterfaceManifest | None) -> list[str]:
     error contract (author mode, non-scaffold stacks).
     """
     ec = manifest.api.error_contract if manifest is not None else None
-    if ec is None or not ec.codes:
+    seam = error_seam_for(manifest.stack) if manifest is not None else None
+    if ec is None or not ec.codes or seam is None:
         return []
     code_map = ", ".join(f"`{c.code}` → {c.http}" for c in ec.codes)
     return [
         (
-            "on failure raise `ApiError(code, message)` (imported from `.errors`): the "
-            "FIRST argument is the error-code STRING, the second a human message — "
-            "never `ApiError(status_code=..., detail=...)` and never `HTTPException` "
-            "for contract errors; the frozen `errors.py` maps the code to the HTTP "
-            "status and renders the pinned envelope"
+            f"on failure raise `{seam.raise_form}` (`{seam.import_form}`): the FIRST "
+            f"argument is the error-code STRING, the second a human-readable string — "
+            f"never `ApiError(status_code=..., detail=...)`"
+            + (f" and never `{seam.framework_exception}`" if seam.framework_exception else "")
+            + f" for contract errors; the frozen `{seam.module}` maps the code to the "
+            f"HTTP status and renders the pinned envelope"
         ),
-        f"valid error codes (code → HTTP status, mapped by frozen `errors.py`): {code_map}",
+        f"valid error codes (code → HTTP status, mapped by frozen `{seam.module}`): {code_map}",
     ]
 
 
@@ -806,6 +898,15 @@ _TS_CONSTRUCTOR = re.compile(r"constructor\s*\(([^)]*)\)", re.S)
 #: rendered signature is the call form, not the declaration form.
 _TS_PARAM_MODIFIERS = re.compile(r"^(?:(?:public|private|protected|readonly)\s+)+")
 _TS_CONST = re.compile(r"^export\s+const\s+(\w+)", re.M)
+#: #875: a const's TYPE and VALUES are facts no author was shown — `exports
+#: ERROR_STATUS` alone let roll 13's qa author call `.get()` on a Record (a
+#: TypeError inside the tests) and invent the status values it maps. Captures the
+#: annotation and an inline object literal so both can be rendered.
+_TS_CONST_DECL = re.compile(
+    r"^export\s+const\s+(?P<name>\w+)(?:\s*:\s*(?P<type>[^=\n]+?))?\s*=\s*"
+    r"(?P<body>\{[^}]*\})?",
+    re.M,
+)
 _TS_FIELD = re.compile(r"^\s{2}(\w+\??: *[^\n;,]+)", re.M)
 _TS_IMPORT = re.compile(r"""^import\s+[^'"]*from\s+['"]([^'"]+)['"]""", re.M)
 
@@ -833,6 +934,36 @@ def _ts_param_list(params: str) -> list[str]:
             current += ch
     segments.append(current)
     return [" ".join(seg.split()) for seg in segments if seg.strip()]
+
+
+def _ts_const_surface(source: str, names: list[str]) -> list[str]:
+    """Each exported const as ``NAME: type = {k: v, ...}`` where the source declares it.
+
+    #875: rendering the bare name told an author that ``ERROR_STATUS`` exists and nothing
+    more — not that it is a ``Record`` rather than a ``Map``, and not which statuses it
+    maps. Roll 13's qa suite called ``.get()`` on it (a runtime TypeError inside the
+    tests) and asserted a status the map does not contain. Both facts are right there in
+    the frozen source.
+
+    Values are rendered only for an inline object literal, and only when short: the
+    surface index is a reminder of declarations, not a second copy of the file. A const
+    with a computed or long body degrades to name-and-type, which is still strictly more
+    than the name alone.
+    """
+    declared: dict[str, str] = {}
+    for match in _TS_CONST_DECL.finditer(source):
+        name = match.group("name")
+        type_hint = (match.group("type") or "").strip()
+        body = (match.group("body") or "").strip()
+        rendered = name
+        if type_hint:
+            rendered = f"{rendered}: {type_hint}"
+        if body:
+            compact = " ".join(body.split())
+            if len(compact) <= 120:
+                rendered = f"{rendered} = {compact}"
+        declared[name] = rendered
+    return [declared.get(name, name) for name in names]
 
 
 def _ecmascript_surface(source: str) -> str:
@@ -900,7 +1031,7 @@ def _ecmascript_surface(source: str) -> str:
     if classes:
         parts.append("classes " + ", ".join(classes))
     if consts:
-        parts.append("exports " + ", ".join(consts))
+        parts.append("exports " + ", ".join(_ts_const_surface(source, consts)))
     if functions:
         parts.append("functions " + ", ".join(functions))
     if modules:
@@ -1740,6 +1871,15 @@ class ScaffoldStack:
     #: rather than declare it approximately. Set-but-unregistered refuses at emission
     #: (the #838 two-registries-disagree class).
     verification_scaffold: str = ""
+    #: #911/#912: how this stack renders the error contract — the frozen module, the
+    #: import and raise forms, and the envelope's second field. A *value*, not a name:
+    #: unlike the registries the fields above index, this is four short strings with no
+    #: other layer that owns them, and the two prompt surfaces that need it (repair
+    #: instructions and the qa fill brief) must render from ONE declaration or they
+    #: drift apart — which is exactly how a Python `errors.py` came to be described to
+    #: a TypeScript author. Unset means the stack states no seam and both surfaces stay
+    #: silent rather than guessing.
+    error_seam: ErrorSeam | None = None
 
 
 _STACKS: dict[str, ScaffoldStack] = {
@@ -1754,6 +1894,7 @@ _STACKS: dict[str, ScaffoldStack] = {
         # later stack can share one (a FastAPI+Vue stack wants these same backend criteria)
         # without minting a fourth stack vocabulary to express it.
         criteria_pack="fullstack_fastapi_react",
+        error_seam=ERROR_SEAM_FASTAPI,
         probe_profile="fastapi_uvicorn",
         dev_capability="fullstack_fastapi_react",
     ),
@@ -1776,6 +1917,7 @@ _STACKS: dict[str, ScaffoldStack] = {
         # conservative default, and #822 bend 6).
         check_stack="",
         criteria_pack=_NEXTJS_TS_NAME,
+        error_seam=ERROR_SEAM_NEXTJS_TS,
         probe_profile="nextjs_next_start",
         dev_capability=_NEXTJS_TS_NAME,
         # SIP-0104: the first (and so far only) stack with a deterministic test scaffold.
