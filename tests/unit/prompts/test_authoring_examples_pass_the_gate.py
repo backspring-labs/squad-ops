@@ -164,3 +164,96 @@ def test_every_example_criterion_uses_a_real_check_with_real_parameters():
                     problems.append(f"{name}: {check} given unknown {sorted(unknown)}")
 
     assert problems == [], "authoring examples teach invalid criteria:\n  " + "\n  ".join(problems)
+
+
+# --------------------------------------------------------------------------- #
+# The sole-author path renders its vocabulary from Python, not from a .md asset,
+# so the asset sweep above cannot see it — and that is exactly where the drift
+# that cost window roll 4 was hiding (#918).
+# --------------------------------------------------------------------------- #
+
+
+def _sole_author_vocabulary() -> str:
+    from squadops.cycles.acceptance_check_spec import render_typed_acceptance_vocabulary
+
+    return render_typed_acceptance_vocabulary()
+
+
+def test_the_sole_author_path_renders_the_derived_vocabulary():
+    """Bug caught: a second, hand-maintained copy of the check vocabulary.
+
+    `_plan_authoring_service` carried its own inline vocabulary block. It drifted from
+    the registry the gate reads — labelling `regex_match` "stack-agnostic", demonstrating
+    it on `tests/test_users.py` (a source file), and omitting the document-only note.
+    Window roll 4 copied that example near-verbatim and was rejected at the framing gate.
+
+    The proposers have rendered the derived vocabulary since #182; the sole-author path —
+    which authors the plan on every CRP but `validation-multirole` — had a private
+    duplicate. Same class as #856, same path.
+    """
+    import inspect
+
+    from squadops.capabilities.handlers import _plan_authoring_service
+
+    source = inspect.getsource(_plan_authoring_service)
+
+    assert "render_typed_acceptance_vocabulary()" in source, (
+        "the sole-author path must render the derived vocabulary, not restate it"
+    )
+    # The specific drifted strings, so a re-introduced hand-copy is caught by content
+    # rather than by hoping someone notices a new block.
+    for drifted in ('"# regex_match — pattern present', "file: tests/test_users.py"):
+        assert drifted not in source, f"a hand-written vocabulary example is back: {drifted!r}"
+
+
+def test_every_vocabulary_example_survives_the_gate_that_judges_it():
+    """Bug caught: the rendered menu demonstrates a criterion production rejects.
+
+    This is the roll-4 defect stated generally. The vocabulary is what a sole author
+    copies from, so an example in it that the gate refuses is a guaranteed rejection
+    shipped to every cycle.
+    """
+    import re as _re
+
+    import yaml as _yaml
+
+    from squadops.cycles.implementation_plan import ImplementationPlan
+
+    criteria: list[dict] = []
+    for block in _re.findall(r"```yaml\n(.*?)```", _sole_author_vocabulary(), _re.S):
+        parsed = _yaml.safe_load(block)
+        if isinstance(parsed, list):
+            criteria.extend(c for c in parsed if isinstance(c, dict))
+
+    assert criteria, "no vocabulary examples parsed — the extractor drifted"
+
+    plan = ImplementationPlan.from_yaml(
+        _yaml.safe_dump(
+            {
+                "version": 1,
+                "project_id": "p",
+                "cycle_id": "c",
+                "run_id": "r",
+                "prd_hash": "h",
+                "summary": {"objective": "o"},
+                "tasks": [
+                    {
+                        "task_index": 0,
+                        "task_type": "qa.test",
+                        "role": "qa",
+                        "agent": "a",
+                        "title": "vocabulary examples",
+                        "focus": "vocabulary examples",
+                        "description": "d",
+                        "expected_artifacts": ["x"],
+                        "acceptance_criteria": criteria,
+                    }
+                ],
+            }
+        )
+    )
+
+    assert plan.validate_criteria_scope() == [], (
+        "the vocabulary shipped to plan authors demonstrates a criterion the gate "
+        "rejects — this is what cost window roll 4 its framing run"
+    )
