@@ -59,10 +59,10 @@ tasks:
     expected_artifacts:
       - "backend/tests/test_users.py"
     acceptance_criteria:
-      - check: regex_match
+      - check: function_defined
         file: backend/tests/test_users.py
-        pattern: "def test_"
-        count_min: 5
+        name_prefix: "test_"
+        min_count: 5
         severity: error
     depends_on_focus:
       - "dev:user crud routes"
