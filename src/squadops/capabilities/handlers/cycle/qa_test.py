@@ -715,20 +715,9 @@ class QATestHandler(_CycleTaskHandler):
                 reason = test_result.error or "runner_error"
                 detail = f"tests_not_executed:{reason}"
                 summary = f"Repaired suite not executed: {reason}"
-            checks.append(
-                {
-                    "check": "tests_pass",
-                    "executed": test_result.executed,
-                    "exit_code": test_result.exit_code,
-                    "tests_passed": test_result.tests_passed,
-                    "passed": False,
-                    # #626: runner identity + the runner-neutral suite-health
-                    # verdict, so locus routing stops reading pytest exit
-                    # semantics into vitest failures.
-                    "runner": test_result.runner,
-                    "suite_broken": test_result.suite_broken,
-                }
-            )
+            from squadops.capabilities.handlers.test_runner import failed_tests_pass_row
+
+            checks.append(failed_tests_pass_row(test_result))
             missing.append(detail)
         else:
             summary = "Repaired suite passed"
@@ -1101,20 +1090,9 @@ class QATestHandler(_CycleTaskHandler):
                 detail = f"tests_not_executed:{reason}"
                 fail_note = f"Tests not executed: {reason}"
 
-            validation.checks.append(
-                {
-                    "check": "tests_pass",
-                    "executed": test_result.executed,
-                    "exit_code": test_result.exit_code,
-                    "tests_passed": test_result.tests_passed,
-                    "passed": False,
-                    # #626: runner identity + the runner-neutral suite-health
-                    # verdict, so locus routing stops reading pytest exit
-                    # semantics into vitest failures.
-                    "runner": test_result.runner,
-                    "suite_broken": test_result.suite_broken,
-                }
-            )
+            from squadops.capabilities.handlers.test_runner import failed_tests_pass_row
+
+            validation.checks.append(failed_tests_pass_row(test_result))
             validation.passed = False
             validation.missing_components.append(detail)
             validation.summary = (

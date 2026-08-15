@@ -743,6 +743,53 @@ async def run_backend_import_check(
 _VITEST_REPORT_FILENAME = ".vitest_report.json"
 
 
+def failing_test_identities(test_failures) -> tuple[str, ...]:
+    """Stable identities for the tests that failed — ``file::title``, sorted and deduped.
+
+    **Identity only: no messages, no line numbers.** The correction signature's standing
+    rule is that evidence text never alters identity, so a re-described identical failure
+    still reads as a repeat. A suite-level row (the file died before any test ran) has no
+    title and is identified by its file alone — a distinct and correct identity, since the
+    whole file is what failed.
+    """
+    identities = set()
+    for row in test_failures or ():
+        if not isinstance(row, dict):
+            continue
+        file = str(row.get("file") or "")
+        title = str(row.get("title") or "")
+        if not file and not title:
+            continue
+        identities.add(f"{file}::{title}" if title else file)
+    return tuple(sorted(identities))
+
+
+def failed_tests_pass_row(result: RunTestsResult) -> dict:
+    """The ``tests_pass`` check row for a failing run.
+
+    One builder because there are two call sites (first pass and retest) that must not
+    drift: #626 added ``runner``/``suite_broken`` to both by hand, and the next field
+    added to only one of them is a silent, per-path behavior difference. Two seams, one
+    fact — the class of bug this repo has paid for more than once.
+    """
+    return {
+        "check": "tests_pass",
+        "executed": result.executed,
+        "exit_code": result.exit_code,
+        "tests_passed": result.tests_passed,
+        "passed": False,
+        # #626: runner identity + the runner-neutral suite-health verdict, so locus
+        # routing stops reading pytest exit semantics into vitest failures.
+        "runner": result.runner,
+        "suite_broken": result.suite_broken,
+        # #878 (full): WHICH tests failed, so two different suite failures stop
+        # collapsing into one aggregate signature. Empty for runners that produce no
+        # machine report (pytest today) — the signature then falls back byte-identically
+        # to the aggregate form.
+        "failing_tests": failing_test_identities(result.test_failures),
+    }
+
+
 def parse_vitest_failure_rows(report: dict, workspace_root: str) -> list[dict]:
     """Per-failure observation rows from a vitest JSON report (SIP-0104 P5).
 

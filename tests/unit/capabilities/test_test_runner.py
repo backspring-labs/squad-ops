@@ -463,3 +463,110 @@ class TestMergedRunnerIdentity:
         assert result.exit_code == 1
         assert result.runner == "vitest"
         assert result.suite_broken is True
+
+
+class TestFailingTestIdentities:
+    """#878 (full) — which tests failed, as a stable identity set."""
+
+    def test_messages_and_lines_never_enter_the_identity(self):
+        """The correction signature's standing rule is that evidence text never alters
+        identity, so the same failure re-described (a different assertion message, a
+        shifted line number) must still compare equal — otherwise every round looks
+        like new work and termination can never fire on a genuinely stuck run.
+        """
+        from squadops.capabilities.handlers.test_runner import failing_test_identities
+
+        first = failing_test_identities(
+            [
+                {
+                    "file": "a.test.ts",
+                    "title": "creates",
+                    "messages": ["expected 500 to be 201"],
+                    "line": 12,
+                    "suite_level": False,
+                }
+            ]
+        )
+        second = failing_test_identities(
+            [
+                {
+                    "file": "a.test.ts",
+                    "title": "creates",
+                    "messages": ["AssertionError: nope"],
+                    "line": 44,
+                    "suite_level": False,
+                }
+            ]
+        )
+
+        assert first == second == ("a.test.ts::creates",)
+
+    def test_identities_are_sorted_deduped_and_suite_rows_use_the_file(self):
+        """Order comes from the runner's report and must not affect comparison; a
+        suite-level row has no title and is the file itself."""
+        from squadops.capabilities.handlers.test_runner import failing_test_identities
+
+        rows = [
+            {"file": "b.test.ts", "title": "z", "suite_level": False},
+            {"file": "a.test.ts", "title": "", "suite_level": True},
+            {"file": "b.test.ts", "title": "z", "suite_level": False},
+        ]
+
+        assert failing_test_identities(rows) == ("a.test.ts", "b.test.ts::z")
+
+    def test_junk_rows_are_dropped_rather_than_producing_empty_identities(self):
+        """A malformed report must not inject a `::`-shaped phantom identity that
+        would make two unrelated rounds compare equal."""
+        from squadops.capabilities.handlers.test_runner import failing_test_identities
+
+        assert failing_test_identities([{}, {"file": "", "title": ""}, "not-a-dict", None]) == ()
+        assert failing_test_identities(None) == ()
+
+
+class TestFailedTestsPassRow:
+    def test_both_qa_seams_build_the_row_through_this_one_builder(self):
+        """#626 added `runner`/`suite_broken` to two hand-written copies of this dict;
+        a third field added to only one seam is a silent per-path behavior difference
+        (first-pass vs retest). This pins that both call sites route through here.
+        """
+        import ast
+        from pathlib import Path
+
+        source = (
+            Path(__file__).resolve().parents[3]
+            / "src/squadops/capabilities/handlers/cycle/qa_test.py"
+        ).read_text(encoding="utf-8")
+
+        calls = sum(
+            1
+            for node in ast.walk(ast.parse(source))
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "failed_tests_pass_row"
+        )
+
+        assert calls == 2, "both the first-pass and retest seams must use the shared builder"
+        assert '"check": "tests_pass",' not in source, (
+            "a hand-built tests_pass failure row reappeared — route it through "
+            "failed_tests_pass_row so the two seams cannot drift"
+        )
+
+    def test_the_row_carries_the_failing_test_identities(self):
+        from squadops.capabilities.handlers.test_runner import (
+            RunTestsResult,
+            failed_tests_pass_row,
+        )
+
+        row = failed_tests_pass_row(
+            RunTestsResult(
+                executed=True,
+                exit_code=1,
+                runner="vitest",
+                suite_broken=False,
+                test_failures=({"file": "a.test.ts", "title": "creates"},),
+            )
+        )
+
+        assert row["failing_tests"] == ("a.test.ts::creates",)
+        assert row["passed"] is False
+        assert row["runner"] == "vitest"
