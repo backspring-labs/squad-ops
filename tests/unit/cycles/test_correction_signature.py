@@ -167,3 +167,90 @@ class TestSuiteHealthDiscriminator:
         sig = failure_signature(_evidence([_TESTS_FAIL_ROW]))
 
         assert sig == frozenset({("tests_pass", "backend/tests/test_integration.js", "exit 1")})
+
+
+class TestFailingTestIdentity:
+    """#878 (full) — a suite contributes one element per failing test.
+
+    Without it, every suite failure is the same aggregate element, so two
+    unrelated defects in consecutive rounds read as an exact repeat and the
+    run is terminated as a plan defect while it is actually converging.
+    """
+
+    @staticmethod
+    def _suite(identities: tuple[str, ...]) -> dict:
+        return {
+            "check": "tests_pass",
+            "passed": False,
+            "status": "failed",
+            "reason": "failed",
+            "suite_broken": False,
+            "failing_tests": identities,
+        }
+
+    def test_two_unrelated_suite_failures_are_not_a_repeat(self):
+        """SIP-0104 window roll 2 (run_6cb3563d3291), exactly as it happened.
+
+        Round 0 failed on error-envelope assertions; round 1 on unfilled scaffold
+        slots. Different defects, and the run was fixing them in sequence — but
+        both rounds produced `tests_pass||failed;suite_health=ran` and the run
+        died at round 1.
+        """
+        round0 = failure_signature(
+            _evidence([self._suite(("__tests__/runs.test.ts::rejects a blank title",))])
+        )
+        round1 = failure_signature(
+            _evidence(
+                [self._suite(("__tests__/scaffold/vc-probe-api-runs.scaffold.test.ts::fill",))]
+            )
+        )
+
+        assert classify_movement(round0, round1) != MOVEMENT_REPEAT
+        assert not should_terminate_plan_defect(
+            round0, round1, "tighten_acceptance", "tighten_acceptance"
+        )
+
+    def test_fixing_some_of_the_failures_is_progress(self):
+        """The movement table was unreachable inside a suite before this: partial
+        reduction is the signal that a repair is working, and the aggregate element
+        could not express it."""
+        before = failure_signature(_evidence([self._suite(("f.ts::a", "f.ts::b", "f.ts::c"))]))
+        after = failure_signature(_evidence([self._suite(("f.ts::c",))]))
+
+        assert classify_movement(before, after) == MOVEMENT_PROGRESS
+        assert not should_terminate_plan_defect(before, after, "tighten_acceptance", "add_task")
+
+    def test_the_same_failing_tests_still_repeat(self):
+        """The true positive must survive: shk-4's three identical rounds against one
+        unwinnable task are still an exact repeat, now on a stricter identity."""
+        sig_a = failure_signature(_evidence([self._suite(("f.ts::a", "f.ts::b"))]))
+        sig_b = failure_signature(_evidence([self._suite(("f.ts::b", "f.ts::a"))]))
+
+        assert classify_movement(sig_a, sig_b) == MOVEMENT_REPEAT
+        assert should_terminate_plan_defect(
+            sig_a, sig_b, "tighten_acceptance", "tighten_acceptance"
+        )
+
+    def test_a_row_without_failing_tests_is_byte_identical_to_the_legacy_form(self):
+        """pytest emits no machine report and every pre-#878 row lacks the field, so
+        the fallback must not shift those signatures by even one character."""
+        legacy = failure_signature(_evidence([_TESTS_FAIL_ROW]))
+        with_empty = failure_signature(_evidence([{**_TESTS_FAIL_ROW, "failing_tests": ()}]))
+
+        assert with_empty == legacy
+        assert render_signature(legacy) == ("tests_pass|backend/tests/test_integration.js|exit 1",)
+
+    def test_a_suite_level_death_is_identified_by_its_file(self):
+        """A file that dies before any test runs has no test title. Identifying it by
+        file is correct — the whole file is what failed — and keeps it distinct from
+        an assertion failure inside the same file.
+        """
+        died = failure_signature(_evidence([self._suite(("__tests__/broken.test.ts",))]))
+        asserted = failure_signature(
+            _evidence([self._suite(("__tests__/broken.test.ts::renders",))])
+        )
+
+        assert classify_movement(died, asserted) != MOVEMENT_REPEAT
+        assert render_signature(died) == (
+            "tests_pass|__tests__/broken.test.ts|failed;suite_health=ran;test=",
+        )

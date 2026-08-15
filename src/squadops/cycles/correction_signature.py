@@ -39,6 +39,18 @@ def failure_signature(failure_evidence: dict[str, Any]) -> frozenset[tuple[str, 
     ``emission_failure`` — the A3 categories own its routing) or no failing
     rows at all.
 
+    #878 (full): when the row carries ``failing_tests``, the suite contributes
+    **one element per failing test** rather than a single aggregate element.
+    This is what makes the movement table reachable inside a suite: a repair
+    that fixes three of eight failures yields a strict subset, which is
+    ``MOVEMENT_PROGRESS`` and resets the repeat condition, where the aggregate
+    form produced a byte-identical ``tests_pass||failed`` both rounds and read
+    as an exact repeat. Roll 2 of the SIP-0104 window (run_6cb3563d3291) is the
+    canonical loss: round 0 failed on error-envelope assertions, round 1 on five
+    unfilled scaffold slots — two unrelated defects, one collapsed signature, a
+    converging run terminated at round 1. Absent (pytest, which emits no machine
+    report, and every legacy row) falls back to the aggregate element byte-identically.
+
     #878 (minimum): the runner's structured ``suite_broken`` verdict joins the
     reason token when present. It is a machine fact, not prose, so the
     evidence-text rule above is intact — and without it a behavioral failure
@@ -80,7 +92,13 @@ def failure_signature(failure_evidence: dict[str, Any]) -> frozenset[tuple[str, 
         if suite_broken is not None:
             health = "broken" if suite_broken else "ran"
             reason_token = f"{reason_token};suite_health={health}"
-        elements.add((check_id, subject, reason_token))
+        failing_tests = row.get("failing_tests") or ()
+        if failing_tests:
+            for identity in failing_tests:
+                test_file, _, title = str(identity).partition("::")
+                elements.add((check_id, test_file, f"{reason_token};test={title}"))
+        else:
+            elements.add((check_id, subject, reason_token))
     return frozenset(elements) if elements else None
 
 
