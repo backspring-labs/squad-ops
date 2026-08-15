@@ -477,3 +477,60 @@ implementation-planning choice and moves to the implementation plan.)*
   `test_runner.py`; `acceptance_checks.py` (`CommandExitZeroCheck`);
   `probe_runner.py` (`ExecutionProfile` — the in-process boot+probe path
   this SIP re-homes).
+
+## 11. Post-acceptance amendments
+
+### 11a. Stack #2 entered the sandbox without the generalization this SIP deferred (2026-08-15)
+
+**What changed.** §3 non-goals state *"Not multi-stack generalization (that is v1.6; v1.4
+ships the canonical fastapi+react blueprint only)"*, and §4.2's status note defers the
+`StackBlueprint` schema until a second real stack exists. #822 subsequently added a
+`nextjs_ts` `EnvironmentContract` to the sandbox registry — extending the subsystem to a
+second stack — while the generalization stayed deferred and nothing recorded the gap. The
+environment *contract* seam took a second entry cleanly; every surface around it stayed
+shaped by the canonical stack's behavior.
+
+**Evidence.** Four defects, all one class, measured in a single audit of SIP-0104 window
+roll 1 (`cyc_04d36309d793`, 2026-08-15):
+
+1. `NEXTJS_TS` declared `npm ci`, which EUSAGE-refuses without a `package-lock.json` the
+   scaffold cannot deterministically produce — **the stack-#2 sandbox path was
+   unreachable-green by construction.** The identical correction already existed in
+   `probe_runner`'s `nextjs_next_start` profile (roll 10, `cyc_43a216d43e1e`) and in this
+   SIP's own canonical contract ("no lockfile → npm install"); neither propagated.
+2. `scripts/dev/audit_delivered_app.py` hardcoded the canonical environment and a
+   `backend/routes.py` assembly sentinel, so auditing stack #2 would stand a Next.js tree
+   up with uvicorn and report the auditor's defect as the app's.
+3. `WorkspaceStore._EXCLUDED_SEGMENTS` (§4.6 derived state) listed `dist` — Vite's build
+   output — but not `.next`. Pin verification therefore walked into webpack caches and
+   read binary bytes as UTF-8, raising `UnicodeDecodeError`: not over-pinning, a crash.
+4. **The §4.6 revision-lifecycle model itself.** `next build` GENERATES `next-env.d.ts`
+   and REWRITES the scaffold's frozen `tsconfig.json` (injecting `allowJs`,
+   `skipLibCheck`) — documented Next behavior. No tree on this stack can match its pin
+   once a build has run, so verification before `start_application` asserted an invariant
+   that was never true for this stack.
+
+**The ruling (owner, 2026-08-15).** Finding 4 is a design fork, not a missing list entry,
+and was decided as: **pin verification is enforced before the tree is built, not after.**
+`EnvironmentContract` now declares `build_mutates_source` — a fact about the toolchain,
+declared per stack — and where it is true, only the operation preceding any build
+(`install_dependencies`) verifies. The guarantee kept is the one that carries meaning:
+*the source we declared is the source we built.* Where it is false (the canonical stack)
+behavior is unchanged, and a post-build drift still refuses. Alternatives weighed and
+rejected: excluding `tsconfig.json` from verification (silently drops tamper detection on
+a frozen scaffold file); re-pinning post-build (faithful but larger, and unneeded until
+something consumes a post-build revision); changing the scaffold to emit a tsconfig Next
+will not rewrite (fixes the root cause but moves generator bytes, which would reset
+SIP-0104's measurement window — deferred until that window closes).
+
+**What remains ungeneralized, stated so the next stack meets a boundary rather than
+rediscovering it.** `_EXCLUDED_SEGMENTS` is still one global set, not a per-stack
+declaration: a third stack whose build output is named something else repeats finding 3.
+The honest scope of this amendment is "stack #2 works and the lifecycle claim is now
+true", NOT "the sandbox is stack-general". `SIP-Stack-Blueprint-Contract` still owns that
+generalization — and its own gating condition (*"deferred until a second real stack
+exists"*) is now satisfied, so it is unblocked by its own criterion.
+
+**Consequence to note.** `contract_id()` covers the full declaration by design (§7 items
+4/15), so adding `build_mutates_source` changes every contract id and invalidates
+workspace caches keyed to them — a cache miss, not a correctness risk.

@@ -190,6 +190,7 @@ async def _audit(args: argparse.Namespace) -> int:
         app_port=env.app_port,
         install_network=env.install_network,
         environment_contract_id=env.contract_id(),
+        build_mutates_source=env.build_mutates_source,
         cache_root=_AUDIT_ROOT / "caches",
         timeout_seconds=420.0,
         readiness_timeout_seconds=30.0,

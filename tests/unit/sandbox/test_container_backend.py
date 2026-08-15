@@ -243,6 +243,56 @@ class TestContractAndPinning:
         assert "provides no command" in result.unavailable_reason
 
 
+class TestBuildMutatesSource:
+    """SIP-0102 §11: a stack whose BUILD rewrites its own source (measured on
+    nextjs_ts — `next build` generates `next-env.d.ts` and rewrites `tsconfig.json`)
+    can never match its pin after building, so §4.6's verification is enforced only on
+    the operation that precedes any build. The canonical stack is unaffected."""
+
+    def _mutating_backend(self, container, store):
+        return ContainerBackend(
+            container=container,
+            store=store,
+            image="sandbox:pinned",
+            operation_commands=COMMANDS,
+            build_mutates_source=True,
+        )
+
+    async def test_install_still_refuses_a_drifted_tree(self, store, seeded):
+        """The guarantee that survives: the source we declared is the source we built.
+        Install runs before any build, so drift there is still a caller error."""
+        (store.workspace_dir("cyc_1") / "backend/main.py").write_text("drift", encoding="utf-8")
+        with pytest.raises(WorkspaceStoreError, match="does not match declared"):
+            await self._mutating_backend(FakeContainer(), store).install_dependencies(
+                revision=seeded
+            )
+
+    async def test_post_build_operations_tolerate_the_builds_own_writes(self, store, seeded):
+        """Bug caught (SIP-0104 window roll 1): the audited app installed and BUILT
+        successfully, then boot was refused because the build's own `next-env.d.ts` and
+        rewritten `tsconfig.json` no longer matched the pin — asserting an invariant
+        that was never true for this stack."""
+        (store.workspace_dir("cyc_1") / "next-env.d.ts").write_text("gen", encoding="utf-8")
+
+        # Two post-build operations: neither refuses on the pin. The tests run for real
+        # (this fixture provides a test command); start reports NOT_RUN only because the
+        # fixture declares no start command — reaching that verdict IS passing the gate.
+        tested = await self._mutating_backend(FakeContainer(), store).run_backend_tests(
+            revision=seeded
+        )
+        assert tested.ran is True
+        started = await self._mutating_backend(FakeContainer(), store).start_application(
+            revision=seeded
+        )
+        assert "provides no command" in started.unavailable_reason
+
+    async def test_the_canonical_stack_still_verifies_everywhere(self, store, seeded):
+        """Default False keeps stack #1 byte-identical: post-build drift still refuses."""
+        (store.workspace_dir("cyc_1") / "next-env.d.ts").write_text("gen", encoding="utf-8")
+        with pytest.raises(WorkspaceStoreError, match="does not match declared"):
+            await _backend(FakeContainer(), store).start_application(revision=seeded)
+
+
 class TestWorkspaceOwnerUser:
     """Spark shakedown (2026-07-28): with cap_drop_all, root loses DAC_OVERRIDE
     and cannot write a host-owned bind mount on native Linux — the floor smoke

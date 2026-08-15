@@ -36,6 +36,14 @@ class EnvironmentContract:
     operation_commands: tuple[tuple[str, tuple[str, ...]], ...]  # (operation, argv)
     app_port: int
     install_network: str
+    #: Whether this stack's BUILD writes into its own pinned source (SIP-0102 §11
+    #: amendment). False — the canonical stack's assumption — means the live tree must
+    #: keep matching its revision through every operation, and §4.6's pin verification
+    #: holds throughout. True means the toolchain legitimately rewrites source during
+    #: the build, so the post-build tree cannot match the pin and verifying after a
+    #: build asserts something that was never true for this stack. Declared per stack,
+    #: because it is a fact about the toolchain, not a policy choice.
+    build_mutates_source: bool = False
 
     def __post_init__(self) -> None:
         seen: set[str] = set()
@@ -68,6 +76,7 @@ class EnvironmentContract:
             ],
             "app_port": self.app_port,
             "install_network": self.install_network,
+            "build_mutates_source": self.build_mutates_source,
         }
 
     def contract_id(self) -> str:
@@ -160,6 +169,11 @@ NEXTJS_TS = EnvironmentContract(
     ),
     app_port=8000,
     install_network="bridge",
+    # Measured 2026-08-15 (SIP-0104 window roll 1): `next build` GENERATES
+    # `next-env.d.ts` and REWRITES the scaffold's frozen `tsconfig.json`, injecting
+    # `allowJs` and `skipLibCheck`. Both are documented Next behaviors, so no tree on
+    # this stack can match its pin once a build has run.
+    build_mutates_source=True,
 )
 
 
