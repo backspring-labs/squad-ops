@@ -311,7 +311,7 @@ until 2b exists.
 
 | Step | Work | Note |
 |---|---|---|
-| **4a** | Decide the **worked example** — non-CRUD or keep | must precede V6; it changes what V6 measures |
+| **4a** | **DECIDED 2026-08-15: keep the example, hold it constant, narrow the claim.** Pinned by test | closed; see below |
 | **4b** | **V6** viability run — **served by SIP-0104 P6 rolls 3–6**, not separately scheduled (owner ruling 2026-08-15) | gates V7 |
 | **4c** | Decide **contract size per roll** in the window record | must precede pre-registration |
 | **4d** | Pre-registration committed (N, PRD, deploy hash, scoring) → **freeze** | Guard 2 |
@@ -1217,6 +1217,50 @@ window's is not frozen across its six rolls — #902's per-stack fill-only guida
 roll 3 and plausibly moves yield, so rolls 1–2 and rolls 3–6 are not the same experiment.
 A yield number spanning that boundary is not evidence. **V7 remains a separate,
 properly pre-registered window on a frozen post-P6 deploy**, with 4a and 4c decided first.
+
+### 4a decided — the worked example is held constant, and the claim is narrowed instead
+
+*(Owner ruling 2026-08-15. Supersedes "change the example to non-CRUD before V6 and hold",
+recorded 2026-08-09 — that direction was written before V6 became a read of the P6 window,
+where a mid-window prompt change is not available.)*
+
+**The ruling:** the authoring prompt's worked example stays exactly as it is through V6, V7
+and 1.8's re-measurement. What changes is the wording of the claim, not the instrument.
+
+**Why, in the order the reasons carry weight.**
+
+1. **The leak is narrower than the concern assumed.** The example's *domain* is already
+   unlike the benchmark's — it teaches `/items` and `Item` against a PRD about runs,
+   participants, join and leave. What transfers is the REST spine (collection list,
+   create-201, fetch-by-id-404), which is in any implementation model's training
+   distribution regardless. The example confirms that prior rather than installing it, so
+   removing it buys less independence than swapping it costs. V4 measured exactly this
+   split: the spine was patterned, the domain surface was derived.
+2. **Flattery cancels in the comparison the baseline exists for.** §4's number is banked so
+   1.8's memory and campaign work have something to measure against. Held constant, whatever
+   the example contributes contributes equally at both ends and the delta stays clean.
+   Changing the example is the move that damages the baseline, by making the two
+   measurements incomparable.
+3. **The absolute claim is a wording problem, and wording is free.** Narrowing costs nothing
+   and states a measured finding rather than a hedge.
+
+**The narrowing, to be carried verbatim into the pre-registration record:** *the worked
+example teaches a REST spine — collection list, create-201, fetch-by-id-404. What this
+window measures as authored is the domain surface: entities and their fields, child-action
+endpoints, error codes and their statuses, view decomposition, and test anchors.*
+
+**The example is pinned** —
+`tests/unit/prompts/test_planning_fragments.py::test_the_manifest_example_is_pinned_for_the_measurement_window`
+holds its bytes by digest. The ruling above is only sound if the example actually stays
+fixed; an edit made for an unrelated reason would silently convert this decision into the
+swap it rejected. Changing it is a deliberate act requiring an owner ruling and a recorded
+reason, and mid-window it resets the window — a yield number spanning two authoring
+conditions is not a baseline.
+
+**The underlying question is not dropped, it is reassigned.** *How much does the example
+teach?* deserves a controlled comparison — one PRD, two examples, yield measured both ways —
+which is a cheap 1.7/1.8 experiment with a real instrument behind it, not something bolted
+onto a release gate.
 
 **Where the two disciplines collide, P6's governs.** V6 is diagnostic — reacting to what you
 see is the point — while P6 is a measurement window where a new mechanical suite failure
