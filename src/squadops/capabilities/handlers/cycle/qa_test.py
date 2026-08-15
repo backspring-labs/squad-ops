@@ -341,6 +341,14 @@ class QATestHandler(_CycleTaskHandler):
             f"**Test files:** {test_result.test_file_count}\n",
             f"**Source files:** {test_result.source_file_count}\n",
         ]
+        if test_result.uncollected_test_files:
+            # SIP-0104 roll 1: a suite the runner never collected verifies nothing while
+            # the collected ones read green. Named in the report a human actually reads.
+            report_lines.append(
+                "\n**NOT COLLECTED (these ran nothing):** "
+                + ", ".join(f"`{p}`" for p in test_result.uncollected_test_files)
+                + "\n"
+            )
         if test_result.stdout:
             report_lines.append(f"\n## stdout\n\n```\n{test_result.stdout}\n```\n")
         if test_result.stderr:
@@ -540,13 +548,19 @@ class QATestHandler(_CycleTaskHandler):
         scaffold_input: dict[str, Any],
         artifacts: list[dict],
     ) -> None:
-        """Run the P5 pipeline and land its outputs (SIP-0104 §5/§6).
+        """Run the P5 pipeline and land its summary (SIP-0104 §5/§6).
 
-        Two landings: ``outputs["scaffold_evidence"]`` (the full summary — the promotion
-        model's banked fields) and an informational ``scaffold_failure_classification``
-        row in ``validation_result.checks`` (status-bearing like the probe rows, no
-        ``passed`` bool — SIP-0096 credit semantics untouched) so the locus classifier
-        and the correction loop's failure evidence read the classes without re-deriving.
+        ONE landing: ``outputs["scaffold_evidence"]`` — the full summary, which
+        ``build_failure_evidence`` threads into the correction loop's evidence (the same
+        transport ``emission_failure`` and ``app_tracebacks`` ride) and the locus
+        classifier reads from there.
+
+        Deliberately NOT a ``validation_result.checks`` row. Roll 1 (cyc_04d36309d793)
+        measured the cost of that: ``normalize_task_checks`` records any row carrying a
+        ``status`` key, so an informational row aggregated as a verification check and
+        surfaced in the cycle outcome's ``unverified`` list with reason ``unspecified``.
+        Non-blocking, but a diagnostic is not evidence and must not be counted as one
+        (SIP-0096 §6.1).
         """
         from squadops.capabilities.verification_scaffold import VerificationScaffoldManifest
         from squadops.cycles.scaffold_evidence import (
@@ -584,17 +598,14 @@ class QATestHandler(_CycleTaskHandler):
             and a.get("name") not in shell_paths
         )
         summary = build_scaffold_evidence_summary(
-            record, dispositions, observations, correlations, additive_count
+            record,
+            dispositions,
+            observations,
+            correlations,
+            additive_count,
+            tuple(getattr(test_result, "uncollected_test_files", ()) or ()),
         )
         outputs["scaffold_evidence"] = summary.to_dict()
-        vr = outputs.setdefault("validation_result", {})
-        vr.setdefault("checks", []).append(
-            {
-                "check": "scaffold_failure_classification",
-                "status": "info",
-                "classes": dict(summary.failure_classes),
-            }
-        )
 
     def _build_focused_prompt(self, inputs: dict[str, Any]) -> str:
         """Build a focused prompt for manifest-driven QA subtasks (SIP-0086).

@@ -287,6 +287,11 @@ class ScaffoldEvidenceSummary:
     fill_dispositions: dict[str, int]
     additive_test_count: int
     failure_classes: dict[str, int]
+    #: Authored suites the runner never collected — additive work that verified nothing
+    #: (SIP-0104 roll 1). Banked beside the counts because §6's "is the authored layer
+    #: earning its inference spend" question is unanswerable if part of that layer
+    #: silently never ran.
+    uncollected_test_files: tuple[str, ...] = ()
     observations: tuple[ShellObservation, ...] = ()
     correlations: tuple[CorrelatedFinding, ...] = ()
 
@@ -308,6 +313,7 @@ class ScaffoldEvidenceSummary:
             "slot_count": self.slot_count,
             "fill_dispositions": dict(self.fill_dispositions),
             "additive_test_count": self.additive_test_count,
+            "uncollected_test_files": list(self.uncollected_test_files),
             "failure_classes": dict(self.failure_classes),
             "uncorrelated_fill_failures": self.uncorrelated_fill_failures,
             "probe_redundant_findings": self.probe_redundant_findings,
@@ -322,6 +328,7 @@ def build_scaffold_evidence_summary(
     observations: list[ShellObservation],
     correlations: list[CorrelatedFinding],
     additive_test_count: int,
+    uncollected_test_files: tuple[str, ...] = (),
 ) -> ScaffoldEvidenceSummary:
     disposition_counts: dict[str, int] = {}
     for disposition in fill_dispositions.values():
@@ -337,6 +344,7 @@ def build_scaffold_evidence_summary(
         fill_dispositions=disposition_counts,
         additive_test_count=additive_test_count,
         failure_classes=class_counts,
+        uncollected_test_files=tuple(uncollected_test_files),
         observations=tuple(observations),
         correlations=tuple(correlations),
     )
