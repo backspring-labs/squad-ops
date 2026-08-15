@@ -767,10 +767,27 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         ``ApiError(code, message)`` — and paid a correction to undo it. Same data, same
         transport, one step earlier.
         """
+        from squadops.capabilities.dev_capabilities import (
+            effective_capability_name,
+            get_capability,
+        )
         from squadops.capabilities.scaffold import is_scaffoldable_stack
 
         stack = str(self._resolved_config.get("build_profile") or "")
         if not is_scaffoldable_stack(stack):
+            return ""
+        # The asset is the STACK's, resolved through its dev capability. One shared asset
+        # is what broke SIP-0104 roll 1: a nextjs_ts author was told to fill
+        # `backend/routes.py` and that `apiFetch` "prefixes /api" — stack #1's layout and
+        # stack #1's seam semantics — so it wrote `api('/runs')` against a helper that
+        # prefixes nothing and every UI call 404'd in an app that passed every gate.
+        # A stack with no declared asset gets NO fill-only appendix: wrong guidance is
+        # worse than none (#818).
+        try:
+            capability = get_capability(effective_capability_name(self._resolved_config))
+        except ValueError:
+            return ""
+        if not capability.fill_only_template:
             return ""
         variables = {"stack": stack}
         error_contract = await self._error_contract_section(renderer, inputs)
@@ -797,9 +814,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         frozen_surface = await self._frozen_surface_section(renderer, inputs)
         if frozen_surface:
             variables["frozen_surface"] = frozen_surface
-        rendered = await renderer.render(
-            "request.development_develop_fill_only_appendix", variables
-        )
+        rendered = await renderer.render(capability.fill_only_template, variables)
         return rendered.content
 
     async def _frozen_surface_section(self, renderer: Any, inputs: dict | None) -> str:

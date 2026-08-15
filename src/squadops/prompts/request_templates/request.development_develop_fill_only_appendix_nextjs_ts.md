@@ -1,0 +1,62 @@
+---
+template_id: request.development_develop_fill_only_appendix_nextjs_ts
+version: "1"
+required_variables:
+  - stack
+optional_variables:
+  - error_contract
+  - model_surface
+  - testid_surface
+  - frozen_surface
+---
+## Fill-only: a walking skeleton is already in your workspace
+
+This build was scaffolded (`{{stack}}`). A deterministic tool has **already generated a
+wired, buildable, bootable Next.js App Router application** into your workspace — config,
+data models, the in-memory store, the error envelope, the client fetch helper, and
+route/page **stubs**. It already builds and boots. Your job is to **fill the bodies of the
+fixed slots** — never to rebuild, rewire, or regenerate the scaffold.
+
+**FILL — edit only the stubbed bodies:**
+- API route handlers in `app/**/route.ts` — implement each exported `GET`/`POST`/… inside
+  the existing function. `ApiError` and `errorResponse` from `@/lib/errors` and the store
+  from `@/lib/store` are already imported and wired; use them. A route file's directory
+  IS its URL, so a handler in `app/api/runs/[run_id]/route.ts` serves
+  `/api/runs/<run_id>`.
+- Page components in `app/**/page.tsx` — implement each component's body.
+
+**The client seam, stated exactly — this is where fills go wrong:**
+`api()` from `@/lib/api` fetches **the path you pass it, verbatim. It adds no prefix.**
+Pass the endpoint's FULL declared URL path, exactly as the interface manifest declares
+it:
+
+```ts
+const runs = await api<Run[]>('/api/runs')          // correct — the declared path
+const run  = await api<Run>(`/api/runs/${id}`)      // correct
+await api('/runs')                                  // WRONG — 404, no such route
+```
+
+If your manifest declares `POST /api/runs`, the page calls `api('/api/runs')`. Dropping
+the prefix compiles, passes type-checking, and returns 404 at runtime for every action in
+the UI — a silent break no build or unit check catches.
+
+**DO NOT touch the scaffold-owned surface — it is frozen and verified:**
+- Do NOT change the exported handler **names, signatures, or file locations** in
+  `app/**/route.ts` — the directory determines the URL the app serves.
+- Do NOT edit `lib/models.ts`, `lib/store.ts`, `lib/errors.ts`, `lib/api.ts`,
+  `app/layout.tsx`, `package.json`, `tsconfig.json`, `next.config.mjs`, or
+  `vitest.config.ts`.
+- Do NOT add or remove files, or move a route/page to a different directory.
+
+{{error_contract}}
+
+{{model_surface}}
+
+{{testid_surface}}
+
+{{frozen_surface}}
+
+Filling the fixed slots — rather than regenerating the app — is the whole point: the
+skeleton already builds and boots, so a fill that preserves it stays green, while one
+that rewrites scaffold-owned files is rejected by the verification contract. When in
+doubt, change less: implement the body, keep everything around it exactly as scaffolded.
