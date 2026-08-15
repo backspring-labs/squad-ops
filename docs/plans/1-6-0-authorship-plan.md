@@ -202,7 +202,7 @@ against these stage/step labels.
 | **1b** | Parameterization PRs for the "needs" class | each: FastAPI byte-unmoved, regression green |
 | **1c** | **The Next.js stack** — expander, criteria pack, probe profile, environment contract, completeness test across all four per-stack registries | `expand()` yields a tree; `emit_contract_dict` yields a satisfiable contract |
 | **1d** | **Bend register** — `docs/plans/stack-2-bend-register.md`, written *during* 1c | zero unexplained bends (S3's exit criterion). **Landed**: six findings, of which **one is a true bend** — the rest split into a schema defect, a cleared check, a field with no home, and two disclosures |
-| **1e** | **VS** — a Next.js cycle end to end | gates S3 |
+| **1e** | **VS** — a Next.js cycle end to end. **Credited at SIP-0104 P6 roll 3** (owner ruling 2026-08-15; see below) | gates S3 |
 
 **1e is not one step — it acquired a prerequisite after this plan was written.** VS ran on
 2026-08-10 (`cyc_afa934886acd`), framed for 75m33s, and was rejected: the cycle built **stack
@@ -228,6 +228,23 @@ was never in the 1a sweep) · and can **M6's taxonomy name the subsystem** if it
 
 **Nothing is yet known about whether the Next.js stack works.** The 2026-08-10 run never
 reached expansion for it.
+
+**1e is credited at SIP-0104 P6 roll 3 (owner ruling 2026-08-15).** The P6 window's rolls
+*are* authored-mode `nextjs_ts` cycles on this PRD, so 1e needs no separate roll — but which
+one closes it is a judgment, and this is the ruling.
+
+P6 roll 1 (`cyc_04d36309d793`) met 1e's stated bar on 2026-08-15: end to end, verdict
+accepted, 36/36 checks, all five probes, and a passing `audit_delivered_app.py` boot
+validation. **It is not credited**, because its delivered UI was dead — all five page data
+calls requested unprefixed paths against routes mounted under `/api`, so every list, create,
+detail, join and leave 404'd in an app every layer called green (root cause #902; the
+detector that now catches it is #903). Crediting 1e to a deliverable we know did not work
+would make the gate ceremonial, which is the convergence-false-green rule's whole subject.
+
+So 1e closes with the **first roll that passes the audit including the UI data-path check** —
+roll 3 by construction, since SIP-0104 §13a makes that audit a window-counting condition from
+roll 3 and rolls 1–2 are grandfathered (authored before #902 shipped). No extra cycle is spent
+and the bar gets stricter rather than looser.
 
 **Why 1a leads, and why it is not a new invention.** It is the S lane's missing **M0a**: a
 measurement of the surface before anything has to cross it, and the fourth application of the
@@ -294,8 +311,8 @@ until 2b exists.
 
 | Step | Work | Note |
 |---|---|---|
-| **4a** | Decide the **worked example** — non-CRUD or keep | must precede V6; it changes what V6 measures |
-| **4b** | **V6** viability run | gates V7 |
+| **4a** | **DECIDED 2026-08-15: keep the example, hold it constant, narrow the claim.** Pinned by test | closed; see below |
+| **4b** | **V6** viability run — **served by SIP-0104 P6 rolls 3–6**, not separately scheduled (owner ruling 2026-08-15) | gates V7 |
 | **4c** | Decide **contract size per roll** in the window record | must precede pre-registration |
 | **4d** | Pre-registration committed (N, PRD, deploy hash, scoring) → **freeze** | Guard 2 |
 | **4e** | **V7** — the FAY window, unfiltered, **fix nothing until it closes** | the evidence |
@@ -1149,7 +1166,7 @@ offline work, deploy, run the verification that fits what just landed.
 | **V3** | M3 / M2 / M6 landing | **No cycles.** Adversarial hand-made manifests against the gates, including #772's `success_status` trap as the designed-failure probe | — |
 | **V4** | M1 lands | **First authored cycles, unscored.** Several, expected | diagnostic |
 | **V5** | M4 / M5 land | Integration shakedown — the full authored path with provenance stamping, B1 emitting, and **a manifest carrying an unresolved-critical decision, to prove the question-gate fires and the answer reaches the revision** | diagnostic |
-| **V6** | before pre-registration | **Authored-mode viability run** — has this succeeded even once? | diagnostic; **gates V7** |
+| **V6** | before pre-registration | **Authored-mode viability run** — has this succeeded even once? **Served by SIP-0104 P6 rolls 3–6** (owner ruling 2026-08-15); reads their outcome, never intervenes mid-window | diagnostic; **gates V7** |
 | **V7** | frozen deploy | **The authored-mode FAY window.** Pre-registered N, unfiltered | **evidentiary** |
 | **VS** | stack #2 expands | **Track S's missing verification point** *(added 2026-08-09)* — does the Node/TS stack expand, derive a satisfiable contract, and carry a cycle end to end? S3's schema is written against two stacks, so one of them being unproven would make it a schema against one stack and a hope | diagnostic; **gates S3** |
 | **V8** | at the cut | Confirmation shakedown on the integrated line. **The seeded control re-run is conditional** — run it if the window disappoints or something looks off, not as a checkbox | diagnostic |
@@ -1187,6 +1204,71 @@ window. The FAY methodology set its 1.4 bar at ≥4/6 because there was reason t
 was achievable; V6 is the cheap answer to *do we have reason to believe?* It is explicitly
 **not part of the window** and its rolls are not counted — recorded here so a later reader
 cannot mistake it for a filtered first attempt.
+
+**V6 is served by SIP-0104 P6 rolls 3–6 (owner ruling 2026-08-15).** Those rolls are
+authored-mode `nextjs_ts` cycles on this PRD against a post-#902 deploy, and from roll 3 a
+roll counts only if its delivered app passes `audit_delivered_app.py` including the UI
+data-path check (SIP-0104 §13a). That is V6's question — *has authored mode on stack #2
+produced a working app even once?* — answered by rolls already being spent. No separate
+viability run is scheduled.
+
+**They are not V7, and the reason is the deploy.** V7 requires a frozen deploy; the P6
+window's is not frozen across its six rolls — #902's per-stack fill-only guidance lands at
+roll 3 and plausibly moves yield, so rolls 1–2 and rolls 3–6 are not the same experiment.
+A yield number spanning that boundary is not evidence. **V7 remains a separate,
+properly pre-registered window on a frozen post-P6 deploy**, with 4a and 4c decided first.
+
+### 4a decided — the worked example is held constant, and the claim is narrowed instead
+
+*(Owner ruling 2026-08-15. Supersedes "change the example to non-CRUD before V6 and hold",
+recorded 2026-08-09 — that direction was written before V6 became a read of the P6 window,
+where a mid-window prompt change is not available.)*
+
+**The ruling:** the authoring prompt's worked example stays exactly as it is through V6, V7
+and 1.8's re-measurement. What changes is the wording of the claim, not the instrument.
+
+**Why, in the order the reasons carry weight.**
+
+1. **The leak is narrower than the concern assumed.** The example's *domain* is already
+   unlike the benchmark's — it teaches `/items` and `Item` against a PRD about runs,
+   participants, join and leave. What transfers is the REST spine (collection list,
+   create-201, fetch-by-id-404), which is in any implementation model's training
+   distribution regardless. The example confirms that prior rather than installing it, so
+   removing it buys less independence than swapping it costs. V4 measured exactly this
+   split: the spine was patterned, the domain surface was derived.
+2. **Flattery cancels in the comparison the baseline exists for.** §4's number is banked so
+   1.8's memory and campaign work have something to measure against. Held constant, whatever
+   the example contributes contributes equally at both ends and the delta stays clean.
+   Changing the example is the move that damages the baseline, by making the two
+   measurements incomparable.
+3. **The absolute claim is a wording problem, and wording is free.** Narrowing costs nothing
+   and states a measured finding rather than a hedge.
+
+**The narrowing, to be carried verbatim into the pre-registration record:** *the worked
+example teaches a REST spine — collection list, create-201, fetch-by-id-404. What this
+window measures as authored is the domain surface: entities and their fields, child-action
+endpoints, error codes and their statuses, view decomposition, and test anchors.*
+
+**The example is pinned** —
+`tests/unit/prompts/test_planning_fragments.py::test_the_manifest_example_is_pinned_for_the_measurement_window`
+holds its bytes by digest. The ruling above is only sound if the example actually stays
+fixed; an edit made for an unrelated reason would silently convert this decision into the
+swap it rejected. Changing it is a deliberate act requiring an owner ruling and a recorded
+reason, and mid-window it resets the window — a yield number spanning two authoring
+conditions is not a baseline.
+
+**The underlying question is not dropped, it is reassigned.** *How much does the example
+teach?* deserves a controlled comparison — one PRD, two examples, yield measured both ways —
+which is a cheap 1.7/1.8 experiment with a real instrument behind it, not something bolted
+onto a release gate.
+
+**Where the two disciplines collide, P6's governs.** V6 is diagnostic — reacting to what you
+see is the point — while P6 is a measurement window where a new mechanical suite failure
+resets the window and names the uncovered surface rather than being fixed mid-flight. These
+rolls are P6 rolls first. **V6 therefore *reads* their outcome; it does not license a
+mid-window intervention**, and a fix prompted by what V6 sees waits for the window to close
+like any other. Recorded because the conflict is invisible until the first roll fails and two
+rules give opposite instructions.
 
 ---
 

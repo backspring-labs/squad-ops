@@ -252,3 +252,53 @@ def test_the_manifest_example_shows_a_quoted_collection_type():
     assert "must be quoted" in text, (
         "a trailing comment is dropped when an author copies the block — the rule needs prose"
     )
+
+
+#: The worked example's bytes as of the 1.6 measurement ruling (owner, 2026-08-15).
+#: Recompute deliberately — never to make this test pass. See the test below.
+AUTHOR_MANIFEST_EXAMPLE_SHA256 = "c189b56ba3e34a9da026fadf82bcca068edb7abc8ffc082c09df130f2c52fb94"
+
+
+def test_the_manifest_example_is_pinned_for_the_measurement_window():
+    """The worked example is a held-constant condition of 1.6's yield measurement.
+
+    SIP-0103's gate banks an authored-mode yield number that **1.8's memory and campaign
+    work measure against**, so what the number means depends on the authoring conditions
+    being identical at both ends. This example is one of those conditions: it teaches a
+    REST spine (collection list, create-201, fetch-by-id-404), and V4 measured that the
+    spine is *patterned* from it while the domain surface — entities and fields,
+    child-action endpoints, error codes and statuses, view decomposition, test anchors —
+    is derived from the PRD.
+
+    The owner ruled on 2026-08-15 to hold the example constant across V6, V7 and 1.8 and
+    to narrow the claim's wording instead of swapping the example (the alternative makes
+    the two measurements incomparable, which costs more than the flattery it removes).
+    That ruling is only sound if the example actually stays fixed — an edit made for some
+    unrelated reason silently converts the decision into the option it rejected. Hence a
+    pin rather than a note.
+
+    **Changing this is a deliberate act, not a test fix.** Editing the example moves the
+    conditions of a measurement in flight, so it needs an owner ruling and a recorded
+    reason first; only then update the digest. If a change is genuinely required
+    mid-window, the window resets — a yield number spanning two authoring conditions is
+    not a baseline.
+    """
+    import hashlib
+    from pathlib import Path
+
+    asset = (
+        Path(__file__).resolve().parents[3]
+        / "src/squadops/prompts/request_templates/request.development_author_manifest.md"
+    )
+    example = (
+        asset.read_text(encoding="utf-8")
+        .split("```yaml:interface_manifest.yaml", 1)[1]
+        .split("```", 1)[0]
+    )
+    digest = hashlib.sha256(example.encode("utf-8")).hexdigest()
+
+    assert digest == AUTHOR_MANIFEST_EXAMPLE_SHA256, (
+        "the authoring worked example changed. It is a held-constant condition of the "
+        "1.6 yield measurement (owner ruling 2026-08-15) — do not update the digest to "
+        "make this pass. Get the ruling, record the reason, and reset the window."
+    )
