@@ -54,3 +54,63 @@ def test_the_pytest_discovery_rule_is_scoped_to_python_workspaces():
     assert conditioned < pytest_rule
 
     assert "single TypeScript application" in _FRAGMENT
+
+
+class TestFillModeBriefInstructions:
+    """#910 — the brief told the author two opposite things about the same slots."""
+
+    @staticmethod
+    def _brief() -> str:
+        from pathlib import Path
+
+        return (
+            Path(__file__).resolve().parents[3]
+            / "src/squadops/prompts/request_templates/request.qa_test_fill_mode_appendix.md"
+        ).read_text(encoding="utf-8")
+
+    def test_the_slot_list_reads_as_an_instruction_not_a_prohibition(self):
+        """Bug caught: the heading over the fill list says not to test these behaviors.
+
+        It read "Already covered deterministically (do not re-test these behaviors
+        mechanically)" over the exact eight slots the brief then demands be filled.
+        Window roll 3 left all eight unfilled, rolls 1 and 2 left some — a correction
+        round lost per roll to an instruction the author was following.
+        """
+        brief = self._brief()
+        heading = brief.split("{{slot_lines}}")[0].rsplit("\n\n", 1)[-1]
+
+        assert "do not re-test" not in heading.lower(), (
+            "the heading immediately above the slot list must not tell the author to "
+            "skip them — that is the instruction roll 3 obeyed"
+        )
+        assert "fill" in heading.lower()
+
+    def test_the_error_envelope_is_carried_and_shown_in_a_worked_example(self):
+        """Bug caught: the brief's only body example is a success field.
+
+        Four of eight slots are error behaviors. With no error-path example and no
+        envelope statement, the author invents the field name — `body.error_code` on two
+        consecutive window rolls.
+        """
+        brief = self._brief()
+
+        assert "{{error_envelope}}" in brief
+        assert "body.error.code" in brief
+
+    def test_every_declared_variable_is_actually_substituted(self):
+        """Bug caught: a variable declared in the frontmatter but never rendered, or
+        rendered but undeclared — either leaves a literal `{{...}}` in the prompt or an
+        unfilled fact, and both reach the agent silently."""
+        import re
+
+        import yaml
+
+        brief = self._brief()
+        header = brief.split("---")[1]
+        meta = yaml.safe_load(header)
+        declared = set(meta.get("required_variables") or []) | set(
+            meta.get("optional_variables") or []
+        )
+        used = set(re.findall(r"\{\{(\w+)\}\}", brief))
+
+        assert used == declared, f"declared={sorted(declared)} used={sorted(used)}"

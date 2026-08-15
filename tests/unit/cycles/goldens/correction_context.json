@@ -130,7 +130,7 @@
       ],
       "error": "validation failed",
       "error_contract": [
-       "on failure raise `ApiError(code, message)` (imported from `.errors`): the FIRST argument is the error-code STRING, the second a human message \u2014 never `ApiError(status_code=..., detail=...)` and never `HTTPException` for contract errors; the frozen `errors.py` maps the code to the HTTP status and renders the pinned envelope",
+       "on failure raise `ApiError(code, message)` (`from .errors import ApiError`): the FIRST argument is the error-code STRING, the second a human-readable string \u2014 never `ApiError(status_code=..., detail=...)` and never `HTTPException` for contract errors; the frozen `errors.py` maps the code to the HTTP status and renders the pinned envelope",
        "valid error codes (code \u2192 HTTP status, mapped by frozen `errors.py`): `validation_error` \u2192 422, `run_not_found` \u2192 404, `duplicate_participant` \u2192 409, `participant_not_found` \u2192 404"
       ],
       "failed_task_id": "task-development.develop",
@@ -255,7 +255,7 @@
       },
       "error": "no artifacts extracted",
       "error_contract": [
-       "on failure raise `ApiError(code, message)` (imported from `.errors`): the FIRST argument is the error-code STRING, the second a human message \u2014 never `ApiError(status_code=..., detail=...)` and never `HTTPException` for contract errors; the frozen `errors.py` maps the code to the HTTP status and renders the pinned envelope",
+       "on failure raise `ApiError(code, message)` (`from .errors import ApiError`): the FIRST argument is the error-code STRING, the second a human-readable string \u2014 never `ApiError(status_code=..., detail=...)` and never `HTTPException` for contract errors; the frozen `errors.py` maps the code to the HTTP status and renders the pinned envelope",
        "valid error codes (code \u2192 HTTP status, mapped by frozen `errors.py`): `validation_error` \u2192 422, `run_not_found` \u2192 404, `duplicate_participant` \u2192 409, `participant_not_found` \u2192 404"
       ],
       "failed_task_id": "task-qa.test",
