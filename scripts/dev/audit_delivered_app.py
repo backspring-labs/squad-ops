@@ -43,6 +43,14 @@ import httpx
 
 from adapters.sandbox.container_backend import ContainerBackend
 from adapters.tools.docker import DockerAdapter
+from squadops.capabilities.ui_data_path import (
+    LIVE_SERVER,
+    SERVED,
+    classify_ui_response,
+    describe_failure,
+    expects_json,
+    extract_ui_calls,
+)
 from squadops.cycles.task_plan import REPAIR_TASK_TYPES
 from squadops.cycles.verification_contract import (
     VerificationContract,
@@ -99,6 +107,45 @@ def _select_deliverable(pulled: Path) -> dict[str, str]:
         if filename not in latest or created > latest[filename][0]:
             latest[filename] = (created, content_file)
     return {name: path.read_text() for name, (_, path) in latest.items()}
+
+
+async def _run_ui_data_path(files: dict[str, str], stack: str, base_url: str) -> list[str]:
+    """Put the paths the UI's own source requests to the running app (roll 1's defect).
+
+    The contract probes above prove the API answers where the CONTRACT says; this proves
+    it answers where the UI ASKS. Roll 1 passed the former and failed the latter on every
+    page action, and nothing noticed. Each distinct path is requested once; only a 404
+    that no route produced (framework HTML rather than the app's JSON envelope) counts as
+    a failure, so an app correctly reporting an unknown id still passes.
+    """
+    calls = extract_ui_calls(files, stack)
+    if not calls:
+        return []
+    failures: list[str] = []
+    seen: dict[tuple[str, bool], str] = {}
+    async with httpx.AsyncClient(base_url=base_url, timeout=15.0) as client:
+        for call in calls:
+            cache_key = (call.request_path, expects_json(call.fn))
+            verdict = seen.get(cache_key)
+            if verdict is None:
+                if call.request_path.startswith(("http://", "https://")):
+                    verdict = LIVE_SERVER
+                else:
+                    try:
+                        resp = await client.get(call.request_path)
+                    except httpx.HTTPError as exc:
+                        failures.append(f"{call.location()}: transport error {exc!r}")
+                        continue
+                    verdict = classify_ui_response(
+                        call.request_path,
+                        resp.status_code,
+                        resp.headers.get("content-type", ""),
+                        via_seam=expects_json(call.fn),
+                    )
+                seen[cache_key] = verdict
+            if verdict != SERVED:
+                failures.append(describe_failure(call, verdict))
+    return failures
 
 
 async def _run_probes(contract: VerificationContract, base_url: str) -> list[str]:
@@ -215,15 +262,19 @@ async def _audit(args: argparse.Namespace) -> int:
             return 1
         base_url = start.endpoints[0]
         failures = await _run_probes(contract, base_url)
+        ui_failures = await _run_ui_data_path(files, stack, base_url)
     finally:
         await backend.stop_application(revision=revision, cleanup_handle=start.cleanup_handle)
-    if failures:
-        for line in failures:
-            print(f"FAIL {line}")
+    for line in failures:
+        print(f"FAIL {line}")
+    for line in ui_failures:
+        print(f"FAIL ui-data-path {line}")
+    if failures or ui_failures:
         return 1
     print(
-        f"PASS — delivered app installs, builds, boots, and answers "
-        f"{len(contract.behavioral.probes)} contract probe(s) "
+        f"PASS — delivered app installs, builds, boots, answers "
+        f"{len(contract.behavioral.probes)} contract probe(s), and its UI reaches "
+        f"every path it requests "
         f"[image {env.image}, contract {env.contract_id()[:12]}]"
     )
     return 0
