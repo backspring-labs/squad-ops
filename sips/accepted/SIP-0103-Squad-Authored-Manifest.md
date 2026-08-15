@@ -442,7 +442,7 @@ Recorded because silence reads as "shipped."
 
 | § | Disposition | Status |
 |---|---|---|
-| **5c.7** | structural manifest diff vs the reference; manifest size/surface counts | **being built** — see below |
+| **5c.7** | structural manifest diff vs the reference; manifest size/surface counts | **built** (2026-08-09, `43754d6d`) — `cycles/manifest_diagnostics.py`; see below |
 | 5c.7 | revision/attempt counts; gate-rejection reason taxonomy | built (M5 #803, M6 #785) |
 | **5c.5** | *"after any operator edit at the gate — the edit's own record"* | **not built, and neither is the path.** `Provenance` carries `mode`, `cycle_id`, `task_id`, `attempts`, `revisions`; no operator-edit code path exists anywhere. The immutability rule it states ("an operator edit is a new manifest version with a new hash") therefore describes an act the system cannot currently perform |
 | **5c.3** | manifest is **blueprint-owned** — *"the coupling is to the blueprint contract, not to 'one YAML file'"* | **not built.** One universal `InterfaceManifest` schema is still assumed, and its domain half (`persistence`, `entities`, `api`, `frontend`) is FastAPI+React-shaped. Deferred to **1.7**, deliberately: generalising the schema from one stack would produce the FastAPI manifest with generic field names, the exact failure the Stack Blueprint SIP declines acceptance over. The second stack's bend register is the evidence it should be written from |
@@ -450,10 +450,27 @@ Recorded because silence reads as "shipped."
 
 **On §5c.7 specifically, because a control was removed citing it.** B1's argument for dropping
 the mandatory review was that design quality moves to *sampling, not gating*, carried by four
-diagnostics this SIP "already requires." **Two of the four were never built.** That makes B1's
-justification half-funded, and it is the one item in this section where the delivered system is
-weaker than the ruling authorized. Being built ahead of the pre-registered measurement window,
-which is the one place nothing may be fixed mid-flight.
+diagnostics this SIP "already requires." Two of the four — revision/attempt counts (M5) and the
+gate-rejection taxonomy (M6) — were built with M4. **The other two were not, so B1's
+justification was half-funded when the control was removed**, which made it the one item in
+this section where the delivered system was weaker than the ruling authorized.
+
+**Closed 2026-08-09** (`43754d6d`, same day this section was written), ahead of the
+pre-registered measurement window — the one place nothing may be fixed mid-flight.
+`cycles/manifest_diagnostics.py` supplies both: `surface_counts()` over a deliberately named
+`SURFACE_KEYS` tuple (introspection would let a count appear mid-window and make two rolls
+incomparable), and `structural_diff()`/`render()` against the human reference. Non-gating
+structurally — nothing wires it into a handler, capability, or the executor, and the reference
+manifest stays excluded from squad inputs per §4/§5c.1; an operator reads it after a window,
+never a cycle during one. Pinned by `tests/unit/cycles/test_manifest_diagnostics.py`, whose
+`test_the_flattened_entity_that_went_green_is_detected` reproduces the case that motivated it:
+V4 roll 2 flattened the reference's typed `Participant` entity into an untyped list and still
+went green, because FAY is structurally blind to a design regression the app happens to
+survive.
+
+*Consequence for the promotion decision:* B1's justification is now fully funded. The §5c.5,
+§5c.3 and §3.3 rows below are unchanged, and the §4 measurement remains unrun — this closes the
+funding gap in B1's argument, not the SIP's gate.
 
 ### D. What this section does not change
 
