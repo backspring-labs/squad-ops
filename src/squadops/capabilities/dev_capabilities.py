@@ -51,6 +51,17 @@ class DevelopmentCapability:
     # Materialized into the QA build/test workspace so the frontend build check
     # (#290) and vitest actually run instead of skipping on "no package.json" (#296).
     build_support_files: tuple[str, ...] = ()
+    #: The managed asset carrying this stack's fill-only instruction — which files hold
+    #: the slots, and what the scaffold-owned seams mean. Per stack because the answer
+    #: IS the stack: one asset served both, so a `nextjs_ts` author was told to fill
+    #: `backend/routes.py` and `frontend/src/views/*.jsx` and that `apiFetch` "prefixes
+    #: `/api`" — none of which exist here. It wrote `api('/runs')` against a helper that
+    #: prefixes nothing, and every UI call 404'd in a deliverable that passed every gate
+    #: (SIP-0104 window roll 1, cyc_04d36309d793, measured 2026-08-15).
+    #:
+    #: Empty means NO fill-only appendix rather than another stack's — wrong guidance is
+    #: worse than none (#818's asymmetric-default rule; this defect is the proof).
+    fill_only_template: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -335,6 +346,7 @@ DEV_CAPABILITIES: dict[str, DevelopmentCapability] = {
         ),
         max_completion_tokens=12000,
         test_timeout_seconds=180,
+        fill_only_template="request.development_develop_fill_only_appendix",
     ),
     # #822 stack #2. Bound to the scaffold stack of the same name by
     # ``ScaffoldStack.dev_capability`` (#832), so the two registries can no longer disagree
@@ -434,6 +446,7 @@ DEV_CAPABILITIES: dict[str, DevelopmentCapability] = {
         ),
         max_completion_tokens=12000,
         test_timeout_seconds=180,
+        fill_only_template="request.development_develop_fill_only_appendix_nextjs_ts",
     ),
 }
 
