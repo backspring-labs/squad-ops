@@ -94,11 +94,12 @@ The N=6 zero-mechanical-death window measures whether reality matches that claim
 - only rolls generated with the final Gate 1–4 behavior count;
 - partial or hand-assembled scaffolds do not count; resumed runs carrying pre-SIP artifacts do not count;
 - a roll that never reaches qa (unrelated failure) neither counts nor resets;
-- a new mechanical suite failure resets the window and names the uncovered surface.
+- a new mechanical suite failure resets the window and names the uncovered surface;
+- **from roll 3 (owner ruling 2026-08-15, SIP §13a): a roll counts only if its delivered app also passes `audit_delivered_app.py`, including the UI data-path check.** Roll 1 satisfied every other signal — verdict accepted, 36/36 checks, five probes, eight shells, `frontend_build`, and the boot audit — with a UI in which nothing worked; a human found it, no layer did. Rolls 1–2 are grandfathered (authored before the #902 guidance fix). The two criteria are recorded separately per roll and never collapsed: the mechanical claim spans all six, the audit claim rolls 3–6.
 
 **The semantic-value end-to-end test rides this phase**: a crafted defect the scaffold and probes cannot catch (behavior the contract does not pin — e.g. a state effect across operations) must be caught by a valid fill. The acceptance evidence the SIP wants is the pair: mechanical/contract errors caught deterministically, and a semantic defect caught only by the authored layer — proof the system has not reduced qa to consistency checking.
 
-**1e credit is unchanged**: a green roll still boot-validates via `audit_delivered_app.py` before Stage 1e closes — shells prove manifest-consistency, not intent.
+**1e credit is unchanged**: a green roll still boot-validates via `audit_delivered_app.py` before Stage 1e closes — shells prove manifest-consistency, not intent. Roll 1 made that sentence concrete: it *was* manifest-consistent and its app was unusable, so the audit now carries the UI data-path check (#903) and, from roll 3, gates the window itself.
 
 ## Scope boundaries
 
