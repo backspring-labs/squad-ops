@@ -21,6 +21,7 @@ from squadops.llm.models import ChatMessage
 
 if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
+from squadops.capabilities.handlers.emission_log import log_emission_shape
 from squadops.capabilities.handlers.planning.base import _PlanningTaskHandler
 
 logger = logging.getLogger(__name__)
@@ -99,6 +100,11 @@ class GovernanceReviewPlanHandler(_PlanningTaskHandler):
             logger.warning("assess_readiness: frontmatter-retry LLM call failed: %s", exc)
             return None
 
+        log_emission_shape(
+            f"{self._handler_name}:frontmatter_retry",
+            response.content if response else None,
+            getattr(response, "completion_tokens", None),
+        )
         return response.content if response and response.content else None
 
     _FRONTMATTER_RETRY_INSTRUCTION = (

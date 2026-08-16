@@ -43,6 +43,8 @@ from squadops.llm.models import ChatMessage
 if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
 
+from squadops.capabilities.handlers.emission_log import log_emission_shape
+
 logger = logging.getLogger(__name__)
 
 
@@ -269,6 +271,7 @@ async def produce_plan(
             messages = messages[:2]
             continue
 
+        log_emission_shape("plan_authoring_service", response.content, response.completion_tokens)
         extracted = extract_fenced_files(response.content)
         manifest_files = [f for f in extracted if f["filename"] == "implementation_plan.yaml"]
         if manifest_files:

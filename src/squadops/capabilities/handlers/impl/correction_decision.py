@@ -26,6 +26,8 @@ from squadops.llm.models import ChatMessage
 if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
 
+from squadops.capabilities.handlers.emission_log import log_emission_shape
+
 logger = logging.getLogger(__name__)
 
 _VALID_CORRECTION_PATHS = ("continue", "patch", "rewind", "abort")
@@ -115,6 +117,7 @@ class GovernanceCorrectionDecisionHandler(_CycleTaskHandler):
             return HandlerResult(success=False, outputs={}, _evidence=evidence, error=str(exc))
 
         content = response.content
+        log_emission_shape(self._handler_name, content, response.completion_tokens)
 
         # Parse JSON decision. Tolerates <think> blocks, code fences,
         # and prose preamble. Falls back to a structured `abort`

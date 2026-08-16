@@ -28,6 +28,8 @@ from squadops.llm.models import ChatMessage
 if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
 
+from squadops.capabilities.handlers.emission_log import log_emission_shape
+
 logger = logging.getLogger(__name__)
 
 
@@ -95,6 +97,7 @@ class GovernanceDefineDoneHandler(_CycleTaskHandler):
             )
 
         content = response.content
+        log_emission_shape(self._handler_name, content, response.completion_tokens)
 
         # Parse the JSON definition of done from the LLM response. Tolerates <think>
         # blocks, code fences, and prose preamble around the JSON —

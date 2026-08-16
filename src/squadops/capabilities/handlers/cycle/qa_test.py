@@ -38,6 +38,7 @@ from squadops.capabilities.handlers.cycle.validation import (
     _detect_stubs,
     _is_test_file,
 )
+from squadops.capabilities.handlers.emission_log import log_emission_shape
 
 logger = logging.getLogger(__name__)
 
@@ -938,6 +939,7 @@ class QATestHandler(_CycleTaskHandler):
             return self._fail_result(start_time, inputs, str(exc))
 
         content = response.content
+        log_emission_shape(self._handler_name, content, response.completion_tokens)
         llm_duration_ms = (time.perf_counter() - start_time) * 1000
         self._record_generation(
             context,
@@ -1073,6 +1075,11 @@ class QATestHandler(_CycleTaskHandler):
                         )
                         break
 
+                    log_emission_shape(
+                        f"{self._handler_name}:self_eval",
+                        followup_response.content,
+                        followup_response.completion_tokens,
+                    )
                     new_extracted = extract_fenced_files(followup_response.content)
                     new_artifacts = [
                         {
