@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from squadops.capabilities.handlers.emission_log import log_emission_shape
+from squadops.capabilities.handlers.emission_log import classify_fences, log_emission_shape
 
 pytestmark = [pytest.mark.domain_capabilities]
 
@@ -105,6 +105,51 @@ def test_the_capture_is_reachable_from_every_package_that_needs_it():
         f"only {sorted(importers)} import the capture — a package that cannot reach it "
         f"is a package that will grow its own copy"
     )
+
+
+@pytest.mark.parametrize(
+    "info_tag",
+    ["typescript", "tsx", "ts", "dockerfile", "json", "yaml", "python", "css", "sh"],
+)
+def test_an_addressed_fence_is_addressed_whatever_its_language_tag(info_tag):
+    """Bug caught: the instrument reports a healthy emission as broken (#932).
+
+    The original counted literal prefixes — ` ```typescript: ` and ` ```python: ` —
+    and swept every other tag into ``plain``, i.e. *unaddressed*, which is the exact
+    failure mode it exists to detect. Live during window roll 6: dev emitted
+    ` ```tsx:app/page.tsx ` and builder ` ```dockerfile:Dockerfile `, both correct,
+    both reported bare. The wrong conclusion ("the UI tasks emitted bare fences") was
+    written down before the vault showed the files had landed fine.
+
+    Parametrized over tags the models are actually observed to use, because the
+    enumeration is the bug — an instrument must report what happened, not assert what
+    should have.
+    """
+    counts = classify_fences(f"```{info_tag}:some/path.ext\nbody\n```")
+    assert counts == {"fill": 0, "path": 1, "plain": 0}
+
+
+def test_a_closing_delimiter_is_not_counted_as_a_bare_fence():
+    """Bug caught: closers inflate the bare-fence count.
+
+    Every fence has a closing ``` with no info string. Counted naively that reads as
+    an unaddressed emission sitting beside each addressed one — the old form papered
+    over this by subtracting twice the addressed count, which silently went wrong the
+    moment a tag it did not recognize appeared.
+    """
+    assert classify_fences("```tsx:a.tsx\nx\n```") == {"fill": 0, "path": 1, "plain": 0}
+    assert classify_fences("```fill:slot-a\nx\n```") == {"fill": 1, "path": 0, "plain": 0}
+
+
+def test_a_genuinely_unaddressed_fence_still_reports_as_plain():
+    """The instrument must not become blind in the other direction.
+
+    A bare ``` and a language tag with no path both fail to name a file, and #566's
+    bare-fence recovery exists precisely because that happens. Widening "addressed"
+    to mean "has an info string" would hide it.
+    """
+    assert classify_fences("```\nprose\n```")["plain"] == 1
+    assert classify_fences("```json\n{}\n```")["plain"] == 1
 
 
 def test_the_three_diagnoses_are_distinguishable(caplog):
