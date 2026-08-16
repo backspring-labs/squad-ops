@@ -18,17 +18,56 @@ holds every seam to it.
 from __future__ import annotations
 
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
-#: Fence kinds worth counting separately. Order matters only for readability;
-#: ``plain`` is reported net of the addressed kinds so the numbers add up.
-_EMISSION_FENCES: tuple[tuple[str, str], ...] = (
-    ("fill", "```fill:slot-"),
-    ("path", "```typescript:"),
-    ("py", "```python:"),
-    ("plain", "```"),
-)
+#: A fence delimiter at the start of a line, with whatever info string follows it.
+#: Openers and closers are told apart by tracking depth, not by the info string —
+#: a closing ``` has no info string and would otherwise count as a bare fence.
+_FENCE_LINE = re.compile(r"^\s{0,3}```(.*)$")
+
+#: The fill protocol's own address form.
+_FILL_PREFIX = "fill:slot-"
+
+
+def classify_fences(text: str) -> dict[str, int]:
+    """Count fence openers by kind: ``fill``, ``path``, ``plain``.
+
+    **Why this is parsed rather than substring-counted (#932).** The first version
+    matched literal prefixes — ` ```typescript: ` and ` ```python: ` — and called
+    everything else ``plain``. Every other language tag the models actually use was
+    therefore reported as an *unaddressed* fence, which is precisely the failure mode
+    this instrument exists to detect. Live during window roll 6: dev emitted
+    ` ```tsx:app/page.tsx ` and builder emitted ` ```dockerfile:Dockerfile `, both
+    correctly addressed, and both were reported as bare. An instrument that reports a
+    healthy emission as broken is worse than no instrument — it manufactures the
+    diagnosis it was built to prevent, and it did: "the UI tasks emitted bare fences"
+    was written down before the vault showed the files had landed fine.
+
+    A fence is **addressed** when its info string carries a ``<tag>:<path>`` form. The
+    tag is not enumerated, because the point is to notice what the model did, not to
+    assert what it should have done.
+    """
+    counts = {"fill": 0, "path": 0, "plain": 0}
+    inside = False
+    for line in text.splitlines():
+        match = _FENCE_LINE.match(line)
+        if not match:
+            continue
+        if inside:  # this delimiter closes the open fence
+            inside = False
+            continue
+        inside = True
+        info = match.group(1).strip()
+        if info.startswith(_FILL_PREFIX):
+            counts["fill"] += 1
+        elif ":" in info:
+            counts["path"] += 1
+        else:
+            # bare ``` or a language tag with no path — nothing addresses a file
+            counts["plain"] += 1
+    return counts
 
 
 def log_emission_shape(handler_name: str, content: object, completion_tokens: object) -> None:
@@ -50,11 +89,7 @@ def log_emission_shape(handler_name: str, content: object, completion_tokens: ob
     if content is None:
         return
     text = str(content)
-    counts = {}
-    for label, marker in _EMISSION_FENCES:
-        counts[label] = text.count(marker)
-    # A plain-fence count includes the addressed ones; report it net so the numbers add up.
-    counts["plain"] = max(0, counts["plain"] - 2 * (counts["fill"] + counts["path"] + counts["py"]))
+    counts = classify_fences(text)
     head = " ".join(text[:160].split())
     logger.info(
         "%s emission shape: chars=%d completion_tokens=%s fences=%s head=%r",
