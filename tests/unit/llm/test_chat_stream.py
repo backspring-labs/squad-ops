@@ -330,3 +330,75 @@ class _AsyncContextManager:
 
     async def __aexit__(self, *args: Any):
         pass
+
+
+class TestThinkingSuppression:
+    """#924 — a reasoning channel the adapter cannot read must not be billed."""
+
+    @staticmethod
+    def _payload(**kwargs):
+        from adapters.llm.ollama import OllamaAdapter
+        from squadops.ports.llm.provider import ChatMessage
+
+        adapter = OllamaAdapter.__new__(OllamaAdapter)
+        return adapter._build_chat_payload(
+            [ChatMessage(role="user", content="x")], "m", None, None, **kwargs
+        )
+
+    def test_omitted_by_default_so_existing_calls_are_unchanged(self):
+        """Bug caught: a default that silently changes every call in the system.
+
+        Only one task was measured. Sending `think` unasked would alter manifest
+        authoring, plan authoring and failure analysis on that single result.
+        """
+        assert "think" not in self._payload()
+
+    def test_false_is_sent_so_the_request_is_not_inert(self):
+        """Bug caught: the parameter is accepted, threaded, and never reaches the wire —
+        a fix that looks applied while the model keeps spending the budget.
+
+        Measured on qwen3.6:27b filling eight SIP-0104 scaffold slots: 5,727 completion
+        tokens with reasoning, 413 without, for the same eight fill blocks. The adapter
+        reads only `message.content` and declares THINKING_TOKENS: False, so the
+        difference was billed and discarded unread.
+        """
+        assert self._payload(thinking=False)["think"] is False
+
+    def test_true_is_sent_too_rather_than_treated_as_the_default(self):
+        """`None` and `True` are different requests: one defers to the model, the other
+        asks for reasoning explicitly. Collapsing them would make an explicit request
+        unexpressible."""
+        assert self._payload(thinking=True)["think"] is True
+
+    async def test_the_router_forwards_it_instead_of_dropping_it(self):
+        """Bug caught: the router swallows the parameter, making every caller's request
+        a no-op with no way to observe it — the #918 shape (a layer that looks like a
+        pass-through and is not)."""
+        from squadops.llm.router import LLMRouter
+        from squadops.ports.llm.provider import ChatMessage
+
+        seen = {}
+
+        class _Provider:
+            default_model = "m"
+
+            async def chat_stream_with_usage(self, messages, **kwargs):
+                seen.update(kwargs)
+                return ChatMessage(role="assistant", content="ok")
+
+        router = LLMRouter.__new__(LLMRouter)
+        router._provider = _Provider()
+        await router.chat_stream_with_usage([ChatMessage(role="user", content="x")], thinking=False)
+
+        assert seen["thinking"] is False
+
+    async def test_a_provider_without_the_control_accepts_it_rather_than_raising(self):
+        """The port states `thinking` is a request, not a guarantee. A provider with no
+        equivalent must accept and ignore it — omitting it from the signature would turn
+        a caller's keyword into a TypeError at runtime."""
+        import inspect
+
+        from adapters.llm.vllm import VLLMAdapter
+
+        params = inspect.signature(VLLMAdapter.chat_stream_with_usage).parameters
+        assert "thinking" in params

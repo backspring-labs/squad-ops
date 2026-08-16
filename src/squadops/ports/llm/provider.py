@@ -110,8 +110,24 @@ class LLMPort(ABC):
         max_tokens: int | None = None,
         temperature: float | None = None,
         timeout_seconds: float | None = None,
+        thinking: bool | None = None,
     ) -> ChatMessage:
         """Stream chat internally for connection liveness, return complete ChatMessage with usage.
+
+        ``thinking`` (#924) asks the provider whether this call should spend completion
+        budget on a separate reasoning channel. ``None`` means "say nothing" — the
+        provider's default. A caller passes ``False`` for a **structured-emission** task,
+        where the answer is a fixed format rather than an argument and reasoning tokens
+        are billed against the same budget as the emission.
+
+        Measured on qwen3.6:27b filling eight SIP-0104 scaffold slots: 5,727 completion
+        tokens with reasoning versus **413 without**, for the same eight correctly-formed
+        fill blocks. The Ollama adapter reads only ``message.content`` and declares
+        ``THINKING_TOKENS: False``, so those 5,314 extra tokens were billed and discarded
+        unread.
+
+        A provider with no such control ignores it — the parameter is a request, not a
+        guarantee, and no caller may assume it took effect.
 
         Uses streaming transport to keep the connection alive during long-running
         inference, but returns only the final assembled response — no partial chunks

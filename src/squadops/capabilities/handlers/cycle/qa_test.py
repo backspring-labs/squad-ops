@@ -68,6 +68,10 @@ class QATestHandler(_CycleTaskHandler):
     _capability_id = "qa.test"
     _role = "qa"
     _artifact_name = "test_output"  # overridden by multi-file output
+    # #924: the measured case. This handler's output is fenced blocks — fills addressed
+    # by slot id, or path-addressed test files — never prose to be reasoned over. The
+    # reasoning channel is billed against the same budget and discarded unread.
+    _suppress_reasoning = True
 
     def validate_inputs(self, inputs: dict[str, Any], contract=None) -> list[str]:
         errors = super().validate_inputs(inputs, contract)

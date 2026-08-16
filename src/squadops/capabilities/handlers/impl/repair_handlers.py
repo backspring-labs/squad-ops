@@ -525,6 +525,11 @@ class QATestRepairHandler(_RepairPromptMixin, _CycleTaskHandler):
     _capability_id = "qa.test_repair"
     _role = "qa"
     _artifact_name = "repair_output.md"
+    # #924: same structured-emission shape as the initial author it repairs — fenced
+    # blocks, not prose. Opted in with QATestHandler because a repair that reasons its
+    # budget away emits nothing, which is indistinguishable from a repair that had
+    # nothing to say, and burns a correction round either way.
+    _suppress_reasoning = True
 
     def _build_artifacts_from_content(self, content: str) -> list[dict[str, Any]]:
         return _artifacts_from_fenced_blocks(content, self._artifact_name)

@@ -101,10 +101,13 @@ class LLMRouter:
         max_tokens: int | None = None,
         temperature: float | None = None,
         timeout_seconds: float | None = None,
+        thinking: bool | None = None,
     ) -> ChatMessage:
         """Stream chat internally, return complete ChatMessage with usage.
 
-        Pass-through to provider's chat_stream_with_usage().
+        Pass-through to provider's chat_stream_with_usage(), ``thinking`` included:
+        a router that silently dropped it would make the caller's request a no-op
+        with no way to tell (#924).
         """
         return await self._provider.chat_stream_with_usage(
             messages,
@@ -112,6 +115,7 @@ class LLMRouter:
             max_tokens=max_tokens,
             temperature=temperature,
             timeout_seconds=timeout_seconds,
+            thinking=thinking,
         )
 
     def list_models(self) -> list[str]:

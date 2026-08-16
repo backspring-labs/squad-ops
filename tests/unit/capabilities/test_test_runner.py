@@ -570,3 +570,146 @@ class TestFailedTestsPassRow:
         assert row["failing_tests"] == ("a.test.ts::creates",)
         assert row["passed"] is False
         assert row["runner"] == "vitest"
+
+
+class TestEmissionShapeCapture:
+    """#924 — what an LLM call emitted must be inspectable after the fact."""
+
+    def test_the_three_diagnoses_are_distinguishable(self, caplog):
+        """Bug caught: a failed emission leaves no trace, so its cause must be guessed.
+
+        SIP-0104 window rolls 3 and 5 both ended with every scaffold slot unfilled and
+        nothing recorded what the qa author emitted — fills are parsed and stripped
+        before extraction, so a success leaves no artifact and a failure leaves nothing
+        at all. Two wrong diagnoses were made from the result rather than the emission.
+
+        These three shapes have opposite fixes and were indistinguishable from outside:
+        emitted fills, emitted nothing while billing a full budget, emitted the wrong
+        fence kind.
+        """
+        import logging
+
+        from squadops.capabilities.handlers.cycle.base import _log_emission_shape
+
+        with caplog.at_level(logging.INFO):
+            _log_emission_shape("qa", "```fill:slot-a\nexpect(1).toBe(1)\n```", 413)
+            _log_emission_shape("qa", "", 6866)
+            _log_emission_shape("qa", "```typescript:__tests__/x.test.ts\nx\n```", 900)
+
+        filled, empty, wrong_fence = (r.getMessage() for r in caplog.records[-3:])
+
+        assert "'fill': 1" in filled
+        # the signature of a reasoning channel eating the budget: billed, emitted nothing
+        assert "chars=0" in empty and "completion_tokens=6866" in empty
+        assert "'path': 1" in wrong_fence and "'fill': 0" in wrong_fence
+
+    def test_a_head_sample_is_recorded_and_bounded(self, caplog):
+        """A shape with no sample cannot distinguish "wrong fence" from "prose apology".
+        Bounded because this runs on every call and must never persist a whole
+        completion or its prompt material."""
+        import logging
+
+        from squadops.capabilities.handlers.cycle.base import _log_emission_shape
+
+        with caplog.at_level(logging.INFO):
+            _log_emission_shape("qa", "I cannot complete this task because " + "x" * 5000, 12)
+
+        message = caplog.records[-1].getMessage()
+        assert "I cannot complete this task" in message
+        assert len(message) < 600
+
+    def test_a_missing_completion_logs_nothing_rather_than_a_false_zero(self, caplog):
+        """`None` means the call did not return content — distinct from an empty string,
+        which means it returned nothing. Logging `chars=0` for both would erase the
+        difference between a transport failure and an empty emission."""
+        import logging
+
+        from squadops.capabilities.handlers.cycle.base import _log_emission_shape
+
+        with caplog.at_level(logging.INFO):
+            _log_emission_shape("qa", None, None)
+
+        assert not [r for r in caplog.records if "emission shape" in r.getMessage()]
+
+
+class TestSuppressedReasoning:
+    """#924 — structured-emission handlers stop paying for a discarded channel."""
+
+    def test_only_the_measured_emission_handlers_send_the_parameter(self):
+        """Bug caught: suppressing reasoning globally on one measurement.
+
+        Only the scaffold-fill task was measured (5,727 completion tokens with reasoning
+        vs 413 without, same eight fill blocks). Reasoning plausibly earns its cost where
+        the output IS an argument — manifest authoring, plan authoring, failure analysis —
+        so anything unmeasured must keep sending nothing and inherit the model's default.
+
+        Asserted through the kwargs each handler actually builds, not the flag: a flag
+        set on a handler whose kwargs never carry it is the inert-fix shape.
+        """
+        from squadops.capabilities.handlers.cycle.develop import DevelopmentDevelopHandler
+        from squadops.capabilities.handlers.cycle.qa_test import QATestHandler
+        from squadops.capabilities.handlers.impl.repair_handlers import QATestRepairHandler
+
+        def kwargs_for(cls):
+            return cls.__new__(cls)._build_chat_kwargs({})
+
+        assert kwargs_for(QATestHandler)["thinking"] is False
+        assert kwargs_for(QATestRepairHandler)["thinking"] is False
+        # unmeasured handler: sends nothing, so the model's own default stands
+        assert "thinking" not in kwargs_for(DevelopmentDevelopHandler)
+
+    def test_opting_in_sends_the_parameter_and_opting_out_omits_it(self):
+        """Bug caught: the flag is declared but never reaches the provider — the exact
+        shape of a fix that looks applied and is inert."""
+        from squadops.capabilities.handlers.cycle.qa_test import QATestHandler
+
+        handler = QATestHandler.__new__(QATestHandler)
+        assert handler._build_chat_kwargs({})["thinking"] is False
+
+        class _Reasoning(QATestHandler):
+            _suppress_reasoning = False
+
+        assert "thinking" not in _Reasoning.__new__(_Reasoning)._build_chat_kwargs({})
+
+    def test_the_capture_is_wired_and_sits_outside_the_observability_gate(self):
+        """Bug caught: the helper exists and nothing calls it — or it is called from
+        inside `if llm_obs and context.correlation_context:`.
+
+        Both were live during this change. The first is the unwired-fix shape a
+        pure-function test cannot see (a mutation removing the call site passed every
+        other test in this class). The second is subtler and worse: the capture would go
+        missing in exactly the deployments without observability wired, which are the
+        ones where an unexplained emission is hardest to diagnose.
+        """
+        import ast
+        from pathlib import Path
+
+        source = (
+            Path(__file__).resolve().parents[3] / "src/squadops/capabilities/handlers/cycle/base.py"
+        ).read_text(encoding="utf-8")
+        tree = ast.parse(source)
+
+        call_lines = [
+            node.lineno
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "_log_emission_shape"
+        ]
+        assert call_lines, "the emission capture is defined but never called"
+
+        gated_lines: set[int] = set()
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.If):
+                continue
+            names = {n.id for n in ast.walk(node.test) if isinstance(n, ast.Name)}
+            if "llm_obs" not in names:
+                continue
+            for stmt in node.body:
+                gated_lines.update(range(stmt.lineno, (stmt.end_lineno or stmt.lineno) + 1))
+
+        inside = sorted(set(call_lines) & gated_lines)
+        assert not inside, (
+            f"the emission capture is inside the observability gate at {inside} — it would "
+            f"go silent wherever llm_observability is not configured"
+        )

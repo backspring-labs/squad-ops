@@ -360,12 +360,19 @@ class VLLMAdapter(LLMPort):
         max_tokens: int | None = None,
         temperature: float | None = None,
         timeout_seconds: float | None = None,
+        thinking: bool | None = None,
     ) -> ChatMessage:
         """Stream for connection liveness, return one assembled message.
 
         The final frame carries usage when the server honors
         ``stream_options.include_usage``. A server that does not send one leaves
         the counts ``None`` — never zero, which would read as a free call.
+
+        ``thinking`` is accepted and **deliberately ignored**: the OpenAI-compatible
+        surface this speaks has no equivalent control, and the port states the
+        parameter is a request rather than a guarantee (#924). Accepting-and-ignoring
+        keeps the signature conformant; silently omitting it from the signature would
+        make a caller's keyword argument a TypeError at runtime instead.
         """
         resolved = model or self._default_model
         started = time.monotonic()

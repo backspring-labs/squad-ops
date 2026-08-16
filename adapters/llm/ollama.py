@@ -177,13 +177,24 @@ class OllamaAdapter(LLMPort):
         temperature: float | None,
         *,
         stream: bool = False,
+        thinking: bool | None = None,
     ) -> dict[str, Any]:
-        """Build the Ollama /api/chat request payload."""
+        """Build the Ollama /api/chat request payload.
+
+        ``thinking=False`` sends Ollama's ``think: false``. This adapter reads only
+        ``message.content`` and declares ``THINKING_TOKENS: False``, so a reasoning
+        channel it cannot read is billed against ``num_predict`` and then discarded —
+        measured at 5,727 tokens versus 413 for identical output on a scaffold-fill
+        emission (#924). ``None`` sends nothing and leaves the model's default alone,
+        so every existing call is byte-identical.
+        """
         payload: dict[str, Any] = {
             "model": model,
             "messages": [{"role": m.role, "content": m.content} for m in messages],
             "stream": stream,
         }
+        if thinking is not None:
+            payload["think"] = thinking
 
         options: dict[str, Any] = {}
         if max_tokens is not None:
@@ -275,12 +286,16 @@ class OllamaAdapter(LLMPort):
         max_tokens: int | None = None,
         temperature: float | None = None,
         timeout_seconds: float | None = None,
+        thinking: bool | None = None,
     ) -> ChatMessage:
         """Stream chat internally for connection liveness, return complete ChatMessage with usage.
 
         Uses streaming transport to keep the connection alive during long-running
         inference, but returns only the final assembled response. Captures token
         usage metadata from Ollama's final `done: true` chunk.
+
+        ``thinking=False`` stops paying for a reasoning channel this adapter discards
+        unread — see ``_build_chat_payload``.
         """
         client = await self._get_client()
         resolved_model = model or self._default_model
@@ -291,6 +306,7 @@ class OllamaAdapter(LLMPort):
             max_tokens,
             temperature,
             stream=True,
+            thinking=thinking,
         )
 
         try:
