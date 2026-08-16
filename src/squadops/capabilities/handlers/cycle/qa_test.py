@@ -494,12 +494,18 @@ class QATestHandler(_CycleTaskHandler):
         # Keyed on the scaffold record's own stack — the fact is the stack's, not the
         # run's, so it stays correct when the brief is rendered without a manifest.
         envelope = "\n".join(f"- {line}" for line in error_envelope_lines(record.stack))
+        # #933: the plan's authored deliverable, reframed as additive by the asset that
+        # owns the emission contract. The focused prompt no longer states it as an
+        # expected output file, so this is the only place it appears — the intent is
+        # kept, its precedence is not.
+        additive = "\n".join(f"- `{f}`" for f in (inputs.get("expected_artifacts") or []))
         rendered = await renderer.render(
             "request.qa_test_fill_mode_appendix",
             {
                 "slot_lines": slot_lines,
                 "shell_files": "\n\n".join(shell_parts),
                 "error_envelope": envelope,
+                "additive_files": additive,
             },
         )
         return rendered.content
@@ -632,10 +638,17 @@ class QATestHandler(_CycleTaskHandler):
             inputs.get("artifact_contents", {}), expected_files
         )
 
+        # SIP-0104 (#933): in fill mode the deliverable is fills, and the appendix —
+        # a managed asset — is the sole owner of the emission contract. Rendering an
+        # authored filename here as "Expected Output Files" states a SECOND, competing
+        # deliverable, and the closing directive below then makes it exclusive.
+        fill_mode = bool(inputs.get("verification_scaffold"))
+
         parts = [f"## QA Task: {focus}\n\n{description}\n"]
 
-        parts.append("### Expected Output Files\n")
-        parts.extend(f"- `{f}`\n" for f in expected_files)
+        if not fill_mode:
+            parts.append("### Expected Output Files\n")
+            parts.extend(f"- `{f}`\n" for f in expected_files)
 
         # pf-36: typed criteria render ONLY through the authoritative expectations
         # block; the narrative section carries prose alone. The raw dump rendered
@@ -663,8 +676,18 @@ class QATestHandler(_CycleTaskHandler):
                 lang = self._fence_lang(name)
                 parts.append(f"**{name}:**\n```{lang}\n{content}\n```\n")
 
+        # The "ONLY" clause is the direct negation of fill mode: it forbids emitting
+        # anything but the authored file, and the fill appendix is appended AFTER it.
+        # Roll 6 obeyed it exactly — one path-addressed file, zero fills, 8,192
+        # completion tokens spent on the wrong deliverable. The rest of this
+        # directive is orthogonal to fill mode and stays: the fence format is how
+        # additive files are emitted, and the source-artifact guard has no
+        # equivalent in the appendix.
+        if not fill_mode:
+            parts.append("\nProduce ONLY the files listed in Expected Output Files. ")
+        else:
+            parts.append("\n")
         parts.append(
-            "\nProduce ONLY the files listed in Expected Output Files. "
             "Use fenced code blocks with ```language:path/to/file``` format. "
             "Do not reproduce source artifacts."
         )

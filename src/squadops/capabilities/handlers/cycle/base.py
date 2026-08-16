@@ -46,9 +46,6 @@ from squadops.capabilities.handlers.emission_log import log_emission_shape
 logger = logging.getLogger(__name__)
 
 
-#: Fence kinds an emission is judged by. Counting them is the difference between
-#: "the author ignored the instruction" and "the author emitted the wrong shape" —
-#: two diagnoses with opposite fixes that were indistinguishable from the outside.
 def _framework_injected_criteria(
     artifacts: list[dict], authored: tuple[TypedCheck, ...]
 ) -> list[TypedCheck]:

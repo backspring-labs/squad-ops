@@ -349,7 +349,13 @@ def _shell_source(behavior: _Behavior) -> str:
         "// The spine — placement, imports, lifecycle, invocation, status assertion — is",
         "// frozen (SIP-0104 §4.2); the marked fill slot is the qa author's mutable surface.",
         "import { beforeEach, describe, expect, it } from 'vitest'",
-        "import { reset } from '@/lib/store'",
+        # `all` is imported for the FILL, not for the spine (#936). The spine only calls
+        # `reset`, but a fill may not add imports — "Assertions only. NO imports" — so any
+        # store helper the fill vocabulary teaches must already be in scope here or the
+        # fill cannot run. The appendix's own worked examples call `all('runs')`, and
+        # every one of them died on `ReferenceError: all is not defined` until this line.
+        # Keep this in step with the vocabulary the appendix teaches.
+        "import { reset, all } from '@/lib/store'",
     ]
     for route_file in route_files:
         module = route_file.removesuffix(".ts")
