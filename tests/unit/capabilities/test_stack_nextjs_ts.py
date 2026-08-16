@@ -376,3 +376,49 @@ def test_the_test_supplement_shows_in_process_handler_invocation():
     assert "from '@/app/api/runs/route'" in supplement
     assert "new Request(" in supplement
     assert "{ params:" in supplement
+
+
+def test_the_stylesheet_is_emitted_and_the_frozen_layout_imports_it():
+    """Two co-dependent facts, pinned together because either alone is broken.
+
+    The stylesheet only reaches a page through the frozen layout's import, and the
+    import only resolves because the expander emits the file. Emit without the import
+    and every delivered app is unstyled while every test still passes; import without
+    the emit and `next build` fails on a missing module — a whole roll lost to a
+    one-line omission. The #868 lesson (tie co-dependent facts in one pin) applied.
+    """
+    files = {f["name"]: f["content"] for f in expand(_manifest())}
+
+    assert "app/globals.css" in files
+    assert files["app/layout.tsx"].startswith("import './globals.css'"), (
+        "the layout must import the stylesheet, and first — an unimported globals.css is "
+        "dead bytes in every delivered app"
+    )
+
+
+def test_the_stylesheet_is_frozen_never_a_fill_slot():
+    """Presentation is scaffold-owned. If globals.css ever lands in the fill set it
+    becomes author-editable, which reintroduces exactly the per-roll variance the
+    deterministic scaffold exists to remove — and it would do so silently, since an
+    author-written stylesheet still builds.
+    """
+    assert "app/globals.css" not in fill_slot_paths(_manifest())
+
+
+def test_the_stylesheet_selects_elements_not_classes():
+    """The design invariant the whole approach rests on.
+
+    Element-scoped rules style whatever markup the fill author writes, with no vocabulary
+    to teach, remember, or apply. The moment a class selector appears, the sheet only works
+    if the author knows the class names — which is a prompt surface, a thing to get wrong,
+    and a per-roll lottery. That regression would be invisible: the CSS still compiles and
+    the app still builds, it just quietly stops styling anything.
+    """
+    css = next(f["content"] for f in expand(_manifest()) if f["name"] == "app/globals.css")
+
+    selectors = [line.split("{")[0] for line in css.splitlines() if "{" in line]
+    class_selectors = [s.strip() for s in selectors if "." in s.strip()]
+
+    assert class_selectors == [], (
+        f"class selectors require the fill author to know their names: {class_selectors}"
+    )

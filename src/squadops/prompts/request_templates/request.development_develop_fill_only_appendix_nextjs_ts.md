@@ -44,8 +44,13 @@ the UI — a silent break no build or unit check catches.
 - Do NOT change the exported handler **names, signatures, or file locations** in
   `app/**/route.ts` — the directory determines the URL the app serves.
 - Do NOT edit `lib/models.ts`, `lib/store.ts`, `lib/errors.ts`, `lib/api.ts`,
-  `app/layout.tsx`, `package.json`, `tsconfig.json`, `next.config.mjs`, or
-  `vitest.config.ts`.
+  `app/layout.tsx`, `app/globals.css`, `package.json`, `tsconfig.json`, `next.config.mjs`,
+  or `vitest.config.ts`.
+- **Presentation is already handled.** `app/globals.css` styles ordinary elements —
+  headings, lists, tables, forms, inputs, buttons — so plain semantic markup comes out
+  looking right with no effort from you. Write `<ul><li>`, `<table>`, `<form>`, `<button>`
+  rather than nested `<div>`s, and do not add stylesheets, CSS frameworks, or `className`
+  design systems; there is no styling task in this build.
 - Do NOT add or remove files, or move a route/page to a different directory.
 
 {{error_contract}}

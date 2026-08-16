@@ -15,6 +15,18 @@ with a GENERATOR_VERSION bump, as one deliberate act.
 exactly the casual update that would let generator drift ship silently. Changing the
 emission means: bump GENERATOR_VERSION, regenerate the fixture, update the two pinned
 hashes here, and say why in the commit.
+
+**A tree change is not a generator change, and the difference is load-bearing.** The
+manifest records ``expanded_tree_hash`` as its own field precisely so a mismatch is
+attributable — generator drift, workspace mutation, and producer edit are three different
+diagnoses, and collapsing them is what the field exists to prevent. So when the *skeleton*
+gains or loses a file, this fixture's tree hash moves while the shells stay byte-identical
+and the two aggregate hashes below **do not move at all**. That case is regenerated in
+place *without* a GENERATOR_VERSION bump: the generator's behavior did not change, and
+stamping a new version would tell every future reader it did, while invalidating stored
+manifests' version comparisons for nothing. The unmoved aggregates are the evidence — if
+either of them shifts too, it was never a tree-only change and the full ritual above
+applies. First exercised when the skeleton gained its baseline stylesheet.
 """
 
 from __future__ import annotations
