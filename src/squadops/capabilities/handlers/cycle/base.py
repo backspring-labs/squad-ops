@@ -45,6 +45,52 @@ from squadops.capabilities.handlers.cycle.validation import (
 logger = logging.getLogger(__name__)
 
 
+#: Fence kinds an emission is judged by. Counting them is the difference between
+#: "the author ignored the instruction" and "the author emitted the wrong shape" —
+#: two diagnoses with opposite fixes that were indistinguishable from the outside.
+_EMISSION_FENCES: tuple[tuple[str, str], ...] = (
+    ("fill", "```fill:slot-"),
+    ("path", "```typescript:"),
+    ("py", "```python:"),
+    ("plain", "```"),
+)
+
+
+def _log_emission_shape(handler_name: str, content: object, completion_tokens: object) -> None:
+    """Record what an LLM call actually emitted, in one greppable line.
+
+    **Why this exists (#924).** SIP-0104 window rolls 3 and 5 both ended with every
+    scaffold slot unfilled, and nothing recorded what the qa author emitted: fills are
+    parsed and stripped before extraction, so a successful fill leaves no artifact and
+    a failed one leaves no trace at all. Three separate diagnoses were made from the
+    *result* rather than the emission, and two of them were wrong — the third only
+    landed because the raw completion was reproduced by hand against the live model.
+
+    A protocol whose failures cannot be inspected can only be repaired by guessing.
+    This is deliberately cheap and unconditional: shape, not content. Length, fence
+    counts by kind, and a short head sample — enough to separate "emitted nothing",
+    "emitted the wrong fence", and "emitted fills that the parser rejected" at a
+    glance, without persisting whole completions or their prompt material.
+    """
+    if content is None:
+        return
+    text = str(content)
+    counts = {}
+    for label, marker in _EMISSION_FENCES:
+        counts[label] = text.count(marker)
+    # A plain-fence count includes the addressed ones; report it net so the numbers add up.
+    counts["plain"] = max(0, counts["plain"] - 2 * (counts["fill"] + counts["path"] + counts["py"]))
+    head = " ".join(text[:160].split())
+    logger.info(
+        "%s emission shape: chars=%d completion_tokens=%s fences=%s head=%r",
+        handler_name,
+        len(text),
+        completion_tokens,
+        counts,
+        head,
+    )
+
+
 def _framework_injected_criteria(
     artifacts: list[dict], authored: tuple[TypedCheck, ...]
 ) -> list[TypedCheck]:
@@ -668,6 +714,11 @@ class _CycleTaskHandler(CapabilityHandler):
 
         content = response.content
         llm_duration_ms = (time.perf_counter() - start_time) * 1000
+
+        # #924: unconditional, and deliberately NOT inside the observability block below —
+        # that block is gated on `llm_obs and correlation_context`, so a capture placed
+        # there would go missing in exactly the setups where the emission is unexplained.
+        _log_emission_shape(self._handler_name, content, response.completion_tokens)
 
         # Record LLM generation for LangFuse tracing (SIP-0061 Option B)
         llm_obs = getattr(context.ports, "llm_observability", None)
