@@ -53,6 +53,9 @@ as a failing state):
 
 - Assertions only. NO imports, NO `require()`, NO `fetch()` or any network access —
   the suite runs in-process with no server.
+- Because you cannot import, only what the shell already imports is in scope. From the
+  store that is **`all(table)`** — use it for store-effect assertions. Do not reference
+  any other store helper: it will not be defined and the slot will fail to run.
 - One fill per slot; a slot filled twice is rejected outright.
 - Never emit or rewrite the scaffold files themselves — a path-addressed file at a
   scaffold path is discarded. The shells below are read-only context.
