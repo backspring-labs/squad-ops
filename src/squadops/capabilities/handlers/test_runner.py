@@ -1006,6 +1006,36 @@ async def run_fullstack_tests(
     )
 
 
+def _effective_sources(
+    source_files: list[dict[str, str]],
+    test_files: list[dict[str, str]],
+) -> list[dict[str, str]]:
+    """The deliverable as the suite actually saw it — patches overlay by path.
+
+    **Why this exists.** On the retest path the two inputs come from different eras.
+    ``source_files`` is read from the FAILED task's envelope (``correction_runner``:
+    ``failed_inputs = envelope.inputs``), so it is *pre-repair*; ``test_files`` carries
+    the patched artifacts, and after a development repair those are the repaired
+    **application** files, handed through as test files.
+
+    The suite therefore ran against the repaired code while the build checks compiled
+    the stale set — so a correction could regress the build and the verdict could not
+    see it. Diagnostic ``cyc_831dfe6ac551`` (2026-08-16): the repair rewrote a page into
+    something that does not typecheck, ``tests_pass`` and ``frontend_build`` both went
+    green, and the delivered app did not compile.
+
+    Overlay only where a patch occupies an existing source path. A test file at a test
+    path is not part of the deliverable and does not belong in the build's input —
+    widening this to the full union would change what the build compiles, which is a
+    separate decision (see #939 on typechecking emitted tests).
+    """
+    by_path: dict[str, dict[str, str]] = {rec["path"]: rec for rec in source_files}
+    for rec in test_files:
+        if rec["path"] in by_path:
+            by_path[rec["path"]] = rec
+    return list(by_path.values())
+
+
 async def run_build_validation(
     test_framework: str,
     source_files: list[dict[str, str]],
@@ -1047,15 +1077,19 @@ async def run_build_validation(
         frontend_target = None
         run_frontend, run_backend = False, True
 
+    # The build checks judge the DELIVERABLE, so they must see it as the suite did.
+    # Passing `source_files` here made both checks stale on the retest path.
+    built_files = _effective_sources(source_files, test_files)
+
     checks: list[BuildCheckResult] = []
     frontend_check: BuildCheckResult | None = None
     if run_frontend:
         frontend_check = await run_frontend_build(
-            source_files, target_dir=frontend_target, timeout_seconds=timeout_seconds
+            built_files, target_dir=frontend_target, timeout_seconds=timeout_seconds
         )
         checks.append(frontend_check)
     if run_backend:
-        checks.append(await run_backend_import_check(source_files, timeout_seconds=timeout_seconds))
+        checks.append(await run_backend_import_check(built_files, timeout_seconds=timeout_seconds))
 
     failed = [check for check in checks if check.failed]
     if failed:
