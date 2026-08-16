@@ -238,6 +238,9 @@ Umbrella phases; each becomes its own bounded implementation SIP. Per the roadma
 4. Resource indexing — LanceDB, separate vector store, or a knowledge service?
 5. Memory + resource promotion authority — Max / The Lab / operator / steward agents?
 6. Preflight strictness — which missing-context cases block vs warn?
+   *Advanced (2026-08-16): separate from strictness, preflight has a TIMING gap — the
+   plan does not exist at cycle-create, so plan-vs-assembly is unchecked until dispatch.
+   §27c proposes a second evaluation at the workload gate.*
 7. Console scope in v1 vs CLI/doctor only.
 8. **SIP-0040 reconciliation** — exact meaning of `Skill.required_capabilities` vs this SIP's Capability-Skill Contract; which direction is canonical? *(Blocks Phase 1.)*
 9. **Claude Skills** — resolved (§9): adopt the `SKILL.md` *format* for content packaging, supply our own dispatch. Remaining detail: the loader / progressive-disclosure implementation for local models.
@@ -631,6 +634,90 @@ console pane is an addition, not a prerequisite.
     `Iris` at v1 and renames its capability set at v2, an importer who minted `Iris` needs
     to know whether their roster entry is stale — the same consumer/producer versioning
     question §25b asks about design-system resources, one level up.
+
+## 27. Assembly: what must stay stable, and when it is checked (2026-08-16)
+
+Narrow addition. §8 already establishes the three capability sources, §9 the skill/tool
+hierarchy and the SKILL.md decision, §16 the deterministic preflight. This section adds
+only what those leave open: **why the verb set cannot be dynamic, what selects an
+assembly, and when the check happens.**
+
+### 27a. A role's verb set is stable, because plan validity must be decidable offline
+
+The planner composes **task types**. If a role's verb set varies per cycle, then whether
+a plan is well-formed depends on runtime assembly — and plan validation stops being a
+property of the plan.
+
+That property is load-bearing and already paying for itself. Window roll 4
+(`cyc_92c44f8704ab`) was system-rejected at the framing gate by `validate_criteria_scope`
+before any implementation ran; it cost a re-plan rather than a cycle. The same holds for
+`test_authoring_examples_pass_the_gate`, which decides in milliseconds offline what would
+otherwise be a framing rejection in production. Both depend on a fixed vocabulary.
+
+So: **`native` capabilities (§8) define the planner's vocabulary and are image-shaped.**
+`plugin` and `assignment` sources may extend what an agent can do, but a task type
+reachable only through them must be **declared at plan time**, never discovered at
+dispatch. An assignment activates a binding; it must not introduce a verb the plan
+validator did not know existed.
+
+### 27b. Assembly is selected from declared configuration, never inferred from the objective
+
+The stack is declared at creation (`build_profile`, `dev_capability`) and is mechanical.
+The objective is LLM-parsed prose that does not exist until framing has run.
+
+Selecting a squad's abilities from a parsed objective would put nondeterminism upstream
+of everything: two cycles with identical inputs could receive different agents, and no
+comparison between them would mean anything. It is the same class as branching on string
+identity, which the codebase already forbids in orchestration.
+
+**Rule: assembly is a pure function of declared configuration.** Inference may inform a
+human's choice of profile; it may not select the assembly itself.
+
+### 27c. Preflight needs a second evaluation, at the workload gate
+
+§16's preflight extends **SIP-0095 Cycle-Create Preflight**. At cycle-create, the
+implementation plan **does not exist yet** — it is authored during framing.
+
+So a plan naming a task type that no bound capability serves passes cycle-create cleanly
+and fails at **dispatch**: after framing, after the gate, deep into a cycle. That is the
+most expensive place to discover it, and it is precisely the failure shape §16 exists to
+prevent. The model-availability preflight (#224) has the same shape — it guards the
+roster, not the plan.
+
+**Add a gate-time assertion:** every task type in the merged plan is servable by this
+cycle's assembly, and every capability those tasks require is bound and valid. Evaluated
+at the workload gate, where the plan first exists and the cost of being wrong is a
+re-plan.
+
+### 27d. The bound assembly belongs in the cycle's snapshot
+
+Cycles already record `squad_profile_snapshot_ref` — a content hash of the roster as
+resolved. Extend that snapshot to cover the **bound capability, skill and tool set with
+versions**.
+
+With it, late binding costs nothing in attributability: any run can be replayed against
+exactly what it had. Without it, "which capabilities did this agent actually have" becomes
+unanswerable weeks later — the position the 2026-08-15 emission-capture investigation was
+in for a much smaller question, at a cost of one measurement window.
+
+### 27e. Tools may bind late; capabilities may not
+
+A tool is an effect with a bounded, visible failure mode: the call succeeds or it does
+not. A capability is a promise the planner has already composed against.
+
+So tools may be discovered and bound late, **provided a task that requires one declares
+it** — which is what lets preflight check reachability instead of a task discovering an
+unreachable Figma server halfway through.
+
+### 27f. Campaigns pin assembly at the campaign boundary
+
+A campaign that re-resolves assembly between cycles can drift mid-flight, and no
+regression inside it could be attributed to the work rather than the drift. One
+composition hash per campaign; changing it is a deliberate act that starts a new
+attribution epoch.
+
+Same discipline as holding rebuild scope to one named change inside a measurement window,
+for the same reason.
 
 ## 24. References
 
