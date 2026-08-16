@@ -825,8 +825,12 @@ class _CycleTaskHandler(CapabilityHandler):
     ) -> None:
         """Record LLM generation for LangFuse tracing (SIP-0061).
 
-        GovernanceReviewHandler keeps its own variant (different call shape:
-        it derives the model from chat_kwargs and has no ChatMessage).
+        Every cycle handler routes here. GovernanceReviewHandler kept a private copy
+        until 2026-08-16, justified by a call shape it no longer had — the note said it
+        "has no ChatMessage", but its call site has held the response object since the
+        streaming seam landed. The copy cost it token accounting, prompt-version
+        linkage and the configurable layer kind, silently, on every governance
+        generation. Add a keyword argument here rather than a second implementation.
         """
         if chat_response and chat_response.tokens_per_second:
             logger.info(

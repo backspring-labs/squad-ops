@@ -41,6 +41,12 @@ class GovernanceReviewHandler(_CycleTaskHandler):
     _capability_id = "governance.review"
     _role = "lead"
     _artifact_name = "governance_review.md"
+    #: Preserves the observability identity this handler already had. It carried a
+    #: private copy of ``_record_generation`` that hardcoded ``f"{role}-cycle"``; the
+    #: shared one derives the same string from this field, so existing LangFuse traces
+    #: keep grouping as before. Without it the base default ("build") would silently
+    #: re-group every governance generation.
+    _prompt_layer_kind = "cycle"
 
     # Issue #109: project_id / cycle_id / prd_hash are facts the system
     # owns, not values the LLM should invent. The braced placeholders
@@ -163,9 +169,16 @@ class GovernanceReviewHandler(_CycleTaskHandler):
         log_emission_shape(self._handler_name, content, response.completion_tokens)
         llm_duration_ms = (time.perf_counter() - start_time) * 1000
 
-        # Record LLM generation for tracing
+        # Record LLM generation for tracing, through the shared implementation (#929).
+        # This handler carried its own copy until 2026-08-16; see the class docstring.
         self._record_generation(
-            context, user_prompt, content, llm_duration_ms, chat_kwargs, rendered
+            context,
+            user_prompt,
+            content,
+            llm_duration_ms,
+            chat_kwargs.get("model") or context.ports.llm.default_model,
+            rendered=rendered,
+            chat_response=response,
         )
 
         prd_summary = str(prd)[:80] if prd else "(no PRD)"
@@ -327,44 +340,6 @@ class GovernanceReviewHandler(_CycleTaskHandler):
             if "task_index" in block and "task_type" in block and "focus" in block:
                 return block
         return None
-
-    def _record_generation(
-        self,
-        context: ExecutionContext,
-        user_prompt: str,
-        content: str,
-        llm_duration_ms: float,
-        chat_kwargs: dict[str, Any],
-        rendered: Any,
-    ) -> None:
-        """Record LLM generation for LangFuse tracing (SIP-0061)."""
-        llm_obs = getattr(context.ports, "llm_observability", None)
-        if llm_obs and context.correlation_context:
-            import uuid
-
-            from squadops.telemetry.models import (
-                MAX_OBSERVABILITY_TEXT_LENGTH,
-                GenerationRecord,
-                PromptLayer,
-                PromptLayerMetadata,
-            )
-
-            resolved_model = chat_kwargs.get("model", context.ports.llm.default_model)
-            gen_record = GenerationRecord(
-                generation_id=str(uuid.uuid4()),
-                model=resolved_model,
-                prompt_text=user_prompt[:MAX_OBSERVABILITY_TEXT_LENGTH],
-                response_text=content[:MAX_OBSERVABILITY_TEXT_LENGTH],
-                latency_ms=llm_duration_ms,
-            )
-            layers = PromptLayerMetadata(
-                prompt_layer_set_id=f"{self._role}-cycle",
-                layers=(
-                    PromptLayer(layer_type="system", layer_id=f"{self._role}-system"),
-                    PromptLayer(layer_type="user", layer_id=f"cycle-{self._capability_id}"),
-                ),
-            )
-            llm_obs.record_generation(context.correlation_context, gen_record, layers)
 
     def _build_provenance(self, assembled: Any, renderer: Any, rendered: Any) -> dict[str, Any]:
         """Build prompt provenance dict for artifact traceability (SIP-0084)."""
