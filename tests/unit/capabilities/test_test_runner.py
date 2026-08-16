@@ -631,6 +631,50 @@ class TestEmissionShapeCapture:
 
         assert not [r for r in caplog.records if "emission shape" in r.getMessage()]
 
+    def test_the_shape_capture_is_wired_outside_the_observability_gate(self):
+        """Bug caught: the helper exists and nothing calls it — or it is called from
+        inside ``if llm_obs and context.correlation_context:``.
+
+        Both were live while this was written. The first is the unwired-fix shape a
+        pure-function test cannot see: a mutation deleting the call site passed every
+        other test in this class. The second is worse — the capture would go silent in
+        exactly the deployments without observability configured, which are the ones
+        where an unexplained emission is hardest to diagnose.
+        """
+        import ast
+        from pathlib import Path as _Path
+
+        source = (
+            _Path(__file__).resolve().parents[3]
+            / "src/squadops/capabilities/handlers/cycle/base.py"
+        ).read_text(encoding="utf-8")
+        tree = ast.parse(source)
+
+        call_lines = [
+            node.lineno
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "_log_emission_shape"
+        ]
+        assert call_lines, "the emission-shape capture is defined but never called"
+
+        gated: set[int] = set()
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.If):
+                continue
+            names = {n.id for n in ast.walk(node.test) if isinstance(n, ast.Name)}
+            if "llm_obs" not in names:
+                continue
+            for stmt in node.body:
+                gated.update(range(stmt.lineno, (stmt.end_lineno or stmt.lineno) + 1))
+
+        inside = sorted(set(call_lines) & gated)
+        assert not inside, (
+            f"the capture is inside the observability gate at {inside} — it would go "
+            f"silent wherever llm_observability is not configured"
+        )
+
     def test_the_fill_seam_capture_is_wired_at_the_parse_site(self):
         """Bug caught: the one distinction that cannot be recovered afterwards.
 
