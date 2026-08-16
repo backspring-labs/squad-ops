@@ -287,12 +287,41 @@ class _RepairPromptMixin:
         renderer = getattr(context.ports, "request_renderer", None)
         if renderer is None:
             return ""
+        from squadops.capabilities.dev_capabilities import (
+            effective_capability_name,
+            get_capability,
+        )
         from squadops.capabilities.scaffold import is_scaffoldable_stack
 
-        stack = str((inputs.get("resolved_config") or {}).get("build_profile") or "")
+        resolved_config = inputs.get("resolved_config") or {}
+        stack = str(resolved_config.get("build_profile") or "")
         if not is_scaffoldable_stack(stack):
             return ""
+        # #902 replaced the single shared appendix with a per-stack template, and fixed
+        # the DEVELOP path only. This path kept rendering the hardcoded stack-#1 asset,
+        # which tells the author its client helper prefixes `/api` for it. A nextjs_ts
+        # repair believed that and rewrote `api('/api/runs')` back to `api('/runs')` —
+        # roll 1's dead-UI defect, reintroduced by the correction loop on a cycle whose
+        # initial dev output was correct (diagnostic cyc_831dfe6ac551, 2026-08-16).
+        # Resolved exactly as develop resolves it; an unset template means NO appendix,
+        # because wrong guidance is worse than none (#818).
+        try:
+            capability = get_capability(effective_capability_name(resolved_config))
+        except ValueError:
+            return ""
+        if not capability.fill_only_template:
+            return ""
         variables: dict[str, Any] = {"stack": stack}
+        # Parity with develop's four surfaces. The repair had two; being blind to the
+        # error contract and the model surface is the #861/#667 class exactly — and a
+        # repair asked to fix "500s from incorrect model field names" was, until now,
+        # the one agent in the chain that could not see the model's field names.
+        error_contract = await self._render_error_contract_block(renderer, inputs)
+        if error_contract:
+            variables["error_contract"] = error_contract
+        model_surface = await self._render_model_surface_block(renderer, inputs)
+        if model_surface:
+            variables["model_surface"] = model_surface
         # #667: the appendix's {{testid_surface}} slot rendered empty on every
         # repair — fay-14's repairs regenerated the view blind to the anchor
         # contract the first fill honored. Same section the develop handler
@@ -307,8 +336,40 @@ class _RepairPromptMixin:
         frozen_surface = await self._render_frozen_surface_block(renderer, inputs)
         if frozen_surface:
             variables["frozen_surface"] = frozen_surface
+        rendered = await renderer.render(capability.fill_only_template, variables)
+        return rendered.content
+
+    @staticmethod
+    async def _render_error_contract_block(renderer: Any, inputs: dict[str, Any]) -> str:
+        """Render the ERROR CONTRACT block from threaded lines, or "".
+
+        Mirrors ``DevelopHandler._error_contract_section`` — manifest-derived data
+        (``scaffold.error_seam_instructions``), all prose in the asset (#448).
+        """
+        lines = [str(line).strip() for line in (inputs.get("error_contract") or [])]
+        lines = [line for line in lines if line]
+        if not lines:
+            return ""
         rendered = await renderer.render(
-            "request.development_develop_fill_only_appendix", variables
+            "request.development_develop_error_contract_appendix",
+            {"error_lines": "\n".join(f"- {line}" for line in lines)},
+        )
+        return rendered.content
+
+    @staticmethod
+    async def _render_model_surface_block(renderer: Any, inputs: dict[str, Any]) -> str:
+        """Render the MODEL SURFACE block from threaded lines, or "".
+
+        Mirrors ``DevelopHandler._model_surface_section`` — field-level signatures plus
+        the frozen store, as data; all prose in the asset (#448).
+        """
+        lines = [str(line).strip() for line in (inputs.get("model_surface") or [])]
+        lines = [line for line in lines if line]
+        if not lines:
+            return ""
+        rendered = await renderer.render(
+            "request.development_develop_model_surface_appendix",
+            {"surface_lines": "\n".join(f"- {line}" for line in lines)},
         )
         return rendered.content
 
