@@ -79,7 +79,7 @@ class TestInjectedGeneratorDefects:
         tampered = _tamper(
             emission,
             _CREATE_SHELL,
-            "import { reset } from '@/lib/store'",
+            "import { reset, all } from '@/lib/store'",
             "import { restart } from '@/lib/store'",
         )
         findings = assess_execution_readiness(tampered, tree, manifest)
@@ -90,8 +90,8 @@ class TestInjectedGeneratorDefects:
         tampered = _tamper(
             emission,
             _CREATE_SHELL,
-            "import { reset } from '@/lib/store'",
-            "import { reset } from '@/lib/store'\nimport { agent } from 'supertest'",
+            "import { reset, all } from '@/lib/store'",
+            "import { reset, all } from '@/lib/store'\nimport { agent } from 'supertest'",
         )
         findings = assess_execution_readiness(tampered, tree, manifest)
         assert any("'supertest'" in f and "not a declared dependency" in f for f in findings)

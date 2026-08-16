@@ -43,10 +43,10 @@ _FIXTURE_DIR = (
 # self-contained evidence that the input end did not move.
 _MANIFEST_HASH = "ac1e7be378c54d5966680b85824c6f2c2e4d158eb8dec14d081209223e07053a"
 
-# The fixture's own identity, generated once at GENERATOR_VERSION 1 (2026-08-14). These
+# The fixture's own identity, regenerated at GENERATOR_VERSION 2 (2026-08-16, #936). These
 # stop an in-place fixture regeneration from making the byte test self-referential.
-_AGGREGATE_SPINE_HASH = "550ecfdd4ab8dde20f696d744ffff32647dfb19749930fa01af714e8399c449f"
-_SCAFFOLD_HASH = "8aa15406e13468f453063007c43afee17d6b2cccb5a616b2be10d79031095f9e"
+_AGGREGATE_SPINE_HASH = "dd42983032d035e1fdcd7b4ecd483727ff8bdc1004e5ebb951700f033a5bc30b"
+_SCAFFOLD_HASH = "3650c310caa2223e2be48f8b8f8617e25a5a8240f59f120a3fe96ddd9a5ad468"
 
 
 @pytest.fixture(scope="module")
@@ -65,12 +65,12 @@ def test_the_reference_manifest_is_unmoved():
 def test_generator_version_is_the_fixture_generation(emission):
     """A generator change without a version bump is drift by definition (SIP §4.3);
     a bump without regenerating the fixture is a pin measuring the wrong version."""
-    assert GENERATOR_VERSION == 1
-    assert emission.manifest.generator_version == 1
+    assert GENERATOR_VERSION == 2
+    assert emission.manifest.generator_version == 2
     stored = yaml.safe_load(
         (_FIXTURE_DIR / "verification_scaffold_manifest.yaml").read_text(encoding="utf-8")
     )
-    assert stored["generator_version"] == 1
+    assert stored["generator_version"] == 2
 
 
 def test_emission_reproduces_the_fixture_byte_for_byte(emission):

@@ -2,7 +2,7 @@
 // The spine — placement, imports, lifecycle, invocation, status assertion — is
 // frozen (SIP-0104 §4.2); the marked fill slot is the qa author's mutable surface.
 import { beforeEach, describe, expect, it } from 'vitest'
-import { reset } from '@/lib/store'
+import { reset, all } from '@/lib/store'
 import * as routeApiRuns from '@/app/api/runs/route'
 import * as routeApiRunsRunIdJoin from '@/app/api/runs/[run_id]/join/route'
 
