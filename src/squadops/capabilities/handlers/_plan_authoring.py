@@ -24,6 +24,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from squadops.capabilities.handlers.emission_log import log_emission_shape
 from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
 from squadops.llm.exceptions import LLMError
 from squadops.llm.models import ChatMessage
@@ -152,6 +153,7 @@ async def retry_yaml_call(
             continue
 
         content = response.content
+        log_emission_shape(handler_name, content, response.completion_tokens)
         # Each handler tells us which filename to expect via the
         # closure in parse_and_validate; this layer just hands over the
         # raw YAML or None.
