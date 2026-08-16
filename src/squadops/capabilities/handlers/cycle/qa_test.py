@@ -966,6 +966,22 @@ class QATestHandler(_CycleTaskHandler):
         extracted = extract_fenced_files(
             extraction_source, expected_artifacts=inputs.get("expected_artifacts")
         )
+        # #924: the three outcomes below are indistinguishable afterwards, and P3 renders
+        # a REJECTED fill as the same failing state as a MISSING one — so "the author
+        # emitted nothing", "the author emitted fills that were refused", and "the author
+        # emitted a file instead of fills" all present identically as unfilled slots.
+        # Window rolls 3 and 5 were each diagnosed twice from the result rather than the
+        # emission, wrongly, for exactly this reason.
+        logger.info(
+            "%s emission parse: fills=%d duplicate_slots=%d extracted_files=%d "
+            "expected=%s scaffold_bound=%s",
+            self._handler_name,
+            len(fill_emission.fills) if fill_emission else 0,
+            len(fill_emission.duplicates) if fill_emission else 0,
+            len(extracted),
+            inputs.get("expected_artifacts"),
+            bool(scaffold_input),
+        )
         if not extracted and not (fill_emission and fill_emission.fills):
             from squadops.cycles.emission_integrity import no_fenced_blocks_failure
 
