@@ -316,7 +316,7 @@ until 2b exists.
 |---|---|---|
 | **4a** | **DECIDED 2026-08-15: keep the example, hold it constant, narrow the claim.** Pinned by test | closed; see below |
 | **4b** | **V6** viability run — **served by the SIP-0104 P6 window's counting rolls from roll 3 onward**, not separately scheduled (owner ruling 2026-08-15) | gates V7 |
-| **4c** | Decide **contract size per roll** in the window record | must precede pre-registration |
+| **4c** | **DECIDED 2026-08-16: record probe count and scaffold slot count per roll, non-gating, no floor.** Ruled in the window record — see `1-6-0-v7-fay-window-preregistration.md` §7.1 | closed |
 | **4d** | Pre-registration committed (N, PRD, deploy hash, scoring) → **freeze** | Guard 2 |
 | **4e** | **V7** — the FAY window, unfiltered, **fix nothing until it closes** | the evidence |
 | **4f** | **V8** confirmation shakedown | green |
