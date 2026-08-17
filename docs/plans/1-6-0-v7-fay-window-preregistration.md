@@ -114,6 +114,34 @@ rolls shipped broken software. Roll 6 did not, and neither will a future roll th
 way. The closing record states what each failure *was*, not only how many there were — the
 same category error the roll's own three failure analyses made.
 
+### 2.e The pre-window shakedown — DECLARED NON-COUNTING BEFORE IT RAN *(2026-08-17)*
+
+One `group_run` cycle on the frozen deploy, at the same recipe, launched **before** roll 1 and
+**not part of this window**. Declared here before launch, and again in the cycle's own `notes`
+at creation, because a declaration written after a result is worth nothing — the same reason
+§9 forbids promoting the P6 rolls into V7.
+
+**Why it is worth two hours.** §2.c raised the boundary risk and its mitigation was
+loaded-module verification, which was done: seven containers, module-level checks in
+runtime-api, eve and neo. But a module import is not a cycle. This boundary absorbed **eight
+merged changes and a GENERATOR_VERSION bump** — the widest this line has had — and §5.1 resets
+the window on a *new* mechanical suite failure attributable to the harness. Discovering one at
+roll 4 costs every roll before it. The shakedown converts that from a risk carried through six
+rolls into a fact known before the first.
+
+**What it may and may not do.**
+
+- It **may** reveal a machinery defect, which is then fixed before roll 1 — that is a
+  diagnostic, and fixing what a diagnostic finds is the standing rule.
+- It **may not** be counted, banked, or referred to as a FAY result, whatever it produces. A
+  green shakedown is not evidence of yield; it is evidence the boundary is not broken.
+- Its outcome **does not** move the bar, N, or any §3 parameter.
+
+**If it fails on the squad's output rather than the harness**, that is not a machinery finding
+and nothing is fixed on its account — the window opens as planned. The distinction is the same
+one §5.1 draws, and it is the reason this is declared as a boundary check rather than a
+practice run.
+
 ### 2.c The size of the deploy boundary is itself a risk *(raised 2026-08-16)*
 
 Six PRs now sit ready for the single rebuild that separates P6 from V7: #956 (two audit
