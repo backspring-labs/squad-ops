@@ -233,10 +233,47 @@ Verified by removing `harness_entry_modules`' recorded reason, which fails with 
 
 ---
 
+## 4f. 2e — the disclosures and the vocabulary reconciliation *(2026-08-17)*
+
+### The two disclosures, as they must be stated at promotion
+
+**Seven whole-tree builds per acceptance pass.** `frontend_compiles` is anchored per fill slot, so stack #1 pays three builds and stack #2 pays seven, and a Next build is not the sub-second warm-cache install the check's docstring describes. Kept at parity deliberately: #641/#648 attach the check to the file under evaluation so a failure repairs *where the defect lives*, and dropping to one build for the tree would trade repair targeting for wall clock. A cost, not a concession. Revisit only with a measurement.
+
+**No authorable static check on the API route slots beyond the build.** The nine AST checks parse Python by construction. `tsc --noEmit` cannot be emitted as a command check — `tsc` lives in `node_modules/.bin`, never on `PATH` — so declaring it would produce #707's *"passes the allowlist but cannot run"* class. `next build` runs tsc and `next.config.mjs` declines to ignore type errors, so **the bundler check is the type check.**
+
+> **Cross-check, 2026-08-17.** #939 was filed as *"the nextjs_ts stack has no unresolved-name guard"*, and reading the code independently reached this same conclusion — `next build` runs tsc with errors fatal and the tsconfig includes test files. So the disclosure already covered it, and **#939 is largely redundant with a recorded disclosure rather than a new gap.** What #939 does raise that this disclosure does not is *attribution*: a whole-project build failure does not name the task that wrote the bad file, where a per-file AST check would. That is a diagnosability gap, and it is the honest residue of the issue.
+
+### The vocabulary reconciliation — three axes, one of them misnamed
+
+The open question was recorded as *"two stack vocabularies remain two — `fullstack_fastapi_react` vs `fastapi`. S1 removed the duplicate declaration, not the drift."* Measured, the picture is sharper than that and the answer is not "rename one".
+
+| axis | stack #1 | stack #2 | what it names |
+|---|---|---|---|
+| stack identity | `fullstack_fastapi_react` | `nextjs_ts` | the stack. **One value across five registries** — S1's consolidation holds |
+| probe profile | `fastapi_uvicorn` | `nextjs_next_start` | how the app is **booted** |
+| `check_stack` | `fastapi` | *(unset)* | which **AST dialect** the typed-check evaluators understand |
+
+**Two of the three are not drift.** The stack identity is genuinely one value in five places. The probe profile differs from the stack id on *both* stacks, consistently, and for a reason: booting is a separate axis, and two stacks could share a boot mechanism (two Python stacks on uvicorn) while sharing nothing else. Naming that axis after the stack would be the error, not the fix.
+
+**`check_stack` is the real drift, and it is worse than a naming smell.** It carries two different questions on one field:
+
+| evaluator | guard | what it actually needs |
+|---|---|---|
+| `endpoint_defined` | `if stack != "fastapi"` | genuinely FastAPI — it reads `@router.get` decorators |
+| `field_present` | `if stack is None` | any declared dialect |
+| `function_defined` | `if stack is None` | any declared dialect |
+| `harness_boundary` | `if stack is None` | any declared dialect |
+
+So a third stack declaring `check_stack: "flask"` would skip `endpoint_defined` **correctly** (Flask has no `@router.get`) and pass the other three **correctly** — by accident, because one field is answering "which framework's idioms?" and "is any dialect declared?" at once. The accident holds only while exactly one framework-specific evaluator exists.
+
+**Recommendation, for 2g to state rather than imply.** The blueprint should carry the *language* dialect, not the framework, and framework-specific evaluators should declare their own requirement rather than compare against a stack-shaped string. Concretely: `check_stack` becomes the dialect (`python`), and `endpoint_defined` gates on a framework it names itself. That is a 1.7 change — it touches the evaluator contract — so **2g states it as a known conflation with its evidence**, and does not quietly promote `check_stack` as though it were one axis.
+
+---
+
 ## 5. Open questions carried to 2g
 
 1. **Does the blueprint own the packaging set?** `required_files` and `qa_handoff_expectations` are identical across both stacks — weak evidence they are universal rather than blueprint-owned. Tier 3 above takes that reading; a third stack could overturn it. §4c sharpens the question: the packaging set is plausibly a **deployment-target** fact, not a stack fact.
 2. **One blueprint per stack, or backend + frontend composition?** Next.js **collapses the split entirely** — one project, one tree, one build. Evidence against composition as the primary shape, and it came from the stack chosen to stress the manifest's api/frontend split. §4c adds a third candidate axis (deployment target) to whatever composition model the pack-combo test produces.
 3. **`expand` as callable or data?** Tier 2 takes the callable side, on the directory-as-identity evidence above.
-4. **Two stack vocabularies remain two** — `fullstack_fastapi_react` vs `fastapi`. S1 removed the duplicate declaration, not the drift. Owed at 2e.
+4. **Two stack vocabularies remain two** — `fullstack_fastapi_react` vs `fastapi`. ~~Owed at 2e.~~ **Answered at 2e (§4f): three axes, not two vocabularies.** Stack identity and probe profile are both legitimate and consistent; `check_stack` is the real conflation, carrying "which framework's idioms" and "is any dialect declared" on one field. 2g states it; the fix is 1.7.
 5. **Where does a blueprint live?** `stack_nextjs_ts.py` is already a pack shipping its own expander; stack #1 is still inline in `scaffold.py`. The asymmetry resolves by pushing S1 out, not pulling S2 in.
