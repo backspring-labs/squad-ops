@@ -147,10 +147,28 @@ not to fix and continue.
 
 ## 7. Open rulings — all required before the window opens
 
-### 7.1 Contract size per roll (plan step 4c)
+### 7.1 Contract size per roll (plan step 4c) — DECIDED
 
-**Recommendation: record probe count and scaffold slot count per roll, non-gating, with no
-floor.**
+**Owner ruling 2026-08-16: record probe count and scaffold slot count per roll, non-gating,
+with no floor.** This is the decision plan step 4c requires to be made *in the window record*,
+so ruling it here satisfies 4c by construction.
+
+**What is counted, exactly:**
+
+- **probe count** — entries under `behavioral.probes` in the roll's derived
+  `verification_contract.yaml`;
+- **slot count** — behaviour slots in the roll's `verification_scaffold_manifest`, one per
+  emitted shell file.
+
+Both are read from stored artifacts, so they are recoverable after the fact and cannot be
+mis-transcribed.
+
+**Non-gating means non-gating.** Neither number may reject a roll, trigger a re-roll, or be
+fed back into authoring. A roll with 2 probes counts exactly as much as a roll with 5.
+
+**The closing record reports the distribution, not a mean.** "6 rolls, probes 5/2/5/4/x/y" is
+the honest form; a single averaged figure would conceal precisely the variation this ruling
+exists to expose.
 
 The evidence is now considerably stronger than the 29-versus-57-checks observation that raised
 this. Four P6 rolls at an **identical** `resolved_config_hash`, same PRD, frozen deploy:
