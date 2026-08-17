@@ -214,6 +214,25 @@ Recorded because the numbers moved every time and the first ones were wrong: cor
 
 ---
 
+## 4e. 2f — S5's admission rule is enforced, not just written *(2026-08-17)*
+
+S5's rule lived only in `1-6-0-authorship-plan.md`. A release plan is superseded at the cut, which is the failure CLAUDE.md names and SIP-0103 §5d already paid for — so the rule was one release from vanishing.
+
+It is now **enforced by 2c's gate** (`test_stack_blueprint_falsification.py`), which classifies exactly as S5 prescribes:
+
+| a new field… | gate outcome |
+|---|---|
+| populated on both stacks | falsified on each → admitted |
+| populated on **one** stack | fails until a reason is recorded, *and* some stack must populate it |
+| populated on **no** stack | rejected — an optional nothing populates is unevidenced, not optional |
+| read by nothing | rejected outright |
+
+Verified by removing `harness_entry_modules`' recorded reason, which fails with *"unset on nextjs_ts with no recorded reason. Either record why it is optional (and confirm another stack populates it), or delete it."* That is S5's escape valve — a one-stack need declared with its reason — enforced rather than requested.
+
+**What remains for 2f is the statement, not the mechanism.** The rule's permanent home is the Stack Blueprint SIP, which 2g writes. Until then the enforcement outlives the plan even if the prose does not, which is the reverse of the usual failure and the safer direction.
+
+---
+
 ## 5. Open questions carried to 2g
 
 1. **Does the blueprint own the packaging set?** `required_files` and `qa_handoff_expectations` are identical across both stacks — weak evidence they are universal rather than blueprint-owned. Tier 3 above takes that reading; a third stack could overturn it. §4c sharpens the question: the packaging set is plausibly a **deployment-target** fact, not a stack fact.
