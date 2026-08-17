@@ -430,9 +430,20 @@ def test_the_frozen_store_publishes_its_call_signatures():
         for line in scaffold.frozen_surface_index_lines(_manifest_for("nextjs_ts"))
         if "lib/store.ts" in line
     )
-    assert "`all(table: string)" in line, "the arity roll 8 guessed wrong must be visible"
-    assert "`insert(table: string, row: Record<string, unknown>)" in line
+    assert "`all(table: Table)" in line, "the arity roll 8 guessed wrong must be visible"
+    assert "`insert(table: Table, row: Record<string, unknown>)" in line
     assert "`reset()" in line, "a zero-argument function must show empty parens, not a bare name"
+
+    # #967, the same sentence one level further down: `table: Table` publishes the arity and
+    # withholds the VALUES. An author who can see the type name but not its members guesses
+    # the member — which is exactly what roll 6 did, naming a table the app did not use and
+    # having a working application rejected for it. The index must carry both.
+    assert "defines `Table`" in line
+    assert "TABLES = {" in line, "the legal table names must be visible, not just the type"
+    assert "RunEvent: 'run_event'" in line, (
+        "the derived name must appear literally, entity and table side by side — the mapping "
+        "is what an author needs, not the rule for computing it"
+    )
 
 
 def test_a_generic_function_still_publishes_its_parameters():
@@ -511,7 +522,7 @@ def test_the_frozen_store_publishes_its_types_and_returns():
         for line in scaffold.frozen_surface_index_lines(_manifest_for("nextjs_ts"))
         if "lib/store.ts" in line
     )
-    assert "`find(table: string, id: string)" in line, (
+    assert "`find(table: Table, id: string)" in line, (
         "the parameter type roll 12's repair guessed wrong must be visible"
     )
     assert "`nextId(): string`" in line, (

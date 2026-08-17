@@ -246,7 +246,13 @@ export default defineConfig({
 })
 """
 
-_HARNESS_TEST = """// Scaffold-owned harness (SIP-0100). QA suites consume the seams this proves, and must
+_HARNESS_TEST_HEAD = """// Scaffold-owned harness (SIP-0100). QA suites consume the seams this proves, and must
+// not reach past them into the app entry — the boundary that killed pf-25/26 on stack #1.
+import { describe, it, expect } from 'vitest'
+import { reset, insert, all, TABLES } from '@/lib/store'
+"""
+
+_HARNESS_TEST_NO_ENTITIES = """// Scaffold-owned harness (SIP-0100). QA suites consume the seams this proves, and must
 // not reach past them into the app entry — the boundary that killed pf-25/26 on stack #1.
 import { describe, it, expect } from 'vitest'
 import { reset, insert, all } from '@/lib/store'
@@ -263,24 +269,64 @@ describe('scaffold harness', () => {
 })
 """
 
-_STORE = """// In-memory persistence, scaffold-owned and frozen. Module-level state reset per test via
+
+def _harness_test_source(manifest: Any) -> str:
+    """The isolation harness, addressing a real table rather than a magic literal (#967).
+
+    It used `'__probe'`, which a typed `Table` union rejects. Reserving a member for it was
+    the tempting alternative and is exactly the untyped escape hatch #967 removes — a
+    reserved name is a legal string the app could also pick. So the harness uses the first
+    declared table via `TABLES`, which additionally demonstrates the accessor the fill briefs
+    point authors at.
+    """
+    entities = [e.name for e in (getattr(manifest, "entities", ()) or ())]
+    if not entities:
+        return _HARNESS_TEST_NO_ENTITIES
+    ref = f"TABLES.{entities[0]}"
+    return (
+        _HARNESS_TEST_HEAD
+        + f"""
+describe('scaffold harness', () => {{
+  it('provides an isolated store per test', () => {{
+    reset()
+    expect(all({ref})).toHaveLength(0)
+    insert({ref}, {{ id: 'x' }})
+    expect(all({ref})).toHaveLength(1)
+    reset()
+    expect(all({ref})).toHaveLength(0)
+  }})
+}})
+"""
+    )
+
+
+_STORE_HEADER = """// In-memory persistence, scaffold-owned and frozen. Module-level state reset per test via
 // `reset()` — the coverage expectation the contract states for every stack.
-const tables: Record<string, Record<string, unknown>[]> = {}
+//
+// Table names are DERIVED FROM THE MANIFEST'S ENTITIES and typed (#967). Before this the
+// table was a free `string`: the application named one, its test suite named another, and
+// the disagreement surfaced as an empty array at assertion time — indistinguishable from a
+// handler that never persisted at all. SIP-0104 window roll 6 was rejected that way with an
+// application that worked. A name the two sides disagree about is now a COMPILE error
+// listing the legal values, and `next build` runs tsc with errors fatal, so it fails before
+// the suite ever runs."""
+
+_STORE_BODY = """
 
 export function reset(): void {
-  for (const key of Object.keys(tables)) delete tables[key]
+  for (const key of Object.keys(tables)) delete tables[key as Table]
 }
 
-export function all(table: string): Record<string, unknown>[] {
+export function all(table: Table): Record<string, unknown>[] {
   return tables[table] ?? []
 }
 
-export function insert(table: string, row: Record<string, unknown>): Record<string, unknown> {
+export function insert(table: Table, row: Record<string, unknown>): Record<string, unknown> {
   ;(tables[table] ??= []).push(row)
   return row
 }
 
-export function find(table: string, id: string): Record<string, unknown> | undefined {
+export function find(table: Table, id: string): Record<string, unknown> | undefined {
   return (tables[table] ?? []).find((r) => r.id === id)
 }
 
@@ -288,6 +334,47 @@ export function nextId(): string {
   return Math.random().toString(36).slice(2, 10)
 }
 """
+
+
+def _table_name(entity_name: str) -> str:
+    """``RunEvent`` → ``run_event``. The derivation, in one place.
+
+    Exists as a function rather than inline so the tests can pin it and the authoring briefs
+    can render the same values the store exports. The point of #967 is that nobody
+    reproduces this rule by hand — ``TABLES`` is the answer and the type is the enforcement.
+    """
+    return re.sub(r"(?<!^)(?=[A-Z])", "_", entity_name).lower()
+
+
+def _store_source(manifest: Any) -> str:
+    """The store, with its table names typed from the manifest's entities (#967).
+
+    A manifest declaring no entities keeps an open signature: there is no union to derive,
+    and ``never`` would make the store unusable rather than safe.
+    """
+    entities = [e.name for e in (getattr(manifest, "entities", ()) or ())]
+    if not entities:
+        return (
+            _STORE_HEADER
+            + "\n//\n// No entities are declared, so there is no table union to derive and the"
+            + " signature\n// stays open. There is also nothing for two authors to disagree"
+            + " about.\nexport type Table = string\n"
+            + "const tables: Record<string, Record<string, unknown>[]> = {}"
+            + _STORE_BODY
+        )
+    lines = [
+        _STORE_HEADER,
+        "",
+        "export const TABLES = {",
+        *(f"  {name}: '{_table_name(name)}'," for name in entities),
+        "} as const",
+        "",
+        "export type Table = (typeof TABLES)[keyof typeof TABLES]",
+        "",
+        "const tables: Partial<Record<Table, Record<string, unknown>[]>> = {}",
+    ]
+    return "\n".join(lines) + _STORE_BODY
+
 
 _API_CLIENT = """// Client fetch helper, scaffold-owned. Views consume this rather than calling fetch
 // directly, so the error envelope is parsed in exactly one place.
@@ -437,11 +524,11 @@ def expand_nextjs_ts(manifest: InterfaceManifest) -> list[dict[str, str]]:
         {"name": "next.config.mjs", "content": _NEXT_CONFIG},
         {"name": "vitest.config.ts", "content": _VITEST_CONFIG},
         {"name": "lib/models.ts", "content": _models_source(manifest)},
-        {"name": "lib/store.ts", "content": _STORE},
+        {"name": "lib/store.ts", "content": _store_source(manifest)},
         {"name": "lib/errors.ts", "content": _errors_source(manifest)},
         {"name": "lib/api.ts", "content": _API_CLIENT},
         {"name": "app/layout.tsx", "content": _LAYOUT},
-        {"name": "__tests__/harness.test.ts", "content": _HARNESS_TEST},
+        {"name": "__tests__/harness.test.ts", "content": _harness_test_source(manifest)},
     ]
     for path, endpoints in _route_groups(manifest).items():
         files.append({"name": path, "content": _route_stub(path, endpoints)})

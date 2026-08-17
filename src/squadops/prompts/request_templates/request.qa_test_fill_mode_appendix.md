@@ -62,6 +62,16 @@ as a failing state):
 - `body` is the final response's parsed JSON; where a create precedes the invocation,
   `created` is the created entity's parsed JSON.
 
+**Asserting on the store — pass `TABLES.<Entity>`, never a string you invent.**
+`@/lib/store` exports `TABLES`, one entry per declared entity, and its functions accept only
+those values. Write `expect(all(TABLES.Run)).toHaveLength(1)`. A name you make up is a
+compile error, and the build fails on compile errors, so an invented name costs the run.
+
+This is spelled out because it has already cost one. The store used to accept any string:
+an application named its table one thing, the suite named it another, and the mismatch
+appeared as an empty array — which reads exactly like a handler that never saved anything.
+Three repair rounds blamed the application, and the application was correct.
+
 Additive tests are welcome IN ADDITION to fills: whole new test files beside the
 scaffold, emitted as normal ```typescript:__tests__/<name>.test.ts``` fences, under the
 standing rules (declared dependencies only, in-process execution model, no live server).
