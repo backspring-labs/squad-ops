@@ -12,6 +12,7 @@ import pytest
 
 from squadops.capabilities.ui_data_path import (
     LIVE_SERVER,
+    METHOD_NOT_ALLOWED,
     PAGE_NOT_API,
     ROUTE_MISSING,
     SAMPLE_SEGMENT,
@@ -149,6 +150,114 @@ class TestFailureMessages:
         files = {"app/page.tsx": "const r = await fetch('http://localhost:3000/api/runs')"}
         (call,) = extract_ui_calls(files, "nextjs_ts")
         assert "live server" in describe_failure(call, LIVE_SERVER)
+
+
+#: The shape a formatter produces once a call carries a second argument: the opening
+#: `api<Run>(` sits alone and the path lands on the next line. Verbatim from P6 roll 1's
+#: `app/runs/[run_id]/page.tsx` (lines 58 and 88) and reproduced by rolls 3 and 4.
+_WRAPPED_UI = {
+    "app/runs/[run_id]/page.tsx": """'use client';
+import { api } from '@/lib/api';
+export default function Page() {
+  const updatedRun = await api<Run>(
+    `/api/runs/${runId}/join`,
+    { method: 'POST' }
+  );
+  const afterLeave = await api<Run>(
+    `/api/runs/${runId}/leave`,
+    { method: 'POST' }
+  );
+}
+"""
+}
+
+
+class TestWrappedCallSites:
+    """#952. The first version scanned `content.split("\\n")` line by line, so a call
+    written across two lines matched nothing. That does not weaken the check — it removes
+    it, silently, while the roll still reads as audited. P6 roll 1 passed with its join and
+    leave call sites extracted as zero, and the defect class this module exists to catch is
+    exactly the one those two calls could have carried."""
+
+    def test_a_call_whose_path_wraps_to_the_next_line_is_found(self):
+        calls = extract_ui_calls(_WRAPPED_UI, "nextjs_ts")
+        assert [c.request_path for c in calls] == [
+            f"/api/runs/{SAMPLE_SEGMENT}/join",
+            f"/api/runs/{SAMPLE_SEGMENT}/leave",
+        ]
+
+    def test_the_line_reported_is_where_the_call_opens_not_where_the_path_sits(self):
+        """A message pointing at the path line sends a reader to an argument rather than
+        to the call, and the call is what has to change."""
+        calls = extract_ui_calls(_WRAPPED_UI, "nextjs_ts")
+        assert [c.line for c in calls] == [4, 8]
+        assert "app/runs/[run_id]/page.tsx:4" in describe_failure(calls[0], ROUTE_MISSING)
+
+    def test_an_unterminated_quote_does_not_swallow_the_rest_of_the_file(self):
+        """Scanning whole content makes a runaway match possible where line-scanning made
+        it impossible, so the path class excludes newlines. Without that, one stray
+        backtick yields a single call with a multi-line garbage path and every real call
+        after it disappears."""
+        files = {
+            "app/page.tsx": "const a = await api('/api/runs\nconst b = await api('/api/teams')\n"
+        }
+        calls = extract_ui_calls(files, "nextjs_ts")
+        assert [c.request_path for c in calls] == ["/api/teams"]
+
+    def test_a_wrapped_call_and_an_inline_call_are_both_found_in_source_order(self):
+        files = {
+            "app/page.tsx": """const list = await api<Run[]>('/api/runs');
+const joined = await api<Run>(
+  `/api/runs/${runId}/join`,
+  { method: 'POST' }
+);
+"""
+        }
+        calls = extract_ui_calls(files, "nextjs_ts")
+        assert [(c.line, c.request_path) for c in calls] == [
+            (1, "/api/runs"),
+            (2, f"/api/runs/{SAMPLE_SEGMENT}/join"),
+        ]
+
+
+class TestMethodNotAllowed:
+    """#953. The probe is a GET whatever verb the UI uses — sending the real verb would
+    mutate the app under audit and make a second run of the audit meaningless. A POST-only
+    route therefore answers 405 from the router with no content type, which the
+    not-JSON rule read as `PAGE_NOT_API`. P6 rolls 3 and 4 were both failed on correct
+    join and leave routes, each needing a human to boot the app and POST by hand."""
+
+    @pytest.mark.parametrize("content_type", ["", "text/plain", "text/html; charset=utf-8"])
+    def test_a_405_means_the_route_exists_whatever_it_carries(self, content_type):
+        """405 is the strongest available evidence: the router matched the path and
+        rejected only the method."""
+        verdict = classify_ui_response(
+            "/api/runs/x/join", METHOD_NOT_ALLOWED, content_type, via_seam=True
+        )
+        assert verdict == SERVED
+
+    def test_a_page_is_still_caught_after_the_405_rule(self):
+        """The over-correction to guard against: 405 becoming SERVED must not make every
+        non-JSON answer SERVED. A page answers 200 with HTML and never 405."""
+        assert (
+            classify_ui_response("/runs/x", 200, "text/html; charset=utf-8", via_seam=True)
+            == PAGE_NOT_API
+        )
+
+    def test_a_framework_404_is_still_a_missing_route(self):
+        assert classify_ui_response("/api/nope", 404, "text/html") == ROUTE_MISSING
+
+
+def test_the_two_defects_masked_each_other_on_a_correct_app():
+    """The reason these ship together. Roll 1's wrapped join/leave calls were never
+    extracted (#952), so its audit passed vacuously. Fixing extraction alone would have
+    surfaced those same calls into the 405 misread (#953) and failed a correct app —
+    turning a false pass into a false failure. Only both together verify it."""
+    calls = extract_ui_calls(_WRAPPED_UI, "nextjs_ts")
+    assert len(calls) == 2, "extraction must find them at all"
+    for call in calls:
+        # what a correct POST-only route actually answers a GET probe with
+        assert classify_ui_response(call.request_path, METHOD_NOT_ALLOWED, "") == SERVED
 
 
 def test_a_correctly_wired_ui_produces_no_failing_paths():

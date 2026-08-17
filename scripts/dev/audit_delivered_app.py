@@ -114,9 +114,19 @@ async def _run_ui_data_path(files: dict[str, str], stack: str, base_url: str) ->
 
     The contract probes above prove the API answers where the CONTRACT says; this proves
     it answers where the UI ASKS. Roll 1 passed the former and failed the latter on every
-    page action, and nothing noticed. Each distinct path is requested once; only a 404
-    that no route produced (framework HTML rather than the app's JSON envelope) counts as
-    a failure, so an app correctly reporting an unknown id still passes.
+    page action, and nothing noticed. Each distinct path is requested once.
+
+    **Every probe is a GET, whatever verb the UI uses**, and deliberately so: issuing the
+    real verb would mutate the application under audit — a POST probe creates a record —
+    and the audit has to be re-runnable against the same workspace. The cost is that a
+    POST-only route answers 405, which ``classify_ui_response`` reads as SERVED (#953);
+    the alternative, sending real verbs, buys a stronger signal by destroying the
+    property that makes the audit repeatable.
+
+    A path fails only when the answer shows no route is mounted there: a 404 the framework
+    produced (HTML rather than the app's own JSON envelope), or HTML through the JSON seam,
+    which means the call landed on a page. An app correctly reporting an unknown id still
+    passes, and so does one that rejects the probe's method.
     """
     calls = extract_ui_calls(files, stack)
     if not calls:
