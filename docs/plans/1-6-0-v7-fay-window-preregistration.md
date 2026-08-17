@@ -74,8 +74,8 @@ the declaration is recorded here **before** roll 1 and repeated in the closing c
 
 | Parameter | Value |
 |---|---|
-| **N** (rolls) | _____ (recommendation: 6 — see §7.2) |
-| **FAY bar** | _____ (1.4 precedent: ≥4/6) |
+| **N** (rolls) | **6** — owner ruling 2026-08-16, §7.2 |
+| **FAY bar** | **≥ 4/6** — owner ruling 2026-08-16, §7.2 |
 | PRD | `group_run_v0.5.md`, sha `_____` |
 | Squad profile | `full` |
 | Request profile | `validated-fullstack` |
@@ -167,11 +167,18 @@ A floor would invite padding; silence would let a FAY average combine rolls that
 materially different amounts of behaviour. Recording without gating is the only option that
 neither distorts the authoring nor overstates the number.
 
-### 7.2 N, and the FAY bar
+### 7.2 N, and the FAY bar — DECIDED
 
-Recommendation **N = 6**, bar declared explicitly here before roll 1. The 1.4 arc used ≥4/6.
-Both numbers are the maintainer's call; what this document fixes is that they are chosen
-**now**, in ignorance of the results.
+**Owner ruling 2026-08-16: N = 6, bar ≥ 4/6.** Chosen before roll 1 and before any V7 roll
+exists, matching the 1.4 arc's precedent. Neither number moves once the window opens; in
+particular the window does not stop early on a good run and does not extend on a bad one.
+
+**Consequence that must be settled with it (see §7.4): this bar is stricter than the 1.6 cut
+gate.** The gate requires *authored-mode FAY repeatably > 0*, which two successes satisfy. A
+result of 2/6 or 3/6 therefore **clears the cut gate and misses this window's own bar**. That
+is a legitimate outcome, not a contradiction — the gate asks whether the capability exists, the
+bar asks whether it is reliable — but which of the two the release claims must be fixed now
+rather than argued after the number is known.
 
 ### 7.3 Does gate approval count as manual intervention?
 
@@ -195,11 +202,27 @@ Three candidate rulings:
 
 If (c) is chosen, the verbatim approval text goes here: `_____`.
 
-### 7.4 Exit clause
+### 7.4 Exit clause, and what each outcome band claims
 
-Recommendation: if FAY is still 0 after N rolls, the window closes at 0 and the claim is
-narrowed rather than the window extended. Extending a window after seeing a zero is the same
-error as designating one after seeing greens.
+The window always closes at 6 rolls. It is never extended on a poor result and never stopped
+early on a good one.
+
+With N = 6 and the bar at ≥4/6, three outcome bands exist and each needs its claim fixed now:
+
+| Result | Cut gate (*repeatably > 0*) | This window's bar | Claim the release may make |
+|---|---|---|---|
+| **≥ 4/6** | met | met | _____ |
+| **1–3 / 6** | met at ≥2; 1/6 is arguable | missed | _____ |
+| **0/6** | not met | missed | _____ |
+
+The middle band is the one that will actually cause an argument, because it clears the gate
+and misses the bar. Writing its sentence now — while the number is unknown — is the only time
+it can be written honestly. Recommendation: the middle band claims *the capability is
+demonstrated and its reliability is not*, banks the figure as 1.8's baseline regardless, and
+does **not** re-run the window to improve it.
+
+A 0/6 result closes at 0 and narrows the claim; extending after seeing a zero is the same
+error as designating a window after seeing greens.
 
 ---
 
