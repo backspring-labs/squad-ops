@@ -229,6 +229,13 @@ was never in the 1a sweep) · and can **M6's taxonomy name the subsystem** if it
 **Nothing is yet known about whether the Next.js stack works.** The 2026-08-10 run never
 reached expansion for it.
 
+> **CLOSED 2026-08-17: 1e is credited to P6 roll 1, `cyc_24aac7c22be1`, resting on the
+> corrected audit (#952/#953).** Its deliverable was hand-verified during the window and the
+> corrected instrument passes it on all five UI call sites, replayed against unchanged stored
+> artifacts. **The credit rests on the corrected instrument and the record says so** — as run,
+> roll 1's check found 2 of 5 call sites. Full reasoning, including the roll 2 alternative
+> that was weighed and not taken, in `sip-0104-p6-window-record.md`.
+
 **1e is credited at the first SIP-0104 P6 roll that passes the delivered-app audit
 (owner ruling 2026-08-15).** The P6 window's rolls *are* authored-mode `nextjs_ts` cycles on
 this PRD, so 1e needs no separate roll — but which one closes it is a judgment, and this is
@@ -315,7 +322,7 @@ until 2b exists.
 | Step | Work | Note |
 |---|---|---|
 | **4a** | **DECIDED 2026-08-15: keep the example, hold it constant, narrow the claim.** Pinned by test | closed; see below |
-| **4b** | **V6** viability run — **served by the SIP-0104 P6 window's counting rolls from roll 3 onward**, not separately scheduled (owner ruling 2026-08-15) | gates V7 |
+| **4b** | **V6** viability run — served by the SIP-0104 P6 window's counting rolls from roll 3 onward (owner ruling 2026-08-15). **COMPLETE, ruled 2026-08-17**: rolls 3, 4 and 5 banked; record in `sip-0104-p6-window-record.md` | closed |
 | **4c** | **DECIDED 2026-08-16: record probe count and scaffold slot count per roll, non-gating, no floor.** Ruled in the window record — see `1-6-0-v7-fay-window-preregistration.md` §7.1 | closed |
 | **4d** | Pre-registration committed (N, PRD, deploy hash, scoring) → **freeze** | Guard 2 |
 | **4e** | **V7** — the FAY window, unfiltered, **fix nothing until it closes** | the evidence |

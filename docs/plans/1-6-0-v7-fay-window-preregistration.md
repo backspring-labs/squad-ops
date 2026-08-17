@@ -36,7 +36,7 @@ is a separate, deliberate act taken after the window closes.
 | 2.4 | Deploy frozen; commit and image ids recorded in §3 | pending — rebuilt again for #967, ids recorded at freeze |
 | **2.7** | **#967 fixed and deployed** — see §2.d. Added after roll 6; blocking on the same argument as 2.2 | **fixed (#973), deploying** |
 | 2.5 | Zero open focus leases immediately before roll 1 | check at launch |
-| 2.6 | Every ruling in §7 closed | 7.1–7.3 closed; 7.4's middle band owner-ruled, its other three bands drafted and awaiting a nod |
+| 2.6 | Every ruling in §7 closed | **MET** — 7.1, 7.2, 7.3 and 7.4 all closed; 7.4's remaining bands and the 1/6 split ruled 2026-08-17 |
 
 ### 2.a Why the audit defects are blocking, not cosmetic
 
@@ -426,16 +426,15 @@ ruling exists to prevent.
 The window always closes at 6 rolls. It is never extended on a poor result and never stopped
 early on a good one.
 
-**Owner ruling 2026-08-16 on the middle band** (2–3 of 6); the remaining bands are drafted
-consistently with it and are noted as such, so the record does not report a ruling that was
-not made.
+**Owner ruling 2026-08-16 on the middle band** (2–3 of 6). **All remaining bands ruled
+2026-08-17**, including the 1/6 split, so every cell below is decided and none is a draft.
 
 | Result | Cut gate (*repeatably > 0*) | This window's bar | Claim the release may make |
 |---|---|---|---|
-| **≥ 4/6** | met | met | A squad-authored design produces a working application with no human intervention, at a rate of N of 6 on a pre-registered window against a frozen deploy. *(drafted)* |
+| **≥ 4/6** | met | met | A squad-authored design produces a working application with no human intervention, at a rate of N of 6 on a pre-registered window against a frozen deploy. *(**owner-ruled 2026-08-17**)* |
 | **2–3 / 6** | met | missed | The release claims that a squad-authored design **can** produce a working application with no human intervention, and does **not** claim it does so reliably. The figure is banked as the authored-mode baseline for 1.8 to measure against. *(**owner-ruled**)* |
-| **1 / 6** | **not met** — see below | missed | Same as 0/6: a single success is not repetition. The release claims the path has been observed to complete end to end, not that the capability is demonstrated. The figure is banked. *(drafted)* |
-| **0/6** | not met | missed | The release makes no authored-mode FAY claim. The window is reported at 0 with its per-roll failure classes named, and 0 is the baseline. *(drafted)* |
+| **1 / 6** | **not met** — see below | missed | Same as 0/6: a single success is not repetition. The release claims the path has been observed to complete end to end, not that the capability is demonstrated. The figure is banked. *(**owner-ruled 2026-08-17**)* |
+| **0/6** | not met | missed | The release makes no authored-mode FAY claim. The window is reported at 0 with its per-roll failure classes named, and 0 is the baseline. *(**owner-ruled 2026-08-17**)* |
 
 **Two rules attach to every band, and they matter more than the wording.**
 
@@ -446,8 +445,9 @@ not made.
    3/6, where one more roll could tip it over the bar. That is the move pre-registration
    exists to block. Six rolls, whatever they say, done.
 
-**Why 1/6 is separated from the 2–3 band** *(drafted, not owner-ruled — overrule if you read
-it otherwise)*. The cut gate's wording is *repeatably > 0*, and one success is not repetition.
+**Why 1/6 is separated from the 2–3 band** *(**owner-ruled 2026-08-17**, on the reasoning
+below; it was raised as the one band most open to a different reading and settled deliberately
+while the number is unknown)*. The cut gate's wording is *repeatably > 0*, and one success is not repetition.
 Grouping 1/6 with 2–3 would let a single green satisfy a gate whose whole point is that one
 green is not evidence. The conservative reading is taken because the alternative claims more
 than the data supports, and because at 1/6 the pressure to argue the generous reading will be
