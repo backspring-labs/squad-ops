@@ -564,7 +564,10 @@ class QATestHandler(_CycleTaskHandler):
         inside the merged shells, attributed to the fill layer.
         """
         from squadops.capabilities.verification_scaffold import VerificationScaffoldManifest
-        from squadops.capabilities.verification_scaffold_fill import merge_fills
+        from squadops.capabilities.verification_scaffold_fill import (
+            measure_assertion_strength,
+            merge_fills,
+        )
 
         record = VerificationScaffoldManifest.from_dict(scaffold_input["manifest"])
         shell_paths = {f.path for f in record.files}
@@ -590,6 +593,11 @@ class QATestHandler(_CycleTaskHandler):
                 {"slot_id": d.slot_id, "detail": d.detail} for d in merged.misaddressed
             ],
             "dropped_shell_rewrites": dropped,
+            # #980: what the fills ASSERT, not just that slots were filled. The shakedown
+            # banked a retreat as a clean success because the record could not tell 8 rich
+            # fills from 8 that had dropped every store assertion. Banked rather than logged
+            # so the per-roll record reads it from stored state.
+            "assertion_strength": measure_assertion_strength(fill_emission),
         }
         merged_suite_files = [{"filename": f.path, "content": f.content} for f in merged.files]
         return kept + merged_artifacts, merged_suite_files, evidence

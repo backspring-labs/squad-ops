@@ -111,6 +111,53 @@ class FillEmission:
     duplicates: tuple[str, ...] = ()
 
 
+#: Symbols ``lib/store.ts`` exports. A fill referencing one of these is asserting on
+#: persisted state; a fill referencing none is asserting only on the response it was handed.
+_STORE_SYMBOLS = ("all", "insert", "find", "reset", "TABLES", "nextId")
+
+
+def measure_assertion_strength(emission: FillEmission) -> dict:
+    """How much the fills assert, and whether any of it is about the store (#980).
+
+    **Why this is measured rather than assumed.** The pre-V7 shakedown finished `accepted`
+    with 14 of 14 criteria after its qa author retreated: attempt 1 emitted 4,896 completion
+    tokens of fills asserting response values *and* store effects; attempt 3 emitted 711
+    tokens asserting `body.id`, `body.title` and `body.datetime` and touching the store
+    nowhere. Both were recorded identically as "8 of 8 fills on the first attempt", because
+    the record counted slots and not what the slots say.
+
+    So a roll that retreated was indistinguishable from a roll that was right first time.
+    This does not gate anything — an author may legitimately have nothing to say about the
+    store for a given behaviour — but the closing claim of a measurement window cannot
+    describe assertion strength it never recorded.
+
+    ``store_slots`` is the load-bearing field. ``body_chars`` is the cheap corroborator: the
+    7x drop between those two attempts was visible in data already logged and read by nobody.
+    """
+    bodies = {f.slot_id: f.body for f in emission.fills if not f.is_not_applicable}
+    store_slots = sorted(
+        slot
+        for slot, body in bodies.items()
+        if any(re.search(rf"\b{sym}\s*[(.]", body) for sym in _STORE_SYMBOLS)
+    )
+    used = sorted(
+        {
+            sym
+            for body in bodies.values()
+            for sym in _STORE_SYMBOLS
+            if re.search(rf"\b{sym}\s*[(.]", body)
+        }
+    )
+    return {
+        "filled_slots": len(bodies),
+        "not_applicable_slots": sum(1 for f in emission.fills if f.is_not_applicable),
+        "body_chars": sum(len(b) for b in bodies.values()),
+        "store_slots": store_slots,
+        "store_symbols_used": used,
+        "any_fill_touches_the_store": bool(store_slots),
+    }
+
+
 def parse_fill_emission(text: str) -> FillEmission:
     """Extract fill blocks from an authored emission.
 

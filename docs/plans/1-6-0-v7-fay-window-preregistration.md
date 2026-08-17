@@ -210,8 +210,19 @@ never thresholds.
 | **scaffold slot count** — non-gating | scaffold manifest |
 | correction rounds | `runtime_activities` |
 | fills on first attempt / slots | eve emission-parse log line |
+| **whether any fill asserts on the store** — non-gating (#980) | `fill_merge.assertion_strength.any_fill_touches_the_store` |
+| **fill body size, and which slots assert on state** — non-gating (#980) | `fill_merge.assertion_strength` |
 | boot audit result | `audit_delivered_app.py`, recorded **separately** |
 | gate disposition and decider | `cycle_gate_decisions.decided_by` |
+
+**Why assertion strength is recorded and not gated.** Shakedown #1 banked `accepted` with
+14 of 14 criteria after its qa author retreated — 4,896 tokens of fills asserting response
+values *and* store effects on attempt 1, 711 tokens asserting response values alone on
+attempt 3, recorded identically as "8 of 8 fills". An author may legitimately have nothing to
+say about the store for a given behaviour, so this may not reject a roll. What it makes
+impossible is a closing claim that describes assertion strength the window never recorded.
+Read from banked evidence rather than a log line, because logs rotate and the closing record
+is written later.
 
 **The two criteria are never collapsed.** SIP-0104 §13a: the mechanical result and the boot
 audit are recorded as distinct facts, and the closing claim states both rather than a single
