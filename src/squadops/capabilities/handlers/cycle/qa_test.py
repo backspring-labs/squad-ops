@@ -758,7 +758,10 @@ class QATestHandler(_CycleTaskHandler):
 
         # #276 guard holds on the retest path too: a repair must not smuggle a
         # stub-fallback past the correction loop.
-        from squadops.capabilities.handlers.stub_detection import detect_stub_fallback_tests
+        from squadops.capabilities.handlers.stub_detection import (
+            detect_self_mocking_tests,
+            detect_stub_fallback_tests,
+        )
 
         stub_offenders = detect_stub_fallback_tests(artifacts)
         if stub_offenders:
@@ -772,6 +775,25 @@ class QATestHandler(_CycleTaskHandler):
             )
             missing.append(f"stub_fallback_tests:{','.join(stub_offenders)}")
             summary = f"{summary}; repaired test masks the entrypoint: {', '.join(stub_offenders)}"
+
+        # #915 on the retest path for the same reason: a repair told to make the suite
+        # pass can satisfy that instruction by mocking the subject, and mocking is the
+        # cheapest way to make any assertion true.
+        mock_offenders = detect_self_mocking_tests(artifacts)
+        if mock_offenders:
+            passed = False
+            mock_paths = [path for path, _ in mock_offenders]
+            checks.append(
+                {
+                    "check": "no_self_mocking_tests",
+                    "offenders": mock_paths,
+                    "passed": False,
+                }
+            )
+            missing.append(f"self_mocking_tests:{','.join(mock_paths)}")
+            summary = (
+                f"{summary}; repaired test never invokes the application: {', '.join(mock_paths)}"
+            )
 
         passed_count = sum(1 for c in checks if c.get("passed"))
         outputs: dict[str, Any] = {
@@ -1167,6 +1189,7 @@ class QATestHandler(_CycleTaskHandler):
             # passes). Flag it so acceptance fails and the correction loop
             # regenerates the test against the real module.
             from squadops.capabilities.handlers.stub_detection import (
+                detect_self_mocking_tests,
                 detect_stub_fallback_tests,
             )
 
@@ -1186,6 +1209,34 @@ class QATestHandler(_CycleTaskHandler):
                 note = (
                     "Generated test masks the real entrypoint behind an "
                     f"ImportError stub: {', '.join(stub_offenders)}"
+                )
+                validation.summary = (
+                    note
+                    if validation.summary in ("", "All checks passed")
+                    else f"{validation.summary}; {note}"
+                )
+                passed_count = sum(1 for c in validation.checks if c["passed"])
+                validation.coverage_ratio = passed_count / len(validation.checks)
+
+            # #915: the TypeScript sibling, and worse — a stub-fallback suite fails
+            # loudly because a reconstruction misbehaves, while a self-mocking suite
+            # asserts what it told its own mock to return and therefore PASSES. Fills
+            # cannot do this (the frozen spine invokes the handler and enforcement
+            # rejects edits to it); additive files carried the rule only as prose.
+            mock_offenders = detect_self_mocking_tests(artifacts)
+            if mock_offenders:
+                mock_paths = [path for path, _ in mock_offenders]
+                validation.checks.append(
+                    {
+                        "check": "no_self_mocking_tests",
+                        "offenders": mock_paths,
+                        "passed": False,
+                    }
+                )
+                validation.passed = False
+                validation.missing_components.append(f"self_mocking_tests:{','.join(mock_paths)}")
+                note = "Generated test never invokes the application: " + "; ".join(
+                    f"{path} {reason}" for path, reason in mock_offenders
                 )
                 validation.summary = (
                     note
