@@ -234,9 +234,21 @@ measurement — and is why #946 (log the trigger) is worth more than it looks.
 - **4b (V6)** — **RULED 2026-08-17: complete.** Served by the counting rolls from roll 3
   onward; rolls 3, 4 and 5 all banked. Recorded as met in the V7 pre-registration's §2.1 with
   this document as its evidence.
-- **1e** — credited to "the first roll that passes the audit including the UI data-path
-  check." **Needs a ruling.** Before #952/#953 no roll cleanly met that bar: roll 1's check
-  was vacuous, rolls 3 and 4 were failed by the tool and passed by a human. Under the
-  corrected instrument roll 1 passes on all five call sites. The evidence moved after the
-  rule was written, so crediting it is a judgment rather than bookkeeping.
+- **1e** — **RULED 2026-08-17: credited to roll 1, `cyc_24aac7c22be1`, resting on the
+  corrected audit.**
+
+  Its deliverable provably works. Hand-verified during the window — create → 201, join → 200,
+  duplicate → 409, and a bad payload returning the squad's own error envelope — and the
+  corrected instrument (#952/#953, PR #956) passes it on **all five call sites**, replayed
+  against unchanged stored artifacts.
+
+  **The credit rests on the corrected instrument, and that is stated rather than implied.**
+  As *run*, roll 1's UI check found 2 of its 5 call sites; the line-wise extractor silently
+  skipped three. So "roll 1 passed the audit" is true of the instrument it ran under and
+  understates what was actually checked. The re-audit is what makes the credit sound, and a
+  reader is entitled to know which one it rests on.
+
+  The conservative alternative was roll 2, whose audit found all five contemporaneously. It
+  was weighed and not taken: 1e asks whether the stack can produce a working application, and
+  roll 1 demonstrably did.
 - **4c** — closed by the V7 pre-registration §7.1.
