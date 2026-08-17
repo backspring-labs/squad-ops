@@ -597,7 +597,14 @@ class QATestHandler(_CycleTaskHandler):
             # banked a retreat as a clean success because the record could not tell 8 rich
             # fills from 8 that had dropped every store assertion. Banked rather than logged
             # so the per-roll record reads it from stored state.
-            "assertion_strength": measure_assertion_strength(fill_emission),
+            "assertion_strength": {
+                **measure_assertion_strength(fill_emission),
+                # The retreat had TWO halves and the fills are only one. Shakedown #1's
+                # passing attempt also dropped an entire additive suite — 81 store calls
+                # through TABLES, no mocking — and ran 8 test files where the failing
+                # attempt ran 9. `extracted_files` went 1 -> 0 in a log line nobody read.
+                "additive_files": sorted(a["name"] for a in kept),
+            },
         }
         merged_suite_files = [{"filename": f.path, "content": f.content} for f in merged.files]
         return kept + merged_artifacts, merged_suite_files, evidence

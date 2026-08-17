@@ -100,6 +100,25 @@ class TestWhatCountsAsTouchingTheStore:
         assert not m["any_fill_touches_the_store"], f"{body!r} does not assert on the store"
 
 
+def test_the_measurement_covers_both_halves_of_a_retreat():
+    """Shakedown #1's passing attempt weakened its fills AND dropped an entire additive
+    suite — 81 store calls through TABLES, no mocking — running 8 test files where the
+    failing attempt ran 9. Instrumenting only the fills would have recorded half the
+    retreat, which is how a partial measurement reads as a complete one.
+
+    The additive list is threaded through `_merge_fill_artifacts`, so this asserts the shape
+    the handler banks rather than re-deriving it here.
+    """
+    from squadops.capabilities.verification_scaffold_fill import measure_assertion_strength
+
+    banked = {
+        **measure_assertion_strength(parse_fill_emission(_RETREAT)),
+        "additive_files": [],
+    }
+    assert banked["any_fill_touches_the_store"] is False
+    assert banked["additive_files"] == [], "the dropped suite must be visible as an absence"
+
+
 class TestEdges:
     def test_a_not_applicable_slot_is_counted_separately_not_as_weak(self):
         """An explicit NA is a declared judgment, not a retreat, and conflating the two would
