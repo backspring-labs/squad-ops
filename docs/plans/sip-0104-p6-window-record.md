@@ -231,7 +231,9 @@ measurement — and is why #946 (log the trigger) is worth more than it looks.
 
 ## Plan items this record bears on
 
-- **4b (V6)** — served by the counting rolls, subject to the 1e caveat below.
+- **4b (V6)** — **RULED 2026-08-17: complete.** Served by the counting rolls from roll 3
+  onward; rolls 3, 4 and 5 all banked. Recorded as met in the V7 pre-registration's §2.1 with
+  this document as its evidence.
 - **1e** — credited to "the first roll that passes the audit including the UI data-path
   check." **Needs a ruling.** Before #952/#953 no roll cleanly met that bar: roll 1's check
   was vacuous, rolls 3 and 4 were failed by the tool and passed by a human. Under the
