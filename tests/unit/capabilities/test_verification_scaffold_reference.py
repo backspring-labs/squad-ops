@@ -43,18 +43,18 @@ _FIXTURE_DIR = (
 # self-contained evidence that the input end did not move.
 _MANIFEST_HASH = "ac1e7be378c54d5966680b85824c6f2c2e4d158eb8dec14d081209223e07053a"
 
-# The fixture's own identity. Regenerated at GENERATOR_VERSION 3 (2026-08-17, #967 — the
-# store's table names became typed, changing the expanded tree the shells import from).
+# The fixture's own identity. Regenerated at GENERATOR_VERSION 4 (2026-08-17, #967 — the
+# spine now imports `TABLES`, the symbol the fill appendix teaches).
 #
-# BOTH VALUES ARE UNCHANGED FROM VERSION 2, and that is the informative part: the shells
-# themselves did not move. The only fixture byte that changed is the manifest's
-# `expanded_tree_hash`, which the byte test caught. So these pins did what they are for —
-# they distinguished "the tree changed" from "shell emission drifted", which is a
-# distinction a single combined hash could not express.
+# BOTH VALUES MOVED THIS TIME, and the contrast with version 3 is the useful part. Version 3
+# typed the store and left both hashes untouched: the tree changed, the shells did not.
+# Version 4 changes the shells' own import line, so the spine hash moves — which is exactly
+# what a spine hash is for. The two versions together demonstrate the pins discriminating
+# rather than merely reacting.
 #
 # These stop an in-place fixture regeneration from making the byte test self-referential.
-_AGGREGATE_SPINE_HASH = "dd42983032d035e1fdcd7b4ecd483727ff8bdc1004e5ebb951700f033a5bc30b"
-_SCAFFOLD_HASH = "3650c310caa2223e2be48f8b8f8617e25a5a8240f59f120a3fe96ddd9a5ad468"
+_AGGREGATE_SPINE_HASH = "e8f2a59e1e64e3b2d77dc2a2d3aae018a88ba0648393491a6094325f9fba0414"
+_SCAFFOLD_HASH = "69d29ab91f692bab9c3f4a2bd72910f39fe27b7ecfc7d41dd99a8bfb62b186f4"
 
 
 @pytest.fixture(scope="module")
@@ -73,12 +73,12 @@ def test_the_reference_manifest_is_unmoved():
 def test_generator_version_is_the_fixture_generation(emission):
     """A generator change without a version bump is drift by definition (SIP §4.3);
     a bump without regenerating the fixture is a pin measuring the wrong version."""
-    assert GENERATOR_VERSION == 3
-    assert emission.manifest.generator_version == 3
+    assert GENERATOR_VERSION == 4
+    assert emission.manifest.generator_version == 4
     stored = yaml.safe_load(
         (_FIXTURE_DIR / "verification_scaffold_manifest.yaml").read_text(encoding="utf-8")
     )
-    assert stored["generator_version"] == 3
+    assert stored["generator_version"] == 4
 
 
 def test_emission_reproduces_the_fixture_byte_for_byte(emission):

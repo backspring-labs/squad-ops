@@ -1,4 +1,5 @@
-"""#936 — every helper the fill appendix teaches must already be imported by the shell.
+"""#936, and #967's recurrence — every store symbol the fill appendix teaches must already
+be imported by the shell.
 
 Fills are forbidden from importing ("Assertions only. NO imports"), so a helper the
 appendix demonstrates and the spine does not import is a slot that **cannot run**. Not
@@ -13,6 +14,21 @@ worked perfectly and the roll was lost anyway.
 The two artifacts are edited by different people for different reasons — one is a
 prompt asset, the other a code generator — and nothing connected them. This is the
 connection, asserted against the real emission rather than a copy of it.
+
+**It happened again anyway (#967), and the reason is worth keeping.** This guard was live
+and green while the defect shipped. Its extraction was scoped, reasonably, to what #936
+looked like: *lowercase function calls* appearing *inside ```fill:``` blocks*. #967 taught
+`TABLES.<Entity>` — an uppercase constant, used as member access, demonstrated in prose.
+Three ways past a guard aimed at the last defect's shape.
+
+The pre-V7 shakedown (`cyc_308be9dfc299`) then produced `ReferenceError: TABLES is not
+defined` in six of eight shells, on a roll whose developer had used `TABLES.Run` correctly
+throughout and whose application was sound.
+
+So the extraction is now bounded by **what the store actually exports** rather than by the
+shape the previous defect happened to take, and it reads the whole appendix rather than only
+its fenced examples. A worked example in prose is still a worked example — that is precisely
+how #967 taught it.
 """
 
 from __future__ import annotations
@@ -32,20 +48,34 @@ _APPENDIX = (
     / "src/squadops/prompts/request_templates/request.qa_test_fill_mode_appendix.md"
 )
 
-#: Identifiers a fill body may use that are NOT store helpers — the spine's own
-#: vocabulary and standard matcher surface. Anything else called inside a worked
-#: example has to come from an import the shell makes.
-_NOT_STORE = {"expect", "toBe", "toHaveLength", "toBeTruthy", "toEqual", "it", "describe"}
+
+def _store_exports() -> set[str]:
+    """What ``lib/store.ts`` actually provides — functions AND consts.
+
+    ``export const`` matters: `TABLES` is a const, and a ``export function``-only regex
+    reported it as unexported while the shell imported it (#967).
+    """
+    from squadops.capabilities.scaffold import expand
+
+    expanded = {f["name"]: f["content"] for f in expand(manifest_for_stack("nextjs_ts"))}
+    store = next((c for n, c in expanded.items() if n.endswith("lib/store.ts")), "")
+    return set(re.findall(r"export (?:function|const) (\w+)", store))
 
 
-def _helpers_taught_by_the_appendix() -> set[str]:
-    """Bare function calls inside the appendix's ```fill:``` examples."""
+def _store_symbols_taught_by_the_appendix() -> set[str]:
+    """Store symbols the appendix demonstrates, anywhere in it.
+
+    Bounded by the store's real exports rather than by an identifier shape. #936's version
+    matched lowercase calls inside ```fill:``` blocks, which is what #936 looked like — and
+    #967 walked past all three of those constraints at once. Asking "does the appendix use
+    a name the store exports" cannot be out-scoped by the next defect's shape.
+    """
     text = _APPENDIX.read_text(encoding="utf-8")
     taught: set[str] = set()
-    for block in re.findall(r"```fill:slot-[^\n]*\n(.*?)```", text, re.S):
-        for name in re.findall(r"(?<![.\w])([a-z][A-Za-z0-9_]*)\(", block):
-            if name not in _NOT_STORE:
-                taught.add(name)
+    for symbol in _store_exports():
+        # a call `all(`, or a member access `TABLES.`
+        if re.search(rf"\b{re.escape(symbol)}\s*[(.]", text):
+            taught.add(symbol)
     return taught
 
 
@@ -59,16 +89,22 @@ def _names_imported_from_the_store() -> set[str]:
     return imported
 
 
-def test_every_helper_the_appendix_teaches_is_imported_by_the_shell():
+def test_every_store_symbol_the_appendix_teaches_is_imported_by_the_shell():
     """Bug caught: the appendix demonstrates a call that cannot resolve at runtime.
 
     The #936 defect exactly. An author copying the worked example — which is what worked
     examples are for — emits a slot that throws before asserting anything.
     """
-    taught = _helpers_taught_by_the_appendix()
+    taught = _store_symbols_taught_by_the_appendix()
     imported = _names_imported_from_the_store()
 
-    assert taught, "no helper calls found in the appendix examples — the extractor drifted"
+    assert taught, "no store symbols found in the appendix — the extractor drifted"
+    # Guards the guard: both symbols that have actually bitten must still be detected, or
+    # the extraction has silently narrowed again and this test passes vacuously.
+    assert {"all", "TABLES"} <= taught, (
+        f"the extraction no longer detects the two symbols that have shipped defects "
+        f"(#936's `all`, #967's `TABLES`); it found {sorted(taught)}"
+    )
 
     missing = sorted(taught - imported)
     assert missing == [], (
@@ -91,7 +127,7 @@ def test_the_store_actually_exports_what_the_shell_imports():
     store = next((c for n, c in expanded.items() if n.endswith("lib/store.ts")), None)
     assert store, "the nextjs_ts skeleton no longer emits lib/store.ts"
 
-    exported = set(re.findall(r"export function (\w+)", store))
+    exported = set(re.findall(r"export (?:function|const) (\w+)", store))
     missing = sorted(_names_imported_from_the_store() - exported)
     assert missing == [], (
         f"the shell imports {missing} from the store, which exports {sorted(exported)} — "
