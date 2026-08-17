@@ -176,6 +176,44 @@ section as the declared successor design and the pack-combo test as its trigger.
 
 ---
 
+## 4d. 2c — the falsification pass, run 2026-08-17
+
+**Where it lives.** `tests/unit/capabilities/test_stack_blueprint_falsification.py`, executable and derived over the six registries — the same reasoning 2a used, for the same reason: a read-and-classify pass fails the way reading fails, and 1a overclaimed three times out of four bounded items.
+
+**Result: 101 of 107 field-checks falsify.** Corrupting the field either makes a real path raise or moves a derived artifact. The remaining six are four distinct fields, and they are 2c's product.
+
+### Three fields have no consumer of any kind — decorative, per S3's own definition
+
+| field | evidence | what this draft says about it |
+|---|---|---|
+| `BuildProfile.artifact_output_mode` | declared on all five profiles, **zero reads** | Tier 3 — hoisted as a core default |
+| `BuildProfile.validation_rules` | real content on every profile, **zero reads** | Tier 1 `packaging.validation_rules` — "demonstrated" |
+| `DevelopmentCapability.expected_extensions` | populated per stack, **zero reads**, and **two docstrings assert it is "what a dev agent is given"** (`scaffold.py:1899`, `preflight.py:216`) | Tier 1 `authored_extensions` — "demonstrated" |
+
+The third is the sharpest: not merely unread, but *documented as read*. All three were traced twice, by an AST reader search and by plain grep, including `getattr` access and prompt assets.
+
+**So three fields this draft calls demonstrated or hoistable fail the exit criterion.** They are recorded in the test rather than deleted in it — deletion is a code change with its own review, and the plan assigns it to *before* the schema freezes, i.e. before 2g. The test pins them as unread, so one gaining a consumer fails and forces the entry out rather than leaving a stale exemption.
+
+### One field has a consumer and no data — unevidenced
+
+`BuildProfile.default_task_tags` is `{}` on all five profiles. Its reader (`builder._resolve_task_tags`) merges it with `experiment_context`, which supplies every tag in practice. Deleting it breaks code and changes no behaviour anywhere.
+
+Tier 3 lists it as "identical across both stacks" — true, and identical **because empty**, which is a different fact. Under S5's admission rule read subtractively, a field zero stacks demonstrate must not enter the blueprint.
+
+### `check_stack` is falsified, at the acceptance layer
+
+Not offline, and worth recording how it was nearly mis-called. The first attempt used `undefined_names`, which ignores `stack` entirely and returns the same verdict for the declared value, a corrupted one, and `None`. **Four evaluators do read it** — `endpoint_defined`, `field_present`, `function_defined`, `harness_boundary` — and against `endpoint_defined` a corrupted or unset value turns `passed` into `skipped: unsupported_stack_or_syntax`, which SIP-0096 counts as unverified. The draft's claim holds; the wrong evaluator would have falsified the claim instead of the field.
+
+### What the pass does not exercise, stated rather than implied
+
+Fields whose only consumer is a runtime path — boot, sandboxing, prompt rendering — are falsified by that consumer, not here. Each carries a cited production read, and the test reports the set. The honest form of the claim is *"every field is either falsified offline or has a reader that can be cited"*, not *"every field is falsified"*.
+
+### Four harness defects, each of which changed the answer
+
+Recorded because the numbers moved every time and the first ones were wrong: corrupting an already-empty value; `name` fields being registry keys; **observing the declarations instead of what consumers derive** (which made the pass nearly vacuous and let a deliberately decorative probe field pass); and an attribute-only reader search that could not see `getattr(cap, "build_support_files", ())`. A negative control now injects a decorative field and requires the gate to catch it — it did not, before defect 3 was fixed.
+
+---
+
 ## 5. Open questions carried to 2g
 
 1. **Does the blueprint own the packaging set?** `required_files` and `qa_handoff_expectations` are identical across both stacks — weak evidence they are universal rather than blueprint-owned. Tier 3 above takes that reading; a third stack could overturn it. §4c sharpens the question: the packaging set is plausibly a **deployment-target** fact, not a stack fact.
