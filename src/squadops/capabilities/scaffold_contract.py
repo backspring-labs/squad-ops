@@ -523,6 +523,56 @@ def _probes(manifest: InterfaceManifest, pack: CriteriaPack) -> list[dict[str, A
                             "expect": {"status": 409, "error_code": conflict_codes[0]},
                         }
                     )
+
+        # #948: the same child actions, expressed the OTHER legal way — one POST at the
+        # parameterized path, discriminated by a request-body field
+        # (``POST /runs/{run_id}`` with ``{"action": "join"}``). The regex above requires
+        # a literal trailing segment, so this shape derived NOTHING: window roll 2 chose
+        # it and bought zero behavioural probes, leaving join and leave — the app's whole
+        # purpose — verified only by a freely-authored suite.
+        #
+        # The fix is NOT to relax the regex. Without declared values the synthesized body
+        # is ``{"action": "sample"}``, which a CORRECT app rejects, so probing on a guess
+        # manufactures false failures. The author declares the domain
+        # (``values: {action: [join, leave]}``) and each declared value becomes a probe.
+        # A shape that declares nothing still derives nothing, and #951's coverage report
+        # now says so out loud instead of leaving it silent.
+        if children or "id" not in response_fields:
+            continue
+        body_children = [
+            child
+            for child in manifest.api.endpoints
+            if child.method == "POST"
+            and re.fullmatch(re.escape(ep.path) + r"/\{(\w+)\}", child.path)
+        ]
+        for child in body_children:
+            child_shape = shapes.get(child.request or "")
+            discriminator = child_shape.discriminator if child_shape else None
+            if not discriminator:
+                continue
+            param = re.findall(r"\{(\w+)\}", child.path)[0]
+            create_probe["capture"] = {param: "id"}
+            create_slug = _slug(ep.path) or "root"
+            for value in child_shape.declared_values(discriminator):
+                child_body = {
+                    field: _probe_sample_value(field, field_types.get(field, "string"))
+                    for field in child_shape.required
+                }
+                child_body[discriminator] = value
+                probes.append(
+                    {
+                        "id": f"vc-probe-{create_slug}-{_slug(value)}",
+                        "subject": "backend",
+                        "request": {"method": "POST", "path": child.path, "json": child_body},
+                        "expect": {"status": child.success_status or 200},
+                    }
+                )
+            # No duplicate-conflict probe here, deliberately. One endpoint carries every
+            # action, so a 409 in ``child.errors`` cannot be attributed to a particular
+            # value — repeating ``leave`` and expecting 409 would fail a correct app.
+            # Guessing which action conflicts is exactly the class of invention this fix
+            # exists to avoid, so the duplicate case stays uncovered AND VISIBLE (#951)
+            # rather than covered by assumption.
     return probes
 
 
