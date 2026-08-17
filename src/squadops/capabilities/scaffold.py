@@ -78,6 +78,34 @@ class RequestShape:
     name: str
     required: tuple[str, ...] = ()
     optional: tuple[str, ...] = ()
+    #: Declared candidate values per field, for fields whose value *selects a behaviour*
+    #: rather than carrying data (#948). A shape that says ``{"action": ("join", "leave")}``
+    #: is stating that those two strings are the whole domain of ``action``.
+    #:
+    #: Why the manifest has to say it rather than the deriver guessing: without declared
+    #: values a synthesized body is ``{"action": "sample"}``, which a CORRECT application
+    #: rejects — so relaxing derivation to probe these endpoints anyway would manufacture
+    #: false failures. Roll 2 folded join and leave into one body-discriminated endpoint
+    #: and bought **zero** behavioural probes as a result; the fix is to let the author
+    #: declare the domain, not to let the deriver invent it.
+    values: tuple[tuple[str, tuple[str, ...]], ...] = ()
+
+    def declared_values(self, field: str) -> tuple[str, ...]:
+        """The declared domain of ``field``, or empty when it carries data not a choice."""
+        return dict(self.values).get(field, ())
+
+    @property
+    def discriminator(self) -> str | None:
+        """The single required field whose value selects a behaviour, if there is one.
+
+        Exactly one, deliberately. Two discriminators would make the probe set a cross
+        product whose size the author never sees, and "which combinations are legal" is a
+        question the shape cannot answer — so a shape declaring two is treated as
+        declaring none, and the endpoint reports as uncovered (#951) rather than being
+        probed on a guess.
+        """
+        declared = [name for name, options in self.values if options and name in self.required]
+        return declared[0] if len(declared) == 1 else None
 
 
 @dataclass(frozen=True)
@@ -308,8 +336,25 @@ class InterfaceManifest:
             ],
             "api": {
                 "base_path": self.api.base_path,
+                # ``values`` is emitted ONLY when declared (#948). It belongs in the
+                # projection — it changes the derived contract's probe set, and a manifest
+                # whose contract differs must not share a hash with one whose contract does
+                # not. But emitting it unconditionally as an empty list would move the hash
+                # of every manifest ever written, invalidating each stored contract binding
+                # to record the absence of a field none of them use. Present-when-declared
+                # keeps both properties: existing manifests hash exactly as before, and a
+                # manifest that adopts the field hashes differently, which is correct.
                 "request_shapes": [
-                    {"name": s.name, "required": list(s.required), "optional": list(s.optional)}
+                    {
+                        "name": s.name,
+                        "required": list(s.required),
+                        "optional": list(s.optional),
+                        **(
+                            {"values": [[f, list(opts)] for f, opts in s.values]}
+                            if s.values
+                            else {}
+                        ),
+                    }
                     for s in self.api.request_shapes
                 ],
                 "endpoints": [
@@ -454,6 +499,11 @@ def _parse_api(raw: dict[str, Any]) -> Api:
             name=str(name),
             required=tuple(str(x) for x in (spec or {}).get("required", [])),
             optional=tuple(str(x) for x in (spec or {}).get("optional", [])),
+            values=tuple(
+                (str(field), tuple(str(v) for v in options))
+                for field, options in ((spec or {}).get("values", {}) or {}).items()
+                if options
+            ),
         )
         for name, spec in (raw.get("request_shapes", {}) or {}).items()
     )

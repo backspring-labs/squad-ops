@@ -337,3 +337,128 @@ class TestChainedActionProbes:
             probe.pop("capture", None)  # orphan the {run_id} placeholders
         errors = VerificationContract.from_dict(raw).lint()
         assert any("no earlier probe capturing it" in e for e in errors)
+
+
+class TestBodyDiscriminatedActionProbes:
+    """#948. The same child actions, expressed the other legal way: ONE POST at the
+    parameterized path with a body field selecting the behavior. The `/runs/{id}/join`
+    regex above requires a literal trailing segment, so this shape derived NOTHING —
+    window roll 2 chose it and bought zero behavioral probes, leaving join and leave,
+    the application's entire purpose, verified only by a freely-authored suite.
+
+    The fix is emphatically NOT relaxing the regex. With only a field NAME the deriver
+    can build `{"action": "sample"}`, which a correct app rejects, so probing on a guess
+    manufactures false failures. The author declares the domain instead."""
+
+    def _folded(self, *, values: dict | None = None, required=("action", "name")) -> dict:
+        """The reference manifest with join/leave folded into one body-discriminated
+        endpoint — roll 2's real shape."""
+        raw = _raw()
+        raw["api"]["endpoints"] = [
+            ep
+            for ep in raw["api"]["endpoints"]
+            if not str(ep["path"]).endswith(("/join", "/leave"))
+        ]
+        raw["api"]["endpoints"].append(
+            {
+                "method": "POST",
+                "path": "/runs/{run_id}",
+                "summary": "join or leave",
+                "request": "ParticipantAction",
+                "response": "RunEvent",
+                "errors": ["run_not_found", "validation_error", "duplicate_participant"],
+            }
+        )
+        shape: dict = {"required": list(required)}
+        if values is not None:
+            shape["values"] = values
+        raw["api"]["request_shapes"]["ParticipantAction"] = shape
+        return raw
+
+    def _probe_ids(self, raw: dict) -> list[str]:
+        manifest = InterfaceManifest.from_dict(raw)
+        return [p["id"] for p in emit_contract_dict(manifest)["behavioral"]["probes"]]
+
+    def test_undeclared_values_still_derive_nothing(self):
+        """The conservative half, and the reason this is a schema change rather than a
+        regex change. A shape carrying only field NAMES cannot be probed without
+        inventing a value, so it is not probed."""
+        ids = self._probe_ids(self._folded())
+        assert ids == ["vc-probe-runs", "vc-probe-runs-rejects-blank"]
+
+    def test_declared_values_derive_one_probe_per_behavior(self):
+        raw = self._folded(values={"action": ["join", "leave"]})
+        manifest = InterfaceManifest.from_dict(raw)
+        probes = {p["id"]: p for p in emit_contract_dict(manifest)["behavioral"]["probes"]}
+        assert "vc-probe-runs-join" in probes
+        assert "vc-probe-runs-leave" in probes
+
+        join = probes["vc-probe-runs-join"]
+        assert join["request"]["path"] == "/runs/{run_id}"
+        # the discriminator carries the DECLARED value; every other required field is sampled
+        assert join["request"]["json"] == {"action": "join", "name": "sample"}
+        assert probes["vc-probe-runs-leave"]["request"]["json"]["action"] == "leave"
+
+    def test_the_create_captures_the_parameter_these_probes_need(self):
+        raw = self._folded(values={"action": ["join", "leave"]})
+        manifest = InterfaceManifest.from_dict(raw)
+        contract = VerificationContract.from_dict(emit_contract_dict(manifest))
+        assert {p.id: p.capture for p in contract.behavioral.probes}["vc-probe-runs"] == {
+            "run_id": "id"
+        }
+        assert contract.lint() == []
+
+    def test_no_duplicate_probe_is_invented_for_a_folded_endpoint(self):
+        """One endpoint carries every action, so a declared 409 cannot be attributed to a
+        particular value. Repeating `leave` and expecting 409 would fail a correct app —
+        guessing which action conflicts is the class of invention this fix avoids."""
+        raw = self._folded(values={"action": ["join", "leave"]})
+        assert not [pid for pid in self._probe_ids(raw) if pid.endswith("-duplicate")]
+
+    def test_two_declared_discriminators_are_read_as_none(self):
+        """Two would make the probe set a cross product whose size the author never sees,
+        and which combinations are legal is not something the shape can state."""
+        raw = self._folded(
+            values={"action": ["join", "leave"], "mode": ["quiet", "loud"]},
+            required=("action", "mode", "name"),
+        )
+        assert self._probe_ids(raw) == ["vc-probe-runs", "vc-probe-runs-rejects-blank"]
+
+    def test_values_on_an_optional_field_do_not_discriminate(self):
+        """A field the request need not carry cannot select the behavior — a probe
+        omitting it would exercise an undeclared default."""
+        raw = self._folded(values={"action": ["join", "leave"]}, required=("name",))
+        assert self._probe_ids(raw) == ["vc-probe-runs", "vc-probe-runs-rejects-blank"]
+
+
+class TestDeclaredValuesAndTheManifestHash:
+    """`values` changes the derived contract, so it must change the manifest hash — a
+    manifest whose contract differs must not share a hash with one whose contract does
+    not. It is emitted only when declared, so no existing manifest's hash moves."""
+
+    def test_a_manifest_without_values_hashes_exactly_as_before(self):
+        """Pinned against the reference manifest, which declares none. If this moves,
+        every stored contract binding in the system has been invalidated to record the
+        absence of a field none of them use."""
+        # Measured on main at 136fffb7, BEFORE `values` existed. A literal, because the
+        # whole claim is that this number did not move — comparing the manifest to itself
+        # would pass no matter what the projection did.
+        assert (
+            _manifest().content_hash()
+            == "bb472e267e53d5ad29406663b4340de45613dd68fa091fe7f2d06a99b7267530"
+        )
+        assert all(s.values == () for s in _manifest().api.request_shapes)
+
+    def test_declaring_values_moves_the_hash(self):
+        raw = _raw()
+        before = InterfaceManifest.from_dict(raw).content_hash()
+        raw["api"]["request_shapes"]["RunEventCreate"]["values"] = {"title": ["a", "b"]}
+        assert InterfaceManifest.from_dict(raw).content_hash() != before
+
+    def test_values_survive_a_dict_roundtrip(self):
+        raw = _raw()
+        raw["api"]["request_shapes"]["RunEventCreate"]["values"] = {"title": ["a", "b"]}
+        manifest = InterfaceManifest.from_dict(raw)
+        shape = next(s for s in manifest.api.request_shapes if s.name == "RunEventCreate")
+        assert shape.declared_values("title") == ("a", "b")
+        assert shape.declared_values("datetime") == ()

@@ -41,6 +41,30 @@ resource). Leave it out and two components disagree about what the endpoint retu
 verification contract asserts one status while the generated route serves another, which is
 a contract no correct implementation can satisfy. State it and the disagreement cannot arise.
 
+**declare-the-choices-a-body-carries** — When a request field's *value* selects which
+behavior runs rather than carrying data — an `action` that is either `join` or `leave`, a
+`status` that is either `open` or `closed` — declare its whole domain under the shape's
+`values`:
+
+```yaml
+request_shapes:
+  ParticipantAction:
+    required: [action, name]
+    values:
+      action: [join, leave]
+```
+
+Without this the verification layer cannot test those behaviors at all. It has only the
+field's *name*, so the only body it can build is `{"action": "sample"}` — which a correct
+application rejects. Rather than manufacture that false failure it derives nothing, and the
+endpoint ships with no behavioral check of its own. A design that folded a run's join and
+leave into one such endpoint reached the end of a cycle with its central feature verified by
+nothing deterministic, and every layer reported success.
+
+Declare one such field per shape. Two would make the set of behaviors a cross product, and
+which combinations are legal is not something the shape can state — so a shape naming two is
+read as naming none.
+
 **every-view-declares-anchors** — Every frontend route declares `testids`: the stable
 `data-testid` values the view exposes, root container first. These are the only handles the
 test suite is permitted to query, so a view with none is a view nothing can verify — and
