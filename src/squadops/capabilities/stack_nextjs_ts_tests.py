@@ -36,6 +36,7 @@ invocation.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -54,6 +55,8 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
 
 #: Where every emitted shell lives. Inside the stack's ``__tests__`` namespace so the
 #: vitest include pattern collects it; the ``.scaffold.test.ts`` suffix marks provenance.
+logger = logging.getLogger(__name__)
+
 SCAFFOLD_TEST_DIR = "__tests__/scaffold"
 
 _STORE_PATH = "lib/store.ts"
@@ -391,14 +394,15 @@ def _shell_source(behavior: _Behavior) -> str:
     return "\n".join(lines)
 
 
-def emit_nextjs_ts_verification_scaffold(
-    manifest: InterfaceManifest, expanded: list[dict[str, str]]
-) -> list[tuple[str, str, tuple[BehaviorSlot, ...]]]:
-    """The stack-#2 behavior shells: ``(path, content, slots)`` per emitted file.
+def derive_scaffold_behaviors(
+    manifest: InterfaceManifest,
+) -> tuple[list[_Behavior], list[dict]]:
+    """The behaviours this manifest yields, and the probes half of them derive from.
 
-    One behavior per file, so a degraded fill degrades one slot's file and attribution
-    stays per-behavior. Deterministic order: probe twins in probe order, then minted read
-    shells in endpoint declaration order.
+    Extracted so the coverage report (#951) reads the **same** derivation the emitter
+    runs rather than a parallel reimplementation of it. A coverage report that computes
+    its own answer is worse than none: it would drift from the shells silently and
+    report a delta that is itself wrong.
     """
     from squadops.capabilities.scaffold_contract import emit_contract_dict
 
@@ -410,6 +414,39 @@ def emit_nextjs_ts_verification_scaffold(
         probe["request"]["path"]: probe for kind, probe in classified if kind == "create"
     }
     behaviors += _minted_read_behaviors(manifest, creates_by_path)
+    return behaviors, probes
+
+
+def emit_nextjs_ts_verification_scaffold(
+    manifest: InterfaceManifest, expanded: list[dict[str, str]]
+) -> list[tuple[str, str, tuple[BehaviorSlot, ...]]]:
+    """The stack-#2 behavior shells: ``(path, content, slots)`` per emitted file.
+
+    One behavior per file, so a degraded fill degrades one slot's file and attribution
+    stays per-behavior. Deterministic order: probe twins in probe order, then minted read
+    shells in endpoint declaration order.
+    """
+    from squadops.capabilities.scaffold_coverage import (
+        probe_routes,
+        slot_routes,
+        summarize_coverage,
+    )
+
+    behaviors, probes = derive_scaffold_behaviors(manifest)
+
+    # #951: the scaffold covers what it can DERIVE, not what the manifest DECLARES, and
+    # the difference used to be recorded nowhere — so silence read as coverage. Roll 2
+    # banked green with join and leave, the whole point of the app, untouched by every
+    # deterministic layer. Emitting the delta here costs nothing and changes no shell
+    # byte (Gate 1's pins and GENERATOR_VERSION are untouched); it is a report, not a
+    # gate, because whether an uncovered endpoint should BLOCK is a separate ruling.
+    coverage = summarize_coverage(
+        [(ep.method, ep.path) for ep in manifest.api.endpoints],
+        probe_routes(probes),
+        slot_routes(behaviors),
+    )
+    log = logger.warning if coverage.uncovered else logger.info
+    log("verification scaffold %s", coverage.summary())
 
     tree = {f["name"]: f["content"] for f in expanded}
     _require_surfaces(behaviors, tree)
