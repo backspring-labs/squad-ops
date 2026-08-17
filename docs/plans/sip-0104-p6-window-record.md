@@ -51,7 +51,7 @@ the deploy moved under the measurement.
 | 3 | `cyc_0e07836b5baa` | 63m | accepted | 38/38 | 14/14 | **0** | 8/8 | 5 | 8 | 5/5 |
 | 4 | `cyc_de20c33b7892` | 78m | accepted | 36/36 | 13/13 | **0** | 7/7 | 4 | 7 | 5/5 |
 | 5 | `cyc_ac94b672fa63` | 56m39s | accepted | 38/38 | — | **0** | 8/8 | 5 | 8 | 5/5 |
-| 6 | `cyc_085f992ad60d` | *in flight* | | | | | | | | |
+| 6 | `cyc_085f992ad60d` | 71m51s | **rejected** | 35 / 1 failed | **12/13** | **3** | 8/8 ×3 | 5 | 8 | 5/5 | |
 
 Endpoint coverage is the #951 report: declared endpoints reached by at least one probe or
 scaffold slot. Roll 2's `3/4` is the endpoint that carried join **and** leave.
@@ -95,18 +95,93 @@ The thing it left unspecified was the duplicate-join rule, whose absence cost it
 gate that fires on declared uncertainty cannot see the uncertainty an author did not notice
 they had.
 
+### Roll 6 is the window's most informative roll, and it failed on a working application
+
+Terminal: `rejected`, `failure_reason: Max correction attempts`, three correction rounds, zero
+open leases. **Its delivered application passes the boot audit** — measured 2026-08-17 03:23 ET
+on the stored workspace:
+
+> `PASS — delivered app installs, builds, boots, answers 5 contract probe(s), and its UI reaches
+> every path it requests`
+
+All five probes answer over real HTTP, join and duplicate-join and leave included.
+
+**The only defect in the roll is an undeclared literal.** `lib/store.ts` is a generic keyed
+table store — `all(table)` / `insert(table, row)` — and nothing declares the table name: not the
+manifest (`persistence: in_memory`, no more), not the contract (which freezes the file but binds
+no key). The application chose `'run_store'` and used it in every route, consistently. The suite
+guessed differently and read an empty array. Rolls 1–5 guessed alike; this is a coin flip that
+had been sitting under every roll.
+
+**Third sighting of the #913 / #948 family** — after the `join`/`leave` path literals the qa
+author invented from prose and agreed with dev by luck.
+
+#### All three failure analyses assert things the source disproves
+
+| round | claim | source |
+|---|---|---|
+| 1 | handlers declare "a local shadow store array" instead of importing the frozen store | the import is on line 3 |
+| 2 | fill assertions "receive undefined values from route handlers" | POST returns `insert(...)`'s row — `id`, `title`, `participants` all present |
+| 3 | POST "fails to mutate" the store; join/leave "omit expected fields"; routes are "unimplemented" | `insert('run_store', run)`; join returns the whole run; the routes work |
+
+The subject oscillated app → tests → app on identical evidence, and nothing in the chain ever
+established **which side of the disagreement was wrong** — which is the capability it lacks, and
+no amount of better routing supplies it. **#788 class, three times in one roll.**
+
+#### The repair path introduced defects rather than fixing one
+
+Both repairs emitted `fences={'fill': 0, 'path': 1}` — a whole file, no fills — and rewrote the
+suite to call the HTTP client seam (`api('/api/runs', …)`) in a suite that runs in-process with
+**no server**: the #877 class. Two verified causes, both instances of one recurring pattern:
+
+- `qa_test_fill_mode_appendix` is referenced only at `qa_test.py:503`; the repair handler never
+  receives it. The scaffold fill-only appendix (`repair_handlers.py:284`) is **dev-role only**.
+  So a repair of a scaffold-bound qa task does not know the fill protocol exists.
+- #667 already fixed this exact shape once, for the DOM anchor inventory, in a comment that
+  describes it: *"qa.test_repair re-authors the suite with none of the anchor inventory the
+  original qa.test dispatch carried."* #946/#947 found it in `_build_self_eval_prompt`. **Third
+  instance in the same handler family.**
+
+#### Two defects are currently cancelling — do not fix one alone
+
+The fills were never weakened; the deterministic layer held. But it held **accidentally**:
+fill-blindness stops the repair editing fills, and the `expected_artifacts`-pinned aim
+(`correction_runner.py:461`) stops it being pointed at them.
+
+> **Teaching the repair path the fill protocol without also fixing what it is aimed at converts a
+> repair that cannot help into a repair that can erase the evidence.** The qa author's cheapest
+> route to a passing assertion is a weaker assertion, and fills are its legal surface.
+
+Fix the diagnosis and the aim first; grant fill capability only once something above decides
+whether the assertion or the app is wrong.
+
+#### What it means for the number
+
+Roll 6 is **functional** and **rejected**, so it scores not-functional. The metric is not wrong —
+FAY asks whether the system delivers a working application unaided, and this system could not
+tell that its own deliverable worked. But **a bare "N of 6" would invite the reading that the
+missing rolls shipped broken software**, and here the software was fine and the verifier was
+wrong. The closing claim states what each failure was, not only how many there were.
+
 ---
 
 ## What the window established
 
-**The scaffold holds when the author gets it right.** 28 of 28 slots filled on the first
-attempt across four banked rolls, zero correction rounds, zero mechanical suite failures.
+**The scaffold holds when the author gets it right.** 36 of 36 slots filled on the first
+attempt across the five banked rolls, zero correction rounds, zero mechanical suite failures.
+Roll 6 filled 8 of 8 on each of three attempts, so the fill protocol is 60 for 60 across the
+window.
 
-**It did not establish that the system recovers when the author gets it wrong.** Zero
-corrections across every roll means the repair path — including #942 and #943 — is
-**unexercised in production**. Six clean rolls leave that exactly as untested as four do.
-This is the window's largest gap and it must be stated rather than allowed to read as
-"corrections work."
+**The repair path does not work, and roll 6 is the only reason we know.** The gap this record
+was originally going to report as *unexamined* is now examined: three rounds, three wrong
+diagnoses, two repairs that each introduced a new defect, and a working application rejected at
+the end of it. Five clean rolls would have closed the window recommending V7 with this entirely
+unseen.
+
+**Five green rolls did not mean five sound rolls.** Four of the six named a qa deliverable in
+`expected_artifacts`, which is what arms the mis-aimed repair branch; rolls 1, 4 and 5 were one
+failure away from roll 6's routing and looked perfectly healthy. The exposure was present in
+four rolls and visible in none.
 
 **Coverage varied 5 / 2 / 5 / 4 / 5 at an identical recipe hash**, through two distinct
 authoring mechanisms, neither of them machinery drift:
