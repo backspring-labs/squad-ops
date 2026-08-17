@@ -142,6 +142,52 @@ and nothing is fixed on its account — the window opens as planned. The distinc
 one §5.1 draws, and it is the reason this is declared as a boundary check rather than a
 practice run.
 
+### 2.f Shakedown #2 — DECLARED NON-COUNTING BEFORE IT RAN *(2026-08-17)*
+
+Same terms as §2.e, on the deploy that carries #979. Not part of this window; may not be
+counted, banked, or cited as a FAY result whatever it produces.
+
+**Why a second one is not ceremony.** Shakedown #1 worked: it found a machinery defect that
+would have failed *every* roll of the window. The fix (#979) **changes the shell spine's own
+import line** — `GENERATOR_VERSION` 3 → 4, both pinned hashes moved. So the artifact under
+measurement is different from the one #1 exercised, and the argument that justified #1 applies
+unchanged to #2. Declining the second because the first went well would be treating the
+shakedown as a ritual rather than a check.
+
+**What #1 established, and what it did not.** It established that the boundary breaks loudly
+and where. It did **not** establish that a cycle completes on the fixed shells, because it
+never ran on them — it ran on the broken ones and recovered by a route we would not want
+repeated (§2.g).
+
+**The bar for #2 is narrower and stated in advance:** a `qa.test` that passes on its **first**
+attempt with fills that reference the store. #1's eventual pass came on a third attempt from
+fills that had retreated to response-only assertions, so "it went green" is not the thing being
+checked. First attempt, store touched — anything less and the boundary is not clear.
+
+### 2.g What shakedown #1 exposed about a green roll *(2026-08-17, #980)*
+
+Recorded here because it changes how a V7 result must be read, not merely what to fix.
+
+Shakedown #1 finished `accepted`, 41 verified, 14 of 14 criteria — and it got there by
+**retreating**. Three `qa.test` attempts:
+
+| attempt | fills | completion tokens | what they assert |
+|---|---|---|---|
+| 1 | 8/8 | **4,896** | response **and store effects** (used `TABLES`, hit #979) |
+| 3 | 8/8 | **711** | `body.id`, `body.title`, `body.datetime` — **response only** |
+
+The winning emission is a seventh the size and touches the store nowhere. The per-roll record
+in §4 reads `8 of 8 fills` for both, identically.
+
+**So a green roll can be a retreat, and §4 cannot currently tell.** #980 carries the fix and
+the recommended split: **instrument before roll 1** (fill emission size, and whether any fill
+references a store symbol — both derive from data already logged), and **do not change the
+authoring behaviour** before the window, since the retreat was *induced* by a machinery defect
+that is now fixed and attempt 1's unprompted behaviour was the behaviour we want.
+
+Until the instrumentation lands, the closing claim may not assert anything about assertion
+strength — only that the slots were filled.
+
 ### 2.c The size of the deploy boundary is itself a risk *(raised 2026-08-16)*
 
 Six PRs now sit ready for the single rebuild that separates P6 from V7: #956 (two audit
