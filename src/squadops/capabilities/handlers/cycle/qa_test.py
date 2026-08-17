@@ -350,6 +350,29 @@ class QATestHandler(_CycleTaskHandler):
             timeout_seconds=capability.test_timeout_seconds,
         )
 
+        # #935: whether the suite actually RAN was recoverable only from an artifact a
+        # human had to open. `tests_pass` is exit-code driven, so "did not execute" and
+        # "executed and passed" are one keystroke apart in the record and neither leaves
+        # a log line. This is the same class as #926's emission capture: when a window
+        # roll needs triage, the first question is what the runner did, and the answer
+        # should not require archaeology.
+        #
+        # `uncollected` is logged beside the counts on purpose. A file the runner never
+        # collected verifies nothing while the collected ones read green — SIP-0104 roll 1
+        # shipped exactly that, and a count of test FILES cannot distinguish the two.
+        logger.info(
+            "qa_test_handler suite: framework=%s executed=%s exit_code=%s tests_passed=%s "
+            "test_files=%s source_files=%s uncollected=%s error=%r",
+            capability.test_framework,
+            test_result.executed,
+            test_result.exit_code,
+            test_result.tests_passed,
+            test_result.test_file_count,
+            test_result.source_file_count,
+            list(test_result.uncollected_test_files or ()),
+            test_result.error,
+        )
+
         report_lines = [
             "# Test Execution Report\n",
             f"**Result:** {test_result.summary}\n",
