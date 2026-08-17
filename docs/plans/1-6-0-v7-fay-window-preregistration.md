@@ -30,10 +30,11 @@ is a separate, deliberate act taken after the window closes.
 
 | # | Precondition | State |
 |---|---|---|
-| 2.1 | V6 complete (SIP-0104 P6 window closed) | in progress |
-| 2.2 | **#952 and #953 fixed and deployed** — see §2.a, this is blocking | fixed in PR #956; **not deployed** |
-| 2.3 | Instrument defects either fixed or explicitly declared (§2.b) | **ruled 2026-08-16: fix all three**; all three built (#957/#958/#959), **none deployed** |
-| 2.4 | Deploy frozen; commit and image ids recorded in §3 | pending |
+| 2.1 | V6 complete (SIP-0104 P6 window closed) | **MET** — closed 2026-08-17 03:46 ET at 6 rolls: 5 banked, roll 6 rejected. Record: `sip-0104-p6-window-record.md` |
+| 2.2 | **#952 and #953 fixed and deployed** — see §2.a, this is blocking | **MET** — merged (#956) and deployed 2026-08-17, loaded-module verified in runtime-api, eve and neo |
+| 2.3 | Instrument defects either fixed or explicitly declared (§2.b) | **MET** — all three merged (#957/#958/#959) and deployed, loaded-module verified |
+| 2.4 | Deploy frozen; commit and image ids recorded in §3 | pending — rebuilt again for #967, ids recorded at freeze |
+| **2.7** | **#967 fixed and deployed** — see §2.d. Added after roll 6; blocking on the same argument as 2.2 | **fixed (#973), deploying** |
 | 2.5 | Zero open focus leases immediately before roll 1 | check at launch |
 | 2.6 | Every ruling in §7 closed | 7.1–7.3 closed; 7.4's middle band owner-ruled, its other three bands drafted and awaiting a nod |
 
@@ -90,6 +91,28 @@ P6's were not, so the two windows are comparable on *recipe* (§3's config hash 
 **not** on probe counts. The P6 distribution — 5 / 2 / 5 / 4 across four identical-recipe rolls
 — is the measurement that motivated the fix, and it must not be reported as a baseline the
 V7 numbers improve on. They are measurements of different instruments.
+
+### 2.d Why #967 is blocking, added after roll 6 *(owner ruling 2026-08-17: fix before V7 opens)*
+
+P6 roll 6 was **rejected with a working application.** It installed, built, booted and answered
+all five contract probes over real HTTP. Its only defect was that the suite and the app guessed
+different names for the in-memory store table — a free string nothing declared.
+
+Every other item in §2.b bounds the number by letting something through *unverified*. This one
+bounds it the other way: **it fails applications that work**, and it fires whenever two
+independently-authored artifacts guess the undeclared name differently. Rolls 1–5 guessed
+alike. That is a coin flip sitting underneath the measurement, and it can only push the figure
+down.
+
+Fixed in #973 by deriving the table names from the manifest's entities and typing them, so a
+mismatch is a compile error that `next build` fails on — before the suite runs. Roll 6's exact
+key now produces `error TS2345: Argument of type '"run_store"' is not assignable to parameter
+of type 'Table'`, measured against real tsc.
+
+**One consequence for the closing claim.** A bare "N of 6" invites the reading that the missing
+rolls shipped broken software. Roll 6 did not, and neither will a future roll that fails this
+way. The closing record states what each failure *was*, not only how many there were — the
+same category error the roll's own three failure analyses made.
 
 ### 2.c The size of the deploy boundary is itself a risk *(raised 2026-08-16)*
 
