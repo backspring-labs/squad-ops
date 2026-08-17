@@ -31,6 +31,15 @@ deliverable and **not** as a banked roll.
 **Boot audit applies from roll 1.** The old window's "from roll 3" was grandfathering for
 rolls authored before #902 shipped. A fresh window has nothing to grandfather.
 
+**The freeze was verified, not assumed** (2026-08-17 00:40 ET, with roll 6 in flight). All
+seven containers still carry the image ids recorded above, and every one reports
+`StartedAt = 2026-08-16T16:16Z` — before roll 1. Nothing was rebuilt or restarted across the
+window. This is checked rather than trusted because the failure it guards against is silent:
+a rebuild exits 0 and leaves stale agents running, which is how a boundary moves without
+anyone deciding it should. Recording the *start time* alongside the image id is what makes
+the claim falsifiable — an identical id on a container restarted mid-window would still mean
+the deploy moved under the measurement.
+
 ---
 
 ## Per-roll record
