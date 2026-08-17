@@ -299,6 +299,29 @@ class RunVerificationSummary:
         ``(0, 0)`` when no criterion ids were carried at all."""
         return len(self.criteria_verified), len(self.criteria_total)
 
+    @property
+    def criteria_unverified(self) -> tuple[str, ...]:
+        """Contract criteria this run did **not** verify, by name (#945).
+
+        The accounting invariant, stated as a derivation so it cannot drift:
+        ``criteria_verified`` and this together account for every entry of
+        ``criteria_total``.
+
+        Why it is worth naming rather than subtracting. SIP-0104 window roll 1 reported
+        *"Contract criteria: 12/14"* with an **empty** ``unverified`` list, and the two
+        it lost — ``vc-compiles-app-api-runs-run-id-route`` and its join sibling — were
+        recoverable only by diffing the two lists by hand. The count was honest; the
+        identity of the gap simply was not available anywhere. A reader sees a shortfall
+        and cannot tell whether it is a compile criterion for a file that shipped fine or
+        the one behaviour the product exists for.
+
+        Derived rather than stored, for the same reason ``required_unmet`` is: a stored
+        copy can disagree with the lists it summarises, and this field's whole job is to
+        prove nothing was dropped between them.
+        """
+        verified = set(self.criteria_verified)
+        return tuple(c for c in self.criteria_total if c not in verified)
+
 
 @dataclass(frozen=True)
 class WaivedCheck:
@@ -358,6 +381,17 @@ class CycleOutcome:
         return len(self.criteria_verified), len(self.criteria_total)
 
     @property
+    def criteria_unverified(self) -> tuple[str, ...]:
+        """Cycle criteria not verified in any run, by name (#945).
+
+        The roll-up's half of the accounting invariant — see
+        ``RunVerificationSummary.criteria_unverified`` for why the names matter and why
+        this is derived rather than stored.
+        """
+        verified = set(self.criteria_verified)
+        return tuple(c for c in self.criteria_total if c not in verified)
+
+    @property
     def required_unmet(self) -> tuple[str, ...]:
         """Required check_ids not-executed in any run (what drove ``blocked_unverified``).
 
@@ -387,6 +421,10 @@ class CycleOutcome:
             ],
             "criteria_verified": list(self.criteria_verified),
             "criteria_total": list(self.criteria_total),
+            # #945: derived, and emitted because a consumer reading only this dict would
+            # otherwise have to rediscover the shortfall by set arithmetic — which is
+            # exactly what nobody did on window roll 1.
+            "criteria_unverified": list(self.criteria_unverified),
             "replay": self.replay.to_dict() if self.replay else None,
         }
 

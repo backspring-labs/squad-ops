@@ -148,6 +148,15 @@ def _build_verification_lines(summary: RunVerificationSummary) -> list[str]:
     if summary.criteria_total:
         n, m = summary.criteria_coverage
         lines.append(f"Contract criteria: {n}/{m} executed-and-passed")
+        # #945: name the shortfall. Window roll 1 rendered "12/14" with an empty
+        # unverified list, and the two missing criteria were recoverable only by
+        # diffing the lists by hand. A reader seeing a gap cannot otherwise tell a
+        # compile criterion for a file that shipped fine from the one behaviour the
+        # product exists for.
+        if summary.criteria_unverified:
+            lines.append(
+                f"Contract criteria NOT verified: {', '.join(summary.criteria_unverified)}"
+            )
     if summary.failed:
         # #500: reasons inline when the aggregation carried them, so a failed
         # probe is classifiable from the report alone (bare-name fallback kept
