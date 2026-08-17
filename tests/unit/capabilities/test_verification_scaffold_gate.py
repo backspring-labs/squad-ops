@@ -25,6 +25,22 @@ from squadops.capabilities.verification_scaffold_gate import (
 )
 from tests.unit.capabilities._stack_fixtures import manifest_for_stack
 
+
+#: The shell's real store import. It has changed twice (#936 added `all`, #967 added
+#: `TABLES`), and each time a hardcoded copy in these tampers failed with "tamper did not
+#: apply" — a test breaking for a reason unrelated to what it tests. Derived rather than
+#: restated, so the next change to the fill vocabulary cannot break these.
+def _store_import_line() -> str:
+    emission = emit_verification_scaffold(manifest_for_stack("nextjs_ts"))
+    for f in emission.files:
+        for line in f["content"].splitlines():
+            if "from '@/lib/store'" in line:
+                return line
+    raise AssertionError("no shell imports the store — the spine changed shape")
+
+
+_STORE_IMPORT = _store_import_line()
+
 _CREATE_SHELL = "__tests__/scaffold/vc-probe-api-runs.scaffold.test.ts"
 
 
@@ -79,7 +95,7 @@ class TestInjectedGeneratorDefects:
         tampered = _tamper(
             emission,
             _CREATE_SHELL,
-            "import { reset, all } from '@/lib/store'",
+            _STORE_IMPORT,
             "import { restart } from '@/lib/store'",
         )
         findings = assess_execution_readiness(tampered, tree, manifest)
@@ -90,8 +106,8 @@ class TestInjectedGeneratorDefects:
         tampered = _tamper(
             emission,
             _CREATE_SHELL,
-            "import { reset, all } from '@/lib/store'",
-            "import { reset, all } from '@/lib/store'\nimport { agent } from 'supertest'",
+            _STORE_IMPORT,
+            f"{_STORE_IMPORT}\nimport {{ agent }} from 'supertest'",
         )
         findings = assess_execution_readiness(tampered, tree, manifest)
         assert any("'supertest'" in f and "not a declared dependency" in f for f in findings)

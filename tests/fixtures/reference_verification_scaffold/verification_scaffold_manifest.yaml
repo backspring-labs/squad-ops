@@ -2,17 +2,17 @@
 # The frozen-spine record region enforcement verifies against; regenerate with
 # the generator, never hand-edit (a tampered record refuses to load).
 scaffold_manifest_version: 1
-generator_version: 3
+generator_version: 4
 stack: nextjs_ts
 interface_manifest_hash: ac1e7be378c54d5966680b85824c6f2c2e4d158eb8dec14d081209223e07053a
 criteria_pack: nextjs_ts
 expanded_tree_hash: cfa66534e35c8f15344a3f13fc7257ce32b48be70b24f71a7e2a4a4dfaebbd08
-aggregate_spine_hash: dd42983032d035e1fdcd7b4ecd483727ff8bdc1004e5ebb951700f033a5bc30b
-scaffold_hash: 3650c310caa2223e2be48f8b8f8617e25a5a8240f59f120a3fe96ddd9a5ad468
+aggregate_spine_hash: e8f2a59e1e64e3b2d77dc2a2d3aae018a88ba0648393491a6094325f9fba0414
+scaffold_hash: 69d29ab91f692bab9c3f4a2bd72910f39fe27b7ecfc7d41dd99a8bfb62b186f4
 files:
 - path: __tests__/scaffold/vc-probe-api-runs.scaffold.test.ts
-  content_hash: 95f3c6f8560adcf084dbab1f57900d12feb0552873e215365b31eb6b737a05bb
-  spine_hash: 80f84005b4f7e8fd8315909d3048d6169aba44eeea5d386d2794c932b6411e51
+  content_hash: 9245b8442a684f32bfbb7605185a72274b13afa748eb02ccee80fbe559d21d31
+  spine_hash: 3e3d9877aca8db6fefdf3f17259f45caeebd6b1335d0edf2af54b3c4d2eeed14
   slots:
   - slot_id: slot-vc-probe-api-runs
     behavior: POST /api/runs -> 201
@@ -22,8 +22,8 @@ files:
     begin_line: 23
     end_line: 27
 - path: __tests__/scaffold/vc-probe-api-runs-rejects-blank.scaffold.test.ts
-  content_hash: 593a675a2524885a39ccb48114a03564f22d419678c2838b5e65ee7398e4e22a
-  spine_hash: d9c63917adad6acc547425315fc6020eeb55bbabf3192139b1824f04396966f2
+  content_hash: c51841d227904da82466e19e6344a4648acb644c248f0dd7eb7895c1b21a47a2
+  spine_hash: f30001086a79480dfd66c893e642e954ce8b6d199c44a4c3cb8687a91b7595a8
   slots:
   - slot_id: slot-vc-probe-api-runs-rejects-blank
     behavior: POST /api/runs blank required fields -> 422
@@ -33,8 +33,8 @@ files:
     begin_line: 23
     end_line: 27
 - path: __tests__/scaffold/vc-probe-api-runs-join.scaffold.test.ts
-  content_hash: 02d86070d3cd062c7fb8e761ecc6bd09274da37164551dc13056156267b52ea9
-  spine_hash: 31f9b972475333ea72e05d40d533c0ea3909782f71908677218609c62f96acea
+  content_hash: 14f4115aad1800f4a0950a14daf4531c266467722c5ba2d4d7ed959bad19e4a6
+  spine_hash: edbc25e16cbb7cde2a492d20d57df3f0fb1a17749db62ee56fb0ffe4bb8d7c60
   slots:
   - slot_id: slot-vc-probe-api-runs-join
     behavior: POST /api/runs/{run_id}/join -> 200
@@ -44,8 +44,8 @@ files:
     begin_line: 33
     end_line: 37
 - path: __tests__/scaffold/vc-probe-api-runs-join-duplicate.scaffold.test.ts
-  content_hash: b620d6333aa741e98efab665573e1b64615af5268d4d472157cb1501ceea1104
-  spine_hash: 6050c9439735faf63ba1f8ca556e041cb928905f500238bc0ea48c5405c46246
+  content_hash: cb5ff626a6626db628fb89568d2e6965daafb090b3af5ab152738a21d3bc0490
+  spine_hash: b69a3a8ee4d67352b3332c63f6c28892e274bbfac1d5a8cf1f0f6e21f56c9252
   slots:
   - slot_id: slot-vc-probe-api-runs-join-duplicate
     behavior: POST /api/runs/{run_id}/join duplicate -> 409
@@ -55,8 +55,8 @@ files:
     begin_line: 41
     end_line: 45
 - path: __tests__/scaffold/vc-probe-api-runs-leave.scaffold.test.ts
-  content_hash: 9c82bb28de3cfa21b39912ec0fe005c3d55393fcfb149ce75dd3596b4c4ae8d9
-  spine_hash: 1e03254a2a70e3f282d21c5dad66525a40dc2e66421365ebee48ce5f2b196be1
+  content_hash: 84754c4f511e27029c5534f75e08a3f5d7113adf855c758ef57514d30a2dcda8
+  spine_hash: c391a7da2fd66226664154805762332d6cf1d4cb5795bc2047aaceeed53aa9b8
   slots:
   - slot_id: slot-vc-probe-api-runs-leave
     behavior: POST /api/runs/{run_id}/leave -> 200
@@ -66,8 +66,8 @@ files:
     begin_line: 42
     end_line: 46
 - path: __tests__/scaffold/vs-get-api-runs.scaffold.test.ts
-  content_hash: b7000122c4bceb8c495071d90a42cfa2c8eef72726ffced63d6cb8886ced08ba
-  spine_hash: 3f3b2d15229e8974f275052a2eb1396fcd65f4fe086b354c2b244b7b1960d2c9
+  content_hash: 9c53dcf9d5e6420b4ead5de51137697c3dc44414139ea2271a3c2a00b989e8e1
+  spine_hash: 5e18437d792a591693e99f11241e87d40449d355d0b937c47d144bf722e79b1f
   slots:
   - slot_id: slot-vs-get-api-runs
     behavior: GET /api/runs -> 200
@@ -76,8 +76,8 @@ files:
     begin_line: 19
     end_line: 23
 - path: __tests__/scaffold/vs-get-api-runs-run-id.scaffold.test.ts
-  content_hash: 9f2ccf5eaa200ae3aef4ee4fba64d1d25bf2a059725388358401d73231b0d8b6
-  spine_hash: f381d58e78807badf43bd260013adbc159cd59732cbfce8b8ee9f235e0406794
+  content_hash: 9ce0b15a8b63aa07167795da416c64ae9eae7d1ce4fa71f83dbfbd508ca9bf03
+  spine_hash: 71a16ae4d5cd0204146953f0d7206ca9daa8929ea4148b5f8e9fd7e4940e4222
   slots:
   - slot_id: slot-vs-get-api-runs-run-id
     behavior: GET /api/runs/{run_id} -> 200
@@ -86,8 +86,8 @@ files:
     begin_line: 29
     end_line: 33
 - path: __tests__/scaffold/vs-get-api-runs-run-id-not-found.scaffold.test.ts
-  content_hash: b500322d59607b876165bac12fded44c788316f0acf31b715225e682f087905c
-  spine_hash: 391147abed394767122aa9178b4061311d98ebaf4bf8e1c2dc8904a34b4a7e1d
+  content_hash: 89e655f3b68564332e86bbac28839f4eb18f5156b62d002cdc2bafacada87ccb
+  spine_hash: eb0ea3bfc46b9c9229487afd382ba6fd1a55a96f04d8bb3a306dd38a5929a8ed
   slots:
   - slot_id: slot-vs-get-api-runs-run-id-not-found
     behavior: GET /api/runs/{run_id} unknown id -> 404

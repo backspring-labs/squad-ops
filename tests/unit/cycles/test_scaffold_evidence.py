@@ -272,7 +272,7 @@ class TestSummary:
         )
         d = summary.to_dict()
         # the promotion model's fields (SIP §6/§12) — schema preserved, workflow not built
-        assert d["stack"] == "nextjs_ts" and d["generator_version"] == 3
+        assert d["stack"] == "nextjs_ts" and d["generator_version"] == 4
         assert d["shell_count"] == 8 and d["slot_count"] == 8
         assert d["fill_dispositions"] == {"filled": 1, "missing": 7}
         assert d["additive_test_count"] == 2

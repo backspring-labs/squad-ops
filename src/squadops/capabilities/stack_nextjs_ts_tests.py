@@ -339,7 +339,7 @@ def _invocation_lines(step: _Step, assign: str) -> list[str]:
     return lines
 
 
-def _shell_source(behavior: _Behavior) -> str:
+def _shell_source(behavior: _Behavior, *, store_symbols: tuple[str, ...]) -> str:
     """Render one behavior shell file: frozen spine plus one empty fill slot."""
     route_files = list(
         dict.fromkeys(
@@ -352,13 +352,19 @@ def _shell_source(behavior: _Behavior) -> str:
         "// The spine — placement, imports, lifecycle, invocation, status assertion — is",
         "// frozen (SIP-0104 §4.2); the marked fill slot is the qa author's mutable surface.",
         "import { beforeEach, describe, expect, it } from 'vitest'",
-        # `all` is imported for the FILL, not for the spine (#936). The spine only calls
-        # `reset`, but a fill may not add imports — "Assertions only. NO imports" — so any
-        # store helper the fill vocabulary teaches must already be in scope here or the
-        # fill cannot run. The appendix's own worked examples call `all('runs')`, and
-        # every one of them died on `ReferenceError: all is not defined` until this line.
-        # Keep this in step with the vocabulary the appendix teaches.
-        "import { reset, all } from '@/lib/store'",
+        # Imported for the FILL, not for the spine (#936, and #967's recurrence of it).
+        # The spine only calls `reset`, but a fill may not add imports — "Assertions only.
+        # NO imports" — so EVERY store symbol the fill appendix teaches must already be in
+        # scope here or the fill cannot run.
+        #
+        # This has now failed twice for the same reason. #936: the appendix taught
+        # `all('runs')` and every worked example died on `ReferenceError: all is not
+        # defined`. #967: the appendix was changed to teach `TABLES.<Entity>` and this line
+        # was not, so the pre-V7 shakedown produced `ReferenceError: TABLES is not defined`
+        # in six of eight shells. The comment that used to sit here said "keep this in step
+        # with the vocabulary the appendix teaches", which is a request, not a mechanism —
+        # `test_shell_imports_every_symbol_the_fill_brief_teaches` is the mechanism.
+        f"import {{ {', '.join(store_symbols)} }} from '@/lib/store'",
     ]
     for route_file in route_files:
         module = route_file.removesuffix(".ts")
@@ -433,6 +439,16 @@ def emit_nextjs_ts_verification_scaffold(
     )
 
     behaviors, probes = derive_scaffold_behaviors(manifest)
+    # `TABLES` exists only when the manifest declares entities (#967); importing it from a
+    # store that does not export it is the same ReferenceError one step earlier.
+    store_symbols = (
+        ("reset", "all", "TABLES")
+        if getattr(manifest, "entities", ())
+        else (
+            "reset",
+            "all",
+        )
+    )
 
     # #951: the scaffold covers what it can DERIVE, not what the manifest DECLARES, and
     # the difference used to be recorded nowhere — so silence read as coverage. Roll 2
@@ -472,5 +488,5 @@ def emit_nextjs_ts_verification_scaffold(
             criterion_ids=(behavior.probe_id,) if behavior.probe_id else (),
         )
         path = f"{SCAFFOLD_TEST_DIR}/{behavior.behavior_id}.scaffold.test.ts"
-        emitted.append((path, _shell_source(behavior), (slot,)))
+        emitted.append((path, _shell_source(behavior, store_symbols=store_symbols), (slot,)))
     return emitted
