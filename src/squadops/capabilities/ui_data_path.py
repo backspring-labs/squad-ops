@@ -44,8 +44,15 @@ _SEAM_PREFIX: dict[str, str] = {
 #: Files whose calls are the UI's. Route handlers legitimately talk to the store, not HTTP.
 _UI_SUFFIXES = (".tsx", ".jsx")
 
+#: Matched against whole file content, not line by line — a call argument that wraps to the
+#: next line is still one call, and scanning per line silently dropped it (#952). The two
+#: character classes exclude newlines deliberately: a type parameter and a request path each
+#: live on one line, and letting either span lines lets an unbalanced quote swallow the rest
+#: of the file. Only the whitespace between ``(`` and the opening quote may cross a line,
+#: which is exactly the wrap this expression exists to tolerate.
 _CALL_RE = re.compile(
-    r"\b(?P<fn>api|apiFetch|fetch)\s*(?:<[^>()]*>)?\s*\(\s*(?P<quote>['\"`])(?P<path>[^'\"`]*)(?P=quote)"
+    r"\b(?P<fn>api|apiFetch|fetch)\s*(?:<[^>()\n]*>)?\s*"
+    r"\(\s*(?P<quote>['\"`])(?P<path>[^'\"`\n]*)(?P=quote)"
 )
 _TEMPLATE_EXPR_RE = re.compile(r"\$\{[^}]*\}")
 
@@ -73,6 +80,13 @@ def extract_ui_calls(files: dict[str, str], stack: str) -> list[UiCall]:
     live-server class, a different defect, and silently normalizing them would hide it.
     An unknown stack yields nothing rather than guessing a prefix — a wrong prefix
     would invent failures in an app that works.
+
+    Scans whole file content. The first version scanned line by line, so a call written
+    across two lines — ``await api<Run>(`` then the path beneath it, which is what a
+    formatter produces once the call carries a second argument — matched nothing and was
+    never probed (#952). That silence is the worst possible failure for this module: it
+    does not weaken the check, it removes it, and the roll still reads as audited. Roll 1
+    of the SIP-0104 P6 window passed with its join and leave call sites extracted as zero.
     """
     prefix = _SEAM_PREFIX.get(stack)
     if prefix is None:
@@ -81,30 +95,37 @@ def extract_ui_calls(files: dict[str, str], stack: str) -> list[UiCall]:
     for path, content in sorted(files.items()):
         if not path.endswith(_UI_SUFFIXES):
             continue
-        for lineno, line in enumerate(content.split("\n"), start=1):
-            for match in _CALL_RE.finditer(line):
-                written = match.group("path")
-                if not written:
-                    continue
-                concrete = _TEMPLATE_EXPR_RE.sub(SAMPLE_SEGMENT, written)
-                if concrete.startswith(("http://", "https://")):
-                    request_path = concrete
-                elif match.group("fn") == "fetch":
-                    # A raw fetch bypasses the seam, so no prefix is applied to it.
-                    request_path = concrete
-                else:
-                    request_path = prefix + concrete
-                calls.append(
-                    UiCall(
-                        file=path,
-                        line=lineno,
-                        fn=match.group("fn"),
-                        written=written,
-                        request_path=request_path,
-                    )
+        for match in _CALL_RE.finditer(content):
+            written = match.group("path")
+            if not written:
+                continue
+            # The call site is where the failure message must point, so the line is the
+            # one the call OPENS on, not the one its path happens to land on.
+            lineno = content.count("\n", 0, match.start()) + 1
+            concrete = _TEMPLATE_EXPR_RE.sub(SAMPLE_SEGMENT, written)
+            if concrete.startswith(("http://", "https://")):
+                request_path = concrete
+            elif match.group("fn") == "fetch":
+                # A raw fetch bypasses the seam, so no prefix is applied to it.
+                request_path = concrete
+            else:
+                request_path = prefix + concrete
+            calls.append(
+                UiCall(
+                    file=path,
+                    line=lineno,
+                    fn=match.group("fn"),
+                    written=written,
+                    request_path=request_path,
                 )
+            )
     return calls
 
+
+#: The probe is a GET whatever verb the UI uses, because sending the real verb would mutate
+#: the app under audit. A route that exists but rejects GET therefore answers 405, and that
+#: answer proves the route is mounted — see ``classify_ui_response`` (#953).
+METHOD_NOT_ALLOWED = 405
 
 #: Verdicts for one probed UI path.
 SERVED = "served"
@@ -136,12 +157,25 @@ def classify_ui_response(
       ``.catch(() => ({}))`` yields an empty object, and the view renders blank with no
       error anywhere. Roll 1 shipped exactly this on its detail route, and a
       404-only rule (this function's first version) called it served.
+
+    **405 is SERVED, whatever it carries** (#953). The audit probes every call site with a
+    GET regardless of the verb the UI uses, because sending the real verb would mutate the
+    application being audited — a POST probe would create a record, and the audit must be
+    able to run twice. So a POST-only route answers the probe with 405, and Next produces
+    that from the router with no content type. Read as "not JSON", it fell to
+    ``PAGE_NOT_API`` and failed correct applications: P6 rolls 3 and 4 were both failed on
+    join and leave routes that a human then verified by hand. This inverts the evidence.
+    **A 405 is the strongest signal the route exists** — the router matched the path and
+    rejected only the method, which is precisely the question this check asks. A page never
+    answers 405; it answers 200 with HTML, and that case is untouched.
     """
     if request_path.startswith(("http://", "https://")):
         return LIVE_SERVER
     is_json = "json" in content_type.lower()
     if status == 404 and not is_json:
         return ROUTE_MISSING
+    if status == METHOD_NOT_ALLOWED:
+        return SERVED
     if via_seam and not is_json:
         return PAGE_NOT_API
     return SERVED
