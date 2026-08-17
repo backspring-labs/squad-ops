@@ -25,6 +25,18 @@ fixed slots** — never to rebuild, rewire, or regenerate the scaffold.
   `/api/runs/<run_id>`.
 - Page components in `app/**/page.tsx` — implement each component's body.
 
+**The store seam, stated exactly — pass `TABLES.<Entity>`, never a string you invent:**
+`@/lib/store` exports `TABLES`, one entry per declared entity, and its functions accept only
+those values. Write `insert(TABLES.Run, run)` and `all(TABLES.Run)`. A name you make up is a
+compile error, and the build fails on compile errors — so the cost of inventing one is the
+whole run, not a warning. Read the table names out of `TABLES`; do not retype them as
+strings, and do not add a table of your own.
+
+The reason this is spelled out: the store used to take any string. An application named its
+table one thing, its test suite named it another, and the mismatch showed up as an empty
+array — indistinguishable from a handler that never saved anything. A cycle spent its entire
+repair budget rejecting an application that worked.
+
 **The client seam, stated exactly — this is where fills go wrong:**
 `api()` from `@/lib/api` fetches **the path you pass it, verbatim. It adds no prefix.**
 Pass the endpoint's FULL declared URL path, exactly as the interface manifest declares

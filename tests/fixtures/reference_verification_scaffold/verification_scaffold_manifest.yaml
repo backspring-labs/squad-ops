@@ -2,11 +2,11 @@
 # The frozen-spine record region enforcement verifies against; regenerate with
 # the generator, never hand-edit (a tampered record refuses to load).
 scaffold_manifest_version: 1
-generator_version: 2
+generator_version: 3
 stack: nextjs_ts
 interface_manifest_hash: ac1e7be378c54d5966680b85824c6f2c2e4d158eb8dec14d081209223e07053a
 criteria_pack: nextjs_ts
-expanded_tree_hash: 6141646f442850aeb79675d56c58e2393c91ab771b92bc6994f55c38205ca4b9
+expanded_tree_hash: cfa66534e35c8f15344a3f13fc7257ce32b48be70b24f71a7e2a4a4dfaebbd08
 aggregate_spine_hash: dd42983032d035e1fdcd7b4ecd483727ff8bdc1004e5ebb951700f033a5bc30b
 scaffold_hash: 3650c310caa2223e2be48f8b8f8617e25a5a8240f59f120a3fe96ddd9a5ad468
 files:
