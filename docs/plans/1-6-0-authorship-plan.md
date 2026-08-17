@@ -304,8 +304,8 @@ until 2b exists.
 
 | Step | Work |
 |---|---|
-| **3a** | **Guard 1a** architecture test — nothing branches on authoring mode below framing. The invariant holds today at one call site (`task_plan.py`); nothing pins it |
-| **3b** | **Guard 1b** — reference manifest through authored mode, byte-identical downstream artifacts |
+| **3a** | **Guard 1a** architecture test — nothing branches on authoring mode below framing. **DONE 2026-08-15** (`07edfcc0`, `tests/unit/cycles/test_authoring_mode_no_fork.py`) — the predicate's single production call site is now pinned inside the framing branch, where before nothing stopped a second one appearing |
+| **3b** | **Guard 1b** — reference manifest through authored mode, byte-identical downstream artifacts. **DONE 2026-08-15** (`07edfcc0`, `tests/unit/cycles/test_authored_mode_equivalence.py`) — skeleton, derived contract and structural hash all pinned, with a negative control proving a real structural change still moves the hash |
 | **3c** | **Rider #376** (SIP-0102 3–4): the repair path discards final-state verification. Enabling — V5 took 2 corrections and the verdict field inherits the gap |
 | **3d** | **#194** → capacity unless it fires |
 | **3e** | Capacity roll → 1.7 pool with a milestone update |
@@ -1322,9 +1322,12 @@ loaded-module verification, per the 1.5 precedent.
 4. **The measurement:** authored-mode FAY window — pre-registered N, unfiltered, frozen deploy.
    **Gate: FAY repeatably > 0 in authored-manifest mode**, banked as the authored-mode baseline
    that 1.8's memory and campaign work measure against.
-5. **The offline guards pass** — M0a's equivalence guard (built), **plus Guard 1a's
-   architecture test and Guard 1b, both of which must be *built* first** (see Guard 1;
-   verified unbuilt 2026-08-09). Replay zero-diff is **dropped** — it never existed and
+5. **The offline guards pass** — M0a's equivalence guard, **Guard 1a's architecture test and
+   Guard 1b**, all three built and green. *(Corrected 2026-08-16: this item read "both of
+   which must be built first — verified unbuilt 2026-08-09" and that is no longer true.
+   Guard 1a and Guard 1b landed 2026-08-15 in `07edfcc0`, ten tests, green. A cut gate that
+   lists satisfied work as outstanding is the same defect as one that lists outstanding work
+   as satisfied — it just fails in the safe direction.)* Replay zero-diff is **dropped** — it never existed and
    inventing it at the tail of a release is new scope, not a guard. The seeded control is a
    **comparison instrument available on demand, never a checkbox** (owner ruling, reaffirmed
    2026-08-09 after the claim sweep): run it against the seeded pair when the window
@@ -1363,8 +1366,21 @@ Two further facts, stated because they are what actually decided this:
 | mechanism | status *(verified 2026-08-09)* | cost | what it catches |
 |---|---|---|---|
 | **M0a's standing equivalence guard** | **BUILT** — `tests/unit/capabilities/test_contract_derivation_reference.py` | offline | the deriver drifting from the pinned reference |
-| **Guard 1b** — reference manifest through authored mode → byte-identical downstream artifacts | **NOT BUILT** | offline, milliseconds | transformation regressions, structurally, before any window |
+| **Guard 1b** — reference manifest through authored mode → byte-identical downstream artifacts | **BUILT 2026-08-15** (`07edfcc0`) — `tests/unit/cycles/test_authored_mode_equivalence.py` | offline, milliseconds | transformation regressions, structurally, before any window |
 | **Replay zero-diff** over the 1.5 green corpus | **NOT BUILT**, and never was | offline | stored evaluation rows re-evaluating differently under new code |
+
+> **Update 2026-08-16 — Guard 1b now exists, and so does Guard 1a.** Both landed in
+> `07edfcc0` and are green: ten tests across
+> `tests/unit/cycles/test_authoring_mode_no_fork.py` (structure — the authoring predicate has
+> exactly one production call site and it is inside the framing branch) and
+> `test_authored_mode_equivalence.py` (output — the reference manifest through both
+> provenances yields a byte-identical expanded skeleton, a byte-identical derived contract,
+> and an unmoved structural hash, with a negative control proving a real structural change
+> *does* move it).
+>
+> The paragraph below still reads "until Guard 1b exists"; that condition is now satisfied,
+> and the coverage gap it describes is closed. The **argument** is unchanged — it never
+> depended on Guard 1b — but the release no longer has to make it while carrying the gap.
 
 > **Correction 2026-08-09 — this table originally presented all three as existing, and two do
 > not.** It also cited "(#734 method)" for the replay row; #734 is *"workspace-revision
@@ -1486,6 +1502,7 @@ the ruling that authorizes it.
 | #812 | machine/principal vocabularies cannot collide | owed | **`decided_by` was a hardcoded `"system"` literal, not from the token** — 140 human approvals mislabelled | ⚠️ issue only |
 | **S1** #816 | `expand()` byte-identical; both hashes unmoved | offline | — | — |
 | **#818** | FastAPI contract byte-identical after parameterization | **VS** | *(this sweep is its origin)* | ✅ PR #819 |
+| **Guard 1a + 1b** `07edfcc0` | 1a: the authoring predicate has exactly one production call site, inside framing. 1b: reference manifest → byte-identical skeleton, contract and structural hash through both provenances, with a negative control | offline, 10 tests | **the plan recorded both as unbuilt after they were built** — cut-gate item 5 and the "what replaces it" table still said NOT BUILT on 2026-08-16, a day after they landed | ✅ this PR |
 
 **Standing rule this instantiates:** a PR that corrects a premise updates this row **in the same
 PR**. Not the issue alone — the issue is where the correction is discovered, this matrix is where
