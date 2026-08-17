@@ -75,12 +75,25 @@ verdicts revised.
 
 ### Gate handling was not uniform, and the closing claim must say so
 
-Rolls 1–3 carry an operator `--as-agent` approval with an earlier wording. Roll 4
-**auto-approved** via `system:no_open_questions` — the first of the window. Rolls 5–6 carry
-the V7 pre-registration's §7.3(c) constant text.
+**Three distinct handlings across six rolls**, which is exactly the incoherence §7.3 of the
+V7 pre-registration exists to end:
+
+| rolls | how the gate closed |
+|---|---|
+| 1–3 | operator `--as-agent` approval, earlier free-text wording |
+| **4, 6** | **auto-approved** by `system:no_open_questions` — no human or agent decision at all |
+| 5 | `--as-agent` with the pre-registration's §7.3(c) constant text |
+
+So a third of this window never had its gate *decided*. That is not a defect — a manifest
+declaring no unresolved decision has nothing to ask — but it means "approved" does not denote
+the same act across the six rolls, and any claim resting on uniform handling would be false.
+V7 resolves it by making approval a pre-declared constant and recording an auto-approval as
+itself rather than normalising it away.
 
 Note the irony on roll 4: "no unresolved decisions" was true only of *declared* uncertainty.
-The thing it left unspecified was the duplicate-join rule, whose absence cost it a probe.
+The thing it left unspecified was the duplicate-join rule, whose absence cost it a probe. A
+gate that fires on declared uncertainty cannot see the uncertainty an author did not notice
+they had.
 
 ---
 
