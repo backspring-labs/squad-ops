@@ -31,8 +31,8 @@ is a separate, deliberate act taken after the window closes.
 | # | Precondition | State |
 |---|---|---|
 | 2.1 | V6 complete (SIP-0104 P6 window closed) | in progress |
-| 2.2 | **#952 and #953 fixed and deployed** — see §2.a, this is blocking | open |
-| 2.3 | Instrument defects either fixed or explicitly declared (§2.b) | **ruled 2026-08-16: fix all three** — open until they land |
+| 2.2 | **#952 and #953 fixed and deployed** — see §2.a, this is blocking | fixed in PR #956; **not deployed** |
+| 2.3 | Instrument defects either fixed or explicitly declared (§2.b) | **ruled 2026-08-16: fix all three**; all three built (#957/#958/#959), **none deployed** |
 | 2.4 | Deploy frozen; commit and image ids recorded in §3 | pending |
 | 2.5 | Zero open focus leases immediately before roll 1 | check at launch |
 | 2.6 | Every ruling in §7 closed | 7.1–7.3 closed; 7.4's middle band owner-ruled, its other three bands drafted and awaiting a nod |
@@ -65,9 +65,9 @@ the declaration is recorded here **before** roll 1 and repeated in the closing c
 
 | Issue | Effect on the number | Disposition |
 |---|---|---|
-| #951 | The scaffold covers a derived subset of declared behaviours and never reports the delta | **fix** |
-| #948 | Probe derivation misses body-discriminated child actions | **fix** |
-| #915 | An additive suite may mock `global.fetch` and assert its own mock, undetected | **fix** |
+| #951 | The scaffold covers a derived subset of declared behaviours and never reports the delta | **fix** — built, PR #958 |
+| #948 | Probe derivation misses body-discriminated child actions | **fix** — built, PR #959 |
+| #915 | An additive suite may mock `global.fetch` and assert its own mock, undetected | **fix** — built, PR #957 |
 | #795 | `error_contract.shape` is authored and read by nothing; four of four P6 rolls declared an envelope the seam never emits | declare (already a known window artifact; unchanged by the ruling above, which covered the three open rows) |
 
 **What "fix" costs, so the ruling is not read as uniform.** These are not three comparable
@@ -90,6 +90,27 @@ P6's were not, so the two windows are comparable on *recipe* (§3's config hash 
 **not** on probe counts. The P6 distribution — 5 / 2 / 5 / 4 across four identical-recipe rolls
 — is the measurement that motivated the fix, and it must not be reported as a baseline the
 V7 numbers improve on. They are measurements of different instruments.
+
+### 2.c The size of the deploy boundary is itself a risk *(raised 2026-08-16)*
+
+Six PRs now sit ready for the single rebuild that separates P6 from V7: #956 (two audit
+defects), #957, #958, #959, and the docs. Each is individually justified — five are
+preconditions this document itself imposes. Together they are a **large** boundary
+immediately before an evidentiary window, and §5.1 resets the window on a *new* mechanical
+suite failure attributable to the harness. A defect introduced by this batch and discovered
+at roll 4 costs the whole window.
+
+Two things follow, and neither is a reason to skip the fixes:
+
+1. **Merge what this document requires, and nothing else.** #933, #935, #939 and #946 are
+   real defects with no bearing on what a green roll *means*; landing them in the same
+   boundary buys nothing the measurement needs and adds surface. They wait for V7 to close.
+2. **Deploy-prove before roll 1, in-container, per the 1.5 precedent** — the loaded-module
+   verification, not the rebuild's exit code. The rebuild has exited 0 with stale agents
+   before.
+
+The alternative — one change per boundary, as the old P6 window ran — buys attribution this
+window does not need, since V7 measures a deploy rather than a change.
 
 ---
 
