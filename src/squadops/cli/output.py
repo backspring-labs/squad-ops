@@ -11,9 +11,26 @@ from typing import Any
 
 from rich.console import Console
 from rich.table import Table
+from rich.text import Text
 
 _console = Console()
 _err_console = Console(stderr=True)
+
+
+def _literal(value: Any) -> Text:
+    """Render a data value as itself, never as Rich markup (#931).
+
+    Rich reads ``[...]`` in a string as a style tag and **removes** it. Every value the
+    CLI prints is data, not markup, so a Next.js dynamic route arrived on screen as
+    ``app/runs//page.tsx`` — the segment silently deleted, with nothing to indicate a
+    path had been rewritten between the store and the terminal.
+
+    That is worse than a display bug. The artifact table is the first surface a person
+    reads when triaging a cycle, and it was showing them a filename that does not exist
+    while looking authoritative. Any bracketed data has the same exposure — a JSON list,
+    a parameterised path, a regex.
+    """
+    return Text(str(value))
 
 
 def print_table(
@@ -40,7 +57,7 @@ def print_table(
     for header in headers:
         table.add_column(header)
     for row in rows:
-        table.add_row(*[str(cell) for cell in row])
+        table.add_row(*[_literal(cell) for cell in row])
     _console.print(table)
 
 
@@ -57,7 +74,9 @@ def print_detail(data: dict, *, quiet: bool = False) -> None:
         return
 
     for key, value in data.items():
-        _console.print(f"[bold]{key}:[/bold] {value}")
+        # The label is ours and may carry markup; the value is data and never may.
+        # Interpolating it into the same f-string is what let `[run_id]` disappear.
+        _console.print(Text.assemble((f"{key}: ", "bold"), _literal(value)))
 
 
 def print_json(data: Any) -> None:
