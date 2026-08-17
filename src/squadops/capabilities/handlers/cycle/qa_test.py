@@ -43,6 +43,21 @@ from squadops.capabilities.handlers.emission_log import log_emission_shape
 logger = logging.getLogger(__name__)
 
 
+def failing_check_names(checks: list[dict]) -> list[str]:
+    """Which checks actually opened the self-eval branch (#946).
+
+    Evidence-gap rows are excluded deliberately. They are honest non-passes that
+    ``_validate_output`` already refuses to fail the task on — a correction cannot repair
+    an evaluator limitation — so naming one as the trigger would send a reader chasing a
+    check that did not cause anything.
+    """
+    return [
+        str(c.get("check", "unnamed"))
+        for c in checks
+        if not c.get("passed", True) and not c.get("evidence_gap", False)
+    ]
+
+
 def _frontend_skip_reason(error: str) -> str:
     """Map a frontend-build skip error to a §7 not-executed reason (#407).
 
@@ -1073,6 +1088,25 @@ class QATestHandler(_CycleTaskHandler):
 
             # Self-evaluation loop
             if not validation.passed:
+                # #946: this branch is the SOLE trigger for a second model call, and
+                # nothing recorded which check opened it. The run summary afterwards
+                # showed 29/29 accepted, so the failure was unreadable from stored state
+                # — a whole extra generation, invisible in the record it produced. Roll 1
+                # burned 3,574 tokens here (68% of the qa task's wall clock) and the only
+                # way to learn why was to reconstruct it by hand from artifacts.
+                #
+                # Log the failing checks by name, not the count. "1 check failed" sends a
+                # reader back to the artifacts, which is the state this exists to end.
+                # `expected_artifacts` in particular fails for a reason fill mode makes
+                # invisible (#947): the plan's chosen filename is demoted while the check
+                # still hard-requires it.
+                failing = failing_check_names(validation.checks)
+                logger.info(
+                    "qa_test_handler self_eval trigger: failing_checks=%s missing=%s summary=%r",
+                    failing or ["<none named>"],
+                    validation.missing_components,
+                    validation.summary,
+                )
                 max_self_eval = resolved_config.get("max_self_eval_passes", 1)
                 self_eval_count = 0
 
