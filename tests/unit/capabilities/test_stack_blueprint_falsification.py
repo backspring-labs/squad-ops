@@ -27,6 +27,25 @@ and a NEW field with no consumer fails here rather than entering the schema unno
   subtractively — the same reading the schema draft applies to Tier 3 — it must not be a
   blueprint field.
 
+**This file is also where S5's admission rule is ENFORCED (Stage 2f).** S5 states it as
+*"a new blueprint field must be demonstrated on at least two stacks before admission"*, with
+the consequence that *"a one-stack need is expressed as a declared optional capability with its
+reason"*. That is exactly the classification below, and it is enforced rather than asked for:
+
+- populated on both stacks → falsified on each → admitted;
+- populated on **one** stack → ``ALREADY_EMPTY`` on the other → fails until a reason is
+  recorded in ``_DECLARED_OPTIONAL``, and ``test_a_declared_optional_is_populated_by_some_stack``
+  additionally requires that some stack does populate it;
+- populated on **no** stack → rejected. An optional capability nothing populates is not
+  optional, it is unevidenced;
+- read by nothing → rejected outright.
+
+Recorded here because *what a test enforces stays true; what discipline enforces drifts*
+(``test_docs_version_sync``'s own rationale). S5's rule was written only in
+``1-6-0-authorship-plan.md``, and a release plan is superseded at the cut — the failure mode
+CLAUDE.md names and SIP-0103 §5d paid for. The rule's permanent *statement* still belongs in
+the Stack Blueprint SIP at 2g; its permanent *enforcement* is here.
+
 **Four traps this harness had, recorded because each one CHANGED THE ANSWER and the next
 author will hit them.** None is hypothetical; every one produced a wrong finding first:
 
