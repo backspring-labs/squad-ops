@@ -41,11 +41,28 @@ rolls authored before #902 shipped. A fresh window has nothing to grandfather.
 | 2 | `cyc_2f63e2d841eb` | 62m30s | accepted | 26/26 | 9/9 | **0** | 5/5 | **2** | 5 | **3/4** |
 | 3 | `cyc_0e07836b5baa` | 63m | accepted | 38/38 | 14/14 | **0** | 8/8 | 5 | 8 | 5/5 |
 | 4 | `cyc_de20c33b7892` | 78m | accepted | 36/36 | 13/13 | **0** | 7/7 | 4 | 7 | 5/5 |
-| 5 | `cyc_ac94b672fa63` | 56m39s | *in flight* | | | | | 5 | 8 | 5/5 |
-| 6 | | | | | | | | | | |
+| 5 | `cyc_ac94b672fa63` | 56m39s | accepted | 38/38 | — | **0** | 8/8 | 5 | 8 | 5/5 |
+| 6 | `cyc_085f992ad60d` | *in flight* | | | | | | | | |
 
 Endpoint coverage is the #951 report: declared endpoints reached by at least one probe or
 scaffold slot. Roll 2's `3/4` is the endpoint that carried join **and** leave.
+
+Roll 5 (implementation 44m55s) is the window's largest qa emission at 8,056 completion
+tokens, and the only roll whose plan named a test file the author then **wrote**
+(`extracted_files=1`, `expected=['__tests__/api/runs.test.ts']`) — the sixth consecutive
+instance of #933, and the second of the reset window where the author volunteered the file
+rather than omitting it. It also declared `validation_error: 422` where rolls 1–4 used 400,
+which changed nothing: the duplicate-participant code still maps to 409, and that is what
+buys the duplicate probe.
+
+**Audit instrument, stated because it is not uniform.** Rolls 3, 4 and 5 were failed by
+`audit_delivered_app.py` on their join and leave call sites and are recorded as passing.
+Rolls 3 and 4 were cleared by a human booting the deliverable and issuing real POSTs; roll 5
+was cleared by re-running the **corrected** audit (#952/#953, PR #956), which also re-clears
+rolls 1, 3 and 4. Roll 1's original pass was *vacuous* — the broken extractor found 2 of its
+5 call sites. Under the corrected instrument every banked roll passes on every call site.
+**No roll is re-scored on this**; the instrument's version is recorded rather than the
+verdicts revised.
 
 ### Gate handling was not uniform, and the closing claim must say so
 
