@@ -83,7 +83,7 @@ the declaration is recorded here **before** roll 1 and repeated in the closing c
 | `resolved_config_hash` | `_____` |
 | Deploy — main commit | `_____` |
 | Deploy — image ids | runtime-api `_____`; max, neo, nat, bob, eve, data `_____` |
-| Gate policy | see §7.3 |
+| Gate policy | **pre-declared constant** — owner ruling 2026-08-16, §7.3(c) |
 
 ---
 
@@ -195,12 +195,47 @@ Three candidate rulings:
   score depend on whether the manifest happened to declare an unresolved decision — an
   authoring accident, not a capability difference.
 - **(c) Pre-declare the approval policy here, apply it identically to every roll, and treat it
-  as a constant rather than an intervention.** *(Recommended.)* The exact notes text is fixed
-  in this document before roll 1, every gate that opens receives it verbatim, and the decision
-  is recorded `--as-agent`. A constant applied uniformly cannot bias one roll relative to
-  another, and the record stays truthful about who decided.
+  as a constant rather than an intervention.** The exact notes text is fixed in this document
+  before roll 1, every gate that opens receives it verbatim, and the decision is recorded
+  `--as-agent`. A constant applied uniformly cannot bias one roll relative to another, and the
+  record stays truthful about who decided.
 
-If (c) is chosen, the verbatim approval text goes here: `_____`.
+**Owner ruling 2026-08-16: (c).** Gate approval under this policy is a pre-registered constant
+and does not count as manual intervention for §5's scoring.
+
+#### The policy, in force for every roll of this window
+
+**Verbatim approval text** — copied exactly, with no substitution of any kind:
+
+```
+V7 FAY window. Open questions deferred; core PRD scope only. Approved under the
+pre-registered gate policy (pre-registration 7.3c) — identical text applied to every
+roll of this window, recorded as an agent decision.
+```
+
+Issued as `squadops runs gate <project> <cycle> <run> progress_plan_review --approve
+--as-agent --notes "<text above>"`.
+
+The text carries **no roll number and no commit hash**, deliberately: anything that varies per
+roll is not a constant. The roll is identified by its run id in the window record.
+
+**Rules that make (c) hold:**
+
+1. **Every gate that opens receives this text, verbatim.** No paraphrase, no addition, no
+   response tailored to what the manifest asked.
+2. **A roll that auto-approves via `system:no_open_questions` is not treated differently and is
+   not disadvantaged.** Both dispositions are consistent with zero manual intervention, because
+   the policy — not the operator — decided in advance. The disposition is recorded per §4.
+3. **If a manifest asks a question the standing text does not address, the text is still applied
+   verbatim.** The questions are recorded in the window record, and "the standing policy did not
+   address this roll's questions" is logged as an observation. It is never grounds to deviate:
+   the moment the answer varies with the question, approval becomes a judgment and the metric
+   loses its meaning.
+4. **Any deviation voids the roll.** Not the window — the roll. It is re-launched and the
+   deviation is recorded.
+
+Rule 3 is the one that will be tempting to break, and breaking it is the failure mode this
+ruling exists to prevent.
 
 ### 7.4 Exit clause, and what each outcome band claims
 
