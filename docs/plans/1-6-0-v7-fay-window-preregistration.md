@@ -35,7 +35,7 @@ is a separate, deliberate act taken after the window closes.
 | 2.3 | Instrument defects either fixed or explicitly declared (§2.b) | open |
 | 2.4 | Deploy frozen; commit and image ids recorded in §3 | pending |
 | 2.5 | Zero open focus leases immediately before roll 1 | check at launch |
-| 2.6 | Every ruling in §7 closed | open |
+| 2.6 | Every ruling in §7 closed | 7.1–7.3 closed; 7.4's middle band owner-ruled, its other three bands drafted and awaiting a nod |
 
 ### 2.a Why the audit defects are blocking, not cosmetic
 
@@ -76,14 +76,28 @@ the declaration is recorded here **before** roll 1 and repeated in the closing c
 |---|---|
 | **N** (rolls) | **6** — owner ruling 2026-08-16, §7.2 |
 | **FAY bar** | **≥ 4/6** — owner ruling 2026-08-16, §7.2 |
-| PRD | `group_run_v0.5.md`, sha `_____` |
+| PRD | `examples/03_group_run/prd.md` (declares **v0.5**), sha256 `f744843dfd14d2be71d30ddaa2e6d5c3fe0b574cd42aec168802bde58ac40005` — measured 2026-08-16 at `136fffb7` |
 | Squad profile | `full` |
 | Request profile | `validated-fullstack` |
 | Overrides | `build_profile=nextjs_ts`, `dev_capability=nextjs_ts` |
-| `resolved_config_hash` | `_____` |
-| Deploy — main commit | `_____` |
-| Deploy — image ids | runtime-api `_____`; max, neo, nat, bob, eve, data `_____` |
+| `resolved_config_hash` | `d4d4f66217d88324d449b0cc7c05dd4665e17dcb90c63f7cfcd544ab5fc122d2` — **re-verify at roll 1**, see below |
+| Deploy — main commit | `_____` *(unknowable until the fix queue lands)* |
+| Deploy — image ids | runtime-api `_____`; max, neo, nat, bob, eve, data `_____` *(unknowable until the rebuild)* |
 | Gate policy | **pre-declared constant** — owner ruling 2026-08-16, §7.3(c) |
+
+**On the PRD filename.** The draft named `group_run_v0.5.md`, which is not a path that exists;
+the file is `examples/03_group_run/prd.md` and *declares* v0.5 in its header. Corrected because
+a sha recorded against a wrong filename is worse than no sha — it looks verifiable and is not.
+
+**On the config hash, and why it is re-verified rather than assumed.** `compute_config_hash`
+(`cycles/lifecycle.py:243`) is a function of the request profile's `defaults` merged with the
+execution overrides, and of **nothing else** — no deploy state, no image, no commit. So this
+value is stable across the rebuild that separates the P6 window from this one, and it is the
+same hash the six P6 rolls carried, which is what makes the two windows comparable on recipe.
+It is nonetheless re-verified immediately before roll 1, because anything landing in the fix
+queue that touches the `validated-fullstack` CRP defaults would move it silently. Recomputed
+locally at `136fffb7` via `compute_config_hash(load_profile('validated-fullstack').defaults,
+{'build_profile': 'nextjs_ts', 'dev_capability': 'nextjs_ts'})`.
 
 ---
 
@@ -255,24 +269,37 @@ roll is not a constant. The roll is identified by its run id in the window recor
 Rule 3 is the one that will be tempting to break, and breaking it is the failure mode this
 ruling exists to prevent.
 
-### 7.4 Exit clause, and what each outcome band claims
+### 7.4 Exit clause, and what each outcome band claims — DECIDED
 
 The window always closes at 6 rolls. It is never extended on a poor result and never stopped
 early on a good one.
 
-With N = 6 and the bar at ≥4/6, three outcome bands exist and each needs its claim fixed now:
+**Owner ruling 2026-08-16 on the middle band** (2–3 of 6); the remaining bands are drafted
+consistently with it and are noted as such, so the record does not report a ruling that was
+not made.
 
 | Result | Cut gate (*repeatably > 0*) | This window's bar | Claim the release may make |
 |---|---|---|---|
-| **≥ 4/6** | met | met | _____ |
-| **1–3 / 6** | met at ≥2; 1/6 is arguable | missed | _____ |
-| **0/6** | not met | missed | _____ |
+| **≥ 4/6** | met | met | A squad-authored design produces a working application with no human intervention, at a rate of N of 6 on a pre-registered window against a frozen deploy. *(drafted)* |
+| **2–3 / 6** | met | missed | The release claims that a squad-authored design **can** produce a working application with no human intervention, and does **not** claim it does so reliably. The figure is banked as the authored-mode baseline for 1.8 to measure against. *(**owner-ruled**)* |
+| **1 / 6** | **not met** — see below | missed | Same as 0/6: a single success is not repetition. The release claims the path has been observed to complete end to end, not that the capability is demonstrated. The figure is banked. *(drafted)* |
+| **0/6** | not met | missed | The release makes no authored-mode FAY claim. The window is reported at 0 with its per-roll failure classes named, and 0 is the baseline. *(drafted)* |
 
-The middle band is the one that will actually cause an argument, because it clears the gate
-and misses the bar. Writing its sentence now — while the number is unknown — is the only time
-it can be written honestly. Recommendation: the middle band claims *the capability is
-demonstrated and its reliability is not*, banks the figure as 1.8's baseline regardless, and
-does **not** re-run the window to improve it.
+**Two rules attach to every band, and they matter more than the wording.**
+
+1. **The figure is banked whatever it is.** 1.8's memory and campaign work has to beat
+   something real. A number discarded because it disappointed is worse than no number, because
+   the next window then has nothing to be compared against and will quietly become the first.
+2. **The window is never re-run to improve the figure.** This is most tempting at exactly
+   3/6, where one more roll could tip it over the bar. That is the move pre-registration
+   exists to block. Six rolls, whatever they say, done.
+
+**Why 1/6 is separated from the 2–3 band** *(drafted, not owner-ruled — overrule if you read
+it otherwise)*. The cut gate's wording is *repeatably > 0*, and one success is not repetition.
+Grouping 1/6 with 2–3 would let a single green satisfy a gate whose whole point is that one
+green is not evidence. The conservative reading is taken because the alternative claims more
+than the data supports, and because at 1/6 the pressure to argue the generous reading will be
+at its highest.
 
 A 0/6 result closes at 0 and narrows the claim; extending after seeing a zero is the same
 error as designating a window after seeing greens.
