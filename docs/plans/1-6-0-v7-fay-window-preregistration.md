@@ -32,7 +32,7 @@ is a separate, deliberate act taken after the window closes.
 |---|---|---|
 | 2.1 | V6 complete (SIP-0104 P6 window closed) | in progress |
 | 2.2 | **#952 and #953 fixed and deployed** — see §2.a, this is blocking | open |
-| 2.3 | Instrument defects either fixed or explicitly declared (§2.b) | open |
+| 2.3 | Instrument defects either fixed or explicitly declared (§2.b) | **ruled 2026-08-16: fix all three** — open until they land |
 | 2.4 | Deploy frozen; commit and image ids recorded in §3 | pending |
 | 2.5 | Zero open focus leases immediately before roll 1 | check at launch |
 | 2.6 | Every ruling in §7 closed | 7.1–7.3 closed; 7.4's middle band owner-ruled, its other three bands drafted and awaiting a nod |
@@ -56,17 +56,40 @@ Left unfixed, any roll whose manifest expresses child actions as path segments �
 P6 rolls chose that shape — produces an audit failure that only manual verification can
 resolve. Scoring the window would then depend on the very intervention the metric forbids.
 
-### 2.b Instrument defects that must be fixed or declared
+### 2.b Instrument defects that must be fixed or declared — DECIDED
 
 Each of these bounds what a green roll means. Fixing is preferred; declaring is acceptable if
 the declaration is recorded here **before** roll 1 and repeated in the closing claim.
 
+**Owner ruling 2026-08-16: fix all three open dispositions.** None is declared away.
+
 | Issue | Effect on the number | Disposition |
 |---|---|---|
-| #951 | The scaffold covers a derived subset of declared behaviours and never reports the delta | fix / declare |
-| #948 | Probe derivation misses body-discriminated child actions | fix / declare |
-| #915 | An additive suite may mock `global.fetch` and assert its own mock, undetected | fix / declare |
-| #795 | `error_contract.shape` is authored and read by nothing; four of four P6 rolls declared an envelope the seam never emits | declare (already a known window artifact) |
+| #951 | The scaffold covers a derived subset of declared behaviours and never reports the delta | **fix** |
+| #948 | Probe derivation misses body-discriminated child actions | **fix** |
+| #915 | An additive suite may mock `global.fetch` and assert its own mock, undetected | **fix** |
+| #795 | `error_contract.shape` is authored and read by nothing; four of four P6 rolls declared an envelope the seam never emits | declare (already a known window artifact; unchanged by the ruling above, which covered the three open rows) |
+
+**What "fix" costs, so the ruling is not read as uniform.** These are not three comparable
+tasks, and #948 in particular is not a bug fix:
+
+- **#951** is additive instrumentation — emit, per roll, which declared behaviours carry
+  deterministic coverage and which do not. It changes no authored artifact and no verdict.
+  It makes the delta legible, which is exactly what the issue asks for.
+- **#915** is a static check over emitted additive suites for self-mocking (`vi.mock` of the
+  fetch seam, stubbed `global.fetch`). Detection, not prevention.
+- **#948 changes what the squad authors.** The correct fix — established on the issue and not
+  reopened here — is to let `request_shapes` declare candidate **values** so a child action can
+  be probed, rather than to relax the derivation regex, which would synthesize `{"action":
+  "sample"}` and make a *correct* app fail. That reaches the manifest schema, the authoring
+  brief, contract derivation, and the scaffold generator. It is the largest item in the queue
+  and the only one that alters the artifact under measurement.
+
+**Consequence to state plainly:** with #948 fixed, V7's manifests are authored under a schema
+P6's were not, so the two windows are comparable on *recipe* (§3's config hash is unmoved) but
+**not** on probe counts. The P6 distribution — 5 / 2 / 5 / 4 across four identical-recipe rolls
+— is the measurement that motivated the fix, and it must not be reported as a baseline the
+V7 numbers improve on. They are measurements of different instruments.
 
 ---
 
