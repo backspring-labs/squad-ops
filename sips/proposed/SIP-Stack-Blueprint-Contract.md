@@ -5,55 +5,84 @@ title: Stack Blueprint Contract
 # SIP: Stack Blueprint Contract
 
 ## Status
-Draft (proposed)
+Draft (proposed) — **rewritten against main 2026-08-17 (1.6 Stage 2g); acceptance gate met.**
 
-**Targets:** the release that adds the **second** stack — deliberately not before. See
-§"Why this is not ready to accept".
+**Targets:** the release that adds the **second** stack — deliberately not before. **`nextjs_ts`
+landed 2026-08-10**, so the gate is met; see §"The acceptance gate is met — what the second
+stack settled".
 **Builds on:** SIP-0099 (Contract-First Build Scaffolding), which established the expander
 and the fill-slot/frozen split for `fullstack_fastapi_react`; SIP-0098 (verification
 contracts derived from the manifest); SIP-0100 (scaffold ownership enforcement).
-**Motivating case:** adding a second stack today means finding and updating **five separate
-per-stack surfaces**, four of which fail silently when missed. One of them —
-`fill_slot_paths` — already hardcodes the FastAPI slot map behind a guard that only checks
-whether the stack is *registered*, so a second stack would inherit `backend/routes.py` as a
-fill slot and nothing would object.
+**Motivating case (historical, and now resolved by a different route):** adding a second stack
+meant finding and updating **five separate per-stack surfaces**, four of which failed silently
+when missed. S1's consolidation and Stage 2a's executable inventory closed that class without
+minting blueprint vocabulary — see §"What happened instead". **The live brief is narrower:**
+*what does a missing field mean?* was answered four times in feature PRs, and its strongest
+answer lives only in a docstring.
 
 ---
 
 ## Summary
 
-Give a stack a **type**. Today "a stack" is an identifier that indexes four module-level
-dicts plus one function with the answer written inline. Replace that with a single
-`StackBlueprint` object per stack, registered once, so adding a stack is one object and a
-missing field is an import-time type error rather than a wrong answer three hours into a
-cycle.
+Give a stack a **type**, and govern what may be added to it.
 
-This SIP does **not** propose the consolidation of today's five facts — that is a pure
-refactor with an exact byte-identical test and needs no design approval. This SIP proposes
-**what a stack must be required to declare**, which is a commitment that binds every future
-stack and therefore should not be made from a sample size of one.
+The original framing — *"an identifier that indexes four module-level dicts plus one function
+with the answer written inline"* — was accurate when written and is no longer true: S1
+consolidated those facts into `ScaffoldStack`, and Stage 2a's inventory now asserts every stack
+is a member of every registry. **What survives is the part that was always the design question
+rather than the refactor:** what a stack must be *required* to declare, what a missing field
+*means*, and who may add a field at all.
+
+This SIP does **not** propose the consolidation — that was a pure refactor with a
+byte-identical test and needed no design approval. It proposes the **contract and its
+governance**, which binds every future stack and therefore should not be made from a sample
+size of one. It now rests on two, with the limits of that sample stated rather than implied.
 
 ## The problem, precisely
 
-`expand()` dispatch is already clean — `_EXPANDERS` is a registry and adding a key touches
-no branching logic. The risk is not if-statement sprawl. It is that a stack is five facts
-living in five places:
+> **This section described code that no longer exists.** The table below is kept as the
+> historical statement of the problem, with what actually happened recorded beneath it.
+> Rewriting it silently would erase the evidence that the diagnosis was right and the
+> remedy arrived by a different route (2g, 2026-08-17).
 
-| A stack must declare | Where it lives | Fails how |
+`expand()` dispatch was already clean — `_EXPANDERS` is a registry and adding a key touches
+no branching logic. The risk was never if-statement sprawl. It was that a stack was five
+facts living in five places:
+
+| A stack must declare | Where it lived | Failed how |
 |---|---|---|
 | how to expand the skeleton | `_EXPANDERS` | loudly (`ValueError`) |
-| which files are fill slots | **inline in `fill_slot_paths()`** | **silently — returns the FastAPI map** |
+| which files are fill slots | **inline in `fill_slot_paths()`** | **silently — returned the FastAPI map** |
 | QA test directories | `_QA_TEST_NAMESPACES` | silently — empty namespace, every QA write unauthorized |
-| harness entry modules | `_HARNESS_ENTRY_MODULES` | silently — the boundary check never fires |
+| harness entry modules | `_HARNESS_ENTRY_MODULES` | silently — the boundary check never fired |
 | which vocabulary the typed checks use | `resolve_check_stack()` | silently — checks skip |
 
-Four of five fail silently, and the failure surfaces as an unexplained mid-cycle result
-rather than a startup error.
+### What happened instead (S1, #818, #822, SIP-0104)
 
-**There are also already two stack vocabularies.** The manifest says
-`fullstack_fastapi_react`; the acceptance checks branch on `stack != "fastapi"`. They are
-bridged by `resolve_check_stack()` and have drifted apart. A blueprint is the natural place
-to collapse them.
+**S1 consolidated the scattered facts into `ScaffoldStack` without minting blueprint
+vocabulary**, deliberately: `scaffold.py:1668` records that naming it `ScaffoldStack` rather
+than a blueprint was chosen so the consolidation would not *"quietly mint its vocabulary."*
+That discipline held.
+
+**The silent-omission class is gone.** Stage 2a's executable inventory
+(`test_stack_inventory.py`) enumerates six per-stack registries and asserts every stack is a
+member of each; four further registries outside `ScaffoldStack` all raise on an unknown stack.
+The failure mode this SIP was written about — a stack silently inheriting FastAPI's answer —
+no longer has a path.
+
+**What leaked instead was the layer above.** *"What does a missing field mean?"* is a
+blueprint-contract question and it was answered four times in feature PRs. The strongest
+answer — #818's asymmetric-default doctrine, *"visible-and-unverified has a safe default;
+silently-wrong does not"* — exists only as a docstring at `scaffold.py:1696`. **That is what
+this document is for**, and it is a narrower brief than the one it opened with.
+
+**On the two vocabularies — the SIP's own proposal here was wrong.** It said *"a blueprint is
+the natural place to collapse them."* Stage 2e measured it: there are **three** axes, and two
+are not drift. Stack identity is one value across five registries. The probe profile differs
+from the stack id on *both* stacks, consistently and correctly — booting is its own axis, and
+two stacks could share a boot mechanism while sharing nothing else. Collapsing that would be
+the error. See §"What the second stack settled" for `check_stack`, which is the real
+conflation.
 
 ## Proposed shape (illustrative, not settled)
 
@@ -76,7 +105,85 @@ currently hardcode `.py`, and a check handed a file it cannot parse used to rais
 than skip — which cost pf-41 three of its five correction attempts. A stack-derived source
 language removes the hardcode at its root.
 
-## Why this is not ready to accept
+## The acceptance gate is met — what the second stack settled *(2g, 2026-08-17)*
+
+This SIP declined its own acceptance until a second real stack existed. **`nextjs_ts` landed
+2026-08-10**, and the gate then sat open for five days without surfacing as a decision,
+because the stack arrived incrementally and nothing was watching for the moment.
+
+The schema was drafted against both stacks (2b), falsified (2c), reconciled (2e) and its
+admission rule enforced (2f). What follows is what the second stack actually answered — and
+the honest summary is that **this document's four worries were right in shape and wrong in
+one particular**, so the rewrite is ratification rather than greenfield.
+
+### Three predictions confirmed
+
+- **`harness_entry_modules` on a stack with no import boundary.** The SIP feared it "assumes
+  a Python-style import boundary". Stack #2 shipped `()` **as a declared fact rather than an
+  omission** (`scaffold.py:1773`) — the asymmetric-default doctrine in practice.
+- **`check_stack` on a stack the AST checks cannot parse.** Stack #2 shipped `""`, which
+  forced the question *"then what verifies this language?"* — and **SIP-0104's deterministic
+  scaffold is that answer.** The empty field produced a capability rather than a gap.
+- **Criteria families as a per-stack fact.** Proved pack-parameterized: stack #2 emits slot,
+  build and suite families with no `routes`/`views` split.
+
+### One genuine surprise: the shape is neither callable nor data
+
+The SIP asked whether `expand` is *"a callable, or data a generic expander consumes"*. The
+emerged answer is **neither**: two callables, two tuples, and **five string names indexing
+registries owned by the layer that owns each vocabulary.** That name-indirection is applied
+consistently and argued for each time, and it is a third option the document did not consider.
+
+### And the vocabulary question resolves against this document
+
+`check_stack` carries **two questions on one field**, measured at 2e:
+
+| evaluator | guard | what it needs |
+|---|---|---|
+| `endpoint_defined` | `if stack != "fastapi"` | genuinely FastAPI — it reads `@router.get` |
+| `field_present`, `function_defined`, `harness_boundary` | `if stack is None` | any declared dialect |
+
+A third stack declaring `check_stack: "flask"` would skip the first **correctly** and pass the
+other three **correctly** — by accident. **The accident holds only while exactly one
+framework-specific evaluator exists.** The blueprint should carry the *language* dialect and a
+framework-specific evaluator should name its own requirement; that touches the evaluator
+contract, so it is 1.7 work, disclosed here rather than quietly promoted.
+
+### Falsification: four fields do not survive it (2c)
+
+Three have **no consumer of any kind** — `BuildProfile.artifact_output_mode`,
+`BuildProfile.validation_rules`, and `DevelopmentCapability.expected_extensions`, the last
+with two docstrings asserting it is *"what a dev agent is given."* One,
+`BuildProfile.default_task_tags`, has a reader and is empty on all five profiles: it asserts
+per-stack variability **zero** stacks demonstrate. None may enter the blueprint.
+
+### The admission rule, stated permanently *(S5, 2f)*
+
+**A new blueprint field must be demonstrated on at least two stacks before admission.** A
+one-stack need is expressed as a declared optional capability **with its reason**, never as a
+general field implying every stack has one.
+
+This is the SIP's own argument applied to its successors: if generalising from one instance
+produces FastAPI-with-generic-names, then *extending* from one instance does the same thing
+one field at a time. It is **enforced**, not requested — `test_stack_blueprint_falsification`
+fails a field populated by one stack until a reason is recorded, and fails one populated by no
+stack outright.
+
+### What this will NOT have validated — disclose, do not imply generality
+
+- **`nextjs_ts` is only partially "maximally different."** Non-Python runner ✓, server-rendered
+  ✓ — but it has a bundler and shares React and TypeScript with stack #1's frontend half. A
+  two-stack schema still risks a **cousin-shaped** generalisation. Waiting for stack #3
+  repeats the failure that produced this SIP.
+- **Seven whole-tree builds per acceptance pass** on stack #2 against three on stack #1. A
+  cost, not a concession; revisit only with a measurement.
+- **No authorable static check on the API route slots beyond the build.** `next build` runs
+  tsc with type errors fatal, so **the bundler check is the type check** — detection is
+  covered, *attribution* is not.
+
+---
+
+## Historical: why this was not ready to accept *(superseded above)*
 
 **Every field above is FastAPI-shaped thinking.**
 
@@ -226,20 +333,33 @@ variance rather than a cousin of stack #1.
 
 ## Open questions for review
 
-- **Does the blueprint own the container/packaging set?** The Functional App roadmap's stack
-  blueprint already claims the Dockerfile ("deterministic, checked in, never LLM-authored"),
-  and #598 measured LLM-authored packaging failing to build on two consecutive rolls with
-  *different* defects each time. Strong candidate, but it widens the blueprint from "how to
-  scaffold source" to "how to ship", which may deserve its own boundary.
-- **One blueprint per stack, or a composition of backend + frontend blueprints?** A
-  FastAPI+React stack and a FastAPI+Vue stack share a backend half entirely. Composition
-  avoids duplication but adds a join nobody needs until the third stack.
-- **Is `expand` a callable on the blueprint, or does the blueprint declare data that a
-  single generic expander consumes?** The latter is more constrained and more testable; it
-  is also a much larger change and may not survive contact with a genuinely different stack.
-- **Where does the blueprint live?** `scaffold.py` is already large. A `stacks/` package with
-  one module per stack is the obvious home, but that is a file-layout decision worth making
-  once rather than twice.
+> **Answered against the second stack (2g, 2026-08-17).** Each is marked with what the
+> evidence says. Two are settled, one is settled *against* the option this SIP preferred, and
+> one is deliberately left open with its trigger named.
+
+
+- **Does the blueprint own the container/packaging set?** **NO — answered by composition.**
+  `EnvironmentContract` already owns it, and gained `build_mutates_source` for stack #2
+  without the blueprint being involved. The concern was real and the owner turned out to be a
+  different seam. **Still open beneath it:** §4c of the schema draft argues the packaging set
+  is plausibly a *deployment-target* fact rather than a stack fact, which a third stack on the
+  same target would settle.
+- **One blueprint per stack, or a composition of backend + frontend blueprints?** **ONE, on
+  the evidence.** Next.js **collapses the split entirely** — one project, one tree, one build —
+  and it is the stack chosen to stress the manifest's api/frontend split. That is evidence
+  against composition as the primary shape, from the case most likely to demand it.
+- **Is `expand` a callable, or data a generic expander consumes?** **NEITHER — this is the
+  one genuine surprise.** The emerged shape is two callables, two tuples, and five string
+  names indexing registries owned by the layer that owns each vocabulary. Stack #2 derives
+  file *location* from the route path, which is a computation over the manifest and not a
+  table; expressing it as data would build a template language — code with worse tooling and
+  no type checking.
+- **Where does the blueprint live?** **Still open, and the asymmetry now names its own
+  resolution.** `stack_nextjs_ts.py` is already a pack shipping its own expander; stack #1 is
+  still inline in `scaffold.py`. The asymmetry resolves by pushing S1 out, not pulling S2 in —
+  but that moves bytes the reference contract is pinned to, so it is a deliberate act with its
+  own boundary rather than a tidy-up. **Trigger: the packs/plugin-loading work**, which is the
+  durable reason to keep this document at all.
 
 ## Non-goals
 
