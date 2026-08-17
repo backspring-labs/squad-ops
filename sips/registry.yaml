@@ -1,4 +1,4 @@
-last_assigned: 104
+last_assigned: 105
 sips:
 - sip_number: 3
   sip_uid: '17642554775787694'
@@ -936,3 +936,12 @@ sips:
   approver: jladd
   created_at: '2026-08-13T00:00:00Z'
   updated_at: '2026-08-14T08:49:42.787944Z'
+- sip_uid: null
+  sip_number: 105
+  title: Stack Blueprint Contract
+  path: sips/accepted/SIP-0105-Stack-Blueprint-Contract.md
+  status: accepted
+  author: Unknown
+  approver: jladd
+  created_at: '2026-08-17T18:46:44.801520Z'
+  updated_at: '2026-08-17T18:46:44.890914Z'

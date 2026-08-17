@@ -1,11 +1,15 @@
 ---
-status: proposed
+status: accepted
 title: Stack Blueprint Contract
+sip_number: 105
+updated_at: '2026-08-17T18:46:44.835365Z'
 ---
-# SIP: Stack Blueprint Contract
+# SIP-0105: Stack Blueprint Contract
 
 ## Status
-Draft (proposed) — **rewritten against main 2026-08-17 (1.6 Stage 2g); acceptance gate met.**
+**Accepted 2026-08-17** — rewritten against main at 1.6 Stage 2g; the acceptance gate (a second real stack) was met on 2026-08-10.
+
+Accepted **with its unbuilt parts named** — see §"What acceptance does and does not assert". Acceptance here ran *after* implementation rather than before it, which is recorded there rather than smoothed over.
 
 **Targets:** the release that adds the **second** stack — deliberately not before. **`nextjs_ts`
 landed 2026-08-10**, so the gate is met; see §"The acceptance gate is met — what the second
@@ -203,6 +207,39 @@ mismatch.
 schema should be written against both. Until then this document exists to hold the problem
 statement and to stop anyone inventing the schema under deadline pressure while adding
 stack #2.
+
+## What acceptance does and does not assert *(owner ruling 2026-08-17)*
+
+Accepted with its unbuilt parts named, because the normal sequence did not happen here and
+saying so is the difference between a commitment and a claim.
+
+**Acceptance ran BACKWARDS, and that is the honest record.** A SIP is meant to be accepted as
+a design commitment *before* implementation. Here the gate — "the existence of a second real
+stack" — was met on 2026-08-10 and **nothing surfaced it for a week**, because the stack
+arrived incrementally and there was no event to trigger the decision. Meanwhile the schema was
+written anyway: `ScaffoldStack` grew from five fields to nine, each in a feature PR. So the
+gate did not stop the design being made. It stopped it being made *deliberately*.
+
+**What acceptance asserts:** the contract and its governance are committed — what a stack must
+declare, what a missing field means, and S5's admission rule that a new field must be
+demonstrated on two stacks. Those rest on two real stacks and are enforced by
+`test_stack_blueprint_falsification`.
+
+**What acceptance does NOT assert — these are not built:**
+
+| unbuilt | status |
+|---|---|
+| **Packs / plugin loading** | Not built, and the durable reason to keep this document. A stack is still registered in-tree, not loaded as a pack. |
+| **`check_stack` split into language dialect vs framework requirement** | Not built. Deferred to **1.7** — it touches the evaluator contract. The current field carries two questions on one field and works only while exactly one framework-specific evaluator exists. |
+| **Where a blueprint lives** | Not decided. `stack_nextjs_ts.py` is already a pack shipping its own expander while stack #1 is inline in `scaffold.py`; resolving the asymmetry moves bytes the reference contract is pinned to. Trigger: the packs work. |
+| **Deleting the four fields 2c falsified** | Not done. Recorded and pinned in the falsification gate, to be removed before the schema freezes rather than after it accretes meaning. |
+
+**And one limit on the evidence itself:** `nextjs_ts` is only *partially* the "maximally
+different" second stack this SIP asked for — non-Python runner and server-rendered, but it has
+a bundler and shares React and TypeScript with stack #1's frontend half. **A two-stack schema
+still risks a cousin-shaped generalisation.** Waiting for a third stack would repeat the
+failure that produced this SIP, so the sample is accepted with its shape stated rather than
+implied.
 
 ## Sequencing
 
