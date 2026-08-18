@@ -1417,6 +1417,60 @@ class TestQARetestExecuteOnly:
         assert stub_row["passed"] is False
         assert "tests/test_api.py" in stub_row["offenders"]
 
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
+    async def test_clean_suite_still_banks_an_authenticity_row(
+        self, _mock_run, mock_context, qa_inputs
+    ):
+        """#986: a passing authenticity check must leave a record, not silence.
+
+        The detectors used to append a row only on a hit, so a run record that
+        omitted ``no_self_mocking_tests`` was consistent with two opposite
+        histories — the suite was checked and clean, or the check never ran over
+        it. `cyc_6651d552e06a` banked exactly that absence and the run could not
+        say which. The row's ``inspected`` list is what separates them.
+        """
+        clean = {
+            **qa_inputs,
+            "retest_files": [
+                {
+                    "filename": "__tests__/runs.test.ts",
+                    "content": (
+                        "import { POST } from '@/app/api/runs/route'\n"
+                        "it('creates', async () => {\n"
+                        "  const res = await POST(new Request('http://t/api/runs'))\n"
+                        "  expect(res.status).toBe(201)\n"
+                        "})\n"
+                    ),
+                }
+            ],
+        }
+        handler = QATestHandler()
+        result = await handler.handle(mock_context, clean)
+
+        assert result.success is True
+        rows = result.outputs["validation_result"]["checks"]
+        mock_row = next(r for r in rows if r["check"] == "no_self_mocking_tests")
+        assert mock_row["passed"] is True
+        assert mock_row["inspected"] == ["__tests__/runs.test.ts"]
+        assert "offenders" not in mock_row
+
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
+    async def test_authenticity_row_shows_when_a_detector_had_nothing_to_read(
+        self, _mock_run, mock_context, qa_inputs
+    ):
+        """#986: an empty ``inspected`` is the signal that the check was fed the
+        wrong file set — the failure mode a bare pass/absence cannot express."""
+        handler = QATestHandler()
+        result = await handler.handle(mock_context, self._retest_inputs(qa_inputs))
+
+        rows = result.outputs["validation_result"]["checks"]
+        by_check = {r["check"]: r for r in rows}
+        # A python-only repair: the JS detector genuinely had no candidates, and
+        # says so, rather than passing indistinguishably from a real inspection.
+        assert by_check["no_self_mocking_tests"]["inspected"] == []
+        assert by_check["no_stub_fallback_tests"]["inspected"] == ["tests/test_api.py"]
+        assert by_check["no_self_mocking_tests"]["passed"] is True
+
 
 # ---------------------------------------------------------------------------
 # QATestHandler — contract probe emission (SIP-0098 phase 98.5)

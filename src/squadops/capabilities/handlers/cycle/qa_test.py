@@ -72,6 +72,22 @@ def _frontend_skip_reason(error: str) -> str:
     return NotExecutedReason.SUBJECT_MISSING
 
 
+def _authenticity_row(check: str, offenders: list[str], inspected: list[str]) -> dict[str, Any]:
+    """Build a suite-authenticity check row that is banked pass OR fail (#986).
+
+    The two authenticity detectors used to append a row only when they found
+    something, so a clean suite left no trace and an absent row meant either "looked
+    and found nothing" or "never looked" — an ambiguity that cost an hour of
+    archaeology on `cyc_6651d552e06a` and still did not resolve. ``inspected`` names
+    the files the detector actually read, so an empty inventory beside an executed
+    suite reads as the defect it is instead of as a pass.
+    """
+    row: dict[str, Any] = {"check": check, "passed": not offenders, "inspected": inspected}
+    if offenders:
+        row["offenders"] = offenders
+    return row
+
+
 class QATestHandler(_CycleTaskHandler):
     """Build handler: generates test files from validation plan + source (D1).
 
@@ -805,20 +821,22 @@ class QATestHandler(_CycleTaskHandler):
         # #276 guard holds on the retest path too: a repair must not smuggle a
         # stub-fallback past the correction loop.
         from squadops.capabilities.handlers.stub_detection import (
+            CHECK_NO_SELF_MOCKING,
+            CHECK_NO_STUB_FALLBACK,
             detect_self_mocking_tests,
             detect_stub_fallback_tests,
+            inspected_js_test_paths,
+            inspected_python_test_paths,
         )
 
         stub_offenders = detect_stub_fallback_tests(artifacts)
+        checks.append(
+            _authenticity_row(
+                CHECK_NO_STUB_FALLBACK, stub_offenders, inspected_python_test_paths(artifacts)
+            )
+        )
         if stub_offenders:
             passed = False
-            checks.append(
-                {
-                    "check": "no_stub_fallback_tests",
-                    "offenders": stub_offenders,
-                    "passed": False,
-                }
-            )
             missing.append(f"stub_fallback_tests:{','.join(stub_offenders)}")
             summary = f"{summary}; repaired test masks the entrypoint: {', '.join(stub_offenders)}"
 
@@ -826,16 +844,12 @@ class QATestHandler(_CycleTaskHandler):
         # pass can satisfy that instruction by mocking the subject, and mocking is the
         # cheapest way to make any assertion true.
         mock_offenders = detect_self_mocking_tests(artifacts)
+        mock_paths = [path for path, _ in mock_offenders]
+        checks.append(
+            _authenticity_row(CHECK_NO_SELF_MOCKING, mock_paths, inspected_js_test_paths(artifacts))
+        )
         if mock_offenders:
             passed = False
-            mock_paths = [path for path, _ in mock_offenders]
-            checks.append(
-                {
-                    "check": "no_self_mocking_tests",
-                    "offenders": mock_paths,
-                    "passed": False,
-                }
-            )
             missing.append(f"self_mocking_tests:{','.join(mock_paths)}")
             summary = (
                 f"{summary}; repaired test never invokes the application: {', '.join(mock_paths)}"
@@ -1254,19 +1268,23 @@ class QATestHandler(_CycleTaskHandler):
             # passes). Flag it so acceptance fails and the correction loop
             # regenerates the test against the real module.
             from squadops.capabilities.handlers.stub_detection import (
+                CHECK_NO_SELF_MOCKING,
+                CHECK_NO_STUB_FALLBACK,
                 detect_self_mocking_tests,
                 detect_stub_fallback_tests,
+                inspected_js_test_paths,
+                inspected_python_test_paths,
             )
 
             stub_offenders = detect_stub_fallback_tests(artifacts)
-            if stub_offenders:
-                validation.checks.append(
-                    {
-                        "check": "no_stub_fallback_tests",
-                        "offenders": stub_offenders,
-                        "passed": False,
-                    }
+            validation.checks.append(
+                _authenticity_row(
+                    CHECK_NO_STUB_FALLBACK,
+                    stub_offenders,
+                    inspected_python_test_paths(artifacts),
                 )
+            )
+            if stub_offenders:
                 validation.passed = False
                 validation.missing_components.append(
                     f"stub_fallback_tests:{','.join(stub_offenders)}"
@@ -1280,8 +1298,6 @@ class QATestHandler(_CycleTaskHandler):
                     if validation.summary in ("", "All checks passed")
                     else f"{validation.summary}; {note}"
                 )
-                passed_count = sum(1 for c in validation.checks if c["passed"])
-                validation.coverage_ratio = passed_count / len(validation.checks)
 
             # #915: the TypeScript sibling, and worse — a stub-fallback suite fails
             # loudly because a reconstruction misbehaves, while a self-mocking suite
@@ -1289,15 +1305,13 @@ class QATestHandler(_CycleTaskHandler):
             # cannot do this (the frozen spine invokes the handler and enforcement
             # rejects edits to it); additive files carried the rule only as prose.
             mock_offenders = detect_self_mocking_tests(artifacts)
-            if mock_offenders:
-                mock_paths = [path for path, _ in mock_offenders]
-                validation.checks.append(
-                    {
-                        "check": "no_self_mocking_tests",
-                        "offenders": mock_paths,
-                        "passed": False,
-                    }
+            mock_paths = [path for path, _ in mock_offenders]
+            validation.checks.append(
+                _authenticity_row(
+                    CHECK_NO_SELF_MOCKING, mock_paths, inspected_js_test_paths(artifacts)
                 )
+            )
+            if mock_offenders:
                 validation.passed = False
                 validation.missing_components.append(f"self_mocking_tests:{','.join(mock_paths)}")
                 note = "Generated test never invokes the application: " + "; ".join(
@@ -1308,7 +1322,11 @@ class QATestHandler(_CycleTaskHandler):
                     if validation.summary in ("", "All checks passed")
                     else f"{validation.summary}; {note}"
                 )
-                passed_count = sum(1 for c in validation.checks if c["passed"])
+
+            # Both authenticity rows now bank unconditionally, so the ratio moves on a
+            # clean pass too — recompute once here rather than only on the failure legs.
+            if validation.checks:
+                passed_count = sum(1 for c in validation.checks if c.get("passed"))
                 validation.coverage_ratio = passed_count / len(validation.checks)
 
             evidence_extra["validation_result"] = {
