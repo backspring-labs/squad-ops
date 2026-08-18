@@ -75,8 +75,20 @@ from squadops.capabilities.verification_scaffold import (
 MAX_FILL_LINES = 120
 MAX_FILL_BYTES = 8_000
 
+#: A fill fence, with the language prefix an author reflexively adds made optional (#987).
+#:
+#: The brief teaches ```` ```fill:slot-<id> ````, and an author writing markdown all day
+#: writes ```` ```typescript:fill:slot-<id> ```` anyway. Under the exact-form pattern that
+#: cost a whole pre-V7 shakedown: the fence did not match here, `strip_fill_blocks` left it
+#: in the text, and the file extractor — which reads ``<language>:<path>`` info strings —
+#: took it for a file named ``fill:slot-<id>``. All six fills vanished, and nothing said so.
+#:
+#: The prefixed form is unambiguous, so accepting it loses nothing. It is still *recorded*
+#: (see ``language_prefixed``) rather than silently normalised, because a brief the author
+#: keeps departing from is worth knowing about.
 _FILL_FENCE_RE = re.compile(
-    r"^```fill:(?P<slot_id>slot-[a-z0-9][a-z0-9-]*)[ \t]*\n(?P<body>.*?)^```[ \t]*$",
+    r"^```(?:(?P<lang>[A-Za-z][\w+.-]*):)?"
+    r"fill:(?P<slot_id>slot-[a-z0-9][a-z0-9-]*)[ \t]*\n(?P<body>.*?)^```[ \t]*$",
     re.DOTALL | re.MULTILINE,
 )
 _NOT_APPLICABLE_RE = re.compile(r"^\s*not_applicable:\s*(?P<reason>\S.*)$")
@@ -109,6 +121,9 @@ class FillEmission:
     fills: tuple[Fill, ...] = ()
     #: slot ids that appeared in more than one fill block (all occurrences rejected).
     duplicates: tuple[str, ...] = ()
+    #: slot ids whose fence carried a language prefix (``typescript:fill:slot-…``). Accepted,
+    #: but counted: it measures how far the emission drifts from the form the brief teaches.
+    language_prefixed: tuple[str, ...] = ()
 
 
 #: Symbols ``lib/store.ts`` exports. A fill referencing one of these is asserting on
@@ -155,6 +170,9 @@ def measure_assertion_strength(emission: FillEmission) -> dict:
         "store_slots": store_slots,
         "store_symbols_used": used,
         "any_fill_touches_the_store": bool(store_slots),
+        # #987: accepted-but-noted fence drift. Non-empty means the brief's taught form
+        # and the author's habit disagree, which is worth seeing before it costs a roll.
+        "language_prefixed_fences": list(emission.language_prefixed),
     }
 
 
@@ -167,9 +185,12 @@ def parse_fill_emission(text: str) -> FillEmission:
     """
     fills: list[Fill] = []
     seen: dict[str, int] = {}
+    prefixed: list[str] = []
     for match in _FILL_FENCE_RE.finditer(text):
         slot_id = match.group("slot_id")
         body = match.group("body")
+        if match.group("lang"):
+            prefixed.append(slot_id)
         seen[slot_id] = seen.get(slot_id, 0) + 1
         stripped = [line for line in body.strip("\n").split("\n") if line.strip()]
         na = _NOT_APPLICABLE_RE.match(stripped[0]) if len(stripped) == 1 else None
@@ -178,7 +199,11 @@ def parse_fill_emission(text: str) -> FillEmission:
         else:
             fills.append(Fill(slot_id=slot_id, body=body.strip("\n")))
     duplicates = tuple(sorted(slot_id for slot_id, count in seen.items() if count > 1))
-    return FillEmission(fills=tuple(fills), duplicates=duplicates)
+    return FillEmission(
+        fills=tuple(fills),
+        duplicates=duplicates,
+        language_prefixed=tuple(sorted(set(prefixed))),
+    )
 
 
 #: ``(pattern, human reason)`` — each is a containment rule from the module docstring.

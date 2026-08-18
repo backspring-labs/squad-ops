@@ -23,6 +23,7 @@ from squadops.capabilities.verification_scaffold_fill import (
     fill_findings,
     merge_fills,
     parse_fill_emission,
+    strip_fill_blocks,
 )
 from tests.unit.capabilities._stack_fixtures import manifest_for_stack
 
@@ -76,6 +77,52 @@ class TestParseFillEmission:
     def test_an_emission_with_no_fill_blocks_parses_empty(self):
         parsed = parse_fill_emission("no fences at all, just prose")
         assert parsed.fills == () and parsed.duplicates == ()
+
+    def test_a_language_prefixed_fence_is_a_fill_and_is_recorded_as_drift(self):
+        """#987: ```typescript:fill:slot-… is the form an author actually writes.
+
+        Under the exact-form pattern it matched nothing here, survived
+        ``strip_fill_blocks``, and the file extractor read it as a file named
+        ``fill:slot-…``. A pre-V7 shakedown lost all six of its fills that way with
+        no finding raised — the emission looked like it had simply said nothing.
+        """
+        text = (
+            "```typescript:fill:slot-vc-probe-api-runs\n"
+            "    expect(body.id).toBeTruthy()\n"
+            "```\n"
+            "```fill:slot-vs-get-api-runs\n"
+            "    expect(body).toEqual([])\n"
+            "```\n"
+        )
+        parsed = parse_fill_emission(text)
+
+        assert [f.slot_id for f in parsed.fills] == [_CREATE_SLOT, _LIST_SLOT]
+        assert parsed.fills[0].body == "    expect(body.id).toBeTruthy()"
+        # Accepted, but not silently: the unprefixed sibling is absent from the record.
+        assert parsed.language_prefixed == (_CREATE_SLOT,)
+
+    def test_a_prefixed_fence_cannot_leak_into_the_file_extractor(self):
+        """The other half of #987 — stripping must remove the prefixed form too, or
+        the same block is both a fill and a bogus additive file named ``fill:slot-…``."""
+        text = (
+            "```typescript:fill:slot-vc-probe-api-runs\n"
+            "    expect(body.id).toBeTruthy()\n"
+            "```\n"
+            "```typescript:__tests__/extra.test.ts\n"
+            "// a genuine additive file\n"
+            "```\n"
+        )
+        stripped = strip_fill_blocks(text)
+
+        assert "fill:slot-" not in stripped
+        assert "__tests__/extra.test.ts" in stripped
+
+    def test_a_prefix_that_is_not_a_language_token_is_not_a_fill(self):
+        """The prefix is optional, not arbitrary: a fence whose info string merely
+        ends in ``fill:slot-…`` is a path-addressed file and stays the extractor's."""
+        text = "```ts:src/fill:slot-vc-probe-api-runs\nconst x = 1\n```\n"
+        assert parse_fill_emission(text).fills == ()
+        assert strip_fill_blocks(text) == text
 
 
 class TestFillFindings:

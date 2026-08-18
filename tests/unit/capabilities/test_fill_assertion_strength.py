@@ -118,4 +118,5 @@ class TestEdges:
             "store_slots": [],
             "store_symbols_used": [],
             "any_fill_touches_the_store": False,
+            "language_prefixed_fences": [],
         }
