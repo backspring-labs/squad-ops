@@ -10,6 +10,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from squadops.cycles.acceptance_check_spec import CHECK_CONTRACT_ASSERTIONS
+from squadops.cycles.check_registry import (
+    CHECK_NO_SELF_MOCKING_TESTS,
+    CHECK_NO_STUB_FALLBACK_TESTS,
+)
 from squadops.cycles.emission_integrity import extraction_loss_suspected
 from squadops.cycles.verification_integrity import ResultStatus
 
@@ -245,6 +249,23 @@ def classify_failure_locus(failure_evidence: Any) -> str:
         # guard: the signal comes from the contract, not from the app failing
         # the suite — for qa.test, OWN_ARTIFACT = eve re-authors the suite.
         if check == f"acceptance:{CHECK_CONTRACT_ASSERTIONS}" and row.get("passed") is False:
+            return FailureLocus.OWN_ARTIFACT
+        # #988: the suite never invoked the application — it mocked the route module,
+        # or replaced the fetch seam and imported no route at all (#915), or hid the
+        # entrypoint behind an ImportError stub and tested the reconstruction (#276).
+        # Such a suite's verdict on the app carries no information about the app, so
+        # routing its failure to the dev chain spends the repair budget rewriting
+        # working code against evidence produced by a test of itself. The pre-V7
+        # shakedown did exactly that and exhausted its attempts; roll 6's delivered
+        # app passed a hand boot audit while the cycle rejected it.
+        #
+        # Safe from the test-gaming guard on the same footing as the contract row
+        # above: the signal is structural — read off the suite's own source — not the
+        # app failing the suite, so it cannot be produced BY an app defect.
+        if (
+            check in (CHECK_NO_SELF_MOCKING_TESTS, CHECK_NO_STUB_FALLBACK_TESTS)
+            and row.get("passed") is False
+        ):
             return FailureLocus.OWN_ARTIFACT
     scaffold_locus = _locus_from_scaffold_classification(failure_evidence)
     if scaffold_locus is not None:

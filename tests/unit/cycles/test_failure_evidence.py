@@ -318,6 +318,47 @@ class TestClassifyFailureLocus:
         row = {"check": "tests_pass", "executed": True, "exit_code": 1, "passed": False}
         assert classify_failure_locus(self._evidence_with_check(row)) == FailureLocus.SUBJECT
 
+    @pytest.mark.parametrize("check", ["no_self_mocking_tests", "no_stub_fallback_tests"])
+    def test_a_suite_that_never_invoked_the_app_is_own_artifact(self, check):
+        """#988: exit 1 alone reads SUBJECT, and must not when the suite is
+        self-referential.
+
+        A suite that mocks the route module, or replaces the fetch seam and imports
+        no route at all, produces a verdict about itself. Sending that to the dev
+        chain spends the repair budget rewriting working code: the pre-V7 shakedown
+        exhausted its attempts that way, and roll 6's delivered app passed a hand
+        boot audit while the cycle rejected it. The offender row must outrank the
+        tests_pass row it appears beside.
+        """
+        evidence = {
+            "validation_result": {
+                "passed": False,
+                "checks": [
+                    {"check": "tests_pass", "executed": True, "exit_code": 1, "passed": False},
+                    {"check": check, "passed": False, "offenders": ["__tests__/runs.test.ts"]},
+                ],
+            }
+        }
+        assert classify_failure_locus(evidence) == FailureLocus.OWN_ARTIFACT
+
+    def test_a_clean_authenticity_row_leaves_the_subject_route_intact(self):
+        """The guard's other side: the row is now banked on a pass too (#986), so a
+        passing one must not divert a genuine app failure away from the dev chain."""
+        evidence = {
+            "validation_result": {
+                "passed": False,
+                "checks": [
+                    {"check": "tests_pass", "executed": True, "exit_code": 1, "passed": False},
+                    {
+                        "check": "no_self_mocking_tests",
+                        "passed": True,
+                        "inspected": ["__tests__/runs.test.ts"],
+                    },
+                ],
+            }
+        }
+        assert classify_failure_locus(evidence) == FailureLocus.SUBJECT
+
     def test_pytest_internal_error_is_unknown(self):
         row = {"check": "tests_pass", "executed": True, "exit_code": 3, "passed": False}
         assert classify_failure_locus(self._evidence_with_check(row)) == FailureLocus.UNKNOWN
