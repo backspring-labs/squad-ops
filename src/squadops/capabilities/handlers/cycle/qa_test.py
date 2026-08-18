@@ -21,7 +21,11 @@ from squadops.capabilities.handlers.base import (
     HandlerResult,
 )
 from squadops.capabilities.handlers.prompt_guard import _guard_prompt_size
-from squadops.cycles.check_registry import CHECK_FRONTEND_BUILD
+from squadops.cycles.check_registry import (
+    CHECK_FRONTEND_BUILD,
+    CHECK_NO_SELF_MOCKING_TESTS,
+    CHECK_NO_STUB_FALLBACK_TESTS,
+)
 from squadops.cycles.emission_integrity import emission_stats as _emission_stats
 from squadops.cycles.verification_integrity import NotExecutedReason, ResultStatus
 from squadops.llm.exceptions import LLMError
@@ -821,8 +825,6 @@ class QATestHandler(_CycleTaskHandler):
         # #276 guard holds on the retest path too: a repair must not smuggle a
         # stub-fallback past the correction loop.
         from squadops.capabilities.handlers.stub_detection import (
-            CHECK_NO_SELF_MOCKING,
-            CHECK_NO_STUB_FALLBACK,
             detect_self_mocking_tests,
             detect_stub_fallback_tests,
             inspected_js_test_paths,
@@ -832,7 +834,7 @@ class QATestHandler(_CycleTaskHandler):
         stub_offenders = detect_stub_fallback_tests(artifacts)
         checks.append(
             _authenticity_row(
-                CHECK_NO_STUB_FALLBACK, stub_offenders, inspected_python_test_paths(artifacts)
+                CHECK_NO_STUB_FALLBACK_TESTS, stub_offenders, inspected_python_test_paths(artifacts)
             )
         )
         if stub_offenders:
@@ -846,7 +848,9 @@ class QATestHandler(_CycleTaskHandler):
         mock_offenders = detect_self_mocking_tests(artifacts)
         mock_paths = [path for path, _ in mock_offenders]
         checks.append(
-            _authenticity_row(CHECK_NO_SELF_MOCKING, mock_paths, inspected_js_test_paths(artifacts))
+            _authenticity_row(
+                CHECK_NO_SELF_MOCKING_TESTS, mock_paths, inspected_js_test_paths(artifacts)
+            )
         )
         if mock_offenders:
             passed = False
@@ -1268,8 +1272,6 @@ class QATestHandler(_CycleTaskHandler):
             # passes). Flag it so acceptance fails and the correction loop
             # regenerates the test against the real module.
             from squadops.capabilities.handlers.stub_detection import (
-                CHECK_NO_SELF_MOCKING,
-                CHECK_NO_STUB_FALLBACK,
                 detect_self_mocking_tests,
                 detect_stub_fallback_tests,
                 inspected_js_test_paths,
@@ -1279,7 +1281,7 @@ class QATestHandler(_CycleTaskHandler):
             stub_offenders = detect_stub_fallback_tests(artifacts)
             validation.checks.append(
                 _authenticity_row(
-                    CHECK_NO_STUB_FALLBACK,
+                    CHECK_NO_STUB_FALLBACK_TESTS,
                     stub_offenders,
                     inspected_python_test_paths(artifacts),
                 )
@@ -1308,7 +1310,7 @@ class QATestHandler(_CycleTaskHandler):
             mock_paths = [path for path, _ in mock_offenders]
             validation.checks.append(
                 _authenticity_row(
-                    CHECK_NO_SELF_MOCKING, mock_paths, inspected_js_test_paths(artifacts)
+                    CHECK_NO_SELF_MOCKING_TESTS, mock_paths, inspected_js_test_paths(artifacts)
                 )
             )
             if mock_offenders:

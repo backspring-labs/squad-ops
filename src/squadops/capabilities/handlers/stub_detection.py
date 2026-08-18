@@ -194,10 +194,6 @@ def detect_self_mocking_tests(files: list[dict]) -> list[tuple[str, str]]:
 # is then a visible fact rather than a silence.
 
 
-CHECK_NO_STUB_FALLBACK = "no_stub_fallback_tests"
-CHECK_NO_SELF_MOCKING = "no_self_mocking_tests"
-
-
 def inspected_python_test_paths(files: list[dict]) -> list[str]:
     """Return the paths ``detect_stub_fallback_tests`` will actually examine."""
     return sorted(path for path, _ in map(_file_field, files) if path and _is_test_file(path))
