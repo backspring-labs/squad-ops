@@ -12,6 +12,7 @@ import pytest
 
 from squadops.cycles.check_registry import (
     CHECK_FRONTEND_BUILD,
+    CHECK_NO_SELF_MOCKING_TESTS,
     CHECK_NO_STUB_FALLBACK_TESTS,
     CHECK_REQUIRED_FILES,
     CHECK_TESTS_PASS,
@@ -26,6 +27,7 @@ pytestmark = [pytest.mark.domain_orchestration]
 _ALL_IDS = {
     CHECK_TESTS_PASS,
     CHECK_NO_STUB_FALLBACK_TESTS,
+    CHECK_NO_SELF_MOCKING_TESTS,
     CHECK_REQUIRED_FILES,
     CHECK_FRONTEND_BUILD,
 }

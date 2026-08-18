@@ -180,3 +180,25 @@ def detect_self_mocking_tests(files: list[dict]) -> list[tuple[str, str]]:
         elif _NETWORK_SEAM_MOCK.search(content) and not _APP_ROUTE_IMPORT.search(content):
             offenders.append((path, MOCKS_THE_NETWORK))
     return sorted(offenders)
+
+
+# --- What the detectors were actually shown (#986) ------------------------------
+#
+# Both detectors above report offenders and nothing else, so a clean result is
+# indistinguishable from a detector that was never reached — or that was reached
+# with the wrong file list. Diagnosing one absent row in `cyc_6651d552e06a` cost an
+# hour precisely because the run record could not answer "did it look, and at what?".
+#
+# These return the inventory each detector inspects, so a caller can bank a row
+# whether or not it found anything. An empty inventory alongside an executed suite
+# is then a visible fact rather than a silence.
+
+
+def inspected_python_test_paths(files: list[dict]) -> list[str]:
+    """Return the paths ``detect_stub_fallback_tests`` will actually examine."""
+    return sorted(path for path, _ in map(_file_field, files) if path and _is_test_file(path))
+
+
+def inspected_js_test_paths(files: list[dict]) -> list[str]:
+    """Return the paths ``detect_self_mocking_tests`` will actually examine."""
+    return sorted(path for path, _ in map(_file_field, files) if path and _is_js_test_file(path))

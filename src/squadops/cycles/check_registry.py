@@ -52,6 +52,7 @@ class FrameworkCheck:
 # declarable; wiring its CheckResult emission is a later slice (4b).
 CHECK_TESTS_PASS = "tests_pass"
 CHECK_NO_STUB_FALLBACK_TESTS = "no_stub_fallback_tests"
+CHECK_NO_SELF_MOCKING_TESTS = "no_self_mocking_tests"
 CHECK_REQUIRED_FILES = "required_files"
 CHECK_FRONTEND_BUILD = "frontend_build"
 
@@ -63,6 +64,10 @@ FRAMEWORK_CHECKS: dict[str, FrameworkCheck] = {
     CHECK_NO_STUB_FALLBACK_TESTS: FrameworkCheck(
         CHECK_NO_STUB_FALLBACK_TESTS,
         "The passing tests are not stub/placeholder fallbacks (§6.6.1).",
+    ),
+    CHECK_NO_SELF_MOCKING_TESTS: FrameworkCheck(
+        CHECK_NO_SELF_MOCKING_TESTS,
+        "The passing tests invoke the application rather than their own mock (#915).",
     ),
     CHECK_REQUIRED_FILES: FrameworkCheck(
         CHECK_REQUIRED_FILES,
