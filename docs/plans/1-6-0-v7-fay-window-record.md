@@ -135,6 +135,25 @@ boot audit is the functional oracle).
 
 **Attempt 2 tally: 0 functional / 1 counted.**
 
+## Attempt 2, Roll 2 — cyc_5fb50579c418 — COUNTED, FUNCTIONAL
+
+| Field | Value |
+|---|---|
+| Framing | 65 min; gate auto-approved (`system:no_open_questions`) |
+| Implementation | `run_9676a04a4c87` — completed, **41 min** |
+| Verdict | **`accepted`** — 26/26 executed and passed; nothing failed, nothing unmet |
+| Correction rounds | **0** |
+| Fills | 8/8 first attempt, 0 duplicates; store asserted in the taught form (`all(TABLES.Run)` length checks; 15 expects across sampled slot regions); 1 additive suite (13.7 KB) |
+| Boot audit (separate fact) | **PASS** — 5/5 probes, UI data-path clean. **5/5 working apps across both attempts** |
+| Manual interventions | none |
+| §5.1 validity | **COUNTED** |
+| Score | **FUNCTIONAL** |
+
+(Triage note for honesty: an initial fills-dropped scare was my sampling error — I read the
+builder's seeded `source` copies; qa's merged `test`-type artifacts are properly filled.)
+
+**Attempt 2 tally: 1 functional / 2 counted.**
+
 ## Attempt 1 close-out
 
 HALTED pending owner decision. **Tally: 1 functional / 2 counted** (launch 2 functional;
