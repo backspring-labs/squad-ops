@@ -33,9 +33,10 @@ is a separate, deliberate act taken after the window closes.
 | 2.1 | V6 complete (SIP-0104 P6 window closed) | **MET** — closed 2026-08-17 03:46 ET at 6 rolls: 5 banked, roll 6 rejected. Record: `sip-0104-p6-window-record.md` |
 | 2.2 | **#952 and #953 fixed and deployed** — see §2.a, this is blocking | **MET** — merged (#956) and deployed 2026-08-17, loaded-module verified in runtime-api, eve and neo |
 | 2.3 | Instrument defects either fixed or explicitly declared (§2.b) | **MET** — all three merged (#957/#958/#959) and deployed, loaded-module verified |
-| 2.4 | Deploy frozen; commit and image ids recorded in §3 | pending — rebuilt again for #967, ids recorded at freeze |
-| **2.7** | **#967 fixed and deployed** — see §2.d. Added after roll 6; blocking on the same argument as 2.2 | **fixed (#973), deploying** |
-| 2.5 | Zero open focus leases immediately before roll 1 | check at launch |
+| 2.4 | Deploy frozen; commit and image ids recorded in §3 | **MET** — frozen at `4fa74525` 2026-08-18; commit and all seven image ids recorded in §3 |
+| **2.7** | **#967 fixed and deployed** — see §2.d. Added after roll 6; blocking on the same argument as 2.2 | **MET** — merged (#973) and deployed |
+| **2.8** | **The two shakedown defect sets fixed and deployed** — see §2.e/§2.f. Neither shakedown counted, but both found machinery that would have destroyed the window | **MET** — #986/#987/#988 merged (PRs #989/#990/#991) and deployed 2026-08-18, loaded-module verified in eve and runtime-api |
+| 2.5 | Zero open focus leases immediately before roll 1 | **MET** — 0 unreleased leases and 0 non-terminal runs, checked 2026-08-18 at the freeze |
 | 2.6 | Every ruling in §7 closed | **MET** — 7.1, 7.2, 7.3 and 7.4 all closed; 7.4's remaining bands and the 1/6 split ruled 2026-08-17 |
 
 ### 2.a Why the audit defects are blocking, not cosmetic
@@ -188,6 +189,41 @@ that is now fixed and attempt 1's unprompted behaviour was the behaviour we want
 Until the instrumentation lands, the closing claim may not assert anything about assertion
 strength — only that the slots were filled.
 
+**Restriction lifted 2026-08-18.** #982 merged and is deployed at `4fa74525`;
+`measure_assertion_strength` was verified on the loaded module in eve and banks
+`store_slots`, `store_symbols_used`, `body_chars` and `any_fill_touches_the_store` into
+`fill_merge` evidence. §4 can therefore distinguish attempt 1 from attempt 3, and the closing
+claim may describe assertion strength — **for rolls from here on**. It may not describe it
+retrospectively for P6, whose rolls were never measured.
+
+### 2.h What shakedown #2 found, and the fix set that answers it *(2026-08-18)*
+
+Shakedown #2 did not meet §2.f's bar: it ended terminal on max correction attempts. Held to
+its own declared terms it is a **fail**, and it is not counted. It also did the job a
+shakedown exists to do — four findings, three of which would have corrupted the window rather
+than merely failing a roll:
+
+| finding | disposition |
+|---|---|
+| Fill fence emitted as ```` ```typescript:fill:slot-… ```` — matched nothing, survived stripping, and was read as a *file* named `fill:slot-…`. **All six fills silently dropped**, and the shells then rendered as the failing states a missing fill is defined to produce | **fixed** — #987 / PR #990 |
+| A qa suite that reimplements the API and asserts against its own fake | detector already existed (#915) |
+| The correction chain routed that suite's failure at the **application** — round 2 removed a `status: 201` from correct code, round 3 restored it | **fixed** — #988 / PR #991 |
+| The authenticity detector's result was absent from the run record, and "ran and found nothing" was indistinguishable from "never ran" | **fixed** — #986 / PR #989 |
+
+**Why the first one is the dangerous shape.** A dropped fill is *invisible*: the protocol sees
+an emission that said nothing about any slot, so the run reads as an authoring failure. That
+is precisely the signal the scaffold exists to produce for a genuinely absent fill — so the
+defect and the thing being measured are indistinguishable in the record. A window scoring
+authoring quality on that surface would have scored a parser bug.
+
+**What this does not establish.** No shakedown has yet met §2.f's bar — a `qa.test` passing on
+its first attempt with fills that touch the store. Two were run; the first passed only by
+retreating (§2.g), the second failed outright. The window opens without that demonstration,
+which is a deliberate choice and is named here rather than glossed: what the fixes establish
+is that three specific corruption paths are closed, not that the boundary is clean. Roll 1 is
+the first observation of a cycle on fixed shells, and its `fill_merge` evidence — now
+instrumented — is the first evidence either way.
+
 ### 2.c The size of the deploy boundary is itself a risk *(raised 2026-08-16)*
 
 Six PRs now sit ready for the single rebuild that separates P6 from V7: #956 (two audit
@@ -221,10 +257,23 @@ window does not need, since V7 measures a deploy rather than a change.
 | Squad profile | `full` |
 | Request profile | `validated-fullstack` |
 | Overrides | `build_profile=nextjs_ts`, `dev_capability=nextjs_ts` |
-| `resolved_config_hash` | `d4d4f66217d88324d449b0cc7c05dd4665e17dcb90c63f7cfcd544ab5fc122d2` — **re-verify at roll 1**, see below |
-| Deploy — main commit | `_____` *(unknowable until the fix queue lands)* |
-| Deploy — image ids | runtime-api `_____`; max, neo, nat, bob, eve, data `_____` *(unknowable until the rebuild)* |
+| `resolved_config_hash` | `d4d4f66217d88324d449b0cc7c05dd4665e17dcb90c63f7cfcd544ab5fc122d2` — **re-verified at roll 1**, see below |
+| Deploy — main commit | `4fa74525` (merge of #991) — rebuilt and deployed 2026-08-18 |
+| Deploy — image ids | runtime-api `1b0d41452d97`; max `c622fa64a5ce`; neo `c40d4002421a`; nat `09aff1356efd`; bob `6687ef36e5b4`; eve `f5eb46a95460`; data `08d261a27b7d` |
 | Gate policy | **pre-declared constant** — owner ruling 2026-08-16, §7.3(c) |
+
+**Both hashes re-verified at the deploy boundary, not carried forward.** The PRD sha
+(`f744843d…`) and the config hash (`d4d4f662…`) were recomputed at `4fa74525` after the fix
+queue landed and both are unchanged from their 2026-08-16 measurement at `136fffb7`. That is
+the specific thing §3 asks for: the fix queue touched the qa handler, the fill parser, the
+check registry and the locus classifier, and none of it moved the recipe — so this window and
+the six P6 rolls remain comparable on request, and any difference in outcome is attributable
+to the deploy rather than to a changed ask.
+
+**A seventh agent container (`joi`) is deployed and is not in this roster.** The `full`
+profile declares exactly the six above (`config/squad-profiles.yaml`), so joi takes no part in
+these rolls. Recorded because "seven agent containers are up" is what an observer sees, and an
+unexplained extra reads as an undeclared variable.
 
 **On the PRD filename.** The draft named `group_run_v0.5.md`, which is not a path that exists;
 the file is `examples/03_group_run/prd.md` and *declares* v0.5 in its header. Corrected because
