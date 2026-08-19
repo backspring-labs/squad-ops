@@ -288,15 +288,28 @@ an event with a forced outcome, never silent); **lease terms are the override**
 primary lease + started activity → no irreversible action, so ambient peripherals
 are constitutionally watch-and-alert.
 
-**Budgets ground out in economics.** The two budget shapes are the two regimes of real
-infrastructure: **capacity** budgets are local hardware (VRAM/memory/disk — an allowance
-acquired and released, free per use, hard-bounded), and **consumable** budgets are cloud
-spend (currency consumed against a limit, with replenishment as the deferred reset §7.1
-anticipated). **Placement selects the pool**: a local embodiment draws capacity, a cloud
-embodiment draws consumables. The substrate enforces both whether modeled or not — an OOM
-or an invoice — so modeling them buys legible exhaustion, and "local-first, cloud-burst"
-falls out as the default placement policy: prefer capacity draws; burst to consumables
-only when capacity is exhausted and the task's value clears the price.
+**Budgets ground out in economics — three pools, distinguished by what the meter is
+attached to:**
+
+| Pool | Shape | Meter attaches to | Idle cost | Thinking cost |
+|---|---|---|---|---|
+| Local hardware | capacity | *occupancy* (VRAM/memory/disk held) | free, but occupies | free |
+| Cloud compute | consumable | *existence* (VM/GPU-hours) | burns currency | burns currency |
+| Frontier API tokens | consumable | *cognition* (tokens in/out) | free | metered per token |
+
+The substrate enforces all three whether modeled or not — an OOM, an invoice, a rate
+limit — so modeling them buys legible exhaustion instead of surprises. Two rules follow:
+
+- **The embodiment declares a draw set, not a pool.** Placement × model provider
+  determines it, and draws can be simultaneous (a cloud VM calling a frontier API is
+  metered on duration *and* tokens). SIP-0090 §7.1's `compute` dimension is already the
+  token meter; the refinement is that consumable pools are per-wallet — each provider's
+  limit and replenishment its own — never one global scalar.
+- **Posture pricing is pool-aware.** Ambient attention is nearly free on a token pool,
+  free-but-occupying on capacity, and the worst possible tenant on a duration pool — so
+  ambient attachments belong on token pools or local capacity, while duration pools are
+  for foreground bursts, attached late and detached promptly. "Local-first, cloud-burst"
+  falls out as the coarse default; the pool-aware refinement is the actual policy.
 
 ### 5.6 The guardrail
 
