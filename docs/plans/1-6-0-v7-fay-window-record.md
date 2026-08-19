@@ -101,7 +101,17 @@ would waste every roll needing a single qa correction.
 vs abort-and-re-register is the owner's decision (§5.1, §6). Fix stacked unmerged: PR #1001.
 Nothing in flight; deploy untouched at `4fa74525`.
 
-## Rolls thereafter
+---
+
+# ATTEMPT 2 — re-registered 2026-08-19, deploy `61a12e38`
+
+Owner ruled abort-and-re-register at the morning report (§2.i of the pre-registration).
+Deploy carries #1001 (the reset-class fix) + #997 (prerender teaching); both loaded-module
+verified. PRD sha and config hash re-verified unchanged — comparable on recipe, not on the
+dev authoring surface. **Count restarts: 0 of 6.** Attempt 1's rolls above are recorded
+evidence, not pooled.
+
+## Attempt 1 close-out
 
 HALTED pending owner decision. **Tally: 1 functional / 2 counted** (launch 2 functional;
 launch 3 counted-not-functional); roll 1 void. Delivered-app ground truth so far: **3 of 3
