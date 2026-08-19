@@ -46,6 +46,16 @@ re-dispatched develop for the same subtask → three re-authored variants each f
 | Framing run | `run_e2d85438f3fe` — in flight |
 | Config hash | matches §3 pin |
 
+### Launch 2 gate (§7.3 rule 3 observation)
+
+The manifest carried one unresolved dev question — *"PRD §4.1 lists capacity as Tier 1
+expansion; should the MVP schema include capacity fields but skip enforcement, or defer
+entirely until expansion?"* — and lead's planning artifact marked it a blocker. Per rule 3
+the standing text was applied **verbatim** at 03:59 UTC ("open questions deferred; core PRD
+scope only"), which happens to address this question's shape exactly (defer; core scope).
+Logged as: the standing policy DID address this roll's question. Zero manual intervention;
+decided_by records the agent decision. Implementation run `run_591987c9df8d` chained.
+
 ## Rolls thereafter
 
 Pending. Counted-roll tally: 0 of 6 (roll 1 void).
