@@ -187,6 +187,14 @@ standing territory.
 **Attempt 2 tally: 2 functional / 3 counted.** Path to bar: 2 functional needed from the 3
 remaining counted slots.
 
+### Launch 5 gate (§7.3 rule 3 observation)
+
+Framing 65 min; gate required approval — one unresolved dev question: *"PRD §5.2 does not
+specify a sort order for the runs list; defaulting to insertion order (newest first) unless
+the reviewer directs otherwise."* Standing text applied verbatim 23:4x UTC; the question's
+own stated default (proceed unless directed) composes cleanly with "open questions deferred."
+Zero manual intervention; agent decision recorded.
+
 ## Attempt 1 close-out
 
 HALTED pending owner decision. **Tally: 1 functional / 2 counted** (launch 2 functional;
