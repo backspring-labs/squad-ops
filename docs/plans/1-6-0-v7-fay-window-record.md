@@ -111,6 +111,30 @@ verified. PRD sha and config hash re-verified unchanged — comparable on recipe
 dev authoring surface. **Count restarts: 0 of 6.** Attempt 1's rolls above are recorded
 evidence, not pooled.
 
+## Attempt 2, Roll 1 — cyc_6495d9870587 — COUNTED, not functional
+
+| Field | Value |
+|---|---|
+| Framing | 54 min; gate auto-approved (`system:no_open_questions`) |
+| Implementation | `run_44c68d150155` — failed 15:53 UTC, "Max correction attempts (3) exhausted" |
+| Verdict | `rejected` — sole failed check `tests_pass` (required, genuine: exit 1, 10 test files). **No phantom row — #1001 confirmed live** |
+| Correction rounds | 3 qa-side; none converged. Dev phase clean (first roll with #997's prerender teaching) |
+| Fills | 8/8 first attempt, 0 duplicates, scaffold_bound |
+| Boot audit (separate fact) | **PASS** — 5/5 probes, UI data-path clean. **4/4 working apps across both attempts** |
+| Manual interventions | none |
+| §5.1 validity | **COUNTED** |
+| Score | not functional |
+
+Failure texture: the additive suites are where the rolls die. This roll's stored mid-round
+`ui-flows.test.ts` spy-mocks `global.fetch` with no route import — the deployed detector flags
+it when handed the file, yet it never fired in-cycle, and the record cannot show what each
+attempt inspected (#1002: `inspected` dies at the normalize seam; family of #995/#999 —
+evidence computed at the handler, dropped before the record). Not reset-class: the roll's
+rejection was genuine, and a false green from this gap cannot corrupt the FAY headline (the
+boot audit is the functional oracle).
+
+**Attempt 2 tally: 0 functional / 1 counted.**
+
 ## Attempt 1 close-out
 
 HALTED pending owner decision. **Tally: 1 functional / 2 counted** (launch 2 functional;
@@ -127,6 +151,7 @@ completed builds pass the boot audit** — every failure tonight was machinery- 
 | #998 | Thinking-cap exhaustion (8192 completion tokens, 0 extractable chars) banks as generic emission failure — undetectable as its own class | roll 1 (void) |
 | #999 | #982's assertion-strength evidence is computed then never persisted — `execution_evidence` has no home; §4's "read from banked evidence" unsatisfiable as deployed | launch 2 (counted) |
 | **#1000** | **RESET-CLASS**: normalizer presence-implies-failure vs #989's unconditional row → phantom FAILED on clean suites; would falsely reject repair-then-pass rolls. Fix stacked: PR #1001 | launch 3 (counted) |
+| #1002 | Self-mocking file never flagged in-cycle; `inspected` doesn't survive normalization — the detector-coverage question is unanswerable from the record | attempt 2 roll 1 (counted) |
 
 **#995 corrected in-issue:** there was a third develop dispatch (02:18–02:30) that genuinely
 emitted zero chars — 8,192 completion tokens, the exact generation cap, all spent on reasoning
