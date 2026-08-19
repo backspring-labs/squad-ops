@@ -171,6 +171,22 @@ standing territory.
 
 **Attempt 2 tally unchanged: 1 functional / 2 counted.**
 
+## Attempt 2, Roll 3 (launch 4) — cyc_6b2af126b68d — COUNTED, FUNCTIONAL
+
+| Field | Value |
+|---|---|
+| Framing | 54 min; gate auto-approved (`system:no_open_questions`) |
+| Implementation | `run_ad61f9e464d6` — completed, 77 min |
+| Verdict | **`accepted`** — 44/44 executed and passed; nothing failed, nothing unmet |
+| Correction rounds | **1 — and it converged**: qa failed once, one repair, retest green. **The repair-then-pass path the #1000 phantom would have falsely rejected — survived on the fixed deploy. Live proof of #1001, end to end** |
+| Boot audit (separate fact) | **PASS** — 5/5 probes, UI data-path clean. **6/6 working apps across both attempts** |
+| Manual interventions | none |
+| §5.1 validity | **COUNTED** |
+| Score | **FUNCTIONAL** |
+
+**Attempt 2 tally: 2 functional / 3 counted.** Path to bar: 2 functional needed from the 3
+remaining counted slots.
+
 ## Attempt 1 close-out
 
 HALTED pending owner decision. **Tally: 1 functional / 2 counted** (launch 2 functional;
