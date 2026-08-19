@@ -19,30 +19,44 @@ in tables; the closing claim will restate in ET.
 | Launched | 2026-08-18 23:48 UTC |
 | Framing run | `run_c86f7911fe8c` — completed, 64 min, 11 artifacts |
 | Gate | `progress_plan_review` → approved, `system:no_open_questions` (§7.3 rule 2 — zero manual touches) |
-| Implementation run | `run_29b53b6e3d4b` — RUNNING |
-| Verdict | — |
-| Executed / passed | — |
-| criteria_total / verified / unverified | — |
-| Probe count (non-gating) | — |
-| Scaffold slots (non-gating) | — |
-| Correction rounds | — |
-| Fills first-attempt / slots | — |
-| Any fill asserts on store (non-gating, #980) | — |
-| Fill body size / store slots (non-gating) | — |
-| Boot audit (separate fact) | — |
-| Manual interventions | none so far |
-| §5.1 validity | — |
-| Score | — |
+| Implementation run | `run_29b53b6e3d4b` — **failed** 02:37 UTC (1h45m), "Rewinding to checkpoint after development.develop failure" |
+| Verdict | `blocked_unverified` |
+| Executed / passed | 12 / 11 |
+| criteria_total / verified | 14 / 2; failed: `acceptance:frontend_compiles`; required unmet: frontend_build, required_files, tests_pass |
+| Probe count (non-gating) | 5 (contract `6357b2cbf288`) |
+| Correction rounds | 1 completed repair (accepted), then develop re-dispatch failed 3 emissions → 1800s task timeout |
+| Fills / assertion strength | n/a — `qa.test` never dispatched |
+| Boot audit (separate fact, run as triage) | **PASS** — the stored tree (acceptance-aware assembly) installs, builds, boots, answers all 5 probes, UI data-path clean |
+| Manual interventions | none (gate auto-approved) |
+| §5.1 validity | **VOID** — never reached `qa.test`; neither counts nor resets; re-launched |
+| Score | not scored (void) |
 
-Contract artifact: `art_746df747bf41` (`verification_contract.yaml`, framing run).
+Contract artifact: `art_746df747bf41`. **The void roll's delivered application works** — the cycle
+possessed an accepted, working repair at 01:38 UTC and failed anyway (#994). Failure chain,
+verified against neo logs (the banked analysis is wrong — #995): real defect in `app/page.tsx`
+(server-component prerender fetch, #996) → correct accepted repair (`force-dynamic`) → rewind
+re-dispatched develop for the same subtask → three re-authored variants each failed
+`frontend_compiles` → task timeout at 1800s → run failed.
 
-## Rolls 2–6
+## Launch 2 — cyc_18931c371a55
 
-Pending.
+| Field | Value |
+|---|---|
+| Launched | 2026-08-19 03:0x UTC, notes record roll-1 void |
+| Framing run | `run_e2d85438f3fe` — in flight |
+| Config hash | matches §3 pin |
+
+## Rolls thereafter
+
+Pending. Counted-roll tally: 0 of 6 (roll 1 void).
 
 ## Mid-window detections (recorded, left unfixed per §6)
 
-None yet.
+| # | Detection | Source |
+|---|---|---|
+| #994 | Rewind after a successful repair re-dispatches develop, discarding the repaired state — cycle rejected a working deliverable | roll 1 (void) |
+| #995 | Task timeout mid self-eval banked as "zero response chars", erasing 2 substantive rounds; analysis names a disproven mechanism | roll 1 (void) |
+| #996 | Authoring surfaces teach the api() client seam but not the server-component prerender constraint | roll 1 (void) |
 
 ## Night-shift log (2026-08-18/19 ET)
 
