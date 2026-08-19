@@ -73,9 +73,39 @@ decided_by records the agent decision. Implementation run `run_591987c9df8d` cha
 | §5.1 validity | **COUNTED** |
 | Score | **FUNCTIONAL** |
 
+## Launch 3 — cyc_c8af2a288e59 — COUNTED, not functional; and the reset-class detection
+
+| Field | Value |
+|---|---|
+| Framing | 55 min; gate auto-approved (`system:no_open_questions`) |
+| Implementation | `run_82dc31768f7d` — **failed** 08:20 UTC, "Max correction attempts (3) exhausted" |
+| Verdict | `rejected` — 36 executed / 34 passed; 10/11 criteria verified |
+| Genuine failure | `tests_pass` (required): the additive suite `__tests__/runs.test.ts` calls `api()` over HTTP — no live server exists in-process (the #877 class the appendix prohibits); three qa-side repairs did not converge |
+| Locus routing | all three repairs went to **qa.test_repair** — the suite's author, never the app (the #988-era routing behaving correctly) |
+| Fills | 6/6, 0 duplicates, `scaffold_bound=true` — the scaffold layer was never the problem |
+| Boot audit (separate fact, run as triage) | **PASS** — the delivered app installs, builds, boots, answers all 3 probes, UI data-path clean. **Second working application rejected tonight** — this time by its own additive suite |
+| Manual interventions | none |
+| §5.1 validity | **COUNTED** (reached qa.test) |
+| Score | **not functional** |
+
+**Phantom row (the reset-class find, #1000):** launch 3's `failed_detail` also carries
+`no_stub_fallback_tests` with an empty reason, `required: false` — a false FAILED row from a
+CLEAN suite. Mechanism: #989 banks the authenticity row on every qa validation (pass or fail);
+`verification_normalize.py:82` still assumed presence-implies-failure and records FAILED on
+sight; the verdict rule rejects on ANY failed check. Launch 3's rejection was independently
+genuine — but **a roll whose qa fails once, is repaired, and passes on retest would be falsely
+REJECTED by the phantom alone.** That is the standard green-roll recovery path, so continuing
+would waste every roll needing a single qa correction.
+
+**NIGHT SHIFT HALTED at this detection (08:5x UTC / ~04:55 ET)** per the standing rule: reset
+vs abort-and-re-register is the owner's decision (§5.1, §6). Fix stacked unmerged: PR #1001.
+Nothing in flight; deploy untouched at `4fa74525`.
+
 ## Rolls thereafter
 
-Pending. **Counted tally: 1 functional / 1 counted** (target ≥4/6 counted); roll 1 void.
+HALTED pending owner decision. **Tally: 1 functional / 2 counted** (launch 2 functional;
+launch 3 counted-not-functional); roll 1 void. Delivered-app ground truth so far: **3 of 3
+completed builds pass the boot audit** — every failure tonight was machinery- or suite-side.
 
 ## Mid-window detections (recorded, left unfixed per §6)
 
@@ -86,6 +116,7 @@ Pending. **Counted tally: 1 functional / 1 counted** (target ≥4/6 counted); ro
 | #996 | Authoring surfaces teach the api() client seam but not the server-component prerender constraint | roll 1 (void) |
 | #998 | Thinking-cap exhaustion (8192 completion tokens, 0 extractable chars) banks as generic emission failure — undetectable as its own class | roll 1 (void) |
 | #999 | #982's assertion-strength evidence is computed then never persisted — `execution_evidence` has no home; §4's "read from banked evidence" unsatisfiable as deployed | launch 2 (counted) |
+| **#1000** | **RESET-CLASS**: normalizer presence-implies-failure vs #989's unconditional row → phantom FAILED on clean suites; would falsely reject repair-then-pass rolls. Fix stacked: PR #1001 | launch 3 (counted) |
 
 **#995 corrected in-issue:** there was a third develop dispatch (02:18–02:30) that genuinely
 emitted zero chars — 8,192 completion tokens, the exact generation cap, all spent on reasoning
