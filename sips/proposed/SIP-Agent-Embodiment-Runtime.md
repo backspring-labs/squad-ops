@@ -288,6 +288,16 @@ an event with a forced outcome, never silent); **lease terms are the override**
 primary lease + started activity → no irreversible action, so ambient peripherals
 are constitutionally watch-and-alert.
 
+**Budgets ground out in economics.** The two budget shapes are the two regimes of real
+infrastructure: **capacity** budgets are local hardware (VRAM/memory/disk — an allowance
+acquired and released, free per use, hard-bounded), and **consumable** budgets are cloud
+spend (currency consumed against a limit, with replenishment as the deferred reset §7.1
+anticipated). **Placement selects the pool**: a local embodiment draws capacity, a cloud
+embodiment draws consumables. The substrate enforces both whether modeled or not — an OOM
+or an invoice — so modeling them buys legible exhaustion, and "local-first, cloud-burst"
+falls out as the default placement policy: prefer capacity draws; burst to consumables
+only when capacity is exhausted and the task's value clears the price.
+
 ### 5.6 The guardrail
 
 **Distributed attention ≠ distributed identity.** Peripheral attachments carry no
