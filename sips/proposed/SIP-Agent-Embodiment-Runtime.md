@@ -262,7 +262,33 @@ cannot deliver its observations centrally is `desynced`, not quietly autonomous.
 experience is extracted to the agent's memory (the Cross-Cycle Memory seam); runtime- and
 surface-local history is disposable.
 
-### 5.5 The guardrail
+### 5.5 The control plane: three dials, three owners
+
+Concurrency, locus, and per-runtime cardinality are governed by three distinct
+mechanisms — two already merged, one a registry field:
+
+| Quantity | Controller | State |
+|---|---|---|
+| Embodiments at once | the `concurrency` **capacity budget** (`budgets.py`: `{allowance, in_use}`, acquire at attach / release at detach, agent-scoped so bodies sum across runtimes) | machinery merged (SIP-0090 §7) |
+| Where main attention resides | the **primary FocusLease** — one per agent; the embodiment whose activity holds it is the locus; `interruptibility` and `recall_policy` are lease terms, so attention is reclaimable on declared conditions | `focus_leases` live in prod |
+| Bodies per runtime type | `max_instances_per_agent` on the **registry entry**, coordinator-enforced, DB backstop at per-`(agent, runtime)` uniqueness for caps of 1 | registry field (this SIP) |
+
+A consequence worth stating: **the §5.5 single-active invariant becomes the
+concurrency allowance's default of 1.** The Appendix-A multi-body relaxation is then
+not an architectural change — it is governance raising a number the enforcement
+machinery already meters. Invariant and moon shot collapse into one dial.
+
+The autonomy split: **governance sets allowances** (concurrency, attention limits,
+per-runtime caps, posture prices — an agent can never raise its own); **the agent
+allocates within them** (moves its primary lease, opens and sheds ambient
+attachments); **the coordinator is the sole enforcement point** (every exhaustion is
+an event with a forced outcome, never silent); **lease terms are the override**
+(`recall_policy` reclaims attention regardless of the agent's preference). The
+`AmbientPolicy` seam (SIP-0089 §4.6, merged) already closes the action side: no
+primary lease + started activity → no irreversible action, so ambient peripherals
+are constitutionally watch-and-alert.
+
+### 5.6 The guardrail
 
 **Distributed attention ≠ distributed identity.** Peripheral attachments carry no
 identity, no memory of their own, and render no verdicts — they are sensors and effectors
