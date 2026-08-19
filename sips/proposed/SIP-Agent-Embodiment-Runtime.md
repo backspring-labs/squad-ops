@@ -362,6 +362,24 @@ never mints peer agents.
    never shares identity or writable memory with the producing agent. No embodiment,
    projection, or attachment arrangement may route a producer's work to a verifier that
    is the same identity.
+10. **Governance independence — the self-amending-constitution rule** *(owner-raised
+    2026-08-19)*. An agent with presence in a design workspace may **propose and argue
+    for** changes to anything, including its own behavioral contract, role, or
+    governance — but may never **ratify** them. Any proposal that modifies its
+    proposer's own definition is human-accept only and carries an explicit
+    conflict-of-interest flag ("this proposal modifies its proposer"). Same shape as
+    invariant 9, on the governance axis: the loop where an agent shapes the framework
+    that defines it is permitted, legible, and never self-closing.
+11. **Contract changes are prospective and land at embodiment boundaries.** A merged
+    change to an agent's bundle never mutates a live embodiment mid-flight; it takes
+    effect at the next bind (new session/attachment), and the transition is an
+    announced, recorded event ("max re-bound: bundle `X` → `Y`", posted to the surface
+    it stands on). Provenance already stamps every emission with
+    `system_prompt_bundle_hash`, so a design discussion's record distinguishes which
+    version of an agent argued what — the discussant is never rewritten mid-sentence,
+    and identity continuity rests where it always did: one `agent_id`, an unbroken
+    memory and evidence lineage, and deliberate, dated version transitions. The agent
+    is not its current bundle; the agent is the history of its bundles.
 
 ## 7. Amendments to SIP-0090 (applied at acceptance, step-5a discipline)
 
@@ -440,3 +458,6 @@ one runtime axis, orthogonal to location** (the joi-on-native vs joi-on-goose, b
 Discord, argument); **multi-surface cardinality is an attention budget with a primary
 locus and centralized reconciliation** (finite delegated attention, priced by posture).
 A fifth ruling (2026-08-19, mid-V7): **ACP as the preferred execution-surface wire**, §4.5.
+A sixth (2026-08-19, owner-raised meta-concern — an agent present in the workspace that
+designs the framework defining it): **invariants 10 and 11**, governance independence and
+boundary-applied prospective contract changes.
