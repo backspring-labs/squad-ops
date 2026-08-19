@@ -144,6 +144,7 @@ is registry metadata, never a second column.
 ```yaml
 runtime_id: goose
 adapter: squadops.runtime.adapters.goose
+protocol: acp                # wire protocol the adapter binds (§4.5); `custom` if none
 capabilities: [shell, filesystem, mcp, streaming, persistent_sessions]
 deployment_modes: [ephemeral, persistent]
 contract: {agent_context: v1, events: v1, checkpoint: v1}
@@ -184,6 +185,30 @@ A runtime adapter (the Goose adapter, the native adapter) is that port's impleme
 selected by `embodiment_runtime` through the adapters factory pattern. Same coordinator,
 same lifecycle machinery, no parallel structure. The contract stays lifecycle-and-
 execution shaped; it must never grow toward replicating any runtime's internal API.
+
+**Wire protocol: bind to ACP where the runtime offers it** *(owner-ruled 2026-08-19)*.
+The Agent Client Protocol — the open JSON-RPC standard for driving a coding agent
+(session/turn model over stdio) — maps nearly one-to-one onto this contract:
+`create_session`/`execute`/`stream`/`cancel` are ACP's session and prompt-turn
+primitives. The rule:
+
+- An execution runtime that speaks ACP is bound through **one shared ACP adapter**;
+  its registry entry declares `protocol: acp`. Goose — the named first foreign
+  embodiment — speaks ACP natively, so its adapter is protocol translation plus
+  evidence capture, not behavior invention, and any future ACP-speaking runtime
+  arrives nearly free.
+- The **port stays protocol-neutral**: a runtime without ACP gets a bespoke adapter
+  (`protocol: custom`), and `squadops-native` needs no wire at all. ACP is the
+  preferred binding, never a requirement the port encodes.
+- **Do not conflate with A2A** (SIP-0085, already implemented): A2A is agent↔agent
+  over HTTP/SSE with agent cards — how something outside talks *to* a SquadOps
+  agent. ACP is client↔agent — how SquadOps *drives* a runtime it embodies an agent
+  through. The two answer different questions and both coexist with the RabbitMQ
+  TaskEnvelope fabric (SIP-031), which remains the native platform's internal
+  transport.
+- Evidence discipline is unchanged by the protocol: ACP notifications map to the
+  normalized runtime events (§4.7), and nothing a runtime reports over ACP is
+  credited as verification.
 
 ### 4.6 Portable context and checkpoints — extend, don't duplicate
 
@@ -414,3 +439,4 @@ four rulings are normative here: **encapsulate, don't redefine** (extend SIP-009
 one runtime axis, orthogonal to location** (the joi-on-native vs joi-on-goose, both on
 Discord, argument); **multi-surface cardinality is an attention budget with a primary
 locus and centralized reconciliation** (finite delegated attention, priced by posture).
+A fifth ruling (2026-08-19, mid-V7): **ACP as the preferred execution-surface wire**, §4.5.
