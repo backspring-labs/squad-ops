@@ -154,6 +154,23 @@ builder's seeded `source` copies; qa's merged `test`-type artifacts are properly
 
 **Attempt 2 tally: 1 functional / 2 counted.**
 
+## Attempt 2, Launch 3 — cyc_16bbfe29464f — VOID (framing-gate system rejection)
+
+Framing completed (58 min); `progress_plan_review` **rejected by `system:plan_validation`**:
+the authored plan's Task 7 declared a `command_exit_zero` check running `node` directly
+against a `.tsx` file — node refuses the extension before parsing
+(`ERR_UNKNOWN_FILE_EXTENSION`), so the check could never pass. Plan validation refused the
+plan at the gate rather than letting it burn the roll mid-implementation (the #846/#707
+unrunnable-check-form machinery doing its job). No implementation run; never reached qa.test.
+
+§5.1: the **canonical void** — neither counts nor resets; recorded and re-launched. Zero
+manual intervention (the rejection is a system decision). Observation, not an issue: the
+squad authored an unrunnable check form and the gate caught it — this is the designed
+two-layer behavior; the residual question (why authoring proposed it at all) is #846's
+standing territory.
+
+**Attempt 2 tally unchanged: 1 functional / 2 counted.**
+
 ## Attempt 1 close-out
 
 HALTED pending owner decision. **Tally: 1 functional / 2 counted** (launch 2 functional;
