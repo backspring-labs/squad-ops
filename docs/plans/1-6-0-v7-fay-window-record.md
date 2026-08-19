@@ -57,6 +57,13 @@ Pending. Counted-roll tally: 0 of 6 (roll 1 void).
 | #994 | Rewind after a successful repair re-dispatches develop, discarding the repaired state — cycle rejected a working deliverable | roll 1 (void) |
 | #995 | Task timeout mid self-eval banked as "zero response chars", erasing 2 substantive rounds; analysis names a disproven mechanism | roll 1 (void) |
 | #996 | Authoring surfaces teach the api() client seam but not the server-component prerender constraint | roll 1 (void) |
+| #998 | Thinking-cap exhaustion (8192 completion tokens, 0 extractable chars) banks as generic emission failure — undetectable as its own class | roll 1 (void) |
+
+**#995 corrected in-issue:** there was a third develop dispatch (02:18–02:30) that genuinely
+emitted zero chars — 8,192 completion tokens, the exact generation cap, all spent on reasoning
+(#998). The banked analysis correctly described that final attempt; the surviving defect is
+that it describes ONLY the final attempt, erasing the timeout attempt's two substantive
+rejected emissions. Fix stacked (unmerged, post-window): PR #997 for #996.
 
 ## Night-shift log (2026-08-18/19 ET)
 
