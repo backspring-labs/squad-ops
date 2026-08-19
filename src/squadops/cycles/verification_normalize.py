@@ -80,10 +80,19 @@ def normalize_task_checks(
             # below (richer + present on a passing run). Skip to avoid double-record.
             continue
         if cid == CHECK_NO_STUB:
-            # Present only when stubs were found → the stub check executed-and-failed,
-            # and its presence flags the synthesized tests_pass as a stub (§6.6.1).
-            stub_detected = True
-            results.append(CheckResult(check_id=cid, status=ResultStatus.FAILED))
+            # #1000: this row used to appear ONLY when stubs were found, so presence
+            # meant executed-and-failed. Since #989 the producer banks it on every
+            # qa validation — pass or fail, with `passed` and `inspected` — so the
+            # row's own verdict must be read, exactly like any boolean row. Presence-
+            # implies-failure here turned a clean repair-then-pass retest into a
+            # phantom failed row, and `elif failed:` rejects on ANY failed check —
+            # a false REJECTED on the most common green-roll recovery path (V7
+            # launch 3 carried the phantom; a repair-then-pass roll would have been
+            # decided by it). Only an actual failure taints the synthesized
+            # tests_pass as a stub (§6.6.1).
+            if row.get("passed") is False:
+                stub_detected = True
+            results.append(_from_passed_row(cid, row))
             continue
         if "status" in row:
             # Typed-acceptance row: carries a CheckOutcome status verbatim.

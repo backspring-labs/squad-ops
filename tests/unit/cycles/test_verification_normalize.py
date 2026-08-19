@@ -107,6 +107,29 @@ def test_no_stub_row_means_tests_pass_credits_normally():
     assert _by_id(normalize_task_checks(out))[CHECK_TESTS_PASS].is_stub is False
 
 
+def test_a_passing_stub_row_is_recorded_passed_and_taints_nothing():
+    """#1000: since #989 the producer banks the authenticity row on EVERY qa
+    validation — a clean suite ships `passed: true` with its `inspected` list.
+    Presence-implies-failure turned that into a phantom FAILED row, and the
+    verdict rule (`elif failed:` — any failed check) then falsely REJECTED any
+    roll whose qa failed once, was repaired, and passed on retest — the most
+    common green-roll recovery path. V7 launch 3 banked the phantom
+    (`failed_detail: {check_id: no_stub_fallback_tests, reason: "", required:
+    false}`) on a clean suite."""
+    out = {
+        "test_result": {"executed": True, "exit_code": 0, "tests_passed": True},
+        "validation_result": {
+            "checks": [
+                {"check": CHECK_NO_STUB, "passed": True, "inspected": []},
+            ]
+        },
+    }
+    r = _by_id(normalize_task_checks(out))
+    assert r[CHECK_NO_STUB].status == ResultStatus.PASSED
+    assert r[CHECK_TESTS_PASS].is_stub is False
+    assert classify(r[CHECK_TESTS_PASS]) is EvidenceFamily.EXECUTED_PASSED
+
+
 def test_failure_only_tests_pass_row_is_not_double_recorded():
     """The handler's failure-only tests_pass row must not produce a second
     CheckResult alongside the synthesized one."""
