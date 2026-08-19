@@ -52,6 +52,14 @@ If your manifest declares `POST /api/runs`, the page calls `api('/api/runs')`. D
 the prefix compiles, passes type-checking, and returns 404 at runtime for every action in
 the UI — a silent break no build or unit check catches.
 
+**When the page itself fetches, it must not do so at build time.** `next build`
+prerenders server components in Node, where a relative `api('/api/runs')` throws
+`Failed to parse URL` and **the build fails**. A page that fetches data is therefore
+either a client component (`'use client'` at the top, fetch inside `useEffect`) or a
+server component that opts out of prerendering with `export const dynamic =
+'force-dynamic'` above the component. Pick one; a bare server component that awaits
+`api()` in its body costs the build.
+
 **DO NOT touch the scaffold-owned surface — it is frozen and verified:**
 - Do NOT change the exported handler **names, signatures, or file locations** in
   `app/**/route.ts` — the directory determines the URL the app serves.
