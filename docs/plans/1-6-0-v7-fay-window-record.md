@@ -56,9 +56,26 @@ scope only"), which happens to address this question's shape exactly (defer; cor
 Logged as: the standing policy DID address this roll's question. Zero manual intervention;
 decided_by records the agent decision. Implementation run `run_591987c9df8d` chained.
 
+### Launch 2 — scored
+
+| Field | Value |
+|---|---|
+| Framing | 73 min; gate REQUIRED approval (1 dev question) → §7.3(c) verbatim text, `decided_by: agent:0051…`, 03:59 UTC |
+| Implementation | `run_591987c9df8d` — completed, 59 min |
+| Verdict | **`accepted`** — 34/34 executed and passed; 11/11 criteria verified; nothing failed, nothing unmet |
+| Probe count (non-gating) | 2 |
+| Correction rounds | **0** — 7 develop tasks clean, builder clean, qa first attempt |
+| Fills first-attempt / slots | 5/5, 0 duplicates, `scaffold_bound=true` |
+| Any fill asserts on store (#980) | **yes** — 2 of 5 slots, `expect(all(TABLES.Run)).toHaveLength(…)` (the exact taught form); 16 expect() lines in fill regions; 2 additive suites (`api_flows`, `participant_validation`) |
+| Assertion-strength method | recomputed from stored merged shells — the banked path does not exist (#999) |
+| Boot audit (separate fact) | **PASS** — installs, builds, boots, answers both probes, UI data-path clean |
+| Manual interventions | none (gate = pre-declared constant, recorded as agent decision) |
+| §5.1 validity | **COUNTED** |
+| Score | **FUNCTIONAL** |
+
 ## Rolls thereafter
 
-Pending. Counted-roll tally: 0 of 6 (roll 1 void).
+Pending. **Counted tally: 1 functional / 1 counted** (target ≥4/6 counted); roll 1 void.
 
 ## Mid-window detections (recorded, left unfixed per §6)
 
@@ -68,6 +85,7 @@ Pending. Counted-roll tally: 0 of 6 (roll 1 void).
 | #995 | Task timeout mid self-eval banked as "zero response chars", erasing 2 substantive rounds; analysis names a disproven mechanism | roll 1 (void) |
 | #996 | Authoring surfaces teach the api() client seam but not the server-component prerender constraint | roll 1 (void) |
 | #998 | Thinking-cap exhaustion (8192 completion tokens, 0 extractable chars) banks as generic emission failure — undetectable as its own class | roll 1 (void) |
+| #999 | #982's assertion-strength evidence is computed then never persisted — `execution_evidence` has no home; §4's "read from banked evidence" unsatisfiable as deployed | launch 2 (counted) |
 
 **#995 corrected in-issue:** there was a third develop dispatch (02:18–02:30) that genuinely
 emitted zero chars — 8,192 completion tokens, the exact generation cap, all spent on reasoning
