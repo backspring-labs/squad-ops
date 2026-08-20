@@ -71,4 +71,24 @@ texture as instrument, §6 freeze in force from here.
 
 | Launch | Cycle | §5.1 | Score |
 |---|---|---|---|
-| 1 | _launching_ | | |
+| 1 | cyc_02e9af402c82 | COUNTED | not functional |
+
+### Roll 1 — cyc_02e9af402c82 — COUNTED, not functional
+
+| Field | Value |
+|---|---|
+| Framing | 38 min; gate auto-approved |
+| Implementation | `run_9733f845dedd` — failed 20:47 UTC (63 min), max corrections (3) exhausted |
+| Verdict | `rejected` — 32 executed / 27 passed; failed: create probe (**200 ≠ declared 201**) + 3 downstream probes (cascade: `{run_id}` never captured) + `tests_pass` |
+| Correction rounds | 3 — locus-correct dev-chain repairs (suite executed and failed → subject implicated); patch verification passed each round, retests stayed red |
+| Boot audit (separate fact) | **FAIL — identical cascade. The delivered app genuinely violates its contract** (create returns 200, not 201) |
+| Manual interventions | none |
+| Tokens (impl, completion, by role) | neo 119.9k · eve 58.1k · max 14.8k · data 10.7k · bob 8.4k — total ~212k |
+| Wall-clock | 1h41m total (fastest full roll of either arm) |
+
+Texture: the same class as shakedown #2 — **app-semantic status-code discipline**. Arm A's
+nine applications got declared statuses right every time; 3.8 has now missed twice in two
+consecutive builds (duplicate-join 200≠409 then create 200≠201), with three dev repairs
+unable to land the one-line fix the probe names explicitly.
+
+**Arm B tally: 0 functional / 1 counted.**
