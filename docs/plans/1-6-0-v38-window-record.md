@@ -86,15 +86,23 @@ texture as instrument, §6 freeze in force from here.
 | Tokens (impl, completion, by role) | neo 119.9k · eve 58.1k · max 14.8k · data 10.7k · bob 8.4k — total ~212k |
 | Wall-clock | 1h41m total (fastest full roll of either arm) |
 
-Texture, corrected after deep triage (#1012): the initial read "three dev repairs unable to
-land the one-line fix" is **wrong** — rounds 1 AND 2 both emitted the 201 fix (stored,
-patch-verified), and the fix then *vanished*: the final stored route carries no explicit
-status (Next defaults 200). Either the full qa re-dispatch never saw the accepted repair
-(context-completeness class), or round 3's repair regressed it (churn on a false premise) —
-unadjudicable from banked evidence (fourth instance of the evidence-dropped family). So roll
-1's counted red is a compound: a real initial app defect (create 200≠201, the same
-status-discipline class as shakedown #2) + a correction loop that lost its own landed fix.
-The model half and the harness half are both named in the sheet, per the standing rule that
-the closing claim states what each failure WAS.
+Texture, corrected twice as triage deepened — final attribution (#1012, #1013):
+
+1. **The initial red is FRAMING-rooted, not implementation-rooted.** The manifest declares
+   `success_status: 201`; the implementation plan's own dev criterion says *"returns 200"*.
+   Neo built his brief faithfully; the contract judged him by the manifest. A framing-
+   internal contradiction — authored by 3.8 in one session — with no gate that checks
+   manifest↔plan consistency (#1013). A V7 green framing, checked as contrast, said 201 in
+   both places. The status-discipline model claim now rests only on shakedown #2's 409
+   (taught correctly, missed anyway — genuine slip).
+2. **Recovery was then prevented by the machinery**: rounds 1–2 emitted the 201 fix
+   (stored, patch-verified) and it vanished by round 3 (#1012 — re-dispatch blind to the
+   accepted repair, or round-3 regression; unadjudicable from banked evidence, fourth
+   instance of the evidence-dropped family). The final additive suite was contract-correct
+   (201 on create), so the suite was satisfiable — the app the suite saw was not the
+   repaired one.
+
+So roll 1's counted red = 3.8 authoring self-contradiction (measured stack, model side)
+× correction-loop state loss (harness, symmetric). Both named, per the standing rule.
 
 **Arm B tally: 0 functional / 1 counted.**

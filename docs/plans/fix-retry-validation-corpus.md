@@ -13,13 +13,16 @@ the cycle's own squad profile, so each arm validates against its own model.
 
 ## Candidates
 
-### C1 — V38 arm-B roll 1 · `cyc_02e9af402c82` · FLAGSHIP
-Framing: solid (clean 6-probe contract incl. create-201). Failed: real status defect
-(create 200≠201), then **the landed 201 repair vanished by round 3** (#1012; #994 family).
-Also exercised: evidence gaps (#971/#995 — intermediate retest detail unbanked).
-**Retry after the repair-threading fix, watch:** (a) does the re-dispatched qa's suite
-execute against the accepted repair? (b) does the loop converge on a probe-named fix?
-(c) post-evidence-fix: is the attempt history banked?
+### C1 — V38 arm-B roll 1 · `cyc_02e9af402c82` · FLAGSHIP (dual-fix subject)
+Framing: **internally contradictory** (manifest 201 vs plan 200 for create — #1013), so
+"solid" is exactly what it is not, and that is its value. Failed: dev faithfully built the
+plan's 200; contract judged 201; then **the landed 201 repair vanished by round 3**
+(#1012; #994 family). Also exercised: evidence gaps (#971/#995).
+**Retry value, two-stage:** (a) after the **consistency gate** (#1013): retry must be
+*refused at plan validation* — the gate's acceptance test; (b) with the gate waived, after
+the **repair-threading fix**: does the re-dispatched qa see the accepted repair, and does
+the loop converge on a probe-named fix? (c) post-evidence-fix: attempt history banked.
+Note: a machinery-only retry on this framing fails by design — the framing is the defect.
 
 ### C2 — V7 attempt-1 roll 1 · `cyc_8b569ce34074` (void, framing solid)
 The original #994 exhibit: correct accepted repair (`force-dynamic`), develop re-dispatch
@@ -62,6 +65,7 @@ emissions bounded ≤ 8,192.
 | Fix | Validated by | Mechanism observable |
 |---|---|---|
 | Repair-state threading (#994/#1012) | C1, C2 | accepted repair visible to subsequent dispatch |
+| Manifest↔plan consistency gate (#1013) | C1 | retry refused at `system:plan_validation` |
 | Failed-task evidence banking (#971/#995) | C1 (+ any red retry) | attempt history & retest detail queryable post-run |
 | `execution_evidence` persistence (#999) | any retry with fills | assertion strength queryable |
 | `inspected` provenance (#1002) | C3, C4 | inspected list on authenticity rows |
