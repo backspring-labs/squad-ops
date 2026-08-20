@@ -19,7 +19,7 @@ from squadops.capabilities.handlers.base import (
 from squadops.capabilities.handlers.cycle_tasks import _CycleTaskHandler
 from squadops.capabilities.handlers.impl._json_extraction import (
     JSONExtractionError,
-    extract_first_json_object,
+    extract_object_with_reask,
 )
 from squadops.cycles.task_outcome import TaskOutcome
 from squadops.llm.exceptions import LLMError
@@ -99,6 +99,19 @@ class GovernanceDefineDoneHandler(_CycleTaskHandler):
         content = response.content
         log_emission_shape(self._handler_name, content, response.completion_tokens)
 
+        # #1008: one bounded re-ask when extraction fails (V38 shakedown truncation).
+        async def _reask(feedback: str) -> str:
+            retry_messages = [
+                *messages,
+                ChatMessage(role="assistant", content=content),
+                ChatMessage(role="user", content=feedback),
+            ]
+            retry = await context.ports.llm.chat_stream_with_usage(retry_messages, **chat_kwargs)
+            log_emission_shape(
+                f"{self._handler_name}:json_reask", retry.content, retry.completion_tokens
+            )
+            return retry.content
+
         # Parse the JSON definition of done from the LLM response. Tolerates <think>
         # blocks, code fences, and prose preamble around the JSON —
         # every impl handler is one model tantrum away from a "char 0"
@@ -106,7 +119,9 @@ class GovernanceDefineDoneHandler(_CycleTaskHandler):
         # failure so triage doesn't have to reconstruct what the LLM
         # wrote from token counts alone.
         try:
-            contract_data = extract_first_json_object(content)
+            contract_data, content = await extract_object_with_reask(
+                content, reask=_reask, logger=logger, handler_name=self._handler_name
+            )
         except JSONExtractionError as exc:
             logger.warning(
                 "%s: failed to parse definition of done JSON: %s | raw[:500]=%r",

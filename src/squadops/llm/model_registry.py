@@ -55,6 +55,17 @@ MODEL_SPECS: dict[str, ModelSpec] = {
         context_window=131_072,
         default_max_completion=8_192,
     ),
+    # qwen3.8:27b is the V38 comparison arm (full-38 profile). The completion
+    # clamp is deliberately IDENTICAL to qwen3.6:27b's: the V38 window compares
+    # stacks, and an unclamped 3.8 (capability ceilings pass through when this
+    # entry is absent — the exact gap the 3.6 comment above narrates) would hand
+    # arm B a 12,000-token dev ceiling arm A never had. Discovered as V38
+    # shakedown finding 3; at 3.8's measured ~24 t/s, 8,192 tokens is ~6 min.
+    "qwen3.8:27b": ModelSpec(
+        name="qwen3.8:27b",
+        context_window=262_144,
+        default_max_completion=8_192,
+    ),
     "llama3:70b": ModelSpec(
         name="llama3:70b",
         context_window=131_072,

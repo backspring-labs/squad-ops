@@ -180,3 +180,58 @@ def extract_first_json_object(
         )
 
     return parsed
+
+
+#: The corrective message for one bounded re-ask (#1008). Names the defect class
+#: rather than echoing the broken output — the failure observed live was a response
+#: that STOPPED mid-object, so completeness is the instruction that matters.
+JSON_REASK_FEEDBACK = (
+    "Your previous response was not a single complete JSON object "
+    "(it was truncated or unbalanced). Respond again with ONLY the complete "
+    "JSON object — no prose, no code fences, closed braces."
+)
+
+
+async def extract_object_with_reask(
+    content: str,
+    *,
+    reask,
+    logger: Any,
+    handler_name: str,
+) -> tuple[dict[str, Any], str]:
+    """Extract a JSON object, issuing ONE bounded re-ask on extraction failure (#1008).
+
+    The V38 shakedown's `data.analyze_failure` emitted a response that stopped
+    mid-object (703 tokens, uncapped — the model terminated early). The parser
+    rejected it loudly, which is correct — but a single flake then ran the whole
+    correction chain decisionless and collapsed the run. Reproduction showed the
+    same request completing 3 of 3 times, so one retry converts an intermittent
+    total-loss into a logged hiccup. Exactly one: a model that fails twice in a
+    row is a finding, not a retry loop, and falls through to each handler's
+    existing rejection path.
+
+    Args:
+        content: the first response's content.
+        reask: async callable ``(feedback: str) -> str`` — re-issues the handler's
+            chat with the corrective feedback appended, returns the new content.
+            The handler owns the call (model, kwargs, emission logging); this
+            function owns only the policy.
+        logger / handler_name: for the single warning line.
+
+    Returns:
+        ``(parsed_object, content_used)`` — the content that actually parsed, so
+        callers that log or store the raw response keep the right bytes.
+
+    Raises:
+        JSONExtractionError: when the re-asked response also fails extraction.
+    """
+    try:
+        return extract_first_json_object(content), content
+    except JSONExtractionError as exc:
+        logger.warning(
+            "%s: JSON extraction failed (%s); issuing one bounded re-ask (#1008)",
+            handler_name,
+            exc,
+        )
+        retried = await reask(JSON_REASK_FEEDBACK)
+        return extract_first_json_object(retried), retried

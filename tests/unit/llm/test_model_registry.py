@@ -56,3 +56,15 @@ class TestGetModelSpec:
         assert spec is not None
         assert spec.context_window == 131_072
         assert spec.default_max_completion == 8_192
+
+
+def test_qwen38_clamps_identically_to_the_v7_arm():
+    """V38 shakedown finding 3: with no registry entry, the per-model completion
+    clamp never fires and 3.8 dev tasks run at capability ceilings (12,000) the
+    3.6 arm never had — an undeclared inter-arm delta. The comparison is only
+    honest if both arms share the clamp."""
+    spec36 = get_model_spec("qwen3.6:27b")
+    spec38 = get_model_spec("qwen3.8:27b")
+    assert spec38 is not None
+    assert spec38.default_max_completion == spec36.default_max_completion == 8_192
+    assert spec38.context_window == 262_144
