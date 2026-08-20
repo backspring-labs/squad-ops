@@ -224,6 +224,33 @@ is that three specific corruption paths are closed, not that the boundary is cle
 the first observation of a cycle on fixed shells, and its `fill_merge` evidence — now
 instrumented — is the first evidence either way.
 
+### 2.i Attempt 1 aborted and re-registered *(2026-08-19, owner-ruled)*
+
+Attempt 1 opened 2026-08-18 at `4fa74525` and ran three launches overnight: one void (never
+reached qa.test), one **counted functional** (accepted 34/34 + boot audit PASS + zero
+intervention), one counted not-functional (its additive suite fetched a nonexistent server;
+three qa-side repairs did not converge). All three delivered applications pass the boot
+audit. Full per-roll record: `1-6-0-v7-fay-window-record.md`.
+
+**The reset (§5.1), in its own words:** a consumer of the newly-unconditional
+suite-authenticity row (#989, in the frozen deploy) still assumed presence-implies-failure
+and normalized a clean suite's *passing* row into a phantom FAILED (#1000); the verdict rule
+rejects on any failed check, so **a repair-then-pass roll would have been falsely rejected**
+— the standard green-roll recovery path. Detected at launch 3 (whose rejection was
+independently genuine — no roll was decided by the phantom), night shift halted itself, fix
+stacked unmerged. Owner ruled abort-and-re-register the same morning.
+
+**What attempt 2 carries:** the fix (#1001) plus the authoring-brief prerender teaching
+(#997/#996) — an owner-accepted trade: attempts 1 and 2 stay comparable on **recipe** (PRD
+sha `f744843d…` and config hash `d4d4f662…` both re-verified unchanged at `61a12e38`) but
+not on the dev authoring surface, the same §2.b pattern as the #948 schema change. Both
+fixes loaded-module verified in runtime-api and neo after the rebuild. **Attempt 1's rolls
+are recorded evidence and are not pooled into attempt 2's count** (§5's no-post-hoc rule:
+carrying forward rolls selected for surviving the defect would condition on the outcome).
+
+Detections #994, #995, #998, #999 remain open and unfixed — none is roll-deciding; all are
+recorded per §6 and stay non-blocking through attempt 2.
+
 ### 2.c The size of the deploy boundary is itself a risk *(raised 2026-08-16)*
 
 Six PRs now sit ready for the single rebuild that separates P6 from V7: #956 (two audit
@@ -258,8 +285,8 @@ window does not need, since V7 measures a deploy rather than a change.
 | Request profile | `validated-fullstack` |
 | Overrides | `build_profile=nextjs_ts`, `dev_capability=nextjs_ts` |
 | `resolved_config_hash` | `d4d4f66217d88324d449b0cc7c05dd4665e17dcb90c63f7cfcd544ab5fc122d2` — **re-verified at roll 1**, see below |
-| Deploy — main commit | `4fa74525` (merge of #991) — rebuilt and deployed 2026-08-18 |
-| Deploy — image ids | runtime-api `1b0d41452d97`; max `c622fa64a5ce`; neo `c40d4002421a`; nat `09aff1356efd`; bob `6687ef36e5b4`; eve `f5eb46a95460`; data `08d261a27b7d` |
+| Deploy — main commit | **`61a12e38`** (attempt 2, re-registered 2026-08-19 after the §2.i reset; attempt 1 ran at `4fa74525`) |
+| Deploy — image ids | runtime-api `0a448a756a8c`; max `a4bc1b0a0312`; neo `d6b9e0656209`; nat `3a710cc73f09`; bob `c5de853963d5`; eve `88092bbf4b1a`; data `fe486303c0c2` |
 | Gate policy | **pre-declared constant** — owner ruling 2026-08-16, §7.3(c) |
 
 **Both hashes re-verified at the deploy boundary, not carried forward.** The PRD sha
