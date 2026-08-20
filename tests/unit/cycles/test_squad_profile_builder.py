@@ -69,6 +69,9 @@ class TestFullSquadBuilderProfile:
         assert "builder" not in roles
 
     async def test_consolidated_profiles_in_listing(self, provider):
+        # full-38 is the V38 comparison arm: the `full` roster verbatim on
+        # qwen3.8:27b, added for the model-comparison window and pinned here
+        # so its presence is a deliberate fact rather than drift.
         profiles = await provider.list_profiles()
         ids = {p.profile_id for p in profiles}
-        assert ids == {"smoke", "lite", "full"}
+        assert ids == {"smoke", "lite", "full", "full-38"}
