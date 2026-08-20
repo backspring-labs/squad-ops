@@ -86,9 +86,15 @@ texture as instrument, §6 freeze in force from here.
 | Tokens (impl, completion, by role) | neo 119.9k · eve 58.1k · max 14.8k · data 10.7k · bob 8.4k — total ~212k |
 | Wall-clock | 1h41m total (fastest full roll of either arm) |
 
-Texture: the same class as shakedown #2 — **app-semantic status-code discipline**. Arm A's
-nine applications got declared statuses right every time; 3.8 has now missed twice in two
-consecutive builds (duplicate-join 200≠409 then create 200≠201), with three dev repairs
-unable to land the one-line fix the probe names explicitly.
+Texture, corrected after deep triage (#1012): the initial read "three dev repairs unable to
+land the one-line fix" is **wrong** — rounds 1 AND 2 both emitted the 201 fix (stored,
+patch-verified), and the fix then *vanished*: the final stored route carries no explicit
+status (Next defaults 200). Either the full qa re-dispatch never saw the accepted repair
+(context-completeness class), or round 3's repair regressed it (churn on a false premise) —
+unadjudicable from banked evidence (fourth instance of the evidence-dropped family). So roll
+1's counted red is a compound: a real initial app defect (create 200≠201, the same
+status-discipline class as shakedown #2) + a correction loop that lost its own landed fix.
+The model half and the harness half are both named in the sheet, per the standing rule that
+the closing claim states what each failure WAS.
 
 **Arm B tally: 0 functional / 1 counted.**
