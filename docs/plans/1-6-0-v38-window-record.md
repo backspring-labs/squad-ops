@@ -73,6 +73,7 @@ texture as instrument, §6 freeze in force from here.
 |---|---|---|---|
 | 1 | cyc_02e9af402c82 | COUNTED | not functional |
 | 2 | cyc_032043b05440 | **VOID** (host power loss) | — |
+| 3 | cyc_410f3a9257f8 | counted slot 2 | *in flight* |
 
 ### Roll 1 — cyc_02e9af402c82 — COUNTED, not functional
 
@@ -179,6 +180,19 @@ deploy `f7a5e0a2` byte-for-byte (the reboot restarted containers, it did not reb
 freeze intact); zero unreleased focus leases; agent queues drained, including one stale
 `eve_replies` message (RabbitMQ redelivered the un-acked qa task when eve reconnected at
 22:33 UTC, eve ran it and replied FAILED into a queue with no consumer — purged).
+
+### Launch 3 — cyc_410f3a9257f8 — counted slot 2 — IN FLIGHT
+
+Replacement for the voided launch 2. Launched 2026-08-20 23:52 UTC, `run_8893cd3f5dc0`.
+Config verified identical to roll 1 before launch — `applied_defaults`,
+`execution_overrides`, `task_flow_policy` all byte-equal, `resolved_config_hash`
+`d4d4f662…` matching the §3 pin. Preconditions at launch (§2.7): zero unreleased focus
+leases, nothing in flight, agent queues drained, seven deploy images matching `f7a5e0a2`.
+
+**Pending on framing completion:** the per-roll manifest↔plan consistency audit (added to
+the routine after roll 1, and vindicated by launch 2 — it has now caught the contradiction
+in *both* framings it has been run against). Record whether the framing declares one status
+per endpoint or contradicts itself, before implementation is scored.
 
 ---
 
