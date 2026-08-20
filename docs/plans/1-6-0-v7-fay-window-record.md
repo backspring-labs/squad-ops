@@ -271,6 +271,39 @@ class one author-style later. Options for the owner:
 Fix stacked unmerged: PR #1005 (merge is part of the ruling). Deploy untouched at `61a12e38`.
 No further launches — all six counted slots have run.
 
+## WINDOW CLOSED — AMENDED 4/6, BAR MET (owner ruling 2026-08-20)
+
+**Owner ruled disposition (c)** — corrected-instrument re-measure of slot 6's frozen
+artifacts — **before the corrected measurement was taken** (the corrected audit was
+deliberately not run until the ruling was made, so the ruling could not be conditioned on
+its outcome). PR #1005 merged (`efad69a7`) as the ruling's execution.
+
+**Slot 6 under the corrected instrument: PASS** — installs, builds, boots, answers all 6
+contract probes, and its UI reaches every path it requests. The two flagged call sites
+reconstruct to `/api/runs/{id}/join` and `/leave`, the endpoints the probes had already
+proven over real HTTP.
+
+| Measurement | Result |
+|---|---|
+| Under the pre-registered instrument (`61a12e38`'s audit) | **3 functional / 6 counted** — deciding roll false-failed by the concat truncation (#1004, proven at source + deployed module) |
+| Under the corrected instrument (`efad69a7`, PR #1005) | **4 functional / 6 counted — the ≥4/6 bar is MET** |
+
+Both numbers are the record, never collapsed. The §7.4 ≥4/6 claim attaches to the amended
+measurement with this disclosure: *a squad-authored design produces a working application
+with no human intervention, at a rate of 4 of 6 on a pre-registered window against a frozen
+deploy — where the sixth functional roll was scored by a corrected audit instrument against
+unchanged artifacts, the correction and its evidence recorded at #1004/PR #1005.*
+
+**Ground truth across the arc: 9 of 9 delivered applications install, build, boot, answer
+their probes, and (under the corrected instrument) reach every UI path** — both attempts,
+voids included. Every roll-failure in both attempts was suite-side or instrument-side;
+none was the application.
+
+Zero manual interventions across all seven attempt-2 launches. No roll was ever re-run to
+improve the figure (§7.4 rule 2 — the 3/6 temptation was declined; the amendment added no
+rolls). Post-window fix queue: additive-suite fill-containment extension (top yield lever,
+to be filed), #1002, #994, #995/#998/#999.
+
 ## Attempt 1 close-out
 
 HALTED pending owner decision. **Tally: 1 functional / 2 counted** (launch 2 functional;
