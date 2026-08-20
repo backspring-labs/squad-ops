@@ -37,6 +37,38 @@ logged observation, not a failure) and the clamp taking effect.
 |---|---|
 | Cycle | `cyc_bc85a4b81808` (run `run_59b59cf49f05`), launched 2026-08-20, hash matches pin |
 
+### Shakedown #2 outcome — BAR MET; declaration; WINDOW OPENS
+
+Framing 32 min (gate: one question → §7.3(c) verbatim, agent decision); implementation
+failed 19:02 UTC, "Max correction attempts (3) exhausted," `rejected`.
+
+**The bar was "reach a verdict with no NEW harness-attributable mechanical failure" — MET:**
+
+- No truncation recurrence; the #1008 re-ask never needed to fire; every analyzer/decision
+  parse succeeded.
+- The clamp held on capability tasks (eve capped at exactly 8,192).
+- The machinery cycled correctly through a builder failure → builder repair, and qa failures
+  → dev-routed corrections (locus correct: the probes said the APP was wrong).
+- Every failure was **app-semantic, squad output**: duplicate join accepted (200 ≠ 409),
+  leave broken (404 ≠ 200) — which is the quantity the window MEASURES, not a precondition.
+
+**Declared under §2.6 (not fixed):** repair handlers bypass the per-model completion clamp
+(a dev repair emitted 12,314 tokens) — pre-existing and **symmetric across both arms** (V7's
+repairs ran the same uncapped path and self-limited), so it does not bias the comparison.
+Filed #1011 for the post-window queue.
+
+**Texture preview, recorded:** shakedown #2's delivered app **fails its own probes at boot**
+(duplicate-join and leave) — the first non-working delivered application of the entire arc,
+after 9/9 working under 3.6. Non-counting, but the first observed instance of a failure
+class arm A never produced.
+
+## WINDOW OPEN (2026-08-20, deploy `f7a5e0a2`)
+
+All §2 preconditions hold. Six counted arm-B rolls follow, §5.1 rules inherited, no bar,
+texture as instrument, §6 freeze in force from here.
+
 ## Arm B rolls
 
-Pending shakedown #2 outcome.
+| Launch | Cycle | §5.1 | Score |
+|---|---|---|---|
+| 1 | _launching_ | | |
