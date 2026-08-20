@@ -236,6 +236,56 @@ class TestAnalyzeFailure:
             "rejected" in (result.error or "").lower() or "schema" in (result.error or "").lower()
         )
 
+    async def test_truncated_json_recovers_via_one_reask(self, mock_context):
+        """#1008 (V38 shakedown): the model stopped mid-object once and the whole
+        correction chain ran decisionless. A truncated first response followed by
+        a complete retry must succeed — and with exactly two calls, because the
+        re-ask is bounded."""
+        truncated = '{"classification": "work_product", "analysis_summary": "The check'
+        complete = json.dumps(
+            {
+                "classification": FailureClassification.WORK_PRODUCT,
+                "analysis_summary": "Named import of a default export",
+                "contributing_factors": ["TS2614"],
+            }
+        )
+        mock = AsyncMock(
+            side_effect=[
+                ChatMessage(role="assistant", content=truncated),
+                ChatMessage(role="assistant", content=complete),
+            ]
+        )
+        mock_context.ports.llm.chat = mock
+        mock_context.ports.llm.chat_stream_with_usage = mock
+
+        h = DataAnalyzeFailureHandler()
+        result = await h.handle(mock_context, {"prd": "test", "failure_evidence": {"e": "x"}})
+
+        assert result.success is True
+        assert result.outputs["analysis_summary"] == "Named import of a default export"
+        assert mock.await_count == 2
+
+    async def test_double_extraction_failure_is_bounded_and_rejects(self, mock_context):
+        """The re-ask is ONE re-ask: two truncated responses reject to
+        NEEDS_REPLAN with exactly two LLM calls — a retry loop here would hide a
+        systematic model failure behind unbounded spend."""
+        truncated = '{"classification": "work_product", "analysis_summary": "The'
+        mock = AsyncMock(
+            side_effect=[
+                ChatMessage(role="assistant", content=truncated),
+                ChatMessage(role="assistant", content=truncated),
+            ]
+        )
+        mock_context.ports.llm.chat = mock
+        mock_context.ports.llm.chat_stream_with_usage = mock
+
+        h = DataAnalyzeFailureHandler()
+        result = await h.handle(mock_context, {"prd": "test"})
+
+        assert result.success is False
+        assert result.outputs["outcome_class"] == TaskOutcome.NEEDS_REPLAN
+        assert mock.await_count == 2
+
     async def test_empty_analysis_summary_rejected(self, mock_context):
         """Issue #84: ``analysis_summary: ""`` is the failure mode that
         produced ``analysis_summary: "N/A"`` corrections in the wild."""
