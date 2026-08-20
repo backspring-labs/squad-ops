@@ -48,6 +48,26 @@ prompt teaching, watch:** initial-emission declared-status conformance (outcome-
 weaker, but the cleanest 3.8 subject for it). Also the repair-clamp fix (#1011): repair
 emissions bounded ≤ 8,192.
 
+### C6 — V38 arm-B launch 2 · `cyc_032043b05440` (VOID — host power loss) · **cleanest #1012 subject**
+Framing carries the #1013 contradiction on **one** endpoint only (`POST /api/runs/seed`:
+manifest + probe 201, dev brief 200) — everything else consistent — so the run isolates a
+**single one-line defect** and the whole correction loop is spent on it. That isolation is
+what makes it a better repair-threading subject than C1, whose cascade muddied attribution.
+**What it already proves without any retry:** round-0 repair stored `status: 201`
+(`art_759c337e35b9`, 21:56:35 UTC); a fresh full `qa.test` ran 4.5 min *after* that store and
+the analyzer still measured 200. The repair reaches the vault, not the tested tree — the
+disjunction C1 left open ("blind re-dispatch **or** round-3 regression") resolves to the
+former.
+**Retry value:** (a) after the **repair-threading fix** (#994/#1012) with the #1013 gate
+waived — does round 0's stored 201 reach the retested tree? A single mechanism-level
+yes/no on an isolated one-liner; (b) after the **consistency gate** (#1013) — retry must be
+refused at plan validation, a *second independent framing* for that gate's acceptance test
+(C1 is the first; two framings guard against fixing to one shape); (c) the `retest` path
+returned in 31 s where a real `qa.test` takes ~4.5 min — retry is the cheapest way to see
+whether that path assembles the same tree.
+Expected retryable: its implementation run was cancelled **while `running`** (the zombie
+clear), which is the condition under which `runs retry` works (#880). Unverified until tried.
+
 ### Controls (must STILL pass after fixes — regression guards)
 - **V7 slot 3 · `cyc_6b2af126b68d`** — the repair-then-pass green (#1001's live proof).
   A post-fix retry regressing this to red = the fix broke convergence.
@@ -64,14 +84,17 @@ emissions bounded ≤ 8,192.
 
 | Fix | Validated by | Mechanism observable |
 |---|---|---|
-| Repair-state threading (#994/#1012) | C1, C2 | accepted repair visible to subsequent dispatch |
-| Manifest↔plan consistency gate (#1013) | C1 | retry refused at `system:plan_validation` |
+| Repair-state threading (#994/#1012) | **C6 (primary)**, C1, C2 | accepted repair visible to subsequent dispatch — C6 isolates it to one line |
+| Manifest↔plan consistency gate (#1013) | C1, **C6** | retry refused at `system:plan_validation` (two independent framings) |
 | Failed-task evidence banking (#971/#995) | C1 (+ any red retry) | attempt history & retest detail queryable post-run |
 | `execution_evidence` persistence (#999) | any retry with fills | assertion strength queryable |
 | `inspected` provenance (#1002) | C3, C4 | inspected list on authenticity rows |
 | Additive-suite containment | C3, C4 | deterministic named rejection at emission |
 | Status-discipline teaching | C5 (+ arm-B rolls TBD) | initial-emission status conformance |
 | Repair clamp (#1011) | C5, C1 | repair completion_tokens ≤ 8,192 |
+| `retest` vs full `qa.test` tree assembly | C6 | retest assembles the same tree a full run does |
 | Regression guards | Controls | still green, still zero/one-round |
 
-*(Arm-B rolls 2–6 join as they land, tagged by mechanisms exercised.)*
+
+*(Arm-B counted rolls join as they land, tagged by mechanisms exercised. Voided rolls are
+admissible here — a void does not score, but its banked evidence is as good as any.)*

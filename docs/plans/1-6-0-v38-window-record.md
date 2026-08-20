@@ -72,6 +72,7 @@ texture as instrument, §6 freeze in force from here.
 | Launch | Cycle | §5.1 | Score |
 |---|---|---|---|
 | 1 | cyc_02e9af402c82 | COUNTED | not functional |
+| 2 | cyc_032043b05440 | **VOID** (host power loss) | — |
 
 ### Roll 1 — cyc_02e9af402c82 — COUNTED, not functional
 
@@ -105,4 +106,80 @@ Texture, corrected twice as triage deepened — final attribution (#1012, #1013)
 So roll 1's counted red = 3.8 authoring self-contradiction (measured stack, model side)
 × correction-loop state loss (harness, symmetric). Both named, per the standing rule.
 
-**Arm B tally: 0 functional / 1 counted.**
+### Launch 2 — cyc_032043b05440 — VOID (host power loss mid-run)
+
+| Field | Value |
+|---|---|
+| Framing | `run_c3c0c8872424`, 38 min (20:49–21:27 UTC); gate approved 21:29 UTC, §7.3(c) text verbatim, recorded as an agent decision |
+| Implementation | `run_d0a0ed285029` — started 21:29 UTC; reached correction round 3 of 3; **no verdict** |
+| Terminated by | **DGX Spark hard halt, 2026-08-20 22:08:53 UTC (18:08:53 ET)** — 26 s after the round-3 qa dispatch. Journal stops mid-Ollama-generation, no panic, no shutdown records, nothing above UFW noise. Box down 24 min; boot 22:32:55 UTC |
+| Progress at halt | 15 tasks complete through checkpoint 15 (define_done, 8 develop, builder.assemble, 2 full correction rounds); 2 plan deltas |
+| Manual interventions | none before the halt; run and cycle cancelled afterward to clear the zombie |
+| Disposition | **VOID** per the ruling below — neither counts nor resets. Arm-B tally unchanged |
+
+**§5.1 ruling — external host failure is VOID (owner, 2026-08-20).** §5.1 as inherited
+names three buckets: *void* (never reaches `qa.test`), *reset* (a **new** mechanical suite
+failure attributable to the harness), *counted* (everything else). A host power loss fits
+none: the roll did reach `qa.test`, and the crash is not a harness defect. Ruled: **a roll
+destroyed by an external host failure before it reaches a verdict is VOID** — recorded and
+re-launched, neither counting nor resetting.
+
+The alternative, resuming from checkpoint 15, was rejected on instrument grounds, not
+convenience. §5 criterion 3 is *zero manual intervention*; unlike gate approval — a
+pre-registered constant applied verbatim to every roll under §7.3(c) — a resume is
+roll-specific and cannot be applied uniformly. A resumed roll could honestly be recorded as
+a red but could **not** be scored functional if it went green. An instrument that can only
+produce reds in one direction is not an instrument. Voiding costs the roll's compute and
+keeps the six counted rolls comparable.
+
+#### Observations banked from the voided roll (non-scoring, per §6 reporting-only)
+
+A void does not score, but its evidence is real and two findings sharpen claims already in
+this record.
+
+1. **The #1013 framing contradiction RECURRED — two rolls for two.** Roll 2's framing got
+   *create* right (manifest, plan and criterion all say 201). It carries the identical
+   defect one endpoint over: the manifest declares `success_status: 201` for
+   `POST /api/runs/seed` and the derived contract probes `vc-probe-api-runs-seed` for 201,
+   while the implementation plan's dev brief for that same route says *"Return 200 with the
+   created sample runs."* Neo built the brief; the probe failed `status 200 != expected 201`
+   — roll 1's mechanism exactly, on a different route. Roll 1's record could only call this a
+   single observation; it is now a **recurring authoring failure mode of the measured stack**,
+   and the missing manifest↔plan consistency gate (#1013) is confirmed load-bearing.
+2. **#1012 is now ADJUDICABLE, and the earlier framing of it was too weak.** Roll 1 recorded
+   the vanished repair as *"re-dispatch blind to the accepted repair, or round-3 regression;
+   unadjudicable from banked evidence."* Roll 2 settles the disjunction:
+   - 21:36:21 UTC — dev's original seed route stores `Response.json(created, { status: 200 })`.
+   - 21:56:35 UTC — **round-0 repair stores `status: 201`** (`art_759c337e35b9`). Patch
+     verification returned `unverifiable / no_typed_criteria`; behavioral retest decides.
+   - 21:57:06 UTC — the `retest-…-00` path returned FAILED in **31 seconds**.
+   - 21:57:06 → 22:01:35 UTC — a **fresh, full** `qa.test` then ran 4.5 min against the app
+     *after* the 201 was stored, and the round-1 analyzer read the seed endpoint as **still
+     returning 200**.
+   - 22:08:03 UTC — round-1 repair stores `status: 201` again; its retest also fails.
+
+   The fix is on disk in the vault and a full retest four minutes later measured the
+   unfixed behavior. So #1012 is **not** "the repair was never emitted" and not a
+   round-3 regression: **the accepted repair lands in the artifact vault and does not reach
+   the tree the suite assembles.** Roll 1's clause should be read as superseded on
+   mechanism by this entry.
+
+   Two adjacent facts recorded, not chased: the `retest` path returned in 31 s where a real
+   `qa.test` takes ~4.5 min, so it may not assemble the tree the same way; and round-0's
+   repair switched the seed route to a `NextResponse` import, the plausible source of the
+   `frontend_build: failed` that appears only in round-1's retest reason.
+
+Neither finding is fixed during the window (§6). Both are pre-existing machinery, symmetric
+across arms; the framing contradiction is measured-stack, model side.
+
+#### Post-halt state verification before relaunch
+
+Confirmed before launching the replacement: all seven container images match the §3 frozen
+deploy `f7a5e0a2` byte-for-byte (the reboot restarted containers, it did not rebuild —
+freeze intact); zero unreleased focus leases; agent queues drained, including one stale
+`eve_replies` message (RabbitMQ redelivered the un-acked qa task when eve reconnected at
+22:33 UTC, eve ran it and replied FAILED into a queue with no consumer — purged).
+
+---
+
+**Arm B tally: 0 functional / 1 counted** (launch 2 void — does not count, does not reset).
