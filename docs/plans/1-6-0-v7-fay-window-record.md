@@ -227,6 +227,13 @@ slots must be functional to clear the ≥4/6 bar.**
 **Attempt 2 tally: 3 functional / 5 counted. Slot 6 decides the window: functional → 4/6
 (bar met); not functional → 3/6 (bar missed).**
 
+### Launch 7 gate (§7.3 rule 3 observation)
+
+Framing 56 min; gate required approval — TWO unresolved dev questions this time (runs-list
+ordering; whether listing is paginated). Standing text applied verbatim ~06:2x UTC; both are
+scope/detail deferrals the text's "open questions deferred; core PRD scope only" addresses.
+Zero manual intervention; agent decision recorded.
+
 ## Attempt 1 close-out
 
 HALTED pending owner decision. **Tally: 1 functional / 2 counted** (launch 2 functional;
