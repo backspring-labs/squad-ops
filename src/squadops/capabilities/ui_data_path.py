@@ -56,6 +56,18 @@ _CALL_RE = re.compile(
 )
 _TEMPLATE_EXPR_RE = re.compile(r"\$\{[^}]*\}")
 
+#: A continuation of a concatenated path argument (#1004): ``+`` followed by another
+#: string literal or a bounded expression (an identifier chain, optionally one flat
+#: call — ``runId``, ``params.run_id``, ``encodeURIComponent(id)``). Whitespace around
+#: ``+`` may cross a line, matching the wrap tolerance above. The expression bound is
+#: deliberate: a piece this cannot parse ends the chain, and the caller records the
+#: partial path it can prove rather than guessing — but the bound must stay wide enough
+#: that an author's ordinary style never re-creates the truncation this exists to fix.
+_CONCAT_PIECE_RE = re.compile(
+    r"\s*\+\s*(?:(?P<q>['\"`])(?P<lit>[^'\"`\n]*)(?P=q)"
+    r"|(?P<expr>[A-Za-z_$][\w$.]*(?:\([^()\n]*\))?))"
+)
+
 
 @dataclass(frozen=True)
 class UiCall:
@@ -102,7 +114,25 @@ def extract_ui_calls(files: dict[str, str], stack: str) -> list[UiCall]:
             # The call site is where the failure message must point, so the line is the
             # one the call OPENS on, not the one its path happens to land on.
             lineno = content.count("\n", 0, match.start()) + 1
-            concrete = _TEMPLATE_EXPR_RE.sub(SAMPLE_SEGMENT, written)
+            # #1004: a path built by concatenation — `'/api/runs/' + runId + '/join'` —
+            # used to be truncated to its first literal, so the audit probed a path the
+            # UI never requests and false-failed a functional app (V7 attempt-2 slot 6,
+            # the window's deciding roll). Walk the `+` chain: literals append verbatim,
+            # expressions become the same inert placeholder a template expression gets.
+            concrete_pieces = [_TEMPLATE_EXPR_RE.sub(SAMPLE_SEGMENT, written)]
+            pos = match.end()
+            while (piece := _CONCAT_PIECE_RE.match(content, pos)) is not None:
+                if piece.group("lit") is not None:
+                    concrete_pieces.append(
+                        _TEMPLATE_EXPR_RE.sub(SAMPLE_SEGMENT, piece.group("lit"))
+                    )
+                else:
+                    concrete_pieces.append(SAMPLE_SEGMENT)
+                pos = piece.end()
+            if pos != match.end():
+                # The failure message must show the argument as the author wrote it.
+                written = content[match.start("quote") : pos]
+            concrete = "".join(concrete_pieces)
             if concrete.startswith(("http://", "https://")):
                 request_path = concrete
             elif match.group("fn") == "fetch":

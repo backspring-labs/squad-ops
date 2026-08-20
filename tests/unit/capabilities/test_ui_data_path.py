@@ -219,6 +219,42 @@ const joined = await api<Run>(
             (2, f"/api/runs/{SAMPLE_SEGMENT}/join"),
         ]
 
+    def test_a_concatenated_path_is_reconstructed_not_truncated(self):
+        """#1004: `'/api/runs/' + runId + '/join'` used to extract as `/api/runs/` —
+        the audit then probed a path the UI never requests, got HTML, and failed a
+        functional app as PAGE_NOT_API. That false-fail landed on the V7 window's
+        deciding roll. Literal pieces append verbatim; expression pieces get the same
+        inert placeholder a template expression gets."""
+        files = {
+            "app/runs/[run_id]/page.tsx": (
+                "await api('/api/runs/' + runId + '/join', { method: 'POST' });\n"
+                "await api('/api/runs/' + params.run_id + '/leave', { method: 'POST' });\n"
+                "await api('/api/runs/' + encodeURIComponent(runId));\n"
+            )
+        }
+        calls = extract_ui_calls(files, "nextjs_ts")
+        assert [c.request_path for c in calls] == [
+            f"/api/runs/{SAMPLE_SEGMENT}/join",
+            f"/api/runs/{SAMPLE_SEGMENT}/leave",
+            f"/api/runs/{SAMPLE_SEGMENT}",
+        ]
+        # The failure message must show the argument as the author wrote it.
+        assert calls[0].written == "'/api/runs/' + runId + '/join'"
+
+    def test_concatenation_across_a_line_wrap_is_one_call(self):
+        """The #952 wrap tolerance must hold for the #1004 chain too: a formatter
+        breaking after `+` is ordinary output, and dropping the tail would re-create
+        the truncation one style later."""
+        files = {"app/page.tsx": ("await api('/api/runs/' +\n  runId +\n  '/join');\n")}
+        calls = extract_ui_calls(files, "nextjs_ts")
+        assert [c.request_path for c in calls] == [f"/api/runs/{SAMPLE_SEGMENT}/join"]
+
+    def test_a_plus_that_is_not_a_path_chain_ends_extraction_cleanly(self):
+        """Arithmetic in a later argument must not be swallowed into the path."""
+        files = {"app/page.tsx": "await api('/api/runs', { retries: 1 + 2 });\n"}
+        calls = extract_ui_calls(files, "nextjs_ts")
+        assert [c.request_path for c in calls] == ["/api/runs"]
+
 
 class TestMethodNotAllowed:
     """#953. The probe is a GET whatever verb the UI uses — sending the real verb would
