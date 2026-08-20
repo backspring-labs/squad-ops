@@ -211,6 +211,22 @@ Zero manual intervention; agent decision recorded.
 **Attempt 2 tally: 2 functional / 4 counted — contingency spent; both remaining counted
 slots must be functional to clear the ≥4/6 bar.**
 
+## Attempt 2, Roll 5 (launch 6) — cyc_0bea944bfafb — COUNTED, FUNCTIONAL
+
+| Field | Value |
+|---|---|
+| Framing | 60 min; gate auto-approved (`system:no_open_questions`) |
+| Implementation | `run_98c8c2df7c53` — completed, 2h21m |
+| Verdict | **`accepted`** — 42/42 executed and passed |
+| Correction rounds | 1+ qa-side — **converged** (second repair-then-pass success on this deploy) |
+| Boot audit (separate fact) | **PASS** — 5/5 probes, UI data-path clean. **8/8 working apps** |
+| Manual interventions | none |
+| §5.1 validity | **COUNTED** |
+| Score | **FUNCTIONAL** |
+
+**Attempt 2 tally: 3 functional / 5 counted. Slot 6 decides the window: functional → 4/6
+(bar met); not functional → 3/6 (bar missed).**
+
 ## Attempt 1 close-out
 
 HALTED pending owner decision. **Tally: 1 functional / 2 counted** (launch 2 functional;
