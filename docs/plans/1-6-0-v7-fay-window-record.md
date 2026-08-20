@@ -234,6 +234,43 @@ ordering; whether listing is paginated). Standing text applied verbatim ~06:2x U
 scope/detail deferrals the text's "open questions deferred; core PRD scope only" addresses.
 Zero manual intervention; agent decision recorded.
 
+## Attempt 2, Roll 6 (launch 7) — cyc_4cd50a3a42a6 — THE DECIDER: instrument false-fail, ruling required
+
+| Field | Value |
+|---|---|
+| Framing | 56 min; gate required approval (2 questions: list ordering, pagination) → §7.3(c) verbatim, agent decision |
+| Implementation | `run_a81421d49810` — completed, **39 min** (fastest of the window) |
+| Verdict | **`accepted`** — 39/39 executed and passed, **zero corrections** |
+| Boot audit (separate fact) | **FAIL as-measured** — ui-data-path flagged `app/runs/[run_id]/page.tsx:67/:92` as requesting `/api/runs/` (PAGE_NOT_API) |
+| Instrument attribution | **PROVEN false-positive (#1004)**: the source builds paths by `+` concatenation (`'/api/runs/' + runId + '/join'`); the deployed extractor truncates to the first literal (reproduced directly); the audit's own earlier steps passed install/build/boot AND the probes — including `POST /api/runs/{run_id}/join` and `/leave` over real HTTP, the exact endpoints the UI targets. Third variant of the #952 extractor class (wrapping fixed; templates handled; concatenation missed) |
+| Manual interventions | none in the roll; the attribution above used only stored artifacts + the deployed module |
+| §5.1 validity | COUNTED |
+| Score | **as-measured per §5: not functional** (the audit did not pass) — **disposition requires an owner ruling** |
+
+## WINDOW COMPLETE AS-MEASURED — RULING REQUIRED (night shift concluded ~04:0x ET)
+
+**As-measured: 3 functional / 6 counted — below the ≥4/6 bar, with the deciding roll's
+failure a proven instrument defect.** All six counted rolls' cycle verdicts and boot audits
+are banked; 8 of 8 delivered apps pass install/build/boot/probes (slot 6's app passes
+everything except the false UI classification).
+
+The §2.a principle is on point: P6's rolls 3/4 failed the audit on correct apps, #952/#953
+were made blocking preconditions for exactly this reason, and the concat variant is the same
+class one author-style later. Options for the owner:
+
+- **(a) Close at 3/6 as-measured**, closing claim states the deciding roll's failure is a
+  proven instrument false-positive (both facts, never collapsed — the standing §13a rule).
+- **(b) Rule §5.1 reset** (mechanical failure attributable to the harness) → fix, re-register
+  attempt 3. Most conservative, most expensive.
+- **(c) Corrected-instrument re-measure of slot 6's stored artifacts** (PR #1005), explicitly
+  labeled as an amended measurement, both numbers reported (3/6 pre-registered instrument;
+  the corrected-instrument result alongside). The artifacts are frozen; only the ruler
+  changes. My recommendation — it is the §2.a rationale applied honestly, and the closing
+  claim discloses the instrument history either way.
+
+Fix stacked unmerged: PR #1005 (merge is part of the ruling). Deploy untouched at `61a12e38`.
+No further launches — all six counted slots have run.
+
 ## Attempt 1 close-out
 
 HALTED pending owner decision. **Tally: 1 functional / 2 counted** (launch 2 functional;
