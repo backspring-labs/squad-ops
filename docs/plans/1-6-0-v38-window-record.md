@@ -35,7 +35,7 @@ logged observation, not a failure) and the clamp taking effect.
 
 | Field | Value |
 |---|---|
-| Cycle | _pending launch_ |
+| Cycle | `cyc_bc85a4b81808` (run `run_59b59cf49f05`), launched 2026-08-20, hash matches pin |
 
 ## Arm B rolls
 
