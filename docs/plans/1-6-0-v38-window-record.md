@@ -13,7 +13,7 @@ thinking behavior (#998 class), emission shape under the 0.32 thinking routing.
 
 | Field | Value |
 |---|---|
-| Cycle | _pending launch_ |
+| Cycle | `cyc_cc83a907f09e` (run `run_0a037698a5c5`), launched 2026-08-20, config hash matches pin |
 
 ## Arm B rolls
 
