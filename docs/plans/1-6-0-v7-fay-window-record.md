@@ -195,6 +195,22 @@ the reviewer directs otherwise."* Standing text applied verbatim 23:4x UTC; the 
 own stated default (proceed unless directed) composes cleanly with "open questions deferred."
 Zero manual intervention; agent decision recorded.
 
+## Attempt 2, Roll 4 (launch 5) — cyc_2913ae7abd67 — COUNTED, not functional
+
+| Field | Value |
+|---|---|
+| Framing | 65 min; gate required approval (sort-order question) → §7.3(c) verbatim, agent decision |
+| Implementation | `run_039ad8df2f0b` — failed 01:59 UTC, "Max correction attempts (3) exhausted" |
+| Verdict | `rejected` — sole failed check `tests_pass` (required, genuine: exit 1, 9 test files). No phantom |
+| Correction rounds | 3 qa-side; none converged (additive suite `__tests__/runs.test.ts` re-emitted each round, still failing) |
+| Boot audit (separate fact) | **PASS** — 5/5 probes, UI data-path clean. **7/7 working apps across both attempts** |
+| Manual interventions | none |
+| §5.1 validity | **COUNTED** |
+| Score | **not functional** |
+
+**Attempt 2 tally: 2 functional / 4 counted — contingency spent; both remaining counted
+slots must be functional to clear the ≥4/6 bar.**
+
 ## Attempt 1 close-out
 
 HALTED pending owner decision. **Tally: 1 functional / 2 counted** (launch 2 functional;
