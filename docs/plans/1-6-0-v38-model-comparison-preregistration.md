@@ -43,8 +43,8 @@ marginal cost is electricity. Cost-per-verified-outcome is recorded per arm.
 | # | Precondition | State |
 |---|---|---|
 | 2.1 | V7 closed and banked (the A arm exists) | **MET** — amended 4/6, record on `docs/v7-window-record` |
-| 2.2 | Ollama upgraded to a version that serves `qwen3.8:27b`; **`qwen3.6:27b` verified still generating on the GB10 after the upgrade** (the incumbent must not break) | pending |
-| 2.3 | `qwen3.8:27b` pulled; raw throughput measured and recorded in §3 (t/s on the standard prompt shape) | pending |
+| 2.2 | Ollama upgraded to a version that serves `qwen3.8:27b`; **`qwen3.6:27b` verified still generating on the GB10 after the upgrade** (the incumbent must not break) | **MET** — 0.32.14; incumbent verified through the deployed adapter (clean content, 12.3 t/s warm) |
+| 2.3 | `qwen3.8:27b` pulled; raw throughput measured and recorded in §3 (t/s on the standard prompt shape) | **MET** — see §3 |
 | 2.4 | `full-38` profile merged; **`full` untouched** (it is the meaning of every historical record) | this PR |
 | 2.5 | Deploy frozen and recorded in §3. The comparison deploy differs from V7's (`61a12e38`) by **only**: the #1005 instrument fix (`efad69a7`, post-cycle audit only — ruled into the V7 measurement standard), the inert `full-38` profile entry (never referenced by any V7 roll), and — named per the §1 stack-comparison ruling — the host inference server (Ollama 0.21.2 → 0.32.14, incumbent verified through the deployed adapter post-upgrade). Any other delta voids comparability and must instead trigger re-registration | pending — rebuild at merge |
 | 2.6 | **One declared shakedown** on `full-38`, NON-COUNTING, before roll 1: a new model is a new failure surface (structured-output compliance, fence discipline, thinking behavior — the #998 cap-exhaustion class is exactly what a model swap moves). Bar: the cycle reaches a verdict without a *new* harness-attributable mechanical failure. Findings are fixed or declared before the window opens | pending |
