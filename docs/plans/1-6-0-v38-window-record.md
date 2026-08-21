@@ -525,3 +525,103 @@ both rooted in a framing fact the dev never received, both with stored-but-never
 repairs). Framing audits: 3 / 2 / 1 as above. No further launches; §6 close-out (synthesis
 against arm A, freeze release, post-window queue: #1011 #1012 #1013 #1014 #1015, the
 compile-credit gap, the veto-then-store adjudication) is the owner's call from here.
+
+## §6 Synthesis — Arm A (qwen3.6:27b, V7) vs Arm B (qwen3.8:27b, this record)
+
+Written at window close, 2026-08-21. Texture was the pre-registered instrument; no
+pass/fail bar existed for arm B, and none is retro-fitted here. Claims below are limited
+to what six counted rolls per arm can carry.
+
+### Headline figures
+
+| Measure | Arm A (V7) | Arm B (V38) |
+|---|---|---|
+| Functional / counted | **4/6 amended** (dual record: 3/6 pre-reg instrument / 4/6 corrected, #1004/#1005) | **4/6** |
+| Delivered apps that work (counted rolls) | 6/6 — arc ground truth 9/9 incl. voids/shakedowns | **4/6** — the arc's only contract-violating deliveries (roll 1, slot 6; + shakedown #2 non-counting) |
+| Zero-correction first-attempt greens | 2 (rolls 2, 6) | 2 (slots 3, 5) |
+| Framing duration | 54–73 min | 31–33 min |
+| Green implementation wall-clock | 39–141 min | 16–48 min |
+| In-cycle throughput | 10.5–10.9 t/s | 22.6–34.4 t/s |
+| Impl completion tokens, greens | not banked per-roll (no claim) | 43.2k–82.7k |
+| Gates needing a §7.3(c) decision | 2 of 6 | 1 of 6 |
+| Manual interventions | 0 | 0 |
+
+### The central finding: the failure classes moved, not the yield
+
+The counted tallies are identical. What changed is **where the failures live**:
+
+- **Arm A's failures were conservative.** Every counted red was suite-side or
+  instrument-side; all nine delivered applications of its arc install, boot, and answer
+  their probes. A red meant "the suite is unhappy," never "the app is broken." These
+  failures are caught by machinery that already exists.
+- **Arm B's reds shipped broken contracts.** Both counted reds (and shakedown #2)
+  delivered apps that violate their declared interface — and both roots are
+  **framing-internal defects of arm B's own authoring**: a manifest↔plan contradiction
+  (roll 1, #1013) and a manifest-only omission the brief never carried (slot 6). Add the
+  duplicate-join semantic miss (three independent samples, twice despite explicit
+  teaching) and the classes arm B introduced are precisely the ones **no current gate
+  checks**. The operational meaning: the model swap moved failures from harness-catchable
+  into harness-uncatchable territory.
+
+**Bounding consideration, stated rather than buried:** both arm B contract-violating reds
+also carried stored, byte-verified correct repairs that no retest ever reflected (#1012 —
+three-for-three in slot 6). That mechanism is harness-side and symmetric by design, but it
+only *fired* on arm B's rolls in this pairing, so arm B's counted score is partly
+harness-suppressed: under a working correction loop, roll 1 and slot 6 plausibly converge.
+No counterfactual re-score is taken — the honest statement is that the 4/6-vs-4/6 equality
+carries wide error bars in **both** directions.
+
+### Instrument asymmetry, disclosed
+
+The per-roll framing-consistency audit was instituted mid-window (after roll 1's
+attribution) and was never run over arm A — one V7 green was contrast-checked (consistent),
+nothing more. The symmetric statement is therefore **not** "arm A authored zero
+contradictions"; it is: no arm A counted red was ever attributed to a framing-internal
+defect, while three of arm B's six counted framings carried one (2 contradictions, 1
+omission) and two of those cost the roll.
+
+### Texture, briefly
+
+- **Instruction uptake:** slot 6's within-roll contrast is the cleanest sample — taught
+  (409) → implemented; untaught (201) → defaulted. Across rolls the dice dominate (slot
+  4 was taught the 409 and missed it). Three duplicate-join misses across differently
+  specific briefs is a model-side signature arm A never produced.
+- **Emission discipline:** arm B self-limits less — repairs of 6.4k–18.8k tokens on the
+  uncapped path where arm A's self-limited; one mid-object JSON truncation; required the
+  #1008 clamp-parity fix. The thinking-cap class (#998) predates the swap and belongs to
+  both arms.
+- **Machinery findings the window banked** (symmetric, enabled-by not caused-by the
+  comparison): #1012 now byte-verified with a single-roll reproducer, #1014 fired three
+  times in one roll, #1011, the compile-credit bookkeeping gap (repair-independent as of
+  slot 5).
+
+### The open architecture question stays open
+
+The 2x-at-equal-parameters throughput was logged at §3 as an open question. The quality
+texture (authoring self-contradiction, instruction non-uptake, weaker emission
+self-limiting) is *consistent with* sparser per-token computation, but the window cannot
+separate that from its confounds — Ollama 0.32.14 vs arm A's runtime, the 0.32 thinking
+routing, and the mid-shakedown #1008 parity fix. Recorded as unresolved, not answered.
+
+### What this window supports — and does not
+
+Supported: equal counted functional yield at roughly half the wall-clock per roll; a
+failure-class composition shift toward framing-rooted, contract-violating deliveries; and
+the enumerated machinery gaps, several now with their strongest evidence to date.
+
+Not supported: any per-token quality ranking between the models; any yield-superiority
+claim in either direction at N=6 with dual-attributed reds.
+
+Operational read (contingent, not a verdict): arm B is operable at a real speed/cost
+advantage **only if** the gates its failure modes require exist — framing consistency
+(#1013), brief completeness against contract-enforced facts (#1015's territory), and the
+correction-loop repairs (#1012/#1014). Its failures concentrate exactly where the harness
+currently has no check; arm A's concentrated where it does.
+
+## WINDOW CLOSED (2026-08-21)
+
+Six counted rolls complete, synthesis recorded, no further launches. The §3 deploy freeze
+releases when this branch merges to main. Post-window queue, in recommended order: #1012
+code read (byte-verified reproducer: slot 6), #1014, #1011, #1013, #1015, compile-credit
+bookkeeping. Both window records — `1-6-0-v7-fay-window-record.md` and this file — are
+permanent and are never collapsed into each other.
