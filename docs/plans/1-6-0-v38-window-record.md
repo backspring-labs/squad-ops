@@ -73,7 +73,7 @@ texture as instrument, §6 freeze in force from here.
 |---|---|---|---|
 | 1 | cyc_02e9af402c82 | COUNTED | not functional |
 | 2 | cyc_032043b05440 | **VOID** (host power loss) | — |
-| 3 | cyc_410f3a9257f8 | counted slot 2 | *in flight* |
+| 3 | cyc_410f3a9257f8 | COUNTED (slot 2) | **FUNCTIONAL** |
 
 ### Roll 1 — cyc_02e9af402c82 — COUNTED, not functional
 
@@ -160,10 +160,12 @@ this record.
    - 22:08:03 UTC — round-1 repair stores `status: 201` again; its retest also fails.
 
    The fix is on disk in the vault and a full retest four minutes later measured the
-   unfixed behavior. So #1012 is **not** "the repair was never emitted" and not a
-   round-3 regression: **the accepted repair lands in the artifact vault and does not reach
-   the tree the suite assembles.** Roll 1's clause should be read as superseded on
-   mechanism by this entry.
+   unfixed behavior. That observation stands. **The general mechanism I drew from it does
+   not — see the correction under slot 2**, which ran the same patch → `patch_verification`
+   → retest path and converged. What survives here is narrow and factual: on *this* run, a
+   stored repair was followed by a full retest that reported the pre-repair behaviour. What
+   does not survive is the inference that the accepted repair never reaches the assembled
+   tree as a rule.
 
    Two adjacent facts recorded, not chased: the `retest` path returned in 31 s where a real
    `qa.test` takes ~4.5 min, so it may not assemble the tree the same way; and round-0's
@@ -181,9 +183,10 @@ freeze intact); zero unreleased focus leases; agent queues drained, including on
 `eve_replies` message (RabbitMQ redelivered the un-acked qa task when eve reconnected at
 22:33 UTC, eve ran it and replied FAILED into a queue with no consumer — purged).
 
-### Launch 3 — cyc_410f3a9257f8 — counted slot 2 — IN FLIGHT
+### Launch 3 — cyc_410f3a9257f8 — COUNTED slot 2 — **FUNCTIONAL**
 
-Replacement for the voided launch 2. Launched 2026-08-20 23:52 UTC, `run_8893cd3f5dc0`.
+Replacement for the voided launch 2. Launched 2026-08-20 23:52 UTC. **Arm B's first
+functional roll.**
 Config verified identical to roll 1 before launch — `applied_defaults`,
 `execution_overrides`, `task_flow_policy` all byte-equal, `resolved_config_hash`
 `d4d4f662…` matching the §3 pin. Preconditions at launch (§2.7): zero unreleased focus
@@ -191,7 +194,13 @@ leases, nothing in flight, agent queues drained, seven deploy images matching `f
 
 | Framing | `run_8893cd3f5dc0`, 33 min (23:52–00:26 UTC); PRD hash `f744843d…` matches the §3 pin |
 | Gate | approved 01:49 UTC, §7.3(c) text applied — **verified byte-identical to the banked launch-2 note by direct comparison**, recorded as the same agent id |
-| Implementation | `run_48e4c90d7efa`, started 01:49 UTC |
+| Implementation | `run_48e4c90d7efa`, 01:49–02:15 UTC — **25 min**, 1 correction round |
+| Verdict | **`accepted`** — 36 executed / 36 passed, zero failed; all five behavioural probes green |
+| Boot audit (separate fact) | **PASS** — installs, builds, boots, answers all 5 contract probes over real HTTP, and the UI reaches every path it requests (28 files assembled, image `squadops-sandbox-env:fastapi-react-1.4-dev`) |
+| Manual interventions | none — the gate is a §7.3(c) pre-registered constant, not an intervention |
+| Tokens (impl, completion, by role) | neo 54.2k · eve 12.3k · bob 6.0k · max 4.9k · data 4.5k · nat 0 — total ~81.9k |
+| Wall-clock | implementation 25 min (the comparable figure); total not comparable — see the gate-latency note below |
+| **Score** | **FUNCTIONAL** (§5: accepted + audit passes + zero intervention) |
 
 **Framing consistency audit — PASS (first clean framing of three under 3.8).** Every status
 the implementation plan states matches both the manifest and the derived contract probes:
@@ -212,6 +221,43 @@ against it. Remedy applied for the remaining rolls: gate approval is now fired b
 watcher using the text read directly out of the banked decision row, which both removes the
 latency and makes a §7.3(c) rule-1 deviation mechanically impossible.
 
+**Texture — a clean red that the loop actually fixed.** Round 0's failure was **purely
+app-semantic**, the quantity this window measures: join-duplicate returned 200 where the
+contract requires 409 (no duplicate check implemented) and leave returned 404 for a name
+that had just joined. Because this framing *passed* the consistency audit, the dev's brief
+did specify 409 and 200 — unlike roll 1 and launch 2, the squad was told correctly and still
+missed it. That is a genuine model-side observation, not a framing artefact.
+
+**Same failure pair as shakedown #2** (duplicate join accepted, leave broken). Two
+independent samples of one signature is a texture finding rather than a one-off, and it is
+the class the record flagged as one arm A never produced.
+
+**CORRECTION — the launch-2 mechanism claim was too strong.** Launch 2's entry inferred that
+an accepted repair "lands in the vault and does not reach the tree the suite assembles."
+Slot 2 refutes the general form. It ran the **same** path — `correction_path: patch`, the
+same `patch_verification` gate, the same ~30 s retest — and produced
+`patch_verification status=passed checks=8` followed by
+`patch_retest status=SUCCEEDED passed=True reason=Repaired suite passed`. The repair reached
+the tree, the retest saw it, the roll converged in one round and the delivered app passes an
+independent boot audit. Two further discriminators I had reached for also fail: the patch
+*path* is not the differentiator (all three rolls took it), and typed-criteria presence is
+not either (roll 1 had `checks=7 status=passed` and still failed its retest).
+
+So the honest state of #1012 is **narrower than launch 2's entry claimed**: on two rolls a
+stored repair was followed by a retest reporting pre-repair behaviour, and on a third the
+same machinery worked. A live alternative that the evidence does not exclude — and which the
+#971/#995 evidence-dropped family already predicts — is that the fault is in **what the
+analyzer is shown** rather than in what the tree contains. Unresolved; it needs a code read
+of the retest tree-assembly and analyzer-evidence paths, which is post-window work (§6).
+
+**Verification-integrity disclosures (SIP-0096), recorded not buried:** one non-required
+check, `acceptance:frontend_compiles`, is `unverified / missing_tooling` — disclosed, not
+credited. And `criteria_verified` lists 12 of 14: the two compile criteria for
+`app/api/runs/route.ts` and the join route are absent from the verified list although
+nothing failed. Both are the repaired files. Worth a look at whether repair re-storage drops
+a file's compile-criterion credit — flagged, non-blocking, reporting-only through the
+window.
+
 ---
 
-**Arm B tally: 0 functional / 1 counted** (launch 2 void — does not count, does not reset).
+**Arm B tally: 1 functional / 2 counted** (launch 2 void — does not count, does not reset).

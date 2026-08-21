@@ -56,8 +56,10 @@ what makes it a better repair-threading subject than C1, whose cascade muddied a
 **What it already proves without any retry:** round-0 repair stored `status: 201`
 (`art_759c337e35b9`, 21:56:35 UTC); a fresh full `qa.test` ran 4.5 min *after* that store and
 the analyzer still measured 200. The repair reaches the vault, not the tested tree — the
-disjunction C1 left open ("blind re-dispatch **or** round-3 regression") resolves to the
-former.
+disjunction C1 left open ("blind re-dispatch **or** round-3 regression") is *not* resolved
+by this — V38 slot 2 ran the same patch/verify/retest path and converged, so the failure is
+conditional, not structural. C6's value is that it is the cleanest **contrast** case against
+slot 2: same machinery, same path, opposite outcome, one isolated line in dispute.
 **Retry value:** (a) after the **repair-threading fix** (#994/#1012) with the #1013 gate
 waived — does round 0's stored 201 reach the retested tree? A single mechanism-level
 yes/no on an isolated one-liner; (b) after the **consistency gate** (#1013) — retry must be
