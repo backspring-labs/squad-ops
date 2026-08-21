@@ -141,6 +141,66 @@ def _make_context(llm_response="Repair analysis content"):
     return ctx
 
 
+class TestRepairEmissionClamp:
+    """#1011: repair handlers ride the base ``_build_chat_kwargs`` path, which
+    previously passed ``max_tokens`` only when agent overrides carried
+    ``max_completion_tokens`` — the registry's per-model completion clamp never
+    applied, so a dev repair emitted 12,314 tokens under an 8,192-clamped model
+    (V38 shakedown #2) while develop/qa tasks on the same model were clamped."""
+
+    def test_registry_clamp_applies_without_override(self):
+        """The bug this catches: a repair on a registry-known model runs at the
+        capability ceiling instead of the model's completion clamp."""
+        from squadops.llm.model_registry import get_model_spec
+
+        h = DevelopmentRepairHandler()
+        spec = get_model_spec("qwen3.8:27b")
+        assert spec is not None  # premise: the V38 arm is registered (#1008)
+        kwargs = h._build_chat_kwargs({"agent_model": "qwen3.8:27b", "agent_config_overrides": {}})
+        assert kwargs["max_tokens"] == spec.default_max_completion
+
+    def test_explicit_override_still_wins(self):
+        """A profile that deliberately raises (or lowers) the budget keeps
+        authority — the clamp is a default, not a ceiling on operators."""
+        h = DevelopmentRepairHandler()
+        kwargs = h._build_chat_kwargs(
+            {
+                "agent_model": "qwen3.8:27b",
+                "agent_config_overrides": {"max_completion_tokens": 12_000},
+            }
+        )
+        assert kwargs["max_tokens"] == 12_000
+
+    def test_unknown_model_keeps_prior_behavior(self):
+        """No registry entry → no invented budget: max_tokens stays absent,
+        exactly the pre-#1011 behavior (the #1008 lesson runs the other way —
+        an UNregistered model is a registry gap to fix, not a clamp to guess)."""
+        h = DevelopmentRepairHandler()
+        kwargs = h._build_chat_kwargs(
+            {"agent_model": "totally-unregistered:1b", "agent_config_overrides": {}}
+        )
+        assert "max_tokens" not in kwargs
+
+    async def test_clamp_reaches_the_llm_call(self):
+        """Flow half: the clamped budget arrives at chat_stream_with_usage —
+        wiring, not just the kwargs builder."""
+        from squadops.llm.model_registry import get_model_spec
+
+        h = DevelopmentRepairHandler()
+        ctx = _make_context(llm_response="repaired")
+        await h.handle(
+            ctx,
+            {
+                "prd": "Build a widget",
+                "agent_model": "qwen3.8:27b",
+                "agent_config_overrides": {},
+                "prior_outputs": {},
+            },
+        )
+        call = ctx.ports.llm.chat_stream_with_usage.call_args
+        assert call.kwargs["max_tokens"] == get_model_spec("qwen3.8:27b").default_max_completion
+
+
 class TestRepairHandlerHandle:
     async def test_llm_success_returns_artifact(self):
         h = DataAnalyzeVerificationHandler()

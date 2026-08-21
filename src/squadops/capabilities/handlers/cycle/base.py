@@ -336,7 +336,17 @@ class _CycleTaskHandler(CapabilityHandler):
         return model_name, max_tokens, context_window
 
     def _build_chat_kwargs(self, inputs: dict[str, Any]) -> dict[str, Any]:
-        """Build chat() kwargs from agent config overrides (SIP-0075 §3.2)."""
+        """Build chat() kwargs from agent config overrides (SIP-0075 §3.2).
+
+        #1011: without an explicit ``max_completion_tokens`` override, the
+        registry's per-model completion clamp applies — previously ``max_tokens``
+        was simply omitted here, so every handler riding the base path
+        (correction repairs foremost) ran at capability ceilings the clamped
+        develop/qa handlers never see (a dev repair emitted 12,314 tokens under
+        an 8,192-clamped model, V38 shakedown #2). An explicit override still
+        wins, and a model without a registry entry keeps the old behavior —
+        the clamp cannot invent a budget for a model it does not know.
+        """
         overrides = inputs.get("agent_config_overrides", {})
         agent_model = inputs.get("agent_model") or None
         kwargs: dict[str, Any] = {}
@@ -346,6 +356,8 @@ class _CycleTaskHandler(CapabilityHandler):
             kwargs["temperature"] = overrides["temperature"]
         if "max_completion_tokens" in overrides:
             kwargs["max_tokens"] = overrides["max_completion_tokens"]
+        elif agent_model and (spec := get_model_spec(agent_model)) is not None:
+            kwargs["max_tokens"] = spec.default_max_completion
         if "timeout_seconds" in overrides:
             kwargs["timeout_seconds"] = overrides["timeout_seconds"]
         return kwargs
