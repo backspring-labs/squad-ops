@@ -189,10 +189,28 @@ Config verified identical to roll 1 before launch — `applied_defaults`,
 `d4d4f662…` matching the §3 pin. Preconditions at launch (§2.7): zero unreleased focus
 leases, nothing in flight, agent queues drained, seven deploy images matching `f7a5e0a2`.
 
-**Pending on framing completion:** the per-roll manifest↔plan consistency audit (added to
-the routine after roll 1, and vindicated by launch 2 — it has now caught the contradiction
-in *both* framings it has been run against). Record whether the framing declares one status
-per endpoint or contradicts itself, before implementation is scored.
+| Framing | `run_8893cd3f5dc0`, 33 min (23:52–00:26 UTC); PRD hash `f744843d…` matches the §3 pin |
+| Gate | approved 01:49 UTC, §7.3(c) text applied — **verified byte-identical to the banked launch-2 note by direct comparison**, recorded as the same agent id |
+| Implementation | `run_48e4c90d7efa`, started 01:49 UTC |
+
+**Framing consistency audit — PASS (first clean framing of three under 3.8).** Every status
+the implementation plan states matches both the manifest and the derived contract probes:
+create 201/201/201, join 200/200/200, join-duplicate 409 (probe) / 409 (plan), leave
+200/200/200, blank-name 400/400. No endpoint is declared two ways. This framing also
+declares **five** endpoints where launch 2 declared six — it omits the dev-convenience seed
+route, which is a scope choice, not a defect: scaffold coverage is measured against declared
+endpoints, so 5/5 is self-consistent. Recorded before the gate decision, so the audit
+cannot be read as post-hoc.
+
+**Measurement note — gate latency contaminates total wall-clock, not implementation
+wall-clock.** This gate sat open **1h23m** (framing done 00:26 UTC, approved 01:49 UTC)
+because no watcher was armed after launch. Roll 1's gate auto-approved (~0 latency) and
+launch 2's was approved in ~2 min. Gate latency is operator availability, not squad or
+machinery behaviour, so **the comparable §4 figure for this roll is implementation
+wall-clock; total wall-clock is not comparable to roll 1's 1h41m** and must not be quoted
+against it. Remedy applied for the remaining rolls: gate approval is now fired by an armed
+watcher using the text read directly out of the banked decision row, which both removes the
+latency and makes a §7.3(c) rule-1 deviation mechanically impossible.
 
 ---
 
