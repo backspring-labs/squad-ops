@@ -3743,6 +3743,33 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         if interface_content is not None:
             errors.extend(self._validate_interface_manifest(interface_content))
 
+        # #1013: manifest↔plan consistency + completeness — the two framing-internal
+        # species that cost V38 counted rolls (roll 1's 201-vs-200 contradiction; slot
+        # 6's manifest-only 201 the plan never stated). Needs BOTH artifacts, so it
+        # runs after the collection loop; an unparseable manifest defers exactly like
+        # an unreadable plan does (this check only ever adds an earlier rejection,
+        # never a pass). Lands on THIS seam deliberately: the reject must re-roll
+        # framing for free, not fail a run at dispatch (see the ownership note above).
+        if interface_content is not None and parsed_plan is not None:
+            try:
+                from squadops.capabilities.scaffold import InterfaceManifest
+
+                parsed_manifest = InterfaceManifest.from_yaml(interface_content)
+            except Exception:
+                logger.warning(
+                    "Manifest unparseable before gate %r — #1013 consistency check "
+                    "deferred to the manifest's own validation net",
+                    gate_name,
+                    exc_info=True,
+                )
+            else:
+                errors.extend(
+                    classifier.collect(
+                        "validate_manifest_plan_consistency",
+                        parsed_plan.validate_manifest_plan_consistency(parsed_manifest),
+                    )
+                )
+
         # SIP-0098 98.3: bind-mode contract validation. A seeded contract_ref switches the
         # cycle to bind mode — the plan must bind the contract's covered-file criteria by
         # id (validate_criteria_refs) rather than author them, and the contract must be

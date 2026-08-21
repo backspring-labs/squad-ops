@@ -1930,6 +1930,17 @@ class ScaffoldStack:
     #: a TypeScript author. Unset means the stack states no seam and both surfaces stay
     #: silent rather than guessing.
     error_seam: ErrorSeam | None = None
+    #: #1013: whether this stack's skeleton pins a declared ``success_status`` in
+    #: FROZEN structure the fill cannot change. FastAPI does — ``status_code=`` lands
+    #: in the route decorator (the pf-39 fix), so an implementer inherits the status
+    #: mechanically and prose silence is harmless. The Next.js skeleton only writes it
+    #: as a TODO comment INSIDE the fill body, which the fill replaces — V38 slot 6
+    #: proved the comment does not survive (manifest declared 201, dev shipped 200).
+    #: The framing-consistency omission check fires only for stacks where this is
+    #: False: there, plan prose is the sole channel that carries the status to the
+    #: implementer. Default False — silently-wrong has no safe default, and an
+    #: unregistered/unknown stack has no skeleton at all.
+    skeleton_pins_success_status: bool = False
 
 
 _STACKS: dict[str, ScaffoldStack] = {
@@ -1946,6 +1957,9 @@ _STACKS: dict[str, ScaffoldStack] = {
         criteria_pack="fullstack_fastapi_react",
         error_seam=ERROR_SEAM_FASTAPI,
         probe_profile="fastapi_uvicorn",
+        # A declared success_status lands in the frozen route decorator
+        # (``status_code=``, the pf-39 fix) — structural, fill-proof.
+        skeleton_pins_success_status=True,
         dev_capability="fullstack_fastapi_react",
     ),
     # #822 stack #2. Imported below rather than defined here: a second expander inline would
@@ -1983,6 +1997,17 @@ def _stack(stack: str) -> ScaffoldStack:
     if known is None:
         raise ValueError(f"no scaffold expander for stack {stack!r}; available: {sorted(_STACKS)}")
     return known
+
+
+def skeleton_pins_success_status_for(stack: str) -> bool:
+    """Whether *stack*'s skeleton pins declared success statuses in frozen structure (#1013).
+
+    ``False`` for unknown stacks — no registration means no skeleton, so prose is the
+    only channel and the conservative answer is "not pinned". Lives here for the same
+    reason ``check_stack_for`` does: one answer to "which stacks does this system know."
+    """
+    known = _STACKS.get(stack)
+    return bool(known and known.skeleton_pins_success_status)
 
 
 def check_stack_for(stack: str) -> str | None:

@@ -39,6 +39,11 @@ AUTHOR_FACING: dict[str, str] = {
     # #888: the plan author owns the builder task's expected_artifacts, so an
     # under-covered floor is an authorable — and authored (roll 15) — defect.
     "validate_builder_floor": "builder-floor-coverage",
+    # #1013: the plan's prose must agree with the manifest on enforced success
+    # statuses, and must STATE a non-200 status where the stack's skeleton does
+    # not pin it — the two framing-internal species that cost V38 counted rolls
+    # (roll 1's 201-vs-200 contradiction; slot 6's manifest-only 201).
+    "validate_manifest_plan_consistency": "statuses-must-agree-with-the-manifest",
 }
 
 # Validators an author is already taught by a different managed asset. Restating them

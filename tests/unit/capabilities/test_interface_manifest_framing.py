@@ -145,6 +145,9 @@ def _executor_for(manifest_yaml: str | None) -> tuple[DispatchedFlowExecutor, An
     # #424: the seam now rejects a plan-less framing outright
     # (plan_authoring_collapsed), so these interface-manifest-net tests carry a
     # minimal valid plan to keep exercising their own net in isolation.
+    # #1013: the seam also rejects an author-mode plan that never states an
+    # enforced non-200 success status, so the minimal plan states the 201 its
+    # manifests declare — same isolation principle, one more rule to satisfy.
     plan_ref = MagicMock()
     plan_ref.filename = "implementation_plan.yaml"
     plan_ref.artifact_type = "control_implementation_plan"
@@ -158,7 +161,7 @@ def _executor_for(manifest_yaml: str | None) -> tuple[DispatchedFlowExecutor, An
         "    task_type: development.develop\n"
         "    role: dev\n"
         '    focus: "Backend"\n'
-        '    description: "Build"\n'
+        '    description: "Build. POST /runs returns 201 on success."\n'
         "    expected_artifacts:\n"
         '      - "backend/main.py"\n'
         "    depends_on: []\n"

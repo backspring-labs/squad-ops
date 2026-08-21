@@ -349,6 +349,16 @@ class ImplementationPlan:
                 errors.append(f"Task {task.task_index}: role '{task.role}' not in profile")
         return errors
 
+    def validate_manifest_plan_consistency(self, manifest) -> list[str]:
+        """#1013: this plan's prose agrees with *manifest* on enforced success
+        statuses, and states any non-200 status the stack's skeleton does not
+        pin. Logic lives in ``framing_consistency`` (pure, cross-artifact);
+        this method is the seam the plan-gate validators and the #686
+        author-teaching classification both discover."""
+        from squadops.cycles.framing_consistency import validate_manifest_plan_consistency
+
+        return validate_manifest_plan_consistency(manifest, self)
+
     def validate_check_applicability(self, resolved_config: dict) -> list[str]:
         """#715: a ``qa.test`` task's declared artifacts must be able to satisfy the
         required check that judges them.
