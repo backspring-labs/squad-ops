@@ -433,7 +433,27 @@ recording, not an acceptance defect. Flagged for the post-window queue (#/6): wo
 read of how per-file compile credit is recorded at storage time. Reporting-only through the
 window.
 
+### Launch 7 — cyc_cac1e479a462 — COUNTED slot 6 (final) — IN FLIGHT
+
+Launched 10:54 UTC; framing `run_bcd02690fcbc`, 31 min (10:54:39–11:26:09); gate
+auto-approved by `system:no_open_questions` (fifth auto-approval of the window); hash
+`d4d4f662…` matches the pin. Implementation `run_d826c8de6d97` under way. Preconditions
+held at launch (§2.7): zero leases, nothing in flight, queues drained, images = `f7a5e0a2`.
+
+**Framing consistency audit — recorded IN FLIGHT, before the verdict.** No contradiction:
+no status is declared two ways anywhere across manifest, plan, and probes; error contract
+(400/404/409) identical to prior rolls; duplicate-join taught explicitly (case-insensitive,
+409); frontend scope = slot 5's 3-route choice (list at `/`). **But one new species of
+finding: the manifest declares join `success_status: 201` — the first framing of either arm
+to do so (all prior said 200) — and the dev brief is SILENT on join's success status** (it
+fully specifies the error statuses and says only "adds the participant and updates the
+count"). The derived probe demands 201, so the contract will enforce a fact the brief never
+states. Not a #1013 contradiction — a framing *omission* on a contract-enforced fact,
+adjacent to the context-completeness class. Named now so that a red rooted in join 200≠201
+cannot be read as a post-hoc attribution. Audit tally awaits the roll's outcome for how to
+count this one: consistent-with-omission is a category §5.1 does not yet distinguish.
+
 ---
 
 **Arm B tally: 4 functional / 5 counted** (launch 2 void — does not count, does not reset).
-One counted roll remains.
+Slot 6 in flight — the final counted roll.
