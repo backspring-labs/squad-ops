@@ -75,6 +75,7 @@ texture as instrument, §6 freeze in force from here.
 | 2 | cyc_032043b05440 | **VOID** (host power loss) | — |
 | 3 | cyc_410f3a9257f8 | COUNTED (slot 2) | **FUNCTIONAL** |
 | 4 | cyc_5267fb2ead60 | COUNTED (slot 3) | **FUNCTIONAL** (zero-correction) |
+| 5 | cyc_60407deffa98 | COUNTED (slot 4) | **FUNCTIONAL** (converged on correction round 3 of 3) |
 
 ### Roll 1 — cyc_02e9af402c82 — COUNTED, not functional
 
@@ -292,7 +293,95 @@ launch 2).** The gate that would catch the contradictory half still does not exi
 functional result instead of a rejected one. data and nat spent nothing in implementation,
 which is expected on a path with no correction round (analyze_failure never runs).
 
+### Launch 5 — cyc_60407deffa98 — COUNTED slot 4 — **FUNCTIONAL**
+
+Ran unattended overnight: the operator's SSH session dropped at ~03:0x UTC when the client
+Mac closed, and the roll reached its verdict with nobody watching. Triaged after the fact
+from banked state. **This is not an intervention — it is the absence of one**, and the §5
+criterion is satisfied more strictly here than on any prior roll: no operator was present to
+intervene even had one wanted to.
+
+| Field | Value |
+|---|---|
+| Framing | `run_aaf9088aef95`, 31 min (03:05:53–03:36:50 UTC); PRD hash `f744843d…` and `resolved_config_hash` `d4d4f662…` both match the §3 pin |
+| Gate | **auto-approved** by `system:no_open_questions` at 03:36:50 UTC — zero latency, valid under §7.3(c) rule 2, as on roll 1 and slot 3. No operator decision exists to disclose |
+| Implementation | `run_6387016a969c`, 03:36:51–04:24:54 UTC — **48 min, 3 correction rounds**, converged on the last one |
+| Verdict | **`accepted`** — 27 executed / 27 passed, zero failed, zero `required_unmet` |
+| Boot audit (separate fact) | **PASS** — 30 files assembled; installs, builds, boots, answers all 5 contract probes over real HTTP, and the UI reaches every path it requests (image `squadops-sandbox-env:fastapi-react-1.4-dev`, contract `6357b2cbf288`) |
+| Manual interventions | none |
+| Tokens (impl, completion, by role) | neo 43.4k · eve 22.7k · max 8.0k · data 5.6k · bob 3.0k · nat 0 — total ~82.7k |
+| Wall-clock | implementation 48 min; total 1h19m — **comparable**, since the gate auto-approved and carries no operator latency |
+| **Score** | **FUNCTIONAL** |
+
+Deploy freeze re-verified at triage: all seven container images still match the §3 `f7a5e0a2`
+ids exactly (`34126b76ff90` / `865aa7fa2677` / `17c4c315cb98` / `8f21700fb42b` /
+`30004c6c1aaf` / `7a3852e0e66b` / `f7833405d0d4`); zero unreleased focus leases; agent queues
+drained.
+
+**Framing consistency audit — PASS.** Create 201, blank-field 400, GET unknown id 404, join
+200 with 409 on duplicate, leave 200 with 404 for an unknown participant — every status
+matches across the interface manifest, the implementation plan's dev brief, and the derived
+contract probes. Five endpoints declared, five covered. Post-hoc-ness is moot on this roll:
+the gate auto-approved with zero latency, so no operator decision could have been informed by
+an audit either way.
+
+**The slot-3 "specificity" observation is CONTRADICTED — and that is the finding.** Slot 3's
+entry noted that its framing spelled out case-insensitive, whitespace-trimmed duplicate
+comparison in the dev brief where slot 2's said only "duplicate rejected", and slot 2's dev
+then shipped no duplicate check at all. It flagged the pairing as confounded with authoring
+dice and said so explicitly. **Slot 4 breaks the pairing.** Its brief carries the same
+specificity slot 3's did — *"validate non-empty name, reject duplicate case-insensitive with
+409"*, plus a manifest `decisions` entry warranting the choice — and neo shipped **no
+duplicate-participant detection anyway**. The analyzer's own words at 04:18 UTC: *"The join
+route handler fails to implement duplicate-participant detection."* Three correction rounds
+to recover it. Brief specificity did not prevent the miss. The honest read is now the
+sceptical one slot 3 pre-registered: specificity and dice were confounded, and the dice were
+doing the work.
+
+**The duplicate-join miss is now three independent samples** — shakedown #2, slot 2, slot 4 —
+across framings that taught it vaguely, specifically, and specifically again. That is a
+model-side texture finding on `qwen3.8:27b`, not a framing artefact.
+
+**First roll of either arm to converge on the final correction round.** Rounds 1 and 2 each
+produced a repair whose retest still failed (*"Repaired suite still fails (exit 1)"* at
+03:59:56 and 04:13:04); round 3's repair was followed by a retest that saw it —
+`qa_test_handler suite: framework=vitest executed=True exit_code=0 tests_passed=True
+test_files=17`. Roll 1 spent the identical 3-round budget and ended `rejected`.
+
+**#1012 — no new evidence either way, and the ambiguity is worth naming.** Rounds 1–2 here
+are shape-identical to roll 1's vanished repair (stored repair → retest reporting the failure
+unfixed) but are equally consistent with a repair that was simply insufficient; the two are
+not separable from banked state without the tree read §6 already queues. What this roll does
+show is that the machinery was **not globally blind on it** — round 3's repair demonstrably
+reached the retest. Running count stands at two rolls where a stored repair was followed by a
+pre-repair retest, and two (slot 2, slot 4) where the same path worked.
+
+**`correction_policy_override: rewind -> patch` fired on rounds 2 and 3**
+(`work_product_rewind_with_unspent_repair`). max chose `rewind` both times after repeated
+failure — *"Two prior repair attempts have already failed"* — and policy forced `patch`
+regardless. Patch then converged. Recorded as machinery behaviour, symmetric across both
+arms, no bearing on the comparison.
+
+**`patch_verification` reported `unverifiable / no_typed_criteria checks=8` on all three
+rounds — designed, not a defect.** The #870 file-owned gate resolved 8 criteria owning the
+repaired files, found nothing it could reject on, and the failed task (`qa.test`) carries no
+typed criteria of its own, so the structurally-unevaluable verdict stands and the behavioural
+retest decides (`src/squadops/cycles/patch_verification.py:481`). It differs from slot 2's
+`passed checks=8` only in which criteria the failing task owned — not in machinery health.
+
+**Verification-integrity disclosures (SIP-0096), recorded not buried:** one non-required
+check, `acceptance:frontend_compiles`, is `unverified / missing_tooling` — disclosed, not
+credited, same as slot 2. And `criteria_verified` lists **10 of 15**: the five absent are all
+compile criteria, for `app/api/runs/route.ts`, `.../[run_id]/route.ts`,
+`.../[run_id]/join/route.ts`, `app/page.tsx` and `app/runs/new/page.tsx`. Nothing failed.
+This **sharpens slot 2's flag rather than repeating it**: all five dropped criteria belong to
+files the round-3 repair rewrote, but the repair rewrote **eight** files and the other three
+(`.../leave/route.ts`, `app/runs/page.tsx`, `app/runs/[run_id]/page.tsx`) kept their credit.
+So repair re-storage is associated with dropped compile credit but does not always cause it —
+a narrower claim than slot 2's entry implied. Flagged, non-blocking, reporting-only through
+the window.
+
 ---
 
-**Arm B tally: 2 functional / 3 counted** (launch 2 void — does not count, does not reset).
-Half the counted window is run. No claim is drawn from a partial tally.
+**Arm B tally: 3 functional / 4 counted** (launch 2 void — does not count, does not reset).
+Two counted rolls remain. No claim is drawn from a partial tally.
