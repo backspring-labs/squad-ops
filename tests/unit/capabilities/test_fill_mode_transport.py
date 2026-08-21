@@ -61,7 +61,7 @@ class TestInjection:
         scaffold = inputs["verification_scaffold"]
         assert len(scaffold["files"]) == 8
         assert scaffold["manifest"]["stack"] == "nextjs_ts"
-        assert scaffold["manifest"]["generator_version"] == 4
+        assert scaffold["manifest"]["generator_version"] == 5
 
     def test_an_unopted_stack_injects_nothing(self):
         manifest = manifest_for_stack("fullstack_fastapi_react")

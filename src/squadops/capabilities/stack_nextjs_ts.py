@@ -438,17 +438,17 @@ export const ERROR_STATUS: Record<string, number> = {{
 export class ApiError extends Error {{
   constructor(
     public code: string,
-    public detail: string = '',
+    message: string = '',
   ) {{
-    super(code)
+    super(message)
   }}
 }}
 
 export function errorResponse(err: unknown): Response {{
   const code = err instanceof ApiError ? err.code : 'internal_error'
   const status = ERROR_STATUS[code] ?? 500
-  const detail = err instanceof ApiError ? err.detail : ''
-  return Response.json({{ error: {{ code, detail }} }}, {{ status }})
+  const message = err instanceof ApiError ? err.message : ''
+  return Response.json({{ error: {{ code, message }} }}, {{ status }})
 }}
 """
 

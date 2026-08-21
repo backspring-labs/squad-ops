@@ -1,6 +1,6 @@
 ---
 template_id: request.manifest_authoring_rules_appendix
-version: "1"
+version: "2"
 required_variables: []
 ---
 ## MANIFEST RULES (authoritative — a manifest that breaks one is rejected)
@@ -70,6 +70,15 @@ read as naming none.
 test suite is permitted to query, so a view with none is a view nothing can verify — and
 the suite will otherwise invent selectors from roles and visible text that the
 implementation never promised.
+
+**error-shape-is-the-blueprints** — If you declare `error_contract.shape`, it must be
+the blueprint's frozen envelope: rooted at `"error"`, i.e. `{"error": {"code", "message"}}`.
+The scaffold writes this envelope into frozen code and every probe asserts it — a shape
+rooted anywhere else (for example a framework default like `{"detail": "..."}`) describes a
+body no response will ever carry, and a developer who trusts your document will write error
+handling against a key that does not exist. Omitting the field entirely is fine; declaring
+the error codes and their HTTP statuses in `error_contract.codes` is the part that is
+genuinely yours to design.
 
 **name-the-source-prd** — Set `source_prd` to the requirements document this design derives
 from. A design with no stated source cannot be reviewed against its source; the reviewer is

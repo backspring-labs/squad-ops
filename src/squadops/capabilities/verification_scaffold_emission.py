@@ -49,7 +49,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
 #: Bump on ANY emission-affecting change (module docstring). Recorded in every manifest.
 #: 2 (#936) — the shell imports `all` alongside `reset`, so a fill can call the helper
 #: the appendix teaches without adding an import it is forbidden to add.
-GENERATOR_VERSION = 4
+GENERATOR_VERSION = 5
 
 #: The stored manifest artifact's filename (the executor persists it beside the contract).
 VERIFICATION_SCAFFOLD_MANIFEST_FILENAME = "verification_scaffold_manifest.yaml"

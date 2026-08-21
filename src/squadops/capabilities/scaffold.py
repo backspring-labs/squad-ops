@@ -616,11 +616,12 @@ class ErrorSeam:
     template that actually emits the bytes.
 
     ``body_field`` is deliberately per-stack rather than read from the manifest's
-    declared ``error_contract.shape``: the two currently disagree for ``nextjs_ts``
-    (the manifest declares ``message``, the emitted ``lib/errors.ts`` writes ``detail``)
-    and #795 owns that reconciliation. Until it is settled, describing what the code
-    ACTUALLY emits is the only honest thing to tell an author — a brief that quoted the
-    declared shape would be confidently wrong.
+    declared ``error_contract.shape`` — the envelope is blueprint-owned (#795's
+    resolution): the generator is the authority, the manifest's ``shape`` is
+    descriptive and gate-checked against it (root key must be ``error``), and both
+    stacks now agree on ``message`` (the nextjs ``detail`` divergence was reconciled
+    generator-side at #795 — the reference manifests and stack #1 already said
+    ``message``, and the generator was the odd one out).
     """
 
     #: The frozen module, as the author sees it on disk.
@@ -629,7 +630,8 @@ class ErrorSeam:
     import_form: str
     #: The raise convention, with the constructor's REAL parameter names.
     raise_form: str
-    #: The second field inside ``error`` — ``message`` (stack #1) or ``detail``.
+    #: The second field inside ``error`` — ``message`` on both stacks since #795's
+    #: reconciliation; the field stays declarative so a future stack CAN differ.
     body_field: str
     #: The framework exception a dev wrongly reaches for on THIS stack, named so the
     #: prohibition stays specific. ``HTTPException`` is what pf-33/pf-34 actually
@@ -654,8 +656,8 @@ ERROR_SEAM_FASTAPI = ErrorSeam(
 ERROR_SEAM_NEXTJS_TS = ErrorSeam(
     module="lib/errors.ts",
     import_form="import { ApiError, errorResponse } from '@/lib/errors'",
-    raise_form="ApiError(code, detail)",
-    body_field="detail",
+    raise_form="ApiError(code, message)",
+    body_field="message",
 )
 
 
