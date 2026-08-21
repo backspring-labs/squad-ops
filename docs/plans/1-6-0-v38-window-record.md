@@ -77,6 +77,7 @@ texture as instrument, §6 freeze in force from here.
 | 4 | cyc_5267fb2ead60 | COUNTED (slot 3) | **FUNCTIONAL** (zero-correction) |
 | 5 | cyc_60407deffa98 | COUNTED (slot 4) | **FUNCTIONAL** (converged on correction round 3 of 3) |
 | 6 | cyc_83577bc3052b | COUNTED (slot 5) | **FUNCTIONAL** (zero-correction) |
+| 7 | cyc_cac1e479a462 | COUNTED (slot 6) | not functional |
 
 ### Roll 1 — cyc_02e9af402c82 — COUNTED, not functional
 
@@ -470,7 +471,57 @@ owner request (2026-08-21, mid-window, implementation deferred past the freeze):
 #688 fallback's 1-file→7-file expansion, no minimality imperative in the repair template,
 no attempt counter — the investigation #864 deferred).
 
+#### Slot 6 outcome — COUNTED, **not functional** — WINDOW'S COUNTED ROLLS COMPLETE
+
+| Field | Value |
+|---|---|
+| Implementation | `run_d826c8de6d97`, 11:26:10–12:20:57 UTC — 54 min, **3 correction rounds, max exhausted** |
+| Verdict | **`rejected`** — 23 executed / 21 passed; failed: `vc-probe-api-runs-join` (200 ≠ 201) + `tests_pass`; zero `required_unmet`, zero `unverified` |
+| Boot audit (separate fact) | **FAIL — `vc-probe-api-runs-join: status 200 != expected 201`.** 29 files assembled; the delivered app installs, builds, boots, and fails its contract on exactly the manifest-only fact |
+| Manual interventions | none |
+| Tokens (impl, completion, by role) | neo 52.5k (9.6k develop + 42.8k repairs) · eve 27.3k · data 5.3k · bob 4.0k · max 3.6k · nat 0 — total ~92.7k |
+| Wall-clock | implementation 54 min; total 1h26m — comparable (auto-approved gate) |
+| **Score** | **not functional** |
+
+**Attribution — dual, and the mirror of roll 1.** Roll 1 = framing *contradiction* ×
+correction-loop state loss. Slot 6 = framing *omission* × the same loss signature:
+
+1. **The initial red is the pre-banked omission, recorded before the verdict.** Join's 201
+   lived only in the manifest; the dev brief was silent; the dev shipped 200. The
+   discriminating detail: the duplicate-409, which this brief DID teach, **was implemented
+   correctly** — the join-duplicate probe passed. Within this roll, taught → implemented and
+   untaught → defaulted, exactly. (Across rolls the dice still dominate — slot 4's dev was
+   taught and missed — but slot 6's within-roll contrast is the cleanest single sample the
+   window produced.)
+2. **Recovery was then prevented by the machinery — #1012's strongest instance.** All three
+   stored repair candidates contain the fix, byte-verified: `status: 201` in
+   `art_7299cacc6721` (11:50), `art_b65c659cad39` (12:01), `art_d494b5124767` (12:15). All
+   three retests reported "Repaired suite still fails" within ~18–29 s. The final suite and
+   the boot audit both show pre-repair behaviour. Roll 1 banked this signature twice,
+   unadjudicably; slot 6 banks it **three-for-three in one roll with the fix grep-provable
+   in every candidate**. Three independent repairs each breaking something else would be
+   required to explain this without a tree/evidence mechanism; one consistent
+   assembly-or-evidence fault (#1012, #971/#995 family) is now the parsimonious read. The
+   §6 code read of retest tree-assembly stays the adjudicator.
+
+**The #1014 gap fired on every round, not once:** each of the three repairs stored a
+qa-owned `__tests__/runs-api.test.ts` rewrite past the targeting veto
+(`art_5157b69336e4`, `art_f64c61a90e51`, `art_0db63c492487`).
+
+**Framing-audit final tally: 3 consistent (slots 2, 3, 5) / 2 contradictory (roll 1,
+launch 2) / 1 consistent-with-omission (slot 6)** — and the omission cost a counted roll,
+which answers how the category counts: a framing gate (#1013) that checks only
+contradiction would have passed this framing. Completeness of contract-enforced facts in
+the dev brief is the second half (#1015's template/threading territory; max's own round-0
+rationale proposed the same remedy unprompted).
+
 ---
 
-**Arm B tally: 4 functional / 5 counted** (launch 2 void — does not count, does not reset).
-Slot 6 in flight — the final counted roll.
+## WINDOW COUNTED ROLLS COMPLETE (2026-08-21, 12:20 UTC)
+
+**Arm B final tally: 4 functional / 6 counted** (launch 2 void — neither counts nor
+resets). Boot audits: 4 PASS / 2 FAIL (roll 1, slot 6 — both contract-violating deliveries,
+both rooted in a framing fact the dev never received, both with stored-but-never-retested
+repairs). Framing audits: 3 / 2 / 1 as above. No further launches; §6 close-out (synthesis
+against arm A, freeze release, post-window queue: #1011 #1012 #1013 #1014 #1015, the
+compile-credit gap, the veto-then-store adjudication) is the owner's call from here.
