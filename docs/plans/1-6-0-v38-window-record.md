@@ -74,6 +74,7 @@ texture as instrument, §6 freeze in force from here.
 | 1 | cyc_02e9af402c82 | COUNTED | not functional |
 | 2 | cyc_032043b05440 | **VOID** (host power loss) | — |
 | 3 | cyc_410f3a9257f8 | COUNTED (slot 2) | **FUNCTIONAL** |
+| 4 | cyc_5267fb2ead60 | COUNTED (slot 3) | **FUNCTIONAL** (zero-correction) |
 
 ### Roll 1 — cyc_02e9af402c82 — COUNTED, not functional
 
@@ -258,6 +259,40 @@ nothing failed. Both are the repaired files. Worth a look at whether repair re-s
 a file's compile-criterion credit — flagged, non-blocking, reporting-only through the
 window.
 
+### Launch 4 — cyc_5267fb2ead60 — COUNTED slot 3 — **FUNCTIONAL, zero-correction**
+
+Arm B's first **first-attempt** green: accepted with no correction round at all.
+
+| Field | Value |
+|---|---|
+| Framing | `run_b3c402429df4`, 32 min (02:16–02:48 UTC) |
+| Gate | **auto-approved** by `system:no_open_questions` at 02:48 UTC — the manifest declared no unresolved decisions. Valid under §7.3(c) rule 2, which states an auto-approving roll is neither treated differently nor disadvantaged; roll 1 approved the same way. Zero latency, and no operator decision exists to disclose |
+| Implementation | `run_211e7b08a003`, 02:49–03:05 UTC — **16 min, ZERO correction rounds** |
+| Verdict | **`accepted`** — 30 executed / 30 passed, zero failed, zero `required_unmet`, **zero `unverified`** (a cleaner sheet than slot 2, which disclosed one) |
+| Boot audit (separate fact) | **PASS** — installs, builds, boots, answers all 5 contract probes over real HTTP, UI reaches every path it requests (31 files assembled) |
+| Manual interventions | none |
+| Tokens (impl, completion, by role) | neo 30.0k · eve 11.3k · bob 6.8k · max 3.0k · data 0 · nat 0 — total ~51.1k |
+| Wall-clock | implementation 16 min; total 49 min — **comparable**, since the gate auto-approved and carries no operator latency |
+| **Score** | **FUNCTIONAL** |
+
+**Framing consistency audit — PASS, and more specific than slot 2's.** Create 201, join 200
+with 409 on duplicate, leave 200 with 404 for a missing participant; every status matches
+across manifest, plan and probes. This framing additionally *teaches the failure slot 2 fell
+into*: it spells out case-insensitive, whitespace-trimmed duplicate comparison in the dev
+brief. Slot 2's framing said only "duplicate rejected" — and slot 2's dev shipped no
+duplicate check at all, costing a correction round. Recorded as an observation, not a
+conclusion: **one paired sample is not evidence that brief specificity causes the
+difference**, and the honest read is that authoring dice and specificity are confounded
+here. Worth watching across the remaining rolls rather than claimed now.
+
+**Running framing-audit tally: 2 consistent (slots 2, 3) / 2 contradictory (roll 1,
+launch 2).** The gate that would catch the contradictory half still does not exist (#1013).
+
+**Cost texture:** ~51.1k completion tokens against roll 1's ~212k — a quarter, for a
+functional result instead of a rejected one. data and nat spent nothing in implementation,
+which is expected on a path with no correction round (analyze_failure never runs).
+
 ---
 
-**Arm B tally: 1 functional / 2 counted** (launch 2 void — does not count, does not reset).
+**Arm B tally: 2 functional / 3 counted** (launch 2 void — does not count, does not reset).
+Half the counted window is run. No claim is drawn from a partial tally.
