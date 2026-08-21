@@ -76,6 +76,7 @@ texture as instrument, §6 freeze in force from here.
 | 3 | cyc_410f3a9257f8 | COUNTED (slot 2) | **FUNCTIONAL** |
 | 4 | cyc_5267fb2ead60 | COUNTED (slot 3) | **FUNCTIONAL** (zero-correction) |
 | 5 | cyc_60407deffa98 | COUNTED (slot 4) | **FUNCTIONAL** (converged on correction round 3 of 3) |
+| 6 | cyc_83577bc3052b | COUNTED (slot 5) | **FUNCTIONAL** (zero-correction) |
 
 ### Roll 1 — cyc_02e9af402c82 — COUNTED, not functional
 
@@ -381,7 +382,58 @@ So repair re-storage is associated with dropped compile credit but does not alwa
 a narrower claim than slot 2's entry implied. Flagged, non-blocking, reporting-only through
 the window.
 
+### Launch 6 — cyc_83577bc3052b — COUNTED slot 5 — **FUNCTIONAL, zero-correction**
+
+Arm B's second first-attempt green, and its cheapest and fastest roll.
+
+| Field | Value |
+|---|---|
+| Framing | `run_0220f24b8f49`, 33 min (09:51:03–10:23:45 UTC); PRD hash `f744843d…` and `resolved_config_hash` `d4d4f662…` both match the §3 pin |
+| Gate | **auto-approved** by `system:no_open_questions` at 10:23 UTC — zero latency, valid under §7.3(c) rule 2 (fourth auto-approval of the window: roll 1, slots 3, 4, 5). No operator decision exists to disclose |
+| Implementation | `run_654b61665fed`, 10:23:46–10:51:07 UTC — **27 min, ZERO correction rounds** |
+| Verdict | **`accepted`** — 30 executed / 30 passed, zero failed, zero `required_unmet`, **zero `unverified`** (matching slot 3's sheet; slot 2 disclosed one) |
+| Boot audit (separate fact) | **PASS** — 29 files assembled; installs, builds, boots, answers all 5 contract probes over real HTTP, and the UI reaches every path it requests (image `squadops-sandbox-env:fastapi-react-1.4-dev`, contract `6357b2cbf288`) |
+| Manual interventions | none |
+| Tokens (impl, completion, by role) | neo 22.0k · eve 14.6k · bob 5.0k · max 1.6k · data 0 · nat 0 — total ~43.2k (framing's trailing `assess_readiness` at 10:23:45 excluded — it belongs to run 1) |
+| Wall-clock | implementation 27 min; total 1h00m — **comparable**, auto-approved gate, no operator latency |
+| **Score** | **FUNCTIONAL** |
+
+Launch preconditions held (§2.7): zero unreleased leases, nothing in flight, queues
+drained, seven images matching `f7a5e0a2`. Launched 09:51 UTC as the first roll of the
+resumed-operator chain (the overnight roller script died with the operator's SSH session;
+this and slot 6 are launched by explicit per-step operator commands, watcher-driven, same
+§7.3(c) mechanics).
+
+**Framing consistency audit — PASS (third consecutive).** Create 201, blank-field 400, GET
+unknown id 404, join 200 / 409 duplicate (case-insensitive) / 404 unknown run / 400 blank,
+leave 200 / 404 unknown participant / 400 blank — every status matches across manifest, dev
+brief, and derived probes; the test-strategy section enumerates the identical ten cases.
+Scope choice, not a defect: the runs list renders at `/` directly (3 frontend routes, no
+`/runs` redirect split — prior framings declared 4). Self-consistent; the UI data-path audit
+measures against declared routes, and passed. Running tally: **3 consistent (slots 2, 3, 5)
+/ 2 contradictory (roll 1, launch 2)**; the #1013 gate still does not exist.
+
+**The duplicate-join note, kept honest:** this brief carried the same case-insensitive-409
+specificity as slots 3 and 4, and this dev implemented it correctly first-attempt — where
+slot 4's dev, given the same words, missed it entirely. Consistent with slot 4's conclusion:
+specificity does not determine the outcome; the dice do. Sample stands at 3 misses
+(shakedown #2, slot 2, slot 4) across 5 counted-or-shakedown briefs.
+
+**The dropped-compile-credit flag is REFRAMED by this roll — repair re-storage is not the
+mechanism.** `criteria_verified` lists 12 of 14; the two absent are the compile criteria for
+`app/api/runs/route.ts` and the join route, with nothing failed. Slot 2 associated this
+signature with repair re-storage (its dropped criteria were the repaired files); slot 4
+narrowed it (all five dropped were repaired files, but three other repaired files kept
+credit). **Slot 5 had zero repairs and drops the same class of criteria anyway.** So the
+association was coincidental — repaired files are simply API-route files, and API-route
+compile criteria appear to drop credit through some path independent of repair. Three rolls
+(2, 4, 5), seven dropped criteria, all of them `vc-compiles-*` for API routes or pages,
+never a probe or suite criterion, and never a failure — a bookkeeping gap in compile-credit
+recording, not an acceptance defect. Flagged for the post-window queue (#/6): worth one code
+read of how per-file compile credit is recorded at storage time. Reporting-only through the
+window.
+
 ---
 
-**Arm B tally: 3 functional / 4 counted** (launch 2 void — does not count, does not reset).
-Two counted rolls remain. No claim is drawn from a partial tally.
+**Arm B tally: 4 functional / 5 counted** (launch 2 void — does not count, does not reset).
+One counted roll remains.
