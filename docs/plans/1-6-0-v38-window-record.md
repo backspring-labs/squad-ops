@@ -464,7 +464,11 @@ ownership veto** — the veto edits the repair-target brief but does not filter 
 accepts from the emission. Retest still red; the retest ran 16 test files where the original
 failure ran 9. Two mechanism-level flags for the post-window queue, adjudicable from banked
 artifacts: the veto-then-store gap (a dev repair can overwrite the suite it is graded by),
-and the failure→retest tree-composition shift (#971/#995 neighborhood).
+and the failure→retest tree-composition shift (#971/#995 neighborhood). Both now filed by
+owner request (2026-08-21, mid-window, implementation deferred past the freeze): **#1014**
+(emission-side completion of #884's ownership veto) and **#1015** (repair-loop focus: the
+#688 fallback's 1-file→7-file expansion, no minimality imperative in the repair template,
+no attempt counter — the investigation #864 deferred).
 
 ---
 
