@@ -570,6 +570,7 @@ class CorrectionRunner:
         run_id: str,
         all_artifact_refs: list[str],
         stored_artifacts: list[tuple[str, ArtifactRef]],
+        only_types: tuple[str, ...] | None = None,
     ) -> None:
         """Persist a correction-task or repair-task's output artifacts.
 
@@ -585,9 +586,18 @@ class CorrectionRunner:
         completed and the run_report counts them as repaired. This was
         observed across cycles 4b, 6, and prior gate-batch runs as the
         recurring "silent artifact-drop" pattern.
+
+        ``only_types`` (#1017) restricts storage to the named artifact types —
+        the FAILED branch stores evidence only (``test_report``), never the
+        step's workspace files: a failed retest's re-emitted ``test``-typed
+        copies would otherwise enter the vault under the failed task's own
+        ``producing_task_type`` and read as legitimate qa output to every
+        workspace view, quietly defeating the rejected-candidate exclusion.
         """
         new_refs: list[str] = []
         for art in (result.outputs or {}).get("artifacts", []):
+            if only_types is not None and art.get("type") not in only_types:
+                continue
             ref = await self._store_artifact(
                 art,
                 cycle,
@@ -840,6 +850,23 @@ class CorrectionRunner:
                 plan_delta_refs,
             )
         else:
+            # #1017: a failed step's EVIDENCE survives, its workspace files do not.
+            # The failed retest is the motivating case: its test_report.md carries
+            # the runner stdout naming exactly which tests rejected the repair —
+            # the fact that adjudicates a red retest — and was previously built by
+            # the handler and dropped here (the V38 slot-6 #1012 adjudication
+            # required a full offline replay to recover what this one artifact
+            # would have said). Report-typed artifacts only; see the helper's
+            # ``only_types`` docstring for why the rest must never be stored.
+            await self._store_correction_task_artifacts(
+                result,
+                step_envelope,
+                cycle,
+                run_id,
+                all_artifact_refs,
+                stored_artifacts,
+                only_types=("test_report",),
+            )
             self._event_bus.emit(
                 EventType.TASK_FAILED,
                 entity_type="task",

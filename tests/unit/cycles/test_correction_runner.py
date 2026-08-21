@@ -532,6 +532,83 @@ class TestCorrectionTaskArtifactStorage:
         assert all_refs == []
         assert stored == []
 
+    async def test_only_types_filter_stores_report_and_drops_workspace_files(
+        self, executor, mock_vault
+    ):
+        """#1017 unit half: with ``only_types=("test_report",)`` the helper stores
+        the report and drops everything else. The bug the drop-half catches: a
+        failed retest re-emits its whole patched tree as ``test``-typed artifacts,
+        and storing those under the failed task's own producing_task_type would
+        make them read as legitimate qa output to every workspace view —
+        quietly defeating the rejected-candidate exclusion (pf-31 Fix E)."""
+        from squadops.cycles.models import Cycle, TaskFlowPolicy
+        from squadops.tasks.models import TaskEnvelope, TaskResult
+
+        cycle = Cycle(
+            cycle_id="cyc_x",
+            project_id="proj",
+            created_at=NOW,
+            created_by="system",
+            prd_ref="prd",
+            squad_profile_id="full",
+            squad_profile_snapshot_ref="ref",
+            task_flow_policy=TaskFlowPolicy(mode="sequential"),
+            build_strategy="fresh",
+        )
+        envelope = TaskEnvelope(
+            task_id="retest-run_x-00-qa.test",
+            agent_id="eve",
+            cycle_id="cyc_x",
+            pulse_id="p",
+            project_id="proj",
+            task_type="qa.test",
+            correlation_id="corr",
+            causation_id="task-qa",
+            trace_id="t",
+            span_id="s",
+            inputs={},
+            metadata={"role": "qa", "retest": True},
+        )
+        result = TaskResult(
+            task_id="retest-run_x-00-qa.test",
+            status="FAILED",
+            outputs={
+                "artifacts": [
+                    {
+                        "name": "__tests__/api.test.ts",
+                        "content": "test body",
+                        "media_type": "text/typescript",
+                        "type": "test",
+                    },
+                    {
+                        "name": "app/api/runs/route.ts",
+                        "content": "repaired route",
+                        "media_type": "text/typescript",
+                        "type": "test",
+                    },
+                    {
+                        "name": "test_report.md",
+                        "content": "# Test Execution Report\n\nFAIL api.test.ts > join 201",
+                        "media_type": "text/markdown",
+                        "type": "test_report",
+                    },
+                ],
+            },
+        )
+
+        all_refs: list[str] = []
+        stored: list = []
+        await executor._correction_runner._store_correction_task_artifacts(
+            result, envelope, cycle, "run_x", all_refs, stored, only_types=("test_report",)
+        )
+
+        assert mock_vault.store.call_count == 1
+        stored_ref = mock_vault.store.call_args_list[0].args[0]
+        assert stored_ref.filename == "test_report.md"
+        # The failing-test line — the evidence #1012's adjudication needed — survives.
+        assert b"FAIL api.test.ts > join 201" in mock_vault.store.call_args_list[0].args[1]
+        assert len(all_refs) == 1
+
     async def test_repair_artifacts_reach_vault_in_patch_flow(
         self, executor, mock_queue, mock_registry, mock_vault, mock_event_bus
     ):
@@ -1499,6 +1576,75 @@ class TestCorrectionRunnerStandalone:
             inputs={},
             metadata={"role": "dev"},
         )
+
+    async def test_failed_step_stores_report_evidence_only(self, cycle):
+        """#1017 flow half, executor-free: a FAILED protocol step's report-typed
+        evidence reaches the vault; its workspace files and checkpoint do not.
+
+        The bug this catches: the FAILED branch previously stored nothing, so a
+        red retest's test_report.md — the runner stdout naming which tests
+        rejected the repair — was built by the handler and dropped, leaving the
+        #1012 signature unadjudicable from banked state (V38 slot 6 required a
+        full offline replay to recover what this artifact says)."""
+        from squadops.tasks.models import TaskEnvelope, TaskResult
+
+        def responder(envelope):
+            return TaskResult(
+                task_id=envelope.task_id,
+                status="FAILED",
+                outputs={
+                    "artifacts": [
+                        {"name": "__tests__/api.test.ts", "content": "t", "type": "test"},
+                        {"name": "app/api/runs/route.ts", "content": "r", "type": "test"},
+                        {
+                            "name": "test_report.md",
+                            "content": "FAIL join expects 201",
+                            "media_type": "text/markdown",
+                            "type": "test_report",
+                        },
+                    ]
+                },
+                error="Repaired suite still fails (exit 1)",
+            )
+
+        runner, registry, vault, _bus = self._make_runner(responder)
+
+        retest_envelope = TaskEnvelope(
+            task_id="retest-run_001-00-qa.test",
+            agent_id="eve",
+            cycle_id="cyc_001",
+            pulse_id="p",
+            project_id="hello_squad",
+            task_type="qa.test",
+            correlation_id="corr",
+            causation_id="task_failed",
+            trace_id="t",
+            span_id="s",
+            inputs={},
+            metadata={"role": "qa", "retest": True},
+        )
+
+        all_refs: list[str] = []
+        stored: list = []
+        result = await runner._dispatch_protocol_step(
+            retest_envelope,
+            "run_001",
+            cycle,
+            None,
+            prior_outputs={},
+            all_artifact_refs=all_refs,
+            stored_artifacts=stored,
+            completed_task_ids=[],
+            plan_delta_refs=[],
+        )
+
+        assert result.status == "FAILED"
+        # Exactly the report is persisted — never the step's workspace files.
+        assert vault.store.call_count == 1
+        assert vault.store.call_args_list[0].args[0].filename == "test_report.md"
+        assert all_refs == [vault.store.call_args_list[0].args[0].artifact_id]
+        # A failed step still never checkpoints.
+        assert registry.save_checkpoint.call_count == 0
 
     async def test_analysis_fields_survive_to_plan_delta(self, cycle):
         """Issue #95 regression, executor-free: the analyzer's classification
