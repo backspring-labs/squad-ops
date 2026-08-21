@@ -1,6 +1,6 @@
 ---
 template_id: request.plan_authoring_rules_appendix
-version: "3"
+version: "4"
 required_variables: []
 ---
 ## PLAN SHAPE RULES (authoritative — a plan that breaks one is rejected)
@@ -65,6 +65,15 @@ profile's `required_files` lists appears in SOME task's `expected_artifacts` (us
 builder's). The profile list is a floor — a per-task list may add files, never subtract
 one. A plan that leaves a required file unowned passes every task and then fails the
 deliverable-completeness gate at run completion, where nothing can repair it.
+
+**statuses-must-agree-with-the-manifest** — Any line of prose that names an endpoint's
+path and a success status must state the SAME status the interface manifest declares (or
+its derived default: a collection POST with no declared status is enforced at 201). The
+implementer builds your plan; the contract judges the manifest — a plan that teaches 200
+where the manifest declares 201 sends the developer to certain rejection. And where the
+stack's skeleton does not pin the status into frozen code, an enforced non-200 status must
+be STATED in the owning task's description or acceptance criteria — a status that lives
+only in the manifest never reaches the developer, who will default to 200.
 
 A verification-only task is legitimate and common: declare `expected_artifacts: []` and
 express what it checks through its acceptance criteria.
