@@ -5,6 +5,13 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+In-flight **1.6.1** — the Authorship release's first patch batch, shakedown-gated per
+the 1.4.x pattern: #1014 (emission-side ownership veto — the #884 completion), #1011 (repair
+clamp parity), and the #1012 retest-evidence code read (read before fixing; escalates
+to 1.7 if structural).
+
+## [1.6.0] — 2026-08-21
+
 In-flight **1.6 — the Authorship release**. The rung above 1.4: from *filling* a given
 interface design to **authoring the design from the PRD**. Lane M is SIP-0103
 (Squad-Authored Manifest, accepted 2026-08-07); Lane S is Generalized Build Capability,
@@ -49,6 +56,20 @@ manifest and contract hashes are unmoved. It removes a silent-omission trap: `fi
 guarded on whether a stack was *registered* and then returned FastAPI's slot map to whoever
 asked, so a second stack would have inherited `backend/routes.py` with nothing objecting.
 Plan: `docs/plans/1-6-0-authorship-plan.md`.
+
+Closed out 2026-08-21 at the cut. Later stages beyond the narrative above: Stage 2g
+rewrote the Stack Blueprint Contract against main and it was **accepted 2026-08-17 with
+its unbuilt parts named (SIP-0105)**; SIP-0104's deterministic verification scaffolding
+carried both measurement windows. **Release gate MET**: the pre-registered V7
+authored-mode FAY window closed **amended 4/6 functional** (dual record 3/6 pre-registered
+instrument / 4/6 corrected, #1004/#1005, both always reported), zero manual interventions;
+the V38 model-comparison window (qwen3.8:27b) re-exercised the full authored path at
+**4/6, roughly half the wall-clock**, and its §6 synthesis records the failure-class
+shift toward framing-rooted contract violations. **Cut basis:** zero code drift between
+the window-validated frozen deploy `f7a5e0a2` and main (docs only); full regression 7,615
+passed; Guard 1a/1b green. SIP-0103 promoted to implemented at the cut. Post-window
+queue deferred to 1.6.1+: #1011, #1012 (byte-verified reproducer banked), #1013, #1014,
+#1015, compile-credit bookkeeping.
 
 ## [1.5.0] — 2026-08-07
 
