@@ -525,6 +525,62 @@ def _apply_ownership_veto(
     return stripped
 
 
+def _apply_emission_ownership_veto(
+    artifacts: list[dict[str, Any]],
+    failed_task_type: str,
+    step_role: str,
+    failed_own_artifacts: list[str],
+    test_file_patterns: tuple[str, ...],
+) -> list[dict[str, Any]]:
+    """#1014: the emission-side completion of #884's targeting veto.
+
+    #884 edits the repair *brief* — but the failing suite is in the step's
+    context as evidence, and a model can rewrite what it can see: V38 slot 6's
+    dev repairs emitted a full rewrite of the qa-owned suite on all three
+    rounds, storage accepted it, and the overlay handed the retest a suite the
+    dev wrote to match his own changes. This is the storage-side half: a step
+    running under a foreign role may not LAND the failed task's own artifacts
+    either, nor anything on the failed task's test-collection surface (basename
+    patterns plus the ``__tests__/`` convention — over-matching is the safe
+    direction here, same rationale as source-set exclusion; a wrongly dropped
+    borderline file merely leaves the original in the tree).
+
+    Applied AFTER the #507 rebase, so the names filtered are the names the
+    overlay would actually supersede — a wrong-directory emission that #507
+    re-homes onto a qa-owned expected path is caught by the post-rebase name.
+    Same-role steps and task types with no declared owner pass through
+    untouched, mirroring the targeting veto's scope exactly.
+    """
+    from squadops.capabilities.dev_capabilities import matches_test_file_patterns
+    from squadops.cycles.task_plan import own_artifact_role
+
+    owner = own_artifact_role(failed_task_type)
+    if owner is None or step_role == owner:
+        return artifacts
+    own = {str(a) for a in failed_own_artifacts if a}
+    kept: list[dict[str, Any]] = []
+    dropped: list[str] = []
+    for art in artifacts:
+        name = str(art.get("name") or "")
+        if (
+            name in own
+            or matches_test_file_patterns(name, test_file_patterns)
+            or ("__tests__/" in name)
+        ):
+            dropped.append(name)
+        else:
+            kept.append(art)
+    if dropped:
+        logger.info(
+            "correction_repair_emission: ownership veto (#1014) — %s-role step emitted "
+            "%s-owned %s; discarded, never stored",
+            step_role,
+            owner,
+            ", ".join(dropped),
+        )
+    return kept
+
+
 @dataclass(frozen=True)
 class CorrectionProtocolResult:
     """Outcome of one correction-protocol run.
@@ -1333,12 +1389,31 @@ class CorrectionRunner:
                 # the wrong directory otherwise lands as a net-new file, patch
                 # verification runs on the un-patched original, and the
                 # validated repair is discarded by re-dispatch.
+                from squadops.capabilities.dev_capabilities import test_file_patterns_for
                 from squadops.cycles.patch_verification import rebase_artifact_paths
 
+                rebased = rebase_artifact_paths(
+                    [a for a in step_artifacts if isinstance(a, dict)],
+                    failed_inputs.get("expected_artifacts") or [],
+                )
+                # #1014: emission-side ownership veto, post-rebase — a foreign-role
+                # step's emission may not land the failed task's own artifacts or
+                # anything on its test-collection surface (see the veto docstring).
+                # Pattern derivation is failure-isolated like the #870 gate: an
+                # unresolvable capability weakens the veto to its own-set +
+                # ``__tests__/`` halves rather than crashing the protocol.
+                try:
+                    patterns = test_file_patterns_for(failed_inputs.get("resolved_config"))
+                except Exception as exc:
+                    logger.warning("emission ownership veto: pattern surface unavailable: %s", exc)
+                    patterns = ()
                 repair_artifacts.extend(
-                    rebase_artifact_paths(
-                        [a for a in step_artifacts if isinstance(a, dict)],
-                        failed_inputs.get("expected_artifacts") or [],
+                    _apply_emission_ownership_veto(
+                        rebased,
+                        envelope.task_type,
+                        role,
+                        [str(e) for e in (failed_inputs.get("expected_artifacts") or [])],
+                        patterns,
                     )
                 )
 

@@ -3948,3 +3948,117 @@ class TestOwnershipVetoWiring(TestCorrectionRunnerStandalone):
         assert "__tests__/api_runs.test.ts" not in target
         assert "app/api/runs/route.ts" in target
         assert "app/runs/new/page.tsx" in target
+
+    async def test_dev_repair_emission_of_qa_owned_suite_is_discarded(self, cycle):
+        """#1014 flow half: the targeting veto edits the brief, but the failing
+        suite is in the step's context as evidence and the model can rewrite
+        what it can see — V38 slot 6's dev repairs emitted a full qa-suite
+        rewrite on all three rounds and storage accepted it, so the retest
+        graded the dev by his own tests. The emission veto must drop qa-owned
+        files from what reaches ``repair_artifacts`` (→ overlay → retest →
+        #389 re-store), while the app-file repairs pass through untouched."""
+        import dataclasses as _dc
+
+        def responder(envelope):
+            if envelope.task_type == "governance.correction_decision":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={
+                        "correction_path": "patch",
+                        "decision_rationale": "patchable",
+                        "affected_task_types": ["development.develop"],
+                    },
+                )
+            if envelope.task_type == "development.correction_repair":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={
+                        "summary": "repaired",
+                        "artifacts": [
+                            {
+                                "name": "app/api/runs/[run_id]/join/route.ts",
+                                "content": "return new Response(body, { status: 201 })",
+                                "type": "source",
+                            },
+                            # The #884-class overreach: a rewrite of the exact
+                            # file the veto stripped from the brief.
+                            {
+                                "name": "__tests__/api_runs.test.ts",
+                                "content": "// dev-authored suite",
+                                "type": "source",
+                            },
+                            # Basename-pattern match outside __tests__/ — the
+                            # invented-new-filename variant the narrow own-set
+                            # rule would miss.
+                            {
+                                "name": "extra.test.ts",
+                                "content": "// more dev-authored tests",
+                                "type": "source",
+                            },
+                        ],
+                    },
+                )
+            return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs={})
+
+        runner, _registry, _vault, _bus = self._make_runner(responder)
+        failed = _dc.replace(
+            self._failed_envelope(),
+            task_type="qa.test",
+            inputs={
+                "expected_artifacts": ["__tests__/api_runs.test.ts"],
+                "implementation_artifacts": ["app/api/runs/[run_id]/join/route.ts"],
+                "resolved_config": {"dev_capability": "nextjs_ts"},
+            },
+        )
+
+        protocol_result = await runner.run_correction_protocol(
+            run_id="run_001",
+            cycle=cycle,
+            envelope=failed,
+            result=TaskResult(task_id="task_failed", status="FAILED", error="suite failed"),
+            correction_attempts=0,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+        )
+
+        names = [a["name"] for a in protocol_result.repair_artifacts]
+        assert "app/api/runs/[run_id]/join/route.ts" in names
+        assert "__tests__/api_runs.test.ts" not in names
+        assert "extra.test.ts" not in names
+
+    async def test_qa_own_artifact_repair_keeps_its_suite_emission(self):
+        """#1014 non-regression: the veto is FOREIGN-role only. A qa-role
+        own-artifact repair re-authoring its own suite (the #568 locus path)
+        must pass through untouched — filtering it would make every qa-side
+        suite repair a silent no-op."""
+        from adapters.cycles.correction_runner import _apply_emission_ownership_veto
+        from squadops.cycles.task_plan import own_artifact_role
+
+        owner = own_artifact_role("qa.test")
+        assert owner is not None  # premise: qa.test declares an owner
+        suite = [{"name": "__tests__/api_runs.test.ts", "content": "fixed", "type": "test"}]
+        kept = _apply_emission_ownership_veto(
+            suite,
+            "qa.test",
+            owner,
+            ["__tests__/api_runs.test.ts"],
+            ("*.test.ts",),
+        )
+        assert kept == suite
+
+    async def test_emission_veto_passthrough_when_no_declared_owner(self):
+        """#1014 scope guard: task types with no own-artifact owner are
+        untouched, mirroring the targeting veto exactly — filtering there
+        would silently drop legitimate repairs for every default-chain task."""
+        from adapters.cycles.correction_runner import _apply_emission_ownership_veto
+
+        arts = [{"name": "__tests__/x.test.ts", "content": "t", "type": "test"}]
+        kept = _apply_emission_ownership_veto(
+            arts, "development.implement", "dev", [], ("*.test.ts",)
+        )
+        assert kept == arts
