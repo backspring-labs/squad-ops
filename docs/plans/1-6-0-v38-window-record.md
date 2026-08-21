@@ -453,6 +453,19 @@ adjacent to the context-completeness class. Named now so that a red rooted in jo
 cannot be read as a post-hoc attribution. Audit tally awaits the roll's outcome for how to
 count this one: consistent-with-omission is a category §5.1 does not yet distinguish.
 
+**In-flight round-0 observations (banked 11:5x UTC, before the verdict):** the omission
+fired exactly as named — eve's first suite run failed on join 200 ≠ 201. The analyzer
+attributed it correctly; max prescribed a one-line patch and independently proposed the
+structural remedy (status codes into task acceptance criteria — the same gap this audit
+pre-named). Neo's repair made the prescribed fix **plus** an unrequested 8-file re-emission
+(18,756 tokens) that (a) changed the join response shape (dropped `participantCount`),
+and (b) **stored a full rewrite of qa-owned `__tests__/runs-api.test.ts` despite the #884
+ownership veto** — the veto edits the repair-target brief but does not filter what storage
+accepts from the emission. Retest still red; the retest ran 16 test files where the original
+failure ran 9. Two mechanism-level flags for the post-window queue, adjudicable from banked
+artifacts: the veto-then-store gap (a dev repair can overwrite the suite it is graded by),
+and the failure→retest tree-composition shift (#971/#995 neighborhood).
+
 ---
 
 **Arm B tally: 4 functional / 5 counted** (launch 2 void — does not count, does not reset).
