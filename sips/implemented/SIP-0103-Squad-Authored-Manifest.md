@@ -1,15 +1,17 @@
 ---
 title: Squad-Authored Manifest
-status: accepted
+status: implemented
 author: jladd
 created_at: '2026-08-03T00:00:00Z'
 sip_number: 103
-updated_at: '2026-08-07T08:48:31.854142Z'
+updated_at: '2026-08-21T08:51:59.477680Z'
 ---
 # SIP-0103: Squad-Authored Manifest
 
-**Status:** Accepted (2026-08-07 — design commitment on main; implementation follows on
-a feature branch per the CLAUDE.md contributor workflow)
+**Status:** Implemented (2026-08-21, at the v1.6.0 cut — authored mode delivered and measured:
+V7 authored-mode FAY window closed amended 4/6, bar met, and the V38 comparison window
+re-exercised the full path under a second model; accepted 2026-08-07 as the design
+commitment on main per the CLAUDE.md contributor workflow)
 
 **Author:** Jason Ladd
 **Created:** 2026-08-03
