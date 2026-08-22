@@ -108,6 +108,11 @@ class _Behavior:
     final: _Step
     probe_id: str = ""
     prerequisites: tuple[_Step, ...] = field(default=())
+    #: #913: the error code the contract pins for this behavior ("" = none pinned).
+    #: When set, the frozen spine asserts `body.error?.code` — the response-field
+    #: path stops being re-invented in the fill, which is where window rolls 2/3
+    #: died (fills asserting `body.error_code` against the real `{error: {code}}`).
+    expect_error_code: str = ""
 
 
 def _fail_missing_surface(url_path: str, method: str, route_file: str, reason: str) -> None:
@@ -195,6 +200,7 @@ def _behaviors_from_probes(classified: list[tuple[str, dict]]) -> list[_Behavior
     for kind, probe in classified:
         request = probe["request"]
         expect = probe["expect"]["status"]
+        error_code = str(probe["expect"].get("error_code") or "")
         if kind == "create":
             creates_by_path[request["path"]] = probe
             label = f"{request['method']} {request['path']} -> {expect}"
@@ -216,6 +222,7 @@ def _behaviors_from_probes(classified: list[tuple[str, dict]]) -> list[_Behavior
                     expect_status=expect,
                     final=_final(probe),
                     probe_id=probe["id"],
+                    expect_error_code=error_code,
                 )
             )
         else:
@@ -235,6 +242,9 @@ def _behaviors_from_probes(classified: list[tuple[str, dict]]) -> list[_Behavior
                     final=_final(probe, param_expr="created.id"),
                     probe_id=probe["id"],
                     prerequisites=prerequisites,
+                    # A duplicate-conflict probe pins its code; a plain child success
+                    # pins none — the .get() above yields "" for it.
+                    expect_error_code=error_code,
                 )
             )
             if kind == "child":
@@ -388,6 +398,13 @@ def _shell_source(behavior: _Behavior, *, store_symbols: tuple[str, ...]) -> str
     lines += [
         f"    expect(res.status).toBe({behavior.expect_status})",
         "    const body: any = await res.json().catch(() => ({}))",
+    ]
+    if behavior.expect_error_code:
+        # #913: the envelope is frozen spine, not fill residue. The contract pins
+        # this code, the blueprint owns the shape (#795), and the field path is
+        # exactly what fills kept re-inventing (`body.error_code`, rolls 2/3/13/17).
+        lines.append(f"    expect(body.error?.code).toBe('{behavior.expect_error_code}')")
+    lines += [
         f"    {slot_begin_marker(slot_id)}",
         "    // FILL (qa): domain assertions for this behavior — response values and store",
         "    // effects beyond the declared status. `body` is the parsed response JSON.",

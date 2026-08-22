@@ -38,6 +38,7 @@ describe('scaffold: POST /api/runs/{run_id}/join', () => {
     )
     expect(res.status).toBe(409)
     const body: any = await res.json().catch(() => ({}))
+    expect(body.error?.code).toBe('duplicate_participant')
     // [scaffold-slot:begin slot-vc-probe-api-runs-join-duplicate]
     // FILL (qa): domain assertions for this behavior — response values and store
     // effects beyond the declared status. `body` is the parsed response JSON.

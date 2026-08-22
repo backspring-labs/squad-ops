@@ -20,6 +20,7 @@ describe('scaffold: POST /api/runs', () => {
     )
     expect(res.status).toBe(422)
     const body: any = await res.json().catch(() => ({}))
+    expect(body.error?.code).toBe('validation_error')
     // [scaffold-slot:begin slot-vc-probe-api-runs-rejects-blank]
     // FILL (qa): domain assertions for this behavior — response values and store
     // effects beyond the declared status. `body` is the parsed response JSON.
