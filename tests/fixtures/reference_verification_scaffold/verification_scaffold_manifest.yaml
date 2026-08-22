@@ -2,13 +2,13 @@
 # The frozen-spine record region enforcement verifies against; regenerate with
 # the generator, never hand-edit (a tampered record refuses to load).
 scaffold_manifest_version: 1
-generator_version: 5
+generator_version: 6
 stack: nextjs_ts
 interface_manifest_hash: ac1e7be378c54d5966680b85824c6f2c2e4d158eb8dec14d081209223e07053a
 criteria_pack: nextjs_ts
 expanded_tree_hash: 80e5632052b4c43ce881383bb4058b0531b0252ea688992f5d7102bb35c5f90f
-aggregate_spine_hash: e8f2a59e1e64e3b2d77dc2a2d3aae018a88ba0648393491a6094325f9fba0414
-scaffold_hash: 69d29ab91f692bab9c3f4a2bd72910f39fe27b7ecfc7d41dd99a8bfb62b186f4
+aggregate_spine_hash: 3b62a339ff2489f65285e0cc780c6fdf97cd794bbfafecf9f143621cae69b0d1
+scaffold_hash: 395a08bc5a78e2333d21c3af6b89981a9551558d191b3db1b87dc84b251ced00
 files:
 - path: __tests__/scaffold/vc-probe-api-runs.scaffold.test.ts
   content_hash: 9245b8442a684f32bfbb7605185a72274b13afa748eb02ccee80fbe559d21d31
@@ -22,16 +22,16 @@ files:
     begin_line: 23
     end_line: 27
 - path: __tests__/scaffold/vc-probe-api-runs-rejects-blank.scaffold.test.ts
-  content_hash: c51841d227904da82466e19e6344a4648acb644c248f0dd7eb7895c1b21a47a2
-  spine_hash: f30001086a79480dfd66c893e642e954ce8b6d199c44a4c3cb8687a91b7595a8
+  content_hash: 314fe36bceec5d13df33d235a0e8495525f3bdd517fab214dffda82f29882958
+  spine_hash: 5004d630e6996fe8b2d79265a1879515b8fedd88a1c9f6b9f66d2f021b0495d6
   slots:
   - slot_id: slot-vc-probe-api-runs-rejects-blank
     behavior: POST /api/runs blank required fields -> 422
     probe_id: vc-probe-api-runs-rejects-blank
     criterion_ids:
     - vc-probe-api-runs-rejects-blank
-    begin_line: 23
-    end_line: 27
+    begin_line: 24
+    end_line: 28
 - path: __tests__/scaffold/vc-probe-api-runs-join.scaffold.test.ts
   content_hash: 14f4115aad1800f4a0950a14daf4531c266467722c5ba2d4d7ed959bad19e4a6
   spine_hash: edbc25e16cbb7cde2a492d20d57df3f0fb1a17749db62ee56fb0ffe4bb8d7c60
@@ -44,16 +44,16 @@ files:
     begin_line: 33
     end_line: 37
 - path: __tests__/scaffold/vc-probe-api-runs-join-duplicate.scaffold.test.ts
-  content_hash: cb5ff626a6626db628fb89568d2e6965daafb090b3af5ab152738a21d3bc0490
-  spine_hash: b69a3a8ee4d67352b3332c63f6c28892e274bbfac1d5a8cf1f0f6e21f56c9252
+  content_hash: 281e6a9c7ee7b276d40fbbc0a3c1948539be811e3de15a93c9b59e9ed150772e
+  spine_hash: 817c40b5db71172d489dcc03fe8cf33cdf4e27c5749928f60b57ad1242d32cd1
   slots:
   - slot_id: slot-vc-probe-api-runs-join-duplicate
     behavior: POST /api/runs/{run_id}/join duplicate -> 409
     probe_id: vc-probe-api-runs-join-duplicate
     criterion_ids:
     - vc-probe-api-runs-join-duplicate
-    begin_line: 41
-    end_line: 45
+    begin_line: 42
+    end_line: 46
 - path: __tests__/scaffold/vc-probe-api-runs-leave.scaffold.test.ts
   content_hash: 84754c4f511e27029c5534f75e08a3f5d7113adf855c758ef57514d30a2dcda8
   spine_hash: c391a7da2fd66226664154805762332d6cf1d4cb5795bc2047aaceeed53aa9b8

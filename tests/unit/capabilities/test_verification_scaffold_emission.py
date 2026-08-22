@@ -114,6 +114,45 @@ class TestInventory:
         assert "__tests__/scaffold/vs-get-api-runs-run-id-not-found.scaffold.test.ts" not in names
 
 
+class TestEnvelopePinning:
+    """#913: behaviors whose contract pins an error code assert the envelope in the
+    FROZEN spine — the response-field path stops being fill residue. Window rolls
+    2/3 (and 13/17 before them) died on fills asserting `body.error_code` against
+    the real `{error: {code}}`; the shell now owns that byte."""
+
+    def test_rejection_and_duplicate_shells_pin_the_contract_code(self, emission):
+        """The bug this catches: the code the contract pins never reaching the
+        spine, leaving the field path to the fill's invention."""
+        pinned = {}
+        for f in emission.files:
+            name = f["name"].rsplit("/", 1)[-1]
+            if "rejects-blank" in name or "duplicate" in name:
+                lines = [ln.strip() for ln in f["content"].splitlines() if "body.error?.code" in ln]
+                pinned[name] = lines
+        assert len(pinned) == 2
+        for name, lines in pinned.items():
+            assert len(lines) == 1, f"{name}: expected exactly one frozen envelope assertion"
+            assert lines[0].startswith("expect(body.error?.code).toBe(")
+
+    def test_the_assertion_is_spine_not_slot(self, emission):
+        """Frozen means BEFORE the slot markers — an assertion inside the slot is
+        fill residue again, deletable by the next re-author."""
+        for f in emission.files:
+            content = f["content"]
+            if "body.error?.code" not in content:
+                continue
+            assert content.index("body.error?.code") < content.index("scaffold-slot:begin")
+
+    def test_success_shells_pin_no_envelope(self, emission):
+        """A success body has no error envelope — asserting one there would fail
+        every correct app (the false-positive direction the gate must never take)."""
+        for f in emission.files:
+            name = f["name"].rsplit("/", 1)[-1]
+            if "rejects-blank" in name or "duplicate" in name or "not-found" in name:
+                continue
+            assert "body.error" not in f["content"], name
+
+
 class TestManifestRecord:
     def test_record_carries_the_attribution_facts(self, nextjs_manifest, emission):
         record = emission.manifest
