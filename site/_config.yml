@@ -1,0 +1,38 @@
+title: Squad Ops
+description: A multi-agent framework that builds working software from a product requirement
+# `theme:` (gem) rather than `remote_theme:`. The org site uses remote_theme because
+# it builds on GitHub Pages' legacy branch source, which forbids `theme:`. This site
+# runs its own Jekyll via Actions (see .github/workflows/pages.yml), so the gem is
+# available, the build needs no network fetch, and the version is pinned in Gemfile.
+theme: just-the-docs
+
+url: https://backspring-labs.github.io
+# Project Pages site, served under /squad-ops/. If this ever moves to a custom
+# subdomain at a domain root, set baseurl to "" and add a CNAME file — nothing
+# else changes, because every internal link uses relative_url / site.baseurl.
+baseurl: "/squad-ops"
+
+nav_enabled: true
+search_enabled: true
+search:
+  heading_level: 2
+  previews: 3
+
+color_scheme: backspring
+gh_edit_link: false
+back_to_top: true
+back_to_top_text: "Back to top"
+
+aux_links:
+  "GitHub":
+    - "https://github.com/backspring-labs/squad-ops"
+  "Backspring Labs":
+    - "https://backspring-labs.github.io"
+aux_links_new_tab: true
+
+# Only this folder is published. The repo's docs/ tree is internal working
+# material (plans, retrospectives, reviews) and is deliberately not built.
+exclude:
+  - Gemfile
+  - Gemfile.lock
+  - vendor/

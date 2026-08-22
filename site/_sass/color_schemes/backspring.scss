@@ -1,0 +1,29 @@
+// Backspring Labs dark color scheme
+// Based on Just the Docs dark scheme, with Continuum/SquadOps accent colors
+
+$color-scheme: dark;
+
+// Backgrounds (Continuum palette)
+$body-background-color: #0d1117;
+$sidebar-color: #0d1117;
+$search-background-color: #161b22;
+$table-background-color: #161b22;
+$code-background-color: #161b22;
+$base-button-color: #21262d;
+$feedback-color: #161b22;
+
+// Text
+$body-heading-color: #e6edf3;
+$body-text-color: #c9d1d9;
+$nav-child-link-color: #8b949e;
+$search-result-preview-color: #8b949e;
+$code-linenumber-color: #8b949e;
+
+// Accents (Continuum blue + SquadOps indigo)
+$link-color: #58a6ff;
+$btn-primary-color: #6366f1;
+
+// Borders
+$border-color: #30363d;
+
+@import "./vendor/accessible-pygments/github-dark";
