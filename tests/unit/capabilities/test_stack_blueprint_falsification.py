@@ -67,9 +67,12 @@ was wrong.
 
 from __future__ import annotations
 
+import ast
 import dataclasses as dc
+import functools
 import json
 import pathlib
+import sys
 from contextlib import contextmanager
 
 import pytest
@@ -111,10 +114,22 @@ _DECLARED_OPTIONAL = {
     ("probe profile", "prepare_argv"): "uvicorn needs no build step before boot",
 }
 
-#: Populated by the run itself: fields whose only consumer is a runtime path, with the reads
-#: the AST search found. Reported by the summary test so the set is visible rather than
-#: implicit — the honest statement of what this pass does and does not exercise.
-_RUNTIME_ONLY_OBSERVED: dict[tuple[str, str], list[str]] = {}
+#: What the pass concluded about one declared field. Both the gate and the coverage
+#: disclosure derive their answer from ``_disposition`` rather than one of them observing a
+#: side effect of the other.
+#:
+#: There used to be a module-level dict here, written by the gate test and read by the
+#: disclosure test. That made the disclosure's result depend on whether a parametrized
+#: sibling had run **in the same process** — which under ``pytest -n auto`` is a question
+#: about xdist's work distribution, not about the code. It passed at 4 workers and failed at
+#: 20 on the same commit, so the gate's verdict tracked the machine it ran on; PR #1036
+#: tripped it by adding unrelated tests that reshuffled the split. Deriving instead of
+#: accumulating is what removes the dependency — there is no longer any state to share.
+_FALSIFIED = "FALSIFIED"  # corruption raised, or moved derived output
+_UNSET = "UNSET"  # the field is empty on this stack — a no-op to corrupt
+_NO_READER = "NO_READER"  # survives corruption AND no production read exists
+_RUNTIME_WITNESSED = "RUNTIME_WITNESSED"  # runtime-only, with a named witness test
+_RUNTIME_ONLY = "RUNTIME_ONLY"  # runtime-only reader, nothing in this file exercises it
 
 #: 2c's product: fields with NO consumer of any kind, found by this pass on 2026-08-17.
 #:
@@ -237,7 +252,26 @@ def _observe(stack_name: str) -> dict[str, str]:
 _SRC_ROOTS = ("src/squadops", "adapters", "scripts")
 
 
-def _reader_citations(field: str) -> list[str]:
+@functools.cache
+def _source_trees() -> tuple[tuple[str, ast.AST], ...]:
+    """Every production module, parsed once.
+
+    The reader search runs per declared field and the disclosure pass runs it over all of
+    them, so re-parsing the tree per field turned a 2-second test into a 27-second one. The
+    sources do not change during a run; parse them once and walk the cached trees.
+    """
+    parsed: list[tuple[str, ast.AST]] = []
+    for root in _SRC_ROOTS:
+        for path in pathlib.Path(root).rglob("*.py"):
+            try:
+                parsed.append((str(path), ast.parse(path.read_text(encoding="utf-8"))))
+            except (SyntaxError, UnicodeDecodeError):
+                continue
+    return tuple(parsed)
+
+
+@functools.cache
+def _reader_citations(field: str) -> tuple[str, ...]:
     """Every production read of ``.<field>`` anywhere in the tree.
 
     AST rather than grep: an attribute access is a read, a string containing the name is not,
@@ -252,36 +286,30 @@ def _reader_citations(field: str) -> list[str]:
     that lives beside its declaration. The probe runner reads its own profile; excluding
     ``probe_runner.py`` reported four of its live fields as decorative.
     """
-    import ast
-
     citations: list[str] = []
-    for root in _SRC_ROOTS:
-        for path in pathlib.Path(root).rglob("*.py"):
-            rel = str(path)
-            try:
-                tree = ast.parse(path.read_text(encoding="utf-8"))
-            except (SyntaxError, UnicodeDecodeError):
-                continue
-            for node in ast.walk(tree):
-                # An attribute access...
-                if isinstance(node, ast.Attribute) and node.attr == field:
-                    citations.append(f"{rel}:{node.lineno}")
-                    break
-                # ...or a string-keyed getattr, which is equally a read and which an
-                # attribute-only search misses. `qa_test.py` reads `build_support_files`
-                # exactly this way, and an earlier version of this pass reported that live
-                # field as decorative because of it.
-                if (
-                    isinstance(node, ast.Call)
-                    and isinstance(node.func, ast.Name)
-                    and node.func.id == "getattr"
-                    and len(node.args) >= 2
-                    and isinstance(node.args[1], ast.Constant)
-                    and node.args[1].value == field
-                ):
-                    citations.append(f"{rel}:{node.lineno} (getattr)")
-                    break
-    return citations
+    for rel, tree in _source_trees():
+        for node in ast.walk(tree):
+            # An attribute access...
+            if isinstance(node, ast.Attribute) and node.attr == field:
+                citations.append(f"{rel}:{node.lineno}")
+                break
+            # ...or a string-keyed getattr, which is equally a read and which an
+            # attribute-only search misses. `qa_test.py` reads `build_support_files`
+            # exactly this way, and an earlier version of this pass reported that live
+            # field as decorative because of it.
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "getattr"
+                and len(node.args) >= 2
+                and isinstance(node.args[1], ast.Constant)
+                and node.args[1].value == field
+            ):
+                citations.append(f"{rel}:{node.lineno} (getattr)")
+                break
+    # A tuple, not a list: the result is cached and shared across every caller, so a
+    # mutable return would let one caller's edit rewrite another's evidence.
+    return tuple(citations)
 
 
 def _all_field_checks() -> list[tuple[str, str, str]]:
@@ -313,6 +341,34 @@ def _classify(registry: str, stack_name: str, field: str, baseline: dict) -> str
     return "NO_OFFLINE_EFFECT"
 
 
+def _disposition(registry: str, stack_name: str, field: str, baseline: dict) -> tuple[str, ...]:
+    """One field's disposition plus the citations behind it — the pass's single verdict.
+
+    Extracted so the gate and the coverage disclosure read the same conclusion instead of the
+    second inferring it from state the first left behind. Pure: same inputs, same answer, in
+    any order and in any process.
+    """
+    outcome = _classify(registry, stack_name, field, baseline)
+    if outcome in ("RAISES", "CHANGES"):
+        return (_FALSIFIED,)
+    if outcome == "ALREADY_EMPTY":
+        return (_UNSET,)
+    # No offline consumer reacted. The field is falsifiable only at runtime, which is still a
+    # falsification — provided a reader exists. Searched, never asserted: a hand-maintained
+    # witness list is a claim the next author inherits without evidence.
+    citations = _reader_citations(field)
+    if not citations:
+        return (_NO_READER,)
+    if (registry, field) in _RUNTIME_WITNESS:
+        return (_RUNTIME_WITNESSED, *citations[:3])
+    return (_RUNTIME_ONLY, *citations[:3])
+
+
+#: This module, for the negative control below — the gate is driven through its real code
+#: path with two inputs faked, so the patches have to land where the code reads them.
+_MODULE = sys.modules[__name__]
+
+
 @pytest.fixture(scope="module")
 def baseline() -> dict:
     return {s: _observe(s) for s in _STACKS}
@@ -323,35 +379,25 @@ def test_every_declared_field_is_accounted_for(registry, stack, field, baseline)
     """The gate. A field that changes nothing, has no named runtime witness, and is not a
     recorded optional is decorative — and this is where that gets caught, at the moment it
     is added rather than after the schema has frozen around it."""
-    outcome = _classify(registry, stack, field, baseline)
-    if outcome in ("RAISES", "CHANGES"):
-        return
+    disposition = _disposition(registry, stack, field, baseline)[0]
     ref = (registry, field)
-    if outcome == "ALREADY_EMPTY":
+    if disposition == _UNSET:
         assert ref in _DECLARED_OPTIONAL or ref in _UNEVIDENCED, (
             f"{registry}.{field} is unset on {stack} with no recorded reason. Either record "
             f"why it is optional (and confirm another stack populates it), or delete it."
         )
-        return
-
-    # No offline consumer reacted. The field is falsifiable only at runtime, which is still a
-    # falsification — provided a reader exists. Searched, never asserted: a hand-maintained
-    # witness list is a claim the next author inherits without evidence.
-    citations = _reader_citations(field)
-    if not citations and ref in _DECORATIVE_FOUND:
-        return  # already found and recorded by this pass; see _DECORATIVE_FOUND
-    assert citations, (
-        f"{registry}.{field} survives corruption of both stacks with NO offline consumer and "
-        f"NO production read of `.{field}` anywhere in {list(_SRC_ROOTS)}. Per S3's exit "
-        f"criterion that is decorative — it describes a fact nothing reads. Delete it before "
-        f"the schema freezes, or wire the consumer that justifies it."
-    )
-    if ref in _RUNTIME_WITNESS:
-        return
-    # A reader exists but nothing in this file exercises it. Recorded rather than failed: the
-    # citation is real evidence, and demanding a bespoke test per field would make this pass
-    # unaffordable and therefore unrun. The gap is what _RUNTIME_WITNESS closes over time.
-    _RUNTIME_ONLY_OBSERVED.setdefault(ref, citations[:3])
+    elif disposition == _NO_READER:
+        # Already found and recorded by this pass → see _DECORATIVE_FOUND; anything else is
+        # a new decorative field, caught here rather than after the schema freezes.
+        assert ref in _DECORATIVE_FOUND, (
+            f"{registry}.{field} survives corruption of both stacks with NO offline consumer "
+            f"and NO production read of `.{field}` anywhere in {list(_SRC_ROOTS)}. Per S3's "
+            f"exit criterion that is decorative — it describes a fact nothing reads. Delete "
+            f"it before the schema freezes, or wire the consumer that justifies it."
+        )
+    # _RUNTIME_ONLY is not a failure here: the citation is real evidence, and demanding a
+    # bespoke test per field would make this pass unaffordable and therefore unrun. The
+    # disclosure test below names that set; _RUNTIME_WITNESS closes it over time.
 
 
 def test_a_declared_optional_is_populated_by_some_stack():
@@ -440,9 +486,13 @@ def test_the_pass_reports_what_it_did_not_exercise(baseline):
     pass. Saying so out loud is the difference between "every field is falsified" and "every
     field is either falsified here or has a reader I can cite" — and only the second is true.
     """
-    for registry, stack, field in _all_field_checks():
-        _classify(registry, stack, field, baseline)
-    runtime_only = sorted(f"{r}.{f}" for (r, f) in _RUNTIME_ONLY_OBSERVED)
+    runtime_only = sorted(
+        {
+            f"{registry}.{field}"
+            for registry, stack, field in _all_field_checks()
+            if _disposition(registry, stack, field, baseline)[0] == _RUNTIME_ONLY
+        }
+    )
     # Not a threshold — a disclosure. It fails only if the set becomes empty, which would mean
     # the classification silently stopped distinguishing offline from runtime falsification.
     assert runtime_only, (
@@ -451,3 +501,80 @@ def test_the_pass_reports_what_it_did_not_exercise(baseline):
         "regressed into absorbing everything as CHANGES, which is how this pass was vacuous "
         "on its first run"
     )
+
+
+def test_the_coverage_disclosure_stands_alone_in_a_fresh_process():
+    """The gate's verdict must not depend on which tests share a worker with it.
+
+    Bug caught, and it is not hypothetical. The disclosure above used to read a module-level
+    dict that only ``test_every_declared_field_is_accounted_for`` wrote to, so it passed only
+    when a parametrized sibling had run in the same process. Under ``pytest -n auto`` that is
+    xdist's scheduling decision: on one commit this suite passed at 4 workers and failed at
+    20, and CI — 2-4 cores — could not see the failure at all. A gate whose answer depends on
+    the core count of the machine running it is not a gate.
+
+    Run alone in a clean interpreter is the exact condition that failed, so that is what this
+    asserts. It costs a subprocess; a gate that silently reports on the scheduler costs more.
+    """
+    import subprocess
+    import sys
+
+    node = f"{__file__}::test_the_pass_reports_what_it_did_not_exercise"
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", node, "-q", "--no-header", "-p", "no:cacheprovider"],
+        capture_output=True,
+        text=True,
+        cwd=pathlib.Path(__file__).resolve().parents[3],
+    )
+    assert result.returncode == 0, (
+        "the coverage disclosure fails when it is the only test in the process — it is "
+        "reading state some other test leaves behind, which makes this suite's verdict a "
+        f"function of xdist's work distribution.\n{result.stdout[-2000:]}"
+    )
+
+
+@pytest.mark.parametrize(
+    ("outcome", "citations", "expected_disposition", "must_say"),
+    [
+        ("NO_OFFLINE_EFFECT", (), _NO_READER, "decorative"),
+        ("ALREADY_EMPTY", (), _UNSET, "unset"),
+    ],
+)
+def test_the_gate_rejects_an_unrecorded_field(
+    monkeypatch, baseline, outcome, citations, expected_disposition, must_say
+):
+    """The negative control for the gate's two rejecting branches.
+
+    Bug caught: both assertions can be disabled with nothing in this file failing — mutating
+    each to a no-op left the suite green. A gate nobody has watched fire is a gate nobody
+    knows is wired, and this file's whole claim is that a new decorative field fails *here*
+    rather than entering the frozen schema unnoticed.
+
+    Driven through the real ``_disposition``/gate path with the two inputs faked, because the
+    live declarations are (correctly) all accounted for — there is no genuine decorative
+    field left to trip it, which is exactly why the wiring needs its own proof.
+    """
+    registry, stack, field = "ScaffoldStack", "nextjs_ts", "check_stack"
+    monkeypatch.setattr(_MODULE, "_classify", lambda *a, **k: outcome)
+    monkeypatch.setattr(_MODULE, "_reader_citations", lambda f: citations)
+    # An identity the recorded-exemption lists do not contain — the unrecorded case.
+    monkeypatch.setattr(_MODULE, "_DECORATIVE_FOUND", {})
+    monkeypatch.setattr(_MODULE, "_DECLARED_OPTIONAL", {})
+    monkeypatch.setattr(_MODULE, "_UNEVIDENCED", {})
+
+    assert _disposition(registry, stack, field, baseline)[0] == expected_disposition
+    with pytest.raises(AssertionError) as excinfo:
+        test_every_declared_field_is_accounted_for(registry, stack, field, baseline)
+    assert must_say in str(excinfo.value)
+    assert f"{registry}.{field}" in str(excinfo.value)
+
+
+def test_the_gate_accepts_a_field_the_exemption_list_records(monkeypatch, baseline):
+    """The other half of the control: a recorded exemption must still pass, or the gate is
+    just failing everything and the test above proves nothing."""
+    registry, stack, field = "ScaffoldStack", "nextjs_ts", "check_stack"
+    monkeypatch.setattr(_MODULE, "_classify", lambda *a, **k: "NO_OFFLINE_EFFECT")
+    monkeypatch.setattr(_MODULE, "_reader_citations", lambda f: ())
+    monkeypatch.setattr(_MODULE, "_DECORATIVE_FOUND", {(registry, field): "recorded by 2c"})
+
+    test_every_declared_field_is_accounted_for(registry, stack, field, baseline)
