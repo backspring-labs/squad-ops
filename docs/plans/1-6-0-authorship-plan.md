@@ -343,7 +343,7 @@ exists and no longer describes the shipped version — the rotate-by-renaming fa
 guards its own regex. So the class is fixed historically **and** prevented going forward.
 
 The checklist still earns its place: guards cover 4g-i through 4g-iii, and **nothing enforces
-4g-iv, 4g-v or 4g-vi.** The GitHub Release in particular is what six consecutive cuts skipped,
+4g-iv, 4g-v, 4g-vi or 4g-vii.** The GitHub Release in particular is what six consecutive cuts skipped,
 and a step represented by the single word "Cut" will skip it a seventh time.
 
 | Step | Work |
@@ -354,6 +354,7 @@ and a step represented by the single word "Cut" will skip it a seventh time.
 | **4g-iv** | ROADMAP timeline entry for the release |
 | **4g-v** | **SIP-0103 status decision.** Recommended: **stays `accepted`**, with §5d's divergences standing. Main implements a corrected, narrowed version of the document — three falsified premises, one owner-ruled narrowing, **three** unimplemented dispositions — and promoting it would assert otherwise. Precedent: the 2026-08-03 audit kept four SIPs at `accepted` with gaps named. **Weigh the three on their merits, not their count** (updated 2026-08-15): §5c.3 and §3.3 are *deliberate* 1.7 deferrals with named triggers (#820, and the second stack's bend register as the evidence the schema should be written from); only §5c.5's operator-edit record is an unbuilt path rather than a scheduled one. The fourth — §5c.7's two diagnostics — closed on 2026-08-09 (`43754d6d`), which matters more than the arithmetic: it was the item §5d called the one place *"the delivered system is weaker than the ruling authorized"*, since B1 removed the mandatory manifest review citing four diagnostics of which two then existed. That argument is now fully funded |
 | **4g-vi** | `git tag v1.6.0` **and** a GitHub Release from the CHANGELOG section, marked **Latest**. The tag alone is what six cuts did |
+| **4g-vii** | **Capture the release package** — `python scripts/maintainer/build_release_package.py 1.6.0 --write --cycle <shakedown-cycle-id>`, then commit `site/content/releases/v1.6.0/`. **Last, because it reads the tag range**, so 4g-vi must have run. Screenshots (Prefect run, delivered app) go in that release's `assets/` before the run. This is capture, not query: the cycle evidence lives in a running deploy and is unrecoverable once it moves |
 
 **Standing candidate, not scheduled here** (rewritten 2026-08-15 — the original proposed
 building #789's item-3 guard, which already exists; see above): the guard chain stops at the
