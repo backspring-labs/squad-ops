@@ -293,6 +293,33 @@ class TestStartingWorkloadIndex:
         assert await ex._starting_workload_index("cyc_001", "run_002") == 0
         assert await ex._starting_workload_index("cyc_001", "run_003") == 1
 
+    async def test_retry_after_failed_run_resolves_to_the_same_position(self, mock_registry):
+        """#880 (roll 14, run_ae48ceb8d12d): a failed implementation occupied its
+        slot, so the retry indexed past the 2-entry sequence and sat queued
+        forever with no error. Typed resolution maps both runs to position 1."""
+        cycle = _make_cycle(workload_sequence=[{"type": "framing"}, {"type": "implementation"}])
+        mock_registry.get_cycle.return_value = cycle
+        mock_registry.list_runs.return_value = [
+            _make_run("run_001", 1, "completed", "framing"),
+            _make_run("run_002", 2, "failed", "implementation"),
+            _make_run("run_003", 3, "queued", "implementation"),  # the retry
+        ]
+        ex = self._bare_executor(mock_registry)
+        assert await ex._starting_workload_index("cyc_001", "run_003") == 1
+        assert await ex._starting_workload_index("cyc_001", "run_002") == 1
+        assert await ex._starting_workload_index("cyc_001", "run_001") == 0
+
+    async def test_untyped_runs_keep_the_positional_map(self, mock_registry):
+        """Legacy runs without workload_type must resolve exactly as before —
+        the typed path is additive, never a behavior change for old cycles."""
+        mock_registry.list_runs.return_value = [
+            _make_run("run_001", 1, "completed", None),
+            _make_run("run_002", 2, "failed", None),
+            _make_run("run_003", 3, "queued", None),
+        ]
+        ex = self._bare_executor(mock_registry)
+        assert await ex._starting_workload_index("cyc_001", "run_003") == 2
+
     async def test_unknown_run_defaults_to_zero(self, mock_registry):
         """A run not among the cycle's runs falls back to the start (index 0)."""
         mock_registry.list_runs.return_value = [_make_run("run_001", 1, "completed")]
@@ -429,20 +456,48 @@ class TestForwardingRebuildOnEntry:
         assert executor.execute_run.call_args_list[0][1]["forwarding_overrides"] is None
         executor._artifact_vault.list_artifacts.assert_not_awaited()
 
+    async def test_retry_forwarding_skips_the_failed_run_at_its_own_position(
+        self, executor, mock_registry
+    ):
+        """#880 refusal 2: the bare positional prior pick landed on the FAILED
+        implementation ("prior workload run … is 'failed', not completed" —
+        runtime-api 2026-08-13 00:01:11) and forwarding degraded, so the retry
+        entered without the framing's promoted plan. The prior is now the last
+        COMPLETED run at the preceding POSITION — the framing, past the failed
+        sibling."""
+        cycle = _make_cycle(workload_sequence=[{"type": "framing"}, {"type": "implementation"}])
+        framing = _make_run("run_001", 1, "completed", "framing")
+        failed_impl = _make_run("run_002", 2, "failed", "implementation")
+        mock_registry.list_runs.return_value = [
+            framing,
+            failed_impl,
+            _make_run("run_003", 3, "queued", "implementation"),
+        ]
+        executor._build_forwarding_overrides = AsyncMock(return_value={"k": "v"})
+
+        result = await executor._rebuild_forwarding_overrides_on_entry(cycle, "cyc_001", 1)
+
+        assert result == {"k": "v"}
+        prior = executor._build_forwarding_overrides.await_args.args[1]
+        assert prior.run_id == "run_001"  # the framing, not the failed impl
+
     async def test_missing_prior_run_degrades_to_no_forwarding(self, executor, mock_registry):
         # Defensive: an index pointing past the known runs (registry drift)
-        # must degrade, not IndexError inside the orchestration loop.
+        # must degrade, not IndexError inside the orchestration loop. #880: the
+        # prior is now "last COMPLETED run at the position" — a FAILED run at
+        # the prior position is exactly the no-usable-prior case, so it also
+        # pins that a failed prior never feeds forwarding (the RC-4 shape).
         cycle = _make_cycle(workload_sequence=[{"type": "framing"}, {"type": "implementation"}])
         mock_registry.get_cycle.return_value = cycle
-        run2 = _make_run("run_002", 2, "completed", "implementation")
+        run2 = _make_run("run_002", 2, "failed", "implementation")
         executor._starting_workload_index = AsyncMock(return_value=2)
         mock_registry.list_runs.return_value = [run2]
         mock_registry.get_run.return_value = run2
 
         await executor.execute_cycle("cyc_001", "run_002")
 
-        # start_index 2 on a 2-entry sequence: loop body never runs, but the
-        # rebuild guard must not blow up resolving position 1 of a 1-run list.
+        # start_index 2 on a 2-entry sequence: loop body never runs, and the
+        # rebuild finds no COMPLETED run at position 1 — degrade, no forwarding.
         executor._artifact_vault.list_artifacts.assert_not_awaited()
 
 

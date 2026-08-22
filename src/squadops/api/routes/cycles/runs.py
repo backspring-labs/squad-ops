@@ -61,11 +61,23 @@ def _resolve_retry_workload_type(cycle: Cycle, existing_runs: list[Run]) -> str 
     non_cancelled = [r for r in existing_runs if r.status != RunStatus.CANCELLED.value]
     position = len(non_cancelled)
     if position >= len(workload_sequence):
+        # #880: the overflow IS the natural retry — a failed run still occupies
+        # its slot, so a fresh attempt at the SAME position lands one past the
+        # end. Resolve to the latest non-cancelled run's own workload_type (the
+        # executor maps typed runs to their type's position, so both runs share
+        # the slot). The old error's advice was a closed loop: cancelling a
+        # terminal run is refused by design, and the run this creates would
+        # have sat queued forever regardless.
+        latest = max(non_cancelled, key=lambda r: r.run_number, default=None)
+        latest_type = getattr(latest, "workload_type", None) if latest else None
+        if latest_type:
+            return latest_type
         raise ValidationError(
             f"Cannot resolve workload_type for retry: the new run would occupy "
             f"position {position} but workload_sequence has {len(workload_sequence)} "
-            f"entries. Cancel the run being retried first, or pass workload_type "
-            f"explicitly."
+            f"entries, and the latest run carries no workload_type to re-attempt. "
+            f"Pass workload_type explicitly — or use `runs resume` to re-run the "
+            f"failed run in place from its checkpoint."
         )
     return workload_sequence[position]["type"]
 
