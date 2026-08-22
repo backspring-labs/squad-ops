@@ -778,3 +778,92 @@ class TestEvidenceGapAggregation:
         row = next(u for u in summary.unverified if u.check_id == "acceptance:import_present")
         assert row.required is False
         assert row.reason == "typed_acceptance_disabled"
+
+
+# --- #1002: inspected-set disclosure on the roll-up ---------------------------
+
+
+def _inspected(check_id: str, subject: str, count: int, ref: str = "d", **kw) -> CheckResult:
+    return CheckResult(
+        check_id=check_id,
+        status=kw.pop("status", ResultStatus.PASSED),
+        subject=subject,
+        provenance=vi.CheckProvenance(subject_ref=ref, subject_count=count),
+        **kw,
+    )
+
+
+def test_inspections_reach_the_summary_with_the_producer_that_read_them():
+    """#1002: the seam computed the inspected-set reference and the aggregation
+    dropped it, so the roll-up could not say whether a clean detector had seen
+    the offending file. Attribution matters too — an inspection with no producer
+    cannot be matched to the attempt whose emission it covered."""
+    summary = aggregate_verification(
+        [_inspected("no_self_mocking_tests", "task-qa-1", 1, ref="abc123")]
+    )
+    assert len(summary.inspections) == 1
+    i = summary.inspections[0]
+    assert (i.check_id, i.subject, i.subject_count, i.subject_ref) == (
+        "no_self_mocking_tests",
+        "task-qa-1",
+        1,
+        "abc123",
+    )
+
+
+def test_inspection_describes_the_same_attempt_the_verdict_does():
+    """#1002 + §6.5: a repaired-and-re-run check collapses to its final attempt for
+    the verdict. If the disclosure kept every attempt (or the first), the report
+    would credit one attempt and describe the inspected set of another — a record
+    that reads as evidence while pointing at the wrong round."""
+    summary = aggregate_verification(
+        [
+            _inspected("no_self_mocking_tests", "task-qa-1", 4, ref="first", status="failed"),
+            _inspected("no_self_mocking_tests", "task-qa-1", 1, ref="final"),
+        ]
+    )
+    assert summary.verdict is RunVerdict.ACCEPTED
+    assert [(i.subject_count, i.subject_ref) for i in summary.inspections] == [(1, "final")]
+
+
+def test_distinct_producers_of_one_check_each_disclose_their_own_inspection():
+    """#1002: the leading hypothesis is that each attempt inspects only its own
+    emission's files. Collapsing distinct producers under a shared check_id would
+    destroy exactly the comparison that tests it."""
+    summary = aggregate_verification(
+        [
+            _inspected("no_self_mocking_tests", "task-qa-1", 3, ref="wide"),
+            _inspected("no_self_mocking_tests", "task-qa-2", 1, ref="narrow"),
+        ]
+    )
+    assert [(i.subject, i.subject_count) for i in summary.inspections] == [
+        ("task-qa-1", 3),
+        ("task-qa-2", 1),
+    ]
+
+
+def test_a_detector_that_inspected_nothing_is_disclosed_not_dropped():
+    """#1002/#986: zero inspected files beside a passing verdict is the defect the
+    inventory exists to surface. A falsy-count guard would silently discard it and
+    leave the pass looking clean."""
+    summary = aggregate_verification([_inspected("no_stub_fallback_tests", "task-qa-1", 0)])
+    assert summary.verified == ("no_stub_fallback_tests",)
+    assert summary.inspections[0].subject_count == 0
+
+
+def test_provenance_without_an_inspected_set_is_not_reported_as_an_inspection():
+    """#1002: `tests_pass` carries exit-code provenance and inspects no file set.
+    Reporting it as an inspection would put 'inspected None files' in the record
+    and dilute the disclosure with rows that answer nothing."""
+    summary = aggregate_verification(
+        [
+            CheckResult(
+                check_id="tests_pass",
+                status=ResultStatus.PASSED,
+                subject="task-dev-1",
+                provenance=vi.CheckProvenance(exit_code=0),
+            )
+        ]
+    )
+    assert summary.verified == ("tests_pass",)
+    assert summary.inspections == ()

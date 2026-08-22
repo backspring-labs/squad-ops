@@ -419,3 +419,128 @@ def test_typed_row_threads_evidence_gap():
     assert gap_row.evidence_gap is True
     plain_row = next(r for r in rows if r.check_id == "acceptance:endpoint_defined")
     assert plain_row.evidence_gap is False
+
+
+# --- #1002: the inspected-set reference survives normalization -----------------
+
+
+def test_inspected_set_becomes_a_bounded_digest_and_count():
+    """#1002: the detector's `inspected` inventory died at this seam, so a clean
+    verdict and a detector that never received the file were the same record.
+    The row must arrive carrying how many files were read and which set."""
+    import hashlib
+
+    rows = normalize_task_checks(
+        {
+            "validation_result": {
+                "checks": [
+                    {
+                        "check": "no_self_mocking_tests",
+                        "passed": True,
+                        "inspected": ["__tests__/ui-flows.test.ts", "__tests__/api.test.ts"],
+                    }
+                ]
+            }
+        },
+        subject="task-qa-1",
+    )
+    prov = _by_id(rows)["no_self_mocking_tests"].provenance
+    assert prov is not None
+    assert prov.subject_count == 2
+    expected = hashlib.sha256(b"__tests__/api.test.ts\n__tests__/ui-flows.test.ts").hexdigest()
+    assert prov.subject_ref == expected
+
+
+def test_inspected_digest_identifies_the_set_not_the_traversal_order():
+    """#1002: the disclosure exists to say whether two attempts read the SAME files.
+    An order- or duplicate-sensitive digest answers a different question — two
+    attempts over one identical file set would compare unequal and read as a
+    scope change that never happened."""
+    a, b = (
+        normalize_task_checks(
+            {"validation_result": {"checks": [{"check": "c", "passed": True, "inspected": paths}]}}
+        )[0].provenance
+        for paths in (["b.ts", "a.ts", "b.ts"], ["a.ts", "b.ts"])
+    )
+    assert a.subject_ref == b.subject_ref
+    assert a.subject_count == b.subject_count == 2
+
+
+@pytest.mark.parametrize(
+    "row,expected_count",
+    [
+        ({"check": "c", "passed": True, "inspected": []}, 0),
+        ({"check": "c", "passed": True, "inspected": ["only.ts"]}, 1),
+        # Non-string members are not paths; counting them would inflate the
+        # inventory and mask an empty one.
+        ({"check": "c", "passed": True, "inspected": ["a.ts", None, "", 7]}, 1),
+    ],
+)
+def test_inspected_counts_only_real_paths_and_zero_survives(row, expected_count):
+    """#1002: an empty inventory beside an executed detector is the strongest form
+    of the signal (#986's whole point). Dropping it as 'nothing to record' — or
+    padding it with junk members — erases exactly the case worth catching."""
+    prov = normalize_task_checks({"validation_result": {"checks": [row]}})[0].provenance
+    assert prov is not None
+    assert prov.subject_count == expected_count
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        {"check": "c", "passed": True},
+        {"check": "c", "passed": True, "inspected": "not-a-list"},
+        {"check": "c", "passed": True, "inspected": None},
+    ],
+)
+def test_producer_that_declares_no_inspected_set_gets_no_inspection_provenance(row):
+    """#1002: absent (or malformed) means 'this producer declares nothing', which
+    must not be recorded as 'inspected 0 files' — that would invent the very
+    defect signal the field exists to report."""
+    prov = normalize_task_checks({"validation_result": {"checks": [row]}})[0].provenance
+    assert prov is None or prov.subject_count is None
+
+
+def test_skipped_detector_still_reports_what_it_inspected():
+    """#1002: a not-executed detector that nonetheless declares an empty inventory
+    is the diagnosis, not noise — the reason says 'skipped', the count says the
+    subject set was empty. Attaching provenance only on the executed path would
+    lose it for the case most likely to need it."""
+    rows = normalize_task_checks(
+        {
+            "validation_result": {
+                "checks": [
+                    {
+                        "check": "no_self_mocking_tests",
+                        "passed": True,
+                        "executed": False,
+                        "reason": NotExecutedReason.MISSING_TOOLING,
+                        "inspected": [],
+                    }
+                ]
+            }
+        }
+    )
+    row = rows[0]
+    assert row.status == ResultStatus.SKIPPED
+    assert row.reason == NotExecutedReason.MISSING_TOOLING
+    assert row.provenance.subject_count == 0
+
+
+def test_typed_acceptance_row_carries_its_inspected_set_too():
+    """#1002: the two producer shapes land in the same `checks` list. Wiring only
+    the boolean branch would make the disclosure silently stack-dependent."""
+    rows = normalize_task_checks(
+        {
+            "validation_result": {
+                "checks": [
+                    {
+                        "check": "acceptance:import_present",
+                        "status": "passed",
+                        "inspected": ["app/api/runs/route.ts"],
+                    }
+                ]
+            }
+        }
+    )
+    assert rows[0].provenance.subject_count == 1

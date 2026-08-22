@@ -37,6 +37,7 @@ from squadops.cycles.models import (
 )
 from squadops.cycles.pulse_models import PulseVerificationRecord
 from squadops.cycles.verification_integrity import (
+    CheckInspection,
     FailedCheck,
     RunVerdict,
     RunVerificationSummary,
@@ -648,6 +649,18 @@ def _verification_summary_to_dict(summary: RunVerificationSummary) -> dict:
         # Postgres (rather than the in-memory summary) undercounted (#500).
         "criteria_verified": list(summary.criteria_verified),
         "criteria_total": list(summary.criteria_total),
+        # #1002: the bounded inspected-set references. Stored so the question
+        # "did this detector ever see the file?" is answerable from any run
+        # after the fact — which was the whole point of computing it.
+        "inspections": [
+            {
+                "check_id": i.check_id,
+                "subject": i.subject,
+                "subject_ref": i.subject_ref,
+                "subject_count": i.subject_count,
+            }
+            for i in summary.inspections
+        ],
     }
 
 
@@ -675,4 +688,13 @@ def _verification_summary_from_dict(d: dict) -> RunVerificationSummary:
         passed_count=int(d.get("passed_count", 0)),
         criteria_verified=tuple(d.get("criteria_verified", [])),
         criteria_total=tuple(d.get("criteria_total", [])),
+        inspections=tuple(
+            CheckInspection(
+                check_id=i["check_id"],
+                subject=i.get("subject"),
+                subject_ref=i.get("subject_ref"),
+                subject_count=(None if i.get("subject_count") is None else int(i["subject_count"])),
+            )
+            for i in d.get("inspections", [])
+        ),
     )
