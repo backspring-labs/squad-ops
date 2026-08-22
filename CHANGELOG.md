@@ -5,10 +5,43 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
-In-flight **1.6.1** — the Authorship release's first patch batch, shakedown-gated per
-the 1.4.x pattern: #1014 (emission-side ownership veto — the #884 completion), #1011 (repair
-clamp parity), and the #1012 retest-evidence code read (read before fixing; escalates
-to 1.7 if structural).
+In-flight **1.6.2** — the yield batch per `docs/plans/issue-sweep-2026-08-21.md`, reordered
+by the validation night's evidence: #1029 success-body shape pinning (the top lever — the
+green roll's entire correction budget was this class), #1030 re-roll default, #972 lint-gate
+silent skip, #880 retry-by-construction, #1031 authoring primer, #1002 detector provenance;
+larger design items (#1015 repair focus, #1022 additive containment, #761, #1021's read)
+follow as they clear design.
+
+## [1.6.1] — 2026-08-22
+
+The correction-loop and framing-information patch line — six fixes, every one earned by the
+V38 window's banked evidence, each validated live before the cut.
+
+**Correction-loop integrity:**
+- #1017 — a failed retest's `test_report.md` persists (evidence only; workspace files never
+  stored, protecting the rejected-candidate exclusion). Four reports banked on validation
+  night; every triage instant.
+- #1014 — emission-side ownership veto: a foreign-role repair cannot land the failed task's
+  own artifacts (the #884 completion; fired live on its first shakedown, killing exactly the
+  slot-6 incident class).
+- #1011 — the registry completion clamp rides the base chat path; observed binding at
+  exactly 8,192 on two live repairs.
+
+**Framing information:**
+- #1013 — manifest↔plan consistency + completeness gate at plan validation, with the
+  per-stack `skeleton_pins_success_status` fact at the S1 seam and the rule taught in the
+  authoring-rules asset (v4). Caught a real contradiction on the first live framing it saw.
+- #795 — error-envelope authority settled: nextjs unified on `message` (generator v5),
+  root-contradicting `error_contract.shape` declarations rejected at M2, taught in the
+  manifest authoring rules (v2).
+- #913 — error envelope pinned in the frozen shell spine (generator v6); sandbox-proven
+  against banked artifacts: no false rejection on a green app, exactly the pinned shells
+  fail on a mutated envelope.
+
+**Cut evidence:** red confirmation shakedown (correction paths exercised organically) +
+full green roll on the integrated deploy (`cyc_3095fe4bdb83`: accepted 23/23, boot-audit
+PASS, three honest qa-side repairs on the one deliberately deferred class). Filed at the
+cut: #1029, #1030, #1031.
 
 ## [1.6.0] — 2026-08-21
 

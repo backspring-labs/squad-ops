@@ -22,7 +22,10 @@ Each even-minor consumer sits strictly behind the release that earns its trust: 
 
 ## Release Timeline
 
-### v1.6.0 (2026-08-21) — Current — the Authorship release
+### v1.6.1 (2026-08-22) — Current — the correction-loop and framing-information patch line
+Six fixes in one line, every one earned by the V38 window's evidence and validated live before the cut. **Correction-loop integrity:** a failed retest's `test_report.md` now persists (#1017 — four banked reports made every triage of the validation night instant), a foreign-role repair can no longer land the failed task's own artifacts (#1014, the emission-side completion of #884), and the registry completion clamp rides the base chat path (#1011 — observed BINDING at exactly 8,192 twice). **Framing information:** the manifest↔plan consistency + completeness gate (#1013 — caught a real contradiction on the first live framing it ever saw, at the cost of a free re-roll instead of a dead roll), the error-envelope authority settled with root-contradicting shape declarations unrepresentable at M2 (#795, generator v5), and the error envelope pinned in the frozen shell spine (#913, generator v6 — sandbox-proven to have teeth and only teeth). **Cut evidence:** a red confirmation shakedown that organically exercised the correction-path fixes, then a full green roll on the integrated deploy (`cyc_3095fe4bdb83`: accepted 23/23, boot audit PASS, three honest qa-side repair rounds on the one class deliberately deferred). Filed at the cut: #1029 (success-body shape pinning — the deferred class, now the top yield lever), #1030 (`framing_max_rerolls` defaults the #522 re-roll promise off; first live #1013 rejection exposed it), #1031 (manifest-authoring design primer). Next: the 1.6.2 yield batch per `docs/plans/issue-sweep-2026-08-21.md`.
+
+### v1.6.0 (2026-08-21) — the Authorship release
 The rung above 1.4: from *filling* a given interface design to **authoring the design from the PRD**, under the same gate discipline. Dual-lane headlines: **SIP-0103 Squad-Authored Manifest** (Lane M — the authoring stage with schema/winnability gates in-cycle, the question-gated manifest review, revision loop, and authoring provenance; **implemented at this cut**) and **Generalized Build Capability** (Lane S — the five per-stack surfaces collapsed into a single `ScaffoldStack` registration and a second real stack, `nextjs_ts`, landed 2026-08-10; **SIP-0105 Stack Blueprint Contract accepted 2026-08-17 with its unbuilt parts named** — it stays accepted, SIP-0102-at-1.4 precedent). Release gate — **authored-mode Functional App Yield repeatably > 0 — MET and banked as the authored-mode baseline**: the pre-registered V7 window closed **amended 4/6 functional (dual record: 3/6 under the pre-registered instrument / 4/6 corrected, #1004/#1005, both always reported)**, zero manual interventions, frozen deploy — and the follow-on V38 comparison window re-exercised the full authored path under a second model (qwen3.8:27b) at **4/6**, equal yield at roughly half the wall-clock, with its §6 synthesis recording the failure-class shift (framing-rooted, contract-violating deliveries — the classes no current gate checks). Records: `docs/plans/1-6-0-v7-fay-window-record.md`, `docs/plans/1-6-0-v38-window-record.md`. **Cut basis:** the deploy the windows validated IS the cut — zero code drift between frozen deploy `f7a5e0a2` and main at the cut (docs only), full regression 7,615 passed, Guard 1a/1b architecture+equivalence tests green. Riding: SIP-0093 completion (§5.8 merge rules, shift-left revision), M-ladder fixes through #811/#812, Track S S1–S2. **Deliberately not in this cut (post-window queue → 1.6.1+):** #1014 emission-side ownership veto, #1011 repair clamp parity, the #1012 retest-evidence code read (byte-verified reproducer banked), #1013 manifest↔plan consistency gate, #1015 repair-loop focus, compile-credit bookkeeping. Plan: `docs/plans/1-6-0-authorship-plan.md`.
 
 ### v1.5.0 (2026-08-07) — Finish the Promises, Extract the Proven (stabilization)
@@ -503,9 +506,9 @@ The following areas are identified for future work but do not block 1.0 readines
 
 ## Stats
 
-*As of 2026-08-21 (v1.6.0):*
+*As of 2026-08-22 (v1.6.1):*
 
-- **Framework version**: 1.6.0
+- **Framework version**: 1.6.1
 - **SIPs**: 65 implemented, 9 accepted (SIP-0088, 0090–0093, 0101, 0102, 0104, 0105), 20 deprecated (registry)
 - **Tests**: 7,600+ passing in the regression suite
 - **Python source**: ~61,000 lines (src + adapters; ~88,000 test lines, ~119,000 doc lines)
