@@ -180,6 +180,13 @@ class CheckProvenance:
     executor_ref: str | None = None  # where it ran
     exit_code: int | None = None  # command-backed checks
     output_digest: str | None = None  # bounded digest, never the raw output
+    # #1002: cardinality of the subject set behind ``subject_ref`` — how many files a
+    # file-set-scoped check actually read. The digest alone proves two attempts looked
+    # at different sets; the count says *how* they differ without storing the paths,
+    # which is what keeps this inside §7 (bounded identifiers and hashes, never payload
+    # copies). ``0`` is a real value and the most diagnostic one: a detector that
+    # inspected nothing is indistinguishable from a clean one on its verdict alone.
+    subject_count: int | None = None
 
 
 @dataclass(frozen=True)
@@ -254,6 +261,36 @@ class FailedCheck:
 
 
 @dataclass(frozen=True)
+class CheckInspection:
+    """What one check actually read, as a bounded reference (§7, #1002).
+
+    A detector reports its verdict *and* the file set it inspected, so a clean
+    verdict can be told apart from a detector that never saw the offending file.
+    The producer's raw path list dies at the normalization boundary by design —
+    §7 admits identifiers, hashes, and counts, never payload copies — so what
+    survives to the roll-up is the pair that answers the question: a digest over
+    the inspected set (two attempts inspecting the same files share it) and its
+    cardinality.
+
+    The motivating event (#1002): a file carrying six ``vi.spyOn`` fetch stubs
+    sat in the workspace of a completed repair round, the deployed detector flags
+    that file when handed it directly, and ``no_self_mocking_tests`` still reported
+    clean across every attempt. Nothing in the record could say whether the
+    detector examined the file and disagreed, or never received it. These two
+    fields decide that from any stored run.
+
+    ``subject`` is the producing plan-task id (``CheckResult.subject``), so
+    inspections stay attributable per producer; ``None`` for un-identified
+    producers, exactly as on the result itself.
+    """
+
+    check_id: str
+    subject: str | None
+    subject_ref: str | None
+    subject_count: int | None
+
+
+@dataclass(frozen=True)
 class RunVerificationSummary:
     """Per-run verification roll-up — the honest evidence contract (§6.2, §10).
 
@@ -280,6 +317,12 @@ class RunVerificationSummary:
     # ``unverified`` entries always had. Default-empty so pre-#500 stored
     # summaries reconstruct unchanged.
     failed_detail: tuple[FailedCheck, ...] = ()
+    # #1002: what the file-set-scoped checks actually read — one bounded entry per
+    # (check_id, subject) that declared an inspected set, after §6.5 resolution, so
+    # the disclosure describes the same attempt the verdict does. This is still
+    # "references only": a digest and a count, never the paths. Default-empty, so
+    # producers that declare nothing and pre-#1002 stored summaries are unchanged.
+    inspections: tuple[CheckInspection, ...] = ()
 
     @property
     def pass_rate(self) -> float:
@@ -562,6 +605,7 @@ def aggregate_verification(
     failed: list[str] = []
     failed_detail: list[FailedCheck] = []
     unverified: list[UnverifiedCheck] = []
+    inspections: list[CheckInspection] = []
     seen_ids: set[str] = set()
     # SIP-0098 98.4: contract-criterion coverage, keyed on CheckResult.criterion_id.
     # A criterion is credited only if it executed-and-passed AND never went adverse.
@@ -573,6 +617,18 @@ def aggregate_verification(
     for r in _resolve_final_state(results):
         seen_ids.add(r.check_id)
         family = classify(r)
+        # #1002: carry the bounded inspected-set reference through to the roll-up.
+        # Recorded for every family — a NOT-EXECUTED detector that still reports an
+        # empty inspected set is precisely the case the disclosure exists to name.
+        if r.provenance is not None and r.provenance.subject_count is not None:
+            inspections.append(
+                CheckInspection(
+                    check_id=r.check_id,
+                    subject=r.subject,
+                    subject_ref=r.provenance.subject_ref,
+                    subject_count=r.provenance.subject_count,
+                )
+            )
         if family is EvidenceFamily.EXECUTED_PASSED:
             verified.append(r.check_id)
         elif family is EvidenceFamily.EXECUTED_FAILED:
@@ -646,6 +702,7 @@ def aggregate_verification(
         criteria_verified=tuple(sorted(criteria_passed - criteria_adverse)),
         criteria_total=tuple(sorted(set(contract_criteria) | criteria_passed | criteria_adverse)),
         failed_detail=tuple(failed_detail),
+        inspections=tuple(inspections),
     )
 
 

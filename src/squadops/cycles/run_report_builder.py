@@ -170,6 +170,20 @@ def _build_verification_lines(summary: RunVerificationSummary) -> list[str]:
         for u in summary.unverified:
             tag = " [required]" if u.required else ""
             lines.append(f"- **{u.check_id}**: {u.reason}{tag}")
+    if summary.inspections:
+        # #1002: a clean detector verdict and a detector that never received the
+        # file are the same line in this report without these counts. `cyc_6495d9870587`
+        # carried a flaggable self-mocking file through three attempts with
+        # `no_self_mocking_tests` reporting clean each time, and nothing recorded
+        # could say which of the two had happened.
+        lines.append("")
+        lines.append("### Inspected subjects")
+        for i in summary.inspections:
+            n = i.subject_count
+            files = "1 file" if n == 1 else f"{n} files"
+            producer = f" (task {i.subject})" if i.subject else ""
+            ref = f" — set {i.subject_ref[:12]}" if i.subject_ref else ""
+            lines.append(f"- **{i.check_id}**{producer}: inspected {files}{ref}")
     if summary.required_unmet:
         lines.append("")
         lines.append(

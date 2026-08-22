@@ -1007,3 +1007,80 @@ class TestGateWaiverSQL:
         assert run.gate_decisions[0].waiver_reason == "node absent"
         assert run.gate_decisions[1].waived_checks == ()
         assert run.gate_decisions[1].waiver_reason is None
+
+
+class TestInspectionSerialization:
+    """#1002: the inspected-set reference must survive the Postgres round-trip.
+
+    Bug caught: the seam computes what each detector read, the aggregation carries
+    it, and an un-serialized field would drop it at the last hop — leaving the
+    stored run exactly as mute about `cyc_6495d9870587`'s never-flagged
+    self-mocking file as it was before any of it was built.
+    """
+
+    def _summary(self):
+        from squadops.cycles.verification_integrity import (
+            CheckProvenance,
+            CheckResult,
+            aggregate_verification,
+        )
+
+        return aggregate_verification(
+            [
+                CheckResult(
+                    check_id="no_self_mocking_tests",
+                    status="passed",
+                    subject="task-qa-3",
+                    provenance=CheckProvenance(subject_ref="a" * 64, subject_count=1),
+                ),
+                CheckResult(
+                    check_id="no_stub_fallback_tests",
+                    status="passed",
+                    subject="task-qa-3",
+                    provenance=CheckProvenance(subject_ref="b" * 64, subject_count=0),
+                ),
+            ]
+        )
+
+    def test_round_trip_preserves_every_inspection_field(self):
+        from adapters.cycles.postgres_cycle_registry import (
+            _verification_summary_from_dict,
+            _verification_summary_to_dict,
+        )
+
+        summary = self._summary()
+        rebuilt = _verification_summary_from_dict(
+            json.loads(json.dumps(_verification_summary_to_dict(summary)))
+        )
+
+        assert rebuilt.inspections == summary.inspections
+        assert [(i.check_id, i.subject, i.subject_count) for i in rebuilt.inspections] == [
+            ("no_self_mocking_tests", "task-qa-3", 1),
+            ("no_stub_fallback_tests", "task-qa-3", 0),
+        ]
+        assert rebuilt.inspections[0].subject_ref == "a" * 64
+
+    def test_serialized_inspections_are_json_primitives(self):
+        from adapters.cycles.postgres_cycle_registry import _verification_summary_to_dict
+
+        stored = json.loads(json.dumps(_verification_summary_to_dict(self._summary())))
+        assert stored["inspections"][1] == {
+            "check_id": "no_stub_fallback_tests",
+            "subject": "task-qa-3",
+            "subject_ref": "b" * 64,
+            "subject_count": 0,
+        }
+
+    def test_pre_1002_stored_dict_reconstructs_with_no_inspections(self):
+        """A summary written before this field existed must still load — and must
+        not invent an inspection, which would read as a detector inventory that
+        was never recorded."""
+        from adapters.cycles.postgres_cycle_registry import (
+            _verification_summary_from_dict,
+            _verification_summary_to_dict,
+        )
+
+        stored = _verification_summary_to_dict(self._summary())
+        stored.pop("inspections")
+
+        assert _verification_summary_from_dict(stored).inspections == ()

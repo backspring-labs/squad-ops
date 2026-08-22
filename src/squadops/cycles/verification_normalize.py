@@ -25,6 +25,7 @@ executor at the dispatch seam):
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 from collections.abc import Mapping
 from typing import Any
 
@@ -107,6 +108,7 @@ def normalize_task_checks(
                     # stamped by the typed-acceptance seam; drives the
                     # evaluator_gap disclosure and contract-bound requiredness.
                     evidence_gap=bool(row.get("evidence_gap", False)),
+                    provenance=_inspection_provenance(row),
                 )
             )
         else:
@@ -124,6 +126,7 @@ def normalize_task_checks(
 
 def _from_passed_row(cid: str, row: Mapping[str, Any]) -> CheckResult:
     """Normalize a check row that carries a boolean ``passed`` (no ``status``)."""
+    provenance = _inspection_provenance(row)
     if row.get("executed") is False:
         # Honor an explicit §7 not-executed reason when the producer supplies one
         # (e.g. frontend_build skipped for missing_tooling, #407); default to
@@ -132,9 +135,36 @@ def _from_passed_row(cid: str, row: Mapping[str, Any]) -> CheckResult:
             check_id=cid,
             status=ResultStatus.SKIPPED,
             reason=_str_or_none(row.get("reason")) or NotExecutedReason.SUBJECT_MISSING,
+            provenance=provenance,
         )
     status = ResultStatus.PASSED if row.get("passed") else ResultStatus.FAILED
-    return CheckResult(check_id=cid, status=status)
+    return CheckResult(check_id=cid, status=status, provenance=provenance)
+
+
+def _inspection_provenance(row: Mapping[str, Any]) -> CheckProvenance | None:
+    """Bounded provenance for a detector row declaring what it read (#1002, §7).
+
+    ``inspected`` — the file set a detector actually examined (#986) — is a payload
+    list, and §7 admits only identifiers, hashes, counts and exit metadata onto
+    ``CheckProvenance``. So the boundedness rule is applied *here*, at the producer
+    adapter that owns the shape translation, rather than asking every producer to
+    pre-digest: the list becomes a digest over its deduplicated, sorted members plus
+    that set's cardinality.
+
+    Sorted and deduplicated so the digest identifies the *set*, not the traversal
+    order — two attempts that read the same files must compare equal, or the
+    disclosure answers a different question than the one asked.
+
+    An absent ``inspected`` key returns ``None`` (this producer declares nothing);
+    an **empty** list does not — a detector that inspected zero files is the
+    strongest form of the #1002 signal and must survive to the record.
+    """
+    inspected = row.get("inspected")
+    if not isinstance(inspected, (list, tuple)):
+        return None
+    paths = sorted({p for p in inspected if isinstance(p, str) and p})
+    digest = hashlib.sha256("\n".join(paths).encode("utf-8")).hexdigest()
+    return CheckProvenance(subject_ref=digest, subject_count=len(paths))
 
 
 def _tests_pass_from_result(tr: Mapping[str, Any], *, is_stub: bool) -> CheckResult:

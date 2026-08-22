@@ -139,3 +139,45 @@ class TestFailureReasonLine:
 
         report = build_run_report("cyc_001", "run_001", self._run(None), "FAILED")
         assert "Failure Reason" not in report
+
+
+class TestInspectedSubjectsSection:
+    """#1002: the report is where a human reads a run's evidence. Without these
+    counts, 'no_self_mocking_tests: verified' looks the same whether the detector
+    read the offending file and disagreed or never received it — the exact
+    ambiguity that made `cyc_6495d9870587` unresolvable."""
+
+    @staticmethod
+    def _lines(*results):
+        from squadops.cycles.run_report_builder import _build_verification_lines
+
+        return "\n".join(_build_verification_lines(aggregate_verification(list(results))))
+
+    @staticmethod
+    def _result(check_id, subject, count, ref="c" * 64):
+        from squadops.cycles.verification_integrity import CheckProvenance
+
+        return CheckResult(
+            check_id=check_id,
+            status=ResultStatus.PASSED,
+            subject=subject,
+            provenance=CheckProvenance(subject_ref=ref, subject_count=count),
+        )
+
+    def test_an_empty_inventory_is_readable_as_such(self):
+        text = self._lines(self._result("no_self_mocking_tests", "task-qa-3", 0))
+        assert "### Inspected subjects" in text
+        assert "**no_self_mocking_tests** (task task-qa-3): inspected 0 files" in text
+        assert "set cccccccccccc" in text  # the set reference, truncated, not the paths
+
+    def test_single_file_reads_as_one_file(self):
+        """A bare '1 files' is the kind of line a reader skims past; the count is
+        the whole signal, so it has to read cleanly."""
+        text = self._lines(self._result("no_self_mocking_tests", "task-qa-3", 1))
+        assert "inspected 1 file —" in text
+
+    def test_section_absent_when_no_producer_declared_an_inventory(self):
+        """Runs whose detectors declare nothing must not grow an empty heading —
+        a section present with no rows implies the inventory was collected."""
+        text = self._lines(CheckResult(check_id="tests_pass", status=ResultStatus.PASSED))
+        assert "Inspected subjects" not in text
