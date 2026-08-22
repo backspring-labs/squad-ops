@@ -1,0 +1,1241 @@
+version: 1.6.0
+tag: v1.6.0
+previous_tag: v1.5.0
+date: '2026-08-21'
+commit: cb63ae76c3be36a3dba6987b4de18d746c8ef25f
+narrative: 'In-flight **1.6 — the Authorship release**. The rung above 1.4: from *filling*
+  a given
+
+  interface design to **authoring the design from the PRD**. Lane M is SIP-0103
+
+  (Squad-Authored Manifest, accepted 2026-08-07); Lane S is Generalized Build Capability,
+
+  whose Stack Blueprint SIP is deliberately held until a second real stack exists.
+
+
+  Landed so far, gates before author: the queue-front fixes (#762 bind-mode preflight,
+
+  #766 Langfuse prompt linkage, #770 SIP promotion), then the M-ladder — M0a contract
+
+  derivation pinned to the deployed reference pair (#777), M0b derive-at-seed when
+  a cycle
+
+  seeds a manifest but no contract (#779), M3 winnability gate (#781), M2 schema gate
+  and
+
+  the `decisions[]` judgment record (#783), M6 authoring failure taxonomy (#785),
+  and **M1
+
+  the authoring stage itself (#791)** — a dedicated `development.author_manifest`
+  framing
+
+  step that revises against the gates, replacing the ungated proposer-side emission
+  it
+
+  relocates, and **#796** — the fix V4 roll 1 exposed: an authored manifest now derives
+  and
+
+  pins its contract mid-framing, so the plan authors bind to the design their own
+  squad just
+
+  wrote instead of inventing paths, and every contract-gated net engages. M4 (the
+  human
+
+  manifest gate, narrowed to question-gated review — #807: the gate stops only when
+  the
+
+  design declares an unresolved decision, and the question itself is what the operator
+  is
+
+  shown; a design that asks nothing records a distinguishable system approval and
+  proceeds) and **M5 authoring provenance (#803)** —
+
+  a system-owned block recording mode, cycle, task, attempt count and the *classified*
+  reason
+
+  for each revision, excluded from the manifest''s canonical projection so recording
+  how a
+
+  design was written can never move the hash its contract binds.
+
+  **#811** closes the revision loop: a design question the gate asks can now be *answered*
+  —
+
+  `RETURNED_FOR_REVISION` re-executes framing with the notes and the prior manifest
+  as
+
+  authoring context, bounded by `manifest_max_attempts`, instead of stopping the sequence
+  for a
+
+  manual retry run. It **restores the prefix the note does not invalidate** via SIP-0101''s
+
+  checkpoint translation — enabled by framing task ids becoming deterministic in the
+  same
+
+  change — and re-runs from the technical design, so the design answers the note rather
+  than
+
+  describing an interface the revised manifest no longer has.
+
+  **#812** makes a gate decision say who made it. `decided_by` was a hardcoded `"system"`
+  with
+
+  a TODO beside it, so all 140 human approvals in the project''s history carried the
+  word that
+
+  means *no human was involved* — in the same namespace the machine paths use. It
+  now composes
+
+  `{actor}:{principal}` from the request identity, and an agent can declare itself
+
+  (`--as-agent`) since a token cannot tell.
+
+  **B1 (#809)** closes the one item whose omission would have been permanent: rejections
+  are
+
+  now classified at the moment they happen — plan-validation by producing validator,
+  authoring
+
+  by M6 class — so the pre-memory recurrence baseline Cross-Cycle Memory will be measured
+
+  against is capturable. Read by nothing in 1.6, deliberately.
+
+  **Track S opens with S1**: the five per-stack facts — expander, fill slots, QA namespace,
+
+  harness boundary, check-stack vocabulary — collapse from four module-level dicts
+  plus one
+
+  inline answer into a single `ScaffoldStack` registration. Pure refactor; the reference
+
+  manifest and contract hashes are unmoved. It removes a silent-omission trap: `fill_slot_paths`
+
+  guarded on whether a stack was *registered* and then returned FastAPI''s slot map
+  to whoever
+
+  asked, so a second stack would have inherited `backend/routes.py` with nothing objecting.
+
+  Plan: `docs/plans/1-6-0-authorship-plan.md`.
+
+
+  Closed out 2026-08-21 at the cut. Later stages beyond the narrative above: Stage
+  2g
+
+  rewrote the Stack Blueprint Contract against main and it was **accepted 2026-08-17
+  with
+
+  its unbuilt parts named (SIP-0105)**; SIP-0104''s deterministic verification scaffolding
+
+  carried both measurement windows. **Release gate MET**: the pre-registered V7
+
+  authored-mode FAY window closed **amended 4/6 functional** (dual record 3/6 pre-registered
+
+  instrument / 4/6 corrected, #1004/#1005, both always reported), zero manual interventions;
+
+  the V38 model-comparison window (qwen3.8:27b) re-exercised the full authored path
+  at
+
+  **4/6, roughly half the wall-clock**, and its §6 synthesis records the failure-class
+
+  shift toward framing-rooted contract violations. **Cut basis:** zero code drift
+  between
+
+  the window-validated frozen deploy `f7a5e0a2` and main (docs only); full regression
+  7,615
+
+  passed; Guard 1a/1b green. SIP-0103 promoted to implemented at the cut. Post-window
+
+  queue deferred to 1.6.1+: #1011, #1012 (byte-verified reproducer banked), #1013,
+  #1014,
+
+  #1015, compile-credit bookkeeping.'
+pull_requests:
+- number: 1016
+  title: 'chore(release): v1.6.0 — the Authorship release'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-21'
+- number: 1010
+  title: 'docs: V38 model-comparison window record — closed at 4/6, synthesis vs arm
+    A'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-21'
+- number: 1009
+  title: 'docs(v7): the V7 FAY window record — closed, amended 4/6, bar met'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-20'
+- number: 1008
+  title: 'fix(harness): V38 shakedown items — qwen3.8 registry clamp parity + bounded
+    JSON re-ask'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-20'
+- number: 1007
+  title: 'docs(v38): ruling (a) — stack comparison, both deltas named; preconditions
+    2.2/2.3 MET'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-20'
+- number: 1006
+  title: 'feat(profiles): full-38 comparison arm + V38 model-comparison pre-registration'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-20'
+- number: 1005
+  title: 'fix(audit): reconstruct concatenated UI paths — false PAGE_NOT_API failed
+    the V7 deciding roll (#1004) [OWNER RULING]'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1004
+  merged_at: '2026-08-20'
+- number: 1003
+  title: 'docs(sip): embodiment — bind execution surface to ACP where offered'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-19'
+- number: 1001
+  title: 'fix(rollup): normalizer reads the authenticity row''s own verdict (#1000)
+    [RESET-CLASS / POST-WINDOW]'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1000
+  merged_at: '2026-08-19'
+- number: 997
+  title: 'fix(authoring): teach the server-component prerender constraint (#996) [POST-WINDOW]'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 996
+  merged_at: '2026-08-19'
+- number: 993
+  title: 'docs(sip): propose Agent Embodiment Runtime (2.2-era)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-19'
+- number: 992
+  title: 'docs(v7): freeze the deploy, close the preconditions, open the window'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-19'
+- number: 991
+  title: 'fix(routing): a suite that never invoked the app is the suite''s defect
+    (#988)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 988
+  merged_at: '2026-08-18'
+- number: 990
+  title: 'fix(scaffold): accept the language-prefixed fill fence, and record it (#987)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 987
+  merged_at: '2026-08-18'
+- number: 989
+  title: 'fix(qa): bank suite-authenticity rows on pass, with what was inspected (#986)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 986
+  merged_at: '2026-08-18'
+- number: 985
+  title: 'docs(plan): 1e''s credit in the window record — the edit that silently did
+    not apply'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-17'
+- number: 984
+  title: 'docs(plan): the four outstanding rulings, closed'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-17'
+- number: 983
+  title: 'docs(2g): rewrite the Stack Blueprint SIP against main — the gate is met'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-17'
+- number: 982
+  title: 'feat(qa): record what the fills assert, not just that slots were filled'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 980
+  merged_at: '2026-08-17'
+- number: 981
+  title: 'docs(plan): declare shakedown #2, and what #1 exposed about a green roll
+    (2.f/2.g)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-17'
+- number: 979
+  title: 'fix(scaffold): the shell must import TABLES — #936''s defect, recurred at
+    #967'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-17'
+- number: 978
+  title: 'docs(2e): the two disclosures, and the vocabulary reconciliation is three
+    axes'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-17'
+- number: 977
+  title: 'docs(2f): S5''s admission rule is enforced by the 2c gate, not just written'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-17'
+- number: 976
+  title: 'docs(plan): declare the pre-window shakedown as non-counting, before it
+    runs'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-17'
+- number: 975
+  title: 'docs(plan): V7 preconditions met; #967 added as blocking (2.7 / 2.d)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-17'
+- number: 974
+  title: 'test(2c): the blueprint falsification pass, as a standing gate'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-17'
+- number: 973
+  title: 'fix(scaffold): derive and type the store''s table names'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 967
+  merged_at: '2026-08-17'
+- number: 966
+  title: 'docs(plan): V7 2.b dispositions built; record the deploy-boundary risk (2.c)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-17'
+- number: 965
+  title: 'fix(cli): print data as itself, never as Rich markup'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 931
+  merged_at: '2026-08-17'
+- number: 964
+  title: 'fix(verification): name the contract criteria a run did not verify'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 945
+  merged_at: '2026-08-17'
+- number: 963
+  title: 'docs(plan): the SIP-0104 P6 window record'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-17'
+- number: 962
+  title: 'fix(qa): record what the test runner actually did'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 935
+  merged_at: '2026-08-17'
+- number: 961
+  title: 'docs(plan): Guard 1a and 1b are built and green — the plan said otherwise'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-17'
+- number: 960
+  title: 'fix(qa): log which validation check opened the self-eval branch'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 946
+  merged_at: '2026-08-17'
+- number: 959
+  title: 'feat(contract): probe body-discriminated child actions from declared values'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 948
+  merged_at: '2026-08-17'
+- number: 957
+  title: 'fix(qa): reject additive suites that mock the subject instead of invoking
+    it'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 915
+  merged_at: '2026-08-17'
+- number: 958
+  title: 'feat(scaffold): report the delta between declared and verified behaviours'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 951
+  merged_at: '2026-08-17'
+- number: 956
+  title: 'fix(audit): find wrapped UI call sites, and read 405 as proof the route
+    exists'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 952
+  - 953
+  merged_at: '2026-08-17'
+- number: 955
+  title: 'docs(plan): V7 outcome bands ruled + fixed parameters filled where knowable'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-17'
+- number: 954
+  title: 'docs(plan): V7 FAY window pre-registration (draft, not in force) — closes
+    4c'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-17'
+- number: 943
+  title: 'fix(verification): build checks judge the deliverable, not pre-repair source'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-16'
+- number: 942
+  title: 'fix(correction): repairs render their own stack''s guidance, not stack #1''s'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-16'
+- number: 941
+  title: 'docs(sip): propose Test-First Verification (red gate + authoring inversion)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-16'
+- number: 934
+  title: 'fix(qa): stop ordering the author to produce ONLY the authored file in fill
+    mode'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-16'
+- number: 940
+  title: 'docs(sip): assembly stability and the gate-time preflight gap (§27)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-16'
+- number: 938
+  title: 'fix(governance): record generations through the shared implementation'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-16'
+- number: 937
+  title: 'fix(scaffold): shell imports the helper the fill vocabulary teaches (GENERATOR_VERSION
+    2)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-16'
+- number: 932
+  title: 'fix(observability): classify fences by parsing, not by literal prefix'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-16'
+- number: 928
+  title: 'fix(observability): capture every LLM seam, not the one that had a helper'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-16'
+- number: 926
+  title: 'feat(observability): record what an LLM call actually emitted'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-16'
+- number: 923
+  title: 'docs(roadmap): #922 joins 1.7''s vocabulary-leak pool'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-16'
+- number: 921
+  title: 'docs(sip-cba): duty-shaped steward, versioning question, and the pack configuration
+    lifecycle'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-15'
+- number: 920
+  title: 'docs: state the window''s final claim by rule, not by roll number (SIP-0104
+    §13b)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-15'
+- number: 919
+  title: 'fix(authoring): the sole-author path had a private, drifted copy of the
+    check vocabulary'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 918
+  merged_at: '2026-08-15'
+- number: 917
+  title: 'fix(authoring): the qa example taught the criterion the gate rejects'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 916
+  merged_at: '2026-08-15'
+- number: 914
+  title: 'fix(scaffold): show the qa author the error envelope, and stop the brief
+    contradicting itself'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 875
+  - 910
+  - 911
+  - 912
+  merged_at: '2026-08-15'
+- number: 909
+  title: 'test(guards): Guard 1a and Guard 1b — authored mode is provenance, not a
+    fork'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-15'
+- number: 908
+  title: 'fix(corrections): a suite failure names which tests failed (#878 full)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 878
+  merged_at: '2026-08-15'
+- number: 907
+  title: 'docs(plan): the roll-3 rebuild carries #902 and nothing else'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-15'
+- number: 905
+  title: 'docs(plan): 1e credits at P6 roll 3; rolls 3-6 serve V6'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-15'
+- number: 904
+  title: 'docs(sip-0104): §13a — an audit pass gates the window from roll 3'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-15'
+- number: 903
+  title: 'feat(audit): UI data-path check — does the UI reach its own API?'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-15'
+- number: 902
+  title: 'fix(dev): per-stack fill-only guidance — roll 1''s app shipped a dead UI
+    because the author was told stack #1''s seam'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-15'
+- number: 900
+  title: 'fix(sip-0102): pin verification before build, not after — plus §11a stack-awareness
+    amendment'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-15'
+- number: 899
+  title: 'fix(sip-0104): four defects measured on window roll 1 (sandbox install,
+    audit stack, silent non-collection, rollup pollution)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-15'
+- number: 898
+  title: 'feat(sip-0104): Phase 5 — the evidence pipeline (classification, correlation,
+    banked report fields)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-14'
+- number: 897
+  title: 'feat(sip-0104): Phase 4 — region-level enforcement against adversarial producers
+    (Gate 4)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-14'
+- number: 896
+  title: 'feat(sip-0104): Phase 3 — the fill protocol and qa.test fill mode (bounded
+    agent surface)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-14'
+- number: 895
+  title: 'feat(sip-0104): Phase 2 — the execution-readiness gates (static bytes-level
+    + skeleton execution)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-14'
+- number: 894
+  title: 'feat(sip-0104): Phase 1 — the deterministic test scaffold (contract, generator,
+    seed lifecycle, Gate 1 pins)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-14'
+- number: 893
+  title: 'docs(sip): Phase 0 — amend §10.4 and accept SIP-0104 (Deterministic Verification
+    Scaffolding)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-14'
+- number: 892
+  title: 'docs(plan): implementation plan for the verification-scaffolding SIP'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-14'
+- number: 885
+  title: 'docs(sip): propose Deterministic Test Scaffolding (fill-slot qa suites)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-14'
+- number: 891
+  title: 'fix(authoring): builder example shows the profile''s required-files floor
+    (#890)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 890
+  merged_at: '2026-08-14'
+- number: 889
+  title: 'fix(plan): build-profile required_files are a floor the plan must cover
+    (#888)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 888
+  merged_at: '2026-08-13'
+- number: 887
+  title: 'fix(correction): suite-health verdict joins the tests_pass signature (#878
+    minimum)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-13'
+- number: 886
+  title: 'fix(correction): repair routing honors ownership facts before heuristics
+    (#884)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 884
+  merged_at: '2026-08-13'
+- number: 883
+  title: 'fix(executor): scaffold-seeded artifacts never shadow produced content (#881)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 881
+  merged_at: '2026-08-13'
+- number: 882
+  title: 'fix(executor): never re-seed the walking skeleton on resume (#881)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 881
+  merged_at: '2026-08-13'
+- number: 879
+  title: 'fix(qa): state the suite execution model on both guidance surfaces (#877)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 877
+  merged_at: '2026-08-12'
+- number: 876
+  title: 'fix(contract): the rejects-blank expectation is the pack''s call (#874)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 874
+  merged_at: '2026-08-12'
+- number: 873
+  title: 'fix(correction): file-owned patch gate + rejected-repair evidence carry
+    (#870)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 870
+  merged_at: '2026-08-12'
+- number: 872
+  title: 'fix(scaffold): TS frozen surface publishes types, returns, and classes (#871)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 871
+  merged_at: '2026-08-12'
+- number: 869
+  title: 'fix(crp): validated-fullstack budget 7200 -> 10800s'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-12'
+- number: 868
+  title: 'fix(stack2): the harness can execute the idiom the stack teaches'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-12'
+- number: 867
+  title: 'docs(2b): capability assembly — axes, sandbox seam, trigger (§4c)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-12'
+- number: 866
+  title: 'fix(context): every judged agent is shown the facts its checks depend on'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 787
+  merged_at: '2026-08-11'
+- number: 865
+  title: 'fix(scaffold): the frozen index publishes call signatures, not just names
+    (#863)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 863
+  merged_at: '2026-08-11'
+- number: 862
+  title: 'fix(dev): the developer is told what the frozen files declare (#861, #858)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 861
+  merged_at: '2026-08-11'
+- number: 860
+  title: 'fix(nextjs): the route file is derived from the URL it serves (#859)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 859
+  merged_at: '2026-08-11'
+- number: 857
+  title: 'fix(plan): the sole author is shown the rules its plan is validated against
+    (#856)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 856
+  merged_at: '2026-08-11'
+- number: 855
+  title: 'fix(gates): an approved gate promotes, however it was approved (#854)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 854
+  merged_at: '2026-08-10'
+- number: 853
+  title: 'docs(2b): the blueprint schema itself, not just the field inventory'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-10'
+- number: 852
+  title: 'docs(2b): blueprint schema drafted against both stacks'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-10'
+- number: 851
+  title: 'test(stacks): 2a — the stack inventory as an executable enumeration'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-10'
+- number: 850
+  title: 'fix(contract): criterion ids identify a slot, and a malformed contract is
+    refused (#849)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 849
+  merged_at: '2026-08-10'
+- number: 848
+  title: 'fix(plan): plan validation knows the stack, and the sole author gets the
+    contract (#846)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-10'
+- number: 847
+  title: 'fix(checks): one command allowlist, measured against the images (#707)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 707
+  merged_at: '2026-08-10'
+- number: 845
+  title: 'feat(build): register nextjs_ts, and stop swallowing a missing build profile
+    (#838)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 838
+  merged_at: '2026-08-10'
+- number: 844
+  title: 'docs(prd): finish the SIP-0098 §6.7 split — group_run PRD v0.5 (#843)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 843
+  merged_at: '2026-08-10'
+- number: 842
+  title: 'feat(framing): the configured stack outranks whatever the PRD says (#838)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-10'
+- number: 841
+  title: 'feat(gates): a manifest must be for the stack the cycle is building (#838)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-10'
+- number: 840
+  title: 'docs(plan): decompose 1e and 4g'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-10'
+- number: 839
+  title: 'docs(plan): decompose Stage 2 into 2a–2g (S3 + S5)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-10'
+- number: 837
+  title: 'docs(stack-2): the bend register as its own document (#822, Stage 1d)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-10'
+- number: 836
+  title: 'feat(scaffold): the Next.js + TypeScript stack — stack #2 (#822, Stage 1c)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-10'
+- number: 835
+  title: 'refactor(task_plan): injection asks the check what it can parse (#833)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 833
+  merged_at: '2026-08-10'
+- number: 834
+  title: 'feat(cycles): a cycle declares its stack once, not twice (#832)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 832
+  merged_at: '2026-08-10'
+- number: 831
+  title: 'docs(plan): stage the remaining 1.6.0 sequence'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-10'
+- number: 830
+  title: 'feat(correction): view source for repair targeting comes from the contract
+    (#829)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 829
+  merged_at: '2026-08-10'
+- number: 828
+  title: 'feat(checks): the buildable project directory is a stack fact, not "frontend/"
+    (#822)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-10'
+- number: 827
+  title: 'feat(probes): a stack that cannot run from source builds before it boots
+    (#822)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-09'
+- number: 826
+  title: 'docs(plan): amend S2 — stack #2 is Next.js + TypeScript'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-09'
+- number: 825
+  title: 'feat(diagnostics): build the two SIP-0103 §5c.7 signals M4 spent before
+    they existed'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-09'
+- number: 824
+  title: 'docs(sip-0103): record post-acceptance amendments in the SIP, not only the
+    plan'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-09'
+- number: 823
+  title: 'feat(probes): the probe runner boots the stack the cycle actually builds
+    (#822)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-09'
+- number: 821
+  title: 'feat(scaffold): the contract emitter refuses a stack it has no criteria
+    for (#818)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 818
+  merged_at: '2026-08-09'
+- number: 819
+  title: 'docs(plan): correct nine unverified claims found by a source sweep'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-09'
+- number: 817
+  title: 'docs(plan): record what S3''s schema will not have validated'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-09'
+- number: 816
+  title: 'refactor(scaffold): one registration per stack, not five scattered facts
+    (S1)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-09'
+- number: 815
+  title: 'feat(api): a gate decision records who made it (#812)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 812
+  merged_at: '2026-08-09'
+- number: 814
+  title: 'fix(cycles): an answered design question reaches the author as a revision
+    (#811)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 811
+  merged_at: '2026-08-09'
+- number: 813
+  title: 'docs(plan): the seeded control becomes conditional; add Track S''s missing
+    verification point'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-09'
+- number: 810
+  title: 'feat(cycles): the pre-memory rejection baseline (#809, B1)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 809
+  merged_at: '2026-08-09'
+- number: 808
+  title: 'feat(cycles): the manifest gate stops only when the design asks a question
+    (#807, M4)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 807
+  merged_at: '2026-08-09'
+- number: 806
+  title: 'docs(sip): record P6 as built and validated against a real vllm-metal server'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-09'
+- number: 805
+  title: 'feat(llm): VLLMAdapter — second provider, OpenAI-compatible dialect (SIP
+    Atlas P6)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-09'
+- number: 804
+  title: 'feat(scaffold): authoring provenance on the manifest (#803, M5)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 803
+  merged_at: '2026-08-08'
+- number: 802
+  title: 'docs(plan): M4 becomes question-gated review, not mandatory manifest review'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-08'
+- number: 801
+  title: 'test(llm): live-tier conformance — the same contract against a real server
+    (SIP Atlas P3)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-08'
+- number: 800
+  title: 'feat(llm): declare capabilities on the port; model listing speaks ModelInfo
+    (SIP Atlas P0 + P1 listing)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-08'
+- number: 799
+  title: 'test(llm): LLM port conformance suite — one contract, adapter-parameterized
+    (SIP Atlas P3)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-08'
+- number: 798
+  title: 'fix(cycles): an authored manifest binds its own run (#796)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 796
+  merged_at: '2026-08-08'
+- number: 797
+  title: 'fix(telemetry): tokens_per_second reaches LangFuse — replace the hand-copied
+    redaction rebuild'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 793
+  merged_at: '2026-08-08'
+- number: 794
+  title: 'SIP (proposed): Atlas Provider Adapter — config-selected inference providers
+    behind a conformance gate'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-08'
+- number: 792
+  title: 'feat(cycles): the squad authors its own interface manifest (#791, M1)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 791
+  merged_at: '2026-08-08'
+- number: 790
+  title: 'docs: rotate CHANGELOG for v1.4.0–v1.5.0 and guard the rotation (#789)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 789
+  merged_at: '2026-08-08'
+- number: 786
+  title: 'feat(cycles): authoring failure taxonomy — one classification, three consumers
+    (#785, M6)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 785
+  merged_at: '2026-08-08'
+- number: 784
+  title: 'feat(cycles): schema gate — provenance and the decisions[] judgment record
+    (#783, M2)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 783
+  merged_at: '2026-08-08'
+- number: 782
+  title: 'feat(cycles): winnability gate — prove a manifest can be won before spending
+    on it (#781, M3)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 781
+  merged_at: '2026-08-08'
+- number: 780
+  title: 'feat(cycles): derive the verification contract when a cycle seeds a manifest
+    but no contract (#779, M0b)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 779
+  merged_at: '2026-08-08'
+- number: 778
+  title: 'feat(contract): pin the deriver to the deployed reference pair (#777, M0a)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 777
+  merged_at: '2026-08-08'
+- number: 776
+  title: 'fix(maintainer): derive SIP frontmatter from the body instead of failing
+    (#770)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 770
+  merged_at: '2026-08-08'
+- number: 775
+  title: 'docs(1.6): verification cadence — V1–V8, and the two corrections it exposed'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-07'
+- number: 774
+  title: 'fix(telemetry): only attempt Langfuse prompt linkage when assets come from
+    Langfuse (#766)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 766
+  merged_at: '2026-08-07'
+- number: 773
+  title: 'fix(preflight): reject bind mode with no plan_authoring_contributors at
+    create (#762)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 762
+  merged_at: '2026-08-07'
+- number: 771
+  title: 'docs(1.6): M0 premise correction — the contract deriver already exists,
+    and v9 is its output'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-07'
+- number: 769
+  title: 'docs(1.6): the Authorship plan — author the design, prove it was won'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-07'
+- number: 768
+  title: 'sips: accept Squad-Authored Manifest as SIP-0103 (v1.6 Lane M headline)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-07'
+- number: 767
+  title: 'docs(roadmap): post-1.5 reconciliation — 1.7''s identity, 1.8''s co-headliners,
+    memory rails'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-07'
+sip_moves:
+- sip: SIP-0102-Ephemeral-Application-Sandbox
+  from: null
+  to: accepted
+- sip: SIP-0103-Squad-Authored-Manifest
+  from: null
+  to: implemented
+- sip: SIP-0104-Deterministic-Verification-Scaffolding-with
+  from: null
+  to: accepted
+- sip: SIP-0105-Stack-Blueprint-Contract
+  from: null
+  to: accepted
+- sip: SIP-API-Contract-Hardening
+  from: null
+  to: proposed
+- sip: SIP-Agent-Embodiment-Runtime
+  from: null
+  to: proposed
+- sip: SIP-Atlas-Provider-Adapter
+  from: null
+  to: proposed
+- sip: SIP-Campaign-Orchestration
+  from: null
+  to: proposed
+- sip: SIP-Capability-Backed-Agents
+  from: null
+  to: proposed
+- sip: SIP-Cross-Cycle-Memory
+  from: null
+  to: proposed
+- sip: SIP-Cycle-Evaluation-Scorecard
+  from: null
+  to: proposed
+- sip: SIP-Cycle-Request-Profile-Naming-Taxonomy
+  from: null
+  to: proposed
+- sip: SIP-LLM-Emission-Contracts
+  from: null
+  to: proposed
+- sip: SIP-Planning-Sequence-Strategy-First
+  from: null
+  to: proposed
+- sip: SIP-Post-Retest-Governance-Acceptance-Review
+  from: null
+  to: proposed
+- sip: SIP-Skill-Layer-For-Capabilities
+  from: null
+  to: proposed
+- sip: SIP-Test-First-Verification
+  from: null
+  to: proposed
+- sip: SIP-Version-Bump-Hardening
+  from: null
+  to: proposed
+- sip: SIP-intelligent-delegation-protocols
+  from: null
+  to: proposed
+cycles: []
+screenshots: []

@@ -1,0 +1,90 @@
+version: 1.3.1
+tag: v1.3.1
+previous_tag: v1.3.0
+date: '2026-07-08'
+commit: df4af5b77bf1946032fb7b56e55cbb71dc4b8568
+narrative: "Hardening patch on the 1.3.0 stabilization line — the post-1.3.0 batch\
+  \ surfaced by\nthe 2026-07-04 independent health assessment, reassigned to the Macbook\
+  \ lane while\nSpark was offline. All fixes; no feature SIPs (patches land on either\
+  \ lane anytime,\nindependent of the even/odd feature parity — #281). Every runtime-affecting\
+  \ change\nwas live-validated on the deployed stack before merge.\n\n### Security\n\
+  - **Agent-status writes moved off the unauthenticated `/health` lane (#326).**\n\
+  \  `POST/PUT /health/agents/status` were writable by any anonymous network client\n\
+  \  (the auth middleware allowlists the whole `/health` prefix). They now live at\n\
+  \  `POST/PUT /api/v1/agents/status` behind the `agents:write` scope; `/health/*`\n\
+  \  keeps only GET probes. The middleware allowlist is now **method-scoped**\n  (GET/HEAD),\
+  \ so a future write route under `/health` fails closed instead of\n  riding the\
+  \ no-auth lane. Agents authenticate their heartbeats via a new\n  `squadops-agent`\
+  \ service identity (client credentials, `agent` realm role ⇒\n  `agents:write` only);\
+  \ a half-configured identity raises at startup rather than\n  silently sending anonymous\
+  \ heartbeats.\n\n### Fixed\n- **Concurrent same-agent cycles no longer bypass FocusLease\
+  \ arbitration (#288).**\n  `RuntimeCoordinator.request_transition` short-circuited\
+  \ every same-mode request\n  to `idempotent_skip` before arbitration, so a second\
+  \ cycle recruiting an\n  already-recruited agent free-rode the first run's lease\
+  \ and lost the agent when\n  the first finalized. A same-mode request from a *different*\
+  \ lease owner now\n  rejects with `focus_lease_conflict` (admission defers the run);\
+  \ a same-owner\n  replay still skips.\n- **QA agent image now has Node.js so the\
+  \ frontend build check runs (#306).** The\n  `qa.test` frontend build check (#290)\
+  \ and vitest shelled out to `npm`/`npx` in an\n  image with no Node — every frontend\
+  \ check silently skipped, so a non-building\n  frontend shipped green. Node ships\
+  \ in the qa image only (the sole Node consumer),\n  declared via a config-driven\
+  \ per-role `system-packages.txt` (the apt analog of the\n  existing per-role `requirements.txt`\
+  \ — no role name hardcoded in the Dockerfile).\n\n### Added\n- **Broker-hygiene\
+  \ check in `squadops doctor` (#328).** A new `broker` category\n  flags queues on\
+  \ the retired pre-SIP-0094 `cycle_results_*` naming scheme and any\n  queue holding\
+  \ messages with no consumer (an undrained backlog). Reads queue stats\n  via `rabbitmqctl`\
+  \ inside the container (resolved from the compose service name, no\n  credentials);\
+  \ an unqueryable broker warns rather than fails. The orphaned\n  `cycle_results_*`\
+  \ queues left by the SIP-0094 migration (one with 48 undrained\n  messages) were\
+  \ swept.\n\n### Docs & SIP lifecycle\n- Filed the **Externalized Build Sandbox**\
+  \ proposal (`sips/proposed/`) — the\n  principled long-term home for build/test\
+  \ execution (a `BuildSandboxPort` so agents\n  carry no toolchain), with #306 as\
+  \ its interim. Stays `proposed`."
+pull_requests:
+- number: 364
+  title: 'release: 1.3.1 — hardening patch (#326, #288, #306, #328)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-08'
+- number: 363
+  title: 'fix(#288): arbitrate FocusLease on same-mode request from a different owner'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 288
+  merged_at: '2026-07-08'
+- number: 362
+  title: 'fix(#328): broker-hygiene doctor check + sweep orphaned pre-SIP-0094 queues'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 328
+  merged_at: '2026-07-08'
+- number: 361
+  title: 'fix(#306): install Node.js in the qa agent image so the frontend build check
+    runs'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 306
+  merged_at: '2026-07-08'
+- number: 360
+  title: 'docs(sip): propose Externalized Build Sandbox (proposed draft)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-08'
+- number: 359
+  title: 'fix(#326): move agent-status writes off the unauthenticated /health lane'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 326
+  merged_at: '2026-07-08'
+sip_moves:
+- sip: SIP-Externalized-Build-Sandbox
+  from: null
+  to: proposed
+cycles: []
+screenshots: []

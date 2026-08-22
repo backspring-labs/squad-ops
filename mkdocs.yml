@@ -51,12 +51,15 @@ plugins:
   - gen-files:
       scripts:
         - site/hooks/gen_sips.py
+        - site/hooks/gen_releases.py
 
 nav:
   - Home: index.md
   - Getting started: getting-started.md
   - How it works: how-it-works.md
   - Architecture: architecture.md
+  - Releases:
+      - releases/index.md
   - Design records:
       - Improvement proposals: design/sips/index.md
 
@@ -91,3 +94,4 @@ extra:
 # listed individually in the sidebar — 74+ entries would drown the nav.
 not_in_nav: |
   design/sips/*.md
+  releases/*/index.md

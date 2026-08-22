@@ -1,0 +1,1391 @@
+version: 1.4.0
+tag: v1.4.0
+previous_tag: v1.3.1
+date: '2026-07-31'
+commit: 07143d9c590ec2e9ced65ea3c4bcd4523448e1df
+narrative: "**The Verified Canonical App Build** (133 merges since 1.3.1) — first\
+  \ dual-lane-headline\nfeature release. Lane M's golden-path stack (scaffold + verification\
+  \ contracts +\nfrozen-file enforcement) plus Lane S's Ephemeral Application Sandbox\
+  \ 1.4 floor.\n\n**Exit evidence, pre-registered:** Functional App Yield window 3\
+  \ — **6/6 functional\n(100%), 5/6 fully green, five consecutive greens**, unfiltered,\
+  \ on frozen deploy\n`9522ef4d`, in **seeded-manifest (bind) mode**; the bar was\
+  \ ≥4/6. The cut gate's original\ncondition (\"≥3 consecutive golden-benchmark runs,\
+  \ squad-authored-manifest mode\") was\nsuperseded by owner decision 2026-07-28 and\
+  \ executed at the cut.\n\n**What this honestly demonstrates:** given a PRD **and\
+  \ a fully specified interface\nmanifest**, the squad implements, verifies, and delivers\
+  \ a working app. What remains\nunmeasured — by the original gate's own correct reasoning\
+  \ — is squad-authored-manifest\nmode; that rung moved to v1.6 as a headline. The\
+  \ claim is *a specified contract, not\nPRD-to-app*.\n\nEntries are grouped by arc\
+  \ rather than listed per-PR; the volume\nhere is dominated by the correction/repair\
+  \ loop, which had to converge before any of the\nscaffold work could be measured\
+  \ at all. Bare `#NNN` references in this section are **pull\nrequests**; the issues\
+  \ they close are named in the PR bodies.\n\n### Added — the golden-path scaffold\
+  \ stack (Lane M)\n- **SIP-0099 Contract-First Build Scaffolding** — an interface\
+  \ manifest expands to a\n  deterministic walking skeleton, and dev tasks *fill declared\
+  \ slots* instead of\n  authoring structure. Phase-0.5 spike (#428 hand-written group_run\
+  \ manifest, #429\n  `fullstack_fastapi_react` expander proving the empty skeleton\
+  \ builds and boots) then\n  phases 99.1–99.3 (#482 expander canonicalization + skeleton\
+  \ CI gate, #486 manifest in\n  framing, #487 executor materialization + fill-only\
+  \ develop).\n- **SIP-0098 Verification Contracts** — acceptance criteria now come\
+  \ from a contract the\n  cycle is *bound* to, not authored per-plan. Proposed #475,\
+  \ accepted with implementation\n  plans #477; phases 98.1–98.4 (#478 contract schema,\
+  \ #483 expander emission +\n  emission-time gates, #488 orchestration binding —\
+  \ \"bind, don't author\", #489 behavioral\n  probe runner + coverage accounting);\
+  \ 98.5 migration slices (#491 live probe emission +\n  PRD v0.4 split, #493 `contract_gate\
+  \ emit` mode for operator seeding).\n- **SIP-0100 Scaffolded Test Harness and Frozen-File\
+  \ Enforcement** — frozen scaffold\n  files are restored when a producer rewrites\
+  \ them, and unauthorized slot emissions are\n  dropped. Prototype #538, accepted\
+  \ #539 with plan #540; phases 0–4 (#541 characterization,\n  #542 harness contract,\
+  \ #544 authorization spine + live frozen-ownership enforcement,\n  #547 evidence\
+  \ + QA write-scope, #548 contract-compliance circuit breaker, #549/#550\n  deterministic\
+  \ replay, path/atomicity matrix, no-regression).\n- **SIP-0101 Cycle Replay Harness**\
+  \ — proposed #594, revised #595, accepted with a\n  Phase-1 plan #596. Implementation\
+  \ deliberately held until the 98.5 baseline closes.\n- **`function_defined` acceptance\
+  \ check (#533)** — a style-immune \"this file defines N\n  functions matching a\
+  \ prefix\", replacing regex-on-source criteria that failed on\n  formatting rather\
+  \ than behavior.\n\n### Added — verification evidence integrity (SIP-0096, Phases\
+  \ 1–3)\n- **Phase 1 (#369):** the integrity core — pure aggregation, evidence families,\
+  \ and the\n  `blocked_unverified` verdict. Cycle-level `request_profile` provenance\
+  \ (#367).\n- **Phase 2:** task-result verification normalized into the ledger with\
+  \ honest-red guards\n  (#378); final-state resolution for re-verified checks (#386).\n\
+  - **Phase 3:** `CycleOutcome` roll-up pure core (#412), per-run `RunVerificationSummary`\n\
+  \  persistence (#416), derive-on-read `CycleOutcome` + cycle-detail surface (#418).\n\
+  - **Check governance:** canonical framework-check registry rejecting unknown\n \
+  \ `required_checks` ids (#396); required-check tooling parity at preflight + a `doctor`\n\
+  \  verification category (#398); `required_files` enforced at run completion (#390)\
+  \ and\n  recorded as a `CheckResult` (#402, corrected builder seam #405); fullstack\n\
+  \  `frontend_build` as evidence (#408).\n- **Honest verdicts:** a non-succeeded\
+  \ run never reads `accepted` on zero evidence\n  (#409); cycle outcome reconciles\
+  \ per-check evidence across runs (#446); typed\n  acceptance reaches the builder\
+  \ seam with wire-shape criteria coercion (#421).\n\n### Fixed — correction and repair\
+  \ convergence\n- **Repairs are verified behaviorally, not structurally.** Re-run\
+  \ the failed check on a\n  patch (#385); accept behaviorally-verified patches instead\
+  \ of re-rolling repaired tasks\n  (#413); re-execute repaired `qa.test` suites before\
+  \ acceptance (#461); reject patches\n  whose intra-package imports can't resolve\
+  \ (#592).\n- **Repair targeting** — a correct diagnosis is useless if the repair\
+  \ edits the wrong\n  file. Retarget onto the drifted source rather than the failing\
+  \ check's tests (#532);\n  target the union of drift files and the failing artifact\
+  \ (#534); dependency-scoped\n  targeting so no-drift `qa.test` failures reach the\
+  \ source under test (#536); the drift\n  branch reaches the fill-slot source (#554);\
+  \ repair artifacts re-homed onto expected\n  paths before overlay (#517).\n- **Repair\
+  \ context** — the recurring root cause was the system holding an authoritative\n\
+  \  fact and never putting it in front of the agent that needed it. The dev repair\
+  \ gets the\n  same fill-only constraint as develop (#555); `resolved_config` threading\
+  \ + frozen\n  enforcement on the repair path (#562); deterministic interface-drift\
+  \ diagnosis feeds the\n  repair (#527); contract expectations, emission integrity\
+  \ and candidate-free workspaces\n  (#564); error-contract block, exit-4 locus, initial-QA\
+  \ expectations (#585); the initial\n  dev prompt carries the scaffold contract it\
+  \ was filling (#589); repairs are told the real\n  model names instead of guessing\
+  \ them (#604).\n- **Workspace correctness:** the correction workspace is re-resolved\
+  \ from live stored\n  artifacts each attempt, so the loop can see its own progress\
+  \ (#535).\n- **Policy and routing:** `continue` cannot discard executed-failed required\
+  \ checks (#449);\n  locus-keyed QA repair routing + emission recovery with aimed\
+  \ retry (#569); cancel reaches\n  the dispatch boundary so repairs stop on a cancelled\
+  \ run (#587); four shakedown fixes\n  raising roll-success odds (#505).\n- **Removed**\
+  \ the unconsumed `qa.validate_repair` step (#558) — its verdict was never read.\n\
+  \n### Fixed — the scaffold's own contract\n- Success status is declared in the manifest\
+  \ so the skeleton can satisfy its own probe\n  (#600), and is included in the content\
+  \ hash (#601).\n- The scaffold-owned status code is held inside fill slots (#602);\
+  \ the router takes no\n  prefix — stated in the stub and enforced on emission (#608).\n\
+  - The in-memory store the manifest already declares is emitted rather than left\
+  \ for the\n  planner to invent (#606).\n- The seeded scaffold reaches `qa.test`\
+  \ and `builder.assemble` (#445).\n\n### Fixed — acceptance checks and emission parsing\n\
+  - `import_present` matches relative imports (#437) and dotless specs (#442); the\
+  \ backend\n  import check imports package members by qualified name (#471); the\
+  \ delivered backend is\n  verified to import, not just its tests (#393).\n- `regex_match`\
+  \ criteria restricted to document artifacts — the style-lottery guard\n  (#468);\
+  \ AST checks skip non-Python files instead of erroring (#607).\n- A missing command\
+  \ binary skips instead of erroring (#463); failed suites disclose\n  exit-code meaning\
+  \ (#514); the coverage denominator comes from the bound contract rather\n  than\
+  \ dispatched checks (#513); behavioral rows are stamped with their contract criterion\n\
+  \  ids (#519); unbound criteria attach to the tail `qa.test` at dispatch (#516).\n\
+  - Package dirs stay off the test runner's `PYTHONPATH` (#455); the runner refuses\n\
+  \  non-pytest suites precisely, and the QA fragment gained a discovery contract\
+  \ (#518).\n- Fenced-parser hardening: nested fences (#432), path-prefix on the first\
+  \ body line (#490),\n  path-labelled headers and unterminated-at-EOF fences (#528).\n\
+  - Probe readiness accepts any HTTP response rather than only 200 on `/health` (#521);\n\
+  \  create-probes expect 201, resolving a contract that contradicted the PRD it verifies\n\
+  \  (#523); typed sample values for probes (#526).\n\n### Fixed — plan authoring\
+  \ and framing\n- A system plan-validation rejection re-rolls framing instead of\
+  \ killing the cycle (#525);\n  pre-gate plan rejection records a system gate decision\
+  \ instead of dying silently (#476);\n  the inter-workload gate stops the sequence\
+  \ on `returned_for_revision` (#467).\n- Plan substitution preserves the workload-invariant\
+  \ tail (#440); invariant tasks run in\n  canonical order, assemble before `qa.test`\
+  \ (#459); warning/info-severity criteria\n  violations are tolerated rather than\
+  \ rejecting the plan (#530).\n- Command-safelist lint at the authoring boundary\
+  \ + manifest retry runway (#425);\n  style-dependent regex criteria forbidden in\
+  \ guidance (#438); the bind-criteria proposer\n  leaves `criteria_refs` empty for\
+  \ contract-owned files (#537); the strategy proposer\n  supplies `guidance_id`,\
+  \ unblocking multi-role framing (#485); `qa.test` prompt content\n  routed through\
+  \ the fragment system (#450); test-isolation doctrine in the QA fragment\n  (#460).\n\
+  - Bind mode requires a framing-emitted interface manifest (#495) and seeds the canonical\n\
+  \  one (#497).\n- Deterministic fill-slot binding at plan authoring landed (#552)\
+  \ and was **reverted**\n  (#553) to keep the measurement baseline free of an unvalidated\
+  \ confound.\n\n### Fixed — runtime and ops\n- Agent identity is never fabricated\
+  \ (#387); the agent secret is provisioned on deploy and\n  fails honestly when absent\
+  \ (#391); runtime-api application logging reaches stdout (#492);\n  `init: true`\
+  \ on agent containers reaps subprocess zombies (#543).\n- `runs retry` resolves\
+  \ `workload_type` positionally instead of defaulting to `None`\n  (#479); forwarding\
+  \ overrides are rebuilt from durable state on mid-sequence entry (#480).\n- group_run\
+  \ manifest path param renamed `{id}` → `{run_id}` (#565); anchored hash\n  replacement\
+  \ in `regen_fragment_manifest.py` (#453).\n\n### Removed\n- Vestigial analysis skills\
+  \ and their dead JSON parsing (#400).\n- The dead SIP-0.8.8 skill handler layer,\
+  \ end to end (#403).\n- Warmboot operational artifacts, with the era's lessons distilled\
+  \ for the book (#406).\n\n### Docs & SIP lifecycle\n- **Proposed:** Contract-First\
+  \ Build Scaffolding (#383), Verification Contracts (#475),\n  Cycle Replay Harness\
+  \ (#594), LLM Emission Contracts (#570), fine-grained issue\n  enumeration (#384),\
+  \ process lexicon (#599).\n- **Accepted:** SIP-0098 + SIP-0099 with both implementation\
+  \ plans (#477), SIP-0100\n  (#539, plan #540), SIP-0101 (#596).\n- Night triage\
+  \ runbook (#609); RuntimeActivity lifecycle requirements (#546); enum-shadow\n \
+  \ architecture guardrail failing CI on status string-literal comparisons (#382);\
+  \ idea and\n  vision drafts tracked under `docs/ideas` (#366); CLI cheatsheet corrections\
+  \ (#499)."
+pull_requests:
+- number: 674
+  title: 'release: v1.4.0 — the Verified Canonical App Build'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-31'
+- number: 666
+  title: 'fix(locus): missing test suite routes to its owning role — zero-suite verdict
+    survives the executed gate (#665)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 665
+  merged_at: '2026-07-30'
+- number: 664
+  title: 'fix(verification): passing dev tasks record validation evidence — criteria
+    credit on success (#597)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 597
+  merged_at: '2026-07-30'
+- number: 662
+  title: 'feat(scaffold): DOM testid contract — manifest-pinned anchors into both
+    dev and qa prompts (#659)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 659
+  merged_at: '2026-07-30'
+- number: 661
+  title: 'fix(plan-validation): frozen files rejected as expected_artifacts for every
+    role (#658)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 658
+  merged_at: '2026-07-30'
+- number: 660
+  title: 'fix(planning): thread brief + upstream docs + peer proposal into planning-chain
+    prompts (#657)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 657
+  merged_at: '2026-07-30'
+- number: 656
+  title: 'feat(checks): frontend_compiles — real bundler at view-task acceptance (#648)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 648
+  merged_at: '2026-07-30'
+- number: 655
+  title: 'feat(contract): v8 — chained join/leave probes with response capture (#651)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 651
+  merged_at: '2026-07-30'
+- number: 654
+  title: 'fix(correction): frontend_build failures widen repair scope to frontend
+    source (#650)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 650
+  merged_at: '2026-07-30'
+- number: 653
+  title: 'fix(scaffold): builder write authorization — refuse net-new source at assembly
+    (#649)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 649
+  merged_at: '2026-07-29'
+- number: 652
+  title: 'fix(plan): reject unexecutable command checks + directory expected artifacts
+    (#645)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 645
+  merged_at: '2026-07-29'
+- number: 647
+  title: 'docs(sip): capability packs — owner decisions on taxonomy, pack mechanics,
+    trust scope'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-29'
+- number: 646
+  title: 'docs(sip): Stack-Blueprint draft — stack-pack intent + FAY window evidence'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-29'
+- number: 644
+  title: 'fix(acceptance): typed checks evaluate inside the accepted workspace tree
+    (#643)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 643
+  merged_at: '2026-07-28'
+- number: 642
+  title: 'feat(locus): runner-owned suite-health verdict — vitest failures stop reading
+    as pytest exit codes (#626)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 626
+  merged_at: '2026-07-28'
+- number: 641
+  title: 'feat(plan): criterion binding derived from the contract, not transcribed
+    by the author (#509)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 509
+  merged_at: '2026-07-28'
+- number: 640
+  title: 'fix(retest): contract probes ride the retest against the patched tree (#639)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 639
+  merged_at: '2026-07-28'
+- number: 638
+  title: 'docs: Functional App Yield measurement design — the 1.4 exit number'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-28'
+- number: 636
+  title: 'fix(sandbox): service boots under the locked dependency pair — shakedown
+    finding #3 (SIP-0102)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-28'
+- number: 635
+  title: 'fix(sandbox): run operations as the workspace owner — Spark shakedown findings
+    (SIP-0102)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-28'
+- number: 634
+  title: 'feat(scaffold): blank-input rejection is scaffold-owned AND probe-pinned
+    (#593)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 593
+  merged_at: '2026-07-28'
+- number: 633
+  title: 'feat(scaffold): frontend test harness is scaffold-owned (#627)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 627
+  merged_at: '2026-07-28'
+- number: 632
+  title: 'feat(qa): contract''s pinned HTTP behavior reaches suite authoring (#629)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-28'
+- number: 630
+  title: 'feat(checks): module_imports — runtime-level check static analysis cannot
+    fake (#628)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 628
+  merged_at: '2026-07-28'
+- number: 631
+  title: 'SIP-0102: Spark shakedown handoff — floor smoke promoted to scripts/dev'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-28'
+- number: 623
+  title: 'SIP-0102 phase 102.2: environment is a pinned, validated contract — live-smoke
+    green'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 622
+  merged_at: '2026-07-28'
+- number: 625
+  title: 'docs(sip): test-type taxonomy requirement for the Stack Blueprint (pf-47/49
+    evidence)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-27'
+- number: 624
+  title: 'fix(checks): declare check applicability; behavioral retest decides when
+    no structural check applies'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-27'
+- number: 621
+  title: 'SIP-0102: rename the execution domain to sandbox'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-26'
+- number: 620
+  title: 'SIP-0102 phase 102.1: the execution boundary exists (slices a–d)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-26'
+- number: 619
+  title: 'fix(dev): the initial author gets the model surface, field-level (pf-45)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-26'
+- number: 618
+  title: 'fix(correction): a work_product rewind is escalated to patch (pf-45)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-26'
+- number: 617
+  title: 'SIP-0102: Ephemeral Application Sandbox — revise + promote to accepted'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-26'
+- number: 616
+  title: 'fix(scaffold): never append a status_code the decorator already carries'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-26'
+- number: 615
+  title: 'fix(cycles): let the framing re-roll supersede a completed run (#522 never
+    fired live)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-26'
+- number: 614
+  title: 'fix(scaffold): name a frozen module''s state, not only its functions'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-26'
+- number: 613
+  title: 'fix(plan): show the plan author what the frozen files declare'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-26'
+- number: 612
+  title: 'fix(plan): prove frozen-file checks can pass before dispatching the run'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-26'
+- number: 611
+  title: 'docs: 1.4 cut gate, the unreleased changelog, and the SIPs the roadmap forgot'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-26'
+- number: 610
+  title: 'sip(proposed): Stack Blueprint Contract — give a stack a type'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-26'
+- number: 609
+  title: 'docs(ops): night triage runbook — root cause, not narrative'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-26'
+- number: 608
+  title: 'fix(scaffold): the router takes no prefix — state it, and enforce it'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-26'
+- number: 607
+  title: 'fix(checks): AST checks skip non-Python files instead of erroring'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-26'
+- number: 606
+  title: 'fix(scaffold): emit the in-memory store the manifest already declares'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 603
+  merged_at: '2026-07-26'
+- number: 604
+  title: 'fix(correction): tell repairs the real model names instead of letting them
+    guess'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-26'
+- number: 602
+  title: 'fix(scaffold): hold the scaffold-owned status code inside fill slots'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-25'
+- number: 601
+  title: 'fix(scaffold): include success_status in the manifest content hash'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-25'
+- number: 600
+  title: 'fix(scaffold): declare success status in the manifest; reject qa tasks owning
+    others'' files'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-25'
+- number: 599
+  title: 'docs(ideas): process lexicon — one seeded vocabulary across all domains'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-25'
+- number: 596
+  title: 'sip(0101): accept Cycle Replay Harness + Phase-1 implementation plan'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-25'
+- number: 595
+  title: 'sip(replay-harness): revision 3 — correct the FAY enforcement claim, add
+    implementation order'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-25'
+- number: 594
+  title: 'sip: propose Cycle Replay Harness — pinned fast-forward for phase-targeted
+    iteration'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-25'
+- number: 592
+  title: 'fix(verification): reject patches whose intra-package imports can''t resolve
+    (#591)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 591
+  merged_at: '2026-07-25'
+- number: 589
+  title: 'fix(dev): the initial focused prompt carries the scaffold contract it was
+    filling (#588)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 588
+  merged_at: '2026-07-25'
+- number: 587
+  title: 'fix(cycles): cancel reaches the dispatch boundary — repairs stop on a cancelled
+    run (#586)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 586
+  merged_at: '2026-07-25'
+- number: 585
+  title: 'fix(correction): night-window stack — ERROR CONTRACT block, exit-4 locus,
+    initial-qa expectations'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-25'
+- number: 584
+  title: 'fix(qa): harness_boundary expectation instructed the violation; qa prompt
+    diet; failed-check names in patch logs'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-25'
+- number: 570
+  title: 'SIP: LLM Emission Contracts — provider-agnostic structured output + hardened
+    code extraction'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-25'
+- number: 569
+  title: 'fix(emission): #566 recovery + aimed retry, #568 locus-keyed qa repair routing'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 566
+  - 568
+  merged_at: '2026-07-25'
+- number: 565
+  title: 'feat(manifest): rename group_run path param {id} -> {run_id}'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-24'
+- number: 564
+  title: 'feat(correction): pf-31 convergence fixes A+D+E — contract expectations,
+    emission integrity, candidate-free workspaces'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-24'
+- number: 563
+  title: 'docs: pf-31 correction-convergence fix plan (A: contract expectations, D:
+    emission integrity, E: rejected-candidate accounting)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-24'
+- number: 562
+  title: 'fix(correction): repair-path hardening — resolved_config threading + SIP-0100
+    3.4b frozen enforcement (restore+signal)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-24'
+- number: 558
+  title: 'refactor(correction): remove the unconsumed qa.validate_repair step'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 556
+  merged_at: '2026-07-24'
+- number: 555
+  title: 'fix(correction): give the dev repair the same scaffold fill-only constraint
+    as develop'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-24'
+- number: 554
+  title: 'fix(correction): drift branch reaches the fill-slot source (drift+behavioral-bug
+    combo)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-24'
+- number: 553
+  title: 'Revert #552: authoring target-binding (A+B) — clean baseline for green-roll
+    hunt'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-24'
+- number: 552
+  title: 'feat: deterministic fill-slot binding at plan authoring (Phases A+B)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-23'
+- number: 551
+  title: 'docs: fix + dev plan — deterministic fill-slot binding at plan authoring'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-23'
+- number: 550
+  title: 'test(sip-0100): Phase 4.5 — no-regression + flag D3 fail-open deviation'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-23'
+- number: 549
+  title: 'test(sip-0100): Phase 4.1-4.3 — deterministic replay & path/atomicity matrix'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-23'
+- number: 548
+  title: 'feat(sip-0100): Phase 3 Task 3.4a — contract-compliance circuit-breaker'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-23'
+- number: 547
+  title: 'feat(sip-0100): Phase 3 (3.3 evidence + 3.1 QA write-scope)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-23'
+- number: 545
+  title: 'docs(sip-0100): correct 2026-07-23 finding — model-capacity, run 4.4 on
+    full'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-23'
+- number: 546
+  title: 'docs(runtime-status): requirements for RuntimeActivity lifecycle integrity'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-23'
+- number: 544
+  title: 'feat(sip-0100): Phase 2 — authorization spine + live frozen-ownership enforcement'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-23'
+- number: 543
+  title: 'fix(docker): init: true on agent containers to reap subprocess zombies'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-23'
+- number: 542
+  title: 'feat(sip-0100): Phase 1 — scaffolded test harness contract'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-23'
+- number: 541
+  title: 'feat(sip-0100): Phase 0 — characterization & decisions'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-23'
+- number: 540
+  title: 'docs(plan): SIP-0100 implementation plan (scaffold integrity)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-23'
+- number: 539
+  title: 'docs(sip): revise + accept SIP-0100 (Scaffolded Test Harness and Frozen-File
+    Enforcement)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-23'
+- number: 538
+  title: 'scaffold: seed a frozen test harness to pin the import root (prototype +
+    proposed SIP)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-23'
+- number: 537
+  title: 'fix(framing): bind-criteria proposer must leave criteria_refs EMPTY for
+    contract-owned files'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-22'
+- number: 536
+  title: 'fix(RC2): dependency-scoped repair target — no-drift qa.test failures reach
+    the source under test'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-22'
+- number: 535
+  title: 'fix(correction): re-resolve the correction workspace from live stored_artifacts
+    (RC3)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-22'
+- number: 534
+  title: 'fix(correction): target the union of drift files + the failing check''s
+    artifact'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-22'
+- number: 533
+  title: 'feat(checks): add function_defined — a style-immune tool for "file defines
+    functions"'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-22'
+- number: 532
+  title: 'fix(#531): retarget patch-path repair onto the drifted source, not the failed
+    check''s tests'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 531
+  merged_at: '2026-07-21'
+- number: 530
+  title: 'fix(plan-validation): tolerate warning/info-severity criteria violations
+    instead of rejecting the plan'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-21'
+- number: 528
+  title: 'fix(fenced_parser): recover path:-labelled headers and unterminated-at-EOF
+    fences'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-21'
+- number: 527
+  title: 'feat: deterministic interface-drift diagnosis feeds the correction repair
+    (piece 1)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-21'
+- number: 526
+  title: 'fix(#524): probe request bodies carry type/name-appropriate sample values,
+    not "x"'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 524
+  merged_at: '2026-07-21'
+- number: 525
+  title: 'fix(#522): system plan-validation rejection re-rolls framing instead of
+    killing the cycle'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 522
+  merged_at: '2026-07-20'
+- number: 523
+  title: 'fix: create-probes expect 201 — the contract contradicted the PRD it verifies'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-20'
+- number: 521
+  title: 'fix(#520): probe readiness accepts any HTTP response, not only 200 on /health'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 520
+  merged_at: '2026-07-20'
+- number: 519
+  title: 'fix: behavioral check rows are stamped with their contract criterion ids'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-19'
+- number: 518
+  title: 'fix: test-authorship gap — runner refuses non-pytest suites precisely; qa
+    fragment gains the discovery contract'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-19'
+- number: 517
+  title: 'fix(#507): repair artifacts are re-homed onto expected paths before the
+    overlay'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 507
+  merged_at: '2026-07-19'
+- number: 513
+  title: 'fix(#508): coverage denominator comes from the bound contract, not dispatched
+    checks'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 508
+  merged_at: '2026-07-19'
+- number: 514
+  title: 'fix(#510): failed test suites disclose exit-code meaning in the check reason'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 510
+  merged_at: '2026-07-19'
+- number: 515
+  title: 'fix(#512): probe boot failures disclose exit state and stderr tail'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 512
+  merged_at: '2026-07-19'
+- number: 516
+  title: 'fix(#509): unbound contract criteria attach to the tail qa.test at dispatch'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-19'
+- number: 505
+  title: 'Shakedown-3 findings: four fixes that raise genuine roll-success odds'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 500
+  - 501
+  - 502
+  - 503
+  merged_at: '2026-07-18'
+- number: 499
+  title: 'docs: fix stale CLI syntax in CLAUDE.md cheatsheet'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-18'
+- number: 497
+  title: 'fix(#496): bind mode seeds the canonical interface manifest'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 496
+  merged_at: '2026-07-18'
+- number: 495
+  title: 'fix(#494): bind mode requires a framing-emitted interface manifest'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 494
+  merged_at: '2026-07-18'
+- number: 493
+  title: 'feat(sip-0098/98.5): contract_gate emit mode — contract-seeding wiring (operator-seed
+    decided)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-18'
+- number: 492
+  title: 'fix(#427): runtime-api application logging reaches stdout'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-18'
+- number: 491
+  title: 'feat(sip-0098): 98.5 slices 1–2 — live probe emission + PRD v0.4 split'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-18'
+- number: 490
+  title: 'fix(#470): fenced parser tolerates path-prefix-on-first-body-line'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 470
+  merged_at: '2026-07-18'
+- number: 489
+  title: 'feat(sip-0098): behavioral probe runner + coverage accounting (98.4)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-18'
+- number: 488
+  title: 'feat(sip-0098): orchestration binding — bind, don''t author (98.3)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-18'
+- number: 487
+  title: 'feat(sip-0099): executor materialization + fill-only develop (phase 99.3)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-18'
+- number: 486
+  title: 'feat(sip-0099): interface manifest in framing (phase 99.2)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-18'
+- number: 485
+  title: 'fix(#484): strategy proposer supplies guidance_id (unblocks multi-role framing)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 484
+  merged_at: '2026-07-18'
+- number: 483
+  title: 'feat(sip-0098): expander emission + emission-time contract gates (phase
+    98.2)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-17'
+- number: 482
+  title: 'feat(sip-0099): expander canonicalization + skeleton CI gate (phase 99.1)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-17'
+- number: 480
+  title: 'fix(#434): rebuild forwarding overrides from durable state on mid-sequence
+    entry'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 434
+  merged_at: '2026-07-17'
+- number: 479
+  title: 'fix(#433): runs retry resolves workload_type positionally instead of defaulting
+    to None'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 433
+  merged_at: '2026-07-17'
+- number: 478
+  title: 'feat(sip-0098): contract schema, loader, and linter (phase 98.1)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-17'
+- number: 477
+  title: 'sip: accept SIP-0098 + SIP-0099 (1.4 Lane M Scaffold headline) with both
+    implementation plans'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-17'
+- number: 476
+  title: 're-land fix(#473) + fix(#472): stranded by stacked-base merge (#474)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 472
+  - 473
+  merged_at: '2026-07-17'
+- number: 475
+  title: 'SIP proposal: Verification Contracts — contract-owned acceptance criteria'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-17'
+- number: 474
+  title: 'fix(#473): pre-gate plan rejection records a system gate decision instead
+    of dying silently'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 473
+  merged_at: '2026-07-17'
+- number: 471
+  title: 'fix(#469): backend import check imports package members by qualified name'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 469
+  merged_at: '2026-07-16'
+- number: 468
+  title: 'fix(#464): regex_match criteria restricted to document artifacts (style-lottery
+    guard)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 464
+  - 472
+  merged_at: '2026-07-16'
+- number: 467
+  title: 'fix(#466): inter-workload gate stops the sequence on returned_for_revision'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 466
+  merged_at: '2026-07-16'
+- number: 463
+  title: 'fix(#462): missing command binary skips instead of erroring; env-aware authoring
+    guidance'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 462
+  merged_at: '2026-07-16'
+- number: 461
+  title: 'fix(#456): repaired qa.test suites are re-executed before patch acceptance'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 456
+  merged_at: '2026-07-16'
+- number: 460
+  title: 'fix(#457): test-isolation doctrine in the qa.test fragment'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 457
+  merged_at: '2026-07-16'
+- number: 459
+  title: 'fix(#458): plan-authored invariant tasks run in canonical order (assemble
+    before qa.test)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 458
+  merged_at: '2026-07-16'
+- number: 455
+  title: 'fix(#454): package dirs stay off the test runner''s PYTHONPATH'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 454
+  merged_at: '2026-07-16'
+- number: 453
+  title: 'fix(#451): anchored hash replacement in regen_fragment_manifest.py'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 451
+  merged_at: '2026-07-16'
+- number: 450
+  title: 'fix(#448): qa.test prompt content routed through the fragment system'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 448
+  merged_at: '2026-07-16'
+- number: 449
+  title: 'fix(#447): correction policy guard — continue cannot discard executed-failed
+    required checks'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 447
+  merged_at: '2026-07-16'
+- number: 446
+  title: 'fix(#444): cycle outcome reconciles per-check evidence across runs'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 444
+  merged_at: '2026-07-16'
+- number: 445
+  title: 'fix(#443): seeded scaffold reaches qa.test and builder.assemble'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 443
+  merged_at: '2026-07-16'
+- number: 442
+  title: 'fix(#441): dotless import_present spec matches relative imports'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 441
+  merged_at: '2026-07-16'
+- number: 440
+  title: 'fix(#439): plan substitution preserves the workload-invariant tail (assemble
+    + qa.test)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 439
+  merged_at: '2026-07-16'
+- number: 438
+  title: 'fix: plan-authoring guidance forbids style-dependent regex criteria'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-16'
+- number: 437
+  title: 'fix(#436): import_present matches relative imports'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 436
+  merged_at: '2026-07-15'
+- number: 432
+  title: 'fix(#430): fenced_parser tracks nested fences instead of clipping at the
+    first bare close'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 430
+  merged_at: '2026-07-15'
+- number: 429
+  title: 'spike(phase-0.5): fullstack_fastapi_react expander — skeleton builds + boots'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-15'
+- number: 428
+  title: 'spike(phase-0.5): hand-written group_run interface manifest'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-14'
+- number: 425
+  title: 'fix(#422): command-safelist lint at the plan-authoring boundary + manifest
+    retry runway'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 422
+  merged_at: '2026-07-14'
+- number: 421
+  title: 'fix(#419/#420): typed acceptance at the builder seam + wire-shape criteria
+    coercion'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 419
+  - 420
+  merged_at: '2026-07-14'
+- number: 418
+  title: 'feat(#417): derive-on-read CycleOutcome + cycle-detail surface (SIP-0096
+    Phase 3 slice 2b)'
+  author: jasonLadd
+  labels:
+  - track:macbook
+  closes:
+  - 417
+  merged_at: '2026-07-13'
+- number: 416
+  title: 'feat(#415): persist per-run RunVerificationSummary (SIP-0096 Phase 3 slice
+    2a)'
+  author: jasonLadd
+  labels:
+  - track:macbook
+  closes:
+  - 415
+  merged_at: '2026-07-13'
+- number: 413
+  title: 'fix(#389): accept behaviorally-verified patches — stop re-rolling repaired
+    tasks'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 389
+  merged_at: '2026-07-13'
+- number: 412
+  title: 'feat(#411): CycleOutcome roll-up — pure aggregation core (SIP-0096 Phase
+    3 slice 1)'
+  author: jasonLadd
+  labels:
+  - track:macbook
+  closes:
+  - 411
+  merged_at: '2026-07-13'
+- number: 408
+  title: 'feat(#407): fullstack frontend_build as SIP-0096 evidence + declare required_checks
+    (throttle ON)'
+  author: jasonLadd
+  labels:
+  - track:spark
+  closes: []
+  merged_at: '2026-07-13'
+- number: 409
+  title: 'fix(#388): a non-succeeded run never reads `accepted` on zero evidence'
+  author: jasonLadd
+  labels:
+  - track:macbook
+  closes:
+  - 388
+  merged_at: '2026-07-12'
+- number: 406
+  title: 'chore(#404): sunset warmboot operational artifacts; distill era lessons
+    for the book'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 404
+  merged_at: '2026-07-12'
+- number: 405
+  title: 'fix(#399): apply the live-validated required_files builder-task seam (PR
+    #402 merged the wrong cut)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 399
+  merged_at: '2026-07-12'
+- number: 403
+  title: 'refactor(#401): remove the dead SIP-0.8.8 skill layer end to end'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 401
+  merged_at: '2026-07-12'
+- number: 402
+  title: 'feat(#399): record required_files as SIP-0096 evidence at the builder-task
+    seam'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 399
+  merged_at: '2026-07-11'
+- number: 400
+  title: 'fix(#394): remove the vestigial analysis skills instead of polishing dead
+    JSON parsing'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 394
+  merged_at: '2026-07-11'
+- number: 398
+  title: 'feat(#397): required-check tooling parity (preflight) + doctor verification
+    category'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 397
+  merged_at: '2026-07-11'
+- number: 396
+  title: 'feat(#395): canonical framework-check registry + reject unknown required_checks
+    ids'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 395
+  merged_at: '2026-07-11'
+- number: 393
+  title: 'fix(#276): verify the delivered backend imports, not just the tests'
+  author: jasonLadd
+  labels:
+  - bug
+  - track:spark
+  closes:
+  - 276
+  merged_at: '2026-07-11'
+- number: 390
+  title: 'feat(#291): enforce build profile required_files at run completion'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 291
+  - 392
+  merged_at: '2026-07-11'
+- number: 391
+  title: 'fix(#370,#371): provision the agent secret on deploy and fail honestly'
+  author: jasonLadd
+  labels:
+  - track:spark
+  closes:
+  - 370
+  - 371
+  merged_at: '2026-07-11'
+- number: 385
+  title: 'fix(#374): re-run the failed check on a patch (pure-behavioral repair verification)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 374
+  merged_at: '2026-07-11'
+- number: 387
+  title: 'fix(#333): never fabricate agent identity (id + role); document intentional
+    defaults'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 333
+  merged_at: '2026-07-11'
+- number: 386
+  title: 'feat(SIP-0096 Phase 2 slice 2): final-state resolution for re-verified checks
+    (#379)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 379
+  merged_at: '2026-07-11'
+- number: 384
+  title: 'docs: checks-as-issue-ledger vision + fine-grained issue-enumeration SIP
+    stub'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-11'
+- number: 378
+  title: 'feat(SIP-0096 Phase 2 slice 1): normalize task-result verification into
+    the ledger (+ #376 honest-red guards)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-11'
+- number: 383
+  title: 'docs(SIP): propose Contract-First Build Scaffolding (+ interface-vs-implementation
+    lesson)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-11'
+- number: 382
+  title: 'test(#380): enum-shadow architecture guardrail — fail CI on status string-literal
+    comparisons'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 380
+  merged_at: '2026-07-10'
+- number: 369
+  title: 'feat(SIP-0096 Phase 1): verification-integrity core — pure aggregation,
+    evidence families, blocked_unverified verdict'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 368
+  merged_at: '2026-07-10'
+- number: 367
+  title: 'feat: capture request_profile at the cycle level (SIP-0096 provenance)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 365
+  merged_at: '2026-07-09'
+- number: 366
+  title: 'docs: track 8 idea/vision drafts under docs/ideas'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-09'
+sip_moves:
+- sip: SIP-0098-Verification-Contracts-Contract-Owned-Acceptance
+  from: null
+  to: implemented
+- sip: SIP-0099-Contract-First-Build-Scaffolding
+  from: null
+  to: implemented
+- sip: SIP-0100-Scaffolded-Test-Harness-and
+  from: null
+  to: implemented
+- sip: SIP-0101-Cycle-Replay-Harness
+  from: null
+  to: accepted
+- sip: SIP-0102-Ephemeral-Application-Sandbox
+  from: null
+  to: accepted
+- sip: SIP-Capability-Backed-Agents
+  from: null
+  to: proposed
+- sip: SIP-Fine-Grained-Issue-Enumeration
+  from: null
+  to: proposed
+- sip: SIP-LLM-Emission-Contracts
+  from: null
+  to: proposed
+- sip: SIP-Skill-Layer-For-Capabilities
+  from: null
+  to: proposed
+- sip: SIP-Stack-Blueprint-Contract
+  from: null
+  to: proposed
+cycles: []
+screenshots: []

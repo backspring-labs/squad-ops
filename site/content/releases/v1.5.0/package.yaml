@@ -1,0 +1,331 @@
+version: 1.5.0
+tag: v1.5.0
+previous_tag: v1.4.4
+date: '2026-08-07'
+commit: c90d4504df732e2d73746941be9d6c55c3796322
+narrative: "**Finish the Promises, Extract the Proven** — the odd-minor stabilization\
+  \ release.\nFeature-free by rule and verified as such at the cut: no new contract\
+  \ fields, manifest\nfields, request-profile capabilities, or squad-facing handler/workflow\
+  \ surfaces, and\n**contract v9 / manifest v4 byte-stable line-wide**. 34 PRs, one\
+  \ per issue, across three\ngates. Plan: `docs/plans/1-5-0-stabilization-plan.md`.\n\
+  \n### Added — verification integrity, finished\n- **SIP-0096 implemented**, not\
+  \ merely promoted. Gate waivers as additive schema plus CLI\n  `--waive/--waiver-reason`,\
+  \ where a waived check is recorded and disclosed but the\n  verdict itself is never\
+  \ rewritten (#682, migration 1030); wrap-up consumes the\n  `CycleOutcome` seam\
+  \ and **clamps** over-claiming closeout prose to the evidence it cites\n  (#683);\
+  \ inert-cycle detection derived on read — a squad that stops producing evidence\
+  \ is\n  detected rather than read as passing (#684). The promotion PR also caught\
+  \ its own\n  premise delta: the audit's fourth normative item (a SKIP-only pulse\
+  \ is zero evidence,\n  not a pass) had been dropped from the plan and was implemented\
+  \ rather than waved through.\n- **qa joins the typed-acceptance seam (#670)** —\
+  \ authored checks *and* framework\n  injections now reach both authoring surfaces,\
+  \ closing the gap shk-3 found where\n  `undefined_names` stopped at the qa boundary.\n\
+  - **SIP-0101 Cycle Replay Harness, minimum slice** — maintainer-only replay from\
+  \ a\n  recorded execution boundary, rails before mechanism (#735–#737, migration\
+  \ 1020).\n\n### Added — correction evidence and termination\n- **#687** captures\
+  \ the application's real traceback from the probe runner's spool delta;\n  **#431**\
+  \ makes emission accounting explicit at four producer seams so extraction loss is\n\
+  \  *named* rather than silently truncated. Together: the correction loop's long-standing\n\
+  \  diagnosis blindness.\n- **#435** progress-aware correction termination — a moving\
+  \ chain is never cut short, a\n  repeating one never burns the budget.\n- **#629**\
+  \ a test suite whose assertions contradict the frozen contract is a blocking\n \
+  \ failure; the prose half ships advisory by construction.\n\n### Changed — the structural\
+  \ quarantine\n- **#663** the executor's context assembly becomes a declared `ContextAssemblyContract`\n\
+  \  per task type, replacing five tables and three branches — landed in three golden-first\n\
+  \  slices, 19 goldens captured *before* each refactor and byte-identical through.\n\
+  - **#331** the 1,887-line planning handler splits into a package by authoring stage;\
+  \ a\n  pure move, AST-verified 20/20 top-level names, every pre-split test passing\
+  \ unmodified.\n- **#730 + #504** every typed check declares its own governance metadata\
+  \ in one registry\n  with required, no-default fields — a new check cannot be added\
+  \ without declaring who\n  owns its failures and whether it replays — plus the blocking\
+  \ `fill_slot_signature` check\n  and a generated menu pinned by drift tests.\n-\
+  \ **#481** stranded-cycle detection as a fourth startup sweep, read-only, emitting\
+  \ the\n  exact recovery command. Its first live boot surfaced two genuinely stranded\
+  \ cycles that\n  had been invisible for weeks.\n- **#734** every acceptance verdict\
+  \ names the workspace revision it measured.\n- **#506** transport owns the full\
+  \ task lifecycle, fixing retry attempts that never\n  re-entered RUNNING; **#724**\
+  \ ~20 config reads swept onto `resolved_config`; **#452** the\n  last live-path\
+  \ prompt prose moved into managed assets with byte-equivalence pinned.\n\n### Verified\
+  \ as a line\nTwo green confirmation shakedowns on integrated deploys — the Gate-2\
+  \ exit\n(`cyc_ea0b82cfbd17`, accepted, 17/17, zero corrections) and the cut shakedown\n\
+  (`cyc_b07183b3cf5c`, accepted, 36/36 checks, 15/15 contract criteria, zero corrections,\n\
+  zero machinery defects) — plus a live replay demonstration, a waiver end-to-end\
+  \ probe, and\na replay zero-diff over the stored green corpus.\n\n### Filed forward\n\
+  #761, #762, #668's suite half, #707, `package_builds` (declared-unbuilt with its\
+  \ trigger\nrecorded in the registry), SIP-0102 migration steps 3–7, SIP-0092's M3,\
+  \ and the #557\npost-retest governance review (SIP drafted) → v1.6+."
+pull_requests:
+- number: 765
+  title: 'chore(release): v1.5.0 — Finish the Promises, Extract the Proven'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-07'
+- number: 764
+  title: 'docs(1.5): cut shakedown shk-7 green — matrix closed, cut authorized'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-07'
+- number: 763
+  title: 'sips: Squad-Authored-Manifest — 1.5-boundary amendments (author/reviewer
+    shape, chaos containment, benchmark ruling)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-07'
+- number: 760
+  title: 'sips: #557 post-retest review draft + Cross-Cycle Memory shakedown exhibits'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-07'
+- number: 759
+  title: 'docs(1.5): evidence matrix — Gate-3 rows green, cut gate open'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-07'
+- number: 758
+  title: 'feat(#730): fill_slot_signature — blocking injected check (D1; closes #730,
+    #504)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 504
+  - 730
+  merged_at: '2026-08-07'
+- number: 757
+  title: 'feat(#730): typed-check governance — CheckSpec registry extension (A5 PR
+    1)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 504
+  merged_at: '2026-08-07'
+- number: 756
+  title: 'feat(#734): workspace-revision provenance — Slice A (closes #734)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 734
+  merged_at: '2026-08-07'
+- number: 755
+  title: 'fix(#481): startup sweep surfaces cycles stranded between workloads (closes
+    #481)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 481
+  merged_at: '2026-08-06'
+- number: 754
+  title: 'refactor(#331): planning_tasks.py → handlers/planning package (closes #331)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 331
+  merged_at: '2026-08-06'
+- number: 753
+  title: 'refactor(#663): S3 — plan-time context through the registry + gate-seam
+    ownership (closes #663)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 663
+  merged_at: '2026-08-06'
+- number: 752
+  title: 'refactor(#663): S2 — correction-path context through the context-assembly
+    registry'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-06'
+- number: 751
+  title: 'refactor(#663): S1 — dispatch-time context assembly to the capability-owned
+    registry'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-06'
+- number: 750
+  title: 'docs(1.5): Gate-2 exit shakedown GREEN — evidence matrix filled, Gate 3
+    open'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-06'
+- number: 749
+  title: 'feat(sip): promote SIP-0096 to implemented — AC#6 pulse amendment + AC#11
+    test + full AC mapping'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-05'
+- number: 748
+  title: 'fix(config): #724 resolved_config sweep — effective-config reads through
+    the #426 single merge'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 724
+  merged_at: '2026-08-05'
+- number: 747
+  title: 'refactor(prompts): #452 build-profile narratives externalized byte-identically'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 452
+  merged_at: '2026-08-05'
+- number: 746
+  title: 'fix(observability): #506 in-flight task runs visible — transport owns the
+    task-run lifecycle'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 506
+  merged_at: '2026-08-05'
+- number: 745
+  title: 'feat(verification): #629 contract-expectation enforcement, split by determinism
+    (A6/D2)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 629
+  merged_at: '2026-08-05'
+- number: 744
+  title: 'feat(verification): #684 SIP-0096 §9 inert-check detection — CycleOutcome.inert
+    populated'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 684
+  merged_at: '2026-08-05'
+- number: 743
+  title: 'feat(wrapup): #683 — wrap-up consumes CycleOutcome (SIP-0096 §10/§14)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 683
+  merged_at: '2026-08-05'
+- number: 742
+  title: 'feat(verification): #682 — the gate-waiver slice (SIP-0096 §6.5/AC#12)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 682
+  merged_at: '2026-08-05'
+- number: 741
+  title: 'fix(correction): #435 — progress-aware termination (the A4 bounded lever)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 435
+  merged_at: '2026-08-05'
+- number: 740
+  title: 'fix(correction): #431 — the extraction-loss signal (completes the A3 pair)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 431
+  merged_at: '2026-08-05'
+- number: 739
+  title: 'fix(correction): #687 — thread the app traceback into failure_evidence'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 687
+  merged_at: '2026-08-05'
+- number: 738
+  title: 'fix(qa): #670 — qa.test joins the typed-acceptance seam'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 670
+  merged_at: '2026-08-05'
+- number: 737
+  title: 'feat(replay): SIP-0101 Slice 3 — the replay mechanism (closes the Gate-1
+    minimum path)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-05'
+- number: 736
+  title: 'feat(replay): SIP-0101 Slice 2 — boundary retention (migration 1020)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-05'
+- number: 735
+  title: 'feat(replay): SIP-0101 Slice 1 — replay evidence rails (inert)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-05'
+- number: 733
+  title: 'docs(1.5): workspace-revision spike — promote the provenance slice, defer
+    pinning'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-05'
+- number: 732
+  title: 'docs(1.5): SIP-0092 M2→M3 gate evaluation — gate passes on 67 cycles'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-05'
+- number: 731
+  title: 'docs(1.5): instantiate the release evidence matrix (Gate 1)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-05'
+- number: 729
+  title: 'docs(1.5): typed-check governance design — the A5 curated menu'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-05'
+- number: 728
+  title: 'docs: ADR pinning the defended-bespoke architecture decisions'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 583
+  merged_at: '2026-08-05'
+- number: 727
+  title: 'docs(1.5-plan): Gate-2 exit confirmation shakedown'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-05'
+- number: 726
+  title: 'docs: 1.5.0 stabilization plan — finish the promises, extract the proven'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-05'
+sip_moves:
+- sip: SIP-0096-Verification-Evidence-Integrity
+  from: null
+  to: implemented
+- sip: SIP-Campaign-Orchestration
+  from: null
+  to: proposed
+- sip: SIP-Campaign-Self-Improvement-and-Test-Bay-Requirements
+  from: null
+  to: proposed
+- sip: SIP-Cross-Cycle-Memory
+  from: null
+  to: proposed
+- sip: SIP-Cycle-Evaluation-Scorecard
+  from: null
+  to: proposed
+- sip: SIP-Post-Retest-Governance-Acceptance-Review
+  from: null
+  to: proposed
+- sip: SIP-Squad-Authored-Manifest
+  from: null
+  to: proposed
+cycles: []
+screenshots: []

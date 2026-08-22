@@ -1,0 +1,435 @@
+version: 1.0.0
+tag: v1.0.0
+previous_tag: v0.5-warmboot-run006
+date: '2026-03-10'
+commit: 0ee1c94f48c9091fdb8774370ac941c16c4181c7
+narrative: ''
+pull_requests:
+- number: 38
+  title: 'Release: SquadOps 1.0.0'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 37
+  merged_at: '2026-03-11'
+- number: 36
+  title: 'Pre-1.0 cleanup: agent restart policies, README, lint'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 35
+  merged_at: '2026-03-11'
+- number: 34
+  title: 'fix: scope unattached artifacts under project directory'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 33
+  merged_at: '2026-03-11'
+- number: 32
+  title: 'feat: Docker boot resilience for DGX Spark'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 31
+  merged_at: '2026-03-10'
+- number: 30
+  title: 'fix: cycles panel selection, artifact scoping, and preview'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 29
+  merged_at: '2026-03-10'
+- number: 28
+  title: 'feat: SIP-0083 Multi-Run Cycle Orchestration'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-03-08'
+- number: 27
+  title: 'fix: eliminate PrefectBridge deadlock on task.dispatched (#25)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 25
+  merged_at: '2026-03-07'
+- number: 24
+  title: 'feat(sip-0082): time budget awareness in planning prompts'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-03-07'
+- number: 23
+  title: 'feat(sip-0081): Profile-driven bootstrap system'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-03-07'
+- number: 22
+  title: 'chore: SIP registry audit cleanup'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-03-06'
+- number: 21
+  title: 'fix: eliminate Pydantic deprecation and PytestCollection warnings'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-03-06'
+- number: 20
+  title: 'chore: resolve all test quality violations, make linter blocking'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-03-06'
+- number: 19
+  title: 'feat: SIP-0080 Wrap-Up Workload Protocol (v0.9.18)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-03-06'
+- number: 18
+  title: 'feat: SIP-0079 Implementation Run Contract & Correction Protocol'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-03-06'
+- number: 17
+  title: Remove legacy agent role classes and dead factory
+  author: jasonLadd
+  labels: []
+  closes:
+  - 16
+  merged_at: '2026-03-04'
+- number: 15
+  title: 'feat: SIP-0078 Planning Workload Protocol'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-03-04'
+- number: 14
+  title: 'feat: SIP-0077 Cycle Event System (v0.9.15)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-03-02'
+- number: 13
+  title: Build pipeline hardening (fixes 1-4)
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-03-01'
+- number: 12
+  title: 'feat: SIP-0076 Workload & Gate Canon implementation'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-02-28'
+- number: 10
+  title: 'SIP: Workload & Gate Canon (acceptance-ready)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-02-28'
+- number: 9
+  title: 'feat: SIP-0075 Squad Configuration Perspective'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-02-27'
+- number: 8
+  title: 'fix: data-driven agent display — remove hardcoded names from platform source'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 7
+  merged_at: '2026-02-27'
+- number: 6
+  title: 'feat: SIP-0074 — Console Cycle Operations UX'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-02-26'
+- number: 5
+  title: 'feat: SIP-0073 — LLM Budget and Timeout Controls'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-02-25'
+- number: 4
+  title: 'feat: SIP-0072 — stack-aware development capabilities'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-02-24'
+- number: 3
+  title: 'feat: SIP-0072 — accept Stack-Aware Development Capabilities'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-02-23'
+- number: 2
+  title: 'feat: SIP-0071 builder role — assembly semantics and task type renames'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-02-23'
+- number: 1
+  title: 'chore: rename sips/proposals/ to sips/proposed/ and accept SIP-0071'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-02-22'
+sip_moves:
+- sip: IDEA-QA-First-Test-Strategy-1h-Cycles-group_run
+  from: null
+  to: proposed
+- sip: SIP-0003-Paperclip-Protocol-Squad-Arbitrage-Portfolio-Protocol
+  from: null
+  to: deprecated
+- sip: SIP-0003-v2-Paperclip-Protocol-Squad-Passive-Income-Flipping
+  from: null
+  to: deprecated
+- sip: SIP-0004-Continuous-Adaptation-Protocol-CAP
+  from: null
+  to: deprecated
+- sip: SIP-0004-v2-Continuous-Adaptation-Protocol-CAP
+  from: null
+  to: deprecated
+- sip: SIP-0005-Four-Layer-Metrics-Root-Cause-Attribution-Protocol-MRCA
+  from: null
+  to: deprecated
+- sip: SIP-0005-v2-Four-Layer-Metrics-RCA-Role-First
+  from: null
+  to: deprecated
+- sip: SIP-0006-Warm-Boot-Analysis-Protocol-WBA
+  from: null
+  to: deprecated
+- sip: SIP-0006-v2-Warm-Boot-Analysis-Protocol-WBA-Ops-Mode
+  from: null
+  to: deprecated
+- sip: SIP-0006-v3-Warm-Boot-Analysis-WBA
+  from: null
+  to: deprecated
+- sip: SIP-0007-Armory-Protocol-Tool-Registry
+  from: null
+  to: deprecated
+- sip: SIP-0009-Scout
+  from: null
+  to: deprecated
+- sip: SIP-0010-Creds-Secrets-Lifecycle-Protocol-Role-First
+  from: null
+  to: deprecated
+- sip: SIP-0012-Pattern-First-Development-Escalation-Protocol
+  from: null
+  to: proposed
+- sip: SIP-0013-Extensibility-Customization-Protocol
+  from: null
+  to: proposed
+- sip: SIP-0014-SOC-Review-Module
+  from: null
+  to: deprecated
+- sip: SIP-0015-Redesign-Watchlist-Reference-Framework
+  from: null
+  to: deprecated
+- sip: SIP-0016-HumanAgent-Hybrid-Squad-Operations
+  from: null
+  to: proposed
+- sip: SIP-0017-Usability-Feedback-Service-Integration-Protocol
+  from: null
+  to: deprecated
+- sip: SIP-0018-Enterprise-Process-CoE-Enablement
+  from: null
+  to: proposed
+- sip: SIP-0018-v2-Squad-Context-Protocol
+  from: null
+  to: proposed
+- sip: SIP-0019-SIP-Management-Workflow-Protocol
+  from: null
+  to: implemented
+- sip: SIP-0020-Health-Check-WarmBoot-Enhancement
+  from: null
+  to: deprecated
+- sip: SIP-0021-Agent-Memory-Protocol
+  from: null
+  to: implemented
+- sip: SIP-0022-Specialized-Development-Agent-Roles
+  from: null
+  to: deprecated
+- sip: SIP-0023-Domain-Expert-Architecture-for-Product-Strategy
+  from: null
+  to: proposed
+- sip: SIP-0024-Execution-Cycle-Protocol-Unified-Governance-for-WarmBoots-and-Project-Runs
+  from: null
+  to: implemented
+- sip: SIP-0025-Phased-Task-Management-and-Orchestration-API-Strategy
+  from: null
+  to: implemented
+- sip: SIP-0026-Testing-Framework-and-Philosophy
+  from: null
+  to: implemented
+- sip: SIP-0027-OpenTelemetry-Testing-Results
+  from: null
+  to: implemented
+- sip: SIP-0027-v2-Telemetry-Implementation-Execution-Plan-Multi-Cloud
+  from: null
+  to: deprecated
+- sip: SIP-0027-v3-WarmBoot-Telemetry-Orchestration-Protocol-Enhanced-Observability-and-Event-Drive
+  from: null
+  to: deprecated
+- sip: SIP-0028-Hybrid-Deployment-Model-Industry-Aligned-Architecture-for-Multi-Environment-Depl
+  from: null
+  to: proposed
+- sip: SIP-0031-Internal-A2A-Envelope-Standard
+  from: null
+  to: implemented
+- sip: SIP-0032-Activity-Feed-API
+  from: null
+  to: deprecated
+- sip: SIP-0033-LLM-Client-Abstraction-Manifest-First-AppBuilder
+  from: null
+  to: implemented
+- sip: SIP-0033-v2-A-Manifest-Integration-Addendum-P1-Neo-Max-Edition
+  from: null
+  to: implemented
+- sip: SIP-0033-v3-A-Manifest-Integration-Addendum-P1-Neo-Max-Edition
+  from: null
+  to: implemented
+- sip: SIP-0040-Rev-2-Phase-0-Critical-Architectural-Fixes
+  from: null
+  to: implemented
+- sip: SIP-0040-v2-Rev-3-Decorator-Based-CapabilitySkillTool-System
+  from: null
+  to: implemented
+- sip: SIP-0041-Naming-Correlation-Cycle-Pulse-Optional-Channel
+  from: null
+  to: implemented
+- sip: SIP-0041-v2-SquadOps-Naming-Correlation-cycle-pulse-channel
+  from: null
+  to: implemented
+- sip: SIP-0046-Rev-1-Agent-Specs-and-Configuration-ACPAligned-YAML-Standard
+  from: null
+  to: implemented
+- sip: SIP-0047-Cycle-Data-Layout-Project
+  from: null
+  to: implemented
+- sip: SIP-0048-CDS-Baseline-Plus-SRC
+  from: null
+  to: implemented
+- sip: SIP-0049-Agent-Lifecycle-Health-Check
+  from: null
+  to: implemented
+- sip: SIP-0050-Agent-Container-Interface-ACI
+  from: null
+  to: implemented
+- sip: SIP-0051-Config-Profiles-and-Validation
+  from: null
+  to: implemented
+- sip: SIP-0052-Secrets-Management
+  from: null
+  to: implemented
+- sip: SIP-0053-Repository-Reorganization-for-Domain-Driven
+  from: null
+  to: implemented
+- sip: SIP-0054-Hexagonal-Secrets-Isolation
+  from: null
+  to: implemented
+- sip: SIP-0055-DB-Deployment-Profile-Postgres
+  from: null
+  to: implemented
+- sip: SIP-0056-Hexagonal-Queue-Transport-Layer
+  from: null
+  to: implemented
+- sip: SIP-0057-Hexagonal-Layered-Prompt-System
+  from: null
+  to: implemented
+- sip: SIP-0058-Capability-Contracts-Reference-Workloads
+  from: null
+  to: implemented
+- sip: SIP-0059-Infrastructure-Ports-Migration-Hexagonal
+  from: null
+  to: implemented
+- sip: SIP-0060-Agent-Migration-Hexagonal-Application
+  from: null
+  to: implemented
+- sip: SIP-0061-LangFuse-Integration-Foundation
+  from: null
+  to: implemented
+- sip: SIP-0062-Auth-Boundary-OIDC-Keycloak
+  from: null
+  to: implemented
+- sip: SIP-0063-Keycloak-Production-Hardening
+  from: null
+  to: implemented
+- sip: SIP-0064-Project-Cycle-Request-API
+  from: null
+  to: implemented
+- sip: SIP-0065-CLI-for-Cycle-Execution
+  from: null
+  to: implemented
+- sip: SIP-0066-Cycle-Execution-Pipeline-Wiring
+  from: null
+  to: implemented
+- sip: SIP-0067-Postgres-Cycle-Registry-Durable
+  from: null
+  to: implemented
+- sip: SIP-0068-Enhanced-Agent-Build-Capabilities
+  from: null
+  to: implemented
+- sip: SIP-0069-SquadOps-Console-Control-Plane
+  from: null
+  to: implemented
+- sip: SIP-0070-Pulse-Checks-and-Verification
+  from: null
+  to: implemented
+- sip: SIP-0071-Builder-Role-Dedicated-Product
+  from: null
+  to: implemented
+- sip: SIP-0072-Stack-Aware-Development-Capabilities
+  from: null
+  to: implemented
+- sip: SIP-0073-LLM-Budget-and-Timeout
+  from: null
+  to: implemented
+- sip: SIP-0074-Console-Cycle-Operations-UX
+  from: null
+  to: implemented
+- sip: SIP-0075-Squad-Configuration-Perspective
+  from: null
+  to: implemented
+- sip: SIP-0076-Workload-Gate-Canon
+  from: null
+  to: implemented
+- sip: SIP-0077-Cycle-Event-System
+  from: null
+  to: implemented
+- sip: SIP-0078-Planning-Workload-Protocol
+  from: null
+  to: implemented
+- sip: SIP-0079-Implementation-Run-Contract-Correction
+  from: null
+  to: implemented
+- sip: SIP-0080-Wrap-Up-Workload-Protocol
+  from: null
+  to: implemented
+- sip: SIP-0081-Profile-Driven-Bootstrap
+  from: null
+  to: implemented
+- sip: SIP-0082-Time-Budget-Awareness-in
+  from: null
+  to: implemented
+- sip: SIP-0083-Multi-Run-Cycle-Orchestration
+  from: null
+  to: implemented
+- sip: SIP-API-Contract-Hardening
+  from: null
+  to: proposed
+- sip: SIP-Cycle-Evaluation-Scorecard
+  from: null
+  to: proposed
+- sip: SIP-intelligent-delegation-protocols
+  from: null
+  to: proposed
+cycles: []
+screenshots: []
