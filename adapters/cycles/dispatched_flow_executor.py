@@ -991,21 +991,66 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             )
             i += 1
 
-    async def _starting_workload_index(self, cycle_id: str, first_run_id: str) -> int:
-        """Workload-sequence index that ``first_run_id`` occupies (#257).
+    @staticmethod
+    def _typed_workload_position(run, workload_sequence, non_cancelled) -> int | None:
+        """#880: a run's own ``workload_type`` is authoritative for its position.
 
-        Runs map positionally to workloads — one run per position, created in
-        sequence order (D14) — so a run's index among the cycle's non-cancelled
-        runs (sorted by run_number) is its workload position. This lets
-        execute_cycle resume mid-sequence without re-running earlier completed
-        workloads or double-executing the resumed run. Returns 0 when the run is
-        the first/only one (the cycle-create entry) or is not found.
+        The purely positional map (D14) counts FAILED runs, so a failed
+        implementation occupies its slot forever and a retry run indexes past
+        the sequence end — sitting ``queued`` with no error, no log, no
+        terminal state (roll 14, `run_ae48ceb8d12d`). The run record has
+        carried its workload_type since #433; resolving from it makes a
+        retry-after-failure map to the SAME position as the run it retries.
+
+        Repeated types are disambiguated by ordinal (this run's rank among
+        non-cancelled runs of its type), clamped to the type's last occurrence
+        — which is exactly the retry case: two implementation runs, one
+        sequence slot, both map to it. ``None`` = no typed answer (legacy run
+        or no sequence); the caller falls back to the positional map.
+        """
+        wt = getattr(run, "workload_type", None)
+        if not wt or not isinstance(workload_sequence, list) or not workload_sequence:
+            return None
+        occurrences = [
+            i
+            for i, entry in enumerate(workload_sequence)
+            if isinstance(entry, dict) and entry.get("type") == wt
+        ]
+        if not occurrences:
+            return None
+        ordinal = sum(
+            1
+            for r in non_cancelled
+            if getattr(r, "workload_type", None) == wt and r.run_number <= run.run_number
+        )
+        return occurrences[min(max(ordinal, 1), len(occurrences)) - 1]
+
+    async def _starting_workload_index(self, cycle_id: str, first_run_id: str) -> int:
+        """Workload-sequence index that ``first_run_id`` occupies (#257, #880).
+
+        Typed resolution first: the run's own ``workload_type`` selects its
+        sequence position (see ``_typed_workload_position`` — the #880 fix, so
+        a failed predecessor no longer displaces a retry past the sequence
+        end). Legacy runs without a type keep the positional map — one run per
+        position among non-cancelled runs sorted by run_number (D14). Returns
+        0 when the run is the first/only one (the cycle-create entry) or is
+        not found.
         """
         all_runs = await self._cycle_registry.list_runs(cycle_id)
         non_cancelled = sorted(
             (r for r in all_runs if r.status != RunStatus.CANCELLED.value),
             key=lambda r: r.run_number,
         )
+        target = next((r for r in non_cancelled if r.run_id == first_run_id), None)
+        if target is not None and getattr(target, "workload_type", None):
+            try:
+                cycle = await self._cycle_registry.get_cycle(cycle_id)
+                sequence = cycle.resolved_config().get("workload_sequence", [])
+            except Exception:
+                sequence = []
+            typed = self._typed_workload_position(target, sequence, non_cancelled)
+            if typed is not None:
+                return typed
         for index, run in enumerate(non_cancelled):
             if run.run_id == first_run_id:
                 return index
@@ -1056,23 +1101,27 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             key=lambda r: r.run_number,
         )
         prior_position = start_index - 1
-        if prior_position >= len(non_cancelled):
+        # #880: prior = the last COMPLETED run AT the preceding position, resolved
+        # the same way run positions are (typed first, positional for legacy).
+        # The bare positional pick chose whatever run sat at index start_index-1 —
+        # on the retry-after-failure shape that was the FAILED implementation, so
+        # forwarding degraded and the retry entered without the framing's promoted
+        # plan (the #796/RC-4 shape, runtime-api log 2026-08-13 00:01:11).
+        sequence = cycle.resolved_config().get("workload_sequence", [])
+        candidates = []
+        for idx, r in enumerate(non_cancelled):
+            typed = self._typed_workload_position(r, sequence, non_cancelled)
+            position = typed if typed is not None else idx
+            if position == prior_position and r.status == RunStatus.COMPLETED.value:
+                candidates.append(r)
+        if not candidates:
             logger.warning(
-                "Cannot rebuild forwarding for cycle %s: no run at workload position %d",
+                "Cannot rebuild forwarding for cycle %s: no completed run at workload position %d",
                 cycle_id,
                 prior_position,
             )
             return None
-        prior_run = non_cancelled[prior_position]
-        if prior_run.status != RunStatus.COMPLETED.value:
-            logger.warning(
-                "Cannot rebuild forwarding for cycle %s: prior workload run %s is %r,"
-                " not completed",
-                cycle_id,
-                prior_run.run_id,
-                prior_run.status,
-            )
-            return None
+        prior_run = max(candidates, key=lambda r: r.run_number)
         return await self._build_forwarding_overrides(cycle, prior_run)
 
     async def _build_forwarding_overrides(

@@ -252,19 +252,40 @@ class TestCreateRunPositionalResolution:
         assert resp.status_code == 200
         assert resp.json()["workload_type"] == "framing"
 
-    def test_out_of_bounds_position_rejected(self, client, mock_cycle_registry):
-        # Sequence exhausted: rejecting beats a silent None-typed run (the
-        # legacy plan shape + no artifact seeding).
+    def test_retry_after_failure_resolves_to_the_failed_runs_workload(
+        self, client, mock_cycle_registry
+    ):
+        # #880: sequence "exhausted" by a FAILED run occupying its slot is the
+        # natural retry, not an error — the new run re-attempts the latest
+        # run's own workload at the same position. This exact fixture used to
+        # 422 with advice that dead-ended both ways (cancelling a terminal run
+        # is refused; the created run sat queued forever).
         mock_cycle_registry.get_cycle.return_value = _MULTI_WORKLOAD_CYCLE
         mock_cycle_registry.list_runs.return_value = [
             _existing_run(1, "completed", "framing"),
             _existing_run(2, "failed", "implementation"),
         ]
         resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/runs")
+        assert resp.status_code == 200
+        assert resp.json()["workload_type"] == "implementation"
+
+    def test_out_of_bounds_with_untyped_latest_run_still_rejected(
+        self, client, mock_cycle_registry
+    ):
+        # Sequence exhausted AND the latest run carries no workload_type
+        # (legacy): rejecting still beats a silent None-typed run — and the
+        # message no longer advertises the cancel path #522 refuses.
+        mock_cycle_registry.get_cycle.return_value = _MULTI_WORKLOAD_CYCLE
+        mock_cycle_registry.list_runs.return_value = [
+            _existing_run(1, "completed", "framing"),
+            _existing_run(2, "failed", None),
+        ]
+        resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/runs")
         assert resp.status_code == 422
         error = resp.json()["detail"]["error"]
         assert error["code"] == "VALIDATION_ERROR"
-        assert "Cancel the run being retried" in error["message"]
+        assert "Cancel the run" not in error["message"]
+        assert "runs resume" in error["message"]
 
     def test_explicit_workload_type_bypasses_resolution(self, client, mock_cycle_registry):
         # Same exhausted-sequence state as above: an explicit param must win.
