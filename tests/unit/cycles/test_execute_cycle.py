@@ -1405,6 +1405,10 @@ class TestInterWorkloadGatePlanValidation:
             applied_defaults={
                 **cycle.applied_defaults,
                 "implementation_plan": True,
+                # #1030: this class tests the rejection RECORD in isolation; the
+                # re-roll (now on by default) has its own class — disable it here
+                # so a rejection terminates and the record is the last word.
+                "framing_max_rerolls": 0,
             },
         )
 
@@ -1953,6 +1957,42 @@ class TestFramingReroll:
             "implementation",
         ]
 
+    async def test_reroll_is_reachable_under_default_config(
+        self, executor, mock_registry, mock_event_bus
+    ):
+        """#1030: the re-roll branch must fire with NO profile override.
+
+        Every test in this class passed `framing_max_rerolls: 1` explicitly, so
+        the shipped default of 0 — which no profile overrode — left the whole
+        #522/#669 machinery dead code, discovered when the first live #1013
+        rejection dead-ended cyc_9bb225e19448 after a CORRECT refusal. This test
+        pins the default itself: a system rejection under default resolved
+        config re-rolls instead of killing the cycle."""
+        cycle = _make_cycle(workload_sequence=self._seq())  # deliberately no reroll override
+        mock_registry.get_cycle.return_value = cycle
+        run1 = _make_run("run_001", 1, "completed", "framing")
+        run2 = _make_run("run_002", 2, "completed", "framing")
+        run3 = _make_run("run_003", 3, "completed", "implementation")
+        mock_registry.get_run.side_effect = [run1, run2, run3]
+        mock_registry.list_runs.return_value = [run1]
+        executor._reject_invalid_plan_before_workload_gate = AsyncMock(
+            side_effect=[["manifest↔plan contradiction on POST /x"], []]
+        )
+        executor._create_next_workload_run = AsyncMock(side_effect=[run2, run3])
+        executor._poll_inter_workload_gate = AsyncMock(
+            return_value=_gate_decision("progress_plan_review", GateDecisionValue.APPROVED)
+        )
+
+        await executor.execute_cycle("cyc_001", "run_001")
+
+        # The re-roll happened (framing created again), then implementation ran —
+        # the cycle did NOT dead-end at the rejection.
+        assert [c.args[2]["type"] for c in executor._create_next_workload_run.await_args_list] == [
+            "framing",
+            "implementation",
+        ]
+        mock_registry.cancel_run.assert_awaited_once_with("run_001")
+
     async def test_reroll_forwards_rejection_context(self, executor, mock_registry, mock_event_bus):
         """#669: the re-roll's execute_run must receive the prior rejection
         (reasons + rejected plan YAML) on the §6.6 forwarding rail — fay-10
@@ -2056,12 +2096,15 @@ class TestFramingReroll:
         assert executor._create_next_workload_run.await_count == 1  # only the re-roll
         executor._poll_inter_workload_gate.assert_not_awaited()
 
-    async def test_default_zero_rerolls_is_unchanged_behavior(
+    async def test_explicit_zero_disables_rerolls_deliberately(
         self, executor, mock_registry, mock_event_bus
     ):
-        # no framing_max_rerolls set -> default 0 -> first rejection kills the
-        # cycle exactly as before (no cancel, no re-roll)
-        cycle = _make_cycle(workload_sequence=self._seq())
+        # #1030 flipped the default to 2 (the unset default silently disabled the
+        # whole machinery). Zero remains the DELIBERATE off-switch: set
+        # explicitly, the first rejection stops the cycle (no cancel, no re-roll).
+        cycle = _make_cycle(
+            workload_sequence=self._seq(), applied_defaults_extra={"framing_max_rerolls": 0}
+        )
         mock_registry.get_cycle.return_value = cycle
         run1 = _make_run("run_001", 1, "completed", "framing")
         mock_registry.get_run.side_effect = [run1]
