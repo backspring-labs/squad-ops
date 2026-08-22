@@ -541,7 +541,7 @@ def test_the_frozen_error_class_is_named_with_its_constructor():
         for line in scaffold.frozen_surface_index_lines(_manifest_for("nextjs_ts"))
         if "lib/errors.ts" in line
     )
-    assert "classes `ApiError(code: string, detail: string = '')`" in line
+    assert "classes `ApiError(code: string, message: string = '')`" in line
     assert "`errorResponse(err: unknown): Response`" in line, (
         "the catch-seam signature must publish the type that forbids bare-string calls"
     )

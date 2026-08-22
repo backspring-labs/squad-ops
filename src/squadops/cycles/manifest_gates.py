@@ -38,6 +38,7 @@ PROOF_CONTRACT_DERIVES = "contract_derives"
 PROOF_CHECKS_LIVE = "checks_live"
 PROOF_TESTID_COVERAGE = "testid_coverage"
 PROOF_STATUS_DECLARED = "status_declared"
+PROOF_ERROR_SHAPE = "error_shape_agrees"
 #: #838: the manifest declares its own stack, and until VS nothing compared that to the
 #: stack the CYCLE was configured for. A manifest for another stack is unwinnable in the
 #: most literal sense — the expander builds a different application.
@@ -107,6 +108,7 @@ def assess_winnability(
     findings.extend(_contract_findings(manifest))
     findings.extend(_testid_findings(manifest))
     findings.extend(_status_findings(manifest))
+    findings.extend(_error_shape_findings(manifest))
     findings.extend(_scaffold_findings(manifest))
     return tuple(findings)
 
@@ -440,5 +442,42 @@ def _status_findings(manifest) -> list[WinnabilityFinding]:
             f"`success_status`. The derived contract would assert 201 while the scaffold "
             f"emits a route returning 200, so the probe fails against a correct "
             f"implementation. Declare the status the endpoint returns on success.",
+        )
+    ]
+
+
+def _error_shape_findings(manifest) -> list[WinnabilityFinding]:
+    """A declared ``error_contract.shape`` must not contradict the blueprint's envelope (#795).
+
+    The envelope is blueprint-owned: the expander writes ``{"error": {"code", "message"}}``
+    into frozen code and every probe asserts against it. ``shape`` was read by nothing, so
+    V4 roll 1 declared FastAPI's default ``{"detail": "string"}`` and every gate passed —
+    a dev reading the authored contract would write error handling against a key no
+    response carries. This finding makes the ROOT contradiction unrepresentable: the
+    declared shape's root key must be ``error``.
+
+    Deliberately root-only. Banked green manifests declare the vague-but-true
+    ``{"error": "..."}`` and must keep passing — a rule that rejects the artifacts the
+    evidence was measured against is the wrong rule (the ``_status_findings`` principle).
+    Inner-field fidelity is carried by the ErrorSeam teaching, which renders from the
+    generator's own declaration and cannot drift from it.
+    """
+    contract = getattr(manifest.api, "error_contract", None)
+    shape = (getattr(contract, "shape", "") or "").strip()
+    if not shape:
+        return []
+    import re as _re
+
+    root_keys = _re.findall(r'^\s*\{\s*"?(\w+)"?\s*:', shape)
+    if not root_keys or root_keys[0] == "error":
+        return []
+    return [
+        WinnabilityFinding(
+            PROOF_ERROR_SHAPE,
+            f"`error_contract.shape` declares root key `{root_keys[0]}` but the blueprint's "
+            f'frozen envelope is `{{"error": {{"code", "message"}}}}` — the scaffold '
+            f"writes it and every probe asserts it, so a shape rooted elsewhere describes a "
+            f"body no response will ever carry. Declare the `error`-rooted envelope or omit "
+            f"the field.",
         )
     ]

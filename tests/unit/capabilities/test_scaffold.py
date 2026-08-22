@@ -932,22 +932,24 @@ class TestErrorSeamIsPerStack:
     """#912 — one shared text asserted stack #1's Python facts for every stack."""
 
     def test_each_stack_names_its_own_module_import_and_parameter(self):
-        """Bug caught: a nextjs_ts repair is told to edit `errors.py` and pass `message`.
+        """Bug caught: a nextjs_ts repair is told to edit `errors.py`.
 
-        The file is `lib/errors.ts` and the constructor parameter is `detail`. This is
-        the #902 class in a second location — a shared prompt surface stating one
-        stack's facts as universal — and it fires exactly when a repair is trying to fix
-        an error-envelope defect, which is what window rolls 2 and 3 were both doing.
-        """
+        The file is `lib/errors.ts`. This is the #902 class in a second location — a
+        shared prompt surface stating one stack's facts as universal — and it fires
+        exactly when a repair is trying to fix an error-envelope defect, which is what
+        window rolls 2 and 3 were both doing. The body field is `message` on BOTH
+        stacks since #795's reconciliation (the nextjs generator's `detail` was the
+        odd one out against stack #1 and the reference manifests); the per-stack seam
+        stays because module and import genuinely differ."""
         from squadops.capabilities.scaffold import error_seam_for
 
         fastapi = error_seam_for("fullstack_fastapi_react")
         nextjs = error_seam_for("nextjs_ts")
 
         assert (fastapi.module, fastapi.body_field) == ("errors.py", "message")
-        assert (nextjs.module, nextjs.body_field) == ("lib/errors.ts", "detail")
+        assert (nextjs.module, nextjs.body_field) == ("lib/errors.ts", "message")
         assert "@/lib/errors" in nextjs.import_form
-        assert "ApiError(code, detail)" == nextjs.raise_form
+        assert "ApiError(code, message)" == nextjs.raise_form
 
     def test_the_framework_exception_clause_is_named_only_where_one_exists(self):
         """Bug caught: generalizing the prohibition loses the name that made it work.
@@ -978,21 +980,22 @@ class TestErrorEnvelopeLines:
         lines = error_envelope_lines("nextjs_ts")
         joined = " ".join(lines)
 
-        assert '{"error": {"code": "validation_error", "detail": "..."}}' in joined
+        assert '{"error": {"code": "validation_error", "message": "..."}}' in joined
         assert "body.error.code" in joined
         assert "error_code" in joined  # the invented form, named as wrong
 
-    def test_each_stack_describes_its_own_envelope(self):
-        """Bug caught: one envelope described for both stacks.
+    def test_each_stack_describes_the_envelope_its_generator_emits(self):
+        """Bug caught: the brief describing a field the generator does not write.
 
-        They genuinely differ — stack #1 emits `message`, stack #2 emits `detail` — so a
-        single description would be wrong for one of them, which is the defect this
-        whole seam exists to stop.
-        """
+        The description renders from each stack's OWN seam declaration, so it tracks
+        the generator by construction. Since #795's reconciliation both stacks emit
+        `message` (nextjs's `detail` was the odd one out against stack #1 and the
+        reference manifests) — the per-stack seam machinery stays, because module and
+        import genuinely differ and a future stack MAY differ on the field again."""
         from squadops.capabilities.scaffold import error_envelope_lines
 
         assert '"message"' in " ".join(error_envelope_lines("fullstack_fastapi_react"))
-        assert '"detail"' in " ".join(error_envelope_lines("nextjs_ts"))
+        assert '"message"' in " ".join(error_envelope_lines("nextjs_ts"))
 
     def test_an_unknown_stack_says_nothing_rather_than_guessing(self):
         """A stack with no declared seam must produce no lines. A guessed envelope is

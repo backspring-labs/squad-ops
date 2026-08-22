@@ -43,14 +43,14 @@ _FIXTURE_DIR = (
 # self-contained evidence that the input end did not move.
 _MANIFEST_HASH = "ac1e7be378c54d5966680b85824c6f2c2e4d158eb8dec14d081209223e07053a"
 
-# The fixture's own identity. Regenerated at GENERATOR_VERSION 4 (2026-08-17, #967 — the
-# spine now imports `TABLES`, the symbol the fill appendix teaches).
+# The fixture's own identity. Regenerated at GENERATOR_VERSION 5 (2026-08-21, #795 — the
+# nextjs error envelope's second field unified to `message`, reconciling the generator with
+# stack #1 and the reference manifests).
 #
-# BOTH VALUES MOVED THIS TIME, and the contrast with version 3 is the useful part. Version 3
-# typed the store and left both hashes untouched: the tree changed, the shells did not.
-# Version 4 changes the shells' own import line, so the spine hash moves — which is exactly
-# what a spine hash is for. The two versions together demonstrate the pins discriminating
-# rather than merely reacting.
+# Version 5 is the version-3 shape again: the SKELETON changed (lib/errors.ts), so
+# `expanded_tree_hash` moves in the emission record while the shells and the spine hash
+# stay untouched — the pins discriminating input drift from shell drift, exactly as the
+# version-3/version-4 contrast demonstrated.
 #
 # These stop an in-place fixture regeneration from making the byte test self-referential.
 _AGGREGATE_SPINE_HASH = "e8f2a59e1e64e3b2d77dc2a2d3aae018a88ba0648393491a6094325f9fba0414"
@@ -73,12 +73,12 @@ def test_the_reference_manifest_is_unmoved():
 def test_generator_version_is_the_fixture_generation(emission):
     """A generator change without a version bump is drift by definition (SIP §4.3);
     a bump without regenerating the fixture is a pin measuring the wrong version."""
-    assert GENERATOR_VERSION == 4
-    assert emission.manifest.generator_version == 4
+    assert GENERATOR_VERSION == 5
+    assert emission.manifest.generator_version == 5
     stored = yaml.safe_load(
         (_FIXTURE_DIR / "verification_scaffold_manifest.yaml").read_text(encoding="utf-8")
     )
-    assert stored["generator_version"] == 4
+    assert stored["generator_version"] == 5
 
 
 def test_emission_reproduces_the_fixture_byte_for_byte(emission):

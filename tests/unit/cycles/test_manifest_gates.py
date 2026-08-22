@@ -21,6 +21,7 @@ import yaml
 
 from squadops.cycles.manifest_gates import (
     PROOF_CONTRACT_DERIVES,
+    PROOF_ERROR_SHAPE,
     PROOF_EXPANDS,
     PROOF_PARSES,
     PROOF_STATUS_DECLARED,
@@ -77,6 +78,35 @@ def test_collection_post_without_success_status_is_unwinnable():
     detail = next(f.detail for f in findings if f.proof == PROOF_STATUS_DECLARED)
     assert "201" in detail and "200" in detail  # names both sides of the disagreement
     assert "success_status" in detail  # names the fix
+
+
+def test_v4_class_foreign_root_error_shape_is_unwinnable():
+    """#795 (V4 roll 1): `error_contract.shape: '{"detail": "string"}'` declared
+    FastAPI's default while the frozen envelope is error-rooted — a dev reading the
+    authored contract writes handling against a key no response carries, and every
+    gate passed because nothing compared them."""
+    data = _reference_dict()
+    data["api"]["error_contract"]["shape"] = '{"detail": "string"}'
+    findings = assess_winnability(_as_yaml(data))
+    assert PROOF_ERROR_SHAPE in _proofs(findings)
+    detail = next(f.detail for f in findings if f.proof == PROOF_ERROR_SHAPE)
+    assert "detail" in detail and "error" in detail
+
+
+def test_vague_but_true_error_shape_passes():
+    """Banked green manifests declare `{"error": "..."}` — under-specified, not
+    wrong. A rule that rejects the artifacts the evidence was measured against is
+    the wrong rule."""
+    data = _reference_dict()
+    data["api"]["error_contract"]["shape"] = '{"error": "..."}'
+    assert PROOF_ERROR_SHAPE not in _proofs(assess_winnability(_as_yaml(data)))
+
+
+def test_absent_error_shape_passes():
+    """The field is optional; silence defers to the blueprint's envelope."""
+    data = _reference_dict()
+    data["api"]["error_contract"].pop("shape", None)
+    assert PROOF_ERROR_SHAPE not in _proofs(assess_winnability(_as_yaml(data)))
 
 
 def test_child_post_without_success_status_is_fine():

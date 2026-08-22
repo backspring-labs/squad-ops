@@ -26,6 +26,7 @@ from squadops.cycles.manifest_gates import (
     PROOF_CHECKS_LIVE,
     PROOF_CONTRACT_DERIVES,
     PROOF_DECISION_RECORD,
+    PROOF_ERROR_SHAPE,
     PROOF_EXPANDS,
     PROOF_LINT,
     PROOF_PARSES,
@@ -46,6 +47,9 @@ AUTHOR_FACING: dict[str, tuple[str, ...]] = {
     PROOF_EXPANDS: ("paths-under-scaffold-roots",),
     PROOF_TESTID_COVERAGE: ("every-view-declares-anchors",),
     PROOF_STATUS_DECLARED: ("declare-the-success-status",),
+    # #795: the envelope is blueprint-owned; a declared shape rooted anywhere but
+    # `error` describes a body no response will carry (V4 declared FastAPI's default).
+    PROOF_ERROR_SHAPE: ("error-shape-is-the-blueprints",),
     PROOF_SOURCE_PRD: ("name-the-source-prd",),
     PROOF_DECISION_RECORD: ("record-judgments-with-warrants",),
     # #838: AUTHOR_FACING rather than COVERED_ELSEWHERE, though the authoring request's
