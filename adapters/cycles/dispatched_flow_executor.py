@@ -631,10 +631,17 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             )
         # #522: framing re-rolls on a system plan-validation rejection. `while`
         # (not `for`) so a re-roll can re-process the SAME workload index — the
-        # re-roll path `continue`s without the tail `i += 1`. Zero re-rolls
-        # (default) is byte-identical to the old `for` loop.
+        # re-roll path `continue`s without the tail `i += 1`.
+        #
+        # #1030: the default is 2, matching `manifest_max_attempts`'s posture — a
+        # system rejection is a stochastic authoring fault that gets bounded
+        # retries BY DEFAULT. It shipped as 0, which no profile overrode, so the
+        # whole #522/#669 machinery (including rejection-context threading into
+        # the re-authoring prompts) was dead code until the first live #1013
+        # rejection dead-ended cyc_9bb225e19448 after a CORRECT refusal. The
+        # knob stays config-overridable; 0 still disables deliberately.
         framing_rerolls = 0
-        max_framing_rerolls = cycle.resolved_config().get("framing_max_rerolls", 0)
+        max_framing_rerolls = int(cycle.resolved_config().get("framing_max_rerolls", 2))
         # #811: operator-requested revisions are counted SEPARATELY from system re-rolls and
         # bounded by ``manifest_max_attempts`` (§5c.6), not ``framing_max_rerolls``. The
         # latter defaults to 0 and the validated profiles do not set it, so sharing it would
