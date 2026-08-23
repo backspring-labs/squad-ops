@@ -899,6 +899,65 @@ class TestMaxCorrectionAttempts:
         assert RunStatus.FAILED in terminal_statuses
 
 
+class TestEmptyEmissionRefund:
+    """#1053, executor side: the refund, and the bound on it.
+
+    The runner flags an emission containing nothing; this is where the attempt is
+    handed back. Both halves matter — refunding lets a correct diagnosis have another
+    go, and bounding it stops a producer that never emits from looping forever.
+    """
+
+    @staticmethod
+    def _refund(counter: dict, *, empty: bool, max_corrections: int, attempt: int) -> dict:
+        """Drive the EXECUTOR's rule, not a copy of it.
+
+        The first version of this helper re-implemented the arithmetic, which would have
+        kept passing while the real rule drifted. `refund_empty_emission_attempt` is
+        module-level for exactly this reason.
+        """
+        from adapters.cycles.dispatched_flow_executor import refund_empty_emission_attempt
+
+        if empty:
+            refund_empty_emission_attempt(counter, max_corrections, attempt)
+        return counter
+
+    def test_an_empty_emission_hands_the_attempt_back(self):
+        """Arm B's shape: the pre-incremented attempt is returned, so the round is
+        re-taken instead of billed. Without this, two empty files spent a budget of
+        three against a diagnosis that never drifted."""
+        counter = {"n": 1}
+        self._refund(counter, empty=True, max_corrections=3, attempt=0)
+        assert counter["n"] == 0
+        assert counter["empty_refunds"] == 1
+
+    def test_a_real_emission_keeps_its_attempt(self):
+        """The control. Refunding a genuine repair would make the budget bound nothing
+        and a non-converging loop would run until the time budget killed it."""
+        counter = {"n": 1}
+        self._refund(counter, empty=False, max_corrections=3, attempt=0)
+        assert counter["n"] == 1
+        assert "empty_refunds" not in counter
+
+    def test_the_refund_allowance_is_finite(self):
+        """A producer that emits nothing EVERY time must still terminate. Once the
+        allowance is spent the empty round is counted, so exhaustion is reachable."""
+        counter = {"n": 0}
+        for i in range(5):
+            counter["n"] += 1
+            self._refund(counter, empty=True, max_corrections=2, attempt=counter["n"] - 1)
+        assert counter["empty_refunds"] == 2
+        # Three of five rounds were billed, so the budget still advances.
+        assert counter["n"] == 3
+
+    def test_refunds_are_counted_separately_from_the_correction_budget(self):
+        """The allowance cannot come out of the pool it is failing to consume — that is
+        unbounded by construction. `empty_refunds` is its own key."""
+        counter = {"n": 1}
+        self._refund(counter, empty=True, max_corrections=3, attempt=0)
+        assert counter["empty_refunds"] == 1
+        assert counter["n"] == 0
+
+
 # ---------------------------------------------------------------------------
 # Plan delta stored as artifact
 # ---------------------------------------------------------------------------
@@ -4261,3 +4320,119 @@ class TestOwnershipVetoWiring(TestCorrectionRunnerStandalone):
             arts, "development.implement", "dev", [], ("*.test.ts",)
         )
         assert kept == arts
+
+
+class TestEmptyRepairEmission:
+    """#1053: a repair that emits nothing must not be billed as an attempt.
+
+    Arm B of the 2026-08-23 pair (`cyc_d478dda745b9`) banked `repair_output.md` at ZERO
+    bytes on two of its three rounds, under the handler's generic fallback name, while
+    the lead's diagnosis stayed correct and stable across all three. Each empty file was
+    counted, so `Max correction attempts (3) exhausted` described a loop that had
+    actually tried once.
+    """
+
+    # Borrowed, not inherited: subclassing the standalone suite would re-run every one
+    # of its tests under this class's name, which inflates the count and hides which
+    # suite actually covers what.
+    _make_runner = TestCorrectionRunnerStandalone._make_runner
+    _failed_envelope = TestCorrectionRunnerStandalone._failed_envelope
+
+    @staticmethod
+    def _responder(artifacts):
+        def responder(envelope):
+            if envelope.task_type == "governance.correction_decision":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={
+                        "correction_path": "patch",
+                        "decision_rationale": "patchable",
+                        "affected_task_types": ["development.develop"],
+                    },
+                )
+            if envelope.task_type.endswith("correction_repair"):
+                return TaskResult(
+                    task_id=envelope.task_id, status="SUCCEEDED", outputs={"artifacts": artifacts}
+                )
+            return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs={})
+
+        return responder
+
+    async def _run(self, cycle, artifacts):
+        import dataclasses as _dc
+
+        runner, _r, _v, _b = self._make_runner(self._responder(artifacts))
+        return await runner.run_correction_protocol(
+            run_id="run_001",
+            cycle=cycle,
+            envelope=_dc.replace(self._failed_envelope(), task_type="qa.test"),
+            result=TaskResult(task_id="task_failed", status="FAILED", error="suite failed"),
+            correction_attempts=0,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+        )
+
+    async def test_a_zero_byte_emission_is_flagged_empty(self, cycle):
+        """The banked shape, exactly: one artifact, no content."""
+        protocol = await self._run(cycle, [{"name": "repair_output.md", "content": ""}])
+        assert protocol.emission_empty is True
+
+    async def test_whitespace_only_content_is_also_empty(self, cycle):
+        """A file of newlines is not a repair. Judging on length rather than on content
+        would let the same wasted round through under a slightly different emitter."""
+        protocol = await self._run(cycle, [{"name": "repair_output.md", "content": "\n  \n"}])
+        assert protocol.emission_empty is True
+
+    async def test_a_real_emission_is_not_flagged(self, cycle):
+        """The control. Flagging a genuine repair would refund rounds forever and the
+        budget would stop bounding anything."""
+        protocol = await self._run(
+            cycle, [{"name": "app/api/runs/route.ts", "content": "export async function GET() {}"}]
+        )
+        assert protocol.emission_empty is False
+
+    async def test_one_empty_file_beside_a_real_one_is_not_empty(self, cycle):
+        """Judged on the emission as a whole: a repair that wrote a route and an empty
+        note produced something to verify."""
+        protocol = await self._run(
+            cycle,
+            [
+                {"name": "notes.md", "content": ""},
+                {"name": "app/api/runs/route.ts", "content": "export const x = 1"},
+            ],
+        )
+        assert protocol.emission_empty is False
+
+    async def test_a_path_with_no_repair_step_is_never_flagged(self, cycle):
+        """A `continue` decision runs no repair and legitimately emits nothing. Marking
+        it empty would refund an attempt that was never spent on a repair — the
+        distinction `repair_steps_ran` exists for."""
+        import dataclasses as _dc
+
+        def responder(envelope):
+            if envelope.task_type == "governance.correction_decision":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={"correction_path": "continue", "decision_rationale": "proceed"},
+                )
+            return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs={})
+
+        runner, _r, _v, _b = self._make_runner(responder)
+        protocol = await runner.run_correction_protocol(
+            run_id="run_001",
+            cycle=cycle,
+            envelope=_dc.replace(self._failed_envelope(), task_type="qa.test"),
+            result=TaskResult(task_id="task_failed", status="FAILED", error="x"),
+            correction_attempts=0,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+        )
+        assert protocol.emission_empty is False

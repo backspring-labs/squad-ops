@@ -130,6 +130,28 @@ def _record_repair_rejection(carry: dict[str, list[str]] | None, task_id: str, e
     del entries[:-_REPAIR_REJECTION_ENTRY_LIMIT]
 
 
+def refund_empty_emission_attempt(
+    correction_counter: dict[str, int], max_corrections: int, attempt: int
+) -> bool:
+    """Hand back a correction attempt whose repair emitted nothing (#1053).
+
+    Mutates ``correction_counter`` in place and returns whether the refund was granted.
+    Pure arithmetic on the shared counter, extracted so the executor and its test drive
+    the SAME rule — a test that re-implements this would keep passing while the rule
+    drifted, which is the failure mode this repo has paid for in other places.
+
+    The allowance is its own key, deliberately: taking it from the correction pool the
+    empty emission is failing to consume would be unbounded by construction. Once spent,
+    an empty round is billed like any other, so a producer that never emits terminates.
+    """
+    refunds = correction_counter.get("empty_refunds", 0)
+    if refunds >= max_corrections:
+        return False
+    correction_counter["empty_refunds"] = refunds + 1
+    correction_counter["n"] = attempt
+    return True
+
+
 class DispatchedFlowExecutor(FlowExecutionPort):
     """Flow executor that dispatches tasks to agent containers via RabbitMQ.
 
@@ -2865,6 +2887,35 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             ),
         )
         correction_path = protocol.correction_path
+
+        # #1053: an emission containing nothing is not an attempt at the fix. Arm B of
+        # the 2026-08-23 pair banked `repair_output.md` at ZERO bytes on two of three
+        # rounds while its diagnosis stayed correct and stable, and each was billed as a
+        # spent attempt — so the run reported an exhausted budget after one real try.
+        # Refund the pre-incremented attempt so the round is re-taken.
+        #
+        # BOUNDED, and separately from the correction budget: a producer that emits
+        # nothing every time must still terminate, and refunding out of the same pool it
+        # is failing to consume would be unbounded by construction. One refund per
+        # correction the budget allows is enough to absorb a transient empty emission
+        # without letting a broken emitter run forever.
+        if protocol.emission_empty:
+            if refund_empty_emission_attempt(correction_counter, max_corrections, attempt):
+                logger.warning(
+                    "correction attempt %d refunded: the repair emitted no content, so the "
+                    "round is re-taken rather than spent (refund %d of %d, #1053)",
+                    attempt,
+                    correction_counter["empty_refunds"],
+                    max_corrections,
+                )
+            else:
+                logger.warning(
+                    "correction attempt %d emitted no content and the refund allowance is "
+                    "spent (%d) — counting it, so a producer that never emits terminates "
+                    "(#1053)",
+                    attempt,
+                    max_corrections,
+                )
 
         if correction_path == "abort":
             raise _ExecutionError(

@@ -593,6 +593,15 @@ class CorrectionProtocolResult:
 
     correction_path: str
     repair_artifacts: list[dict[str, Any]] = field(default_factory=list)
+    #: #1053: repair steps ran and produced no content at all. Distinct from "produced
+    #: a bad repair" and from "no repair step ran": arm B of the 2026-08-23 pair banked
+    #: `repair_output.md` at ZERO bytes on two of its three rounds, under the handler's
+    #: generic fallback name, while holding a correct and stable diagnosis. Each was
+    #: counted as a spent attempt, so `Max correction attempts (3) exhausted` described
+    #: a loop that had actually tried once. An emission containing nothing is an
+    #: emission failure (`FailureEvidenceCategory.EMISSION_ABSENT`'s shape), not an
+    #: attempt at the fix.
+    emission_empty: bool = False
 
 
 class CorrectionRunner:
@@ -1299,6 +1308,7 @@ class CorrectionRunner:
         # subject-implementation surface (_resolve_repair_target aims repairs at
         # the SUBJECT and would point a test re-author at app source files).
         repair_artifacts: list[dict[str, Any]] = []
+        repair_steps_ran = False
         if correction_path == "patch":
             failed_inputs = envelope.inputs or {}
             # #667/#663 S2: the anchor surface rides every repair envelope,
@@ -1390,6 +1400,7 @@ class CorrectionRunner:
                 # Dispatch the repair step (task_run creation + task events
                 # live in _dispatch_protocol_step, SIP-0087 B2 — so
                 # correction-driven repairs appear in the Prefect UI).
+                repair_steps_ran = True
                 repair_result = await self._dispatch_protocol_step(
                     repair_envelope,
                     run_id,
@@ -1451,17 +1462,37 @@ class CorrectionRunner:
                     )
                 )
 
+        # #1053: did the repair steps that ran produce anything at all? Judged on
+        # emitted CONTENT, not on the artifact count — a zero-byte file is still a file,
+        # and counting it as an attempt is what spent arm B's budget. `repair_steps_ran`
+        # keeps this distinct from a rewind/continue path, which legitimately emits
+        # nothing and must never be refunded.
+        emission_empty = repair_steps_ran and not any(
+            str(a.get("content") or "").strip() for a in repair_artifacts if isinstance(a, dict)
+        )
+        if emission_empty:
+            logger.warning(
+                "correction: repair emitted no content on attempt %d (%d artifact(s), all "
+                "empty) — the round produced nothing to verify (#1053)",
+                correction_attempts,
+                len(repair_artifacts),
+            )
+
         # 8. Emit CORRECTION_COMPLETED
         self._event_bus.emit(
             EventType.CORRECTION_COMPLETED,
             entity_type="run",
             entity_id=run_id,
             context={"cycle_id": cycle.cycle_id, "run_id": run_id},
-            payload={"correction_path": correction_path},
+            # Disclosed on the event, not only in a log line: "converged in 3" and
+            # "converged in 3 after two empty emissions" must not read the same.
+            payload={"correction_path": correction_path, "emission_empty": emission_empty},
         )
 
         return CorrectionProtocolResult(
-            correction_path=correction_path, repair_artifacts=repair_artifacts
+            correction_path=correction_path,
+            repair_artifacts=repair_artifacts,
+            emission_empty=emission_empty,
         )
 
     # Artifact types a qa.test task emits *about* its run, not *into* its
