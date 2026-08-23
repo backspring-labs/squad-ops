@@ -12,6 +12,12 @@ repairs are re-stored under the task's own type (#389 swap), so rejected
 candidates never enter the tree. pf-54 is the canonical trap this rule
 survives: last-wins-by-time would pick a *rejected* repair that boots.
 
+#971 adds the second exclusion: an emission marked ``emission_status="failed"``
+is banked for triage and is never deliverable. The trap there is narrower and
+worse — a failed emission is often the ONLY copy of its file (nothing re-emitted
+it before the run died), so latest-per-filename would audit bytes already proven
+not to work and report on an application the run never produced.
+
 The assembly uses the run's OWN stored skeleton files (the seeding rail stores
 them), so an audit of an old run reflects that run's era, not today's expander.
 
@@ -96,6 +102,8 @@ def _select_deliverable(pulled: Path) -> dict[str, str]:
         meta = json.loads(meta_path.read_text())
         if meta.get("artifact_type") not in _WORKSPACE_ARTIFACT_TYPES:
             continue
+        if (meta.get("metadata") or {}).get("emission_status") == "failed":
+            continue  # #971: a banked failed emission is triage evidence, never the deliverable
         producing = (meta.get("metadata") or {}).get("producing_task_type", "")
         if producing in REPAIR_TASK_TYPES:
             continue  # rejected candidate — accepted repairs re-store under the task type

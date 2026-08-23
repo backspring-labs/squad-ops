@@ -1305,6 +1305,19 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         if not filter_spec:
             return {}
 
+        # #971: a FAILED emission is never workspace input, for any caller. Unlike the
+        # repair-candidate exclusion below this one is unconditional and takes no flag —
+        # a candidate is merely unaccepted (the correction loop legitimately reads its
+        # own accumulation), whereas an emission that failed its checks is known-bad.
+        # Storing it is a triage instrument (#971); letting it compose a workspace would
+        # feed known-bad bytes to the next task and, on the acceptance workspace, into
+        # the assembled deliverable.
+        stored_artifacts = [
+            (art_id, ref)
+            for art_id, ref in stored_artifacts
+            if ref.metadata.get("emission_status") != "failed"
+        ]
+
         if not include_repair_candidates:
             from squadops.cycles.task_plan import REPAIR_TASK_TYPES
 
@@ -1594,6 +1607,14 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 _holder=_last_failed_result,
             ):
                 _holder["result"] = result
+                # #971: bank THIS attempt's emission before the correction loop
+                # decides anything. The callback fires on every failed attempt, so
+                # what lands is the pair the issue asks for — what failed and what
+                # replaced it — rather than only the last failure. Stored marked and
+                # excluded everywhere; see _store_failed_emission.
+                await self._store_failed_emission(
+                    result, _envelope, cycle, run_id, all_artifact_refs
+                )
                 action = await self._handle_task_outcome(
                     result=result,
                     envelope=_envelope,
@@ -4146,8 +4167,19 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         run_id: str,
         envelope: TaskEnvelope,
         producing_task_type: str | None = None,
+        emission_status: str | None = None,
     ) -> ArtifactRef:
-        """Store a task output artifact in the vault."""
+        """Store a task output artifact in the vault.
+
+        ``emission_status`` (#971) marks an emission that did NOT pass. It is
+        provenance, not a type: ``producing_task_type`` stays truthful, because a
+        failed ``qa.test`` emission really was produced by ``qa.test`` and every
+        post-hoc reader — triage, the analyzer audit, the replay harness — wants to
+        know that. What the marker buys is exclusion: a failed emission must never
+        reach a workspace view or the assembled deliverable, and the readers that
+        enforce that (``_resolve_artifact_contents`` here, ``_pull_run_artifacts`` in
+        the audit script) key on this one field.
+        """
         content = art_dict.get("content", "").encode("utf-8")
         metadata: dict[str, Any] = {
             "task_id": envelope.task_id,
@@ -4155,6 +4187,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         }
         if producing_task_type:
             metadata["producing_task_type"] = producing_task_type
+        if emission_status:
+            metadata["emission_status"] = emission_status
         ref = ArtifactRef(
             artifact_id=f"art_{uuid4().hex[:12]}",
             project_id=cycle.project_id,
@@ -4169,6 +4203,62 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             metadata=metadata,
         )
         return await self._artifact_vault.store(ref, content)
+
+    async def _store_failed_emission(
+        self,
+        result: Any,
+        envelope: TaskEnvelope,
+        cycle: Cycle,
+        run_id: str,
+        all_artifact_refs: list[str],
+    ) -> None:
+        """Bank a failed attempt's emission so the failure can be READ afterwards (#971).
+
+        Before this, a task that failed lost everything it emitted: the sequential
+        path raises or ``continue``s before ``_collect_artifacts_and_checkpoint``, so
+        the only surviving copy of a file was whatever a later repair produced. The
+        artifact that CAUSED a failure was the one artifact guaranteed absent — and
+        13 of the 17 rejected implementation runs in the 08-14→08-23 census are
+        unreadable for exactly this reason.
+
+        **Triage only.** The emission is recorded and never used: marked
+        ``emission_status="failed"``, kept out of the run's ``stored_artifacts``
+        list, and filtered unconditionally by ``_resolve_artifact_contents``. Two
+        independent guarantees, because the failure mode is feeding known-bad bytes
+        to the next task or into the assembled deliverable. ``audit_delivered_app``
+        carries the third — it reads the vault directly, latest-per-filename, and
+        would otherwise audit a failed emission whenever nothing re-emits that file.
+
+        Best-effort by construction: banking evidence must never alter the control
+        flow of the failure it is recording. #1017 made the same call for the failed
+        retest's ``test_report``.
+        """
+        if getattr(result, "status", None) == "SUCCEEDED":
+            return
+        artifacts = (getattr(result, "outputs", None) or {}).get("artifacts") or []
+        if not artifacts:
+            return
+        new_refs: list[str] = []
+        try:
+            for art in artifacts:
+                ref = await self._store_artifact(
+                    art,
+                    cycle,
+                    run_id,
+                    envelope,
+                    producing_task_type=envelope.task_type,
+                    emission_status="failed",
+                )
+                new_refs.append(ref.artifact_id)
+            if new_refs:
+                all_artifact_refs.extend(new_refs)
+                await self._cycle_registry.append_artifact_refs(run_id, tuple(new_refs))
+        except Exception:
+            logger.warning(
+                "Failed-emission capture did not complete for task %s",
+                envelope.task_id,
+                exc_info=True,
+            )
 
     async def _materialize_run_root(self, cycle: Cycle, run_id: str) -> str:
         """Create a run_root directory and write seed files (e.g. PRD).
