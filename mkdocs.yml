@@ -17,11 +17,22 @@ site_dir: site/_build
 
 theme:
   name: material
-  font: false          # no Google Fonts fetch; system stack, and no third-party requests
+  font: false          # no Google Fonts fetch — system stack instead
+  # NOTE ON THIRD-PARTY REQUESTS. Setting font:false removes the Google Fonts
+  # fetch, but Material lazy-loads mermaid from unpkg.com at runtime on pages
+  # that contain diagrams (verified in the theme bundle, not assumed). So the
+  # site is NOT request-free — it makes exactly one, on those pages only.
+  # Vendoring mermaid locally would fix it and costs 3.4 MB of minified JS in
+  # the source tree plus a manual update treadmill; that trade was judged not
+  # worth it for a docs site (#1039). Recorded so the next person does not
+  # repeat the measurement, and so the claim is not overstated elsewhere.
   icon:
     repo: fontawesome/brands/github
   features:
-    - navigation.instant
+    # navigation.instant is DELIBERATELY off: its client-side page swaps wipe
+    # rendered mermaid diagrams, leaving empty containers that still reserve
+    # their height. Verified in-browser — the divs were empty with
+    # data-processed unset while holding 1848px of layout.
     - navigation.tracking
     - navigation.sections
     - navigation.top
@@ -54,13 +65,29 @@ plugins:
         - site/hooks/gen_releases.py
 
 nav:
-  - Home: index.md
-  - Getting started: getting-started.md
-  - How it works: how-it-works.md
-  - Architecture: architecture.md
+  # Structured on Diátaxis (diataxis.fr) — tutorials, how-to, reference and
+  # explanation are kept strictly separate, because mixing the modes on one page
+  # is what makes documentation feel simultaneously too long and unhelpful. The
+  # project-level pages either side (overview, evidence, roadmap, releases,
+  # design specs) sit deliberately outside the four modes; Diátaxis does not
+  # claim them, and the OSS convention for each is well established.
+  - Overview: index.md
+  - Evidence: evidence.md
+  - Tutorial:
+      - Getting started: getting-started.md
+  - How-to guides:
+      - Operate a cycle: operate-a-cycle.md
+  - Explanation:
+      - Key concepts: key-concepts.md
+      - Architecture: architecture.md
+      - Observability: observability.md
+  - Reference:
+      - CLI: cli.md
+      - Dependencies: dependencies.md
+  - Roadmap: roadmap.md
   - Releases:
       - releases/index.md
-  - Design records:
+  - Design specs:
       - Improvement proposals: design/sips/index.md
 
 markdown_extensions:
@@ -71,7 +98,13 @@ markdown_extensions:
   - toc:
       permalink: true
   - pymdownx.details
-  - pymdownx.superfences
+  # Mermaid via Material's native support: diagrams stay diffable markdown in
+  # the page rather than becoming binary assets that rot (#1039).
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.highlight:
       anchor_linenums: true
   - pymdownx.inlinehilite

@@ -28,3 +28,19 @@
 .md-typeset table:not([class]) th {
   padding: 0.5em 0.9em;
 }
+
+/* Diagrams. Mermaid renders at natural size then scales the SVG down to fit its
+   container — so a diagram wider than the prose column arrives visually
+   compressed no matter how its node spacing is configured. Letting diagrams use
+   the full grid width (rather than the narrower text measure) is what actually
+   fixes the spacing; keeping them simple enough not to need it is the real fix. */
+.md-typeset .mermaid {
+  margin: 2em 0;
+  text-align: center;
+  overflow-x: auto;
+}
+
+.md-typeset .mermaid svg {
+  max-width: 100%;
+  height: auto;
+}

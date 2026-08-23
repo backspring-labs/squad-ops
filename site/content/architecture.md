@@ -6,6 +6,25 @@ Squad Ops is built as a hexagon. The domain defines interfaces; infrastructure
 implements them. Swapping the inference engine, the message broker, or the
 observability backend is a configuration change rather than a migration.
 
+```mermaid
+%%{init: {'look':'neo','flowchart':{'nodeSpacing':38,'rankSpacing':70,'curve':'basis','padding':8}}}%%
+flowchart LR
+    D[Domain] --- L([LLMPort])
+    D --- R([CycleRegistryPort])
+    D --- O([LLMObservabilityPort])
+    L --- Ollama
+    L --- vLLM
+    R --- Postgres
+    R --- Memory[In-memory]
+    O --- LangFuse
+    O --- OTel[OpenTelemetry]
+```
+
+Three ports shown of eight; the full set is listed above. The domain never learns which adapter it was handed. That is what makes the
+rightmost column swappable — and what makes a second adapter behind any port a
+genuine test of whether the port was honest, rather than shaped around whichever
+implementation happened to come first.
+
 **Ports** — LLM provider, queue, cycle registry, artifact vault, authentication,
 audit, LLM observability, filesystem.
 
@@ -50,7 +69,7 @@ The cost is throughput, and throughput bounds every measurement window — which
 is why the inference engine sits behind a port with a conformance suite, and why
 alternatives are evaluated against a recorded comparison rather than a vibe.
 
-## Design records
+## Design specs
 
 Architectural decisions are recorded as **improvement proposals** that move
 through proposed → accepted → implemented. Acceptance is a design commitment;
