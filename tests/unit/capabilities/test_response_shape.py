@@ -9,7 +9,10 @@ from __future__ import annotations
 
 import pytest
 
-from squadops.capabilities.response_shape import derive_response_shape
+from squadops.capabilities.response_shape import (
+    derive_response_shape,
+    response_surface_instructions,
+)
 from squadops.capabilities.scaffold import InterfaceManifest
 
 _BASE = """
@@ -145,3 +148,66 @@ def test_numeric_and_boolean_collections_map_to_their_javascript_kind(declared, 
     `number` — emitting `typeof x === 'integer'` would fail every correct app."""
     shape = derive_response_shape(_manifest(participants=declared), "Run")
     assert shape.elements[0].typeof == expected_typeof
+
+
+# --- #1042: the declared success status travels with the shape --------------------
+
+
+def _manifest_with(endpoints: str, entities: str = "") -> InterfaceManifest:
+    return InterfaceManifest.from_yaml(
+        f"""
+version: 1
+kind: interface_manifest
+project_id: p
+stack: nextjs_ts
+entities:
+  - name: Run
+    fields:
+      - {{ name: id, type: string, required: true, generated: true }}
+      - {{ name: title, type: string, required: true }}
+{entities}
+api:
+  endpoints:
+{endpoints}
+"""
+    )
+
+
+def test_a_declared_status_is_stated_to_the_developer():
+    """#1042: on nextjs the declared status reached the implementer ONLY as a TODO
+    comment inside the fill body it replaces, plus a plan sentence some author had to
+    remember. V38 slot 6 shipped 200 against a declared 201."""
+    manifest = _manifest_with(
+        "    - { method: POST, path: /api/runs, response: Run, success_status: 201 }\n"
+    )
+    (line,) = response_surface_instructions(manifest)
+    assert line.startswith("`POST /api/runs` returns HTTP 201 with `Run`")
+
+
+def test_an_undeclared_status_states_nothing_rather_than_a_default():
+    """#1042 must not settle #772 by side effect. An endpoint that declares no status
+    takes the framework default, and which default is correct is that issue's open
+    question — asserting one here would answer it silently and in the wrong place."""
+    manifest = _manifest_with("    - { method: GET, path: /api/runs, response: Run }\n")
+    (line,) = response_surface_instructions(manifest)
+    assert "HTTP" not in line
+    assert line.startswith("`GET /api/runs` returns `Run`")
+
+
+def test_a_status_survives_an_endpoint_whose_response_cannot_be_resolved():
+    """#1042: the status and the body floor are independent facts. An endpoint whose
+    response names nothing the manifest defines still has a status the implementer must
+    return — dropping the line because the body is underivable loses the very fact this
+    issue is about."""
+    manifest = _manifest_with(
+        "    - { method: POST, path: /api/ping, response: Unknown, success_status: 202 }\n"
+    )
+    (line,) = response_surface_instructions(manifest)
+    assert line == "`POST /api/ping` returns HTTP 202"
+
+
+def test_an_endpoint_with_neither_a_status_nor_a_shape_contributes_no_line():
+    """A line naming an endpoint and stating nothing about it is noise that reads as
+    guidance — the section must stay empty rather than pad."""
+    manifest = _manifest_with("    - { method: GET, path: /api/health }\n")
+    assert response_surface_instructions(manifest) == []
