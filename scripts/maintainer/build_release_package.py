@@ -265,6 +265,11 @@ def main() -> int:
     parser.add_argument(
         "--write", action="store_true", help="write the package; default is a preview to stdout"
     )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="overwrite an existing package (see the immutability note in the write path)",
+    )
     args = parser.parse_args()
 
     version = args.version.lstrip("v")
@@ -302,12 +307,38 @@ def main() -> int:
         print("re-run with --write to commit the package")
         return 0
 
+    import yaml
+
+    # A captured package is immutable evidence, so overwriting one is a
+    # deliberate act. Everything except the cycle section regenerates
+    # deterministically from git, which makes an accidental re-run look correct
+    # while silently dropping the one part that cannot be recovered: the cycle
+    # evidence lived in a deploy that has since moved.
+    existing_path = target / "package.yaml"
+    if existing_path.is_file() and not args.force:
+        raise SystemExit(
+            f"{existing_path.relative_to(REPO_ROOT)} already exists.\n"
+            "A captured package is evidence, not a build artifact — re-running would "
+            "re-derive the git-recoverable parts and lose anything captured live.\n"
+            "Pass --force to overwrite (previously captured cycle evidence is carried "
+            "forward when this run supplies none)."
+        )
+
+    if existing_path.is_file():
+        prior = yaml.safe_load(existing_path.read_text(encoding="utf-8")) or {}
+        prior_cycles = prior.get("cycles") or []
+        if prior_cycles and not package["cycles"]:
+            package["cycles"] = prior_cycles
+            page = render(version, tag, package)
+            print(
+                f"--force: carried forward {len(prior_cycles)} captured cycle(s) — "
+                "this run supplied none"
+            )
+
     target.mkdir(parents=True, exist_ok=True)
     assets.mkdir(exist_ok=True)
     (target / "index.md").write_text(page, encoding="utf-8")
-    import yaml
-
-    (target / "package.yaml").write_text(
+    existing_path.write_text(
         yaml.safe_dump(package, sort_keys=False, allow_unicode=True), encoding="utf-8"
     )
     print(f"wrote {target.relative_to(REPO_ROOT)}/index.md and package.yaml")
