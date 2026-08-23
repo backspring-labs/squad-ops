@@ -1,0 +1,130 @@
+version: 1.4.1
+tag: v1.4.1
+previous_tag: v1.4.0
+date: '2026-08-03'
+commit: 6366c0f1f782f54485fa123e2b071e9283f8f4f2
+narrative: '**Hardening Patch** — the five hash-stable fixes filed as known-open at
+  the 1.4.0 cut, one
+
+  PR per issue: **#672** runtime_activities reaper (startup + finalize sweeps through
+  the
+
+  abort choke point); **#671** module-existence validation at the gate; **#673** the
+  first
+
+  plan-wide cross-task rule, rejecting two tasks that claim the same expected artifact;
+
+  **#667** repair-envelope testid threading, with the surface re-derived from the
+  manifest at
+
+  repair-input construction; **#669** framing re-rolls revise instead of re-dicing,
+  turning
+
+  `framing_max_rerolls` into a revision budget.
+
+
+  Contract v9 / manifest v4 unchanged (hash-stable by construction). #668/#670 deliberately
+
+  held for the next window. Plan: `docs/plans/1-4-1-hardening-patch-plan.md`.
+
+
+  Confirmation shakedowns unscored by pre-declaration: **shk-1 green** — framing authored
+  a
+
+  real dual claim, #673 auto-rejected it (a live true positive), #669 threaded the
+  rejection
+
+  into a surgically revised re-roll, and implementation cleared all 14 criteria with
+  zero
+
+  corrections. **shk-2** fired #667''s trigger live, then surfaced a *pre-existing*
+
+  correction-chain loss mode diagnosed to root cause and filed as #687/#688/#689.'
+pull_requests:
+- number: 690
+  title: 'release: v1.4.1 — five-fix hardening patch, deploy-verified + live-confirmed'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-03'
+- number: 685
+  title: 'chore(sips): promotion audit — 0096/0092/0093/0088 all stay accepted, gaps
+    named + filed'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-03'
+- number: 681
+  title: 'SIPs + post-1.4 roadmap reshuffle: Squad-Authored Manifest (1.6), Campaign
+    retarget + Cross-Cycle Memory (1.8), Memory P2 (2.0)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-03'
+- number: 680
+  title: 'fix(framing): re-rolls carry the prior rejection — revise, don''t re-dice
+    (#669)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 669
+  merged_at: '2026-08-03'
+- number: 679
+  title: 'fix(correction): thread the #659 anchor surface into repair and retest envelopes
+    (#667)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 667
+  merged_at: '2026-08-03'
+- number: 677
+  title: 'fix(plan-validation): reject import_present on modules the scaffold surface
+    cannot provide (#671)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 671
+  merged_at: '2026-08-03'
+- number: 678
+  title: 'fix(plan-validation): reject two tasks claiming the same expected artifact
+    (#673)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 673
+  merged_at: '2026-08-03'
+- number: 676
+  title: 'fix(runtime): reap stranded runtime_activities — finalize sweep + startup
+    reaper (#672)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 672
+  merged_at: '2026-08-03'
+- number: 675
+  title: 'docs(plans): 1.4.1 hardening patch plan'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-03'
+sip_moves:
+- sip: SIP-0090-Agent-Embodiment-Substrate
+  from: null
+  to: accepted
+- sip: SIP-0091-Duty-Durability-via-Temporal
+  from: null
+  to: accepted
+- sip: SIP-0096-Verification-Evidence-Integrity
+  from: null
+  to: accepted
+- sip: SIP-Campaign-Orchestration
+  from: null
+  to: proposed
+- sip: SIP-Cross-Cycle-Memory
+  from: null
+  to: proposed
+- sip: SIP-Squad-Authored-Manifest
+  from: null
+  to: proposed
+cycles: []
+screenshots: []

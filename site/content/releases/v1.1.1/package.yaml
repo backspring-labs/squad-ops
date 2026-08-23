@@ -1,0 +1,177 @@
+version: 1.1.1
+tag: v1.1.1
+previous_tag: v1.1.0
+date: '2026-06-29'
+commit: b19d6b054ae9e865f843bbe3b8d20b6d89f98fd2
+narrative: "Hardening patch on the 1.1.0 runtime line. The runtime lane (SIP-0089)\
+  \ was\nlive-validated end-to-end after 1.1.0, surfacing two regressions the unit\n\
+  suites couldn't catch (#270, #272); both are fixed here alongside the resume\nand\
+  \ reliability work from the 1.1.x hardening plan. No new SIPs — the additive\nitems\
+  \ are backward-compatible and the one rename (#79) is internal.\n\n### Added\n-\
+  \ Per-role Prefect task names: tasks render as `{role} [{n}/{total}]: {title}`\n\
+  \  so a role appearing multiple times in a plan is distinguishable in the\n  Prefect\
+  \ UI (#94).\n- Agent **`mode`** and **`runtime_status`** are now surfaced on the\
+  \ agent-list\n  API and the console agent view, alongside the heartbeat fields —\
+  \ health is\n  `runtime_status`, posture is `mode` (see\n  `docs/agent-runtime-status-model.md`)\
+  \ (#230, #231).\n\n### Fixed\n- **Auth:** cycle API routes returned 403 for every\
+  \ authenticated user — #150\n  applied `cycles:read`/`cycles:write` scope checks,\
+  \ but the role-centric\n  Keycloak realm issues *roles*, not those scopes. Bridge\
+  \ realm roles to their\n  implied scopes in `resolve_identity` so role-bearing tokens\
+  \ authorize as\n  intended (#270).\n- **Duty scheduler:** duty windows never auto-opened\
+  \ under the default\n  `missed_window_policy=\"skip\"` — the poll-cadence lag before\
+  \ the first\n  observing tick was misread as a missed window. A just-active window\
+  \ is now\n  treated as on-time within one poll interval (plus jitter margin) (#272).\n\
+  - **Resume:** a duty-deferred run is now re-attempted *and* actually\n  re-executed\
+  \ on resume — the resume route never re-invoked the executor\n  before (#222).\n\
+  - **Resume:** mid-sequence runs resume at the correct workload index instead of\n\
+  \  re-running from workload 0 (#257).\n- **Comms:** `publish()` now retries with\
+  \ bounded backoff across the RabbitMQ\n  reconnect window instead of failing the\
+  \ first send after a drop (#245).\n- **Capabilities:** strip `<think>` blocks before\
+  \ fenced-code parsing, and log\n  the raw output on zero extraction so empty parses\
+  \ are diagnosable (#130).\n- **CLI/API:** `runs retry` now actually executes the\
+  \ run (it previously\n  no-op'd); corrected stale docstrings (#133, #205).\n- **Telemetry:**\
+  \ the `BrokenExporter` test no longer leaks a global OTel\n  provider into sibling\
+  \ tests (#239).\n\n### Changed\n- Renamed the `governance.establish_contract` capability\
+  \ → **`governance.define_done`**\n  and its `run_contract.json` artifact → **`definition_of_done.json`**\
+  \ (the fields\n  are a standard Definition of Done, not a \"contract\"). Internal\
+  \ rename, no\n  behaviour change; historical artifacts on disk are left as-is (#79).\n\
+  \n### Internal / tooling\n- Regression suite runs in parallel via `pytest-xdist\
+  \ -n auto` (#216).\n- `update_sip_status.py` now rewrites the body `**Status:**`\
+  \ line on promotion,\n  not just the frontmatter (#253).\n- Deduplicated three copies\
+  \ of the JSONB-parsing helper into one (#156); routed\n  the dispatched-flow factory\
+  \ through `create_workflow_tracker` (#250); corrected\n  stale flow-executor references\
+  \ in the control-plane context doc (#168)."
+pull_requests:
+- number: 275
+  title: 'chore(release): cut 1.1.1 — post-1.1.0 runtime-lane hardening'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 274
+  merged_at: '2026-06-29'
+- number: 273
+  title: 'fix(runtime): open duty windows on-time within the poll cadence (#272)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 272
+  merged_at: '2026-06-29'
+- number: 271
+  title: 'fix(auth): bridge realm roles to implied scopes so cycle routes work (#270)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 270
+  merged_at: '2026-06-28'
+- number: 269
+  title: 'feat(observability): per-role n/total Prefect task names + framing titles
+    (#94)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 94
+  merged_at: '2026-06-28'
+- number: 268
+  title: 'ci: parallelize the regression suite with pytest-xdist -n auto (#216)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 216
+  merged_at: '2026-06-28'
+- number: 264
+  title: 'fix(cli,api): make `runs retry` actually execute; correct stale execution
+    docstrings (#133, #205)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-06-28'
+- number: 267
+  title: 'refactor(governance): rename establish_contract → define_done (#79)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 79
+  merged_at: '2026-06-28'
+- number: 266
+  title: 'fix(capabilities): strip <think> before fenced parsing + log zero-extraction
+    raw (#130)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1
+  - 130
+  merged_at: '2026-06-28'
+- number: 265
+  title: 'docs: correct stale flow-executor refs in control-plane context doc (#168)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 168
+  merged_at: '2026-06-28'
+- number: 263
+  title: 'feat(console): surface agent mode + runtime_status on the agent list (#230,
+    #231)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 230
+  merged_at: '2026-06-28'
+- number: 262
+  title: 'refactor(adapters): extract one parse_jsonb helper, dedup 3 copies (#156)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 156
+  merged_at: '2026-06-28'
+- number: 261
+  title: 'refactor(cycles): route dispatched factory through create_workflow_tracker
+    (#250)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 250
+  merged_at: '2026-06-28'
+- number: 260
+  title: 'fix(cycles): resume mid-sequence runs at the right workload index (#257)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 257
+  merged_at: '2026-06-28'
+- number: 259
+  title: 'fix(telemetry): stop BrokenExporter test leaking a global OTel provider
+    → atexit traceback (#239)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 239
+  merged_at: '2026-06-28'
+- number: 256
+  title: 'fix(cycles): resume re-attempts duty-deferred runs + actually re-executes
+    (#222)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 222
+  merged_at: '2026-06-28'
+- number: 255
+  title: 'fix(comms): bounded retry/backoff for RabbitMQ publish() across reconnect
+    window (#245)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 245
+  merged_at: '2026-06-28'
+- number: 254
+  title: 'fix(maintainer): rewrite body **Status:** line on SIP promotion (#253)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 253
+  merged_at: '2026-06-28'
+sip_moves:
+- sip: SIP-0079-Implementation-Run-Contract-Correction
+  from: null
+  to: implemented
+cycles: []
+screenshots: []

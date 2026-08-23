@@ -1,0 +1,103 @@
+version: 1.6.1
+tag: v1.6.1
+previous_tag: v1.6.0
+date: '2026-08-22'
+commit: c43314f2e30813920c25bc99433e7d68f6fe1676
+narrative: "The correction-loop and framing-information patch line — six fixes, every\
+  \ one earned by the\nV38 window's banked evidence, each validated live before the\
+  \ cut.\n\n**Correction-loop integrity:**\n- #1017 — a failed retest's `test_report.md`\
+  \ persists (evidence only; workspace files never\n  stored, protecting the rejected-candidate\
+  \ exclusion). Four reports banked on validation\n  night; every triage instant.\n\
+  - #1014 — emission-side ownership veto: a foreign-role repair cannot land the failed\
+  \ task's\n  own artifacts (the #884 completion; fired live on its first shakedown,\
+  \ killing exactly the\n  slot-6 incident class).\n- #1011 — the registry completion\
+  \ clamp rides the base chat path; observed binding at\n  exactly 8,192 on two live\
+  \ repairs.\n\n**Framing information:**\n- #1013 — manifest↔plan consistency + completeness\
+  \ gate at plan validation, with the\n  per-stack `skeleton_pins_success_status`\
+  \ fact at the S1 seam and the rule taught in the\n  authoring-rules asset (v4).\
+  \ Caught a real contradiction on the first live framing it saw.\n- #795 — error-envelope\
+  \ authority settled: nextjs unified on `message` (generator v5),\n  root-contradicting\
+  \ `error_contract.shape` declarations rejected at M2, taught in the\n  manifest\
+  \ authoring rules (v2).\n- #913 — error envelope pinned in the frozen shell spine\
+  \ (generator v6); sandbox-proven\n  against banked artifacts: no false rejection\
+  \ on a green app, exactly the pinned shells\n  fail on a mutated envelope.\n\n**Cut\
+  \ evidence:** red confirmation shakedown (correction paths exercised organically)\
+  \ +\nfull green roll on the integrated deploy (`cyc_3095fe4bdb83`: accepted 23/23,\
+  \ boot-audit\nPASS, three honest qa-side repairs on the one deliberately deferred\
+  \ class). Filed at the\ncut: #1029, #1030, #1031."
+pull_requests:
+- number: 1032
+  title: 'chore(release): v1.6.1 — the correction-loop and framing-information patch
+    line'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-22'
+- number: 1028
+  title: 'feat(scaffold): frozen-spine error-envelope pinning (#913)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 913
+  merged_at: '2026-08-22'
+- number: 1027
+  title: 'fix(scaffold): error-envelope authority settled — nextjs on message, M2
+    rejects root-contradicting shapes (#795)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 795
+  merged_at: '2026-08-22'
+- number: 1026
+  title: 'feat(gates): manifest↔plan consistency + completeness gate (#1013)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1013
+  merged_at: '2026-08-21'
+- number: 1025
+  title: 'SIP proposal: Design Decision Register'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-21'
+- number: 1024
+  title: 'docs: open-issue sweep 2026-08-21 — 1.6.x fix packs and the 1.7 slate'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-21'
+- number: 1023
+  title: 'docs(corpus): retry corpus rewritten post-adjudication — 1.6.1 marked deployed,
+    program re-aimed at 1.6.2'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-21'
+- number: 1020
+  title: 'fix(handlers): registry completion clamp on the base chat path (#1011)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1011
+  merged_at: '2026-08-21'
+- number: 1019
+  title: 'fix(correction): emission-side ownership veto (#1014)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1014
+  merged_at: '2026-08-21'
+- number: 1018
+  title: 'fix(correction): persist a failed retest''s test_report (#1017)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1017
+  merged_at: '2026-08-21'
+sip_moves:
+- sip: SIP-Design-Decision-Register
+  from: null
+  to: proposed
+cycles: []
+screenshots: []

@@ -75,3 +75,4 @@ data/
 .squadops/
 .claude/scheduled_tasks.lock
 .claude/worktrees/
+site/_build/

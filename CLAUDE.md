@@ -222,6 +222,32 @@ Semver `MAJOR.MINOR.PATCH` with an **even/odd minor convention** layered on top 
 
 Two concurrent lanes feed this. **Feature SIPs gate even minors and are pinned by *file ownership*, not lane identity** (amended 2026-07-14; previously Macbook-pinned): executor/handlers/framing surfaces = Macbook lane; test-runner/build-check/agent-image/deploy-infra = Spark lane. A release may carry one headline per lane (1.4 is the first dual-lane-headline release: Scaffold = M, Sandbox = S). Everything else is shared — **both lanes** emit patches continuously, and **both** emit the big structural refactors that batch into odd minors (the 1.3.0 batch is #186/#152, Macbook-owned, plus #234, Spark-owned). The Spark lane is the primary *hardening* source, but odd-minor refactors are not exclusively its output. Bump via `scripts/maintainer/version_cli.py bump <v>`; keep version markers in this file, `README.md`, and `docs/ROADMAP.md` in sync (they drifted at 1.1.x — don't repeat). Full plan: `docs/plans/1-2-0-release-plan.md`.
 
+### Release cut
+
+The procedure, as distinct from the cut *criteria* a release plan carries. It lives here
+because plans are superseded at the cut and a procedure recorded only in one disappears
+with it — the same failure SIP-0103 §5d records for amendments. #789 is what a missing
+procedure costs: six consecutive releases tagged but never advertised.
+
+| Step | Action |
+|------|--------|
+| 1 | `scripts/maintainer/version_cli.py bump <version>` — the only sanctioned bump path |
+| 2 | Version markers in sync: `CLAUDE.md`, `README.md`, `docs/ROADMAP.md` |
+| 3 | Rotate `CHANGELOG.md` — `[Unreleased]` → `[x.y.z] — <date>`, open a fresh `[Unreleased]` |
+| 4 | ROADMAP timeline entry |
+| 5 | SIP promotion sweep — promote what is genuinely implemented; a phased or umbrella SIP with open children stays `accepted`, with the gap named |
+| 6 | `git tag vX.Y.Z` **and** a GitHub Release from the CHANGELOG section, marked **Latest** |
+| 7 | **Capture the release package** — `python scripts/maintainer/build_release_package.py <version> --write --cycle <shakedown-cycle-id>`, commit `site/content/releases/vX.Y.Z/` |
+
+Steps 1–3 are guarded by `tests/unit/architecture/test_docs_version_sync.py`; **4 through 7
+are not**, which is why they are written down.
+
+**Step 7 is capture, not query.** Cycle evidence lives in a running deploy and is
+unrecoverable once it moves, so the package is snapshotted at the cut and committed —
+the site renders it and never re-derives it. Screenshots (Prefect run, delivered app) go
+into that release's `assets/` before the script runs. It reads the tag range, so it must
+follow step 6.
+
 ## Development Workflow
 
 **Branch first**: Always create a feature branch before writing any code for a new feature or SIP implementation. Develop on the branch with incremental commits per phase — not one giant commit at the end. This keeps `main` clean and gives the PR a proper commit history.

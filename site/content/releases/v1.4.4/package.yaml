@@ -1,0 +1,116 @@
+version: 1.4.4
+tag: v1.4.4
+previous_tag: v1.4.3
+date: '2026-08-05'
+commit: 1612c4425cce8d34e2aff201f26bb053fa65d671
+narrative: '**No False Verdicts** (verification integrity). Every verdict is earned:
+  greens are
+
+  enforced, reds are explained, budgets are honored. Seven premise-verified fixes,
+  one PR
+
+  each — **#427** terminal failure reason persisted on the run row and surfaced by
+
+  `runs show` (migration 1010); **#426** builder offer and gate net both key off configured
+
+  `build_profile` via the new single-source `Cycle.resolved_config()`; **#715** a
+  qa task
+
+  whose declared artifacts can never satisfy required `tests_pass` is rejected at
+  authoring,
+
+  on both gate seams; **#423** an authored check the evaluator cannot run is an evidence
+  gap
+
+  and never `passed: true`; **#424** plan-authoring collapse is a gate rejection,
+  never a
+
+  silent static-step fallback; **#511** the time budget gates every dispatch lane
+  including
+
+  correction chains; **#571** semantic-memory recall prefilters in-query with a valid
+  cosine
+
+  metric.
+
+
+  Verified as a line on an integrated overnight deploy: in-container validator replays
+
+  against stored artifacts, a designed-failure probe budget-killed at the first boundary,
+
+  and confirmation shakedown **shk-5 green** — verdict accepted, zero corrections,
+  the new
+
+  nets silent on a well-formed roll.'
+pull_requests:
+- number: 725
+  title: 'chore(release): cut v1.4.4 — No False Verdicts (version bump + marker sync
+    + as-built record)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-05'
+- number: 723
+  title: 'fix(memory): LanceDB search prefilters in-query and scores with an explicit
+    cosine metric (#571)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 571
+  merged_at: '2026-08-05'
+- number: 722
+  title: 'fix(executor): time budget gates correction-chain dispatch, not just the
+    main task loop (#511)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 511
+  merged_at: '2026-08-05'
+- number: 721
+  title: 'fix(planning): plan authoring collapse is a rejection, never a silent static
+    fallback (#424)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 424
+  merged_at: '2026-08-05'
+- number: 720
+  title: 'fix(verification): split skipped typed checks into benign vs evidence-gap
+    — gaps never read passed (#423)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 423
+  merged_at: '2026-08-05'
+- number: 719
+  title: 'fix(plan-validation): reject qa.test tasks whose artifacts cannot satisfy
+    required tests_pass (#715)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 715
+  merged_at: '2026-08-05'
+- number: 718
+  title: 'fix(planning): builder offer and gate net both key off configured build_profile
+    (#426)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 426
+  merged_at: '2026-08-05'
+- number: 717
+  title: 'fix(runs): persist the terminal failure reason on the run row (#427)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 427
+  merged_at: '2026-08-05'
+- number: 716
+  title: 'docs(plan): 1.4.4 patch plan — No False Verdicts (7 fixes, premise-verified)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-05'
+sip_moves: []
+cycles: []
+screenshots: []

@@ -1,0 +1,259 @@
+version: 1.2.0
+tag: v1.2.0
+previous_tag: v1.1.1
+date: '2026-07-04'
+commit: 0691c401a9a1ccf2c57d54378b8e180aeeb5e2a6
+narrative: "First **feature release** on the even/odd minor cadence (#281): even minors\
+  \ carry\nfeatures, gated by headline feature SIPs. 1.2.0 is led by three — the SIP-0089\n\
+  runtime-arc completion, the SIP-0090 Agent Embodiment Substrate (Phase 1), and the\n\
+  SIP-0095 Cycle Create Preflight — riding a hardening base (#158, #231). Two lanes\n\
+  fed it: features from the Macbook lane, hardening + supporting decisions from Spark.\n\
+  \n### Added\n- **SIP-0090 Agent Embodiment Substrate — Phase 1 (core model).** The\
+  \ internal\n  substrate for embodied agents: an `Embodiment` lifecycle state machine\n\
+  \  (`unattached→attaching→attached→desynced→reconnecting→detached`) with an explicit\n\
+  \  transition allow-list and a single-active-embodiment-per-agent invariant (enforced\n\
+  \  both in code and by a Postgres partial unique index); resource budget primitives\n\
+  \  (attention/compute/action consumables + a concurrency capacity gauge, with\n\
+  \  non-silent exhaustion made type-unrepresentable); an `EmbodimentStatePort` with\
+  \ a\n  Postgres adapter; and an `EmbodimentCoordinator` that validates transitions\
+  \ and\n  emits canonical events. No adapter yet — Discord/browser embodiments are\
+  \ later\n  phases (#312, #317).\n- **SIP-0095 Cycle Create Preflight.** A create-time\
+  \ fail-fast gate: a cycle is\n  rejected (HTTP 422 `PREFLIGHT_REJECTED`) when the\
+  \ squad can't satisfy the requested\n  workloads' required roles, or names a model\
+  \ definitively not pulled (exact\n  canonical-tag match, no family inference). An\
+  \ unreachable LLM backend\n  warns-and-allows rather than blocking on missing evidence;\
+  \ warnings surface on the\n  create response and in the CLI. `squadops doctor` gained\
+  \ model-availability parity\n  via the same shared decision (#298, #309, #311, #315,\
+  \ #321).\n- **SIP-0089 runtime-arc completion.** Cycle recruitment now routes through\
+  \ the\n  RuntimeCoordinator with FocusLease arbitration (a lease conflict is a deferral,\
+  \ not\n  a failure) (#233), and coordinator transitions commit lease + activity\
+  \ + mode in a\n  single `RuntimeTransaction` unit of work with live-validated rollback\
+  \ (#244).\n- **Validated-fullstack request-profile** — instrumentation + builder\
+  \ + stack for\n  end-to-end framework validation (#279).\n\n### Changed\n- **Health\
+  \ signal consolidated to a single source of truth (#231).** `runtime_status`\n \
+  \ is now the canonical health signal across every read surface (API single + list\n\
+  \  routes, CLI, both console plugins); it is always-populated (the heartbeat ensures\n\
+  \  the runtime row and reconciliation backfills legacy agents), and the\n  `runtime_status\
+  \ || network_status` fallback is gone. `network_status` is demoted to\n  a deprecated\
+  \ back-compat field (column drop tracked separately) (#302).\n- **Squad profiles\
+  \ consolidated to `smoke` / `lite` / `full`** (#173).\n\n### Fixed\n- **CLI now\
+  \ renders cycle-route error messages (#319).** They were nested under\n  FastAPI's\
+  \ `detail` and silently dropped — the operator saw `validation failed —`\n  with\
+  \ no reason (e.g. the preflight's actionable \"pull model X\"). Found via live\n\
+  \  cycle validation (#320).\n- **Operational hardening (#158)** — configurable adapter\
+  \ timeouts + a DDL↔model\n  drift guard; the `_schema_migrations` applier remains\
+  \ idempotent.\n- Local-spark bootstrap models reconciled with the squad profiles\
+  \ (#285); QA-harness\n  robustness + portable-frontend build fixes (#303, #296,\
+  \ #280).\n\n### Deferred / follow-ups\n- SIP-0095's materialized-plan capability\
+  \ check at the plan-review gate (#295) —\n  deferred to land with the #186 executor\
+  \ decomposition; the dispatch-time check\n  remains the net.\n- SIP-0090 Phase 1\
+  \ budget persistence + composition-root wiring — no live consumer\n  until Phase\
+  \ 2 (Discord)."
+pull_requests:
+- number: 322
+  title: 'chore(release): 1.2.0'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-04'
+- number: 321
+  title: 'feat(SIP-0095 Phase 4): surface create-time preflight warnings (response
+    + CLI)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-04'
+- number: 317
+  title: 'feat(SIP-0090 Phase 1): embodiment persistence — slice 1b (completes Phase
+    1)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-04'
+- number: 318
+  title: 'docs(sip): propose Cycle Request-Profile Naming Taxonomy — for review'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-04'
+- number: 320
+  title: 'fix(#319): render cycle-route error messages in the CLI'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 319
+  merged_at: '2026-07-04'
+- number: 315
+  title: 'feat(SIP-0095 Phase 3): wire create-time preflight into the cycle-create
+    route'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 224
+  merged_at: '2026-07-01'
+- number: 314
+  title: 'feat(#279): validated-fullstack request-profile (instrumentation + builder
+    + stack)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-01'
+- number: 311
+  title: 'feat(#224): doctor model-availability parity via the shared preflight decision'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-01'
+- number: 312
+  title: 'feat(SIP-0090 Phase 1): core embodiment model — slice 1a (model + budgets
+    + port + coordinator)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-01'
+- number: 310
+  title: 'fix(#285): reconcile local-spark bootstrap models with squad-profiles'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-01'
+- number: 309
+  title: 'feat(#224): model-availability preflight decision (Spark half of SIP-0095)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-01'
+- number: 308
+  title: 'docs(plan): SIP-0090 Phase 1 (core embodiment model) — for review'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-01'
+- number: 302
+  title: 'refactor(#231): consolidate the health signal to runtime_status at the read
+    surfaces'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-01'
+- number: 307
+  title: 'docs(plan): 2.0 roadmap + capability-backed-agents/Continuum-console SIPs;
+    reconcile #233/#244'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-01'
+- number: 304
+  title: 'fix(#303): qa.test harness — discover package.json, block missing frontend
+    build, fix backend pytest path'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 303
+  merged_at: '2026-07-01'
+- number: 299
+  title: 'fix(#158): make hardcoded secondary adapter timeouts configurable'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 158
+  merged_at: '2026-07-01'
+- number: 297
+  title: 'fix(#296): materialize frontend config/entry files into the QA build workspace'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 296
+  merged_at: '2026-07-01'
+- number: 298
+  title: 'feat(cycles): SIP-0095 Cycle Create Preflight — Phase 1 (scaffold + capability
+    check)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 172
+  merged_at: '2026-07-01'
+- number: 294
+  title: 'Propose SIP: Cycle Create Preflight (#172 + #224)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-01'
+- number: 293
+  title: 'feat(runtime): RuntimeTransaction UoW — atomic coordinator lease+activity+mode
+    (SIP-0089 §4.5/D25, #244)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 244
+  merged_at: '2026-07-01'
+- number: 292
+  title: 'fix(#280): generate portable frontend integration (env-driven API base +
+    config CORS)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-01'
+- number: 290
+  title: 'fix(#276): build-acceptance — verify the frontend actually builds'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-01'
+- number: 289
+  title: 'fix(#276): fail qa acceptance on stub-fallback tests that mask a broken
+    entrypoint (Part 1)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-01'
+- number: 287
+  title: 'feat(runtime): route cycle recruitment through the coordinator (SIP-0089
+    §3.5, #233)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 233
+  merged_at: '2026-07-01'
+- number: 283
+  title: 'docs(plan): correct §5.5 — #198 pin already done, not a do-first item'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-06-30'
+- number: 284
+  title: 'fix(#173): consolidate squad-profile names to smoke/lite/full + fix active_profile
+    footgun'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 173
+  merged_at: '2026-06-30'
+- number: 282
+  title: 'docs(plan): reconcile 1.2.0 release plan from the Spark-lane review'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-06-29'
+- number: 278
+  title: 'fix(observability): raw task_type + keep focus in Prefect task names (#277)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 277
+  merged_at: '2026-06-29'
+sip_moves:
+- sip: SIP-0095-Cycle-Create-Preflight
+  from: null
+  to: accepted
+- sip: SIP-Capability-Backed-Agents
+  from: null
+  to: proposed
+- sip: SIP-Continuum-Runtime-Console
+  from: null
+  to: proposed
+- sip: SIP-Cycle-Request-Profile-Naming-Taxonomy
+  from: null
+  to: proposed
+cycles: []
+screenshots: []

@@ -1,0 +1,103 @@
+version: 1.4.3
+tag: v1.4.3
+previous_tag: v1.4.2
+date: '2026-08-04'
+commit: 0ec1a8ab41bb7b8b071e823a82238a43e5b954fe
+narrative: '**Lifecycle Hygiene** — a cycle can neither strand the next one nor fail
+  silently. Seven
+
+  hash-stable fixes, five planned plus two found *by the deploy window itself*: **#373+#529**
+
+  focus-lease reaper across cancel routes, executor finalize, and startup sweep; **#561**
+
+  activity self-heal; **#498** interpreter resolution (bare `python` resolves to
+
+  `sys.executable`, strictly after the safelist gate); **#572** queue capability honesty;
+
+  **#573** a redaction char-class overrun that swallowed adjacent log fields; **#710**
+
+  stranded-mode sweep; **#712** owner-checked lease release.
+
+
+  **Found by the window, not the tests:** #710 — pre-deploy capture showed six agents
+  in
+
+  `cycle` mode holding zero leases, so focus arbitration had been silently inert for
+  64
+
+  cycles over two weeks. #712 — a cancelled run''s late finalize would have stripped
+  the
+
+  *relaunched* run''s focus, unreachable before this patch only because #529''s leak
+  was an
+
+  accidental guard.
+
+
+  Confirmation **shk-4 green**; 9/9 leases released, zero residue, no restart.'
+pull_requests:
+- number: 714
+  title: 'chore(release): cut v1.4.3 — lifecycle hygiene (version bump + marker sync
+    + as-built record)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-05'
+- number: 713
+  title: 'fix(runtime): owner-check the lease release on ambient entry (#712)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 712
+  merged_at: '2026-08-04'
+- number: 711
+  title: 'fix(runtime): reap agents stranded in cycle mode with no lease at startup
+    (#710)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 710
+  merged_at: '2026-08-04'
+- number: 709
+  title: 'fix(telemetry): a literal `|` in the email TLD class swallowed the next
+    log field (#573)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 573
+  merged_at: '2026-08-04'
+- number: 708
+  title: 'fix(comms): report the delay and priority capabilities the queue actually
+    has (#572)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 572
+  merged_at: '2026-08-04'
+- number: 706
+  title: 'fix(checks): resolve a bare `python` at spawn instead of through PATH (#498)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 498
+  merged_at: '2026-08-04'
+- number: 705
+  title: 'fix(runtime): self-heal stale activity rows and end them at cancel and startup
+    (#561)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 561
+  merged_at: '2026-08-04'
+- number: 704
+  title: 'fix(runtime): reclaim stranded focus leases at cancel, finalize, and startup
+    (#373, #529)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 373
+  - 529
+  merged_at: '2026-08-04'
+sip_moves: []
+cycles: []
+screenshots: []

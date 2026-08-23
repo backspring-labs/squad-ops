@@ -1,0 +1,7 @@
+# Documentation site toolchain. Deliberately NOT in pyproject.toml — this is
+# build tooling for site/, not a runtime or test dependency of the framework.
+# CI installs it fresh (see .github/workflows/pages.yml); locally, use a
+# throwaway venv rather than the project .venv, which is pinned to
+# ci-constraints.txt.
+mkdocs-material==9.6.21
+mkdocs-gen-files==0.5.0

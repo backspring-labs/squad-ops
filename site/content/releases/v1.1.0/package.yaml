@@ -1,0 +1,909 @@
+version: 1.1.0
+tag: v1.1.0
+previous_tag: v1.0.0
+date: '2026-06-28'
+commit: baa0e8273887da888f1d350bbacd0ca8ace0ca83
+narrative: ''
+pull_requests:
+- number: 252
+  title: 'chore(release): 1.1.0 — Agent Runtime State (SIP-0089) + 1.0.x hardening'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-06-28'
+- number: 251
+  title: 'fix(api): enforce cycles:read/write scopes on cycle routes (#150)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 150
+  merged_at: '2026-06-28'
+- number: 249
+  title: 'fix(cycles): propagate cycle/run cancel to Prefect (#77)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 77
+  merged_at: '2026-06-28'
+- number: 248
+  title: 'SIP-0089 Phase 4: RuntimeActivity'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-06-28'
+- number: 247
+  title: 'fix(handlers): stop in-place mutation of frozen HandlerResult in planning
+    retry (#155)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 155
+  merged_at: '2026-06-28'
+- number: 246
+  title: 'test(comms): regression tests for RabbitMQ channel recovery (#146)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-06-28'
+- number: 243
+  title: 'fix(tests): integration config — env precedence + creds match the stack
+    (#209)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 209
+  merged_at: '2026-06-28'
+- number: 241
+  title: 'fix(tests): repair test_pulse_check_e2e.py — event loop + 3 stale-API layers
+    (#211)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 211
+  merged_at: '2026-06-28'
+- number: 238
+  title: 'test(ci): add tests/unit/adapters/ to the regression gate (#207)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 207
+  merged_at: '2026-06-28'
+- number: 240
+  title: 'style+ci: repo-wide ruff format sweep + enforce format gate (#196)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 196
+  merged_at: '2026-06-28'
+- number: 236
+  title: 'fix(bootstrap): standardize local dev + CI on Python 3.12 (#217)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-06-28'
+- number: 235
+  title: 'SIP-0089 Phase 3: Focus Lease'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-06-28'
+- number: 232
+  title: 'fix(deps): make the postgres extra truly optional — TYPE_CHECKING-guard
+    sqlalchemy in ports/db.py (#206)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-06-28'
+- number: 229
+  title: 'fix(deps): declare sqlalchemy and python-jose (unblock unit collection)'
+  author: jasonLadd
+  labels:
+  - bug
+  - track:spark
+  closes:
+  - 206
+  merged_at: '2026-06-28'
+- number: 228
+  title: 'SIP-0089: mirror offline runtime_status in reconciliation so the duty guard
+    sees dead agents (#159)'
+  author: jasonLadd
+  labels:
+  - track:macbook
+  closes:
+  - 159
+  merged_at: '2026-06-28'
+- number: 227
+  title: 'SIP-0089 §2.4: activate the in-process duty scheduler (+ close-sweep fix,
+    #226)'
+  author: jasonLadd
+  labels:
+  - track:macbook
+  closes:
+  - 226
+  merged_at: '2026-06-27'
+- number: 221
+  title: SIP-0089 Phase 2 — Agent Runtime State (assignments, scheduler, coordinator,
+    reserve guard)
+  author: jasonLadd
+  labels:
+  - track:macbook
+  closes:
+  - 220
+  merged_at: '2026-06-27'
+- number: 215
+  title: 'sip: propose Duty Continuity & Handoff Ledger (DutyLog)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-06-24'
+- number: 214
+  title: 'chore(release): bump to v1.0.6 + document SIP-0094'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-06-21'
+- number: 213
+  title: 'sip: promote SIP-0094 → implemented (per-agent reply queues)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-06-21'
+- number: 212
+  title: 'SIP-0094 94.3: ReplyRouter cutover — _publish_and_await onto per-agent reply
+    queues'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-06-21'
+- number: 210
+  title: 'SIP-0094 94.2b: native RabbitMQ subscribe() + channel-close resubscribe'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-06-21'
+- number: 208
+  title: 'SIP-0094 94.2a: QueuePort.subscribe() primitive + SubscriptionHandle (inert)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-06-21'
+- number: 204
+  title: 'refactor(SIP-0094): rename per-agent reply queue _results → _replies'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-06-21'
+- number: 203
+  title: 'ci: pin CI dependencies via ci-constraints.txt for reproducible installs
+    (closes #202)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 202
+  merged_at: '2026-06-21'
+- number: 201
+  title: 'test(ci): gate tests/unit/comms + tests/unit/agents in the regression suite
+    (closes #200)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 200
+  merged_at: '2026-06-21'
+- number: 199
+  title: 'feat(SIP-0094 PR 94.1): declare per-agent {agent_id}_results queue at startup
+    (inert, deploy-first)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-06-21'
+- number: 197
+  title: 'fix(#195): sync prompt-fragment manifest hashes + prevent future drift (+
+    first CI gate)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 149
+  - 195
+  merged_at: '2026-06-21'
+- number: 193
+  title: 'sip: accept SIP-0094 — Per-Agent Reply Queues + Long-Lived Subscription
+    Model'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-06-21'
+- number: 192
+  title: 'fix(#185): prefix Prefect task labels with agent name; extract task_naming
+    module'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 185
+  merged_at: '2026-06-20'
+- number: 190
+  title: 'fix(#189): normalize cross-proposal dependency keys (role display-name vs
+    role-id)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 189
+  merged_at: '2026-06-20'
+- number: 188
+  title: 'fix(#187): tolerate malformed optional sections in proposer parser'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 187
+  merged_at: '2026-06-20'
+- number: 184
+  title: 'fix: single-quote proposer acceptance-check examples so regex patterns parse'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-06-20'
+- number: 183
+  title: 'fix(#182): generate proposer typed-acceptance vocabulary from CHECK_SPECS'
+  author: jasonLadd
+  labels:
+  - bug
+  - track:spark
+  closes: []
+  merged_at: '2026-06-20'
+- number: 181
+  title: 'docs(sip): reply-channel subscription model — Rev 3 (lazy subscription)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-06-20'
+- number: 180
+  title: 'fix(sip-0093): enable multi-role plan authoring via plan_authoring_contributors'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-06-20'
+- number: 179
+  title: 'fix(tests): retarget builder-squad tests to spark-squad-with-builder (green
+    the regression suite)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-06-20'
+- number: 178
+  title: 'docs(plan): wire 1.0.x hardening plan tables to GitHub issues (#170)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-06-14'
+- number: 177
+  title: 'docs(hardening): framework smoke integration test section (issue #176)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-06-14'
+- number: 175
+  title: 'chore(profiles): remove stale full-squad-with-builder profile'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-06-14'
+- number: 174
+  title: 'feat(cycles): lite profile + filter builder-only task types by squad capability'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-06-14'
+- number: 169
+  title: 'chore(cycles): finish DispatchedFlowExecutor rename in docstrings + docs'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-06-14'
+- number: 171
+  title: 'docs: v1.1 runtime track roadmap (MacBook lane)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-06-14'
+- number: 167
+  title: 'chore(SIP-0092): wire ruff into regression as fail-stop + clear lint debt'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-06-13'
+- number: 165
+  title: 'fix(SIP-0093): plan-authoring brief handler retries + fence-stripping (PR
+    93.3 follow-on)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-06-13'
+- number: 164
+  title: 'refactor(cycles): rename DistributedFlowExecutor -> DispatchedFlowExecutor
+    (#82)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 82
+  merged_at: '2026-06-13'
+- number: 163
+  title: 'fix(tests): use asyncio.run in telemetry health tests (#161)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 161
+  merged_at: '2026-06-13'
+- number: 162
+  title: 'fix(tests): restore green regression baseline on main'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 160
+  merged_at: '2026-06-13'
+- number: 147
+  title: 'feat: SIP-0089 Phase 1 — Minimal runtime state'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-06-13'
+- number: 145
+  title: 'feat(SIP-0093 PR 93.3 cutover): merger + dynamic PLANNING_TASK_STEPS'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-05-16'
+- number: 144
+  title: 'feat(SIP-0093 PR 93.2): role proposer handlers + RC-23 failure records'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-05-16'
+- number: 143
+  title: 'docs(SIP-0093): amend Rev 2 parallel-fan-out section for Spark reality'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-05-16'
+- number: 142
+  title: 'fix(SIP-0084 #140): prompt-registry cleanup for plan authoring service'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 140
+  merged_at: '2026-05-16'
+- number: 141
+  title: 'feat(SIP-0093 PR 93.1): proposal/guidance/merge_decisions schemas'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-05-16'
+- number: 139
+  title: 'feat(SIP-0093 PR 93.0): extract PlanAuthoringService + brief schema/handler'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-05-16'
+- number: 138
+  title: 'refactor(SIP-0092/0093): drop multi_role_plan_authoring flag, single runtime
+    route'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-05-09'
+- number: 137
+  title: 'docs(SIP-0093/0092): initial plan doc + tightening from review'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-05-09'
+- number: 136
+  title: 'docs(SIP-0092/0093): tighten SIP-0093 Rev 2 + rewrite SIP-0092 §6.2 to use
+    it'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-05-08'
+- number: 135
+  title: 'docs(SIP-0092): reframe M2→M3 gate criteria for SIP-0093 in M2 slot'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-05-08'
+- number: 131
+  title: 'fix(prompts): register SIP-0079 task_type fragments missing from manifest'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-05-06'
+- number: 129
+  title: 'fix(impl): suppress role-identity prepend on JSON-emitting impl handlers'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-05-06'
+- number: 128
+  title: 'fix(impl): tolerant JSON extraction + raw-response logging in SIP-0079 handlers'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-05-05'
+- number: 127
+  title: 'fix(governance): repair merge-conflict resolution between #124 and #126'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-05-05'
+- number: 126
+  title: 'refactor: externalize SIP-0079 impl handler system prompts to task_type
+    fragments'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-05-05'
+- number: 125
+  title: 'feat(plan-authoring): SIP-0093 schema + helpers (scaffolding, no behavior
+    change)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-05-05'
+- number: 123
+  title: 'refactor: drop proper agent names from source comments and docstrings'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-05-05'
+- number: 122
+  title: 'fix(governance): make Max''s structured outputs reliable enough for M2 (#109)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 109
+  merged_at: '2026-05-05'
+- number: 121
+  title: 'fix(repair): surface repaired artifact contents to qa.validate_repair'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-05-05'
+- number: 120
+  title: 'fix(repair): plumb failed-task contract into correction-loop repair envelope'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-05-05'
+- number: 117
+  title: 'docs(SIP-0092): revise M1→M2 gate eval to proceed (cycles 5-6 evidence)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-05-04'
+- number: 118
+  title: 'refactor(SIP-0092): align code names with the SIP-0092 plan vocabulary (M2.1
+    prep)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-05-04'
+- number: 119
+  title: 'fix(executor): persist correction-task and repair-task output artifacts'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-05-04'
+- number: 116
+  title: 'fix(framing): wire PRD coverage discipline into the manifest prompt actually
+    used (#112 real fix)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-05-04'
+- number: 115
+  title: 'feat(observability): typed_check_evaluation artifact + identifying plan_delta
+    trigger (#114)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 114
+  merged_at: '2026-05-04'
+- number: 113
+  title: 'fix(framing): require PRD↔acceptance coverage in implementation_plan (#112)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 112
+  merged_at: '2026-05-04'
+- number: 111
+  title: 'fix(correction-loop): propagate squad-profile model to correction & repair
+    envelopes'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 110
+  merged_at: '2026-05-04'
+- number: 108
+  title: 'fix(builder): scope required_files by task expected_artifacts (#107)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 107
+  merged_at: '2026-05-03'
+- number: 106
+  title: 'fix(correction-loop): enrich failure_evidence with validation context (#84)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 84
+  merged_at: '2026-05-03'
+- number: 105
+  title: 'chore(model-registry): register qwen3.6:27b for spark-squad cycles'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-05-03'
+- number: 104
+  title: 'fix(correction-loop): persist repair source files + route by failed task
+    type'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-05-03'
+- number: 103
+  title: 'fix(builder-prompt): mark qa_handoff section list non-negotiable + worked
+    skeleton'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-05-03'
+- number: 102
+  title: 'feat(crp): add validation request profile for SIP-0092 M1 → M2 gate evidence'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-05-03'
+- number: 101
+  title: 'fix(repair): split development.repair into pulse-check vs correction-loop
+    variants (#100)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 100
+  merged_at: '2026-05-03'
+- number: 99
+  title: 'fix(bootstrap): register QAValidateRepairHandler — closes #93 (qa.validate_repair
+    13ms failure)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 93
+  merged_at: '2026-05-03'
+- number: 98
+  title: 'fix(builder): make required_files/optional_files the single source of truth
+    (#92)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 92
+  merged_at: '2026-05-03'
+- number: 96
+  title: 'fix(correction-loop): preserve analyze_failure outputs through to PlanDelta
+    (#95)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 95
+  merged_at: '2026-05-03'
+- number: 91
+  title: 'fix(parser): tolerate common LLM fenced-block format drift'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-05-03'
+- number: 90
+  title: 'sip(rev2): per-agent reply queues replace per-run cycle_results scoping'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-05-02'
+- number: 89
+  title: 'fix(cycle-reply): recover lost agent replies via long-block consume + cache
+    invalidation'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-05-02'
+- number: 87
+  title: 'fix(m1.3): emit observability log lines for typed-acceptance evaluation
+    (#83)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 83
+  merged_at: '2026-05-02'
+- number: 88
+  title: 'fix(correction-loop): pydantic-validate FailureAnalysis output (#84)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-05-02'
+- number: 86
+  title: 'fix(executor): use manifest focus in Prefect task names (#81)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 81
+  merged_at: '2026-05-02'
+- number: 85
+  title: 'chore(squad-profiles): spark-squad-with-builder all roles → qwen3.6:27b'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-05-02'
+- number: 76
+  title: 'feat(sip-0092 m1.3): wire typed-acceptance evaluation into _validate_focused'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-05-01'
+- number: 75
+  title: 'feat(sip-0092 m1.2): typed-acceptance evaluator framework + six checks'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-05-01'
+- number: 74
+  title: 'refactor(sip-0092): rename WorkloadType.PLANNING → FRAMING'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-05-01'
+- number: 73
+  title: 'docs(sip): propose SIP-Multi-Role-Plan-Authoring; wire into SIP-0092 M1→M2
+    gate'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-04-30'
+- number: 72
+  title: 'feat(sip-0092 m1.1): implementation plan rename + typed acceptance schema/parser'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-04-30'
+- number: 71
+  title: 'docs(plan): SIP-0092 Implementation Plan Improvement — plan doc (rev 1–3)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-04-30'
+- number: 70
+  title: 'chore(sip): accept SIP-0092 Build Manifest Maturation'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-04-30'
+- number: 69
+  title: 'docs(sip): Build Manifest Maturation rev 2 — reviewer feedback'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-04-30'
+- number: 68
+  title: 'docs(plan): 1.0.x hardening plan rev 2 — reviewer feedback'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-04-28'
+- number: 67
+  title: 'docs(plan): 1.0.x build-reliability hardening plan + Build Manifest Maturation
+    SIP'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-04-28'
+- number: 66
+  title: 'docs(sip-0088): add Future Considerations — duty/cycle composition'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-04-26'
+- number: 64
+  title: 'docs(plan): SIP-0089 agent runtime state implementation plan (review)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-04-26'
+- number: 65
+  title: 'config(squad): add smoke profile (5x qwen2.5:3b-instruct)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-04-26'
+- number: 63
+  title: 'chore(sip): accept runtime modes package (SIP-0088 through SIP-0091)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-04-25'
+- number: 60
+  title: 'SIP-0087: Prefect task-scoped log streaming + v1.0.5'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-04-25'
+- number: 62
+  title: 'docs(sip): split agent runtime modes into three SIPs (v1.1/1.2/1.3)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-04-25'
+- number: 61
+  title: 'docs(sip): propose agent runtime modes (Duty/Cycle/Ambient)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-04-25'
+- number: 59
+  title: 'sip(accept): SIP-0087 Prefect Task-Scoped Log Streaming'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-04-24'
+- number: 58
+  title: 'config(spark): upgrade max/neo/nat/bob to qwen3.6:27b'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-04-24'
+- number: 57
+  title: 'chore(release): promote SIP-0086 and bump to v1.0.4'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-04-19'
+- number: 55
+  title: 'SIP-0086: Build Convergence Loop — Dynamic Task Decomposition, Output Validation
+    & Correction Activation'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-04-19'
+- number: 56
+  title: 'chore: post-1.0 docs hygiene'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-04-19'
+- number: 54
+  title: 'SIP: Build Convergence Loop — dynamic task decomposition & correction activation'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-03-31'
+- number: 53
+  title: 'feat: streaming LLM with usage metadata, Spark 32b profile tuning'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-03-30'
+- number: 52
+  title: 'fix: Spark squad profile, LLM timeouts, and token throughput telemetry'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-03-30'
+- number: 49
+  title: 'refactor: tighten C901 complexity threshold to 12'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-03-30'
+- number: 51
+  title: 'fix(executor): artifact handoff in multi-workload runs'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-03-29'
+- number: 50
+  title: 'fix(bootstrap): auto-provision LangFuse on local-spark'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-03-29'
+- number: 48
+  title: 'refactor: enforce C901 complexity limit of 15'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-03-29'
+- number: 47
+  title: 'chore: bump Continuum to v1.0.2'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-03-16'
+- number: 46
+  title: 'fix(infra): include Joi in default agent deploy list'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 45
+  merged_at: '2026-03-16'
+- number: 44
+  title: 'feat(sip-0085): Console messaging — chat with Joi via A2A'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-03-15'
+- number: 43
+  title: 'chore: accept SIP-0085 — Console Messaging Capability via A2A'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-03-15'
+- number: 42
+  title: 'fix(bootstrap): one-click setup on DGX Spark'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 41
+  merged_at: '2026-03-15'
+- number: 40
+  title: 'feat: Prompt Registry Integration Using Langfuse (SIP-0084)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-03-13'
+- number: 39
+  title: Restructure examples with numeric prefixes + add agent_chess benchmark
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-03-13'
+sip_moves:
+- sip: SIP-0081-Profile-Driven-Bootstrap
+  from: null
+  to: implemented
+- sip: SIP-0084-Prompt-Registry-Integration-Using
+  from: null
+  to: implemented
+- sip: SIP-0085-Console-Messaging-Capability-for
+  from: null
+  to: implemented
+- sip: SIP-0086-Build-Convergence-Loop-Dynamic
+  from: null
+  to: implemented
+- sip: SIP-0087-Prefect-Task-Scoped-Log-Streaming
+  from: null
+  to: implemented
+- sip: SIP-0088-Agent-Runtime-Modes
+  from: null
+  to: accepted
+- sip: SIP-0089-Agent-Runtime-State
+  from: null
+  to: implemented
+- sip: SIP-0090-Agent-Embodiment-Substrate
+  from: null
+  to: accepted
+- sip: SIP-0091-Duty-Durability-via-Temporal
+  from: null
+  to: accepted
+- sip: SIP-0092-Implementation-Plan-Improvement
+  from: null
+  to: accepted
+- sip: SIP-0093-Multi-Role-Plan-Authoring
+  from: null
+  to: accepted
+- sip: SIP-0094-Per-Agent-Reply-Queues-Long-Lived
+  from: null
+  to: implemented
+- sip: SIP-Duty-Continuity-and-Handoff-Ledger
+  from: null
+  to: proposed
+- sip: SIP-Planning-Sequence-Strategy-First
+  from: null
+  to: proposed
+- sip: SIP-Version-Bump-Hardening
+  from: null
+  to: proposed
+cycles: []
+screenshots: []

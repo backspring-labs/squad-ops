@@ -1,0 +1,59 @@
+# Publishes the Squad Ops documentation site.
+#
+# Deliberately an Actions-source workflow rather than the branch/folder Pages
+# source: that source can publish only the repo root or /docs, and docs/ holds
+# ~260 internal working files (plans, retrospectives, reviews) that are not
+# published. Building from mkdocs.yml publishes exactly site/content plus what
+# site/hooks generates, and nothing else.
+name: Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - 'sips/**'          # the SIP browser is generated from these
+      - 'mkdocs.yml'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never cancel a running deploy; queue behind it.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: site/requirements.txt
+      - run: pip install -r site/requirements.txt
+      # --strict fails on broken internal links. The site is generated from
+      # 125 proposals that cross-reference each other and the tree; without
+      # this a rename would rot links silently, which is the failure mode this
+      # whole site exists to correct.
+      - run: mkdocs build --strict
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/_build
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

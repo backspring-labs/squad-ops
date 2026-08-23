@@ -1,0 +1,254 @@
+version: 1.3.0
+tag: v1.3.0
+previous_tag: v1.2.0
+date: '2026-07-07'
+commit: f8d404ae8e6ac7b6b7e41d449f8603f2b5943146
+narrative: "First **stabilization release** on the even/odd minor cadence (#281):\
+  \ odd minors are\nfeature-free by rule, and the big risky structural refactors quarantined\
+  \ out of the\nfeature releases are the *product*. Spark was offline for this cycle,\
+  \ so the entire\ncore scope landed from the Macbook lane. Every structural change\
+  \ below was\nlive-validated on the deployed stack before merge.\n\n### Changed\n\
+  - **SIP-0097 Dispatched Flow Executor decomposition (#186, #295).** The 3,358-line\
+  \ /\n  53-method executor god-object decomposed to 1,805 lines across six sliced\
+  \ PRs\n  (#341, #344, #347–#350), extracting five plain injected collaborators:\
+  \ pure hoists,\n  **`RunLedger` + `RunCompletion`** (append-only run evidence +\
+  \ terminal-outcome\n  mapping — the executor now carries **zero per-run mutable\
+  \ state**, and\n  `RunCompletion.finalize(ledger, …)` is the seam SIP-0096 §6.4\
+  \ wires into),\n  **`CorrectionRunner`**, **`PulseBoundaryRunner`**, and **`TaskDispatcher`**\
+  \ (the\n  interim dispatch callables were replaced by the real collaborator per\
+  \ AC#9). Slice\n  6 carried the arc's one behavior addition (#295): the plan-review\
+  \ gate validates\n  the run's materialized implementation plan against the squad\
+  \ profile *before*\n  pausing — completing SIP-0095's materialized-plan half. SIP-0097\
+  \ accepted (PR #340)\n  and **promoted to implemented** within this release.\n-\
+  \ **`cycle_tasks.py` split into the `capabilities/handlers/cycle/` package (#152).**\n\
+  \  The 3,276-line handler monolith is now per-handler modules behind a compat shim\n\
+  \  (PR #339), preceded by hoisting its copy-pasted helpers into `_CycleTaskHandler`\n\
+  \  (#332, PR #338). Shim retirement rides the importer migration filed in #339.\n\
+  - **Agent comms migrated from queue polling to a persistent push consumer (#323,\n\
+  \  PR #354).** The entrypoint's 1s open/close `consume()` poll is gone; agents hold\n\
+  \  one long-lived `subscribe()` consumer (delivery-time pickup, `prefetch_count=1`,\n\
+  \  ack semantics unchanged). Removes the consumer-count flapping, up-to-1s dispatch\n\
+  \  latency, and the `aio_pika` \"closing\" INFO flood that was 99.7% of retained\
+  \ agent\n  logs — which also closed #329 (the interim log-demotion mitigation) as\
+  \ obsolete.\n- **Dead sqlalchemy `DbRuntime` backend removed (#234, PR #356).**\
+  \ Audit found zero\n  production callers (its factory was only ever constructed\
+  \ by its own tests, and\n  the one production breadcrumb referenced a method that\
+  \ never existed).\n  `src/squadops/ports/` now contains no vendor types in any contract;\
+  \ the `postgres`\n  extra and sqlalchemy test pin are dropped. Every active persistence\
+  \ path is asyncpg.\n\n### Fixed\n- **Prompt-pack drift broke `merge_plan` fleet-wide\
+  \ (#327, PR #351).** Agents resolve\n  prompts from the LangFuse registry, which\
+  \ was seeded once and never re-synced —\n  SIP-0093's templates were missing at\
+  \ runtime though the files shipped in the image.\n  Deploys now re-sync prompts\
+  \ to LangFuse (production label) as a pipeline step; the\n  manifest loader hard-fails\
+  \ on hash mismatch (was warn-and-continue); the regen tool\n  maintains the whole-manifest\
+  \ hash; CI guards manifest integrity. Design-debt\n  follow-ups filed: #352 (registry\
+  \ runtime guard), #353 (build-time fingerprint).\n- **`runs resume` insta-failed\
+  \ since 1.1.1 (#342, PR #343).** The resume route\n  pre-flipped the run to RUNNING\
+  \ and the executor then re-issued an illegal\n  RUNNING→RUNNING transition — every\
+  \ resume died in ~2s. Found by SIP-0097 slice-2\n  live validation; pause→resume→complete\
+  \ now verified live end-to-end (closed #258).\n- **Test suite is color-env-proof\
+  \ (#345, PR #346).** Shells exporting `FORCE_COLOR`\n  broke CLI output assertions\
+  \ (rich token-splits digits under forced color); all\n  assertions now ANSI-strip\
+  \ first.\n\n### Added\n- **CI docs-drift guards (#336, PR #357).** Version markers\
+  \ across\n  CLAUDE.md/README/ROADMAP must equal `pyproject.toml` (this release's\
+  \ bump is the\n  first it enforces), accepted-SIP `Targets:` lines must respect\
+  \ even/odd parity,\n  and planning-doc references must resolve — lifecycle-aware,\
+  \ with the historical\n  residue frozen in an explicit allowlist.\n\n### Docs &\
+  \ SIP lifecycle\n- **SIP-0096 Verification Evidence Integrity accepted** (PR #337,\
+  \ rev 2) — the 1.4\n  headline alongside SIP-0091; execution plan in `docs/plans/1-4-evidence-arc-plan.md`.\n\
+  - **SIP-0095 promoted to implemented** (PR #324); SIP-0091's stale `Targets: v1.3`\n\
+  \  remapped to v1.4 per the parity rule (#335).\n- **Docs hygiene pass (#335, PR\
+  \ #357):** ROADMAP stats/tables reconciled (they were\n  frozen at 1.0.6), Forward\
+  \ Cadence section added (1.3 → 1.4 → 1.6 → 2.0 pillar map),\n  referenced-but-untracked\
+  \ drafts committed (Edge Deployment Profile, Experiment\n  Queue), and a registry\
+  \ entry pointing at a never-committed file removed.\n- **Drafts filed** (proposed,\
+  \ not accepted): Agent Comms Delivery Guarantees\n  (PR #355 — Campaign 1.6 gate\
+  \ candidate), Campaign SIP revision + two-lane/evidence\n  plans (PR #325).\n\n\
+  ### Deferred / follow-ups\n- **#288** (same-mode lease bypass — a named Campaign\
+  \ 1.6 gate) slipped this release;\n  pulled forward into the 1.4 window as hardening.\n\
+  - **#331** (`planning_tasks.py` split) and **#333** (entrypoint config-masking\n\
+  \  fallbacks) → 1.5 stabilization backlog.\n- SIP-0097 post-arc open questions (residual-method\
+  \ review / optional seventh\n  collaborator; `RunOrchestrator` rename + #168 sweep)\
+  \ are standalone follow-ups."
+pull_requests:
+- number: 358
+  title: 'release: 1.3.0 — first stabilization release'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-08'
+- number: 357
+  title: 'docs(#335) + test(#336): fix doc drift and add the CI ratchet — last pre-1.3.0
+    item'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 335
+  - 336
+  merged_at: '2026-07-08'
+- number: 356
+  title: 'refactor(#234): remove the dead sqlalchemy DbRuntime backend'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 234
+  merged_at: '2026-07-08'
+- number: 355
+  title: 'SIP proposal: Agent Comms Delivery Guarantees (Campaign 1.6 gate)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-08'
+- number: 354
+  title: 'refactor(#323): migrate agent comms from queue polling to a persistent push
+    consumer'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 323
+  - 329
+  merged_at: '2026-07-08'
+- number: 351
+  title: 'fix(#327): prompt-pack drift — hard-fail manifest verification + deploy-time
+    LangFuse sync'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 327
+  merged_at: '2026-07-08'
+- number: 350
+  title: 'feat(#295): SIP-0097 slice 6 — reject unsatisfiable plans at the plan-review
+    gate'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 186
+  - 295
+  merged_at: '2026-07-08'
+- number: 349
+  title: 'refactor(#186): SIP-0097 slice 5 — TaskDispatcher extraction, interim callables
+    retired'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-08'
+- number: 348
+  title: 'refactor(#186): SIP-0097 slice 4 — PulseBoundaryRunner extraction'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-08'
+- number: 347
+  title: 'refactor(#186): SIP-0097 slice 3 — CorrectionRunner extraction'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-08'
+- number: 346
+  title: 'fix(#345): assemble-command CLI test assertions immune to FORCE_COLOR environments'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 345
+  merged_at: '2026-07-08'
+- number: 343
+  title: 'fix(#342): resumed runs fail instantly — executor re-issues an illegal RUNNING→RUNNING
+    transition'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 342
+  merged_at: '2026-07-07'
+- number: 344
+  title: 'refactor(#186): SIP-0097 slice 2 — RunLedger + RunCompletion (the SIP-0096
+    §6.4 seam)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-07'
+- number: 341
+  title: 'refactor(#186): SIP-0097 slice 1 — hoist pure helpers out of DispatchedFlowExecutor'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-07'
+- number: 340
+  title: 'SIP proposal: Dispatched Flow Executor Decomposition Boundaries (#186 design)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-07'
+- number: 339
+  title: 'refactor(#152): split cycle_tasks.py into the handlers/cycle package'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 152
+  merged_at: '2026-07-06'
+- number: 338
+  title: 'refactor(#332): hoist copy-pasted helpers to _CycleTaskHandler base (step
+    0 of #152)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 332
+  merged_at: '2026-07-06'
+- number: 337
+  title: 'SIP proposal: Verification Evidence Integrity + evidence-arc reconciliation'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 334
+  merged_at: '2026-07-06'
+- number: 325
+  title: 'docs: 2.0 Campaign vision anchor + Campaign Orchestration SIP (1.6) + roadmap
+    reconciliation + 1.3 two-lane plan'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-05'
+- number: 324
+  title: 'chore(SIP-0095): promote Cycle-Create Preflight → implemented'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-07-04'
+sip_moves:
+- sip: SIP-0090-Agent-Embodiment-Substrate
+  from: null
+  to: accepted
+- sip: SIP-0091-Duty-Durability-via-Temporal
+  from: null
+  to: accepted
+- sip: SIP-0095-Cycle-Create-Preflight
+  from: null
+  to: implemented
+- sip: SIP-0096-Verification-Evidence-Integrity
+  from: null
+  to: accepted
+- sip: SIP-0097-Dispatched-Flow-Executor-Decomposition
+  from: null
+  to: implemented
+- sip: SIP-Agent-Comms-Delivery-Guarantees
+  from: null
+  to: proposed
+- sip: SIP-Campaign-Orchestration
+  from: null
+  to: proposed
+- sip: SIP-Campaign-Self-Improvement-and-Test-Bay-Requirements
+  from: null
+  to: proposed
+- sip: SIP-Capability-Backed-Agents
+  from: null
+  to: proposed
+- sip: SIP-Cycle-Evaluation-Scorecard
+  from: null
+  to: proposed
+- sip: SIP-Edge-Deployment-Profile
+  from: null
+  to: proposed
+- sip: SIP-Experiment-Queue-and-Cycle-Assessment
+  from: null
+  to: proposed
+cycles: []
+screenshots: []
