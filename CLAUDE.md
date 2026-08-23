@@ -236,11 +236,18 @@ procedure costs: six consecutive releases tagged but never advertised.
 | 3 | Rotate `CHANGELOG.md` — `[Unreleased]` → `[x.y.z] — <date>`, open a fresh `[Unreleased]` |
 | 4 | ROADMAP timeline entry |
 | 5 | SIP promotion sweep — promote what is genuinely implemented; a phased or umbrella SIP with open children stays `accepted`, with the gap named |
-| 6 | `git tag vX.Y.Z` **and** a GitHub Release from the CHANGELOG section, marked **Latest** |
+| 6 | `git tag vX.Y.Z && git push origin vX.Y.Z` — the Release publishes itself from the CHANGELOG section (`.github/workflows/release.yml`, #1061) |
 | 7 | **Capture the release package** — `python scripts/maintainer/build_release_package.py <version> --write --cycle <shakedown-cycle-id>`, commit `site/content/releases/vX.Y.Z/` |
 
-Steps 1–3 are guarded by `tests/unit/architecture/test_docs_version_sync.py`; **4 through 7
-are not**, which is why they are written down.
+Steps 1–3 are guarded by `tests/unit/architecture/test_docs_version_sync.py`, and step 6's
+Release is now automated on tag push. **Steps 4, 5 and 7 remain unguarded**, which is why
+they are written down.
+
+**Why step 6 is automated rather than listed.** Across v1.4.0–v1.6.1, *zero* releases were
+published at cut time — every one was backfilled later. The step sat in the cut checklist
+from 2026-08-10 and was still missed at both subsequent cuts. Pushing a tag reads as
+completion, and nothing signals that a separate artifact on another system is outstanding.
+A step with that record needs removing, not restating (#1061).
 
 **Step 7 is capture, not query.** Cycle evidence lives in a running deploy and is
 unrecoverable once it moves, so the package is snapshotted at the cut and committed —

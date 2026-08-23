@@ -1,0 +1,70 @@
+# Publishes a GitHub Release when a v* tag is pushed (#1061).
+#
+# Why this is automated rather than a checklist item: across v1.4.0–v1.6.1,
+# ZERO releases were published at cut time — every one was backfilled later, in
+# two batch sweeps. The step was written into the cut checklist on 2026-08-10
+# and still missed at both subsequent cuts. Pushing a tag reads as completion:
+# the version is stamped, the tag is on the remote, git reports success, and
+# nothing signals that a separate artifact on a different system is outstanding.
+#
+# The body is the version's CHANGELOG section, which is written deliberately,
+# reviewed in the release PR, and guaranteed to exist by rule 4 of
+# tests/unit/architecture/test_docs_version_sync.py before a tag can be cut.
+# So this publishes reviewed content at a later moment, not unread content.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to publish (e.g. v1.6.2)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The tag's own tree — the CHANGELOG must be read as it was AT the cut,
+          # not as main looks now, or a later rotation would rewrite history.
+          ref: ${{ github.event.inputs.tag || github.ref_name }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Derive title and body
+        id: notes
+        env:
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          python scripts/maintainer/release_notes.py "$version" \
+            --body-file "$RUNNER_TEMP/notes.md" --print-title > "$RUNNER_TEMP/title.txt"
+          echo "title=$(cat "$RUNNER_TEMP/title.txt")" >> "$GITHUB_OUTPUT"
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists — leaving it untouched."
+            exit 0
+          fi
+          # --latest only for a plain semver tag, so a pre-release or an oddly
+          # named tag can never displace the current release.
+          latest_flag="--latest=false"
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] && latest_flag="--latest"
+          gh release create "$TAG" \
+            --title "${{ steps.notes.outputs.title }}" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            $latest_flag
