@@ -390,3 +390,50 @@ class TestUncollectedTestFiles:
             uncollected_test_files=("tests/api/runs.test.ts",),
         )
         assert summary.to_dict()["uncollected_test_files"] == ["tests/api/runs.test.ts"]
+
+
+class TestAdditiveContainmentReachesTheRecord:
+    """#1052 follow-up: the findings must land somewhere that survives the handler.
+
+    Bug caught, and it shipped in the change that named the pattern: #1052 computed the
+    containment findings at the merge seam and placed them only in
+    `evidence_extra["fill_merge"]`, which flows to `TaskResult.execution_evidence` —
+    and #999 establishes that nothing persists that. The PR body and the issue comment
+    both said "banked on every qa emission". They were wrong.
+
+    `scaffold_evidence` is in `outputs`, which `build_failure_evidence` reads, so the
+    findings reach the analyzer and the locus classifier. Full persistence for a passing
+    run is still #999's territory and this does not claim it.
+    """
+
+    def test_the_summary_carries_the_findings(self, emission, dispositions):
+        summary = build_scaffold_evidence_summary(
+            emission.manifest,
+            dispositions,
+            [],
+            [],
+            additive_test_count=1,
+            additive_containment=("__tests__/live.test.ts: fetches a live server.",),
+        )
+        assert summary.additive_containment == ("__tests__/live.test.ts: fetches a live server.",)
+
+    def test_the_findings_survive_to_dict(self, emission, dispositions):
+        """`to_dict` is the shape that actually leaves the process — a field on the
+        dataclass that the serializer drops is the same defect one layer in."""
+        summary = build_scaffold_evidence_summary(
+            emission.manifest,
+            dispositions,
+            [],
+            [],
+            additive_test_count=0,
+            additive_containment=("a: fetches a live server.",),
+        )
+        assert summary.to_dict()["additive_containment"] == ["a: fetches a live server."]
+
+    def test_a_clean_suite_carries_an_empty_list_not_a_missing_key(self, emission, dispositions):
+        """Absence has to read as "assessed, nothing found" rather than "not assessed" —
+        the #986 rule this file's neighbours already keep."""
+        summary = build_scaffold_evidence_summary(
+            emission.manifest, dispositions, [], [], additive_test_count=0
+        )
+        assert summary.to_dict()["additive_containment"] == []

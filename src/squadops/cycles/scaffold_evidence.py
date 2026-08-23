@@ -292,6 +292,12 @@ class ScaffoldEvidenceSummary:
     #: earning its inference spend" question is unanswerable if part of that layer
     #: silently never ran.
     uncollected_test_files: tuple[str, ...] = ()
+    #: #1022/#1052 follow-up: additive-suite containment findings. They were computed at
+    #: the merge seam and landed ONLY in ``execution_evidence``, which nothing persists
+    #: (#999) — so the findings #1052 described as "banked" were computed and dropped.
+    #: That is the fourth instance of the pattern #1052's own PR called out, shipped by
+    #: the change that called it out. This is the landing that makes the claim true.
+    additive_containment: tuple[str, ...] = ()
     observations: tuple[ShellObservation, ...] = ()
     correlations: tuple[CorrelatedFinding, ...] = ()
 
@@ -314,6 +320,7 @@ class ScaffoldEvidenceSummary:
             "fill_dispositions": dict(self.fill_dispositions),
             "additive_test_count": self.additive_test_count,
             "uncollected_test_files": list(self.uncollected_test_files),
+            "additive_containment": list(self.additive_containment),
             "failure_classes": dict(self.failure_classes),
             "uncorrelated_fill_failures": self.uncorrelated_fill_failures,
             "probe_redundant_findings": self.probe_redundant_findings,
@@ -329,6 +336,7 @@ def build_scaffold_evidence_summary(
     correlations: list[CorrelatedFinding],
     additive_test_count: int,
     uncollected_test_files: tuple[str, ...] = (),
+    additive_containment: tuple[str, ...] = (),
 ) -> ScaffoldEvidenceSummary:
     disposition_counts: dict[str, int] = {}
     for disposition in fill_dispositions.values():
@@ -345,6 +353,7 @@ def build_scaffold_evidence_summary(
         additive_test_count=additive_test_count,
         failure_classes=class_counts,
         uncollected_test_files=tuple(uncollected_test_files),
+        additive_containment=tuple(additive_containment),
         observations=tuple(observations),
         correlations=tuple(correlations),
     )
