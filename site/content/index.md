@@ -1,110 +1,81 @@
 # Squad Ops
 
-**A multi-agent framework that turns a written requirement into a verified
-application** — running on local open-weight models, against a design the squad
-authored rather than one it was handed.
+Squad Ops builds working applications from a written requirement. A cycle reads
+the requirement, designs the interface, implements it, verifies it by execution,
+and produces a runnable project directory.
 
-## What separates it
+It runs on locally hosted open-weight models. The reference deployment is a Qwen
+27B model on an NVIDIA DGX Spark.
 
-Assuming you already know what agent orchestration is, three things are unusual
-here.
+```bash
+squadops cycles create play_game --squad-profile full --request-profile validated-fullstack
+squadops runs assemble play_game <cycle-id> <run-id> --out ./output
+```
 
-### The design is authored, then gated
+## How a cycle works
 
-Most frameworks orchestrate *implementation* against a design a human supplied.
-Here the squad produces the interface design itself — entities, endpoints, error
-contracts, screens — and that design passes two automated gates before any code
-is written: is it structurally complete, and is it **winnable**, meaning the
-thing it describes can actually be built and verified.
+| Stage | What happens |
+|---|---|
+| **Framing** | The squad authors an interface manifest — entities, endpoints, error contracts, screens — from the requirement. Two gates check it: structural completeness, and winnability (the design expands into a skeleton, the derived contract is satisfiable, fill slots enumerate). |
+| **Review** | The cycle pauses for an operator when the design records an unresolved question. Otherwise it proceeds. |
+| **Implementation** | The design expands into a skeleton of frozen files and fill slots. Agents write into the slots. |
+| **Verification** | Tests execute. The application installs, builds, boots, and answers probes over HTTP against the contract derived from the design. |
+| **Correction** | Failures are classified by locus — application, test suite, or harness — and repaired for a bounded number of rounds. |
 
-A design that cannot be won is rejected in seconds, rather than an hour into a
-build that was never going to converge.
+## Verification results
 
-### Only executed checks count
+Three verdicts, recorded per cycle:
 
-A check that did not run is recorded as `blocked_unverified` — never as a pass,
-never silently as a failure. Every cycle publishes what was verified, what
-failed, what never executed, and what has been chronically inert across runs.
+| Verdict | Meaning |
+|---|---|
+| `accepted` | Every required check executed and passed |
+| `rejected` | A check executed and failed |
+| `blocked_unverified` | A required check never executed |
 
-This is the load-bearing decision in the system. A framework that lets an unrun
-check read as green cannot tell you anything true about its own output —
-including whether it is getting better.
+Each cycle publishes the full roll-up: checks verified, checks failed, checks
+that never executed with a machine-readable reason for each, checks an operator
+waived and why, and checks that have been inert across recent runs.
 
-### Work is addressed to roles, not personalities
+## Work assignment
 
-A capability declares which roles may fulfil it; a squad profile decides which
-agent instance and model fills each role. Agent ids are queue addresses, not
-behaviour — swap one and the cycle is unchanged, provided the role is still
-filled. There is no character to prompt-engineer.
+A **capability** declares the work — `development.develop`, `qa.test` — with its
+inputs, outputs, acceptance checks, and the roles permitted to fulfil it.
 
----
+A **squad profile** binds each role to an agent instance and a model:
 
-## Why believe any of it
+```yaml
+profile_id: full
+agents:
+  - { agent_id: neo, role: dev, model: "qwen3.6:27b", enabled: true }
+  - { agent_id: eve, role: qa,  model: "qwen3.6:27b", enabled: true }
+```
 
-The three claims above are about the framework. This one is about the project,
-and it is deliberately kept separate: **the numbers on this site come from
-pre-registered measurement windows**, whose size, inputs, deployment hash and
-scoring rule are frozen before the first run — so a result cannot be improved by
-re-rolling until it looks good.
+Task plans are generated per run from the workload type and the roles the
+profile fills.
 
-That is not a feature you receive. It is the maintainers' method for testing
-whether the framework works, and the reason to trust the rest of the site. Most
-recently: a squad-authored design produced a working application with no human
-intervention in **4 of 6** registered runs, with the scoring instrument's own
-error disclosed on the record rather than quietly corrected.
+## Measured results
 
-[The full evidence, and what it does not show](evidence.md){ .md-button }
+The most recent measurement window closed 20 August 2026: a squad-authored
+design produced a working application with no human intervention in 4 of 6
+registered runs. Across the arc, 9 of 9 delivered applications install, build,
+boot, and answer their probes.
 
----
-
-## The thesis
-
-Give a small model more structure instead of giving it more parameters.
-
-Everything runs on locally hosted open-weight models — no hosted API, no
-per-token cost, nothing leaving the machine. The reference deployment is a Qwen
-27B model on an NVIDIA DGX Spark. That constraint is the point: effort goes into
-scaffolding, verification and correction rather than into a larger model.
-
-Whether structure can substitute for scale is the open question the project
-exists to answer, and the measurement programme is how it gets answered.
-
----
+[Method, full results, and their limits](evidence.md){ .md-button }
 
 ## Where to go
 
 <div class="grid cards" markdown>
 
--   **[Evidence](evidence.md)**
-
-    Method, results, and the boundary of what they support.
-
--   **[Key concepts](key-concepts.md)**
-
-    Cycles, runs, tasks, gates; capabilities, roles, squad profiles.
-
--   **[Getting started](getting-started.md)**
-
-    Install, bootstrap, run your first cycle.
-
--   **[Architecture](architecture.md)**
-
-    Ports and adapters, distributed execution, dependency choices.
-
--   **[Roadmap](roadmap.md)**
-
-    What ships next, and what each release has to earn first.
-
--   **[Improvement proposals](design/sips/index.md)**
-
-    Every architectural decision, recorded and searchable.
+-   **[Getting started](getting-started.md)** — install, bootstrap, first cycle
+-   **[Key concepts](key-concepts.md)** — cycles, runs, tasks, gates, artifacts
+-   **[Architecture](architecture.md)** — ports, adapters, execution
+-   **[CLI](cli.md)** — command reference
+-   **[Roadmap](roadmap.md)** — 1.7, 1.8, 2.0
+-   **[Improvement proposals](design/sips/index.md)** — 125 design records
 
 </div>
 
 ---
 
-Squad Ops is a research project under active development, not a product. It is
-built in the open at
-[backspring-labs/squad-ops](https://github.com/backspring-labs/squad-ops), where
-every architectural decision is filed as a proposal and every release carries
-the evidence it was cut on.
+Squad Ops is a research project under active development, built at
+[backspring-labs/squad-ops](https://github.com/backspring-labs/squad-ops).
