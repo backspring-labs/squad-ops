@@ -74,7 +74,7 @@ def _enforced_success_status(ep: Endpoint) -> int | None:
     return 201 if "{" not in ep.path else 200
 
 
-def _path_pattern(path: str) -> re.Pattern[str]:
+def path_pattern(path: str) -> re.Pattern[str]:
     """A conservative regex recognizing *path* in plan prose.
 
     ``{run_id}`` segments match any single non-space segment, so
@@ -150,7 +150,7 @@ def validate_manifest_plan_consistency(
         enforced = _enforced_success_status(ep)
         if enforced is None:
             continue
-        pattern = _path_pattern(ep.path)
+        pattern = path_pattern(ep.path)
         # Method-aware binding: a line naming HTTP methods binds only endpoints
         # whose method it names ("GET /api/runs returns 200" is about the GET,
         # not the collection POST sharing the path). Methodless pathful lines

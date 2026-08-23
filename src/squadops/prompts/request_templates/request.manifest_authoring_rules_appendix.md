@@ -41,6 +41,26 @@ resource). Leave it out and two components disagree about what the endpoint retu
 verification contract asserts one status while the generated route serves another, which is
 a contract no correct implementation can satisfy. State it and the disagreement cannot arise.
 
+**warrant-a-status-that-breaks-convention** — The contract derives a success status from
+the endpoint's shape: a POST to a collection path creates, so 201; a POST to a path with an
+id segment acts on something that already exists, so 200. Declaring the derived value is
+harmless; declaring a *different* one silently overrides the rule for every downstream
+surface, and nothing records why.
+
+So if you declare a status that differs from the shape's default, add a `decisions[]` entry
+that names the endpoint path **and** states the status, warranting it from the PRD:
+
+```yaml
+decisions:
+  - id: join-creates-a-participant
+    choice: "POST /api/runs/{run_id}/join returns 201 — the join creates a participant record"
+    warrant: "PRD §5.4 treats the participant as a created resource"
+```
+
+A decision that names the endpoint but not the status does not warrant the status — a
+routing judgment about the same path is a different judgment. If you have no reason, leave
+the field out and let the derived status stand: one value, and nothing to disagree with.
+
 **declare-the-choices-a-body-carries** — When a request field's *value* selects which
 behavior runs rather than carrying data — an `action` that is either `join` or `leave`, a
 `status` that is either `open` or `closed` — declare its whole domain under the shape's

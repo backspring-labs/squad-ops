@@ -25,6 +25,7 @@ exists to produce one.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 #: Stable finding classes. Typed rather than free text so M6's authoring failure
@@ -38,6 +39,8 @@ PROOF_CONTRACT_DERIVES = "contract_derives"
 PROOF_CHECKS_LIVE = "checks_live"
 PROOF_TESTID_COVERAGE = "testid_coverage"
 PROOF_STATUS_DECLARED = "status_declared"
+#: #1067: a declared status that contradicts the derived default must carry a warrant.
+PROOF_STATUS_WARRANTED = "status_warranted"
 PROOF_ERROR_SHAPE = "error_shape_agrees"
 #: #838: the manifest declares its own stack, and until VS nothing compared that to the
 #: stack the CYCLE was configured for. A manifest for another stack is unwinnable in the
@@ -108,6 +111,7 @@ def assess_winnability(
     findings.extend(_contract_findings(manifest))
     findings.extend(_testid_findings(manifest))
     findings.extend(_status_findings(manifest))
+    findings.extend(_status_override_findings(manifest))
     findings.extend(_error_shape_findings(manifest))
     findings.extend(_scaffold_findings(manifest))
     return tuple(findings)
@@ -444,6 +448,78 @@ def _status_findings(manifest) -> list[WinnabilityFinding]:
             f"implementation. Declare the status the endpoint returns on success.",
         )
     ]
+
+
+def derived_success_status(method: str, path: str) -> int | None:
+    """The status the contract deriver computes for an endpoint, ignoring declarations.
+
+    Collection POST -> 201, child-action POST -> 200, everything else -> no status probe.
+    Single-sourced here because #1067 is a story about one fact having several homes:
+    `scaffold_contract` applies this rule at three sites (`ep.success_status or 201`,
+    `child.success_status or 200` twice) and `framing_consistency` mirrors it, and adding
+    a fourth copy to police the first three would be the same defect one layer up.
+    """
+    if method.upper() != "POST":
+        return None
+    return 201 if "{" not in path else 200
+
+
+def _status_override_findings(manifest) -> list[WinnabilityFinding]:
+    """A declared status contradicting the derived default needs a stated reason (#1067).
+
+    The 200-vs-201 disagreement recurred five times in three weeks and took four fixes —
+    a gate comparing manifest to plan (#1013), threading the status to the developer
+    (#1042), repairing that gate's stale premise (#1049), and a queued primer to TEACH
+    the convention (#1031). None asked why one integer needed four fixes.
+
+    The answer is that the status is AUTHORED in three places (manifest, plan prose,
+    handler code) and DERIVABLE in one. The rule above is deterministic and correct, and
+    the schema lets an author override it per endpoint with no warrant required. On
+    `cyc_79eebcb82205` the deriver computed 200 for `POST /api/runs/{run_id}/join`, the
+    plan author wrote 200, and a single unexplained manifest override said 201 — so the
+    framing gate rejected the plan for agreeing with the rule.
+
+    This does not forbid the override. A child action that genuinely creates a
+    sub-resource may well return 201, and a rule that forbade it would trade a dice-roll
+    for a wrong answer. It requires the override to be a RECORDED judgment: a
+    `decisions[]` entry that names the endpoint, which makes it challengeable downstream
+    instead of arriving as an unexplained integer.
+
+    Silence is now the safe default and the common case — say nothing and the rule
+    decides, so there is one value and nothing to disagree about.
+    """
+    from squadops.cycles.framing_consistency import path_pattern
+
+    entries = [f"{d.id} {d.choice} {d.warrant} {d.question}" for d in (manifest.decisions or ())]
+    findings: list[WinnabilityFinding] = []
+    for ep in manifest.api.endpoints:
+        derived = derived_success_status(ep.method, ep.path)
+        if derived is None or ep.success_status is None or ep.success_status == derived:
+            continue
+        # The warrant must be ABOUT the status, not merely about the endpoint. Naming the
+        # path alone is too weak: `cyc_79eebcb82205` carried a decision reading "distinct
+        # POST paths /api/runs/{run_id}/join and /api/runs/{run_id}/leave rather than a
+        # shared endpoint" — a real judgment about routing that says nothing about 201,
+        # and a path-only rule accepted it and let the override through unexplained.
+        pattern = path_pattern(ep.path)
+        status_token = re.compile(rf"\b{ep.success_status}\b")
+        if any(pattern.search(e) and status_token.search(e) for e in entries):
+            continue
+        findings.append(
+            WinnabilityFinding(
+                PROOF_STATUS_WARRANTED,
+                f"`{ep.method.upper()} {ep.path}` declares success_status "
+                f"{ep.success_status}, but the contract derives {derived} for this shape "
+                f"({'collection' if derived == 201 else 'child-action'} POST). The "
+                f"declaration wins, so every downstream surface will enforce "
+                f"{ep.success_status} — and nothing records why. Either drop the field "
+                f"and let the derived {derived} stand, or add a `decisions[]` entry "
+                f"that names `{ep.path}` AND states {ep.success_status}, warranting the "
+                f"choice from the PRD. A decision about the endpoint that does not "
+                f"mention the status does not warrant the status.",
+            )
+        )
+    return findings
 
 
 def _error_shape_findings(manifest) -> list[WinnabilityFinding]:

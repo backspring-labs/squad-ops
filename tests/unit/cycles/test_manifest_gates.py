@@ -413,3 +413,122 @@ class TestScaffoldReadinessProof:
         assert PROOF_SCAFFOLD_READY in _proofs(findings)
         detail = next(f.detail for f in findings if f.proof == PROOF_SCAFFOLD_READY)
         assert "injected derivation refusal" in detail
+
+
+class TestStatusOverrideWarrant:
+    """#1067: a declared status contradicting the derived default needs a stated reason.
+
+    The 200-vs-201 disagreement recurred five times in three weeks and took four fixes —
+    #1013 (a gate comparing manifest to plan), #1042 (thread the status to the dev),
+    #1049 (that gate's premise going stale), #1031 (queued: TEACH the convention). None
+    asked why one integer needed four. The fact is authored in three places and derivable
+    in one, and the schema let an author override the derivation with no warrant.
+    """
+
+    @staticmethod
+    def _manifest(join_status: str = "", decisions: str = "") -> str:
+        status = f", success_status: {join_status}" if join_status else ""
+        block = decisions or "  - { id: d1, choice: c, warrant: w }"
+        return f"""
+version: 1
+kind: interface_manifest
+project_id: p
+stack: nextjs_ts
+source_prd: prd.md
+entities:
+  - name: Run
+    fields:
+      - {{ name: id, type: string, required: true }}
+api:
+  endpoints:
+    - {{ method: POST, path: /api/runs, response: Run, success_status: 201 }}
+    - {{ method: POST, path: "/api/runs/{{run_id}}/join", response: Run{status} }}
+frontend:
+  routes:
+    - {{ path: /, view: V, testids: [a] }}
+decisions:
+{block}
+"""
+
+    def _findings(self, **kw):
+        return [
+            f
+            for f in assess_winnability(self._manifest(**kw), "nextjs_ts")
+            if f.proof == "status_warranted"
+        ]
+
+    def test_an_unwarranted_override_is_flagged(self):
+        """Today's roll: the deriver said 200 for a child action, the plan author said
+        200, and one unexplained manifest override said 201 — so the framing gate
+        rejected the plan for agreeing with the rule."""
+        findings = self._findings(join_status="201")
+        assert len(findings) == 1
+        assert "derives 200" in findings[0].detail
+        assert "child-action" in findings[0].detail
+
+    def test_silence_is_clean_and_is_the_point(self):
+        """Say nothing and the rule decides. One value, nothing to disagree about — the
+        whole reduction this issue is after."""
+        assert self._findings() == []
+
+    def test_a_declaration_agreeing_with_the_derivation_is_clean(self):
+        """Restating the derived value is redundant, not wrong. Flagging it would push
+        authors toward silence for the wrong reason and add noise."""
+        assert self._findings(join_status="200") == []
+
+    def test_a_warrant_naming_the_endpoint_and_the_status_passes(self):
+        """The override is permitted — a child action that genuinely creates a
+        sub-resource may return 201. It must be a recorded, challengeable judgment."""
+        decisions = (
+            "  - { id: join-creates, "
+            'choice: "POST /api/runs/{run_id}/join returns 201; the join creates a '
+            'participant sub-resource", warrant: "PRD 5.4 names the participant a '
+            'created record" }'
+        )
+        assert self._findings(join_status="201", decisions=decisions) == []
+
+    def test_a_decision_naming_the_endpoint_but_not_the_status_does_not_warrant_it(self):
+        """The tightening that mattered, from a real false negative.
+
+        `cyc_79eebcb82205` carried a decision reading "distinct POST paths
+        /api/runs/{run_id}/join and /api/runs/{run_id}/leave rather than a shared
+        endpoint with an action dispatch field" — a genuine judgment about ROUTING that
+        says nothing about 201. A path-only rule accepted it and let the override
+        through unexplained, which makes the warrant requirement decorative.
+        """
+        decisions = (
+            "  - { id: join-leave-separate-endpoints, "
+            'choice: "distinct POST paths /api/runs/{run_id}/join and '
+            '/api/runs/{run_id}/leave rather than a shared endpoint", '
+            'warrant: "single responsibility per handler" }'
+        )
+        findings = self._findings(join_status="201", decisions=decisions)
+        assert len(findings) == 1
+        assert "does not warrant the status" in findings[0].detail
+
+    def test_a_warrant_for_a_DIFFERENT_endpoint_does_not_transfer(self):
+        """Naming 201 somewhere in the decisions is not a warrant for this endpoint —
+        the collection POST's own 201 is stated two lines up and must not launder it."""
+        decisions = (
+            '  - { id: create-201, choice: "POST /api/runs returns 201", warrant: "creation" }'
+        )
+        assert len(self._findings(join_status="201", decisions=decisions)) == 1
+
+    def test_a_non_post_declaring_a_status_is_not_judged(self):
+        """GETs derive no status probe, so there is nothing to contradict and nothing to
+        warrant. Judging them would demand a `decisions[]` entry for a fact no surface
+        enforces — the gate inventing work rather than preventing a disagreement."""
+        manifest = self._manifest().replace(
+            '- { method: POST, path: "/api/runs/{run_id}/join", response: Run }',
+            '- { method: GET, path: "/api/runs/{run_id}", response: Run, success_status: 204 }',
+        )
+        assert [
+            f for f in assess_winnability(manifest, "nextjs_ts") if f.proof == "status_warranted"
+        ] == []
+
+    def test_a_collection_post_declaring_201_is_clean(self):
+        """The reference manifest declares it on the create endpoint, where it AGREES
+        with the derivation. A rule that rejected the artifact the 1.4 evidence was
+        measured against would be the wrong rule — the same guard `_status_findings`
+        states in its own docstring."""
+        assert self._findings() == []
