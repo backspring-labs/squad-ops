@@ -109,6 +109,14 @@ def build_failure_evidence(
     scaffold_evidence = result_outputs.get("scaffold_evidence")
     if isinstance(scaffold_evidence, dict):
         evidence["scaffold_evidence"] = scaffold_evidence
+    # #1055: the dev-side sibling. Carried explicitly for the same reason
+    # scaffold_evidence is — the analyzer renders the whole evidence dict, so a finding
+    # that never enters it is one the diagnosis cannot use. Arm A's lead had to invent
+    # a mechanism ("a local shadow store") because nothing told it what the handlers
+    # actually did wrong.
+    source_containment = result_outputs.get("source_containment")
+    if isinstance(source_containment, list) and source_containment:
+        evidence["source_containment"] = list(source_containment)
     evidence["failure_category"] = derive_failure_category(evidence)
     return evidence
 

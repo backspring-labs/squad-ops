@@ -698,6 +698,18 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
 
         outputs["emission_stats"] = emission_stats(len(content), artifacts)
 
+        # #1055: insert-as-update findings over the emitted route handlers. Banked in
+        # `outputs`, NOT as a validation check row — a failing row there would reject
+        # the task, and this is reporting-only until a gate's shape is argued from what
+        # it flags on real rolls (#1049's lesson, #1052's posture).
+        #
+        # Landing verified rather than assumed: #1052 put its findings in
+        # `execution_evidence`, which nothing persists (#999), and called them "banked".
+        # `outputs` reaches `build_failure_evidence`, which carries this key explicitly.
+        from squadops.capabilities.source_containment import assess_source_containment
+
+        outputs["source_containment"] = assess_source_containment(artifacts)
+
         duration_ms = (time.perf_counter() - start_time) * 1000
         evidence = HandlerEvidence.create(
             handler_name=self._handler_name,
