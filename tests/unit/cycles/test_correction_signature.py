@@ -254,3 +254,101 @@ class TestFailingTestIdentity:
         assert render_signature(died) == (
             "tests_pass|__tests__/broken.test.ts|failed;suite_health=ran;test=",
         )
+
+
+class TestNoMachineReportDiscriminators:
+    """#761: what still collapsed after #626 and #878 closed the vitest half.
+
+    The report #761 was filed from — `repeated_signature: ["tests_pass||failed"]`,
+    shk-6 roll-4 — predates both. `suite_broken` and the per-test split fixed runners
+    that emit a machine report; pytest emits none, so its whole suite still reduced to
+    one element and any two consecutive failures read as an exact REPEAT. A4 then
+    terminates a chain that was making progress.
+    """
+
+    @staticmethod
+    def _row(**kw) -> dict:
+        row = {"check": "tests_pass", "passed": False, "runner": "pytest", "suite_broken": False}
+        row.update(kw)
+        return row
+
+    def _sig(self, **kw):
+        return failure_signature(_evidence([self._row(**kw)]))
+
+    @pytest.mark.parametrize(
+        ("first", "second", "why"),
+        [
+            (1, 5, "test failures vs no tests collected — different defects entirely"),
+            (1, 4, "test failures vs a usage error in the runner invocation"),
+            (5, 2, "nothing collected vs execution interrupted"),
+        ],
+    )
+    def test_two_exit_codes_are_two_signatures(self, first, second, why):
+        """Bug caught: a repair that turns 'no tests collected' into real test failures
+        is progress, and read as an exact repeat it terminates the run instead."""
+        assert classify_movement(self._sig(exit_code=first), self._sig(exit_code=second)) == (
+            MOVEMENT_SHIFTED
+        ), why
+
+    def test_the_same_exit_code_twice_is_still_an_exact_repeat(self):
+        """The other direction, and the one that matters more: A4 exists to catch a
+        stuck chain. Over-discrimination would mean it never fires and the run burns
+        its whole correction budget — the expensive failure mode."""
+        assert classify_movement(self._sig(exit_code=1), self._sig(exit_code=1)) == MOVEMENT_REPEAT
+
+    def test_exit_zero_is_a_real_code_not_an_absent_one(self):
+        """A truthiness guard drops `exit_code: 0`, and 0 on a FAILING row is a real
+        state — a suite the runner reports as clean while the harness rejects it (a
+        broken or empty suite). Collapsing it into "no exit code recorded" loses the
+        discriminator on exactly the confusing case, and reads as the legacy form."""
+        assert "exit=0" in render_signature(self._sig(exit_code=0, suite_broken=True))[0]
+        assert classify_movement(self._sig(exit_code=0), self._sig(exit_code=1)) == (
+            MOVEMENT_SHIFTED
+        )
+
+    def test_two_runners_never_collide(self):
+        """A pytest failure and a vitest failure describe different suites. Sharing one
+        `tests_pass||failed` element made them comparable, which they are not."""
+        pytest_sig = self._sig(exit_code=1)
+        vitest_sig = failure_signature(
+            _evidence([self._row(runner="vitest", exit_code=1, suite_broken=False)])
+        )
+        assert classify_movement(pytest_sig, vitest_sig) == MOVEMENT_SHIFTED
+
+    def test_an_app_error_round_is_distinct_from_an_assertion_failure_round(self):
+        """The distinction no row field can make. `app_tracebacks` moves the round's
+        derived category, so a round whose app blew up stops being byte-identical to a
+        round whose assertions merely failed — both rendered `tests_pass||failed`."""
+        plain = self._sig(exit_code=1)
+        errored = failure_signature(
+            _evidence([self._row(exit_code=1)], app_tracebacks=["Traceback: boom"])
+        )
+        assert "cat=app_error" in render_signature(errored)[0]
+        # The ordinary category is the baseline and carries no token, so rows that
+        # predate these fields keep their exact legacy rendering.
+        assert "cat=" not in render_signature(plain)[0]
+        assert classify_movement(plain, errored) == MOVEMENT_SHIFTED
+
+    def test_the_category_is_constant_within_a_round_so_progress_still_reduces(self):
+        """The risk of a round-level token: if it varied per element, a partial fix
+        would stop being a strict subset and PROGRESS would become SHIFTED — silently
+        re-arming the termination this test suite exists to keep selective."""
+        both = failure_signature(
+            _evidence(
+                [
+                    self._row(exit_code=1, failing_tests=("a.test.ts::x", "a.test.ts::y")),
+                ]
+            )
+        )
+        one = failure_signature(
+            _evidence([self._row(exit_code=1, failing_tests=("a.test.ts::x",))])
+        )
+        assert one < both
+        assert classify_movement(both, one) == MOVEMENT_PROGRESS
+
+    def test_a_row_without_the_new_fields_still_yields_a_signature(self):
+        """Legacy and non-suite rows carry none of `runner`/`exit_code`/`suite_broken`.
+        They must still produce an element — a signature that silently became None
+        would disable A4 for every pre-#626 shape."""
+        sig = failure_signature(_evidence([{"check": "frontend_build", "passed": False}]))
+        assert render_signature(sig) == ("frontend_build||failed",)
