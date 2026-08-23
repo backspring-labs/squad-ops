@@ -1,92 +1,102 @@
 # Squad Ops
 
-**A team of AI agents that builds working software from a written requirement.**
+**A multi-agent framework that turns a written requirement into a verified
+application** — running on local open-weight models, against a design the squad
+authored rather than one it was handed.
 
-Squad Ops takes a product requirement document and produces an application that
-installs, builds, boots, and passes its own tests — with the interface design
-*authored by the agents*, not supplied to them. It runs entirely on local,
-open-weight models.
+## What separates it
 
-[Get started](getting-started.md){ .md-button .md-button--primary }
-[How it works](how-it-works.md){ .md-button }
+Assuming you already know what agent orchestration is, four things are unusual
+here.
 
----
+### The design is authored, then gated
 
-## What has actually been measured
+Most frameworks orchestrate *implementation* against a design a human supplied.
+Here the squad produces the interface design itself — entities, endpoints, error
+contracts, screens — and that design passes two automated gates before any code
+is written: is it structurally complete, and is it **winnable**, meaning the
+thing it describes can actually be built and verified.
 
-Most agent frameworks are demonstrated. This one is measured, on windows whose
-size, inputs, and scoring rules are written down and frozen *before* the first
-run — so a result cannot be improved by re-rolling until it looks good.
+A design that cannot be won is rejected in seconds, rather than an hour into a
+build that was never going to converge.
 
-The most recent window closed on 20 August 2026:
+### Only executed checks count
 
-<div class="measured" markdown>
-A squad-authored design produces a working application with no human
-intervention, at a rate of **4 of 6** on a pre-registered window against a
-frozen deployment.
-</div>
+A check that did not run is recorded as `blocked_unverified` — never as a pass,
+never silently as a failure. Every cycle publishes what was verified, what
+failed, what never executed, and what has been chronically inert across runs.
 
-Three things about that are worth more than the number.
+This is the load-bearing decision in the system. A framework that lets an unrun
+check read as green cannot tell you anything true about its own output —
+including whether it is getting better.
 
-**Nothing was re-run to improve it.** Six slots were registered; six slots ran.
-A tempting lower reading was declined rather than retried.
+### The claims are measured, not demonstrated
 
-**The scoring instrument's own error is disclosed.** The deciding run first
-scored as a failure. The cause was a defect in the auditing tool, not the
-application. The correction was ruled *before* the corrected measurement was
-taken, so the decision could not be influenced by its outcome — and both numbers
-stay on the record: 3 of 6 under the original instrument, 4 of 6 under the
-corrected one.
+Results come from windows whose size, inputs, deployment hash and scoring rule
+are frozen **before the first run**, so a number cannot be improved by re-rolling
+until it looks good. The most recent: a squad-authored design produced a working
+application with no human intervention in **4 of 6** registered runs, with the
+scoring instrument's own error disclosed on the record.
 
-**Every delivered application worked.** Across the arc, **9 of 9** delivered
-applications install, build, boot, and answer every check their contract
-specifies. Every failed run failed in the test suite or the measuring apparatus.
-None failed because the application was broken.
+[The full evidence, and what it does not show](evidence.md){ .md-button }
 
-!!! warning "What is not proven"
+### Work is addressed to roles, not personalities
 
-    The applications are small-to-moderate web applications built from a single
-    requirement document against one technology stack. A second stack is in
-    progress. Nothing here demonstrates performance on large existing codebases,
-    and 4 of 6 is a starting point rather than a plateau — the known limitations
-    that cost the two failed runs are queued as fixes.
+A capability declares which roles may fulfil it; a squad profile decides which
+agent instance and model fills each role. Agent ids are queue addresses, not
+behaviour — swap one and the cycle is unchanged, provided the role is still
+filled. There is no character to prompt-engineer.
 
 ---
 
-## The idea
+## The thesis
 
 Give a small model more structure instead of giving it more parameters.
 
-Squad Ops runs against locally hosted open-weight models — no hosted API, no
-per-token cost, nothing leaving the machine. The reference deployment runs a
-Qwen 27B model on an NVIDIA DGX Spark. That constraint shapes everything: effort
-goes into scaffolding, verification, and correction rather than into a larger
-model.
+Everything runs on locally hosted open-weight models — no hosted API, no
+per-token cost, nothing leaving the machine. The reference deployment is a Qwen
+27B model on an NVIDIA DGX Spark. That constraint is the point: effort goes into
+scaffolding, verification and correction rather than into a larger model.
 
 Whether structure can substitute for scale is the open question the project
-exists to answer, and the measurement above is how it gets answered.
+exists to answer, and the measurement programme is how it gets answered.
 
 ---
 
-## Where to go next
+## Where to go
 
 <div class="grid cards" markdown>
 
--   **[How it works](how-it-works.md)**
+-   **[Evidence](evidence.md)**
 
-    The cycle — framing, review, implementation, verification, correction — and
-    the rule that only executed checks count.
+    Method, results, and the boundary of what they support.
 
--   **[Architecture](architecture.md)**
+-   **[Key concepts](key-concepts.md)**
 
-    Ports and adapters, the agent squad, and the services underneath.
+    Cycles, runs, tasks, gates; capabilities, roles, squad profiles.
 
 -   **[Getting started](getting-started.md)**
 
-    Install, bootstrap, and run your first cycle.
+    Install, bootstrap, run your first cycle.
+
+-   **[Architecture](architecture.md)**
+
+    Ports and adapters, distributed execution, dependency choices.
+
+-   **[Roadmap](roadmap.md)**
+
+    What ships next, and what each release has to earn first.
 
 -   **[Improvement proposals](design/sips/index.md)**
 
     Every architectural decision, recorded and searchable.
 
 </div>
+
+---
+
+Squad Ops is a research project under active development, not a product. It is
+built in the open at
+[backspring-labs/squad-ops](https://github.com/backspring-labs/squad-ops), where
+every architectural decision is filed as a proposal and every release carries
+the evidence it was cut on.
