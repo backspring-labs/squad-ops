@@ -9,6 +9,7 @@ CI/local gate; these guard the expander logic itself.
 
 from __future__ import annotations
 
+import dataclasses as dc
 import importlib.util
 from pathlib import Path
 
@@ -1048,3 +1049,55 @@ class TestTypeScriptConstSurface:
         )
         assert "BIG: Record<string, string>" in long_literal
         assert "key_19" not in long_literal
+
+
+class TestBriefCarriesSuccessStatus:
+    """#1049: the second channel the framing omission gate reads.
+
+    The gate blocks a framing only when NEITHER the skeleton nor the dev brief carries
+    a declared success status. This predicate answers the second half, so a wrong
+    answer here either re-arms a re-roll tax on a correct framing or — worse — silences
+    the gate on a stack where prose really is the only channel.
+    """
+
+    def test_the_registered_stacks_report_their_actual_channels(self):
+        from squadops.capabilities.scaffold import (
+            brief_carries_success_status_for,
+            skeleton_pins_success_status_for,
+        )
+
+        # nextjs pins nothing structurally (the TODO comment dies with the fill) but
+        # does render the appendix — which is exactly why #1049 exists.
+        assert skeleton_pins_success_status_for("nextjs_ts") is False
+        assert brief_carries_success_status_for("nextjs_ts") is True
+        assert skeleton_pins_success_status_for("fullstack_fastapi_react") is True
+
+    @pytest.mark.parametrize("stack", ["", "no_such_stack", "NEXTJS_TS"])
+    def test_an_unknown_stack_claims_no_channel(self, stack):
+        """The conservative answer. Claiming a channel we cannot prove would silence
+        the gate on precisely the stack that has no other carrier."""
+        from squadops.capabilities.scaffold import brief_carries_success_status_for
+
+        assert brief_carries_success_status_for(stack) is False
+
+    def test_a_scaffoldable_stack_whose_capability_has_no_appendix_claims_no_channel(
+        self, monkeypatch
+    ):
+        """The guard no registered stack reaches today, and the reason it is written
+        rather than assumed: the dev brief carries the status only where the fill-only
+        appendix renders. A capability with no template renders none, so prose is still
+        the sole channel and the omission check must keep blocking.
+
+        Mutating this to `return True` left the whole suite green — an unreachable
+        guard is exactly the kind that silently stops working when a third stack lands.
+        """
+        from squadops.capabilities import scaffold as scaffold_module
+        from squadops.capabilities.dev_capabilities import get_capability
+
+        real = get_capability
+
+        def _no_appendix(name: str):
+            return dc.replace(real(name), fill_only_template="")
+
+        monkeypatch.setattr("squadops.capabilities.dev_capabilities.get_capability", _no_appendix)
+        assert scaffold_module.brief_carries_success_status_for("nextjs_ts") is False
