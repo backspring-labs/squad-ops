@@ -116,13 +116,18 @@ def test_repair_contract_threads_the_same_anchor_inventory_under_both_keys():
 
     fragments = ca.manifest_surface_fragments(ca.REPAIR_CONTEXT_CONTRACT, manifest)
 
+    # This test's subject is that BOTH testid keys carry one derivation — a divergence
+    # there hands the dev and qa repair handlers different DOM contracts.
+    assert fragments[ca.SURFACE_TESTID] == expected_lines
+    assert fragments[ca.SURFACE_DOM_TESTID] == expected_lines
     # Roll 7: the frozen index rides the repair envelope too — #861 fixed the initial
     # author and the repair stayed blind, re-inventing the exact corrected name.
-    assert fragments == {
-        ca.SURFACE_TESTID: expected_lines,
-        ca.SURFACE_DOM_TESTID: expected_lines,
-        ca.SURFACE_FROZEN: frozen_surface_index_lines(manifest),
-    }
+    assert fragments[ca.SURFACE_FROZEN] == frozen_surface_index_lines(manifest)
+    # WHICH surfaces the repair receives is owned by
+    # `test_repair_threads_every_surface_the_developer_gets` (#1060), derived from the
+    # developer's set rather than restated here — an exact-set assertion in two places
+    # is two answers, and this one silently blocked adding the three surfaces the
+    # repair mixin had been rendering empty since they were written.
     # No manifest → no keys (the presence-gated shape repairs rely on).
     assert ca.manifest_surface_fragments(ca.REPAIR_CONTEXT_CONTRACT, None) == {}
 

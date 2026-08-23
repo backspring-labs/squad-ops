@@ -376,7 +376,33 @@ class _RepairPromptMixin:
         frozen_surface = await self._render_frozen_surface_block(renderer, inputs)
         if frozen_surface:
             variables["frozen_surface"] = frozen_surface
+        # #1060 (cyc_87c12c7f199e): the fifth surface, and the one the repair most
+        # needed. #1029's floor named a shape defect on all four rounds — the manifest
+        # declares `participants: list[Participant]` and every repair re-emitted
+        # `string[]`, because this brief never carried what the response must contain.
+        # The agent retrying a shape defect was the only one not shown the shape.
+        response_surface = await self._render_response_surface_block(renderer, inputs)
+        if response_surface:
+            variables["response_surface"] = response_surface
         rendered = await renderer.render(capability.fill_only_template, variables)
+        return rendered.content
+
+    @staticmethod
+    async def _render_response_surface_block(renderer: Any, inputs: dict[str, Any]) -> str:
+        """Render the SUCCESS RESPONSE block from threaded lines, or "" (#1060).
+
+        Mirrors ``DevelopmentDevelopHandler._response_surface_section`` — manifest-derived
+        data (``response_shape.response_surface_instructions``), all prose in the asset
+        (#448), same appendix so the two agents read one description of the shape.
+        """
+        lines = [str(line).strip() for line in (inputs.get("response_surface") or [])]
+        lines = [line for line in lines if line]
+        if not lines:
+            return ""
+        rendered = await renderer.render(
+            "request.development_develop_response_surface_appendix",
+            {"response_lines": "\n".join(f"- {line}" for line in lines)},
+        )
         return rendered.content
 
     @staticmethod

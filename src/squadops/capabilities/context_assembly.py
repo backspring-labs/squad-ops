@@ -345,8 +345,29 @@ DECLARED_NO_CONTEXT: frozenset[str] = frozenset(
 #: blind identically" and the chain terminated as plan_defect on a defect no repair
 #: could see. This threads the key; the repair mixin renders it (dev: inside the
 #: fill-only appendix; qa: its own appendix — ``_RepairPromptMixin``).
+#: #1060: the declaration was THREE surfaces short of what the repair mixin already
+#: renders. `_render_fill_only_section` builds an error-contract block and a
+#: model-surface block from `inputs["error_contract"]` / `inputs["model_surface"]`, and
+#: its comment claims "parity with develop's four surfaces" — but neither key was ever
+#: threaded here, so both blocks have rendered EMPTY since they were written. The
+#: renderer was added and the data never was.
+#:
+#: `response_surface` is the third, and the one that cost cyc_87c12c7f199e: the manifest
+#: declares `participants: list[Participant]`, #1029's frozen-spine floor reported the
+#: shape defect on all FOUR rounds, and every repair re-emitted `string[]` because the
+#: one agent retrying a shape defect was the only one never shown the shape.
+#:
+#: Kept in step by `test_repair_threads_every_surface_the_developer_gets` — a comment
+#: asking for parity is what produced two inert renderers.
 REPAIR_CONTEXT_CONTRACT = ContextAssemblyContract(
-    manifest_surfaces=(SURFACE_TESTID, SURFACE_DOM_TESTID, SURFACE_FROZEN),
+    manifest_surfaces=(
+        SURFACE_ERROR_CONTRACT,
+        SURFACE_MODEL,
+        SURFACE_TESTID,
+        SURFACE_DOM_TESTID,
+        SURFACE_FROZEN,
+        SURFACE_RESPONSE,
+    ),
 )
 
 #: Presence-keyed retest forwarding (S2): failed-envelope inputs a retest

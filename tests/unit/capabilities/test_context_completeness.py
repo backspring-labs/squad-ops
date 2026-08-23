@@ -505,3 +505,85 @@ async def test_every_dev_surface_reaches_the_fill_only_prompt():
         f"{missing} are declared on development.develop and rendered into a section, but "
         f"never reach the fill-only template's variables — the agent never sees them"
     )
+
+
+# --- #1060: the repair sees every fact the initial author was judged against --------
+
+
+def test_repair_threads_every_surface_the_developer_gets():
+    """The class fix, and the reason it is a test rather than a comment.
+
+    Bug caught: `REPAIR_CONTEXT_CONTRACT` was THREE surfaces short of what the repair
+    mixin already renders. `_render_fill_only_section` builds an error-contract block
+    and a model-surface block, and its own comment claims "parity with develop's four
+    surfaces" — neither key was ever threaded, so both rendered EMPTY from the day they
+    were written. A comment asking for parity is what produced two inert renderers.
+
+    The third was `response_surface`, and it cost a roll: `cyc_87c12c7f199e` had
+    #1029's frozen-spine floor report the same shape defect on all FOUR rounds while
+    every repair re-emitted `string[]` against a manifest declaring
+    `list[Participant]`. The agent retrying a shape defect was the only one never shown
+    the shape.
+
+    Each of the repair's surfaces was added retroactively after a roll died on it —
+    #667 the anchors, roll 7 the frozen index, #902 the stack appendix. This stops the
+    next one being discovered the same way.
+    """
+    from squadops.capabilities.context_assembly import (
+        REPAIR_CONTEXT_CONTRACT,
+        manifest_surface_fragments,
+    )
+
+    manifest = _reference_manifest()
+    dev = set(manifest_surface_fragments(CONTEXT_CONTRACTS["development.develop"], manifest))
+    repair = set(manifest_surface_fragments(REPAIR_CONTEXT_CONTRACT, manifest))
+    assert dev, "the developer surfaces must be non-empty or this passes vacuously"
+    missing = sorted(dev - repair)
+    assert not missing, (
+        f"{missing} reach the initial author and not the repair. A repair blind to a "
+        f"fact the contract judges can only re-emit the defect (#861/#667/#1060)."
+    )
+
+
+async def test_every_threaded_repair_surface_has_a_renderer():
+    """The other half: a surface declared and never rendered is the same defect facing
+    the other way — threaded onto the envelope, and never put in a prompt.
+
+    Asserted on the variables the fill-only template is rendered with, because that dict
+    is the last place a fact can be silently dropped — the step that has been missed six
+    times in this codebase.
+    """
+    from unittest.mock import AsyncMock, MagicMock
+
+    from squadops.capabilities.context_assembly import (
+        REPAIR_CONTEXT_CONTRACT,
+        manifest_surface_fragments,
+    )
+    from squadops.capabilities.handlers.impl.repair_handlers import (
+        DevelopmentCorrectionRepairHandler,
+    )
+
+    manifest = _reference_manifest()
+    surfaces = manifest_surface_fragments(REPAIR_CONTEXT_CONTRACT, manifest)
+
+    handler = DevelopmentCorrectionRepairHandler()
+    context = MagicMock()
+    renderer = MagicMock()
+    renderer.render = AsyncMock(side_effect=lambda tid, v: MagicMock(content=f"[{tid}]"))
+    context.ports.request_renderer = renderer
+
+    await handler._render_fill_only_section(
+        context,
+        {
+            **surfaces,
+            "resolved_config": {"build_profile": "nextjs_ts", "dev_capability": "nextjs_ts"},
+        },
+    )
+    fill_call = next(
+        c for c in renderer.render.await_args_list if "fill_only_appendix" in c.args[0]
+    )
+    variables = fill_call.args[1]
+    # dom_testid is the qa-keyed twin of testid; the dev appendix renders one of them.
+    expected = {s for s in surfaces if s != "dom_testid_surface"}
+    missing = sorted(s for s in expected if s not in variables)
+    assert not missing, f"{missing} ride the repair envelope but reach no prompt"
