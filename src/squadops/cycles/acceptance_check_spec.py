@@ -370,6 +370,15 @@ CHECK_ENDPOINT_DEFINED = "endpoint_defined"
 # above — a literal there would silently inject nothing after a rename.
 CHECK_UNDEFINED_NAMES = "undefined_names"
 
+#: #1082: the emission ends inside an unclosed construct — the shape a completion
+#: takes when it runs out of budget mid-file. Narrower than a syntax gate on
+#: purpose: it claims truncation only, so it can be exact on the brace languages
+#: it cannot parse. `frontend_compiles` and `tests_pass` already fail on such a
+#: file, but both run at acceptance — after the producing task is finished — so
+#: the round gets spent by the consumer that tripped over it rather than by the
+#: task that wrote it.
+CHECK_UNTERMINATED_SOURCE = "unterminated_source"
+
 # #629 (1.5 A6/D2): the blocking suite-vs-contract check. Multi-reader constant
 # (injection in task_plan, locus routing in failure_evidence, the evaluator,
 # tests) — same single-source rule as the two above.
@@ -469,6 +478,27 @@ CHECK_SPECS: dict[str, CheckSpec] = {
         notes=(
             "Applied by the framework to .py emissions from handlers on the "
             "typed-acceptance seam (dev, builder); never authored."
+        ),
+        failure_ownership=OWNERSHIP_PRODUCT,
+        qa_available=True,
+        signature_participation=True,
+        outcome_contribution=True,
+        replayable=True,
+        blocking_default="error",
+    ),
+    CHECK_UNTERMINATED_SOURCE: CheckSpec(
+        name=CHECK_UNTERMINATED_SOURCE,
+        applicable_extensions=frozenset({".py", ".ts", ".tsx", ".js", ".jsx"}),
+        required_params=frozenset({"file"}),
+        param_types={"file": str},
+        path_params=frozenset({"file"}),
+        framework_injected=True,
+        example={"file": "app/api/runs/route.ts"},
+        notes=(
+            "Applied by the framework to every scannable emission from handlers on "
+            "the typed-acceptance seam; never authored. Unlike the other file-scoped "
+            "checks it covers the brace languages, because delimiter balance needs no "
+            "parser and therefore no Node (#939's blocker)."
         ),
         failure_ownership=OWNERSHIP_PRODUCT,
         qa_available=True,

@@ -34,6 +34,7 @@ from squadops.cycles.acceptance_check_spec import (
     CHECK_FILL_SLOT_SIGNATURE,
     CHECK_SPECS,
     CHECK_UNDEFINED_NAMES,
+    CHECK_UNTERMINATED_SOURCE,
     FRONTEND_SUFFIXES,
     HTTP_METHODS,
     CheckSpec,
@@ -41,6 +42,10 @@ from squadops.cycles.acceptance_check_spec import (
     normalize_route,
     parse_method_path,
     parse_method_path_status,
+)
+from squadops.cycles.source_termination import (
+    SCANNABLE_EXTENSIONS,
+    check_termination,
 )
 
 logger = logging.getLogger(__name__)
@@ -307,6 +312,66 @@ def _unparseable_source_skip(file_path: Path) -> CheckOutcome | None:
     if ext != ".py":
         return CheckOutcome.skipped(reason="unsupported_file_extension")
     return None
+
+
+@register_check(CHECK_UNTERMINATED_SOURCE)
+class UnterminatedSourceCheck(BaseCheck):
+    """The emission ends inside an unclosed construct — it was cut off (#1082).
+
+    `cyc_87c12c7f199e` banked a 407-byte route ending on ``throw new`` with three
+    unclosed braces. Nothing questioned it: the bytes look like code, and the
+    checks that would reject it — ``frontend_compiles``, ``tests_pass`` — run at
+    acceptance, long after the producing task finished. So it surfaced as the
+    suite failing two whole test files, one of which merely imported the module,
+    and the analyzer diagnosed from that output instead of from the emission.
+
+    Injected onto the producer's OWN artifacts, so a truncation is charged to the
+    task that wrote it while that task still owns the round.
+
+    **The claim is deliberately narrow.** Not "this file is valid" — only "this
+    file stops mid-construct". On Python that means filtering ``compile``'s
+    SyntaxError down to the EOF-shaped ones; on the brace languages it means
+    delimiter balance and nothing more. Widening it would make this the general
+    syntax gate, which it cannot be on languages it does not parse.
+
+    Validated before it shipped, which is the bar a guard has to clear: swept
+    across all 4,513 scannable source artifacts in the banked corpus, it flagged
+    8 — every one a genuine truncation on inspection, zero false positives. Two
+    false positives found during that sweep drove real fixes rather than a
+    threshold: JSX punctuation (``/>``, ``</``) misread as a regex opener, and
+    parens counted inside JSX text, where an unmatched bracket is legal. A guard
+    that rejects a healthy emission manufactures the defect it exists to prevent.
+    """
+
+    async def evaluate(
+        self,
+        params: dict[str, Any],
+        workspace_root: Path,
+        *,
+        stack: str | None = None,
+    ) -> CheckOutcome:
+        try:
+            file_path = _safe_resolve(params["file"], workspace_root)
+        except _SafetyError as exc:
+            return CheckOutcome.error(reason=exc.reason)
+        if not file_path.is_file():
+            return CheckOutcome.failed(reason="file_not_found", file=str(params["file"]))
+        if file_path.suffix.lower() not in SCANNABLE_EXTENSIONS:
+            return CheckOutcome.skipped(reason="unsupported_file_extension")
+        try:
+            source = file_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return CheckOutcome.error(reason="file_unreadable")
+
+        result = check_termination(source, file_path.suffix)
+        if not result.terminated:
+            return CheckOutcome.failed(
+                reason=f"emission ends mid-construct: {result.reason}",
+                file=str(params["file"]),
+                line=result.line,
+                size_bytes=len(source),
+            )
+        return CheckOutcome.passed(file=str(params["file"]))
 
 
 @register_check(CHECK_UNDEFINED_NAMES)

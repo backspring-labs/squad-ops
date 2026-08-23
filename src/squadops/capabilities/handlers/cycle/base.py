@@ -16,7 +16,7 @@ from squadops.capabilities.handlers.base import (
     HandlerResult,
 )
 from squadops.cycles.acceptance_check_spec import (
-    CHECK_UNDEFINED_NAMES,
+    CHECK_SPECS,
     CONFIG_OFF_SKIP_REASONS,
     is_check_applicable,
 )
@@ -46,6 +46,22 @@ from squadops.capabilities.handlers.emission_log import log_emission_shape
 logger = logging.getLogger(__name__)
 
 
+#: Checks the framework injects here, derived from the registry rather than
+#: listed beside it (#1082 added the second one, and a hand-kept list is how the
+#: menu and the injector would drift). The filter is exactly what this seam can
+#: satisfy: a framework-injected check whose only parameter is the file the task
+#: emitted. Checks needing more (``fill_slot_signature``'s routes,
+#: ``contract_assertions_match``'s endpoints) are injected where that context
+#: lives, and are excluded here by construction rather than by memory.
+_FILE_SCOPED_FRAMEWORK_CHECKS: tuple[str, ...] = tuple(
+    sorted(
+        name
+        for name, spec in CHECK_SPECS.items()
+        if spec.framework_injected and spec.required_params == frozenset({"file"})
+    )
+)
+
+
 def _framework_injected_criteria(
     artifacts: list[dict], authored: tuple[TypedCheck, ...]
 ) -> list[TypedCheck]:
@@ -65,23 +81,25 @@ def _framework_injected_criteria(
     may have set a different severity, and two rows for one file would double-count in
     the evidence.
     """
-    already = {
-        (c.check, str(c.params.get("file", "")))
-        for c in authored
-        if c.check == CHECK_UNDEFINED_NAMES
-    }
+    already = {(c.check, str(c.params.get("file", ""))) for c in authored}
     injected: list[TypedCheck] = []
-    seen: set[str] = set()
-    for art in artifacts:
-        name = art.get("name") if art.get("name") is not None else art.get("path")
-        if not isinstance(name, str) or not is_check_applicable(CHECK_UNDEFINED_NAMES, name):
-            continue
-        if name in seen or (CHECK_UNDEFINED_NAMES, name) in already:
-            continue
-        seen.add(name)
-        injected.append(
-            TypedCheck(check=CHECK_UNDEFINED_NAMES, params={"file": name}, severity="error")
-        )
+    for check_name in _FILE_SCOPED_FRAMEWORK_CHECKS:
+        spec = CHECK_SPECS[check_name]
+        seen: set[str] = set()
+        for art in artifacts:
+            name = art.get("name") if art.get("name") is not None else art.get("path")
+            if not isinstance(name, str) or not is_check_applicable(check_name, name):
+                continue
+            if name in seen or (check_name, name) in already:
+                continue
+            seen.add(name)
+            injected.append(
+                TypedCheck(
+                    check=check_name,
+                    params={"file": name},
+                    severity=spec.blocking_default,
+                )
+            )
     return injected
 
 

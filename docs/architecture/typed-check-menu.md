@@ -22,6 +22,7 @@ Regenerate: `UPDATE_CHECK_MENU=1 pytest tests/unit/cycles/test_check_governance.
 | `module_imports` | authored | product | yes | yes | yes | yes | error |
 | `regex_match` | authored | product | yes | yes | yes | yes | error |
 | `undefined_names` | injected | product | yes | yes | yes | yes | error |
+| `unterminated_source` | injected | product | yes | yes | yes | yes | error |
 
 `command_exit_zero` ownership is per-command in truth. The forms it may take
 are inventoried below — this replaces the standing caveat that called the
