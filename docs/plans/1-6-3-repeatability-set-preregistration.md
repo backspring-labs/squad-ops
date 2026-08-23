@@ -127,7 +127,7 @@ blocking for this reason.
 The **producer** half of #1079 is deliberately *not* a precondition — it moves the contract
 hash, and landing it inside the set voids the freeze. It is a post-set decision.
 
-### 2.c Stack — PROPOSED, not yet ruled
+### 2.c Stack — **owner ruling 2026-08-23: as below**
 
 | Item | Why | Order |
 |---|---|---|
