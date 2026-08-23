@@ -376,3 +376,54 @@ def test_the_test_supplement_shows_in_process_handler_invocation():
     assert "from '@/app/api/runs/route'" in supplement
     assert "new Request(" in supplement
     assert "{ params:" in supplement
+
+
+class TestStoreUpdateSeam:
+    """#1055: the store gained an update verb because it had none.
+
+    Its whole write surface was `insert`, which is `push`. "Persist a change to an
+    existing row" had no correct form: the working answer was to mutate the object
+    `find` returned and call no write verb, which is non-obvious, and the
+    natural-looking answer stored a duplicate. Two independent authorings on two models
+    both chose `insert`, and both only in the handlers that update rather than create.
+    """
+
+    @staticmethod
+    def _store() -> str:
+        from squadops.capabilities.scaffold import expand
+        from tests.unit.capabilities._stack_fixtures import manifest_for_stack
+
+        tree = {f["name"]: f["content"] for f in expand(manifest_for_stack("nextjs_ts"))}
+        return tree["lib/store.ts"]
+
+    def test_the_store_exports_update(self):
+        """Bug caught: a write surface with no way to write a change. `insert` remains
+        create-only, so the two verbs stay distinguishable — making `insert` an upsert
+        would have made a genuine double-create undetectable."""
+        source = self._store()
+        assert "export function update(table: Table, row: Record<string, unknown>)" in source
+        assert "export function insert(table: Table, row: Record<string, unknown>)" in source
+        assert "rows.findIndex((r) => r.id === row.id)" in source
+
+    def test_update_upserts_rather_than_only_replacing(self):
+        """A row absent from the table must still land. A replace-only update would
+        silently drop the write, which is the same class of defect one step over."""
+        source = self._store()
+        body = source.split("export function update")[1].split("export function find")[0]
+        assert "if (index >= 0) rows[index] = row" in body
+        assert "else rows.push(row)" in body
+
+    def test_the_frozen_index_advertises_the_new_verb(self):
+        """A seam the author cannot see is a seam it will not use — #861's sentence, and
+        the reason the previous absence cost two rolls. The index derives from the tree,
+        so this asserts the derivation reaches the brief rather than that a list was
+        edited."""
+        from squadops.capabilities.scaffold import frozen_surface_index_lines
+        from tests.unit.capabilities._stack_fixtures import manifest_for_stack
+
+        store_line = next(
+            line
+            for line in frozen_surface_index_lines(manifest_for_stack("nextjs_ts"))
+            if "lib/store.ts" in line
+        )
+        assert "update(table: Table, row: Record<string, unknown>)" in store_line

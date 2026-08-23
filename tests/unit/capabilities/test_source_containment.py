@@ -34,6 +34,10 @@ def test_find_then_insert_on_the_same_table_is_flagged():
     assert len(findings) == 1
     assert "insert is append-only" in findings[0]
     assert "TABLES.Run" in findings[0]
+    # #1055's seam exists now, so the finding must name the correct call rather than the
+    # workaround that predated it. A finding that describes a fix nobody needs any more
+    # sends the next author down the old path.
+    assert "update(TABLES.Run, row)" in findings[0]
 
 
 def test_a_create_handler_that_only_inserts_is_clean():

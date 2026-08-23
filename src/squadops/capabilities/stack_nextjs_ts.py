@@ -326,6 +326,24 @@ export function insert(table: Table, row: Record<string, unknown>): Record<strin
   return row
 }
 
+// Persist a change to an existing row. Upsert by `id`: replaces the stored row when one
+// matches, appends when none does.
+//
+// This exists because it did not (#1055). The store's only write verb was `insert`, which
+// is `push`, so "save my change" had no correct form — the working answer was to mutate the
+// object `find` returned and never call a write verb at all, which is non-obvious, while the
+// natural-looking answer silently stored a duplicate. Two independent authorings on two
+// different models both reached for `insert`, and both times only in the handlers that
+// UPDATE rather than create (join and leave), which is what makes it an API gap rather than
+// an authoring defect.
+export function update(table: Table, row: Record<string, unknown>): Record<string, unknown> {
+  const rows = (tables[table] ??= [])
+  const index = rows.findIndex((r) => r.id === row.id)
+  if (index >= 0) rows[index] = row
+  else rows.push(row)
+  return row
+}
+
 export function find(table: Table, id: string): Record<string, unknown> | undefined {
   return (tables[table] ?? []).find((r) => r.id === id)
 }

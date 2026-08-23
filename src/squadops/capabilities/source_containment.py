@@ -23,12 +23,16 @@ observed drift. Same symptom the shadow-store story predicted, entirely differen
 cause — and a repair telling the developer to import the frozen store could never have
 fixed it, because the handler already does.
 
-**This is a scaffold gap before it is a developer defect.** The frozen store's whole
-API is ``reset, all, insert, find, nextId``: there is no update seam. "Persist a change
-to an existing row" has no correct form. The working answer — mutate the object
-``find`` returned and never call ``insert`` — is non-obvious, and the natural-looking
-answer silently duplicates. Adding an ``update`` seam is the root fix; it moves
-``GENERATOR_VERSION`` and the Gate 1 fixture, so it is an owner call, not a drive-by.
+**This was a scaffold gap before it was a developer defect**, and the gap is now closed:
+the store exports ``update(table, row)``, which upserts by id, and the frozen-surface
+index advertises it to both the developer and the repair. Before that, the API was
+``reset, all, insert, find, nextId`` — "persist a change to an existing row" had no
+correct form at all, the working answer (mutate what ``find`` returned and call no write
+verb) was non-obvious, and the natural-looking answer silently duplicated.
+
+The finding survives the seam rather than being retired by it: the wrong call is still
+writable, and it is now wrong against an API that offers the right one — which is
+exactly when a finding is worth reading, because it can name the fix.
 
 **Reporting-only**, as ``additive_containment`` is, and for the same reason: #1049 was
 a rejection gate whose premise had quietly stopped being true and it cost re-rolls on
@@ -83,8 +87,8 @@ def assess_source_containment(files: list[dict]) -> list[str]:
             findings.append(
                 f"{path}: reads `TABLES.{table}` with find() and then calls "
                 f"insert(TABLES.{table}) — insert is append-only, so this stores a "
-                f"SECOND row rather than updating the one it read. Mutate the object "
-                f"find() returned; the frozen store has no update seam "
+                f"SECOND row rather than updating the one it read. Use "
+                f"update(TABLES.{table}, row), which upserts by id "
                 f"(arm A, cyc_181c9572bef2)."
             )
     return findings
