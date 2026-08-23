@@ -49,6 +49,7 @@ import httpx
 
 from adapters.sandbox.container_backend import ContainerBackend
 from adapters.tools.docker import DockerAdapter
+from squadops.capabilities.handlers.probe_runner import evaluate_expectations
 from squadops.capabilities.ui_data_path import (
     LIVE_SERVER,
     SERVED,
@@ -193,22 +194,14 @@ async def _run_probes(contract: VerificationContract, base_url: str) -> list[str
                 payload = resp.json()
             except ValueError:
                 payload = None
-            expected = probe.expect.get("status")
-            if expected is not None and resp.status_code != expected:
-                failures.append(
-                    f"probe {probe.id}: status {resp.status_code} != expected {expected}"
-                )
+            # #1079: the SAME judgment the in-cycle runner applies. This block used
+            # to be a second implementation carrying two of the three expectation
+            # kinds — it had no `json_has` branch — so the oracle was quietly the
+            # more permissive of the two judges of one contract.
+            failure = evaluate_expectations(probe.expect, resp.status_code, payload)
+            if failure is not None:
+                failures.append(f"probe {probe.id}: {failure}")
                 continue
-            error_code = probe.expect.get("error_code")
-            if error_code is not None:
-                actual = (
-                    (payload.get("error") or {}).get("code") if isinstance(payload, dict) else None
-                )
-                if actual != error_code:
-                    failures.append(
-                        f"probe {probe.id}: error_code {actual!r} != expected {error_code!r}"
-                    )
-                    continue
             if probe.capture:
                 captured, missing_key = capture_probe_values(probe, payload)
                 if missing_key is not None:

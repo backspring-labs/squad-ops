@@ -33,6 +33,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -485,6 +486,39 @@ def _wait_ready(profile: ExecutionProfile, port: int) -> bool:
     return False
 
 
+def evaluate_expectations(expect: Mapping[str, Any], status_code: int, payload: Any) -> str | None:
+    """Judge a response against a probe's ``expect`` block. ``None`` means it passed.
+
+    **Extracted because it was written twice (#1079).** The in-cycle runner had all
+    three expectation kinds; ``scripts/dev/audit_delivered_app.py`` — the independent
+    oracle that decides whether a delivered app actually works — re-implemented the
+    block inline and had only two, silently skipping ``json_has``. Two judges of the
+    same contract, and the permissive one was the one whose verdict we trusted most.
+
+    Transport stays with each caller (the runner is sync against a sandbox URL, the
+    auditor async against its own client); only the judgment is shared, because the
+    judgment is what must not differ.
+    """
+    exp_status = expect.get("status")
+    if exp_status is not None and status_code != exp_status:
+        return f"status {status_code} != expected {exp_status}"
+
+    json_has = expect.get("json_has")
+    if json_has:
+        if payload is None:
+            return "response body is not JSON"
+        missing = [key for key in json_has if not _has_key(payload, key)]
+        if missing:
+            return f"response missing key(s): {missing}"
+
+    error_code = expect.get("error_code")
+    if error_code is not None:
+        actual = _error_code_of(payload)
+        if actual != error_code:
+            return f"error_code {actual!r} != expected {error_code!r}"
+    return None
+
+
 def _run_one(
     base_url: str, probe: Probe, profile: ExecutionProfile, context: dict[str, str]
 ) -> ProbeOutcome:
@@ -506,30 +540,10 @@ def _run_one(
     except httpx.HTTPError as exc:
         return ProbeOutcome(probe.id, "failed", f"request error: {exc}")
 
-    expect = probe.expect
-    exp_status = expect.get("status")
-    if exp_status is not None and resp.status_code != exp_status:
-        return ProbeOutcome(
-            probe.id, "failed", f"status {resp.status_code} != expected {exp_status}"
-        )
-
     payload = _json_or_none(resp)
-
-    json_has = expect.get("json_has")
-    if json_has:
-        if payload is None:
-            return ProbeOutcome(probe.id, "failed", "response body is not JSON")
-        missing = [key for key in json_has if not _has_key(payload, key)]
-        if missing:
-            return ProbeOutcome(probe.id, "failed", f"response missing key(s): {missing}")
-
-    error_code = expect.get("error_code")
-    if error_code is not None:
-        actual = _error_code_of(payload)
-        if actual != error_code:
-            return ProbeOutcome(
-                probe.id, "failed", f"error_code {actual!r} != expected {error_code!r}"
-            )
+    failure = evaluate_expectations(probe.expect, resp.status_code, payload)
+    if failure is not None:
+        return ProbeOutcome(probe.id, "failed", failure)
 
     # #651: captures apply only on a passed probe. A missing capture key is a
     # contract violation by the app (the reference fill proves the key exists).
