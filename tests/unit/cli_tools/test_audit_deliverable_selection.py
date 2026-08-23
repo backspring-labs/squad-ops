@@ -20,10 +20,22 @@ sys.modules["audit_delivered_app"] = _mod
 _spec.loader.exec_module(_mod)
 
 
-def _store(tmp_path, art_id, filename, content, producing, created, artifact_type="source"):
+def _store(
+    tmp_path,
+    art_id,
+    filename,
+    content,
+    producing,
+    created,
+    artifact_type="source",
+    emission_status=None,
+):
     d = tmp_path / art_id
     (d / Path(filename).parent).mkdir(parents=True, exist_ok=True)
     (d / filename).write_text(content)
+    metadata = {"producing_task_type": producing}
+    if emission_status:
+        metadata["emission_status"] = emission_status
     (d / "metadata.json").write_text(
         json.dumps(
             {
@@ -31,7 +43,7 @@ def _store(tmp_path, art_id, filename, content, producing, created, artifact_typ
                 "artifact_type": artifact_type,
                 "filename": filename,
                 "created_at": created,
-                "metadata": {"producing_task_type": producing},
+                "metadata": metadata,
             }
         )
     )
@@ -107,3 +119,63 @@ def test_non_workspace_types_excluded(tmp_path):
     files = _mod._select_deliverable(tmp_path)
     assert "report.md" not in files
     assert files == {"backend/routes.py": "CODE"}
+
+
+def test_failed_emission_never_selected_even_as_only_copy(tmp_path):
+    """#971 banks failed emissions; the auditor must never assemble one.
+
+    The dangerous shape is not a failed emission losing to a good one — it is a
+    failed emission being the ONLY copy of a file, which happens whenever the run
+    dies before anything re-emits it. Naive latest-per-filename would then audit
+    known-bad bytes and report on an application the run never actually produced.
+    """
+    _store(
+        tmp_path,
+        "art_failed",
+        "app/api/runs/route.ts",
+        "export async function POST(req) { const body = await req.js",
+        "development.develop",
+        "2026-01-01T10:00",
+        emission_status="failed",
+    )
+    _store(
+        tmp_path,
+        "art_ok",
+        "app/page.tsx",
+        "export default function Page() { return null }",
+        "development.develop",
+        "2026-01-01T10:01",
+    )
+
+    selected = _mod._select_deliverable(tmp_path)
+
+    assert "app/api/runs/route.ts" not in selected
+    assert selected == {"app/page.tsx": "export default function Page() { return null }"}
+
+
+def test_failed_emission_loses_to_the_successful_retry(tmp_path):
+    """The pair is banked; only the passing member is deliverable.
+
+    Ordering must not be what saves this: the failed emission is stored LATER than
+    a hypothetical earlier good one in some retry shapes, so the exclusion has to be
+    by marker, not by time.
+    """
+    _store(
+        tmp_path,
+        "art_ok",
+        "app/api/runs/route.ts",
+        "GOOD",
+        "development.develop",
+        "2026-01-01T10:00",
+    )
+    _store(
+        tmp_path,
+        "art_failed",
+        "app/api/runs/route.ts",
+        "TRUNCATED",
+        "development.develop",
+        "2026-01-01T11:00",
+        emission_status="failed",
+    )
+
+    assert _mod._select_deliverable(tmp_path) == {"app/api/runs/route.ts": "GOOD"}
