@@ -383,3 +383,33 @@ async def test_the_evidence_pipeline_lands_in_outputs(scaffold_input, monkeypatc
 
     evidence = {"scaffold_evidence": evidence, "validation_result": {"checks": rows}}
     assert classify_failure_locus(evidence) == FailureLocus.SUBJECT
+
+
+def test_containment_findings_reach_outputs_scaffold_evidence(scaffold_input, emission):
+    """The landing, asserted on `outputs` — the dict that actually leaves the handler.
+
+    Bug caught, on its FIFTH occurrence in one working session: every prior test proved
+    the findings were computed, carried by the summary builder, and serialized — and the
+    handler still never passed them to the builder. Each layer green, the fact nowhere.
+    Asserting on the dataclass or on `to_dict` cannot see this; only `outputs` can.
+    """
+    from unittest.mock import MagicMock
+
+    handler = QATestHandler()
+    outputs: dict = {}
+    test_result = MagicMock()
+    test_result.uncollected_test_files = ()
+    merged = [{"filename": f["name"], "content": f["content"]} for f in emission.files]
+    fill_merge_evidence = {
+        "dispositions": [],
+        "counts": {},
+        "additive_containment": ["__tests__/live.test.ts: fetches a live server."],
+    }
+
+    handler._append_scaffold_evidence(
+        outputs, test_result, merged, fill_merge_evidence, scaffold_input, []
+    )
+
+    assert outputs["scaffold_evidence"]["additive_containment"] == [
+        "__tests__/live.test.ts: fetches a live server."
+    ]

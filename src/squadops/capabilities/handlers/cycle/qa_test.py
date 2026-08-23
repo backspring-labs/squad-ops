@@ -703,6 +703,12 @@ class QATestHandler(_CycleTaskHandler):
             correlations,
             additive_count,
             tuple(getattr(test_result, "uncollected_test_files", ()) or ()),
+            # The containment findings' landing. Computed at the merge seam and, until
+            # now, placed only in `execution_evidence` — which nothing persists (#999),
+            # so "banked on every qa emission" was not true of the change that claimed
+            # it. `scaffold_evidence` is in `outputs`, which reaches `failure_evidence`
+            # and therefore the analyzer and the locus classifier.
+            tuple(fill_merge_evidence.get("additive_containment", ()) or ()),
         )
         outputs["scaffold_evidence"] = summary.to_dict()
 
