@@ -6,7 +6,7 @@ authored rather than one it was handed.
 
 ## What separates it
 
-Assuming you already know what agent orchestration is, four things are unusual
+Assuming you already know what agent orchestration is, three things are unusual
 here.
 
 ### The design is authored, then gated
@@ -30,22 +30,30 @@ This is the load-bearing decision in the system. A framework that lets an unrun
 check read as green cannot tell you anything true about its own output —
 including whether it is getting better.
 
-### The claims are measured, not demonstrated
-
-Results come from windows whose size, inputs, deployment hash and scoring rule
-are frozen **before the first run**, so a number cannot be improved by re-rolling
-until it looks good. The most recent: a squad-authored design produced a working
-application with no human intervention in **4 of 6** registered runs, with the
-scoring instrument's own error disclosed on the record.
-
-[The full evidence, and what it does not show](evidence.md){ .md-button }
-
 ### Work is addressed to roles, not personalities
 
 A capability declares which roles may fulfil it; a squad profile decides which
 agent instance and model fills each role. Agent ids are queue addresses, not
 behaviour — swap one and the cycle is unchanged, provided the role is still
 filled. There is no character to prompt-engineer.
+
+---
+
+## Why believe any of it
+
+The three claims above are about the framework. This one is about the project,
+and it is deliberately kept separate: **the numbers on this site come from
+pre-registered measurement windows**, whose size, inputs, deployment hash and
+scoring rule are frozen before the first run — so a result cannot be improved by
+re-rolling until it looks good.
+
+That is not a feature you receive. It is the maintainers' method for testing
+whether the framework works, and the reason to trust the rest of the site. Most
+recently: a squad-authored design produced a working application with no human
+intervention in **4 of 6** registered runs, with the scoring instrument's own
+error disclosed on the record rather than quietly corrected.
+
+[The full evidence, and what it does not show](evidence.md){ .md-button }
 
 ---
 

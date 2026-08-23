@@ -56,9 +56,10 @@ the distinction most worth internalising. A cycle that framed a design and then
 implemented it has *two* runs, and they are separate rows with separate
 identities, artifacts, and gate decisions.
 
-Every run records the hash of the configuration it resolved. That is what makes
-two runs comparable, and it is why a measurement window can claim a frozen
-deployment: the run itself carries proof of what it ran under.
+Every run records the hash of the configuration it resolved — squad, models,
+request profile, settings. That is what makes two runs comparable at all: a run
+carries proof of what it executed under, so a difference in outcome can be
+attributed to the change you made rather than to a configuration that drifted.
 
 Runs are the resumability boundary too. Because each workload is its own run
 with its own promoted artifacts, a cycle interrupted after framing can resume

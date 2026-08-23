@@ -1,15 +1,32 @@
 # Evidence
 
-Agent frameworks are usually demonstrated. This one is measured, and this page
-is the whole record — method, results, and what the results do not support.
+**This page is about how the project evaluates itself — not about what the
+framework does for you.** The two are easy to confuse and worth separating
+before anything else.
 
-## Method
+| | Verification | Measurement |
+|---|---|---|
+| **What** | Checks derived from the design, executed inside every cycle | Windows that score whole cycles, run by the maintainers |
+| **Who gets it** | Anyone running a cycle. It is a framework feature | Nobody. It is how *this project* tests whether the framework works |
+| **Produces** | A cycle verdict and an evidence roll-up | The numbers quoted on this site |
+| **Where** | [Key concepts](key-concepts.md#4-verification-execute-dont-assume) | This page |
+
+Measurement *consumes* verification — a window's scoring rule reads the cycle
+verdict as one of its inputs — which is exactly why they blur. But
+pre-registered windows are research methodology **about** the product, not a
+capability **of** it. Nothing below is something you receive when you run a
+cycle.
+
+What it is instead: the reason to believe the claims made elsewhere on this
+site.
+
+## How the project measures itself
 
 A measurement window is **pre-registered**: the number of runs, the requirement
 document, the deployment hash, and the scoring rule are written down and frozen
 *before the first run*. Once open, nothing is fixed mid-window.
 
-That discipline exists to remove the two ways a result normally flatters itself:
+That discipline removes the two ways a result normally flatters itself:
 
 - **You cannot re-roll.** Every registered slot runs and is scored. A run cannot be
   quietly discarded because it went badly.
@@ -18,7 +35,10 @@ That discipline exists to remove the two ways a result normally flatters itself:
 
 A run scores functional only if the cycle verdict is `accepted`, an independent
 audit confirms the delivered application installs, builds, boots and answers
-every probe its contract specifies, **and** no human intervened.
+every probe its contract specifies, **and** no human intervened. The first
+condition is the framework's own verdict; the second and third are the
+maintainers checking it independently, because a framework grading its own
+homework is not evidence.
 
 ## Results
 
@@ -69,8 +89,9 @@ The honest boundary of both numbers:
 
 It would be easy to publish only the corrected number. Recording both, and the
 order the decisions were taken in, is the point: a measurement programme that
-hides its own instrument failures cannot be trusted about anything else. The
-same rule governs the framework's own verification — a check that did not
-execute is never reported as a pass.
+hides its own instrument failures cannot be trusted about anything else.
 
-[How verification works](key-concepts.md#4-verification-execute-dont-assume){ .md-button }
+The two layers happen to share that principle — the framework never reports an
+unexecuted check as a pass, and the measurement programme never quietly drops a
+run that went badly — but they are separate mechanisms, built at different
+times, for different audiences.
