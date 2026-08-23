@@ -867,3 +867,83 @@ def test_provenance_without_an_inspected_set_is_not_reported_as_an_inspection():
     )
     assert summary.verified == ("tests_pass",)
     assert summary.inspections == ()
+
+
+# --- #1021: a criterion with no evidence is a fourth state, now named ---------------
+
+
+class TestUnevidencedCriteria:
+    """#1021: `criteria_verified` came up short with no failure and no disclosure.
+
+    SIP-0096's rule is executed-and-passed credits, everything else disclosed.
+    A contract criterion that produced NO row is neither — it is credited nowhere,
+    failed nowhere, and separable from an adverse criterion nowhere. Slot 5
+    (`run_654b61665fed`) is the banked case: 12 of 14, both missing criteria
+    `vc-compiles-*`, `failed` and `unverified` BOTH empty.
+    """
+
+    def test_a_contract_criterion_with_no_row_is_named(self):
+        """Bug caught: the coverage record under-reports and the reader cannot tell
+        'the check ran and lost its credit in the join' from 'the check never ran'."""
+        summary = aggregate_verification(
+            [_passed("c1", criterion_id="vc-a", subject="t")],
+            contract_criteria=["vc-a", "vc-b"],
+        )
+        assert summary.criteria_verified == ("vc-a",)
+        assert summary.criteria_unevidenced == ("vc-b",)
+        assert summary.criteria_unverified == ("vc-b",)
+
+    def test_an_adverse_criterion_is_not_reported_as_unevidenced(self):
+        """The distinction the field exists for. A criterion whose check ran and failed
+        produced evidence — calling it unevidenced would relabel a product failure as
+        an instrument gap, which is the opposite error and worse."""
+        summary = aggregate_verification(
+            [_failed("c1", criterion_id="vc-a", subject="t")],
+            contract_criteria=["vc-a", "vc-b"],
+        )
+        assert summary.criteria_unevidenced == ("vc-b",)
+        assert summary.criteria_adverse == ("vc-a",)
+
+    def test_a_skipped_criterion_counts_as_evidenced_not_absent(self):
+        """A not-executed row is still a row: the producer reported, with a reason, and
+        that reason is in `unverified`. Only total silence is unevidenced."""
+        summary = aggregate_verification(
+            [_skipped("c1", criterion_id="vc-a", subject="t")],
+            contract_criteria=["vc-a"],
+        )
+        assert summary.criteria_unevidenced == ()
+        assert summary.criteria_adverse == ("vc-a",)
+        assert [u.check_id for u in summary.unverified] == ["c1"]
+
+    def test_the_two_lists_partition_the_shortfall(self):
+        """The accounting invariant, stated as a derivation so it cannot drift: every
+        unverified criterion is either adverse or unevidenced, never both, never
+        neither."""
+        summary = aggregate_verification(
+            [
+                _passed("c1", criterion_id="vc-a", subject="t"),
+                _failed("c2", criterion_id="vc-b", subject="t"),
+            ],
+            contract_criteria=["vc-a", "vc-b", "vc-c", "vc-d"],
+        )
+        assert set(summary.criteria_adverse) | set(summary.criteria_unevidenced) == set(
+            summary.criteria_unverified
+        )
+        assert not set(summary.criteria_adverse) & set(summary.criteria_unevidenced)
+
+    def test_evidence_outside_the_contract_is_never_called_unevidenced(self):
+        """`criteria_total` unions observed ids in so unexpected evidence is never
+        dropped. This must NOT do the same: a criterion seen on a row is evidenced by
+        definition, and unioning would make every such id appear as absent."""
+        summary = aggregate_verification(
+            [_passed("c1", criterion_id="vc-surprise", subject="t")],
+            contract_criteria=["vc-a"],
+        )
+        assert "vc-surprise" in summary.criteria_total
+        assert summary.criteria_unevidenced == ("vc-a",)
+
+    def test_author_mode_has_no_unevidenced_criteria(self):
+        """No bound contract means no declared denominator, so there is nothing that
+        could be absent — the field must stay empty rather than inventing a shortfall."""
+        summary = aggregate_verification([_passed("c1", criterion_id="vc-a", subject="t")])
+        assert summary.criteria_unevidenced == ()

@@ -1084,3 +1084,42 @@ class TestInspectionSerialization:
         stored.pop("inspections")
 
         assert _verification_summary_from_dict(stored).inspections == ()
+
+
+class TestUnevidencedCriteriaSerialization:
+    """#1021: the distinction must survive the round-trip, or it exists only in memory
+    and the stored run is as mute as it was — the same last-hop drop #1002 fixed."""
+
+    @staticmethod
+    def _summary():
+        from squadops.cycles.verification_integrity import CheckResult, aggregate_verification
+
+        return aggregate_verification(
+            [CheckResult(check_id="c1", status="passed", criterion_id="vc-a", subject="t")],
+            contract_criteria=["vc-a", "vc-b"],
+        )
+
+    def test_round_trip_preserves_the_unevidenced_set(self):
+        from adapters.cycles.postgres_cycle_registry import (
+            _verification_summary_from_dict,
+            _verification_summary_to_dict,
+        )
+
+        summary = self._summary()
+        rebuilt = _verification_summary_from_dict(
+            json.loads(json.dumps(_verification_summary_to_dict(summary)))
+        )
+        assert rebuilt.criteria_unevidenced == ("vc-b",)
+        assert rebuilt.criteria_adverse == ()
+
+    def test_pre_1021_stored_dict_reports_no_unevidenced_criteria(self):
+        """A summary written before the field existed must load, and must not invent a
+        shortfall — an absent key means 'not recorded', never 'nothing was evidenced'."""
+        from adapters.cycles.postgres_cycle_registry import (
+            _verification_summary_from_dict,
+            _verification_summary_to_dict,
+        )
+
+        stored = _verification_summary_to_dict(self._summary())
+        stored.pop("criteria_unevidenced")
+        assert _verification_summary_from_dict(stored).criteria_unevidenced == ()

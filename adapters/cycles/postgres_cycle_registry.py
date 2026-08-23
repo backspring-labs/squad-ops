@@ -649,6 +649,10 @@ def _verification_summary_to_dict(summary: RunVerificationSummary) -> dict:
         # Postgres (rather than the in-memory summary) undercounted (#500).
         "criteria_verified": list(summary.criteria_verified),
         "criteria_total": list(summary.criteria_total),
+        # #1021: which shortfalls produced NO evidence at all, as opposed to evidence
+        # that went adverse. Derivable only here — the reader cannot recover it from
+        # the other lists, which is the whole complaint.
+        "criteria_unevidenced": list(summary.criteria_unevidenced),
         # #1002: the bounded inspected-set references. Stored so the question
         # "did this detector ever see the file?" is answerable from any run
         # after the fact — which was the whole point of computing it.
@@ -688,6 +692,7 @@ def _verification_summary_from_dict(d: dict) -> RunVerificationSummary:
         passed_count=int(d.get("passed_count", 0)),
         criteria_verified=tuple(d.get("criteria_verified", [])),
         criteria_total=tuple(d.get("criteria_total", [])),
+        criteria_unevidenced=tuple(d.get("criteria_unevidenced", [])),
         inspections=tuple(
             CheckInspection(
                 check_id=i["check_id"],

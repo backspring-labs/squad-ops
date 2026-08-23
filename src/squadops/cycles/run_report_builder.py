@@ -157,6 +157,16 @@ def _build_verification_lines(summary: RunVerificationSummary) -> list[str]:
             lines.append(
                 f"Contract criteria NOT verified: {', '.join(summary.criteria_unverified)}"
             )
+        # #1021: a shortfall that produced evidence and a shortfall that produced NONE
+        # are different defects — a product failure versus a hole in the evidence chain
+        # — and the combined list above cannot tell them apart. Slot 5 read 12/14 with
+        # `failed` and `unverified` both empty, and nothing said which had happened.
+        if summary.criteria_unevidenced:
+            lines.append(
+                f"  ...of which {len(summary.criteria_unevidenced)} produced NO evidence "
+                f"row at all (never executed, not merely failed): "
+                f"{', '.join(summary.criteria_unevidenced)}"
+            )
     if summary.failed:
         # #500: reasons inline when the aggregation carried them, so a failed
         # probe is classifiable from the report alone (bare-name fallback kept

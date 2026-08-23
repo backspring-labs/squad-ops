@@ -181,3 +181,42 @@ class TestInspectedSubjectsSection:
         a section present with no rows implies the inventory was collected."""
         text = self._lines(CheckResult(check_id="tests_pass", status=ResultStatus.PASSED))
         assert "Inspected subjects" not in text
+
+
+class TestUnevidencedCriteriaLine:
+    """#1021: the report is where a human reads the shortfall. 'Contract criteria NOT
+    verified: vc-compiles-x' reads as a failure; slot 5's two produced no evidence at
+    all, with `failed` and `unverified` empty. Same words, different defect."""
+
+    @staticmethod
+    def _lines(*results, contract):
+        from squadops.cycles.run_report_builder import _build_verification_lines
+
+        return "\n".join(
+            _build_verification_lines(
+                aggregate_verification(list(results), contract_criteria=contract)
+            )
+        )
+
+    def test_the_unevidenced_shortfall_is_called_out_separately(self):
+        text = self._lines(
+            CheckResult(
+                check_id="c1", status=ResultStatus.PASSED, criterion_id="vc-a", subject="t"
+            ),
+            contract=["vc-a", "vc-b"],
+        )
+        assert "Contract criteria NOT verified: vc-b" in text
+        assert "produced NO evidence row at all" in text
+        assert "vc-b" in text.split("produced NO evidence row at all")[1]
+
+    def test_an_adverse_shortfall_gets_no_unevidenced_line(self):
+        """The false-positive direction: labelling a real failure an instrument gap
+        would point the reader at the harness while the product is broken."""
+        text = self._lines(
+            CheckResult(
+                check_id="c1", status=ResultStatus.FAILED, criterion_id="vc-a", subject="t"
+            ),
+            contract=["vc-a"],
+        )
+        assert "Contract criteria NOT verified: vc-a" in text
+        assert "produced NO evidence" not in text

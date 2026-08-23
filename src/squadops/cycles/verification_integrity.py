@@ -323,6 +323,16 @@ class RunVerificationSummary:
     # "references only": a digest and a count, never the paths. Default-empty, so
     # producers that declare nothing and pre-#1002 stored summaries are unchanged.
     inspections: tuple[CheckInspection, ...] = ()
+    # #1021: contract criteria that produced NO result row at all — neither credited
+    # nor adverse. `criteria_unverified` already names every shortfall (#945), but it
+    # cannot separate "the check ran and went adverse" from "the check never ran", and
+    # those are different defects: one is a product failure, the other a hole in the
+    # evidence chain. Slot 5 (`run_654b61665fed`) is the banked case — 12 of 14, both
+    # missing criteria `vc-compiles-*`, with `failed` and `unverified` BOTH empty, so
+    # the record could not say which had happened. Default-empty: pre-#1021 stored
+    # summaries reconstruct unchanged, and an author-mode run (no bound contract) has
+    # no declared denominator and so can have no unevidenced criteria.
+    criteria_unevidenced: tuple[str, ...] = ()
 
     @property
     def pass_rate(self) -> float:
@@ -364,6 +374,17 @@ class RunVerificationSummary:
         """
         verified = set(self.criteria_verified)
         return tuple(c for c in self.criteria_total if c not in verified)
+
+    @property
+    def criteria_adverse(self) -> tuple[str, ...]:
+        """Criteria that fell short having actually produced evidence (#1021).
+
+        The complement of ``criteria_unevidenced`` within ``criteria_unverified``, so a
+        reader can tell a product failure from a hole in the evidence chain without
+        diffing three lists by hand — the #945 argument applied one level down.
+        """
+        unevidenced = set(self.criteria_unevidenced)
+        return tuple(c for c in self.criteria_unverified if c not in unevidenced)
 
 
 @dataclass(frozen=True)
@@ -703,6 +724,13 @@ def aggregate_verification(
         criteria_total=tuple(sorted(set(contract_criteria) | criteria_passed | criteria_adverse)),
         failed_detail=tuple(failed_detail),
         inspections=tuple(inspections),
+        # #1021: declared by the contract, and no row carried the id in either
+        # direction. Computed from the contract's set only — a criterion observed on a
+        # row is by definition evidenced, so unioning the observed ids in (as
+        # `criteria_total` does, to never drop unexpected evidence) would be wrong here.
+        criteria_unevidenced=tuple(
+            sorted(set(contract_criteria) - criteria_passed - criteria_adverse)
+        ),
     )
 
 
