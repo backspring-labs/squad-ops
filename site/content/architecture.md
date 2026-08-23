@@ -65,9 +65,11 @@ model on an NVIDIA DGX Spark; development runs smaller models locally. No
 per-token cost, no rate limits, no source or requirement text leaving the
 machine.
 
-The cost is throughput, and throughput bounds every measurement window — which
-is why the inference engine sits behind a port with a conformance suite, and why
-alternatives are evaluated against a recorded comparison rather than a vibe.
+The cost is throughput. A local 27B model sets the wall-clock ceiling on every
+cycle, which is why the inference engine sits behind a port with a conformance
+suite every adapter must pass — swapping engines is a configuration change, and
+a candidate engine has to prove it honours the contract before it is trusted
+with a run.
 
 ## Design specs
 
