@@ -179,6 +179,50 @@ class TestMergeFillArtifacts:
         assert evidence["counts"]["missing"] == 7
         assert len(suite_files) == 8
 
+    def test_the_banked_evidence_names_the_additive_suite_that_survived(self, scaffold_input):
+        """#980's other half: a retreat weakens the fills AND drops the additive suite.
+
+        Bug caught: shakedown #1's passing attempt discarded an entire additive suite — 81
+        store calls through TABLES, no mocking — and ran 8 test files where the failing
+        attempt ran 9. `extracted_files` went 1 -> 0 in a log line nobody read, and the
+        banked record said only that the slots were filled. Measuring the fills alone
+        records half a retreat, which reads as a whole one.
+
+        A dropped shell rewrite must NOT appear here. It is a rejected attempt to edit
+        frozen structure, not an additive test — counting it would make a suite look
+        richer at the exact moment it was refused.
+        """
+        fills = parse_fill_emission(
+            "```fill:slot-vc-probe-api-runs\n    expect(body.id).toBeTruthy()\n```\n"
+        )
+        artifacts = [
+            {"name": "__tests__/b.test.ts", "content": "// b", "media_type": "x", "type": "test"},
+            {"name": "__tests__/a.test.ts", "content": "// a", "media_type": "x", "type": "test"},
+            {
+                "name": "__tests__/scaffold/vc-probe-api-runs.scaffold.test.ts",
+                "content": "// REWRITTEN",
+                "media_type": "x",
+                "type": "test",
+            },
+        ]
+        _, _, evidence = QATestHandler()._merge_fill_artifacts(scaffold_input, fills, artifacts)
+
+        strength = evidence["assertion_strength"]
+        assert strength["additive_files"] == ["__tests__/a.test.ts", "__tests__/b.test.ts"]
+        # The fills half is still recorded alongside it — both halves or neither.
+        assert "any_fill_touches_the_store" in strength
+
+    def test_an_emission_that_drops_every_additive_file_banks_an_empty_list(self, scaffold_input):
+        """The absence has to be visible AS an absence. If the key vanished when nothing
+        survived, the retreat this measures would read as "not measured" rather than
+        "measured, and everything was dropped" — the same ambiguity #986 removed from the
+        authenticity detectors."""
+        fills = parse_fill_emission(
+            "```fill:slot-vc-probe-api-runs\n    expect(body.id).toBeTruthy()\n```\n"
+        )
+        _, _, evidence = QATestHandler()._merge_fill_artifacts(scaffold_input, fills, [])
+        assert evidence["assertion_strength"]["additive_files"] == []
+
 
 # --- handle(): a fills-only emission is authorship, not emission failure --------- #
 
