@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from squadops.cycles.failure_evidence import FailureEvidenceCategory, derive_failure_category
 from squadops.cycles.verification_integrity import ResultStatus
 
 #: The decision-handler vocabulary value meaning "no structural candidate".
@@ -51,6 +52,30 @@ def failure_signature(failure_evidence: dict[str, Any]) -> frozenset[tuple[str, 
     converging run terminated at round 1. Absent (pytest, which emits no machine
     report, and every legacy row) falls back to the aggregate element byte-identically.
 
+    #761: two further machine facts join the token, both already on the row and
+    both previously unread. ``runner`` and ``exit_code`` are what remain when a
+    runner emits no machine report — pytest today — so the per-test split above
+    cannot fire and the whole suite collapses to one element. ``exit_code``
+    separates "tests failed" (1) from "no tests collected" (5) and "usage error"
+    (4): three different defects that produced one signature, which is the
+    REPEAT-vs-SHIFTED blindness #761 reported. Note the report it was filed from
+    (``tests_pass||failed``, shk-6 roll-4) predates #626 and #878; those closed
+    the vitest half, and this closes the half that was left.
+
+    #761 also folds the round's ``derive_failure_category`` into every element.
+    It is deterministic, machine-derived and round-level, so it never varies
+    within a round and a true repeat stays byte-identical — shk-4's three
+    identical rounds still fire the A4 termination. What it buys is the one
+    distinction the row fields cannot make: a round whose app ERRORED and a
+    round whose assertions merely failed are different failures, and both
+    rendered as ``tests_pass||failed``.
+
+    Deliberately NOT included: ``classify_failure_locus``. It is largely derived
+    from the same signals as the category, and every added token raises the odds
+    that a genuine repeat reads as a shift — whose failure mode is that A4 never
+    terminates and the run burns its whole budget. Over-discrimination is the
+    expensive direction here, so the marginal token has to earn its place.
+
     #878 (minimum): the runner's structured ``suite_broken`` verdict joins the
     reason token when present. It is a machine fact, not prose, so the
     evidence-text rule above is intact — and without it a behavioral failure
@@ -68,6 +93,8 @@ def failure_signature(failure_evidence: dict[str, Any]) -> frozenset[tuple[str, 
     if failure_evidence.get("extraction_loss") is True:
         return None
     elements: set[tuple[str, str, str]] = set()
+    # Round-level and constant across the round's elements (see #761 above).
+    category = derive_failure_category(failure_evidence)
     checks = (failure_evidence.get("validation_result") or {}).get("checks") or []
     for row in checks:
         if not isinstance(row, dict):
@@ -82,16 +109,7 @@ def failure_signature(failure_evidence: dict[str, Any]) -> frozenset[tuple[str, 
         if not check_id:
             continue
         subject = str(row.get("file") or row.get("subject") or "")
-        reason = row.get("reason")
-        reason_token = (
-            str(reason)
-            if isinstance(reason, str) and reason
-            else str(row.get("status", ResultStatus.FAILED))
-        )
-        suite_broken = row.get("suite_broken")
-        if suite_broken is not None:
-            health = "broken" if suite_broken else "ran"
-            reason_token = f"{reason_token};suite_health={health}"
+        reason_token = _reason_token(row, category)
         failing_tests = row.get("failing_tests") or ()
         if failing_tests:
             for identity in failing_tests:
@@ -100,6 +118,44 @@ def failure_signature(failure_evidence: dict[str, Any]) -> frozenset[tuple[str, 
         else:
             elements.add((check_id, subject, reason_token))
     return frozenset(elements) if elements else None
+
+
+def _reason_token(row: dict[str, Any], category: str) -> str:
+    """One failing row's reason token: machine facts only, in a stable order.
+
+    Extracted when the #761 additions pushed ``failure_signature`` past the
+    complexity gate — and it belongs apart anyway, because the ordering here IS
+    the contract. Two rounds must build the token the same way or every
+    comparison is a shift, so the sequence is fixed and append-only rather than
+    conditional on which fields happen to be present.
+    """
+    reason = row.get("reason")
+    token = (
+        str(reason)
+        if isinstance(reason, str) and reason
+        else str(row.get("status", ResultStatus.FAILED))
+    )
+    suite_broken = row.get("suite_broken")
+    if suite_broken is not None:
+        token += f";suite_health={'broken' if suite_broken else 'ran'}"
+    # #761: what a runner with no machine report still supplies. `runner` keeps a
+    # pytest failure from colliding with a vitest one; `exit` separates "tests
+    # failed" (1) from "no tests collected" (5) and "usage error" (4).
+    runner = row.get("runner")
+    if runner:
+        token += f";runner={runner}"
+    exit_code = row.get("exit_code")
+    if isinstance(exit_code, int):
+        token += f";exit={exit_code}"
+    # The ordinary category is the baseline and is OMITTED, so a row carrying none of
+    # the newer fields still renders byte-identically to its pre-#626/#878 form — the
+    # invariant `test_legacy_rows_without_verdict_are_byte_identical` and its siblings
+    # pin, and which a token appended unconditionally would have quietly voided. Only
+    # an EXCEPTIONAL category is worth a token: it is precisely the case where two
+    # rounds differ in a way no row field records.
+    if category != FailureEvidenceCategory.EXECUTED_AND_FAILED:
+        token += f";cat={category}"
+    return token
 
 
 # Movement classes (A4.2). Strings, not an enum — event-payload vocabulary.
