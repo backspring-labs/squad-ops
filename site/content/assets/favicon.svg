@@ -5,6 +5,15 @@
        inside the 10% floor a maskable icon needs, while staying as large as
        possible for 16px rendering. A maskable app icon, if ever needed, is a
        separate asset at heavier padding rather than a shrink of this one. -->
+  <!-- KNOWN AND ACCEPTED: Safari draws a white frame around this icon.
+       Safari's favicon pipeline flattens alpha to white; Chrome honours it. The
+       only transparency here is the four rounded corners, so in Chrome they are
+       transparent over the tab and invisible, and in Safari they render white
+       and read as an outline.
+       Rounded corners cannot survive that — the rounding IS the transparency —
+       so the only fix is a full-bleed square with no alpha at all. Owner ruled
+       2026-08-23 to keep the rounded tile and accept the Safari rendering.
+       Do not "fix" this by squaring it off without revisiting that call. -->
   <rect width="24" height="24" rx="5" fill="#000000"/>
   <g transform="translate(12,12) scale(0.82) translate(-12,-12)">
   <path d="M4.30 8.89 A8.3 8.3 0 0 1 19.70 8.89" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
