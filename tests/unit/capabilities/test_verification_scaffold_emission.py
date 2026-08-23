@@ -236,3 +236,99 @@ class TestValidateEmission:
         )
         with pytest.raises(ScaffoldValidationError, match="disagree"):
             validate_emission(tampered)
+
+
+class TestSuccessBodyPinning:
+    """#1029: the success body's floor is frozen spine, the sibling of #913's envelope.
+
+    Statuses were pinned and the error envelope was pinned; what a success body
+    CONTAINS was not, so response-field paths were invented independently by the app
+    and the suite. Four samples in three days, and the last green roll's entire
+    correction budget — three qa rounds, all "expected undefined to be 'sample'".
+    """
+
+    @staticmethod
+    def _shell(emission, fragment):
+        return next(f for f in emission.files if fragment in f["name"])
+
+    def test_a_success_shell_pins_the_declared_required_fields(self, emission):
+        """The bug: a required field simply absent from the response body, discovered
+        by burning correction rounds instead of at the shell."""
+        content = self._shell(emission, "vc-probe-api-runs.")["content"]
+        assert '["id", "title", "datetime", "location", "participants"]' in content
+        assert "expect(o?.[k]).not.toBeUndefined()" in content
+        assert "expectShape(body)" in content
+
+    def test_a_collection_response_applies_the_same_floor_per_element(self, emission):
+        """The bug: a list endpoint credited on `Array.isArray` alone, so elements of
+        any shape pass. The floor must be the SAME one a single response gets, or the
+        two surfaces disagree about what a Run is."""
+        content = self._shell(emission, "vs-get-api-runs.")["content"]
+        assert "expect(Array.isArray(body)).toBe(true)" in content
+        assert "for (const item of body ?? []) expectShape(item)" in content
+        assert "expectShape(body)" not in content
+
+    def test_a_declared_collection_field_pins_its_element_kind(self, emission):
+        """The half with teeth. The 1.6.1 shakedown declared participants as objects
+        carrying `name` and the app returned bare strings — invisible to every status
+        assertion, and fatal to the roll."""
+        content = self._shell(emission, "vc-probe-api-runs.")["content"]
+        assert (
+            'for (const e of o?.["participants"] ?? []) for (const k of ["id", "name"])' in content
+        )
+
+    def test_the_floor_is_spine_not_slot(self, emission):
+        """Frozen means BEFORE the slot markers. Inside the slot it is fill residue
+        again — deletable by the next re-author, which is the state #1029 describes."""
+        for f in emission.files:
+            content = f["content"]
+            if "expectShape" not in content:
+                continue
+            assert content.index("expectShape") < content.index("scaffold-slot:begin")
+
+    def test_error_shells_carry_no_success_floor(self, emission):
+        """The false-positive direction the gate must never take: a 4xx body is the
+        envelope's business, and asserting entity fields on it would fail every
+        correct app."""
+        for f in emission.files:
+            name = f["name"].rsplit("/", 1)[-1]
+            if "rejects-blank" in name or "duplicate" in name or "not-found" in name:
+                assert "expectShape" not in f["content"], name
+
+    def test_a_primitive_collection_pins_its_javascript_kind(self):
+        """The other rendering of the element rule, and the one the reference manifest
+        does not exercise — mutating the primitive branch away left the whole suite
+        green, because `list[Participant]` takes the entity branch.
+
+        A `list[string]` must emit a `typeof` check. Falling through to the entity
+        branch would emit `for (const k of [])` — a loop over nothing, which passes
+        every app and reads in the shell as if the kind were being checked.
+        """
+
+        def _retype_participants(raw: dict) -> None:
+            entity = next(e for e in raw["entities"] if e["name"] == "RunEvent")
+            field = next(f for f in entity["fields"] if f["name"] == "participants")
+            field["type"] = "list[string]"
+
+        variant = _variant_manifest(_retype_participants)
+        content = next(
+            f["content"]
+            for f in emit_verification_scaffold(variant).files
+            if "vc-probe-api-runs." in f["name"]
+        )
+        assert (
+            'for (const e of o?.["participants"] ?? []) expect(typeof e).toBe("string")' in content
+        )
+        assert "for (const k of [])" not in content
+
+    def test_the_floor_never_asserts_an_exact_field_set_or_a_value(self, emission):
+        """The budget, enforced. Every pin is a subset check: presence and element
+        kind. An equality on the body — or on a field's value — would fail an app that
+        adds a field or generates an id differently, which spends the false-positive
+        budget punishing correctness."""
+        for f in emission.files:
+            for line in f["content"].splitlines():
+                if "expect(o?" not in line and "expect(e?" not in line:
+                    continue
+                assert "not.toBeUndefined()" in line or "expect(typeof e).toBe(" in line, line
+                assert "toEqual" not in line and "toStrictEqual" not in line, line

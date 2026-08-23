@@ -1,6 +1,6 @@
 ---
 template_id: request.development_develop_fill_only_appendix_nextjs_ts
-version: "1"
+version: "2"
 required_variables:
   - stack
 optional_variables:
@@ -8,6 +8,7 @@ optional_variables:
   - model_surface
   - testid_surface
   - frozen_surface
+  - response_surface
 ---
 ## Fill-only: a walking skeleton is already in your workspace
 
@@ -75,6 +76,8 @@ server component that opts out of prerendering with `export const dynamic =
 {{testid_surface}}
 
 {{frozen_surface}}
+
+{{response_surface}}
 
 Filling the fixed slots — rather than regenerating the app — is the whole point: the
 skeleton already builds and boots, so a fill that preserves it stays green, while one

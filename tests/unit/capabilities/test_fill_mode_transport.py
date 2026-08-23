@@ -16,7 +16,10 @@ import pytest
 
 from squadops.capabilities.handlers.cycle.qa_test import QATestHandler
 from squadops.capabilities.scaffold_contract import emit_contract_dict
-from squadops.capabilities.verification_scaffold_emission import emit_verification_scaffold
+from squadops.capabilities.verification_scaffold_emission import (
+    GENERATOR_VERSION,
+    emit_verification_scaffold,
+)
 from squadops.capabilities.verification_scaffold_fill import parse_fill_emission
 from squadops.cycles.task_plan import inject_contract_inputs
 from squadops.cycles.verification_contract import VerificationContract
@@ -61,7 +64,11 @@ class TestInjection:
         scaffold = inputs["verification_scaffold"]
         assert len(scaffold["files"]) == 8
         assert scaffold["manifest"]["stack"] == "nextjs_ts"
-        assert scaffold["manifest"]["generator_version"] == 6
+        # #1029: against the constant, not a literal. This test's subject is that the
+        # scaffold REACHES qa.test on an opted-in stack; pinning the number here made a
+        # legitimate emission bump fail a transport test, and the deliberate value pin
+        # already lives in test_verification_scaffold_reference.
+        assert scaffold["manifest"]["generator_version"] == GENERATOR_VERSION
 
     def test_an_unopted_stack_injects_nothing(self):
         manifest = manifest_for_stack("fullstack_fastapi_react")

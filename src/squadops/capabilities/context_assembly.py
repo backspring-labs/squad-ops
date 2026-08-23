@@ -51,6 +51,13 @@ SURFACE_DOM_TESTID = "dom_testid_surface"
 #: `reset, all, insert, find, nextId`, then repaired to the same invented name because the
 #: repair path was blind identically. A name the author cannot see is a name it will invent.
 SURFACE_FROZEN = "frozen_surface"
+#: #1029: what each endpoint's SUCCESS body must carry. The developer received the error
+#: contract, the model surface, the testids and the frozen index — and nothing about the
+#: shape of a successful response, so the suite derived one from the manifest and the app
+#: decided another. The last green roll spent its entire correction budget reconciling
+#: them; the 1.6.1 shakedown died on it. Pinning the shell without this only makes the
+#: gate stricter than the author it judges can see.
+SURFACE_RESPONSE = "response_surface"
 
 
 @dataclass(frozen=True)
@@ -131,7 +138,13 @@ ACCEPTANCE_WORKSPACE_FILTER = ArtifactFilter(
     by_type_fallback=("document",),
 )
 
-_DEV_SURFACES = (SURFACE_ERROR_CONTRACT, SURFACE_MODEL, SURFACE_TESTID, SURFACE_FROZEN)
+_DEV_SURFACES = (
+    SURFACE_ERROR_CONTRACT,
+    SURFACE_MODEL,
+    SURFACE_TESTID,
+    SURFACE_FROZEN,
+    SURFACE_RESPONSE,
+)
 
 CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
     # --- build tasks (D3): curated prompt context + acceptance workspace ----
@@ -415,6 +428,9 @@ def manifest_surface_fragments(
     """
     if not contract.manifest_surfaces:
         return {}
+    # #1029 lives in the module that owns the derivation, not in scaffold.py: the
+    # response floor already has one home and a second copy would be a second answer.
+    from squadops.capabilities.response_shape import response_surface_instructions
     from squadops.capabilities.scaffold import (
         error_seam_instructions,
         frozen_surface_index_lines,
@@ -428,6 +444,7 @@ def manifest_surface_fragments(
         SURFACE_TESTID: testid_surface_instructions,
         SURFACE_DOM_TESTID: testid_surface_instructions,
         SURFACE_FROZEN: frozen_surface_index_lines,
+        SURFACE_RESPONSE: response_surface_instructions,
     }
     fragments: dict[str, list[str]] = {}
     for surface in contract.manifest_surfaces:

@@ -821,7 +821,34 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         frozen_surface = await self._frozen_surface_section(renderer, inputs)
         if frozen_surface:
             variables["frozen_surface"] = frozen_surface
+        # #1029: what each endpoint's SUCCESS body must carry, same transport as the four
+        # above. The generated shells assert this floor in their frozen region, and until
+        # now the author being judged by it could not see it — so the suite derived the
+        # shape from the manifest, the app decided another, and the disagreement was found
+        # by burning correction rounds (the last green roll's entire budget) or by dying
+        # (the 1.6.1 shakedown). A shape the author cannot see is a shape it will invent.
+        response_surface = await self._response_surface_section(renderer, inputs)
+        if response_surface:
+            variables["response_surface"] = response_surface
         rendered = await renderer.render(capability.fill_only_template, variables)
+        return rendered.content
+
+    async def _response_surface_section(self, renderer: Any, inputs: dict | None) -> str:
+        """Render the SUCCESS RESPONSE SHAPE block from executor-threaded lines, or "".
+
+        The lines are manifest-derived data (``response_shape.response_surface_
+        instructions``) — the same derivation the frozen shell spine asserts, so the
+        brief and the gate cannot describe different shapes. All prose lives in the
+        appendix asset (CLAUDE.md #448).
+        """
+        lines = [str(line).strip() for line in ((inputs or {}).get("response_surface") or [])]
+        lines = [line for line in lines if line]
+        if not lines:
+            return ""
+        rendered = await renderer.render(
+            "request.development_develop_response_surface_appendix",
+            {"response_lines": "\n".join(f"- {line}" for line in lines)},
+        )
         return rendered.content
 
     async def _frozen_surface_section(self, renderer: Any, inputs: dict | None) -> str:

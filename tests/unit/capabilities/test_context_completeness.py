@@ -368,3 +368,140 @@ def test_builder_template_declares_the_new_blocks():
     assert "{{contract_expectations}}" in text
     # the instruction that plan-named sections are required on top of the profile's
     assert "required for THIS task" in text
+
+
+# --- #1029: the developer is shown the success-body floor it is judged against ------
+
+
+def _reference_manifest():
+    from squadops.capabilities.scaffold import InterfaceManifest
+
+    return InterfaceManifest.from_yaml(
+        (
+            Path(__file__).resolve().parents[3]
+            / "examples"
+            / "03_group_run"
+            / "interface_manifest.yaml"
+        ).read_text()
+    )
+
+
+def test_the_developer_contract_declares_the_response_surface():
+    """This file's own defect class, one more instance. The frozen shell spine asserts
+    the success body's floor; `development.develop` carried the error contract, the
+    model surface, the testids and the frozen index, and nothing about response shape —
+    so the author was judged against a fact it was never shown."""
+    from squadops.capabilities.context_assembly import SURFACE_RESPONSE
+
+    assert SURFACE_RESPONSE in CONTEXT_CONTRACTS["development.develop"].manifest_surfaces
+
+
+def test_the_response_surface_renders_the_facts_the_shells_assert():
+    """The registry entry is worthless if the derivation produces nothing — a declared
+    surface that renders empty is #846's shape one layer down."""
+    from squadops.capabilities.context_assembly import (
+        SURFACE_RESPONSE,
+        manifest_surface_fragments,
+    )
+
+    fragments = manifest_surface_fragments(
+        CONTEXT_CONTRACTS["development.develop"], _reference_manifest()
+    )
+    lines = fragments[SURFACE_RESPONSE]
+    assert len(lines) == 5
+    create = next(line for line in lines if line.startswith("`POST /runs`"))
+    assert "`id`" in create and "`title`" in create
+    assert "each `participants` element carries" in create
+
+
+def test_the_brief_and_the_shell_pin_the_same_shape():
+    """The design's load-bearing invariant, and the reason this is one derivation.
+
+    Bug caught: the brief and the spine drifting apart. Two independent renderings of
+    "what the response must contain" is two answers, and the failure mode is the exact
+    one #1029 describes — an app built to one description, judged against another —
+    reintroduced inside the fix for it. Every field the shell asserts for an endpoint
+    must be named in that endpoint's brief line.
+    """
+    import re
+
+    from squadops.capabilities.context_assembly import (
+        SURFACE_RESPONSE,
+        manifest_surface_fragments,
+    )
+    from squadops.capabilities.verification_scaffold_emission import emit_verification_scaffold
+    from tests.unit.capabilities._stack_fixtures import manifest_for_stack
+
+    manifest = manifest_for_stack("nextjs_ts")
+    brief = " ".join(
+        manifest_surface_fragments(CONTEXT_CONTRACTS["development.develop"], manifest)[
+            SURFACE_RESPONSE
+        ]
+    )
+    asserted: set[str] = set()
+    for f in emit_verification_scaffold(manifest).files:
+        for match in re.finditer(r"for \(const k of \[([^\]]+)\]\)", f["content"]):
+            asserted |= {token.strip().strip('"') for token in match.group(1).split(",")}
+    assert asserted, "no shell pinned any field — this test would pass vacuously"
+    missing = sorted(name for name in asserted if f"`{name}`" not in brief)
+    assert not missing, f"the shells assert {missing}, which the developer's brief never names"
+
+
+async def test_dev_response_section_renders_lines_and_gates_on_presence():
+    """A surface nothing renders into a prompt is a declaration, not a fact the agent
+    sees — the third failure this file exists to catch."""
+    from squadops.capabilities.handlers.cycle.develop import DevelopmentDevelopHandler
+
+    handler = DevelopmentDevelopHandler()
+    renderer = MagicMock()
+    renderer.render = AsyncMock(return_value=MagicMock(content="RESPONSE BLOCK"))
+
+    lines = ["`POST /runs` returns `RunEvent` — the response body carries `id`"]
+    out = await handler._response_surface_section(renderer, {"response_surface": lines})
+    assert out == "RESPONSE BLOCK"
+    renderer.render.assert_awaited_once_with(
+        "request.development_develop_response_surface_appendix",
+        {"response_lines": f"- {lines[0]}"},
+    )
+
+    renderer.render.reset_mock()
+    assert await handler._response_surface_section(renderer, {}) == ""
+    assert await handler._response_surface_section(renderer, {"response_surface": ["  "]}) == ""
+    renderer.render.assert_not_awaited()
+
+
+async def test_every_dev_surface_reaches_the_fill_only_prompt():
+    """The render half, generically — for all five dev surfaces, not just the newest.
+
+    Bug caught: a surface that is declared, derived, threaded onto the envelope, turned
+    into a section by its own handler method... and then never added to the template's
+    variables. Every step passes its own test and the agent still never sees the fact —
+    which is this file's whole subject, and a gap that existed for all four earlier
+    surfaces too (mutating the assignment away left the suite green).
+
+    Asserted on the variables the template is rendered with, because that dict is the
+    last point where a fact can be silently dropped.
+    """
+    from squadops.capabilities.context_assembly import (
+        CONTEXT_CONTRACTS as _CONTRACTS,
+    )
+    from squadops.capabilities.handlers.cycle.develop import DevelopmentDevelopHandler
+
+    handler = DevelopmentDevelopHandler()
+    handler._resolved_config = {"build_profile": "nextjs_ts"}
+    renderer = MagicMock()
+    renderer.render = AsyncMock(side_effect=lambda tid, v: MagicMock(content=f"[{tid}]"))
+
+    surfaces = _CONTRACTS["development.develop"].manifest_surfaces
+    inputs = {surface: [f"line for {surface}"] for surface in surfaces}
+    await handler._fill_only_section(renderer, inputs)
+
+    fill_call = next(
+        call for call in renderer.render.await_args_list if "fill_only_appendix" in call.args[0]
+    )
+    variables = fill_call.args[1]
+    missing = sorted(s for s in surfaces if s not in variables)
+    assert not missing, (
+        f"{missing} are declared on development.develop and rendered into a section, but "
+        f"never reach the fill-only template's variables — the agent never sees them"
+    )

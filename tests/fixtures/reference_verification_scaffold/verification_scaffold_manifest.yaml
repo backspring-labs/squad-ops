@@ -2,25 +2,25 @@
 # The frozen-spine record region enforcement verifies against; regenerate with
 # the generator, never hand-edit (a tampered record refuses to load).
 scaffold_manifest_version: 1
-generator_version: 6
+generator_version: 7
 stack: nextjs_ts
 interface_manifest_hash: ac1e7be378c54d5966680b85824c6f2c2e4d158eb8dec14d081209223e07053a
 criteria_pack: nextjs_ts
 expanded_tree_hash: 80e5632052b4c43ce881383bb4058b0531b0252ea688992f5d7102bb35c5f90f
-aggregate_spine_hash: 3b62a339ff2489f65285e0cc780c6fdf97cd794bbfafecf9f143621cae69b0d1
-scaffold_hash: 395a08bc5a78e2333d21c3af6b89981a9551558d191b3db1b87dc84b251ced00
+aggregate_spine_hash: 1ff59445d016f6d7385d713c5f31de7620fe3f065344db6a083bae7b1a0ab962
+scaffold_hash: 6fc46f50369bc9afd34e40607350b2464b74f79a6a8ef62772470037f5e98854
 files:
 - path: __tests__/scaffold/vc-probe-api-runs.scaffold.test.ts
-  content_hash: 9245b8442a684f32bfbb7605185a72274b13afa748eb02ccee80fbe559d21d31
-  spine_hash: 3e3d9877aca8db6fefdf3f17259f45caeebd6b1335d0edf2af54b3c4d2eeed14
+  content_hash: 0c2c8da6a591fc5f54ac1b4ac8b2b7917e2b7cc06466b6770ccb0b2c9e001907
+  spine_hash: 995902980ebbd9f4f9d111f3aab582686c707f1b2e22922b443a988f288df170
   slots:
   - slot_id: slot-vc-probe-api-runs
     behavior: POST /api/runs -> 201
     probe_id: vc-probe-api-runs
     criterion_ids:
     - vc-probe-api-runs
-    begin_line: 23
-    end_line: 27
+    begin_line: 29
+    end_line: 33
 - path: __tests__/scaffold/vc-probe-api-runs-rejects-blank.scaffold.test.ts
   content_hash: 314fe36bceec5d13df33d235a0e8495525f3bdd517fab214dffda82f29882958
   spine_hash: 5004d630e6996fe8b2d79265a1879515b8fedd88a1c9f6b9f66d2f021b0495d6
@@ -33,16 +33,16 @@ files:
     begin_line: 24
     end_line: 28
 - path: __tests__/scaffold/vc-probe-api-runs-join.scaffold.test.ts
-  content_hash: 14f4115aad1800f4a0950a14daf4531c266467722c5ba2d4d7ed959bad19e4a6
-  spine_hash: edbc25e16cbb7cde2a492d20d57df3f0fb1a17749db62ee56fb0ffe4bb8d7c60
+  content_hash: 003064c62efb9936881da29a9bd9910de3c69a9bfbfd748d18a11348b21ae062
+  spine_hash: 74e84ae1b981db9e1160cd092d6e19e0b43d1feaa643296af267e978ccf2fed2
   slots:
   - slot_id: slot-vc-probe-api-runs-join
     behavior: POST /api/runs/{run_id}/join -> 200
     probe_id: vc-probe-api-runs-join
     criterion_ids:
     - vc-probe-api-runs-join
-    begin_line: 33
-    end_line: 37
+    begin_line: 39
+    end_line: 43
 - path: __tests__/scaffold/vc-probe-api-runs-join-duplicate.scaffold.test.ts
   content_hash: 281e6a9c7ee7b276d40fbbc0a3c1948539be811e3de15a93c9b59e9ed150772e
   spine_hash: 817c40b5db71172d489dcc03fe8cf33cdf4e27c5749928f60b57ad1242d32cd1
@@ -55,36 +55,36 @@ files:
     begin_line: 42
     end_line: 46
 - path: __tests__/scaffold/vc-probe-api-runs-leave.scaffold.test.ts
-  content_hash: 84754c4f511e27029c5534f75e08a3f5d7113adf855c758ef57514d30a2dcda8
-  spine_hash: c391a7da2fd66226664154805762332d6cf1d4cb5795bc2047aaceeed53aa9b8
+  content_hash: 1b5e8d7bbb1a9da7e050fd8f56edf993835e553e3224bf372a9f1d8b15260ec7
+  spine_hash: 94125983b218e050bc39c32e833f23f485ef116235712e0acaaef843d804f0fe
   slots:
   - slot_id: slot-vc-probe-api-runs-leave
     behavior: POST /api/runs/{run_id}/leave -> 200
     probe_id: vc-probe-api-runs-leave
     criterion_ids:
     - vc-probe-api-runs-leave
-    begin_line: 42
-    end_line: 46
+    begin_line: 48
+    end_line: 52
 - path: __tests__/scaffold/vs-get-api-runs.scaffold.test.ts
-  content_hash: 9c53dcf9d5e6420b4ead5de51137697c3dc44414139ea2271a3c2a00b989e8e1
-  spine_hash: 5e18437d792a591693e99f11241e87d40449d355d0b937c47d144bf722e79b1f
+  content_hash: 007ab02bd501d28edfb55bdb7b3f632ccaec34ce14690520d4297bd2d499ad32
+  spine_hash: 77927daa169bf88f23f7a4ed6990e348eda44b6325035c688525fda4cea46f8d
   slots:
   - slot_id: slot-vs-get-api-runs
     behavior: GET /api/runs -> 200
     probe_id: ''
     criterion_ids: []
-    begin_line: 19
-    end_line: 23
+    begin_line: 26
+    end_line: 30
 - path: __tests__/scaffold/vs-get-api-runs-run-id.scaffold.test.ts
-  content_hash: 9ce0b15a8b63aa07167795da416c64ae9eae7d1ce4fa71f83dbfbd508ca9bf03
-  spine_hash: 71a16ae4d5cd0204146953f0d7206ca9daa8929ea4148b5f8e9fd7e4940e4222
+  content_hash: c7abcf41efd740359247118b382aa43f5fa416e82a752b023647eebf8d4eaea9
+  spine_hash: b3c5239c1fd9e4f505a2eda6d78d743f74c9f3cce50cac3de261bbdef412aceb
   slots:
   - slot_id: slot-vs-get-api-runs-run-id
     behavior: GET /api/runs/{run_id} -> 200
     probe_id: ''
     criterion_ids: []
-    begin_line: 29
-    end_line: 33
+    begin_line: 35
+    end_line: 39
 - path: __tests__/scaffold/vs-get-api-runs-run-id-not-found.scaffold.test.ts
   content_hash: 89e655f3b68564332e86bbac28839f4eb18f5156b62d002cdc2bafacada87ccb
   spine_hash: eb0ea3bfc46b9c9229487afd382ba6fd1a55a96f04d8bb3a306dd38a5929a8ed

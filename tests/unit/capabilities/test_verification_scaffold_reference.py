@@ -43,17 +43,20 @@ _FIXTURE_DIR = (
 # self-contained evidence that the input end did not move.
 _MANIFEST_HASH = "ac1e7be378c54d5966680b85824c6f2c2e4d158eb8dec14d081209223e07053a"
 
-# The fixture's own identity. Regenerated at GENERATOR_VERSION 6 (2026-08-21, #913 — the
-# frozen spine now asserts `body.error?.code` for behaviors whose contract pins a code:
-# the response-field path stops being fill residue, which is where rolls 2/3/13/17 died).
+# The fixture's own identity. Regenerated at GENERATOR_VERSION 7 (2026-08-22, #1029 — the
+# frozen spine now asserts the SUCCESS body's floor as well as the error envelope: the
+# declared-required fields of the responding entity are present, and a declared
+# collection's elements match their declared kind. #913 did this one status class over;
+# success bodies were where the last green roll spent its entire correction budget).
 #
-# Version 6 is the version-4 shape: the SHELLS changed, so the spine hash moves — and the
-# rejection/duplicate shells differ from their siblings, which is the pin discriminating
-# per-behavior emission, not merely reacting to any edit.
+# Version 7 is the version-6 shape: only the SHELLS changed, so the spine hash moves. The
+# rejection shell is the discriminator — a 4xx body is the envelope's business, so it takes
+# NO success floor, and its bytes are unchanged from version 6. A pin that moved every
+# shell equally would not show that the emission is per-behavior.
 #
 # These stop an in-place fixture regeneration from making the byte test self-referential.
-_AGGREGATE_SPINE_HASH = "3b62a339ff2489f65285e0cc780c6fdf97cd794bbfafecf9f143621cae69b0d1"
-_SCAFFOLD_HASH = "395a08bc5a78e2333d21c3af6b89981a9551558d191b3db1b87dc84b251ced00"
+_AGGREGATE_SPINE_HASH = "1ff59445d016f6d7385d713c5f31de7620fe3f065344db6a083bae7b1a0ab962"
+_SCAFFOLD_HASH = "6fc46f50369bc9afd34e40607350b2464b74f79a6a8ef62772470037f5e98854"
 
 
 @pytest.fixture(scope="module")
@@ -72,12 +75,12 @@ def test_the_reference_manifest_is_unmoved():
 def test_generator_version_is_the_fixture_generation(emission):
     """A generator change without a version bump is drift by definition (SIP §4.3);
     a bump without regenerating the fixture is a pin measuring the wrong version."""
-    assert GENERATOR_VERSION == 6
-    assert emission.manifest.generator_version == 6
+    assert GENERATOR_VERSION == 7
+    assert emission.manifest.generator_version == 7
     stored = yaml.safe_load(
         (_FIXTURE_DIR / "verification_scaffold_manifest.yaml").read_text(encoding="utf-8")
     )
-    assert stored["generator_version"] == 6
+    assert stored["generator_version"] == 7
 
 
 def test_emission_reproduces_the_fixture_byte_for_byte(emission):
