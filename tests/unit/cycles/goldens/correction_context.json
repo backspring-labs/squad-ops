@@ -18,6 +18,7 @@
       "art_routes",
       "delta_000000000000"
      ],
+     "correction_attempt": 1,
      "correction_decision": {
       "affected_task_types": [
        "development.develop"
@@ -67,6 +68,7 @@
        "summary": "1/2 checks passed"
       }
      },
+     "max_correction_attempts": 3,
      "prd": "PRD-CONTENT",
      "prior_outputs": {
       "dev": {
@@ -102,6 +104,7 @@
       "art_routes",
       "delta_000000000000"
      ],
+     "correction_attempt": 1,
      "correction_decision": {
       "affected_task_types": [
        "development.develop"
@@ -187,6 +190,7 @@
       "- `frontend/src/api.js` \u2014 classes `ApiError(code, message, status)`; functions `apiFetch(path, options = {})`",
       "- `frontend/src/App.jsx` \u2014 its own imports `./views/CreateRunView.jsx`, `./views/RunDetailView.jsx`, `./views/RunsListView.jsx`, `react-router-dom`"
      ],
+     "max_correction_attempts": 3,
      "prd": "PRD-CONTENT",
      "prior_outputs": {
       "dev": {
@@ -224,6 +228,7 @@
       "art_routes",
       "delta_000000000000"
      ],
+     "correction_attempt": 1,
      "correction_decision": {
       "affected_task_types": [
        "development.develop"
@@ -296,6 +301,7 @@
       "- `frontend/src/api.js` \u2014 classes `ApiError(code, message, status)`; functions `apiFetch(path, options = {})`",
       "- `frontend/src/App.jsx` \u2014 its own imports `./views/CreateRunView.jsx`, `./views/RunDetailView.jsx`, `./views/RunsListView.jsx`, `react-router-dom`"
      ],
+     "max_correction_attempts": 3,
      "prd": "PRD-CONTENT",
      "prior_outputs": {
       "dev": {

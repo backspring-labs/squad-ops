@@ -1,6 +1,6 @@
 ---
 template_id: request.cycle_repair_task
-version: "3"
+version: "4"
 required_variables:
   - prd
   - role
@@ -17,6 +17,7 @@ optional_variables:
   - contract_expectations
   - dom_anchor_section
   - frozen_surface_section
+  - loop_state
 ---
 ## Repair Task
 
@@ -37,6 +38,20 @@ Focus: {{subtask_focus}}
 The repair MUST produce the following file(s) by name, using fenced code blocks in the format ` ```language:path/to/file ` so the framework can extract them:
 
 {{expected_artifacts}}
+
+**This is a repair, not a rewrite.** Change the minimum necessary to fix the named failure.
+The file list above is the set you may emit — it is not a list of things that need changing.
+A file you are not fixing must be re-emitted byte-identical to what is already in the
+workspace.
+
+Unrelated changes are how a repair round is lost. Reshaping a response, rewording an error
+string, or refactoring validation while fixing something else introduces new failures that
+the retest attributes to this round, and the round is spent without the original defect
+being resolved. If you believe a change beyond the named failure is required, say why in one
+line rather than making it silently.
+
+Test files are qa-owned: do not emit them. Any test file in your output is discarded.
+{{loop_state}}
 
 ### Acceptance Criteria (narrative)
 

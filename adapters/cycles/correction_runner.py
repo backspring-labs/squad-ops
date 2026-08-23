@@ -1358,6 +1358,13 @@ class CorrectionRunner:
                     "subtask_description": repair_description,
                     "expected_artifacts": step_expected_artifacts,
                     "acceptance_criteria": failed_inputs.get("acceptance_criteria", []),
+                    # #1015 part C: the loop's position. Both values were already here
+                    # and simply never crossed into the prompt, so the repair author
+                    # could not tell round 1 from round 3 or know the budget was finite.
+                    "correction_attempt": correction_attempts + 1,
+                    "max_correction_attempts": int(
+                        cycle.resolved_config().get("max_correction_attempts", 3)
+                    ),
                 }
                 # #667: fay-14's first fill complied with the manifest
                 # convention and every repair regenerated the view blind,

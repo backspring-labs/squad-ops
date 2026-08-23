@@ -25,6 +25,7 @@ cycle whose initial dev output was correct (diagnostic ``cyc_831dfe6ac551``).
 from __future__ import annotations
 
 import ast
+import pathlib
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -38,6 +39,37 @@ _DEVELOP = _REPO / "src/squadops/capabilities/handlers/cycle/develop.py"
 
 #: The stack-#1 asset. Nothing may render it by name — it belongs to a capability.
 _HARDCODED = "request.development_develop_fill_only_appendix"
+
+
+#: The managed request-template directory, for asserting on shipped prompt bytes.
+_TEMPLATE_DIR = (
+    pathlib.Path(__file__).resolve().parents[3]
+    / "src"
+    / "squadops"
+    / "prompts"
+    / "request_templates"
+)
+
+
+def _repair_handler_instance():
+    """An instance — distinct from `_dev_repair_handler` below, which returns the CLASS
+    for `_rendered_template_ids`. Two helpers, two shapes; naming them apart is what
+    stops the next reader silently getting an unbound method."""
+    from squadops.capabilities.handlers.impl.repair_handlers import (
+        DevelopmentCorrectionRepairHandler,
+    )
+
+    return DevelopmentCorrectionRepairHandler()
+
+
+def _renderer_context():
+    from unittest.mock import AsyncMock, MagicMock
+
+    context = MagicMock()
+    renderer = MagicMock()
+    renderer.render = AsyncMock(return_value=MagicMock(content="LOOP STATE"))
+    context.ports.request_renderer = renderer
+    return context, renderer
 
 
 def _rendered_template_ids(handler_cls, resolved_config: dict) -> list[str]:
@@ -186,3 +218,111 @@ def test_both_paths_resolve_the_template_the_same_way():
         assert "capability.fill_only_template" in source, (
             f"{path.name} no longer renders the capability's own template"
         )
+
+
+# --- #1015 parts B/C: minimality, and a repair that can see the loop ---------------
+
+
+class TestRepairMinimalityAndLoopState:
+    """#1015: the repair template mandated broad re-emission and hid the loop.
+
+    V38 slot 6 round 0: the analyzer implicated ONE file and the lead prescribed a
+    one-line patch; the repair nevertheless received seven files under "MUST produce
+    the following file(s) by name", and the dev delivered an 18,756-token 8-file
+    rewrite whose gratuitous changes left the retest red and spent the round.
+    """
+
+    def test_the_template_states_minimality_and_the_ownership_rule(self):
+        """Bug caught: the only focus-shaped constraint in the template was the
+        fill-only section, which guards scaffold-owned *interface* — not change size
+        within files the repair legitimately owns. Nothing said 'do not rewrite'."""
+        body = (_TEMPLATE_DIR / "request.cycle_repair_task.md").read_text()
+        assert "This is a repair, not a rewrite" in body
+        assert "byte-identical" in body
+        assert "Test files are qa-owned" in body
+        assert "{{loop_state}}" in body
+
+    async def test_the_loop_state_renders_the_position_from_threaded_numbers(self):
+        handler = _repair_handler_instance()
+        context, renderer = _renderer_context()
+        out = await handler._render_loop_state_section(
+            context, {"correction_attempt": 1, "max_correction_attempts": 3}
+        )
+        assert out
+        template_id, variables = renderer.render.await_args.args
+        assert template_id == "request.cycle_repair_loop_state"
+        assert variables["attempt"] == "1"
+        assert variables["max_attempts"] == "3"
+        assert "persistence_note" not in variables
+
+    async def test_rounds_after_the_first_carry_the_persistence_note(self):
+        """#864's shape: the repair diagnoses accurately and re-emits the same change.
+        A round rendering only the fresh failure gives no signal that this approach was
+        already tried — so round 2+ has to say the failure survived a repair."""
+        handler = _repair_handler_instance()
+        context, renderer = _renderer_context()
+        await handler._render_loop_state_section(
+            context, {"correction_attempt": 2, "max_correction_attempts": 3}
+        )
+        note = renderer.render.await_args.args[1]["persistence_note"]
+        assert "already survived at least one repair" in note
+
+    @pytest.mark.parametrize(
+        "inputs",
+        [
+            {},
+            {"correction_attempt": 1},
+            {"max_correction_attempts": 3},
+            {"correction_attempt": "1", "max_correction_attempts": "3"},
+        ],
+    )
+    async def test_an_unthreaded_or_malformed_counter_renders_nothing(self, inputs):
+        """Author-mode and legacy paths thread no counter. Rendering 'attempt None of
+        None' would be worse than silence, and a string that looks numeric must not
+        slip through into the prompt as one."""
+        handler = _repair_handler_instance()
+        context, renderer = _renderer_context()
+        assert await handler._render_loop_state_section(context, inputs) == ""
+        renderer.render.assert_not_awaited()
+
+    async def test_the_rendered_section_reaches_the_template_variables(self):
+        """The transport step, asserted where a fact can still be silently dropped.
+
+        Bug caught: the section is rendered by `handle()` and then simply not added to
+        the dict the template is rendered with. Every other step passes its own test
+        and the repair author sees nothing — the same gap #1040 found across all five
+        dev surfaces, in the other handler.
+        """
+        handler = _repair_handler_instance()
+        variables = handler._build_render_variables(
+            "prd", None, {"loop_state_section": "LOOP STATE", "failed_task_type": "qa.test"}
+        )
+        assert variables["loop_state"] == "LOOP STATE"
+
+    async def test_handle_injects_the_section_it_rendered(self, monkeypatch):
+        """The step before that one: `handle()` renders the block and must put it on
+        `inputs` under the key `_build_render_variables` reads. Patching the BASE
+        handler, not the mixin — the mixin's `handle` is the method under test, and
+        replacing it is how the first version of this test passed vacuously."""
+        from squadops.capabilities.handlers.cycle.base import _CycleTaskHandler
+
+        handler = _repair_handler_instance()
+        context, _renderer = _renderer_context()
+        captured: dict = {}
+
+        async def _base_handle(_self, _ctx, inputs):
+            captured.update(inputs)
+            return "handled"
+
+        monkeypatch.setattr(_CycleTaskHandler, "handle", _base_handle, raising=True)
+        handler._resolved_config = {}
+        await handler.handle(
+            context,
+            {
+                "correction_attempt": 2,
+                "max_correction_attempts": 3,
+                "failed_task_type": "qa.test",
+                "resolved_config": {},
+            },
+        )
+        assert captured.get("loop_state_section") == "LOOP STATE"

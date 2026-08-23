@@ -222,6 +222,13 @@ class _RepairPromptMixin:
             # surface), rendered in handle() for qa repairs; dev repairs receive the
             # same block inside fill_only_section. "" when no surface was threaded.
             "frozen_surface_section": str(inputs.get("frozen_surface_section") or ""),
+            # #1015 part C: the repair could not see the loop. No attempt counter, no
+            # statement that rounds are finite — each round rendered only the fresh
+            # failure, so a dev with no reason to think anything was running out
+            # re-emitted the same approach. V38 slot 4 rounds 1-2 and slot 6 round 1
+            # are the samples. Rendered in handle(); "" when the executor threaded no
+            # counter (author-mode and legacy paths render byte-identically).
+            "loop_state": str(inputs.get("loop_state_section") or ""),
         }
 
     async def handle(
@@ -252,7 +259,40 @@ class _RepairPromptMixin:
         frozen = await self._render_qa_frozen_surface_section(context, inputs)
         if frozen:
             inputs = {**inputs, "frozen_surface_section": frozen}
+        loop_state = await self._render_loop_state_section(context, inputs)
+        if loop_state:
+            inputs = {**inputs, "loop_state_section": loop_state}
         return await super().handle(context, inputs)
+
+    async def _render_loop_state_section(
+        self, context: ExecutionContext, inputs: dict[str, Any]
+    ) -> str:
+        """The correction loop's position, or "" (#1015 part C).
+
+        Data only — the prose lives in the managed asset (CLAUDE.md #448). Both numbers
+        already exist at the dispatch site; they simply never reached the prompt.
+
+        Rounds after the first also carry an explicit persistence note. The observed
+        failure is a repair that re-emits the same approach against the same failure
+        (#864: "diagnoses accurately, then re-emits it — twice"), and a round that
+        renders only the fresh failure gives the author no signal that the previous
+        attempt was already tried and did not work.
+        """
+        attempt = inputs.get("correction_attempt")
+        max_attempts = inputs.get("max_correction_attempts")
+        renderer = getattr(getattr(context, "ports", None), "request_renderer", None)
+        if renderer is None or not isinstance(attempt, int) or not isinstance(max_attempts, int):
+            return ""
+        variables = {"attempt": str(attempt), "max_attempts": str(max_attempts)}
+        if attempt > 1:
+            variables["persistence_note"] = (
+                "\nThe failure has already survived at least one repair. Re-emitting the "
+                "same change will spend this round the same way — reconsider the approach "
+                "before producing the files, and if the previous diagnosis looks right but "
+                "the fix did not take, say so rather than repeating it."
+            )
+        rendered = await renderer.render("request.cycle_repair_loop_state", variables)
+        return rendered.content
 
     async def _render_contract_expectations_section(
         self, context: ExecutionContext, inputs: dict[str, Any]
