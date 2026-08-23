@@ -1,20 +1,28 @@
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-  <!-- Squad Ops favicon.
-       Tile colour: the site's indigo, not black. Safari appears to add a light
-       backing plate to favicons it judges too low-contrast against a dark tab
-       strip — in a sampled tab bar, every dark icon carried a plate while every
-       colourful or light one (including GitHub's transparent white octocat)
-       rendered clean. A near-black tile on a near-black strip is the worst case;
-       colour clears that threshold while keeping the rounded tile.
-       Mark scale 0.82 leaves 12% edge padding, inside the 10% floor a maskable
-       icon needs while staying as large as possible at 16px. A maskable app
-       icon, if ever wanted, is a separate asset at heavier padding. -->
-  <rect width="24" height="24" rx="5" fill="#4f46e5"/>
-  <g transform="translate(12,12) scale(0.82) translate(-12,-12)">
+  <!-- Squad Ops favicon. Transparent, with the mark drawn twice: a wider dark
+       copy underneath and the white mark on top, giving a 0.5-unit halo.
+
+       No tile, by necessity. Safari draws a white plate behind any FULLY OPAQUE
+       favicon and leaves transparent ones alone — evidenced in a sampled tab
+       bar (transparent asterisk, star and octocat render clean; every opaque
+       icon carries a plate, invisible only where the icon is itself white) and
+       confirmed by test: black tile plated, indigo tile plated, transparent did
+       not. No tile colour avoids it.
+
+       The halo is what lets a white mark survive a LIGHT tab strip, which a
+       plain white mark does not. It costs ~45% on the stroke footprint, checked
+       at 16px before choosing 0.5 over 0.9. Preferred over a coloured mark or a
+       prefers-color-scheme variant: it keeps the white-on-dark look while
+       needing no conditional, and conditional colour handling in tab chrome is
+       what started this thread. -->
+  <path d="M4.30 8.89 A8.3 8.3 0 0 1 19.70 8.89" fill="none" stroke="#0d1117" stroke-width="3.20" stroke-linecap="round"/>
+  <path d="M19.70 15.11 A8.3 8.3 0 0 1 4.30 15.11" fill="none" stroke="#0d1117" stroke-width="3.20" stroke-linecap="round"/>
+  <path d="M22.01 7.95 L20.12 10.27 L17.38 9.83" fill="none" stroke="#0d1117" stroke-width="3.20" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M1.99 16.05 L3.88 13.73 L6.62 14.17" fill="none" stroke="#0d1117" stroke-width="3.20" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M10.05 8.90 15.25 12.00 10.05 15.10Z" fill="#0d1117" stroke="#0d1117" stroke-width="2.50" stroke-linejoin="round"/>
   <path d="M4.30 8.89 A8.3 8.3 0 0 1 19.70 8.89" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
   <path d="M19.70 15.11 A8.3 8.3 0 0 1 4.30 15.11" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
   <path d="M22.01 7.95 L20.12 10.27 L17.38 9.83" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
   <path d="M1.99 16.05 L3.88 13.73 L6.62 14.17" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
   <path d="M10.05 8.90 15.25 12.00 10.05 15.10Z" fill="#ffffff" stroke="#ffffff" stroke-width="1.5" stroke-linejoin="round"/>
-  </g>
 </svg>
