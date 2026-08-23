@@ -156,32 +156,52 @@ def response_surface_instructions(manifest: InterfaceManifest | None) -> list[st
     the gate gets stricter while the author it judges still cannot see the target. This
     is the half that lets the app be right the first time.
 
+    The line also carries the endpoint's declared ``success_status`` (#1042). That fact
+    had exactly one surviving channel to a Next.js implementer — a sentence in plan prose
+    that some author had to remember to write. The skeleton writes it as a TODO comment
+    *inside the fill body*, which the fill replaces (``stack_nextjs_ts.py``), and
+    ``development.develop`` binds no behavioral surface, so nothing else carried it.
+    V38 slot 6 shipped 200 against a declared 201, and ``cyc_e3912098c0cf`` was rejected
+    at the plan gate for the same omission on the same endpoint kind. Same class as the
+    body floor above, one field over: derived and threaded beats remembered and restated.
+
+    A status is rendered only when the manifest DECLARES one. An endpoint that leaves it
+    unset takes the framework default, and which default that should be is the open
+    question in #772 — stating one here would be this module taking a position on it by
+    side effect.
+
     Data only — the prose lives in the appendix asset (CLAUDE.md #448). Empty for a
-    manifest whose endpoints declare no resolvable response, which contributes no
-    section at all rather than an empty heading.
+    manifest whose endpoints declare neither a resolvable response nor a status, which
+    contributes no section at all rather than an empty heading.
     """
     if manifest is None:
         return []
     lines: list[str] = []
     for endpoint in manifest.api.endpoints:
         shape = derive_response_shape(manifest, endpoint.response)
-        if not shape:
-            continue
-        subject = "each element of the array" if shape.is_collection else "the response body"
+        status = endpoint.success_status
         clauses = []
-        if shape.required_fields:
-            fields = ", ".join(f"`{name}`" for name in shape.required_fields)
-            clauses.append(f"{subject} carries {fields}")
-        for element in shape.elements:
-            if element.typeof:
-                clauses.append(f"`{element.field}` is an array of {element.typeof}s")
-            else:
-                required = ", ".join(f"`{name}`" for name in element.required_fields)
-                clauses.append(f"each `{element.field}` element carries {required}")
+        if shape:
+            subject = "each element of the array" if shape.is_collection else "the response body"
+            if shape.required_fields:
+                fields = ", ".join(f"`{name}`" for name in shape.required_fields)
+                clauses.append(f"{subject} carries {fields}")
+            for element in shape.elements:
+                if element.typeof:
+                    clauses.append(f"`{element.field}` is an array of {element.typeof}s")
+                else:
+                    required = ", ".join(f"`{name}`" for name in element.required_fields)
+                    clauses.append(f"each `{element.field}` element carries {required}")
+        if not clauses and status is None:
+            continue
+        # Status first: it is the fact an implementer acts on before it composes a body,
+        # and the one that shipped wrong while the body was right.
+        returns = f"HTTP {status}" if status is not None else ""
+        if shape:
+            body = f"{'a list of ' if shape.is_collection else ''}`{shape.entity}`"
+            returns = f"{returns} with {body}" if returns else body
+        line = f"`{endpoint.method.upper()} {endpoint.path}` returns {returns}"
         if clauses:
-            lines.append(
-                f"`{endpoint.method.upper()} {endpoint.path}` returns "
-                f"{'a list of ' if shape.is_collection else ''}`{shape.entity}` — "
-                + "; ".join(clauses)
-            )
+            line += " — " + "; ".join(clauses)
+        lines.append(line)
     return lines
