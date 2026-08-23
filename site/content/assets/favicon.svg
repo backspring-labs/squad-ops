@@ -1,20 +1,25 @@
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-  <!-- Squad Ops favicon. No tile, by necessity.
+  <!-- Squad Ops favicon. Transparent, with the mark drawn twice: a wider dark
+       copy underneath and the white mark on top, giving a 0.5-unit halo.
 
-       Safari draws a white plate behind any FULLY OPAQUE favicon and leaves
-       transparent ones alone. Evidence from a sampled tab bar: the transparent
-       icons (an orange asterisk, a blue star, GitHub's octocat) render clean,
-       while every opaque one carries a plate — invisible on the sites whose
-       icon is itself white, obvious on ours. Confirmed by testing: a black tile
-       plated, an indigo tile plated, transparent did not. No tile colour can
-       avoid it, so the tile had to go.
+       No tile, by necessity. Safari draws a white plate behind any FULLY OPAQUE
+       favicon and leaves transparent ones alone — evidenced in a sampled tab
+       bar (transparent asterisk, star and octocat render clean; every opaque
+       icon carries a plate, invisible only where the icon is itself white) and
+       confirmed by test: black tile plated, indigo tile plated, transparent did
+       not. No tile colour avoids it.
 
-       The mark is white, which suits a dark tab strip. On a LIGHT strip it
-       becomes invisible. Accepted deliberately (owner, 2026-08-23) rather than
-       using a prefers-color-scheme variant, whose handling in tab chrome is the
-       inconsistency that started this. If light-mode support is ever wanted,
-       colour the mark instead of making it conditional — a coloured mark is
-       visible on both, which is what the asterisk and star icons do. -->
+       The halo is what lets a white mark survive a LIGHT tab strip, which a
+       plain white mark does not. It costs ~45% on the stroke footprint, checked
+       at 16px before choosing 0.5 over 0.9. Preferred over a coloured mark or a
+       prefers-color-scheme variant: it keeps the white-on-dark look while
+       needing no conditional, and conditional colour handling in tab chrome is
+       what started this thread. -->
+  <path d="M4.30 8.89 A8.3 8.3 0 0 1 19.70 8.89" fill="none" stroke="#0d1117" stroke-width="3.20" stroke-linecap="round"/>
+  <path d="M19.70 15.11 A8.3 8.3 0 0 1 4.30 15.11" fill="none" stroke="#0d1117" stroke-width="3.20" stroke-linecap="round"/>
+  <path d="M22.01 7.95 L20.12 10.27 L17.38 9.83" fill="none" stroke="#0d1117" stroke-width="3.20" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M1.99 16.05 L3.88 13.73 L6.62 14.17" fill="none" stroke="#0d1117" stroke-width="3.20" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M10.05 8.90 15.25 12.00 10.05 15.10Z" fill="#0d1117" stroke="#0d1117" stroke-width="2.50" stroke-linejoin="round"/>
   <path d="M4.30 8.89 A8.3 8.3 0 0 1 19.70 8.89" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
   <path d="M19.70 15.11 A8.3 8.3 0 0 1 4.30 15.11" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
   <path d="M22.01 7.95 L20.12 10.27 L17.38 9.83" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
