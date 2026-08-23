@@ -177,12 +177,24 @@ def validate_manifest_plan_consistency(
                 f"will enforce success {enforced} "
                 f"({'declared' if ep.success_status is not None else 'derived default'}) "
                 f'but the plan states {sorted(tokens)} — "{ln[:120]}". The implementer '
-                f"builds the plan; the contract judges the manifest. Align them."
+                f"builds the plan; the contract judges the manifest. REMOVE the status "
+                f"from the plan: the developer's brief already carries the derived "
+                f"status, so the plan restating it adds only the chance of this "
+                f"disagreement (#1070)."
             )
 
-        # Completeness: an enforced non-200 success is exactly the fact the dev
-        # will not default to — slot 6's roll died on it. It must be STATED in
-        # the plan's prose near the endpoint, or the implementer never sees it.
+        # Completeness: an enforced non-200 success is exactly the fact the dev will
+        # not default to — slot 6's roll died on it. It must be STATED in the plan's
+        # prose near the endpoint, or the implementer never sees it.
+        #
+        # #1070 part A: the plan-authoring rule now tells authors NOT to state statuses,
+        # which reads as a contradiction with this check and is not one. This fires only
+        # where `status_reaches_implementer` is false — a stack whose skeleton does not
+        # pin the status AND whose dev capability renders no appendix — and there prose
+        # genuinely is the sole carrier, so the specific instruction in this finding
+        # correctly overrides the general rule. No REGISTERED stack reaches it today
+        # (fastapi pins structurally, nextjs carries the appendix); it is here for the
+        # third stack, and its message states what to do.
         if enforced != 200 and not stated_anywhere and not status_reaches_implementer:
             already_contradicted = any(f"on {ep.method} {ep.path}:" in e for e in errors)
             if not already_contradicted:

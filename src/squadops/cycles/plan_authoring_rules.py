@@ -40,10 +40,14 @@ AUTHOR_FACING: dict[str, str] = {
     # under-covered floor is an authorable — and authored (roll 15) — defect.
     "validate_builder_floor": "builder-floor-coverage",
     # #1013: the plan's prose must agree with the manifest on enforced success
-    # statuses, and must STATE a non-200 status where the stack's skeleton does
-    # not pin it — the two framing-internal species that cost V38 counted rolls
-    # (roll 1's 201-vs-200 contradiction; slot 6's manifest-only 201).
-    "validate_manifest_plan_consistency": "statuses-must-agree-with-the-manifest",
+    # statuses. #1070 part A: the rule no longer asks the author to STATE a status.
+    # It did, because plan prose was once the only channel carrying a declared status
+    # to the implementer — and #1042/#1063 replaced that with derivation, which #1049
+    # already recognised by making the omission check conditional. What was left was an
+    # instruction to write a second copy of a derived fact, and the only thing a second
+    # copy can add is a disagreement: `cyc_79eebcb82205` was rejected TWICE, on two
+    # differently-named endpoints, for exactly that.
+    "validate_manifest_plan_consistency": "do-not-restate-success-statuses",
 }
 
 # Validators an author is already taught by a different managed asset. Restating them

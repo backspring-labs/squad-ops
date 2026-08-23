@@ -244,3 +244,58 @@ class TestPathBinding:
             ]
         )
         assert validate_manifest_plan_consistency(manifest, plan) == []
+
+
+class TestPlanShouldNotRestateStatuses:
+    """#1070 part A: the plan's copy of the status is redundant and can still contradict.
+
+    Plan prose carried the status because it was once the only channel to the
+    implementer. #1042 and #1063 replaced that by derivation, and #1049 already made the
+    omission check conditional on a channel existing. What was left was an authoring rule
+    instructing the author to write a second copy of a derived fact — and the only thing
+    a second copy can add is a disagreement. `cyc_79eebcb82205` was rejected TWICE, on two
+    differently-named endpoints, for exactly that.
+    """
+
+    def test_the_contradiction_tells_the_author_to_remove_it_not_to_align(self):
+        """Bug caught: advice that perpetuates the copy. "Align them" asks the author to
+        keep two sources in step; the fact is derived and delivered, so the correct move
+        is to delete the restatement — there is nothing to keep in step with."""
+        manifest = _manifest(JOIN_201)
+        plan = _plan(
+            [
+                "POST /api/runs returns 201 with the created run.",
+                "POST /api/runs/{run_id}/join returns 200 once the participant is added.",
+            ]
+        )
+        (error,) = validate_manifest_plan_consistency(manifest, plan)
+        assert "REMOVE the status from the plan" in error
+        assert "Align them" not in error
+
+    def test_a_plan_that_states_no_status_is_clean(self):
+        """The shape the rule now asks for: behaviour, not codes. This must pass without
+        an omission finding on a stack whose brief carries the status."""
+        manifest = _manifest(JOIN_201)
+        plan = _plan(
+            [
+                "POST /api/runs creates a run and returns it.",
+                "POST /api/runs/{run_id}/join adds the participant and returns the run.",
+            ]
+        )
+        assert validate_manifest_plan_consistency(manifest, plan) == []
+
+    def test_an_agreeing_restatement_is_still_tolerated(self):
+        """Redundant is not wrong. Rejecting a plan for stating the RIGHT status would
+        punish authors mid-migration and add a rejection where there is no disagreement."""
+        manifest = _manifest(JOIN_201)
+        plan = _plan(["POST /api/runs/{run_id}/join returns 201 with the updated run."])
+        assert validate_manifest_plan_consistency(manifest, plan) == []
+
+    def test_a_channel_less_stack_still_demands_the_statement(self):
+        """The deliberate exception, and why the rule and this check are not in conflict:
+        where NEITHER the skeleton nor the brief carries the status, prose is genuinely
+        the only carrier and the specific finding overrides the general rule."""
+        manifest = _manifest(JOIN_201, stack="no_such_stack")
+        plan = _plan(["POST /api/runs/{run_id}/join adds the participant."])
+        errors = validate_manifest_plan_consistency(manifest, plan)
+        assert any("omission on POST /api/runs/{run_id}/join:" in e for e in errors)
