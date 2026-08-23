@@ -34,6 +34,7 @@ from squadops.cycles.manifest_gates import (
     PROOF_SOURCE_PRD,
     PROOF_STACK_MATCHES_CONFIG,
     PROOF_STATUS_DECLARED,
+    PROOF_STATUS_WARRANTED,
     PROOF_TESTID_COVERAGE,
 )
 
@@ -47,6 +48,11 @@ AUTHOR_FACING: dict[str, tuple[str, ...]] = {
     PROOF_EXPANDS: ("paths-under-scaffold-roots",),
     PROOF_TESTID_COVERAGE: ("every-view-declares-anchors",),
     PROOF_STATUS_DECLARED: ("declare-the-success-status",),
+    # #1067: the sibling of the rule above, and the one that removes the recurrence
+    # rather than gating it. The status is authored in three places and derivable in
+    # one; teaching the author to override it deliberately — or not at all — is what
+    # collapses the copies.
+    PROOF_STATUS_WARRANTED: ("warrant-a-status-that-breaks-convention",),
     # #795: the envelope is blueprint-owned; a declared shape rooted anywhere but
     # `error` describes a body no response will carry (V4 declared FastAPI's default).
     PROOF_ERROR_SHAPE: ("error-shape-is-the-blueprints",),
