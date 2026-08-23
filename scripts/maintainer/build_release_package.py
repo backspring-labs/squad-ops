@@ -59,13 +59,24 @@ def merged_prs(previous: str | None, tag: str) -> list[dict]:
     prs: list[dict] = []
     for number in numbers:
         raw = run(
-            "gh", "pr", "view", number,
-            "--json", "number,title,author,labels,body,mergedAt",
+            "gh",
+            "pr",
+            "view",
+            number,
+            "--json",
+            "number,title,author,labels,body,mergedAt",
             check=False,
         )
         if not raw:
-            prs.append({"number": int(number), "title": "(unavailable)", "author": "",
-                        "labels": [], "closes": []})
+            prs.append(
+                {
+                    "number": int(number),
+                    "title": "(unavailable)",
+                    "author": "",
+                    "labels": [],
+                    "closes": [],
+                }
+            )
             continue
         data = json.loads(raw)
         prs.append(
@@ -73,7 +84,7 @@ def merged_prs(previous: str | None, tag: str) -> list[dict]:
                 "number": data["number"],
                 "title": data["title"],
                 "author": (data.get("author") or {}).get("login", ""),
-                "labels": [l["name"] for l in data.get("labels", [])],
+                "labels": [label["name"] for label in data.get("labels", [])],
                 "closes": sorted({int(n) for n in CLOSES.findall(data.get("body") or "")}),
                 "merged_at": (data.get("mergedAt") or "")[:10],
             }
@@ -131,8 +142,13 @@ def cycle_evidence(cycle_ids: list[str], api: str) -> list[dict]:
         try:
             data = json.loads(raw)
         except (json.JSONDecodeError, TypeError):
-            evidence.append({"cycle_id": cycle_id, "captured": False,
-                             "reason": f"runtime API at {api} did not answer at capture time"})
+            evidence.append(
+                {
+                    "cycle_id": cycle_id,
+                    "captured": False,
+                    "reason": f"runtime API at {api} did not answer at capture time",
+                }
+            )
             continue
         outcome = data.get("outcome") or {}
         evidence.append(
@@ -206,8 +222,12 @@ def render(version: str, tag: str, package: dict) -> str:
             out.append(f"### `{cycle['cycle_id']}`")
             out.append("")
             if not cycle.get("captured"):
-                out += [f"!!! warning \"Not captured\"", "",
-                        f"    {cycle.get('reason', 'no evidence recorded')}", ""]
+                out += [
+                    '!!! warning "Not captured"',
+                    "",
+                    f"    {cycle.get('reason', 'no evidence recorded')}",
+                    "",
+                ]
                 continue
             out += [
                 f"**Verdict:** `{cycle.get('verdict')}` · **Runs:** {cycle.get('run_count')}",
@@ -235,11 +255,16 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("version", help="release version, e.g. 1.6.1")
     parser.add_argument("--previous", help="previous tag (auto-detected if omitted)")
-    parser.add_argument("--cycle", action="append", default=[],
-                        help="cycle id representing this release; repeatable")
+    parser.add_argument(
+        "--cycle",
+        action="append",
+        default=[],
+        help="cycle id representing this release; repeatable",
+    )
     parser.add_argument("--api", default="http://localhost:8001", help="runtime API base URL")
-    parser.add_argument("--write", action="store_true",
-                        help="write the package; default is a preview to stdout")
+    parser.add_argument(
+        "--write", action="store_true", help="write the package; default is a preview to stdout"
+    )
     args = parser.parse_args()
 
     version = args.version.lstrip("v")
@@ -248,8 +273,9 @@ def main() -> int:
     target = RELEASES / tag
 
     assets = target / "assets"
-    screenshots = sorted(p.name for p in assets.glob("*")
-                         if p.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"})
+    screenshots = sorted(
+        p.name for p in assets.glob("*") if p.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}
+    )
 
     package = {
         "version": version,
@@ -269,8 +295,10 @@ def main() -> int:
     if not args.write:
         print(f"--- preview: {tag} ({previous or 'initial'}..{tag}) ---\n")
         print(page)
-        print(f"\n--- {len(package['pull_requests'])} PRs, {len(package['sip_moves'])} SIP moves, "
-              f"{len(package['cycles'])} cycles, {len(screenshots)} screenshots ---")
+        print(
+            f"\n--- {len(package['pull_requests'])} PRs, {len(package['sip_moves'])} SIP moves, "
+            f"{len(package['cycles'])} cycles, {len(screenshots)} screenshots ---"
+        )
         print("re-run with --write to commit the package")
         return 0
 
@@ -278,6 +306,7 @@ def main() -> int:
     assets.mkdir(exist_ok=True)
     (target / "index.md").write_text(page, encoding="utf-8")
     import yaml
+
     (target / "package.yaml").write_text(
         yaml.safe_dump(package, sort_keys=False, allow_unicode=True), encoding="utf-8"
     )

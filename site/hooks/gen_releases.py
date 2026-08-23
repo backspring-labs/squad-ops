@@ -69,7 +69,7 @@ for pkg in packages:
     )
 lines += [
     "",
-    "!!! note \"Why cycle evidence is thin on older releases\"",
+    '!!! note "Why cycle evidence is thin on older releases"',
     "",
     "    A release package is captured at the cut, not reconstructed afterwards — the",
     "    verification evidence lives in a running system and is gone once the deploy",

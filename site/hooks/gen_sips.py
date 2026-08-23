@@ -117,8 +117,13 @@ for status, blurb in STATUSES.items():
     group = [s for s in sips if s["status"] == status]
     if not group:
         continue
-    group.sort(key=lambda s: (0, f"{int(s['number']):04d}") if str(s["number"]).isdigit()
-               else (1, s["title"].lower()))
+    group.sort(
+        key=lambda s: (
+            (0, f"{int(s['number']):04d}")
+            if str(s["number"]).isdigit()
+            else (1, s["title"].lower())
+        )
+    )
     lines += [
         f"## {status.title()} ({len(group)})",
         "",
