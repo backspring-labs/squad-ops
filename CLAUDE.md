@@ -237,7 +237,7 @@ procedure costs: six consecutive releases tagged but never advertised.
 | 4 | ROADMAP timeline entry |
 | 5 | SIP promotion sweep — promote what is genuinely implemented; a phased or umbrella SIP with open children stays `accepted`, with the gap named |
 | 6 | `git tag vX.Y.Z && git push origin vX.Y.Z` — the Release publishes itself from the CHANGELOG section (`.github/workflows/release.yml`, #1061) |
-| 7 | **Capture the release package** — `python scripts/maintainer/build_release_package.py <version> --write --cycle <shakedown-cycle-id>`, commit `site/content/releases/vX.Y.Z/` |
+| 7 | **Capture the release package** — `python scripts/maintainer/build_release_package.py <version> --cycle <cycle-id> --project <project>` to PREVIEW, read the cycle evidence, then re-run with `--write` and commit `site/content/releases/vX.Y.Z/` |
 
 Steps 1–3 are guarded by `tests/unit/architecture/test_docs_version_sync.py`, and step 6's
 Release is now automated on tag push. **Steps 4, 5 and 7 remain unguarded**, which is why
@@ -254,6 +254,27 @@ unrecoverable once it moves, so the package is snapshotted at the cut and commit
 the site renders it and never re-derives it. Screenshots (Prefect run, delivered app) go
 into that release's `assets/` before the script runs. It reads the tag range, so it must
 follow step 6.
+
+**Read step 7's preview before writing it.** The capture needs a running runtime API, a
+current `squadops login`, and the right `--project`; when any is missing the package can
+still be written. At the 1.6.2 cut it reported `1 cycles` and wrote a roll-up of nulls —
+four silent defects behind a guard that treated `{"detail": "Not Found"}` as success,
+because valid JSON is valid JSON (#1076). A hollow capture is worse than none: it looks
+like the evidence was taken, and the deploy it came from is gone by the time anyone
+looks. So run it without `--write` first and confirm the verdict, run count and check
+names are actually there.
+
+**Nothing else merges between opening the release PR and merging it.** The release branch
+is cut from main at some commit; anything merged after that still lands in the tag, because
+the release merge brings main's head with it. At the 1.6.2 cut two PRs merged in that
+window and the CHANGELOG said they were excluded — the record was wrong until the branch
+was rebased and re-documented. If something must go in, rebase and re-document rather than
+letting the tag and the notes disagree.
+
+**Say what the cut evidence does NOT cover.** A release whose headline is "validated by a
+green roll" has to be exact about what that roll ran on. Where the tagged tree differs from
+the validated deploy, name the difference and say whether it is additive or behavioural —
+v1.6.0 could record zero code drift; v1.6.2 could not, and said so.
 
 ## Development Workflow
 
