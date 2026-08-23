@@ -441,9 +441,10 @@ class TestM13Observability:
         summary_logs = [r for r in caplog.records if "typed_acceptance_summary" in r.getMessage()]
         assert len(summary_logs) == 1
         msg = summary_logs[0].getMessage()
-        # endpoint_defined + the #689-injected undefined_names on main.py.
-        assert "evaluated=2" in msg
-        assert "passed=2" in msg
+        # endpoint_defined + the two framework-injected checks on main.py:
+        # undefined_names (#689) and unterminated_source (#1082).
+        assert "evaluated=3" in msg
+        assert "passed=3" in msg
         assert "blocking_failures=0" in msg
         assert "overall_passed=True" in msg
 

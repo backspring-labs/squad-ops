@@ -1021,11 +1021,18 @@ class TestTypedAcceptance:
         """Was: no criteria -> no acceptance rows at all. #689 changed that on purpose —
         an assembly that emits a `.py` gets the undefined-name check whether or not the
         plan authored anything, because a call-time NameError in builder-emitted source
-        is the same defect it is anywhere else. The required_files row is unchanged."""
+        is the same defect it is anywhere else. #1082 added the second injected check on
+        the same reasoning: a truncated assembly is a truncated assembly. The
+        required_files row is unchanged."""
         result = await BuilderAssembleHandler().handle(mock_context, builder_inputs)
 
         assert result.success is True
         checks = result.outputs["validation_result"]["checks"]
-        assert [c["check"] for c in checks] == ["required_files", "acceptance:undefined_names"]
-        assert checks[1]["status"] == "passed"
-        assert checks[1]["params"]["file"] == "my_app/__main__.py"
+        assert [c["check"] for c in checks] == [
+            "required_files",
+            "acceptance:undefined_names",
+            "acceptance:unterminated_source",
+        ]
+        for row in checks[1:]:
+            assert row["status"] == "passed"
+            assert row["params"]["file"] == "my_app/__main__.py"
