@@ -151,20 +151,39 @@ flowchart LR
     C -->|rounds exhausted| X([rejected])
 ```
 
-### 1. Framing — the squad authors the design
+### 1. Framing — the design and the plan
 
-The squad reads the requirement and produces an **interface manifest**: the
-entities, endpoints, error contracts, and screens the application will have.
+Nine steps, dispatched in order to the roles that own them:
 
-This is the step that separates Squad Ops from a code generator. The design is
-not supplied; it is written by the agents and then checked before anything is
-built — a **schema gate** (does it parse, is it structurally complete) and a
-**winnability gate** (can the thing it describes actually be built and
-verified: does the skeleton expand, is the derived contract satisfiable, do the
-fill slots enumerate, do the test anchors cover the screens it promises).
+| # | Task | Role | Produces |
+|---|---|---|---|
+| 1 | `data.research_context` | data | Background the later steps read |
+| 2 | `strategy.frame_objective` | strategy | The objective and scope |
+| 3 | `development.design_plan` | dev | The technical design |
+| 4 | `development.author_manifest` | dev | `interface_manifest.yaml` |
+| 5 | `qa.define_test_strategy` | qa | The test approach |
+| 6 | `governance.prepare_plan_authoring_brief` | lead | The brief proposers work from |
+| 7 | `development.propose_plan_tasks`<br>`qa.propose_plan_tasks`<br>`strategy.propose_plan_guidance` | dev<br>qa<br>strategy | Competing task proposals |
+| 8 | `governance.merge_plan` | lead | `implementation_plan.yaml` |
+| 9 | `governance.review_plan` | lead | Sign-off |
 
-An unwinnable design is rejected at the gate, before any implementation task
-dispatches.
+**Step 4 runs in authored mode**, and its position is deliberate: after the
+technical design, so dev is best informed, and before the test strategy, so QA
+writes its strategy against the interface the implementation will be held to.
+
+**Step 7 is configurable.** `plan_authoring_contributors` selects which roles
+propose; the merger runs in sole-author mode when the list is empty.
+
+The manifest carries the entities, endpoints, error contracts and screens. Two
+gates check it before implementation starts:
+
+| Gate | Checks |
+|---|---|
+| **Schema** | Parses, and is structurally complete |
+| **Winnability** | The skeleton expands, the derived contract is satisfiable, fill slots enumerate, and test anchors cover the declared screens |
+
+A design failing either gate returns to step 4 for revision, bounded by the
+cycle's revision budget.
 
 ### 2. Review — question-gated
 

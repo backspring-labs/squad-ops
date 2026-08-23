@@ -14,13 +14,58 @@ squadops runs assemble play_game <cycle-id> <run-id> --out ./output
 
 ## How a cycle works
 
-| Stage | What happens |
-|---|---|
-| **Framing** | The squad authors an interface manifest — entities, endpoints, error contracts, screens — from the requirement. Two gates check it: structural completeness, and winnability (the design expands into a skeleton, the derived contract is satisfiable, fill slots enumerate). |
-| **Review** | The cycle pauses for an operator when the design records an unresolved question. Otherwise it proceeds. |
-| **Implementation** | The design expands into a skeleton of frozen files and fill slots. Agents write into the slots. |
-| **Verification** | Tests execute. The application installs, builds, boots, and answers probes over HTTP against the contract derived from the design. |
-| **Correction** | Failures are classified by locus — application, test suite, or harness — and repaired for a bounded number of rounds. |
+A cycle runs as a sequence of workloads. Each workload is a run, and each run
+dispatches an ordered list of tasks to the roles that own them.
+
+**Framing** — produces the interface design and the task plan:
+
+| # | Task | Role |
+|---|---|---|
+| 1 | `data.research_context` | data |
+| 2 | `strategy.frame_objective` | strategy |
+| 3 | `development.design_plan` | dev |
+| 4 | `development.author_manifest` | dev |
+| 5 | `qa.define_test_strategy` | qa |
+| 6 | `governance.prepare_plan_authoring_brief` | lead |
+| 7 | `development.propose_plan_tasks` · `qa.propose_plan_tasks` · `strategy.propose_plan_guidance` | dev · qa · strategy |
+| 8 | `governance.merge_plan` | lead |
+| 9 | `governance.review_plan` | lead |
+
+Step 4 runs in authored mode. It sits after the technical design and before the
+test strategy, so QA writes its strategy against the interface the
+implementation will be held to. Steps 7 are the proposers configured in
+`plan_authoring_contributors`; with none configured, the merger authors the plan
+itself.
+
+The manifest passes two gates before implementation starts: structural
+completeness, and winnability — the design expands into a skeleton, the derived
+contract is satisfiable, and fill slots enumerate.
+
+**Implementation** — builds against the design:
+
+| # | Task | Role |
+|---|---|---|
+| 1 | `development.develop` | dev |
+| 2 | `builder.assemble` | builder |
+| 3 | `qa.test` | qa |
+
+Tests execute here: the application installs, builds, boots, and answers probes
+over HTTP against the derived contract. Failures are classified by locus —
+application, test suite, or harness — and repaired for a bounded number of
+rounds.
+
+**Wrap-up** — records what happened:
+
+| # | Task | Role |
+|---|---|---|
+| 1 | `data.gather_evidence` | data |
+| 2 | `qa.assess_outcomes` | qa |
+| 3 | `data.classify_unresolved` | data |
+| 4 | `governance.closeout_decision` | lead |
+| 5 | `governance.publish_handoff` | lead |
+
+Between workloads, an operator gate can pause the cycle. In authored mode the
+gate fires when the design records an unresolved question.
 
 ## Verification results
 
