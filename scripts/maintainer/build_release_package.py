@@ -130,38 +130,91 @@ def changelog_section(version: str) -> str:
     return match.group(1).strip() if match else ""
 
 
-def cycle_evidence(cycle_ids: list[str], api: str) -> list[dict]:
+def _absent(cycle_id: str, reason: str) -> dict:
+    """A cycle whose evidence could not be captured, WITH why — never a silent gap."""
+    return {"cycle_id": cycle_id, "captured": False, "reason": reason}
+
+
+def _bearer_token() -> str:
+    """The CLI's cached access token, or "" — the API requires one (#1076).
+
+    Read from the same store `squadops login` writes, so a maintainer who can drive
+    the CLI can capture a package without a second credential path.
+    """
+    try:
+        from squadops.cli.auth import load_cached_token
+
+        cached = load_cached_token()
+        return cached.access_token if cached else ""
+    except Exception:  # noqa: BLE001 - capture must degrade to a disclosed absence
+        return ""
+
+
+def cycle_evidence(cycle_ids: list[str], api: str, project: str) -> list[dict]:
     """Verification roll-up per named cycle, or a recorded reason it is absent.
 
-    Absence is disclosed, never silently omitted — an unreachable API and a
-    cycle that genuinely produced nothing must not look the same later.
+        Absence is disclosed, never silently omitted — an unreachable API and a cycle that
+        genuinely produced nothing must not look the same later.
+
+        That promise was not kept, and the failure was invisible in exactly the way the
+        docstring warns about (#1076). Four defects compounded, each silent:
+
+          - the route was `/api/v1/cycles/{id}`; the real one is project-scoped
+          - no Authorization header, and the API requires one
+          - the roll-up field is `cycle_outcome`, not `outcome`
+          - and the guard caught only `JSONDecodeError` — so `{"detail": "Not Found"}`,
+            being perfectly valid JSON, was recorded as `captured: True` with every
+            field null
+
+    The fourth is what hid the first three. A capture that cannot distinguish "the API
+    said no" from "the cycle produced nothing" is not a disclosure mechanism, so the
+    shape check below is the guard: the roll-up must actually be present, or this is
+    recorded as absent WITH the reason.
     """
     evidence = []
+    token = _bearer_token()
     for cycle_id in cycle_ids:
-        raw = run("curl", "-s", "--max-time", "10", f"{api}/api/v1/cycles/{cycle_id}", check=False)
+        url = f"{api}/api/v1/projects/{project}/cycles/{cycle_id}"
+        args = ["curl", "-s", "--max-time", "10"]
+        if token:
+            args += ["-H", f"Authorization: Bearer {token}"]
+        raw = run(*args, url, check=False)
+
         try:
             data = json.loads(raw)
         except (json.JSONDecodeError, TypeError):
             evidence.append(
-                {
-                    "cycle_id": cycle_id,
-                    "captured": False,
-                    "reason": f"runtime API at {api} did not answer at capture time",
-                }
+                _absent(cycle_id, f"runtime API at {api} did not answer at capture time")
             )
             continue
-        outcome = data.get("outcome") or {}
+        if not isinstance(data, dict) or "cycle_outcome" not in data:
+            detail = data.get("detail") if isinstance(data, dict) else None
+            evidence.append(
+                _absent(
+                    cycle_id,
+                    f"runtime API at {api} returned no cycle roll-up"
+                    + (f" ({detail})" if detail else "")
+                    + (" — no cached CLI token; run `squadops login`" if not token else ""),
+                )
+            )
+            continue
+        outcome = data.get("cycle_outcome") or {}
+        if outcome.get("verdict") is None:
+            evidence.append(_absent(cycle_id, f"cycle {cycle_id} carries no verification roll-up"))
+            continue
         evidence.append(
             {
                 "cycle_id": cycle_id,
                 "captured": True,
                 "status": data.get("status"),
                 "verdict": outcome.get("verdict"),
-                "verified": outcome.get("verified", []),
+                "verified": sorted(set(outcome.get("verified", []))),
                 "failed": outcome.get("failed", []),
                 "required_unmet": outcome.get("required_unmet", []),
-                "unverified": [u.get("check") for u in outcome.get("unverified", [])],
-                "run_count": outcome.get("run_count"),
+                "unverified": [
+                    u.get("check_id") or u.get("check") for u in outcome.get("unverified", [])
+                ],
+                "run_count": outcome.get("run_count") or len(data.get("runs", [])),
             }
         )
     return evidence
@@ -262,6 +315,7 @@ def main() -> int:
         help="cycle id representing this release; repeatable",
     )
     parser.add_argument("--api", default="http://localhost:8001", help="runtime API base URL")
+    parser.add_argument("--project", default="group_run", help="project the --cycle ids belong to")
     parser.add_argument(
         "--write", action="store_true", help="write the package; default is a preview to stdout"
     )
@@ -291,7 +345,7 @@ def main() -> int:
         "narrative": changelog_section(version),
         "pull_requests": merged_prs(previous, tag),
         "sip_moves": sip_moves(previous, tag),
-        "cycles": cycle_evidence(args.cycle, args.api) if args.cycle else [],
+        "cycles": cycle_evidence(args.cycle, args.api, args.project) if args.cycle else [],
         "screenshots": screenshots,
     }
 
