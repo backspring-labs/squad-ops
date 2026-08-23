@@ -1,15 +1,14 @@
 # Dependencies
 
-What each library is responsible for, and why it was chosen. Squad Ops keeps its
-dependency surface deliberately small — the hexagonal structure means most
-libraries sit behind a port and are replaceable without touching the domain.
+What each library is responsible for. Most sit behind a port, so replacing one
+is a factory change.
 
 ## Runtime
 
 | Responsibility | Library | Notes |
 |---|---|---|
 | HTTP API | **FastAPI** + **uvicorn** | The runtime API — cycles, runs, gates, artifacts |
-| Data modelling | **Pydantic** | API DTOs and config schema. The *domain* uses frozen dataclasses, not Pydantic — validation belongs at the boundary |
+| Data modelling | **Pydantic** | API DTOs and config schema. Validation runs at the boundary; the domain uses frozen dataclasses |
 | Database | **asyncpg** | Direct async Postgres. No ORM: the cycle registry writes a small, hand-controlled set of queries and an ORM would add a translation layer over a schema that is already explicit |
 | Message queue | **aio-pika** | RabbitMQ client for task dispatch, behind `QueuePort` |
 | Cache | **redis** | Caching and coordination |
@@ -30,16 +29,14 @@ libraries sit behind a port and are replaceable without touching the domain.
 |---|---|
 | Lint and format | **ruff** — one tool, replacing flake8/isort/black |
 | Tests | **pytest** with `pytest-asyncio`, `pytest-xdist`, `pytest-cov` |
-| Integration fixtures | **testcontainers** — real Postgres and RabbitMQ, not mocks |
+| Integration fixtures | **testcontainers** — runs the tests against real Postgres and RabbitMQ |
 | Types | **mypy** |
-| Docs site | **mkdocs-material** (build-time only, not a runtime dependency) |
+| Docs site | **mkdocs-material** — build-time only, installed from `site/requirements.txt` |
 
 ## Where dependencies are declared
 
-This is worth knowing, because it is not where you would expect.
-
-`pyproject.toml` declares almost nothing — only optional extras. The install
-sets live in `requirements/`, one pair per deployment surface:
+`pyproject.toml` declares optional extras only. The install sets live in
+`requirements/`, one pair per deployment surface:
 
 | Pair | Installed by |
 |---|---|
@@ -69,8 +66,8 @@ agent image and a very large one.
     establish that the deployed images work. Nothing has broken because of it
     yet, which is precisely why it is worth writing down.
 
-## What is deliberately absent
+## Excluded by design
 
-- **No ORM.** The cycle registry owns a small explicit schema; migrations are plain SQL.
-- **No agent framework.** No LangChain, LlamaIndex, or CrewAI. The orchestration *is* the product, so wrapping someone else's abstraction over it would put the interesting decisions inside a dependency.
-- **No hosted inference SDK.** Local models are a requirement, not a default.
+- **ORM.** The cycle registry owns an explicit schema; migrations are plain SQL.
+- **Agent frameworks** (LangChain, LlamaIndex, CrewAI). Orchestration is the subject of the project, so it is implemented directly.
+- **Hosted inference SDKs.** Inference is local.

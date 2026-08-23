@@ -1,0 +1,11 @@
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  <!-- Squad Ops. A cycle split into two arrows — the gap at 3 and 9 is the gate.
+       Play triangle sits left of geometric centre so the point and the back edge
+       read as evenly spaced from the chevrons. currentColor throughout so the
+       mark follows the active palette. -->
+  <path d="M4.30 8.89 A8.3 8.3 0 0 1 19.70 8.89" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M19.70 15.11 A8.3 8.3 0 0 1 4.30 15.11" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M22.01 7.95 L20.12 10.27 L17.38 9.83" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M1.99 16.05 L3.88 13.73 L6.62 14.17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M10.05 8.90 15.25 12.00 10.05 15.10Z" fill="currentColor" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+</svg>

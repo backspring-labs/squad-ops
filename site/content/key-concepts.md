@@ -44,30 +44,26 @@ workload_sequence:
     gate: null
 ```
 
-A cycle's status is derived from its runs: `created`, `active`, `paused`,
-`completed`, `failed`, `cancelled`. **`paused` is the interesting one** — it
-means the cycle is waiting for a human at a gate between workloads, not that
-anything went wrong.
+A cycle's status derives from its runs: `created`, `active`, `paused`,
+`completed`, `failed`, `cancelled`. **`paused` means the cycle is waiting for an
+operator at a gate between workloads.**
 
 ## Runs
 
-**A run is one workload's execution — not a retry of the whole cycle.** This is
-the distinction most worth internalising. A cycle that framed a design and then
-implemented it has *two* runs, and they are separate rows with separate
-identities, artifacts, and gate decisions.
+**A run is one workload's execution.** A cycle that framed a design and then
+implemented it has two runs, each a separate record with its own identity,
+artifacts, and gate decisions.
 
 Every run records the hash of the configuration it resolved — squad, models,
-request profile, settings. That is what makes two runs comparable at all: a run
-carries proof of what it executed under, so a difference in outcome can be
-attributed to the change you made rather than to a configuration that drifted.
+request profile, settings. Two runs sharing a hash executed under identical
+configuration.
 
 Runs are the resumability boundary too. Because each workload is its own run
 with its own promoted artifacts, a cycle interrupted after framing can resume
 into implementation without re-authoring the design.
 
 Workload types are `framing`, `implementation`, `evaluation`, `refinement` and
-`wrapup` — a documented vocabulary rather than a closed enum, since a request
-profile may compose its own.
+`wrapup`. The field is free-form, so a request profile may declare its own.
 
 ## Tasks
 
@@ -82,10 +78,10 @@ Task types read as `role.verb`: `strategy.frame_objective`,
 `development.author_manifest`, `development.develop`, `qa.test`,
 `governance.merge_plan`, `data.analyze_failure`.
 
-The plan is not a fixed script. It is generated per run from the workload type,
-the squad profile, and — once framing has produced them — the implementation
-plan and verification contract. A build workload's task list is therefore
-derived from the design the squad just authored.
+The plan is generated per run from the workload type, the squad profile, and —
+once framing has produced them — the implementation plan and verification
+contract. A build workload's task list derives from the design the squad
+authored in the previous run.
 
 ## Flows and dispatch
 
@@ -99,15 +95,13 @@ The executor runs a plan under a declared **flow mode**:
 
 Dispatch is a request/reply over RabbitMQ: the executor publishes a task
 message, an agent container consumes it, executes the handler for that task
-type, and replies with a result. Agents are separate processes — a task
-crossing to an agent is a real network hop, not a function call, which is why
-the envelope carries everything the agent needs rather than a reference to
-shared memory.
+type, and replies with a result. Agents run as separate processes, so the
+envelope carries every input the handler needs.
 
-**Prefect provides the view, not the control.** Each run opens a flow run and
-every dispatched task nests inside it, so `http://localhost:4200` shows the run
-as a graph with per-task logs. The orchestration decisions are the executor's;
-Prefect is where you watch them.
+**Prefect provides the view.** Each run opens a flow run and every dispatched
+task nests inside it, so `http://localhost:4200` shows the run as a graph with
+per-task logs. The executor makes the orchestration decisions; Prefect renders
+them.
 
 ## Gates
 
@@ -132,10 +126,10 @@ squadops runs gate play_game <cycle-id> <run-id> progress_plan_review --approve
 Everything a task produces goes to the artifact vault, content-hashed and
 immutable. Artifacts start `working`; promotion to `promoted` is one-way.
 
-Promotion is what carries work between workloads: when a framing run completes,
-its *promoted* artifacts — the interface design, the implementation plan, the
-derived contract — are forwarded into the implementation run. Working artifacts
-are not forwarded, so a rejected draft cannot leak into the next workload.
+Promotion carries work between workloads. When a framing run completes, its
+promoted artifacts — the interface design, the implementation plan, the derived
+contract — forward into the implementation run. Only promoted artifacts
+forward.
 
 ---
 
@@ -157,38 +151,56 @@ flowchart LR
     C -->|rounds exhausted| X([rejected])
 ```
 
-### 1. Framing — the squad authors the design
+### 1. Framing — the design and the plan
 
-The squad reads the requirement and produces an **interface manifest**: the
-entities, endpoints, error contracts, and screens the application will have.
+Nine steps, dispatched in order to the roles that own them:
 
-This is the step that separates Squad Ops from a code generator. The design is
-not supplied; it is written by the agents and then checked before anything is
-built — a **schema gate** (does it parse, is it structurally complete) and a
-**winnability gate** (can the thing it describes actually be built and
-verified: does the skeleton expand, is the derived contract satisfiable, do the
-fill slots enumerate, do the test anchors cover the screens it promises).
+| # | Task | Role | Produces |
+|---|---|---|---|
+| 1 | `data.research_context` | data | Background the later steps read |
+| 2 | `strategy.frame_objective` | strategy | The objective and scope |
+| 3 | `development.design_plan` | dev | The technical design |
+| 4 | `development.author_manifest` | dev | `interface_manifest.yaml` |
+| 5 | `qa.define_test_strategy` | qa | The test approach |
+| 6 | `governance.prepare_plan_authoring_brief` | lead | The brief proposers work from |
+| 7 | `development.propose_plan_tasks`<br>`qa.propose_plan_tasks`<br>`strategy.propose_plan_guidance` | dev<br>qa<br>strategy | Competing task proposals |
+| 8 | `governance.merge_plan` | lead | `implementation_plan.yaml` |
+| 9 | `governance.review_plan` | lead | Sign-off |
 
-A design that cannot be won is rejected in seconds, rather than an hour into a
-build.
+**Step 4 runs in authored mode**, and its position is deliberate: after the
+technical design, so dev is best informed, and before the test strategy, so QA
+writes its strategy against the interface the implementation will be held to.
 
-### 2. Review — only when it is needed
+**Step 7 is configurable.** `plan_authoring_contributors` selects which roles
+propose; the merger runs in sole-author mode when the list is empty.
 
-The cycle stops for a human when the authored design records a genuinely
-**unresolved question** — the squad saying the requirement does not determine
-something, and declining to guess. With no open questions it proceeds.
+The manifest carries the entities, endpoints, error contracts and screens. Two
+gates check it before implementation starts:
 
-This is deliberate. An earlier version reviewed every design, and the reviews
-became rubber stamps discussing facts the automated gates had already proven,
-while a real unresolved question sat unsurfaced. A gate that is always approved
-teaches nobody anything, and makes a later reader unable to tell a considered
-approval from a reflex.
+| Gate | Checks |
+|---|---|
+| **Schema** | Parses, and is structurally complete |
+| **Winnability** | The skeleton expands, the derived contract is satisfiable, fill slots enumerate, and test anchors cover the declared screens |
+
+A design failing either gate returns to step 4 for revision, bounded by the
+cycle's revision budget.
+
+### 2. Review — question-gated
+
+The cycle pauses for an operator when the authored design records an
+**unresolved question**: the squad marking something the requirement leaves
+undetermined. With no open questions the cycle proceeds and the gate decision
+records `system:no_open_questions`.
+
+The firing rule lives in `cycles/manifest_authoring.py::open_questions`. It keys
+on the design, so a seeded manifest carrying an open question pauses the cycle
+exactly as an authored one does.
 
 ### 3. Implementation — fill the slots
 
 The accepted design expands into a skeleton: some files frozen, others slots to
-be filled. Agents write into the slots; an attempt to write outside them is
-caught rather than merged.
+be filled. Agents write into the slots. Writes outside a slot are rejected at
+the emission gate.
 
 ### 4. Verification — execute, don't assume
 
@@ -205,16 +217,17 @@ flowchart LR
     P -->|no| F[failed]
 ```
 
-Three outcomes, not two. Most systems collapse the left branch into one of the
-others — a check that could not run is reported green because nothing failed,
-or red because nothing passed. Both are lies, and each is wrong in the direction
-that hurts most: the first hides broken verification, the second sends a
-correction round after an application that was never actually tested.
+Each not-executed result carries a machine-readable reason from a fixed
+taxonomy — `config_disabled`, `unsupported_stack`, environment gaps — recorded
+on the roll-up alongside the checks that ran.
 
-The same distinction carries to the cycle verdict. `rejected` means the product
-failed a criterion and the product is what to repair; `blocked_unverified` means
-the framework *cannot honestly claim* it verified anything, and the harness,
-environment or configuration is what to repair.
+The same three-way split applies to the cycle verdict, and each verdict points
+at a different repair target:
+
+| Verdict | Repair target |
+|---|---|
+| `rejected` | The product — a criterion failed |
+| `blocked_unverified` | The harness, environment, or run configuration |
 
 ### 5. Correction — bounded, and aimed
 
@@ -302,13 +315,11 @@ timeout), so a role can be tuned without touching code.
 The profile is resolved at plan time and its hash is recorded on the run, which
 is what makes two runs comparable.
 
-### Identity is a convenience
+### Agent instance ids
 
-`neo`, `eve`, `bob` are **agent instance ids** — addresses on the queue and
-labels in a log. They are not a framework concept, they carry no behaviour, and
-the display names attached to them are for humans reading a trace.
+`neo`, `eve`, `bob` are addresses on the queue and labels in a log. A profile
+assigns one per role, along with the model that instance runs.
 
-Swap the id, and provided the role is still filled the cycle is unchanged. Two
-instances can fill the same role in different profiles; the same id can run a
-different model in a different profile. **Read a task's role, not its name** —
-the name tells you which row of a config file was selected, and nothing more.
+The same id can run a different model in a different profile, and different ids
+can fill the same role across profiles. Task routing resolves by role, so a
+task's role determines its behaviour and its handler.

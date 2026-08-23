@@ -17,6 +17,8 @@ site_dir: site/_build
 
 theme:
   name: material
+  custom_dir: site/overrides
+  favicon: assets/favicon.svg
   font: false          # no Google Fonts fetch — system stack instead
   # NOTE ON THIRD-PARTY REQUESTS. Setting font:false removes the Google Fonts
   # fetch, but Material lazy-loads mermaid from unpkg.com at runtime on pages
@@ -27,6 +29,8 @@ theme:
   # worth it for a docs site (#1039). Recorded so the next person does not
   # repeat the measurement, and so the claim is not overstated elsewhere.
   icon:
+    # Inlined as SVG (not an <img>), so currentColor follows the active palette.
+    logo: squadops/logo
     repo: fontawesome/brands/github
   features:
     # navigation.instant is DELIBERATELY off: its client-side page swaps wipe
