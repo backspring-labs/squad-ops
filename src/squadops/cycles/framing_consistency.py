@@ -117,21 +117,34 @@ def validate_manifest_plan_consistency(
 
     Returns error strings in the plan-validation vocabulary (empty = pass).
     """
-    from squadops.capabilities.scaffold import skeleton_pins_success_status_for
+    from squadops.capabilities.scaffold import (
+        brief_carries_success_status_for,
+        skeleton_pins_success_status_for,
+    )
 
     errors: list[str] = []
     lines = _plan_text_lines(plan)
-    # The omission half fires only where plan prose is the sole channel carrying
-    # the status to the implementer. FastAPI's skeleton pins a declared status in
-    # the FROZEN route decorator (pf-39's fix) — the fill inherits it mechanically
-    # and prose silence is harmless. The Next.js skeleton writes it only as a TODO
-    # comment inside the fill body, which the fill replaces — slot 6 proved the
-    # comment does not survive. Status probes bind to the qa task, never the dev
-    # task's criteria_refs, so the typed channel never carries this fact to the
-    # implementer in EITHER authoring mode — the stack's skeleton is the variable.
+    # The omission half fires only where plan prose is the sole channel carrying the
+    # status to the implementer. FastAPI's skeleton pins a declared status in the FROZEN
+    # route decorator (pf-39's fix) — the fill inherits it mechanically and prose silence
+    # is harmless. The Next.js skeleton writes it only as a TODO comment inside the fill
+    # body, which the fill replaces — slot 6 proved the comment does not survive.
+    #
+    # #1049: there are now TWO deterministic channels and the check must fire only when
+    # NEITHER carries the fact. The sentence that stood here — "the typed channel never
+    # carries this fact to the implementer in EITHER authoring mode" — was true when
+    # written and #1042 made it false: the declared status is threaded onto the dev
+    # brief's response surface. Left as-is this check taxed a re-roll per cycle to
+    # enforce a prose restatement of a fact that can no longer be forgotten, and its own
+    # rejection text ("the implementer will default to 200") had become the false part.
+    # Five identical rejections across three cycles, two of them consuming both re-rolls
+    # of one cycle, which is a dead-ended run on a framing that was correct.
+    #
     # The contradiction half stays active regardless: prose that contradicts the
-    # contract misleads the implementer whatever the skeleton pins.
-    status_pinned_by_skeleton = skeleton_pins_success_status_for(manifest.stack)
+    # contract misleads the implementer whatever any other channel says.
+    status_reaches_implementer = skeleton_pins_success_status_for(
+        manifest.stack
+    ) or brief_carries_success_status_for(manifest.stack)
 
     for ep in manifest.api.endpoints:
         enforced = _enforced_success_status(ep)
@@ -170,7 +183,7 @@ def validate_manifest_plan_consistency(
         # Completeness: an enforced non-200 success is exactly the fact the dev
         # will not default to — slot 6's roll died on it. It must be STATED in
         # the plan's prose near the endpoint, or the implementer never sees it.
-        if enforced != 200 and not stated_anywhere and not status_pinned_by_skeleton:
+        if enforced != 200 and not stated_anywhere and not status_reaches_implementer:
             already_contradicted = any(f"on {ep.method} {ep.path}:" in e for e in errors)
             if not already_contradicted:
                 errors.append(

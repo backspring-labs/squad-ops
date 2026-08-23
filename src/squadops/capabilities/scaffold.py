@@ -2012,6 +2012,34 @@ def skeleton_pins_success_status_for(stack: str) -> bool:
     return bool(known and known.skeleton_pins_success_status)
 
 
+def brief_carries_success_status_for(stack: str) -> bool:
+    """Whether *stack*'s DEVELOPER BRIEF states declared success statuses (#1049).
+
+    The second deterministic channel, and the sibling of
+    ``skeleton_pins_success_status_for`` above — they are the two ways the fact can
+    reach an implementer without a human remembering to write it down, so they belong
+    side by side and are read together by the framing gate.
+
+    #1042 threads the declared status onto the dev brief's response surface, but only
+    where that surface renders: a scaffoldable stack whose dev capability declares a
+    fill-only template. A stack with no such template gets no appendix, so prose
+    remains its sole channel and the omission check must still block there.
+
+    ``False`` for unknown stacks and unresolvable capabilities — the conservative answer
+    when we cannot prove the fact travels is that it does not.
+    """
+    from squadops.capabilities.dev_capabilities import get_capability
+
+    known = _STACKS.get(stack)
+    if known is None or not is_scaffoldable_stack(stack):
+        return False
+    try:
+        capability = get_capability(known.dev_capability)
+    except ValueError:
+        return False
+    return bool(capability.fill_only_template)
+
+
 def check_stack_for(stack: str) -> str | None:
     """The typed-check evaluator vocabulary for ``stack``, or ``None`` (#503).
 

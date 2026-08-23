@@ -10,13 +10,13 @@ from squadops.cycles.framing_consistency import validate_manifest_plan_consisten
 from squadops.cycles.implementation_plan import ImplementationPlan
 
 
-def _manifest(endpoints_yaml: str) -> InterfaceManifest:
+def _manifest(endpoints_yaml: str, stack: str = "nextjs_ts") -> InterfaceManifest:
     return InterfaceManifest.from_yaml(
         f"""
 version: 1
 kind: interface_manifest
 project_id: group_run
-stack: nextjs_ts
+stack: {stack}
 api:
   endpoints:
 {endpoints_yaml}
@@ -115,11 +115,15 @@ class TestContradiction:
 
 
 class TestOmission:
-    def test_slot6_class_enforced_201_never_stated(self):
-        """V38 slot 6: join 201 lived only in the manifest; the plan was
-        silent; the dev defaulted to 200 and the roll died on a fact the
-        implementer never received. The gate names the omission."""
-        manifest = _manifest(JOIN_201)
+    def test_slot6_class_fires_where_no_channel_carries_the_status(self):
+        """V38 slot 6: join 201 lived only in the manifest; the plan was silent; the dev
+        defaulted to 200 and the roll died on a fact the implementer never received.
+
+        Exercised on a stack with NEITHER channel — no skeleton pinning and no dev-brief
+        appendix — because that is now the only condition under which prose is still the
+        sole carrier, and it is the condition the gate exists for.
+        """
+        manifest = _manifest(JOIN_201, stack="no_such_stack")
         plan = _plan(
             [
                 "POST /api/runs returns 201 with the created run.",
@@ -130,6 +134,39 @@ class TestOmission:
         assert len(errors) == 1
         assert "omission on POST /api/runs/{run_id}/join:" in errors[0]
         assert "default to 200" in errors[0]
+
+    def test_the_omission_is_silent_once_the_dev_brief_carries_the_status(self):
+        """#1049: the same framing, on nextjs_ts, must now PASS.
+
+        Bug caught: the check kept rejecting after #1042 threaded the declared status
+        onto the dev brief — enforcing a prose restatement of a fact the implementer is
+        now told directly, and warning that "the implementer will default to 200" when
+        it will not. Five identical rejections across three cycles, two of them
+        consuming both re-rolls of one cycle and dead-ending a correct framing.
+        """
+        manifest = _manifest(JOIN_201)
+        plan = _plan(
+            [
+                "POST /api/runs returns 201 with the created run.",
+                "POST /api/runs/{run_id}/join adds the participant and updates the count.",
+            ]
+        )
+        assert validate_manifest_plan_consistency(manifest, plan) == []
+
+    def test_a_contradiction_still_fires_on_a_stack_with_the_brief_channel(self):
+        """The half that must NOT be softened. Derivation fixes silence; it does not fix
+        a plan that says the wrong thing — a dev reading "returns 200" builds 200 no
+        matter what any appendix also says, and the two channels then disagree."""
+        manifest = _manifest(JOIN_201)
+        plan = _plan(
+            [
+                "POST /api/runs returns 201 with the created run.",
+                "POST /api/runs/{run_id}/join returns 200 once the participant is added.",
+            ]
+        )
+        errors = validate_manifest_plan_consistency(manifest, plan)
+        assert len(errors) == 1
+        assert "contradiction on POST /api/runs/{run_id}/join:" in errors[0]
 
     def test_child_post_default_200_needs_no_statement(self):
         """A child-action POST with no declared status is enforced at 200 —
