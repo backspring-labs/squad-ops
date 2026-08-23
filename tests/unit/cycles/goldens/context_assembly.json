@@ -92,6 +92,13 @@
     "summary": "[dev] designed"
    }
   },
+  "response_surface": [
+   "`GET /runs` returns a list of `RunEvent` \u2014 each element of the array carries `id`, `title`, `datetime`, `location`, `participants`; each `participants` element carries `id`, `name`",
+   "`POST /runs` returns `RunEvent` \u2014 the response body carries `id`, `title`, `datetime`, `location`, `participants`; each `participants` element carries `id`, `name`",
+   "`GET /runs/{run_id}` returns `RunEvent` \u2014 the response body carries `id`, `title`, `datetime`, `location`, `participants`; each `participants` element carries `id`, `name`",
+   "`POST /runs/{run_id}/join` returns `RunEvent` \u2014 the response body carries `id`, `title`, `datetime`, `location`, `participants`; each `participants` element carries `id`, `name`",
+   "`POST /runs/{run_id}/leave` returns `RunEvent` \u2014 the response body carries `id`, `title`, `datetime`, `location`, `participants`; each `participants` element carries `id`, `name`"
+  ],
   "testid_surface": [
    "`RunsListView` (route `/`): root container `runs-list`; anchors: `runs-list`, `run-item`, `run-participant-count`, `empty-state`, `create-run-link`",
    "`CreateRunView` (route `/create`): root container `create-run-view`; anchors: `create-run-view`, `create-run-form`, `field-title`, `field-datetime`, `field-location`, `field-distance`, `field-pace-target`, `field-route-notes`, `submit-create`, `form-error`",
@@ -147,6 +154,13 @@
     "summary": "[dev] designed"
    }
   },
+  "response_surface": [
+   "`GET /runs` returns a list of `RunEvent` \u2014 each element of the array carries `id`, `title`, `datetime`, `location`, `participants`; each `participants` element carries `id`, `name`",
+   "`POST /runs` returns `RunEvent` \u2014 the response body carries `id`, `title`, `datetime`, `location`, `participants`; each `participants` element carries `id`, `name`",
+   "`GET /runs/{run_id}` returns `RunEvent` \u2014 the response body carries `id`, `title`, `datetime`, `location`, `participants`; each `participants` element carries `id`, `name`",
+   "`POST /runs/{run_id}/join` returns `RunEvent` \u2014 the response body carries `id`, `title`, `datetime`, `location`, `participants`; each `participants` element carries `id`, `name`",
+   "`POST /runs/{run_id}/leave` returns `RunEvent` \u2014 the response body carries `id`, `title`, `datetime`, `location`, `participants`; each `participants` element carries `id`, `name`"
+  ],
   "testid_surface": [
    "`RunsListView` (route `/`): root container `runs-list`; anchors: `runs-list`, `run-item`, `run-participant-count`, `empty-state`, `create-run-link`",
    "`CreateRunView` (route `/create`): root container `create-run-view`; anchors: `create-run-view`, `create-run-form`, `field-title`, `field-datetime`, `field-location`, `field-distance`, `field-pace-target`, `field-route-notes`, `submit-create`, `form-error`",

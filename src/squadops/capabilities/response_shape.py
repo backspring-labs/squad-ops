@@ -139,3 +139,49 @@ def derive_response_shape(
         required_fields=_required_field_names(entity),
         elements=tuple(elements),
     )
+
+
+def response_surface_instructions(manifest: InterfaceManifest | None) -> list[str]:
+    """Per-endpoint success-body lines for the developer's brief (#1029).
+
+    The frozen shell spine now asserts this floor, but the developer building the
+    endpoint could not see it: ``development.develop`` receives the error contract, the
+    model surface, the testids and the frozen index, and nothing at all about what a
+    success response must carry. So the suite derived the shape from the manifest, the
+    app decided one independently, and the disagreement was discovered by burning
+    correction rounds — the green roll's whole budget went on it, and the shakedown died
+    on it.
+
+    Pinning the shell without this only converts burned rounds into a deterministic red:
+    the gate gets stricter while the author it judges still cannot see the target. This
+    is the half that lets the app be right the first time.
+
+    Data only — the prose lives in the appendix asset (CLAUDE.md #448). Empty for a
+    manifest whose endpoints declare no resolvable response, which contributes no
+    section at all rather than an empty heading.
+    """
+    if manifest is None:
+        return []
+    lines: list[str] = []
+    for endpoint in manifest.api.endpoints:
+        shape = derive_response_shape(manifest, endpoint.response)
+        if not shape:
+            continue
+        subject = "each element of the array" if shape.is_collection else "the response body"
+        clauses = []
+        if shape.required_fields:
+            fields = ", ".join(f"`{name}`" for name in shape.required_fields)
+            clauses.append(f"{subject} carries {fields}")
+        for element in shape.elements:
+            if element.typeof:
+                clauses.append(f"`{element.field}` is an array of {element.typeof}s")
+            else:
+                required = ", ".join(f"`{name}`" for name in element.required_fields)
+                clauses.append(f"each `{element.field}` element carries {required}")
+        if clauses:
+            lines.append(
+                f"`{endpoint.method.upper()} {endpoint.path}` returns "
+                f"{'a list of ' if shape.is_collection else ''}`{shape.entity}` — "
+                + "; ".join(clauses)
+            )
+    return lines
