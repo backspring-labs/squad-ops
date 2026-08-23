@@ -18,7 +18,12 @@ site_dir: site/_build
 theme:
   name: material
   custom_dir: site/overrides
-  favicon: assets/favicon.svg
+  # Versioned filename, deliberately. Browsers cache favicons per ORIGIN and
+  # ignore normal cache headers for them — this origin served a black-tile
+  # icon for ~90 minutes on 2026-08-23, and Chrome kept showing it long after
+  # the transparent version deployed. A new path is the only reliable bust.
+  # Bump the suffix on any future favicon change.
+  favicon: assets/favicon-v2.svg
   font: false          # no Google Fonts fetch — system stack instead
   # NOTE ON THIRD-PARTY REQUESTS. Setting font:false removes the Google Fonts
   # fetch, but Material lazy-loads mermaid from unpkg.com at runtime on pages
