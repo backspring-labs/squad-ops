@@ -583,6 +583,7 @@ class QATestHandler(_CycleTaskHandler):
         in exactly one disposition; missing and rejected slots render as failing states
         inside the merged shells, attributed to the fill layer.
         """
+        from squadops.capabilities.additive_containment import assess_additive_suite
         from squadops.capabilities.verification_scaffold import VerificationScaffoldManifest
         from squadops.capabilities.verification_scaffold_fill import (
             measure_assertion_strength,
@@ -625,6 +626,14 @@ class QATestHandler(_CycleTaskHandler):
                 # attempt ran 9. `extracted_files` went 1 -> 0 in a log line nobody read.
                 "additive_files": sorted(a["name"] for a in kept),
             },
+            # #1022: containment findings for the additive surface, banked and NOT
+            # enforced. Every V7 counted red was additive-suite-side while all nine
+            # delivered apps passed independent boot audits — the apps were fine, the
+            # tests were not. The gate's shape is a design-review question (#1022), so
+            # this records what a gate WOULD flag across real rolls first. Deploying a
+            # rejection whose premise was never checked against real traffic is what
+            # #1049 cost tonight.
+            "additive_containment": assess_additive_suite(kept),
         }
         merged_suite_files = [{"filename": f.path, "content": f.content} for f in merged.files]
         return kept + merged_artifacts, merged_suite_files, evidence

@@ -212,6 +212,46 @@ class TestMergeFillArtifacts:
         # The fills half is still recorded alongside it — both halves or neither.
         assert "any_fill_touches_the_store" in strength
 
+    def test_the_banked_evidence_carries_the_additive_containment_findings(self, scaffold_input):
+        """#1022: the findings are computed at the merge seam and must reach the record.
+
+        Bug caught, and it is the third instance tonight of one shape: a fact derived
+        one line from where it is banked and never placed there. Every unit test of the
+        assessment passes while the roll's evidence says nothing.
+        """
+        fills = parse_fill_emission(
+            "```fill:slot-vc-probe-api-runs\n    expect(body.id).toBeTruthy()\n```\n"
+        )
+        artifacts = [
+            {
+                "name": "__tests__/live.test.ts",
+                "content": "const r = await fetch('http://localhost:3000/api/runs')",
+                "media_type": "x",
+                "type": "test",
+            }
+        ]
+        _, _, evidence = QATestHandler()._merge_fill_artifacts(scaffold_input, fills, artifacts)
+        findings = evidence["additive_containment"]
+        assert any("fetches a live server" in f for f in findings)
+        assert any("imports no application module" in f for f in findings)
+
+    def test_a_clean_additive_suite_banks_no_containment_findings(self, scaffold_input):
+        """The key is always present so "clean" is distinguishable from "not assessed" —
+        the #986 absence-visible-as-absence rule, one instrument over."""
+        fills = parse_fill_emission(
+            "```fill:slot-vc-probe-api-runs\n    expect(body.id).toBeTruthy()\n```\n"
+        )
+        artifacts = [
+            {
+                "name": "__tests__/ok.test.ts",
+                "content": "import * as r from '@/app/api/runs/route'\nit('x', () => {})",
+                "media_type": "x",
+                "type": "test",
+            }
+        ]
+        _, _, evidence = QATestHandler()._merge_fill_artifacts(scaffold_input, fills, artifacts)
+        assert evidence["additive_containment"] == []
+
     def test_an_emission_that_drops_every_additive_file_banks_an_empty_list(self, scaffold_input):
         """The absence has to be visible AS an absence. If the key vanished when nothing
         survived, the retreat this measures would read as "not measured" rather than
