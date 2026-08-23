@@ -178,6 +178,7 @@ whether a specific 1.6.2 fix bit:
 | Repair-induced regressions | #994 |
 | `criteria_verified` / `criteria_total`, and unevidenced count | #1021 |
 | Completion tokens by role · cycle wall clock | cost, and #998-class cap-exhaustion events |
+| Gate `decided_by`, verbatim | which approval path ran (§6.1) — never inferred |
 
 **Contract size**, non-gating, no floor, read from stored artifacts (V7 §7.1 inherited): probe
 count from `behavioral.probes`, slot count from the `verification_scaffold_manifest`.
@@ -228,6 +229,35 @@ System plan validation passed; no additional judgment applied.
 ```
 
 Recorded `--as-agent`.
+
+### 6.1 Two approval paths, and why the record must name which one ran
+
+The rule above assumes a gate opens for a decision. **It does not always open.** Shakeout 1
+(`cyc_3ba9dc0f67da`) auto-approved via `system:no_open_questions` — the manifest declared no
+unresolved decisions, so nothing was ever put to a human. V7 saw the same split within one
+window: its rolls 1–3 carried an operator approval and roll 4 auto-approved, which is what
+made §7.3 a ruling rather than an afterthought.
+
+Left unstated, "zero manual intervention" would silently mean two different things inside one
+set, and the difference would track **whether the manifest happened to declare an open
+question** — an authoring accident, not a capability difference. That is precisely the
+objection §7.3 raised against candidate ruling (b), and it applies here whether or not the
+approval is counted.
+
+**Therefore, and pre-registered rather than decided later:**
+
+- **Both paths satisfy §5's zero-intervention requirement.** `system:no_open_questions` is the
+  framework deciding under a rule; the §6 constant is the operator applying a fixed text under
+  a rule. Neither is judgment about *this* roll's content, which is the only thing that could
+  bias one roll relative to another.
+- **The per-roll record names the decider verbatim** — the `decided_by` value from
+  `cycle_gate_decisions`, so `system:no_open_questions` and `human:<id>` are distinguishable
+  after the fact without inference.
+- **The split is reported in the closing claim**, as a count. If the set divides across the two
+  paths, that division is a fact about the rolls and is stated; it is not smoothed over, and it
+  is not used to reweight anything.
+- A `system:plan_validation` **rejection** is neither path: the framing re-rolls under
+  `framing_max_rerolls`, and §4 counts it as framing tax.
 
 ---
 
