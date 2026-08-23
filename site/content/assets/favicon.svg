@@ -5,7 +5,11 @@
        inside the 10% floor a maskable icon needs, while staying as large as
        possible for 16px rendering. A maskable app icon, if ever needed, is a
        separate asset at heavier padding rather than a shrink of this one. -->
-  <rect width="24" height="24" rx="5" fill="#000000"/>
+  <!-- Square with a slight bleed: a rounded tile necessarily leaves the four
+       corners transparent, and the rasterised edge antialiases against that
+       transparency — over a light tab strip both read as a pale rim. Bleeding
+       past the viewBox leaves no partially transparent pixel anywhere. -->
+  <rect x="-1" y="-1" width="26" height="26" fill="#000000"/>
   <g transform="translate(12,12) scale(0.82) translate(-12,-12)">
   <path d="M4.30 8.89 A8.3 8.3 0 0 1 19.70 8.89" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
   <path d="M19.70 15.11 A8.3 8.3 0 0 1 4.30 15.11" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
