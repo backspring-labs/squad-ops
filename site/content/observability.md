@@ -25,9 +25,8 @@ Every run opens a flow run, and every dispatched task nests inside it. That
 gives you the run as a graph: which task is executing, which failed, how long
 each took, and per-task logs streamed from the agent that ran them.
 
-This is the right surface for *"is it stuck, and where"*. It is not the right
-surface for judging quality — a green Prefect graph means the tasks completed,
-not that the application works.
+Use it to locate a stalled or failed task. A completed Prefect graph reports
+that the tasks ran; the cycle verdict reports what they produced.
 
 ## LangFuse — what the model saw
 
@@ -78,10 +77,10 @@ Every completed cycle produces a roll-up:
 | `waived` | checks an operator explicitly waived, with the reason |
 | `inert` | checks chronically never executing across runs |
 
-The `unverified` and `inert` fields are the ones that make the rest
-trustworthy. A framework that reports only passes and failures cannot tell you
-that its own verification was broken — and a check that has quietly never
-executed for twenty runs is a far worse problem than one that fails loudly.
+`unverified` lists every check that did not execute, each with a reason from a
+fixed taxonomy. `inert` lists checks that have not executed across recent runs
+of the same project, squad profile and request profile — a lookback of ten
+cycles.
 
 ```bash
 squadops cycles show play_game <cycle-id> --json

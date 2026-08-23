@@ -16,10 +16,10 @@ Semantic versioning with an even/odd convention on the minor:
 | | |
 |---|---|
 | **Even minors** | Feature releases, led by a headline design proposal |
-| **Odd minors** | Stabilisation. Feature-free by rule — the home for structural refactors deliberately quarantined out of feature releases, so a regression is unambiguously the refactor |
+| **Odd minors** | Stabilisation. Feature-free by rule, and where structural refactors land so a regression during one is attributable to the refactor |
 | **Patches** | Fixes, from either lane, at any time |
 
-Substance gates a cut, not the calendar.
+Scope completion gates a cut.
 
 ## Shipped
 
@@ -55,7 +55,7 @@ neutrality for the inference layer. Two later things depend on it — an inferen
 engine cannot be swapped safely while a vendor's status vocabulary lives in the
 domain, and 1.8 grades across seams that must be stable first.
 
-**1.8 — automation and learning.** Two co-headliners, deliberately ordered.
+**1.8 — automation and learning.** Two co-headliners, ordered within the release.
 A **cycle evaluation scorecard** turns a cycle outcome into a comparable grade
 and makes the project's own thesis falsifiable via a squad-versus-single-model
 harness. **Campaign orchestration** then relaunches cycles against an objective
@@ -75,8 +75,8 @@ in 1.8 either way, so the choice becomes an adapter swap rather than a redesign.
 Two conventions shape more of the roadmap than any individual feature.
 
 **Rails before mechanism.** A port, a no-op adapter and a wired call site ship
-before the implementation behind them. That is why deferring a capability is
-cheap here: what remains is an adapter swap, not a redesign.
+before the implementation behind them, so adding the implementation later is an
+adapter swap.
 
 **Nothing self-improving acts on raw checks.** Self-improvement consumes graded
 assessments, never the underlying check results — which is why the scorecard has

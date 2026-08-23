@@ -34,7 +34,7 @@ observability, a content-hashed filesystem vault for artifacts.
 
 Two properties fall out of this that matter more than the pattern itself:
 
-**Capabilities are declared, not inferred.** An adapter states what it can do —
+**Capabilities are declared.** An adapter states what it can do —
 model listing, model management, streaming usage — and callers ask the port
 rather than checking which class they were handed. A declared capability that
 does not work fails a conformance suite every adapter must pass.
