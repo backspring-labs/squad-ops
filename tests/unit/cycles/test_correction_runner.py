@@ -2000,6 +2000,59 @@ class TestCorrectionRunnerStandalone:
         assert captured[0].inputs["dom_testid_surface"] == expected_lines
         assert any("run-detail" in line for line in captured[0].inputs["testid_surface"])
 
+    async def test_repair_envelope_carries_the_loop_position(self, cycle):
+        """#1015 part C: `correction_attempts` and `max_correction_attempts` both
+        existed at this dispatch site and neither crossed into the repair envelope, so
+        the prompt could not tell round 1 from round 3 or say the budget is finite.
+
+        Bug caught: the same transport gap that #1040 closed for the dev surfaces —
+        a value computed one line away from the envelope and never put on it. The
+        handler-side render test passes without this, which is exactly how the fact
+        goes missing while every step looks covered.
+        """
+        import dataclasses as _dc
+
+        captured: list = []
+
+        def responder(envelope):
+            if envelope.task_type == "governance.correction_decision":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={
+                        "correction_path": "patch",
+                        "decision_rationale": "patchable",
+                        "affected_task_types": ["development.develop"],
+                    },
+                )
+            if envelope.task_type == "development.correction_repair":
+                captured.append(envelope)
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={"artifacts": [], "summary": "repaired"},
+                )
+            return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs={})
+
+        runner, _registry, _vault, _bus = self._make_runner(responder)
+        await runner.run_correction_protocol(
+            run_id="run_001",
+            cycle=cycle,
+            envelope=_dc.replace(self._failed_envelope(), task_type="qa.test"),
+            result=TaskResult(task_id="task_failed", status="FAILED", error="suite failed"),
+            correction_attempts=1,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+        )
+
+        assert len(captured) == 1
+        # attempts=1 already spent, so the repair being dispatched is attempt 2.
+        assert captured[0].inputs["correction_attempt"] == 2
+        assert isinstance(captured[0].inputs["max_correction_attempts"], int)
+
     async def test_no_manifest_threads_no_anchor_keys(self, cycle):
         """Boundary: a manifest-less correction (author mode, non-scaffold
         stacks) must not grow anchor keys — the deriver returns [] and the
