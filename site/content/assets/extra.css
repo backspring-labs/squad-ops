@@ -44,3 +44,15 @@
   max-width: 100%;
   height: auto;
 }
+
+/* Header lockup. Material's default puts 32px between the logo and the title —
+   wider than the 24px mark itself, which reads as two unrelated elements rather
+   than one lockup. That default is tuned for a header with no wordmark. */
+.md-header .md-header__title {
+  margin-left: 0.35rem;
+}
+
+/* The logo button's own padding contributes the other half of the gap. */
+.md-header .md-logo {
+  padding-right: 0.2rem;
+}

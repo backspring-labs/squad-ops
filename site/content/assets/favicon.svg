@@ -1,0 +1,16 @@
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  <!-- Squad Ops favicon. A solid tile rather than a transparent mark: tab chrome
+       applies prefers-color-scheme inconsistently, so a transparent icon can land
+       dark-on-dark. Mark scaled to 0.82, leaving 12% edge padding — comfortably
+       inside the 10% floor a maskable icon needs, while staying as large as
+       possible for 16px rendering. A maskable app icon, if ever needed, is a
+       separate asset at heavier padding rather than a shrink of this one. -->
+  <rect width="24" height="24" rx="5" fill="#000000"/>
+  <g transform="translate(12,12) scale(0.82) translate(-12,-12)">
+  <path d="M4.30 8.89 A8.3 8.3 0 0 1 19.70 8.89" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M19.70 15.11 A8.3 8.3 0 0 1 4.30 15.11" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M22.01 7.95 L20.12 10.27 L17.38 9.83" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M1.99 16.05 L3.88 13.73 L6.62 14.17" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M10.05 8.90 15.25 12.00 10.05 15.10Z" fill="#ffffff" stroke="#ffffff" stroke-width="1.5" stroke-linejoin="round"/>
+  </g>
+</svg>
