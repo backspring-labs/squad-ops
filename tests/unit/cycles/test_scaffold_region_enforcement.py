@@ -106,14 +106,16 @@ class TestAdversarialProducerEndToEnd:
                 "frozen spine mutated",
             ),
             (
-                "moving a slot boundary above the assertion",
+                # #1029: re-aimed. The attack hoists the slot-begin marker above the
+                # frozen assertions so they fall inside the editable region; the spine
+                # now also carries the derived success-body floor between the parse and
+                # the marker, so hoisting over only the two original lines no longer
+                # moves the marker at all. The test's own "mutation must change
+                # something" guard is what caught the stale search string.
+                "moving a slot boundary above the assertions",
                 lambda t: t.replace(
-                    "    expect(res.status).toBe(201)\n"
-                    "    const body: any = await res.json().catch(() => ({}))\n"
-                    "    // [scaffold-slot:begin slot-vc-probe-api-runs]",
-                    "    // [scaffold-slot:begin slot-vc-probe-api-runs]\n"
-                    "    expect(res.status).toBe(201)\n"
-                    "    const body: any = await res.json().catch(() => ({}))",
+                    "    expectShape(body)\n    // [scaffold-slot:begin slot-vc-probe-api-runs]",
+                    "    // [scaffold-slot:begin slot-vc-probe-api-runs]\n    expectShape(body)",
                 ),
                 ContractComplianceViolation.SCAFFOLD_REGION_VIOLATION,
                 "frozen spine mutated",

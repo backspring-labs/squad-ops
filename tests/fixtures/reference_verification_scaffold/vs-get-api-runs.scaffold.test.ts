@@ -16,6 +16,13 @@ describe('scaffold: GET /api/runs', () => {
     )
     expect(res.status).toBe(200)
     const body: any = await res.json().catch(() => ({}))
+    // Response floor for RunEvent, derived from the interface manifest (#1029).
+    const expectShape = (o: any) => {
+      for (const k of ["id", "title", "datetime", "location", "participants"]) expect(o?.[k]).not.toBeUndefined()
+      for (const e of o?.["participants"] ?? []) for (const k of ["id", "name"]) expect(e?.[k]).not.toBeUndefined()
+    }
+    expect(Array.isArray(body)).toBe(true)
+    for (const item of body ?? []) expectShape(item)
     // [scaffold-slot:begin slot-vs-get-api-runs]
     // FILL (qa): domain assertions for this behavior — response values and store
     // effects beyond the declared status. `body` is the parsed response JSON.

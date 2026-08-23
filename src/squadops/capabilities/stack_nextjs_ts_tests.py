@@ -41,6 +41,7 @@ import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from squadops.capabilities.response_shape import ResponseShape, derive_response_shape
 from squadops.capabilities.scaffold_contract import _slug
 from squadops.capabilities.stack_nextjs_ts import _segments
 from squadops.capabilities.verification_scaffold import (
@@ -113,6 +114,13 @@ class _Behavior:
     #: path stops being re-invented in the fill, which is where window rolls 2/3
     #: died (fills asserting `body.error_code` against the real `{error: {code}}`).
     expect_error_code: str = ""
+    #: #1029: the success-body floor this behavior's response must clear ("" = none).
+    #: The sibling of ``expect_error_code``: #913 moved the ERROR envelope's field path
+    #: out of the fill and into the spine; this does the same for the success body,
+    #: which is where the last green roll spent its entire correction budget (three
+    #: qa rounds, all "expected undefined to be 'sample'"). Error behaviors carry
+    #: ``None`` — a 4xx body is the envelope's business, not the entity's.
+    expect_response: ResponseShape | None = None
 
 
 def _fail_missing_surface(url_path: str, method: str, route_file: str, reason: str) -> None:
@@ -169,7 +177,36 @@ def _classify_probes(probes: list[dict]) -> list[tuple[str, dict]]:
     return classified
 
 
-def _behaviors_from_probes(classified: list[tuple[str, dict]]) -> list[_Behavior]:
+def _response_shapes(manifest: InterfaceManifest) -> dict[tuple[str, str], ResponseShape]:
+    """``(METHOD, path) -> success-body floor`` for every endpoint that declares one.
+
+    Keyed on the endpoint identity the probes carry, so a behavior resolves its shape
+    by the route it actually invokes rather than by position.
+    """
+    shapes: dict[tuple[str, str], ResponseShape] = {}
+    for endpoint in manifest.api.endpoints:
+        shape = derive_response_shape(manifest, endpoint.response)
+        if shape:
+            shapes[(endpoint.method.upper(), endpoint.path)] = shape
+    return shapes
+
+
+def _success_shape(
+    shapes: dict[tuple[str, str], ResponseShape], request: dict, status: int
+) -> ResponseShape | None:
+    """The floor for one probe's response, or ``None``.
+
+    Gated on a 2xx: a rejection probe's body is the error envelope, which #913 already
+    pins, and asserting entity fields on it would fail every correct app.
+    """
+    if not 200 <= int(status) < 300:
+        return None
+    return shapes.get((str(request["method"]).upper(), request["path"]))
+
+
+def _behaviors_from_probes(
+    classified: list[tuple[str, dict]], shapes: dict[tuple[str, str], ResponseShape]
+) -> list[_Behavior]:
     creates_by_path: dict[str, dict] = {}
     child_successes: list[dict] = []
     behaviors: list[_Behavior] = []
@@ -211,6 +248,7 @@ def _behaviors_from_probes(classified: list[tuple[str, dict]]) -> list[_Behavior
                     expect_status=expect,
                     final=_final(probe),
                     probe_id=probe["id"],
+                    expect_response=_success_shape(shapes, request, expect),
                 )
             )
         elif kind == "reject":
@@ -245,6 +283,7 @@ def _behaviors_from_probes(classified: list[tuple[str, dict]]) -> list[_Behavior
                     # A duplicate-conflict probe pins its code; a plain child success
                     # pins none — the .get() above yields "" for it.
                     expect_error_code=error_code,
+                    expect_response=_success_shape(shapes, request, expect),
                 )
             )
             if kind == "child":
@@ -275,6 +314,7 @@ def _minted_read_behaviors(
                     label=f"GET {ep.path} -> {expect}",
                     expect_status=expect,
                     final=_Step(method="GET", url_path=ep.path),
+                    expect_response=derive_response_shape(manifest, ep.response),
                 )
             )
             continue
@@ -298,6 +338,7 @@ def _minted_read_behaviors(
                 expect_status=expect,
                 final=_Step(method="GET", url_path=ep.path, param_expr="created.id"),
                 prerequisites=(create_step,),
+                expect_response=derive_response_shape(manifest, ep.response),
             )
         )
         if any(error_http.get(code) == 404 for code in ep.errors):
@@ -346,6 +387,56 @@ def _invocation_lines(step: _Step, assign: str) -> list[str]:
     if placeholders:
         lines.append(f"      {{ params: {{ {placeholders[0]}: {step.param_expr} }} }},")
     lines.append("    )")
+    return lines
+
+
+def _shape_lines(shape: ResponseShape) -> list[str]:
+    """The frozen-spine assertions for one success-body floor (#1029).
+
+    Subset checks only, matching the derivation's budget: declared-required fields are
+    present, and a declared collection's elements match their declared kind. Never an
+    exact field set, never a value, never ordering — an app that adds a field is making
+    a legitimate choice and failing it would spend the budget punishing correctness.
+
+    Emitted as one named predicate applied to the body (or to each element of a
+    collection response) so a list response and a single response assert the *same*
+    floor. Bracket access with JSON-quoted keys rather than ``toHaveProperty``, whose
+    dotted-path semantics would misread a field name containing a dot.
+
+    An empty collection asserts nothing about elements — legitimately empty is not a
+    shape defect, and the loop simply does not run.
+    """
+    checks: list[str] = []
+    if shape.required_fields:
+        keys = ", ".join(json.dumps(name) for name in shape.required_fields)
+        checks.append(f"    for (const k of [{keys}]) expect(o?.[k]).not.toBeUndefined()")
+    for element in shape.elements:
+        access = f"o?.[{json.dumps(element.field)}] ?? []"
+        if element.typeof:
+            checks.append(
+                f"    for (const e of {access}) expect(typeof e).toBe({json.dumps(element.typeof)})"
+            )
+        else:
+            keys = ", ".join(json.dumps(name) for name in element.required_fields)
+            checks.append(
+                f"    for (const e of {access}) for (const k of [{keys}]) "
+                f"expect(e?.[k]).not.toBeUndefined()"
+            )
+    if not checks:
+        return []
+    lines = [
+        f"    // Response floor for {shape.entity}, derived from the interface manifest (#1029).",
+        "    const expectShape = (o: any) => {",
+        *[f"  {line}" for line in checks],
+        "    }",
+    ]
+    if shape.is_collection:
+        lines += [
+            "    expect(Array.isArray(body)).toBe(true)",
+            "    for (const item of body ?? []) expectShape(item)",
+        ]
+    else:
+        lines.append("    expectShape(body)")
     return lines
 
 
@@ -404,6 +495,12 @@ def _shell_source(behavior: _Behavior, *, store_symbols: tuple[str, ...]) -> str
         # this code, the blueprint owns the shape (#795), and the field path is
         # exactly what fills kept re-inventing (`body.error_code`, rolls 2/3/13/17).
         lines.append(f"    expect(body.error?.code).toBe('{behavior.expect_error_code}')")
+    if behavior.expect_response:
+        # #1029: the success body's turn. Same argument as #913 one status class over —
+        # the manifest declares the entity's required fields and its collections'
+        # element kinds, and until now nothing read them, so both sides invented a
+        # shape and the disagreement cost correction rounds or the roll.
+        lines += _shape_lines(behavior.expect_response)
     lines += [
         f"    {slot_begin_marker(slot_id)}",
         "    // FILL (qa): domain assertions for this behavior — response values and store",
@@ -432,7 +529,8 @@ def derive_scaffold_behaviors(
     contract = emit_contract_dict(manifest)
     probes = contract["behavioral"]["probes"]
     classified = _classify_probes(probes)
-    behaviors = _behaviors_from_probes(classified)
+    shapes = _response_shapes(manifest)
+    behaviors = _behaviors_from_probes(classified, shapes)
     creates_by_path = {
         probe["request"]["path"]: probe for kind, probe in classified if kind == "create"
     }

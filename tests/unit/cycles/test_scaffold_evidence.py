@@ -10,7 +10,10 @@ from __future__ import annotations
 import pytest
 
 from squadops.capabilities.handlers.test_runner import parse_vitest_failure_rows
-from squadops.capabilities.verification_scaffold_emission import emit_verification_scaffold
+from squadops.capabilities.verification_scaffold_emission import (
+    GENERATOR_VERSION,
+    emit_verification_scaffold,
+)
 from squadops.capabilities.verification_scaffold_fill import merge_fills, parse_fill_emission
 from squadops.cycles.scaffold_evidence import (
     CLASS_APP_CONTRACT,
@@ -272,7 +275,7 @@ class TestSummary:
         )
         d = summary.to_dict()
         # the promotion model's fields (SIP §6/§12) — schema preserved, workflow not built
-        assert d["stack"] == "nextjs_ts" and d["generator_version"] == 6
+        assert d["stack"] == "nextjs_ts" and d["generator_version"] == GENERATOR_VERSION
         assert d["shell_count"] == 8 and d["slot_count"] == 8
         assert d["fill_dispositions"] == {"filled": 1, "missing": 7}
         assert d["additive_test_count"] == 2

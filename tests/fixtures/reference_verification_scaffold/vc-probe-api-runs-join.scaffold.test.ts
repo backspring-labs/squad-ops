@@ -30,6 +30,12 @@ describe('scaffold: POST /api/runs/{run_id}/join', () => {
     )
     expect(res.status).toBe(200)
     const body: any = await res.json().catch(() => ({}))
+    // Response floor for RunEvent, derived from the interface manifest (#1029).
+    const expectShape = (o: any) => {
+      for (const k of ["id", "title", "datetime", "location", "participants"]) expect(o?.[k]).not.toBeUndefined()
+      for (const e of o?.["participants"] ?? []) for (const k of ["id", "name"]) expect(e?.[k]).not.toBeUndefined()
+    }
+    expectShape(body)
     // [scaffold-slot:begin slot-vc-probe-api-runs-join]
     // FILL (qa): domain assertions for this behavior — response values and store
     // effects beyond the declared status. `body` is the parsed response JSON.
