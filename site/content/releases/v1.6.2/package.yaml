@@ -1,0 +1,305 @@
+version: 1.6.2
+tag: v1.6.2
+previous_tag: v1.6.1
+date: '2026-08-23'
+commit: cca0522b7ab4ecf446b5db889bccc1042545c9ba
+narrative: "The information-flow patch line. Every fix here is one shape: **a fact\
+  \ the system\nalready holds, not reaching the agent judged against it** — and the\
+  \ release is the\nfirst in the 1.6 line validated by a green roll with an independent\
+  \ boot audit.\n\n**Cut evidence.** `cyc_79eebcb82205` / `run_9c879ff5458e`: verdict\
+  \ `accepted`, zero\nfailed checks, 5/5 contract probes verified — and the delivered\
+  \ application\nindependently **installs, builds, boots, answers every contract probe\
+  \ over real HTTP,\nand its UI reaches every path it requests**. The verdict and\
+  \ the oracle agree, which is\nthe standard SIP-0096 exists to hold and the thing\
+  \ 1.6.2 could not previously show.\n\n**Telling an agent what it is judged against:**\n\
+  - #1029 — the frozen shell spine pins the success body's declared floor: required\
+  \ fields\n  present, declared collection element kinds honoured. A floor, not a\
+  \ schema — every\n  exclusion is a false-positive source, and the pin was replayed\
+  \ against banked green\n  trees before it gated anything.\n- #1042 — the declared\
+  \ success status reaches the developer by derivation. It previously\n  survived\
+  \ only as a TODO comment inside the fill body the fill replaces.\n- #1060 — the\
+  \ repair receives **every** manifest surface the initial author does. Three\n  were\
+  \ missing; two of them (error contract, model surface) had renderers that had been\n\
+  \  producing empty output since they were written.\n- #1002 — the detector's inspected-file\
+  \ inventory reaches the record, so a clean verdict\n  is distinguishable from a\
+  \ detector that never saw the file.\n- #1015 (B/C) — the repair is told to change\
+  \ the minimum, and can see \"attempt N of M\".\n\n**The success status stops being\
+  \ authored three times** (#1067, #1070 part A). The status\nexisted in seven places,\
+  \ three of them independently authored — manifest, plan prose,\nhandler code — while\
+  \ `scaffold_contract` already derives it from endpoint shape. Five\nincidents in\
+  \ three weeks took four fixes before anyone counted the recurrence.\n- #1067 — a\
+  \ declared status contradicting the derived default must carry a `decisions[]`\n\
+  \  entry naming the endpoint **and** stating the status. Silence becomes the safe\
+  \ default:\n  the rule decides, and there is nothing to disagree with.\n- #1070\
+  \ part A — the plan stops restating statuses. The authoring rule had *instructed*\n\
+  \  the copy (\"an enforced non-200 status must be STATED\"), because prose was once\
+  \ the only\n  channel to the implementer; #1042 and #1063 replaced it. `cyc_79eebcb82205`\
+  \ was rejected\n  twice, on two differently-named endpoints, for two documents disagreeing\
+  \ about an integer\n  neither needed to decide.\n\n**Correction-loop integrity:**\n\
+  - #1053 — an emission containing nothing is not an attempt. A prior roll spent two\
+  \ of\n  three rounds on zero-byte files while holding a correct, stable diagnosis;\
+  \ the refund\n  is bounded so a producer that never emits still terminates.\n- #761\
+  \ — the `tests_pass` signature stops collapsing where the runner emits no machine\n\
+  \  report, so A4 can tell REPEAT from SHIFTED on pytest.\n- #1030 — `framing_max_rerolls`\
+  \ defaults to 2; #522's free re-roll was dead code.\n- #880 — `runs retry` after\
+  \ a failed run, broken by construction.\n\n**Evidence integrity:**\n- #1021 — a\
+  \ contract criterion with no result row stops being a silent fourth state;\n  `criteria_unevidenced`\
+  \ separates \"never ran\" from \"ran and failed\". Reporting from\n  production\
+  \ on the cut roll.\n- #1022 / #1055 — containment findings for additive suites and\
+  \ for insert-as-update in\n  route handlers. **Banked, deliberately not enforced**:\
+  \ #1049 is this line's own\n  demonstration of what a rejection gate costs when\
+  \ its premise is never checked\n  against real traffic.\n- #980 follow-up — the\
+  \ dropped additive suite is recorded, not just the weakened fills.\n\n**Gates and\
+  \ scaffold:**\n- #1049 — the framing omission check reads both channels. #1042 made\
+  \ its stated premise\n  (\"the implementer will default to 200\") false, and it\
+  \ was costing one to two re-rolls\n  per cycle, dead-ending correct framings.\n\
+  - #1055 — the frozen store gains `update(table, row)`. Its whole write surface was\n\
+  \  `insert`, which is `push`, so persisting a change had no correct form; two independent\n\
+  \  authorings on two models both stored duplicates instead.\n- #972 — the regression\
+  \ gate no longer exits 0 when ruff is absent.\n- The blueprint falsification gate\
+  \ stops depending on xdist's work distribution — it\n  passed at 4 workers and failed\
+  \ at 20 on the same commit, so its verdict tracked the\n  machine.\n\n**Not exercised\
+  \ by the cut evidence, stated plainly.** The green roll ran on `98eb805e`.\nThree\
+  \ changes merged after it launched and ride this tag without that roll having tested\n\
+  them: #1064 (the store `update` seam — additive, a new export, no existing behaviour\n\
+  altered) and **#1067 / #1070 part A, both authoring-facing behaviour changes**.\
+  \ They are\nthe right fixes and they are green in CI, but the boot-audit evidence\
+  \ above does not cover\nthem, and the first roll of 1.6.3 is what will.\n\n**Known\
+  \ and named, not fixed:** #1021's underlying mechanism (why those two compile\n\
+  criteria produce no row), #1054 (a repair routed to qa while the lead named dev\
+  \ task\ntypes — 3.6 only, never fired on a 3.8 roll), #1070 part B (the manifest's\
+  \ own\n`success_status` field remains authorable where the rule decides it — blocked\
+  \ on the\nreference-manifest question)."
+pull_requests:
+- number: 1075
+  title: 'chore(release): 1.6.2 — the information-flow patch line'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-23'
+- number: 1073
+  title: 'fix(plan): the plan stops restating success statuses — part A of #1070'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-23'
+- number: 1068
+  title: 'fix(gates): a status that overrides the derived default must say why'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1067
+  merged_at: '2026-08-23'
+- number: 1072
+  title: 'fix(site): transparent favicon — Safari plates opaque icons'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-23'
+- number: 1069
+  title: 'test(site): indigo favicon tile to clear Safari''s contrast plate'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-23'
+- number: 1066
+  title: 'docs(site): record the accepted Safari favicon tradeoff'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-23'
+- number: 1064
+  title: 'feat(scaffold): the frozen store gains an update seam — the write it never
+    had'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1055
+  merged_at: '2026-08-23'
+- number: 1063
+  title: 'fix(correction): the repair sees every fact the initial author is judged
+    against'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1060
+  merged_at: '2026-08-23'
+- number: 1062
+  title: 'feat(release): publish the GitHub Release from the tag, not from memory'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1061
+  merged_at: '2026-08-23'
+- number: 1059
+  title: 'feat(scaffold): insert-as-update findings on emitted route handlers — banked,
+    not enforced'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-23'
+- number: 1058
+  title: 'docs(site): factual tone, the framing task sequence, and brand assets'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-23'
+- number: 1057
+  title: 'fix(qa): the containment findings actually reach the record — #1052 dropped
+    them'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-23'
+- number: 1056
+  title: 'fix(correction): an emission containing nothing is not an attempt at the
+    fix'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1053
+  merged_at: '2026-08-23'
+- number: 1052
+  title: 'feat(qa): additive-suite containment findings — banked, deliberately not
+    enforced'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-23'
+- number: 1051
+  title: 'fix(verification): a contract criterion with no evidence stops being a silent
+    fourth state'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-23'
+- number: 1050
+  title: 'fix(gates): the framing omission check reads BOTH channels — #1042 made
+    its premise false'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1049
+  merged_at: '2026-08-23'
+- number: 1048
+  title: 'fix(correction): the repair is told to change the minimum, and can see the
+    loop it is in'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-23'
+- number: 1047
+  title: 'fix(correction): the tests_pass signature stops collapsing when the runner
+    emits no machine report'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 761
+  merged_at: '2026-08-23'
+- number: 1046
+  title: 'docs(site): separate the framework''s verification from the project''s measurement'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-23'
+- number: 1045
+  title: 'feat(qa): the retreat had two halves — record the dropped additive suite
+    too'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-23'
+- number: 1044
+  title: 'docs(site): restructure on Diátaxis — evidence, roadmap, observability,
+    dependencies, diagrams'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-23'
+- number: 1043
+  title: 'fix(prompts): the developer is told the declared success status, not left
+    to plan prose'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1042
+  merged_at: '2026-08-23'
+- number: 1040
+  title: 'feat(scaffold): pin the success body''s declared floor in the frozen shell
+    spine'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1029
+  merged_at: '2026-08-23'
+- number: 1038
+  title: 'docs(site): Squad Ops documentation site — MkDocs Material, colocated with
+    the code'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-23'
+- number: 1037
+  title: 'test(2c): the blueprint falsification gate stops depending on xdist''s work
+    distribution'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-22'
+- number: 1036
+  title: 'fix(cycles): carry the inspected-set reference to the record — a clean detector
+    verdict is no longer indistinguishable from one that never looked'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1002
+  merged_at: '2026-08-22'
+- number: 1035
+  title: 'fix(cycles): retry after a failed run — typed workload-position resolution
+    (#880)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 880
+  merged_at: '2026-08-22'
+- number: 1034
+  title: 'fix(scripts): regression-gate preflight + positive completion evidence (#972)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 972
+  merged_at: '2026-08-22'
+- number: 1033
+  title: 'fix(cycles): framing_max_rerolls defaults to 2 (#1030)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1030
+  merged_at: '2026-08-22'
+sip_moves: []
+cycles:
+- cycle_id: cyc_79eebcb82205
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:frontend_compiles
+  - acceptance:regex_match
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-api-runs
+  - vc-probe-api-runs-join
+  - vc-probe-api-runs-join-duplicate
+  - vc-probe-api-runs-leave
+  - vc-probe-api-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 4
+screenshots: []

@@ -23,6 +23,13 @@ release_notes = importlib.util.module_from_spec(_spec)
 sys.modules["release_notes"] = release_notes
 _spec.loader.exec_module(release_notes)
 
+_pkg_spec = importlib.util.spec_from_file_location(
+    "build_release_package", REPO_ROOT / "scripts" / "maintainer" / "build_release_package.py"
+)
+build_release_package = importlib.util.module_from_spec(_pkg_spec)
+sys.modules["build_release_package"] = build_release_package
+_pkg_spec.loader.exec_module(build_release_package)
+
 CHANGELOG = """# Changelog
 
 ## [Unreleased]
@@ -118,3 +125,90 @@ class TestAgainstTheRealFiles:
         )
         assert body.strip()
         assert title.startswith(f"v{version}")
+
+
+class TestCycleEvidenceCapture:
+    """#1076: the capture must not report success while capturing nothing.
+
+    `cycle_evidence`'s docstring promised that "an unreachable API and a cycle that
+    genuinely produced nothing must not look the same later". It did not keep that
+    promise, and the failure was invisible in exactly the way the promise warns about:
+    the guard caught only `JSONDecodeError`, so `{"detail": "Not Found"}` — perfectly
+    valid JSON — was recorded as `captured: True` with every field null.
+
+    That is what hid three other defects (wrong route, no auth header, wrong roll-up
+    field name) for as long as the script existed. These tests are on the disclosure,
+    because the disclosure is what makes the rest findable.
+    """
+
+    @staticmethod
+    def _capture(monkeypatch, payload: str):
+        brp = build_release_package
+
+        monkeypatch.setattr(brp, "run", lambda *a, **k: payload)
+        monkeypatch.setattr(brp, "_bearer_token", lambda: "tok")
+        return brp.cycle_evidence(["cyc_1"], "http://api", "proj")[0]
+
+    def test_a_json_error_body_is_recorded_as_absent_not_captured(self, monkeypatch):
+        """The bug, exactly. A 404's JSON body must never read as a captured cycle."""
+        got = self._capture(monkeypatch, '{"detail": "Not Found"}')
+        assert got["captured"] is False
+        assert "Not Found" in got["reason"]
+
+    def test_unparseable_output_is_absent_with_its_reason(self, monkeypatch):
+        got = self._capture(monkeypatch, "curl: (7) connection refused")
+        assert got["captured"] is False
+        assert "did not answer" in got["reason"]
+
+    def test_a_cycle_with_no_rollup_is_absent_not_a_null_verdict(self, monkeypatch):
+        """A real cycle that never produced a roll-up is genuinely absent evidence —
+        recording it as captured-with-nulls is the same lie in a different shape."""
+        got = self._capture(monkeypatch, '{"status": "completed", "cycle_outcome": null}')
+        assert got["captured"] is False
+        assert "no verification roll-up" in got["reason"]
+
+    def test_a_real_rollup_is_captured_from_cycle_outcome(self, monkeypatch):
+        """Reads `cycle_outcome`, the field the API actually returns — the script read
+        `outcome`, which is always absent, so every capture was empty."""
+        payload = (
+            '{"status": "completed", "runs": [1, 2],'
+            ' "cycle_outcome": {"verdict": "accepted", "run_count": 4,'
+            ' "verified": ["b", "a", "a"], "failed": [], "required_unmet": [],'
+            ' "unverified": [{"check_id": "x"}]}}'
+        )
+        got = self._capture(monkeypatch, payload)
+        assert got["captured"] is True
+        assert got["verdict"] == "accepted"
+        assert got["run_count"] == 4
+        assert got["verified"] == ["a", "b"]
+        assert got["unverified"] == ["x"]
+
+    def test_the_request_is_project_scoped_and_authorized(self, monkeypatch):
+        """The route is `/api/v1/projects/{project}/cycles/{id}` and the API rejects an
+        unauthenticated call — the script used the unscoped path and sent no header, so
+        every capture 404'd before any field mapping mattered."""
+        brp = build_release_package
+
+        seen: dict = {}
+
+        def _fake_run(*args, **kwargs):
+            seen["args"] = args
+            return '{"cycle_outcome": {"verdict": "accepted", "run_count": 1}}'
+
+        monkeypatch.setattr(brp, "run", _fake_run)
+        monkeypatch.setattr(brp, "_bearer_token", lambda: "tok-123")
+        brp.cycle_evidence(["cyc_1"], "http://api", "proj")
+
+        assert "http://api/api/v1/projects/proj/cycles/cyc_1" in seen["args"]
+        assert "Authorization: Bearer tok-123" in seen["args"]
+
+    def test_a_missing_token_says_so_in_the_reason(self, monkeypatch):
+        """The maintainer needs to know WHICH failure this was — an expired login and a
+        genuinely absent cycle want different responses."""
+        brp = build_release_package
+
+        monkeypatch.setattr(brp, "run", lambda *a, **k: '{"detail": "Missing header"}')
+        monkeypatch.setattr(brp, "_bearer_token", lambda: "")
+        got = brp.cycle_evidence(["cyc_1"], "http://api", "proj")[0]
+        assert got["captured"] is False
+        assert "squadops login" in got["reason"]
