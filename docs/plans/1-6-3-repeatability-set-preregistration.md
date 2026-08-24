@@ -88,13 +88,13 @@ sequential speed against the memory-bandwidth ceiling, so concurrency does not s
 
 | # | Precondition | State |
 |---|---|---|
-| 2.1 | **Shakeout roll read out** — `cyc_3ba9dc0f67da`, declared NON-COUNTING before it launched (§2.a). Findings fixed or declared before roll 1 | pending |
-| 2.2 | **#1079 parity half landed** — `audit_delivered_app.py` implements every probe expectation kind, or calls `probe_runner` instead of re-implementing it. **Blocking, per §2.b** | pending |
-| 2.3 | Stack landed and each fix verified LOADED in-container, not merely built | pending — see §2.c |
-| 2.4 | **#947 / #936 read complete** — is the unfilled-slot class dead or lucky? If alive it enters the stack and this set re-registers | pending |
-| 2.5 | Deploy frozen; commit + all seven image ids recorded in §3 | pending |
-| 2.6 | Zero unreleased focus leases; nothing in flight | check at each launch |
-| 2.7 | `resolved_config_hash` re-verified `d4d4f662…` at roll 1 | pending |
+| 2.1 | **Shakeouts read out**, both NON-COUNTING by declaration before launch (§2.a) | **MET** — see §2.d |
+| 2.2 | **#1079 parity half landed** — `audit_delivered_app.py` implements every probe expectation kind, or calls `probe_runner` instead of re-implementing it. **Blocking, per §2.b** | **MET** — PR #1084; `evaluate_expectations` extracted, both callers use it, parity asserted as function identity |
+| 2.3 | Stack landed and each fix verified LOADED in-container, not merely built | **MET** — #971 (#1081), #1082 (#1083), #1079 (#1084). Verified at RUNTIME in all seven agents + runtime-api, not by grep: the injected-check tuple resolves to `('undefined_names', 'unterminated_source')` and the shared probe judge answers |
+| 2.4 | **#947 / #936 read complete** — is the unfilled-slot class dead or lucky? If alive it enters the stack and this set re-registers | **MET** — dead, and it was never what the census called it. See §2.e |
+| 2.5 | Deploy frozen; commit + all seven image ids recorded in §3 | **MET** — §3 |
+| 2.6 | Zero unreleased focus leases; nothing in flight | checked at each launch by the driver's preflight |
+| 2.7 | `resolved_config_hash` re-verified `d4d4f662…` at roll 1 | **MET** — both shakeouts created at `d4d4f66217d8`; the driver aborts the roll if it ever differs |
 
 ### 2.a The shakeout is non-counting by declaration
 
@@ -111,6 +111,56 @@ It **may** reveal a machinery defect, which is then fixed before roll 1. It **ma
 counted, banked, or cited as a repeatability result, whatever it produces. Its outcome does not
 move N or any §3 parameter. If it fails on the squad's output rather than the harness, that is
 not a machinery finding and nothing is fixed on its account.
+
+### 2.d Both shakeouts, and what they do and do not establish
+
+| | shakeout 1 `cyc_3ba9dc0f67da` | shakeout 2 `cyc_d6c48bab51e9` |
+|---|---|---|
+| deploy | pre-stack | frozen `5c6c64f7`, full stack |
+| verdict | accepted | accepted |
+| boot audit | PASS | PASS (5 probes, UI reaches every path) |
+| framing runs / re-rolls | 1 / 0 | 1 / 0 |
+| correction rounds | 0 | 0 |
+| gate decided by | `system:no_open_questions` | `system:no_open_questions` |
+| wall clock | 52 min | 62 min |
+
+Shakeout 2 was required because **#1082 is the only stack item that changes squad-facing
+behaviour** — a framework-injected check that can fail a task. V7 §2.f's reasoning applies
+unchanged: declining a second shakedown because the first went well treats it as ritual
+rather than a check.
+
+**What it establishes:** the guard does not reject healthy work in flight. That was the
+risk the 4,513-file corpus sweep could not close, because a sweep reads stored bytes and a
+roll produces new ones. #971 likewise banked nothing spurious.
+
+**What it does NOT establish, and the closing claim must not imply otherwise:** that #1082
+catches anything. Nothing in either shakeout was truncated, so the guard was never asked.
+Its catching behaviour rests on the corpus sweep (8 flags, all genuine) and its unit tests,
+not on either shakeout.
+
+**Neither shakeout may be counted, banked, or cited as a repeatability result** (§2.a).
+
+### 2.e The #947 / #936 read — dead, and misnamed in the census
+
+The "unfilled scaffold slots" class (5 of the census's 17, its largest) was **not** the qa
+author omitting fills. **#987** (`52ed447f`, merged 08-18) is the cause: a language-prefixed
+fill fence — ```` ```typescript:fill:slot-X ```` instead of the taught ```` ```fill:slot-X ````
+— did not match the exact-form parser, so the fills were stripped as an unaddressed file,
+the shells rendered the failing states a missing fill is *defined* to produce, and **the
+analyzer wrote a parse rejection up as an authoring failure**. §1.1's census inherited that
+misreading wholesale.
+
+Dead on the numbers: **4 of 17 implementation runs before 08-19, 0 of 25 on and after** — at
+the prior 23.5% rate, P(0 in 25) ≈ 0.13%.
+
+The method lesson is recorded because it generalises: **a census built on analyzer prose
+inherits the analyzer's misattributions.** #968 exists for this reason. Date each class
+against its fixing commit and read the fix.
+
+#947 stays out of the stack, correctly: it is real and live (qa self-eval burns 68% of the
+task's wall clock emitting a file the guard discards) but it is wasted work, never a
+rejection reason — it appears in no loss row. #936's guard exists and is green
+(`tests/unit/capabilities/test_fill_vocabulary_is_in_scope.py`).
 
 ### 2.b Why #1079 is blocking rather than cosmetic
 
@@ -151,7 +201,8 @@ Dropped with reasons: **#795** (closed 08-22; the sweep doc's 1.6.4 entry is sta
 | Squad profile | `full-38` (`qwen3.8:27b`) — matches the green roll |
 | Request profile / overrides | `validated-fullstack`; `build_profile=nextjs_ts`, `dev_capability=nextjs_ts` |
 | `resolved_config_hash` | expect `d4d4f662…`; re-verify at roll 1 |
-| Deploy — commit + 7 image ids | *pending §2.5* |
+| Deploy — commit | `5c6c64f7` (the commit the images were BUILT from; HEAD may sit ahead of it for a docs-only change made before roll 1, as #1085 did — what is frozen is the deploy) |
+| Deploy — 7 image ids | runtime-api `c0cae4d1ea8a` · max `964cde436e5f` · neo `669a9d536366` · nat `8189b36e464a` · bob `befdaca21f31` · eve `98130be6ce7e` · data `1a3d4df7afdd`. The driver asserts all seven at every launch: a rebuild changes these even when the commit does not, and "rebuild exits 0 with stale agents" is a known failure here, so identity beats provenance |
 | Gate policy | §6, pre-declared verbatim text, applied identically to every roll |
 | Audit instrument | `scripts/dev/audit_delivered_app.py` at the frozen deploy commit, carrying #1079's parity fix |
 
@@ -176,9 +227,17 @@ whether a specific 1.6.2 fix bit:
 | Status-disagreement events | #1067/#1042/#1070A |
 | Store-mutation defects | #1064 |
 | Repair-induced regressions | #994 |
-| `criteria_verified` / `criteria_total`, and unevidenced count | #1021 |
+| `criteria_verified` / `criteria_total`, and unevidenced count | #1021 — **confounded, see below**; recorded because the drop is itself the signal, not because the ratio is a clean quality measure |
 | Completion tokens by role · cycle wall clock | cost, and #998-class cap-exhaustion events |
 | Gate `decided_by`, verbatim | which approval path ran (§6.1) — never inferred |
+
+**The criteria ratio is confounded and is reported as such.** Two shakeouts on ONE frozen
+deploy, same config, gave 12/12 with nothing unevidenced and 9/14 with five — all five
+`vc-compiles-*`, the #1021 signature. So the ratio moves with #1021's unexplained
+variability as much as with anything the squad did, and the closing claim may not read it as
+a quality measure. It is recorded because **the drop is the signal**: #1021's mechanism is
+unexplained, and eight rolls on a frozen deploy is the largest same-configuration sample the
+question has ever had.
 
 **Contract size**, non-gating, no floor, read from stored artifacts (V7 §7.1 inherited): probe
 count from `behavioral.probes`, slot count from the `verification_scaffold_manifest`.
