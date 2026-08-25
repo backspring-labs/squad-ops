@@ -32,7 +32,7 @@ seven per rejected roll — said otherwise at every round.
 |---|---|---|
 | **The repair never reaches the file it was told about.** The lead's decision names the join handler; the repair emits other files | Roll 1 round 2 emitted the create and detail routes only; roll 4 rounds 2 and 3 emitted the create route only — while the decision text each time named "the join endpoint handler". #1015 B/C (minimality, attempt counter) were **on the deploy** and did not prevent it; part A (target from the analysis) was deferred because the analyzer emits prose, not files | **fix — headline** (§2.1): #1015 A + #968's slice |
 | **A repair round emits nothing.** `development.correction_repair` returns 0 characters | 3 of the 11 repair rounds in the reds (roll 1 r3; roll 5 r1, r2). `a93240dc` refunds the attempt — measured working, roll 5 reached a fourth decision — but each cost ~15 minutes and its signature (cap-exhausted vs empty) is not recorded | **fix** (§2.1): #998 detection |
-| **A correct repair is discarded because the qa fills contradict the contract.** No issue exists for this | Roll 5 round 3: the dev re-emit passed the frozen floor; the qa fills (`expect(body.participants).toContain('sample')` on a `list[Participant]` field) failed; the candidate was rejected, Fix E excluded it from the next workspace, and #435 terminated the run as `plan_defect` at the next decision. The application was correct for one round and the loop threw it away | **fix — file the issue** (§2.1): fills must agree with the declared element kind, from the same derivation as the floor |
+| **#1094** — a correct repair is discarded because the qa fills contradict the contract | Roll 5 round 3: the dev re-emit passed the frozen floor; the qa fills (`expect(body.participants).toContain('sample')` on a `list[Participant]` field) failed; the candidate was rejected, Fix E excluded it from the next workspace, and #435 terminated the run as `plan_defect` at the next decision. The application was correct for one round and the loop threw it away | **fix** (§2.1): fills must agree with the declared element kind, from the same derivation as the floor |
 | **#1087** — the frozen store exports a table handle for every declared entity, including embedded shapes and response projections no correct app writes | A **second** failing probe in rolls 1 and 4 (`join-duplicate`), never the only one. Misdirected roll 1's round-1 repair into `insert(TABLES.Participant, …)`. Yield on this set if fixed alone: **zero rolls** | **fix — with #1079's producer** (§2.2) |
 | **#1079 producer half** — `json_has` has no producer, so contract probes never check response bodies | 3 of 3 rejected apps failed the response floor in the suite; **3 of 3 passed the boot audit**. The record's own misattribution is what that blindness costs | **fix — pairs with the above** (§2.2) |
 | **The dev gets the join response shape wrong at round 0** — bare strings or a missing required field where the manifest declares `list[Participant]` | 3 of 8 rolls, with #1029's response surface rendered into the dev brief on this deploy | **read** (§2.1): confirm which path rendered it |
@@ -91,7 +91,7 @@ Then three fixes, each with its own prediction in §3:
   a distinct signature from an empty response and has the opposite remedy. Record it on
   the emission evidence and on the `CORRECTION_COMPLETED` disclosure `a93240dc` already
   carries, so "converged in 3 after two empty emissions" also says *why* they were empty.
-- **Fills must agree with the declared element kind — file it.** The scaffold gate
+- **#1094 — fills must agree with the declared element kind.** The scaffold gate
   (`verification_scaffold_gate.py`) validates placement, imports, handler references and
   status assertions. It does not check that a fill's assertion on a `list[X]` field agrees
   with what the floor already pins for `X`. Roll 5's fill asserted strings on a field the
@@ -167,7 +167,7 @@ testable at N=8 — some at N=1.
 | **P0** | Every repair round's emission includes the file the correction decision named, or the round is recorded as failing to — no roll's final report fails on a line the round-0 analysis named without a repair having changed that file | a red roll whose repair emissions never touched the file its decisions named |
 | **P1** | No roll asserts on a non-`Run` table, because the handle does not exist | any roll that does, or any rejection traceable to a phantom table |
 | **P2** | Every contract probe carries a shape check, and a response-floor defect is caught by the audit as well as the suite | a roll rejected on the response floor whose audit passes — the shape all three 1.6.3 reds took |
-| **P3** | No repair candidate is rejected on fill assertions the floor contradicts — a fill disagreeing with the declared element kind is rejected at the gate before it can gate a repair | a rejected candidate whose retest failed only on such a fill |
+| **P3** | No repair candidate is rejected on fill assertions the floor contradicts — a fill disagreeing with the declared element kind is rejected at the gate before it can gate a repair (#1094) | a rejected candidate whose retest failed only on such a fill |
 | **P4** | Every zero-character repair emission carries a named signature (cap-exhausted or empty), and the count is disclosed on the correction event | a zero-character emission recorded without one |
 
 Correction-round counts are **reported as texture**, against 1.6.3's 0/1/3/4 split, with
@@ -195,7 +195,7 @@ V7's "no re-rolls to improve the figure" rule carries over unchanged.
 1. **The two reads** (§2.1): the repair target lists at roll 1 r2 and roll 4 r2–3; the
    dev-brief rendering path. No code until both are written down.
 2. **#1015 part A with #968's slice**, shaped by read 1; **#998** detection; the
-   **fill-vs-element-kind gate**, filed first, then built. All three are prompt-, evidence-
+   **#1094** fill-vs-element-kind gate. All three are prompt-, evidence-
    or gate-side changes to a measured surface and are tested by the set.
 3. **#1087 + #1079 producer**, together, with the reference fixtures regenerated once.
    Regenerating a pinned fixture is an owner decision — propose the regen with the diff,
@@ -239,5 +239,5 @@ been shown stale twice.
 | rev | date | what changed | evidence |
 |---|---|---|---|
 | 1 | 2026-08-25 | Initial. Headline #1087 on the record's "2 of 3 rejections were false" | record §2–§3 as merged in PR #1088 |
-| 3 | 2026-08-25 | #1015 dated: B/C on the set's deploy (`4f631df7`), only A open and blocked on structured analyzer output. #435 shown to have fired in roll 5. Headline re-stated from the repair emission timelines: wrong file (rolls 1, 4), empty emission (rolls 1, 5), correct repair discarded by a contract-violating fill (roll 5) — the last has no issue and is to be filed. Stop-early demoted; #414 returns to 1.7. P0/P3/P4 restated; round counts become texture. Sweep leftovers extended to the 1.6.2/1.6.3 packs with what the rolls did and did not show | per-round emission timelines (artifact `created_at` + `role`), `repair_output.md` sizes, `run_report.md` failure reason, `correction_decision.md` rationales for the same three cycles |
+| 3 | 2026-08-25 | #1015 dated: B/C on the set's deploy (`4f631df7`), only A open and blocked on structured analyzer output. #435 shown to have fired in roll 5. Headline re-stated from the repair emission timelines: wrong file (rolls 1, 4), empty emission (rolls 1, 5), correct repair discarded by a contract-violating fill (roll 5) — the last filed as #1094. Stop-early demoted; #414 returns to 1.7. P0/P3/P4 restated; round counts become texture. Sweep leftovers extended to the 1.6.2/1.6.3 packs with what the rolls did and did not show | per-round emission timelines (artifact `created_at` + `role`), `repair_output.md` sizes, `run_report.md` failure reason, `correction_decision.md` rationales for the same three cycles |
 | 2 | 2026-08-25 | Rolls 1 and 4 re-attributed: both failed the frozen response floor at every round; #1087 was a second failure, yield zero rolls. Headline moved to repair convergence on a correctly-diagnosed shape defect (§2.1). P0 added; the #435 lever's silence in roll 5 made a precondition of §2.3; harness `entities[0]` detail added to #1087; sweep leftovers dispositioned; #1089 corrected from "fixed" to "PR #1092 open" | per-round `test_report.md` and `failure_analysis.md` under `data/artifacts/group_run/` for `cyc_a24e4619844e`, `cyc_a38814afc16d`, `cyc_421d29473f86`; record §6 |
