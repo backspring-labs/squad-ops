@@ -3,7 +3,6 @@ Unit tests for meta commands: version, status (SIP-0065 §6.3).
 """
 
 import json
-from importlib.metadata import version as pkg_version
 from unittest.mock import MagicMock, patch
 
 from typer.testing import CliRunner
@@ -85,10 +84,19 @@ def _mock_client_get_health_only(path):
 
 
 class TestVersionFlag:
-    def test_prints_version(self):
+    def test_prints_the_frameworks_own_version(self):
+        """The CLI must agree with the package, whatever the package resolves to.
+
+        This asserted `importlib.metadata.version("squadops")` — the install-time copy
+        — and so pinned the #1089 defect: on a tree at 1.6.3 it demanded the CLI print
+        `1.4.0`, and passed while the CLI was wrong. The invariant worth holding is
+        agreement between the two surfaces, not either one's source.
+        """
+        import squadops
+
         result = runner.invoke(app, ["--version"])
         assert result.exit_code == 0
-        assert pkg_version("squadops") in result.output
+        assert squadops.__version__ in result.output
 
     def test_short_flag(self):
         result = runner.invoke(app, ["-V"])

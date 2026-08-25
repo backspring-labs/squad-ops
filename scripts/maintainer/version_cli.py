@@ -27,18 +27,17 @@ INSTANCES_PATH = REPO_ROOT / "agents" / "instances" / "instances.yaml"
 
 
 def get_framework_version() -> str:
-    """Get framework version from squadops package."""
-    try:
-        # Try importing directly
-        sys.path.insert(0, str(REPO_ROOT / "src"))
-        from squadops import __version__
+    """Read the version from ``pyproject.toml`` — the file this tool edits.
 
-        return __version__
-    except ImportError:
-        # Fall back to parsing pyproject.toml
-        content = PYPROJECT_PATH.read_text()
-        match = re.search(r'version\s*=\s*"([^"]+)"', content)
-        return match.group(1) if match else "unknown"
+    #1089: this used to import ``squadops.__version__``, which on an editable install
+    is a copy made at install time. Bumping 1.6.2 to 1.6.3 therefore announced
+    "Version bumped: 1.4.0 -> 1.6.3" — the edit was right and the claim about the
+    prior state was four minor releases stale. A tool whose output is a correctness
+    claim about a file must read that file.
+    """
+    content = PYPROJECT_PATH.read_text()
+    match = re.search(r'^version\s*=\s*"([^"]+)"', content, re.MULTILINE)
+    return match.group(1) if match else "unknown"
 
 
 def get_agents() -> list[dict]:

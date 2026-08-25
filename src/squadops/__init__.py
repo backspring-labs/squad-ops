@@ -28,9 +28,9 @@ Quick Start:
     result = await system.task_service.execute_task(request)
 """
 
-from importlib.metadata import version as _pkg_version
+from squadops._version import resolve_version as _resolve_version
 
-__version__ = _pkg_version("squadops")
+__version__ = _resolve_version()
 
 # Core exports for quick access
 from squadops.agents import (
