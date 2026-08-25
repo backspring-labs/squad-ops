@@ -27,9 +27,13 @@ true-by-ruling.
   first attempt — against **three** framing runs for the pre-1.6.2 green roll. That is 1.6.2's
   success-status single-sourcing (#1067/#1070A), measured rather than asserted.
 
-**Two of the three failures were the framework wrongly rejecting a working application** (#1087,
-filed from the set). That is the release's most actionable finding, and it matters more than the
-rate.
+**The finding that outranks the rate — corrected 2026-08-25 (record §6):** the cut-time reading
+was that two of the three failures were the framework wrongly rejecting a working application
+(#1087). The stored per-round test reports say otherwise: all three rejected applications failed
+the frozen response floor of the join probe at every round, and the phantom-table assertion was a
+second failure in two of them, never the only one. The loss mode is the repair round not acting on
+a correct round-0 diagnosis — wrong file emitted, nothing emitted, or a correct repair discarded by
+a contract-violating fill (#1094). #1087 stands as a defect; its yield on this set was zero rolls.
 
 ### Fixed
 
