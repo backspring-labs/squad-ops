@@ -1,6 +1,6 @@
 ---
 template_id: request.qa_test_fill_mode_appendix
-version: "1"
+version: "2"
 required_variables:
   - slot_lines
   - shell_files
@@ -63,9 +63,14 @@ as a failing state):
   `created` is the created entity's parsed JSON.
 
 **Asserting on the store — pass `TABLES.<Entity>`, never a string you invent.**
-`@/lib/store` exports `TABLES`, one entry per declared entity, and its functions accept only
-those values. Write `expect(all(TABLES.Run)).toHaveLength(1)`. A name you make up is a
-compile error, and the build fails on compile errors, so an invented name costs the run.
+`@/lib/store` exports `TABLES`, one entry per entity a correct application stores as rows of
+its own, and its functions accept only those values. Write
+`expect(all(TABLES.Run)).toHaveLength(1)`. An entity that exists only as a shape embedded in
+another (`Run.participants`) or as a response projection has **no table**: it lives inside the
+owning entity's row, so assert on that row's field (`body.participants`, or the row from
+`all(TABLES.Run)`), never on a table for it. A fill naming a table `TABLES` does not
+export is rejected at the fill gate with the real tables named, and a name you make up is a
+compile error — either way an invented table costs the slot, not a warning.
 
 This is spelled out because it has already cost one. The store used to accept any string:
 an application named its table one thing, the suite named it another, and the mismatch

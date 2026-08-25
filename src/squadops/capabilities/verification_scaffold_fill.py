@@ -61,6 +61,7 @@ deterministic failing assertion naming the slot and the fill layer, shaped as an
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from squadops.capabilities.verification_scaffold import (
@@ -236,8 +237,19 @@ _FORBIDDEN: tuple[tuple[re.Pattern[str], str], ...] = (
 )
 
 
-def fill_findings(fill: Fill) -> list[str]:
-    """Every containment rule this fill violates; empty for a valid fill or explicit NA."""
+#: A store table reference in a fill body — ``TABLES.Run`` (#1087).
+_TABLE_REF_RE = re.compile(r"\bTABLES\.(\w+)")
+
+
+def fill_findings(fill: Fill, store_tables: Sequence[str] | None = None) -> list[str]:
+    """Every containment rule this fill violates; empty for a valid fill or explicit NA.
+
+    ``store_tables`` is the frozen store's exported table set, when the stack has one. A
+    fill asserting on a table outside it is rejected here, deterministically, with the
+    real tables named (#1087) — before it can reach a retest where it reads as an empty
+    array and costs a working application the roll. ``None`` means the stack's store is
+    not table-keyed and the rule does not apply.
+    """
     if fill.is_not_applicable:
         return []
     if not fill.body.strip():
@@ -256,6 +268,16 @@ def fill_findings(fill: Fill) -> list[str]:
     for pattern, reason in _FORBIDDEN:
         if pattern.search(fill.body):
             findings.append(reason)
+    if store_tables is not None:
+        phantom = sorted({m for m in _TABLE_REF_RE.findall(fill.body) if m not in store_tables})
+        if phantom:
+            findings.append(
+                f"asserts on {', '.join(f'`TABLES.{p}`' for p in phantom)}, which the frozen "
+                f"store does not export — a correct application persists only "
+                f"{', '.join(f'`TABLES.{s}`' for s in store_tables) or 'no tables'}; an "
+                f"embedded shape or response projection has no table of its own, so assert on "
+                f"the owning entity's field instead (#1087)"
+            )
     return findings
 
 
@@ -340,6 +362,7 @@ def merge_fills(
     scaffold_files: list[dict[str, str]],
     record: VerificationScaffoldManifest,
     emission: FillEmission,
+    store_tables: Sequence[str] | None = None,
 ) -> FillMergeRecord:
     """Merge an authored fill emission into the scaffold, deterministically.
 
@@ -387,7 +410,7 @@ def merge_fills(
             else:
                 fill = fills_by_slot.get(slot.slot_id)
                 body, disposition = _merged_body(
-                    slot.slot_id, fill, fill_findings(fill) if fill else []
+                    slot.slot_id, fill, fill_findings(fill, store_tables) if fill else []
                 )
             out.extend(body)
             out.append(lines[region.end_line - 1])

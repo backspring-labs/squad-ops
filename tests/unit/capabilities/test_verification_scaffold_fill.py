@@ -254,3 +254,42 @@ class TestMerge:
         tampered = dataclasses.replace(emission.manifest, files=tampered_files)
         with pytest.raises(ScaffoldValidationError, match="merge moved the spine"):
             merge_fills(list(emission.files), tampered, parse_fill_emission(""))
+
+
+class TestPhantomTableFindings:
+    """#1087: a fill asserting on a table the frozen store does not export is rejected at
+    the fill gate with the real tables named — not discovered at retest as an empty
+    array that reads like a handler that never saved."""
+
+    def test_a_phantom_table_reference_is_rejected_and_the_real_tables_are_named(self):
+        findings = fill_findings(
+            Fill(slot_id=_CREATE_SLOT, body="expect(all(TABLES.Participant)).toHaveLength(1)"),
+            store_tables=["RunEvent"],
+        )
+        assert len(findings) == 1
+        assert "`TABLES.Participant`" in findings[0]
+        assert "`TABLES.RunEvent`" in findings[0]
+        assert "#1087" in findings[0]
+
+    def test_an_exported_table_passes_and_the_rule_is_off_without_a_table_set(self):
+        body = "expect(all(TABLES.RunEvent)).toHaveLength(1)"
+        assert fill_findings(Fill(slot_id=_CREATE_SLOT, body=body), store_tables=["RunEvent"]) == []
+        # A stack whose store is not table-keyed threads no set: the rule must not fire
+        # on vocabulary it has no facts about.
+        phantom = "expect(all(TABLES.Participant)).toHaveLength(1)"
+        assert fill_findings(Fill(slot_id=_CREATE_SLOT, body=phantom)) == []
+
+    def test_the_merge_degrades_the_slot_with_the_phantom_table_named(self, emission):
+        text = f"```fill:{_CREATE_SLOT}\nexpect(all(TABLES.Participant)).toHaveLength(1)\n```\n"
+        record = merge_fills(
+            list(emission.files),
+            emission.manifest,
+            parse_fill_emission(text),
+            store_tables=["RunEvent"],
+        )
+        disposition = record.by_slot()[_CREATE_SLOT]
+        assert disposition.disposition == "rejected"
+        assert "`TABLES.Participant`" in disposition.detail
+        merged = next(f.content for f in record.files if _CREATE_SLOT in f.content)
+        assert "fill rejected" in merged
+        assert "expect(all(TABLES.Participant))" not in merged

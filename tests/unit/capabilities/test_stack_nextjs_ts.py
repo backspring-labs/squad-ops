@@ -490,3 +490,28 @@ def test_the_frozen_model_and_the_response_floor_pin_the_same_element_kind():
                 assert f"  {field.name}: {inner}[]" in models, (field.name, inner)
                 checked += 1
     assert checked >= 1, "the reference manifest must exercise a list-of-entity field"
+
+
+# --------------------------------------------------------------------------- #
+# #1087 — the store hands out tables only for what a correct app persists
+# --------------------------------------------------------------------------- #
+
+
+def test_the_store_exports_a_table_only_for_root_persisted_entities():
+    """Bug caught (#1087): `TABLES` carried `Participant` (an embedded shape) and every
+    other declared entity. Rolls 1 and 4 of the 1.6.3 set asserted on it and rejected
+    working applications. Only `RunEvent` — created by POST, read by id — is stored."""
+    store = next(f["content"] for f in expand(_manifest()) if f["name"] == "lib/store.ts")
+    assert "  RunEvent: 'run_event'," in store
+    assert "Participant" not in store
+
+
+def test_the_frozen_harness_demonstrates_a_root_table_not_the_first_declared_entity():
+    """`Participant` is declared first on group_run; the harness used `entities[0]` and so
+    demonstrated inserting into the phantom table right above the fill slots (#1087).
+    It must address a table the store actually exports, or it stops compiling."""
+    harness = next(
+        f["content"] for f in expand(_manifest()) if f["name"] == "__tests__/harness.test.ts"
+    )
+    assert "TABLES.RunEvent" in harness
+    assert "TABLES.Participant" not in harness

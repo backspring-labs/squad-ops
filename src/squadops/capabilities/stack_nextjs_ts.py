@@ -298,7 +298,15 @@ def _harness_test_source(manifest: Any) -> str:
     declared table via `TABLES`, which additionally demonstrates the accessor the fill briefs
     point authors at.
     """
-    entities = [e.name for e in (getattr(manifest, "entities", ()) or ())]
+    from squadops.capabilities.scaffold import root_persisted_entities
+
+    # #1087: the first ROOT-PERSISTED table, not the first declared entity. On
+    # ``group_run`` the first declared entity is ``Participant`` — an embedded shape —
+    # so every roll's frozen harness demonstrated inserting into a table no correct
+    # application writes, right above the fill the qa author was about to write.
+    entities = (
+        list(root_persisted_entities(manifest)) if getattr(manifest, "entities", None) else []
+    )
     if not entities:
         return _HARNESS_TEST_NO_ENTITIES
     ref = f"TABLES.{entities[0]}"
@@ -386,10 +394,22 @@ def _table_name(entity_name: str) -> str:
 def _store_source(manifest: Any) -> str:
     """The store, with its table names typed from the manifest's entities (#967).
 
+    **Only the root-persisted ones (#1087).** ``TABLES`` used to carry every declared
+    entity, including embedded shapes and response projections no correct application
+    writes; a qa fill asserting on one of those rejected a working app, twice in eight
+    rolls. The handle now exists only for what a correct app stores, so a fill reaching
+    for ``TABLES.Participant`` fails at the fill gate with the real tables named — and
+    under ``next build``'s type check — instead of at runtime with an empty array that
+    reads exactly like a handler that never saved anything.
+
     A manifest declaring no entities keeps an open signature: there is no union to derive,
     and ``never`` would make the store unusable rather than safe.
     """
-    entities = [e.name for e in (getattr(manifest, "entities", ()) or ())]
+    from squadops.capabilities.scaffold import root_persisted_entities
+
+    entities = (
+        list(root_persisted_entities(manifest)) if getattr(manifest, "entities", None) else []
+    )
     if not entities:
         return (
             _STORE_HEADER

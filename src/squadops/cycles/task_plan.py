@@ -622,10 +622,16 @@ def inject_contract_inputs(
             )
 
             if verification_scaffold_for(interface_manifest.stack):
+                from squadops.capabilities.scaffold import root_persisted_entities
+
                 emission = emit_verification_scaffold(interface_manifest)
                 inputs["verification_scaffold"] = {
                     "manifest": emission.manifest.to_dict(),
                     "files": [dict(f) for f in emission.files],
+                    # #1087: the tables the frozen store actually exports, so the fill
+                    # merge can reject an assertion on a phantom one with the real
+                    # tables named. Data from the one derivation the store renders.
+                    "store_tables": list(root_persisted_entities(interface_manifest)),
                 }
 
 
