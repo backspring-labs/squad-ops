@@ -17,19 +17,25 @@ narrative: "**The measurement patch line.** 1.6.2 merged roughly twenty fixes an
   \ eight**, and ten consecutive cycles have now framed on the\n  first attempt —\
   \ against **three** framing runs for the pre-1.6.2 green roll. That is 1.6.2's\n\
   \  success-status single-sourcing (#1067/#1070A), measured rather than asserted.\n\
-  \n**Two of the three failures were the framework wrongly rejecting a working application**\
-  \ (#1087,\nfiled from the set). That is the release's most actionable finding, and\
-  \ it matters more than the\nrate.\n\n### Fixed\n\n- **#971** — a failed task's emission\
-  \ is banked for triage instead of discarded. Before this, the\n  one artifact guaranteed\
-  \ absent was the one that *caused* the failure. Triage-only, with three\n  independent\
-  \ exclusions so known-bad bytes can never reach a workspace or the deliverable.\
-  \ The\n  set banked 44/48/11/48/11 failed emissions on the rolls that needed them,\
-  \ and roll 1's root\n  cause was traced by reading artifacts that would not previously\
-  \ have existed.\n- **#1082** — an emission that stopped mid-construct is caught\
-  \ at the task that wrote it, rather\n  than surfacing later as the consumer's test\
-  \ failure. Validated against all 4,513 scannable\n  source artifacts in the banked\
-  \ corpus: 8 flags, every one a genuine truncation, zero false\n  positives. Two\
-  \ false positives found *during* that validation drove real fixes (JSX punctuation\n\
+  \n**The finding that outranks the rate — corrected 2026-08-25 (record §6):** the\
+  \ cut-time reading\nwas that two of the three failures were the framework wrongly\
+  \ rejecting a working application\n(#1087). The stored per-round test reports say\
+  \ otherwise: all three rejected applications failed\nthe frozen response floor of\
+  \ the join probe at every round, and the phantom-table assertion was a\nsecond failure\
+  \ in two of them, never the only one. The loss mode is the repair round not acting\
+  \ on\na correct round-0 diagnosis — wrong file emitted, nothing emitted, or a correct\
+  \ repair discarded by\na contract-violating fill (#1094). #1087 stands as a defect;\
+  \ its yield on this set was zero rolls.\n\n### Fixed\n\n- **#971** — a failed task's\
+  \ emission is banked for triage instead of discarded. Before this, the\n  one artifact\
+  \ guaranteed absent was the one that *caused* the failure. Triage-only, with three\n\
+  \  independent exclusions so known-bad bytes can never reach a workspace or the\
+  \ deliverable. The\n  set banked 44/48/11/48/11 failed emissions on the rolls that\
+  \ needed them, and roll 1's root\n  cause was traced by reading artifacts that would\
+  \ not previously have existed.\n- **#1082** — an emission that stopped mid-construct\
+  \ is caught at the task that wrote it, rather\n  than surfacing later as the consumer's\
+  \ test failure. Validated against all 4,513 scannable\n  source artifacts in the\
+  \ banked corpus: 8 flags, every one a genuine truncation, zero false\n  positives.\
+  \ Two false positives found *during* that validation drove real fixes (JSX punctuation\n\
   \  read as a regex opener; parens counted inside JSX text) rather than a tuned threshold.\n\
   - **#1079** (parity half) — the boot-audit oracle and the in-cycle probe runner\
   \ judge a contract\n  with the same code. The oracle had re-implemented the expectation\
