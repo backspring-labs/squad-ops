@@ -22,7 +22,21 @@ Each even-minor consumer sits strictly behind the release that earns its trust: 
 
 ## Release Timeline
 
-### v1.6.2 (2026-08-24) — Current — the information-flow patch line
+### v1.6.3 (2026-08-25) — Current — the measurement patch line
+
+1.6.2 merged roughly twenty fixes and none had been measured. This line ships three and, for the first time, **a rate**.
+
+**The evidence** (`docs/plans/1-6-3-repeatability-set-record.md`): a pre-registered eight-roll set on a frozen deploy, in force from roll 1 and unchanged throughout. **No voids, no resets**, every gate decided by `system:no_open_questions` — zero manual intervention literally true rather than true-by-ruling. **5 of 8 functional (62.5%, 95% CI 30.6–86.3%)**, 8 of 8 applications booted, and **zero framing re-rolls across all eight**: ten consecutive cycles now frame on the first attempt against three framing runs for the pre-1.6.2 green roll, which is 1.6.2's success-status single-sourcing (#1067/#1070A) measured rather than asserted.
+
+**The finding that outranks the rate: two of the three failures were the framework wrongly rejecting a working application** (#1087 — the frozen store hands the qa author a table handle for every declared entity, including embedded shapes and response projections no correct app writes). The third, roll 5, was a real missing response field.
+
+**Fixed:** failed-task emissions persist for triage (#971 — 44/48/11/48/11 banked across the set; roll 1's root cause was traced by reading artifacts that previously would not have existed); a truncated emission is caught at the task that wrote it (#1082 — validated across all 4,513 banked source artifacts, 8 flags all genuine, zero false positives, with two FPs found *during* validation driving real fixes rather than a threshold); the boot-audit oracle judges a contract with the same code as the in-cycle runner (#1079 parity half); the release package captures cycle evidence instead of reporting that it did (#1076).
+
+**Named, not fixed:** #1087 (moves the generator hash — deliberate 1.6.4 work); #1079's producer half, which is why **contract probes do not verify response bodies** and the audit certifies *boots and answers with the right status codes*, not *answers correctly*; #1021, still unsettled across eight same-configuration rolls; #1089, found during this cut.
+
+**Scope:** `full-38` (qwen3.8:27b) with the nextjs_ts overrides on `group_run`. `full` (qwen3.6) remains the canonical squad and the meaning of every historical record. **Code drift between the tagged tree and the validated deploy: zero** — the freeze held from roll 1 to the tag. Next: 1.6.4 fixes what the set found and re-measures against this baseline.
+
+### v1.6.2 (2026-08-24) — the information-flow patch line
 Every fix in this line is one shape: **a fact the system already holds, not reaching the agent judged against it.** The developer is shown the success-body floor its shells assert (#1029) and the declared success status (#1042); the repair receives *every* manifest surface the initial author does (#1060 — three were missing, and two had renderers producing empty output since the day they were written); the detector's inspected-file inventory reaches the record (#1002). **Correction-loop integrity:** an emission containing nothing stops being billed as an attempt (#1053 — a prior roll spent two of three rounds on zero-byte files while holding a correct, stable diagnosis), the `tests_pass` signature stops collapsing where the runner emits no machine report (#761), the re-roll promise is on by default (#1030), and `runs retry` works (#880). **Evidence integrity:** a contract criterion with no result row is named rather than silently absent (#1021), and containment findings for additive suites and insert-as-update land banked-not-enforced (#1022, #1055) — #1049, this line's own repair of a gate whose premise had gone stale and was costing re-rolls on every cycle, is the argument for that posture. **Scaffold:** the frozen store gains the `update` seam it never had (#1055 — its whole write surface was append-only, so persisting a change had no correct form and two independent authorings on two models both stored duplicates).
 
 **Cut evidence — the first green roll of the 1.6 line with an independent oracle agreeing.** `cyc_79eebcb82205` / `run_9c879ff5458e` on qwen3.8:27b: verdict `accepted`, zero failed checks, 5/5 contract probes verified, and the delivered application independently **installs, builds, boots, answers every contract probe over real HTTP, and its UI reaches every path it requests**. Coverage reads 12/14 with the shortfall *named* rather than silent (`criteria_unevidenced`, #1021 reporting from production on its own cut roll). **The success status stops being authored three times** (#1067, #1070 part A): a declared status contradicting the derived default must now carry a warranting `decisions[]` entry, and the plan-authoring rule that *instructed* the second copy is retired — `cyc_79eebcb82205` was rejected twice, on two differently-named endpoints, for two documents disagreeing about an integer neither needed to decide. **Not exercised by the cut evidence, stated plainly:** the green roll ran on `98eb805e`, and three changes ride this tag without it having tested them — #1064 (the store `update` seam, additive) and #1067/#1070 part A (both authoring-facing). They are green in CI; the first roll of 1.6.3 is what covers them. **Known and named, not fixed:** #1021's underlying mechanism, #1054 (3.6-only repair misroute), #1070 part B (the manifest field stays authorable where the rule decides — blocked on the reference-manifest question). Next: v1.7 stabilization (every port is actually a port).
@@ -511,9 +525,9 @@ The following areas are identified for future work but do not block 1.0 readines
 
 ## Stats
 
-*As of 2026-08-24 (v1.6.2):*
+*As of 2026-08-25 (v1.6.3):*
 
-- **Framework version**: 1.6.2
+- **Framework version**: 1.6.3
 - **SIPs**: 65 implemented, 9 accepted (SIP-0088, 0090–0093, 0101, 0102, 0104, 0105), 20 deprecated (registry)
 - **Tests**: 7,600+ passing in the regression suite
 - **Python source**: ~61,000 lines (src + adapters; ~88,000 test lines, ~119,000 doc lines)
