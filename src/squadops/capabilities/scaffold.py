@@ -614,8 +614,11 @@ def root_persisted_entities(manifest: InterfaceManifest) -> tuple[str, ...]:
     keeps every entity. Narrowing on a guess would remove a table a correct app needs,
     which is the failure this exists to prevent — in the other direction.
     """
-    declared = [e.name for e in manifest.entities]
-    responses = [ep.response for ep in manifest.api.endpoints if ep.response]
+    # Duck-typed like the expander's other manifest readers: the stack modules' tests hand
+    # in bare entity lists, and a manifest with no api section has no typed responses.
+    declared = [e.name for e in (getattr(manifest, "entities", ()) or ())]
+    endpoints = getattr(getattr(manifest, "api", None), "endpoints", ()) or ()
+    responses = [ep.response for ep in endpoints if getattr(ep, "response", None)]
     single = {r.strip() for r in responses if _base_type_name(r) == r.strip()}
     roots = [name for name in declared if name in single]
     if roots:
