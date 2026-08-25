@@ -49,7 +49,11 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
 #: Bump on ANY emission-affecting change (module docstring). Recorded in every manifest.
 #: 2 (#936) — the shell imports `all` alongside `reset`, so a fill can call the helper
 #: the appendix teaches without adding an import it is forbidden to add.
-GENERATOR_VERSION = 7
+#: 8 (#1096, #1087, 2026-08-25) — the FROZEN tree moved, not the shells: an entity-typed
+#: field renders its interface (``Participant[]``, not ``string[]``), the store exports a
+#: table only for root-persisted entities, and the harness addresses one of those. Only
+#: ``expanded_tree_hash`` changes; the spine and scaffold hashes are byte-identical to 7.
+GENERATOR_VERSION = 8
 
 #: The stored manifest artifact's filename (the executor persists it beside the contract).
 VERIFICATION_SCAFFOLD_MANIFEST_FILENAME = "verification_scaffold_manifest.yaml"

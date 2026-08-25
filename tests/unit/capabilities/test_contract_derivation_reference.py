@@ -51,9 +51,22 @@ _MANIFEST = _REPO / "examples" / "03_group_run" / "interface_manifest.yaml"
 # and prints the `artifacts ingest` command; committing it beside the manifest put
 # a generated artifact in the source tree, in a directory that reads as
 # user-facing examples. It lives here instead: its only consumer is this test.
-_CONTRACT = (
+# The reference contract has two pins with two meanings (2026-08-25, #1079):
+#
+# * ``_EVIDENCE_CONTRACT`` — contract v9, the artifact bind-mode cycles ingested and the
+#   1.4 Functional App Yield window (6/6, five consecutive) was measured against. Its bytes
+#   never change; a file named for a vault artifact must stay that artifact.
+# * ``_CONTRACT`` — the deriver's current form for the same manifest. It differs from v9
+#   in exactly one way: the three success probes carry ``json_has`` (the responding
+#   entity's declared-required fields), the producer ``json_has`` never had (#1079).
+#   Classified **ambiguity_removal** per the M0 divergence taxonomy
+#   (docs/plans/1-6-0-authorship-plan.md): v9 left the success body implicit; derivation
+#   now states it. Not a reference defect, so the 1.4 figure carries no qualification —
+#   it measured a weaker contract that every app passing this one also passes.
+_EVIDENCE_CONTRACT = (
     _REPO / "tests" / "fixtures" / "reference_contract" / "contract_v9_art_4f368ea08799.yaml"
 )
+_CONTRACT = _REPO / "tests" / "fixtures" / "reference_contract" / "contract_v10_json_has_1079.yaml"
 
 # The ingested artifacts, by content hash. Measured 2026-08-07 against the vault:
 #   art_8becd104e9fc — interface manifest v4
@@ -61,7 +74,8 @@ _CONTRACT = (
 # These are the exact bytes the 1.4 FAY window and every bind-mode cycle since have
 # run against. A change here is a change to the evidence base, not a refactor.
 _MANIFEST_SHA256 = "52d8ea7e204e0ceca9c94a60a7b10f18a24519e594ce5c51654674b82a15a826"
-_CONTRACT_SHA256 = "7622f570c949fe9504bfebdcd0562e77e78b4d8bff54d9d670001b7f6482e6fe"
+_EVIDENCE_CONTRACT_SHA256 = "7622f570c949fe9504bfebdcd0562e77e78b4d8bff54d9d670001b7f6482e6fe"
+_CONTRACT_SHA256 = "bdd540d0d916e085dc45dd9eaef2325f9278b432720453f490666de19447b831"
 
 
 def _sha256(path: Path) -> str:
@@ -86,11 +100,16 @@ def test_reference_contract_is_still_the_ingested_artifact():
     below becomes a tautology — the deriver proving it equals itself. This hash is
     what stops that.
     """
-    assert _sha256(_CONTRACT) == _CONTRACT_SHA256, (
+    assert _sha256(_EVIDENCE_CONTRACT) == _EVIDENCE_CONTRACT_SHA256, (
         "tests/fixtures/reference_contract/contract_v9_art_4f368ea08799.yaml no longer "
-        "matches ingested "
-        "contract v9 (art_4f368ea08799). These are the bytes bind-mode cycles load; "
-        "regenerating them locally would make the derivation test tautological."
+        "matches ingested contract v9 (art_4f368ea08799). Those are the bytes the 1.4 "
+        "evidence was measured against; they are history, and history is not regenerated."
+    )
+    assert _sha256(_CONTRACT) == _CONTRACT_SHA256, (
+        "tests/fixtures/reference_contract/contract_v10_json_has_1079.yaml no longer matches "
+        "its pinned hash. Regenerating it in place would make the derivation test below "
+        "tautological — a deriver change is classified per the M0 taxonomy and lands with a "
+        "new hash here, deliberately."
     )
 
 
@@ -129,3 +148,21 @@ def test_the_reference_pair_is_non_trivial():
 
     assert len(deployed["fill_files"]) == 4
     assert len(deployed["behavioral"]["probes"]) == 5
+
+
+def test_the_current_form_differs_from_the_evidence_contract_only_by_json_has():
+    """The classification's own check (#1079, ambiguity_removal): v10 must be v9 plus the
+    success probes' keys and nothing else. Any other drift is a different divergence with a
+    different class, and this test is what makes the classification falsifiable."""
+    v9 = yaml.safe_load(_EVIDENCE_CONTRACT.read_text(encoding="utf-8"))
+    v10 = yaml.safe_load(_CONTRACT.read_text(encoding="utf-8"))
+    for probe in v10["behavioral"]["probes"]:
+        if probe["expect"].get("status", 0) < 300:
+            assert probe["expect"].pop("json_has") == [
+                "id",
+                "title",
+                "datetime",
+                "location",
+                "participants",
+            ]
+    assert v10 == v9
