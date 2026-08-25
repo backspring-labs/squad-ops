@@ -594,7 +594,12 @@ class QATestHandler(_CycleTaskHandler):
         shell_paths = {f.path for f in record.files}
         dropped = sorted(a["name"] for a in artifacts if a["name"] in shell_paths)
         kept = [a for a in artifacts if a["name"] not in shell_paths]
-        merged = merge_fills(list(scaffold_input["files"]), record, fill_emission)
+        merged = merge_fills(
+            list(scaffold_input["files"]),
+            record,
+            fill_emission,
+            store_tables=scaffold_input.get("store_tables"),
+        )
         merged_artifacts = [
             {
                 "name": f.path,

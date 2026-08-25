@@ -1,0 +1,180 @@
+# Verification contract — emitted by the scaffold expander (SIP-0098).
+# Roll-invariant: framing BINDS these criteria by id; it never authors them.
+# Regenerate with the expander; do not hand-edit.
+contract_version: 1
+skeleton:
+  expander: fullstack_fastapi_react
+  interface_manifest_hash: bb472e267e53d5ad29406663b4340de45613dd68fa091fe7f2d06a99b7267530
+capabilities:
+- python
+- node
+frozen:
+- path: backend/__init__.py
+  sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- path: backend/errors.py
+  sha256: a5c9e04e111584184cd880d15e28e6a6759951c8ce8f31188275fa40d7c7c18d
+- path: backend/main.py
+  sha256: 1d0ea8c4ce2438196a4b3463a5b622f946f3754105c06b09f12aab6452f9a12d
+- path: backend/models.py
+  sha256: 1c090c4856bcc4b5c6310ce4e7bd212e0640a7d7fcc029547a97717374103c59
+- path: backend/requirements.txt
+  sha256: 91c0e75b9979625c004d43c76d8a9876ca3794d101ff277285aef448d5675ab2
+- path: backend/store.py
+  sha256: 20d4c1da14c89030846a20a913dec2a70b924fc22411bc02079483e34c74df5f
+- path: conftest.py
+  sha256: 2573c02000affd3e06d862b7c847a2562937592419e1b39acca473dcb7635b2b
+- path: frontend/index.html
+  sha256: 166c0d4e42057dc9620e02811cb3ba10026c20f0f349c4b17af634c5185c6a15
+- path: frontend/package.json
+  sha256: f10dfb6f40c789a1271871099cacc2ec5276fcadb1a942f621790691525ee936
+- path: frontend/src/App.jsx
+  sha256: ca1e88815f44861acdf107288b0f7e8eca18da664dd1d54e02db4833f1d0588a
+- path: frontend/src/__tests__/harness.test.jsx
+  sha256: 4cb9209071d7fad138a00b907a2aab890fe977036f19ecfba677c6a1e2f2f163
+- path: frontend/src/api.js
+  sha256: d3531b3567f5abbdd38d6182908f8c38683da85f55ccd201b1374afa34c77c78
+- path: frontend/src/main.jsx
+  sha256: 16d0738c63e947395511e47dede172d2c1dd708003e245db11e276eb26ef05ee
+- path: frontend/src/test-setup.js
+  sha256: e22c110d9f7d04d80e583acc0dcc156f6a11473bb0e305ed6cf9575214908d12
+- path: frontend/vite.config.js
+  sha256: f8c5d6638a37327840c2d74f5fd16415bd610da1428d1e335e91e030827d0eae
+fill_files:
+  backend/routes.py:
+    interface:
+    - check: endpoint_defined
+      id: vc-routes-endpoints
+      methods_paths:
+      - GET /runs
+      - POST /runs
+      - GET /runs/{run_id}
+      - POST /runs/{run_id}/join
+      - POST /runs/{run_id}/leave
+    - check: import_present
+      id: vc-routes-apierror
+      module: .errors
+      symbol: ApiError
+    implementation:
+    - check: command_exit_zero
+      id: vc-routes-compiles
+      argv:
+      - python
+      - -m
+      - py_compile
+      - backend/routes.py
+      requires: python
+    - check: module_imports
+      id: vc-routes-imports
+      file: backend/routes.py
+      requires: python
+  frontend/src/views/RunsListView.jsx:
+    interface: []
+    implementation:
+    - check: frontend_compiles
+      id: vc-view-compiles-runs-list-view
+      file: frontend/src/views/RunsListView.jsx
+      requires: node
+  frontend/src/views/CreateRunView.jsx:
+    interface: []
+    implementation:
+    - check: frontend_compiles
+      id: vc-view-compiles-create-run-view
+      file: frontend/src/views/CreateRunView.jsx
+      requires: node
+  frontend/src/views/RunDetailView.jsx:
+    interface: []
+    implementation:
+    - check: frontend_compiles
+      id: vc-view-compiles-run-detail-view
+      file: frontend/src/views/RunDetailView.jsx
+      requires: node
+behavioral:
+  build:
+  - check: frontend_build
+    id: vc-frontend-builds
+    requires: node
+  suite:
+    checks:
+    - check: tests_pass
+      id: vc-suite-passes
+      requires: python
+    coverage_expectations:
+    - 'happy path for each endpoint: GET /runs, POST /runs, GET /runs/{run_id}, POST
+      /runs/{run_id}/join, POST /runs/{run_id}/leave'
+    - validation_error -> HTTP 422
+    - run_not_found -> HTTP 404
+    - duplicate_participant -> HTTP 409
+    - participant_not_found -> HTTP 404
+    - tests are order-independent; module-level state reset per test
+  probes:
+  - id: vc-probe-runs
+    subject: backend
+    request:
+      method: POST
+      path: /runs
+      json:
+        title: sample
+        datetime: '2026-08-01T08:00:00'
+        location: sample
+    expect:
+      status: 201
+      json_has:
+      - id
+      - title
+      - datetime
+      - location
+      - participants
+    capture:
+      run_id: id
+  - id: vc-probe-runs-rejects-blank
+    subject: backend
+    request:
+      method: POST
+      path: /runs
+      json:
+        title: ''
+        datetime: ''
+        location: ''
+    expect:
+      status: 422
+      error_code: validation_error
+    guards: scaffold
+  - id: vc-probe-runs-join
+    subject: backend
+    request:
+      method: POST
+      path: /runs/{run_id}/join
+      json: &id001
+        name: sample
+    expect:
+      status: 200
+      json_has:
+      - id
+      - title
+      - datetime
+      - location
+      - participants
+  - id: vc-probe-runs-join-duplicate
+    subject: backend
+    request:
+      method: POST
+      path: /runs/{run_id}/join
+      json: *id001
+    expect:
+      status: 409
+      error_code: duplicate_participant
+  - id: vc-probe-runs-leave
+    subject: backend
+    request:
+      method: POST
+      path: /runs/{run_id}/leave
+      json:
+        name: sample
+    expect:
+      status: 200
+      json_has:
+      - id
+      - title
+      - datetime
+      - location
+      - participants

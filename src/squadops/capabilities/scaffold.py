@@ -590,6 +590,44 @@ def materialize(manifest: InterfaceManifest, dest: Path) -> int:
     return len(files)
 
 
+def root_persisted_entities(manifest: InterfaceManifest) -> tuple[str, ...]:
+    """The entities a correct application persists as rows of their own (#1087).
+
+    A manifest declares an entity for every *shape* it needs — ``Participant`` because
+    ``Run.participants`` is ``list[Participant]``, ``RunSummary`` because ``GET /runs``
+    returns ``list[RunSummary]`` — but only some of those are things the application
+    stores. The rest are embedded in another entity's row or projected from it. Handing
+    the qa author a table for each declared entity told it nothing about which ones a
+    correct app writes, and in the 1.6.3 set two working applications were rejected for
+    ``expect(all(TABLES.Participant)).toHaveLength(1)`` against a table no correct
+    implementation ever touches.
+
+    The manifest already says which are root-persisted, in the one place it is not
+    ambiguous: **an entity returned as a single object by some endpoint** is addressable
+    on its own — created by a POST, read by id — and therefore stored on its own.
+    ``Run`` is (``POST /runs → Run``, ``GET /runs/{id} → Run``); ``RunSummary`` is
+    returned only inside ``list[RunSummary]`` and ``Participant`` is never returned at
+    all. Declaration order is kept so the store's first table is stable.
+
+    Two fallbacks, both deliberate and both widening: a manifest whose endpoints return
+    only collections keeps every entity some endpoint returns; one with no typed responses
+    keeps every entity. Narrowing on a guess would remove a table a correct app needs,
+    which is the failure this exists to prevent — in the other direction.
+    """
+    # Duck-typed like the expander's other manifest readers: the stack modules' tests hand
+    # in bare entity lists, and a manifest with no api section has no typed responses.
+    declared = [e.name for e in (getattr(manifest, "entities", ()) or ())]
+    endpoints = getattr(getattr(manifest, "api", None), "endpoints", ()) or ()
+    responses = [ep.response for ep in endpoints if getattr(ep, "response", None)]
+    single = {r.strip() for r in responses if _base_type_name(r) == r.strip()}
+    roots = [name for name in declared if name in single]
+    if roots:
+        return tuple(roots)
+    any_response = {_base_type_name(r) for r in responses}
+    roots = [name for name in declared if name in any_response]
+    return tuple(roots) if roots else tuple(declared)
+
+
 def fill_slot_paths(manifest: InterfaceManifest) -> tuple[str, ...]:
     """Workspace-relative paths of the *fill slots* — the files the dev agent fills
     bodies into. Everything else ``expand`` emits is frozen (scaffold-owned): the

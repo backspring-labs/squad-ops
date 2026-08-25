@@ -64,6 +64,9 @@ class TestInjection:
         scaffold = inputs["verification_scaffold"]
         assert len(scaffold["files"]) == 8
         assert scaffold["manifest"]["stack"] == "nextjs_ts"
+        # #1087: the tables the frozen store exports ride the same input, so the fill
+        # merge can reject a phantom-table assertion with the real tables named.
+        assert scaffold["store_tables"] == ["RunEvent"]
         # #1029: against the constant, not a literal. This test's subject is that the
         # scaffold REACHES qa.test on an opted-in stack; pinning the number here made a
         # legitimate emission bump fail a transport test, and the deliberate value pin
@@ -178,6 +181,24 @@ class TestMergeFillArtifacts:
         assert evidence["counts"]["filled"] == 1
         assert evidence["counts"]["missing"] == 7
         assert len(suite_files) == 8
+
+    def test_a_phantom_table_fill_is_rejected_at_merge_with_the_real_tables_named(
+        self, scaffold_input
+    ):
+        """#1087 end to end through the handler: the fill that rejected rolls 1 and 4."""
+        fills = parse_fill_emission(
+            "```fill:slot-vc-probe-api-runs\n"
+            "    expect(all(TABLES.Participant)).toHaveLength(1)\n```\n"
+        )
+        merged_artifacts, _, evidence = QATestHandler()._merge_fill_artifacts(
+            {**scaffold_input, "store_tables": ["RunEvent"]}, fills, []
+        )
+        assert evidence["counts"]["rejected"] == 1
+        create_shell = next(
+            a for a in merged_artifacts if a["name"].endswith("vc-probe-api-runs.scaffold.test.ts")
+        )
+        assert "`TABLES.RunEvent`" in create_shell["content"]
+        assert "expect(all(TABLES.Participant))" not in create_shell["content"]
 
     def test_the_banked_evidence_names_the_additive_suite_that_survived(self, scaffold_input):
         """#980's other half: a retreat weakens the fills AND drops the additive suite.

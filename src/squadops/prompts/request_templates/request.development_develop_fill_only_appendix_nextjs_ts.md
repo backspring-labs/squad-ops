@@ -1,6 +1,6 @@
 ---
 template_id: request.development_develop_fill_only_appendix_nextjs_ts
-version: "2"
+version: "3"
 required_variables:
   - stack
 optional_variables:
@@ -27,8 +27,11 @@ fixed slots** — never to rebuild, rewire, or regenerate the scaffold.
 - Page components in `app/**/page.tsx` — implement each component's body.
 
 **The store seam, stated exactly — pass `TABLES.<Entity>`, never a string you invent:**
-`@/lib/store` exports `TABLES`, one entry per declared entity, and its functions accept only
-those values. Write `insert(TABLES.Run, run)` and `all(TABLES.Run)`. A name you make up is a
+`@/lib/store` exports `TABLES`, one entry per entity a correct application stores as rows of
+its own, and its functions accept only those values. An entity that exists only as a shape
+embedded in another (`Run.participants: Participant[]`) or as a response projection has no
+table — store it inside the owning row and project it in the handler. Write
+`insert(TABLES.Run, run)` and `all(TABLES.Run)`. A name you make up is a
 compile error, and the build fails on compile errors — so the cost of inventing one is the
 whole run, not a warning. Read the table names out of `TABLES`; do not retype them as
 strings, and do not add a table of your own.

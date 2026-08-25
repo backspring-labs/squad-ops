@@ -67,10 +67,12 @@ def test_registering_a_second_stack_leaves_the_first_byte_identical():
     reference = _manifest("fullstack_fastapi_react")
 
     assert reference.content_hash().startswith("bb472e267e53d5ad")
+    # contract v10 (#1079): v9 plus json_has on the success probes, classified
+    # ambiguity_removal — see test_contract_derivation_reference for both pins.
     assert (
         hashlib.sha256(emit_contract_yaml(reference).encode())
         .hexdigest()
-        .startswith("7622f570c949fe95")
+        .startswith("bdd540d0d916e085")
     )
 
 
@@ -427,3 +429,91 @@ class TestStoreUpdateSeam:
             if "lib/store.ts" in line
         )
         assert "update(table: Table, row: Record<string, unknown>)" in store_line
+
+
+# --------------------------------------------------------------------------- #
+# #1096 — the frozen model must not contradict the response floor
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("list[Participant]", "Participant[]"),
+        ("Participant", "Participant"),
+        ("LIST[Participant]", "Participant[]"),
+        ("list[string]", "string[]"),
+        ("integer", "number"),
+        ("Unknownthing", "string"),
+        ("list[list[Participant]]", "Participant[][]"),
+    ],
+)
+def test_ts_type_passes_declared_names_through_and_keeps_the_string_fallback(raw, expected):
+    """#1096: `list[Participant]` rendered `string[]` because the token was lower-cased and
+    then looked up as a primitive. A declared name must survive case-preserved; an
+    undeclared token must still fall to `string`, never `any`."""
+    from squadops.capabilities.stack_nextjs_ts import _ts_type
+
+    assert _ts_type(raw, {"Participant"}) == expected
+
+
+def test_the_frozen_model_types_a_collection_by_the_interface_it_declares():
+    """Bug caught (#1096): the frozen `lib/models.ts` defined `interface Participant` and
+    three lines later declared `Run.participants: string[]`. The developer's brief carried
+    that line under FROZEN FILES as *authoritative*; the floor demanded objects. Both
+    renderings must now say `Participant[]`."""
+    models = next(f["content"] for f in expand(_manifest()) if f["name"] == "lib/models.ts")
+    assert "  participants: Participant[]" in models
+    assert "string[]" not in models
+    index = next(
+        line for line in scaffold.frozen_surface_index_lines(_manifest()) if "models.ts" in line
+    )
+    assert "participants: Participant[]" in index
+
+
+def test_the_frozen_model_and_the_response_floor_pin_the_same_element_kind():
+    """The two derivations that disagreed for the stack's whole life. For every collection
+    field whose element is a declared entity, the floor asserts the element's required
+    fields and the model must declare the element's interface — the same manifest fact,
+    rendered twice, must not read differently."""
+    from squadops.capabilities.response_shape import derive_response_shape
+
+    manifest = _manifest()
+    models = next(f["content"] for f in expand(manifest) if f["name"] == "lib/models.ts")
+    entities = {e.name for e in manifest.entities}
+    checked = 0
+    for entity in manifest.entities:
+        shape = derive_response_shape(manifest, entity.name)
+        floor = {e.field: e for e in (shape.elements if shape else ())}
+        for field in entity.fields:
+            inner = field.type[len("list[") : -1] if field.type.startswith("list[") else ""
+            if inner in entities:
+                assert floor[field.name].required_fields, field.name
+                assert f"  {field.name}: {inner}[]" in models, (field.name, inner)
+                checked += 1
+    assert checked >= 1, "the reference manifest must exercise a list-of-entity field"
+
+
+# --------------------------------------------------------------------------- #
+# #1087 — the store hands out tables only for what a correct app persists
+# --------------------------------------------------------------------------- #
+
+
+def test_the_store_exports_a_table_only_for_root_persisted_entities():
+    """Bug caught (#1087): `TABLES` carried `Participant` (an embedded shape) and every
+    other declared entity. Rolls 1 and 4 of the 1.6.3 set asserted on it and rejected
+    working applications. Only `RunEvent` — created by POST, read by id — is stored."""
+    store = next(f["content"] for f in expand(_manifest()) if f["name"] == "lib/store.ts")
+    assert "  RunEvent: 'run_event'," in store
+    assert "Participant" not in store
+
+
+def test_the_frozen_harness_demonstrates_a_root_table_not_the_first_declared_entity():
+    """`Participant` is declared first on group_run; the harness used `entities[0]` and so
+    demonstrated inserting into the phantom table right above the fill slots (#1087).
+    It must address a table the store actually exports, or it stops compiling."""
+    harness = next(
+        f["content"] for f in expand(_manifest()) if f["name"] == "__tests__/harness.test.ts"
+    )
+    assert "TABLES.RunEvent" in harness
+    assert "TABLES.Participant" not in harness

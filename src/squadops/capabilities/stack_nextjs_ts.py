@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Collection
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only, avoids a scaffold import cycle
@@ -56,14 +57,32 @@ _TS_TYPES = {
 }
 
 
-def _ts_type(raw: str) -> str:
+def _ts_type(raw: str, declared: Collection[str] = ()) -> str:
     """Manifest field type → TypeScript. Unknown types become ``string`` rather than ``any``:
-    ``any`` would silently disable the type checking that is stack #2's entire hygiene tier."""
-    t = (raw or "").strip().lower()
-    inner = re.fullmatch(r"(?:list|array)\[(.+)\]", t)
+    ``any`` would silently disable the type checking that is stack #2's entire hygiene tier.
+
+    ``declared`` is the set of entity and request-shape names the manifest defines. A token
+    naming one passes through **case-preserved**, so ``list[Participant]`` renders
+    ``Participant[]`` — the interface the same file declares three lines up.
+
+    **#1096, and why this parameter exists.** Before it, every entity reference took the
+    unknown-type path: the token was lower-cased (so the name was already gone), missed
+    ``_TS_TYPES``, and became ``string``. The frozen ``lib/models.ts`` then declared
+    ``Run.participants: string[]`` under a ``Participant`` interface it had just defined,
+    the FROZEN FILES surface repeated it to the developer with the word *authoritative*
+    attached, and the response floor — derived from the same manifest — demanded objects
+    carrying ``name``. On every ``nextjs_ts`` roll of the 1.6.3 set the developers who
+    obeyed the frozen file were rejected and the ones who ignored it were accepted. The
+    Python expander's ``_py_type`` always passed entity names through; this is stack #2
+    catching up to stack #1.
+    """
+    t = (raw or "").strip()
+    inner = re.fullmatch(r"(?:list|array)\[(.+)\]", t, re.IGNORECASE)
     if inner:
-        return f"{_ts_type(inner.group(1))}[]"
-    return _TS_TYPES.get(t, "string")
+        return f"{_ts_type(inner.group(1), declared)}[]"
+    if t in declared:
+        return t
+    return _TS_TYPES.get(t.lower(), "string")
 
 
 def _segments(path: str) -> str:
@@ -279,7 +298,15 @@ def _harness_test_source(manifest: Any) -> str:
     declared table via `TABLES`, which additionally demonstrates the accessor the fill briefs
     point authors at.
     """
-    entities = [e.name for e in (getattr(manifest, "entities", ()) or ())]
+    from squadops.capabilities.scaffold import root_persisted_entities
+
+    # #1087: the first ROOT-PERSISTED table, not the first declared entity. On
+    # ``group_run`` the first declared entity is ``Participant`` — an embedded shape —
+    # so every roll's frozen harness demonstrated inserting into a table no correct
+    # application writes, right above the fill the qa author was about to write.
+    entities = (
+        list(root_persisted_entities(manifest)) if getattr(manifest, "entities", None) else []
+    )
     if not entities:
         return _HARNESS_TEST_NO_ENTITIES
     ref = f"TABLES.{entities[0]}"
@@ -367,10 +394,22 @@ def _table_name(entity_name: str) -> str:
 def _store_source(manifest: Any) -> str:
     """The store, with its table names typed from the manifest's entities (#967).
 
+    **Only the root-persisted ones (#1087).** ``TABLES`` used to carry every declared
+    entity, including embedded shapes and response projections no correct application
+    writes; a qa fill asserting on one of those rejected a working app, twice in eight
+    rolls. The handle now exists only for what a correct app stores, so a fill reaching
+    for ``TABLES.Participant`` fails at the fill gate with the real tables named — and
+    under ``next build``'s type check — instead of at runtime with an empty array that
+    reads exactly like a handler that never saved anything.
+
     A manifest declaring no entities keeps an open signature: there is no union to derive,
     and ``never`` would make the store unusable rather than safe.
     """
-    entities = [e.name for e in (getattr(manifest, "entities", ()) or ())]
+    from squadops.capabilities.scaffold import root_persisted_entities
+
+    entities = (
+        list(root_persisted_entities(manifest)) if getattr(manifest, "entities", None) else []
+    )
     if not entities:
         return (
             _STORE_HEADER
@@ -425,14 +464,20 @@ def _models_source(manifest: Any) -> str:
         "// the fill slots import these rather than restating field names (#822).",
         "",
     ]
-    for entity in getattr(manifest, "entities", ()) or ():
+    entities = tuple(getattr(manifest, "entities", ()) or ())
+    shapes = tuple(getattr(manifest.api, "request_shapes", ()) or ())
+    # The names a field type may reference (#1096): an entity-typed field renders the
+    # interface this file declares for it, never ``string``.
+    declared = frozenset([e.name for e in entities] + [s.name for s in shapes])
+    for entity in entities:
         lines.append(f"export interface {entity.name} {{")
         for field in entity.fields:
             optional = "" if getattr(field, "required", True) else "?"
-            lines.append(f"  {field.name}{optional}: {_ts_type(getattr(field, 'type', 'str'))}")
+            ts = _ts_type(getattr(field, "type", "str"), declared)
+            lines.append(f"  {field.name}{optional}: {ts}")
         lines.append("}")
         lines.append("")
-    for shape in getattr(manifest.api, "request_shapes", ()) or ():
+    for shape in shapes:
         lines.append(f"export interface {shape.name} {{")
         for name in shape.required:
             lines.append(f"  {name}: string")

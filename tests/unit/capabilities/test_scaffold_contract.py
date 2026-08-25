@@ -312,7 +312,8 @@ class TestChainedActionProbes:
         join = probes["vc-probe-runs-join"]
         assert join.request["path"] == "/runs/{run_id}/join"
         assert join.request["json"] == {"name": "sample"}
-        assert join.expect == {"status": 200}
+        assert join.expect["status"] == 200
+        assert "json_has" in join.expect  # #1079: a success probe carries the floor's keys
 
         # The duplicate expectation is read from the manifest's error contract
         # (duplicate_participant: http 409), never guessed.
@@ -322,7 +323,8 @@ class TestChainedActionProbes:
 
         # leave declares no 409-class error -> happy path only, no duplicate.
         leave = probes["vc-probe-runs-leave"]
-        assert leave.expect == {"status": 200}
+        assert leave.expect["status"] == 200
+        assert "json_has" in leave.expect
         assert "vc-probe-runs-leave-duplicate" not in probes
 
     def test_chained_contract_lints_clean_and_roundtrips_capture(self):
@@ -462,3 +464,53 @@ class TestDeclaredValuesAndTheManifestHash:
         shape = next(s for s in manifest.api.request_shapes if s.name == "RunEventCreate")
         assert shape.declared_values("title") == ("a", "b")
         assert shape.declared_values("datetime") == ()
+
+
+# --------------------------------------------------------------------------- #
+# #1079 — the probes carry the response floor's presence half
+# --------------------------------------------------------------------------- #
+
+
+def test_success_probes_carry_the_required_keys_of_their_declared_response():
+    """Bug caught (#1079): no probe ever carried `json_has`, so the boot audit certified
+    'answers with the right status' and the 1.6.3 record read that as 'works' for two
+    applications the suite had rejected on the response floor. The keys are the
+    responding entity's declared-required fields — the same derivation the shell asserts."""
+    probes = {p["id"]: p for p in emit_contract_dict(_manifest())["behavioral"]["probes"]}
+    create = probes["vc-probe-runs"]
+    assert create["expect"]["status"] == 201
+    assert create["expect"]["json_has"] == ["id", "title", "datetime", "location", "participants"]
+    join = probes["vc-probe-runs-join"]
+    assert join["expect"]["json_has"] == create["expect"]["json_has"]
+
+
+def test_rejection_and_conflict_probes_carry_no_shape():
+    """A 4xx body is the error envelope's business (#913); pinning entity keys on it
+    would fail every correct app."""
+    probes = {p["id"]: p for p in emit_contract_dict(_manifest())["behavioral"]["probes"]}
+    assert "json_has" not in probes["vc-probe-runs-rejects-blank"]["expect"]
+    assert "json_has" not in probes["vc-probe-runs-join-duplicate"]["expect"]
+
+
+def test_a_response_naming_no_entity_adds_no_shape():
+    """A probe must not assert a shape the manifest never stated."""
+    from squadops.capabilities.scaffold_contract import _success_expect
+
+    assert _success_expect(_manifest(), 201, None) == {"status": 201}
+    assert _success_expect(_manifest(), 201, "Nonesuch") == {"status": 201}
+
+
+def test_the_runner_and_the_audit_reject_a_body_missing_a_derived_key():
+    """The probe's keys have to mean something at judgment time: the shared judge
+    (#1084) fails a body missing one, and names it."""
+    from squadops.capabilities.handlers.probe_runner import evaluate_expectations
+
+    create = next(
+        p
+        for p in emit_contract_dict(_manifest())["behavioral"]["probes"]
+        if p["id"] == "vc-probe-runs"
+    )
+    body = {"id": "r1", "title": "t", "datetime": "d", "location": "l"}  # no participants
+    verdict = evaluate_expectations(create["expect"], 201, body)
+    assert verdict == "response missing key(s): ['participants']"
+    assert evaluate_expectations(create["expect"], 201, {**body, "participants": []}) is None
