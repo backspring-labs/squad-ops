@@ -1,5 +1,12 @@
 # 1.6.4 — plan
 
+**Revision 4, 2026-08-25.** The two reads §2.1 required are done (`1-6-4-reads.md`), and the
+second found the root cause of the set's dominant loss mode: the `nextjs_ts` expander types
+every entity-typed field as `string`, so the frozen `lib/models.ts` — labelled authoritative
+in the developer's brief — contradicts the response floor on every roll (**#1096**). It is the
+headline now. Read 1 withdrew rev 3's targeting guess: the repair target was the whole
+application every round, the named file present but never distinguished.
+
 **Revision 3, 2026-08-25.** Revision 1 took the set record's attribution of the three
 rejections at face value; revision 2 corrected it from the stored per-round test reports
 (record §6) but named #1015 as the headline without dating it — parts B and C were already
@@ -30,12 +37,12 @@ seven per rejected roll — said otherwise at every round.
 
 | finding | evidence | disposition |
 |---|---|---|
-| **The repair never reaches the file it was told about.** The lead's decision names the join handler; the repair emits other files | Roll 1 round 2 emitted the create and detail routes only; roll 4 rounds 2 and 3 emitted the create route only — while the decision text each time named "the join endpoint handler". #1015 B/C (minimality, attempt counter) were **on the deploy** and did not prevent it; part A (target from the analysis) was deferred because the analyzer emits prose, not files | **fix — headline** (§2.1): #1015 A + #968's slice |
+| **#1096** — the frozen `lib/models.ts` declares `Run.participants: string[]` where the manifest declares `list[Participant]`; the floor, from the same manifest, demands objects | Every `nextjs_ts` roll, greens included (reads §2). Roll 4's developer returned exactly what the frozen file declared and failed the floor at every round; rolls 1 and 5 the same; the greens passed by ignoring the frozen type. `_ts_type` (`stack_nextjs_ts.py:59`) maps every entity reference to `string` | **fix — headline** (§2.1); moves the generator hash, ships with §2.2's pair |
+| **The repair never distinguishes the file it was told about.** The decision names the join handler; the repair emits the create route | Roll 1 round 2, roll 4 rounds 2–3. The target list was the **entire application** every round — package scoping never matches on `nextjs_ts` (18 of 18 rounds hit the #688 fallback, reads §1) — so the named file was in the list and never singled out. #1015 B/C were on the deploy and did not prevent it | **fix** (§2.1): #1015 A as a *narrowing* + #968's slice |
 | **A repair round emits nothing.** `development.correction_repair` returns 0 characters | 3 of the 11 repair rounds in the reds (roll 1 r3; roll 5 r1, r2). `a93240dc` refunds the attempt — measured working, roll 5 reached a fourth decision — but each cost ~15 minutes and its signature (cap-exhausted vs empty) is not recorded | **fix** (§2.1): #998 detection |
 | **#1094** — a correct repair is discarded because the qa fills contradict the contract | Roll 5 round 3: the dev re-emit passed the frozen floor; the qa fills (`expect(body.participants).toContain('sample')` on a `list[Participant]` field) failed; the candidate was rejected, Fix E excluded it from the next workspace, and #435 terminated the run as `plan_defect` at the next decision. The application was correct for one round and the loop threw it away | **fix** (§2.1): fills must agree with the declared element kind, from the same derivation as the floor |
 | **#1087** — the frozen store exports a table handle for every declared entity, including embedded shapes and response projections no correct app writes | A **second** failing probe in rolls 1 and 4 (`join-duplicate`), never the only one. Misdirected roll 1's round-1 repair into `insert(TABLES.Participant, …)`. Yield on this set if fixed alone: **zero rolls** | **fix — with #1079's producer** (§2.2) |
 | **#1079 producer half** — `json_has` has no producer, so contract probes never check response bodies | 3 of 3 rejected apps failed the response floor in the suite; **3 of 3 passed the boot audit**. The record's own misattribution is what that blindness costs | **fix — pairs with the above** (§2.2) |
-| **The dev gets the join response shape wrong at round 0** — bare strings or a missing required field where the manifest declares `list[Participant]` | 3 of 8 rolls, with #1029's response surface rendered into the dev brief on this deploy | **read** (§2.1): confirm which path rendered it |
 | **#1021** — `criteria_unevidenced` never settled: 1–5 `vc-compiles-*` dropped per roll on one frozen deploy | eight same-configuration samples now banked | **investigate** (§2.4) |
 
 Found at the cut, not yet merged: **#1089** (stale version metadata) — fix in PR #1092.
@@ -43,10 +50,11 @@ Found at the cut, not yet merged: **#1089** (stale version metadata) — fix in 
 **What this table does not say.** The dominant loss mode is not "fills reach for phantom
 tables" and it is not "the loop needs a terminator": #435 fired in roll 5, and rolls 1 and
 4 never produced an exact repeat because each repair failed somewhere new. It is that
-**the repair round does not act on the diagnosis** — it emits the wrong file, or nothing,
-or the right thing gets rejected by a wrong fill. The analyzer named the join route at
-round 0 in all three rolls. Three or four rounds later the join route was unchanged
-(rolls 1, 4) or fixed-then-discarded (roll 5).
+**the scaffold told the developer the wrong shape with the word "authoritative" attached,
+and then the repair loop spent three or four rounds not acting on a diagnosis that was
+right from round 0** — emitting the wrong file, or nothing, or the right thing that a wrong
+fill then rejected. Three of eight developers obeyed the frozen file; five ignored it and
+were accepted. That is the whole rate.
 
 **Stop-early is demoted, not dropped.** Revision 1's "detect at round two and terminate"
 would have made rolls 1, 4 and 5 fail forty minutes sooner. It does not touch the reason
@@ -56,37 +64,28 @@ they failed. #414 stays where the sweep put it, in 1.7's design queue.
 
 ## 2. The pack
 
-### 2.1 The headline: the repair must act on the diagnosis
+### 2.1 The headline: the scaffold must not contradict itself — then the repair must act
 
-Three rolls, one shape: the analyzer's round-0 `failure_analysis.md` names
-`vc-probe-api-runs-join` line 36 (`app_contract`, owner dev); the lead's decision names
-the join handler; and then the repair round emits the create route (rolls 1, 4), emits
-nothing (rolls 1, 5), or emits a correct join route that a wrong fill rejects (roll 5).
-Minimality and the attempt counter (#1015 B/C, `4f631df7`) were in force for all of it.
+**The two reads are done** — `docs/plans/1-6-4-reads.md`. In one line each: the repair
+target on `nextjs_ts` is always the whole application (the named file is present, never
+distinguished); and the frozen `lib/models.ts` the developer is told never to rewrite
+declares the collection field as `string[]` while the floor demands objects.
 
-**Two reads before any code**, in the instrument-before-fixing discipline this loop has
-earned twice over:
+**#1096 first.** `_ts_type` passes entity and shape names through, case-preserved, so
+`list[Participant]` renders `Participant[]`; unknown primitives keep the `string` rule. Pin
+it twice: a unit test on the function, and a completeness-style test that the generated
+`models.ts` element kind for every `list[X]` field agrees with `derive_response_shape` for
+the same manifest — the two derivations disagreed for the stack's whole life and nothing
+noticed. It moves the generator hash, so it ships inside §2.2's pair.
 
-1. **What the repair target list was** at roll 1 round 2 and roll 4 rounds 2–3. The
-   runner logs `correction_repair_target`; the decision named the join handler and the
-   emission did not contain it. Whether package scoping, the #688 same-language fallback,
-   or the rewind path (roll 4 round 3: "Rewinding to the last checkpoint") produced a
-   list without the join route is the mechanism, and it decides the shape of part A.
-2. **Which dev-brief path rendered the response surface.** `response_shape.
-   response_surface_instructions` is wired into `context_assembly.py` and
-   `repair_handlers.py`; three of eight devs still returned the wrong element kind at
-   round 0. Confirm the rendering actually reached the develop task on the roll's real
-   code path (the shared-surface-with-a-private-drifted-duplicate pattern) before assuming
-   the brief is right and the model ignored it.
+Then three fixes on the loop, each with its own prediction in §3:
 
-Then three fixes, each with its own prediction in §3:
-
-- **#1015 part A, done the way its deferral note asks.** The analyzer emits a structured
-  `implicated_files` list alongside its prose, #968's slice checks each entry against the
-  source before it is trusted (the file exists; the failing test references it), and the
-  repair target is derived from the verified list before any package-scoping fallback. A
-  target derived from prose is the anti-pattern `correction_signature` bans, which is why
-  part A was not built as filed.
+- **#1015 part A, as a narrowing.** The analyzer emits a structured `implicated_files` list
+  beside its prose; #968's slice checks each entry against the source before it is trusted
+  (the file exists; the failing test references it); the repair target is *narrowed* to the
+  verified list ahead of package scoping and the #688 fallback — which, on this stack, is
+  the only path that ever runs. A target derived from prose is the anti-pattern
+  `correction_signature` bans, which is why part A was not built as filed.
 - **#998 — name the empty round.** `completion_tokens == cap AND response_chars == 0` is
   a distinct signature from an empty response and has the opposite remedy. Record it on
   the emission evidence and on the `CORRECTION_COMPLETED` disclosure `a93240dc` already
@@ -100,12 +99,19 @@ Then three fixes, each with its own prediction in §3:
   `derive_response_shape` — one derivation, now three renderings — and reject the fill at
   the gate, where #936/#967-class findings are already rejected.
 
-### 2.2 The two hash-movers ship together
+**One instrumentation gap, recorded rather than fixed here.** LangFuse observation text is
+capped at 10,000 characters (`telemetry/models.py:134`), and every develop prompt on this
+stack is longer, so "what did the developer actually see" is unanswerable from stored state.
+The reads got their answer from the 1,845 characters that survived. Raise the cap, or store
+the render hash somewhere the artifact can point to, before the next set — or accept that
+the next such question is unanswerable too.
 
-**#1087** moves the *generator* hash. **#1079's producer** moves the *contract* hash.
+### 2.2 The hash-movers ship together
+
+**#1096** and **#1087** move the *generator* hash. **#1079's producer** moves the *contract* hash.
 
 Landing them in one release means the hashes move **once**, and a 1.6.4 regression stays
-attributable to the pair rather than to an unlucky sequence. Landing them separately
+attributable to the set rather than to an unlucky sequence. Landing them separately
 doubles the re-baselining and gives two windows in which the reference fixtures disagree
 with the shells.
 
@@ -164,11 +170,12 @@ testable at N=8 — some at N=1.
 
 | # | prediction | falsified by |
 |---|---|---|
-| **P0** | Every repair round's emission includes the file the correction decision named, or the round is recorded as failing to — no roll's final report fails on a line the round-0 analysis named without a repair having changed that file | a red roll whose repair emissions never touched the file its decisions named |
-| **P1** | No roll asserts on a non-`Run` table, because the handle does not exist | any roll that does, or any rejection traceable to a phantom table |
-| **P2** | Every contract probe carries a shape check, and a response-floor defect is caught by the audit as well as the suite | a roll rejected on the response floor whose audit passes — the shape all three 1.6.3 reds took |
+| **P0** | The seeded frozen tree agrees with the floor: for every `list[X]` field in the authored manifest, the seeded `lib/models.ts` types it `X[]` — checked before the roll starts, no model in the loop (#1096) | a seeded `models.ts` that disagrees with the manifest, at N=1 |
+| **P1** | No roll asserts on a non-`Run` table, because the handle does not exist (#1087) | any roll that does, or any rejection traceable to a phantom table |
+| **P2** | Every contract probe carries a shape check, and a response-floor defect is caught by the audit as well as the suite (#1079) | a roll rejected on the response floor whose audit passes — the shape all three 1.6.3 reds took |
 | **P3** | No repair candidate is rejected on fill assertions the floor contradicts — a fill disagreeing with the declared element kind is rejected at the gate before it can gate a repair (#1094) | a rejected candidate whose retest failed only on such a fill |
-| **P4** | Every zero-character repair emission carries a named signature (cap-exhausted or empty), and the count is disclosed on the correction event | a zero-character emission recorded without one |
+| **P4** | Every zero-character repair emission carries a named signature (cap-exhausted or empty), and the count is disclosed on the correction event (#998) | a zero-character emission recorded without one |
+| **P5** | Every repair round's emission includes the file the correction decision named, or the round is recorded as failing to (#1015-A) | a red roll whose repair emissions never touched the file its decisions named |
 
 Correction-round counts are **reported as texture**, against 1.6.3's 0/1/3/4 split, with
 no prediction attached: §2.3 says why.
@@ -180,7 +187,7 @@ pre-registered last time and the same refusal to read significance into a small 
 the round it first appeared.** That is the field revision 1 lacked and the one that would
 have caught its error before it was written down.
 
-**Pre-registered early stop, and only in one direction.** If any of P0–P4 is falsified, the
+**Pre-registered early stop, and only in one direction.** If any of P0–P5 is falsified, the
 fix did not work and the remaining rolls teach nothing about it — stop, record,
 re-register. **A good result is never grounds to stop early**; that is cherry-picking, and
 V7's "no re-rolls to improve the figure" rule carries over unchanged.
@@ -192,17 +199,17 @@ V7's "no re-rolls to improve the figure" rule carries over unchanged.
 
 ## 4. Sequencing
 
-1. **The two reads** (§2.1): the repair target lists at roll 1 r2 and roll 4 r2–3; the
-   dev-brief rendering path. No code until both are written down.
-2. **#1015 part A with #968's slice**, shaped by read 1; **#998** detection; the
-   **#1094** fill-vs-element-kind gate. All three are prompt-, evidence-
-   or gate-side changes to a measured surface and are tested by the set.
-3. **#1087 + #1079 producer**, together, with the reference fixtures regenerated once.
-   Regenerating a pinned fixture is an owner decision — propose the regen with the diff,
-   do not fold it into the fix.
+1. **The two reads** — done, `1-6-4-reads.md`.
+2. **#1096 + #1087 + #1079 producer**, together, with the reference fixtures regenerated
+   once. Regenerating a pinned fixture is an owner decision — propose the regen with the
+   diff, do not fold it into the fix.
+3. **#1015 part A with #968's slice**, **#998** detection, the **#1094** gate. All three
+   are prompt-, evidence- or gate-side changes to a measured surface and are tested by the
+   set.
 4. **#1021 read** — no code until the mechanism is named.
-5. **Re-register the set** against P0–P4; rebuild, verify LOADED in-container rather than
-   built, freeze, record image ids.
+5. **Re-register the set** against P0–P5; P0 is checked on the seeded tree before roll 1
+   and again on every roll. Rebuild, verify LOADED in-container rather than built, freeze,
+   record image ids.
 6. **Two shakeouts are not automatic.** One is required because every item above changes
    squad-facing behaviour. A second only if the first finds something, per V7 §2.f's
    reasoning rather than as ritual.
@@ -215,7 +222,7 @@ V7's "no re-rolls to improve the figure" rule carries over unchanged.
 ## 5. What this plan does not decide
 
 **Whether 1.6.4 is the last patch before 1.7.** That should be gated on the set's result,
-not on this document. A run that satisfies P0–P4 with a rate at or above the baseline makes
+not on this document. A run that satisfies P0–P5 with a rate at or above the baseline makes
 the 1.6 line's claim — the squad authors the interface design and the release proves it was
 won — and 1.7 opens for hardening. A run that falsifies a prediction means 1.6.5 re-measures.
 
@@ -239,5 +246,6 @@ been shown stale twice.
 | rev | date | what changed | evidence |
 |---|---|---|---|
 | 1 | 2026-08-25 | Initial. Headline #1087 on the record's "2 of 3 rejections were false" | record §2–§3 as merged in PR #1088 |
+| 4 | 2026-08-25 | Both reads done (`1-6-4-reads.md`). Read 2 found #1096 — `_ts_type` renders every entity reference as `string`, so the frozen `models.ts` contradicts the floor on every `nextjs_ts` roll; it is the headline and joins the hash-mover set. Read 1 withdrew rev 3's targeting guess: the target was the whole application every round (18/18 #688 fallbacks); #1015-A restated as a narrowing. P0 restated for #1096 (N=1, no model); the old P0 becomes P5. LangFuse 10k-char cap recorded as an instrumentation gap | runtime-api `correction_repair_target` log lines; LangFuse generation input for `task-run_6d6b25fe-m001-development.develop`; seeded `lib/models.ts` in rolls 1, 2, 4, 5; `stack_nextjs_ts.py:59` |
 | 3 | 2026-08-25 | #1015 dated: B/C on the set's deploy (`4f631df7`), only A open and blocked on structured analyzer output. #435 shown to have fired in roll 5. Headline re-stated from the repair emission timelines: wrong file (rolls 1, 4), empty emission (rolls 1, 5), correct repair discarded by a contract-violating fill (roll 5) — the last filed as #1094. Stop-early demoted; #414 returns to 1.7. P0/P3/P4 restated; round counts become texture. Sweep leftovers extended to the 1.6.2/1.6.3 packs with what the rolls did and did not show | per-round emission timelines (artifact `created_at` + `role`), `repair_output.md` sizes, `run_report.md` failure reason, `correction_decision.md` rationales for the same three cycles |
 | 2 | 2026-08-25 | Rolls 1 and 4 re-attributed: both failed the frozen response floor at every round; #1087 was a second failure, yield zero rolls. Headline moved to repair convergence on a correctly-diagnosed shape defect (§2.1). P0 added; the #435 lever's silence in roll 5 made a precondition of §2.3; harness `entities[0]` detail added to #1087; sweep leftovers dispositioned; #1089 corrected from "fixed" to "PR #1092 open" | per-round `test_report.md` and `failure_analysis.md` under `data/artifacts/group_run/` for `cyc_a24e4619844e`, `cyc_a38814afc16d`, `cyc_421d29473f86`; record §6 |
