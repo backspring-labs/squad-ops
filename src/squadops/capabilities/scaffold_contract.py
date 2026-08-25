@@ -383,6 +383,35 @@ def _probe_sample_value(field_name: str, field_type: str) -> Any:
     return "sample"
 
 
+def _success_expect(
+    manifest: InterfaceManifest, status: int, response: str | None
+) -> dict[str, Any]:
+    """A success probe's ``expect``: the declared status, plus the keys its body must carry.
+
+    **The producer ``json_has`` never had (#1079).** The runner consumed it, the audit
+    script (since #1084) judged it with the same code, SIP-0098 showed it in the contract's
+    own example — and nothing emitted it, so every probe on record asserted status and error
+    code only. The 1.6.3 set measured what that costs: three applications failed the
+    response floor in the suite and all three passed the boot audit, and the record called
+    two of them working. An oracle blind to shape cannot tell a wrong body from a right one.
+
+    Derived, not authored: the keys are ``derive_response_shape``'s required fields for the
+    responding entity — the same derivation the frozen shell spine asserts — so the audit
+    and the suite ask the same question about the same app. ``json_has`` speaks top-level
+    key presence only (on an object, or on every element of a list), so element *kind* stays
+    the shell's business; this is the floor's presence half, rendered a third time. No
+    declared response, or one naming no entity, adds nothing — a probe must not assert a
+    shape the manifest never stated.
+    """
+    from squadops.capabilities.response_shape import derive_response_shape
+
+    expect: dict[str, Any] = {"status": status}
+    shape = derive_response_shape(manifest, response)
+    if shape and shape.required_fields:
+        expect["json_has"] = list(shape.required_fields)
+    return expect
+
+
 def _probes(manifest: InterfaceManifest, pack: CriteriaPack) -> list[dict[str, Any]]:
     """POST-create probes plus their sequenced child-action probes (#651, v8).
 
@@ -429,7 +458,7 @@ def _probes(manifest: InterfaceManifest, pack: CriteriaPack) -> list[dict[str, A
             # the skeleton contradicted its own contract and only a dev agent
             # volunteering ``status_code=201`` could close the gap. A manifest that
             # declares no success status keeps the historical 201 expectation.
-            "expect": {"status": ep.success_status or 201},
+            "expect": _success_expect(manifest, ep.success_status or 201, ep.response),
         }
         probes.append(create_probe)
         # #593: the blank-input rejection probe. pf-38 volunteered blank-field
@@ -506,7 +535,9 @@ def _probes(manifest: InterfaceManifest, pack: CriteriaPack) -> list[dict[str, A
                         "id": f"vc-probe-{create_slug}-{_slug(action)}",
                         "subject": "backend",
                         "request": {"method": "POST", "path": child.path, "json": child_body},
-                        "expect": {"status": child.success_status or 200},
+                        "expect": _success_expect(
+                            manifest, child.success_status or 200, child.response
+                        ),
                     }
                 )
                 conflict_codes = [c for c in child.errors if error_http.get(c) == 409]
@@ -564,7 +595,9 @@ def _probes(manifest: InterfaceManifest, pack: CriteriaPack) -> list[dict[str, A
                         "id": f"vc-probe-{create_slug}-{_slug(value)}",
                         "subject": "backend",
                         "request": {"method": "POST", "path": child.path, "json": child_body},
-                        "expect": {"status": child.success_status or 200},
+                        "expect": _success_expect(
+                            manifest, child.success_status or 200, child.response
+                        ),
                     }
                 )
             # No duplicate-conflict probe here, deliberately. One endpoint carries every
