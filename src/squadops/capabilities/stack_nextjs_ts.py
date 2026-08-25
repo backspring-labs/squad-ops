@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Collection
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only, avoids a scaffold import cycle
@@ -56,14 +57,32 @@ _TS_TYPES = {
 }
 
 
-def _ts_type(raw: str) -> str:
+def _ts_type(raw: str, declared: Collection[str] = ()) -> str:
     """Manifest field type → TypeScript. Unknown types become ``string`` rather than ``any``:
-    ``any`` would silently disable the type checking that is stack #2's entire hygiene tier."""
-    t = (raw or "").strip().lower()
-    inner = re.fullmatch(r"(?:list|array)\[(.+)\]", t)
+    ``any`` would silently disable the type checking that is stack #2's entire hygiene tier.
+
+    ``declared`` is the set of entity and request-shape names the manifest defines. A token
+    naming one passes through **case-preserved**, so ``list[Participant]`` renders
+    ``Participant[]`` — the interface the same file declares three lines up.
+
+    **#1096, and why this parameter exists.** Before it, every entity reference took the
+    unknown-type path: the token was lower-cased (so the name was already gone), missed
+    ``_TS_TYPES``, and became ``string``. The frozen ``lib/models.ts`` then declared
+    ``Run.participants: string[]`` under a ``Participant`` interface it had just defined,
+    the FROZEN FILES surface repeated it to the developer with the word *authoritative*
+    attached, and the response floor — derived from the same manifest — demanded objects
+    carrying ``name``. On every ``nextjs_ts`` roll of the 1.6.3 set the developers who
+    obeyed the frozen file were rejected and the ones who ignored it were accepted. The
+    Python expander's ``_py_type`` always passed entity names through; this is stack #2
+    catching up to stack #1.
+    """
+    t = (raw or "").strip()
+    inner = re.fullmatch(r"(?:list|array)\[(.+)\]", t, re.IGNORECASE)
     if inner:
-        return f"{_ts_type(inner.group(1))}[]"
-    return _TS_TYPES.get(t, "string")
+        return f"{_ts_type(inner.group(1), declared)}[]"
+    if t in declared:
+        return t
+    return _TS_TYPES.get(t.lower(), "string")
 
 
 def _segments(path: str) -> str:
@@ -425,14 +444,20 @@ def _models_source(manifest: Any) -> str:
         "// the fill slots import these rather than restating field names (#822).",
         "",
     ]
-    for entity in getattr(manifest, "entities", ()) or ():
+    entities = tuple(getattr(manifest, "entities", ()) or ())
+    shapes = tuple(getattr(manifest.api, "request_shapes", ()) or ())
+    # The names a field type may reference (#1096): an entity-typed field renders the
+    # interface this file declares for it, never ``string``.
+    declared = frozenset([e.name for e in entities] + [s.name for s in shapes])
+    for entity in entities:
         lines.append(f"export interface {entity.name} {{")
         for field in entity.fields:
             optional = "" if getattr(field, "required", True) else "?"
-            lines.append(f"  {field.name}{optional}: {_ts_type(getattr(field, 'type', 'str'))}")
+            ts = _ts_type(getattr(field, "type", "str"), declared)
+            lines.append(f"  {field.name}{optional}: {ts}")
         lines.append("}")
         lines.append("")
-    for shape in getattr(manifest.api, "request_shapes", ()) or ():
+    for shape in shapes:
         lines.append(f"export interface {shape.name} {{")
         for name in shape.required:
             lines.append(f"  {name}: string")
