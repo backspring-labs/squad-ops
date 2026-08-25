@@ -131,3 +131,51 @@ release, would not have existed.
   eight rolls it produced zero false positives, which is the risk that mattered.
 - **Not a significance claim.** 5/8 against the prior 1-of-3 is not a detectable improvement at
   this N, and §1.3 pre-registered that limit rather than discovering it afterwards.
+
+---
+
+## 6. Correction — 2026-08-25: rolls 1 and 4 were not false rejections
+
+§2 and §3 above say the applications in rolls 1 and 4 were correct and were rejected only
+by fills asserting on phantom tables. **That is wrong**, and the evidence that shows it
+was banked at the time: the seven per-round `test_report.md` files each roll stored.
+
+**What the reports say.** In both rolls, `vc-probe-api-runs-join.scaffold.test.ts` fails
+with `expected undefined not to be undefined` at **every** round, including the last. That
+message comes from the frozen response floor (`expectShape`, lines 35–36 of the shell,
+#1029), which runs *before* the qa fill slot — the fill cannot cause it, and the final
+fills in both rolls carry no `not.toBeUndefined()` of their own. Roll 4's final
+`app/api/runs/[run_id]/join/route.ts` returns `participants` as bare strings where the
+manifest declares `list[Participant]` with `name`. Both rolls' round-0 `failure_analysis.md`
+name this correctly (`app_contract`, owner dev, line 36). The phantom-table assertion
+(`join-duplicate`: `expected [] to have a length of 1 but got +0`) is a **second** failing
+probe, never the only one.
+
+**The corrected table:**
+
+| roll | cause | was the app actually correct? |
+|---|---|---|
+| 1 | join response fails the frozen shape floor every round; #1087 phantom-table assertion is a second failure and misdirected the repair (`insert(TABLES.Participant, …)` at round 1) | **no** |
+| 4 | join response fails the frozen shape floor every round (bare-string `participants`); #1087 is a second failure | **no** |
+| 5 | join response fails the frozen shape floor (missing `normalized` on the participant element) | **no** |
+
+So across eight rolls the framework rejected three applications, **all three correctly**,
+and all three for the same defect class: the join endpoint's response shape versus the
+declared element kind, diagnosed at round 0 and never landed by three or four repair rounds.
+
+**How the error was made.** §2 records that the boot audit cannot see response bodies, and
+§3 then infers "the app was fine" from the boot audit. The dev side was "verified correct"
+by checking which table the routes wrote to — the storage target — not what the routes
+returned. Audit PASS was read as application correctness one section after saying it
+cannot mean that.
+
+**What survives.** #1087 is real: the handle exists, the fills reached for it, and roll 1's
+repair chased it. The "perfect separation" in §3 is also real as an *observation* — but it
+separates rolls with a second failure from rolls without one, not working apps from
+rejected ones. What does not survive is #1087 as the set's headline yield; fixed alone it
+flips zero rolls. §4's correction-round association stands and is strengthened: every red
+is a correctly-diagnosed one-field defect the loop failed to land.
+
+**Rule for the next record:** for each rejection, name the failing assertion's origin —
+spine or fill — and the round it first appeared, from the stored reports. Not from the
+roll-up, not from the audit.
