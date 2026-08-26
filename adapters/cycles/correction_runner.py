@@ -310,8 +310,42 @@ def _narrowed_or_scoped(
     )
 
 
+def _verified_implicated_files(
+    failure_analysis: dict[str, Any] | None, failed_inputs: dict[str, Any]
+) -> list[str]:
+    """The analyzer's ``implicated_files``, kept only where the workspace agrees (#968).
+
+    The analyzer's file claims are prose-adjacent — #968 counted three false ones in a
+    single roll, one of them carried verbatim into the correction decision. The cheapest
+    mechanical check is whether the named path is a file the failed task's envelope knows
+    about at all: an implementation artifact, one of its own expected artifacts, or a
+    contract-owned slot. A path outside that set is not a defect site the loop can act
+    on, and is dropped with a log line rather than aimed at.
+    """
+    if not isinstance(failure_analysis, dict):
+        return []
+    claimed = [str(f) for f in (failure_analysis.get("implicated_files") or []) if f]
+    if not claimed:
+        return []
+    known: set[str] = set()
+    for key in ("implementation_artifacts", "expected_artifacts"):
+        known.update(str(x) for x in (failed_inputs.get(key) or []) if x)
+    known.update(str(x) for x in (failed_inputs.get("contract_endpoint_owners") or {}).values())
+    verified = [f for f in dict.fromkeys(claimed) if f in known]
+    dropped = [f for f in claimed if f not in known]
+    if dropped:
+        logger.info(
+            "correction_repair_target: analyzer implicated %s but the workspace has no such "
+            "file — dropped, not aimed at (#968)",
+            ", ".join(dropped),
+        )
+    return verified
+
+
 def _resolve_repair_target(
-    failure_evidence: Any, failed_inputs: dict[str, Any]
+    failure_evidence: Any,
+    failed_inputs: dict[str, Any],
+    failure_analysis: dict[str, Any] | None = None,
 ) -> tuple[list[str], str | None, str | None]:
     """Choose ``(expected_artifacts, focus, description)`` for a patch-path repair.
 
@@ -396,8 +430,17 @@ def _resolve_repair_target(
     # package-scoped implementation surface so a behavioral failure can reach the
     # source under test. Empty surface → byte-identical to the #531 fallback
     # (failed_artifacts, focus, description).
-    scoped_source = _narrowed_or_scoped(probe_slots, failed_inputs, failed_artifacts)
-    target = list(dict.fromkeys([*probe_slots, *failed_artifacts, *scoped_source]))
+    # #1015 part A, the analyzer's half: consulted only when no deterministic site
+    # evidence exists (no failing probe resolved to a slot, no drift). Verified entries
+    # narrow the target exactly as a probe-owned slot does; none → the surface is what
+    # it was.
+    analysis_files = (
+        _verified_implicated_files(failure_analysis, failed_inputs) if not probe_slots else []
+    )
+    scoped_source = _narrowed_or_scoped(
+        [*probe_slots, *analysis_files], failed_inputs, failed_artifacts
+    )
+    target = list(dict.fromkeys([*probe_slots, *analysis_files, *failed_artifacts, *scoped_source]))
     target = _widen_target_for_frontend_build(target, failure_evidence, failed_inputs)
     return (
         target,
@@ -492,6 +535,7 @@ def _locus_and_repair_target(
     failed_task_type: str,
     failure_evidence: Any,
     failed_inputs: dict[str, Any],
+    failure_analysis: dict[str, Any] | None = None,
 ) -> tuple[str, list[str], str | None, str | None]:
     """#568: classify the failure locus and choose the repair target for it.
 
@@ -518,7 +562,9 @@ def _locus_and_repair_target(
             failed_inputs.get("subtask_focus"),
             failed_inputs.get("subtask_description"),
         )
-    expected, focus, description = _resolve_repair_target(failure_evidence, failed_inputs)
+    expected, focus, description = _resolve_repair_target(
+        failure_evidence, failed_inputs, failure_analysis
+    )
     return (failure_locus, expected, focus, description)
 
 
@@ -1368,7 +1414,9 @@ class CorrectionRunner:
                 repair_expected_artifacts,
                 repair_focus,
                 repair_description,
-            ) = _locus_and_repair_target(envelope.task_type, failure_evidence, failed_inputs)
+            ) = _locus_and_repair_target(
+                envelope.task_type, failure_evidence, failed_inputs, analysis_outputs
+            )
 
             for step_idx, (task_type, role) in enumerate(
                 repair_steps_for(envelope.task_type, failure_locus)

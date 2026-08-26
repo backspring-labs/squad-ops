@@ -4572,3 +4572,111 @@ class TestSuiteProbeFailuresReachTheOwningSlot:
         target, _, _ = _resolve_repair_target(ev, self._nextjs_inputs())
         assert target[:2] == ["app/api/runs/[run_id]/join/route.ts", "app/api/runs/route.ts"]
         assert "app/api/runs/[run_id]/leave/route.ts" not in target
+
+
+class TestAnalyzerImplicatedFilesAreVerifiedBeforeUse:
+    """#1015 part A, the analyzer's half, with #968's cheapest check in front of it.
+
+    The analyzer may name the defect site as structured data. It is trusted only where
+    the workspace agrees (the failed task's implementation/expected artifacts or a
+    contract-owned slot), only when no deterministic site evidence exists, and it
+    narrows the target exactly as a probe-owned slot does.
+    """
+
+    INPUTS = {
+        "expected_artifacts": ["__tests__/runs-api.test.ts"],
+        "implementation_artifacts": [
+            "app/api/runs/route.ts",
+            "app/api/runs/[run_id]/join/route.ts",
+            "app/page.tsx",
+        ],
+    }
+    SUITE_FAIL = {
+        "validation_result": {
+            "passed": False,
+            "checks": [{"check": "tests_pass", "status": "failed"}],
+        }
+    }
+
+    def test_a_verified_claim_narrows_the_target(self):
+        from adapters.cycles.correction_runner import _resolve_repair_target
+
+        target, _, _ = _resolve_repair_target(
+            self.SUITE_FAIL,
+            dict(self.INPUTS),
+            {"implicated_files": ["app/api/runs/[run_id]/join/route.ts"]},
+        )
+        assert target == ["app/api/runs/[run_id]/join/route.ts", "__tests__/runs-api.test.ts"]
+
+    def test_an_unverifiable_claim_is_dropped_and_the_surface_is_what_it_was(self):
+        """#968's shape: a confident path the workspace does not contain. It must not
+        become the target — and its presence must not remove the fallback either."""
+        from adapters.cycles.correction_runner import (
+            _resolve_repair_target,
+            _verified_implicated_files,
+        )
+
+        analysis = {"implicated_files": ["lib/shadow_store.ts", "backend/routes.py"]}
+        assert _verified_implicated_files(analysis, dict(self.INPUTS)) == []
+        target, _, _ = _resolve_repair_target(self.SUITE_FAIL, dict(self.INPUTS), analysis)
+        assert set(self.INPUTS["implementation_artifacts"]) <= set(target)
+
+    def test_deterministic_site_evidence_outranks_the_analyzer(self):
+        """A failing probe's owning slot is contract data; the analyzer's file is a claim.
+        When both exist the slot wins and the claim is not consulted."""
+        from adapters.cycles.correction_runner import _resolve_repair_target
+
+        inputs = {
+            **self.INPUTS,
+            "contract_probes": [
+                {
+                    "id": "vc-probe-api-runs-join",
+                    "subject": "backend",
+                    "request": {"method": "POST", "path": "/api/runs/{run_id}/join", "json": {}},
+                    "expect": {"status": 200},
+                }
+            ],
+            "contract_endpoint_owners": {
+                "POST /api/runs/{run_id}/join": "app/api/runs/[run_id]/join/route.ts"
+            },
+        }
+        ev = {
+            **self.SUITE_FAIL,
+            "scaffold_evidence": {
+                "failure_classes": {"app_contract": 1},
+                "observations": [
+                    {
+                        "file": "x",
+                        "slot_id": "s",
+                        "failure_class": "app_contract",
+                        "criterion_id": "vc-probe-api-runs-join",
+                        "owner": "dev",
+                        "route": "dev_repair",
+                    }
+                ],
+            },
+        }
+        target, _, _ = _resolve_repair_target(
+            ev, inputs, {"implicated_files": ["app/api/runs/route.ts"]}
+        )
+        assert target[0] == "app/api/runs/[run_id]/join/route.ts"
+        assert "app/api/runs/route.ts" not in target
+
+    def test_the_analysis_reaches_the_resolver_through_the_locus_step(self):
+        from adapters.cycles.correction_runner import _locus_and_repair_target
+
+        _, expected, _, _ = _locus_and_repair_target(
+            "qa.test", self.SUITE_FAIL, dict(self.INPUTS), {"implicated_files": ["app/page.tsx"]}
+        )
+        assert expected[0] == "app/page.tsx"
+        assert "app/api/runs/route.ts" not in expected
+
+    @pytest.mark.parametrize(
+        "analysis", [None, {}, {"implicated_files": []}, {"implicated_files": None}]
+    )
+    def test_no_claim_changes_nothing(self, analysis):
+        from adapters.cycles.correction_runner import _resolve_repair_target
+
+        with_claim, _, _ = _resolve_repair_target(self.SUITE_FAIL, dict(self.INPUTS), analysis)
+        without, _, _ = _resolve_repair_target(self.SUITE_FAIL, dict(self.INPUTS))
+        assert with_claim == without

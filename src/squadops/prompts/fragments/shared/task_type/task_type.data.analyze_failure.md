@@ -1,7 +1,7 @@
 ---
 fragment_id: task_type.data.analyze_failure
 layer: task_type
-version: "1.0.0"
+version: "1.1.0"
 roles: ["data"]
 ---
 ## Failure Analysis (SIP-0079 §7.7)
@@ -56,6 +56,14 @@ Return JSON with these REQUIRED fields:
   that contributed. Each factor must be a concrete observable, not a generic
   phrase.
 
-Empty fields, the literal "N/A", and the literal "unknown" will be rejected.
+And ONE optional field:
+- `implicated_files` (list[string]): repository-relative paths of the implementation
+  files the evidence names as the defect site — a failing check's `file`, a slot's
+  owning route file, a rejected artifact's name. Only paths that appear in the Failure
+  Evidence. Empty when the evidence names none. Never a guess: an entry the workspace
+  does not contain is discarded and counted against the analysis, and a wrong file
+  aims the repair away from the defect for a whole round.
+
+Empty required fields, the literal "N/A", and the literal "unknown" will be rejected.
 
 Return ONLY valid JSON, no markdown fences, no explanation.

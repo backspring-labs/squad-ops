@@ -59,6 +59,11 @@ class FailureAnalysis(BaseModel):
     classification: str = Field(min_length=1)
     analysis_summary: str = Field(min_length=20)
     contributing_factors: list[str] = Field(min_length=1)
+    #: #1015 part A: the implementation files the EVIDENCE names as the defect site —
+    #: optional, empty when the evidence names none. Structured so the repair target can
+    #: consume it; verified against the workspace before it is trusted (#968), never used
+    #: ahead of deterministic site evidence (a failing probe's owning slot, interface drift).
+    implicated_files: list[str] = Field(default_factory=list)
 
     @field_validator("classification")
     @classmethod
@@ -73,6 +78,24 @@ class FailureAnalysis(BaseModel):
         if not all(isinstance(s, str) and len(s.strip()) >= 5 for s in v):
             raise ValueError("each contributing factor must be a string >=5 chars")
         return v
+
+    @field_validator("implicated_files")
+    @classmethod
+    def implicated_files_are_relative_paths(cls, v: list[str]) -> list[str]:
+        cleaned: list[str] = []
+        for item in v:
+            if not isinstance(item, str):
+                raise ValueError("implicated_files entries must be strings")
+            path = item.strip()
+            while path.startswith("./"):
+                path = path[2:]
+            if not path or path.startswith("/") or ".." in path.split("/"):
+                raise ValueError(
+                    f"implicated_files entry {item!r} is not a repository-relative path"
+                )
+            if path not in cleaned:
+                cleaned.append(path)
+        return cleaned
 
 
 class DataAnalyzeFailureHandler(_CycleTaskHandler):
@@ -211,6 +234,7 @@ class DataAnalyzeFailureHandler(_CycleTaskHandler):
             "classification": analysis.get("classification", FailureClassification.EXECUTION),
             "analysis_summary": analysis.get("analysis_summary", ""),
             "contributing_factors": analysis.get("contributing_factors", []),
+            "implicated_files": analysis.get("implicated_files", []),
             "artifacts": [
                 {
                     "name": self._artifact_name,

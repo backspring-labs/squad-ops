@@ -192,5 +192,5 @@ fragments:
   layer: task_type
   roles:
   - data
-  sha256: fd44a28f65e449c6320b5ee5f1d8121013a03c7baa757965334c4e19c7904779
-manifest_hash: b98e80eb88203649839caecc6d5aba104cc0f994ab9eefbebed88101c7302c38
+  sha256: e1f6e8f83c98935f547def59a6ab4e2f0d09f2bbf50afe9989fa0c5d71cec241
+manifest_hash: 4d3162d175e853ddab6abf6f83f0b9b392d6e2ee1649143922a200f989ec7e38
