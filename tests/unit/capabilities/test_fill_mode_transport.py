@@ -462,3 +462,198 @@ def test_containment_findings_reach_outputs_scaffold_evidence(scaffold_input, em
     assert outputs["scaffold_evidence"]["additive_containment"] == [
         "__tests__/live.test.ts: fetches a live server."
     ]
+
+
+# --- 1.6.5 B + C: the self-eval's fills are merged, and the suite runs on what is stored --- #
+
+
+def _self_eval_harness(monkeypatch, primary: str, followup: str):
+    """A qa.test run whose first validation fails and second passes, with the suite
+    call captured — the shape of both corrected rolls in the 1.6.4 set."""
+    from squadops.capabilities.handlers.cycle import qa_test as qa_test_module
+    from squadops.capabilities.handlers.test_runner import RunTestsResult
+
+    suite_calls: list[list[dict]] = []
+
+    async def _canned_suite(capability, sources, extracted):
+        suite_calls.append(extracted)
+        return RunTestsResult(
+            executed=True, exit_code=0, runner="vitest", suite_broken=False, test_failures=()
+        ), {
+            "name": "test_report.md",
+            "content": "r",
+            "media_type": "text/markdown",
+            "type": "document",
+        }
+
+    monkeypatch.setattr(
+        qa_test_module.QATestHandler, "_run_test_suite", staticmethod(_canned_suite)
+    )
+
+    verdicts = iter(
+        [
+            qa_test_module.ValidationResult(
+                passed=False, summary="missing", missing_components=["missing"]
+            ),
+            qa_test_module.ValidationResult(passed=True, summary="All checks passed"),
+        ]
+    )
+
+    async def _canned_validation(self, inputs, artifacts, typed_error_counts=None):
+        return next(verdicts)
+
+    monkeypatch.setattr(qa_test_module.QATestHandler, "_validate_output", _canned_validation)
+
+    context = MagicMock()
+    context.ports.llm.chat_stream_with_usage = AsyncMock(
+        side_effect=[MagicMock(content=primary), MagicMock(content=followup)]
+    )
+    context.ports.llm.default_model = "m"
+    assembled = MagicMock()
+    assembled.content = "system"
+    context.ports.prompt_service.assemble = MagicMock(return_value=assembled)
+    renderer = AsyncMock()
+    renderer.render.return_value = MagicMock(content="SELF-EVAL FILL ADDENDUM")
+    context.ports.request_renderer = renderer
+    return context, suite_calls, renderer
+
+
+def _all_eight_fills(body: str) -> str:
+    slots = [
+        "vc-probe-api-runs",
+        "vc-probe-api-runs-rejects-blank",
+        "vs-get-api-runs",
+        "vs-get-api-runs-run-id",
+        "vs-get-api-runs-run-id-not-found",
+        "vc-probe-api-runs-join",
+        "vc-probe-api-runs-join-duplicate",
+        "vc-probe-api-runs-leave",
+    ]
+    return "".join(f"```fill:slot-{s}\n    {body}\n```\n" for s in slots)
+
+
+_INPUTS = {
+    "prd": "group_run",
+    "artifact_contents": {},
+    "resolved_config": {
+        "dev_capability": "nextjs_ts",
+        "output_validation": True,
+        "max_self_eval_passes": 1,
+    },
+    "subtask_focus": "fill the scaffold",
+    "expected_artifacts": ["__tests__/runs.test.ts"],
+}
+
+
+async def test_roll_6_shape_the_self_evals_fills_are_merged_and_run(scaffold_input, monkeypatch):
+    """#947 through handle(): the primary hit the cap after the additive file with ZERO
+    fills; the self-eval re-emitted all eight. Before 1.6.5 C the handler extracted them
+    as files named "slot-…" and the shell guard discarded every one — the task failed
+    and the executor's re-dispatch was what saved the roll."""
+    primary = (
+        "```typescript:__tests__/runs.test.ts\nimport { x } from '@/app/api/runs/route'\n```\n"
+    )
+    followup = "Fills:\n" + _all_eight_fills("expect(body).toBeTruthy()")
+    context, suite_calls, renderer = _self_eval_harness(monkeypatch, primary, followup)
+
+    result = await QATestHandler().handle(
+        context, {**_INPUTS, "verification_scaffold": scaffold_input}
+    )
+
+    assert result.success is True
+    outputs = result.outputs
+    shells = [a for a in outputs["artifacts"] if a["name"].startswith("__tests__/scaffold/")]
+    assert len(shells) == 8
+    assert all("expect(body).toBeTruthy()" in a["content"] for a in shells)
+    # no "slot-…" pseudo-file survives as an artifact
+    assert not any(a["name"].startswith("slot-") for a in outputs["artifacts"])
+    # the suite ran ONCE, on the merged shells carrying the self-eval's fills (B + C)
+    assert len(suite_calls) == 1
+    ran = {f["filename"]: f["content"] for f in suite_calls[0]}
+    assert all("expect(body).toBeTruthy()" in ran[a["name"]] for a in shells)
+    # the self-eval prompt carried the fill addendum, rendered from the asset with the
+    # eight missing slots named
+    assert renderer.render.await_args.args[0] == "request.qa_test_self_eval_fill_appendix"
+    lines = renderer.render.await_args.args[1]["unfilled_slot_lines"]
+    assert lines.count("— missing") == 8
+    followup_prompt = (
+        context.ports.llm.chat_stream_with_usage.await_args_list[1].args[0][-1].content
+    )
+    assert followup_prompt.endswith("SELF-EVAL FILL ADDENDUM")
+
+
+async def test_roll_8_shape_the_suite_runs_on_the_self_evals_replacement(
+    scaffold_input, monkeypatch
+):
+    """#1109 through handle(): the primary's additive file was truncated at the cap; the
+    self-eval re-emitted it complete. The stored artifact was the complete file and the
+    suite ran on the truncated one — same task, two different files, a correction round
+    spent rediscovering the fix. What ran must be what is stored."""
+    truncated = (
+        "```typescript:__tests__/api.test.ts\nit('x', () => { const s = 'unterminated\n```\n"
+    )
+    complete = "```typescript:__tests__/api.test.ts\nit('x', () => { const s = 'ok' })\n```\n"
+    primary = _all_eight_fills("expect(body.id).toBeTruthy()") + truncated
+    context, suite_calls, _ = _self_eval_harness(monkeypatch, primary, complete)
+
+    result = await QATestHandler().handle(
+        context, {**_INPUTS, "verification_scaffold": scaffold_input}
+    )
+
+    stored = next(a for a in result.outputs["artifacts"] if a["name"] == "__tests__/api.test.ts")
+    assert "const s = 'ok'" in stored["content"]
+    assert len(suite_calls) == 1
+    ran = next(f for f in suite_calls[0] if f["filename"] == "__tests__/api.test.ts")
+    assert ran["content"] == stored["content"]
+    # the fills from the primary survived the self-eval pass untouched
+    shells = [a for a in result.outputs["artifacts"] if a["name"].startswith("__tests__/scaffold/")]
+    assert len(shells) == 8 and all("expect(body.id).toBeTruthy()" in a["content"] for a in shells)
+    # and every shell the suite ran is the stored one
+    ran_by_name = {f["filename"]: f["content"] for f in suite_calls[0]}
+    assert all(ran_by_name[a["name"]] == a["content"] for a in shells)
+
+
+async def test_a_self_eval_re_emission_of_a_filled_slot_does_not_regress_it(
+    scaffold_input, monkeypatch
+):
+    primary = _all_eight_fills("expect(body.id).toBeTruthy()")
+    followup = "```fill:slot-vc-probe-api-runs\n    expect(1).toBe(2)\n```\n"
+    context, _, _ = _self_eval_harness(monkeypatch, primary, followup)
+    result = await QATestHandler().handle(
+        context, {**_INPUTS, "verification_scaffold": scaffold_input}
+    )
+    create_shell = next(
+        a
+        for a in result.outputs["artifacts"]
+        if a["name"].endswith("vc-probe-api-runs.scaffold.test.ts")
+    )
+    assert "expect(body.id).toBeTruthy()" in create_shell["content"]
+    assert "expect(1).toBe(2)" not in create_shell["content"]
+
+
+async def test_the_self_eval_addendum_renders_from_the_real_asset(scaffold_input):
+    from adapters.prompts.filesystem_asset_adapter import FilesystemPromptAssetAdapter
+    from squadops.prompts.renderer import RequestTemplateRenderer
+
+    renderer = RequestTemplateRenderer(
+        FilesystemPromptAssetAdapter(
+            fragments_path=_TEMPLATES.parent / "fragments", templates_path=_TEMPLATES
+        )
+    )
+    context = MagicMock()
+    context.ports.request_renderer = renderer
+    evidence = {
+        "dispositions": [
+            {"slot_id": "slot-vc-probe-api-runs", "disposition": "filled", "detail": ""},
+            {
+                "slot_id": "slot-vc-probe-api-runs-join",
+                "disposition": "rejected",
+                "detail": "phantom table",
+            },
+        ]
+    }
+    out = await QATestHandler()._self_eval_fill_section(context, scaffold_input, evidence)
+    assert "slot-vc-probe-api-runs-join` — rejected: phantom table" in out
+    assert "slot-vc-probe-api-runs` — filled" not in out
+    assert "fill block is the only way to change a slot" in out
+    assert "```fill:slot-<id>" in out

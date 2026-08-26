@@ -1,6 +1,6 @@
 ---
 template_id: request.qa_test_fill_mode_appendix
-version: "3"
+version: "4"
 required_variables:
   - slot_lines
   - shell_files
@@ -87,6 +87,12 @@ Three repair rounds blamed the application, and the application was correct.
 Additive tests are welcome IN ADDITION to fills: whole new test files beside the
 scaffold, emitted as normal ```typescript:__tests__/<name>.test.ts``` fences, under the
 standing rules (declared dependencies only, in-process execution model, no live server).
+
+**Order of emission: every fill block first, then any additive file.** Your completion
+budget is finite and a long emission is cut off at its end. Emitted in this order, a cut
+lands on an additive file — which the framework detects and asks you to re-emit — and
+never on a fill. Emitted the other way round, one long additive file has cost every fill
+on a live roll and the whole task with them.
 
 The plan also asked for the file(s) below. They are **additive and secondary** — a
 whole file here never substitutes for a fill, and filling every slot above comes
