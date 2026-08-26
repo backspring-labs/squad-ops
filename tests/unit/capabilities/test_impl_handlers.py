@@ -286,6 +286,54 @@ class TestAnalyzeFailure:
         assert result.outputs["outcome_class"] == TaskOutcome.NEEDS_REPLAN
         assert mock.await_count == 2
 
+    async def test_implicated_files_pass_through_normalized_and_bad_paths_are_rejected(
+        self, mock_context
+    ):
+        """#1015 part A: the analyzer may name the defect site as structured data. Paths
+        are normalized (a leading ./ dropped, duplicates collapsed) and an absolute or
+        parent-escaping path rejects the analysis — a file claim the loop cannot
+        verify must not be shaped like one it can."""
+        analysis = {
+            "classification": FailureClassification.WORK_PRODUCT,
+            "analysis_summary": "join route returns bare strings where objects are declared",
+            "contributing_factors": ["participants element kind mismatch"],
+            "implicated_files": [
+                "./app/api/runs/[run_id]/join/route.ts",
+                "app/api/runs/[run_id]/join/route.ts",
+            ],
+        }
+        _set_llm_mock(
+            mock_context,
+            return_value=ChatMessage(role="assistant", content=json.dumps(analysis)),
+        )
+        result = await DataAnalyzeFailureHandler().handle(mock_context, {"prd": "test"})
+        assert result.success is True
+        assert result.outputs["implicated_files"] == ["app/api/runs/[run_id]/join/route.ts"]
+
+        analysis["implicated_files"] = ["../../etc/passwd"]
+        _set_llm_mock(
+            mock_context,
+            return_value=ChatMessage(role="assistant", content=json.dumps(analysis)),
+        )
+        result = await DataAnalyzeFailureHandler().handle(mock_context, {"prd": "test"})
+        assert result.success is False
+
+    async def test_an_analysis_without_implicated_files_is_still_valid(self, mock_context):
+        """The field is optional: pre-#1015 analyses and analyses of evidence that names
+        no file must not be rejected for its absence."""
+        analysis = {
+            "classification": FailureClassification.EXECUTION,
+            "analysis_summary": "the task timed out before emitting anything at all",
+            "contributing_factors": ["1800s task timeout reached"],
+        }
+        _set_llm_mock(
+            mock_context,
+            return_value=ChatMessage(role="assistant", content=json.dumps(analysis)),
+        )
+        result = await DataAnalyzeFailureHandler().handle(mock_context, {"prd": "test"})
+        assert result.success is True
+        assert result.outputs["implicated_files"] == []
+
     async def test_empty_analysis_summary_rejected(self, mock_context):
         """Issue #84: ``analysis_summary: ""`` is the failure mode that
         produced ``analysis_summary: "N/A"`` corrections in the wild."""

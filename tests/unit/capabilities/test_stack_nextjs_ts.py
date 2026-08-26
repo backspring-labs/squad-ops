@@ -517,3 +517,33 @@ def test_the_frozen_harness_demonstrates_a_root_table_not_the_first_declared_ent
     )
     assert "TABLES.RunEvent" in harness
     assert "TABLES.Participant" not in harness
+
+
+# --------------------------------------------------------------------------- #
+# #1015 — the contract states which route file owns each endpoint
+# --------------------------------------------------------------------------- #
+
+
+def test_the_contract_states_which_route_file_owns_each_endpoint():
+    """Bug caught (#1015, reads §1): `endpoint_owners()` was EMPTY on this stack — no
+    Python criterion to hang ownership on — so a failing probe could never resolve to
+    the file that owns its endpoint and the repair target was the whole application in
+    18 of 18 rounds of the 1.6.3 set. Ownership is bend 1's own output; the contract
+    carries it as data."""
+    from squadops.cycles.verification_contract import VerificationContract
+
+    contract = VerificationContract.from_dict(emit_contract_dict(_manifest()))
+    owners = contract.endpoint_owners()
+    assert owners["POST /api/runs/{run_id}/join"] == "app/api/runs/[run_id]/join/route.ts"
+    assert owners["GET /api/runs"] == "app/api/runs/route.ts"
+    assert owners["POST /api/runs"] == "app/api/runs/route.ts"
+    assert len(owners) == 5
+    # Page slots serve no endpoint and carry no key — presence-keyed, so the stack #1
+    # contract (which states ownership through `endpoint_defined`) is byte-identical.
+    raw = emit_contract_dict(_manifest())["fill_files"]
+    assert "endpoints" not in raw["app/page.tsx"]
+    assert raw["app/api/runs/[run_id]/join/route.ts"]["endpoints"] == [
+        "POST /api/runs/{run_id}/join"
+    ]
+    stack1 = emit_contract_dict(_manifest("fullstack_fastapi_react"))["fill_files"]
+    assert all("endpoints" not in spec for spec in stack1.values())

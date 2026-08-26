@@ -200,11 +200,31 @@ def _failed_probe_ids(failure_evidence: Any) -> list[str]:
     if not isinstance(failure_evidence, dict):
         return []
     rows = (failure_evidence.get("validation_result") or {}).get("checks") or []
-    return [
+    ids = [
         str(row.get("check"))
         for row in rows
         if isinstance(row, dict) and row.get("status") == "failed" and row.get("check")
     ]
+    # #1015: the same probe failing INSIDE the suite. A scaffold shell is bound to a
+    # probe id, and when its frozen assertion fails the scaffold evidence classifies
+    # that as ``app_contract`` with ``criterion_id`` = the probe id — structured data,
+    # not the analyzer's prose. The 1.6.3 set's three reds all failed this way, on
+    # ``vc-probe-api-runs-join``, and never as an HTTP probe row; so the #688 chain to
+    # the owning slot started from an empty list every round. Fill-layer and
+    # generator-layer observations carry no criterion and indict no endpoint.
+    from squadops.cycles.scaffold_evidence import CLASS_APP_CONTRACT
+
+    summary = failure_evidence.get("scaffold_evidence")
+    observations = (summary.get("observations") or []) if isinstance(summary, dict) else []
+    for obs in observations:
+        if (
+            isinstance(obs, dict)
+            and obs.get("failure_class") == CLASS_APP_CONTRACT
+            and obs.get("criterion_id")
+            and str(obs["criterion_id"]) not in ids
+        ):
+            ids.append(str(obs["criterion_id"]))
+    return ids
 
 
 def _probe_owned_slots(failure_evidence: Any, failed_inputs: dict[str, Any]) -> list[str]:
@@ -260,8 +280,72 @@ def _probe_owned_slots(failure_evidence: Any, failed_inputs: dict[str, Any]) -> 
     return slots
 
 
+def _narrowed_or_scoped(
+    probe_slots: list[str], failed_inputs: dict[str, Any], failed_artifacts: list[str]
+) -> list[str]:
+    """The implementation surface a repair may reach — narrowed when the defect site is known.
+
+    **#1015 part A, the narrowing.** When a failing probe resolves to the slot that owns
+    its endpoint, that slot IS the target and the language-wide surface is not appended.
+    The 1.6.3 set measured the alternative: with the join route in a seven-file "you may
+    emit" list, roll 1's round 2 and roll 4's rounds 2–3 repaired the create route while
+    the decision text named the join handler, and the loop spent its budget beside the
+    defect. Minimality and the attempt counter (#1015 B/C) were in force and did not
+    help a repair aimed at the wrong file. Drift files and the failed task's own
+    artifacts still ride (pf-21: they carry real defects too); only the fallback that
+    exists for the case of *no* site evidence is withheld when site evidence exists.
+
+    With no probe-owned slot the surface is what it was: package scoping, then the
+    #688 language fallback.
+    """
+    if probe_slots:
+        logger.info(
+            "correction_repair_target: narrowed to the slot(s) owning the failing probe(s) — "
+            "%s; the language-wide surface is withheld (#1015)",
+            ", ".join(probe_slots),
+        )
+        return []
+    return _scoped_implementation_surface(
+        failed_inputs.get("implementation_artifacts", []) or [], failed_artifacts
+    )
+
+
+def _verified_implicated_files(
+    failure_analysis: dict[str, Any] | None, failed_inputs: dict[str, Any]
+) -> list[str]:
+    """The analyzer's ``implicated_files``, kept only where the workspace agrees (#968).
+
+    The analyzer's file claims are prose-adjacent — #968 counted three false ones in a
+    single roll, one of them carried verbatim into the correction decision. The cheapest
+    mechanical check is whether the named path is a file the failed task's envelope knows
+    about at all: an implementation artifact, one of its own expected artifacts, or a
+    contract-owned slot. A path outside that set is not a defect site the loop can act
+    on, and is dropped with a log line rather than aimed at.
+    """
+    if not isinstance(failure_analysis, dict):
+        return []
+    claimed = [str(f) for f in (failure_analysis.get("implicated_files") or []) if f]
+    if not claimed:
+        return []
+    known: set[str] = set()
+    for key in ("implementation_artifacts", "expected_artifacts"):
+        known.update(str(x) for x in (failed_inputs.get(key) or []) if x)
+    known.update(str(x) for x in (failed_inputs.get("contract_endpoint_owners") or {}).values())
+    verified = [f for f in dict.fromkeys(claimed) if f in known]
+    dropped = [f for f in claimed if f not in known]
+    if dropped:
+        logger.info(
+            "correction_repair_target: analyzer implicated %s but the workspace has no such "
+            "file — dropped, not aimed at (#968)",
+            ", ".join(dropped),
+        )
+    return verified
+
+
 def _resolve_repair_target(
-    failure_evidence: Any, failed_inputs: dict[str, Any]
+    failure_evidence: Any,
+    failed_inputs: dict[str, Any],
+    failure_analysis: dict[str, Any] | None = None,
 ) -> tuple[list[str], str | None, str | None]:
     """Choose ``(expected_artifacts, focus, description)`` for a patch-path repair.
 
@@ -336,9 +420,7 @@ def _resolve_repair_target(
         # edits only the drifted file + the test and NEVER reaches routes.py →
         # non-convergence. Union it here too; empty surface (author mode) → the scoped
         # set is empty and the target is byte-identical to the pre-pf-27 union.
-        scoped_source = _scoped_implementation_surface(
-            failed_inputs.get("implementation_artifacts", []) or [], failed_artifacts
-        )
+        scoped_source = _narrowed_or_scoped(probe_slots, failed_inputs, failed_artifacts)
         target = list(
             dict.fromkeys([*probe_slots, *drift_files, *failed_artifacts, *scoped_source])
         )
@@ -348,10 +430,17 @@ def _resolve_repair_target(
     # package-scoped implementation surface so a behavioral failure can reach the
     # source under test. Empty surface → byte-identical to the #531 fallback
     # (failed_artifacts, focus, description).
-    scoped_source = _scoped_implementation_surface(
-        failed_inputs.get("implementation_artifacts", []) or [], failed_artifacts
+    # #1015 part A, the analyzer's half: consulted only when no deterministic site
+    # evidence exists (no failing probe resolved to a slot, no drift). Verified entries
+    # narrow the target exactly as a probe-owned slot does; none → the surface is what
+    # it was.
+    analysis_files = (
+        _verified_implicated_files(failure_analysis, failed_inputs) if not probe_slots else []
     )
-    target = list(dict.fromkeys([*probe_slots, *failed_artifacts, *scoped_source]))
+    scoped_source = _narrowed_or_scoped(
+        [*probe_slots, *analysis_files], failed_inputs, failed_artifacts
+    )
+    target = list(dict.fromkeys([*probe_slots, *analysis_files, *failed_artifacts, *scoped_source]))
     target = _widen_target_for_frontend_build(target, failure_evidence, failed_inputs)
     return (
         target,
@@ -446,6 +535,7 @@ def _locus_and_repair_target(
     failed_task_type: str,
     failure_evidence: Any,
     failed_inputs: dict[str, Any],
+    failure_analysis: dict[str, Any] | None = None,
 ) -> tuple[str, list[str], str | None, str | None]:
     """#568: classify the failure locus and choose the repair target for it.
 
@@ -472,7 +562,9 @@ def _locus_and_repair_target(
             failed_inputs.get("subtask_focus"),
             failed_inputs.get("subtask_description"),
         )
-    expected, focus, description = _resolve_repair_target(failure_evidence, failed_inputs)
+    expected, focus, description = _resolve_repair_target(
+        failure_evidence, failed_inputs, failure_analysis
+    )
     return (failure_locus, expected, focus, description)
 
 
@@ -1322,7 +1414,9 @@ class CorrectionRunner:
                 repair_expected_artifacts,
                 repair_focus,
                 repair_description,
-            ) = _locus_and_repair_target(envelope.task_type, failure_evidence, failed_inputs)
+            ) = _locus_and_repair_target(
+                envelope.task_type, failure_evidence, failed_inputs, analysis_outputs
+            )
 
             for step_idx, (task_type, role) in enumerate(
                 repair_steps_for(envelope.task_type, failure_locus)
