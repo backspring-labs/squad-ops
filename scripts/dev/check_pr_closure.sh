@@ -12,12 +12,17 @@
 #   Refs #N … remaining: …               (partial fix — says what is left)
 #   No issue: …                          (deliberately no issue behind the PR)
 #
+# Quoting the syntax in prose is safe inside backticks or a fenced block.
 # Local use:  gh pr view 1234 --json body -q .body | scripts/dev/check_pr_closure.sh
 # CI use:     .github/workflows/pr-closure.yml pipes the event body in.
 # Needs `gh` authenticated (GH_TOKEN in CI) and GH_REPO or a git remote.
 set -euo pipefail
 
-body="$(cat)"
+# Quoted syntax is not a reference: strip fenced blocks, inline code spans and
+# HTML comments (the template's own instructions live in one) before scanning.
+# The guard's first live run failed on its own PR, whose Evidence section quoted
+# `Closes #1096` as a test case.
+body="$(cat | perl -0pe 's/```.*?```//gs; s/<!--.*?-->//gs; s/`[^`\n]*`//g')"
 repo="${GH_REPO:-$(gh repo view --json nameWithOwner -q .nameWithOwner)}"
 
 closing_numbers="$(
