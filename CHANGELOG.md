@@ -26,6 +26,17 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   `config_overrides: {max_completion_tokens: 12288}`; four of ten qa primary emissions in that
   set sat at or within 3% of the 8,192 cap. The registry clamp (the V38 pin) and the dev
   budget are untouched. Changes `resolved_config_hash`; measured by prediction Q5.
+- **D — an own-artifact qa repair can reach a fill** (#970, with #969's brief). Under fill mode
+  the shells are merge products, never in `expected_artifacts`, so the own-artifact repair aimed
+  at the plan's declared file and a failing fill was structurally unreachable. Now: the target is
+  the failing slot's shell, read from the scaffold evidence's fill-layer observations; the repair
+  authors under the **same** fill-mode brief as `qa.test` (one composition seam,
+  `fill_mode_brief`, plus a repair addendum naming the failed slots with the runner's reason);
+  it emits fill blocks, and the handler recovers every other slot's fill from the task's current
+  shells, folds the repair's fills in, passes the same merge gate (#1087, #1094) and emits the
+  merged shell at the shell path, so the patch overlay supersedes the failed one and the retest
+  runs it. Round-trip pinned: recovering the fills from a merged shell and re-merging reproduces
+  it byte for byte. Measured by prediction Q4.
 
 ## [1.6.4] — 2026-08-26
 
