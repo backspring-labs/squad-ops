@@ -35,6 +35,10 @@ if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
 
 from squadops.capabilities.handlers.cycle.base import _CycleTaskHandler
+from squadops.capabilities.handlers.cycle.fill_mode_brief import (
+    render_fill_mode_section,
+    render_self_eval_fill_section,
+)
 from squadops.capabilities.handlers.cycle.validation import (
     _STUB_THRESHOLD_BYTES,
     ValidationResult,
@@ -527,46 +531,14 @@ class QATestHandler(_CycleTaskHandler):
     async def _fill_mode_section(self, context: ExecutionContext, inputs: dict[str, Any]) -> str:
         """Render the FILL MODE block when the envelope carries the scaffold, or "".
 
-        SIP-0104 §4.5: the author receives the shells (read-only) and the coverage
-        inventory — data derived from the slot table by the fill module; every
-        instruction lives in the managed asset (#448). Coverage inventory only: no
-        generated coaching (SIP §12 keeps richer briefs as follow-on work).
+        One composition seam for every qa-role dispatch (#969): the brief is built in
+        ``fill_mode_brief`` and shared with the self-eval pass and ``qa.test_repair``.
         """
-        scaffold_input = inputs.get("verification_scaffold") or {}
-        manifest_dict = scaffold_input.get("manifest")
-        files = scaffold_input.get("files") or []
-        if not manifest_dict or not files:
-            return ""
-        renderer = getattr(context.ports, "request_renderer", None)
-        if renderer is None:
-            return ""
-        from squadops.capabilities.scaffold import error_envelope_lines
-        from squadops.capabilities.verification_scaffold import VerificationScaffoldManifest
-        from squadops.capabilities.verification_scaffold_fill import coverage_inventory_lines
-
-        record = VerificationScaffoldManifest.from_dict(manifest_dict)
-        slot_lines = "\n".join(f"- {line}" for line in coverage_inventory_lines(record))
-        shell_parts = [f"**{f['name']}:**\n```typescript\n{f['content']}\n```" for f in files]
-        # #911: half the slots are error behaviors and nothing showed the author the
-        # envelope, so it invented `body.error_code` on two consecutive window rolls.
-        # Keyed on the scaffold record's own stack — the fact is the stack's, not the
-        # run's, so it stays correct when the brief is rendered without a manifest.
-        envelope = "\n".join(f"- {line}" for line in error_envelope_lines(record.stack))
-        # #933: the plan's authored deliverable, reframed as additive by the asset that
-        # owns the emission contract. The focused prompt no longer states it as an
-        # expected output file, so this is the only place it appears — the intent is
-        # kept, its precedence is not.
-        additive = "\n".join(f"- `{f}`" for f in (inputs.get("expected_artifacts") or []))
-        rendered = await renderer.render(
-            "request.qa_test_fill_mode_appendix",
-            {
-                "slot_lines": slot_lines,
-                "shell_files": "\n\n".join(shell_parts),
-                "error_envelope": envelope,
-                "additive_files": additive,
-            },
+        return await render_fill_mode_section(
+            getattr(context.ports, "request_renderer", None),
+            inputs.get("verification_scaffold"),
+            inputs.get("expected_artifacts") or [],
         )
-        return rendered.content
 
     async def _self_eval_fill_section(
         self,
@@ -574,27 +546,12 @@ class QATestHandler(_CycleTaskHandler):
         scaffold_input: dict[str, Any],
         fill_merge_evidence: dict[str, Any] | None,
     ) -> str:
-        """Render the fill-mode addendum to the self-eval prompt, or "" (1.6.5 C, #947).
-
-        The shared self-eval prompt asks for "the missing files"; under fill mode the
-        missing things are slots, which only a fill block can address. The addendum
-        names the slots whose disposition is not ``filled`` — data from the merge
-        record; every instruction lives in the managed asset (#448).
-        """
-        renderer = getattr(context.ports, "request_renderer", None)
-        if renderer is None or not scaffold_input:
+        """The fill-mode addendum to the self-eval prompt, or "" (1.6.5 C, #947)."""
+        if not scaffold_input:
             return ""
-        unfilled = [
-            f"- `{d['slot_id']}` — {d['disposition']}"
-            + (f": {d['detail']}" if d.get("detail") else "")
-            for d in (fill_merge_evidence or {}).get("dispositions", [])
-            if d.get("disposition") != "filled"
-        ]
-        rendered = await renderer.render(
-            "request.qa_test_self_eval_fill_appendix",
-            {"unfilled_slot_lines": "\n".join(unfilled) or "(none)"},
+        return await render_self_eval_fill_section(
+            getattr(context.ports, "request_renderer", None), fill_merge_evidence
         )
-        return rendered.content
 
     @staticmethod
     def _suite_files(artifacts: list[dict]) -> list[dict]:

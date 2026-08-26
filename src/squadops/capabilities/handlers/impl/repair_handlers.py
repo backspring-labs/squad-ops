@@ -14,10 +14,13 @@ correction-loop flows have distinct, non-overlapping capability ids.
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 from squadops.capabilities.handlers.cycle_tasks import _classify_file, _CycleTaskHandler
 from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from squadops.capabilities.handlers.base import HandlerResult
@@ -229,6 +232,9 @@ class _RepairPromptMixin:
             # are the samples. Rendered in handle(); "" when the executor threaded no
             # counter (author-mode and legacy paths render byte-identically).
             "loop_state": str(inputs.get("loop_state_section") or ""),
+            # #970 / #969 (1.6.5 D): the SAME fill-mode brief qa.test authored under,
+            # plus the slots whose fills failed. "" for non-qa repairs or no scaffold.
+            "qa_fill_mode_section": str(inputs.get("qa_fill_mode_section") or ""),
         }
 
     async def handle(
@@ -262,7 +268,37 @@ class _RepairPromptMixin:
         loop_state = await self._render_loop_state_section(context, inputs)
         if loop_state:
             inputs = {**inputs, "loop_state_section": loop_state}
+        qa_fill_mode = await self._render_qa_fill_mode_section(context, inputs)
+        if qa_fill_mode:
+            inputs = {**inputs, "qa_fill_mode_section": qa_fill_mode}
         return await super().handle(context, inputs)
+
+    async def _render_qa_fill_mode_section(
+        self, context: ExecutionContext, inputs: dict[str, Any]
+    ) -> str:
+        """The qa fill-mode brief for a scaffold-bound repair, or "" (#969, #970).
+
+        Third instance of the missing-brief pattern, closed at the seam rather than
+        with a fourth appendix: the repair renders the SAME fill-mode section
+        ``qa.test`` authored under (slot protocol, store vocabulary, error envelope,
+        in-process execution model) through ``fill_mode_brief``, followed by the
+        repair addendum naming the slots whose fills failed.
+        """
+        if self._role != "qa" or not inputs.get("verification_scaffold"):
+            return ""
+        renderer = getattr(context.ports, "request_renderer", None)
+        if renderer is None:
+            return ""
+        from squadops.capabilities.handlers.cycle.fill_mode_brief import (
+            render_fill_mode_section,
+            render_repair_fill_section,
+        )
+
+        brief = await render_fill_mode_section(
+            renderer, inputs.get("verification_scaffold"), inputs.get("expected_artifacts") or []
+        )
+        addendum = await render_repair_fill_section(renderer, inputs.get("repair_slots"))
+        return "\n\n".join(part for part in (brief, addendum) if part)
 
     async def _render_loop_state_section(
         self, context: ExecutionContext, inputs: dict[str, Any]
@@ -654,4 +690,127 @@ class QATestRepairHandler(_RepairPromptMixin, _CycleTaskHandler):
     _artifact_name = "repair_output.md"
 
     def _build_artifacts_from_content(self, content: str) -> list[dict[str, Any]]:
-        return _artifacts_from_fenced_blocks(content, self._artifact_name)
+        """Fill blocks become ``type: "fill"`` artifacts keyed by slot id (#970).
+
+        Left to the file extractor they parse as files named ``slot-…`` — the shape
+        the shell guard discards and roll 6 of the 1.6.4 set banked eight of. The
+        merge into the shells happens in :meth:`handle`, where the scaffold is known.
+        """
+        from squadops.capabilities.verification_scaffold_fill import (
+            parse_fill_emission,
+            strip_fill_blocks,
+        )
+
+        fills = parse_fill_emission(content)
+        fill_artifacts = [
+            {
+                "name": f.slot_id,
+                "content": f"not_applicable: {f.not_applicable_reason}"
+                if f.is_not_applicable
+                else f.body,
+                "media_type": "text/plain",
+                "type": "fill",
+            }
+            for f in fills.fills
+        ]
+        rest = strip_fill_blocks(content) if fills.fills else content
+        if fill_artifacts and not extract_fenced_files(rest):
+            return fill_artifacts
+        return fill_artifacts + _artifacts_from_fenced_blocks(rest, self._artifact_name)
+
+    async def handle(
+        self,
+        context: ExecutionContext,
+        inputs: dict[str, Any],
+    ) -> HandlerResult:
+        result = await super().handle(context, inputs)
+        scaffold_input = inputs.get("verification_scaffold")
+        if scaffold_input and isinstance(result.outputs, dict):
+            artifacts, evidence = _merge_repair_fills(
+                scaffold_input, list(result.outputs.get("artifacts") or [])
+            )
+            result.outputs["artifacts"] = artifacts
+            result.outputs["fill_merge"] = evidence
+            logger.info(
+                "qa_test_repair_handler fill merge: applied=%s dropped_shell_rewrites=%s counts=%s",
+                evidence.get("applied"),
+                evidence.get("dropped_shell_rewrites"),
+                evidence.get("counts"),
+            )
+        return result
+
+
+def _merge_repair_fills(
+    scaffold_input: dict[str, Any], artifacts: list[dict[str, Any]]
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Merge a repair's fill artifacts into the task's current shells (#970, 1.6.5 D).
+
+    The repair emits fill blocks for the failing slots; the shells it must produce
+    are the task's CURRENT merged shells (``current_files``, threaded by the runner
+    from the failed task's stored artifacts) with those slots replaced. Every other
+    slot's fill is recovered from the current shell and kept byte for byte; the
+    result passes the same merge gate the primary did (#1087 tables, #1094 element
+    kinds) and is emitted at the shell path, so the patch overlay supersedes the
+    failed shell by name and the retest runs it. A whole-shell rewrite emitted as a
+    path fence is dropped and recorded, as on every other qa path.
+    """
+    from squadops.capabilities.verification_scaffold import VerificationScaffoldManifest
+    from squadops.capabilities.verification_scaffold_fill import (
+        apply_followup_fills,
+        merge_fills,
+        parse_fill_emission,
+        recover_fills,
+    )
+
+    record = VerificationScaffoldManifest.from_dict(scaffold_input["manifest"])
+    shell_paths = {f.path for f in record.files}
+    fill_artifacts = [a for a in artifacts if a.get("type") == "fill"]
+    dropped = sorted(a["name"] for a in artifacts if a.get("name") in shell_paths)
+    kept = [a for a in artifacts if a.get("type") != "fill" and a.get("name") not in shell_paths]
+    evidence: dict[str, Any] = {"dropped_shell_rewrites": dropped, "applied": [], "counts": {}}
+    current = list(scaffold_input.get("current_files") or [])
+    if not fill_artifacts:
+        evidence["detail"] = "the repair emitted no fill block"
+        return kept, evidence
+    if not current:
+        evidence["detail"] = "no current shells were threaded; fills could not be merged"
+        return kept, evidence
+    text = "".join(f"```fill:{a['name']}\n{a['content']}\n```\n" for a in fill_artifacts)
+    repair_fills = parse_fill_emission(text)
+    base, dispositions = recover_fills(current, record)
+    folded = apply_followup_fills(base, repair_fills, dispositions, replace_filled=True)
+    merged = merge_fills(
+        list(scaffold_input["files"]),
+        record,
+        folded.emission,
+        store_tables=scaffold_input.get("store_tables"),
+        slot_element_kinds=scaffold_input.get("slot_element_kinds"),
+    )
+    touched_paths = {
+        f.path for f in record.files if any(s.slot_id in folded.applied for s in f.slots)
+    }
+    merged_artifacts = [
+        {
+            "name": f.path,
+            "content": f.content,
+            "media_type": _classify_file(f.path)[1],
+            "type": "test",
+        }
+        for f in merged.files
+        if f.path in touched_paths
+    ]
+    evidence.update(
+        {
+            "applied": list(folded.applied),
+            "counts": merged.disposition_counts(),
+            "dispositions": [
+                {"slot_id": d.slot_id, "disposition": d.disposition, "detail": d.detail}
+                for d in merged.dispositions
+                if d.slot_id in folded.applied
+            ],
+            "misaddressed": [
+                {"slot_id": d.slot_id, "detail": d.detail} for d in merged.misaddressed
+            ],
+        }
+    )
+    return kept + merged_artifacts, evidence

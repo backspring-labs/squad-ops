@@ -280,6 +280,61 @@ def _probe_owned_slots(failure_evidence: Any, failed_inputs: dict[str, Any]) -> 
     return slots
 
 
+def _fill_observations(failure_evidence: Any) -> list[dict[str, str]]:
+    """The scaffold evidence's fill-layer observations, one per (file, slot) (#970).
+
+    ``classify_shell_failures`` attributes an assertion failure inside a slot region
+    to the FILL layer with the slot id and the shell path — structured data, the
+    same source #1015 reads app-contract observations from. These are the sites an
+    own-artifact qa repair can reach: the shell files, addressed by slot.
+    """
+    if not isinstance(failure_evidence, dict):
+        return []
+    from squadops.cycles.scaffold_evidence import CLASS_FILL
+
+    summary = failure_evidence.get("scaffold_evidence")
+    observations = (summary.get("observations") or []) if isinstance(summary, dict) else []
+    seen: set[tuple[str, str]] = set()
+    out: list[dict[str, str]] = []
+    for obs in observations:
+        if not isinstance(obs, dict) or obs.get("failure_class") != CLASS_FILL:
+            continue
+        key = (str(obs.get("file") or ""), str(obs.get("slot_id") or ""))
+        if not key[0] or key in seen:
+            continue
+        seen.add(key)
+        out.append({"file": key[0], "slot_id": key[1], "detail": str(obs.get("detail") or "")})
+    return out
+
+
+def _qa_scaffold_repair_inputs(
+    role: str, failed_inputs: dict[str, Any], failed_result: Any, failure_evidence: Any
+) -> dict[str, Any]:
+    """What a qa repair of a scaffold-bound task needs to reach a fill (#970, 1.6.5 D).
+
+    Presence-keyed: only a qa-role step repairing a task that carried the scaffold
+    receives anything. The scaffold rides as the task was authored against it
+    (pristine shells, manifest, tables, element kinds) plus ``current_files`` — the
+    failed task's stored artifacts at shell paths, i.e. the shells WITH the fills the
+    task merged — so the repair can replace one slot and keep every other byte for
+    byte; ``repair_slots`` names the failing slots for the brief.
+    """
+    scaffold_input = failed_inputs.get("verification_scaffold")
+    if role != "qa" or not isinstance(scaffold_input, dict):
+        return {}
+    shell_paths = {str(f.get("name")) for f in (scaffold_input.get("files") or [])}
+    artifacts = (getattr(failed_result, "outputs", None) or {}).get("artifacts") or []
+    current_files = [
+        {"name": str(a["name"]), "content": str(a.get("content") or "")}
+        for a in artifacts
+        if isinstance(a, dict) and a.get("name") in shell_paths
+    ]
+    return {
+        "verification_scaffold": {**scaffold_input, "current_files": current_files},
+        "repair_slots": _fill_observations(failure_evidence),
+    }
+
+
 def _empty_emission_signature(result: Any) -> list[str]:
     """The #998 signature a repair step's handler put on its ``emission_failure`` marker,
     as a zero-or-one-element list so the caller can ``extend`` without branching."""
@@ -559,6 +614,29 @@ def _locus_and_repair_target(
 
     failure_locus = classify_failure_locus(failure_evidence)
     own_expected = [str(e) for e in (failed_inputs.get("expected_artifacts") or []) if e]
+    # #970 (1.6.5 D): under fill mode the shells are merge products, never in
+    # ``expected_artifacts``, so aiming the own-artifact repair at the plan's declared
+    # file left a failing FILL structurally unreachable — roll 6 of the 1.6.4 set
+    # re-produced ``__tests__/runs.test.ts`` twice while every shell rendered "no
+    # fill received". When the failed task carried the scaffold and the evidence
+    # names fill-layer observations, the target is their shells, by slot.
+    fill_sites = (
+        _fill_observations(failure_evidence) if failed_inputs.get("verification_scaffold") else []
+    )
+    if failure_locus == FailureLocus.OWN_ARTIFACT and fill_sites:
+        shells = list(dict.fromkeys(site["file"] for site in fill_sites))
+        logger.info(
+            "correction_repair_locus: own_artifact — %s re-fills slot(s) %s in %s (#970)",
+            failed_task_type,
+            ", ".join(site["slot_id"] or "?" for site in fill_sites),
+            ", ".join(shells),
+        )
+        return (
+            failure_locus,
+            shells,
+            failed_inputs.get("subtask_focus"),
+            failed_inputs.get("subtask_description"),
+        )
     if failure_locus == FailureLocus.OWN_ARTIFACT and own_expected:
         logger.info(
             "correction_repair_locus: own_artifact — %s re-produces %s",
@@ -1491,6 +1569,11 @@ class CorrectionRunner:
                 # stripping the anchors — hence the registry-declared
                 # re-derivation above (presence-keyed: no manifest, no keys).
                 repair_inputs.update(repair_surfaces)
+                # #970 (1.6.5 D), presence-keyed: the scaffold + the task's current
+                # merged shells + the slots whose fills failed, for a qa repair.
+                repair_inputs.update(
+                    _qa_scaffold_repair_inputs(role, failed_inputs, result, failure_evidence)
+                )
 
                 repair_envelope = TaskEnvelope(
                     task_id=repair_task_id,
