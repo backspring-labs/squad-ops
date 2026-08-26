@@ -96,10 +96,12 @@ class SetConfig:
 
     @property
     def records_path(self) -> Path:
+        # var/ is gitignored and user-writable; data/ is the docker volume, owned by root —
+        # the first launch died on mkdir there before it created anything.
         return (
             Path(self.records_dir)
             if self.records_dir
-            else REPO / "data" / "verification_sets" / self.name
+            else REPO / "var" / "verification_sets" / self.name
         )
 
     @property
