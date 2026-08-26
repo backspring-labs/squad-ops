@@ -86,6 +86,11 @@ class SetConfig:
     overrides: dict[str, str] = field(default_factory=dict)
     #: Empty = record, do not assert (a shakeout on a fresh deploy).
     expected_config_hash_prefix: str = ""
+    #: The squad-profile snapshot the set is frozen on. A per-agent override (1.6.5 E:
+    #: eve's completion budget) moves THIS identity and leaves resolved_config_hash — the
+    #: request-profile side — untouched; a set that asserted only the latter would accept
+    #: a roll on a different squad configuration.
+    expected_squad_snapshot_prefix: str = ""
     frozen_deploy_commit: str = ""
     frozen_image_ids: dict[str, str] = field(default_factory=dict)
     #: ``{service: python_source}`` — "loaded, not built": run inside the container and
@@ -144,6 +149,7 @@ def load_set_config(path: Path) -> SetConfig:
         n_rolls=int(raw["n_rolls"]),
         overrides=overrides,
         expected_config_hash_prefix=str(raw.get("expected_config_hash_prefix") or ""),
+        expected_squad_snapshot_prefix=str(raw.get("expected_squad_snapshot_prefix") or ""),
         frozen_deploy_commit=str(raw.get("frozen_deploy_commit") or ""),
         frozen_image_ids=image_ids,
         loaded_checks={str(k): str(v) for k, v in (raw.get("loaded_checks") or {}).items()},
@@ -462,8 +468,12 @@ def collect(cfg: SetConfig, cycle_id: str) -> dict:
                 corrections += 1
             if (m.get("metadata") or {}).get("emission_status") == "failed":
                 failed_emissions += 1
+    snapshot = psql(
+        f"select coalesce(squad_profile_snapshot_ref,'') from cycle_registry where cycle_id='{cycle_id}';"
+    )
     return {
         "cycle_id": cycle_id,
+        "squad_profile_snapshot_ref": snapshot,
         "runs": runs,
         "gate_decisions": [
             dict(zip(("gate", "decision", "decided_by"), g.split("|"), strict=False)) for g in gates
@@ -736,7 +746,8 @@ def render(cfg: SetConfig, title: str, rec: dict) -> str:
         "",
         f"**Cycle** `{rec['cycle_id']}` · stack `{rec.get('stack')}` · deploy "
         f"`{cfg.frozen_deploy_commit or rec.get('deploy', {}).get('head', '?')}` · "
-        f"config `{(rec.get('config_hash') or cfg.expected_config_hash_prefix or '?')[:12]}`",
+        f"config `{(rec.get('config_hash') or cfg.expected_config_hash_prefix or '?')[:12]}` · "
+        f"squad snapshot `{(rec.get('squad_profile_snapshot_ref') or '?')[:12]}`",
         "",
         "## Headline",
         "",
@@ -802,6 +813,11 @@ def _p0_word(p0: dict | None) -> str:
 # ---------------------------------------------------------------------------
 
 
+def identity_mismatch(expected_prefix: str, actual: str) -> bool:
+    """True when a pinned identity is set and the roll's value does not carry it."""
+    return bool(expected_prefix) and not (actual or "").startswith(expected_prefix)
+
+
 def _write_record(cfg: SetConfig, stem: str, rec: dict, md: str) -> None:
     cfg.records_path.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
@@ -825,6 +841,15 @@ def _run_cycle(
     rec["stack"] = stack
     rec["config_hash"] = chash
     rec["launched_at"] = launched_at
+    if identity_mismatch(cfg.expected_squad_snapshot_prefix, rec["squad_profile_snapshot_ref"]):
+        log(
+            f"!! squad-profile snapshot {rec['squad_profile_snapshot_ref'][:16]} != the set's "
+            f"{cfg.expected_squad_snapshot_prefix} — a different squad configuration"
+        )
+        if assert_hash:
+            log("   the roll is NOT comparable; recording and stopping")
+            _write_record(cfg, stem, rec, render(cfg, title, rec))
+            return 3
     framing = completed_framing_run(cyc)
     rec["static_checks"] = static_checks(cfg, stack, cyc, rec["impl_run_id"], framing)
     rec["ledger_checks"] = ledger_checks(rec)

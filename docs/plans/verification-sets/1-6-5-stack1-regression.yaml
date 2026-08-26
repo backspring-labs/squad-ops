@@ -27,5 +27,7 @@ loaded_checks:
     from squadops.capabilities.scaffold import _py_type, is_scaffoldable_stack;
     print(is_scaffoldable_stack('fullstack_fastapi_react'), _py_type('list[Participant]'))
 expected_config_hash_prefix: ""
+# The identity a per-agent override moves (1.6.5 E) — resolved_config_hash does not see it.
+expected_squad_snapshot_prefix: ""
 frozen_deploy_commit: ""
 frozen_image_ids: {}
