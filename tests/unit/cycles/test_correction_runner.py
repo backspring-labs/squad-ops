@@ -4739,3 +4739,120 @@ class TestAnalyzerImplicatedFilesAreVerifiedBeforeUse:
         with_claim, _, _ = _resolve_repair_target(self.SUITE_FAIL, dict(self.INPUTS), analysis)
         without, _, _ = _resolve_repair_target(self.SUITE_FAIL, dict(self.INPUTS))
         assert with_claim == without
+
+
+class TestQaRepairReachesFills:
+    """1.6.5 D (#970): an own-artifact qa repair of a scaffold-bound task targets the
+    shell of the failing slot and receives the task's current shells.
+
+    Bug caught: the own-artifact branch aims at ``expected_artifacts`` (the plan's
+    declared additive file), so a failing FILL is structurally unreachable — roll 6 of
+    the 1.6.4 set re-produced ``__tests__/runs.test.ts`` twice while every shell rendered
+    "no fill received".
+    """
+
+    _SHELL = "__tests__/scaffold/vc-probe-api-runs-join.scaffold.test.ts"
+
+    def _evidence(self, *, klass="fill"):
+        return {
+            "scaffold_evidence": {
+                "failure_classes": {klass: 1},
+                "observations": [
+                    {
+                        "file": self._SHELL,
+                        "slot_id": "slot-vc-probe-api-runs-join",
+                        "failure_class": klass,
+                        "detail": "slot disposition filled: expected [] to have a length of 1",
+                        "criterion_id": "vc-probe-api-runs-join" if klass != "fill" else "",
+                    }
+                ],
+            }
+        }
+
+    def _inputs(self, *, with_scaffold=True):
+        inputs = {
+            "expected_artifacts": ["__tests__/runs.test.ts"],
+            "subtask_focus": "qa",
+            "subtask_description": "author the suite",
+        }
+        if with_scaffold:
+            inputs["verification_scaffold"] = {
+                "manifest": {},
+                "files": [{"name": self._SHELL, "content": "// pristine"}],
+            }
+        return inputs
+
+    def test_fill_observations_are_read_per_file_and_slot(self):
+        from adapters.cycles.correction_runner import _fill_observations
+
+        assert _fill_observations(self._evidence()) == [
+            {
+                "file": self._SHELL,
+                "slot_id": "slot-vc-probe-api-runs-join",
+                "detail": "slot disposition filled: expected [] to have a length of 1",
+            }
+        ]
+        assert _fill_observations(self._evidence(klass="app_contract")) == []
+        assert _fill_observations({}) == []
+
+    def test_the_own_artifact_target_is_the_failing_slots_shell(self):
+        from adapters.cycles.correction_runner import _locus_and_repair_target
+        from squadops.cycles.failure_evidence import FailureLocus
+
+        locus, expected, focus, description = _locus_and_repair_target(
+            "qa.test", self._evidence(), self._inputs()
+        )
+        assert locus == FailureLocus.OWN_ARTIFACT
+        assert expected == [self._SHELL]
+        assert (focus, description) == ("qa", "author the suite")
+
+    def test_without_the_scaffold_the_target_is_the_declared_file_as_before(self):
+        from adapters.cycles.correction_runner import _locus_and_repair_target
+
+        _, expected, _, _ = _locus_and_repair_target(
+            "qa.test", self._evidence(), self._inputs(with_scaffold=False)
+        )
+        assert expected == ["__tests__/runs.test.ts"]
+
+    def test_an_app_contract_failure_never_takes_the_qa_branch(self):
+        from adapters.cycles.correction_runner import _locus_and_repair_target
+        from squadops.cycles.failure_evidence import FailureLocus
+
+        locus, expected, _, _ = _locus_and_repair_target(
+            "qa.test", self._evidence(klass="app_contract"), self._inputs()
+        )
+        assert locus == FailureLocus.SUBJECT
+        assert self._SHELL not in expected
+
+    def test_the_qa_repair_receives_the_current_shells_and_the_failing_slots(self):
+        from adapters.cycles.correction_runner import _qa_scaffold_repair_inputs
+
+        failed_result = MagicMock()
+        failed_result.outputs = {
+            "artifacts": [
+                {"name": self._SHELL, "content": "// merged, with fills", "type": "test"},
+                {"name": "__tests__/runs.test.ts", "content": "// additive", "type": "test"},
+                {"name": "test_report.md", "content": "r", "type": "test_report"},
+            ]
+        }
+        out = _qa_scaffold_repair_inputs("qa", self._inputs(), failed_result, self._evidence())
+        assert out["verification_scaffold"]["files"] == [
+            {"name": self._SHELL, "content": "// pristine"}
+        ]
+        assert out["verification_scaffold"]["current_files"] == [
+            {"name": self._SHELL, "content": "// merged, with fills"}
+        ]
+        assert [s["slot_id"] for s in out["repair_slots"]] == ["slot-vc-probe-api-runs-join"]
+
+    @pytest.mark.parametrize(
+        "role, with_scaffold",
+        [("dev", True), ("qa", False)],
+        ids=["foreign-role", "no-scaffold"],
+    )
+    def test_presence_keyed_nothing_otherwise(self, role, with_scaffold):
+        from adapters.cycles.correction_runner import _qa_scaffold_repair_inputs
+
+        out = _qa_scaffold_repair_inputs(
+            role, self._inputs(with_scaffold=with_scaffold), MagicMock(outputs={}), self._evidence()
+        )
+        assert out == {}
