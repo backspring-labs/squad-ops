@@ -116,7 +116,7 @@ class TestSetConfig:
         "filename, stack",
         [
             ("1-6-5-nextjs.yaml", "nextjs_ts"),
-            ("1-6-5-stack1-regression.yaml", "fullstack_fastapi_react"),
+            ("1-6-5-fastapi-react.yaml", "fullstack_fastapi_react"),
         ],
     )
     def test_the_committed_set_configs_load_and_derive_their_stack(self, driver, filename, stack):
@@ -228,6 +228,24 @@ class TestSquadSnapshotIsAnIdentity:
     def test_identity_mismatch(self, driver, expected, actual, mismatch):
         assert driver.identity_mismatch(expected, actual) is mismatch
 
-    def test_the_set_config_carries_the_snapshot_pin(self, driver):
-        cfg = driver.load_set_config(_SETS / "1-6-5-nextjs.yaml")
-        assert cfg.expected_squad_snapshot_prefix == ""  # filled at pre-registration
+    @pytest.mark.parametrize("filename", ["1-6-5-nextjs.yaml", "1-6-5-fastapi-react.yaml"])
+    def test_the_counting_sets_are_fully_pinned(self, driver, filename):
+        """Bug caught: a counting set whose config still carries the shakeout-time blanks —
+        the driver would then record instead of assert, and a rebuild mid-set would pass."""
+        import re
+
+        cfg = driver.load_set_config(_SETS / filename)
+        assert cfg.n_rolls == 6
+        assert re.fullmatch(r"[0-9a-f]{12,16}", cfg.expected_squad_snapshot_prefix)
+        assert re.fullmatch(r"[0-9a-f]{12}", cfg.expected_config_hash_prefix)
+        assert re.fullmatch(r"[0-9a-f]{8}", cfg.frozen_deploy_commit)
+        assert set(cfg.frozen_image_ids) == set(driver.DEPLOY_SERVICES)
+        assert all(re.fullmatch(r"[0-9a-f]{12}", v) for v in cfg.frozen_image_ids.values())
+
+    def test_both_sets_share_the_deploy_and_snapshot_but_not_the_config_hash(self, driver):
+        a = driver.load_set_config(_SETS / "1-6-5-nextjs.yaml")
+        b = driver.load_set_config(_SETS / "1-6-5-fastapi-react.yaml")
+        assert a.frozen_image_ids == b.frozen_image_ids
+        assert a.frozen_deploy_commit == b.frozen_deploy_commit
+        assert a.expected_squad_snapshot_prefix == b.expected_squad_snapshot_prefix
+        assert a.expected_config_hash_prefix != b.expected_config_hash_prefix

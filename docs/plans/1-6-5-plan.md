@@ -129,9 +129,10 @@ registry's 8,192 for `qwen3.8:27b` (`model_registry.py:64-68`) is the V38 compar
 applies to every role; it stays. Cost when used: ≤ ~3 minutes per emission at 3.8's measured
 ~24 t/s, and only on the emissions that need it — the six under 6.3k pay nothing. The registry's
 "coherence drifts past 8k" note is from qwen3.6 at ~10 t/s and is unmeasured on 3.8; Q5 and the
-texture below are where it gets measured. **This changes `resolved_config_hash`**, so the 1.6.5
-set is a new configuration line and its pre-registration records the new hash; no comparison to
-`d4d4f66217d8` is claimed beyond the texture fields.
+texture below are where it gets measured. **This changes the squad-profile snapshot** (`squad_profile_snapshot_ref`), not
+`resolved_config_hash` — rev 2 named the wrong identity; the first 1.6.5 shakeout launched on the
+1.6.4 config hash `d4d4f66217d8` with a new snapshot `575707c5…`. The pre-registration records
+both, and the driver asserts both on counting rolls (#1119).
 
 What E does not fix, stated so the set is not misread: the zero-character exhaustion class (roll
 8's repair, roll 2's develop — 8,192 tokens of reasoning that never closed). A larger budget makes
@@ -242,6 +243,7 @@ takes. The six PRs shipped without `Closes` lines — #1113 is the guard.
 
 | rev | date | what changed | evidence |
 |---|---|---|---|
+| 4 | 2026-08-26 | E moves `squad_profile_snapshot_ref`, not `resolved_config_hash` (rev 2 was wrong; corrected from the first shakeout's launch line). Both shakeout pairs recorded; the FastAPI+React arm found #1120 (fixed, #1121); #1122/#1123 filed for the targeted-repair rungs | `cyc_0e81955001e0` launch line; `cycle_registry.squad_profile_snapshot_ref`; `cyc_3cde35fa5204` runtime-api log |
 | 3 | 2026-08-26 | Numbers assigned (#1109–#1113); regression-script item withdrawn as a caller-side masking, not a script defect; cut hygiene recorded done | issues as filed; `run_regression_tests.sh:19-24`; closures on #1096 #1079 #1021 #1094 #1015 |
 | 2 | 2026-08-26 | E added: eve-only `max_completion_tokens: 12288` on `full-38`, with Q5 and the distribution texture; §2.2 rescoped from "no raise" to "no registry or dev raise"; §1 carries the ten-emission distribution and the dev-side contrast | eve `emission shape` lines for the set window (ten `qa_test_handler` primaries); neo's 79 `develop` emissions; `models.py:184`, `task_plan.py:899`, `base.py:351`, `model_registry.py:47-68` |
 | 1 | 2026-08-26 | Initial, at the 1.6.4 cut | `1-6-4-verification-set-record.md` §1.1, §3, §4, §5; `qa_test.py:1253-1265`; `model_registry.py:64-68`; #947, #969, #970, #998 as filed |
