@@ -1,0 +1,32 @@
+name: PR closure references
+
+# Fails a PR whose body carries neither a closing reference to an open issue
+# (`Closes #N`) nor an explicit opt-out (`Refs #N — remaining: …` / `No issue: …`).
+# Enforces the CLAUDE.md "Close issues from PRs" rule that nothing enforced
+# before: six 1.6.4 fix PRs merged without one and the issues stayed open past
+# the cut (#1113, the second recurrence of #133/#205). Mark this check Required
+# in branch protection on main — a red check that is not required is advice.
+#
+# `edited` is in the trigger so fixing the body re-runs the check without a push.
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+jobs:
+  closure:
+    name: closing reference present
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: check the PR body
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: printf '%s' "$PR_BODY" | scripts/dev/check_pr_closure.sh
