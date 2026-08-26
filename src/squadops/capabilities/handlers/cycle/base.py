@@ -774,6 +774,21 @@ class _CycleTaskHandler(CapabilityHandler):
             "emission_stats": emission_stats(len(content), artifacts),
             "prompt_provenance": provenance,
         }
+        if not content.strip():
+            # #998: an EMPTY emission on the generic path — which every repair handler
+            # rides — carried no marker at all, so the correction loop could refund the
+            # round (#1053) but never say what kind of nothing it was. Three of the
+            # eleven repair rounds in the 1.6.3 set's reds were exactly this. Only
+            # emptiness is flagged here: a document-producing handler legitimately
+            # emits no fences, and that is not a failure of anything.
+            from squadops.cycles.emission_integrity import no_fenced_blocks_failure
+
+            outputs["emission_failure"] = no_fenced_blocks_failure(
+                len(content),
+                inputs.get("expected_artifacts"),
+                completion_tokens=response.completion_tokens,
+                completion_cap=chat_kwargs.get("max_tokens"),
+            )
 
         duration_ms = (time.perf_counter() - start_time) * 1000
 

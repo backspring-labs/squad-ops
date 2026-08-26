@@ -83,6 +83,11 @@ def test_no_fenced_blocks_marker_shape():
         "reason": EMISSION_FAILURE_NO_FENCED_BLOCKS,
         "response_chars": 6203,
         "expected_artifacts": ["backend/tests/test_runs.py"],
+        # #998: the token facts and the signature ride the marker; a caller that
+        # reports no tokens gets an honest None and the shape the chars alone support.
+        "completion_tokens": None,
+        "completion_cap": None,
+        "signature": "unextractable",
     }
     assert no_fenced_blocks_failure(0, None)["expected_artifacts"] == []
 

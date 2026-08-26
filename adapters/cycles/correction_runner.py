@@ -280,6 +280,15 @@ def _probe_owned_slots(failure_evidence: Any, failed_inputs: dict[str, Any]) -> 
     return slots
 
 
+def _empty_emission_signature(result: Any) -> list[str]:
+    """The #998 signature a repair step's handler put on its ``emission_failure`` marker,
+    as a zero-or-one-element list so the caller can ``extend`` without branching."""
+    marker = (getattr(result, "outputs", None) or {}).get("emission_failure")
+    if isinstance(marker, dict) and marker.get("signature"):
+        return [str(marker["signature"])]
+    return []
+
+
 def _narrowed_or_scoped(
     probe_slots: list[str], failed_inputs: dict[str, Any], failed_artifacts: list[str]
 ) -> list[str]:
@@ -694,6 +703,12 @@ class CorrectionProtocolResult:
     #: emission failure (`FailureEvidenceCategory.EMISSION_ABSENT`'s shape), not an
     #: attempt at the fix.
     emission_empty: bool = False
+    #: #998: the SIGNATURE of each empty repair emission this round, in step order —
+    #: ``cap_exhausted`` (the model spent its whole completion budget and closed no
+    #: content), ``empty`` (fewer tokens than the budget, nothing returned), or
+    #: ``unextractable``. Two empties with opposite remedies must not read the same on
+    #: the correction event; before this they did not read at all.
+    empty_emission_signatures: tuple[str, ...] = ()
 
 
 class CorrectionRunner:
@@ -1401,6 +1416,7 @@ class CorrectionRunner:
         # the SUBJECT and would point a test re-author at app source files).
         repair_artifacts: list[dict[str, Any]] = []
         repair_steps_ran = False
+        empty_signatures: list[str] = []
         if correction_path == "patch":
             failed_inputs = envelope.inputs or {}
             # #667/#663 S2: the anchor surface rides every repair envelope,
@@ -1523,6 +1539,9 @@ class CorrectionRunner:
                 # #389: surface the repair's emitted files to the executor for
                 # behavioral patch verification.
                 step_artifacts = (repair_result.outputs or {}).get("artifacts") or []
+                # #998: the handler names what kind of nothing it emitted; keep it for
+                # the round's disclosure below.
+                empty_signatures.extend(_empty_emission_signature(repair_result))
                 # #507: re-home repair files onto the failed task's expected
                 # paths before they reach the overlay — a repair emitted under
                 # the wrong directory otherwise lands as a net-new file, patch
@@ -1567,9 +1586,10 @@ class CorrectionRunner:
         if emission_empty:
             logger.warning(
                 "correction: repair emitted no content on attempt %d (%d artifact(s), all "
-                "empty) — the round produced nothing to verify (#1053)",
+                "empty; signature %s) — the round produced nothing to verify (#1053, #998)",
                 correction_attempts,
                 len(repair_artifacts),
+                ", ".join(empty_signatures) or "unreported",
             )
 
         # 8. Emit CORRECTION_COMPLETED
@@ -1580,13 +1600,20 @@ class CorrectionRunner:
             context={"cycle_id": cycle.cycle_id, "run_id": run_id},
             # Disclosed on the event, not only in a log line: "converged in 3" and
             # "converged in 3 after two empty emissions" must not read the same.
-            payload={"correction_path": correction_path, "emission_empty": emission_empty},
+            payload={
+                "correction_path": correction_path,
+                "emission_empty": emission_empty,
+                # #998: "converged in 3 after two empty emissions" must also say WHICH
+                # nothing — the two shapes have opposite remedies.
+                "empty_emission_signatures": list(empty_signatures) if emission_empty else [],
+            },
         )
 
         return CorrectionProtocolResult(
             correction_path=correction_path,
             repair_artifacts=repair_artifacts,
             emission_empty=emission_empty,
+            empty_emission_signatures=tuple(empty_signatures) if emission_empty else (),
         )
 
     # Artifact types a qa.test task emits *about* its run, not *into* its

@@ -768,6 +768,36 @@ class TestRepairHandlers:
         assert result.outputs["role"] == "dev"
         assert h.capability_id == "development.correction_repair"
 
+    async def test_an_empty_repair_emission_carries_the_cap_exhausted_signature(self, mock_context):
+        """#998: the generic path every repair rides emitted NO marker for an empty
+        response — roll 5 of the 1.6.3 set banked two 0-byte repair_output.md files and the
+        loop could refund the rounds (#1053) but never say what kind of nothing they were.
+        The model spent its whole completion budget: that is the signature."""
+        _set_llm_mock(
+            mock_context,
+            return_value=ChatMessage(role="assistant", content="", completion_tokens=8192),
+        )
+        h = DevelopmentCorrectionRepairHandler()
+        result = await h.handle(
+            mock_context,
+            {"prd": "test", "agent_config_overrides": {"max_completion_tokens": 8192}},
+        )
+        marker = result.outputs["emission_failure"]
+        assert marker["signature"] == "cap_exhausted"
+        assert marker["completion_tokens"] == 8192 and marker["completion_cap"] == 8192
+
+    async def test_a_document_producing_repair_response_is_not_flagged(self, mock_context):
+        """Only emptiness is a failure on the generic path: prose without fences is a
+        document, and flagging it would mark every markdown-producing handler broken."""
+        _set_llm_mock(
+            mock_context,
+            return_value=ChatMessage(
+                role="assistant", content="Repair applied", completion_tokens=12
+            ),
+        )
+        result = await DevelopmentCorrectionRepairHandler().handle(mock_context, {"prd": "test"})
+        assert "emission_failure" not in result.outputs
+
     async def test_dev_repair_extracts_fenced_code_into_per_file_artifacts(self, mock_context):
         # Regression: previously this whole response was wrapped as a single
         # repair_output.md document and the source files never landed.
