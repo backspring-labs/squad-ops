@@ -44,6 +44,7 @@ from typing import TYPE_CHECKING, Any
 from squadops.capabilities.response_shape import ResponseShape, derive_response_shape
 from squadops.capabilities.scaffold_contract import _slug
 from squadops.capabilities.stack_nextjs_ts import _segments
+from squadops.capabilities.success_status import success_status_for
 from squadops.capabilities.verification_scaffold import (
     BehaviorSlot,
     ScaffoldDerivationError,
@@ -306,7 +307,7 @@ def _minted_read_behaviors(
         if ep.method != "GET":
             continue
         placeholders = _placeholders(ep.path)
-        expect = ep.success_status or 200
+        expect = success_status_for(ep)
         if not placeholders:
             behaviors.append(
                 _Behavior(

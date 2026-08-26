@@ -61,17 +61,16 @@ _METHOD_TOKEN_RE = re.compile(r"\b(GET|POST|PUT|PATCH|DELETE)\b")
 def _enforced_success_status(ep: Endpoint) -> int | None:
     """The status the derived contract will actually assert for *ep*.
 
-    Mirrors ``scaffold_contract``'s derivation (collection POST → 201, child
-    POST → 200; see the deriver's ``ep.success_status or 201`` /
-    ``child.success_status or 200`` sites) — declared wins, defaults follow.
+    Reads ``scaffold.success_status_for`` — the one home of the rule (#772) —
+    so this cannot drift from what the deriver asserts: declared wins, defaults follow.
     GETs derive no status probe, so there is nothing to enforce and nothing to
     contradict.
     """
+    from squadops.capabilities.scaffold import success_status_for
+
     if ep.method.upper() != "POST":
         return ep.success_status  # declared-only for non-POST; None = unchecked
-    if ep.success_status is not None:
-        return ep.success_status
-    return 201 if "{" not in ep.path else 200
+    return success_status_for(ep)
 
 
 def path_pattern(path: str) -> re.Pattern[str]:

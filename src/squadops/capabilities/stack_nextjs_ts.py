@@ -35,6 +35,8 @@ import re
 from collections.abc import Collection
 from typing import TYPE_CHECKING, Any
 
+from squadops.capabilities.success_status import success_status_for
+
 if TYPE_CHECKING:  # pragma: no cover - annotations only, avoids a scaffold import cycle
     from squadops.capabilities.scaffold import InterfaceManifest
 
@@ -538,7 +540,7 @@ def _route_stub(path: str, endpoints: list[Any]) -> str:
     ]
     body = []
     for ep in endpoints:
-        status = getattr(ep, "success_status", None) or 200
+        status = success_status_for(ep)
         body += [
             f"export async function {ep.method.upper()}(request: Request) {{",
             "  try {",

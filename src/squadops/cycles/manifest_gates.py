@@ -420,7 +420,7 @@ def _testid_findings(manifest) -> list[WinnabilityFinding]:
 def _status_findings(manifest) -> list[WinnabilityFinding]:
     """A collection POST must declare its success status, or the contract is unwinnable.
 
-    Measured, not assumed (#772). The contract deriver expects ``success_status or 201``
+    Measured, not assumed (#772). The contract deriver expects the seam's 201
     for a collection POST, while the scaffold omits ``status_code=`` when it is
     undeclared — so FastAPI returns 200 and the probe asserts 201 against a correctly
     implemented app. The field's own docstring records this costing a roll at pf-39:
@@ -451,17 +451,11 @@ def _status_findings(manifest) -> list[WinnabilityFinding]:
 
 
 def derived_success_status(method: str, path: str) -> int | None:
-    """The status the contract deriver computes for an endpoint, ignoring declarations.
+    """The contract's default for an undeclared status — re-exported from the one home
+    of the rule (``capabilities.scaffold``, #772) so the gates keep their name for it."""
+    from squadops.capabilities.success_status import derived_success_status as _seam
 
-    Collection POST -> 201, child-action POST -> 200, everything else -> no status probe.
-    Single-sourced here because #1067 is a story about one fact having several homes:
-    `scaffold_contract` applies this rule at three sites (`ep.success_status or 201`,
-    `child.success_status or 200` twice) and `framing_consistency` mirrors it, and adding
-    a fourth copy to police the first three would be the same defect one layer up.
-    """
-    if method.upper() != "POST":
-        return None
-    return 201 if "{" not in path else 200
+    return _seam(method, path)
 
 
 def _status_override_findings(manifest) -> list[WinnabilityFinding]:

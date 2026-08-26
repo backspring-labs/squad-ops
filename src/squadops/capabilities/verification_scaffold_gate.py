@@ -79,12 +79,13 @@ def _declared_packages(tree: dict[str, str]) -> set[str]:
 
 
 def _allowed_statuses(manifest: InterfaceManifest) -> set[int]:
-    """Statuses the contract declares — the same defaults the probe deriver applies
-    (201 for a parameterless POST create, 200 otherwise), plus the error contract."""
+    """Statuses the contract declares — through the deriver's own seam (#772), plus the
+    error contract."""
     allowed: set[int] = set()
+    from squadops.capabilities.scaffold import success_status_for
+
     for ep in manifest.api.endpoints:
-        default = 201 if ep.method == "POST" and "{" not in ep.path else 200
-        allowed.add(ep.success_status or default)
+        allowed.add(success_status_for(ep))
     contract = manifest.api.error_contract
     for code in contract.codes if contract else ():
         allowed.add(code.http)

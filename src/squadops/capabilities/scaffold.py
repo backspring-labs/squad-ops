@@ -42,6 +42,10 @@ from squadops.capabilities.stack_nextjs_ts import expand_nextjs_ts as _expand_ne
 from squadops.capabilities.stack_nextjs_ts import (
     fill_slots_nextjs_ts as _fill_slots_nextjs_ts,
 )
+from squadops.capabilities.success_status import (  # noqa: F401 — re-exported: the seam's home
+    derived_success_status,
+    success_status_for,
+)
 
 # Schema v1 is frozen (SIP-0099 phase 99.1): the shape below is the canonical
 # interface-manifest contract the fullstack_fastapi_react expander was proven against
@@ -1426,9 +1430,16 @@ def _routes_source(manifest: InterfaceManifest) -> str:
         if ep.response:
             decorator += f", response_model={_py_type(ep.response)}"
         # The success status is *interface*, not implementation — it belongs to the
-        # scaffold-owned decorator so the fill dev cannot drop it (pf-39).
-        if ep.success_status is not None:
-            decorator += f", status_code={ep.success_status}"
+        # scaffold-owned decorator so the fill dev cannot drop it (pf-39). #772: an
+        # UNDECLARED status is pinned too, to the same default the contract asserts —
+        # an omitted kwarg meant FastAPI's 200 against the deriver's 201, unwinnable.
+        pinned = (
+            ep.success_status
+            if ep.success_status is not None
+            else derived_success_status(ep.method, ep.path)
+        )
+        if pinned is not None:
+            decorator += f", status_code={pinned}"
         decorator += ")"
         lines.append(decorator)
         lines.append(f"def {fn}({sig}):")
