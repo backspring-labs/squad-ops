@@ -114,3 +114,21 @@ class TestFillModeBriefInstructions:
         used = set(re.findall(r"\{\{(\w+)\}\}", brief))
 
         assert used == declared, f"declared={sorted(declared)} used={sorted(used)}"
+
+
+class TestFillsAreEmittedFirst:
+    """1.6.5 A (#998 ask 2, ordering half). Bug caught: the brief says fills come first
+    in *priority* but nothing about emission ORDER, so the author wrote the additive file
+    first, hit the completion cap, and lost every fill (1.6.4 set, roll 6)."""
+
+    _APPENDIX = (
+        Path(__file__).resolve().parents[3]
+        / "src/squadops/prompts/request_templates/request.qa_test_fill_mode_appendix.md"
+    )
+
+    def test_the_order_rule_is_stated_and_precedes_the_additive_files_paragraph(self):
+        text = self._APPENDIX.read_text()
+        rule = text.index("**Order of emission: every fill block first, then any additive file.**")
+        additive = text.index("The plan also asked for the file(s) below.")
+        assert rule < additive
+        assert "lands on an additive file" in text
