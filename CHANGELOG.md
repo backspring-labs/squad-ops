@@ -10,7 +10,7 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 - **A — fills first** (#998 ask 2, ordering half). The qa fill-mode brief (appendix v4) states
   the emission order: every fill block, then any additive file. A cut at the completion cap now
   lands on the additive file — which #1082 detects and the self-eval re-emits — never on a fill.
-  Roll 6 of the 1.6.4 set lost all eight fills to an additive file written first.
+  Roll 6 of the previous verification set (`docs/plans/1-6-4-verification-set-record.md`) lost all eight fills to an additive file written first.
 - **B — the suite runs on what the task stores** (#1109). `qa.test` derived its suite-execution
   set before the self-eval loop, so a self-eval re-emission that fixed a blocking typed check was
   stored but never run; roll 8 failed on a truncated file whose replacement was already in hand,
@@ -23,8 +23,8 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   same merge gate (#1087 phantom tables, #1094 element kinds). Replayed on roll 6's banked
   self-eval fills: 8/8 merged where the handler had discarded all eight.
 - **E — a qa-only completion budget** (#998 ask 2, budget half). `full-38`'s `eve` entry carries
-  `config_overrides: {max_completion_tokens: 12288}`; four of ten qa primary emissions in the
-  1.6.4 set sat at or within 3% of the 8,192 cap. The registry clamp (the V38 pin) and the dev
+  `config_overrides: {max_completion_tokens: 12288}`; four of ten qa primary emissions in that
+  set sat at or within 3% of the 8,192 cap. The registry clamp (the V38 pin) and the dev
   budget are untouched. Changes `resolved_config_hash`; measured by prediction Q5.
 
 ## [1.6.4] — 2026-08-26
