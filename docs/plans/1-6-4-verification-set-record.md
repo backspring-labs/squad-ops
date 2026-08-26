@@ -36,6 +36,35 @@ Gate split (§6.1): 6 auto-approved by `system:no_open_questions`, 2 by the §6 
 as a count, used for nothing. **Zero framing re-rolls** across eight rolls and both shakeouts;
 eighteen consecutive cycles have now framed on the first attempt.
 
+### 1.1 How to read 8 of 8 — the owner's qualification, added before merge
+
+Half of this result is mechanism and half of it is luck, and the record must not let the
+headline blur them.
+
+**Mechanism.** The three defects that rejected 1.6.3's rolls — the frozen model declaring
+`string[]`, the store handing out phantom tables, the audit blind to response shape — were
+removed deterministically, and their removal was read on the seeded files at N=1 on every roll
+before the squad ran (§2, P0). The four rolls declaring `list[Participant]`, the exact case behind
+all three 1.6.3 reds, were given `Participant[]`; zero of eight rolls failed on shape. Coverage
+went from under-reporting on every prior roll to 14/14 on all eight. Those outcomes could not
+have gone the other way on this deploy.
+
+**Luck.** The two rolls that entered the correction loop were **not repaired by the loop.** Roll 6
+recovered because the executor re-dispatched the whole `qa.test` task and the second attempt
+happened to fit under the completion cap; roll 8 recovered because the self-eval had already fixed
+the file before the loop ran, and the retest merely ran the stored version. Had roll 6's
+re-dispatch hit the cap again, or roll 8's self-eval not fired, both are reds and the set is 6/8.
+Two safety nets held, two for two, at N=2 — that is not a measured capability. And the cause behind
+both is systematic: **three of eight qa primary emissions hit the 8,192-token cap** with ~17k-token
+prompts, a failure source on the order of a third of rolls that this pack did not touch, and when it
+fires the qa repair path cannot reach what broke (#969/#970, observed live). The pack's own
+loop-side fixes (P1, P3, P5) were never exercised; whether they work in a live cycle is unknown.
+
+**Therefore:** 1.6.4's frozen-tree, ledger and probe fixes are proven and belong on the tag. The
+release notes must say the correction loop recovered 2 of 2 by fallback, not by repair. And the
+next patch's headline is narrow and already named: the qa completion cap (fills first, or a
+budget), the self-eval-versus-suite ordering gap (§5.1), and a qa repair that can reach fills.
+
 ---
 
 ## 2. The predictions — what the set was built to answer
