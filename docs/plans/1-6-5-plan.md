@@ -1,5 +1,14 @@
 # 1.6.5 — plan
 
+**Revision 3, 2026-08-26.** Numbers assigned after the owner's go: the roll-8 ordering gap is
+**#1109** (item B); the retry-log/LangFuse instrumentation gap **#1110**; the `test_report.md`
+re-store **#1111**; the root-table single-object edge **#1112**; the PR closure guard **#1113**
+(PR #1114, ships independently). The regression-script item in rev 1–2's §2.3 is **withdrawn**: the
+script exits 127 on a missing `ruff` (`scripts/dev/run_regression_tests.sh:19-24`, #972); the 0
+was the caller's own pipeline masking the code — the case the script's comment names. The v1.6.4
+cut commit message carries the wrong claim; this is its correction. Issue hygiene from the cut is
+done (§5).
+
 **Revision 2, 2026-08-26.** Adds a qa-only completion budget (§2.1 E) on the strength of the
 emission distribution the cut question surfaced: four of ten qa primary emissions in the 1.6.4 set
 sat at the 8,192 cap or within 3% of it, with the content roughly constant and the reasoning the
@@ -88,7 +97,7 @@ and the self-eval already repairs.
 Measurable without a model: the fence order in every qa primary emission, read from the banked
 artifact order. Roll 6 is the falsifier at N=1.
 
-**B. The suite runs on what the task will store (the roll-8 ordering gap; to be filed, §5).**
+**B. The suite runs on what the task will store (#1109).**
 `qa_test.py` recomputes the suite-execution set from `artifacts` after the self-eval loop, so a
 self-eval re-emission that fixed a blocking typed check is the file the suite runs against. One
 call-site change plus the `extracted` bookkeeping it currently bypasses. Replay proof: roll 8's
@@ -149,14 +158,14 @@ that fact recorded.
 
 ### 2.3 Instrumentation, in the pack because it is cheap and the set needs it
 
-- The executor's aimed-retry log line echoes the #998 signature it re-dispatches with, so whether
-  the retry prompt *rendered* the remedy is readable from logs (record §4; the 10,000-character
-  LangFuse cap makes it unreadable there).
-- The qa task's `test_report.md` is not re-stored in its failed form at run end after a passing
-  retest (record §4, last-writer-wins). Cosmetic in outcome, but it is the exact artifact the
-  next triage reads first.
-- `scripts/dev/run_regression_tests.sh` exits 0 when `ruff` is not on the path and runs no tests.
-  Found at this cut; it must fail loudly.
+- **#1110** — the executor's aimed-retry log line echoes the #998 signature it re-dispatches with,
+  so whether the retry prompt *rendered* the remedy is readable from logs (record §4; the
+  10,000-character LangFuse input cap makes it unreadable there).
+- **#1111** — the qa task's `test_report.md` is not re-stored in its failed form at run end after a
+  passing retest (record §4, last-writer-wins). Cosmetic in outcome, but it is the exact artifact
+  the next triage reads first.
+- **#1113** — the PR closure guard (template + `pr-closure.yml`, PR #1114). A workflow guard, not
+  cycle machinery; it ships whenever it merges and is marked Required on `main` by the owner.
 
 ---
 
@@ -194,7 +203,7 @@ plan recommends it, because the alternative is shipping D unexercised a second t
 
 ## 4. Sequencing
 
-1. **File the roll-8 ordering gap and the three §2.3 items** (owner's OK first); give B its number.
+1. **Filed 2026-08-26:** #1109 (B), #1110, #1111, #1112, #1113. Done.
 2. **A + B + C + E together** — one deploy boundary: three in the qa handler and its appendix, E
    in `config/squad-profiles.yaml`. Attribution survives the bundling: Q0 is a static check on
    fence order, Q5 and the token texture read from counts, Q2/Q3 from the handler's own records.
@@ -216,16 +225,16 @@ closes the 1.6 line's known loss modes and 1.7 opens for hardening; a falsified 
 1.6.6 re-measures. The 1.7 slate re-derivation (39 inherited issues, plus #1099 and #242, #372,
 #1041) happens **before** 1.7 opens and is not this plan's work.
 
-**The unfiled findings.** Filing is the owner's act. To file, with the record as evidence: the
-roll-8 ordering gap (B); the executor retry log not echoing the #998 marker; the qa `test_report`
-last-writer-wins re-store; the regression script's silent exit; and the root-table rule's
-single-object-response edge (shakeout 1 and roll 8 declared `RunWithParticipants` / `RunDetail`
-and the store gave each a table — nothing asserted on it, so it is recorded here and not planned).
+**The filed findings.** Filed 2026-08-26 on the owner's go, with the record as evidence: #1109 (the
+roll-8 ordering gap, item B), #1110 (retry log / LangFuse cap), #1111 (`test_report` last-writer-wins),
+#1112 (the root-table rule's single-object-response edge — shakeout 1 and roll 8 declared
+`RunWithParticipants` / `RunDetail` and the store gave each a table; nothing asserted on it, so it
+is recorded and not planned). The regression-script finding was withdrawn before filing (rev 3).
 
-**Issue hygiene from the 1.6.4 cut.** #1096, #1087 (nextjs_ts half), #1079, #1021, #1015-A and
-#1094 shipped in 1.6.4 without `Closes` lines and are open at this writing; they close at the cut
-with the PR named. #998 stays open, narrowed to ask 2's budget half. #1087 stays open, narrowed
-to stack #1.
+**Issue hygiene from the 1.6.4 cut — done 2026-08-26.** #1096, #1079, #1021, #1094 and #1015 (part
+A) closed by hand with the shipping PR and the set evidence named on each; #1087 narrowed to stack
+#1 (its projection edge split out as #1112); #998 narrowed to ask 2's budget half, which item E
+takes. The six PRs shipped without `Closes` lines — #1113 is the guard.
 
 ---
 
@@ -233,5 +242,6 @@ to stack #1.
 
 | rev | date | what changed | evidence |
 |---|---|---|---|
+| 3 | 2026-08-26 | Numbers assigned (#1109–#1113); regression-script item withdrawn as a caller-side masking, not a script defect; cut hygiene recorded done | issues as filed; `run_regression_tests.sh:19-24`; closures on #1096 #1079 #1021 #1094 #1015 |
 | 2 | 2026-08-26 | E added: eve-only `max_completion_tokens: 12288` on `full-38`, with Q5 and the distribution texture; §2.2 rescoped from "no raise" to "no registry or dev raise"; §1 carries the ten-emission distribution and the dev-side contrast | eve `emission shape` lines for the set window (ten `qa_test_handler` primaries); neo's 79 `develop` emissions; `models.py:184`, `task_plan.py:899`, `base.py:351`, `model_registry.py:47-68` |
 | 1 | 2026-08-26 | Initial, at the 1.6.4 cut | `1-6-4-verification-set-record.md` §1.1, §3, §4, §5; `qa_test.py:1253-1265`; `model_registry.py:64-68`; #947, #969, #970, #998 as filed |
