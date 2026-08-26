@@ -200,11 +200,31 @@ def _failed_probe_ids(failure_evidence: Any) -> list[str]:
     if not isinstance(failure_evidence, dict):
         return []
     rows = (failure_evidence.get("validation_result") or {}).get("checks") or []
-    return [
+    ids = [
         str(row.get("check"))
         for row in rows
         if isinstance(row, dict) and row.get("status") == "failed" and row.get("check")
     ]
+    # #1015: the same probe failing INSIDE the suite. A scaffold shell is bound to a
+    # probe id, and when its frozen assertion fails the scaffold evidence classifies
+    # that as ``app_contract`` with ``criterion_id`` = the probe id — structured data,
+    # not the analyzer's prose. The 1.6.3 set's three reds all failed this way, on
+    # ``vc-probe-api-runs-join``, and never as an HTTP probe row; so the #688 chain to
+    # the owning slot started from an empty list every round. Fill-layer and
+    # generator-layer observations carry no criterion and indict no endpoint.
+    from squadops.cycles.scaffold_evidence import CLASS_APP_CONTRACT
+
+    summary = failure_evidence.get("scaffold_evidence")
+    observations = (summary.get("observations") or []) if isinstance(summary, dict) else []
+    for obs in observations:
+        if (
+            isinstance(obs, dict)
+            and obs.get("failure_class") == CLASS_APP_CONTRACT
+            and obs.get("criterion_id")
+            and str(obs["criterion_id"]) not in ids
+        ):
+            ids.append(str(obs["criterion_id"]))
+    return ids
 
 
 def _probe_owned_slots(failure_evidence: Any, failed_inputs: dict[str, Any]) -> list[str]:
@@ -258,6 +278,36 @@ def _probe_owned_slots(failure_evidence: Any, failed_inputs: dict[str, Any]) -> 
             ", ".join(failed_ids),
         )
     return slots
+
+
+def _narrowed_or_scoped(
+    probe_slots: list[str], failed_inputs: dict[str, Any], failed_artifacts: list[str]
+) -> list[str]:
+    """The implementation surface a repair may reach — narrowed when the defect site is known.
+
+    **#1015 part A, the narrowing.** When a failing probe resolves to the slot that owns
+    its endpoint, that slot IS the target and the language-wide surface is not appended.
+    The 1.6.3 set measured the alternative: with the join route in a seven-file "you may
+    emit" list, roll 1's round 2 and roll 4's rounds 2–3 repaired the create route while
+    the decision text named the join handler, and the loop spent its budget beside the
+    defect. Minimality and the attempt counter (#1015 B/C) were in force and did not
+    help a repair aimed at the wrong file. Drift files and the failed task's own
+    artifacts still ride (pf-21: they carry real defects too); only the fallback that
+    exists for the case of *no* site evidence is withheld when site evidence exists.
+
+    With no probe-owned slot the surface is what it was: package scoping, then the
+    #688 language fallback.
+    """
+    if probe_slots:
+        logger.info(
+            "correction_repair_target: narrowed to the slot(s) owning the failing probe(s) — "
+            "%s; the language-wide surface is withheld (#1015)",
+            ", ".join(probe_slots),
+        )
+        return []
+    return _scoped_implementation_surface(
+        failed_inputs.get("implementation_artifacts", []) or [], failed_artifacts
+    )
 
 
 def _resolve_repair_target(
@@ -336,9 +386,7 @@ def _resolve_repair_target(
         # edits only the drifted file + the test and NEVER reaches routes.py →
         # non-convergence. Union it here too; empty surface (author mode) → the scoped
         # set is empty and the target is byte-identical to the pre-pf-27 union.
-        scoped_source = _scoped_implementation_surface(
-            failed_inputs.get("implementation_artifacts", []) or [], failed_artifacts
-        )
+        scoped_source = _narrowed_or_scoped(probe_slots, failed_inputs, failed_artifacts)
         target = list(
             dict.fromkeys([*probe_slots, *drift_files, *failed_artifacts, *scoped_source])
         )
@@ -348,9 +396,7 @@ def _resolve_repair_target(
     # package-scoped implementation surface so a behavioral failure can reach the
     # source under test. Empty surface → byte-identical to the #531 fallback
     # (failed_artifacts, focus, description).
-    scoped_source = _scoped_implementation_surface(
-        failed_inputs.get("implementation_artifacts", []) or [], failed_artifacts
-    )
+    scoped_source = _narrowed_or_scoped(probe_slots, failed_inputs, failed_artifacts)
     target = list(dict.fromkeys([*probe_slots, *failed_artifacts, *scoped_source]))
     target = _widen_target_for_frontend_build(target, failure_evidence, failed_inputs)
     return (

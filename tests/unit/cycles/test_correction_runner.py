@@ -4436,3 +4436,139 @@ class TestEmptyRepairEmission:
             plan_delta_refs=[],
         )
         assert protocol.emission_empty is False
+
+
+class TestSuiteProbeFailuresReachTheOwningSlot:
+    """#1015 part A — the deterministic half, replayed from the 1.6.3 set's roll 4.
+
+    The three reds failed the join probe INSIDE the suite (`app_contract` observation
+    bound to `vc-probe-api-runs-join`), never as an HTTP probe row, so `_failed_probe_ids`
+    returned nothing and the #688 chain never started. And on nextjs_ts the owners map was
+    empty besides. Both fixed, the target must lead with the join route and withhold the
+    language-wide surface the rounds were wasted on.
+    """
+
+    IMPL = [
+        "app/api/runs/route.ts",
+        "app/api/runs/[run_id]/route.ts",
+        "app/api/runs/[run_id]/join/route.ts",
+        "app/api/runs/[run_id]/leave/route.ts",
+        "app/page.tsx",
+        "app/runs/new/page.tsx",
+        "app/runs/[run_id]/page.tsx",
+    ]
+
+    @staticmethod
+    def _nextjs_inputs():
+        from squadops.capabilities.scaffold_contract import emit_contract_dict
+        from squadops.cycles.verification_contract import VerificationContract
+        from tests.unit.capabilities._stack_fixtures import manifest_for_stack
+
+        contract = VerificationContract.from_dict(
+            emit_contract_dict(manifest_for_stack("nextjs_ts"))
+        )
+        return {
+            "expected_artifacts": ["__tests__/runs-api.test.ts", "__tests__/join-leave.test.ts"],
+            "implementation_artifacts": list(TestSuiteProbeFailuresReachTheOwningSlot.IMPL),
+            "contract_probes": [p.to_dict() for p in contract.behavioral.probes],
+            "contract_endpoint_owners": contract.endpoint_owners(),
+        }
+
+    @staticmethod
+    def _observation(failure_class, criterion_id):
+        return {
+            "file": "__tests__/scaffold/x.scaffold.test.ts",
+            "slot_id": "slot-x",
+            "failure_class": failure_class,
+            "criterion_id": criterion_id,
+            "owner": "dev",
+            "route": "dev_repair",
+        }
+
+    def _evidence(self, *observations):
+        return {
+            "validation_result": {
+                "passed": False,
+                "checks": [{"check": "tests_pass", "status": "failed"}],
+            },
+            "scaffold_evidence": {
+                "failure_classes": {"app_contract": 1},
+                "observations": list(observations),
+            },
+        }
+
+    def test_an_app_contract_observation_is_a_failed_probe(self):
+        from adapters.cycles.correction_runner import _failed_probe_ids
+
+        ev = self._evidence(
+            self._observation("app_contract", "vc-probe-api-runs-join"),
+            self._observation("fill", ""),  # a fill-layer failure indicts no endpoint
+            self._observation(
+                "scaffold_invalid", "vc-probe-api-runs"
+            ),  # generator layer: not a probe failure
+            self._observation("app_contract", "vc-probe-api-runs-join"),  # duplicate, once
+        )
+        # A failed `tests_pass` row rides the list as before — it joins no owner and is
+        # inert; the subject here is which OBSERVATIONS become probe ids.
+        assert [i for i in _failed_probe_ids(ev) if i != "tests_pass"] == ["vc-probe-api-runs-join"]
+
+    def test_http_probe_rows_still_lead_and_join_with_suite_observations(self):
+        from adapters.cycles.correction_runner import _failed_probe_ids
+
+        ev = self._evidence(self._observation("app_contract", "vc-probe-api-runs-join"))
+        ev["validation_result"]["checks"].append({"check": "vc-probe-api-runs", "status": "failed"})
+        assert [i for i in _failed_probe_ids(ev) if i != "tests_pass"] == [
+            "vc-probe-api-runs",
+            "vc-probe-api-runs-join",
+        ]
+
+    def test_roll_4_replay_the_join_route_leads_and_the_language_surface_is_withheld(self):
+        """Roll 4 (`cyc_a38814afc16d`), rounds 2–3: the decision named the join handler,
+        the target listed all seven files, the repair emitted the create route. Now the
+        target is the owning slot plus the failed task's own artifacts — nothing else."""
+        from adapters.cycles.correction_runner import _resolve_repair_target
+
+        ev = self._evidence(self._observation("app_contract", "vc-probe-api-runs-join"))
+        target, _, _ = _resolve_repair_target(ev, self._nextjs_inputs())
+        assert target[0] == "app/api/runs/[run_id]/join/route.ts"
+        assert "app/api/runs/route.ts" not in target
+        assert not any(t.endswith("page.tsx") for t in target)
+        assert set(target) == {
+            "app/api/runs/[run_id]/join/route.ts",
+            "__tests__/runs-api.test.ts",
+            "__tests__/join-leave.test.ts",
+        }
+
+    def test_without_site_evidence_the_surface_is_what_it_was(self):
+        """The narrowing withholds the fallback only when there is a site to narrow to.
+        A suite-only failure with no probe echo still reaches the source under test
+        through the #688 language fallback — package scoping matches nothing here."""
+        from adapters.cycles.correction_runner import _resolve_repair_target
+
+        ev = {
+            "validation_result": {
+                "passed": False,
+                "checks": [{"check": "tests_pass", "status": "failed"}],
+            }
+        }
+        target, _, _ = _resolve_repair_target(ev, self._nextjs_inputs())
+        assert set(self.IMPL) <= set(target)
+
+    def test_drift_files_still_ride_beside_the_narrowed_target(self):
+        """pf-21: a co-occurring interface drift names a real defect too; narrowing withholds
+        only the no-evidence fallback, never named evidence."""
+        from adapters.cycles.correction_runner import _resolve_repair_target
+
+        ev = self._evidence(self._observation("app_contract", "vc-probe-api-runs-join"))
+        ev["interface_drift"] = [
+            {
+                "kind": "rename",
+                "file": "app/api/runs/route.ts",
+                "extra": [],
+                "missing": [],
+                "instruction": "x",
+            }
+        ]
+        target, _, _ = _resolve_repair_target(ev, self._nextjs_inputs())
+        assert target[:2] == ["app/api/runs/[run_id]/join/route.ts", "app/api/runs/route.ts"]
+        assert "app/api/runs/[run_id]/leave/route.ts" not in target

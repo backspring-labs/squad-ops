@@ -260,17 +260,26 @@ class FrozenFile:
 
 @dataclass(frozen=True)
 class FillFile:
-    """A fill slot with its interface and implementation criteria (§6.1)."""
+    """A fill slot with its interface and implementation criteria (§6.1).
+
+    ``endpoints`` (#1015): the ``"METHOD /path"`` tokens this slot serves, for stacks
+    whose pack cannot express ownership as a criterion. Empty means "not stated here" —
+    ``endpoint_owners`` then reads the ``endpoint_defined`` criteria as before.
+    """
 
     path: str
     interface: tuple[Criterion, ...] = ()
     implementation: tuple[Criterion, ...] = ()
+    endpoints: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "interface": [c.to_dict() for c in self.interface],
             "implementation": [c.to_dict() for c in self.implementation],
         }
+        if self.endpoints:  # presence-keyed: absent stays absent, bytes stay stable
+            out["endpoints"] = list(self.endpoints)
+        return out
 
 
 @dataclass(frozen=True)
@@ -479,13 +488,17 @@ class VerificationContract:
 
         owners: dict[str, str] = {}
         for ff in self.fill_files:
+            tokens: list[str] = []
             for crit in ff.interface:
-                if crit.check != CHECK_ENDPOINT_DEFINED:
-                    continue
-                for token in crit.params.get("methods_paths", []) or []:
-                    parsed = parse_method_path(str(token))
-                    if parsed:
-                        owners.setdefault(f"{parsed[0]} {parsed[1]}", ff.path)
+                if crit.check == CHECK_ENDPOINT_DEFINED:
+                    tokens.extend(str(t) for t in (crit.params.get("methods_paths", []) or []))
+            # #1015: a stack whose pack has no endpoint criterion states ownership as
+            # data on the slot instead. Same token grammar, same normalization.
+            tokens.extend(ff.endpoints)
+            for token in tokens:
+                parsed = parse_method_path(token)
+                if parsed:
+                    owners.setdefault(f"{parsed[0]} {parsed[1]}", ff.path)
         return owners
 
     def view_slots(self) -> tuple[str, ...]:
@@ -881,10 +894,14 @@ def _fill_file_from(path: Any, spec: Any) -> FillFile:
     implementation_raw = spec.get("implementation", [])
     if not isinstance(interface_raw, list) or not isinstance(implementation_raw, list):
         raise ValueError(f"fill_files[{path!r}]: interface/implementation must be lists")
+    endpoints_raw = spec.get("endpoints", []) or []
+    if not isinstance(endpoints_raw, list):
+        raise ValueError(f"fill_files[{path!r}]: endpoints must be a list of 'METHOD /path'")
     return FillFile(
         path=str(path),
         interface=tuple(Criterion.from_dict(c) for c in interface_raw),
         implementation=tuple(Criterion.from_dict(c) for c in implementation_raw),
+        endpoints=tuple(str(e) for e in endpoints_raw),
     )
 
 

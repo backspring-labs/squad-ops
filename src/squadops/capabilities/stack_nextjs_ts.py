@@ -600,6 +600,23 @@ def expand_nextjs_ts(manifest: InterfaceManifest) -> list[dict[str, str]]:
     return files
 
 
+def endpoint_owners_nextjs_ts(manifest: InterfaceManifest) -> dict[str, list[str]]:
+    """``route file → ["METHOD /path", …]`` — which fill slot serves which endpoint (#1015).
+
+    Stack #1 states this relation through the ``endpoint_defined`` criterion its pack
+    attaches to ``backend/routes.py``; this stack's pack has no Python AST check to hang
+    it on, so until now the contract said nothing and ``endpoint_owners()`` came back
+    empty — which is why the 1.6.3 set's repair target was the whole application in 18
+    of 18 rounds: the #688 chain from a failing probe to the file that owns its endpoint
+    had no map to walk on this stack. The relation is bend 1's own output
+    (``_route_groups``), so the contract now carries it as data.
+    """
+    return {
+        path: [f"{ep.method} {ep.path}" for ep in endpoints]
+        for path, endpoints in _route_groups(manifest).items()
+    }
+
+
 def fill_slots_nextjs_ts(manifest: InterfaceManifest) -> tuple[str, ...]:
     """The files a dev fills bodies into: every route handler and every page.
 

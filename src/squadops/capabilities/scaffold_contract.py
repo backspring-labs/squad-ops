@@ -266,7 +266,9 @@ def _nextjs_ts_slot_criteria(manifest: InterfaceManifest, path: str) -> dict[str
     general protection against a future stack repeating this is the id linter, now wired at
     derivation, not a second hand-audit of the emitters.
     """
-    return {
+    from squadops.capabilities.stack_nextjs_ts import endpoint_owners_nextjs_ts
+
+    criteria: dict[str, Any] = {
         "interface": [],
         "implementation": [
             {
@@ -278,6 +280,13 @@ def _nextjs_ts_slot_criteria(manifest: InterfaceManifest, path: str) -> dict[str
             }
         ],
     }
+    # #1015: ownership as DATA, since no criterion on this stack can carry it. A page
+    # slot serves no endpoint and gets no key — presence-keyed, so the shape stays
+    # byte-identical for stacks and slots that state ownership another way.
+    endpoints = endpoint_owners_nextjs_ts(manifest).get(path)
+    if endpoints:
+        criteria["endpoints"] = endpoints
+    return criteria
 
 
 _CRITERIA_PACKS: dict[str, CriteriaPack] = {
