@@ -544,3 +544,36 @@ def test_typed_acceptance_row_carries_its_inspected_set_too():
         }
     )
     assert rows[0].provenance.subject_count == 1
+
+
+def test_per_file_typed_criteria_under_one_task_all_survive_normalize_and_aggregate():
+    """#1021 end to end: the banked shape of a develop subtask's typed-check evaluation —
+    one `frontend_compiles` row per file, each with its own criterion id, one subject.
+    Every criterion must be credited; before, only the last was."""
+    outputs = {
+        "validation_result": {
+            "passed": True,
+            "checks": [
+                {
+                    "check": "acceptance:frontend_compiles",
+                    "status": "passed",
+                    "criterion_id": "vc-compiles-app-api-runs-run-id-route",
+                },
+                {
+                    "check": "acceptance:frontend_compiles",
+                    "status": "passed",
+                    "criterion_id": "vc-compiles-app-api-runs-run-id-join-route",
+                },
+                {
+                    "check": "acceptance:frontend_compiles",
+                    "status": "passed",
+                    "criterion_id": "vc-compiles-app-api-runs-run-id-leave-route",
+                },
+            ],
+        }
+    }
+    ledger = normalize_task_checks(outputs, subject="task-run_x-m001-development.develop")
+    contract = [r["criterion_id"] for r in outputs["validation_result"]["checks"]]
+    summary = aggregate_verification(ledger, contract_criteria=contract)
+    assert set(summary.criteria_verified) == set(contract)
+    assert summary.criteria_coverage == (3, 3)

@@ -947,3 +947,77 @@ class TestUnevidencedCriteria:
         could be absent — the field must stay empty rather than inventing a shortfall."""
         summary = aggregate_verification([_passed("c1", criterion_id="vc-a", subject="t")])
         assert summary.criteria_unevidenced == ()
+
+
+# --------------------------------------------------------------------------- #
+# #1021 — the final-state identity includes the criterion
+# --------------------------------------------------------------------------- #
+
+
+def test_distinct_criteria_of_one_check_in_one_task_are_all_credited():
+    """The 1.6.3 set's roll 4, m000: one develop subtask evaluated `frontend_compiles`
+    for two files. Keyed on (check_id, subject) the second superseded the first and
+    `vc-compiles-app-api-runs-route` was credited nowhere, failed nowhere — nine of nine
+    cycles dropped exactly 'each subtask's compile criteria but the last'."""
+    rows = [
+        _passed(
+            "acceptance:frontend_compiles",
+            subject="m000",
+            criterion_id="vc-compiles-app-api-runs-route",
+        ),
+        _passed(
+            "acceptance:frontend_compiles",
+            subject="m000",
+            criterion_id="vc-compiles-app-api-runs-run-id-route",
+        ),
+    ]
+    s = aggregate_verification(rows, contract_criteria=[r.criterion_id for r in rows])
+    assert s.criteria_verified == (
+        "vc-compiles-app-api-runs-route",
+        "vc-compiles-app-api-runs-run-id-route",
+    )
+    assert s.criteria_coverage == (2, 2)
+    assert (s.executed_count, s.passed_count) == (2, 2)
+
+
+def test_the_same_criterion_re_verified_in_the_same_task_still_supersedes_itself():
+    """#379's guarantee survives: a failed compile of one file, repaired and re-run under
+    the same task and the same criterion, resolves to its FINAL state — not both."""
+    rows = [
+        _failed(
+            "acceptance:frontend_compiles", subject="m000", criterion_id="vc-compiles-app-page"
+        ),
+        _passed(
+            "acceptance:frontend_compiles", subject="m000", criterion_id="vc-compiles-app-page"
+        ),
+    ]
+    s = aggregate_verification(rows, contract_criteria=["vc-compiles-app-page"])
+    assert s.verdict is RunVerdict.ACCEPTED
+    assert s.failed == ()
+    assert s.criteria_verified == ("vc-compiles-app-page",)
+    assert (s.executed_count, s.passed_count) == (1, 1)
+
+
+def test_a_failed_criterion_is_not_hidden_by_a_sibling_that_passed():
+    """The other direction of the same collapse: before #1021 a failing compile could be
+    superseded by the NEXT file's passing compile in the same task and the run would
+    read accepted. The verdict must see the failure."""
+    rows = [
+        _failed("acceptance:frontend_compiles", subject="m001", criterion_id="vc-compiles-join"),
+        _passed("acceptance:frontend_compiles", subject="m001", criterion_id="vc-compiles-leave"),
+    ]
+    s = aggregate_verification(rows, contract_criteria=["vc-compiles-join", "vc-compiles-leave"])
+    assert s.verdict is RunVerdict.REJECTED
+    assert s.criteria_verified == ("vc-compiles-leave",)
+    assert "vc-compiles-join" not in s.criteria_verified
+
+
+def test_a_framework_check_without_a_criterion_keeps_the_two_part_identity():
+    """`tests_pass` carries no criterion; a task's re-run must still supersede its
+    earlier attempt exactly as before."""
+    s = aggregate_verification(
+        [_failed("tests_pass", subject="task-A"), _passed("tests_pass", subject="task-A")]
+    )
+    assert s.verdict is RunVerdict.ACCEPTED
+    assert s.verified == ("tests_pass",)
+    assert (s.executed_count, s.passed_count) == (1, 1)
