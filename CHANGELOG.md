@@ -37,6 +37,14 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   merged shell at the shell path, so the patch overlay supersedes the failed one and the retest
   runs it. Round-trip pinned: recovering the fills from a merged shell and re-merging reproduces
   it byte for byte. Measured by prediction Q4.
+- **Tooling — the verification-set driver is promoted** (`scripts/dev/verification_set_driver.py`).
+  The scratchpad copies that drove sixteen counted rolls carried the stack, the deploy pins and
+  the gate constant as code constants and were hand-edited per set; the promoted driver reads
+  every fixed parameter from a set-config YAML (`docs/plans/verification-sets/`, the
+  pre-registration's §1 as data), derives the stack from the request profile plus overrides,
+  dispatches the P0 seeded-tree check per stack (an unregistered stack is refused, not passed),
+  and reads the runtime log window with an explicit UTC zone — the `docker logs --since` defect
+  the previous set's record logged against the instrument.
 
 ## [1.6.4] — 2026-08-26
 

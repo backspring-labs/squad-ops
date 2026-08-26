@@ -1,0 +1,41 @@
+# 1.6.5 verification set — the counting set on nextjs_ts. This file IS the pre-registration's
+# §1 table as data: the driver reads every fixed parameter from here and nothing from its code.
+# Pins (expected_config_hash_prefix, frozen_deploy_commit, frozen_image_ids) are filled in at
+# pre-registration, after the shakeout, and are asserted on every counting roll.
+name: 1-6-5-nextjs
+pre_registration: docs/plans/1-6-5-verification-set-preregistration.md
+project: group_run
+squad_profile: full-38
+request_profile: validated-fullstack
+overrides:
+  build_profile: nextjs_ts
+  dev_capability: nextjs_ts
+gate_name: progress_plan_review
+n_rolls: 8
+# Copied verbatim onto every gate approval — the driver substitutes NOTHING in this text.
+gate_notes: >-
+  1.6.5 verification set. Approved under the pre-registered gate policy
+  (pre-registration §6) — identical text applied to every roll of this set.
+  System plan validation passed; no additional judgment applied.
+# {roll} and {n} are the only substitutions the driver makes.
+launch_notes: >-
+  1.6.5 verification set — COUNTED roll {roll} of {n}. Frozen deploy per the
+  pre-registration; predictions Q0–Q5 + P1/P3/P5 carried; scoring per 1.6.3 §5;
+  validity per §5.1.
+shakeout_notes: >-
+  1.6.5 SHAKEOUT — NON-COUNTING by declaration before launch (V7 §2.f). First cycle on
+  the deploy carrying A+B+C+E (#1115) and D (#1116). Diagnostic only, not a measurement.
+# "Loaded, not built": run inside the container and recorded with the deploy identity.
+loaded_checks:
+  runtime-api: >-
+    from squadops.capabilities.verification_scaffold_emission import GENERATOR_VERSION;
+    from squadops.capabilities.verification_scaffold_fill import apply_followup_fills, recover_fills;
+    from adapters.cycles.correction_runner import _fill_observations;
+    print(GENERATOR_VERSION, 'recover_fills', 'fill_observations')
+  eve: >-
+    from squadops.capabilities.handlers.cycle.qa_test import QATestHandler;
+    from squadops.capabilities.handlers.cycle.fill_mode_brief import render_repair_fill_section;
+    print('suite_files', hasattr(QATestHandler, '_suite_files'))
+expected_config_hash_prefix: ""
+frozen_deploy_commit: ""
+frozen_image_ids: {}
