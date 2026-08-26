@@ -551,14 +551,25 @@ def _resolve_final_state(results: Sequence[CheckResult]) -> list[CheckResult]:
     collapsed: each is independent evidence (the correct default — e.g. distinct
     develop tasks emitting ``tests_pass`` must accumulate, "any subject failed →
     rejected"; only the *same* subject re-verified supersedes).
+
+    **The identity includes the criterion (#1021).** A contract-bound typed check is
+    one ``check_id`` (the check *name*, ``acceptance:frontend_compiles``) evaluated once
+    per file, so one develop subtask legitimately records N results under the same
+    ``(check_id, subject)`` — one per criterion. Keyed on those two alone, the last
+    superseded the other N−1 and their criterion ids never reached the credited set:
+    neither verified nor failed, disclosed as unevidenced, and on every ``nextjs_ts``
+    roll of the 1.6.3 set the dropped set was exactly "each subtask's compile criteria
+    but the last" (nine of nine cycles, by id). A framework-spine check carries no
+    criterion and keeps the two-part identity; a criterion re-verified in the same task
+    still supersedes *itself*; distinct criteria stop superseding each other.
     """
     resolved: list[CheckResult] = []
-    final_pos_by_identity: dict[tuple[str, str], int] = {}
+    final_pos_by_identity: dict[tuple[str, str, str | None], int] = {}
     for r in results:
         if r.subject is None:
             resolved.append(r)
             continue
-        identity = (r.check_id, r.subject)
+        identity = (r.check_id, r.subject, r.criterion_id)
         prior = final_pos_by_identity.get(identity)
         if prior is None:
             final_pos_by_identity[identity] = len(resolved)
