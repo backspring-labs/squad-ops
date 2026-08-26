@@ -75,3 +75,19 @@ class TestFullSquadBuilderProfile:
         profiles = await provider.list_profiles()
         ids = {p.profile_id for p in profiles}
         assert ids == {"smoke", "lite", "full", "full-38"}
+
+
+class TestFull38QaCompletionBudget:
+    """1.6.5 E (#998 ask 2). Bug caught: the override is dropped by the loader, applied
+    to every role, or lands on `full` — any of which silently changes what the set
+    measures."""
+
+    async def test_only_eve_on_full_38_carries_the_override(self, provider):
+        profile = await provider.get_profile("full-38")
+        by_role = {a.role: a for a in profile.agents}
+        assert by_role["qa"].config_overrides == {"max_completion_tokens": 12288}
+        assert all(not a.config_overrides for a in profile.agents if a.role != "qa")
+
+    async def test_full_is_untouched(self, provider):
+        profile = await provider.get_profile("full")
+        assert all(not a.config_overrides for a in profile.agents)
