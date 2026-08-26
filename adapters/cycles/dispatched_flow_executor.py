@@ -2923,9 +2923,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         if protocol.emission_empty:
             if refund_empty_emission_attempt(correction_counter, max_corrections, attempt):
                 logger.warning(
-                    "correction attempt %d refunded: the repair emitted no content, so the "
-                    "round is re-taken rather than spent (refund %d of %d, #1053)",
+                    "correction attempt %d refunded: the repair emitted no content (%s), so "
+                    "the round is re-taken rather than spent (refund %d of %d, #1053/#998)",
                     attempt,
+                    ", ".join(protocol.empty_emission_signatures) or "signature unreported",
                     correction_counter["empty_refunds"],
                     max_corrections,
                 )

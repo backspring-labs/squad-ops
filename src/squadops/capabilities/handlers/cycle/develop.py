@@ -549,7 +549,10 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
                     # #566: marker for the executor's aimed retry + the
                     # correction loop's failure-locus classifier.
                     "emission_failure": no_fenced_blocks_failure(
-                        len(content), inputs.get("expected_artifacts")
+                        len(content),
+                        inputs.get("expected_artifacts"),
+                        completion_tokens=response.completion_tokens,
+                        completion_cap=chat_kwargs.get("max_tokens"),
                     ),
                 },
             )

@@ -251,6 +251,9 @@ class TestDevBuildParseFailure:
         marker = result.outputs["emission_failure"]
         assert marker["reason"] == "no_fenced_blocks"
         assert marker["response_chars"] == len(LLM_NO_FENCES_RESPONSE)
+        # #998: content came back with no path-addressed fence — the format, not the
+        # budget, is the defect, and the marker must say so.
+        assert marker["signature"] == "unextractable"
 
 
 class TestDevBuildLLMError:

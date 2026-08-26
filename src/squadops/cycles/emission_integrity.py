@@ -82,16 +82,65 @@ def emission_integrity_instruction(name: str, error: str) -> str:
 EMISSION_FAILURE_KEY = "emission_failure"
 EMISSION_FAILURE_NO_FENCED_BLOCKS = "no_fenced_blocks"
 
+# #998: what KIND of nothing. Three zero-extraction shapes with three different remedies,
+# previously indistinguishable in the evidence — a correction decision that cannot tell
+# them apart guesses ("safety filter, context overload" was the banked guess for a run
+# whose model had spent its whole completion budget thinking and closed no content).
+#
+# - ``cap_exhausted``: the model generated its full completion budget and produced no
+#   content at all — thought budget exhausted before content (V7 roll 1: 8,192 tokens,
+#   0 characters, 12.7 minutes). Remedy lives at the budget / prompt shape.
+# - ``empty``: fewer tokens than the budget and no content — the model returned nothing
+#   (a transport drop, a refusal, a model that stopped). Remedy: retry, investigate.
+# - ``unextractable``: content came back but nothing in it was a path-addressed fence.
+#   Remedy: the emission format (the #987/#528 class), not the budget.
+SIGNATURE_CAP_EXHAUSTED = "cap_exhausted"
+SIGNATURE_EMPTY = "empty"
+SIGNATURE_UNEXTRACTABLE = "unextractable"
+
+
+def classify_empty_emission(
+    response_chars: int, completion_tokens: int | None, completion_cap: int | None
+) -> str:
+    """Name the zero-extraction shape from the facts the LLM call already reports (#998).
+
+    ``completion_tokens >= completion_cap`` is the cap signal — the provider reports no
+    stop reason through this port, so token count against the requested budget is the
+    observable. Either value unknown means the cap cannot be asserted, and the shape
+    falls to what the character count alone supports.
+    """
+    if response_chars > 0:
+        return SIGNATURE_UNEXTRACTABLE
+    if (
+        completion_tokens is not None
+        and completion_cap is not None
+        and completion_cap > 0
+        and completion_tokens >= completion_cap
+    ):
+        return SIGNATURE_CAP_EXHAUSTED
+    return SIGNATURE_EMPTY
+
 
 def no_fenced_blocks_failure(
     response_chars: int,
     expected_artifacts: list[str] | None,
+    *,
+    completion_tokens: int | None = None,
+    completion_cap: int | None = None,
 ) -> dict[str, Any]:
-    """Build the ``emission_failure`` marker for a zero-extraction failure."""
+    """Build the ``emission_failure`` marker for a zero-extraction failure.
+
+    Carries the token facts and the #998 signature so the evidence says *which* nothing
+    this was; a producer that cannot report tokens still emits a truthful marker with
+    the signature the character count alone supports.
+    """
     return {
         "reason": EMISSION_FAILURE_NO_FENCED_BLOCKS,
         "response_chars": response_chars,
         "expected_artifacts": [str(e) for e in (expected_artifacts or [])],
+        "completion_tokens": completion_tokens,
+        "completion_cap": completion_cap,
+        "signature": classify_empty_emission(response_chars, completion_tokens, completion_cap),
     }
 
 
@@ -150,6 +199,17 @@ def emission_retry_reason_line(marker: dict[str, Any]) -> str:
     reason = marker.get("reason")
     if reason == EMISSION_FAILURE_NO_FENCED_BLOCKS:
         chars = marker.get("response_chars", 0)
+        signature = marker.get("signature")
+        if signature == SIGNATURE_CAP_EXHAUSTED:
+            tokens = marker.get("completion_tokens")
+            cap = marker.get("completion_cap")
+            return (
+                f"the model generated {tokens} tokens — its full {cap}-token completion "
+                f"budget — and closed no content: the budget was spent before any file was "
+                f"written. Emit the file first and keep any reasoning short."
+            )
+        if signature == SIGNATURE_EMPTY:
+            return "the response was empty — no content was returned at all."
         return (
             f"no fenced code block carrying a file path could be extracted "
             f"from the {chars}-character response."

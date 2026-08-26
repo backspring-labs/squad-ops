@@ -1141,7 +1141,10 @@ class QATestHandler(_CycleTaskHandler):
                     # turns it into aimed feedback; the correction loop's locus
                     # classifier reads it as a test-artifact-locus signal.
                     "emission_failure": no_fenced_blocks_failure(
-                        len(content), inputs.get("expected_artifacts")
+                        len(content),
+                        inputs.get("expected_artifacts"),
+                        completion_tokens=response.completion_tokens,
+                        completion_cap=chat_kwargs.get("max_tokens"),
                     ),
                 },
             )

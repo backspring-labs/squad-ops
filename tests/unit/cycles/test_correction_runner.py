@@ -4380,6 +4380,65 @@ class TestEmptyRepairEmission:
         """The banked shape, exactly: one artifact, no content."""
         protocol = await self._run(cycle, [{"name": "repair_output.md", "content": ""}])
         assert protocol.emission_empty is True
+        # #998: a pre-signature responder reports nothing to name; the field is honest.
+        assert protocol.empty_emission_signatures == ()
+
+    async def test_the_empty_emissions_signature_reaches_the_result_and_the_event(self, cycle):
+        """#998: 'converged in 3 after two empty emissions' must also say WHICH nothing.
+        The handler's marker rides the repair result; the protocol result and the
+        CORRECTION_COMPLETED payload carry its signature."""
+        import dataclasses as _dc
+
+        def responder(envelope):
+            if envelope.task_type == "governance.correction_decision":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={
+                        "correction_path": "patch",
+                        "decision_rationale": "patchable",
+                        "affected_task_types": ["development.develop"],
+                    },
+                )
+            if envelope.task_type.endswith("correction_repair"):
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={
+                        "artifacts": [{"name": "repair_output.md", "content": ""}],
+                        "emission_failure": {
+                            "reason": "no_fenced_blocks",
+                            "response_chars": 0,
+                            "completion_tokens": 8192,
+                            "completion_cap": 8192,
+                            "signature": "cap_exhausted",
+                        },
+                    },
+                )
+            return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs={})
+
+        runner, _r, _v, bus = self._make_runner(responder)
+        protocol = await runner.run_correction_protocol(
+            run_id="run_001",
+            cycle=cycle,
+            envelope=_dc.replace(self._failed_envelope(), task_type="qa.test"),
+            result=TaskResult(task_id="task_failed", status="FAILED", error="suite failed"),
+            correction_attempts=0,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+        )
+        assert protocol.emission_empty is True
+        assert protocol.empty_emission_signatures == ("cap_exhausted",)
+        completed = [
+            c
+            for c in bus.emit.call_args_list
+            if c.args and c.args[0] == EventType.CORRECTION_COMPLETED
+        ]
+        assert completed, "CORRECTION_COMPLETED was not emitted"
+        assert completed[-1].kwargs["payload"]["empty_emission_signatures"] == ["cap_exhausted"]
 
     async def test_whitespace_only_content_is_also_empty(self, cycle):
         """A file of newlines is not a repair. Judging on length rather than on content
