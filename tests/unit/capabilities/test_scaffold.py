@@ -105,10 +105,13 @@ def test_expand_defines_every_declared_endpoint_and_model():
     routes = files["backend/routes.py"]
     assert '@router.get("/runs", response_model=list[RunEvent])' in routes
     # /runs declares success_status: 201, so the decorator carries it (pf-39); join
-    # declares none, so its decorator stays bare — the two together pin that the
-    # status is emitted from the manifest rather than blanket-applied.
+    # declares none, so its decorator carries the DERIVED 200 — the value the contract
+    # asserts for a child POST (#772: a bare decorator meant FastAPI's 200 met the
+    # deriver's 201 on an undeclared collection POST, an unwinnable contract). The two
+    # together pin that the status comes from the manifest or the deriver's one seam,
+    # never from a framework default the contract does not know about.
     assert '@router.post("/runs", response_model=RunEvent, status_code=201)' in routes
-    assert '@router.post("/runs/{run_id}/join", response_model=RunEvent)' in routes
+    assert '@router.post("/runs/{run_id}/join", response_model=RunEvent, status_code=200)' in routes
     assert "payload: RunEventCreate" in routes
     assert "payload: ParticipantName" in routes
     # only referenced models are imported (no unused-import lint failure)

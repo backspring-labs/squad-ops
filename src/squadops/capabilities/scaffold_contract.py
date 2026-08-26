@@ -34,6 +34,7 @@ from squadops.capabilities.scaffold import (
     criteria_pack_for,
     expand,
     fill_slot_paths,
+    success_status_for,
 )
 
 CONTRACT_VERSION = 1
@@ -467,7 +468,7 @@ def _probes(manifest: InterfaceManifest, pack: CriteriaPack) -> list[dict[str, A
             # the skeleton contradicted its own contract and only a dev agent
             # volunteering ``status_code=201`` could close the gap. A manifest that
             # declares no success status keeps the historical 201 expectation.
-            "expect": _success_expect(manifest, ep.success_status or 201, ep.response),
+            "expect": _success_expect(manifest, success_status_for(ep), ep.response),
         }
         probes.append(create_probe)
         # #593: the blank-input rejection probe. pf-38 volunteered blank-field
@@ -545,7 +546,7 @@ def _probes(manifest: InterfaceManifest, pack: CriteriaPack) -> list[dict[str, A
                         "subject": "backend",
                         "request": {"method": "POST", "path": child.path, "json": child_body},
                         "expect": _success_expect(
-                            manifest, child.success_status or 200, child.response
+                            manifest, success_status_for(child, "POST"), child.response
                         ),
                     }
                 )
@@ -605,7 +606,7 @@ def _probes(manifest: InterfaceManifest, pack: CriteriaPack) -> list[dict[str, A
                         "subject": "backend",
                         "request": {"method": "POST", "path": child.path, "json": child_body},
                         "expect": _success_expect(
-                            manifest, child.success_status or 200, child.response
+                            manifest, success_status_for(child, "POST"), child.response
                         ),
                     }
                 )

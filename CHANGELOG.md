@@ -26,6 +26,14 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   `config_overrides: {max_completion_tokens: 12288}`; four of ten qa primary emissions in that
   set sat at or within 3% of the 8,192 cap. The registry clamp (the V38 pin) and the dev
   budget are untouched. Changes `resolved_config_hash`; measured by prediction Q5.
+- **#772 — the success-status default has one home.** The contract deriver asserted 201 for an
+  undeclared collection POST while the stack #1 skeleton omitted `status_code=` and FastAPI
+  answered 200 — an unwinnable contract, gate-mitigated since 08-10 and never fixed. The rule
+  (`capabilities/success_status.py`: declared wins, else collection POST 201 / child POST 200,
+  else HTTP's 200) had seven homes — three deriver sites, the skeleton, the framing mirror, the
+  scaffold gate's allowed set, the Next.js route stub; every one now calls the seam, the
+  decorator pins the derived status too, and a structural test fails if a copy returns.
+  Reference fixtures unchanged (they declare their statuses).
 - **D — an own-artifact qa repair can reach a fill** (#970, with #969's brief). Under fill mode
   the shells are merge products, never in `expected_artifacts`, so the own-artifact repair aimed
   at the plan's declared file and a failing fill was structurally unreachable. Now: the target is
