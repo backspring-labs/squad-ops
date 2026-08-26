@@ -36,8 +36,15 @@ loaded_checks:
     from squadops.capabilities.handlers.cycle.qa_test import QATestHandler;
     from squadops.capabilities.handlers.cycle.fill_mode_brief import render_repair_fill_section;
     print('suite_files', hasattr(QATestHandler, '_suite_files'))
-expected_config_hash_prefix: ""
+expected_config_hash_prefix: "d4d4f66217d8"
 # The identity a per-agent override moves (1.6.5 E) — resolved_config_hash does not see it.
-expected_squad_snapshot_prefix: ""
-frozen_deploy_commit: ""
-frozen_image_ids: {}
+expected_squad_snapshot_prefix: "575707c58536cf3b"
+frozen_deploy_commit: "7ebdb00e"
+frozen_image_ids:
+  runtime-api: cdc7049d1e8e
+  max: df6ca77549d4
+  neo: 02d8232c572b
+  nat: eab4aae01876
+  bob: a7dde4c8768b
+  eve: 803853cbb43c
+  data: 2796786aa8ec
