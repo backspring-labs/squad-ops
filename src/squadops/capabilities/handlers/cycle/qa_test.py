@@ -568,6 +568,51 @@ class QATestHandler(_CycleTaskHandler):
         )
         return rendered.content
 
+    async def _self_eval_fill_section(
+        self,
+        context: ExecutionContext,
+        scaffold_input: dict[str, Any],
+        fill_merge_evidence: dict[str, Any] | None,
+    ) -> str:
+        """Render the fill-mode addendum to the self-eval prompt, or "" (1.6.5 C, #947).
+
+        The shared self-eval prompt asks for "the missing files"; under fill mode the
+        missing things are slots, which only a fill block can address. The addendum
+        names the slots whose disposition is not ``filled`` — data from the merge
+        record; every instruction lives in the managed asset (#448).
+        """
+        renderer = getattr(context.ports, "request_renderer", None)
+        if renderer is None or not scaffold_input:
+            return ""
+        unfilled = [
+            f"- `{d['slot_id']}` — {d['disposition']}"
+            + (f": {d['detail']}" if d.get("detail") else "")
+            for d in (fill_merge_evidence or {}).get("dispositions", [])
+            if d.get("disposition") != "filled"
+        ]
+        rendered = await renderer.render(
+            "request.qa_test_self_eval_fill_appendix",
+            {"unfilled_slot_lines": "\n".join(unfilled) or "(none)"},
+        )
+        return rendered.content
+
+    @staticmethod
+    def _suite_files(artifacts: list[dict]) -> list[dict]:
+        """The files the suite runs on: every test artifact the task will store.
+
+        #1109 (1.6.5 B): the suite used to run on the file set computed BEFORE the
+        self-eval loop, so a self-eval re-emission that fixed a blocking typed check
+        was stored and never tested — roll 8 of the 1.6.4 set failed on a truncated
+        file whose replacement was already in ``artifacts``, and a correction round
+        was spent rediscovering it. Deriving the set from ``artifacts`` at the moment
+        of the run makes "what ran" and "what was stored" the same thing.
+        """
+        return [
+            {"filename": a["name"], "content": a["content"]}
+            for a in artifacts
+            if a.get("type") == "test"
+        ]
+
     def _merge_fill_artifacts(
         self,
         scaffold_input: dict[str, Any],
@@ -1215,6 +1260,10 @@ class QATestHandler(_CycleTaskHandler):
                 while not validation.passed and self_eval_count < max_self_eval:
                     self_eval_count += 1
                     followup_prompt = self._build_self_eval_prompt(validation, artifacts)
+                    if scaffold_input:
+                        followup_prompt += await self._self_eval_fill_section(
+                            context, scaffold_input, evidence_extra.get("fill_merge")
+                        )
 
                     try:
                         followup_response = await context.ports.llm.chat_stream_with_usage(
@@ -1239,7 +1288,47 @@ class QATestHandler(_CycleTaskHandler):
                         followup_response.content,
                         followup_response.completion_tokens,
                     )
-                    new_extracted = extract_fenced_files(followup_response.content)
+                    followup_source = followup_response.content
+                    if scaffold_input:
+                        # 1.6.5 C (#947): the self-eval's fills go through the SAME merge
+                        # gate as the primary's — phantom tables (#1087) and element kinds
+                        # (#1094) included — instead of extracting as files named "slot-…"
+                        # that the shell guard then discards.
+                        from squadops.capabilities.verification_scaffold_fill import (
+                            apply_followup_fills,
+                            parse_fill_emission,
+                            strip_fill_blocks,
+                        )
+
+                        followup_fills = parse_fill_emission(followup_source)
+                        followup_source = strip_fill_blocks(followup_source)
+                        if followup_fills.fills:
+                            folded = apply_followup_fills(
+                                fill_emission or parse_fill_emission(""),
+                                followup_fills,
+                                (evidence_extra.get("fill_merge") or {}).get("dispositions", []),
+                            )
+                            fill_emission = folded.emission
+                            artifacts, merged_suite_files, fill_merge_evidence = (
+                                self._merge_fill_artifacts(scaffold_input, fill_emission, artifacts)
+                            )
+                            shell_drop_paths = {m["filename"] for m in merged_suite_files}
+                            evidence_extra["fill_merge"] = fill_merge_evidence
+                            evidence_extra.setdefault("self_eval_fills", []).append(
+                                {
+                                    "pass": self_eval_count,
+                                    "applied": list(folded.applied),
+                                    "skipped_filled": list(folded.skipped_filled),
+                                }
+                            )
+                            logger.info(
+                                "%s self_eval fills: applied=%s skipped_filled=%s counts=%s",
+                                self._handler_name,
+                                list(folded.applied),
+                                list(folded.skipped_filled),
+                                fill_merge_evidence["counts"],
+                            )
+                    new_extracted = extract_fenced_files(followup_source)
                     new_artifacts = [
                         {
                             "name": f["filename"],
@@ -1261,7 +1350,8 @@ class QATestHandler(_CycleTaskHandler):
         else:
             validation = ValidationResult(passed=True, summary="Validation disabled")
 
-        # Run generated tests and build report
+        # Run generated tests and build report — on what the task will store (#1109).
+        extracted = self._suite_files(artifacts)
         test_result, test_report_artifact = await self._run_test_suite(
             capability, sources, extracted
         )

@@ -385,3 +385,92 @@ class TestElementKindFindings:
         assert "slot-vc-probe-api-runs-join-duplicate" not in kinds
         # stack #1 emits no scaffold: nothing to contradict, nothing threaded
         assert slot_element_kinds(manifest_for_stack("fullstack_fastapi_react")) == {}
+
+
+class TestApplyFollowupFills:
+    """1.6.5 C (#947): a self-eval's fills fold into the primary emission per slot.
+
+    Bug caught: the self-eval re-emits every slot after a cap-exhausted primary (roll 6
+    of the 1.6.4 set) and the handler discards them; or a re-emission of an already-filled
+    slot silently regresses a fill that was fine.
+    """
+
+    @staticmethod
+    def _dispositions(**by_slot):
+        return [{"slot_id": k, "disposition": v, "detail": ""} for k, v in by_slot.items()]
+
+    def test_missing_and_rejected_slots_take_the_followup_fill(self):
+        from squadops.capabilities.verification_scaffold_fill import (
+            apply_followup_fills,
+            parse_fill_emission,
+        )
+
+        base = parse_fill_emission(
+            "```fill:slot-a\n    expect(1).toBe(1)\n```\n```fill:slot-b\n    bad()\n```\n"
+        )
+        followup = parse_fill_emission(
+            "```fill:slot-b\n    expect(2).toBe(2)\n```\n```fill:slot-c\n    expect(3).toBe(3)\n```\n"
+        )
+        out = apply_followup_fills(
+            base,
+            followup,
+            self._dispositions(**{"slot-a": "filled", "slot-b": "rejected", "slot-c": "missing"}),
+        )
+        bodies = {f.slot_id: f.body.strip() for f in out.emission.fills}
+        assert bodies == {
+            "slot-a": "expect(1).toBe(1)",
+            "slot-b": "expect(2).toBe(2)",
+            "slot-c": "expect(3).toBe(3)",
+        }
+        assert out.applied == ("slot-b", "slot-c")
+        assert out.skipped_filled == ()
+
+    def test_a_re_emission_of_a_filled_slot_is_ignored_and_recorded(self):
+        from squadops.capabilities.verification_scaffold_fill import (
+            apply_followup_fills,
+            parse_fill_emission,
+        )
+
+        base = parse_fill_emission("```fill:slot-a\n    expect(1).toBe(1)\n```\n")
+        followup = parse_fill_emission("```fill:slot-a\n    expect(9).toBe(9)\n```\n")
+        out = apply_followup_fills(base, followup, self._dispositions(**{"slot-a": "filled"}))
+        assert [f.body.strip() for f in out.emission.fills] == ["expect(1).toBe(1)"]
+        assert out.applied == ()
+        assert out.skipped_filled == ("slot-a",)
+
+    def test_an_empty_primary_takes_every_followup_fill(self):
+        """Roll 6's shape: cap hit with zero fills, self-eval emits all of them."""
+        from squadops.capabilities.verification_scaffold_fill import (
+            apply_followup_fills,
+            parse_fill_emission,
+        )
+
+        followup = parse_fill_emission(
+            "".join(f"```fill:slot-{i}\n    expect({i}).toBe({i})\n```\n" for i in range(8))
+        )
+        out = apply_followup_fills(
+            parse_fill_emission(""),
+            followup,
+            self._dispositions(**{f"slot-{i}": "missing" for i in range(8)}),
+        )
+        assert len(out.emission.fills) == 8
+        assert len(out.applied) == 8
+
+    def test_a_followup_duplicate_stays_a_duplicate_and_a_resolved_one_clears(self):
+        from squadops.capabilities.verification_scaffold_fill import (
+            apply_followup_fills,
+            parse_fill_emission,
+        )
+
+        base = parse_fill_emission("```fill:slot-a\n    x\n```\n```fill:slot-a\n    y\n```\n")
+        assert base.duplicates == ("slot-a",)
+        followup = parse_fill_emission(
+            "```fill:slot-a\n    z\n```\n```fill:slot-b\n    p\n```\n```fill:slot-b\n    q\n```\n"
+        )
+        out = apply_followup_fills(
+            base, followup, self._dispositions(**{"slot-a": "rejected", "slot-b": "missing"})
+        )
+        # slot-a was a duplicate in the primary; ONE followup fill resolves it
+        assert "slot-a" in out.applied and "slot-a" not in out.emission.duplicates
+        # slot-b is a duplicate in the followup; it stays rejected as such
+        assert "slot-b" in out.emission.duplicates and "slot-b" not in out.applied

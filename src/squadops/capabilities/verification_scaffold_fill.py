@@ -524,6 +524,65 @@ def merge_fills(
     )
 
 
+@dataclass(frozen=True)
+class FollowupFillMerge:
+    """A later emission's fills folded into an earlier one, per slot (#947, 1.6.5 C)."""
+
+    emission: FillEmission
+    #: slot ids the followup filled that were missing or rejected before.
+    applied: tuple[str, ...] = ()
+    #: slot ids the followup re-emitted although they were already filled — ignored, so a
+    #: self-eval asked for "only what is missing" cannot regress a slot that was fine.
+    skipped_filled: tuple[str, ...] = ()
+
+
+def apply_followup_fills(
+    base: FillEmission,
+    followup: FillEmission,
+    dispositions: Sequence[Mapping[str, Any]],
+) -> FollowupFillMerge:
+    """Fold a self-eval emission's fills into the primary emission.
+
+    A followup fill lands on a slot whose current disposition is anything but
+    ``filled`` (missing, rejected, not_applicable, or a duplicate); a slot already
+    filled keeps its primary fill and the re-emission is recorded, not applied. The
+    followup's own duplicates stay duplicates. Roll 6 of the 1.6.4 set is the case:
+    the primary hit the completion cap with zero fills, the self-eval re-emitted all
+    eight, and the handler threw them away because it only knew how to drop shell
+    paths.
+    """
+    filled = {d["slot_id"] for d in dispositions if d.get("disposition") == DISPOSITION_FILLED}
+    followup_dups = set(followup.duplicates)
+    fills: dict[str, Fill] = {
+        f.slot_id: f for f in base.fills if f.slot_id not in set(base.duplicates)
+    }
+    applied: list[str] = []
+    skipped: list[str] = []
+    for f in followup.fills:
+        if f.slot_id in followup_dups:
+            continue
+        if f.slot_id in filled:
+            skipped.append(f.slot_id)
+            continue
+        fills[f.slot_id] = f
+        applied.append(f.slot_id)
+    applied_set = set(applied)
+    duplicates = tuple(d for d in base.duplicates if d not in applied_set) + tuple(
+        d for d in followup.duplicates if d not in base.duplicates
+    )
+    return FollowupFillMerge(
+        emission=FillEmission(
+            fills=tuple(fills.values()),
+            duplicates=duplicates,
+            language_prefixed=tuple(
+                dict.fromkeys(base.language_prefixed + followup.language_prefixed)
+            ),
+        ),
+        applied=tuple(dict.fromkeys(applied)),
+        skipped_filled=tuple(dict.fromkeys(skipped)),
+    )
+
+
 def strip_fill_blocks(text: str) -> str:
     """The emission with every fill fence removed — what the file extractor may see.
 
