@@ -474,3 +474,64 @@ class TestApplyFollowupFills:
         assert "slot-a" in out.applied and "slot-a" not in out.emission.duplicates
         # slot-b is a duplicate in the followup; it stays rejected as such
         assert "slot-b" in out.emission.duplicates and "slot-b" not in out.applied
+
+
+class TestRecoverFills:
+    """1.6.5 D (#970): a repair replaces one slot and must keep every other byte for byte,
+    but the task's fill emission is not stored — only the merged shells are.
+
+    Bug caught: recovery misreads a merged body (a failing state taken for a fill, an NA
+    line lost, a body re-indented), so the repaired shell silently regresses a slot the
+    repair never touched.
+    """
+
+    @pytest.fixture(scope="class")
+    def scaffold(self):
+        from squadops.capabilities.verification_scaffold_emission import (
+            emit_verification_scaffold,
+        )
+        from tests.unit.capabilities._stack_fixtures import manifest_for_stack
+
+        return emit_verification_scaffold(manifest_for_stack("nextjs_ts"))
+
+    def test_round_trip_reproduces_the_merged_shells_byte_for_byte(self, scaffold):
+        from squadops.capabilities.verification_scaffold_fill import merge_fills, recover_fills
+
+        files = [dict(f) for f in scaffold.files]
+        record = scaffold.manifest
+        emission = parse_fill_emission(
+            "```fill:slot-vc-probe-api-runs\n    expect(body.id).toBeTruthy()\n"
+            "    expect(all(TABLES.Run)).toHaveLength(1)\n```\n"
+            "```fill:slot-vc-probe-api-runs-leave\nnot_applicable: status says it all\n```\n"
+        )
+        first = merge_fills(files, record, emission)
+        merged = [{"name": f.path, "content": f.content} for f in first.files]
+
+        recovered, dispositions = recover_fills(merged, record)
+        by_slot = {d["slot_id"]: d["disposition"] for d in dispositions}
+        assert by_slot["slot-vc-probe-api-runs"] == "filled"
+        assert by_slot["slot-vc-probe-api-runs-leave"] == "not_applicable"
+        assert sum(1 for d in dispositions if d["disposition"] == "missing") == 6
+
+        second = merge_fills(files, record, recovered)
+        assert [f.content for f in second.files] == [f.content for f in first.files]
+
+    def test_a_missing_shell_reports_its_slots_missing(self, scaffold):
+        from squadops.capabilities.verification_scaffold_fill import recover_fills
+
+        recovered, dispositions = recover_fills([], scaffold.manifest)
+        assert recovered.fills == ()
+        assert {d["disposition"] for d in dispositions} == {"missing"}
+
+    def test_a_repair_may_replace_a_filled_slot_a_self_eval_may_not(self):
+        from squadops.capabilities.verification_scaffold_fill import apply_followup_fills
+
+        base = parse_fill_emission("```fill:slot-a\n    old()\n```\n")
+        followup = parse_fill_emission("```fill:slot-a\n    new()\n```\n")
+        disp = [{"slot_id": "slot-a", "disposition": "filled", "detail": ""}]
+        as_self_eval = apply_followup_fills(base, followup, disp)
+        as_repair = apply_followup_fills(base, followup, disp, replace_filled=True)
+        assert [f.body.strip() for f in as_self_eval.emission.fills] == ["old()"]
+        assert as_self_eval.skipped_filled == ("slot-a",)
+        assert [f.body.strip() for f in as_repair.emission.fills] == ["new()"]
+        assert as_repair.applied == ("slot-a",)

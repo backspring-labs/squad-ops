@@ -540,13 +540,17 @@ def apply_followup_fills(
     base: FillEmission,
     followup: FillEmission,
     dispositions: Sequence[Mapping[str, Any]],
+    *,
+    replace_filled: bool = False,
 ) -> FollowupFillMerge:
     """Fold a self-eval emission's fills into the primary emission.
 
     A followup fill lands on a slot whose current disposition is anything but
     ``filled`` (missing, rejected, not_applicable, or a duplicate); a slot already
     filled keeps its primary fill and the re-emission is recorded, not applied. The
-    followup's own duplicates stay duplicates. Roll 6 of the 1.6.4 set is the case:
+    followup's own duplicates stay duplicates. ``replace_filled`` is the repair's
+    setting (#970): a repair is told which slots failed and may replace a filled slot;
+    a self-eval asked for "only what is missing" may not. Roll 6 of the 1.6.4 set is the case:
     the primary hit the completion cap with zero fills, the self-eval re-emitted all
     eight, and the handler threw them away because it only knew how to drop shell
     paths.
@@ -561,7 +565,7 @@ def apply_followup_fills(
     for f in followup.fills:
         if f.slot_id in followup_dups:
             continue
-        if f.slot_id in filled:
+        if f.slot_id in filled and not replace_filled:
             skipped.append(f.slot_id)
             continue
         fills[f.slot_id] = f
@@ -581,6 +585,67 @@ def apply_followup_fills(
         applied=tuple(dict.fromkeys(applied)),
         skipped_filled=tuple(dict.fromkeys(skipped)),
     )
+
+
+#: The first line ``_merged_body`` writes for each non-filled disposition. Recovery
+#: reads them back; they are the only shapes a merged slot body can take besides a fill.
+_FAILING_STATE_PREFIX = "    // fill layer: "
+_NOT_APPLICABLE_PREFIX = "    // not_applicable (qa): "
+
+
+def recover_fills(
+    merged_files: Sequence[Mapping[str, str]], record: VerificationScaffoldManifest
+) -> tuple[FillEmission, list[dict[str, str]]]:
+    """Read the fills back out of merged shells (#970, 1.6.5 D).
+
+    A qa repair replaces one slot's fill and must keep every other slot exactly as
+    the task left it — but the task's fill emission is not stored, only the merged
+    shells are. Each slot body is one of three shapes ``_merged_body`` writes: a fill
+    (returned as a :class:`Fill`), an explicit not-applicable line (returned as an NA
+    fill), or the deterministic failing state (returned as no fill, disposition
+    ``missing``). Round-trip property: ``merge_fills(pristine, record,
+    recover_fills(merged)[0])`` reproduces ``merged`` byte for byte.
+
+    Returns ``(emission, dispositions)`` in the shape the merge record banks, so the
+    result feeds :func:`apply_followup_fills` directly.
+    """
+    by_path = {str(f["name"]): str(f["content"]) for f in merged_files}
+    fills: list[Fill] = []
+    dispositions: list[dict[str, str]] = []
+    for file_record in record.files:
+        content = by_path.get(file_record.path)
+        if content is None:
+            for slot in file_record.slots:
+                dispositions.append(
+                    {"slot_id": slot.slot_id, "disposition": DISPOSITION_MISSING, "detail": ""}
+                )
+            continue
+        lines = content.split("\n")
+        regions = {r.slot_id: r for r in parse_slot_regions(content)}
+        for slot in file_record.slots:
+            region = regions.get(slot.slot_id)
+            body = lines[region.begin_line : region.end_line - 1] if region else []
+            first = body[0] if body else ""
+            if not body or first.startswith(_FAILING_STATE_PREFIX):
+                dispositions.append(
+                    {"slot_id": slot.slot_id, "disposition": DISPOSITION_MISSING, "detail": ""}
+                )
+            elif first.startswith(_NOT_APPLICABLE_PREFIX):
+                reason = first[len(_NOT_APPLICABLE_PREFIX) :]
+                fills.append(Fill(slot_id=slot.slot_id, not_applicable_reason=reason))
+                dispositions.append(
+                    {
+                        "slot_id": slot.slot_id,
+                        "disposition": DISPOSITION_NOT_APPLICABLE,
+                        "detail": reason,
+                    }
+                )
+            else:
+                fills.append(Fill(slot_id=slot.slot_id, body="\n".join(body)))
+                dispositions.append(
+                    {"slot_id": slot.slot_id, "disposition": DISPOSITION_FILLED, "detail": ""}
+                )
+    return FillEmission(fills=tuple(fills)), dispositions
 
 
 def strip_fill_blocks(text: str) -> str:
