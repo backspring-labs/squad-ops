@@ -538,6 +538,24 @@ def derive_scaffold_behaviors(
     return behaviors, probes
 
 
+def slot_element_kinds_nextjs_ts(manifest: InterfaceManifest) -> dict[str, dict[str, Any]]:
+    """``slot_id → {field → element kind}`` for every behavior shell with a success floor.
+
+    Read off the same ``_Behavior`` list the emitter renders, so the fill gate and the
+    frozen spine cannot disagree about a field's declared kind (#1094). Behaviors with
+    no floor (rejections, conflicts) contribute nothing — their bodies are the envelope's.
+    """
+    from squadops.capabilities.response_shape import element_kinds
+
+    behaviors, _ = derive_scaffold_behaviors(manifest)
+    out: dict[str, dict[str, Any]] = {}
+    for behavior in behaviors:
+        kinds = element_kinds(behavior.expect_response)
+        if kinds:
+            out[f"slot-{behavior.behavior_id}"] = kinds
+    return out
+
+
 def emit_nextjs_ts_verification_scaffold(
     manifest: InterfaceManifest, expanded: list[dict[str, str]]
 ) -> list[tuple[str, str, tuple[BehaviorSlot, ...]]]:

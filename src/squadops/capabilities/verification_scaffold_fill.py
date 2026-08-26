@@ -61,8 +61,9 @@ deterministic failing assertion naming the slot and the fill layer, shaped as an
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from typing import Any
 
 from squadops.capabilities.verification_scaffold import (
     ScaffoldSpineError,
@@ -241,7 +242,83 @@ _FORBIDDEN: tuple[tuple[re.Pattern[str], str], ...] = (
 _TABLE_REF_RE = re.compile(r"\bTABLES\.(\w+)")
 
 
-def fill_findings(fill: Fill, store_tables: Sequence[str] | None = None) -> list[str]:
+#: A matcher applied to a collection field — ``.participants).toContain(`` and kin — with
+#: the first significant character of its argument captured, which is all the kind check
+#: needs: a quote or digit is a primitive, ``{`` is an object, ``[`` opens an array whose
+#: first element is inspected the same way (#1094).
+_COLLECTION_MATCHER_RE = re.compile(
+    r"\.(?P<field>\w+)\)\s*(?:\.not)?\s*\.to(?:Contain|ContainEqual|Equal|StrictEqual)"
+    r"\(\s*(?P<arg>\[\s*[^\s\]]|[^\s)])"
+)
+#: Property access on an element of a collection field — ``.participants[0].name`` — which
+#: asserts the element is an object.
+_ELEMENT_PROPERTY_RE = re.compile(r"\.(?P<field>\w+)\[\d+\]\.\w+")
+
+
+def _argument_kind(arg: str) -> str | None:
+    """``"primitive"`` / ``"object"`` for a matcher argument's first significant char(s);
+    ``None`` when the argument's kind cannot be read (an identifier, an empty array)."""
+    head = arg.strip()
+    if head.startswith("["):
+        head = head[1:].strip()
+        if not head:
+            return None  # `toEqual([])` — emptiness, not a kind
+    if head[:1] in ("'", '"', "`") or head[:1].isdigit():
+        return "primitive"
+    if head[:1] == "{":
+        return "object"
+    return None
+
+
+def element_kind_findings(body: str, element_kinds: Mapping[str, Mapping[str, Any]]) -> list[str]:
+    """Every collection-field assertion in ``body`` whose element kind contradicts the
+    declared one (#1094). Narrow by design: only a matcher argument or element access
+    whose kind is readable from the text; whether an assertion is *good* is not this
+    function's question.
+
+    Roll 5 of the 1.6.3 set: the manifest declared ``participants: list[Participant]``,
+    the frozen floor asserted each element carries ``name``, and the fill asserted
+    ``expect(body.participants).toContain('sample')`` — strings. A repair that returned
+    the declared objects passed the floor and failed the fill, was rejected, and the
+    loop discarded it. The floor and the fill were contradicting each other inside one
+    test, and the fill won because it ran second.
+    """
+    findings: list[str] = []
+    for m in _COLLECTION_MATCHER_RE.finditer(body):
+        declared = element_kinds.get(m.group("field"))
+        if not declared:
+            continue
+        asserted = _argument_kind(m.group("arg"))
+        if asserted and asserted != declared.get("kind"):
+            findings.append(_kind_finding(m.group("field"), declared, asserted))
+    for m in _ELEMENT_PROPERTY_RE.finditer(body):
+        declared = element_kinds.get(m.group("field"))
+        if declared and declared.get("kind") == "primitive":
+            findings.append(_kind_finding(m.group("field"), declared, "object"))
+    return list(dict.fromkeys(findings))
+
+
+def _kind_finding(field: str, declared: Mapping[str, Any], asserted: str) -> str:
+    if declared.get("kind") == "object":
+        fields = ", ".join(f"`{f}`" for f in declared.get("required_fields", []))
+        return (
+            f"asserts {asserted} elements on `{field}`, which the manifest declares as a list "
+            f"of objects each carrying {fields} — the shell's frozen floor above the slot "
+            f"asserts exactly that, so this assertion cannot pass against a correct "
+            f"application; assert on `{field}[i].<field>` instead (#1094)"
+        )
+    return (
+        f"asserts object elements on `{field}`, which the manifest declares as a list of "
+        f"`{declared.get('typeof', 'primitive')}` values — the shell's frozen floor above the "
+        f"slot asserts exactly that; assert on the values, not on element properties (#1094)"
+    )
+
+
+def fill_findings(
+    fill: Fill,
+    store_tables: Sequence[str] | None = None,
+    element_kinds: Mapping[str, Mapping[str, Any]] | None = None,
+) -> list[str]:
     """Every containment rule this fill violates; empty for a valid fill or explicit NA.
 
     ``store_tables`` is the frozen store's exported table set, when the stack has one. A
@@ -278,6 +355,8 @@ def fill_findings(fill: Fill, store_tables: Sequence[str] | None = None) -> list
                 f"embedded shape or response projection has no table of its own, so assert on "
                 f"the owning entity's field instead (#1087)"
             )
+    if element_kinds:
+        findings.extend(element_kind_findings(fill.body, element_kinds))
     return findings
 
 
@@ -363,6 +442,7 @@ def merge_fills(
     record: VerificationScaffoldManifest,
     emission: FillEmission,
     store_tables: Sequence[str] | None = None,
+    slot_element_kinds: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> FillMergeRecord:
     """Merge an authored fill emission into the scaffold, deterministically.
 
@@ -410,7 +490,11 @@ def merge_fills(
             else:
                 fill = fills_by_slot.get(slot.slot_id)
                 body, disposition = _merged_body(
-                    slot.slot_id, fill, fill_findings(fill, store_tables) if fill else []
+                    slot.slot_id,
+                    fill,
+                    fill_findings(fill, store_tables, (slot_element_kinds or {}).get(slot.slot_id))
+                    if fill
+                    else [],
                 )
             out.extend(body)
             out.append(lines[region.end_line - 1])

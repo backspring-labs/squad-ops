@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import yaml
 
@@ -32,7 +32,10 @@ from squadops.capabilities.scaffold import (
     verification_scaffold_for,
 )
 from squadops.capabilities.stack_nextjs_ts import STACK_NAME as _NEXTJS_TS_NAME
-from squadops.capabilities.stack_nextjs_ts_tests import emit_nextjs_ts_verification_scaffold
+from squadops.capabilities.stack_nextjs_ts_tests import (
+    emit_nextjs_ts_verification_scaffold,
+    slot_element_kinds_nextjs_ts,
+)
 from squadops.capabilities.verification_scaffold import (
     SCAFFOLD_MANIFEST_VERSION,
     BehaviorSlot,
@@ -78,6 +81,26 @@ class VerificationScaffoldEmission:
     files: tuple[dict[str, str], ...]
     manifest: VerificationScaffoldManifest
     manifest_yaml: str
+
+
+#: #1094: the per-slot element kinds each stack's shells pin, keyed like ``_EMITTERS`` so
+#: an opted-in stack that emits shells also states what they assert.
+_SLOT_ELEMENT_KINDS: dict[str, Any] = {
+    _NEXTJS_TS_NAME: slot_element_kinds_nextjs_ts,
+}
+
+
+def slot_element_kinds(manifest: InterfaceManifest) -> dict[str, dict[str, Any]]:
+    """``slot_id → {field → declared element kind}`` for ``manifest``'s stack, or ``{}``.
+
+    Data for the fill gate (#1094): a fill asserting a kind the floor contradicts is
+    rejected at merge with the declared kind named, before it can gate a repair. Empty
+    for a stack that emits no scaffold — nothing to contradict.
+    """
+    from squadops.capabilities.scaffold import verification_scaffold_for
+
+    fn = _SLOT_ELEMENT_KINDS.get(verification_scaffold_for(manifest.stack))
+    return fn(manifest) if fn else {}
 
 
 def emit_verification_scaffold(

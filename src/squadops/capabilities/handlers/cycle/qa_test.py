@@ -599,6 +599,7 @@ class QATestHandler(_CycleTaskHandler):
             record,
             fill_emission,
             store_tables=scaffold_input.get("store_tables"),
+            slot_element_kinds=scaffold_input.get("slot_element_kinds"),
         )
         merged_artifacts = [
             {

@@ -1,6 +1,6 @@
 ---
 template_id: request.qa_test_fill_mode_appendix
-version: "2"
+version: "3"
 required_variables:
   - slot_lines
   - shell_files
@@ -61,6 +61,13 @@ as a failing state):
   scaffold path is discarded. The shells below are read-only context.
 - `body` is the final response's parsed JSON; where a create precedes the invocation,
   `created` is the created entity's parsed JSON.
+
+**A collection field's element kind is already decided — read it off the frozen floor.**
+The lines above your slot that loop over a collection (`for (const e of o?.["…"] ?? [])`)
+state whether its elements are objects carrying named fields or plain values. Assert in
+that kind: `body.participants[0].name` for objects, `toContain('…')` for values. A fill
+asserting the other kind contradicts the floor inside the same test, cannot pass against a
+correct application, and is rejected at the fill gate with the declared kind named.
 
 **Asserting on the store — pass `TABLES.<Entity>`, never a string you invent.**
 `@/lib/store` exports `TABLES`, one entry per entity a correct application stores as rows of

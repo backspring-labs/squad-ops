@@ -34,6 +34,7 @@ kind, which keeps a legitimately-empty list from reading as a shape defect.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from squadops.capabilities.scaffold import Entity, InterfaceManifest
 
@@ -97,6 +98,28 @@ def _element_token(type_str: str) -> str:
 
 def _required_field_names(entity: Entity) -> tuple[str, ...]:
     return tuple(f.name for f in entity.fields if f.required)
+
+
+def element_kinds(shape: ResponseShape | None) -> dict[str, dict[str, Any]]:
+    """The declared element kind of each checkable collection field, as plain data (#1094).
+
+    The floor asserts this in the frozen spine; the fill gate needs the same fact to
+    reject a fill that contradicts it — roll 5 of the 1.6.3 set asserted strings on a
+    field the manifest declares as objects, the floor passed a correct repair, the fill
+    failed it, and the loop discarded the fix. One derivation, rendered a third time.
+    """
+    if not shape:
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    for element in shape.elements:
+        if element.typeof:
+            out[element.field] = {"kind": "primitive", "typeof": element.typeof}
+        elif element.required_fields:
+            out[element.field] = {
+                "kind": "object",
+                "required_fields": list(element.required_fields),
+            }
+    return out
 
 
 def derive_response_shape(

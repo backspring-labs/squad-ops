@@ -293,3 +293,95 @@ class TestPhantomTableFindings:
         merged = next(f.content for f in record.files if _CREATE_SLOT in f.content)
         assert "fill rejected" in merged
         assert "expect(all(TABLES.Participant))" not in merged
+
+
+class TestElementKindFindings:
+    """#1094: a fill asserting an element kind the frozen floor contradicts is rejected at
+    the fill gate, keyed on the DECLARED kind — never on the assertion's shape alone.
+
+    The banked vocabulary from the 1.6.3 set is the fixture: rolls 3 and 7 (green) wrote
+    `toContain('sample')` under `list[string]` and were right; roll 5 wrote the identical
+    line under `list[Participant]` and rejected a correct repair with it.
+    """
+
+    OBJECT = {"participants": {"kind": "object", "required_fields": ["name", "joined_at"]}}
+    PRIMITIVE = {"participants": {"kind": "primitive", "typeof": "string"}}
+
+    @pytest.mark.parametrize(
+        ("body", "kinds", "flagged"),
+        [
+            # roll 5's line under roll 5's manifest — the instance
+            ("expect(body.participants).toContain('sample')", "OBJECT", True),
+            ("expect(body.participants).not.toContain('sample')", "OBJECT", True),
+            ("expect(all(TABLES.Run)[0].participants).toContain('sample')", "OBJECT", True),
+            ("expect(body.participants).toEqual(['sample'])", "OBJECT", True),
+            ("expect(body.participants).toContainEqual({ name: 'sample' })", "PRIMITIVE", True),
+            ("expect(body.participants[0].name).toBe('sample')", "PRIMITIVE", True),
+            # the same lines under the kind they agree with — rolls 3/7 and the greens
+            ("expect(body.participants).toContain('sample')", "PRIMITIVE", False),
+            ("expect(body.participants[0].name).toBe('sample')", "OBJECT", False),
+            ("expect(body.participants[0].joined_at).toBeTruthy()", "OBJECT", False),
+            ("expect(body.participants).toContainEqual({ name: 'sample' })", "OBJECT", False),
+            # kind-neutral assertions never fire, under either declaration
+            ("expect(body.participants).toHaveLength(1)", "OBJECT", False),
+            ("expect(body.participants).toEqual([])", "OBJECT", False),
+            ("expect(body.participants).toEqual([])", "PRIMITIVE", False),
+            ("expect(body.participants).toContain(expected)", "OBJECT", False),
+            # a field the floor does not pin is not this rule's business
+            ("expect(body.tags).toContain('x')", "OBJECT", False),
+        ],
+    )
+    def test_only_a_contradiction_of_the_declared_kind_is_a_finding(self, body, kinds, flagged):
+        from squadops.capabilities.verification_scaffold_fill import element_kind_findings
+
+        findings = element_kind_findings(body, getattr(self, kinds))
+        assert bool(findings) is flagged, (body, kinds, findings)
+        if flagged:
+            assert "#1094" in findings[0] and "`participants`" in findings[0]
+
+    def test_the_finding_names_the_declared_kind_and_the_fix(self):
+        from squadops.capabilities.verification_scaffold_fill import element_kind_findings
+
+        [finding] = element_kind_findings(
+            "expect(body.participants).toContain('sample')", self.OBJECT
+        )
+        assert "`name`" in finding and "`joined_at`" in finding
+        assert "participants[i].<field>" in finding
+
+    def test_the_merge_degrades_the_slot_under_its_own_kinds(self, emission):
+        """Roll 5, end to end at the seam: the join slot's fill contradicts the join
+        behavior's floor; the slot is rejected with the declared kind named, and a slot
+        with no pinned collection is untouched by the same assertion."""
+        join = "slot-vc-probe-api-runs-join"
+        text = f"```fill:{join}\nexpect(body.participants).toContain('sample')\n```\n"
+        record = merge_fills(
+            list(emission.files),
+            emission.manifest,
+            parse_fill_emission(text),
+            slot_element_kinds={join: self.OBJECT},
+        )
+        disposition = record.by_slot()[join]
+        assert disposition.disposition == "rejected"
+        assert "#1094" in disposition.detail
+        # the same fill on a slot the kinds map does not cover is a valid fill
+        record = merge_fills(
+            list(emission.files),
+            emission.manifest,
+            parse_fill_emission(text),
+            slot_element_kinds={"slot-vc-probe-api-runs": self.OBJECT},
+        )
+        assert record.by_slot()[join].disposition == "filled"
+
+    def test_the_kinds_are_derived_per_slot_from_the_shells_own_behaviors(self):
+        """The gate reads the fact the floor asserts — one derivation. Every behavior with a
+        success floor on the reference pins `participants` as objects; rejections carry
+        no floor and no kinds."""
+        from squadops.capabilities.verification_scaffold_emission import slot_element_kinds
+
+        kinds = slot_element_kinds(manifest_for_stack("nextjs_ts"))
+        assert kinds["slot-vc-probe-api-runs-join"]["participants"]["kind"] == "object"
+        assert "name" in kinds["slot-vc-probe-api-runs-join"]["participants"]["required_fields"]
+        assert "slot-vc-probe-api-runs-rejects-blank" not in kinds
+        assert "slot-vc-probe-api-runs-join-duplicate" not in kinds
+        # stack #1 emits no scaffold: nothing to contradict, nothing threaded
+        assert slot_element_kinds(manifest_for_stack("fullstack_fastapi_react")) == {}
