@@ -22,7 +22,17 @@ Each even-minor consumer sits strictly behind the release that earns its trust: 
 
 ## Release Timeline
 
-### v1.6.3 (2026-08-25) — Current — the measurement patch line
+### v1.6.4 (2026-08-26) — Current — the self-consistency patch line
+
+Every fix in this line is one shape: **the framework derived the same declared fact twice and the two renderings disagreed.** The frozen `lib/models.ts` typed every entity-typed field as `string` while the response floor asserted objects (#1096 — the exact case behind all three 1.6.3 rejections); the store exported a table handle for every declared entity, including shapes and projections no correct app writes (#1087); contract probes carried no `json_has`, so the boot audit certified status codes and never a body (#1079 producer half — the pair is now closed); the final-state ledger keyed on `(check_id, subject)`, so a subtask's per-file compile criteria superseded each other and read as unevidenced (#1021); a qa fill could contradict the element kind the floor pins and reject a correct repair (#1094); and the repair target was the entire application in 18 of 18 rounds of the reds (#1015 part A — ownership now rides the contract as data, an in-suite probe failure indicts its slot, and the analyzer's implicated files are verified before use). #998 gives an empty emission a name — `cap_exhausted`, `empty`, `unextractable` — and the generic repair path, which had attached no marker at all, now does.
+
+**The evidence** (`docs/plans/1-6-4-verification-set-record.md`): a pre-registered eight-roll set on frozen deploy `5a697dfa`, registered before roll 1 and unchanged, executed overnight under delegation. **No voids, no resets, zero manual intervention. 8 of 8 functional (100%, 95% CI 63.1–100%)** against 1.6.3's 5 of 8 on the same protocol — intervals overlap, no significance claimed on the rate. **14 of 14 criteria credited on every roll** where every prior roll read 8/14–13/15. **Zero framing re-rolls**, eighteen consecutive first-attempt framings. **Every prediction the pack made about its own mechanisms held on every roll that exercised it** — P0 8/8, coverage 8/8, P2 8/8, P4 1/1 — and P1/P3/P5 were not exercised, which is not passed.
+
+**Mechanism versus luck, stated at the cut (record §1.1):** the frozen-tree, ledger and probe fixes are deterministic and were read on the seeded files before the squad ran; those could not have gone the other way. **The correction loop repaired neither of the two rolls that entered it** — roll 6 recovered by the executor re-dispatching `qa.test`, roll 8 because the self-eval had already fixed the file — and the cause behind both is systematic: **three of eight qa primary emissions hit the 8,192-token completion cap.** Two safety nets held at N=2; had either failed the set is 6/8. That, with the `qa.test` self-eval-versus-suite ordering gap and #947/#969/#970 observed live, is 1.6.5's plan.
+
+**Scope:** `full-38` (qwen3.8:27b), `nextjs_ts`, `group_run`; `full` remains the canonical squad. **Code drift between the tagged tree and the validated deploy: zero.** Pinned fixtures moved once and deliberately (generator 8, contract v10 beside v9). No SIP promotions; SIP-0104 stays accepted with its §9 extraction and stack #1 parity open. Next: 1.6.5 (`docs/plans/1-6-5-plan.md`), then v1.7 stabilization.
+
+### v1.6.3 (2026-08-25) — the measurement patch line
 
 1.6.2 merged roughly twenty fixes and none had been measured. This line ships three and, for the first time, **a rate**.
 
@@ -525,10 +535,10 @@ The following areas are identified for future work but do not block 1.0 readines
 
 ## Stats
 
-*As of 2026-08-25 (v1.6.3):*
+*As of 2026-08-26 (v1.6.4):*
 
-- **Framework version**: 1.6.3
+- **Framework version**: 1.6.4
 - **SIPs**: 65 implemented, 9 accepted (SIP-0088, 0090–0093, 0101, 0102, 0104, 0105), 20 deprecated (registry)
-- **Tests**: 7,600+ passing in the regression suite
+- **Tests**: 7,900+ passing in the regression suite
 - **Python source**: ~61,000 lines (src + adapters; ~88,000 test lines, ~119,000 doc lines)
 - **~6 months** from initial repo (2025-09-20) to 1.0.0 release (2026-03-10)
