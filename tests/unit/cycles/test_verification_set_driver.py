@@ -208,3 +208,26 @@ class TestRunRows:
             "run_id": "run_b",
             "seconds": 2400,
         }
+
+
+class TestSquadSnapshotIsAnIdentity:
+    """1.6.5 E moved the squad-profile snapshot (eve's completion budget) and left
+    `resolved_config_hash` — the request-profile side — untouched: the first 1.6.5 shakeout
+    launched on the 1.6.4 config hash `d4d4f66217d8` while its snapshot was new. Bug caught:
+    a set that pins only the config hash accepts a roll on a different squad configuration."""
+
+    @pytest.mark.parametrize(
+        "expected, actual, mismatch",
+        [
+            ("575707c5", "575707c58536cf3b", False),
+            ("575707c5", "ab2965c78ccf2497", True),
+            ("", "ab2965c78ccf2497", False),  # unpinned = record, do not assert
+            ("575707c5", "", True),
+        ],
+    )
+    def test_identity_mismatch(self, driver, expected, actual, mismatch):
+        assert driver.identity_mismatch(expected, actual) is mismatch
+
+    def test_the_set_config_carries_the_snapshot_pin(self, driver):
+        cfg = driver.load_set_config(_SETS / "1-6-5-nextjs.yaml")
+        assert cfg.expected_squad_snapshot_prefix == ""  # filled at pre-registration
