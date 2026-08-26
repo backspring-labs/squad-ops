@@ -1,0 +1,387 @@
+version: 1.6.4
+tag: v1.6.4
+previous_tag: v1.6.3
+date: '2026-08-26'
+commit: f1a64c0d55a1da8f5c4d65adeab9711ccb123836
+narrative: "**The self-consistency patch line.** Every fix in this line is one shape:\
+  \ **the framework derived\nthe same declared fact twice and the two renderings disagreed.**\
+  \ The frozen model against the\nresponse floor (#1096); the store's table handles\
+  \ against what a correct application writes\n(#1087); the boot audit against the\
+  \ suite (#1079); the ledger's identity against per-file criteria\n(#1021); a qa\
+  \ fill against the declared element kind (#1094); the repair target against the\
+  \ file\nthe diagnosis named (#1015). All three of 1.6.3's rejections were the first\
+  \ of these, and the\nrepair rounds that failed to land them were the last.\n\n###\
+  \ The evidence\n\nA pre-registered eight-roll set on frozen deploy `5a697dfa` —\n\
+  `docs/plans/1-6-4-verification-set-record.md`, registered before roll 1 (`39f6abc0`)\
+  \ and unchanged\nthroughout, executed overnight under delegation. **No voids, no\
+  \ resets.** Six gates decided by\n`system:no_open_questions`, two by the pre-registered\
+  \ constant; zero manual intervention on every\nroll.\n\n- **8 of 8 functional —\
+  \ 100%, 95% CI [63.1%, 100%]**, against 1.6.3's 5 of 8 on the same project,\n  squad,\
+  \ request profile, overrides and config hash. The intervals overlap; per the inherited\
+  \ §1.3\n  this is **not a significance claim** on the rate.\n- **14 of 14 criteria\
+  \ credited on every roll.** Every 1.6.3 roll had read 8/14–13/15 (#1021).\n- **Zero\
+  \ framing re-rolls**; eighteen consecutive cycles have framed on the first attempt.\n\
+  - **Every prediction the pack made about its own mechanisms held on every roll that\
+  \ exercised\n  it**: P0 (seeded tree agrees with the floor) 8/8, coverage 8/8, P2\
+  \ (audit judges the floor) 8/8,\n  P4 (empty emission carries a signature) 1/1.\
+  \ **P1, P3 and P5 were not exercised** — the loss\n  modes they were built against\
+  \ did not occur — and unexercised is not passed.\n\n**Mechanism versus luck (record\
+  \ §1.1).** The frozen-tree, ledger and probe fixes are mechanism:\ntheir effect\
+  \ was read on the seeded files before the squad ran, on every roll, and could not\
+  \ have\ngone the other way. **The correction loop is not.** Two rolls entered it\
+  \ and **neither was repaired\nby it**: roll 6 recovered because the executor re-dispatched\
+  \ the whole `qa.test` task and the second\nattempt fit under the completion cap;\
+  \ roll 8 because the self-eval had already fixed the file\nbefore the loop ran.\
+  \ Two safety nets held, two for two, at N=2. The cause behind both is\nsystematic\
+  \ — **three of eight qa primary emissions hit the 8,192-token completion cap** with\
+  \ ~17k-token\nprompts — and this line did not touch it. Had either net failed, the\
+  \ set is 6/8.\n\n### Fixed\n\n- **#1096** — the `nextjs_ts` expander typed every\
+  \ entity-typed field as `string`, so the frozen\n  `lib/models.ts` contradicted\
+  \ the response floor on every roll that declared `list[Participant]`\n  — the exact\
+  \ case behind all three 1.6.3 reds. Declared entity and shape names now pass through.\n\
+  \  Read on the seeded tree at N=1 on every roll: four rolls declared `list[Participant]`\
+  \ and were\n  given `Participant[]`.\n- **#1087** — the frozen store exported a\
+  \ table handle for every declared entity, including\n  embedded shapes and response\
+  \ projections no correct application writes. `root_persisted_entities()`\n  derives\
+  \ which entities are stored as rows of their own; `TABLES` and the harness consume\
+  \ it; a\n  fill naming a table the store does not export is rejected at the fill\
+  \ gate with the real tables\n  named. Stack #1's per-entity dicts are the same shape\
+  \ and remain a follow-up.\n- **#1079** (producer half; closes the pair) — success\
+  \ probes derive `json_has` from the shell's own\n  response-shape derivation, so\
+  \ **contract probes now verify response bodies** and the boot audit\n  judges them\
+  \ with the shared judge. Five probes with `json_has` on every roll.\n- **#1021**\
+  \ — the final-state ledger keyed a result on `(check_id, subject)`, so a develop\
+  \ subtask\n  that compiled three files recorded three results under one identity\
+  \ and the last superseded the\n  rest: credited nowhere, failed nowhere. The identity\
+  \ now includes the criterion. In both\n  directions — a *failed* compile can no\
+  \ longer be hidden by the next file's passing one.\n- **#1015 part A** — the repair\
+  \ target was the entire application in 18 of 18 rounds of 1.6.3's\n  reds. The contract\
+  \ now carries endpoint ownership as data on `nextjs_ts`, an in-suite probe\n  failure\
+  \ indicts its owning slot, the language-wide fallback is withheld when a site is\
+  \ known, and\n  the analyzer's `implicated_files` are verified against the failed\
+  \ inputs before use (#968 slice).\n  **Unexercised live**: neither correction this\
+  \ set was a dev repair.\n- **#1094** — a qa fill contradicting the element kind\
+  \ the floor pins is rejected at the fill gate,\n  with the declared kind and the\
+  \ fix named; roll 5 of 1.6.3 had discarded a correct repair on\n  exactly this.\
+  \ Replayed over all 72 banked fill slots of the 1.6.3 set: only roll 5's two fills\n\
+  \  flag. **Unexercised live.**\n- **#998** (detection) — an empty emission says\
+  \ which kind of nothing it was: `cap_exhausted`,\n  `empty` or `unextractable`,\
+  \ from the token facts the call already reports, with the remedy named\n  per kind.\
+  \ The generic repair path had attached no marker at all for an empty response —\
+  \ the\n  source of 1.6.3 roll 5's zero-byte repairs. Exercised on roll 8's repair\
+  \ (1/1) and two in-task\n  develop emissions.\n- **#1089** — the framework version\
+  \ is single-sourced from `pyproject.toml`; installed metadata is\n  read only when\
+  \ no source tree is present. The CLI had reported 1.4.0 on a 1.6.3 tree.\n- **1.6.3\
+  \ record corrected** (§6, PR #1095): its two \"false rejections\" were not. All\
+  \ three rejected\n  applications failed the frozen response floor at every round;\
+  \ #1087 was a second failure in two.\n  The 1.6.3 CHANGELOG section, release package\
+  \ and GitHub Release carry the correction.\n\n### Known and named, not fixed\n\n\
+  - **The qa completion cap** — three of eight qa primary emissions at 8,192 tokens\
+  \ with 16.7–17k-token\n  prompts, recovered by fallback each time. #998's ask 2\
+  \ (fills first, a budget, or the prompt\n  shape) now has its data. This is 1.6.5's\
+  \ headline (`docs/plans/1-6-5-plan.md`).\n- **`qa.test` self-eval versus suite ordering**\
+  \ (roll 8) — a self-eval re-emission that fixes a\n  blocking typed check is stored\
+  \ as the task's artifact, but the suite has already run against the\n  broken file;\
+  \ the loop then pays a correction round to rediscover the fix. Raised in the record\n\
+  \  (§5.1), not yet filed.\n- **#947, #969, #970 observed live** in roll 6: the self-eval's\
+  \ re-emitted fills are discarded; an\n  own-artifact qa repair cannot reach fills.\
+  \ Recovery came from the executor's re-dispatch.\n- **The root-table rule's single-object\
+  \ edge** — shakeout 1 and roll 8 declared a single-object\n  response entity and\
+  \ the store gave it a table; nothing asserted on it.\n- **Instrumentation** — whether\
+  \ the aimed-retry prompt renders the #998 signature is unobservable\n  from stored\
+  \ state (LangFuse's 10,000-character input cap; the executor's retry log does not\
+  \ echo\n  the marker).\n- **#1099** — sixteen integration tests fail identically\
+  \ on every run of main and nothing runs them\n  in CI (#242). 1.7.\n\n### Scope\
+  \ of the evidence\n\nSame scope as 1.6.3: `full-38` (qwen3.8:27b) with `build_profile=nextjs_ts`\
+  \ and\n`dev_capability=nextjs_ts` on `group_run`. `full` (qwen3.6) remains the canonical\
+  \ squad.\n\n**Code drift between the tagged tree and the validated deploy: zero.**\
+  \ Main after `5a697dfa` is the\npre-registration, the record and this release commit\
+  \ — documents only.\n\n**Pinned fixtures moved, deliberately and once** (owner-cleared\
+  \ 2026-08-25): `GENERATOR_VERSION`\n7 → 8; reference contract v10 (`contract_v10_json_has_1079.yaml`,\
+  \ classified `ambiguity_removal`)\nbeside v9; the reference scaffold manifest's\
+  \ `expanded_tree_hash`. Stack #1's contract v10 is\nbyte-identical (ownership is\
+  \ presence-keyed).\n\n**No SIP promotions.** This line's fixes are issue-driven.\
+  \ SIP-0104 stays `accepted`: 1.6.4 extends\nits fill gate and moves its generator,\
+  \ but its §9 extraction of proven semantic patterns and stack\n#1 parity for #1087\
+  \ remain open."
+pull_requests:
+- number: 1106
+  title: 'chore(release): v1.6.4 — the self-consistency patch line (+ 1.6.5 plan rev
+    1)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-26'
+- number: 1105
+  title: 'docs(plan): the 1.6.4 verification set closes at 8 of 8 functional'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-26'
+- number: 1104
+  title: 'docs(plan): pre-register the 1.6.4 verification set (in force from roll
+    1 by hash)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-26'
+- number: 1103
+  title: 'fix(verification): per-file criteria stop superseding each other in the
+    final-state ledger — #1021'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-26'
+- number: 1102
+  title: 'feat(scaffold): a fill contradicting the declared element kind is rejected
+    at the fill gate — #1094'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-26'
+- number: 1101
+  title: 'feat(evidence): an empty emission says which kind of nothing it was — #998'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-26'
+- number: 1100
+  title: 'fix(correction): the repair target reaches the defect site — #1015 part
+    A'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-26'
+- number: 1098
+  title: 'fix: the 1.6.4 hash-movers — #1096 frozen model, #1087 root tables, #1079
+    json_has producer'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-25'
+- number: 1097
+  title: 'docs(plan): 1.6.4 rev 4 — the two reads done; #1096 (frozen models.ts contradicts
+    the floor) is the headline'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-25'
+- number: 1095
+  title: 'docs(release): correct the v1.6.3 attribution in CHANGELOG and the release
+    package'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-25'
+- number: 1093
+  title: 'docs(plan): 1.6.4 rev 3 — the repair does not act on the diagnosis (record
+    + ROADMAP corrected)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-25'
+- number: 1092
+  title: 'fix(version): the framework version comes from the file, not an install-time
+    copy'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1089
+  merged_at: '2026-08-25'
+- number: 1091
+  title: 'docs(release): capture the v1.6.3 release package'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-25'
+sip_moves: []
+cycles:
+- cycle_id: cyc_13ac22c47a6b
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:frontend_compiles
+  - acceptance:regex_match
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-api-runs
+  - vc-probe-api-runs-join
+  - vc-probe-api-runs-join-duplicate
+  - vc-probe-api-runs-leave
+  - vc-probe-api-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_0f4d7f319c12
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:frontend_compiles
+  - acceptance:regex_match
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-api-runs
+  - vc-probe-api-runs-join
+  - vc-probe-api-runs-join-duplicate
+  - vc-probe-api-runs-leave
+  - vc-probe-api-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_35fca7e65f89
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:frontend_compiles
+  - acceptance:regex_match
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-api-runs
+  - vc-probe-api-runs-join
+  - vc-probe-api-runs-join-duplicate
+  - vc-probe-api-runs-leave
+  - vc-probe-api-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_e9e0ec669118
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:frontend_compiles
+  - acceptance:regex_match
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-api-runs
+  - vc-probe-api-runs-join
+  - vc-probe-api-runs-join-duplicate
+  - vc-probe-api-runs-leave
+  - vc-probe-api-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_cf2a139701d3
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:frontend_compiles
+  - acceptance:regex_match
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-api-runs
+  - vc-probe-api-runs-join
+  - vc-probe-api-runs-join-duplicate
+  - vc-probe-api-runs-leave
+  - vc-probe-api-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_bbc9da03c3c1
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:frontend_compiles
+  - acceptance:regex_match
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-api-runs
+  - vc-probe-api-runs-join
+  - vc-probe-api-runs-join-duplicate
+  - vc-probe-api-runs-leave
+  - vc-probe-api-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_b7352b97cff9
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:frontend_compiles
+  - acceptance:regex_match
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-api-runs
+  - vc-probe-api-runs-join
+  - vc-probe-api-runs-join-duplicate
+  - vc-probe-api-runs-leave
+  - vc-probe-api-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_8d262b968f58
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:frontend_compiles
+  - acceptance:regex_match
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-api-runs
+  - vc-probe-api-runs-join
+  - vc-probe-api-runs-join-duplicate
+  - vc-probe-api-runs-leave
+  - vc-probe-api-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+screenshots: []
