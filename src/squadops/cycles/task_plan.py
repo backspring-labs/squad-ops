@@ -619,6 +619,7 @@ def inject_contract_inputs(
             from squadops.capabilities.scaffold import verification_scaffold_for
             from squadops.capabilities.verification_scaffold_emission import (
                 emit_verification_scaffold,
+                slot_element_kinds,
             )
 
             if verification_scaffold_for(interface_manifest.stack):
@@ -632,6 +633,10 @@ def inject_contract_inputs(
                     # merge can reject an assertion on a phantom one with the real
                     # tables named. Data from the one derivation the store renders.
                     "store_tables": list(root_persisted_entities(interface_manifest)),
+                    # #1094: what each shell's frozen floor pins for its collection
+                    # fields, so a fill asserting a contradicting element kind is
+                    # rejected at merge rather than at a retest it then loses.
+                    "slot_element_kinds": slot_element_kinds(interface_manifest),
                 }
 
 

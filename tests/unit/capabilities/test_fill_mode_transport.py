@@ -67,6 +67,11 @@ class TestInjection:
         # #1087: the tables the frozen store exports ride the same input, so the fill
         # merge can reject a phantom-table assertion with the real tables named.
         assert scaffold["store_tables"] == ["RunEvent"]
+        # #1094: the declared element kinds ride the same input, per slot.
+        assert scaffold["slot_element_kinds"]["slot-vc-probe-api-runs-join"]["participants"] == {
+            "kind": "object",
+            "required_fields": ["id", "name"],
+        }
         # #1029: against the constant, not a literal. This test's subject is that the
         # scaffold REACHES qa.test on an opted-in stack; pinning the number here made a
         # legitimate emission bump fail a transport test, and the deliberate value pin
@@ -199,6 +204,29 @@ class TestMergeFillArtifacts:
         )
         assert "`TABLES.RunEvent`" in create_shell["content"]
         assert "expect(all(TABLES.Participant))" not in create_shell["content"]
+
+    def test_a_fill_contradicting_the_declared_element_kind_is_rejected_at_merge(
+        self, scaffold_input
+    ):
+        """#1094 through the handler: roll 5's fill on roll 5's kind of manifest."""
+        from squadops.capabilities.verification_scaffold_emission import slot_element_kinds
+
+        kinds = slot_element_kinds(manifest_for_stack("nextjs_ts"))
+        fills = parse_fill_emission(
+            "```fill:slot-vc-probe-api-runs-join\n"
+            "    expect(body.participants).toContain('sample')\n```\n"
+        )
+        merged_artifacts, _, evidence = QATestHandler()._merge_fill_artifacts(
+            {**scaffold_input, "slot_element_kinds": kinds}, fills, []
+        )
+        assert evidence["counts"]["rejected"] == 1
+        join_shell = next(
+            a
+            for a in merged_artifacts
+            if a["name"].endswith("vc-probe-api-runs-join.scaffold.test.ts")
+        )
+        assert "#1094" in join_shell["content"]
+        assert "toContain('sample')" not in join_shell["content"]
 
     def test_the_banked_evidence_names_the_additive_suite_that_survived(self, scaffold_input):
         """#980's other half: a retreat weakens the fills AND drops the additive suite.
