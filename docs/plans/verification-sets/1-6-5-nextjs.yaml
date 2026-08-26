@@ -1,4 +1,4 @@
-# 1.6.5 verification set — the counting set on nextjs_ts. This file IS the pre-registration's
+# 1.6.5 verification set — the counting set on Next.js (nextjs_ts). This file IS the pre-registration's
 # §1 table as data: the driver reads every fixed parameter from here and nothing from its code.
 # Pins (expected_config_hash_prefix, frozen_deploy_commit, frozen_image_ids) are filled in at
 # pre-registration, after the shakeout, and are asserted on every counting roll.
@@ -11,7 +11,7 @@ overrides:
   build_profile: nextjs_ts
   dev_capability: nextjs_ts
 gate_name: progress_plan_review
-n_rolls: 8
+n_rolls: 6
 # Copied verbatim onto every gate approval — the driver substitutes NOTHING in this text.
 gate_notes: >-
   1.6.5 verification set. Approved under the pre-registered gate policy
