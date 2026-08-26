@@ -4856,3 +4856,84 @@ class TestQaRepairReachesFills:
             role, self._inputs(with_scaffold=with_scaffold), MagicMock(outputs={}), self._evidence()
         )
         assert out == {}
+
+
+class TestOwnArtifactNeverNarrows:
+    """#1120: a dev-role repair of a qa-side failure must not be handed an empty target.
+
+    Replays the 1.6.5 stack #1 shakeout (cyc_3cde35fa5204): a free-authored frontend
+    suite fails with no probe and no drift; the analyzer implicates the suite file itself.
+    Before this, that file narrowed the target, the #884 veto removed it, and the dev
+    repair emitted nothing on every round.
+    """
+
+    INPUTS = {
+        "expected_artifacts": ["frontend/src/__tests__/runs.test.jsx"],
+        "implementation_artifacts": [
+            "backend/routes.py",
+            "frontend/src/views/RunsListView.jsx",
+            "frontend/src/views/CreateRunView.jsx",
+            "frontend/src/views/RunDetailView.jsx",
+        ],
+    }
+    SUITE_FAIL = {
+        "validation_result": {
+            "passed": False,
+            "checks": [{"check": "tests_pass", "status": "failed"}],
+        }
+    }
+
+    def test_the_own_artifact_rides_but_does_not_narrow(self):
+        from adapters.cycles.correction_runner import _apply_ownership_veto, _resolve_repair_target
+
+        target, _, _ = _resolve_repair_target(
+            self.SUITE_FAIL,
+            dict(self.INPUTS),
+            {"implicated_files": ["frontend/src/__tests__/runs.test.jsx"]},
+        )
+        # the package-scoped surface is back: the frontend views under test
+        assert {
+            "frontend/src/views/RunsListView.jsx",
+            "frontend/src/views/CreateRunView.jsx",
+            "frontend/src/views/RunDetailView.jsx",
+        } <= set(target)
+        assert "backend/routes.py" not in target  # package scoping still bounds the radius
+        assert "frontend/src/__tests__/runs.test.jsx" in target  # pf-21: it still rides
+        # and after the dev-role veto the target is NOT empty — the exact failure
+        dev_target = _apply_ownership_veto(
+            target, "qa.test", "dev", self.INPUTS["expected_artifacts"]
+        )
+        assert dev_target and "frontend/src/__tests__/runs.test.jsx" not in dev_target
+
+    def test_a_foreign_implicated_file_still_narrows(self):
+        """The #1015-A analyzer half is untouched where it belongs: a claim on a file
+        someone else owns narrows exactly as before."""
+        from adapters.cycles.correction_runner import _resolve_repair_target
+
+        target, _, _ = _resolve_repair_target(
+            self.SUITE_FAIL,
+            dict(self.INPUTS),
+            {"implicated_files": ["frontend/src/views/RunDetailView.jsx"]},
+        )
+        assert target == [
+            "frontend/src/views/RunDetailView.jsx",
+            "frontend/src/__tests__/runs.test.jsx",
+        ]
+
+    def test_own_and_foreign_together_narrow_on_the_foreign_file_only(self):
+        from adapters.cycles.correction_runner import _resolve_repair_target
+
+        target, _, _ = _resolve_repair_target(
+            self.SUITE_FAIL,
+            dict(self.INPUTS),
+            {
+                "implicated_files": [
+                    "frontend/src/__tests__/runs.test.jsx",
+                    "frontend/src/views/RunsListView.jsx",
+                ]
+            },
+        )
+        assert target == [
+            "frontend/src/views/RunsListView.jsx",
+            "frontend/src/__tests__/runs.test.jsx",
+        ]

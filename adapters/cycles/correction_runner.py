@@ -501,6 +501,21 @@ def _resolve_repair_target(
     analysis_files = (
         _verified_implicated_files(failure_analysis, failed_inputs) if not probe_slots else []
     )
+    # #1120: the failed task's OWN artifacts are never a narrowing site. They already ride
+    # the target as failed_artifacts and the ownership veto (#884) decides who may touch
+    # them; letting one of them withhold the language-wide surface left a dev-role
+    # repair of a qa-side failure with an EMPTY target (stack #1, cyc_3cde35fa5204:
+    # the analyzer named the failing jsx suite, the veto removed it, every round was
+    # refunded). Sites that narrow are files someone else owns.
+    own = {str(f) for f in failed_artifacts}
+    own_only = [f for f in analysis_files if f in own]
+    analysis_files = [f for f in analysis_files if f not in own]
+    if own_only and not analysis_files:
+        logger.info(
+            "correction_repair_target: the analyzer implicated only the failed task's own "
+            "artifact(s) %s — not a narrowing site; the surface is what it was (#1120)",
+            ", ".join(own_only),
+        )
     scoped_source = _narrowed_or_scoped(
         [*probe_slots, *analysis_files], failed_inputs, failed_artifacts
     )

@@ -34,6 +34,13 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   scaffold gate's allowed set, the Next.js route stub; every one now calls the seam, the
   decorator pins the derived status too, and a structural test fails if a copy returns.
   Reference fixtures unchanged (they declare their statuses).
+- **#1120 — a qa-side failure no longer empties the dev repair target.** The analyzer half of
+  #1015-A let the failed task's *own* artifact (a free-authored frontend suite the analyzer
+  honestly implicated) act as a narrowing site: the language-wide surface was withheld, the #884
+  veto removed the qa-owned file from the dev-role target, and every round was dispatched with
+  nothing to produce and refunded — found on the first stack #1 cycle since 08-09
+  (`cyc_3cde35fa5204`). Own artifacts ride the target but never narrow it; the package-scoped
+  surface applies as it did before the analyzer half shipped.
 - **D — an own-artifact qa repair can reach a fill** (#970, with #969's brief). Under fill mode
   the shells are merge products, never in `expected_artifacts`, so the own-artifact repair aimed
   at the plan's declared file and a failing fill was structurally unreachable. Now: the target is
