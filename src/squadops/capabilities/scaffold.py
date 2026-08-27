@@ -1334,9 +1334,15 @@ def _model_source(manifest: InterfaceManifest) -> str:
                 lines.append(f"    {f.name}: {ann}")
             elif f.has_default and isinstance(f.default, list):
                 lines.append(f"    {f.name}: {ann} = Field(default_factory=list)")
-            elif f.has_default:
+            elif f.has_default and f.default is not None:
                 lines.append(f"    {f.name}: {ann} = {f.default!r}")
             else:
+                # #1125: a declared ``default: null`` and an optional field with no default
+                # mean the same thing — the value may be absent — and both freeze nullable.
+                # ``default: null`` used to take the branch above and emit ``str = None``:
+                # a non-nullable annotation with a None default, which pydantic v2 rejects
+                # (``string_type``) the moment a route forwards the request's None into the
+                # model. Five of six 1.6.5 FastAPI+React rolls paid that as a round-0 500.
                 lines.append(f"    {f.name}: {ann} | None = None")
         lines.append("")
 
