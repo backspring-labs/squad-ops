@@ -52,6 +52,7 @@ from squadops.cycles.contract_derivation import (
     SEEDED_MANIFEST_FILENAME,
     is_interface_manifest,
 )
+from squadops.cycles.correction_signature import REPAIR_REFUSED_MARKER
 from squadops.cycles.frozen_check_validation import frozen_check_violations
 from squadops.cycles.manifest_authoring import (
     GATE_DECIDED_BY_NO_QUESTIONS,
@@ -3123,8 +3124,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             _record_repair_rejection(
                 repair_rejection_carry,
                 envelope.task_id,
-                f"correction attempt {correction_attempts}: repair REJECTED by patch "
-                f"verification ({verification.reason or 'failed checks'})"
+                f"correction attempt {correction_attempts}: {REPAIR_REFUSED_MARKER} "
+                f"({verification.reason or 'failed checks'})"
                 + (f" — {failed_detail}" if failed_detail else ""),
             )
             return "continue"

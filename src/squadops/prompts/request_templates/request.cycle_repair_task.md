@@ -1,6 +1,6 @@
 ---
 template_id: request.cycle_repair_task
-version: "5"
+version: "6"
 required_variables:
   - prd
   - role
@@ -44,7 +44,11 @@ The repair MUST produce the following file(s) by name, using fenced code blocks 
 **This is a repair, not a rewrite.** Change the minimum necessary to fix the named failure.
 The file list above is the set you may emit — it is not a list of things that need changing.
 A file you are not fixing must be re-emitted byte-identical to what is already in the
-workspace.
+workspace. Keep the file's structure as it is: the router construction, every route
+decorator with its literal path, every function name and its signature. A repair that
+re-emits the file as a rewrite — a prefixed router, renamed handlers, dropped decorators —
+is refused by the acceptance checks before it is ever tested, even when the fix inside it
+is correct, and the round is lost.
 
 Unrelated changes are how a repair round is lost. Reshaping a response, rewording an error
 string, or refactoring validation while fixing something else introduces new failures that

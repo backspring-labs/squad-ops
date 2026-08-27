@@ -50,6 +50,7 @@ from squadops.cycles.correction_signature import (
     classify_movement,
     failure_signature,
     render_signature,
+    repair_refused_in_round,
     should_terminate_plan_defect,
 )
 from squadops.cycles.failure_evidence import build_failure_evidence, compose_failure_trigger
@@ -1153,6 +1154,7 @@ class CorrectionRunner:
         cycle: Cycle,
         run_id: str,
         all_artifact_refs: list[str],
+        repair_rejections: list[str] | None = None,
     ) -> None:
         """#435 A4.3: terminate the chain as ``plan_defect`` on an exact
         adjacent repeat with structural candidates on both rounds.
@@ -1162,12 +1164,31 @@ class CorrectionRunner:
         termination the typed ``CorrectionTermination`` record is persisted as
         a ``correction_termination`` artifact and the chain aborts through the
         normal ``_ExecutionError`` path, so ``failure_reason`` (#427) names it.
+
+        #1129: a round whose repair patch verification REFUSED is not a round
+        this rule may count. Nothing was applied, no retest ran, and the failed
+        task re-ran against the unrepaired tree, so its signature repeats by
+        construction — "the repair did not help" and "the repair was never
+        applied" were indistinguishable here, and two 1.6.5 rolls ended
+        ``plan_defect`` after zero applied repairs. The previous round's
+        signature is treated as absent (the same clearing an infra round gets)
+        and this round becomes the chain's first-seen; the attempt cap still
+        bounds a repair that keeps being refused.
         """
         current_sig = failure_signature(failure_evidence)
         state = signature_state.get(envelope.task_id)
         if current_sig is None:
             signature_state.pop(envelope.task_id, None)
             return
+        if state and repair_refused_in_round(repair_rejections, int(state.get("round", -1))):
+            logger.info(
+                "plan_defect terminal: round %s's repair for task=%s was refused by patch "
+                "verification and never applied — its signature is not counted as a "
+                "repeat (#1129)",
+                state.get("round"),
+                envelope.task_id,
+            )
+            state = None
         prev_sig = state["signature"] if state else None
         prev_candidate = state["candidate"] if state else None
         candidate = delta.structural_plan_change_candidate
@@ -1229,6 +1250,7 @@ class CorrectionRunner:
             "signature": current_sig,
             "candidate": candidate,
             "first_seen_round": first_seen,
+            "round": correction_attempts,
             "delta_artifact_id": delta_artifact_id,
         }
 
@@ -1492,6 +1514,7 @@ class CorrectionRunner:
                 cycle=cycle,
                 run_id=run_id,
                 all_artifact_refs=all_artifact_refs,
+                repair_rejections=repair_rejections,
             )
 
         # 7. Handle patch path: dispatch repair tasks

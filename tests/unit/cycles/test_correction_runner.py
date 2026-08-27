@@ -3930,7 +3930,7 @@ class TestProgressAwareTermination:
 
         runner._dispatch_protocol_step = AsyncMock(side_effect=_step)
 
-    async def _run_round(self, runner, cycle, state, attempt: int):
+    async def _run_round(self, runner, cycle, state, attempt: int, **extra):
         return await runner.run_correction_protocol(
             run_id="run_001",
             cycle=cycle,
@@ -3943,6 +3943,7 @@ class TestProgressAwareTermination:
             completed_task_ids=[],
             plan_delta_refs=[],
             signature_state=state,
+            **extra,
         )
 
     async def test_adjacent_repeat_with_candidates_terminates(self, cycle):
@@ -3974,6 +3975,29 @@ class TestProgressAwareTermination:
             call.args[0].artifact_type for call in runner._artifact_vault.store.call_args_list
         ]
         assert "correction_termination" not in stored_types
+
+    async def test_a_refused_previous_round_is_not_a_repeat(self, cycle):
+        """#1129 (1.6.5 FastAPI+React rolls 5 and 6): round 0's patch was REFUSED by
+        patch verification — never applied, no retest — so round 1 measured the same
+        unrepaired tree and the signature repeated by construction. The rule read that
+        as "the repair did not help" and terminated after zero applied repairs; roll
+        6's refused patch carried the correct fix. A refused round clears adjacency
+        like an infra round; a round whose patch WAS applied still counts."""
+        from adapters.cycles.execution_errors import _ExecutionError
+        from squadops.cycles.correction_signature import REPAIR_REFUSED_MARKER
+
+        runner = self._runner()
+        self._wire_steps(runner, "tighten_acceptance")
+        state: dict = {}
+        refused_round_0 = [f"correction attempt 0: {REPAIR_REFUSED_MARKER} (unresolved_imports)"]
+
+        await self._run_round(runner, cycle, state, 0)
+        # round 1: same signature, but round 0 applied nothing → no termination
+        await self._run_round(runner, cycle, state, 1, repair_rejections=refused_round_0)
+        assert state["task-qa-4"]["first_seen_round"] == 1
+        # round 2: round 1's patch was applied (no refusal entry for it) → the repeat is real
+        with pytest.raises(_ExecutionError, match="plan_defect"):
+            await self._run_round(runner, cycle, state, 2, repair_rejections=refused_round_0)
 
     async def test_no_state_threaded_is_todays_behavior(self, cycle):
         # legacy callers without signature_state: byte-identical behavior

@@ -151,6 +151,43 @@ class TestEndpointDefined:
         )
         assert result.status == "skipped"
 
+    async def test_prefixed_router_serves_the_declared_paths(self, tmp_path: Path):
+        """#1129 (1.6.5 FastAPI+React roll 6): the repair's router was
+        ``APIRouter(prefix="/runs")`` with ``@router.post("")`` — the same ``POST /runs``
+        the literal form declares — and the check refused a correct fix on the
+        decorator's literal path."""
+        (tmp_path / "routes.py").write_text(
+            "from fastapi import APIRouter\n"
+            'router = APIRouter(prefix="/runs", tags=["runs"])\n'
+            "other = APIRouter(prefix=some_prefix)\n"
+            '@router.get("")\n'
+            "def get_runs():\n    return []\n"
+            '@router.post("", status_code=201)\n'
+            "def post_runs(body):\n    return {}\n"
+            '@router.get("/{run_id}")\n'
+            "def get_run(run_id: str):\n    return {}\n"
+            '@router.post("/{run_id}/join")\n'
+            "def join_run(run_id: str, body):\n    return {}\n"
+            '@other.get("/x")\n'
+            "def x():\n    return {}\n"
+        )
+        result = await get_check("endpoint_defined").evaluate(
+            {
+                "file": "routes.py",
+                "methods_paths": [
+                    "GET /runs",
+                    "POST /runs",
+                    "GET /runs/{run_id}",
+                    "POST /runs/{run_id}/join",
+                ],
+            },
+            tmp_path,
+            stack="fastapi",
+        )
+        assert result.status == "passed", result.actual
+        # a computed prefix is not read: that router's route stays literal
+        assert "GET /x" in result.actual["found"]
+
     async def test_missing_file_failed(self, fastapi_workspace):
         result = await get_check("endpoint_defined").evaluate(
             {"file": "does_not_exist.py", "methods_paths": ["GET /x"]},

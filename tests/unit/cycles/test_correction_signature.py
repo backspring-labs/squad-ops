@@ -16,9 +16,11 @@ from squadops.cycles.correction_signature import (
     MOVEMENT_PROGRESS,
     MOVEMENT_REPEAT,
     MOVEMENT_SHIFTED,
+    REPAIR_REFUSED_MARKER,
     classify_movement,
     failure_signature,
     render_signature,
+    repair_refused_in_round,
     should_terminate_plan_defect,
 )
 
@@ -352,3 +354,23 @@ class TestNoMachineReportDiscriminators:
         would disable A4 for every pre-#626 shape."""
         sig = failure_signature(_evidence([{"check": "frontend_build", "passed": False}]))
         assert render_signature(sig) == ("frontend_build||failed",)
+
+
+class TestRefusedRound:
+    """#1129: a round whose patch was refused by patch verification applied nothing; the
+    terminal must not read the next round's identical signature as "the repair did not
+    help" — 1.6.5 FastAPI+React rolls 5 and 6 ended plan_defect after zero applied repairs."""
+
+    def test_the_executors_own_entry_is_recognised(self):
+        carry = [f"correction attempt 0: {REPAIR_REFUSED_MARKER} (unresolved_imports) — main.py"]
+        assert repair_refused_in_round(carry, 0) is True
+        assert repair_refused_in_round(carry, 1) is False
+
+    def test_a_retest_that_ran_and_failed_is_not_a_refusal(self):
+        """The patch WAS applied and the suite still failed — that repeat is informative."""
+        carry = ["correction attempt 0: repaired suite retest FAILED — 3 validation errors"]
+        assert repair_refused_in_round(carry, 0) is False
+
+    @pytest.mark.parametrize("carry", [None, [], ["correction attempt 00: something else"]])
+    def test_absent_or_foreign_entries_never_match(self, carry):
+        assert repair_refused_in_round(carry, 0) is False
