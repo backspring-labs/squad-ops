@@ -18,6 +18,13 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   `X = default`. Python emitter only — the TS emitter renders `distance?: string` and is
   untouched; every pinned fixture (the Next.js reference scaffold, the stack-#1 contract
   reference, the context goldens) is byte-identical.
+- **B — the frozen React test harness unmounts between tests** (#1127). `test-setup.js`
+  registers `afterEach(cleanup)`: under vitest's default `globals:false` Testing Library never
+  auto-registers it, so any suite that renders in more than one test failed "Found multiple
+  elements" unless the author added the line — the one suite that did was green. Moves the
+  stack-#1 contract reference (v10 → v11, `reference_defect` per the M0 taxonomy: a harness
+  that can only reject a working app, never pass a broken one, so the 1.4 figure carries no
+  qualification) and the three context goldens' `frozen_surface_index` line for that file.
 
 ## [1.6.5] — 2026-08-27
 

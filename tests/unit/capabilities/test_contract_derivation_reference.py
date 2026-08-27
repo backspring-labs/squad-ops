@@ -39,7 +39,7 @@ from pathlib import Path
 
 import yaml
 
-from squadops.capabilities.scaffold import InterfaceManifest
+from squadops.capabilities.scaffold import InterfaceManifest, expand
 from squadops.capabilities.scaffold_contract import emit_contract_dict, emit_contract_yaml
 
 _REPO = Path(__file__).resolve().parents[3]
@@ -63,10 +63,21 @@ _MANIFEST = _REPO / "examples" / "03_group_run" / "interface_manifest.yaml"
 #   (docs/plans/1-6-0-authorship-plan.md): v9 left the success body implicit; derivation
 #   now states it. Not a reference defect, so the 1.4 figure carries no qualification —
 #   it measured a weaker contract that every app passing this one also passes.
+#   v10 stays in the fixtures directory as that form's record.
+# * v11 (2026-08-27, #1127) differs from v10 in exactly one ``frozen`` entry: the sha256 of
+#   ``frontend/src/test-setup.js``, which now registers ``afterEach(cleanup)``. Classified
+#   **reference_defect** — the pinned harness was wrong (under vitest ``globals:false``
+#   Testing Library never unmounts between tests, so a suite rendering in two tests fails
+#   "Found multiple elements"), found by the 1.6.5 FastAPI+React set, not by a deriver
+#   change. Retrospective obligation met by statement: that harness can only REJECT a
+#   working application, never pass a broken one, so the 1.4 FAY figure (6/6) carries no
+#   qualification — every app that passed under it passes under this one.
 _EVIDENCE_CONTRACT = (
     _REPO / "tests" / "fixtures" / "reference_contract" / "contract_v9_art_4f368ea08799.yaml"
 )
-_CONTRACT = _REPO / "tests" / "fixtures" / "reference_contract" / "contract_v10_json_has_1079.yaml"
+_CONTRACT = (
+    _REPO / "tests" / "fixtures" / "reference_contract" / "contract_v11_harness_cleanup_1127.yaml"
+)
 
 # The ingested artifacts, by content hash. Measured 2026-08-07 against the vault:
 #   art_8becd104e9fc — interface manifest v4
@@ -75,7 +86,7 @@ _CONTRACT = _REPO / "tests" / "fixtures" / "reference_contract" / "contract_v10_
 # run against. A change here is a change to the evidence base, not a refactor.
 _MANIFEST_SHA256 = "52d8ea7e204e0ceca9c94a60a7b10f18a24519e594ce5c51654674b82a15a826"
 _EVIDENCE_CONTRACT_SHA256 = "7622f570c949fe9504bfebdcd0562e77e78b4d8bff54d9d670001b7f6482e6fe"
-_CONTRACT_SHA256 = "bdd540d0d916e085dc45dd9eaef2325f9278b432720453f490666de19447b831"
+_CONTRACT_SHA256 = "04ab6c725a1a8ffffc285091dbad6e994514436df8908932c36a6b4e42503a4f"
 
 
 def _sha256(path: Path) -> str:
@@ -106,7 +117,7 @@ def test_reference_contract_is_still_the_ingested_artifact():
         "evidence was measured against; they are history, and history is not regenerated."
     )
     assert _sha256(_CONTRACT) == _CONTRACT_SHA256, (
-        "tests/fixtures/reference_contract/contract_v10_json_has_1079.yaml no longer matches "
+        "tests/fixtures/reference_contract/contract_v11_harness_cleanup_1127.yaml no longer matches "
         "its pinned hash. Regenerating it in place would make the derivation test below "
         "tautological — a deriver change is classified per the M0 taxonomy and lands with a "
         "new hash here, deliberately."
@@ -150,13 +161,18 @@ def test_the_reference_pair_is_non_trivial():
     assert len(deployed["behavioral"]["probes"]) == 5
 
 
-def test_the_current_form_differs_from_the_evidence_contract_only_by_json_has():
-    """The classification's own check (#1079, ambiguity_removal): v10 must be v9 plus the
-    success probes' keys and nothing else. Any other drift is a different divergence with a
-    different class, and this test is what makes the classification falsifiable."""
+def test_the_current_form_differs_from_the_evidence_contract_only_as_classified():
+    """The classifications' own check. The current form must be v9 plus exactly the two
+    classified divergences and nothing else — any other drift is a different divergence with
+    a different class, and this test is what makes each classification falsifiable:
+
+    * #1079 (``ambiguity_removal``): the success probes carry ``json_has``;
+    * #1127 (``reference_defect``): the frozen harness ``frontend/src/test-setup.js`` moved,
+      because it now registers ``afterEach(cleanup)`` — one ``frozen`` entry, no other.
+    """
     v9 = yaml.safe_load(_EVIDENCE_CONTRACT.read_text(encoding="utf-8"))
-    v10 = yaml.safe_load(_CONTRACT.read_text(encoding="utf-8"))
-    for probe in v10["behavioral"]["probes"]:
+    current = yaml.safe_load(_CONTRACT.read_text(encoding="utf-8"))
+    for probe in current["behavioral"]["probes"]:
         if probe["expect"].get("status", 0) < 300:
             assert probe["expect"].pop("json_has") == [
                 "id",
@@ -165,4 +181,20 @@ def test_the_current_form_differs_from_the_evidence_contract_only_by_json_has():
                 "location",
                 "participants",
             ]
-    assert v10 == v9
+
+    moved = [
+        (old["path"], old["sha256"], new["sha256"])
+        for old, new in zip(v9["frozen"], current["frozen"], strict=True)
+        if old != new
+    ]
+    assert [path for path, _, _ in moved] == ["frontend/src/test-setup.js"]
+    ((path, v9_sha, current_sha),) = moved
+    emitted = next(
+        f["content"]
+        for f in expand(InterfaceManifest.from_yaml(_MANIFEST.read_text(encoding="utf-8")))
+        if f["name"] == path
+    )
+    assert hashlib.sha256(emitted.encode()).hexdigest() == current_sha
+    assert "afterEach(cleanup)" in emitted
+    current["frozen"] = v9["frozen"]
+    assert current == v9

@@ -1638,6 +1638,15 @@ _TEST_SETUP_JS = """// The /vitest entry registers jest-dom matchers on vitest's
 // bare entry assumes a GLOBAL expect and crashes collection under vitest's
 // default globals:false (caught on the real toolchain, not in review).
 import '@testing-library/jest-dom/vitest'
+import { afterEach } from 'vitest'
+import { cleanup } from '@testing-library/react'
+
+// #1127: Testing Library only auto-registers cleanup when a GLOBAL afterEach
+// exists, and under globals:false there is none — so nothing unmounts between
+// tests and a suite that renders in more than one `it` fails "Found multiple
+// elements". Registering it here is the workspace invariant, not a per-suite
+// guess.
+afterEach(cleanup)
 """
 
 # Scaffold-owned harness proof (frozen). Renders the app shell at a path no

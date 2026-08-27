@@ -833,6 +833,19 @@ class TestFrontendTestHarness:
         assert "frontend/src/__tests__/harness.test.jsx" not in slots
         assert "frontend/src/test-setup.js" not in slots
 
+    def test_setup_file_unmounts_between_tests(self):
+        """#1127: under vitest's default ``globals:false`` Testing Library never
+        auto-registers ``cleanup`` (it needs a global ``afterEach``), so a suite that
+        renders in two ``it`` blocks fails "Found multiple elements" — 1.6.5
+        FastAPI+React roll 1, three suites, the only green one had added the line
+        itself. The frozen setup registers it; both imports must be real statements
+        so the registration cannot survive as a comment."""
+        setup = _by_name(expand(_group_run_manifest()))["frontend/src/test-setup.js"]
+        statements = [ln.strip() for ln in setup.splitlines() if not ln.strip().startswith("//")]
+        assert "import { afterEach } from 'vitest'" in statements
+        assert "import { cleanup } from '@testing-library/react'" in statements
+        assert "afterEach(cleanup)" in statements
+
 
 class TestFrozenModelOptionalFields:
     """#1125: what the frozen pydantic model says about a field the manifest marks
