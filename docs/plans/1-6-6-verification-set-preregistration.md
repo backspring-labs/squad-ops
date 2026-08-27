@@ -6,8 +6,9 @@ after both shakeouts, before the first counted launch. Merging it is the owner's
 not change what it pre-registers; the branch commit is the record.
 
 This is the 1.6.6 plan's §3 (`docs/plans/1-6-6-plan.md`, rev 1) with one change the owner
-made on 2026-08-27: **two counting sets of four, not one of six** — the FastAPI+React set that
-measures the pack, and a Next.js+TS regression arm that asks only whether anything moved.
+made on 2026-08-27: **six counting rolls on FastAPI+React and two on Next.js+TS** — six where
+every item of the pack came from, so the pack gets the most chances to be exercised, and a
+two-roll regression arm on the stack the pack is not supposed to touch.
 Everything not restated here is inherited **verbatim** from the 1.6.5 pre-registration
 (`docs/plans/1-6-5-verification-set-preregistration.md`) and, through it, 1.6.4 and 1.6.3:
 §5 (scoring), §5.1 (roll validity — void / reset / counted), §6 and §6.1 (the gate constant
@@ -28,7 +29,7 @@ written once; the driver refuses a counting roll when the deploy's image ids or 
 
 | Parameter | Value |
 |---|---|
-| N (rolls) | **4 counted** on FastAPI+React (the measurement, §3) and **4 counted** on Next.js+TS (the regression arm, §4). See §1.3 for what N=4 can and cannot say. |
+| N (rolls) | **6 counted** on FastAPI+React (the measurement, §3) and **2 counted** on Next.js+TS (the regression arm, §4). See §1.3 for what these sizes can and cannot say. |
 | Bar | **none** on either rate; each prediction is pass/fail on its own terms |
 | Project / PRD / squad / request profile | `group_run`, `full-38`, `validated-fullstack` — identical to 1.6.5 |
 | Overrides | FastAPI+React: none (`validated-fullstack`'s defaults are stack #1). Next.js+TS: `build_profile=nextjs_ts`, `dev_capability=nextjs_ts` |
@@ -40,18 +41,24 @@ written once; the driver refuses a counting roll when the deploy's image ids or 
 | Gate policy | 1.6.3 §6 constant, verbatim in each set config's `gate_notes`; `--as-agent`; both §6.1 paths satisfy zero-intervention and the decider is recorded per roll |
 | Audit instrument | `scripts/dev/audit_delivered_app.py` at the frozen deploy commit |
 | Driver | `verification_set_driver.py roll --set docs/plans/verification-sets/1-6-6-fastapi-react.yaml --roll N`, then `…/1-6-6-nextjs.yaml` — one roll per invocation |
-| Order | FastAPI+React rolls 1–4 first (the measurement), then Next.js+TS rolls 1–4 |
+| Order | FastAPI+React rolls 1–6 first (the measurement), then Next.js+TS rolls 1–2 |
 
-### 1.3 The honest limits of N=4
+### 1.3 The honest limits of 6 and 2
 
-Four rolls per arm is the owner's sizing, and this section says what it buys and what it
-does not. **It buys the mechanism questions**: every prediction in §3 and §4 is pass/fail per
-roll, and one falsification is a finding at N=1 — that is what stopped the previous sets early
-and it works at any N. **It does not buy a rate**: 4 of 4 is 95% CI [51%, 100%] (Wilson); 2 of
-4 is [9.5%, 90.5%]. Against the 1.6.5 FastAPI+React baseline of 2 of 6 ([9.7%, 70.0%]) no
-outcome of four rolls can claim a significant change, and this document does not. Against
-the Next.js 6 of 6, four greens say "nothing moved" and one red is one red — a finding to
-attribute, not a rate. The verdict counts are reported with their intervals and no bar.
+Six and two are the owner's sizing (2026-08-27, from a 4+4 first draft), and this section says
+what they buy and what they do not. **Six on FastAPI+React buys exercise, not a rate.** Every
+prediction in §3 is pass/fail per roll, and one falsification is a finding at N=1 — that is what
+stopped the previous sets early and it works at any N. But several items only fire when a roll
+gives them the chance — A needs a manifest that writes `default: null` (five of eight 1.6.5-era
+manifests did), D and F need a correction round at all — so more rolls means more of the pack
+actually observed, and each roll's record says which items it exercised. It does **not** buy
+a rate: 6 of 6 is 95% CI [61%, 100%] (Wilson), 3 of 6 is [19%, 81%]; against the 1.6.5
+baseline of 2 of 6 ([9.7%, 70.0%]) no outcome claims a significant change, and this document
+does not. **Two on Next.js+TS buys one thing**: nothing in the pack is supposed to reach that
+stack (A/B/E by construction, byte-identical on the pinned reference; C/D/F loop code its
+1.6.5 set never ran), so two greens on the same protocol as its 6 of 6 say "nothing moved",
+and one red is a finding to attribute at N=1 — the 1.6.5 F1 lesson in reverse. Neither count
+is a rate; both are reported with their intervals and no bar.
 
 ---
 
@@ -72,7 +79,7 @@ attribute, not a rate. The verdict counts are reported with their intervals and 
 
 ---
 
-## 3. FastAPI+React (`fullstack_fastapi_react`) — the measurement, four rolls
+## 3. FastAPI+React (`fullstack_fastapi_react`) — the measurement, six rolls
 
 The set the 1.6.6 pack was built for. Every prediction is one item of the pack, read only from
 the evidence named, and each has a 1.6.5 roll that falsified it before the fix:
@@ -88,7 +95,7 @@ the evidence named, and each has a 1.6.5 roll that falsified it before the fix:
 | **S0–S3, Q3** | carried from 1.6.5 §4 unchanged | as there | as there | held 6/6 |
 
 **Texture, no prediction attached:** the verdict rate against 2 of 6 (Wilson interval, no
-bar, no significance claim at N=4 — §1.3); correction rounds against 3/1/2/1/2/2; **greens by
+bar, no significance claim at N=6 — §1.3); correction rounds against 3/1/2/1/2/2; **greens by
 repair versus by re-dispatch**, counted separately; refused versus applied patches per roll
 (new); `stores_beyond_roots`; qa primary completion tokens against 1.6.5's twelve.
 
@@ -103,7 +110,7 @@ stop early. A stop in one set does not stop the other.
 
 ---
 
-## 4. Next.js+TS (`nextjs_ts`) — the regression arm, four rolls
+## 4. Next.js+TS (`nextjs_ts`) — the regression arm, two rolls
 
 Nothing in the pack should reach this stack: A is the Python model emitter, B the React
 harness, E a manifest shape no Next.js manifest has used (and its output is byte-identical
@@ -130,7 +137,7 @@ prediction it registered.
 ## 5. Delegation
 
 Executed by the assistant under the owner's standing delegation for both sets — FastAPI+React
-rolls 1–4, then Next.js+TS rolls 1–4: launch, gate approval with the §6 constant, collection,
+rolls 1–6, then Next.js+TS rolls 1–2: launch, gate approval with the §6 constant, collection,
 and the per-roll record; **the counted/void/reset reading and the prediction check are made at
 each roll boundary before the next launch**; a reset or a falsified prediction stops that set
 for the owner. No merges to main while either set is open (§7).

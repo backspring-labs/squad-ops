@@ -323,8 +323,8 @@ class TestSquadSnapshotIsAnIdentity:
         [
             ("1-6-5-nextjs.yaml", 6),
             ("1-6-5-fastapi-react.yaml", 6),
-            ("1-6-6-nextjs.yaml", 4),
-            ("1-6-6-fastapi-react.yaml", 4),
+            ("1-6-6-nextjs.yaml", 2),
+            ("1-6-6-fastapi-react.yaml", 6),
         ],
     )
     def test_the_counting_sets_are_fully_pinned(self, driver, filename, n):

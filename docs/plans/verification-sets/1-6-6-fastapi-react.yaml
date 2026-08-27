@@ -1,4 +1,4 @@
-# 1.6.6 verification set — FastAPI+React (fullstack_fastapi_react), 4 counting rolls: the set that
+# 1.6.6 verification set — FastAPI+React (fullstack_fastapi_react), 6 counting rolls: the set that
 # measures the 1.6.6 pack (A–F) against the 1.6.5 baseline of 2/6 on this stack. Predictions R1–R6
 # per the pre-registration. Same request profile and overrides as 1.6.5 (no config change in the
 # pack, so the same resolved_config_hash and squad snapshot are expected). Pins filled at
@@ -10,7 +10,7 @@ squad_profile: full-38
 request_profile: validated-fullstack
 overrides: {}
 gate_name: progress_plan_review
-n_rolls: 4
+n_rolls: 6
 gate_notes: >-
   1.6.6 FastAPI+React verification set. Approved under the pre-registered gate policy
   (pre-registration §6) — identical text applied to every roll of this set.
