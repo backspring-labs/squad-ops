@@ -447,10 +447,15 @@ def _probes(manifest: InterfaceManifest, pack: CriteriaPack) -> list[dict[str, A
     for ep in manifest.api.endpoints:
         if ep.method != "POST" or "{" in ep.path:
             continue
-        shape = shapes.get(ep.request or "")
+        # #1128: the body's fields come from the manifest's one resolver — a declared
+        # shape's required fields, or an entity-typed request's required non-generated
+        # ones — the same answer the route emitter's payload class encodes (an entity-typed
+        # request is emitted as ``{Entity}Body`` with ``NonBlankStr`` required fields, so
+        # the blank-input probe below applies to it exactly as to a declared shape).
+        body_fields = manifest.request_body_fields(ep.request)
         json_body = {
             field: _probe_sample_value(field, field_types.get(field, "string"))
-            for field in (shape.required if shape else ())
+            for field in manifest.request_body_fields(ep.request)
         }
         create_probe = {
             "id": f"vc-probe-{_slug(ep.path) or 'root'}",
@@ -488,7 +493,7 @@ def _probes(manifest: InterfaceManifest, pack: CriteriaPack) -> list[dict[str, A
         # every author happening to declare 422). A framework-fixed status
         # (pydantic's 422) stays fixed; a seam-owned stack derives from the
         # authored mapping, and an unmapped code omits the probe.
-        if shape and shape.required and manifest.api.error_contract:
+        if body_fields and manifest.api.error_contract:
             expected_rejection = (
                 pack.blank_rejection_status
                 if pack.blank_rejection_status is not None
@@ -502,7 +507,7 @@ def _probes(manifest: InterfaceManifest, pack: CriteriaPack) -> list[dict[str, A
                         "request": {
                             "method": ep.method,
                             "path": ep.path,
-                            "json": dict.fromkeys(shape.required, ""),
+                            "json": dict.fromkeys(body_fields, ""),
                         },
                         "expect": {
                             "status": expected_rejection,
@@ -534,10 +539,9 @@ def _probes(manifest: InterfaceManifest, pack: CriteriaPack) -> list[dict[str, A
             create_probe["capture"] = {param: "id"}
             create_slug = _slug(ep.path) or "root"
             for child in children:
-                child_shape = shapes.get(child.request or "")
                 child_body = {
                     field: _probe_sample_value(field, field_types.get(field, "string"))
-                    for field in (child_shape.required if child_shape else ())
+                    for field in manifest.request_body_fields(child.request)
                 }
                 action = child.path.rsplit("/", 1)[-1]
                 probes.append(
@@ -597,7 +601,7 @@ def _probes(manifest: InterfaceManifest, pack: CriteriaPack) -> list[dict[str, A
             for value in child_shape.declared_values(discriminator):
                 child_body = {
                     field: _probe_sample_value(field, field_types.get(field, "string"))
-                    for field in child_shape.required
+                    for field in manifest.request_body_fields(child.request)
                 }
                 child_body[discriminator] = value
                 probes.append(
