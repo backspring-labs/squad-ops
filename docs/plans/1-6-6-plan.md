@@ -78,16 +78,19 @@ the release notes to keep.
 
 ### 2.1 Six items, ordered by rolls flipped per line changed
 
-Each item is one row of §1's last column. A and B change frozen scaffold output and share one
-GENERATOR_VERSION bump; C, D and F change loop and check code that Next.js never exercised in its
+Each item is one row of §1's last column. A and B change the React stack's frozen output — which
+no GENERATOR_VERSION or byte-pinned fixture covers (both pin only the Next.js verification
+scaffold, `src/squadops/capabilities/verification_scaffold_emission.py:59`, `:73`); C, D and F change loop and check code that Next.js never exercised in its
 set (zero corrections) and are therefore measured on the React arm only; E changes the shared
 contract generator on a path no Next.js manifest took.
 
 **A. Nullable frozen fields for `default: null` (#1125).** In `_model_source`, a field whose
 declared default is `None` — or that is not required — is emitted as `{ann} | None = None`, the
-branch that already exists for the no-default case. A generator test with
-`required: false, default: null`; `tests/unit/capabilities/test_scaffold.py:68` covers
-`has_default` only for the list case today. This is the largest single item in the pack: it
+branch that already exists for the no-default case. The rule: a field whose
+declared default is `null` — or an optional field with no default — freezes as `{ann} | None = None`;
+an optional field with a non-null default keeps `{ann} = default` (never `None` after construction).
+A generator test with `required: false, default: null`; `tests/unit/capabilities/test_scaffold.py:68`
+covers `has_default` only for the list case today. This is the largest single item in the pack: it
 removes the round-0 defect from the five rolls where it fired. Whether a roll then accepts is
 what §3 measures; the 1.6.5 evidence is that two of the four repairs of this defect landed and the
 other two were refused for reasons D addresses.
@@ -96,7 +99,7 @@ other two were refused for reasons D addresses.
 `test-setup.js` source (`scaffold.py:1622`): import `cleanup` and register it, so RTL unmounts
 between tests under vitest's `globals:false`. Every "Found multiple elements" failure in the set
 traces to a suite with `render()` in more than one test and no cleanup; the one suite that added
-it was green. Rides A's GENERATOR_VERSION bump.
+it was green. No pin to move: the React harness is not under GENERATOR_VERSION.
 
 **C. The self-mocking predicate becomes stack-aware through the seam that exists (#1126).**
 `detect_self_mocking_tests` takes the stack (or is consulted through `check_stack_for`,
@@ -185,8 +188,8 @@ and the remaining rolls teach nothing about it. A good result is never grounds t
 
 ## 4. Sequencing
 
-1. **A + B on one PR** (one GENERATOR_VERSION bump, fixture regeneration with the owner's OK —
-   pins are proposals). Replay: the five 1.6.5 manifests with `default: null` through the emitter
+1. **A + B on one PR** — no GENERATOR_VERSION bump and no fixture regeneration: neither pins the
+   React expander (checked 2026-08-27; rev 1 first said otherwise). Replay: the five 1.6.5 manifests with `default: null` through the emitter
    produce nullable fields.
 2. **F**, small and independent.
 3. **C**, with the roll-1 replay as its test.
@@ -215,4 +218,5 @@ ones the set cannot read without, and 3–5 each carry a replay from a specific 
 ## 6. Revision history
 
 - **Rev 1 (2026-08-27)** — written from the 1.6.5 set records the morning both sets closed;
-  issues filed the same morning on the owner's go.
+  issues filed the same morning on the owner's go. Corrected the same day before merge: A and B
+  need no GENERATOR_VERSION bump — that pin covers only the Next.js verification scaffold.
