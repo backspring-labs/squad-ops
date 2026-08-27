@@ -5,6 +5,36 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [1.6.5] — 2026-08-27
+
+**The qa-emission patch line, measured on two stacks.** The pack (A–E) makes a truncated qa
+emission rarer and cheaper on the Next.js verification scaffold; #772 gives the success-status
+default one home; #1120 stops a qa-side failure from emptying the dev repair target; and the
+verification-set driver is promoted with its parameters as data. Its evidence is the first
+**two-stack** pre-registered set.
+
+### The evidence
+
+Two counting sets on frozen deploy `7ebdb00e` —
+`docs/plans/1-6-5-verification-set-record.md`, pre-registered before roll 1 (PR #1124, merged
+as `fea4b5d6`) and unchanged throughout, executed overnight under delegation. **Twelve counted
+rolls, no voids, no resets, every pre-registered prediction held on both sets; the early stop
+never fired. Zero code drift between the measured deploy and the tag.**
+
+- **Next.js+TS: 6 of 6 functional (95% CI 61.0–100%), zero correction rounds, zero cap hits
+  (0 of 7 qa primaries against 3 of 8 under the old cap; max 9,148 of 12,288), fills first on
+  7 of 7 emissions, every criterion credited on every roll.** Q1/Q2/Q4 — items C and D live —
+  were not exercised, which is not passed.
+- **FastAPI+React: 2 of 6 (95% CI 9.7–70.0%) — the stack's first authored-mode baseline, no bar.**
+  Both greens **by repair**, none by re-dispatch. #1120 held 6 of 6. One scaffold defect sits
+  under five of the six rolls' round 0 (#1125: `default: null` freezes a non-nullable field);
+  two rolls ended after a **refused** repair patch counted as a round (#1129); roll 1's green
+  re-dispatch was discarded by a Next.js-shaped check (#1126) after a harness gap (#1127); roll 3's
+  contract was unsatisfiable by construction (#1128) and its qa-owned test defect was never
+  routed (#1130). Filed with #1131 (the structural cause, 1.7); the fixes are the 1.6.6 plan.
+
 ### 1.6.5 line — the qa emission under the completion cap (plan: `docs/plans/1-6-5-plan.md`)
 
 - **A — fills first** (#998 ask 2, ordering half). The qa fill-mode brief (appendix v4) states

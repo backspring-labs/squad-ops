@@ -22,7 +22,17 @@ Each even-minor consumer sits strictly behind the release that earns its trust: 
 
 ## Release Timeline
 
-### v1.6.4 (2026-08-26) — Current — the self-consistency patch line
+### v1.6.5 (2026-08-27) — Current — the qa-emission patch line
+
+**One mechanism, five faces, then measured on two stacks.** The qa author's primary emission hit the 8,192-token completion cap on three of the 1.6.4 set's eight rolls and the loop recovered those rolls by fallback, not by repair. 1.6.5 makes the cut rarer and cheaper: the fill-mode brief says fills first, so a cut lands on the additive file the self-eval already repairs (A); the suite runs on the file set the task will store (B, #1109); the self-eval's fills merge through the same gate as the primary (C, #947); an own-artifact qa repair can reach a fill (D, #970/#969); and `full-38`'s qa role carries a 12,288-token budget of its own (E, #998). Alongside: the success-status default has one home (#772), a qa-side failure never empties the dev repair target (#1120), and the verification-set driver is promoted with its parameters as data.
+
+**The evidence** (`docs/plans/1-6-5-verification-set-record.md`): two pre-registered six-roll sets on frozen deploy `7ebdb00e`, registered before roll 1 and unchanged, executed overnight under delegation. **Twelve counted rolls, no voids, no resets, every prediction held on both sets, zero code drift between the deploy and the tag.** Next.js+TS: **6 of 6 functional (95% CI 61.0–100%), zero correction rounds, zero framing re-rolls, zero cap hits** — 0 of 7 qa primaries against 3 of 8 under the old cap, fills first on every emission, every criterion credited. FastAPI+React: **2 of 6 (95% CI 9.7–70.0%)**, the stack's first authored-mode baseline with no bar — both greens by repair, none by re-dispatch, #1120 held 6 of 6.
+
+**What the React arm found, stated at the cut:** one scaffold defect under five of six rolls' round 0 (#1125 — a manifest `default: null` freezes a non-nullable field; the dev repair landed it twice and was refused twice); a refused repair patch counted as a correction round and ended two rolls after zero applied repairs (#1129); a green re-dispatch discarded by a check whose definition of "invokes the app" is the Next.js in-process model (#1126) after a harness gap (#1127); an unsatisfiable contract from an entity-typed `request:` (#1128); a qa-owned test defect never routed to qa (#1130). The structural cause — the "generic" scaffold *is* stack #1 — is #1131 for 1.7. Three of the seven are about that stack; four are shared loop code that only a red roll exposes, and the Next.js set gave none. C and D were not exercised live, which is not passed.
+
+**Scope:** `full-38` (qwen3.8:27b) on `group_run`, `nextjs_ts` overrides and `validated-fullstack` defaults; `full` remains the canonical squad. No SIP promotions; SIP-0104 stays accepted with stack-#1 parity open (#1122). Next: 1.6.6 (docs/plans/1-6-6-plan.md) — the React fixes ranked by rolls flipped — then v1.7 stabilization.
+
+### v1.6.4 (2026-08-26) — the self-consistency patch line
 
 Every fix in this line is one shape: **the framework derived the same declared fact twice and the two renderings disagreed.** The frozen `lib/models.ts` typed every entity-typed field as `string` while the response floor asserted objects (#1096 — the exact case behind all three 1.6.3 rejections); the store exported a table handle for every declared entity, including shapes and projections no correct app writes (#1087); contract probes carried no `json_has`, so the boot audit certified status codes and never a body (#1079 producer half — the pair is now closed); the final-state ledger keyed on `(check_id, subject)`, so a subtask's per-file compile criteria superseded each other and read as unevidenced (#1021); a qa fill could contradict the element kind the floor pins and reject a correct repair (#1094); and the repair target was the entire application in 18 of 18 rounds of the reds (#1015 part A — ownership now rides the contract as data, an in-suite probe failure indicts its slot, and the analyzer's implicated files are verified before use). #998 gives an empty emission a name — `cap_exhausted`, `empty`, `unextractable` — and the generic repair path, which had attached no marker at all, now does.
 
@@ -535,9 +545,9 @@ The following areas are identified for future work but do not block 1.0 readines
 
 ## Stats
 
-*As of 2026-08-26 (v1.6.4):*
+*As of 2026-08-27 (v1.6.5):*
 
-- **Framework version**: 1.6.4
+- **Framework version**: 1.6.5
 - **SIPs**: 65 implemented, 9 accepted (SIP-0088, 0090–0093, 0101, 0102, 0104, 0105), 20 deprecated (registry)
 - **Tests**: 7,900+ passing in the regression suite
 - **Python source**: ~61,000 lines (src + adapters; ~88,000 test lines, ~119,000 doc lines)
