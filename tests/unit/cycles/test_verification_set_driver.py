@@ -248,6 +248,22 @@ class TestTextureFromLogs:
         assert out["applied_patches"] == 2
         assert out["plan_defect_after_zero_applied"] is False
 
+    def test_unverifiable_then_redispatch_is_a_refusal_but_unverifiable_then_retest_is_applied(
+        self, driver
+    ):
+        """The 1.6.6 Next.js shakeout (cyc_38f95b29cf79): both dev-task patches came back
+        unverifiable (no executable typed checks on a .tsx file) and the executor re-dispatched
+        the task — never applied — and the first reading counted refused=0."""
+        unver = (
+            "patch_verification task=task-a status=unverifiable reason=no_executed_blocking_checks"
+        )
+        redispatch = "Dispatched task task-a (development.develop) to neo_comms"
+        retest = "patch_retest task=task-b status=SUCCEEDED passed=True reason=ok"
+        unver_b = "patch_verification task=task-b status=unverifiable reason=no_typed_criteria"
+        out = driver.texture_from_logs([unver, redispatch, unver_b, retest])
+        assert len(out["refused_patches"]) == 1 and "task-a" in out["refused_patches"][0]
+        assert out["applied_patches"] == 1
+
     def test_no_termination_is_never_the_falsifier(self, driver):
         out = driver.texture_from_logs([self._REFUSED, self._REFUSED])
         assert out["plan_defect_terminations"] == []

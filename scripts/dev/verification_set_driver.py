@@ -745,6 +745,7 @@ def runtime_log_window(since: str) -> list[str]:
         "fill merge",
         "patch_verification task=",
         "patch_retest task=",
+        "Dispatched task task-",
         "plan_defect terminal",
         "evidence superseded",
     )
@@ -767,16 +768,32 @@ def texture_from_logs(logs: list[str]) -> dict:
     record instead of the executor log. ``refused_rounds_not_counted`` is D's own line;
     ``evidence_superseded`` is F's (#1111).
     """
-    refused = [
-        line[-200:]
-        for line in logs
-        if "patch_verification task=" in line and "status=failed" in line
-    ]
-    applied = sum(
-        ("patch_retest task=" in line)
-        or ("patch_verification task=" in line and "status=passed" in line)
-        for line in logs
-    )
+    # A patch is APPLIED when verification passed or a retest ran on it; it is REFUSED when
+    # verification failed, or came back unverifiable and the executor re-dispatched the task
+    # instead of retesting (a dev task with no executable typed checks — the Next.js 1.6.6
+    # shakeout's shape, which the first reading of this readout missed). Read sequentially
+    # per task so an unverifiable-then-retest pair counts once, as applied.
+    refused: list[str] = []
+    applied = 0
+    pending: dict[str, str] = {}  # task -> the unverifiable line awaiting its fate
+    for line in logs:
+        if "patch_verification task=" in line:
+            task = line.split("patch_verification task=", 1)[1].split()[0]
+            if "status=passed" in line:
+                applied += 1
+            elif "status=failed" in line:
+                refused.append(line[-200:])
+            elif "status=unverifiable" in line:
+                pending[task] = line[-200:]
+        elif "patch_retest task=" in line:
+            task = line.split("patch_retest task=", 1)[1].split()[0]
+            pending.pop(task, None)
+            applied += 1
+        elif "Dispatched task " in line:
+            task = line.split("Dispatched task ", 1)[1].split()[0]
+            if task in pending:
+                refused.append(pending.pop(task))
+    refused.extend(pending.values())
     terminations = [line[-200:] for line in logs if "correction_terminated_plan_defect" in line]
     return {
         "narrowed_targets": [

@@ -64,13 +64,34 @@ is a rate; both are reported with their intervals and no bar.
 
 ## 2. Preconditions
 
-- **Both shakeouts on THIS deploy read, before roll 1** — `__SHAKEOUT_FASTAPI__` (FastAPI+React)
-  and `__SHAKEOUT_NEXTJS__` (Next.js+TS). A shakeout is non-counting by declaration before
-  launch; what it must show is that the pack is *loaded and exercised where the manifest
-  gives it the chance*: on FastAPI+React the frozen `models.py` optional fields nullable (R1's
-  P0 row) and no "Found multiple elements" in any report (R2); on Next.js+TS byte-identical
-  behaviour to 1.6.5 (Q0/Q5/P0 as recorded there). If either shakeout falsifies one of its
-  arm's predictions, the set does not open and the failure is the first finding.
+- **Both shakeouts on THIS deploy, launched from `main`, read before roll 1 — met, 2026-08-27:**
+  - **FastAPI+React `cyc_a217682f99dd`** (16:33→17:24Z, 49 min): accepted, audit PASS, 15/15, 0
+    corrections, gate by the §6 constant. Its manifest wrote `required: false, default: null` on
+    all three optional fields — the exact shape that opened five of six 1.6.5 rolls with a 500 —
+    and the frozen `models.py` reads `str | None = None`: **R1 exercised and held**
+    (`models_nullable_mismatches: []`). R2 clean, R5 clean (declared request shapes throughout,
+    so E was not exercised); D and F unexercised (no correction round); `run_summary` recorded
+    beyond the roots (#1087's open half, texture).
+  - **Next.js+TS `cyc_38f95b29cf79`** (17:24→19:01Z, 96 min): accepted, audit PASS, 15/15, Q0
+    held (first fill fence at 0, first path fence at 1,477), Q5 held (5,792 tokens), P0 held
+    (`TABLES = ['Run']`), coverage full — through **two correction rounds on a dev task** (a
+    TypeScript strict-null error in a page fill). Both repair patches came back `unverifiable`
+    (a `.tsx` file has no executable typed checks), the executor re-dispatched the task each
+    time, and the third emission compiled: **green by re-dispatch, none by repair.** D's branch
+    executed at round 1 (round 0's un-applied repair not counted as a repeat) — an *observation*
+    on the arm the pack was not supposed to reach, reported as §4 says; it was outcome-neutral
+    here because neither decision carried a structural candidate, so the `plan_defect` terminal
+    could not have fired regardless. F unexercised (no retest ran).
+  - **Instrument correction found by that roll:** the driver's `refused_patches` readout counted
+    only `status=failed`; an `unverifiable` verification followed by a re-dispatch is also a
+    patch never applied. The readout now reads the sequence per task (unverifiable → retest =
+    applied; unverifiable → re-dispatch = refused), so R4 is read from the corrected field.
+  - Two earlier shakeouts were launched from the pre-registration *branch* before the owner
+    ruled that every launch runs from `main` (FastAPI+React `cyc_1386b94dc688`, accepted 15/15,
+    R1 held; Next.js `cyc_aa6e02a2b665`, cancelled). Their records are kept as diagnostics and
+    are not this precondition.
+  A shakeout is non-counting by declaration before launch; had either falsified its arm's
+  predictions, the set would not have opened and the failure would be the first finding.
 - Leases 0, nothing in flight, HEAD pinned at the deploy commit, working tree clean, at
   every launch (driver preflight).
 - **No merges to main while either set is open** (§7 of 1.6.3). The instrumentation PR that
