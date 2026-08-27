@@ -1,0 +1,522 @@
+version: 1.6.5
+tag: v1.6.5
+previous_tag: v1.6.4
+date: '2026-08-27'
+commit: 11e388199f71ddb1e444765f6b1149ad08a1d467
+narrative: "**The qa-emission patch line, measured on two stacks.** The pack (A–E)\
+  \ makes a truncated qa\nemission rarer and cheaper on the Next.js verification scaffold;\
+  \ #772 gives the success-status\ndefault one home; #1120 stops a qa-side failure\
+  \ from emptying the dev repair target; and the\nverification-set driver is promoted\
+  \ with its parameters as data. Its evidence is the first\n**two-stack** pre-registered\
+  \ set.\n\n### The evidence\n\nTwo counting sets on frozen deploy `7ebdb00e` —\n\
+  `docs/plans/1-6-5-verification-set-record.md`, pre-registered before roll 1 (PR\
+  \ #1124, merged\nas `fea4b5d6`) and unchanged throughout, executed overnight under\
+  \ delegation. **Twelve counted\nrolls, no voids, no resets, every pre-registered\
+  \ prediction held on both sets; the early stop\nnever fired. Zero code drift between\
+  \ the measured deploy and the tag.**\n\n- **Next.js+TS: 6 of 6 functional (95% CI\
+  \ 61.0–100%), zero correction rounds, zero cap hits\n  (0 of 7 qa primaries against\
+  \ 3 of 8 under the old cap; max 9,148 of 12,288), fills first on\n  7 of 7 emissions,\
+  \ every criterion credited on every roll.** Q1/Q2/Q4 — items C and D live —\n  were\
+  \ not exercised, which is not passed.\n- **FastAPI+React: 2 of 6 (95% CI 9.7–70.0%)\
+  \ — the stack's first authored-mode baseline, no bar.**\n  Both greens **by repair**,\
+  \ none by re-dispatch. #1120 held 6 of 6. One scaffold defect sits\n  under five\
+  \ of the six rolls' round 0 (#1125: `default: null` freezes a non-nullable field);\n\
+  \  two rolls ended after a **refused** repair patch counted as a round (#1129);\
+  \ roll 1's green\n  re-dispatch was discarded by a Next.js-shaped check (#1126)\
+  \ after a harness gap (#1127); roll 3's\n  contract was unsatisfiable by construction\
+  \ (#1128) and its qa-owned test defect was never\n  routed (#1130). Filed with #1131\
+  \ (the structural cause, 1.7); the fixes are the 1.6.6 plan.\n\n### 1.6.5 line —\
+  \ the qa emission under the completion cap (plan: `docs/plans/1-6-5-plan.md`)\n\n\
+  - **A — fills first** (#998 ask 2, ordering half). The qa fill-mode brief (appendix\
+  \ v4) states\n  the emission order: every fill block, then any additive file. A\
+  \ cut at the completion cap now\n  lands on the additive file — which #1082 detects\
+  \ and the self-eval re-emits — never on a fill.\n  Roll 6 of the previous verification\
+  \ set (`docs/plans/1-6-4-verification-set-record.md`) lost all eight fills to an\
+  \ additive file written first.\n- **B — the suite runs on what the task stores**\
+  \ (#1109). `qa.test` derived its suite-execution\n  set before the self-eval loop,\
+  \ so a self-eval re-emission that fixed a blocking typed check was\n  stored but\
+  \ never run; roll 8 failed on a truncated file whose replacement was already in\
+  \ hand,\n  and a correction round was spent rediscovering it. The set is now derived\
+  \ from the artifacts at\n  the moment of the run.\n- **C — the self-eval merges\
+  \ fills** (#947). Under fill mode the self-eval prompt carries a\n  fill-mode addendum\
+  \ naming the slots still unfilled (from the merge record), and its fills fold\n\
+  \  into the primary emission per slot — a missing or rejected slot takes the followup\
+  \ fill, an\n  already-filled slot keeps its fill and the re-emission is recorded\
+  \ — then pass through the\n  same merge gate (#1087 phantom tables, #1094 element\
+  \ kinds). Replayed on roll 6's banked\n  self-eval fills: 8/8 merged where the handler\
+  \ had discarded all eight.\n- **E — a qa-only completion budget** (#998 ask 2, budget\
+  \ half). `full-38`'s `eve` entry carries\n  `config_overrides: {max_completion_tokens:\
+  \ 12288}`; four of ten qa primary emissions in that\n  set sat at or within 3% of\
+  \ the 8,192 cap. The registry clamp (the V38 pin) and the dev\n  budget are untouched.\
+  \ Changes `resolved_config_hash`; measured by prediction Q5.\n- **#772 — the success-status\
+  \ default has one home.** The contract deriver asserted 201 for an\n  undeclared\
+  \ collection POST while the stack #1 skeleton omitted `status_code=` and FastAPI\n\
+  \  answered 200 — an unwinnable contract, gate-mitigated since 08-10 and never fixed.\
+  \ The rule\n  (`capabilities/success_status.py`: declared wins, else collection\
+  \ POST 201 / child POST 200,\n  else HTTP's 200) had seven homes — three deriver\
+  \ sites, the skeleton, the framing mirror, the\n  scaffold gate's allowed set, the\
+  \ Next.js route stub; every one now calls the seam, the\n  decorator pins the derived\
+  \ status too, and a structural test fails if a copy returns.\n  Reference fixtures\
+  \ unchanged (they declare their statuses).\n- **#1120 — a qa-side failure no longer\
+  \ empties the dev repair target.** The analyzer half of\n  #1015-A let the failed\
+  \ task's *own* artifact (a free-authored frontend suite the analyzer\n  honestly\
+  \ implicated) act as a narrowing site: the language-wide surface was withheld, the\
+  \ #884\n  veto removed the qa-owned file from the dev-role target, and every round\
+  \ was dispatched with\n  nothing to produce and refunded — found on the first stack\
+  \ #1 cycle since 08-09\n  (`cyc_3cde35fa5204`). Own artifacts ride the target but\
+  \ never narrow it; the package-scoped\n  surface applies as it did before the analyzer\
+  \ half shipped.\n- **D — an own-artifact qa repair can reach a fill** (#970, with\
+  \ #969's brief). Under fill mode\n  the shells are merge products, never in `expected_artifacts`,\
+  \ so the own-artifact repair aimed\n  at the plan's declared file and a failing\
+  \ fill was structurally unreachable. Now: the target is\n  the failing slot's shell,\
+  \ read from the scaffold evidence's fill-layer observations; the repair\n  authors\
+  \ under the **same** fill-mode brief as `qa.test` (one composition seam,\n  `fill_mode_brief`,\
+  \ plus a repair addendum naming the failed slots with the runner's reason);\n  it\
+  \ emits fill blocks, and the handler recovers every other slot's fill from the task's\
+  \ current\n  shells, folds the repair's fills in, passes the same merge gate (#1087,\
+  \ #1094) and emits the\n  merged shell at the shell path, so the patch overlay supersedes\
+  \ the failed one and the retest\n  runs it. Round-trip pinned: recovering the fills\
+  \ from a merged shell and re-merging reproduces\n  it byte for byte. Measured by\
+  \ prediction Q4.\n- **Tooling — the verification-set driver is promoted** (`scripts/dev/verification_set_driver.py`).\n\
+  \  The scratchpad copies that drove sixteen counted rolls carried the stack, the\
+  \ deploy pins and\n  the gate constant as code constants and were hand-edited per\
+  \ set; the promoted driver reads\n  every fixed parameter from a set-config YAML\
+  \ (`docs/plans/verification-sets/`, the\n  pre-registration's §1 as data), derives\
+  \ the stack from the request profile plus overrides,\n  dispatches the P0 seeded-tree\
+  \ check per stack (an unregistered stack is refused, not passed),\n  and reads the\
+  \ runtime log window with an explicit UTC zone — the `docker logs --since` defect\n\
+  \  the previous set's record logged against the instrument."
+pull_requests:
+- number: 1132
+  title: 'docs(plan): 1.6.6 plan rev 1 — FastAPI+React fixes ranked by rolls flipped'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-27'
+- number: 1133
+  title: 'chore(release): 1.6.5 — the qa-emission patch line, measured on two stacks'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-27'
+- number: 1124
+  title: 'docs(plan): pre-register the 1.6.5 verification set (deploy 7ebdb00e, both
+    hash identities)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-26'
+- number: 1121
+  title: 'fix(correction): the failed task''s own artifact never narrows the repair
+    target (#1120)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1120
+  merged_at: '2026-08-26'
+- number: 1119
+  title: 'tooling(driver): records live under var/, not the root-owned data/ volume'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-26'
+- number: 1118
+  title: 'fix(scaffold): the success-status default has one home — the skeleton pins
+    what the contract asserts (#772)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 772
+  merged_at: '2026-08-26'
+- number: 1117
+  title: 'tooling: promote the verification-set driver — parameters as data, stack
+    as the cycle''s fact, UTC log window'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-26'
+- number: 1116
+  title: 'fix(correction): 1.6.5 D — an own-artifact qa repair can reach a fill (#970,
+    #969)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 969
+  - 970
+  merged_at: '2026-08-26'
+- number: 1115
+  title: 'fix(qa): 1.6.5 A+B+C+E — fills first, suite runs on what is stored, self-eval
+    merges fills, qa-only budget'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 947
+  - 998
+  - 1109
+  merged_at: '2026-08-26'
+- number: 1114
+  title: 'ci: PR closure references are checked, not assumed — template + required
+    check'
+  author: jasonLadd
+  labels: []
+  closes:
+    - 1113
+  merged_at: '2026-08-26'
+- number: 1108
+  title: 'docs(plan): 1.6.5 rev 2 — qa-only completion budget (eve 12,288) alongside
+    fills-first'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-26'
+- number: 1107
+  title: 'docs(release): capture the v1.6.4 release package'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-26'
+sip_moves: []
+cycles:
+- cycle_id: cyc_a306b4e858d9
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:frontend_compiles
+  - acceptance:regex_match
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-api-runs
+  - vc-probe-api-runs-join
+  - vc-probe-api-runs-join-duplicate
+  - vc-probe-api-runs-leave
+  - vc-probe-api-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_9b17553ce9d5
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:frontend_compiles
+  - acceptance:regex_match
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-api-runs
+  - vc-probe-api-runs-participants
+  - vc-probe-api-runs-participants-duplicate
+  - vc-probe-api-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_0d85a682881a
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:count_at_least
+  - acceptance:frontend_compiles
+  - acceptance:regex_match
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-api-runs
+  - vc-probe-api-runs-join
+  - vc-probe-api-runs-join-duplicate
+  - vc-probe-api-runs-leave
+  - vc-probe-api-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_face9e37d93a
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:frontend_compiles
+  - acceptance:regex_match
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-api-runs
+  - vc-probe-api-runs-join
+  - vc-probe-api-runs-join-duplicate
+  - vc-probe-api-runs-leave
+  - vc-probe-api-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_345268417e31
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:frontend_compiles
+  - acceptance:regex_match
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-api-runs
+  - vc-probe-api-runs-participants
+  - vc-probe-api-runs-participants-duplicate
+  - vc-probe-api-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_47cd83559c4a
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:frontend_compiles
+  - acceptance:regex_match
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-api-runs
+  - vc-probe-api-runs-join
+  - vc-probe-api-runs-join-duplicate
+  - vc-probe-api-runs-leave
+  - vc-probe-api-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_b9296c255dfc
+  captured: true
+  status: failed
+  verdict: rejected
+  verified:
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:regex_match
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed:
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - tests_pass
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_f84649c68646
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:command_exit_zero
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:regex_match
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-participants
+  - vc-probe-runs-participants-duplicate
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_184b3a1d194e
+  captured: true
+  status: failed
+  verdict: rejected
+  verified:
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:regex_match
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - vc-probe-runs
+  - vc-probe-runs-rejects-blank
+  failed:
+  - vc-probe-runs-participants
+  - vc-probe-runs-participants-duplicate
+  - tests_pass
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_5ef83cc6fc2b
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:regex_match
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_0e7bc622169a
+  captured: true
+  status: failed
+  verdict: rejected
+  verified:
+  - acceptance:command_exit_zero
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:regex_match
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - vc-probe-runs-rejects-blank
+  failed:
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - tests_pass
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_d43c644e52d0
+  captured: true
+  status: failed
+  verdict: rejected
+  verified:
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:regex_match
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - vc-probe-runs-rejects-blank
+  failed:
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - tests_pass
+  required_unmet: []
+  unverified: []
+  run_count: 2
+screenshots: []
