@@ -71,6 +71,7 @@ from squadops.cycles.patch_verification import (
     PATCH_UNVERIFIABLE,
     STRUCTURALLY_UNEVALUABLE_REASONS,
     overlay_artifacts,
+    supersede_evidence_artifacts,
     verify_patched_artifacts,
 )
 from squadops.cycles.rejection_baseline import (
@@ -3210,6 +3211,22 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 retest_rows = [
                     row for row in retest_validation.get("checks", []) if isinstance(row, dict)
                 ]
+            # #1111: the passing retest is what the task stores. Without this the
+            # failed run's test_report.md and typed-check evaluation were re-stored
+            # under the task id seconds AFTER the retest banked its passing report —
+            # and the next analysis read the failure (1.6.5 FastAPI+React roll 1).
+            supersession = supersede_evidence_artifacts(
+                patched_artifacts, retest_outputs.get("artifacts")
+            )
+            patched_artifacts = supersession.artifacts
+            if supersession.replaced or supersession.dropped:
+                logger.info(
+                    "patch_retest task=%s evidence superseded by the passing retest: "
+                    "replaced=%s dropped=%s (#1111)",
+                    envelope.task_id,
+                    ",".join(supersession.replaced) or "-",
+                    ",".join(supersession.dropped) or "-",
+                )
 
         corrected_outputs["artifacts"] = patched_artifacts
         prior_validation = corrected_outputs.get("validation_result")

@@ -666,6 +666,49 @@ class TestAcceptPatchRetest:
         patched = call.args[3]
         by_name = {a["name"]: a["content"] for a in patched}
         assert "assert 1" in by_name["tests/test_api.py"]
+        # #1111: the retest produced no report of its own, so the FAILED run's
+        # test_report.md is dropped from what the task re-stores — never re-stored
+        # in its failed form beside a passing retest.
+        stored = {a["name"]: a for a in corrected.outputs["artifacts"]}
+        assert "test_report.md" not in stored
+        assert "assert 1" in stored["tests/test_api.py"]["content"]
+
+    async def test_passing_retest_report_is_what_the_task_stores(self, executor, cycle):
+        """Bug caught (#1111, 1.6.5 FastAPI+React roll 1 `cyc_b9296c255dfc`): at 03:15:08Z
+        the retest stored its passing report under its own id and, 20 ms later, the
+        accepted patch re-stored the task's FAILED test_report.md and typed-check
+        evaluation under the task id. The next analysis read the failure and sent
+        round 1 at a file the repair had already fixed."""
+        retest = self._retest_success()
+        retest.outputs["artifacts"] = [
+            {
+                "name": "tests/test_api.py",
+                "content": "def test_x():\n    assert 1\n",
+                "type": "test",
+            },
+            {"name": "test_report.md", "content": "11 passed", "type": "test_report"},
+        ]
+        executor._correction_runner.reexecute_repaired_suite = AsyncMock(return_value=retest)
+        failed = self._failed_qa_result()
+        failed.outputs["artifacts"].append(
+            {
+                "name": "typed_check_evaluation_task_9.json",
+                "content": '{"passed": false}',
+                "type": "typed_check_evaluation",
+            }
+        )
+        holder: dict = {}
+        action = await executor._try_accept_patch(
+            self._qa_envelope(), failed, self._repair(), holder, **self._kwargs(cycle)
+        )
+
+        assert action == "accept_patch"
+        stored = {a["name"]: a for a in holder["patched_result"].outputs["artifacts"]}
+        assert stored["test_report.md"]["content"] == "11 passed"
+        assert "typed_check_evaluation_task_9.json" not in stored
+        # Work product is the repaired suite; the retest's copy is not added twice.
+        assert list(stored) == ["tests/test_api.py", "test_report.md"]
+        assert "assert 1" in stored["tests/test_api.py"]["content"]
 
     async def test_retest_failure_falls_back_to_continue(self, executor, cycle):
         """Bug caught: accepting a repair whose suite still fails when

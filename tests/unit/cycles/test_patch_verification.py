@@ -10,7 +10,9 @@ from squadops.cycles.patch_verification import (
     PATCH_FAILED,
     PATCH_PASSED,
     PATCH_UNVERIFIABLE,
+    EvidenceSupersession,
     overlay_artifacts,
+    supersede_evidence_artifacts,
     verify_patched_artifacts,
 )
 
@@ -211,6 +213,63 @@ def test_rehomed_repair_supersedes_in_overlay():
     )
     merged = {a["name"]: a["content"] for a in overlay_artifacts(base, patches)}
     assert merged == {"backend/routes.py": "fixed"}
+
+
+class TestSupersedeEvidenceArtifacts:
+    """#1111: an accepted patch re-stores the failed result's artifacts overlaid with the
+    repair — so the failed run's own evidence (report, typed-check evaluation) landed under
+    the task id AFTER the passing retest stored its report under its own id."""
+
+    _PATCHED = [
+        {"name": "backend/routes.py", "content": "fixed", "type": "source"},
+        {"name": "backend/tests/test_runs.py", "content": "tests", "type": "test"},
+        {"name": "test_report.md", "content": "3 validation errors for Run", "type": "test_report"},
+        {
+            "name": "typed_check_evaluation_task_4.json",
+            "content": "{}",
+            "type": "typed_check_evaluation",
+        },
+    ]
+
+    def test_retest_report_replaces_the_failed_one_and_stale_evaluation_is_dropped(self):
+        retest = [
+            {"name": "backend/tests/test_runs.py", "content": "tests", "type": "test"},
+            {"name": "test_report.md", "content": "11 passed in 0.05s", "type": "test_report"},
+        ]
+        out = supersede_evidence_artifacts(self._PATCHED, retest)
+        assert [(a["name"], a["content"]) for a in out.artifacts] == [
+            ("backend/routes.py", "fixed"),
+            ("backend/tests/test_runs.py", "tests"),
+            ("test_report.md", "11 passed in 0.05s"),
+        ]
+        assert out.replaced == ("test_report.md",)
+        assert out.dropped == ("typed_check_evaluation_task_4.json",)
+
+    def test_retest_without_evidence_drops_the_failed_evidence(self):
+        out = supersede_evidence_artifacts(self._PATCHED, [])
+        assert [a["name"] for a in out.artifacts] == [
+            "backend/routes.py",
+            "backend/tests/test_runs.py",
+        ]
+        assert out.replaced == ()
+        assert out.dropped == ("test_report.md", "typed_check_evaluation_task_4.json")
+
+    def test_retest_work_product_is_never_added_and_non_evidence_is_never_touched(self):
+        """The retest's own suite files live under the retest id; a retest artifact
+        that only shares a NAME with work product must not overwrite it here."""
+        retest = [
+            {"name": "backend/routes.py", "content": "retest copy", "type": "source"},
+            {"name": "frontend/extra.test.jsx", "content": "new", "type": "test"},
+        ]
+        out = supersede_evidence_artifacts(self._PATCHED, retest)
+        by_name = {a["name"]: a["content"] for a in out.artifacts}
+        assert by_name["backend/routes.py"] == "fixed"
+        assert "frontend/extra.test.jsx" not in by_name
+        assert out.dropped == ("test_report.md", "typed_check_evaluation_task_4.json")
+
+    def test_empty_inputs(self):
+        out = supersede_evidence_artifacts(None, None)
+        assert out == EvidenceSupersession([], (), ())
 
 
 def test_exact_expected_path_passes_through():
