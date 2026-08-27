@@ -43,6 +43,17 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   stub or `api.js` mock under it is legitimate; mocking a view or `App` module is mocking
   the subject. An unregistered stack is judged not at all and its row is banked with an
   empty inspected inventory, never as clean. The discarded roll-1 suite is the replay test.
+- **D — a refused repair patch is not a correction round** (#1129). When patch
+  verification refused a repair nothing was applied and no retest ran, but the failed task
+  re-ran against the unrepaired tree, its signature repeated by construction, and the
+  progress-aware terminal read that as "the repair did not help" — two FastAPI+React rolls
+  ended `plan_defect` after zero applied repairs, one of them holding the correct fix. A
+  refused round now clears chain adjacency the way an infra round does (the attempt cap
+  still bounds a repair that keeps being refused); the executor's refusal entry and the
+  runner's reading of it share one marker. `endpoint_defined` resolves `APIRouter(prefix=…)`
+  so a prefixed router serves the declared paths instead of failing a literal-path check,
+  and the repair brief (v6) says to keep the router construction, decorators and handler
+  names as they are — a rewrite is refused before it is tested.
 
 ## [1.6.5] — 2026-08-27
 

@@ -215,6 +215,28 @@ def should_terminate_plan_defect(
     )
 
 
+#: The executor's wording for a repair that patch verification REFUSED — never applied to
+#: the tree. One constant, two readers: the executor writes it into the run-lived
+#: rejection carry (#870), and the terminal below reads it to know that the previous
+#: round's failure signature was measured against an UNREPAIRED tree (#1129).
+REPAIR_REFUSED_MARKER = "repair REJECTED by patch verification"
+
+
+def repair_refused_in_round(repair_rejections: list[str] | None, round_no: int) -> bool:
+    """Whether round ``round_no``'s repair was refused by patch verification (#1129).
+
+    A refused patch is not a round the signature rule may count: no retest ran, the failed
+    task was re-dispatched against the unrepaired tree, and the failure signature repeated
+    *by construction*. Reading that repeat as "the repair did not help" is how 1.6.5
+    FastAPI+React rolls 5 and 6 ended as ``plan_defect`` after zero applied repairs — roll
+    6's refused patch carried the correct fix. The carry entry is the executor's own
+    ``"correction attempt N: <REPAIR_REFUSED_MARKER> …"`` line; a retest that ran and
+    FAILED is a different entry and stays informative.
+    """
+    prefix = f"correction attempt {round_no}: {REPAIR_REFUSED_MARKER}"
+    return any(str(entry).startswith(prefix) for entry in repair_rejections or [])
+
+
 def render_signature(signature: frozenset[tuple[str, str, str]]) -> tuple[str, ...]:
     """Stable human/artifact rendering: sorted ``check|subject|reason`` strings."""
     return tuple(sorted("|".join(element) for element in signature))

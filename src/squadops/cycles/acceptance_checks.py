@@ -276,8 +276,48 @@ def _skip_unsupported_stack() -> CheckOutcome:
 # ---------------------------------------------------------------------------
 
 
-def _decorator_route(decorator: ast.expr) -> tuple[str, str] | None:
-    """Extract (METHOD, path) from `@router.METHOD("/path")` or `@app.METHOD("/path")`."""
+def _router_prefixes(tree: ast.AST) -> dict[str, str]:
+    """``name -> prefix`` for every ``name = APIRouter(prefix="...")`` in the module.
+
+    The prefix is a routing fact, not a stylistic one: FastAPI serves ``prefix + path``.
+    Only a literal string prefix is read; anything computed leaves the router unprefixed,
+    which is the conservative reading (the check then looks for the literal path).
+    """
+    prefixes: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Call):
+            continue
+        func = node.value.func
+        ctor = func.id if isinstance(func, ast.Name) else getattr(func, "attr", "")
+        if ctor != "APIRouter":
+            continue
+        prefix = next(
+            (
+                kw.value.value
+                for kw in node.value.keywords
+                if kw.arg == "prefix"
+                and isinstance(kw.value, ast.Constant)
+                and isinstance(kw.value.value, str)
+            ),
+            None,
+        )
+        if prefix is None:
+            continue
+        for target in node.targets:
+            if isinstance(target, ast.Name):
+                prefixes[target.id] = prefix
+    return prefixes
+
+
+def _decorator_route(
+    decorator: ast.expr, prefixes: dict[str, str] | None = None
+) -> tuple[str, str] | None:
+    """Extract (METHOD, path) from `@router.METHOD("/path")` or `@app.METHOD("/path")`.
+
+    With ``prefixes`` (#1129), a decorator on a prefixed router yields the path the app
+    actually serves — ``@runs.post("")`` on ``runs = APIRouter(prefix="/runs")`` is
+    ``POST /runs``.
+    """
     if not isinstance(decorator, ast.Call):
         return None
     if not isinstance(decorator.func, ast.Attribute):
@@ -289,7 +329,12 @@ def _decorator_route(decorator: ast.expr) -> tuple[str, str] | None:
         return None
     arg0 = decorator.args[0]
     if isinstance(arg0, ast.Constant) and isinstance(arg0.value, str):
-        return method.upper(), normalize_route(arg0.value)
+        receiver = decorator.func.value
+        prefix = (prefixes or {}).get(receiver.id, "") if isinstance(receiver, ast.Name) else ""
+        path = arg0.value
+        if prefix:
+            path = f"{prefix.rstrip('/')}/{path.lstrip('/')}"
+        return method.upper(), normalize_route(path or "/")
     return None
 
 
@@ -714,11 +759,15 @@ class EndpointDefinedCheck(BaseCheck):
         except SyntaxError:
             return CheckOutcome.error(reason="parse_failed")
 
+        # #1129: a router built with ``APIRouter(prefix="/runs")`` serves ``/runs`` from
+        # ``@router.post("")`` — the same endpoint the literal form declares. Reading only
+        # the decorator's literal refused a correct repair (1.6.5 FastAPI+React roll 6).
+        prefixes = _router_prefixes(tree)
         found: set[tuple[str, str]] = set()
         for node in ast.walk(tree):
             if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
                 for dec in node.decorator_list:
-                    parsed = _decorator_route(dec)
+                    parsed = _decorator_route(dec, prefixes)
                     if parsed is not None:
                         found.add(parsed)
 
