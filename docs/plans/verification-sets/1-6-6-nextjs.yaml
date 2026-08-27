@@ -1,0 +1,53 @@
+# 1.6.6 verification set — the REGRESSION arm on Next.js (nextjs_ts), 2 counting rolls. Items A/B/E leave
+# this stack's output byte-identical and C/D/F are loop code its 1.6.5 set never executed, so this arm
+# asks only that nothing moved: Q0/Q5/P0/coverage carried from 1.6.5. Pins are filled in at
+# pre-registration, after the shakeout, and asserted on every counting roll.
+name: 1-6-6-nextjs
+pre_registration: docs/plans/1-6-6-verification-set-preregistration.md
+project: group_run
+squad_profile: full-38
+request_profile: validated-fullstack
+overrides:
+  build_profile: nextjs_ts
+  dev_capability: nextjs_ts
+gate_name: progress_plan_review
+n_rolls: 2
+# Copied verbatim onto every gate approval — the driver substitutes NOTHING in this text.
+gate_notes: >-
+  1.6.6 verification set. Approved under the pre-registered gate policy
+  (pre-registration §6) — identical text applied to every roll of this set.
+  System plan validation passed; no additional judgment applied.
+# {roll} and {n} are the only substitutions the driver makes.
+launch_notes: >-
+  1.6.6 verification set — COUNTED roll {roll} of {n}. Frozen deploy per the
+  pre-registration; REGRESSION arm — predictions Q0/Q5/P0/coverage carried from 1.6.5;
+  scoring per 1.6.3 §5; validity per §5.1.
+shakeout_notes: >-
+  1.6.6 SHAKEOUT — NON-COUNTING by declaration before launch. First Next.js cycle on the deploy
+  carrying 1.6.6 A–F (#1136 #1137 #1138 #1139 #1140 #1141). Regression arm: A/B/E do not touch
+  this stack's output; C/D/F are loop code. Diagnostic only, not a measurement.
+# "Loaded, not built": run inside the container and recorded with the deploy identity.
+loaded_checks:
+  runtime-api: >-
+    from squadops.cycles.correction_signature import REPAIR_REFUSED_MARKER, repair_refused_in_round;
+    from squadops.cycles.patch_verification import supersede_evidence_artifacts;
+    from squadops.capabilities.scaffold import InterfaceManifest, app_invocation_for;
+    print(InterfaceManifest.request_body_fields.__name__, InterfaceManifest.request_model_name.__name__,
+    app_invocation_for('fullstack_fastapi_react') is not None, REPAIR_REFUSED_MARKER[:15])
+  eve: >-
+    from squadops.capabilities.app_invocation import AppInvocation;
+    from squadops.capabilities.scaffold import app_invocation_for;
+    from squadops.capabilities.handlers.stub_detection import detect_self_mocking_tests;
+    print(app_invocation_for('nextjs_ts') is not None, app_invocation_for('fullstack_fastapi_react') is not None)
+expected_config_hash_prefix: "d4d4f66217d8"
+# The identity a per-agent override moves (1.6.5 E) — resolved_config_hash does not see it.
+expected_squad_snapshot_prefix: "575707c58536cf3b"
+frozen_deploy_commit: "e14a6ad4"
+frozen_image_ids:
+  runtime-api: 5d6c78df37f4
+  max: 0b996c984c2a
+  neo: 577f8271178f
+  nat: c4faec0cb1c6
+  bob: 90e0539eb041
+  eve: 248da1560551
+  data: 37e27803b5ed

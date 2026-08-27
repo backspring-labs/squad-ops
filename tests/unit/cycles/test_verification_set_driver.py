@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.unit.capabilities._stack_fixtures import manifest_for_stack
+from tests.unit.capabilities._stack_fixtures import manifest_dict_for_stack, manifest_for_stack
 
 pytestmark = [pytest.mark.domain_cycles]
 
@@ -117,6 +117,8 @@ class TestSetConfig:
         [
             ("1-6-5-nextjs.yaml", "nextjs_ts"),
             ("1-6-5-fastapi-react.yaml", "fullstack_fastapi_react"),
+            ("1-6-6-nextjs.yaml", "nextjs_ts"),
+            ("1-6-6-fastapi-react.yaml", "fullstack_fastapi_react"),
         ],
     )
     def test_the_committed_set_configs_load_and_derive_their_stack(self, driver, filename, stack):
@@ -192,6 +194,94 @@ class TestP0PerStack:
             "participants: list[Participant]"
         ]
 
+    def test_stack1_p0_asserts_optional_fields_freeze_nullable(self, driver):
+        """1.6.6 R1 (#1125): a field the manifest declares ``required: false, default: null``
+        must freeze ``X | None = None``. Five of six 1.6.5 rolls opened on the ``str = None``
+        form; the driver read them as P0 held because nothing asserted this."""
+        import squadops.capabilities.scaffold as sc
+
+        raw = manifest_dict_for_stack("fullstack_fastapi_react")
+        for ent in raw["entities"]:
+            for f in ent["fields"]:
+                if f["name"] == "distance":
+                    f["required"], f["default"] = False, None
+        m = sc.InterfaceManifest.from_dict(raw)
+        out = driver.p0_checks(
+            "fullstack_fastapi_react", m, _seeded_reader("fullstack_fastapi_react", m)
+        )
+        assert out["passed"] is True
+        assert "distance: str | None = None" in out["models_nullable_expected_lines"]
+
+        def tamper(files):
+            return {
+                "backend/models.py": files["backend/models.py"].replace(
+                    "distance: str | None = None", "distance: str = None"
+                )
+            }
+
+        out = driver.p0_checks(
+            "fullstack_fastapi_react", m, _seeded_reader("fullstack_fastapi_react", m, tamper)
+        )
+        assert out["passed"] is False
+        assert out["models_nullable_mismatches"] == ["distance: str | None = None"]
+        assert out["p0_optional_fields_nullable"] is False
+
+
+class TestTextureFromLogs:
+    """1.6.6 R4 (#1129): the record must say whether a plan_defect termination followed
+    ANY applied patch — rolls 5 and 6 read as "the loop failed to converge" from the roll-up
+    and as "the loop never applied a patch" from the executor log."""
+
+    _REFUSED = "patch_verification task=t status=failed reason=unresolved_imports checks=4"
+    _PASSED = "patch_verification task=t status=passed reason= checks=4"
+    _RETEST = "patch_retest task=t status=FAILED passed=False reason=x"
+    _TERM = "correction_terminated_plan_defect task=t rounds=0..1 candidate=tighten_acceptance"
+
+    def test_roll_five_shape_is_a_termination_after_zero_applied(self, driver):
+        out = driver.texture_from_logs([self._REFUSED, self._TERM])
+        assert out["applied_patches"] == 0
+        assert len(out["refused_patches"]) == 1
+        assert out["plan_defect_after_zero_applied"] is True
+
+    def test_a_retest_counts_as_an_applied_patch(self, driver):
+        out = driver.texture_from_logs([self._PASSED, self._RETEST, self._TERM])
+        assert out["applied_patches"] == 2
+        assert out["plan_defect_after_zero_applied"] is False
+
+    def test_no_termination_is_never_the_falsifier(self, driver):
+        out = driver.texture_from_logs([self._REFUSED, self._REFUSED])
+        assert out["plan_defect_terminations"] == []
+        assert out["plan_defect_after_zero_applied"] is False
+
+    def test_d_and_f_lines_are_banked(self, driver):
+        out = driver.texture_from_logs(
+            [
+                "plan_defect terminal: round 0's repair … not counted as a repeat (#1129)",
+                "patch_retest task=t evidence superseded by the passing retest: replaced=a dropped=b (#1111)",
+            ]
+        )
+        assert len(out["refused_rounds_not_counted"]) == 1
+        assert len(out["evidence_superseded"]) == 1
+
+
+class TestEmptyBodyProbes:
+    """1.6.6 R5 (#1128): a POST probe on an endpoint that declares a request body must not
+    ship ``json: {}`` — roll 3's contract did, and was unsatisfiable by construction."""
+
+    def test_the_roll_three_shape_is_named_and_a_filled_body_is_not(self, driver):
+        m = manifest_for_stack("fullstack_fastapi_react")
+        contract = (
+            "behavioral:\n  probes:\n"
+            "    - id: vc-probe-runs\n      request: {method: POST, path: /runs, json: {title: x}}\n"
+            "    - id: vc-probe-runs-join\n      request: {method: POST, path: '/runs/{run_id}/join', json: {}}\n"
+            "    - id: vc-probe-runs-blank\n      request: {method: POST, path: /nowhere, json: {}}\n"
+        )
+        assert driver.empty_body_probes(m, contract) == ["vc-probe-runs-join"]
+
+    def test_an_unparseable_contract_is_visible_not_silent(self, driver):
+        m = manifest_for_stack("fullstack_fastapi_react")
+        assert driver.empty_body_probes(m, "behavioral: [unclosed") == ["<contract unparseable>"]
+
 
 class TestRunRows:
     def test_rows_parse_and_blank_lines_are_skipped(self, driver):
@@ -228,23 +318,32 @@ class TestSquadSnapshotIsAnIdentity:
     def test_identity_mismatch(self, driver, expected, actual, mismatch):
         assert driver.identity_mismatch(expected, actual) is mismatch
 
-    @pytest.mark.parametrize("filename", ["1-6-5-nextjs.yaml", "1-6-5-fastapi-react.yaml"])
-    def test_the_counting_sets_are_fully_pinned(self, driver, filename):
+    @pytest.mark.parametrize(
+        ("filename", "n"),
+        [
+            ("1-6-5-nextjs.yaml", 6),
+            ("1-6-5-fastapi-react.yaml", 6),
+            ("1-6-6-nextjs.yaml", 2),
+            ("1-6-6-fastapi-react.yaml", 6),
+        ],
+    )
+    def test_the_counting_sets_are_fully_pinned(self, driver, filename, n):
         """Bug caught: a counting set whose config still carries the shakeout-time blanks —
         the driver would then record instead of assert, and a rebuild mid-set would pass."""
         import re
 
         cfg = driver.load_set_config(_SETS / filename)
-        assert cfg.n_rolls == 6
+        assert cfg.n_rolls == n
         assert re.fullmatch(r"[0-9a-f]{12,16}", cfg.expected_squad_snapshot_prefix)
         assert re.fullmatch(r"[0-9a-f]{12}", cfg.expected_config_hash_prefix)
         assert re.fullmatch(r"[0-9a-f]{8}", cfg.frozen_deploy_commit)
         assert set(cfg.frozen_image_ids) == set(driver.DEPLOY_SERVICES)
         assert all(re.fullmatch(r"[0-9a-f]{12}", v) for v in cfg.frozen_image_ids.values())
 
-    def test_both_sets_share_the_deploy_and_snapshot_but_not_the_config_hash(self, driver):
-        a = driver.load_set_config(_SETS / "1-6-5-nextjs.yaml")
-        b = driver.load_set_config(_SETS / "1-6-5-fastapi-react.yaml")
+    @pytest.mark.parametrize("line", ["1-6-5", "1-6-6"])
+    def test_both_sets_share_the_deploy_and_snapshot_but_not_the_config_hash(self, driver, line):
+        a = driver.load_set_config(_SETS / f"{line}-nextjs.yaml")
+        b = driver.load_set_config(_SETS / f"{line}-fastapi-react.yaml")
         assert a.frozen_image_ids == b.frozen_image_ids
         assert a.frozen_deploy_commit == b.frozen_deploy_commit
         assert a.expected_squad_snapshot_prefix == b.expected_squad_snapshot_prefix
