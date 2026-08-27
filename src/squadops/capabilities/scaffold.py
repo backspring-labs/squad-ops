@@ -37,6 +37,8 @@ import yaml
 # #822: stack #2's expander lives in its own module — a second one inline would push this
 # file past 2000 lines and interleave two stacks' source templates. No cycle: it annotates
 # against ``InterfaceManifest`` under ``TYPE_CHECKING`` and imports nothing here at runtime.
+from squadops.capabilities.app_invocation import NETWORK_SEAM_FETCH_STUB, AppInvocation
+from squadops.capabilities.stack_nextjs_ts import APP_INVOCATION as _APP_INVOCATION_NEXTJS_TS
 from squadops.capabilities.stack_nextjs_ts import STACK_NAME as _NEXTJS_TS_NAME
 from squadops.capabilities.stack_nextjs_ts import expand_nextjs_ts as _expand_nextjs_ts
 from squadops.capabilities.stack_nextjs_ts import (
@@ -1949,6 +1951,11 @@ class ScaffoldStack:
     #: that every gate accepted. Visible-and-unverified has a safe default; silently-wrong
     #: does not.
     criteria_pack: str = ""
+    #: #1126: how a suite on this stack invokes the application, for the self-mocking
+    #: detector — the import that proves the app is invoked, the mock that replaces the
+    #: subject, the mock that replaces the network seam. ``None`` means the detector cannot
+    #: judge this stack and its check is recorded as skipped, never as clean.
+    app_invocation: AppInvocation | None = None
     #: #822: the probe-boot profile ``handlers.probe_runner`` uses to stand this stack's app
     #: up for behavioral probes — the launcher and entry point (``uvicorn backend.main:app``
     #: vs ``node dist/server.js``) and the readiness path. A *name*, like ``criteria_pack``,
@@ -2023,6 +2030,21 @@ _STACKS: dict[str, ScaffoldStack] = {
         criteria_pack="fullstack_fastapi_react",
         error_seam=ERROR_SEAM_FASTAPI,
         probe_profile="fastapi_uvicorn",
+        # #1126: a React SPA reaches the app by rendering a real component or ``App``; the
+        # network is a seam UNDER it, so a global ``fetch`` stub or a mock of the app's own
+        # ``api.js`` client is legitimate when a component is rendered and self-mocking when
+        # nothing is. Mocking a view or ``App`` module itself is mocking the subject.
+        app_invocation=AppInvocation(
+            invocation_import=(
+                r"""^\s*(?:import\b[^\n]*?from\s*|.*\brequire\s*\(\s*)['"`][^'"`]*"""
+                r"""(?:/App|/views/[A-Za-z0-9_]+)(?:\.[jt]sx?)?['"`]"""
+            ),
+            subject_mock=r"""(?:vi|jest)\s*\.\s*mock\s*\(\s*['"`][^'"`]*(?:/App|/views/)""",
+            network_seam_mock=(
+                NETWORK_SEAM_FETCH_STUB
+                + r"""    | (?:vi|jest)\s*\.\s*mock\s*\(\s*['"`][^'"`]*/api(?:\.[jt]sx?)?['"`]"""
+            ),
+        ),
         # A declared success_status lands in the frozen route decorator
         # (``status_code=``, the pf-39 fix) — structural, fill-proof.
         skeleton_pins_success_status=True,
@@ -2049,6 +2071,7 @@ _STACKS: dict[str, ScaffoldStack] = {
         criteria_pack=_NEXTJS_TS_NAME,
         error_seam=ERROR_SEAM_NEXTJS_TS,
         probe_profile="nextjs_next_start",
+        app_invocation=_APP_INVOCATION_NEXTJS_TS,
         dev_capability=_NEXTJS_TS_NAME,
         # SIP-0104: the first (and so far only) stack with a deterministic test scaffold.
         # Stack #1 deliberately does not declare one — opt-in is explicit, never inherited.
@@ -2113,6 +2136,18 @@ def check_stack_for(stack: str) -> str | None:
     """
     known = _STACKS.get(stack)
     return (known.check_stack or None) if known else None
+
+
+def app_invocation_for(stack: str) -> AppInvocation | None:
+    """How a suite on ``stack`` invokes the application, or ``None`` (#1126).
+
+    Companion to :func:`check_stack_for`, for the same reason: "what does this stack count
+    as invoking the app" has one answer, and it is the stack's. ``None`` for an unknown or
+    undeclaring stack — the self-mocking detector then judges nothing and its row is
+    recorded as skipped, never as clean.
+    """
+    known = _STACKS.get(stack)
+    return known.app_invocation if known else None
 
 
 def criteria_pack_for(stack: str) -> str:

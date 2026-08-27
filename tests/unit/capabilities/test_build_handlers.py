@@ -1447,14 +1447,43 @@ class TestQARetestExecuteOnly:
                 }
             ],
         }
+        from squadops.capabilities.stack_nextjs_ts import APP_INVOCATION
+
         handler = QATestHandler()
-        result = await handler.handle(mock_context, clean)
+        # #1126: the detector judges through the STACK's declaration of "invokes the
+        # app"; this suite is Next.js-shaped, so hand it that stack's definition.
+        with patch.object(QATestHandler, "_app_invocation", return_value=APP_INVOCATION):
+            result = await handler.handle(mock_context, clean)
 
         assert result.success is True
         rows = result.outputs["validation_result"]["checks"]
         mock_row = next(r for r in rows if r["check"] == "no_self_mocking_tests")
         assert mock_row["passed"] is True
         assert mock_row["inspected"] == ["__tests__/runs.test.ts"]
+        assert "offenders" not in mock_row
+
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
+    async def test_unknown_stack_banks_the_self_mocking_row_as_not_looked(
+        self, _mock_run, mock_context, qa_inputs
+    ):
+        """#1126: with no registered stack the detector has no definition of "invokes
+        the app" and judges nothing — the row is banked with an EMPTY inventory (#986's
+        "did not look"), never as a clean pass over files it could not judge."""
+        unknown = {
+            **{k: v for k, v in qa_inputs.items() if k != "resolved_config"},
+            "retest_files": [
+                {
+                    "filename": "__tests__/runs.test.ts",
+                    "content": "global.fetch = vi.fn()\nit('x', () => {})\n",
+                }
+            ],
+        }
+        result = await QATestHandler().handle(mock_context, unknown)
+
+        rows = result.outputs["validation_result"]["checks"]
+        mock_row = next(r for r in rows if r["check"] == "no_self_mocking_tests")
+        assert mock_row["passed"] is True
+        assert mock_row["inspected"] == []
         assert "offenders" not in mock_row
 
     @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)

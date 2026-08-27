@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from squadops.capabilities.app_invocation import AppInvocation
 from squadops.capabilities.dev_capabilities import (
     DEFAULT_DEV_CAPABILITY,
     effective_capability_name,
@@ -426,6 +427,17 @@ class QATestHandler(_CycleTaskHandler):
             "type": "test_report",
         }
         return test_result, report_artifact
+
+    @staticmethod
+    def _app_invocation(inputs: dict[str, Any]) -> AppInvocation | None:
+        """The stack's own definition of "invokes the application" (#1126), resolved
+        through the scaffold registry from the cycle's build profile. ``None`` for an
+        unknown stack: the self-mocking detector then judges nothing and its row is
+        banked with an EMPTY inspected inventory (#986) — "did not look", never "clean".
+        """
+        from squadops.capabilities.scaffold import app_invocation_for, scaffold_stack_for
+
+        return app_invocation_for(scaffold_stack_for(inputs.get("resolved_config")))
 
     @staticmethod
     def _prompt_scoped_contents(
@@ -875,11 +887,14 @@ class QATestHandler(_CycleTaskHandler):
         # #915 on the retest path for the same reason: a repair told to make the suite
         # pass can satisfy that instruction by mocking the subject, and mocking is the
         # cheapest way to make any assertion true.
-        mock_offenders = detect_self_mocking_tests(artifacts)
+        invocation = self._app_invocation(inputs)
+        mock_offenders = detect_self_mocking_tests(artifacts, invocation)
         mock_paths = [path for path, _ in mock_offenders]
         checks.append(
             _authenticity_row(
-                CHECK_NO_SELF_MOCKING_TESTS, mock_paths, inspected_js_test_paths(artifacts)
+                CHECK_NO_SELF_MOCKING_TESTS,
+                mock_paths,
+                inspected_js_test_paths(artifacts) if invocation else [],
             )
         )
         if mock_offenders:
@@ -1384,11 +1399,14 @@ class QATestHandler(_CycleTaskHandler):
             # asserts what it told its own mock to return and therefore PASSES. Fills
             # cannot do this (the frozen spine invokes the handler and enforcement
             # rejects edits to it); additive files carried the rule only as prose.
-            mock_offenders = detect_self_mocking_tests(artifacts)
+            invocation = self._app_invocation(inputs)
+            mock_offenders = detect_self_mocking_tests(artifacts, invocation)
             mock_paths = [path for path, _ in mock_offenders]
             validation.checks.append(
                 _authenticity_row(
-                    CHECK_NO_SELF_MOCKING_TESTS, mock_paths, inspected_js_test_paths(artifacts)
+                    CHECK_NO_SELF_MOCKING_TESTS,
+                    mock_paths,
+                    inspected_js_test_paths(artifacts) if invocation else [],
                 )
             )
             if mock_offenders:
