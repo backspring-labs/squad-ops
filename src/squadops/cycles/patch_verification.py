@@ -158,6 +158,61 @@ def overlay_artifacts(
     return list(merged.values())
 
 
+#: Artifact types that are EVIDENCE about a task's own run — a report of what the
+#: suite did, a typed-check evaluation — rather than work product. They describe one
+#: execution and are wrong the moment a later execution of the same task supersedes it.
+EVIDENCE_ARTIFACT_TYPES: frozenset[str] = frozenset({"test_report", "typed_check_evaluation"})
+
+
+@dataclass(frozen=True)
+class EvidenceSupersession:
+    """What :func:`supersede_evidence_artifacts` did, for the log line."""
+
+    artifacts: list[dict[str, Any]]
+    replaced: tuple[str, ...] = ()
+    dropped: tuple[str, ...] = ()
+
+
+def supersede_evidence_artifacts(
+    patched: list[dict[str, Any]] | None, retest_artifacts: list[dict[str, Any]] | None
+) -> EvidenceSupersession:
+    """After a PASSING retest, the failed task's own evidence must not be re-stored (#1111).
+
+    An accepted patch re-stores ``patched`` under the repaired task's id. That list is the
+    failed result's artifacts overlaid with the repair — so it still carries the failed run's
+    ``test_report.md`` and ``typed_check_evaluation_*.json``, written seconds after the retest
+    stored its passing report under its own id. Last-writer-wins: the first artifact a triage
+    opens for the task says the tests failed on a run whose verdict is ``accepted``, and on
+    1.6.5 FastAPI+React roll 1 the next round's analyzer read exactly that and re-diagnosed a
+    defect the repair had already fixed.
+
+    Evidence artifacts (:data:`EVIDENCE_ARTIFACT_TYPES`) in ``patched`` are replaced by the
+    retest's same-named artifact when it produced one, and dropped otherwise — the corrected
+    result carries the retest's fresh ``test_result`` and validation rows, so a stale
+    evaluation file adds nothing but the wrong answer. Work product is untouched, and the
+    retest's own suite files are never added here: they are stored under the retest's id.
+    """
+    fresh: dict[str, dict[str, Any]] = {}
+    for art in retest_artifacts or []:
+        name = art.get("name")
+        if isinstance(name, str) and name and art.get("type") in EVIDENCE_ARTIFACT_TYPES:
+            fresh[name] = art
+    kept: list[dict[str, Any]] = []
+    replaced: list[str] = []
+    dropped: list[str] = []
+    for art in patched or []:
+        if art.get("type") not in EVIDENCE_ARTIFACT_TYPES:
+            kept.append(art)
+            continue
+        name = art.get("name")
+        if isinstance(name, str) and name in fresh:
+            kept.append(fresh[name])
+            replaced.append(name)
+        else:
+            dropped.append(str(name))
+    return EvidenceSupersession(kept, tuple(replaced), tuple(dropped))
+
+
 @dataclass(frozen=True)
 class MaterializeResult:
     """Outcome of a unified ``materialize`` (SIP-0100 2.2)."""

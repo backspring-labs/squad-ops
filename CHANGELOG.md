@@ -25,6 +25,13 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   stack-#1 contract reference (v10 → v11, `reference_defect` per the M0 taxonomy: a harness
   that can only reject a working app, never pass a broken one, so the 1.4 figure carries no
   qualification) and the three context goldens' `frozen_surface_index` line for that file.
+- **F — the passing retest is what the qa task stores** (#1111). An accepted patch re-stored
+  the failed result's artifacts overlaid with the repair, so the failed run's `test_report.md`
+  and typed-check evaluation landed under the task id seconds *after* the retest banked its
+  passing report under its own — and on FastAPI+React roll 1 the next analysis read the
+  failure and sent a repair at a file the loop had already fixed. Evidence artifacts in the
+  re-store are now replaced by the passing retest's same-named artifact or dropped; work
+  product is untouched and the retest's own suite files stay under the retest id.
 
 ## [1.6.5] — 2026-08-27
 
