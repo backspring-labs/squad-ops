@@ -67,12 +67,12 @@ def test_registering_a_second_stack_leaves_the_first_byte_identical():
     reference = _manifest("fullstack_fastapi_react")
 
     assert reference.content_hash().startswith("bb472e267e53d5ad")
-    # contract v10 (#1079): v9 plus json_has on the success probes, classified
-    # ambiguity_removal — see test_contract_derivation_reference for both pins.
+    # contract v11 (#1127): v10 with the frozen harness's sha moved by afterEach(cleanup),
+    # classified reference_defect — see test_contract_derivation_reference for all pins.
     assert (
         hashlib.sha256(emit_contract_yaml(reference).encode())
         .hexdigest()
-        .startswith("bdd540d0d916e085")
+        .startswith("04ab6c725a1a8fff")
     )
 
 
