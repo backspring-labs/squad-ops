@@ -256,6 +256,60 @@ class InterfaceManifest:
     #: author. Excluded from ``_canonical`` for the same reason ``decisions`` is.
     provenance: Provenance | None = None
 
+    def request_body_fields(self, request: str | None) -> tuple[str, ...]:
+        """The fields a body for ``request`` must carry — the ONE answer (#1128).
+
+        ``request`` is an endpoint's ``request:`` and validation accepts either a declared
+        request shape or an entity (see ``usability_errors``). The contract generator used
+        to resolve bodies only through ``request_shapes``, so an entity-typed request got
+        ``json: {}`` — a probe expecting 201 then 409 from a body the seeded route (which
+        takes the entity as its payload class) must 422. Unsatisfiable by construction;
+        1.6.5 FastAPI+React roll 3 was rejected on it while the loop correctly said
+        ``plan_defect``. A shape answers with its ``required``; an entity with the fields a
+        body MUST carry — required, not generated, no declared default; anything else
+        with nothing.
+        """
+        if not request:
+            return ()
+        for shape in self.api.request_shapes:
+            if shape.name == request:
+                return tuple(shape.required)
+        for entity in self.entities:
+            if entity.name == request:
+                return tuple(
+                    f.name
+                    for f in entity.fields
+                    if f.required and not f.generated and not f.has_default
+                )
+        return ()
+
+    def request_model_name(self, request: str | None) -> str | None:
+        """The Python model the route takes as its payload for ``request`` (#1128).
+
+        A declared shape is its own model. An entity-typed request gets a synthesized
+        ``{Entity}Body`` — the entity's body fields per :meth:`request_body_fields` — never
+        the entity class itself: the frozen entity requires its generated ``id``, so as a
+        payload class it could not accept the body the contract sends.
+        """
+        if not request:
+            return None
+        if any(shape.name == request for shape in self.api.request_shapes):
+            return request
+        if any(entity.name == request for entity in self.entities):
+            return f"{request}Body"
+        return None
+
+    def entity_typed_requests(self) -> tuple[str, ...]:
+        """Entities used directly as an endpoint's ``request:``, in first-use order."""
+        shape_names = {shape.name for shape in self.api.request_shapes}
+        entity_names = {entity.name for entity in self.entities}
+        seen: list[str] = []
+        for ep in self.api.endpoints:
+            if ep.request and ep.request in entity_names and ep.request not in shape_names:
+                if ep.request not in seen:
+                    seen.append(ep.request)
+        return tuple(seen)
+
     @classmethod
     def from_yaml(cls, content: str) -> InterfaceManifest:
         data = yaml.safe_load(content)
@@ -1357,7 +1411,33 @@ def _model_source(manifest: InterfaceManifest) -> str:
         for name in shape.optional:
             lines.append(f"    {name}: str | None = None")
         lines.append("")
+
+    lines.extend(_entity_body_model_lines(manifest))
     return "\n".join(lines)
+
+
+def _entity_body_model_lines(manifest: InterfaceManifest) -> list[str]:
+    """#1128: an entity used as an endpoint's ``request:`` gets a request model of its own.
+
+    Shaped by the same resolver the contract's probe bodies use — required, non-generated,
+    undefaulted fields as ``NonBlankStr`` (so the blank-input probe applies as it does to a
+    declared shape), every other non-generated field optional. The entity class itself
+    requires its generated ``id`` and could never accept the body the contract sends.
+    """
+    lines: list[str] = []
+    for entity_name in manifest.entity_typed_requests():
+        entity = next(e for e in manifest.entities if e.name == entity_name)
+        required = manifest.request_body_fields(entity_name)
+        optional = [f.name for f in entity.fields if not f.generated and f.name not in required]
+        lines.append(f"class {manifest.request_model_name(entity_name)}(BaseModel):")
+        if not required and not optional:
+            lines.append("    pass")
+        for name in required:
+            lines.append(f"    {name}: NonBlankStr")
+        for name in optional:
+            lines.append(f"    {name}: str | None = None")
+        lines.append("")
+    return lines
 
 
 def _route_func_name(ep: Endpoint) -> str:
@@ -1372,8 +1452,9 @@ def _routes_source(manifest: InterfaceManifest) -> str:
     }
     referenced: set[str] = set()
     for ep in manifest.api.endpoints:
-        if ep.request and ep.request in known_models:
-            referenced.add(ep.request)
+        request_model = manifest.request_model_name(ep.request)
+        if request_model:
+            referenced.add(request_model)
         if ep.response:
             base = _base_type_name(ep.response)
             if base in known_models:
@@ -1432,7 +1513,7 @@ def _routes_source(manifest: InterfaceManifest) -> str:
         path_args = [p[1:-1] for p in ep.path.split("/") if p.startswith("{") and p.endswith("}")]
         params = [f"{a}: str" for a in path_args]
         if ep.request:
-            params.append(f"payload: {ep.request}")
+            params.append(f"payload: {manifest.request_model_name(ep.request) or ep.request}")
         sig = ", ".join(params)
         decorator = f'@router.{ep.method.lower()}("{ep.path}"'
         if ep.response:

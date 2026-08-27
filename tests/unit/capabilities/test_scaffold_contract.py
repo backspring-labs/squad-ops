@@ -514,3 +514,83 @@ def test_the_runner_and_the_audit_reject_a_body_missing_a_derived_key():
     verdict = evaluate_expectations(create["expect"], 201, body)
     assert verdict == "response missing key(s): ['participants']"
     assert evaluate_expectations(create["expect"], 201, {**body, "participants": []}) is None
+
+
+class TestEntityTypedRequestBodies:
+    """#1128 (1.6.5 FastAPI+React roll 3, `cyc_184b3a1d194e`): the manifest wrote
+    ``POST /runs/{run_id}/participants  request: Participant`` — an entity, which
+    validation accepts — and the contract generator, resolving bodies only through
+    ``request_shapes``, emitted ``json: {}`` expecting 201 then 409 from a route whose
+    payload class requires ``name``. Roll 2 declared a shape and got ``{"name": "sample"}``;
+    that was the whole difference."""
+
+    @staticmethod
+    def _entity_typed_join() -> InterfaceManifest:
+        raw = _raw()
+        raw["api"]["request_shapes"].pop("ParticipantName")
+        for ep in raw["api"]["endpoints"]:
+            if ep.get("request") == "ParticipantName":
+                ep["request"] = "Participant"
+        return InterfaceManifest.from_dict(raw)
+
+    def test_the_resolver_answers_for_shapes_entities_and_nothing(self):
+        m = _manifest()
+        assert m.request_body_fields("RunEventCreate") == ("title", "datetime", "location")
+        assert m.request_body_fields("ParticipantName") == ("name",)
+        # an entity: what a body MUST carry — never the generated id, never a defaulted field
+        assert m.request_body_fields("RunEvent") == ("title", "datetime", "location")
+        assert m.request_body_fields("Participant") == ("name",)
+        assert m.request_body_fields("Nope") == ()
+        assert m.request_body_fields(None) == ()
+
+    def test_an_entity_typed_request_gets_the_entitys_required_fields(self):
+        contract = emit_contract_dict(self._entity_typed_join())
+        probes = {p["id"]: p for p in contract["behavioral"]["probes"]}
+        assert probes["vc-probe-runs-join"]["request"]["json"] == {"name": "sample"}
+        assert probes["vc-probe-runs-join-duplicate"]["request"]["json"] == {"name": "sample"}
+        assert probes["vc-probe-runs-leave"]["request"]["json"] == {"name": "sample"}
+
+    def test_the_seeded_route_accepts_exactly_the_probe_body(self):
+        """The two homes agree: the route emitter takes the entity as its payload class,
+        and the frozen model built from it accepts the body the contract now sends."""
+        import sys
+        import types
+
+        import pydantic
+
+        from squadops.capabilities.scaffold import expand
+
+        manifest = self._entity_typed_join()
+        files = {f["name"]: f["content"] for f in expand(manifest)}
+        # the route takes the synthesized body model, never the entity (whose generated
+        # `id` is required and would 422 the probe) — and imports it
+        routes = files["backend/routes.py"]
+        assert "payload: ParticipantBody" in routes
+        import_line = next(ln for ln in routes.splitlines() if ln.startswith("from .models import"))
+        assert "ParticipantBody" in import_line
+        probes = {p["id"]: p for p in emit_contract_dict(manifest)["behavioral"]["probes"]}
+        body = probes["vc-probe-runs-join"]["request"]["json"]
+        mod = types.ModuleType("frozen_models_1128")
+        sys.modules[mod.__name__] = mod
+        try:
+            exec(compile(files["backend/models.py"], "backend/models.py", "exec"), mod.__dict__)
+            assert mod.ParticipantBody(**body).name == "sample"
+            # #593 applies to the synthesized model too: blank input is rejected
+            with pytest.raises(pydantic.ValidationError):
+                mod.ParticipantBody(name="  ")
+            # the entity itself is untouched and still requires its generated id
+            with pytest.raises(pydantic.ValidationError):
+                mod.Participant(**body)
+        finally:
+            del sys.modules[mod.__name__]
+
+    def test_the_synthesized_model_is_shaped_by_the_resolver(self):
+        manifest = self._entity_typed_join()
+        models = {f["name"]: f["content"] for f in expand(manifest)}["backend/models.py"]
+        klass = models.split("class ParticipantBody(BaseModel):", 1)[1].split("\nclass ", 1)[0]
+        assert [ln.strip() for ln in klass.strip().splitlines()] == ["name: NonBlankStr"]
+        assert manifest.request_model_name("Participant") == "ParticipantBody"
+        assert manifest.request_model_name("ParticipantName") is None  # shape was removed
+        assert _manifest().request_model_name("ParticipantName") == "ParticipantName"
+        assert manifest.entity_typed_requests() == ("Participant",)
+        assert _manifest().entity_typed_requests() == ()

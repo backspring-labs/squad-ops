@@ -54,6 +54,17 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   so a prefixed router serves the declared paths instead of failing a literal-path check,
   and the repair brief (v6) says to keep the router construction, decorators and handler
   names as they are — a rewrite is refused before it is tested.
+- **E — an endpoint's request body has one resolver** (#1128). Manifest validation accepts
+  a `request:` that names a declared shape *or an entity*; the contract generator resolved
+  probe bodies only through `request_shapes`, so an entity-typed request shipped `json: {}`
+  expecting 201 then 409 from a route whose payload class required `name` — unsatisfiable by
+  construction, and the loop rightly called it `plan_defect`. `InterfaceManifest.request_body_fields`
+  now answers for both (a shape's `required`; an entity's required, non-generated,
+  undefaulted fields) and every probe-body site reads it. The route emitter no longer takes
+  the entity class itself as the payload — its generated `id` is required, so it could never
+  accept that body — but a synthesized `{Entity}Body` model shaped by the same resolver,
+  with `NonBlankStr` required fields so the blank-input probe applies as it does to a
+  declared shape. Pinned reference output (declared shapes throughout) is byte-identical.
 
 ## [1.6.5] — 2026-08-27
 
