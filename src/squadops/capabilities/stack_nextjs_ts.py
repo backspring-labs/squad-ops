@@ -35,12 +35,24 @@ import re
 from collections.abc import Collection
 from typing import TYPE_CHECKING, Any
 
+from squadops.capabilities.app_invocation import AppInvocation
 from squadops.capabilities.success_status import success_status_for
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only, avoids a scaffold import cycle
     from squadops.capabilities.scaffold import InterfaceManifest
 
 STACK_NAME = "nextjs_ts"
+
+#: #1126: how a suite on this stack invokes the application. Under the in-process model
+#: (#877) a suite reaches the app by importing its ``app/api/`` route handler — required as
+#: an import *statement*, so a ``vi.mock('@/app/api/...')`` string cannot satisfy it — so
+#: there is no ``fetch`` for a correct suite to stub, and mocking the route module under
+#: test is unconditionally self-mocking. These three patterns used to live in the shared
+#: detector as if they were every stack's; they are this stack's.
+APP_INVOCATION = AppInvocation(
+    invocation_import=r"""^\s*(?:import\b[^\n]*?from\s*|.*\brequire\s*\(\s*)['"`][^'"`]*app/api/""",
+    subject_mock=r"""(?:vi|jest)\s*\.\s*mock\s*\(\s*['"`][^'"`]*app/api/""",
+)
 
 _TS_TYPES = {
     "str": "string",

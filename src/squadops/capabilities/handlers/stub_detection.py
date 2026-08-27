@@ -34,6 +34,8 @@ from __future__ import annotations
 
 import re
 
+from squadops.capabilities.app_invocation import NETWORK_SEAM_FETCH_STUB, AppInvocation
+
 # Web-app constructors whose presence alongside an import guard signals that the
 # test rebuilt the app inline as a fallback (the stub).
 _APP_CONSTRUCTORS: tuple[str, ...] = (
@@ -118,33 +120,16 @@ _JS_TEST_SUFFIXES: tuple[str, ...] = (
     ".spec.jsx",
 )
 
-#: Replacing the network seam. Under the in-process execution model (#877) a suite reaches
-#: the app by importing its route handler, so there is no fetch for a correct suite to
-#: stub — the presence of a stub means the suite is talking to something it built.
-_NETWORK_SEAM_MOCK = re.compile(
-    r"""(?x)
-      global(?:This)?\s*\.\s*fetch\s*=                          # global.fetch = ...
-    | (?:vi|jest)\s*\.\s*stubGlobal\s*\(\s*['"`]fetch['"`]      # vi.stubGlobal('fetch', ...)
-    | (?:vi|jest)\s*\.\s*spyOn\s*\(\s*global(?:This)?\s*,\s*['"`]fetch['"`]
-    """
-)
+#: The stack's declaration of how a suite invokes the application, and the shared
+#: fetch-stub half of the network-seam rule (#1126). Defined in the leaf module
+#: ``capabilities.app_invocation`` so the stack modules can declare one without importing
+#: the handler package; re-exported here because this is the detector that applies it.
+__all__ = ["AppInvocation", "NETWORK_SEAM_FETCH_STUB"]
 
-#: Mocking the subject itself. Unconditional: there is no reading under which replacing
-#: the route module under test and then asserting on it verifies the route module.
-_ROUTE_MODULE_MOCK = re.compile(r"""(?:vi|jest)\s*\.\s*mock\s*\(\s*['"`][^'"`]*app/api/""")
-
-#: A real import of an application route module — the in-process model's entry point.
-#: Required as a *statement* rather than as any occurrence of the path, so that a
-#: ``vi.mock('@/app/api/...')`` string cannot satisfy it.
-_APP_ROUTE_IMPORT = re.compile(
-    r"""^\s*(?:import\b[^\n]*?from\s*|.*\brequire\s*\(\s*)['"`][^'"`]*app/api/""",
-    re.MULTILINE,
-)
-
-MOCKS_THE_SUBJECT = "mocks the route module under test and asserts on the mock"
+MOCKS_THE_SUBJECT = "mocks the module under test and asserts on the mock"
 MOCKS_THE_NETWORK = (
-    "replaces the fetch seam and imports no route module, so the application is "
-    "never invoked — the suite asserts what it told its own mock to return"
+    "replaces the seam it would reach the application through and never invokes it — "
+    "the suite asserts what it told its own mock to return"
 )
 
 
@@ -154,30 +139,37 @@ def _is_js_test_file(path: str) -> bool:
     return name.endswith(_JS_TEST_SUFFIXES)
 
 
-def detect_self_mocking_tests(files: list[dict]) -> list[tuple[str, str]]:
+def detect_self_mocking_tests(
+    files: list[dict], invocation: AppInvocation | None
+) -> list[tuple[str, str]]:
     """Return ``(path, reason)`` for generated suites that assert against their own mock.
 
     Deliberately two-clause and conservative, mirroring the stub-fallback heuristic. A
-    suite that mocks an *outbound* call while still importing and invoking the real route
-    handler is legitimate and is not flagged — mocking is not the defect, mocking
-    **instead of** invoking is. The discriminator is whether an application route module
-    is imported at all.
+    suite that mocks an *outbound* seam while still invoking the real application is
+    legitimate and is not flagged — mocking is not the defect, mocking **instead of**
+    invoking is. What counts as invoking the application is ``invocation``, the stack's
+    own declaration (#1126); with none — an unregistered stack — the detector cannot
+    judge and flags nothing, which the caller records as a skipped check rather than a
+    clean one.
 
     Args:
         files: extracted-file or artifact dicts (each with a name/filename/path
             and ``content``).
+        invocation: the stack's :class:`AppInvocation`, or ``None`` when unknown.
 
     Returns:
         Sorted ``(path, reason)`` pairs; empty when none are found.
     """
+    if invocation is None:
+        return []
     offenders: list[tuple[str, str]] = []
     for f in files:
         path, content = _file_field(f)
         if not path or not _is_js_test_file(path):
             continue
-        if _ROUTE_MODULE_MOCK.search(content):
+        if invocation.mocks_subject(content):
             offenders.append((path, MOCKS_THE_SUBJECT))
-        elif _NETWORK_SEAM_MOCK.search(content) and not _APP_ROUTE_IMPORT.search(content):
+        elif invocation.mocks_network(content) and not invocation.invokes(content):
             offenders.append((path, MOCKS_THE_NETWORK))
     return sorted(offenders)
 

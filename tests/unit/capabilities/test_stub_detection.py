@@ -16,8 +16,15 @@ from squadops.capabilities.handlers.stub_detection import (
     detect_self_mocking_tests,
     detect_stub_fallback_tests,
 )
+from squadops.capabilities.scaffold import app_invocation_for
+from squadops.capabilities.stack_nextjs_ts import APP_INVOCATION as NEXTJS_APP_INVOCATION
 
 pytestmark = [pytest.mark.domain_capabilities]
+
+
+def _detect_nextjs(files):
+    """The Next.js cases, through that stack's own declaration (#1126)."""
+    return detect_self_mocking_tests(files, NEXTJS_APP_INVOCATION)
 
 
 _STUB_FALLBACK = """\
@@ -173,7 +180,7 @@ class TestSelfMockingSuites:
     verification."""
 
     def test_roll_threes_real_suite_is_flagged(self):
-        offenders = detect_self_mocking_tests(
+        offenders = _detect_nextjs(
             [{"name": "__tests__/api/runs.test.ts", "content": _SELF_MOCKING}]
         )
         assert offenders == [("__tests__/api/runs.test.ts", MOCKS_THE_NETWORK)]
@@ -183,9 +190,7 @@ class TestSelfMockingSuites:
         model answer — imports the route module, invokes the handler, asserts on the
         real response — and a detector that flags it would reject correct work."""
         assert (
-            detect_self_mocking_tests(
-                [{"name": "__tests__/participants.test.ts", "content": _REAL_ADDITIVE}]
-            )
+            _detect_nextjs([{"name": "__tests__/participants.test.ts", "content": _REAL_ADDITIVE}])
             == []
         )
 
@@ -194,9 +199,7 @@ class TestSelfMockingSuites:
         stubs an outbound dependency and still drives the real handler is exactly what
         a caller should be allowed to write."""
         content = _REAL_ADDITIVE + "\nglobal.fetch = vi.fn()  // stub the upstream weather API\n"
-        assert (
-            detect_self_mocking_tests([{"name": "__tests__/x.test.ts", "content": content}]) == []
-        )
+        assert _detect_nextjs([{"name": "__tests__/x.test.ts", "content": content}]) == []
 
     def test_mocking_the_route_module_is_flagged_even_when_it_is_also_imported(self):
         """The hole the import-based discriminator would otherwise leave: mock the
@@ -208,7 +211,7 @@ class TestSelfMockingSuites:
             "vi.mock('@/app/api/runs/route')\n"
             "import * as route from '@/app/api/runs/route'\n"
         )
-        offenders = detect_self_mocking_tests([{"name": "__tests__/y.test.ts", "content": content}])
+        offenders = _detect_nextjs([{"name": "__tests__/y.test.ts", "content": content}])
         assert offenders == [("__tests__/y.test.ts", MOCKS_THE_SUBJECT)]
 
     @pytest.mark.parametrize(
@@ -222,13 +225,13 @@ class TestSelfMockingSuites:
     )
     def test_each_way_of_replacing_the_seam_is_recognised(self, stub_line):
         content = f"import {{ vi }} from 'vitest'\n{stub_line}\nawait fetch('/api/runs')\n"
-        offenders = detect_self_mocking_tests([{"name": "__tests__/z.test.ts", "content": content}])
+        offenders = _detect_nextjs([{"name": "__tests__/z.test.ts", "content": content}])
         assert offenders == [("__tests__/z.test.ts", MOCKS_THE_NETWORK)]
 
     def test_a_non_test_file_is_ignored(self):
         """The delivered client seam legitimately calls fetch; it is not a test."""
         content = "export async function api(path: string) { return fetch(path) }\n"
-        assert detect_self_mocking_tests([{"name": "lib/api.ts", "content": content}]) == []
+        assert _detect_nextjs([{"name": "lib/api.ts", "content": content}]) == []
 
     def test_the_two_detectors_do_not_reach_into_each_others_languages(self):
         """One module, two vocabularies. A Python stub-fallback is not a self-mocking
@@ -239,7 +242,7 @@ class TestSelfMockingSuites:
             {"name": "__tests__/runs.test.ts", "content": _SELF_MOCKING},
         ]
         assert detect_stub_fallback_tests(files) == ["test_api.py"]
-        assert [path for path, _ in detect_self_mocking_tests(files)] == ["__tests__/runs.test.ts"]
+        assert [path for path, _ in _detect_nextjs(files)] == ["__tests__/runs.test.ts"]
 
     def test_multiple_offenders_are_sorted(self):
         files = [
@@ -247,7 +250,7 @@ class TestSelfMockingSuites:
             {"name": "__tests__/a.spec.tsx", "content": _SELF_MOCKING},
             {"name": "__tests__/ok.test.ts", "content": _REAL_ADDITIVE},
         ]
-        assert [path for path, _ in detect_self_mocking_tests(files)] == [
+        assert [path for path, _ in _detect_nextjs(files)] == [
             "__tests__/a.spec.tsx",
             "__tests__/b.test.ts",
         ]
@@ -262,4 +265,96 @@ class TestSelfMockingSuites:
         ],
     )
     def test_empty_or_nameless_inputs_do_not_crash(self, files):
-        assert detect_self_mocking_tests(files) == []
+        assert _detect_nextjs(files) == []
+
+
+class TestSelfMockingOnFastapiReact:
+    """#1126: the rule is stack-neutral, the definition of "invokes the app" is not. On a
+    React SPA a suite reaches the app by rendering a real component or ``App``; the network
+    is a seam UNDER it. The 03:26Z suite of 1.6.5 FastAPI+React roll 1
+    (`cyc_b9296c255dfc`, `art_477b87f85956`) rendered the real ``App`` with ``fetch``
+    stubbed, passed 3/3, and was failed by the Next.js definition; both accepted shakeouts
+    got past it with ``vi.mock('../api.js')``, the more self-mocking shape."""
+
+    REACT = app_invocation_for("fullstack_fastapi_react")
+
+    # The discarded green, trimmed to its imports and seam handling.
+    ROLL_1_SUITE = """\
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
+import App from '../App.jsx'
+
+describe('runs', () => {
+  let fetchMock
+  beforeEach(() => {
+    fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+  })
+  afterEach(() => { cleanup() })
+  it('create run then see it in the list', async () => {
+    render(<MemoryRouter><App /></MemoryRouter>)
+  })
+})
+"""
+
+    def test_the_discarded_green_suite_is_legitimate(self):
+        files = [{"name": "frontend/src/__tests__/runs.test.jsx", "content": self.ROLL_1_SUITE}]
+        assert detect_self_mocking_tests(files, self.REACT) == []
+
+    def test_a_view_import_counts_as_invoking_the_app(self):
+        content = (
+            "import RunsListView from '../views/RunsListView.jsx'\n"
+            "vi.stubGlobal('fetch', vi.fn())\n"
+        )
+        files = [{"name": "frontend/src/__tests__/list.test.jsx", "content": content}]
+        assert detect_self_mocking_tests(files, self.REACT) == []
+
+    @pytest.mark.parametrize(
+        "seam",
+        [
+            "vi.stubGlobal('fetch', vi.fn())",
+            "global.fetch = vi.fn()",
+            "vi.mock('../api.js', () => ({ apiFetch: vi.fn() }))",
+        ],
+        ids=["fetch-stub", "global-fetch", "api-module-mock"],
+    )
+    def test_replacing_the_seam_without_rendering_anything_is_self_mocking(self, seam):
+        content = (
+            f"import {{ describe, it, expect, vi }} from 'vitest'\n{seam}\nit('x', () => {{}})\n"
+        )
+        files = [{"name": "frontend/src/__tests__/runs.test.jsx", "content": content}]
+        assert detect_self_mocking_tests(files, self.REACT) == [
+            ("frontend/src/__tests__/runs.test.jsx", MOCKS_THE_NETWORK)
+        ]
+
+    def test_mocking_the_api_client_while_rendering_a_view_is_legitimate(self):
+        """The shakeouts' shape: an outbound seam mocked, the real component rendered."""
+        content = (
+            "import RunDetailView from '../views/RunDetailView.jsx'\n"
+            "vi.mock('../api.js', () => ({ apiFetch: vi.fn() }))\n"
+        )
+        files = [{"name": "frontend/src/__tests__/detail.test.jsx", "content": content}]
+        assert detect_self_mocking_tests(files, self.REACT) == []
+
+    @pytest.mark.parametrize(
+        "mock", ["vi.mock('../views/RunsListView.jsx')", "vi.mock('../App.jsx', () => ({}))"]
+    )
+    def test_mocking_a_view_or_app_is_mocking_the_subject_even_when_imported(self, mock):
+        content = f"import App from '../App.jsx'\n{mock}\nvi.stubGlobal('fetch', vi.fn())\n"
+        files = [{"name": "frontend/src/__tests__/app.test.jsx", "content": content}]
+        assert detect_self_mocking_tests(files, self.REACT) == [
+            ("frontend/src/__tests__/app.test.jsx", MOCKS_THE_SUBJECT)
+        ]
+
+    def test_the_nextjs_definition_would_still_reject_the_react_green(self):
+        """The bug, kept as a test: the two stacks' definitions must differ here."""
+        files = [{"name": "frontend/src/__tests__/runs.test.jsx", "content": self.ROLL_1_SUITE}]
+        assert detect_self_mocking_tests(files, NEXTJS_APP_INVOCATION) == [
+            ("frontend/src/__tests__/runs.test.jsx", MOCKS_THE_NETWORK)
+        ]
+
+    def test_an_unknown_stack_judges_nothing(self):
+        files = [{"name": "x.test.js", "content": "global.fetch = vi.fn()\n"}]
+        assert detect_self_mocking_tests(files, None) == []
+        assert app_invocation_for("cobol_cics") is None

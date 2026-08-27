@@ -32,6 +32,17 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   failure and sent a repair at a file the loop had already fixed. Evidence artifacts in the
   re-store are now replaced by the passing retest's same-named artifact or dropped; work
   product is untouched and the retest's own suite files stay under the retest id.
+- **C — "invokes the application" is the stack's own definition** (#1126). The
+  self-mocking detector defined it as an `app/api/` import — the Next.js in-process model —
+  inside a shared module, and failed a green FastAPI+React suite that rendered the real `App`
+  with `fetch` stubbed while passing the one that `vi.mock`ed the app's own API client. Each
+  `ScaffoldStack` now declares an `AppInvocation` (the import that proves the app is invoked,
+  the mock that replaces the subject, the mock that replaces the network seam) in a leaf
+  module; the detector only applies it, resolved through `app_invocation_for` beside
+  `check_stack_for`. On React a rendered component or `App` invokes the app and a `fetch`
+  stub or `api.js` mock under it is legitimate; mocking a view or `App` module is mocking
+  the subject. An unregistered stack is judged not at all and its row is banked with an
+  empty inspected inventory, never as clean. The discarded roll-1 suite is the replay test.
 
 ## [1.6.5] — 2026-08-27
 
