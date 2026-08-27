@@ -318,23 +318,32 @@ class TestSquadSnapshotIsAnIdentity:
     def test_identity_mismatch(self, driver, expected, actual, mismatch):
         assert driver.identity_mismatch(expected, actual) is mismatch
 
-    @pytest.mark.parametrize("filename", ["1-6-5-nextjs.yaml", "1-6-5-fastapi-react.yaml"])
-    def test_the_counting_sets_are_fully_pinned(self, driver, filename):
+    @pytest.mark.parametrize(
+        ("filename", "n"),
+        [
+            ("1-6-5-nextjs.yaml", 6),
+            ("1-6-5-fastapi-react.yaml", 6),
+            ("1-6-6-nextjs.yaml", 4),
+            ("1-6-6-fastapi-react.yaml", 4),
+        ],
+    )
+    def test_the_counting_sets_are_fully_pinned(self, driver, filename, n):
         """Bug caught: a counting set whose config still carries the shakeout-time blanks —
         the driver would then record instead of assert, and a rebuild mid-set would pass."""
         import re
 
         cfg = driver.load_set_config(_SETS / filename)
-        assert cfg.n_rolls == 6
+        assert cfg.n_rolls == n
         assert re.fullmatch(r"[0-9a-f]{12,16}", cfg.expected_squad_snapshot_prefix)
         assert re.fullmatch(r"[0-9a-f]{12}", cfg.expected_config_hash_prefix)
         assert re.fullmatch(r"[0-9a-f]{8}", cfg.frozen_deploy_commit)
         assert set(cfg.frozen_image_ids) == set(driver.DEPLOY_SERVICES)
         assert all(re.fullmatch(r"[0-9a-f]{12}", v) for v in cfg.frozen_image_ids.values())
 
-    def test_both_sets_share_the_deploy_and_snapshot_but_not_the_config_hash(self, driver):
-        a = driver.load_set_config(_SETS / "1-6-5-nextjs.yaml")
-        b = driver.load_set_config(_SETS / "1-6-5-fastapi-react.yaml")
+    @pytest.mark.parametrize("line", ["1-6-5", "1-6-6"])
+    def test_both_sets_share_the_deploy_and_snapshot_but_not_the_config_hash(self, driver, line):
+        a = driver.load_set_config(_SETS / f"{line}-nextjs.yaml")
+        b = driver.load_set_config(_SETS / f"{line}-fastapi-react.yaml")
         assert a.frozen_image_ids == b.frozen_image_ids
         assert a.frozen_deploy_commit == b.frozen_deploy_commit
         assert a.expected_squad_snapshot_prefix == b.expected_squad_snapshot_prefix

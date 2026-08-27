@@ -34,8 +34,8 @@ written once; the driver refuses a counting roll when the deploy's image ids or 
 | Overrides | FastAPI+React: none (`validated-fullstack`'s defaults are stack #1). Next.js+TS: `build_profile=nextjs_ts`, `dev_capability=nextjs_ts` |
 | `resolved_config_hash` | FastAPI+React `c4d6a2165acf`, Next.js+TS `d4d4f66217d8` — **unchanged** from 1.6.5: the pack changed code, not configuration; a roll on any other hash is void |
 | `squad_profile_snapshot_ref` | `575707c58536cf3b…` — unchanged from 1.6.5 (E's eve budget still in force); a roll on any other snapshot is void |
-| Deploy — commit | `__DEPLOY_COMMIT__` (main at the #1141 merge: A #1136, B #1137, F #1138, C #1139, D #1140, E #1141) |
-| Deploy — 7 image ids | `__IMAGE_IDS__` — asserted at every counting launch by the driver |
+| Deploy — commit | `e14a6ad4` (main at the #1141 merge: A #1136, B #1137, F #1138, C #1139, D #1140, E #1141) |
+| Deploy — 7 image ids | runtime-api `5d6c78df37f4` · max `0b996c984c2a` · neo `577f8271178f` · nat `c4faec0cb1c6` · bob `90e0539eb041` · eve `248da1560551` · data `37e27803b5ed` — asserted at every counting launch by the driver |
 | Loaded, not built | verified in-container by the driver's `loaded_checks` before both shakeouts and recorded with the deploy identity: runtime-api carries `REPAIR_REFUSED_MARKER` / `repair_refused_in_round` (D), `supersede_evidence_artifacts` (F), `InterfaceManifest.request_body_fields` / `request_model_name` (E) and `app_invocation_for` (C); eve carries `AppInvocation` and both stacks' declarations (C). A and B are frozen-output changes read by P0 (R1) and the shakeout's stored harness. |
 | Gate policy | 1.6.3 §6 constant, verbatim in each set config's `gate_notes`; `--as-agent`; both §6.1 paths satisfy zero-intervention and the decider is recorded per roll |
 | Audit instrument | `scripts/dev/audit_delivered_app.py` at the frozen deploy commit |

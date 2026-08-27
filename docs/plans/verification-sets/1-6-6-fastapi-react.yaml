@@ -38,5 +38,12 @@ loaded_checks:
 expected_config_hash_prefix: "c4d6a2165acf"
 # The identity a per-agent override moves (1.6.5 E) — resolved_config_hash does not see it.
 expected_squad_snapshot_prefix: "575707c58536cf3b"
-frozen_deploy_commit: ""
-frozen_image_ids: {}
+frozen_deploy_commit: "e14a6ad4"
+frozen_image_ids:
+  runtime-api: 5d6c78df37f4
+  max: 0b996c984c2a
+  neo: 577f8271178f
+  nat: c4faec0cb1c6
+  bob: 90e0539eb041
+  eve: 248da1560551
+  data: 37e27803b5ed
