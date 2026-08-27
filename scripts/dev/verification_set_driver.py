@@ -587,6 +587,7 @@ def _p0_fullstack_fastapi_react(manifest: Any, seeded: Reader) -> dict:
     models = seeded("backend/models.py") or ""
     store = seeded("backend/store.py") or ""
     expected, mismatches = [], []
+    nullable_expected, nullable_mismatches = [], []
     for entity in manifest.entities:
         for f in entity.fields:
             if f.type.strip().lower().startswith("list["):
@@ -594,6 +595,14 @@ def _p0_fullstack_fastapi_react(manifest: Any, seeded: Reader) -> dict:
                 expected.append(want)
                 if want not in models:
                     mismatches.append(want)
+            elif (not f.required) or (f.has_default and f.default is None):
+                # #1125 (1.6.6 A, prediction R1): an optional field — declared
+                # ``required: false`` or ``default: null`` — freezes nullable. The
+                # ``str = None`` form pydantic rejects sat under five of six 1.6.5 rolls.
+                want = f"{f.name}: {_py_type(f.type)} | None = None"
+                nullable_expected.append(want)
+                if want not in models:
+                    nullable_mismatches.append(want)
     roots = list(root_persisted_entities(manifest))
     stores = re.findall(r"^(\w+)_store:", store, re.M)
     return {
@@ -602,10 +611,13 @@ def _p0_fullstack_fastapi_react(manifest: Any, seeded: Reader) -> dict:
         "models_expected_collection_lines": expected,
         "models_mismatches": mismatches,
         "p0_models_entity_typed": not mismatches,
+        "models_nullable_expected_lines": nullable_expected,
+        "models_nullable_mismatches": nullable_mismatches,
+        "p0_optional_fields_nullable": not nullable_mismatches,
         "store_names": stores,
         "root_persisted_entities": roots,
         "stores_beyond_roots": sorted(set(stores) - {_snake(r) for r in roots}),
-        "passed": not mismatches,
+        "passed": not mismatches and not nullable_mismatches,
     }
 
 
@@ -662,7 +674,51 @@ def static_checks(
     if framing_run:
         contract = artifact_text(cfg, cycle_id, framing_run, "verification_contract.yaml")
         out["contract_json_has_probes"] = contract.count("json_has:") if contract else None
+        # 1.6.6 R5 (#1128): no POST probe on an endpoint that declares a request body ships {}.
+        out["empty_body_probes"] = (
+            empty_body_probes(manifest, contract) if contract and manifest is not None else None
+        )
+    if impl_run:
+        # 1.6.6 R2 (#1127): no stored report fails "Found multiple elements".
+        out["multiple_elements_reports"] = _report_scan(
+            cfg, cycle_id, impl_run, "Found multiple elements"
+        )
     return out
+
+
+def empty_body_probes(manifest: Any, contract_text: str) -> list[str]:
+    """Ids of POST probes that carry ``json: {}`` on an endpoint whose manifest declares a
+    ``request:`` — the shape that made 1.6.5 FastAPI+React roll 3 unsatisfiable (#1128)."""
+    paths_with_request = {ep.path for ep in manifest.api.endpoints if ep.request}
+    try:
+        contract = yaml.safe_load(contract_text) or {}
+    except yaml.YAMLError:
+        return ["<contract unparseable>"]
+    probes = ((contract.get("behavioral") or {}).get("probes")) or []
+    return [
+        str(p.get("id"))
+        for p in probes
+        if isinstance(p, dict)
+        and (p.get("request") or {}).get("method") == "POST"
+        and (p.get("request") or {}).get("path") in paths_with_request
+        and (p.get("request") or {}).get("json") == {}
+    ]
+
+
+def _report_scan(cfg: SetConfig, cycle_id: str, impl_run: str, needle: str) -> list[str]:
+    """Task ids whose stored ``test_report.md`` contains ``needle`` (per-round evidence, #1127)."""
+    hits: list[str] = []
+    for art in artifact_dirs(cfg, cycle_id, impl_run):
+        m = _metadata(art)
+        if not m or str(m.get("filename", "")) != "test_report.md":
+            continue
+        try:
+            text = (REPO / m["vault_uri"]).read_text()
+        except (OSError, KeyError):
+            continue
+        if needle in text:
+            hits.append(str((m.get("metadata") or {}).get("task_id") or art.name))
+    return sorted(hits)
 
 
 def ledger_checks(rec: dict) -> dict:
@@ -687,12 +743,41 @@ def runtime_log_window(since: str) -> list[str]:
         "correction_terminated",
         "self_eval fills",
         "fill merge",
+        "patch_verification task=",
+        "patch_retest task=",
+        "plan_defect terminal",
+        "evidence superseded",
     )
     return [line for line in out.splitlines() if any(k in line for k in keys)]
 
 
 def loop_texture(cfg: SetConfig, cycle_id: str, impl_run: str | None, since: str) -> dict:
     logs = runtime_log_window(since)
+    out = texture_from_logs(logs)
+    out["fill_rejections"] = _fill_rejections(cfg, cycle_id, impl_run) if impl_run else []
+    return out
+
+
+def texture_from_logs(logs: list[str]) -> dict:
+    """The loop's readouts from the runtime-api log window — pure, so the parse is testable.
+
+    1.6.6 (plan §2.3): ``refused_patches`` (patch verification refused the repair — never
+    applied), ``applied_patches`` (a retest ran, or verification passed), and
+    ``plan_defect_after_zero_applied`` — prediction R4's falsifier, readable from the
+    record instead of the executor log. ``refused_rounds_not_counted`` is D's own line;
+    ``evidence_superseded`` is F's (#1111).
+    """
+    refused = [
+        line[-200:]
+        for line in logs
+        if "patch_verification task=" in line and "status=failed" in line
+    ]
+    applied = sum(
+        ("patch_retest task=" in line)
+        or ("patch_verification task=" in line and "status=passed" in line)
+        for line in logs
+    )
+    terminations = [line[-200:] for line in logs if "correction_terminated_plan_defect" in line]
     return {
         "narrowed_targets": [
             line.split("correction_repair_target:")[-1][:160]
@@ -709,7 +794,14 @@ def loop_texture(cfg: SetConfig, cycle_id: str, impl_run: str | None, since: str
             line[-160:] for line in logs if "repair emitted no content" in line
         ],
         "self_eval_fill_merges": [line[-160:] for line in logs if "self_eval fills" in line],
-        "fill_rejections": _fill_rejections(cfg, cycle_id, impl_run) if impl_run else [],
+        "refused_patches": refused,
+        "applied_patches": applied,
+        "plan_defect_terminations": terminations,
+        "plan_defect_after_zero_applied": bool(terminations) and applied == 0,
+        "refused_rounds_not_counted": [
+            line[-200:] for line in logs if "not counted as a repeat (#1129)" in line
+        ],
+        "evidence_superseded": [line[-200:] for line in logs if "evidence superseded" in line],
     }
 
 
