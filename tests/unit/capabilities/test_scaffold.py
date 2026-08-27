@@ -834,6 +834,84 @@ class TestFrontendTestHarness:
         assert "frontend/src/test-setup.js" not in slots
 
 
+class TestFrozenModelOptionalFields:
+    """#1125: what the frozen pydantic model says about a field the manifest marks
+    optional. Five of six 1.6.5 FastAPI+React rolls opened with a 500 on POST /runs
+    because ``required: false, default: null`` froze as ``distance: str = None`` —
+    pydantic v2 rejects an explicit None for a ``str`` field — while the request
+    shape was correctly nullable and the route forwarded its None straight in."""
+
+    @staticmethod
+    def _run_field_line(field: dict) -> str:
+        raw = _raw_manifest()
+        run = next(e for e in raw["entities"] if e["name"] == "RunEvent")
+        run["fields"] = [f for f in run["fields"] if f["name"] != "distance"] + [field]
+        models = _by_name(expand(InterfaceManifest.from_dict(raw)))["backend/models.py"]
+        compile(models, "backend/models.py", "exec")
+        klass = models.split("class RunEvent(BaseModel):", 1)[1].split("\nclass ", 1)[0]
+        return next(ln.strip() for ln in klass.splitlines() if ln.strip().startswith("distance:"))
+
+    @pytest.mark.parametrize(
+        ("field", "expected"),
+        [
+            # the 1.6.5 shape: a declared null default is nullable, not ``str = None``
+            (
+                {"name": "distance", "type": "string", "required": False, "default": None},
+                "distance: str | None = None",
+            ),
+            # the shakeouts' shape: optional with no default key — same meaning, same line
+            (
+                {"name": "distance", "type": "string", "required": False},
+                "distance: str | None = None",
+            ),
+            # a non-null default is never None after construction, so it stays non-nullable
+            (
+                {"name": "distance", "type": "string", "required": False, "default": "5k"},
+                "distance: str = '5k'",
+            ),
+            # a required field without a default is a bare annotation
+            (
+                {"name": "distance", "type": "string", "required": True},
+                "distance: str",
+            ),
+        ],
+        ids=["default-null", "no-default", "non-null-default", "required"],
+    )
+    def test_optional_field_freezes_by_its_effective_default(self, field, expected):
+        assert self._run_field_line(field) == expected
+
+    def test_null_default_model_accepts_the_request_shapes_none(self):
+        """The failure as the app saw it: the route builds the entity from an optional
+        request field that is None. With the old emission this raised ValidationError."""
+        import sys
+        import types
+
+        raw = _raw_manifest()
+        run = next(e for e in raw["entities"] if e["name"] == "RunEvent")
+        for f in run["fields"]:
+            if f["name"] in ("distance", "pace_target", "route_notes"):
+                f["default"] = None
+        models = _by_name(expand(InterfaceManifest.from_dict(raw)))["backend/models.py"]
+        # The emitted module uses ``from __future__ import annotations``; pydantic
+        # resolves the entity references through ``sys.modules[cls.__module__]``.
+        mod = types.ModuleType("frozen_models_1125")
+        sys.modules[mod.__name__] = mod
+        try:
+            exec(compile(models, "backend/models.py", "exec"), mod.__dict__)
+            run_event = mod.RunEvent(
+                id="r1",
+                title="t",
+                datetime="2026-08-01T08:00:00",
+                location="here",
+                distance=None,
+                pace_target=None,
+                route_notes=None,
+            )
+        finally:
+            del sys.modules[mod.__name__]
+        assert (run_event.distance, run_event.pace_target, run_event.route_notes) == (None,) * 3
+
+
 class TestNonBlankRequestFields:
     """#593: the emitted request models must actually enforce the constraint —
     a template typo (wrong alias, misplaced annotation) would compile fine and

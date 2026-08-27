@@ -5,7 +5,19 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
-Nothing yet.
+### 1.6.6 line — the React arm's round-0 defects (plan: `docs/plans/1-6-6-plan.md`)
+
+- **A — an optional entity field freezes nullable** (#1125). A manifest field declared
+  `required: false, default: null` froze as `distance: str = None` — a non-nullable annotation
+  with a `None` default — because the declared null set `has_default` and the nullable branch
+  only fired when no default key existed; the request shape was correctly `str | None`, so the
+  route forwarded the request's `None` into the entity and pydantic answered 500 on POST /runs.
+  Five of the six FastAPI+React rolls in the previous set opened with that failure; the three
+  manifests that omitted the key were clean. The rule now: a declared null default and an
+  optional field with no default both freeze `X | None = None`; a non-null default keeps
+  `X = default`. Python emitter only — the TS emitter renders `distance?: string` and is
+  untouched; every pinned fixture (the Next.js reference scaffold, the stack-#1 contract
+  reference, the context goldens) is byte-identical.
 
 ## [1.6.5] — 2026-08-27
 
