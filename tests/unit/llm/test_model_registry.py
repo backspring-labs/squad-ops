@@ -27,7 +27,7 @@ class TestModelSpec:
 
     def test_qwen3_family_is_switchable_and_qwen25_is_not(self):
         """The two families the profiles run: #924's dial exists on qwen3 and
-        Ollama rejects ``think`` on qwen2.5 — a swapped declaration either
+        Ollama 400s on ``think: true`` for qwen2.5 — a swapped declaration either
         leaves the 13.9× channel on or 400s every qwen2.5 call."""
         from squadops.llm.model_registry import ReasoningControl
 
