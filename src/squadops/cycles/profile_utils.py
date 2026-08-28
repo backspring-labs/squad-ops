@@ -8,6 +8,7 @@ from squadops.cycles.models import (
     ALLOWED_CONFIG_OVERRIDE_KEYS,
     ProfileValidationError,
 )
+from squadops.llm.models import REASONING_LEVELS
 
 # Profile ID constraints.
 _PROFILE_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9\-]{0,62}[a-z0-9]$")
@@ -49,6 +50,23 @@ def validate_config_overrides(overrides: dict) -> list[str]:
     return sorted(set(overrides.keys()) - ALLOWED_CONFIG_OVERRIDE_KEYS)
 
 
+def validate_reasoning_override(overrides: dict) -> list[str]:
+    """Errors for a ``reasoning`` override whose value is not a ReasoningLevel (#927).
+
+    Checked here, at the profile boundary, because nothing downstream re-checks
+    it: a misspelt level would reach the adapter and be sent as "reasoning on".
+    """
+    if "reasoning" not in overrides:
+        return []
+    level = overrides["reasoning"]
+    if level in REASONING_LEVELS:
+        return []
+    return [
+        f"config_overrides.reasoning must be one of {', '.join(sorted(REASONING_LEVELS))}; "
+        f"got {level!r}"
+    ]
+
+
 def validate_agent_entries(agents: list[dict]) -> list[str]:
     """Validate agent entries, returning a list of error messages.
 
@@ -74,5 +92,6 @@ def validate_agent_entries(agents: list[dict]) -> list[str]:
         unknown = validate_config_overrides(overrides)
         if unknown:
             errors.append(f"agents[{i}]: unknown config_overrides keys: {', '.join(unknown)}")
+        errors.extend(f"agents[{i}]: {e}" for e in validate_reasoning_override(overrides))
 
     return errors

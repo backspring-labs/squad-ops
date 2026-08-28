@@ -37,6 +37,7 @@ class _StreamingLLM(LLMPort):
         max_tokens: int | None = None,
         temperature: float | None = None,
         timeout_seconds: float | None = None,
+        reasoning: str | None = None,
     ) -> AsyncIterator[str]:
         for chunk in self._chunks:
             yield chunk
@@ -282,6 +283,7 @@ class TestRouterChatStreamForwarding:
                 max_tokens=10,
                 temperature=0.1,
                 timeout_seconds=5.0,
+                reasoning="none",
             )
         ]
         assert chunks == ["ok"]
@@ -290,6 +292,7 @@ class TestRouterChatStreamForwarding:
             "max_tokens": 10,
             "temperature": 0.1,
             "timeout_seconds": 5.0,
+            "reasoning": "none",
         }
 
 

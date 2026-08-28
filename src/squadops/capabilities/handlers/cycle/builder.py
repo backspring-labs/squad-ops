@@ -23,6 +23,7 @@ from squadops.capabilities.handlers.cycle.validation import (
     _classify_file,
 )
 from squadops.capabilities.handlers.emission_log import log_emission_shape
+from squadops.capabilities.reasoning_policy import reasoning_kwargs, resolve_reasoning_level
 
 logger = logging.getLogger(__name__)
 
@@ -428,6 +429,12 @@ class BuilderAssembleHandler(_CycleTaskHandler):
             builder_kwargs["model"] = agent_model
         if "temperature" in agent_overrides:
             builder_kwargs["temperature"] = agent_overrides["temperature"]
+        reasoning = resolve_reasoning_level(
+            self._capability_id,
+            agent_overrides=agent_overrides,
+            model_name=agent_model or context.ports.llm.default_model,
+        )
+        builder_kwargs.update(reasoning_kwargs(reasoning))
 
         try:
             response = await context.ports.llm.chat_stream_with_usage(messages, **builder_kwargs)
@@ -449,6 +456,7 @@ class BuilderAssembleHandler(_CycleTaskHandler):
             resolved_model,
             rendered=rendered,
             chat_response=response,
+            reasoning=reasoning,
         )
 
         # Step 5: Parse fenced code blocks

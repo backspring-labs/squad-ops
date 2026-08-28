@@ -279,6 +279,13 @@ class TestRedactionPreservesEveryOtherField:
     These tests pin both halves: the value that was lost, and the class of loss.
     """
 
+    def test_reasoning_level_survives_redaction(self, adapter):
+        """#927's field, added after the #793 fix: the copy-everything
+        ``replace`` must carry it, or LangFuse shows every generation with the
+        level unknown and the Reasoning pack's first prediction is unreadable."""
+        adapter.record_generation(_make_ctx(), _make_record(reasoning="none"), _make_layers())
+        assert adapter._buffer.get_nowait().payload[0].reasoning == "none"
+
     def test_tokens_per_second_survives_redaction(self, adapter):
         """The exact #793 defect. A populated throughput must reach the buffer."""
         adapter.record_generation(_make_ctx(), _make_record(tokens_per_second=10.6), _make_layers())

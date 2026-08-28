@@ -15,6 +15,7 @@ from squadops.capabilities.handlers.base import (
     HandlerEvidence,
     HandlerResult,
 )
+from squadops.capabilities.reasoning_policy import resolve_reasoning_level
 from squadops.cycles.acceptance_check_spec import (
     CHECK_SPECS,
     CONFIG_OFF_SKIP_REASONS,
@@ -378,6 +379,13 @@ class _CycleTaskHandler(CapabilityHandler):
             kwargs["max_tokens"] = spec.default_max_completion
         if "timeout_seconds" in overrides:
             kwargs["timeout_seconds"] = overrides["timeout_seconds"]
+        # #927: keyed on the agent's model exactly as the completion clamp is — a
+        # task dispatched without one sends no level, as it gets no clamp.
+        reasoning = resolve_reasoning_level(
+            self._capability_id, agent_overrides=overrides, model_name=agent_model
+        )
+        if reasoning is not None:
+            kwargs["reasoning"] = reasoning
         return kwargs
 
     # SIP-0086: Output validation and self-evaluation (Stage B)
@@ -734,6 +742,7 @@ class _CycleTaskHandler(CapabilityHandler):
                     if rendered and rendered.template_version
                     else None
                 ),
+                reasoning=chat_kwargs.get("reasoning"),
             )
             if response.tokens_per_second:
                 logger.info(
@@ -864,6 +873,7 @@ class _CycleTaskHandler(CapabilityHandler):
         resolved_model: str | None = None,
         rendered: object | None = None,
         chat_response: ChatMessage | None = None,
+        reasoning: str | None = None,
     ) -> None:
         """Record LLM generation for LangFuse tracing (SIP-0061).
 
@@ -908,6 +918,7 @@ class _CycleTaskHandler(CapabilityHandler):
                     if rendered and getattr(rendered, "template_version", None)
                     else None
                 ),
+                reasoning=reasoning,
             )
             layers = PromptLayerMetadata(
                 prompt_layer_set_id=f"{self._role}-{self._prompt_layer_kind}",

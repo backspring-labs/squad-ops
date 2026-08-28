@@ -25,6 +25,7 @@ class _ConcreteLLM(LLMPort):
         max_tokens: int | None = None,
         temperature: float | None = None,
         timeout_seconds: float | None = None,
+        reasoning: str | None = None,
     ) -> ChatMessage:
         self.last_chat_kwargs = {
             "model": model,
@@ -41,6 +42,7 @@ class _ConcreteLLM(LLMPort):
         max_tokens: int | None = None,
         temperature: float | None = None,
         timeout_seconds: float | None = None,
+        reasoning: str | None = None,
     ) -> AsyncIterator[str]:
         self.last_chat_kwargs = {
             "model": model,

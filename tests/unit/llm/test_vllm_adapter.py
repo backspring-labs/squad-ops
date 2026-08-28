@@ -21,8 +21,9 @@ import json
 import httpx
 import pytest
 
-from adapters.llm.vllm import VLLMAdapter
-from squadops.llm.models import ChatMessage
+from adapters.llm.vllm import VLLMAdapter, _reasoning_fields
+from squadops.llm.model_registry import ModelSpec, ReasoningControl
+from squadops.llm.models import ChatMessage, ReasoningLevel
 from tests.unit.llm.conformance import wire
 
 pytestmark = [pytest.mark.domain_orchestration]
@@ -182,3 +183,69 @@ class TestStreamingUsageFrame:
         assert message.content == "answer"
         assert message.completion_tokens == 6
         assert message.total_tokens == 10
+
+
+def _spec(dial: str) -> ModelSpec:
+    return ModelSpec(name="any", context_window=1, default_max_completion=1, reasoning_control=dial)
+
+
+class TestReasoningDials:
+    """#927: the OpenAI shape has no reasoning field; each model family has its
+    own, and the adapter picks by the dial the model spec declares. The bug each
+    case guards: the wrong field for the family — a ``reasoning_effort`` sent to
+    a qwen3 server is ignored and the channel stays on; a
+    ``chat_template_kwargs`` sent to gpt-oss does nothing."""
+
+    @pytest.mark.parametrize(
+        ("level", "enabled"),
+        [
+            (ReasoningLevel.NONE, False),
+            (ReasoningLevel.LOW, True),
+            (ReasoningLevel.HIGH, True),
+        ],
+    )
+    def test_toggle_dial_collapses_to_enable_thinking(self, level, enabled):
+        assert _reasoning_fields(_spec(ReasoningControl.TOGGLE), level) == {
+            "chat_template_kwargs": {"enable_thinking": enabled}
+        }
+
+    @pytest.mark.parametrize(
+        ("level", "effort"),
+        [
+            (ReasoningLevel.NONE, "low"),  # the dial cannot switch off; lowest effort
+            (ReasoningLevel.LOW, "low"),
+            (ReasoningLevel.MEDIUM, "medium"),
+            (ReasoningLevel.HIGH, "high"),
+        ],
+    )
+    def test_effort_dial_passes_the_level_through(self, level, effort):
+        assert _reasoning_fields(_spec(ReasoningControl.EFFORT), level) == {
+            "reasoning_effort": effort
+        }
+
+    @pytest.mark.parametrize("spec", [None, _spec(ReasoningControl.NONE)])
+    def test_no_dial_sends_nothing(self, spec):
+        """An unregistered model or one with no channel gets no field at all —
+        some backends reject unknown fields, and the port says a level is a
+        request, not a guarantee."""
+        assert _reasoning_fields(spec, ReasoningLevel.HIGH) == {}
+
+    async def test_level_reaches_the_wire_by_the_registered_dial(self):
+        """Wiring half: a registered toggle model's request carries the
+        chat-template switch, and the flat OpenAI fields are untouched."""
+        seen: list[dict] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(json.loads(request.content))
+            return httpx.Response(
+                200,
+                json={
+                    "choices": [{"message": {"role": "assistant", "content": "ok"}}],
+                    "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+                },
+            )
+
+        with wire(handler):
+            await _adapter().chat(_messages(), model="qwen3.6:27b", reasoning=ReasoningLevel.NONE)
+        assert seen[0]["chat_template_kwargs"] == {"enable_thinking": False}
+        assert "reasoning_effort" not in seen[0]

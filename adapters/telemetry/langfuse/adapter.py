@@ -431,6 +431,7 @@ class LangFuseAdapter(LLMObservabilityPort):
                 "metadata": {
                     "latency_ms": record.latency_ms,
                     "tokens_per_second": record.tokens_per_second,
+                    "reasoning": record.reasoning,
                     "prompt_layer_set_id": prompt_layers.prompt_layer_set_id,
                     "prompt_layers": [
                         {

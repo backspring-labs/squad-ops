@@ -183,6 +183,7 @@ ALLOWED_CONFIG_OVERRIDE_KEYS = frozenset(
         "temperature",
         "max_completion_tokens",
         "timeout_seconds",
+        "reasoning",  # a ReasoningLevel, overriding the capability's declaration (#927)
     }
 )
 

@@ -155,3 +155,7 @@ class GenerationRecord:
     # SIP-0084: prompt-to-generation linkage for Langfuse
     prompt_name: str | None = None
     prompt_version: int | None = None
+    # #927: the reasoning level this generation was sent with (a ReasoningLevel),
+    # None when none was sent — so "how much did this call think" is readable
+    # per generation rather than inferred from a token count.
+    reasoning: str | None = None

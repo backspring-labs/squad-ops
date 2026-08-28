@@ -50,6 +50,7 @@ class NoOpLLMPort(LLMPort):
         max_tokens: int | None = None,
         temperature: float | None = None,
         timeout_seconds: float | None = None,
+        reasoning: str | None = None,
     ) -> ChatMessage:
         raise NotImplementedError("NoOpLLMPort: no LLM provider configured")
 
@@ -60,6 +61,7 @@ class NoOpLLMPort(LLMPort):
         max_tokens: int | None = None,
         temperature: float | None = None,
         timeout_seconds: float | None = None,
+        reasoning: str | None = None,
     ) -> AsyncIterator[str]:
         raise NotImplementedError("NoOpLLMPort: no LLM provider configured")
         yield  # pragma: no cover — unreachable, makes this a proper async generator
