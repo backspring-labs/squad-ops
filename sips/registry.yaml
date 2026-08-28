@@ -1,4 +1,4 @@
-last_assigned: 105
+last_assigned: 106
 sips:
 - sip_number: 3
   sip_uid: '17642554775787694'
@@ -945,3 +945,13 @@ sips:
   approver: jladd
   created_at: '2026-08-17T18:46:44.801520Z'
   updated_at: '2026-08-17T18:46:44.890914Z'
+- sip_uid: null
+  sip_number: 106
+  title: Atlas Provider Adapter — Config-Selected Inference Providers Behind a Conformance
+    Gate
+  path: sips/accepted/SIP-0106-Atlas-Provider-Adapter-Config-Selected.md
+  status: accepted
+  author: SquadOps Architecture
+  approver: jladd
+  created_at: '2026-08-08T00:00:00Z'
+  updated_at: '2026-08-28T10:14:01.297052Z'

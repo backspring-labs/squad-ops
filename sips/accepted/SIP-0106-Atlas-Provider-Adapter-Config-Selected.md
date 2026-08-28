@@ -1,13 +1,15 @@
 ---
-status: proposed
+status: accepted
 title: Atlas Provider Adapter — Config-Selected Inference Providers Behind a Conformance
   Gate
 author: SquadOps Architecture
 created_at: '2026-08-08T00:00:00Z'
+sip_number: 106
+updated_at: '2026-08-28T10:14:01.266818Z'
 ---
-# SIP-0XXX: Atlas Provider Adapter — Config-Selected Inference Providers Behind a Conformance Gate
+# SIP-0106: Atlas Provider Adapter — Config-Selected Inference Providers Behind a Conformance Gate
 
-**Status:** Proposed
+**Status:** Accepted
 **Authors:** SquadOps Architecture
 **Created:** 2026-08-08
 **Revision:** 2 (2026-08-28 — §10.2 settled against a live Atlas on the Spark; §3.1/§4.1/§5 revised on owner rulings; Appendix B measured, not documented. Rev 1: 2026-08-08 draft; §2.0 corrected 2026-08-15)

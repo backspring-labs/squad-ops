@@ -145,7 +145,7 @@ tree, so no mapping regresses unobserved.
 #### 2.1a The seam's consumer — Atlas selectable, measured, and switched
 
 Atlas is a third-party inference engine tuned for the DGX Spark, OpenAI-shaped on port 8888,
-with a recipe for the model the `full` profile pins (`sips/proposed/SIP-Atlas-Provider-Adapter.md`
+with a recipe for the model the `full` profile pins (`sips/accepted/SIP-0106-Atlas-Provider-Adapter-Config-Selected.md` (SIP-0106, accepted 2026-08-28)
 §2.0 is its only record in the tree — and the SIP is one of #1144's unindexed 24). It is
 **not vLLM**: the `VLLMAdapter` (#805) is the SIP's optional control arm, P6. The SIP's own
 ledger: P0/P1 (#800), P3 (#799, #801) and P6 (#805) landed 2026-08-08; **P2 — provider
@@ -487,7 +487,7 @@ its pack's predictions all hold — and the standing cut procedure in `CLAUDE.md
 5. Stated at the cut: what the shakeouts did not exercise, every remaining pack's placement
    by name (§3.1), and where Atlas stands — #1157 landed; #1158–#1160 landed or re-placed by
    name; the switch taken or not, and if taken, the deploy the next line's preflight runs on.
-6. SIP-Atlas-Provider-Adapter: **accepted and numbered before #1159 opened**; promoted to
+6. SIP-0106: **accepted and numbered before #1159 opened**; promoted to
    `implemented` at this cut only if #1157, #1159 and #1160 are all merged, else left
    `accepted` with the open phases named (§2.1a).
 

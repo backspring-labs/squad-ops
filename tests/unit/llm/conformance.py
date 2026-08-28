@@ -1,4 +1,4 @@
-"""Shared machinery for the LLM port conformance suite (SIP-Atlas-Provider-Adapter P3).
+"""Shared machinery for the LLM port conformance suite (SIP-0106 P3).
 
 Not a test module — imported by ``test_llm_port_conformance.py``.
 

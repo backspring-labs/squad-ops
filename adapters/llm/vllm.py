@@ -1,6 +1,6 @@
 """vLLM LLM adapter — OpenAI-compatible HTTP surface.
 
-Second provider adapter, per SIP-Atlas-Provider-Adapter P6. Independent of
+Second provider adapter, per SIP-0106 P6. Independent of
 :class:`~adapters.llm.ollama.OllamaAdapter` by design (§3.5a): one adapter per
 provider, no shared dialect base. Sharing a class across providers would put a
 "which provider am I" conditional inside it — the identity-branching #559 bans —
