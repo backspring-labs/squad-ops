@@ -13,7 +13,7 @@ configuration, stated in full**. The tuning pass that chose arm B is on #1160.
 |---|---|---|
 | squad profile | `full-38` | `full-38-atlas` — the same roster and eve override, model named as Atlas serves it |
 | model | `qwen3.8:27b`, **Q4_K_M** (Ollama's tag), 262K native window | `Qwen/Qwen3.8-27B-FP8`, **FP8 dequantized to BF16 in memory**, served window 32K |
-| engine | Ollama 0.32.14 as deployed; no tuning — every 1.6.x record sits on it | `avarok/atlas-gb10:latest` (built 2026-08-15), `serve Qwen/Qwen3.8-27B-FP8 --speculative --num-drafts 3 --enable-prefix-caching --scheduling-policy slai --kv-cache-dtype fp8 --max-seq-len 32768 --gpu-memory-utilization 0.75 --bind 0.0.0.0 --require-auth --auth-tokens-file … --no-auto-swap --no-tui` |
+| engine | Ollama 0.32.14 as deployed; no tuning — every 1.6.x record sits on it | `avarok/atlas-gb10:latest` (built 2026-08-15), `serve Qwen/Qwen3.8-27B-FP8 --speculative --num-drafts 3 --enable-prefix-caching --scheduling-policy slai --kv-cache-dtype fp8 --max-seq-len 32768 --gpu-memory-utilization 0.75 --request-timeout 1800 --bind 0.0.0.0 --require-auth --auth-tokens-file … --no-auto-swap --no-tui` (`--request-timeout` added by §1.1) |
 | why that serve line | — | the tuning matrix (#1160): FP8 12.5 t/s → MTP speculative K=3 29.5 → **K=4 33.8** → K=5 23.0 (over-drafting); NVFP4 12.8 and also dequantized (no memory or speed gain). Token counts identical across rows on the fill brief |
 | how the deploy is pointed at B | — | `docker compose -f docker-compose.yml -f docker-compose.atlas.yml up -d` (`ATLAS_MODEL=Qwen/Qwen3.8-27B-FP8`, secret `atlas_api_key`); back to A with plain `docker compose up -d`. Recreating the containers is also Appendix C.3's "restart the agent containers between arms" |
 | project / request profile | `group_run` / `validated-fullstack` | same |
@@ -22,6 +22,24 @@ configuration, stated in full**. The tuning pass that chose arm B is on #1160.
 | shakeout | one non-counting Atlas cycle before B1 (no cycle has ever run on Atlas: the model preflight over `/v1/models`, the 32K guard, the fenced parser on Atlas output, timeouts at 2.8× decode). It is also the warm-up Appendix C.2 requires, recorded and flagged | |
 | frozen deploy | agent images from `43721563` (`max=22429f8898cb neo=af175877d8b5 eve=fde6d6b0fb26 bob=5d2e2f19e9be nat=864419a35f7f data=feaa005116b7 joi=7e6173048297`); runtime-api rebuilt once on the commit that carries `full-38-atlas` (its image id pinned in the set files after that rebuild) and identical for both arms | |
 | engine isolation (C.2) | before every B cycle: `ollama ps` empty (keep-alive has paged the models out); before every A cycle: the `atlas` container stopped. Neither checkpoint coexists with Ollama-27B in the Spark's unified memory at usable KV | |
+
+### 1.1 Revision after the first shakeout (2026-08-28, `cyc_6e068cdd7de0`, failed)
+
+The first Atlas cycle failed at `governance.prepare_plan_authoring_brief`: its `high`
+framing generations ended at exactly 300 s with `finish_reason: "timeout"` and half a
+YAML. **The cause is Atlas's server-side `--request-timeout` (default 300 s)**, which cuts
+a request and returns the partial output as a 200 — not the reasoning tier: the checkpoint's
+own chat template defaults to `xhigh` when no effort is given, so Ollama's `think: true`
+renders the same instruction, and the 1.6.6 Next.js rolls show Ollama's framing generations
+running **183–316 s** (`frame_objective`, `design_plan`, `research_context`, LangFuse) under
+the deploy's 1800 s LLM timeout. The two arms were at parity on reasoning; Atlas was cut
+where Ollama was not. **Revision:** the serve line gains `--request-timeout 1800` (the
+deploy's `SQUADOPS__LLM__TIMEOUT`), and the Atlas adapter raises `LLMTimeoutError` on a
+server-side cut instead of handing a truncated message to the parser; the agent and
+runtime-api images are rebuilt on that commit, which becomes the frozen deploy; **a second
+shakeout on arm B precedes B1**, recorded and flagged like the first. The `high → xhigh`
+mapping stands. Nothing else in §1 changes. The failed shakeout's per-request evidence is
+on #1160 and stays in the record as the warm-up that found this.
 
 ## 2. Preconditions — all, or the numbers lie
 

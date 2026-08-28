@@ -14,7 +14,7 @@ import httpx
 import pytest
 
 from adapters.llm.atlas import AtlasAdapter
-from squadops.llm.exceptions import LLMConnectionError
+from squadops.llm.exceptions import LLMConnectionError, LLMTimeoutError
 from squadops.llm.models import ChatMessage, ReasoningLevel
 from tests.unit.llm.conformance import ATLAS_TOKEN, atlas_ok, wire
 
@@ -112,6 +112,47 @@ class TestThinkingChannel:
         with wire(no_details):
             msg = await _adapter().chat(_messages())
         assert msg.reasoning_tokens is None
+
+
+class TestServerSideCut:
+    """Atlas's `--request-timeout` ends a generation with a 200 and
+    `finish_reason: "timeout"` (measured, #1160 shakeout). Handed on as a complete
+    message, the truncated output reached the YAML parser as "malformed"; it is a
+    timeout, and the loop classifies it as one."""
+
+    def _cut(self, request: httpx.Request) -> httpx.Response:
+        response = atlas_ok(request)
+        if request.url.path != "/v1/chat/completions":
+            return response
+        body = json.loads(request.content)
+        if body.get("stream"):
+            frames = [
+                {"choices": [{"index": 0, "delta": {"content": "half a YA"}}]},
+                {"choices": [], "usage": json.loads(atlas_ok(request).content)["usage"]}
+                if False
+                else {
+                    "choices": [],
+                    "usage": {"prompt_tokens": 20, "completion_tokens": 3351, "total_tokens": 3371},
+                },
+                {"choices": [{"index": 0, "delta": {}, "finish_reason": "timeout"}]},
+            ]
+            return httpx.Response(
+                200,
+                content=b"".join(f"data: {json.dumps(f)}\n\n".encode() for f in frames)
+                + b"data: [DONE]\n\n",
+            )
+        payload = json.loads(response.content)
+        payload["choices"][0]["finish_reason"] = "timeout"
+        payload["choices"][0]["message"]["content"] = "half a YA"
+        return httpx.Response(200, json=payload)
+
+    async def test_chat_raises_timeout_not_a_truncated_message(self):
+        with wire(self._cut), pytest.raises(LLMTimeoutError, match="request-timeout"):
+            await _adapter().chat(_messages())
+
+    async def test_stream_with_usage_raises_timeout_not_a_truncated_message(self):
+        with wire(self._cut), pytest.raises(LLMTimeoutError, match="request-timeout"):
+            await _adapter().chat_stream_with_usage(_messages())
 
 
 class TestThroughput:

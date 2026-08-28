@@ -22,6 +22,12 @@ conditionals (#559). Everything below is from the 2026-08-28 session on the Spar
   streaming path must not splice those deltas into the text.
 - **Streaming**: SSE ``data: {json}`` frames, ``data: [DONE]``; with
   ``stream_options.include_usage`` the usage rides a frame with ``choices: []``.
+- **The server cuts long requests itself**: ``--request-timeout`` (default 300 s) ends a
+  generation with a **200** and ``finish_reason: "timeout"`` plus whatever was produced.
+  The first Atlas shakeout (#1160) handed that half-YAML to the parser as if complete;
+  here it is raised as ``LLMTimeoutError`` — the locus the correction loop already
+  classifies (#568) — and the serve line for the squads sets ``--request-timeout`` to
+  the deploy's own LLM timeout.
 - **No model management over HTTP** (405/404); weights are ``hf download``ed and fixed
   at ``serve`` (``--no-auto-swap``). ``/v1/models`` entries carry ``max_model_len``.
 """
@@ -196,6 +202,16 @@ class AtlasAdapter(LLMPort):
             return LLMConnectionError(f"Atlas {operation} failed ({status}): {detail}")
         return LLMConnectionError(f"Atlas {operation} failed: {exc}")
 
+    def _raise_if_server_cut(
+        self, finish_reason: str | None, model: str, operation: str, elapsed: float
+    ) -> None:
+        if finish_reason == "timeout":
+            raise LLMTimeoutError(
+                f"Atlas cut {operation} for '{model}' at its --request-timeout after "
+                f"{elapsed:.0f}s (finish_reason=timeout); raise the server's --request-timeout "
+                "to the deploy's LLM timeout"
+            )
+
     async def generate(self, request: LLMRequest) -> LLMResponse:
         """A bare prompt as a single-user-turn chat completion (``/v1/completions`` is
         not universal on OpenAI-shaped backends; ``/v1/chat/completions`` is)."""
@@ -264,7 +280,9 @@ class AtlasAdapter(LLMPort):
             raise self._translate(e, model, operation) from e
 
         elapsed = time.monotonic() - started
-        message = (data.get("choices") or [{}])[0].get("message") or {}
+        choice = (data.get("choices") or [{}])[0]
+        self._raise_if_server_cut(choice.get("finish_reason"), model, operation, elapsed)
+        message = choice.get("message") or {}
         prompt_tok, completion_tok, total_tok, reasoning_tok = _usage_from(data)
         tps = _tokens_per_second(data, completion_tok, elapsed)
         logger.info(
@@ -362,6 +380,7 @@ class AtlasAdapter(LLMPort):
         started = time.monotonic()
         chunks: list[str] = []
         usage_frame: dict[str, Any] = {}
+        finish_reason: str | None = None
         async for frame in self._stream_frames(
             messages,
             resolved,
@@ -375,9 +394,12 @@ class AtlasAdapter(LLMPort):
                 content = (choice.get("delta") or {}).get("content")
                 if content:
                     chunks.append(content)
+                if choice.get("finish_reason"):
+                    finish_reason = choice["finish_reason"]
             if frame.get("usage"):
                 usage_frame = frame
         elapsed = time.monotonic() - started
+        self._raise_if_server_cut(finish_reason, resolved, "chat_stream_with_usage", elapsed)
         prompt_tok, completion_tok, total_tok, reasoning_tok = _usage_from(usage_frame)
         tps = _tokens_per_second(usage_frame, completion_tok, elapsed)
         return ChatMessage(
