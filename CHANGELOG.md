@@ -5,7 +5,32 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
-Nothing yet.
+**1.7.0 — the Reasoning line opens.** Plan: `docs/plans/1-7-0-plan.md` (rev 3).
+
+### Added — reasoning is a level on the port (#927)
+- **The port carries `reasoning: none | low | medium | high`**, never a provider's
+  switch. Ollama maps `none → think:false` and any graded level → `think:true`; vLLM
+  maps by the dial the model spec declares (`chat_template_kwargs.enable_thinking`
+  for a toggle model, `reasoning_effort` for an effort model, nothing for a model
+  with no channel). `LLMCapability.REASONING_CONTROL` declares whether a level
+  reaches the wire, and the conformance suite asserts the declaration against the
+  request bodies for every adapter. No level sent ⇒ the wire is byte-identical to
+  1.6.6.
+- **Every capability declares how much reasoning its output wants**
+  (`capabilities/reasoning_policy.py`): a transcription — filling scaffold slots,
+  a repair verdict, a stored report — is `none`; an argument — the manifest, the
+  analyses, the plan — is `high`. #924 measured the difference on the deployed qa
+  fill brief: 5,727 completion tokens with the channel on, 413 with it off, the same
+  eight fences. No default: an undeclared capability raises, and a test over the
+  handler registry makes the gap a CI failure.
+- **Resolution is the chain every other knob uses**: the declaration →
+  `config_overrides.reasoning` (a new allowed key, value validated at the profile
+  boundary) → the model's dial (`ModelSpec.reasoning_control`, required on every
+  registry entry; qwen3.x `toggle`, qwen2.5/llama3 `none` — a model with no channel
+  gets no level, since Ollama rejects `think` for it).
+- **`GenerationRecord.reasoning`** carries the sent level to LangFuse, so "how
+  much did this call think" is read per generation rather than inferred from a
+  token count.
 
 ## [1.6.6] — 2026-08-28
 
