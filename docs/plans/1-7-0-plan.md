@@ -51,9 +51,23 @@ answer is structural: #1131.
 
 Feature-free means every item below fixes, extracts, enforces, or measures something that
 already exists. Each pack ends with **how we know it worked** — the verification story is part
-of the pack, not an afterthought.
+of the pack, not an afterthought. The packs are named for their subject; the name is the
+handle used in PR titles, the 1.7.x line table (§3.1) and the record:
 
-### 2.1 Pack R — the reasoning channel (the thinking-token problem)
+| pack | the subject | why it is one pack | verified by |
+|---|---|---|---|
+| **Reasoning** | the model's reasoning channel — paid for, discarded, invisible | one fact (how much reasoning a task wants) with today five touchpoints and no port | rolls (one shakeout per stack + the #924 replay) and an adapter characterization suite |
+| **Stack Seams** | what is stack-specific lives behind the stack seam; the loop's last red class lives at that seam | the 1.6.5/1.6.6 reds are one class, and F1 was a stack-shaped check in a shared file | rolls (the 1.6.6 reds replayed, then a counting set) and the structural guard |
+| **Loop Honesty** | the correction loop keeps its own state and checks its own claims | every item is the loop discarding something it produced or trusting something it never verified | rolls (each item's originating roll replayed; the sets' texture fields) |
+| **Boundaries** | vendor vocabulary and boundary conventions kept out of the domain | the 1.7 identity itself — every port is actually a port | CI: structural tests that fail on the leaked vocabulary |
+| **Composition Root** | the runtime is wired through its factories, not around them | three issues that all alter initialization; one design note before code | CI: a bare import of `main` succeeds; the factories are the only constructors reachable |
+| **Hardening** | what 1.8's scorecard and unattended campaigns need underneath | lineage, ops floor, CI truth, packaging fidelity — none of it feature-shaped | CI as the instrument: the integration job green on main, images running the deps the suite ran |
+
+Reasoning, Stack Seams and Loop Honesty change what a cycle does and are the **measured packs**;
+Boundaries, Composition Root and Hardening are provable without a cycle and ride as the
+**CI-verified riders** (§3.1).
+
+### 2.1 Pack **Reasoning** — the reasoning channel (the thinking-token problem)
 
 The owner's second ask, and the pack with the widest blast radius: it touches every LLM call.
 
@@ -87,7 +101,7 @@ asserting fills-first still holds (Q0) and the qa primary distribution moves dow
 adapter characterization suite runs in CI against a recorded Ollama transcript, so the mapping
 cannot regress unobserved.
 
-### 2.2 Pack S — stack seams and the correction loop's last class
+### 2.2 Pack **Stack Seams** — the stack seam and the correction loop's last red class
 
 - **#1131 — extract `stack_fastapi_react.py`** from `scaffold.py` as a pure move (fixtures
   byte-identical, GENERATOR_VERSION unchanged), register through `ScaffoldStack`, and land the
@@ -119,7 +133,7 @@ roll 6's suite through #1123's scoping (the failing case isolated) — before an
 a FastAPI+React counting set on the 1.6.6 protocol with the same R-predictions plus one per
 item here. The structural guard is its own test.
 
-### 2.3 Pack L — the correction loop's honesty (bug squash, class by class)
+### 2.3 Pack **Loop Honesty** — the correction loop keeps its own state and checks its own claims (bug squash, class by class)
 
 The owner's first ask, taken as the sweep's 1.6.x leftovers that touch the loop and were
 never scheduled, grouped by the mechanism each shares:
@@ -140,11 +154,11 @@ never scheduled, grouped by the mechanism each shares:
   it goes to review, not to code, in this release.
 
 **How we know:** each item lands with a replay of the roll that produced it (the per-round
-evidence rule); the pack as a whole is measured by the same counting sets as Pack S — the
+evidence rule); the pack as a whole is measured by the same counting sets as Pack Stack Seams — the
 texture fields "greens by repair vs by re-dispatch" and "refused vs applied patches" are the
 readouts, and the bar is that no roll in the set ends for a reason the record cannot name.
 
-### 2.4 Pack B — boundary and vocabulary leaks (the identity itself)
+### 2.4 Pack **Boundaries** — boundary and vocabulary leaks (the identity itself)
 
 #377 (Prefect `State` in domain objects), #381 (its `TaskResult.status` twin), #305 Part B
 (`runtime_status` always populated, `network_status` retired), #559 (residual `task_type ==`
@@ -154,7 +168,7 @@ routes onto `/api/v1`). **How we know:** the structural tests the 1.5 line estab
 (`test_no_enum_shadow_comparisons` and kin) extended to each vocabulary; a grep that finds the
 leaked vocabulary anywhere outside its adapter fails CI.
 
-### 2.5 Pack C — composition root (design gate before code)
+### 2.5 Pack **Composition Root** — the runtime is wired through its factories (design gate before code)
 
 #301 (main.py bypasses the llm/queue factories — provider selection is not a port until it
 goes through them), #154 (adapter imports out of domain modules into bootstrap wiring), #286
@@ -164,7 +178,7 @@ squadops.api.runtime.main"` with no environment succeeds; the factories are the 
 constructors reachable from main; the hex-arch audit compares vendor shape (port + NoOp +
 factory), not file location.
 
-### 2.6 Pack H — hardening for 1.8
+### 2.6 Pack **Hardening** — what 1.8 needs underneath it
 
 What 1.8's two headliners need under them, taken from the ROADMAP's own gating:
 
@@ -221,26 +235,26 @@ remainder), #936, #933.
 
 By dependency and by what each pack proves, never by date:
 
-1. **Pack R first, alone.** It changes what every subsequent measurement means (a qa primary
+1. **Pack Reasoning first, alone.** It changes what every subsequent measurement means (a qa primary
    at 5,700 tokens today is mostly thinking). Land #927/#410 with the adapter suite, replay the
    #924 probe, run one shakeout per stack, and only then re-read every completion-budget
    number in the codebase (#924's budget half, 1.6.5's E).
-2. **Pack S's move (#1131) before Pack S's fixes** — the kind gate, #1130 and #1123 are written
+2. **Pack Stack Seams' move (#1131) before its fixes** — the kind gate, #1130 and #1123 are written
    into the stack seam, not into the file it is leaving. The structural guard lands with the
    move.
-3. **Pack L in class-sized PRs**, each with its replay, interleaved with Pack S; measured
+3. **Pack Loop Honesty in class-sized PRs**, each with its replay, interleaved with Pack Stack Seams; measured
    together by one FastAPI+React counting set and one Next.js regression arm on a frozen
    deploy — the 1.6.6 protocol, with a prediction per item.
-4. **Pack B and Pack C** — B in parallel with 3 (they touch different files); C after its
-   design note is reviewed, and after Pack R, because the composition root is where the LLM
+4. **Pack Boundaries and Pack Composition Root** — B in parallel with 3 (they touch different files); C after its
+   design note is reviewed, and after Pack Reasoning, because the composition root is where the LLM
    factory is wired.
-5. **Pack H continuously**, ops-rider quota per the standing 08-04 rule, with the CI items
+5. **Pack Hardening continuously**, ops-rider quota per the standing 08-04 rule, with the CI items
    (#1099/#242/#1041/#237) *early* — they are what makes the rest of the release's greens mean
    something.
 6. Verify-then-close, the release-package capture with #1135 fixed, the cut.
 
-Two lanes as before: executor/handlers/framing surfaces and the loop (Packs L, S-fixes, C) on
-one; adapters, infra, CI, packaging (Packs R-adapter, B, H) on the other. Pack R's port change
+Two lanes as before: executor/handlers/framing surfaces and the loop (Packs Loop Honesty, Stack Seams' fixes, Composition Root) on
+one; adapters, infra, CI, packaging (Pack Reasoning's adapter half, B, H) on the other. Pack Reasoning's port change
 is the one item both lanes wait on.
 
 ---
@@ -257,18 +271,18 @@ are verified differently:
   three lines — 1.6.4: 6 items / 8 rolls; 1.6.5: 5 (+#772, #1120) / 12; 1.6.6: 6 / 8 — every
   red attributable to one item or to nothing in the pack. Past ~8, predictions share evidence
   and a red stops naming its cause. **6–8 per line**, measured by one 6+2 set (§4).
-- **CI-verified items** — adapters, ports, vocabulary, infra, packaging, CI itself (Packs B, C,
+- **CI-verified items** — adapters, ports, vocabulary, infra, packaging, CI itself (Packs Boundaries, C,
   H). Proven by the suite, a structural guard, or a characterization test; the limit is review
   load and merge order. **10–15 per line**, riding beside a measured pack without touching its
   predictions.
 
 | line | measured pack (roll-verified) | CI-verified rider |
 |---|---|---|
-| **1.7.1** | **Pack R** — #927, #410, #924 (budget half), #1145, #930 — first and alone, because it changes what every later token number means | #901, #929, #944; the CI-truth items first: #1099, #242, #1041, #237 |
-| **1.7.2** | **Pack S** — #1131 (move + guard), the kind gate (filed from 1.6.6 roll 3), #1130, #1123, #668, #939, #1022 | #1087 (stack-#1 half), #1112; packaging: #582, #637, #598, #1135, #1144 |
-| **1.7.3** | **Pack L, first half** — #994, #995, #999, #1110, #968 | **Pack B** — #377, #381, #305, #559, #922, #225, #218, #219 |
-| **1.7.4** | **Pack L, second half** — #788, #1054, #1070, with #936/#933 verified-then-closed | **Pack H infra** — #575, #577, #576, #578, #330, #300, #581, #560, #372, #352, #353, #574 |
-| **1.7.5** | **Deferrals** — #820, #376 | **Pack C** after its design note — #301, #154, #286; extractions #567, #579; #198, #157, #176, #580 |
+| **1.7.1** | **Reasoning** — #927, #410, #924 (budget half), #1145, #930 — first and alone, because it changes what every later token number means | #901, #929, #944; the CI-truth items first: #1099, #242, #1041, #237 |
+| **1.7.2** | **Stack Seams** — #1131 (move + guard), the kind gate (filed from 1.6.6 roll 3), #1130, #1123, #668, #939, #1022 | #1087 (stack-#1 half), #1112; packaging: #582, #637, #598, #1135, #1144 |
+| **1.7.3** | **Loop Honesty, first half** — #994, #995, #999, #1110, #968 | **Boundaries** — #377, #381, #305, #559, #922, #225, #218, #219 |
+| **1.7.4** | **Loop Honesty, second half** — #788, #1054, #1070, with #936/#933 verified-then-closed | **Hardening (infra)** — #575, #577, #576, #578, #330, #300, #581, #560, #372, #352, #353, #574 |
+| **1.7.5** | **Deferrals** — #820, #376 | **Composition Root** after its design note — #301, #154, #286; extractions #567, #579; #198, #157, #176, #580 |
 
 **The total: ~62 of the 77 open issues fixed across five lines** — 23 roll-verified, ~39
 CI-verified. The remaining 15: four at design review (#414, #557, #1122, #316), six held in the
@@ -284,7 +298,7 @@ follows §3's dependencies; a line's rider may move to a neighbour without chang
 
 1.7 has no headline feature to measure, so it measures its own claim: *the seams hold*.
 
-- **Two counting sets on one frozen deploy after Packs R, S and L land** — FastAPI+React N=6,
+- **Two counting sets on one frozen deploy after Packs Reasoning, S and L land** — FastAPI+React N=6,
   Next.js+TS N=2 (the 1.6.6 sizing, for the same reasons), pre-registered with one falsifiable
   prediction per landed item: the reasoning level resolves per capability (read from LangFuse);
   no green suite is failed by a stack-shaped check; a kind-contradicting assertion is rejected at
@@ -292,7 +306,7 @@ follows §3's dependencies; a line's rider may move to a neighbour without chang
   cannot name.
 - **Texture against 1.6.6**: 4 of 6 and 2 of 2 (if that is where the Next.js arm lands), with
   intervals and no bar; greens by repair vs by re-dispatch; qa primary completion tokens against
-  1.6.6's `3233–6594` — the distribution Pack R is expected to move down, reported as measured.
+  1.6.6's `3233–6594` — the distribution Pack Reasoning is expected to move down, reported as measured.
 - **CI as the second instrument**: the integration job, the adapter characterization suite,
   the structural guards — all green on the cut commit, and the cut says so.
 
@@ -302,7 +316,7 @@ follows §3's dependencies; a line's rider may move to a neighbour without chang
 
 - **Whether Cross-Cycle Memory's Phase 1 rails ride 1.8 or 2.0** — a 1.8 plan-time decision, as
   the ROADMAP says; 1.7 only leaves the port boundary clean enough that it is an adapter swap.
-- **The Atlas migration date.** Pack R makes it *possible* (one port, a characterization
+- **The Atlas migration date.** Pack Reasoning makes it *possible* (one port, a characterization
   suite, our own status vocabulary); flipping the provider is its own decision with its own
   conformance run.
 - **1.6.7.** If the Next.js arm of 1.6.6 closes with a finding that needs a fix before 1.7's
@@ -314,7 +328,7 @@ follows §3's dependencies; a line's rider may move to a neighbour without chang
 
 Substance, not the clock:
 
-1. Packs R, S, B and C fully landed; Pack L and Pack H at the ops-rider quota with every
+1. Packs Reasoning, S, B and C fully landed; Pack Loop Honesty and Pack Hardening at the ops-rider quota with every
    remaining item re-placed by name (nothing silently carried).
 2. Both counting sets closed with no falsified prediction; the record written from per-round
    evidence.
@@ -332,4 +346,5 @@ Substance, not the clock:
 - **Rev 1 (2026-08-27)** — written from the 1.6.3–1.6.6 records, the 08-21 sweep and the
   ROADMAP's 1.7 identity, while the 1.6.6 Next.js arm was still running; issue placement
   against the 77 open at this writing. §3.1 (the 1.7.x line breakdown and the per-line
-  capacity rule) added the same evening on the owner's ask.
+  capacity rule) added the same evening on the owner's ask; packs renamed from letters to
+  their subjects, with the naming table in §2, on the owner's ask.
