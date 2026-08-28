@@ -15,7 +15,7 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   with no channel). `LLMCapability.REASONING_CONTROL` declares whether a level
   reaches the wire, and the conformance suite asserts the declaration against the
   request bodies for every adapter. No level sent ⇒ the wire is byte-identical to
-  1.6.6.
+  what it was before this change.
 - **Every capability declares how much reasoning its output wants**
   (`capabilities/reasoning_policy.py`): a transcription — filling scaffold slots,
   a repair verdict, a stored report — is `none`; an argument — the manifest, the
