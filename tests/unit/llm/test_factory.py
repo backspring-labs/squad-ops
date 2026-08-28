@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import pytest
 
+from adapters.llm.atlas import AtlasAdapter
 from adapters.llm.factory import create_llm_provider
 from adapters.llm.ollama import OllamaAdapter
 from adapters.llm.vllm import VLLMAdapter
@@ -23,18 +24,19 @@ def test_a_missing_provider_is_an_error_not_ollama():
 
 @pytest.mark.parametrize(
     ("name", "cls"),
-    [("ollama", OllamaAdapter), ("vllm", VLLMAdapter)],
+    [("ollama", OllamaAdapter), ("vllm", VLLMAdapter), ("atlas", AtlasAdapter)],
 )
 def test_each_registered_name_resolves_its_own_adapter(name, cls):
     adapter = create_llm_provider(provider=name, base_url="http://x:1", default_model="m")
     assert type(adapter) is cls
 
 
-def test_vllm_receives_its_api_key():
+@pytest.mark.parametrize("name", ["vllm", "atlas"])
+def test_bearer_providers_receive_their_api_key(name):
     """The one provider-specific kwarg the factory forwards; dropped, a bearer-gated
     server (Atlas is one) answers 401 to every call."""
     adapter = create_llm_provider(
-        provider="vllm", base_url="http://x:1", default_model="m", api_key="tok"
+        provider=name, base_url="http://x:1", default_model="m", api_key="tok"
     )
     assert adapter._api_key == "tok"
 

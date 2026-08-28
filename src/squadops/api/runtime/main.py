@@ -440,6 +440,7 @@ async def _init_cycle_subsystem(config, pool) -> None:
         base_url=config.llm.url,
         default_model=config.llm.model or "qwen2.5:7b",
         timeout_seconds=float(config.llm.timeout),
+        api_key=config.llm.api_key,
     )
     try:
         from squadops.api.runtime.deps import set_llm_port

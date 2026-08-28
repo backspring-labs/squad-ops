@@ -364,6 +364,7 @@ class AgentRunner:
             base_url=config.llm.url,
             default_model=llm_model,
             timeout_seconds=config.llm.timeout,
+            api_key=config.llm.api_key,
         )
 
         # Create memory adapter

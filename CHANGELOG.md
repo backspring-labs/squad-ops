@@ -23,6 +23,20 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 - The mis-nested `SQUADOPS__LLM__USE__LOCAL` example and the `use_local` field it never
   reached are gone.
 
+### Added — the Atlas adapter (#1159, SIP-0106 P4)
+- **`adapters/llm/atlas.py`**, selected by `SQUADOPS__LLM__PROVIDER=atlas`: its own file,
+  not a subclass of the vLLM adapter (SIP-0106 §3.5a), because the dialect diverges where
+  it matters — every item measured on the Spark on 2026-08-28. A bearer token is mandatory
+  once the server is bound off localhost (`SQUADOPS__LLM__API_KEY`, a `secret://` ref the
+  loader resolves; a 401 names that setting rather than reporting a network failure); the
+  engine's own `response_token/s` is reported instead of a wall-clock derivation;
+  `reasoning_tokens` are counted separately (`thinking_tokens: True`); the port's level
+  maps onto Atlas's `reasoning_effort` ladder verbatim except `high → xhigh`, which the
+  served Qwen3.8 template requires; streamed `reasoning_content` deltas never reach the
+  text. Registered as the conformance suite's third case, with the measured shapes.
+- `ChatMessage` / `LLMResponse` gain `reasoning_tokens` (None when not reported, never
+  zero); `Qwen/Qwen3.8-27B-FP8` joins the model registry with the served 32K window.
+
 ### Added — reasoning is a level on the port (#927)
 - **The port carries `reasoning: none | low | medium | high`**, never a provider's
   switch. Ollama maps `none → think:false` and any graded level → `think:true`; vLLM

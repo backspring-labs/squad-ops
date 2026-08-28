@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from adapters.llm.atlas import AtlasAdapter
 from adapters.llm.ollama import OllamaAdapter
 from adapters.llm.vllm import VLLMAdapter
 from squadops.ports.llm.provider import LLMPort
@@ -27,7 +28,7 @@ def create_llm_provider(
     """Create an LLM provider.
 
     Args:
-        provider: Provider name ("ollama" or "vllm"). Required — no default (#1157):
+        provider: Provider name ("ollama", "vllm" or "atlas"). Required — no default (#1157):
             the factory's own rule below refuses an unknown name, and a *missing*
             one used to fall back to Ollama the same silent way.
         secret_manager: Optional secret manager for resolving secret:// refs
@@ -55,6 +56,14 @@ def create_llm_provider(
 
     if provider == "vllm":
         return VLLMAdapter(
+            base_url=base_url,
+            default_model=default_model,
+            timeout_seconds=timeout_seconds,
+            api_key=config.get("api_key"),
+        )
+
+    if provider == "atlas":
+        return AtlasAdapter(
             base_url=base_url,
             default_model=default_model,
             timeout_seconds=timeout_seconds,
