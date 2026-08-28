@@ -487,7 +487,7 @@ its pack's predictions all hold — and the standing cut procedure in `CLAUDE.md
 5. Stated at the cut: what the shakeouts did not exercise, every remaining pack's placement
    by name (§3.1), and where Atlas stands — #1157 landed; #1158–#1160 landed or re-placed by
    name; the switch taken or not, and if taken, the deploy the next line's preflight runs on.
-6. SIP-0106: **accepted and numbered before #1159 opened**; promoted to
+6. The Atlas Provider Adapter SIP (SIP-0106): **accepted and numbered before #1159 opened**; promoted to
    `implemented` at this cut only if #1157, #1159 and #1160 are all merged, else left
    `accepted` with the open phases named (§2.1a).
 

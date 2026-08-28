@@ -1,4 +1,4 @@
-"""Live-tier LLM port conformance (SIP-0106 P3).
+"""Live-tier LLM port conformance (Atlas Provider Adapter SIP, SIP-0106, P3).
 
 The unit tier (``tests/unit/llm/test_llm_port_conformance.py``) proves an adapter
 parses a *fixture* correctly. This tier points the same contract at a **real
