@@ -74,7 +74,9 @@ class TestFullSquadBuilderProfile:
         # so its presence is a deliberate fact rather than drift.
         profiles = await provider.list_profiles()
         ids = {p.profile_id for p in profiles}
-        assert ids == {"smoke", "lite", "full", "full-38"}
+        # full-38-atlas is arm B of the 1.7.0 Atlas A/B (#1160): the same roster with the
+        # model named as Atlas serves it. Inert until that deploy selects it.
+        assert ids == {"smoke", "lite", "full", "full-38", "full-38-atlas"}
 
 
 class TestFull38QaCompletionBudget:

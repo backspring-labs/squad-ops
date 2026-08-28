@@ -46,7 +46,7 @@ A falsified prediction stops the set for a read, not a fix — the 1.6.x rule.
 
 ## 4. The artifact
 
-`docs/plans/1-7-0-atlas-ab-record.md`: one row per cycle — arm, order, cycle id, verdict,
+The record, written beside this file at the close (`1-7-0-atlas-ab-record`): one row per cycle — arm, order, cycle id, verdict,
 checks executed/passed, correction rounds, extraction health, `wall_clock_seconds`; then
 per-generation medians by capability (completion tokens, reasoning tokens where reported,
 decode t/s) from LangFuse; the shakeout and warm-up rows present and flagged. Read in
