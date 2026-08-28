@@ -22,7 +22,17 @@ Each even-minor consumer sits strictly behind the release that earns its trust: 
 
 ## Release Timeline
 
-### v1.6.5 (2026-08-27) — Current — the qa-emission patch line
+### v1.6.6 (2026-08-28) — Current — the React-arm patch line
+
+**Six fixes, every one built from a 1.6.5 FastAPI+React rejection, patched in place (the structural extraction is 1.7's #1131).** A manifest `default: null` froze a non-nullable field and 500'd POST /runs on five of six rolls (#1125); the frozen React test harness never unmounted between tests (#1127); the passing retest's report was overwritten by the failed one and misdirected the next analysis (#1111); the self-mocking check defined "invokes the app" as a Next.js `app/api/` import and failed a green React suite (#1126 — each stack now declares its own definition); a repair patch refused by verification counted as a round and ended two rolls after zero applied repairs (#1129); an entity-typed `request:` got an empty probe body (#1128 — one resolver, and a synthesized body model).
+
+**The evidence** (`docs/plans/1-6-6-verification-set-record.md`): two pre-registered sets on frozen deploy `e14a6ad4`, sized by the owner — six rolls where the fixes came from, two where they were not supposed to reach — launched only from `main` under delegation. **Eight counted rolls, no voids, no resets, every prediction held wherever exercised, zero code drift.** FastAPI+React **4 of 6 (95% CI 30–90%)** against 2 of 6 — texture, no significance claim; two greens clean, **two by repair, none by re-dispatch**. Next.js+TS **2 of 2**, zero correction rounds.
+
+**Stated at the cut:** the two rejections are one class and not a pack item — a free-authored qa suite asserting something the contract never said (a declared boolean is a name; a fetch spy must see one URL), a correct dev repair rejected by it, and no route to the qa file; roll 6's application passed every contract probe. Filed as #1153 (reject an assertion that contradicts the declared field kind at emission) with #1130 and #1123 evidenced; all three sit in the 1.7 plan's Stack Seams pack. The owner's architectural assessment of this tree produced #1147–#1152 the same night, also placed in 1.7.
+
+**Scope:** `full-38` (qwen3.8:27b) on `group_run`; `full` remains the canonical squad. No SIP promotions; SIP-0104 stays accepted with stack-#1 parity open (#1122). Next: **v1.7 stabilization** — every port is actually a port — per `docs/plans/1-7-0-plan.md`.
+
+### v1.6.5 (2026-08-27) — the qa-emission patch line
 
 **One mechanism, five faces, then measured on two stacks.** The qa author's primary emission hit the 8,192-token completion cap on three of the 1.6.4 set's eight rolls and the loop recovered those rolls by fallback, not by repair. 1.6.5 makes the cut rarer and cheaper: the fill-mode brief says fills first, so a cut lands on the additive file the self-eval already repairs (A); the suite runs on the file set the task will store (B, #1109); the self-eval's fills merge through the same gate as the primary (C, #947); an own-artifact qa repair can reach a fill (D, #970/#969); and `full-38`'s qa role carries a 12,288-token budget of its own (E, #998). Alongside: the success-status default has one home (#772), a qa-side failure never empties the dev repair target (#1120), and the verification-set driver is promoted with its parameters as data.
 
@@ -545,9 +555,9 @@ The following areas are identified for future work but do not block 1.0 readines
 
 ## Stats
 
-*As of 2026-08-27 (v1.6.5):*
+*As of 2026-08-28 (v1.6.6):*
 
-- **Framework version**: 1.6.5
+- **Framework version**: 1.6.6
 - **SIPs**: 65 implemented, 9 accepted (SIP-0088, 0090–0093, 0101, 0102, 0104, 0105), 20 deprecated (registry)
 - **Tests**: 7,900+ passing in the regression suite
 - **Python source**: ~61,000 lines (src + adapters; ~88,000 test lines, ~119,000 doc lines)
