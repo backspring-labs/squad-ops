@@ -1,5 +1,16 @@
 # 1.7.0 — plan
 
+**Revision 3, 2026-08-28.** Names the 1.7.0 line. Revision 2 numbered the lines 1.7.1–1.7.5
+and wrote the cut criteria (§6) for a single cut after all of them — the 1.5 shape (one cut,
+34 PRs) — while adopting the 1.6.x cadence, where each line is a tagged release with its own
+cut evidence. The two cannot both hold: v1.7.1 cannot exist before v1.7.0. Rev 3 resolves it
+the 1.6 way — 1.6.0 was cut with the headline landed and the pack open; 1.6.1–1.6.6 followed
+as tagged lines — so **1.7.0 is the Reasoning line**, the one §3 already puts first and alone,
+and the lines renumber 1.7.0–1.7.4. §6 splits into the 1.7.0 cut and the line's close. #1135
+moves to 1.7.0's rider (a rider may move to a neighbour; §6's package-capture criterion
+applies to every cut, so the script fix precedes the first one). The residual letter handles
+(S, L, B, C, H) that survived rev 1's rename are replaced with the pack names.
+
 **Revision 2, 2026-08-27.** Adds the findings of the owner's architectural assessment of
 `main` at `2448f5d1` (read the same evening; every claim acted on was re-verified against the
 tree): six new issues (#1147–#1152), two existing ones sharpened (#154, #301), and three
@@ -16,7 +27,7 @@ harden for 1.8.**
 **1.7 is an odd minor: feature-free by rule.** Its identity is *every port is actually a port* —
 1.5 extracted structure inside the machinery; 1.7 fixes where the machinery meets the outside
 world, so that the Atlas provider migration and 1.8's scorecard grade over seams that hold.
-Substance gates the cut, not the clock; the cut criteria are in §6.
+Substance gates each cut, not the clock; the 1.7.0 cut and the line's close are in §6.
 
 ---
 
@@ -254,7 +265,8 @@ What 1.8's two headliners need under them, taken from the ROADMAP's own gating:
 
 **How we know:** CI is the instrument — the integration job green on main, the images' locked
 deps the ones the suite ran, `pip install squadops` from a clean venv boots the runtime API.
-The cut's release package (step 7) is captured with #1135 fixed, on the first try.
+Each cut's release package (step 7) is captured on the first try — #1135 rides 1.7.0 so the
+first capture already has it.
 
 ### 2.7 Deferrals landing here, and design items routed to review
 
@@ -290,16 +302,17 @@ By dependency and by what each pack proves, never by date:
 3. **Pack Loop Honesty in class-sized PRs**, each with its replay, interleaved with Pack Stack Seams; measured
    together by one FastAPI+React counting set and one Next.js regression arm on a frozen
    deploy — the 1.6.6 protocol, with a prediction per item.
-4. **Pack Boundaries and Pack Composition Root** — B in parallel with 3 (they touch different files); C after its
-   design note is reviewed, and after Pack Reasoning, because the composition root is where the LLM
+4. **Pack Boundaries and Pack Composition Root** — Boundaries in parallel with 3 (they touch
+   different files); Composition Root after its design note is reviewed, and after Pack Reasoning, because the composition root is where the LLM
    factory is wired.
 5. **Pack Hardening continuously**, ops-rider quota per the standing 08-04 rule, with the CI items
    (#1099/#242/#1041/#237) *early* — they are what makes the rest of the release's greens mean
    something.
-6. Verify-then-close, the release-package capture with #1135 fixed, the cut.
+6. Verify-then-close, the release-package capture, the line's close (§6.2). 1.7.0 itself is
+   cut at the end of step 1 (§6.1).
 
 Two lanes as before: executor/handlers/framing surfaces and the loop (Packs Loop Honesty, Stack Seams' fixes, Composition Root) on
-one; adapters, infra, CI, packaging (Pack Reasoning's adapter half, B, H) on the other. Pack Reasoning's port change
+one; adapters, infra, CI, packaging (Pack Reasoning's adapter half, Boundaries, Hardening) on the other. Pack Reasoning's port change
 is the one item both lanes wait on.
 
 ---
@@ -307,7 +320,10 @@ is the one item both lanes wait on.
 ## 3.1 The 1.7.x lines — what fits in one, and the breakdown
 
 A line is one measured pack plus a rider, on the cadence the 1.6.x lines established (a day of
-PRs, an overnight of rolls). The two kinds of fix have two different capacities, because they
+PRs, an overnight of rolls). **1.7.0 is the first line, not the last.** The odd minor opens the
+way 1.6.0 did — the first pack landed and verified, the rest of the slate open and named — and
+closes when §6.2 holds, not when 1.7.0 is tagged; the 1.5 shape (one cut carrying the whole
+slate) is the one the 1.6.x cadence replaced. The two kinds of fix have two different capacities, because they
 are verified differently:
 
 - **Roll-verified items** — anything that changes what a cycle does (loop, scaffold, prompts,
@@ -316,24 +332,25 @@ are verified differently:
   three lines — 1.6.4: 6 items / 8 rolls; 1.6.5: 5 (+#772, #1120) / 12; 1.6.6: 6 / 8 — every
   red attributable to one item or to nothing in the pack. Past ~8, predictions share evidence
   and a red stops naming its cause. **6–8 per line**, measured by one 6+2 set (§4).
-- **CI-verified items** — adapters, ports, vocabulary, infra, packaging, CI itself (Packs Boundaries, C,
-  H). Proven by the suite, a structural guard, or a characterization test; the limit is review
+- **CI-verified items** — adapters, ports, vocabulary, infra, packaging, CI itself (the Boundaries, Composition Root
+  and Hardening packs). Proven by the suite, a structural guard, or a characterization test; the limit is review
   load and merge order. **10–15 per line**, riding beside a measured pack without touching its
   predictions.
 
 | line | measured pack (roll-verified) | CI-verified rider |
 |---|---|---|
-| **1.7.1** | **Reasoning** — #927, #410, #924 (budget half), #1145, #930 — first and alone, because it changes what every later token number means | #901, #929, #944; the CI-truth items first: #1099, #242, #1041, #237 |
-| **1.7.2** | **Stack Seams** — #1149 (harvest, precondition) then #1131 (move + guard), the kind gate (#1153, filed from 1.6.6 roll 3), #1130, #1123, #668, #939, #1022 | #1087 (stack-#1 half), #1112; packaging: #582, #637, #598, #1135, #1144, #1151 |
-| **1.7.3** | **Loop Honesty, first half** — #788 (the traceback reaches the repairer), #994, #995, #999, #1110, #968 | **Boundaries** — #154 (the all-packages import guard + four moves), #377, #381, #305, #559, #922, #225, #218 (+ the route-lane test), #219, the identity-permutation test; riders #1148, #1150 |
-| **1.7.4** | **Loop Honesty, second half** — #1054, #1070, with #936/#933 verified-then-closed | **Hardening (infra)** — #1147, #575, #577, #576, #578, #330, #300, #581, #560, #372, #352, #353, #574 |
-| **1.7.5** | **Deferrals** — #820, #376 | **Composition Root** after its design note — #301, #286, #1152 (executor extraction under the goldens); extractions #567, #579; #198, #157, #176, #580 |
+| **1.7.0** | **Reasoning** — #927, #410, #924 (budget half), #1145, #930 — first and alone, because it changes what every later token number means | #901, #929, #944; the CI-truth items first: #1099, #242, #1041, #237; #1135 (the package capture credits `Closes` in code spans — fixed before the first capture) |
+| **1.7.1** | **Stack Seams** — #1149 (harvest, precondition) then #1131 (move + guard), the kind gate (#1153, filed from 1.6.6 roll 3), #1130, #1123, #668, #939, #1022 | #1087 (stack-#1 half), #1112; packaging: #582, #637, #598, #1144, #1151 |
+| **1.7.2** | **Loop Honesty, first half** — #788 (the traceback reaches the repairer), #994, #995, #999, #1110, #968 | **Boundaries** — #154 (the all-packages import guard + four moves), #377, #381, #305, #559, #922, #225, #218 (+ the route-lane test), #219, the identity-permutation test; riders #1148, #1150 |
+| **1.7.3** | **Loop Honesty, second half** — #1054, #1070, with #936/#933 verified-then-closed | **Hardening (infra)** — #1147, #575, #577, #576, #578, #330, #300, #581, #560, #372, #352, #353, #574 |
+| **1.7.4** | **Deferrals** — #820, #376 | **Composition Root** after its design note — #301, #286, #1152 (executor extraction under the goldens); extractions #567, #579; #198, #157, #176, #580 |
 
-**The total: ~68 of the 83 open issues fixed across five lines** — 23 roll-verified, ~45
-CI-verified (rev 2 adds #1147–#1152 as CI-verified riders and moves #154 into Boundaries).
-The remaining 15: four at design review (#414, #557, #1122, #316), six held in the
-1.8 lane (#950, #949, #194, #80, #1039, #1031), and five verify-then-close or folded (#822,
-#936, #933 and the two the packs absorb). The counts per line are the honest ceiling, not a
+**The total: 71 of the 84 open issues fixed across five lines (1.7.0–1.7.4)** — 23
+roll-verified, 48 CI-verified (rev 2 adds #1147–#1152 as CI-verified riders and moves #154
+into Boundaries; rev 2 wrote "~68 of 83" and "15 remaining" — counting the table gives 71 and
+13). The remaining 13: four at design review (#414, #557, #1122, #316), six held in the
+1.8 lane (#950, #949, #194, #80, #1039, #1031), and three verify-then-close (#822, #936,
+#933). The counts per line are the honest ceiling, not a
 target: a line closes when its pack's predictions all hold, and a falsified one costs a
 1.7.x.1 before the next pack opens — the same rule the 1.6.x lines ran under. The line order
 follows §3's dependencies; a line's rider may move to a neighbour without changing the packs.
@@ -344,7 +361,7 @@ follows §3's dependencies; a line's rider may move to a neighbour without chang
 
 1.7 has no headline feature to measure, so it measures its own claim: *the seams hold*.
 
-- **Two counting sets on one frozen deploy after Packs Reasoning, S and L land** — FastAPI+React N=6,
+- **Two counting sets on one frozen deploy after the Reasoning, Stack Seams and Loop Honesty packs land** — FastAPI+React N=6,
   Next.js+TS N=2 (the 1.6.6 sizing, for the same reasons), pre-registered with one falsifiable
   prediction per landed item: the reasoning level resolves per capability (read from LangFuse);
   no green suite is failed by a stack-shaped check; a kind-contradicting assertion is rejected at
@@ -354,7 +371,7 @@ follows §3's dependencies; a line's rider may move to a neighbour without chang
   intervals and no bar; greens by repair vs by re-dispatch; qa primary completion tokens against
   1.6.6's `3233–6594` — the distribution Pack Reasoning is expected to move down, reported as measured.
 - **CI as the second instrument**: the integration job, the adapter characterization suite,
-  the structural guards — all green on the cut commit, and the cut says so.
+  the structural guards — all green on each cut commit, and the cut says so.
 
 ---
 
@@ -372,10 +389,33 @@ follows §3's dependencies; a line's rider may move to a neighbour without chang
 
 ## 6. Cut criteria
 
-Substance, not the clock:
+Substance, not the clock. Two cuts are gated here: the one that opens the line and the one
+that closes it. The 1.7.1–1.7.4 cuts between them run under §3.1's rule — a line closes when
+its pack's predictions all hold — and the standing cut procedure in `CLAUDE.md`.
 
-1. Packs Reasoning, S, B and C fully landed; Pack Loop Honesty and Pack Hardening at the ops-rider quota with every
-   remaining item re-placed by name (nothing silently carried).
+### 6.1 The 1.7.0 cut — the Reasoning line
+
+1. Pack Reasoning fully landed: #927 (the level on the port, the contract declaring it, the
+   Ollama mapping), #410 (the thinking channel captured and emitted), #1145, #930; #924's
+   budget half re-read against the new distribution and recorded either way.
+2. Pack Reasoning's verification story held (§2.1): the #924 probe replayed through the port
+   with the `none`/`high` split reproduced from our own telemetry and thinking text present
+   in LangFuse on the `high` run; one shakeout per stack with fills-first (Q0) holding; the
+   adapter characterization suite green in CI against the recorded transcript.
+3. The rider landed: #901, #929, #944 (the dead `LLMRouter` gone, the call sequence extracted),
+   and the CI-truth items #1099, #242, #1041, #237 — so the integration job is green on main
+   and CI runs the dependency set the images install, *before* any later line's greens are
+   read.
+4. Zero code drift between the shakeout deploy and the tag; the release package captured on
+   the first try with the `Closes` column correct (#1135 in this rider).
+5. Stated at the cut: what the shakeouts did not exercise, and every remaining pack's
+   placement by name (§3.1) — nothing silently carried.
+
+### 6.2 The line's close — before 1.8 opens
+
+1. The Reasoning, Stack Seams, Boundaries and Composition Root packs fully landed; Loop
+   Honesty and Hardening at the ops-rider quota with every remaining item re-placed by name
+   (nothing silently carried).
 2. Both counting sets closed with no falsified prediction; the record written from per-round
    evidence.
 3. CI green on main including the integration job, on Python 3.12, against the locked deps the
@@ -403,3 +443,9 @@ Substance, not the clock:
   effort); #218 carries a route-lane test; an identity-permutation test added to Boundaries with
   no issue behind it. Not adopted: the assessment's note of a hardcoded agent-name→role map in
   the entrypoint (checked — it is gone), and #194 / #1122 stay where rev 1 put them.
+- **Rev 3 (2026-08-28)** — the 1.7.0 line named. Rev 2's §3.1 numbered the lines 1.7.1–1.7.5
+  and §6 gated one cut after all of them; the lines renumber 1.7.0–1.7.4 with Reasoning as
+  1.7.0 (the 1.6 shape: the first pack cut, the slate open), §6 split into the 1.7.0 cut
+  (§6.1) and the line's close (§6.2), #1135 moved to 1.7.0's rider, the counts corrected (84 open,
+  71 placed in lines, 13 outside), and the residual S/L/B/C/H handles replaced with pack names. Owner's
+  ruling on the two readings, 2026-08-28.
