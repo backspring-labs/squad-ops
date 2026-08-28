@@ -35,6 +35,14 @@ class TestModelSpec:
         assert MODEL_SPECS["qwen3.8:27b"].reasoning_control == ReasoningControl.TOGGLE
         assert MODEL_SPECS["qwen2.5:7b"].reasoning_control == ReasoningControl.NONE
 
+    def test_the_atlas_served_id_is_registered_with_the_served_window(self):
+        """Atlas names the weights by HF path; unregistered, the resolver sends no
+        reasoning level (the channel stays on) and the prompt guard has no window —
+        and the window must be the served one, since Atlas rejects prompts past it."""
+        spec = MODEL_SPECS["Qwen/Qwen3.8-27B-FP8"]
+        assert spec.context_window == 32_768
+        assert spec.default_max_completion == MODEL_SPECS["qwen3.8:27b"].default_max_completion
+
     def test_all_specs_context_exceeds_completion(self):
         """Every registered model must have context_window > default_max_completion."""
         for name, spec in MODEL_SPECS.items():

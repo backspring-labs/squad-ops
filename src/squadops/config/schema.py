@@ -538,10 +538,17 @@ class LLMConfig(BaseModel):
     """
 
     provider: str = Field(
-        description="LLM provider selecting the adapter: 'ollama' or 'vllm' (required)"
+        description="LLM provider selecting the adapter: 'ollama', 'vllm' or 'atlas' (required)"
     )
     url: str = Field(
         default="http://host.docker.internal:11434", description="LLM API URL (Ollama)"
+    )
+    api_key: str | None = Field(
+        default=None,
+        description=(
+            "Bearer token for a provider that requires one (Atlas bound off localhost does; "
+            "Ollama does not). Write it as a secret:// reference — the loader resolves it."
+        ),
     )
     model: str | None = Field(default=None, description="Default LLM model name")
     timeout: int = Field(default=180, ge=1, description="LLM request timeout in seconds")

@@ -63,6 +63,9 @@ class LLMResponse:
     completion_tokens: int | None = None
     total_tokens: int | None = None
     tokens_per_second: float | None = None
+    # Reasoning tokens counted separately from content, when the provider reports them
+    # (``thinking_tokens: True``). None = not reported; never zero-filled (#410, #1159).
+    reasoning_tokens: int | None = None
 
 
 @dataclass(frozen=True)
@@ -93,3 +96,4 @@ class ChatMessage:
     completion_tokens: int | None = None
     total_tokens: int | None = None
     tokens_per_second: float | None = None
+    reasoning_tokens: int | None = None  # see LLMResponse.reasoning_tokens

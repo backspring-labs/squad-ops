@@ -33,6 +33,7 @@ from unittest.mock import patch
 
 import httpx
 
+from adapters.llm.atlas import AtlasAdapter
 from adapters.llm.ollama import OllamaAdapter
 from adapters.llm.vllm import VLLMAdapter
 from squadops.ports.llm.provider import LLMPort
@@ -310,6 +311,111 @@ def vllm_nameless_model(request: httpx.Request) -> httpx.Response:
 
 
 # ---------------------------------------------------------------------------
+# Atlas dialect — the shapes measured on the Spark on 2026-08-28 (SIP-0106 §10.2).
+# ---------------------------------------------------------------------------
+
+ATLAS_MODELS = ["Qwen/Qwen3.8-27B-FP8"]
+ATLAS_CONTENT = "the assembled answer"
+ATLAS_STREAM_PARTS = ["the ", "assembled ", "answer"]
+ATLAS_TOKEN = "test-bearer-token"
+_ATLAS_PROMPT_TOKENS = 20
+_ATLAS_COMPLETION_TOKENS = 40
+_ATLAS_REASONING_TOKENS = 12
+_ATLAS_TPS = 12.78
+
+
+def _atlas_usage() -> dict:
+    return {
+        "prompt_tokens": _ATLAS_PROMPT_TOKENS,
+        "completion_tokens": _ATLAS_COMPLETION_TOKENS,
+        "total_tokens": _ATLAS_PROMPT_TOKENS + _ATLAS_COMPLETION_TOKENS,
+        "prompt_tokens_details": {"cached_tokens": 0, "audio_tokens": 0},
+        "completion_tokens_details": {"reasoning_tokens": _ATLAS_REASONING_TOKENS},
+        "time_to_first_token_ms": 153.2,
+        "response_token/s": _ATLAS_TPS,
+    }
+
+
+def atlas_ok(request: httpx.Request) -> httpx.Response:
+    """Answer as the live Atlas did: bearer-gated, reasoning in its own field, the
+    engine's own decode rate in usage, and the streaming usage on an empty-choices frame."""
+    if request.headers.get("Authorization") != f"Bearer {ATLAS_TOKEN}":
+        return httpx.Response(401, json={"error": {"message": "unauthorized"}})
+    path = request.url.path
+
+    if path == "/v1/models":
+        return httpx.Response(
+            200,
+            json={
+                "object": "list",
+                "data": [
+                    {
+                        "id": m,
+                        "object": "model",
+                        "created": 0,
+                        "owned_by": "atlas",
+                        "max_model_len": 32768,
+                    }
+                    for m in ATLAS_MODELS
+                ],
+            },
+        )
+
+    if path == "/v1/chat/completions":
+        body = json.loads(request.content)
+        model = body["model"]
+        if body.get("reasoning_effort") == "high":  # the served template's answer, measured
+            return httpx.Response(
+                400,
+                json={
+                    "error": {
+                        "message": "Unexpected reasoning effort high. Supported types are xhigh (default), medium, and low."
+                    }
+                },
+            )
+        if not body.get("stream"):
+            return httpx.Response(
+                200,
+                json={
+                    "id": "chatcmpl-1",
+                    "model": model,
+                    "system_fingerprint": "fp_atlas",
+                    "choices": [
+                        {
+                            "index": 0,
+                            "message": {
+                                "role": "assistant",
+                                "reasoning_content": "thinking, separately",
+                                "content": ATLAS_CONTENT,
+                            },
+                            "finish_reason": "stop",
+                        }
+                    ],
+                    "usage": _atlas_usage(),
+                },
+            )
+        frames: list[dict] = [{"choices": [{"index": 0, "delta": {"role": "assistant"}}]}]
+        frames.append({"choices": [{"index": 0, "delta": {"reasoning_content": "thinking, "}}]})
+        frames.extend(
+            {"choices": [{"index": 0, "delta": {"content": part}}]} for part in ATLAS_STREAM_PARTS
+        )
+        frames.append({"choices": [], "usage": _atlas_usage()})
+        frames.append({"choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]})
+        return httpx.Response(200, content=_sse(frames))
+
+    return httpx.Response(404, json={"error": {"message": "not found"}})
+
+
+def atlas_nameless_model(request: httpx.Request) -> httpx.Response:
+    if (
+        request.url.path == "/v1/models"
+        and request.headers.get("Authorization") == f"Bearer {ATLAS_TOKEN}"
+    ):
+        return httpx.Response(200, json={"object": "list", "data": [{"object": "model"}]})
+    return atlas_ok(request)
+
+
+# ---------------------------------------------------------------------------
 # The registry — one entry per adapter under conformance.
 #
 # Atlas (P4) and vLLM (P6) each land here as one AdapterCase with their own
@@ -350,6 +456,25 @@ ADAPTER_CASES: list[AdapterCase] = [
         # The registry is keyed on the name the adapter is handed; a real vLLM
         # serves HF paths, whose entries are #1145/#1159's to add.
         reasoning_model="qwen3.6:27b",
+    ),
+    AdapterCase(
+        name="atlas",
+        build=lambda: AtlasAdapter(
+            base_url="http://localhost:8888",
+            default_model="Qwen/Qwen3.8-27B-FP8",
+            timeout_seconds=5.0,
+            api_key=ATLAS_TOKEN,
+        ),
+        ok=atlas_ok,
+        nameless_model=atlas_nameless_model,
+        default_model="Qwen/Qwen3.8-27B-FP8",
+        override_model="Qwen/Qwen3.8-27B-FP8",
+        models=ATLAS_MODELS,
+        content=ATLAS_CONTENT,
+        prompt_tokens=_ATLAS_PROMPT_TOKENS,
+        completion_tokens=_ATLAS_COMPLETION_TOKENS,
+        tokens_per_second=_ATLAS_TPS,  # exact: the engine's own `response_token/s`
+        reasoning_model="Qwen/Qwen3.8-27B-FP8",
     ),
 ]
 

@@ -89,6 +89,17 @@ MODEL_SPECS: dict[str, ModelSpec] = {
         default_max_completion=8_192,
         reasoning_control=ReasoningControl.TOGGLE,
     ),
+    # Atlas serves models by HuggingFace path, so the same weights carry a second name
+    # (SIP-0106 §3.4 — model identity is provider-scoped). The window is the one the
+    # local-spark recipe serves (`--max-seq-len 32768`, #1158), not the checkpoint's
+    # native 262K: Atlas rejects a prompt past the served window, and the prompt-size
+    # guard reads this number. The completion clamp matches the Ollama entry above.
+    "Qwen/Qwen3.8-27B-FP8": ModelSpec(
+        name="Qwen/Qwen3.8-27B-FP8",
+        context_window=32_768,
+        default_max_completion=8_192,
+        reasoning_control=ReasoningControl.TOGGLE,
+    ),
     "llama3:70b": ModelSpec(
         name="llama3:70b",
         context_window=131_072,
