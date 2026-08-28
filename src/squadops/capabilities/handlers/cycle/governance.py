@@ -179,6 +179,7 @@ class GovernanceReviewHandler(_CycleTaskHandler):
             chat_kwargs.get("model") or context.ports.llm.default_model,
             rendered=rendered,
             chat_response=response,
+            reasoning=chat_kwargs.get("reasoning"),
         )
 
         prd_summary = str(prd)[:80] if prd else "(no PRD)"

@@ -90,6 +90,11 @@ class TestValidateConfigOverrides:
         result = validate_config_overrides({"temperature": 0.7, "bad_key": 1, "another_bad": 2})
         assert result == ["another_bad", "bad_key"]
 
+    def test_reasoning_is_an_allowed_key(self):
+        """#927: the override the plan's Reasoning pack promises operators —
+        rejected as unknown, the profile could never turn the channel off."""
+        assert validate_config_overrides({"reasoning": "none"}) == []
+
     def test_empty_dict(self):
         assert validate_config_overrides({}) == []
 
@@ -131,6 +136,36 @@ class TestValidateAgentEntries:
         ]
         errors = validate_agent_entries(agents)
         assert any("unknown config_overrides keys" in e for e in errors)
+
+    @pytest.mark.parametrize("bad", ["hgih", "", None, 2, True])
+    def test_reasoning_override_must_be_a_level(self, bad):
+        """#927: nothing downstream re-checks the value — a misspelt level
+        would reach Ollama as ``think: true``. Rejected at the profile, named."""
+        agents = [
+            {
+                "agent_id": "neo",
+                "role": "dev",
+                "model": "qwen3.6:27b",
+                "config_overrides": {"reasoning": bad},
+            }
+        ]
+        errors = validate_agent_entries(agents)
+        assert errors == [
+            "agents[0]: config_overrides.reasoning must be one of high, low, medium, none; "
+            f"got {bad!r}"
+        ]
+
+    @pytest.mark.parametrize("level", ["none", "low", "medium", "high"])
+    def test_reasoning_override_accepts_every_level(self, level):
+        agents = [
+            {
+                "agent_id": "neo",
+                "role": "dev",
+                "model": "qwen3.6:27b",
+                "config_overrides": {"reasoning": level},
+            }
+        ]
+        assert validate_agent_entries(agents) == []
 
     def test_missing_fields_use_defaults(self):
         agents = [{"agent_id": "neo", "role": "dev", "model": "qwen2.5:7b"}]

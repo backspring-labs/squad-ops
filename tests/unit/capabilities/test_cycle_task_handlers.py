@@ -30,6 +30,7 @@ from squadops.capabilities.handlers.cycle_tasks import (
     QAValidateHandler,
     StrategyAnalyzeHandler,
 )
+from squadops.capabilities.reasoning_policy import REASONING_BY_CAPABILITY
 from squadops.llm.exceptions import LLMConnectionError, LLMModelNotFoundError, LLMTimeoutError
 from squadops.llm.models import ChatMessage
 
@@ -538,6 +539,47 @@ class TestConfigOverridesFlow:
 
         call_kwargs = mock_context.ports.llm.chat_stream_with_usage.call_args[1]
         assert "model" not in call_kwargs
+
+    @pytest.mark.parametrize(
+        "cls",
+        HANDLER_CLASSES,
+        ids=[c.__name__ for c in HANDLER_CLASSES],
+    )
+    async def test_declared_reasoning_level_reaches_chat_on_a_switchable_model(
+        self, cls, mock_context
+    ):
+        """#927: the capability's declaration, not the model's default posture,
+        decides how much this call thinks — and it is on the wire, not merely
+        resolved. The bug: the level resolved and never sent."""
+        handler = cls()
+        inputs = {
+            "prd": "Build a widget",
+            "agent_model": "qwen3.6:27b",
+            "agent_config_overrides": {},
+        }
+        await handler.handle(mock_context, inputs)
+
+        call_kwargs = mock_context.ports.llm.chat_stream_with_usage.call_args[1]
+        assert call_kwargs["reasoning"] == REASONING_BY_CAPABILITY[handler.capability_id]
+
+    @pytest.mark.parametrize(
+        "cls",
+        HANDLER_CLASSES,
+        ids=[c.__name__ for c in HANDLER_CLASSES],
+    )
+    async def test_no_level_is_sent_for_a_model_without_the_dial(self, cls, mock_context):
+        """qwen2.5 has no reasoning channel; Ollama rejects ``think`` for it,
+        so a level leaking through would 400 every call on the lite profile."""
+        handler = cls()
+        inputs = {
+            "prd": "Build a widget",
+            "agent_model": "qwen2.5:7b",
+            "agent_config_overrides": {"reasoning": "high"},
+        }
+        await handler.handle(mock_context, inputs)
+
+        call_kwargs = mock_context.ports.llm.chat_stream_with_usage.call_args[1]
+        assert "reasoning" not in call_kwargs
 
     @pytest.mark.parametrize(
         "cls",

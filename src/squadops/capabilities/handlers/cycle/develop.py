@@ -32,6 +32,7 @@ from squadops.capabilities.handlers.cycle.validation import (
     _estimate_min_artifacts,
 )
 from squadops.capabilities.handlers.emission_log import log_emission_shape
+from squadops.capabilities.reasoning_policy import reasoning_kwargs, resolve_reasoning_level
 
 logger = logging.getLogger(__name__)
 
@@ -497,6 +498,10 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
             chat_kwargs["model"] = agent_model
         if "temperature" in agent_overrides:
             chat_kwargs["temperature"] = agent_overrides["temperature"]
+        reasoning = resolve_reasoning_level(
+            self._capability_id, agent_overrides=agent_overrides, model_name=model_name
+        )
+        chat_kwargs.update(reasoning_kwargs(reasoning))
 
         messages = [
             ChatMessage(role="system", content=system_prompt),
@@ -522,6 +527,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
             model_name,
             rendered=rendered,
             chat_response=response,
+            reasoning=reasoning,
         )
 
         # Parse fenced code blocks

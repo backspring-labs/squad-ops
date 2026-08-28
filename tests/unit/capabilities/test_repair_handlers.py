@@ -12,12 +12,14 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from squadops.capabilities.handlers.impl.repair_handlers import QATestRepairHandler
 from squadops.capabilities.handlers.repair_tasks import (
     DataAnalyzeVerificationHandler,
     DevelopmentRepairHandler,
     GovernanceRootCauseHandler,
     StrategyCorrectivePlanHandler,
 )
+from squadops.capabilities.reasoning_policy import REASONING_BY_CAPABILITY
 
 pytestmark = [pytest.mark.domain_pulse_checks]
 
@@ -330,3 +332,53 @@ class TestPriorRepairRejectionReachesThePrompt:
         from squadops.capabilities.handlers.impl.repair_handlers import _format_failure_summary
 
         assert "PRIOR REPAIR REJECTED" not in _format_failure_summary({"error": "x"}, None)
+
+
+class TestRepairReasoningLevel:
+    """#927 on the base ``_build_chat_kwargs`` path every repair handler rides:
+    the capability's declared level reaches ``chat()``, clamped by the model's
+    dial. The bug: a repair generating with the model's own posture — the
+    12,314-token repair #1011 clamped was mostly thinking."""
+
+    def test_dev_repair_sends_its_declared_level_on_a_switchable_model(self):
+        kwargs = DevelopmentRepairHandler()._build_chat_kwargs(
+            {"agent_model": "qwen3.8:27b", "agent_config_overrides": {}}
+        )
+        assert kwargs["reasoning"] == REASONING_BY_CAPABILITY["development.correction_repair"]
+
+    def test_qa_repair_switches_the_channel_off(self):
+        """The qa-owned repair is a transcription of a failing assertion into a
+        correct one; #924's measurement says the channel is the budget here."""
+        kwargs = QATestRepairHandler()._build_chat_kwargs(
+            {"agent_model": "qwen3.8:27b", "agent_config_overrides": {}}
+        )
+        assert kwargs["reasoning"] == "none"
+
+    def test_profile_override_wins(self):
+        kwargs = DevelopmentRepairHandler()._build_chat_kwargs(
+            {"agent_model": "qwen3.8:27b", "agent_config_overrides": {"reasoning": "none"}}
+        )
+        assert kwargs["reasoning"] == "none"
+
+    @pytest.mark.parametrize("model", ["qwen2.5:7b", "totally-unregistered:1b"])
+    def test_no_level_for_a_model_without_the_dial(self, model):
+        kwargs = DevelopmentRepairHandler()._build_chat_kwargs(
+            {"agent_model": model, "agent_config_overrides": {}}
+        )
+        assert "reasoning" not in kwargs
+
+    async def test_level_reaches_the_llm_call(self):
+        """Wiring half: the resolved level arrives at chat_stream_with_usage."""
+        h = DevelopmentRepairHandler()
+        ctx = _make_context(llm_response="repaired")
+        await h.handle(
+            ctx,
+            {
+                "prd": "p",
+                "agent_model": "qwen3.8:27b",
+                "agent_config_overrides": {},
+                "failure_context": "traceback",
+            },
+        )
+        call_kwargs = ctx.ports.llm.chat_stream_with_usage.call_args.kwargs
+        assert call_kwargs["reasoning"] == "medium"

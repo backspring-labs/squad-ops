@@ -299,6 +299,7 @@ class _PlanningTaskHandler(_CycleTaskHandler):
                     if rendered and rendered.template_version
                     else None
                 ),
+                reasoning=chat_kwargs.get("reasoning"),
             )
             layers = PromptLayerMetadata(
                 prompt_layer_set_id=f"{self._role}-planning",
