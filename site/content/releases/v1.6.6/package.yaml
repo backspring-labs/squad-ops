@@ -1,0 +1,418 @@
+version: 1.6.6
+tag: v1.6.6
+previous_tag: v1.6.5
+date: '2026-08-28'
+commit: eed10c6ced1c27ce957f4c573d7f9228a75643d8
+narrative: "**The React-arm patch line.** Six fixes built from the 1.6.5 FastAPI+React\
+  \ rejections — the\nnullable-field emission, the harness cleanup, the passing retest\
+  \ stored, a stack-aware\nself-mocking check, a refused patch not counted as a round,\
+  \ and one request-body resolver — and\nits evidence is the second two-stack pre-registered\
+  \ set, sized six where the fixes came from and\ntwo where they were not supposed\
+  \ to reach.\n\n### The evidence\n\nTwo counting sets on frozen deploy `e14a6ad4`\
+  \ —\n`docs/plans/1-6-6-verification-set-record.md`, pre-registered before roll 1\
+  \ (PR #1142, merged as\n`873f4e50`; §2 completed by #1143 as `2448f5d1`, the HEAD\
+  \ pin) and unchanged throughout,\nlaunched only from `main`, executed under delegation.\
+  \ **Eight counted rolls, no voids, no\nresets; every pre-registered prediction held\
+  \ wherever a roll exercised it; the early stop never\nfired. Zero code drift between\
+  \ the measured deploy and the tag.**\n\n- **FastAPI+React: 4 of 6 (95% CI 30–90%)**\
+  \ against the 1.6.5 baseline of 2 of 6 — texture, no\n  significance claimed at\
+  \ N=6. Two greens clean, **two by repair, none by re-dispatch.** The\n  nullable-field\
+  \ fix was exercised on the three rolls whose manifest wrote `default: null` and\n\
+  \  held on all three (five of six such rolls opened with a 500 in 1.6.5); no report\
+  \ failed\n  \"Found multiple elements\"; the refused-patch rule fired on two rolls\
+  \ and no run ended after\n  zero applied repairs; the passing retest's report was\
+  \ what the task stored, twice. Both\n  rejections are the same class and not a pack\
+  \ item: a free-authored qa suite asserting\n  something the contract never said,\
+  \ a correct dev repair rejected by it, no route to the qa\n  file (#1153 filed,\
+  \ #1130 and #1123 evidenced) — roll 6's application passed every contract\n  probe.\n\
+  - **Next.js+TS: 2 of 2** — zero correction rounds, fills first on every emission,\
+  \ no cap hit;\n  the pack did not reach the stack it was not supposed to reach.\n\
+  \n### 1.6.6 line — the React arm's round-0 defects (plan: `docs/plans/1-6-6-plan.md`)\n\
+  \n- **A — an optional entity field freezes nullable** (#1125). A manifest field\
+  \ declared\n  `required: false, default: null` froze as `distance: str = None` —\
+  \ a non-nullable annotation\n  with a `None` default — because the declared null\
+  \ set `has_default` and the nullable branch\n  only fired when no default key existed;\
+  \ the request shape was correctly `str | None`, so the\n  route forwarded the request's\
+  \ `None` into the entity and pydantic answered 500 on POST /runs.\n  Five of the\
+  \ six FastAPI+React rolls in the previous set opened with that failure; the three\n\
+  \  manifests that omitted the key were clean. The rule now: a declared null default\
+  \ and an\n  optional field with no default both freeze `X | None = None`; a non-null\
+  \ default keeps\n  `X = default`. Python emitter only — the TS emitter renders `distance?:\
+  \ string` and is\n  untouched; every pinned fixture (the Next.js reference scaffold,\
+  \ the stack-#1 contract\n  reference, the context goldens) is byte-identical.\n\
+  - **B — the frozen React test harness unmounts between tests** (#1127). `test-setup.js`\n\
+  \  registers `afterEach(cleanup)`: under vitest's default `globals:false` Testing\
+  \ Library never\n  auto-registers it, so any suite that renders in more than one\
+  \ test failed \"Found multiple\n  elements\" unless the author added the line —\
+  \ the one suite that did was green. Moves the\n  stack-#1 contract reference (v10\
+  \ → v11, `reference_defect` per the M0 taxonomy: a harness\n  that can only reject\
+  \ a working app, never pass a broken one, so the 1.4 figure carries no\n  qualification)\
+  \ and the three context goldens' `frozen_surface_index` line for that file.\n- **F\
+  \ — the passing retest is what the qa task stores** (#1111). An accepted patch re-stored\n\
+  \  the failed result's artifacts overlaid with the repair, so the failed run's `test_report.md`\n\
+  \  and typed-check evaluation landed under the task id seconds *after* the retest\
+  \ banked its\n  passing report under its own — and on FastAPI+React roll 1 the next\
+  \ analysis read the\n  failure and sent a repair at a file the loop had already\
+  \ fixed. Evidence artifacts in the\n  re-store are now replaced by the passing retest's\
+  \ same-named artifact or dropped; work\n  product is untouched and the retest's\
+  \ own suite files stay under the retest id.\n- **C — \"invokes the application\"\
+  \ is the stack's own definition** (#1126). The\n  self-mocking detector defined\
+  \ it as an `app/api/` import — the Next.js in-process model —\n  inside a shared\
+  \ module, and failed a green FastAPI+React suite that rendered the real `App`\n\
+  \  with `fetch` stubbed while passing the one that `vi.mock`ed the app's own API\
+  \ client. Each\n  `ScaffoldStack` now declares an `AppInvocation` (the import that\
+  \ proves the app is invoked,\n  the mock that replaces the subject, the mock that\
+  \ replaces the network seam) in a leaf\n  module; the detector only applies it,\
+  \ resolved through `app_invocation_for` beside\n  `check_stack_for`. On React a\
+  \ rendered component or `App` invokes the app and a `fetch`\n  stub or `api.js`\
+  \ mock under it is legitimate; mocking a view or `App` module is mocking\n  the\
+  \ subject. An unregistered stack is judged not at all and its row is banked with\
+  \ an\n  empty inspected inventory, never as clean. The discarded roll-1 suite is\
+  \ the replay test.\n- **D — a refused repair patch is not a correction round** (#1129).\
+  \ When patch\n  verification refused a repair nothing was applied and no retest\
+  \ ran, but the failed task\n  re-ran against the unrepaired tree, its signature\
+  \ repeated by construction, and the\n  progress-aware terminal read that as \"the\
+  \ repair did not help\" — two FastAPI+React rolls\n  ended `plan_defect` after zero\
+  \ applied repairs, one of them holding the correct fix. A\n  refused round now clears\
+  \ chain adjacency the way an infra round does (the attempt cap\n  still bounds a\
+  \ repair that keeps being refused); the executor's refusal entry and the\n  runner's\
+  \ reading of it share one marker. `endpoint_defined` resolves `APIRouter(prefix=…)`\n\
+  \  so a prefixed router serves the declared paths instead of failing a literal-path\
+  \ check,\n  and the repair brief (v6) says to keep the router construction, decorators\
+  \ and handler\n  names as they are — a rewrite is refused before it is tested.\n\
+  - **E — an endpoint's request body has one resolver** (#1128). Manifest validation\
+  \ accepts\n  a `request:` that names a declared shape *or an entity*; the contract\
+  \ generator resolved\n  probe bodies only through `request_shapes`, so an entity-typed\
+  \ request shipped `json: {}`\n  expecting 201 then 409 from a route whose payload\
+  \ class required `name` — unsatisfiable by\n  construction, and the loop rightly\
+  \ called it `plan_defect`. `InterfaceManifest.request_body_fields`\n  now answers\
+  \ for both (a shape's `required`; an entity's required, non-generated,\n  undefaulted\
+  \ fields) and every probe-body site reads it. The route emitter no longer takes\n\
+  \  the entity class itself as the payload — its generated `id` is required, so it\
+  \ could never\n  accept that body — but a synthesized `{Entity}Body` model shaped\
+  \ by the same resolver,\n  with `NonBlankStr` required fields so the blank-input\
+  \ probe applies as it does to a\n  declared shape. Pinned reference output (declared\
+  \ shapes throughout) is byte-identical."
+pull_requests:
+- number: 1154
+  title: 'chore(release): 1.6.6 — the React-arm patch line, measured on both stacks'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-28'
+- number: 1146
+  title: 'docs(plan): 1.7.0 plan rev 2 — stabilization packs (Reasoning, Stack Seams,
+    Loop Honesty, Boundaries, Composition Root, Hardening), 83 open issues placed'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-28'
+- number: 1143
+  title: 'docs(plan): 1.6.6 pre-registration §2 — both shakeouts from main read; driver
+    refused-patch readout per task'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-27'
+- number: 1142
+  title: 'docs(plan): pre-register the 1.6.6 sets (4+4) + driver readouts R1/R2/R4/R5
+    + pinned set configs'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-27'
+- number: 1141
+  title: 'fix(scaffold): an endpoint''s request body has one resolver; an entity-typed
+    request gets a body model (#1128)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1128
+  merged_at: '2026-08-27'
+- number: 1140
+  title: 'fix(correction): a repair patch refused by patch verification is not a correction
+    round (#1129)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1129
+  merged_at: '2026-08-27'
+- number: 1139
+  title: 'fix(qa): the self-mocking detector judges through the stack''s own definition
+    of invoking the app (#1126)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1126
+  merged_at: '2026-08-27'
+- number: 1138
+  title: 'fix(correction): the passing retest''s evidence is what the repaired task
+    stores (#1111)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1111
+  merged_at: '2026-08-27'
+- number: 1137
+  title: 'fix(scaffold): the frozen React test harness registers afterEach(cleanup)
+    (#1127)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1127
+  merged_at: '2026-08-27'
+- number: 1136
+  title: 'fix(scaffold): an optional entity field with a declared null default freezes
+    nullable (#1125)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1125
+  merged_at: '2026-08-27'
+- number: 1134
+  title: 'docs(release): capture the v1.6.5 release package'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-27'
+sip_moves: []
+cycles:
+- cycle_id: cyc_cdf91361702b
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:command_exit_zero
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:regex_match
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_4f6d873561a2
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:command_exit_zero
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:regex_match
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_38d1e1689766
+  captured: true
+  status: failed
+  verdict: rejected
+  verified:
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:regex_match
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-rejects-blank
+  failed:
+  - vc-probe-runs-leave
+  - tests_pass
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_ac15b6c6209f
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:command_exit_zero
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:regex_match
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_ae0631fddfc5
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:command_exit_zero
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:regex_match
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_0c4664c2ae9a
+  captured: true
+  status: failed
+  verdict: rejected
+  verified:
+  - acceptance:command_exit_zero
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:regex_match
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed:
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - tests_pass
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_68b0e1769526
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:frontend_compiles
+  - acceptance:regex_match
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-api-runs
+  - vc-probe-api-runs-join
+  - vc-probe-api-runs-join-duplicate
+  - vc-probe-api-runs-leave
+  - vc-probe-api-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_06987a951236
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:frontend_compiles
+  - acceptance:regex_match
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-api-runs
+  - vc-probe-api-runs-join
+  - vc-probe-api-runs-join-duplicate
+  - vc-probe-api-runs-leave
+  - vc-probe-api-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+screenshots: []
