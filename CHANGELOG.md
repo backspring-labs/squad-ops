@@ -5,6 +5,38 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [1.6.6] — 2026-08-28
+
+**The React-arm patch line.** Six fixes built from the 1.6.5 FastAPI+React rejections — the
+nullable-field emission, the harness cleanup, the passing retest stored, a stack-aware
+self-mocking check, a refused patch not counted as a round, and one request-body resolver — and
+its evidence is the second two-stack pre-registered set, sized six where the fixes came from and
+two where they were not supposed to reach.
+
+### The evidence
+
+Two counting sets on frozen deploy `e14a6ad4` —
+`docs/plans/1-6-6-verification-set-record.md`, pre-registered before roll 1 (PR #1142, merged as
+`873f4e50`; §2 completed by #1143 as `2448f5d1`, the HEAD pin) and unchanged throughout,
+launched only from `main`, executed under delegation. **Eight counted rolls, no voids, no
+resets; every pre-registered prediction held wherever a roll exercised it; the early stop never
+fired. Zero code drift between the measured deploy and the tag.**
+
+- **FastAPI+React: 4 of 6 (95% CI 30–90%)** against the 1.6.5 baseline of 2 of 6 — texture, no
+  significance claimed at N=6. Two greens clean, **two by repair, none by re-dispatch.** The
+  nullable-field fix was exercised on the three rolls whose manifest wrote `default: null` and
+  held on all three (five of six such rolls opened with a 500 in 1.6.5); no report failed
+  "Found multiple elements"; the refused-patch rule fired on two rolls and no run ended after
+  zero applied repairs; the passing retest's report was what the task stored, twice. Both
+  rejections are the same class and not a pack item: a free-authored qa suite asserting
+  something the contract never said, a correct dev repair rejected by it, no route to the qa
+  file (#1153 filed, #1130 and #1123 evidenced) — roll 6's application passed every contract
+  probe.
+- **Next.js+TS: 2 of 2** — zero correction rounds, fills first on every emission, no cap hit;
+  the pack did not reach the stack it was not supposed to reach.
+
 ### 1.6.6 line — the React arm's round-0 defects (plan: `docs/plans/1-6-6-plan.md`)
 
 - **A — an optional entity field freezes nullable** (#1125). A manifest field declared
