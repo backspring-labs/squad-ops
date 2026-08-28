@@ -429,16 +429,23 @@ async def _init_cycle_subsystem(config, pool) -> None:
     except Exception as e:
         logger.error(f"Failed to initialize cycle ports: {e}")
 
+    # #1157 (the LLM half of #301): the configured provider through the factory, never
+    # a directly constructed adapter. Construction is outside the try on purpose — an
+    # unknown provider name is a misconfiguration and must stop startup, while the
+    # registration below stays non-fatal.
+    from adapters.llm.factory import create_llm_provider
+
+    llm_adapter = create_llm_provider(
+        provider=config.llm.provider,
+        base_url=config.llm.url,
+        default_model=config.llm.model or "qwen2.5:7b",
+        timeout_seconds=float(config.llm.timeout),
+    )
     try:
-        from adapters.llm.ollama import OllamaAdapter
         from squadops.api.runtime.deps import set_llm_port
 
-        ollama_adapter = OllamaAdapter(
-            base_url=config.llm.url,
-            default_model=config.llm.model or "qwen2.5:7b",
-        )
-        set_llm_port(ollama_adapter)
-        logger.info("LLM port registered for model management")
+        set_llm_port(llm_adapter)
+        logger.info("LLM port registered for model management (provider=%s)", config.llm.provider)
     except Exception as e:
         logger.warning("LLM port not registered (non-fatal): %s", e)
 

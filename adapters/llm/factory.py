@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 
 def create_llm_provider(
-    provider: str = "ollama",
+    provider: str,
     secret_manager: SecretManager | None = None,
     base_url: str = "http://localhost:11434",
     default_model: str = "llama3.2",
@@ -27,7 +27,9 @@ def create_llm_provider(
     """Create an LLM provider.
 
     Args:
-        provider: Provider name ("ollama" or "vllm")
+        provider: Provider name ("ollama" or "vllm"). Required — no default (#1157):
+            the factory's own rule below refuses an unknown name, and a *missing*
+            one used to fall back to Ollama the same silent way.
         secret_manager: Optional secret manager for resolving secret:// refs
         base_url: Base URL for the LLM server (may be secret:// ref)
         default_model: Default model to use

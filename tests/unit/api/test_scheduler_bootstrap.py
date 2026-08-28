@@ -27,6 +27,7 @@ from squadops.config.schema import (
     AuthConfig,
     CommsConfig,
     DBConfig,
+    LLMConfig,
     RabbitMQConfig,
     RedisConfig,
 )
@@ -44,6 +45,7 @@ def _config(*, enabled: bool, poll: int = 30) -> AppConfig:
             redis=RedisConfig(url="redis://localhost:6379/0"),
         ),
         auth=AuthConfig(enabled=False),
+        llm=LLMConfig(provider="ollama"),
         runtime={"scheduler": {"enabled": enabled, "poll_interval_seconds": poll}},
     )
 

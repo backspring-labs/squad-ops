@@ -528,13 +528,22 @@ class PrefectConfig(BaseModel):
 
 
 class LLMConfig(BaseModel):
-    """LLM provider configuration."""
+    """LLM provider configuration.
 
+    ``provider`` is **required** (#1157, SIP-0106 Ruling 3): a selector at a
+    composition seam is never defaulted. Two adapters were in the tree while the
+    factory silently returned Ollama for every caller — a missing value must fail
+    at config load exactly as a misspelt one fails in the factory. Every deploy
+    surface writes ``SQUADOPS__LLM__PROVIDER`` explicitly; nothing infers it.
+    """
+
+    provider: str = Field(
+        description="LLM provider selecting the adapter: 'ollama' or 'vllm' (required)"
+    )
     url: str = Field(
         default="http://host.docker.internal:11434", description="LLM API URL (Ollama)"
     )
     model: str | None = Field(default=None, description="Default LLM model name")
-    use_local: bool = Field(default=True, description="Use local LLM provider")
     timeout: int = Field(default=180, ge=1, description="LLM request timeout in seconds")
 
 
@@ -755,7 +764,7 @@ class AppConfig(BaseModel):
     )
 
     # LLM
-    llm: LLMConfig = Field(default_factory=LLMConfig, description="LLM configuration")
+    llm: LLMConfig = Field(description="LLM configuration (required: it names the provider)")
 
     # Prompts (SIP-0084)
     prompts: PromptsConfig = Field(
