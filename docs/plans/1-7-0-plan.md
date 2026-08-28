@@ -1,10 +1,14 @@
 # 1.7.0 — plan
 
-**Revision 1, 2026-08-27.** Written while the 1.6.6 sets were closing (FastAPI+React 4 of 6,
-Next.js+TS in flight), from three inputs and nothing else: the ROADMAP's 1.7 identity (assigned
+**Revision 2, 2026-08-27.** Adds the findings of the owner's architectural assessment of
+`main` at `2448f5d1` (read the same evening; every claim acted on was re-verified against the
+tree): six new issues (#1147–#1152), two existing ones sharpened (#154, #301), and three
+placement changes (§7). Revision 1 was written while the 1.6.6 sets were closing (FastAPI+React
+4 of 6, Next.js+TS in flight), from three inputs and nothing else: the ROADMAP's 1.7 identity (assigned
 2026-08-07, `docs/plans/post-1-5-roadmap-reconciliation.md`), the 2026-08-21 open-issue sweep
 (`docs/plans/issue-sweep-2026-08-21.md`, whose 1.7 slate this plan confirms and extends), and
-the 1.6.3–1.6.6 verification-set records. **77 issues are open** at this writing; every one of
+the 1.6.3–1.6.6 verification-set records. **83 issues are open** at this writing (77 at rev 1,
+plus the six the assessment produced); every one of
 them is placed below — in a pack, at a gate, in 1.8's lane, or in verify-then-close — and the
 owner's three asks shape the packs: **squash a lot of bugs, fix the thinking-token problem, and
 harden for 1.8.**
@@ -41,9 +45,17 @@ not a seam, and Ollama's shape leaking into a provider-neutral port. That is exa
 question.
 
 **The "generic" scaffold is stack #1.** `stack_nextjs_ts.py` exists and no stack-#1 module does;
-a Next.js-shaped predicate written into a shared module discarded a green React suite (F1,
-#1126), and the owner asked whether they must keep reminding us to stay stack-aware. The
-answer is structural: #1131.
+a Next.js-shaped predicate written into a shared module discarded a green React suite (the
+self-mocking finding, #1126), and the owner asked whether they must keep reminding us to stay
+stack-aware. The answer is structural: #1131.
+
+**The boundary is declared, not enforced.** The assessment's count: 32 port interfaces, a
+forbidden-imports guard covering four directories, and one file of real architectural rules
+for a 90,000-line hexagonal system. Verified on `2448f5d1`: four domain modules import
+`adapters.*` outside any composition root — the orchestrator reaching for the NoOp
+observability adapter, the config loader for the secrets factory, a cycles *route* constructing
+`OllamaAdapter` directly, and a bootstrap check (#154, #301). The doctrine says guardrails over
+discipline; the guard is what 1.7 owes.
 
 ---
 
@@ -103,6 +115,11 @@ cannot regress unobserved.
 
 ### 2.2 Pack **Stack Seams** — the stack seam and the correction loop's last red class
 
+- **#1149 — harvest the rationale first.** `scaffold.py`'s comments are where the "why" of stack
+  #1 lives (an 824-line `envelope_example` is embedded stack data in code form); a comment does
+  not survive an extraction unless the refactorer reads it. The harvest into a durable home
+  (the proposed design-decision register, or a SIP amendment section) is the precondition of
+  every extraction in this release, and an extraction PR cites its register entry.
 - **#1131 — extract `stack_fastapi_react.py`** from `scaffold.py` as a pure move (fixtures
   byte-identical, GENERATOR_VERSION unchanged), register through `ScaffoldStack`, and land the
   **structural guard**: no stack-shaped literal (`app/api/`, `.test.tsx`, `pytest`, `vitest`,
@@ -138,16 +155,25 @@ item here. The structural guard is its own test.
 The owner's first ask, taken as the sweep's 1.6.x leftovers that touch the loop and were
 never scheduled, grouped by the mechanism each shares:
 
+- **The repairer never sees the traceback (#788) — first, because it is one tuple.** The
+  application's real traceback is captured (#687) and reaches the analyzer's evidence, but the
+  repair prompt renders five evidence blocks (`repair_handlers.py:97`) and `app_tracebacks` is
+  not one of them. A one-entry change with a clean prediction: repairs on runtime-error failures
+  land more often when the repairer reads the error. The assessment's highest-information item
+  per unit of effort, and this plan agrees.
 - **The loop discards its own state:** #994 (rewind after a successful repair re-dispatches
   develop and drops the repaired tree), #995 (a timeout mid self-eval is banked as "zero
   chars", erasing the real history), #999 (fill-merge assertion-strength evidence computed then
   never persisted), #1110 (the aimed retry never echoes the #998 marker; LangFuse output capped
-  at 10k chars).
+  at 10k chars), **#1148 (the fan-out execution paths do not write verification evidence to the
+  ledger — the executor's own comment says so; parity before anyone reaches for parallelism,
+  and Campaigns will).**
 - **The analysis is trusted unchecked:** #968 (nothing checks the analyzer's claims against the
-  source — three false diagnoses in one roll), #788 (a provably-impossible relative import
-  recommended and followed), #1054 (three repairs dispatched to qa on a dev-typed failure).
+  source — three false diagnoses in one roll), #1054 (three repairs dispatched to qa on a
+  dev-typed failure).
 - **Two homes for one fact, still:** #1070 (the plan's restatement of success_status beside the
-  manifest's field), #936/#933 (verify-then-close: the fill appendix vs `all()` and the plan
+  manifest's field), **#1150 (`GATE_REJECTED_STATES` restates what the lifecycle transition
+  table already encodes — derive it)**, #936/#933 (verify-then-close: the fill appendix vs `all()` and the plan
   authoring a deliverable that competes with fill mode — either fixed en route or they join
   this pack).
 - **Budget shape:** #414 stays a *design* item (a severity-aware correction-budget reserve) —
@@ -164,16 +190,29 @@ readouts, and the bar is that no roll in the set ends for a reason the record ca
 (`runtime_status` always populated, `network_status` retired), #559 (residual `task_type ==`
 sites → constants at the core), **#922 (three meanings of "capability" — must land before packs
 freeze the word)**, #225 (Joi's id), #218/#219 (one URL-prefix standard; the unversioned chat
-routes onto `/api/v1`). **How we know:** the structural tests the 1.5 line established
+routes onto `/api/v1` — **and a test that enumerates the routes and asserts the lanes**, since
+the standard is prose today). **#154 — the guard itself:** the forbidden-imports test extended
+from four directories to every `src/squadops` package with a declared allowlist of composition
+roots (~15 lines on the existing helper), and the four known domain→adapter sites moved — the
+NoOp observability adapter beside the port it satisfies, the secrets factory out of the config
+loader, the route-built `OllamaAdapter` through the factory (#301), the bootstrap check into
+wiring. **Plus one test with no issue behind it:** identity/role independence — a profile with
+permuted agent ids produces the same outcomes, so no behaviour keys on an instance id.
+**How we know:** the structural tests the 1.5 line established
 (`test_no_enum_shadow_comparisons` and kin) extended to each vocabulary; a grep that finds the
-leaked vocabulary anywhere outside its adapter fails CI.
+leaked vocabulary anywhere outside its adapter fails CI; the all-packages import guard is the
+single highest-leverage rule the repo does not have.
 
 ### 2.5 Pack **Composition Root** — the runtime is wired through its factories (design gate before code)
 
 #301 (main.py bypasses the llm/queue factories — provider selection is not a port until it
 goes through them), #154 (adapter imports out of domain modules into bootstrap wiring), #286
 (config loaded and validated at import time). These alter runtime initialization; a short
-design note is reviewed before the first PR. **How we know:** `python -c "import
+design note is reviewed before the first PR. **#1152 — the executor strangler's successor** sits
+here too: #186 closed at 3,172 lines and the file is 4,349 today, `_execute_sequential` alone
+411; the continuation is scoped to the two paths 1.7's loop work lands in, under #663's golden
+harness (byte-identical on the 19 goldens before and after), extraction only, with #1149's
+harvest done first. **How we know:** `python -c "import
 squadops.api.runtime.main"` with no environment succeeds; the factories are the only
 constructors reachable from main; the hex-arch audit compares vendor shape (port + NoOp +
 factory), not file location.
@@ -189,8 +228,11 @@ What 1.8's two headliners need under them, taken from the ROADMAP's own gating:
   whether `depends_on` orders execution). #80 (framework version, git SHA, request profile on
   the Cycle record) ships *with* the scorecard per the sweep — but the record shape is settled
   here so 1.8 does not open a migration on day one.
-- **Campaigns run unattended, so the ops floor must hold:** #330 (Prefect loop services
-  starve under heavy cycles — 12,613 s on a 60 s loop), #300 (migration applier advisory lock),
+- **Campaigns run unattended, so the ops floor must hold:** **#1147 (one setting bounds two
+  different things — the agent's per-request LLM timeout and the orchestrator's wait for an
+  entire task are the same 180 s; they cannot be tuned independently, so raising one to fit a
+  six-minute emission blinds the other to a hung agent for the same span)**, #330 (Prefect loop
+  services starve under heavy cycles — 12,613 s on a 60 s loop), #300 (migration applier advisory lock),
   #581 (compose healthchecks + `up --wait` replace sleep-and-poll), #560 (runtime-api log
   hygiene), #372 (Keycloak realm changes never reach existing realms — the #326 family), #352/
   #353 (prompt-registry staleness guard; manifest hashes stamped at build time), #574 (AMQP URL
@@ -202,7 +244,9 @@ What 1.8's two headliners need under them, taken from the ROADMAP's own gating:
   `requires-python`), #198 (FastAPI/Starlette ≥0.136 breaks the console — pin and fix), #157/
   #176 (coverage gaps; a small-model-runnable smoke integration test), #580 (retire the
   deprecated event-loop override).
-- **Packaging fidelity:** #582 (`[project.dependencies]` empty — bare `pip install` broken),
+- **Packaging fidelity:** **#1151 (release-cut steps 5 and 7 — the SIP sweep and the package
+  capture — have no guard; a tag-push check that the package exists for the tag, and a sweep
+  line the closure guard reads)**, #582 (`[project.dependencies]` empty — bare `pip install` broken),
   #637 (service images run locked deps the suite never exercises), #598 (the emitted container
   cannot build or run — verified by no criterion), #1135 (the release-package script credits
   `Closes` mentions in code spans), #1144 (24 live SIP proposals unindexed and the audit runs
@@ -239,9 +283,10 @@ By dependency and by what each pack proves, never by date:
    at 5,700 tokens today is mostly thinking). Land #927/#410 with the adapter suite, replay the
    #924 probe, run one shakeout per stack, and only then re-read every completion-budget
    number in the codebase (#924's budget half, 1.6.5's E).
-2. **Pack Stack Seams' move (#1131) before its fixes** — the kind gate, #1130 and #1123 are written
-   into the stack seam, not into the file it is leaving. The structural guard lands with the
-   move.
+2. **Harvest, then move (#1149 → #1131) before Pack Stack Seams' fixes** — the rationale comes
+   out of `scaffold.py` into a durable home first; then the pure move; then the kind gate, #1130
+   and #1123 are written into the stack seam, not into the file it is leaving. The structural
+   guard lands with the move. The same order governs #1152's executor extraction later.
 3. **Pack Loop Honesty in class-sized PRs**, each with its replay, interleaved with Pack Stack Seams; measured
    together by one FastAPI+React counting set and one Next.js regression arm on a frozen
    deploy — the 1.6.6 protocol, with a prediction per item.
@@ -279,13 +324,14 @@ are verified differently:
 | line | measured pack (roll-verified) | CI-verified rider |
 |---|---|---|
 | **1.7.1** | **Reasoning** — #927, #410, #924 (budget half), #1145, #930 — first and alone, because it changes what every later token number means | #901, #929, #944; the CI-truth items first: #1099, #242, #1041, #237 |
-| **1.7.2** | **Stack Seams** — #1131 (move + guard), the kind gate (filed from 1.6.6 roll 3), #1130, #1123, #668, #939, #1022 | #1087 (stack-#1 half), #1112; packaging: #582, #637, #598, #1135, #1144 |
-| **1.7.3** | **Loop Honesty, first half** — #994, #995, #999, #1110, #968 | **Boundaries** — #377, #381, #305, #559, #922, #225, #218, #219 |
-| **1.7.4** | **Loop Honesty, second half** — #788, #1054, #1070, with #936/#933 verified-then-closed | **Hardening (infra)** — #575, #577, #576, #578, #330, #300, #581, #560, #372, #352, #353, #574 |
-| **1.7.5** | **Deferrals** — #820, #376 | **Composition Root** after its design note — #301, #154, #286; extractions #567, #579; #198, #157, #176, #580 |
+| **1.7.2** | **Stack Seams** — #1149 (harvest, precondition) then #1131 (move + guard), the kind gate (filed from 1.6.6 roll 3), #1130, #1123, #668, #939, #1022 | #1087 (stack-#1 half), #1112; packaging: #582, #637, #598, #1135, #1144, #1151 |
+| **1.7.3** | **Loop Honesty, first half** — #788 (the traceback reaches the repairer), #994, #995, #999, #1110, #968 | **Boundaries** — #154 (the all-packages import guard + four moves), #377, #381, #305, #559, #922, #225, #218 (+ the route-lane test), #219, the identity-permutation test; riders #1148, #1150 |
+| **1.7.4** | **Loop Honesty, second half** — #1054, #1070, with #936/#933 verified-then-closed | **Hardening (infra)** — #1147, #575, #577, #576, #578, #330, #300, #581, #560, #372, #352, #353, #574 |
+| **1.7.5** | **Deferrals** — #820, #376 | **Composition Root** after its design note — #301, #286, #1152 (executor extraction under the goldens); extractions #567, #579; #198, #157, #176, #580 |
 
-**The total: ~62 of the 77 open issues fixed across five lines** — 23 roll-verified, ~39
-CI-verified. The remaining 15: four at design review (#414, #557, #1122, #316), six held in the
+**The total: ~68 of the 83 open issues fixed across five lines** — 23 roll-verified, ~45
+CI-verified (rev 2 adds #1147–#1152 as CI-verified riders and moves #154 into Boundaries).
+The remaining 15: four at design review (#414, #557, #1122, #316), six held in the
 1.8 lane (#950, #949, #194, #80, #1039, #1031), and five verify-then-close or folded (#822,
 #936, #933 and the two the packs absorb). The counts per line are the honest ceiling, not a
 target: a line closes when its pack's predictions all hold, and a falsified one costs a
@@ -348,3 +394,12 @@ Substance, not the clock:
   against the 77 open at this writing. §3.1 (the 1.7.x line breakdown and the per-line
   capacity rule) added the same evening on the owner's ask; packs renamed from letters to
   their subjects, with the naming table in §2, on the owner's ask.
+- **Rev 2 (2026-08-27, later)** — the owner's architectural assessment of `2448f5d1` read and
+  its actionable claims re-verified against the tree. Filed #1147 (timeout seam), #1148
+  (fan-out ledger parity), #1149 (rationale harvest before extraction), #1150 (gate-state
+  constants), #1151 (cut-step guards), #1152 (executor strangler successor); the four
+  domain→adapter sites and the all-packages guard recorded on #154, the route-built adapter on
+  #301. Placement changes: #788 to Loop Honesty's first half (one tuple, highest information per
+  effort); #218 carries a route-lane test; an identity-permutation test added to Boundaries with
+  no issue behind it. Not adopted: the assessment's note of a hardcoded agent-name→role map in
+  the entrypoint (checked — it is gone), and #194 / #1122 stay where rev 1 put them.
