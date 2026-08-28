@@ -158,7 +158,7 @@ class TestOllamaAdapterAsync:
 
     async def test_chat_without_reasoning_sends_no_think(self):
         """No level ⇒ no ``think`` key: the payload is the pre-#927 one, so a
-        model with no reasoning channel (Ollama rejects ``think`` for those)
+        model with no reasoning channel (Ollama 400s on ``think: true`` for those)
         and every unchanged caller keep working."""
         adapter = OllamaAdapter()
         mock_response = MagicMock()

@@ -568,7 +568,7 @@ class TestConfigOverridesFlow:
         ids=[c.__name__ for c in HANDLER_CLASSES],
     )
     async def test_no_level_is_sent_for_a_model_without_the_dial(self, cls, mock_context):
-        """qwen2.5 has no reasoning channel; Ollama rejects ``think`` for it,
+        """qwen2.5 has no reasoning channel; Ollama 400s on ``think: true`` for it,
         so a level leaking through would 400 every call on the lite profile."""
         handler = cls()
         inputs = {

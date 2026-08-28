@@ -192,7 +192,8 @@ class OllamaAdapter(LLMPort):
         ``none`` → ``think: false``, any other level → ``think: true``. ``None``
         sends no ``think`` at all and the payload is byte-identical to the
         pre-#927 one; the caller is expected not to pass a level for a model
-        with no reasoning channel, since Ollama rejects ``think`` for those.
+        with no reasoning channel, since Ollama rejects ``think: true`` for those (400, "does not support
+        thinking" — measured 2026-08-28 on 0.32.14).
         """
         payload: dict[str, Any] = {
             "model": model,

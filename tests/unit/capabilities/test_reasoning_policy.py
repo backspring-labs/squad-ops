@@ -3,7 +3,7 @@
 The port carries a level; this is where the level comes from. Two classes of
 bug: a capability generating with no declaration (the channel silently on —
 #924's condition), and a resolved level reaching a model that cannot take it
-(Ollama rejects ``think`` for a model without the channel).
+(Ollama answers ``think: true`` with a 400 for a model without the channel).
 """
 
 from __future__ import annotations
@@ -68,7 +68,7 @@ class TestResolution:
 
     @pytest.mark.parametrize("model", ["qwen2.5:7b", "unregistered:1b", None])
     def test_a_model_without_the_dial_gets_no_level(self, model):
-        """qwen2.5 has no channel and Ollama 400s on ``think`` for it; an
+        """qwen2.5 has no channel and Ollama 400s on ``think: true`` for it; an
         unregistered model is #1145's preflight finding, not a guess here; no
         model at all means the adapter's default, whose dial is unknown."""
         assert (

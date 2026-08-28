@@ -23,7 +23,7 @@ in the package has an entry, so the gap is a CI failure, not a cycle finding.
 Resolution is the chain every other generation knob already uses (SIP-0075 §3.2,
 #1011): the capability's declaration, then the agent's ``config_overrides``, then
 the model spec's clamp — a model with no reasoning channel gets no level at all,
-because Ollama rejects ``think`` for such a model and the port says a level is a
+because Ollama answers ``think: true`` for such a model with a 400 and the port says a level is a
 request. A cycle-level (CRP) override is not wired here; the CRP applied-defaults
 carry no per-agent LLM knobs today, and adding one is a contract-pack change.
 """
