@@ -1,4 +1,4 @@
-"""vLLM dialect specifics (SIP-Atlas-Provider-Adapter P6).
+"""vLLM dialect specifics (Atlas Provider Adapter SIP, SIP-0106, P6).
 
 The shared conformance suite owns the *contract* — what every adapter must do.
 This file owns what is true of the **OpenAI-compatible dialect in particular**:

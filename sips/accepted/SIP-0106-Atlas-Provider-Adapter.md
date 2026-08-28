@@ -1,16 +1,18 @@
 ---
-status: proposed
+status: accepted
 title: Atlas Provider Adapter — Config-Selected Inference Providers Behind a Conformance
   Gate
 author: SquadOps Architecture
 created_at: '2026-08-08T00:00:00Z'
+sip_number: 106
+updated_at: '2026-08-28T10:14:01.266818Z'
 ---
-# SIP-0XXX: Atlas Provider Adapter — Config-Selected Inference Providers Behind a Conformance Gate
+# SIP-0106: Atlas Provider Adapter — Config-Selected Inference Providers Behind a Conformance Gate
 
-**Status:** Proposed
+**Status:** Accepted
 **Authors:** SquadOps Architecture
 **Created:** 2026-08-08
-**Revision:** 1 (draft — §10 carries the open decisions)
+**Revision:** 2 (2026-08-28 — §10.2 settled against a live Atlas on the Spark; §3.1/§4.1/§5 revised on owner rulings; Appendix B measured, not documented. Rev 1: 2026-08-08 draft; §2.0 corrected 2026-08-15)
 
 ## 1. Abstract
 
@@ -92,6 +94,24 @@ honest numbers**, and the decision is owner judgment on reading them. Consequenc
   the config flexibility the ruling asks for; without it there is no way to point a cycle
   at Atlas without hacking the composition root.
 
+### Owner rulings (2026-08-28) — after v1.6.6 closed the 1.6 line
+
+**Ruling 3 — the provider is required, never defaulted.** `LLMConfig.provider` and the
+factory's `provider` argument carry **no default**; a missing value fails at config load the
+way an unknown one does. §3.1 and §4.1 item 1 are revised accordingly (the dormant-default
+posture existed to protect the 1.6 measurement windows, which closed at v1.6.6). Every
+deploy surface writes the value explicitly. Filed as #1157; the vLLM adapter (P6) had been
+unreachable by configuration since it landed.
+
+**Ruling 4 — the switch is a 1.7.x decision, not 1.8+.** The owner wants Atlas's speed in
+many cycles; the cutover moves from "not this SIP, 1.8+" to an owner decision on P5's
+artifact, taken at a line boundary (never mid-set) — 1.7 plan rev 3 §2.1a. §5 gains a
+**Switch** row. The model for the A/B's dense arm is **Qwen3.8-27B** on both runners.
+
+**Ruling 5 — license.** Community Edition (AGPLv3), self-hosted on the Spark for SquadOps
+development; re-evaluate against the Enterprise terms before any hosted or commercial
+SquadOps offering uses Atlas as a backend (§2.0).
+
 **Blocked — nothing proceeds until answered:**
 
 - *Nothing blocks P0–P3.* The neutrality groundwork stands on its own, closes #313, and is
@@ -145,7 +165,7 @@ hosted service. No API key, no egress, no per-token cost, no rate limits.
 | **Publisher** | Avarok Cybersecurity — `github.com/Avarok-Cybersecurity/atlas`, `atlasinference.io` |
 | **Built with** | pure Rust + CUDA; ships as a single binary, no Python, no PyTorch |
 | **Primary target** | **NVIDIA DGX Spark (GB10, SM121)** — fully verified, not a port. AMD Strix Halo (gfx1151) via SCALE from the same CUDA source; Apple/Intel named as future contributions |
-| **License** | **dual: Community Edition AGPLv3, Enterprise commercial** |
+| **License** | **dual: Community Edition AGPLv3, Enterprise commercial** — vendor's stated trigger for the commercial tier: shipping Atlas in a proprietary product or running it as a backend service to make money. **Owner ruling 2026-08-28: CE for self-hosted development; re-evaluate before any hosted/commercial SquadOps offering** (Ruling 5) |
 | **Models** | tuned recipes across Qwen3/3.5/3.6/3-Next/3-VL, Gemma, Mistral, MiniMax, Nemotron — **including `qwen3.6-27b-fp8`, the model the `full` profile pins** |
 
 **Corrected 2026-08-15.** This section previously read "hand-tuned **in-house**," and that
@@ -302,17 +322,17 @@ merely convenient.
 
 ### 3.1 Provider selection becomes configuration
 
-`LLMConfig` gains one field, with the dormant default:
+`LLMConfig` gains one field, **required** (Ruling 3, 2026-08-28 — rev 1 designed it with
+`default="ollama"`, copying `SandboxConfig.provider = "noop"` as "the dormant posture"; the
+owner rejected a defaulted selector as a masking fallback, and the 1.6 windows the default
+protected have closed):
 
 ```python
-provider: str = Field(
-    default="ollama",
-    description="LLM provider: 'ollama' or 'atlas'",
-)
+provider: str = Field(description="LLM provider: 'ollama', 'vllm' or 'atlas'")
 ```
 
-Precedent, deliberately copied rather than invented: `SandboxConfig.provider = "noop"`
-(`config/schema.py:256`) — *"Defaults are the dormant posture."* Same shape, same reason.
+A config without it fails validation at load — the same class of failure, and the same
+message shape, as an unknown name. The factory signature loses its default the same way.
 
 Rules:
 
@@ -328,6 +348,10 @@ Rules:
    forked config keys.
 4. **Config var:** `SQUADOPS__LLM__PROVIDER`, conforming to the existing `SQUADOPS__*`
    nesting convention. No new prefix, no new lane.
+5. **Every deploy surface writes it** — `docker-compose.yml`'s seven agent/service blocks,
+   the bootstrap profiles, `.env.example` (uncommented), the test config fixtures. Required
+   means required; one-click install holds because the files the install reads carry the
+   value, not because a person types it.
 
 ### 3.2 Capabilities are declared, not inferred
 
@@ -679,9 +703,11 @@ like a squad regression.
 
 ### 4.1 Inert on merge — the checklist every PR in this SIP satisfies
 
-1. `LLMConfig.provider` defaults to `"ollama"`. **No shipped file sets it to anything
-   else** — not `docker-compose.yml`, not `.env.example` (commented reference line only),
-   not any squad profile, not any bootstrap profile.
+1. ~~`LLMConfig.provider` defaults to `"ollama"`.~~ **Revised 2026-08-28 (Ruling 3):** there
+   is no default. Every shipped deploy surface sets `SQUADOPS__LLM__PROVIDER=ollama`
+   explicitly until the switch (§5's Switch row) changes that value in one PR. The
+   protective intent of this item — that no PR from this SIP changes which engine serves a
+   token — survives as: no PR other than the Switch PR touches the value.
 2. **No agent-image dependency changes.** The Atlas adapter uses `httpx`, already a direct
    dependency. If a dialect requires a new package, that is a §10.2 decision and it does
    not ride this SIP silently. (SIP-0102's "no agent-image dep changes before the
@@ -766,8 +792,10 @@ Each phase is independently shippable, inert per §4.1, and one PR.
 
 **Every phase below is inert on merge and none changes which engine serves a token.**
 Release placement is waived (§4.3); phases land when ready, targeting Atlas selectable and
-measured for 1.8. The line that *is* hard: a PR from this SIP that changes a shipped
-default has left the SIP's scope, regardless of how green its tests are.
+measured for 1.8. The line that *is* hard: no PR from this SIP changes which engine serves a token,
+regardless of how green its tests are — **except the Switch row below**, which is the one
+PR that does, on the owner's decision (Ruling 4, 2026-08-28; rev 1 placed the cutover at
+"not this SIP, 1.8+").
 
 **P2 is the headline deliverable, not plumbing** (Ruling 2). `LLMConfig.provider` is the
 config flexibility the ruling asks for — without it there is no way to point a cycle at
@@ -782,7 +810,7 @@ files, so it is the one to time deliberately against §4.1.5.
 | **P3** | Conformance suite, unit + live tiers, run green against Ollama as the only adapter | M | P0–P2 | 1.7 |
 | **P4** | Atlas adapter + conformance run + capability declarations + capture the three discarded duration fields (§3.6) | M | P3, **§10.2 confirmed** | 1.7 |
 | **P5** | A/B tier + the artifact contract of §3.6.1 recorded, per Appendix C | S | P4, live Atlas endpoint on Spark | 1.7 |
-| — | **Cutover — changing the default** | — | **not this SIP** (§4.2) | **1.8+** |
+| **Switch** | one PR changing the explicit `SQUADOPS__LLM__PROVIDER` value on every deploy surface (there is no default after P2) + `--gpu-memory-utilization` to the vendor value + `--restart unless-stopped` on the Atlas container | S | P5's artifact; **owner decision** (§4.2, Ruling 4) | **1.7.x, at a line boundary** — earliest the 1.7.0 cut (1.7 plan rev 3 §2.1a) |
 
 **Issue linkage, stated precisely so a PR cannot overclaim it:** P1 carries
 `Closes #313`. **P2 carries a bare `#301` reference and no `Closes`**, because it fixes
@@ -1061,11 +1089,23 @@ each is marked with what would upgrade it, and **only item 5 remains genuinely o
 
 | # | Fact | Sets | Status (2026-08-15) |
 |---|---|---|---|
-| 1 | chat/generation endpoint path + request shape | the adapter's transport | ✅ **docs** — `POST /v1/chat/completions`, OpenAI request shape, default port **8888** bound to `127.0.0.1` (`--bind 0.0.0.0` to expose). Model identifier is the HuggingFace path (e.g. `Sehyo/Qwen3.5-35B-A3B-NVFP4`), *not* a fixed literal — the marketing example's `"model":"atlas"` appears to be an alias, and which form the adapter must send is a live-verification item |
-| 2 | streaming: supported? SSE or NDJSON? | `chat_stream` / `chat_stream_with_usage` | ⚠️ **docs, partial** — `"stream": true` supported and described as OpenAI-compatible, implying SSE `data:` frames terminated by `[DONE]`. The frame shape is *not* documented; verify before relying on `VLLMAdapter`'s parser shape |
-| 3 | model-listing endpoint, or none | `model_listing` | ✅ **docs** — `GET /v1/models` is served. Response shape undocumented; if it matches OpenAI's `{"object":"list","data":[{"id":…}]}` then `ModelInfo` carries `None` for size and modified-at, exactly as vLLM does |
-| 4 | model load/unload management, or none | `model_management` | ⚠️ **inferred** — no load/unload API appears in the docs; models are launched process-side via `serve <HF-ID>` / recipes. Expect `model_management: False`, but §3.2's capability-honesty rule requires this be *observed*, not assumed |
-| 5 | usage fields returned, **and specifically whether prefill / load / total durations are emitted** — see below | `streaming_usage`, and §3.6.1's `prefill_ms` / `load_ms` / `total_ms` | ❌ **OPEN — the one real blocker.** Docs show the standard `usage` object and no timing metadata; benchmark tok/s figures are measurement methodology, not response fields. Neither confirmed nor denied in writing |
+| 1 | chat/generation endpoint path + request shape | the adapter's transport | ✅ **measured 2026-08-28** — `POST /v1/chat/completions`, OpenAI request shape, port 8888. Model id is the **HF path verbatim** (`Qwen/Qwen3.8-27B-FP8`), echoed in every response and frame. Response carries `system_fingerprint: "fp_atlas"`. **Auth is mandatory when bound to `0.0.0.0`** (`--require-auth --auth-tokens-file`, bearer header; no/wrong token → 401) — the SIP's "no auth documented" was wrong |
+| 2 | streaming: supported? SSE or NDJSON? | `chat_stream` / `chat_stream_with_usage` | ✅ **measured** — SSE `data: {json}` frames, `data: [DONE]` terminator; `delta.role` first, thinking as `delta.reasoning_content`, text as `delta.content`; with `stream_options.include_usage` the usage rides a frame with `choices: []` before the `finish_reason` frame — the shape `VLLMAdapter` already parses |
+| 3 | model-listing endpoint, or none | `model_listing` | ✅ **measured** — `GET /v1/models` → `{"object":"list","data":[{id, object, created, owned_by, max_model_len}]}`; `ModelInfo` carries `None` for size and modified-at |
+| 4 | model load/unload management, or none | `model_management` | ✅ **measured** — none over HTTP (`/v1/models/load` 405, `/api/pull` 404). Weights are pre-downloaded with `hf download` (Atlas does not fetch them) and chosen at `serve` time; `--no-auto-swap` forbids request-triggered swaps. `model_management: False`, observed |
+| 5 | usage fields returned, **and specifically whether prefill / load / total durations are emitted** — see below | `streaming_usage`, and §3.6.1's `prefill_ms` / `load_ms` / `total_ms` | ✅ **measured** — standard `usage.{prompt,completion,total}_tokens` **plus** `completion_tokens_details.reasoning_tokens` (thinking accounted separately), `prompt_tokens_details.cached_tokens`, **`time_to_first_token_ms`** and **`response_token/s`**. Not `prefill_ms`/`load_ms`/`total_ms` by name: TTFT stands in for prefill, `response_token/s` is the engine's own decode rate (no wall-clock derivation needed), total stays client-measured `wall_clock_ms`. `streaming_usage: True`; `thinking_tokens: True` is declarable |
+
+| 6 | **per-request reasoning control** (added 2026-08-28 — #927 needs it) | the adapter's `reasoning` mapping | ✅ **measured** — `reasoning_effort` (server ladder `none\|minimal\|low\|medium\|high\|xhigh\|max`, anchored to `--max-thinking-budget`; this model's MODEL.toml sets 2048, so low = 1024, medium = 2048), top-level `enable_thinking`, `chat_template_kwargs.enable_thinking`, explicit `thinking.budget_tokens`; `(max_tokens × 0.9)` safety cap. **`none` switches the channel off** (no `reasoning_content` key; 257 vs 425 completion tokens on the fill brief). **This model's chat template accepts only `low`, `medium`, `xhigh`** — `reasoning_effort: high` is a template error (`Unexpected reasoning effort high. Supported types are xhigh (default), medium, and low`), so the adapter maps the port's `high` to the template's top tier, never passes it through blind. Thinking arrives as a separate `message.reasoning_content`, never inline `<think>` |
+
+**All six were settled on 2026-08-28 in one session against a live Atlas on the Spark**
+(`avarok/atlas-gb10:latest` built 2026-08-15, serving `Qwen/Qwen3.8-27B-FP8`; #1158 carries
+the raw record). What the session also found, none of it documented: the FP8 checkpoint is
+**dequantized to BF16 in memory** (`variant=Fp8Dequanted`, 61 GB + 13.9 GB reserve —
+`--gpu-memory-utilization 0.75` is the floor, so Atlas-27B and Ollama's 27B cannot both
+be resident with usable KV until the switch); `--check-kernels` reports a complete kernel
+set for `qwen3.8-27b` (236 lookups, 0 unresolved); a bind-mount created by the container
+leaves `~/.cache/huggingface` root-owned, so the bootstrap step creates a user-owned
+`HF_HOME` first.
 
 **Anything marked ⚠️ or ❌ is settled the same way: one session against a live Atlas on the
 Spark.** Atlas is CUDA/GB10 — it cannot run on the Mac, so unlike the vLLM control arm
@@ -1218,19 +1258,40 @@ Recorded for implementation convenience only; the normative surface is §3.2, §
   `/api/pull`, `/api/delete`. Usage via `prompt_eval_count` / `eval_count` /
   `eval_duration` (ns). Native JSON-Schema constrained decoding via `format` (v0.5+).
   **Also serves an OpenAI-compatible surface at `/v1`** — the §6.1 rough-test path.
-- **Atlas** (third-party engine by Avarok Cybersecurity, DGX Spark-tuned; §2.0) — **updated
-  2026-08-15 from vendor documentation; see §10.2's table for per-item confidence.**
-  OpenAI-compatible: `POST /v1/chat/completions`, `GET /v1/models`, default port **8888**
-  bound to `127.0.0.1`. Also serves **Anthropic (`/v1/messages`) and Responses dialects on
-  the same port** — irrelevant to `LLMPort`, recorded so a future reader does not mistake
-  the OpenAI surface for the only one. A `/tokenize` endpoint exists. No auth is
-  documented; if one appears it enters via `SecretManager` as a `secret://` ref, which the
-  factory already supports. No documented health endpoint — `health()` will likely probe
-  `/v1/models`, as the vLLM adapter does. Models are launched process-side
-  (`serve <HF-ID>`, recipes), so expect `model_management: False`. Usage is the standard
-  `usage.{prompt,completion,total}_tokens` with **no native tokens/sec or duration
-  fields** — so, exactly as with vLLM, the adapter computes t/s client-side from
-  wall-clock, inclusive of prefill (§10.2 item 5).
+- **Atlas** (third-party engine by Avarok Cybersecurity, DGX Spark-tuned; §2.0) — **measured
+  2026-08-28 against `avarok/atlas-gb10:latest` (built 08-15) serving `Qwen/Qwen3.8-27B-FP8`;
+  §10.2's table carries each fact.** OpenAI-compatible `POST /v1/chat/completions`, `GET
+  /v1/models` on `:8888`; Anthropic and Responses dialects on the same port (irrelevant to
+  `LLMPort`). **Auth is mandatory** once bound to `0.0.0.0` — bearer token, one per line in
+  `--auth-tokens-file`, so the adapter takes `api_key` via `secret://` from day one. SSE
+  streaming with usage on a `choices: []` frame (vLLM's shape). Usage carries
+  `reasoning_tokens`, `cached_tokens`, `time_to_first_token_ms` and the engine's own
+  `response_token/s` — so, unlike vLLM, **no wall-clock t/s derivation**. No model management
+  over HTTP; weights are `hf download`ed and fixed at `serve` (`--no-auto-swap`). Health:
+  `/v1/models` with the token. Reasoning: a per-request `reasoning_effort` ladder with a real
+  `none`; this model's template accepts `low|medium|xhigh` and errors on `high`; thinking is a
+  separate `message.reasoning_content`. Memory: the FP8 checkpoint runs dequantized (61 GB);
+  the vendor's dense-27B recipe uses NVFP4 (~15 GB) — the fallback if footprint or rate is
+  the problem. Decode on this checkpoint: `response_token/s` 12.5–12.8 single-stream,
+  against Ollama `qwen3.6:27b` 12.1–12.3 on the same box the same day.
+
+  **The reasoning ladder, measured** (fill-shaped three-slot brief, `max_tokens 2500`,
+  temperature 0.2, `Qwen/Qwen3.8-27B-FP8`; every row filled all three slots):
+
+  | `reasoning_effort` | completion tokens | of which reasoning | wall s |
+  |---|---|---|---|
+  | `none` (×2) | 257, 257 | 0, 0 | 20.6, 20.6 |
+  | `medium` (×2) — the model's default | 441, 418 | 194, 191 | 35.0, 33.2 |
+  | `low` (×2) | 720, 617 | 487, 384 | 57.0, 48.8 |
+  | `xhigh` | 839 | 588 | 66.4 |
+  | `high` | — | — | HTTP 400, template error |
+
+  `low` reproducibly reasons *more* than `medium` on this model — the budget is a ceiling
+  (1024 vs 2048 from the server log), and the template's wording is the other variable;
+  recorded as observed, not explained. Against the same brief on Ollama the same morning
+  (`qwen3.6:27b`, #1161's probe): `think:false` → 256 tokens, `think:true` → 2,500 tokens
+  and an empty response. Atlas's budgeted channel completes where Ollama's unbounded one
+  exhausts the cap.
 - **vLLM**: OpenAI-compatible (`/v1/chat/completions`, `/v1/models`) plus guided decoding
   (`guided_json`). **A candidate third arm, not merely dialect precedent** — see §3.5a
   (P6) for the control-arm rationale. `usage` carries token counts; like all

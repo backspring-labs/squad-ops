@@ -1,4 +1,4 @@
-"""LLM port conformance suite (SIP-Atlas-Provider-Adapter P3).
+"""LLM port conformance suite (Atlas Provider Adapter SIP, SIP-0106, P3).
 
 Every registered adapter runs the same assertions. Shared machinery, the dialect
 handlers, and the registry live in ``conformance.py``; see its docstring for why
