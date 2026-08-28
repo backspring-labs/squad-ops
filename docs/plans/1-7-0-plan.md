@@ -9,7 +9,12 @@ as tagged lines — so **1.7.0 is the Reasoning line**, the one §3 already puts
 and the lines renumber 1.7.0–1.7.4. §6 splits into the 1.7.0 cut and the line's close. #1135
 moves to 1.7.0's rider (a rider may move to a neighbour; §6's package-capture criterion
 applies to every cut, so the script fix precedes the first one). The residual letter handles
-(S, L, B, C, H) that survived rev 1's rename are replaced with the pack names.
+(S, L, B, C, H) that survived rev 1's rename are replaced with the pack names. **Rev 3 also
+places Atlas** (§2.1a): the owner's ask of 2026-08-28 is to leverage Atlas's speed for
+wall-clock savings across many cycles, so the migration the SIP scheduled for 1.8+ moves to
+the earliest point its dependencies allow — #1157 (provider selection, required), #1158
+(Atlas on the Spark), #1159 (the adapter), #1160 (the A/B artifact) in 1.7.0's rider, and
+the switch itself as an owner decision on that artifact at a line boundary.
 
 **Revision 2, 2026-08-27.** Adds the findings of the owner's architectural assessment of
 `main` at `2448f5d1` (read the same evening; every claim acted on was re-verified against the
@@ -116,13 +121,74 @@ The owner's second ask, and the pack with the widest blast radius: it touches ev
   delete the dead `LLMRouter`** whose docstring claims it is wired. This is the Atlas seam:
   after it, a provider is an adapter behind one port with a characterization suite, and the
   status vocabulary in the port is ours.
+- **#1157 — the provider is selected by configuration, and the configuration is required.**
+  Two adapters are in the tree and nothing can select the second: the factory defaults
+  `provider="ollama"`, the agent entrypoint never passes one, `LLMConfig` has no field. The
+  SIP's P2 designed the field with a dormant default for the 1.6 windows' sake; that window
+  closed at v1.6.6 and the owner ruled the other way (2026-08-28): no default on the schema,
+  none on the factory, a missing value fails at config load, every deploy surface writes it.
+- **The reasoning dial kind is a model-spec fact, and the suite records every adapter.** #927
+  maps the level per provider *and per model family* (a Qwen3-class model toggles thinking,
+  gpt-oss takes an effort, an R1-class model has no control) — the model registry #1145
+  makes authoritative is where `reasoning_control` is declared, so no adapter matches model
+  names. #927 and #410 land on `vllm.py` as well as `ollama.py` (both declare
+  `THINKING_TOKENS: False` and read `content` only), and the characterization suite records
+  Ollama, vLLM and — once #1159 exists — Atlas.
 
 **How we know:** (1) the #924 probe replayed through the port — same brief, `none` vs `high`:
 the 413/5,727 split reproduced from our own telemetry, thinking text present in LangFuse on
 the `high` run; (2) one shakeout per stack with `none` on qa fill/repair and `high` on framing,
 asserting fills-first still holds (Q0) and the qa primary distribution moves down; (3) the
-adapter characterization suite runs in CI against a recorded Ollama transcript, so the mapping
-cannot regress unobserved.
+adapter characterization suite runs in CI against a recorded transcript per adapter in the
+tree, so no mapping regresses unobserved.
+
+#### 2.1a The seam's consumer — Atlas selectable, measured, and switched
+
+Atlas is a third-party inference engine tuned for the DGX Spark, OpenAI-shaped on port 8888,
+with a recipe for the model the `full` profile pins (`sips/proposed/SIP-Atlas-Provider-Adapter.md`
+§2.0 is its only record in the tree — and the SIP is one of #1144's unindexed 24). It is
+**not vLLM**: the `VLLMAdapter` (#805) is the SIP's optional control arm, P6. The SIP's own
+ledger: P0/P1 (#800), P3 (#799, #801) and P6 (#805) landed 2026-08-08; **P2 — provider
+selection, its headline deliverable — never did** (#1157); P4/P5 wait on a live endpoint.
+
+The owner's ask (2026-08-28) is to leverage Atlas's speed for wall-clock savings across many
+cycles, which moves the migration off the SIP's "1.8+" row to the earliest point its
+dependencies allow. Ruling 1 in the SIP already waives even/odd placement for this change;
+Ruling 2 already makes the switch a config change on observed results, not a gated event.
+What 1.7 adds is the order:
+
+- **#1158 — Atlas serving on the Spark**, bootstrap-installed on `local-spark` only,
+  container-reachable, and the SIP's remaining live-verification facts answered in writing
+  (streaming frame shape, model management, usage/duration fields, and a new fact 6: what
+  per-request reasoning control Atlas honors, which #927's mapping needs). Ops, no code
+  dependency — it starts now and is what unblocks P4.
+- **#1159 — the Atlas adapter** behind the port, one adapter per provider, capabilities
+  observed not assumed, implementing #927's level from the start — so after #927's port
+  change, not before.
+- **#1160 — the A/B artifact** the SIP's §3.6.1 specifies, produced on the Spark and
+  committed: `wall_clock_ms` per (prompt, model, adapter) as the decision field, decode t/s
+  as the diagnostic, one full cycle per arm on the `full` model — because the saving the
+  owner wants is across a six-agent box, not one generation's t/s. The number is reported,
+  not forecast.
+- **The switch** is not a pack item. It is the owner's decision on #1160's artifact, and
+  when taken it is one PR changing the value every deploy surface carries (there is no
+  default to flip after #1157) plus the SIP's §5 cutover row. It lands **at a line boundary,
+  never mid-set** — the §4.1 reason the SIP's dark-ship rule existed still holds *within* a
+  measurement: the earliest boundary is the 1.7.0 cut, so that 1.7.1's counting set is the
+  first to run on Atlas. Every later texture comparison against 1.6.6 then carries the
+  runner change as a named confound; the mechanism predictions (§4) do not depend on the
+  runner, and the token-distribution predictions are read on 1.7.0's Ollama shakeouts first.
+
+**Design gate before P4:** the SIP is still `proposed` and P0–P6 were implemented against it
+in that state. Before #1159 opens, the SIP is revised (§3.1/§4.1 required-not-defaulted;
+§5's cutover row; §10.2 fact 6) and goes to the acceptance decision — the workflow's step 3,
+so the adapter is built from an accepted spec.
+
+**How we know:** #1157's config fails to load without a provider and resolves `VLLMAdapter`
+and the Atlas adapter at *both* composition seams; #1159 passes the P3 conformance suite
+(the same contract Ollama passed); #1160's artifact exists with every field populated or
+declared `None`; and if the switch is taken, the first 1.7.1 preflight runs on Atlas and
+says so.
 
 ### 2.2 Pack **Stack Seams** — the stack seam and the correction loop's last red class
 
@@ -275,7 +341,8 @@ first capture already has it.
 - **#376** — SIP-0102 migration steps 3–7 (in-cycle final-state verification), deferred from 1.4.
 - **Design, not code:** #414 (severity-aware correction-budget reserve), #557 (post-retest
   governance acceptance review), #1122 + the Stack Blueprint rewrite (1.8-lane consumers of
-  #1131), #316 (request-profile taxonomy — moves with Campaign).
+  #1131), #316 (request-profile taxonomy — moves with Campaign), **the Atlas SIP's revision
+  and acceptance decision before #1159 opens (§2.1a)**.
 
 ### 2.8 Explicitly not in 1.7
 
@@ -294,7 +361,9 @@ By dependency and by what each pack proves, never by date:
 1. **Pack Reasoning first, alone.** It changes what every subsequent measurement means (a qa primary
    at 5,700 tokens today is mostly thinking). Land #927/#410 with the adapter suite, replay the
    #924 probe, run one shakeout per stack, and only then re-read every completion-budget
-   number in the codebase (#924's budget half, 1.6.5's E).
+   number in the codebase (#924's budget half, 1.6.5's E). **Atlas rides this line's rider
+   in order** (§2.1a): #1158 from day one, #1157 with the port work, #1159 after #927's port
+   change, #1160 when both exist; the switch, if taken, at the 1.7.0 cut.
 2. **Harvest, then move (#1149 → #1131) before Pack Stack Seams' fixes** — the rationale comes
    out of `scaffold.py` into a durable home first; then the pure move; then the kind gate, #1130
    and #1123 are written into the stack seam, not into the file it is leaving. The structural
@@ -339,16 +408,16 @@ are verified differently:
 
 | line | measured pack (roll-verified) | CI-verified rider |
 |---|---|---|
-| **1.7.0** | **Reasoning** — #927, #410, #924 (budget half), #1145, #930 — first and alone, because it changes what every later token number means | #901, #929, #944; the CI-truth items first: #1099, #242, #1041, #237; #1135 (the package capture credits `Closes` in code spans — fixed before the first capture) |
+| **1.7.0** | **Reasoning** — #927, #410, #924 (budget half), #1145, #930 — first and alone, because it changes what every later token number means | #901, #929, #944; the CI-truth items first: #1099, #242, #1041, #237; #1135 (the package capture credits `Closes` in code spans — fixed before the first capture); **Atlas** (§2.1a): #1157 (required provider), #1158 (Atlas on the Spark), #1159 (adapter, after #927), #1160 (A/B artifact) — #1159/#1160 move to 1.7.1's rider without touching the packs if #1158's facts are not in writing by the cut |
 | **1.7.1** | **Stack Seams** — #1149 (harvest, precondition) then #1131 (move + guard), the kind gate (#1153, filed from 1.6.6 roll 3), #1130, #1123, #668, #939, #1022 | #1087 (stack-#1 half), #1112; packaging: #582, #637, #598, #1144, #1151 |
 | **1.7.2** | **Loop Honesty, first half** — #788 (the traceback reaches the repairer), #994, #995, #999, #1110, #968 | **Boundaries** — #154 (the all-packages import guard + four moves), #377, #381, #305, #559, #922, #225, #218 (+ the route-lane test), #219, the identity-permutation test; riders #1148, #1150 |
 | **1.7.3** | **Loop Honesty, second half** — #1054, #1070, with #936/#933 verified-then-closed | **Hardening (infra)** — #1147, #575, #577, #576, #578, #330, #300, #581, #560, #372, #352, #353, #574 |
 | **1.7.4** | **Deferrals** — #820, #376 | **Composition Root** after its design note — #301, #286, #1152 (executor extraction under the goldens); extractions #567, #579; #198, #157, #176, #580 |
 
-**The total: 71 of the 84 open issues fixed across five lines (1.7.0–1.7.4)** — 23
-roll-verified, 48 CI-verified (rev 2 adds #1147–#1152 as CI-verified riders and moves #154
+**The total: 75 of the 88 open issues fixed across five lines (1.7.0–1.7.4)** — 23
+roll-verified, 52 CI-verified (rev 2 adds #1147–#1152 as CI-verified riders and moves #154
 into Boundaries; rev 2 wrote "~68 of 83" and "15 remaining" — counting the table gives 71 and
-13). The remaining 13: four at design review (#414, #557, #1122, #316), six held in the
+13 before rev 3's four Atlas issues, #1157–#1160). The remaining 13: four at design review (#414, #557, #1122, #316), six held in the
 1.8 lane (#950, #949, #194, #80, #1039, #1031), and three verify-then-close (#822, #936,
 #933). The counts per line are the honest ceiling, not a
 target: a line closes when its pack's predictions all hold, and a falsified one costs a
@@ -379,9 +448,9 @@ follows §3's dependencies; a line's rider may move to a neighbour without chang
 
 - **Whether Cross-Cycle Memory's Phase 1 rails ride 1.8 or 2.0** — a 1.8 plan-time decision, as
   the ROADMAP says; 1.7 only leaves the port boundary clean enough that it is an adapter swap.
-- **The Atlas migration date.** Pack Reasoning makes it *possible* (one port, a characterization
-  suite, our own status vocabulary); flipping the provider is its own decision with its own
-  conformance run.
+- **Whether the switch is taken.** Rev 3 places everything up to it (§2.1a) and names the
+  boundary it may land on; the decision itself is the owner's, on #1160's artifact, and this
+  plan records it when it is made rather than forecasting it.
 - **1.6.7.** If the Next.js arm of 1.6.6 closes with a finding that needs a fix before 1.7's
   packs open, it is one more narrow patch on the 1.6 line, and this plan waits for it.
 
@@ -408,8 +477,9 @@ its pack's predictions all hold — and the standing cut procedure in `CLAUDE.md
    read.
 4. Zero code drift between the shakeout deploy and the tag; the release package captured on
    the first try with the `Closes` column correct (#1135 in this rider).
-5. Stated at the cut: what the shakeouts did not exercise, and every remaining pack's
-   placement by name (§3.1) — nothing silently carried.
+5. Stated at the cut: what the shakeouts did not exercise, every remaining pack's placement
+   by name (§3.1), and where Atlas stands — #1157 landed; #1158–#1160 landed or re-placed by
+   name; the switch taken or not, and if taken, the deploy the next line's preflight runs on.
 
 ### 6.2 The line's close — before 1.8 opens
 
@@ -448,4 +518,8 @@ its pack's predictions all hold — and the standing cut procedure in `CLAUDE.md
   1.7.0 (the 1.6 shape: the first pack cut, the slate open), §6 split into the 1.7.0 cut
   (§6.1) and the line's close (§6.2), #1135 moved to 1.7.0's rider, the counts corrected (84 open,
   71 placed in lines, 13 outside), and the residual S/L/B/C/H handles replaced with pack names. Owner's
-  ruling on the two readings, 2026-08-28.
+  ruling on the two readings, 2026-08-28. **Same day, later:** Atlas placed (§2.1a) on the
+  owner's ask to leverage its speed in many cycles — #1157 (P2, required-not-defaulted, the
+  owner's ruling against the SIP's dormant default), #1158, #1159, #1160 filed and placed in
+  1.7.0's rider; the switch as an owner decision at a line boundary; the SIP's revision and
+  acceptance before P4 routed to design review. Correction recorded: Atlas is not vLLM.
