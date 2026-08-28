@@ -1,0 +1,68 @@
+services:
+  runtime-api:
+    environment:
+      SQUADOPS__LLM__PROVIDER: atlas
+      SQUADOPS__LLM__URL: http://host.docker.internal:8888
+      SQUADOPS__LLM__MODEL: "${ATLAS_MODEL:?set ATLAS_MODEL to the HF id Atlas serves}"
+      SQUADOPS__LLM__API_KEY: secret://atlas_api_key
+    secrets:
+      - atlas_api_key
+  max:
+    environment:
+      SQUADOPS__LLM__PROVIDER: atlas
+      SQUADOPS__LLM__URL: http://host.docker.internal:8888
+      SQUADOPS__LLM__MODEL: "${ATLAS_MODEL:?set ATLAS_MODEL to the HF id Atlas serves}"
+      SQUADOPS__LLM__API_KEY: secret://atlas_api_key
+    secrets:
+      - atlas_api_key
+  nat:
+    environment:
+      SQUADOPS__LLM__PROVIDER: atlas
+      SQUADOPS__LLM__URL: http://host.docker.internal:8888
+      SQUADOPS__LLM__MODEL: "${ATLAS_MODEL:?set ATLAS_MODEL to the HF id Atlas serves}"
+      SQUADOPS__LLM__API_KEY: secret://atlas_api_key
+    secrets:
+      - atlas_api_key
+  neo:
+    environment:
+      SQUADOPS__LLM__PROVIDER: atlas
+      SQUADOPS__LLM__URL: http://host.docker.internal:8888
+      SQUADOPS__LLM__MODEL: "${ATLAS_MODEL:?set ATLAS_MODEL to the HF id Atlas serves}"
+      SQUADOPS__LLM__API_KEY: secret://atlas_api_key
+    secrets:
+      - atlas_api_key
+  eve:
+    environment:
+      SQUADOPS__LLM__PROVIDER: atlas
+      SQUADOPS__LLM__URL: http://host.docker.internal:8888
+      SQUADOPS__LLM__MODEL: "${ATLAS_MODEL:?set ATLAS_MODEL to the HF id Atlas serves}"
+      SQUADOPS__LLM__API_KEY: secret://atlas_api_key
+    secrets:
+      - atlas_api_key
+  data:
+    environment:
+      SQUADOPS__LLM__PROVIDER: atlas
+      SQUADOPS__LLM__URL: http://host.docker.internal:8888
+      SQUADOPS__LLM__MODEL: "${ATLAS_MODEL:?set ATLAS_MODEL to the HF id Atlas serves}"
+      SQUADOPS__LLM__API_KEY: secret://atlas_api_key
+    secrets:
+      - atlas_api_key
+  bob:
+    environment:
+      SQUADOPS__LLM__PROVIDER: atlas
+      SQUADOPS__LLM__URL: http://host.docker.internal:8888
+      SQUADOPS__LLM__MODEL: "${ATLAS_MODEL:?set ATLAS_MODEL to the HF id Atlas serves}"
+      SQUADOPS__LLM__API_KEY: secret://atlas_api_key
+    secrets:
+      - atlas_api_key
+  joi:
+    environment:
+      SQUADOPS__LLM__PROVIDER: atlas
+      SQUADOPS__LLM__URL: http://host.docker.internal:8888
+      SQUADOPS__LLM__MODEL: "${ATLAS_MODEL:?set ATLAS_MODEL to the HF id Atlas serves}"
+      SQUADOPS__LLM__API_KEY: secret://atlas_api_key
+    secrets:
+      - atlas_api_key
+secrets:
+  atlas_api_key:
+    file: ./secrets/atlas_api_key.txt

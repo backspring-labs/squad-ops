@@ -39,6 +39,18 @@ profiles:
       - { agent_id: eve, role: qa, model: "qwen3.8:27b", enabled: true, config_overrides: { max_completion_tokens: 12288 } }
       - { agent_id: data, role: data, model: "qwen3.8:27b", enabled: true }
 
+  - profile_id: full-38-atlas
+    name: "Full Squad (qwen3.8) on Atlas"
+    description: "The `full-38` roster verbatim with the model named the way Atlas serves it — the HuggingFace path (SIP-0106 §3.4: model identity is provider-scoped). Exists ONLY as arm B of the 1.7.0 Atlas A/B (#1160); `full-38` on Ollama is arm A and the meaning of every historical record. Same eve budget override as `full-38`."
+    version: 1
+    agents:
+      - { agent_id: max, role: lead, model: "Qwen/Qwen3.8-27B-FP8", enabled: true }
+      - { agent_id: neo, role: dev, model: "Qwen/Qwen3.8-27B-FP8", enabled: true }
+      - { agent_id: nat, role: strat, model: "Qwen/Qwen3.8-27B-FP8", enabled: true }
+      - { agent_id: bob, role: builder, model: "Qwen/Qwen3.8-27B-FP8", enabled: true }
+      - { agent_id: eve, role: qa, model: "Qwen/Qwen3.8-27B-FP8", enabled: true, config_overrides: { max_completion_tokens: 12288 } }
+      - { agent_id: data, role: data, model: "Qwen/Qwen3.8-27B-FP8", enabled: true }
+
   - profile_id: full
     name: "Full Squad"
     description: "All 6 roles incl. builder on qwen3.6:27b — uniform single-loaded model on Spark (no swap overhead), max reasoning depth at the ~16 tps ceiling. The quality squad. (Consolidates the former full-squad + spark-squad-with-builder; #173.)"

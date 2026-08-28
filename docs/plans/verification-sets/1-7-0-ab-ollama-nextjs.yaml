@@ -1,0 +1,29 @@
+# 1.7.0 Atlas A/B (#1160), arm OLLAMA — Next.js+TS pairs. Pre-registration:
+# docs/plans/1-7-0-atlas-ab-preregistration.md. Rolls interleave with the other arm
+# (A1, B1, B2, A2); the arm switch and engine isolation are manual between rolls.
+name: 1-7-0-ab-ollama-nextjs
+pre_registration: docs/plans/1-7-0-atlas-ab-preregistration.md
+project: group_run
+squad_profile: full-38
+request_profile: validated-fullstack
+overrides:
+  build_profile: nextjs_ts
+  dev_capability: nextjs_ts
+gate_name: progress_plan_review
+n_rolls: 2
+gate_notes: >-
+  1.7.0 Atlas A/B, arm ollama. Approved under the pre-registered gate policy — identical text
+  applied to every roll of this set. System plan validation passed; no additional judgment applied.
+launch_notes: >-
+  1.7.0 Atlas A/B — arm ollama, COUNTED roll {roll} of {n} on nextjs_ts. Frozen deploy per the
+  pre-registration; predictions P1–P5; the pair's other arm is the comparison.
+shakeout_notes: >-
+  1.7.0 Atlas A/B — arm ollama SHAKEOUT, NON-COUNTING by declaration before launch: the first
+  cycle ever on this engine; also the warm-up Appendix C.2 requires, recorded and flagged.
+loaded_checks:
+  runtime-api: >-
+    from squadops.config import load_config; c = load_config();
+    print(c.llm.provider, c.llm.model, c.llm.url)
+  eve: >-
+    from squadops.config import load_config; c = load_config();
+    print(c.llm.provider, c.llm.model, c.llm.url)
