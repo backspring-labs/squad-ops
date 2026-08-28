@@ -245,6 +245,41 @@ is the one item both lanes wait on.
 
 ---
 
+## 3.1 The 1.7.x lines — what fits in one, and the breakdown
+
+A line is one measured pack plus a rider, on the cadence the 1.6.x lines established (a day of
+PRs, an overnight of rolls). The two kinds of fix have two different capacities, because they
+are verified differently:
+
+- **Roll-verified items** — anything that changes what a cycle does (loop, scaffold, prompts,
+  checks). The limit is *attribution*, not code volume: each item needs its own falsifiable
+  prediction readable from the record and a roll where it can fire. Calibration from the last
+  three lines — 1.6.4: 6 items / 8 rolls; 1.6.5: 5 (+#772, #1120) / 12; 1.6.6: 6 / 8 — every
+  red attributable to one item or to nothing in the pack. Past ~8, predictions share evidence
+  and a red stops naming its cause. **6–8 per line**, measured by one 6+2 set (§4).
+- **CI-verified items** — adapters, ports, vocabulary, infra, packaging, CI itself (Packs B, C,
+  H). Proven by the suite, a structural guard, or a characterization test; the limit is review
+  load and merge order. **10–15 per line**, riding beside a measured pack without touching its
+  predictions.
+
+| line | measured pack (roll-verified) | CI-verified rider |
+|---|---|---|
+| **1.7.1** | **Pack R** — #927, #410, #924 (budget half), #1145, #930 — first and alone, because it changes what every later token number means | #901, #929, #944; the CI-truth items first: #1099, #242, #1041, #237 |
+| **1.7.2** | **Pack S** — #1131 (move + guard), the kind gate (filed from 1.6.6 roll 3), #1130, #1123, #668, #939, #1022 | #1087 (stack-#1 half), #1112; packaging: #582, #637, #598, #1135, #1144 |
+| **1.7.3** | **Pack L, first half** — #994, #995, #999, #1110, #968 | **Pack B** — #377, #381, #305, #559, #922, #225, #218, #219 |
+| **1.7.4** | **Pack L, second half** — #788, #1054, #1070, with #936/#933 verified-then-closed | **Pack H infra** — #575, #577, #576, #578, #330, #300, #581, #560, #372, #352, #353, #574 |
+| **1.7.5** | **Deferrals** — #820, #376 | **Pack C** after its design note — #301, #154, #286; extractions #567, #579; #198, #157, #176, #580 |
+
+**The total: ~62 of the 77 open issues fixed across five lines** — 23 roll-verified, ~39
+CI-verified. The remaining 15: four at design review (#414, #557, #1122, #316), six held in the
+1.8 lane (#950, #949, #194, #80, #1039, #1031), and five verify-then-close or folded (#822,
+#936, #933 and the two the packs absorb). The counts per line are the honest ceiling, not a
+target: a line closes when its pack's predictions all hold, and a falsified one costs a
+1.7.x.1 before the next pack opens — the same rule the 1.6.x lines ran under. The line order
+follows §3's dependencies; a line's rider may move to a neighbour without changing the packs.
+
+---
+
 ## 4. The measurement
 
 1.7 has no headline feature to measure, so it measures its own claim: *the seams hold*.
@@ -296,4 +331,5 @@ Substance, not the clock:
 
 - **Rev 1 (2026-08-27)** — written from the 1.6.3–1.6.6 records, the 08-21 sweep and the
   ROADMAP's 1.7 identity, while the 1.6.6 Next.js arm was still running; issue placement
-  against the 77 open at this writing.
+  against the 77 open at this writing. §3.1 (the 1.7.x line breakdown and the per-line
+  capacity rule) added the same evening on the owner's ask.
