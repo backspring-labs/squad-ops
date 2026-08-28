@@ -125,7 +125,7 @@ cannot regress unobserved.
   **structural guard**: no stack-shaped literal (`app/api/`, `.test.tsx`, `pytest`, `vitest`,
   `routes.py`…) outside a `stack_*` module or a stack-parameterised predicate. It would have
   failed on the commit that produced F1.
-- **The kind gate for free-authored suites** (filed from 1.6.6 roll 3): an assertion that
+- **#1153 — the kind gate for free-authored suites** (filed from 1.6.6 roll 3): an assertion that
   contradicts a declared field kind (`removed: boolean` asserted equal to a name) is rejected at
   emission with the declared kind named — the #1094 rule, generalised from fills to any
   assertion the stack seam can bind to a declared field. On the evidence it flips roll 3
@@ -324,7 +324,7 @@ are verified differently:
 | line | measured pack (roll-verified) | CI-verified rider |
 |---|---|---|
 | **1.7.1** | **Reasoning** — #927, #410, #924 (budget half), #1145, #930 — first and alone, because it changes what every later token number means | #901, #929, #944; the CI-truth items first: #1099, #242, #1041, #237 |
-| **1.7.2** | **Stack Seams** — #1149 (harvest, precondition) then #1131 (move + guard), the kind gate (filed from 1.6.6 roll 3), #1130, #1123, #668, #939, #1022 | #1087 (stack-#1 half), #1112; packaging: #582, #637, #598, #1135, #1144, #1151 |
+| **1.7.2** | **Stack Seams** — #1149 (harvest, precondition) then #1131 (move + guard), the kind gate (#1153, filed from 1.6.6 roll 3), #1130, #1123, #668, #939, #1022 | #1087 (stack-#1 half), #1112; packaging: #582, #637, #598, #1135, #1144, #1151 |
 | **1.7.3** | **Loop Honesty, first half** — #788 (the traceback reaches the repairer), #994, #995, #999, #1110, #968 | **Boundaries** — #154 (the all-packages import guard + four moves), #377, #381, #305, #559, #922, #225, #218 (+ the route-lane test), #219, the identity-permutation test; riders #1148, #1150 |
 | **1.7.4** | **Loop Honesty, second half** — #1054, #1070, with #936/#933 verified-then-closed | **Hardening (infra)** — #1147, #575, #577, #576, #578, #330, #300, #581, #560, #372, #352, #353, #574 |
 | **1.7.5** | **Deferrals** — #820, #376 | **Composition Root** after its design note — #301, #286, #1152 (executor extraction under the goldens); extractions #567, #579; #198, #157, #176, #580 |
