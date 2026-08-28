@@ -179,10 +179,17 @@ What 1.7 adds is the order:
   runner change as a named confound; the mechanism predictions (§4) do not depend on the
   runner, and the token-distribution predictions are read on 1.7.0's Ollama shakeouts first.
 
-**Design gate before P4:** the SIP is still `proposed` and P0–P6 were implemented against it
-in that state. Before #1159 opens, the SIP is revised (§3.1/§4.1 required-not-defaulted;
-§5's cutover row; §10.2 fact 6) and goes to the acceptance decision — the workflow's step 3,
-so the adapter is built from an accepted spec.
+**Design gate before P4, with the two promotions named:** the SIP is still `proposed` and
+P0–P6 were implemented against it in that state. (1) **Acceptance** is the act of the SIP's
+rev 2 PR (§3.1/§4.1 required-not-defaulted, §5's Switch row, §10.2 settled by the 08-28
+session, Appendix B measured): the maintainer runs `update_sip_status.py … accepted` on that
+branch — the script numbers and moves it, the body's H1 and `**Status:**` are synced by hand —
+and the merge is the acceptance landing, **before #1159 opens**, so the adapter is built from
+a numbered, accepted spec. (2) **Implemented** is a release act by repo convention (the cut
+supplies the version bump, ROADMAP entry and body sync): promoted at the **first cut where
+#1157, #1159 and #1160 are all merged** — the 1.7.0 cut if they land in its rider, 1.7.1's if
+they slip — and otherwise it stays `accepted` with the gap named, per the cut procedure. The
+switch is the config decision the SIP designs (§4.2), not a criterion of "implemented".
 
 **How we know:** #1157's config fails to load without a provider and resolves `VLLMAdapter`
 and the Atlas adapter at *both* composition seams; #1159 passes the P3 conformance suite
@@ -480,6 +487,9 @@ its pack's predictions all hold — and the standing cut procedure in `CLAUDE.md
 5. Stated at the cut: what the shakeouts did not exercise, every remaining pack's placement
    by name (§3.1), and where Atlas stands — #1157 landed; #1158–#1160 landed or re-placed by
    name; the switch taken or not, and if taken, the deploy the next line's preflight runs on.
+6. SIP-Atlas-Provider-Adapter: **accepted and numbered before #1159 opened**; promoted to
+   `implemented` at this cut only if #1157, #1159 and #1160 are all merged, else left
+   `accepted` with the open phases named (§2.1a).
 
 ### 6.2 The line's close — before 1.8 opens
 
@@ -522,4 +532,7 @@ its pack's predictions all hold — and the standing cut procedure in `CLAUDE.md
   owner's ask to leverage its speed in many cycles — #1157 (P2, required-not-defaulted, the
   owner's ruling against the SIP's dormant default), #1158, #1159, #1160 filed and placed in
   1.7.0's rider; the switch as an owner decision at a line boundary; the SIP's revision and
-  acceptance before P4 routed to design review. Correction recorded: Atlas is not vLLM.
+  acceptance before P4 routed to design review. Correction recorded: Atlas is not vLLM. **Rev 3.1 (2026-08-28, with the SIP's rev 2 PR):**
+  §2.1a names the two SIP promotions and their vehicles — acceptance in the rev 2 PR before
+  #1159, implemented at the first cut with #1157/#1159/#1160 merged — and §6.1 gains
+  criterion 6, on the owner's question whether the plan carried them.
