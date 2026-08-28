@@ -949,7 +949,7 @@ sips:
   sip_number: 106
   title: Atlas Provider Adapter — Config-Selected Inference Providers Behind a Conformance
     Gate
-  path: sips/accepted/SIP-0106-Atlas-Provider-Adapter-Config-Selected.md
+  path: sips/accepted/SIP-0106-Atlas-Provider-Adapter.md
   status: accepted
   author: SquadOps Architecture
   approver: jladd

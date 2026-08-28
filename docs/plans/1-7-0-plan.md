@@ -145,7 +145,7 @@ tree, so no mapping regresses unobserved.
 #### 2.1a The seam's consumer — Atlas selectable, measured, and switched
 
 Atlas is a third-party inference engine tuned for the DGX Spark, OpenAI-shaped on port 8888,
-with a recipe for the model the `full` profile pins (`sips/accepted/SIP-0106-Atlas-Provider-Adapter-Config-Selected.md` (SIP-0106, accepted 2026-08-28)
+with a recipe for the model the `full` profile pins (`sips/accepted/SIP-0106-Atlas-Provider-Adapter.md` (SIP-0106, accepted 2026-08-28)
 §2.0 is its only record in the tree — and the SIP is one of #1144's unindexed 24). It is
 **not vLLM**: the `VLLMAdapter` (#805) is the SIP's optional control arm, P6. The SIP's own
 ledger: P0/P1 (#800), P3 (#799, #801) and P6 (#805) landed 2026-08-08; **P2 — provider
