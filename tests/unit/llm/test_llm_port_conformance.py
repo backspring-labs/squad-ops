@@ -24,7 +24,7 @@ from squadops.llm.exceptions import (
     LLMModelNotFoundError,
     LLMTimeoutError,
 )
-from squadops.llm.models import ChatMessage, LLMRequest, ModelInfo
+from squadops.llm.models import ChatMessage, LLMRequest, ModelInfo, ReasoningLevel
 from squadops.ports.llm.provider import LLMCapability
 from tests.unit.llm.conformance import ADAPTER_CASES, raises, status, wire
 
@@ -264,6 +264,7 @@ class TestCapabilityHonesty:
             LLMCapability.MODEL_MANAGEMENT,
             LLMCapability.STREAMING_USAGE,
             LLMCapability.THINKING_TOKENS,
+            LLMCapability.REASONING_CONTROL,
         }
 
     async def test_supports_is_false_for_an_undeclared_capability(self, case):
@@ -292,6 +293,34 @@ class TestCapabilityHonesty:
                     await adapter.pull_model("qwen2.5:7b")
                 with pytest.raises(NotImplementedError):
                     await adapter.delete_model("qwen2.5:7b")
+
+    async def test_reasoning_control_declaration_matches_behavior(self, case):
+        """Declared True ⇒ a level changes the request, and no level leaves it
+        exactly as it was (the pre-#927 wire, byte for byte — a level that
+        leaked in unasked would change every generation's posture). Declared
+        False ⇒ the three requests are identical: the level is accepted and
+        dropped, never turned into a rejected call."""
+        adapter = case.build()
+        bodies: list[bytes] = []
+
+        def capture(request: httpx.Request) -> httpx.Response:
+            bodies.append(request.content)
+            return case.ok(request)
+
+        with wire(capture):
+            await adapter.chat(_messages(), model=case.reasoning_model)
+            await adapter.chat(
+                _messages(), model=case.reasoning_model, reasoning=ReasoningLevel.NONE
+            )
+            await adapter.chat(
+                _messages(), model=case.reasoning_model, reasoning=ReasoningLevel.HIGH
+            )
+        bare, none, high = bodies
+        if adapter.supports(LLMCapability.REASONING_CONTROL):
+            assert none != high
+            assert bare not in (none, high)
+        else:
+            assert bare == none == high
 
     async def test_streaming_usage_declaration_matches_behavior(self, case):
         """Declared True means real counts, not the port's chat() fallback —

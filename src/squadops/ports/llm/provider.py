@@ -22,6 +22,7 @@ class LLMCapability:
     MODEL_MANAGEMENT = "model_management"
     STREAMING_USAGE = "streaming_usage"
     THINKING_TOKENS = "thinking_tokens"
+    REASONING_CONTROL = "reasoning_control"
 
 
 class LLMPort(ABC):
@@ -64,6 +65,7 @@ class LLMPort(ABC):
         max_tokens: int | None = None,
         temperature: float | None = None,
         timeout_seconds: float | None = None,
+        reasoning: str | None = None,
     ) -> ChatMessage:
         """Chat with the LLM using message history.
 
@@ -73,6 +75,13 @@ class LLMPort(ABC):
             max_tokens: Maximum completion tokens (adapter default if None)
             temperature: Sampling temperature (adapter default if None)
             timeout_seconds: Request timeout (adapter default if None)
+            reasoning: A :class:`~squadops.llm.models.ReasoningLevel` — how much
+                reasoning this generation wants. ``None`` sends nothing and
+                leaves the provider's own default in force. A request, not a
+                guarantee: the adapter maps it onto whatever dial the wire has
+                (Ollama ``think``, a chat-template toggle, an effort) and an
+                adapter with no dial accepts it silently — see
+                ``capabilities()[REASONING_CONTROL]`` (#927).
 
         Returns:
             Assistant's response message
@@ -91,6 +100,7 @@ class LLMPort(ABC):
         max_tokens: int | None = None,
         temperature: float | None = None,
         timeout_seconds: float | None = None,
+        reasoning: str | None = None,
     ) -> AsyncIterator[str]:
         """Stream chat response as plain text chunks.
 
@@ -110,6 +120,7 @@ class LLMPort(ABC):
         max_tokens: int | None = None,
         temperature: float | None = None,
         timeout_seconds: float | None = None,
+        reasoning: str | None = None,
     ) -> ChatMessage:
         """Stream chat internally for connection liveness, return complete ChatMessage with usage.
 
@@ -129,6 +140,7 @@ class LLMPort(ABC):
             max_tokens=max_tokens,
             temperature=temperature,
             timeout_seconds=timeout_seconds,
+            reasoning=reasoning,
         )
 
     @abstractmethod
@@ -187,6 +199,10 @@ class LLMPort(ABC):
         - ``thinking_tokens``: reasoning tokens are reported separately from
           content. False here does not mean the model does not think — only that
           this adapter cannot distinguish the two (#410).
+        - ``reasoning_control``: a ``reasoning`` level passed to the generation
+          methods changes what is sent on the wire. False means the level is
+          accepted and dropped — the call still succeeds, the model keeps its
+          own posture (#927).
 
         Defaults to all-False: an adapter that declares nothing is treated as
         supporting nothing. Failing closed keeps a silent omission from
@@ -197,6 +213,7 @@ class LLMPort(ABC):
             LLMCapability.MODEL_MANAGEMENT: False,
             LLMCapability.STREAMING_USAGE: False,
             LLMCapability.THINKING_TOKENS: False,
+            LLMCapability.REASONING_CONTROL: False,
         }
 
     def supports(self, capability: str) -> bool:

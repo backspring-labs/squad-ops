@@ -18,7 +18,7 @@ from squadops.llm.exceptions import (
     LLMModelNotFoundError,
     LLMTimeoutError,
 )
-from squadops.llm.models import ChatMessage, LLMRequest, LLMResponse, ModelInfo
+from squadops.llm.models import ChatMessage, LLMRequest, LLMResponse, ModelInfo, ReasoningLevel
 from squadops.ports.llm.provider import LLMCapability, LLMPort
 
 logger = logging.getLogger(__name__)
@@ -80,16 +80,20 @@ class OllamaAdapter(LLMPort):
 
         ``thinking_tokens`` is False deliberately, and it is not a statement
         about the models: qwen3-family models emit ``message.thinking`` through
-        Ollama by default, but this adapter never sends a ``think`` parameter and
-        reads only ``message.content``. Reasoning tokens are paid for and cannot
-        be separated from content here (#410). Declaring True would tell a caller
-        it could split them.
+        Ollama by default, and this adapter reads only ``message.content``.
+        Reasoning tokens are paid for and cannot be separated from content here
+        (#410). Declaring True would tell a caller it could split them.
+
+        ``reasoning_control`` is True: a level maps onto the ``think`` flag
+        (#927), so the channel can at least be switched off where the output is
+        a transcription — the 13.9× token difference #924 measured.
         """
         return {
             LLMCapability.MODEL_LISTING: True,
             LLMCapability.MODEL_MANAGEMENT: True,
             LLMCapability.STREAMING_USAGE: True,
             LLMCapability.THINKING_TOKENS: False,
+            LLMCapability.REASONING_CONTROL: True,
         }
 
     async def _get_client(self) -> httpx.AsyncClient:
@@ -126,6 +130,8 @@ class OllamaAdapter(LLMPort):
 
         if request.format == "json":
             payload["format"] = "json"
+        if request.reasoning is not None:
+            payload["think"] = request.reasoning != ReasoningLevel.NONE
 
         try:
             response = await client.post(
@@ -175,10 +181,19 @@ class OllamaAdapter(LLMPort):
         model: str,
         max_tokens: int | None,
         temperature: float | None,
+        reasoning: str | None = None,
         *,
         stream: bool = False,
     ) -> dict[str, Any]:
-        """Build the Ollama /api/chat request payload."""
+        """Build the Ollama /api/chat request payload.
+
+        ``reasoning`` maps onto Ollama's ``think`` flag — the only dial the
+        dialect has, so the port's graded levels collapse to on/off here:
+        ``none`` → ``think: false``, any other level → ``think: true``. ``None``
+        sends no ``think`` at all and the payload is byte-identical to the
+        pre-#927 one; the caller is expected not to pass a level for a model
+        with no reasoning channel, since Ollama rejects ``think`` for those.
+        """
         payload: dict[str, Any] = {
             "model": model,
             "messages": [{"role": m.role, "content": m.content} for m in messages],
@@ -192,6 +207,8 @@ class OllamaAdapter(LLMPort):
             options["temperature"] = temperature
         if options:
             payload["options"] = options
+        if reasoning is not None:
+            payload["think"] = reasoning != ReasoningLevel.NONE
 
         return payload
 
@@ -202,6 +219,7 @@ class OllamaAdapter(LLMPort):
         max_tokens: int | None = None,
         temperature: float | None = None,
         timeout_seconds: float | None = None,
+        reasoning: str | None = None,
     ) -> ChatMessage:
         """Chat with the LLM using message history.
 
@@ -223,6 +241,7 @@ class OllamaAdapter(LLMPort):
             resolved_model,
             max_tokens,
             temperature,
+            reasoning,
             stream=False,
         )
 
@@ -275,6 +294,7 @@ class OllamaAdapter(LLMPort):
         max_tokens: int | None = None,
         temperature: float | None = None,
         timeout_seconds: float | None = None,
+        reasoning: str | None = None,
     ) -> ChatMessage:
         """Stream chat internally for connection liveness, return complete ChatMessage with usage.
 
@@ -290,6 +310,7 @@ class OllamaAdapter(LLMPort):
             resolved_model,
             max_tokens,
             temperature,
+            reasoning,
             stream=True,
         )
 
@@ -367,6 +388,7 @@ class OllamaAdapter(LLMPort):
         max_tokens: int | None = None,
         temperature: float | None = None,
         timeout_seconds: float | None = None,
+        reasoning: str | None = None,
     ) -> AsyncIterator[str]:
         """Stream chat response as plain text chunks.
 
@@ -381,6 +403,7 @@ class OllamaAdapter(LLMPort):
             resolved_model,
             max_tokens,
             temperature,
+            reasoning,
             stream=True,
         )
 

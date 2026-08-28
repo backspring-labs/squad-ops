@@ -6,7 +6,7 @@ import pytest
 
 from adapters.llm.ollama import OllamaAdapter
 from squadops.llm.exceptions import LLMTimeoutError
-from squadops.llm.models import ChatMessage, LLMRequest
+from squadops.llm.models import ChatMessage, LLMRequest, ReasoningLevel
 
 
 class TestOllamaAdapter:
@@ -125,6 +125,55 @@ class TestOllamaAdapterAsync:
             call_kwargs = mock_client.post.call_args
             payload = call_kwargs.kwargs["json"]
             assert payload["options"]["num_predict"] == 8000
+
+    @pytest.mark.parametrize(
+        ("reasoning", "think"),
+        [
+            (ReasoningLevel.NONE, False),
+            (ReasoningLevel.LOW, True),
+            (ReasoningLevel.MEDIUM, True),
+            (ReasoningLevel.HIGH, True),
+        ],
+    )
+    async def test_chat_reasoning_maps_to_think(self, reasoning, think):
+        """#927: the port's level reaches Ollama as its ``think`` flag —
+        ``none`` off, every graded level on (the only dial the dialect has).
+        The bug: a level accepted at the port and never sent, so the 5,727-token
+        fill #924 measured keeps paying for a channel nobody reads."""
+        adapter = OllamaAdapter()
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "message": {"role": "assistant", "content": "response"},
+        }
+        with patch.object(adapter, "_get_client") as mock_get_client:
+            mock_client = AsyncMock()
+            mock_client.post.return_value = mock_response
+            mock_get_client.return_value = mock_client
+
+            await adapter.chat([ChatMessage(role="user", content="Hello")], reasoning=reasoning)
+
+            payload = mock_client.post.call_args.kwargs["json"]
+            assert payload["think"] is think
+
+    async def test_chat_without_reasoning_sends_no_think(self):
+        """No level ⇒ no ``think`` key: the payload is the pre-#927 one, so a
+        model with no reasoning channel (Ollama rejects ``think`` for those)
+        and every unchanged caller keep working."""
+        adapter = OllamaAdapter()
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "message": {"role": "assistant", "content": "response"},
+        }
+        with patch.object(adapter, "_get_client") as mock_get_client:
+            mock_client = AsyncMock()
+            mock_client.post.return_value = mock_response
+            mock_get_client.return_value = mock_client
+
+            await adapter.chat([ChatMessage(role="user", content="Hello")], max_tokens=10)
+
+            assert "think" not in mock_client.post.call_args.kwargs["json"]
 
     async def test_chat_with_temperature(self):
         """chat() forwards temperature in options."""

@@ -34,7 +34,7 @@ from __future__ import annotations
 import json
 import logging
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 import httpx
@@ -44,7 +44,8 @@ from squadops.llm.exceptions import (
     LLMModelNotFoundError,
     LLMTimeoutError,
 )
-from squadops.llm.models import ChatMessage, LLMRequest, LLMResponse, ModelInfo
+from squadops.llm.model_registry import ModelSpec, ReasoningControl, get_model_spec
+from squadops.llm.models import ChatMessage, LLMRequest, LLMResponse, ModelInfo, ReasoningLevel
 from squadops.ports.llm.provider import LLMCapability, LLMPort
 
 logger = logging.getLogger(__name__)
@@ -66,6 +67,37 @@ def _tokens_per_second(completion_tokens: int | None, elapsed_seconds: float) ->
     if not completion_tokens or elapsed_seconds <= 0:
         return None
     return round(completion_tokens / elapsed_seconds, 2)
+
+
+# The port's level → the request fields for each reasoning dial a model can
+# declare (#927). The OpenAI request shape has no reasoning field of its own;
+# every model family reaches its channel differently, so the mapping is keyed on
+# the dial the model spec declares, never on the model's name.
+_REASONING_DIALS: dict[str, Callable[[str], dict[str, Any]]] = {
+    # qwen3-family: a chat-template switch. The grades collapse to on.
+    ReasoningControl.TOGGLE: lambda level: {
+        "chat_template_kwargs": {"enable_thinking": level != ReasoningLevel.NONE}
+    },
+    # gpt-oss-family: the level verbatim. ``none`` cannot be expressed on this
+    # dial — the model always reasons — so it becomes the lowest effort.
+    ReasoningControl.EFFORT: lambda level: {
+        "reasoning_effort": ReasoningLevel.LOW if level == ReasoningLevel.NONE else level
+    },
+}
+
+
+def _reasoning_fields(spec: ModelSpec | None, reasoning: str) -> dict[str, Any]:
+    """Request fields expressing ``reasoning`` on the dial ``spec`` declares.
+
+    Empty for a model with no dial or no registry entry: a field the server does
+    not understand is rejected outright by some backends, and the port states
+    the level is a request, not a guarantee. (An unregistered model is #1145's
+    preflight finding, not this adapter's guess.)
+    """
+    if spec is None:
+        return {}
+    dial = _REASONING_DIALS.get(spec.reasoning_control)
+    return dial(reasoning) if dial else {}
 
 
 def _usage_from(payload: dict[str, Any]) -> tuple[int | None, int | None, int | None]:
@@ -148,6 +180,10 @@ class VLLMAdapter(LLMPort):
             LLMCapability.MODEL_MANAGEMENT: False,
             LLMCapability.STREAMING_USAGE: True,
             LLMCapability.THINKING_TOKENS: False,
+            # A level reaches the wire only on the dial the model spec declares
+            # (``_REASONING_DIALS``); for a model with none it is dropped, which is
+            # the port's stated contract, not a capability outage.
+            LLMCapability.REASONING_CONTROL: True,
         }
 
     async def _get_client(self) -> httpx.AsyncClient:
@@ -166,6 +202,7 @@ class VLLMAdapter(LLMPort):
         model: str,
         max_tokens: int | None,
         temperature: float | None,
+        reasoning: str | None = None,
         *,
         stream: bool = False,
     ) -> dict[str, Any]:
@@ -178,6 +215,8 @@ class VLLMAdapter(LLMPort):
             payload["max_tokens"] = max_tokens
         if temperature is not None:
             payload["temperature"] = temperature
+        if reasoning is not None:
+            payload.update(_reasoning_fields(get_model_spec(model), reasoning))
         if stream:
             # Without this the stream carries no usage frame at all and token
             # accounting for streamed calls is simply lost.
@@ -216,6 +255,7 @@ class VLLMAdapter(LLMPort):
             max_tokens=request.max_tokens,
             temperature=request.temperature,
             timeout_seconds=request.timeout_seconds,
+            reasoning=request.reasoning,
             operation="generate",
         )
         return LLMResponse(
@@ -234,6 +274,7 @@ class VLLMAdapter(LLMPort):
         max_tokens: int | None = None,
         temperature: float | None = None,
         timeout_seconds: float | None = None,
+        reasoning: str | None = None,
     ) -> ChatMessage:
         return await self._chat(
             messages,
@@ -241,6 +282,7 @@ class VLLMAdapter(LLMPort):
             max_tokens=max_tokens,
             temperature=temperature,
             timeout_seconds=timeout_seconds,
+            reasoning=reasoning,
             operation="chat",
         )
 
@@ -252,6 +294,7 @@ class VLLMAdapter(LLMPort):
         max_tokens: int | None,
         temperature: float | None,
         timeout_seconds: float | None,
+        reasoning: str | None,
         operation: str,
     ) -> ChatMessage:
         client = await self._get_client()
@@ -261,7 +304,7 @@ class VLLMAdapter(LLMPort):
         try:
             response = await client.post(
                 "/v1/chat/completions",
-                json=self._payload(messages, model, max_tokens, temperature),
+                json=self._payload(messages, model, max_tokens, temperature, reasoning),
                 timeout=timeout,
             )
             response.raise_for_status()
@@ -300,6 +343,7 @@ class VLLMAdapter(LLMPort):
         max_tokens: int | None,
         temperature: float | None,
         timeout: float,
+        reasoning: str | None,
         operation: str,
     ) -> AsyncIterator[dict[str, Any]]:
         """Yield decoded SSE frames, skipping the terminal sentinel.
@@ -313,7 +357,9 @@ class VLLMAdapter(LLMPort):
             async with client.stream(
                 "POST",
                 "/v1/chat/completions",
-                json=self._payload(messages, model, max_tokens, temperature, stream=True),
+                json=self._payload(
+                    messages, model, max_tokens, temperature, reasoning, stream=True
+                ),
                 timeout=timeout,
             ) as response:
                 response.raise_for_status()
@@ -337,6 +383,7 @@ class VLLMAdapter(LLMPort):
         max_tokens: int | None = None,
         temperature: float | None = None,
         timeout_seconds: float | None = None,
+        reasoning: str | None = None,
     ) -> AsyncIterator[str]:
         """Stream assistant content as plain text chunks."""
         resolved = model or self._default_model
@@ -346,6 +393,7 @@ class VLLMAdapter(LLMPort):
             max_tokens,
             temperature,
             timeout_seconds or self._timeout,
+            reasoning,
             "chat_stream",
         ):
             for choice in frame.get("choices") or []:
@@ -360,6 +408,7 @@ class VLLMAdapter(LLMPort):
         max_tokens: int | None = None,
         temperature: float | None = None,
         timeout_seconds: float | None = None,
+        reasoning: str | None = None,
     ) -> ChatMessage:
         """Stream for connection liveness, return one assembled message.
 
@@ -378,6 +427,7 @@ class VLLMAdapter(LLMPort):
             max_tokens,
             temperature,
             timeout_seconds or self._timeout,
+            reasoning,
             "chat_stream_with_usage",
         ):
             if frame.get("usage"):

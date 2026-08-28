@@ -68,6 +68,10 @@ class AdapterCase:
     # Exact rate when the provider reports timings; None when the adapter derives
     # it from wall-clock, which is machine-dependent and range-checked instead.
     tokens_per_second: float | None
+    # A model the registry declares a reasoning dial for (#927). The reasoning
+    # assertion needs one: an adapter that maps by the model's dial sends nothing
+    # for a dial-less model, which is the contract, not a defect.
+    reasoning_model: str
 
     def __str__(self) -> str:  # pytest id
         return self.name
@@ -325,6 +329,7 @@ ADAPTER_CASES: list[AdapterCase] = [
         prompt_tokens=_PROMPT_EVAL_COUNT,
         completion_tokens=_EVAL_COUNT,
         tokens_per_second=6.0,  # exact: derived from reported ns timings
+        reasoning_model="qwen3.6:27b",
     ),
     AdapterCase(
         name="vllm",
@@ -342,6 +347,9 @@ ADAPTER_CASES: list[AdapterCase] = [
         prompt_tokens=_VLLM_PROMPT_TOKENS,
         completion_tokens=_VLLM_COMPLETION_TOKENS,
         tokens_per_second=None,  # wall-clock derived; no timing field in the shape
+        # The registry is keyed on the name the adapter is handed; a real vLLM
+        # serves HF paths, whose entries are #1145/#1159's to add.
+        reasoning_model="qwen3.6:27b",
     ),
 ]
 

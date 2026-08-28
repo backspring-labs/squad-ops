@@ -9,9 +9,31 @@ class TestModelSpec:
     """Tests for ModelSpec dataclass."""
 
     def test_frozen(self):
-        spec = ModelSpec(name="test", context_window=8192, default_max_completion=4096)
+        spec = ModelSpec(
+            name="test", context_window=8192, default_max_completion=4096, reasoning_control="none"
+        )
         with pytest.raises(AttributeError):
             spec.name = "changed"  # type: ignore[misc]
+
+    def test_every_spec_declares_a_known_reasoning_dial(self):
+        """#927: an entry whose dial is missing or misspelled makes the vLLM
+        mapping silently send nothing and the handler-side clamp silently drop
+        the level — the reasoning channel stays on, unobserved."""
+        from squadops.llm.model_registry import ReasoningControl
+
+        known = {ReasoningControl.NONE, ReasoningControl.TOGGLE, ReasoningControl.EFFORT}
+        for spec in MODEL_SPECS.values():
+            assert spec.reasoning_control in known, spec.name
+
+    def test_qwen3_family_is_switchable_and_qwen25_is_not(self):
+        """The two families the profiles run: #924's dial exists on qwen3 and
+        Ollama rejects ``think`` on qwen2.5 — a swapped declaration either
+        leaves the 13.9× channel on or 400s every qwen2.5 call."""
+        from squadops.llm.model_registry import ReasoningControl
+
+        assert MODEL_SPECS["qwen3.6:27b"].reasoning_control == ReasoningControl.TOGGLE
+        assert MODEL_SPECS["qwen3.8:27b"].reasoning_control == ReasoningControl.TOGGLE
+        assert MODEL_SPECS["qwen2.5:7b"].reasoning_control == ReasoningControl.NONE
 
     def test_all_specs_context_exceeds_completion(self):
         """Every registered model must have context_window > default_max_completion."""

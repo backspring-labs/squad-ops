@@ -52,6 +52,7 @@ class LLMRouter:
         max_tokens: int | None = None,
         temperature: float | None = None,
         timeout_seconds: float | None = None,
+        reasoning: str | None = None,
     ) -> ChatMessage:
         """Chat with the LLM.
 
@@ -71,6 +72,7 @@ class LLMRouter:
             max_tokens=max_tokens,
             temperature=temperature,
             timeout_seconds=timeout_seconds,
+            reasoning=reasoning,
         )
 
     async def chat_stream(
@@ -80,6 +82,7 @@ class LLMRouter:
         max_tokens: int | None = None,
         temperature: float | None = None,
         timeout_seconds: float | None = None,
+        reasoning: str | None = None,
     ) -> AsyncIterator[str]:
         """Stream chat response as plain text chunks.
 
@@ -91,6 +94,7 @@ class LLMRouter:
             max_tokens=max_tokens,
             temperature=temperature,
             timeout_seconds=timeout_seconds,
+            reasoning=reasoning,
         ):
             yield chunk
 
@@ -101,6 +105,7 @@ class LLMRouter:
         max_tokens: int | None = None,
         temperature: float | None = None,
         timeout_seconds: float | None = None,
+        reasoning: str | None = None,
     ) -> ChatMessage:
         """Stream chat internally, return complete ChatMessage with usage.
 
@@ -112,6 +117,7 @@ class LLMRouter:
             max_tokens=max_tokens,
             temperature=temperature,
             timeout_seconds=timeout_seconds,
+            reasoning=reasoning,
         )
 
     def list_models(self) -> list[str]:
