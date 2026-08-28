@@ -51,23 +51,26 @@ router = APIRouter(prefix="/api/v1/projects/{project_id}/cycles", tags=["cycles"
 async def _pulled_model_names() -> list[str] | None:
     """Best-effort list of the LLM backend's pulled-model names, or ``None``.
 
-    ``None`` (backend not configured / not an Ollama adapter / unreachable) makes the
-    model-availability preflight *warn and allow* rather than block — never block on
+    ``None`` (backend not configured / provider declares no listing / unreachable) makes
+    the model-availability preflight *warn and allow* rather than block — never block on
     missing evidence (SIP-0095 §6.2). Only a reachable backend yields a verifiable list.
+
+    Asks the port what it can do (``LLMCapability.MODEL_LISTING``) rather than which
+    adapter class it is — SIP-0106 §3.2's site 2; the ``isinstance(OllamaAdapter)`` it
+    replaces made every non-Ollama provider silently unverifiable (#1157).
     """
     from squadops.api.runtime.deps import get_llm_port
+    from squadops.ports.llm.provider import LLMCapability
 
     try:
-        from adapters.llm.ollama import OllamaAdapter
-
         port = get_llm_port()
-        if not isinstance(port, OllamaAdapter):
+        if not port.supports(LLMCapability.MODEL_LISTING):
             return None
-        raw = await port.list_pulled_models()
-    except Exception as exc:  # not configured, wrong adapter, or backend unreachable
+        raw = await port.list_available_models()
+    except Exception as exc:  # not configured or backend unreachable
         logger.info("preflight_model_list_unverifiable", extra={"error": str(exc)})
         return None
-    return [name for m in raw if (name := m.get("name"))]
+    return [m.name for m in raw if m.name]
 
 
 async def _sandbox_preflight_decision() -> PreflightDecision:

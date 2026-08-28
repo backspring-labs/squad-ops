@@ -50,6 +50,7 @@ _TEST_ENV = {
     "SQUADOPS__DB__URL": "postgresql://test:test@localhost:5432/test",
     "SQUADOPS__COMMS__RABBITMQ__URL": "amqp://test:test@localhost:5672/",
     "SQUADOPS__COMMS__REDIS__URL": "redis://localhost:6379/0",
+    "SQUADOPS__LLM__PROVIDER": "ollama",  # required (#1157): the app loads config at import
 }
 
 

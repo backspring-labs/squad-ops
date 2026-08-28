@@ -7,6 +7,22 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 **1.7.0 — the Reasoning line opens.** Plan: `docs/plans/1-7-0-plan.md` (rev 3).
 
+### Changed — the LLM provider is required configuration (#1157, SIP-0106 Ruling 3)
+- **`SQUADOPS__LLM__PROVIDER` is required and never defaulted.** Two adapters were in the
+  tree while the factory defaulted `provider="ollama"`, the agent entrypoint never passed
+  one and `LLMConfig` had no field — the vLLM adapter was unreachable by any configuration
+  since it landed. Now `LLMConfig.provider` and `create_llm_provider(provider, …)` have no
+  default; a missing value fails at config load the way an unknown one fails in the
+  factory. Every deploy surface writes the value: the eight SquadOps service blocks in
+  `docker-compose.yml`, `.env.example` (uncommented), the test fixtures. The switch to
+  another provider is one PR changing that value (SIP-0106 §5).
+- **Both composition roots go through the factory**: the runtime-api no longer constructs
+  `OllamaAdapter` directly (the LLM half of #301), and the cycle-create model preflight asks
+  the port for `MODEL_LISTING` instead of `isinstance(OllamaAdapter)` — on any other
+  provider it was silently unverifiable.
+- The mis-nested `SQUADOPS__LLM__USE__LOCAL` example and the `use_local` field it never
+  reached are gone.
+
 ### Added — reasoning is a level on the port (#927)
 - **The port carries `reasoning: none | low | medium | high`**, never a provider's
   switch. Ollama maps `none → think:false` and any graded level → `think:true`; vLLM

@@ -189,6 +189,7 @@ services:
       # LLM (SIP-0066: cycle task handlers)
       SQUADOPS__LLM__MODEL: "llama3.1:8b"
       SQUADOPS__LLM__TIMEOUT: ${SQUADOPS__LLM__TIMEOUT:-180}
+      SQUADOPS__LLM__PROVIDER: ollama  # required, never defaulted (#1157); the switch PR changes it (SIP-0106 §5)
       # Duty-transition scheduler (SIP-0089 §2.4). runtime-api is the single
       # central writer of agent mode (D16) — keep this enabled on exactly one
       # runtime-api instance (no leader election yet).
@@ -246,6 +247,7 @@ services:
       SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_ID: squadops-agent
       SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_SECRET: secret://agent_client_secret
       SQUADOPS__LLM__TIMEOUT: ${SQUADOPS__LLM__TIMEOUT:-180}
+      SQUADOPS__LLM__PROVIDER: ollama  # required, never defaulted (#1157); the switch PR changes it (SIP-0106 §5)
     volumes:
       - max_memory_data:/app/data/memory_db
     depends_on:
@@ -300,6 +302,7 @@ services:
       SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_ID: squadops-agent
       SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_SECRET: secret://agent_client_secret
       SQUADOPS__LLM__TIMEOUT: ${SQUADOPS__LLM__TIMEOUT:-180}
+      SQUADOPS__LLM__PROVIDER: ollama  # required, never defaulted (#1157); the switch PR changes it (SIP-0106 §5)
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -373,6 +376,7 @@ services:
       SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_ID: squadops-agent
       SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_SECRET: secret://agent_client_secret
       SQUADOPS__LLM__TIMEOUT: ${SQUADOPS__LLM__TIMEOUT:-180}
+      SQUADOPS__LLM__PROVIDER: ollama  # required, never defaulted (#1157); the switch PR changes it (SIP-0106 §5)
     volumes:
       - ./docker-compose.yml:/app/docker-compose.yml
       - /var/run/docker.sock:/var/run/docker.sock
@@ -429,6 +433,7 @@ services:
       SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_ID: squadops-agent
       SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_SECRET: secret://agent_client_secret
       SQUADOPS__LLM__TIMEOUT: ${SQUADOPS__LLM__TIMEOUT:-180}
+      SQUADOPS__LLM__PROVIDER: ollama  # required, never defaulted (#1157); the switch PR changes it (SIP-0106 §5)
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -481,6 +486,7 @@ services:
       SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_ID: squadops-agent
       SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_SECRET: secret://agent_client_secret
       SQUADOPS__LLM__TIMEOUT: ${SQUADOPS__LLM__TIMEOUT:-180}
+      SQUADOPS__LLM__PROVIDER: ollama  # required, never defaulted (#1157); the switch PR changes it (SIP-0106 §5)
     volumes:
       - data_memory_data:/app/data/memory_db
     depends_on:
@@ -537,6 +543,7 @@ services:
       SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_ID: squadops-agent
       SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_SECRET: secret://agent_client_secret
       SQUADOPS__LLM__TIMEOUT: ${SQUADOPS__LLM__TIMEOUT:-180}
+      SQUADOPS__LLM__PROVIDER: ollama  # required, never defaulted (#1157); the switch PR changes it (SIP-0106 §5)
     volumes:
       - bob_memory_data:/app/data/memory_db
     depends_on:
@@ -595,6 +602,7 @@ services:
       SQUADOPS_AGENT_ROLE: comms
       SQUADOPS_PROFILE: "${SQUADOPS_PROFILE:?Run bootstrap first}"
       SQUADOPS__SECRETS__PROVIDER: docker_secret
+      SQUADOPS__LLM__PROVIDER: ollama  # required, never defaulted (#1157)
       SQUADOPS__DB__URL: postgresql://squadops:secret://db_password@postgres:5432/squadops
       SQUADOPS__COMMS__RABBITMQ__URL: amqp://squadops:secret://rabbitmq_password@rabbitmq:5672/
       SQUADOPS__COMMS__REDIS__URL: redis://redis:6379/0

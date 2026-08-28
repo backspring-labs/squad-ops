@@ -19,6 +19,7 @@ from squadops.config.schema import (
     AuthConfig,
     CommsConfig,
     DBConfig,
+    LLMConfig,
     RabbitMQConfig,
     RedisConfig,
     SchedulerConfig,
@@ -36,6 +37,7 @@ def _app_config(runtime: dict | None = None) -> AppConfig:
             redis=RedisConfig(url="redis://localhost:6379/0"),
         ),
         "auth": AuthConfig(enabled=False),
+        "llm": LLMConfig(provider="ollama"),
     }
     if runtime is not None:
         kwargs["runtime"] = runtime

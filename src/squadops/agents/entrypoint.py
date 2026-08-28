@@ -360,6 +360,7 @@ class AgentRunner:
             )
         logger.info(f"Using LLM model: {llm_model}", extra={"agent_id": self.agent_id})
         llm = create_llm_provider(
+            provider=config.llm.provider,
             base_url=config.llm.url,
             default_model=llm_model,
             timeout_seconds=config.llm.timeout,
