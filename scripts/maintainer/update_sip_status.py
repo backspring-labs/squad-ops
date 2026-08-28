@@ -211,20 +211,28 @@ def update_sip_body_status(file_path: Path, new_status: str) -> bool:
     return True
 
 
+#: The explainer in a SIP filename is at most this many words. Three reads as a name
+#: (SIP-0103-Squad-Authored-Manifest); four regularly ends on a dangling word — the
+#: old first-four-words rule produced SIP-0100-…-Harness-and, SIP-0104-…-Scaffolding-with,
+#: SIP-0091-…-via-Temporal and SIP-0106-…-Config-Selected (renamed by hand, 2026-08-28).
+FILENAME_NAME_WORDS = 3
+
+# A title's *name* precedes its explainer: "Atlas Provider Adapter — Config-Selected …",
+# "Cycle Replay Harness: …". The filename takes the name, never a slice of the explainer.
+_TITLE_NAME_SEPARATOR = re.compile(r"\s+[—–-]\s+|:\s+")
+
+
 def normalize_filename(sip_number: int, title: str) -> str:
-    """Generate normalized filename with maximum 4 words."""
-    # Clean title for filename
-    clean_title = re.sub(r"[^\w\s-]", "", title)
-    clean_title = re.sub(r"\s+", " ", clean_title).strip()
+    """The SIP's filename: number + the title's name, at most FILENAME_NAME_WORDS words.
 
-    # Split into words and take first 4 words
-    words = clean_title.split()
-    words = words[:4]  # Limit to 4 words
-
-    # Join with hyphens
-    clean_title = "-".join(words)
-
-    return f"SIP-{sip_number:04d}-{clean_title}.md"
+    The name is the part of the title before an em/en dash or a colon; a title with
+    neither is its own name. Either way it is capped at FILENAME_NAME_WORDS, so the file
+    is named for what the SIP is rather than for where its title happened to be cut.
+    """
+    name = _TITLE_NAME_SEPARATOR.split(title, maxsplit=1)[0]
+    clean = re.sub(r"[^\w\s-]", "", name)
+    words = re.sub(r"\s+", " ", clean).strip().split()[:FILENAME_NAME_WORDS]
+    return f"SIP-{sip_number:04d}-{'-'.join(words)}.md"
 
 
 # --- Frontmatter derivation (#770) ------------------------------------------
