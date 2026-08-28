@@ -15,9 +15,14 @@ conditionals (#559). Everything below is from the 2026-08-28 session on the Spar
   **not** derived from wall-clock; the engine's decode rate is reported as-is, with the
   wall-clock derivation only as a fallback when the field is absent.
 - **Reasoning is a server-side ladder**: ``reasoning_effort`` with a real ``none``. The
-  port's ``none|low|medium`` pass through; ``high`` maps to ``xhigh``, because the
-  Qwen3.8 chat template accepts only ``low|medium|xhigh`` and answers ``high`` with a
-  400 (measured; ``xhigh`` is the template's top tier). Thinking arrives as a separate
+  port's ``none|low|medium`` pass through; ``high`` maps to ``medium`` — the Qwen3.8 chat
+  template accepts only ``low|medium|xhigh`` and answers ``high`` with a 400, and the
+  first Atlas shakeout (2026-08-28, #1160) showed ``xhigh`` asking for *more* reasoning
+  than the model's default posture: framing generations spent the whole 300 s window
+  thinking and timed out, where the same ``high`` on Ollama is ``think: true`` — the
+  default — and completes. So the graded levels collapse to the default posture here
+  exactly as they do on Ollama, and ``xhigh`` stays unreachable until something asks for
+  it by name. Thinking arrives as a separate
   ``message.reasoning_content`` / ``delta.reasoning_content`` — never inline — and the
   streaming path must not splice those deltas into the text.
 - **Streaming**: SSE ``data: {json}`` frames, ``data: [DONE]``; with
@@ -48,13 +53,15 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_MODEL_LIST_TIMEOUT = 10.0
 
-#: The port's level → Atlas's ``reasoning_effort``. Verbatim except ``high``, which the
-#: served template rejects; ``xhigh`` is its top tier (SIP-0106 §10.2 fact 6).
+#: The port's level → Atlas's ``reasoning_effort``. Verbatim except ``high``: the served
+#: template rejects it, and its top tier ``xhigh`` over-reasons against the handlers'
+#: generation window (the 2026-08-28 shakeout, #1160) — so ``high`` is the model's default
+#: posture, as it is on Ollama (SIP-0106 §10.2 fact 6).
 _REASONING_EFFORT: dict[str, str] = {
     ReasoningLevel.NONE: "none",
     ReasoningLevel.LOW: "low",
     ReasoningLevel.MEDIUM: "medium",
-    ReasoningLevel.HIGH: "xhigh",
+    ReasoningLevel.HIGH: "medium",
 }
 
 

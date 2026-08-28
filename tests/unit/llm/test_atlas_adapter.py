@@ -55,12 +55,14 @@ class TestReasoningEffort:
             (ReasoningLevel.NONE, "none"),
             (ReasoningLevel.LOW, "low"),
             (ReasoningLevel.MEDIUM, "medium"),
-            (ReasoningLevel.HIGH, "xhigh"),  # the served template rejects `high`
+            (ReasoningLevel.HIGH, "medium"),  # not `xhigh`: see the module docstring
         ],
     )
     async def test_the_level_maps_onto_the_served_ladder(self, level, effort):
-        """`high` passed through blind is a 400 from the Qwen3.8 template; `xhigh` is
-        its top tier. Every other level is verbatim, including a real `none`."""
+        """`high` passed through blind is a 400 from the Qwen3.8 template; `xhigh` made
+        framing generations time out in the first shakeout (#1160). `high` is therefore
+        the model's default posture, as on Ollama. Every other level is verbatim,
+        including a real `none`."""
         seen: list[dict] = []
 
         def capture(request: httpx.Request) -> httpx.Response:

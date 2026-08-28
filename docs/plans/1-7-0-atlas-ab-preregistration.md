@@ -23,6 +23,18 @@ configuration, stated in full**. The tuning pass that chose arm B is on #1160.
 | frozen deploy | agent images from `43721563` (`max=22429f8898cb neo=af175877d8b5 eve=fde6d6b0fb26 bob=5d2e2f19e9be nat=864419a35f7f data=feaa005116b7 joi=7e6173048297`); runtime-api rebuilt once on the commit that carries `full-38-atlas` (its image id pinned in the set files after that rebuild) and identical for both arms | |
 | engine isolation (C.2) | before every B cycle: `ollama ps` empty (keep-alive has paged the models out); before every A cycle: the `atlas` container stopped. Neither checkpoint coexists with Ollama-27B in the Spark's unified memory at usable KV | |
 
+### 1.1 Revision after the first shakeout (2026-08-28, `cyc_6e068cdd7de0`, failed)
+
+The first Atlas cycle failed at `governance.prepare_plan_authoring_brief`: every `high`
+framing generation spent the 300 s window thinking under `xhigh` (3.3–3.9k tokens at
+11–14 t/s) and timed out or was cut mid-YAML — the adapter's `high → xhigh` asked Atlas
+for more reasoning than Ollama's `think: true` default, not parity. **Revision:** the
+Atlas adapter maps `high → medium` (the graded levels collapse to the model's default
+posture on both engines); the agent and runtime-api images are rebuilt on that commit,
+which becomes the frozen deploy; **a second shakeout on arm B precedes B1**, recorded and
+flagged like the first. Nothing else in §1 changes. The failed shakeout's per-request
+evidence is on #1160 and stays in the record as the warm-up that found this.
+
 ## 2. Preconditions — all, or the numbers lie
 
 1. #927, #1157, #1159 merged and deployed; `provider` and the adapter verified in-container (done 2026-08-28).

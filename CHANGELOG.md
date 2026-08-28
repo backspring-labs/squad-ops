@@ -31,8 +31,9 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   loader resolves; a 401 names that setting rather than reporting a network failure); the
   engine's own `response_token/s` is reported instead of a wall-clock derivation;
   `reasoning_tokens` are counted separately (`thinking_tokens: True`); the port's level
-  maps onto Atlas's `reasoning_effort` ladder verbatim except `high → xhigh`, which the
-  served Qwen3.8 template requires; streamed `reasoning_content` deltas never reach the
+  maps onto Atlas's `reasoning_effort` ladder verbatim except `high → medium` — the
+  served Qwen3.8 template rejects `high`, and its `xhigh` over-reasons against the 300 s
+  generation window (the first Atlas shakeout, #1160); streamed `reasoning_content` deltas never reach the
   text. Registered as the conformance suite's third case, with the measured shapes.
 - `ChatMessage` / `LLMResponse` gain `reasoning_tokens` (None when not reported, never
   zero); `Qwen/Qwen3.8-27B-FP8` joins the model registry with the served 32K window.
