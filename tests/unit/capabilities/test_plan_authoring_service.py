@@ -801,3 +801,106 @@ async def test_unknown_profile_keeps_generic_example():
     assert "floor" not in variables["builder_guideline"]
     assert '- "qa_handoff.md"' in variables["builder_example"]
     assert '- "Dockerfile"' not in variables["builder_example"]
+
+
+# ---------------------------------------------------------------------------
+# #1172 — the manifest loop is observable
+#
+# This path had no telemetry: merge_plan called the LLM and emitted nothing, so
+# the capability that gates whether a cycle can start building was the one
+# capability LangFuse could not see. Diagnosing an Atlas failure on 2026-08-29
+# required the engine's own request dump and container logs, neither of which
+# survives a rebuild — and the same failure on the Ollama arm would have left no
+# evidence at all.
+# ---------------------------------------------------------------------------
+
+
+def _recording_context(responses: list[str]):
+    """A context whose LLM returns each seeded response in turn and whose
+    observability port captures the records it is handed."""
+    ctx = _make_context()
+    captured: list = []
+    obs = MagicMock()
+    obs.record_generation.side_effect = lambda _c, record, _l: captured.append(record)
+    ctx.ports.llm_observability = obs
+    ctx.correlation_context = MagicMock()
+    ctx.ports.llm.chat_stream_with_usage = AsyncMock(
+        side_effect=[
+            MagicMock(
+                content=body,
+                completion_tokens=100 + i,
+                prompt_tokens=900 + i,
+                total_tokens=1000 + i,
+                tokens_per_second=12.5,
+            )
+            for i, body in enumerate(responses)
+        ]
+    )
+    return ctx, captured
+
+
+async def test_every_manifest_attempt_is_recorded_with_its_verdict(seeded_inputs):
+    """One record per attempt, each carrying which attempt it was and what the
+    validator said — not a roll-up. A roll-up hides the repair loop, and the
+    repair loop is what a non-converging merge_plan consists of: eight attempts
+    behind a record that shows one task."""
+    ctx, captured = _recording_context(["no fenced block here at all", _SEEDED_LLM_RESPONSE])
+
+    artifact = await produce_plan(
+        ctx,
+        seeded_inputs,
+        planning_content="## Plan",
+        resolved_config={**seeded_inputs["resolved_config"], "manifest_max_attempts": 2},
+        role="lead",
+        handler_name="test_harness",
+        chat_kwargs={"model": "test-model", "reasoning": "high"},
+    )
+
+    assert artifact is not None, "the second attempt seeds a valid manifest"
+    assert [r.attempt for r in captured] == [1, 2], "one record per attempt, in order"
+    assert captured[0].outcome != "accepted", "the failed attempt records the rejection"
+    assert captured[1].outcome == "accepted"
+    assert captured[0].outcome, "the validator's reason is the record's outcome, not a bare flag"
+
+
+async def test_recorded_attempt_carries_usage_and_reasoning(seeded_inputs):
+    """The record is built through the seam, so token usage and the declared
+    reasoning level travel with it — the two things #1171 lost and the two that
+    make a budget-exhaustion failure legible after the fact."""
+    ctx, captured = _recording_context([_SEEDED_LLM_RESPONSE])
+
+    await produce_plan(
+        ctx,
+        seeded_inputs,
+        planning_content="## Plan",
+        resolved_config={**seeded_inputs["resolved_config"], "manifest_max_attempts": 1},
+        role="lead",
+        handler_name="test_harness",
+        chat_kwargs={"model": "test-model", "reasoning": "high"},
+    )
+
+    assert len(captured) == 1
+    record = captured[0]
+    assert record.completion_tokens == 100
+    assert record.tokens_per_second == 12.5
+    assert record.reasoning == "high"
+    assert record.model == "test-model"
+
+
+async def test_authoring_survives_a_failing_observability_port(seeded_inputs):
+    """Observability is best-effort: a recorder that raises must not fail a run
+    that produced a valid plan."""
+    ctx, _ = _recording_context([_SEEDED_LLM_RESPONSE])
+    ctx.ports.llm_observability.record_generation.side_effect = RuntimeError("langfuse down")
+
+    artifact = await produce_plan(
+        ctx,
+        seeded_inputs,
+        planning_content="## Plan",
+        resolved_config={**seeded_inputs["resolved_config"], "manifest_max_attempts": 1},
+        role="lead",
+        handler_name="test_harness",
+        chat_kwargs={},
+    )
+
+    assert artifact is not None, "a broken recorder must not lose a valid plan"

@@ -7,6 +7,7 @@ Part of SIP-0.8.7 Infrastructure Ports Migration.
 
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
@@ -159,3 +160,56 @@ class GenerationRecord:
     # None when none was sent — so "how much did this call think" is readable
     # per generation rather than inferred from a token count.
     reasoning: str | None = None
+
+    # #1172: for a capability that retries against a validator, which attempt this
+    # was and what the validator said. A roll-up hides the repair loop, and the
+    # repair loop is the thing worth seeing — merge_plan can burn eight attempts
+    # while the record shows one task.
+    attempt: int | None = None
+    outcome: str | None = None
+
+
+def build_generation_record(
+    *,
+    model: str,
+    prompt_text: str,
+    response_text: str,
+    latency_ms: float | None = None,
+    usage: Any | None = None,
+    prompt_name: str | None = None,
+    prompt_version: int | None = None,
+    reasoning: str | None = None,
+    attempt: int | None = None,
+    outcome: str | None = None,
+) -> GenerationRecord:
+    """Build a :class:`GenerationRecord` from a completed generation.
+
+    The construction path :class:`GenerationRecord` has named in its own docstring
+    since SIP-0061 and which never existed: five call sites hand-rolled the record
+    instead, with field sets that drifted. The planning handlers omitted all four
+    token fields, so every framing generation reached LangFuse costed at zero and
+    with no decode rate — on both arms — which is #1171. A record type that says
+    "created by the caller via build_generation_record()" should have one.
+
+    ``usage`` is any object carrying the token attributes an adapter returns
+    (``LLMResponse``, ``ChatMessage``): the four fields are read off it when it is
+    present and left ``None`` when it is not, so a caller with no usage to report
+    is expressing that rather than forgetting it. Text is capped here, at the one
+    place that knows the cap.
+    """
+    return GenerationRecord(
+        generation_id=str(uuid.uuid4()),
+        model=model,
+        prompt_text=prompt_text[:MAX_OBSERVABILITY_TEXT_LENGTH],
+        response_text=response_text[:MAX_OBSERVABILITY_TEXT_LENGTH],
+        latency_ms=latency_ms,
+        prompt_tokens=getattr(usage, "prompt_tokens", None),
+        completion_tokens=getattr(usage, "completion_tokens", None),
+        total_tokens=getattr(usage, "total_tokens", None),
+        tokens_per_second=getattr(usage, "tokens_per_second", None),
+        prompt_name=prompt_name,
+        prompt_version=prompt_version,
+        reasoning=reasoning,
+        attempt=attempt,
+        outcome=outcome,
+    )
