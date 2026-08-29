@@ -716,26 +716,19 @@ class _CycleTaskHandler(CapabilityHandler):
         # Record LLM generation for LangFuse tracing (SIP-0061 Option B)
         llm_obs = getattr(context.ports, "llm_observability", None)
         if llm_obs and context.correlation_context:
-            import uuid
-
             from squadops.telemetry.models import (
-                MAX_OBSERVABILITY_TEXT_LENGTH,
-                GenerationRecord,
                 PromptLayer,
                 PromptLayerMetadata,
+                build_generation_record,
             )
 
             resolved_model = chat_kwargs.get("model", context.ports.llm.default_model)
-            gen_record = GenerationRecord(
-                generation_id=str(uuid.uuid4()),
+            gen_record = build_generation_record(
                 model=resolved_model,
-                prompt_text=user_prompt[:MAX_OBSERVABILITY_TEXT_LENGTH],
-                response_text=content[:MAX_OBSERVABILITY_TEXT_LENGTH],
+                prompt_text=user_prompt,
+                response_text=content,
                 latency_ms=llm_duration_ms,
-                tokens_per_second=response.tokens_per_second,
-                prompt_tokens=response.prompt_tokens,
-                completion_tokens=response.completion_tokens,
-                total_tokens=response.total_tokens,
+                usage=response,
                 prompt_name=rendered.template_id if rendered else None,
                 prompt_version=(
                     int(rendered.template_version)
@@ -893,25 +886,18 @@ class _CycleTaskHandler(CapabilityHandler):
             )
         llm_obs = getattr(context.ports, "llm_observability", None)
         if llm_obs and context.correlation_context:
-            import uuid
-
             from squadops.telemetry.models import (
-                MAX_OBSERVABILITY_TEXT_LENGTH,
-                GenerationRecord,
                 PromptLayer,
                 PromptLayerMetadata,
+                build_generation_record,
             )
 
-            gen_record = GenerationRecord(
-                generation_id=str(uuid.uuid4()),
+            gen_record = build_generation_record(
                 model=resolved_model or context.ports.llm.default_model,
-                prompt_text=prompt[:MAX_OBSERVABILITY_TEXT_LENGTH],
-                response_text=response[:MAX_OBSERVABILITY_TEXT_LENGTH],
+                prompt_text=prompt,
+                response_text=response,
                 latency_ms=duration_ms,
-                tokens_per_second=(chat_response.tokens_per_second if chat_response else None),
-                prompt_tokens=chat_response.prompt_tokens if chat_response else None,
-                completion_tokens=(chat_response.completion_tokens if chat_response else None),
-                total_tokens=chat_response.total_tokens if chat_response else None,
+                usage=chat_response,
                 prompt_name=getattr(rendered, "template_id", None),
                 prompt_version=(
                     int(rendered.template_version)

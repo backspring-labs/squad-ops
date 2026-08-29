@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import logging
 import time
-import uuid
 from typing import TYPE_CHECKING
 
 from a2a.server.agent_execution import AgentExecutor, RequestContext
@@ -265,9 +264,9 @@ class ChatAgentExecutor(AgentExecutor):
         try:
             from squadops.telemetry.models import (
                 CorrelationContext,
-                GenerationRecord,
                 PromptLayer,
                 PromptLayerMetadata,
+                build_generation_record,
             )
 
             ctx = CorrelationContext(
@@ -276,8 +275,9 @@ class ChatAgentExecutor(AgentExecutor):
                 agent_id=self._role_id,
                 agent_role=self._role_id,
             )
-            record = GenerationRecord(
-                generation_id=str(uuid.uuid4()),
+            # usage=None: this recorder is handed text and a latency by its caller,
+            # never the response object, so there are no token counts to report here.
+            record = build_generation_record(
                 model=self._ports.llm.default_model,
                 prompt_text=prompt_text,
                 response_text=response_text,

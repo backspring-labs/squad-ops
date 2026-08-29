@@ -641,7 +641,6 @@ class AgentRunner:
             # Generate response using the LLM
             if self.system and self.system.ports.llm:
                 import time
-                import uuid
 
                 from squadops.llm.models import LLMRequest
 
@@ -663,9 +662,9 @@ class AgentRunner:
                 if llm_obs is not None:
                     from squadops.telemetry.models import (
                         CorrelationContext,
-                        GenerationRecord,
                         PromptLayer,
                         PromptLayerMetadata,
+                        build_generation_record,
                     )
 
                     ctx = CorrelationContext(
@@ -674,12 +673,12 @@ class AgentRunner:
                         agent_id=self.agent_id,
                         agent_role=self.role,
                     )
-                    record = GenerationRecord(
-                        generation_id=str(uuid.uuid4()),
+                    record = build_generation_record(
                         model=self._llm_model,
                         prompt_text=full_prompt,
                         response_text=response_text,
                         latency_ms=latency_ms,
+                        usage=response,
                     )
                     layers = PromptLayerMetadata(
                         prompt_layer_set_id=f"{self.role}-chat",
