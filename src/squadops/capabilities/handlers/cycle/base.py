@@ -32,7 +32,7 @@ from squadops.cycles.implementation_plan import TypedCheck
 from squadops.cycles.patch_verification import materialize_artifacts
 from squadops.cycles.verification_integrity import ResultStatus
 from squadops.llm.exceptions import LLMError
-from squadops.llm.model_registry import get_model_spec
+from squadops.llm.model_registry import get_model_spec, thinking_headroom
 from squadops.llm.models import ChatMessage
 
 if TYPE_CHECKING:
@@ -349,6 +349,14 @@ class _CycleTaskHandler(CapabilityHandler):
         if model_spec is not None:
             max_tokens = min(max_tokens, model_spec.default_max_completion)
             context_window = model_spec.context_window
+        # #1173: the clamp above is an OUTPUT budget; thinking is billed against the
+        # same wire budget and the framework discards it. Add room for the level this
+        # capability declared, so declaring HIGH does not silently shrink the answer.
+        max_tokens += thinking_headroom(
+            resolve_reasoning_level(
+                self._capability_id, agent_overrides=agent_overrides, model_name=agent_model
+            )
+        )
         if "max_completion_tokens" in agent_overrides:
             max_tokens = agent_overrides["max_completion_tokens"]
 
@@ -373,17 +381,20 @@ class _CycleTaskHandler(CapabilityHandler):
             kwargs["model"] = agent_model
         if "temperature" in overrides:
             kwargs["temperature"] = overrides["temperature"]
-        if "max_completion_tokens" in overrides:
-            kwargs["max_tokens"] = overrides["max_completion_tokens"]
-        elif agent_model and (spec := get_model_spec(agent_model)) is not None:
-            kwargs["max_tokens"] = spec.default_max_completion
-        if "timeout_seconds" in overrides:
-            kwargs["timeout_seconds"] = overrides["timeout_seconds"]
         # #927: keyed on the agent's model exactly as the completion clamp is — a
         # task dispatched without one sends no level, as it gets no clamp.
         reasoning = resolve_reasoning_level(
             self._capability_id, agent_overrides=overrides, model_name=agent_model
         )
+        if "max_completion_tokens" in overrides:
+            kwargs["max_tokens"] = overrides["max_completion_tokens"]
+        elif agent_model and (spec := get_model_spec(agent_model)) is not None:
+            # #1173: output budget plus room for the declared thinking. These two were
+            # computed four lines apart and never combined, so a HIGH capability paid
+            # for its reasoning out of the document's allowance.
+            kwargs["max_tokens"] = spec.default_max_completion + thinking_headroom(reasoning)
+        if "timeout_seconds" in overrides:
+            kwargs["timeout_seconds"] = overrides["timeout_seconds"]
         if reasoning is not None:
             kwargs["reasoning"] = reasoning
         return kwargs

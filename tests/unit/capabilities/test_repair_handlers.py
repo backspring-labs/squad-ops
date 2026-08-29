@@ -152,14 +152,26 @@ class TestRepairEmissionClamp:
 
     def test_registry_clamp_applies_without_override(self):
         """The bug this catches: a repair on a registry-known model runs at the
-        capability ceiling instead of the model's completion clamp."""
-        from squadops.llm.model_registry import get_model_spec
+        capability ceiling instead of the model's completion clamp.
+
+        #1173 changed what the clamp is: ``default_max_completion`` budgets the
+        OUTPUT, and the thinking a capability declares is added on top, because
+        thinking is billed against the same wire budget and then discarded.
+        ``development.correction_repair`` declares MEDIUM, so the budget is the
+        output clamp plus that level's headroom — not the bare clamp."""
+        from squadops.llm.model_registry import get_model_spec, thinking_headroom
 
         h = DevelopmentRepairHandler()
         spec = get_model_spec("qwen3.8:27b")
         assert spec is not None  # premise: the V38 arm is registered (#1008)
         kwargs = h._build_chat_kwargs({"agent_model": "qwen3.8:27b", "agent_config_overrides": {}})
-        assert kwargs["max_tokens"] == spec.default_max_completion
+        assert kwargs["max_tokens"] == spec.default_max_completion + thinking_headroom(
+            kwargs.get("reasoning")
+        )
+        assert kwargs["max_tokens"] > spec.default_max_completion, (
+            "this handler declares a reasoning level, so it must get room to think "
+            "on top of its output budget"
+        )
 
     def test_explicit_override_still_wins(self):
         """A profile that deliberately raises (or lowers) the budget keeps
@@ -184,9 +196,10 @@ class TestRepairEmissionClamp:
         assert "max_tokens" not in kwargs
 
     async def test_clamp_reaches_the_llm_call(self):
-        """Flow half: the clamped budget arrives at chat_stream_with_usage —
-        wiring, not just the kwargs builder."""
-        from squadops.llm.model_registry import get_model_spec
+        """Flow half: the resolved budget arrives at chat_stream_with_usage —
+        wiring, not just the kwargs builder. Output clamp plus declared thinking
+        headroom, the two having been computed independently until #1173."""
+        from squadops.llm.model_registry import get_model_spec, thinking_headroom
 
         h = DevelopmentRepairHandler()
         ctx = _make_context(llm_response="repaired")
@@ -200,7 +213,10 @@ class TestRepairEmissionClamp:
             },
         )
         call = ctx.ports.llm.chat_stream_with_usage.call_args
-        assert call.kwargs["max_tokens"] == get_model_spec("qwen3.8:27b").default_max_completion
+        spec = get_model_spec("qwen3.8:27b")
+        assert call.kwargs["max_tokens"] == spec.default_max_completion + thinking_headroom(
+            call.kwargs.get("reasoning")
+        )
 
 
 class TestRepairHandlerHandle:

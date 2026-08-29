@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from squadops.llm.models import ReasoningLevel
+
 
 class ReasoningControl:
     """Which reasoning dial a model exposes — a model fact, not a provider one (#927).
@@ -114,6 +116,44 @@ MODEL_SPECS: dict[str, ModelSpec] = {
         reasoning_control=ReasoningControl.NONE,
     ),
 }
+
+
+#: Tokens to add to a capability's output budget for the thinking it declared.
+#:
+#: ``default_max_completion`` is a budget for OUTPUT — the registry comment records
+#: its basis as wall-clock ("qwen3.6:27b at ~10 t/s takes ~13 min for 8K tokens"),
+#: not document size. But thinking is billed against the same wire budget, so a
+#: capability that declares a reasoning level spends part of its output allowance
+#: on text the framework discards: adapters skip the thinking channel and nothing
+#: in the tree consumes it.
+#:
+#: Measured 2026-08-29 (#1173), replaying a real ``governance.merge_plan`` prompt
+#: three times on the production arm: a complete plan needs ~3,400 output tokens,
+#: and thinking at ``HIGH`` cost 4,500 / 6,100 / 7,600 tokens. Against a flat 8,192
+#: only the first fit — the capability succeeded one attempt in three, and the
+#: handler's retry loop hid that behind an eventual success.
+#:
+#: The headroom is added to the output budget rather than carved out of it, so a
+#: capability declared ``NONE`` is unaffected and one declared ``HIGH`` gets room
+#: to think *and* answer.
+THINKING_HEADROOM_TOKENS: dict[str, int] = {
+    ReasoningLevel.NONE: 0,
+    ReasoningLevel.LOW: 1_024,
+    ReasoningLevel.MEDIUM: 2_048,
+    ReasoningLevel.HIGH: 6_144,
+}
+
+
+def thinking_headroom(reasoning: str | None) -> int:
+    """Extra completion tokens for the reasoning level ``reasoning`` declares.
+
+    ``None`` — no level sent, so the wire is what it was before #927 — gets none.
+    An unknown level gets none rather than guessing: a level this table has not
+    been told about should show up as the old behaviour, not as a silent budget.
+    """
+    if reasoning is None:
+        return 0
+    return THINKING_HEADROOM_TOKENS.get(reasoning, 0)
 
 
 def get_model_spec(name: str) -> ModelSpec | None:

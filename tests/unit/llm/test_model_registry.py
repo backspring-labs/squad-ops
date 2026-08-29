@@ -109,3 +109,56 @@ def test_qwen38_clamps_identically_to_the_v7_arm():
     assert spec38 is not None
     assert spec38.default_max_completion == spec36.default_max_completion == 8_192
     assert spec38.context_window == 262_144
+
+
+class TestThinkingHeadroom:
+    """#1173 — the output budget and the declared reasoning level are reconciled.
+
+    `default_max_completion` budgets OUTPUT; its basis in the registry comment is
+    wall-clock, not document size. Thinking is billed against the same wire budget
+    and then discarded by every adapter. Until #1173 the two were set independently,
+    so declaring HIGH silently shrank the answer: replaying a real merge_plan prompt
+    three times on the production arm, a complete plan needed ~3,400 output tokens
+    while thinking at HIGH cost 4,500 / 6,100 / 7,600 — one attempt in three fit.
+    """
+
+    def test_a_capability_that_does_not_think_gets_no_headroom(self):
+        """The NONE capabilities are the majority (qa.test, builder.assemble, the
+        data family): their budget must not move, or #1173 becomes a latency
+        regression across the cycle for no benefit."""
+        from squadops.llm.model_registry import thinking_headroom
+        from squadops.llm.models import ReasoningLevel
+
+        assert thinking_headroom(ReasoningLevel.NONE) == 0
+        assert thinking_headroom(None) == 0
+
+    def test_headroom_rises_with_the_declared_level(self):
+        from squadops.llm.model_registry import thinking_headroom
+        from squadops.llm.models import ReasoningLevel
+
+        assert (
+            thinking_headroom(ReasoningLevel.NONE)
+            < thinking_headroom(ReasoningLevel.LOW)
+            < thinking_headroom(ReasoningLevel.MEDIUM)
+            < thinking_headroom(ReasoningLevel.HIGH)
+        )
+
+    def test_high_covers_the_measured_worst_case(self):
+        """The number is not arbitrary: on the 27B arm a HIGH capability was
+        measured spending 7,600 thinking tokens while its document needed ~3,400.
+        Output budget plus HIGH headroom must cover that, or merge_plan keeps
+        failing for the reason #1173 was filed about."""
+        from squadops.llm.model_registry import MODEL_SPECS, thinking_headroom
+        from squadops.llm.models import ReasoningLevel
+
+        spec = MODEL_SPECS["qwen3.8:27b"]
+        budget = spec.default_max_completion + thinking_headroom(ReasoningLevel.HIGH)
+        assert budget >= 7_600 + 3_400
+
+    def test_an_unknown_level_does_not_invent_a_budget(self):
+        """A level the table has not been told about falls back to the pre-#1173
+        wire, not to a guessed allowance — the same no-masking-fallback rule the
+        provider factory follows."""
+        from squadops.llm.model_registry import thinking_headroom
+
+        assert thinking_headroom("hyper") == 0
