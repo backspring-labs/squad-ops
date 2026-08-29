@@ -115,9 +115,18 @@ images are rebuilt on this commit and that rebuild is the frozen deploy** (super
 §1.1's, whose ids the §1 table still named); the ids are pinned in the set files before the
 first counting roll. The third shakeout runs on this line.
 
-Whether Atlas rejects or silently truncates past its window is asserted in the registry
-comment but has never been measured. One over-window request is probed before the shakeout
-and the answer recorded here.
+**Probed on this serve line, 2026-08-29, before the shakeout.** Atlas *rejects* past its
+window, it does not truncate — the registry comment's assertion is now a measurement: a
+69,668-token prompt returns `400 invalid_request_error`, *"Prompt too long: 69668 tokens
+exceeds max_seq_len 65536 (leave room for output tokens)"*, in 0.1 s. Below the cap it
+serves what the old line would have cut: 7,642 tokens → 200 in 13.2 s; **37,836 tokens →
+200 in 55.3 s** — over the old 32,768 cap and half again the old guard's 24,576 budget. The
+server's arithmetic is the guard's: prompt plus output must fit `max_seq_len`, which is what
+reserving `default_max_completion` inside `context_window` produces. Two readings for the
+record: prefill runs ~600–700 tok/s, so a 38K prompt costs ~55 s before the first token on
+arm B — that belongs to P2's wall-clock, not to a failure; and at 65,536 the KV pool reports
+16.8 GB → 274,656 tokens (17,166 blocks × 16 tok/block), so one full-length sequence is ~24%
+of it and the only cap-scaled cost is a 355 MB chunked-prefill reserve.
 
 ## 2. Preconditions — all, or the numbers lie
 
