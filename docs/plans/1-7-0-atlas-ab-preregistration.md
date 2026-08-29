@@ -20,7 +20,7 @@ configuration, stated in full**. The tuning pass that chose arm B is on #1160.
 | stacks | **Next.js+TS** (`nextjs_ts` overrides) for the paired wall-clock — the 1.6.6 arm that ran 6/6, so verdict noise does not swamp the pair; then **one FastAPI+React pair** for correction texture (Appendix C.3's sleeper metric needs a stack where corrections happen — 1.6.6 ran 4/6 there) | same |
 | order | **A1, B1, B2, A2** (Next.js), then **A3, B3** (FastAPI+React) — the first pair A-first, the second B-first, so an ordering effect shows instead of being credited to one side | |
 | shakeout | one non-counting Atlas cycle before B1 (no cycle has ever run on Atlas: the model preflight over `/v1/models`, the 32K guard, the fenced parser on Atlas output, timeouts at 2.8× decode). It is also the warm-up Appendix C.2 requires, recorded and flagged | |
-| frozen deploy | agent images from `43721563` (`max=22429f8898cb neo=af175877d8b5 eve=fde6d6b0fb26 bob=5d2e2f19e9be nat=864419a35f7f data=feaa005116b7 joi=7e6173048297`); runtime-api rebuilt once on the commit that carries `full-38-atlas` (its image id pinned in the set files after that rebuild) and identical for both arms | |
+| frozen deploy | the ids are **not listed here** — they have been superseded three times (§1.1's rebuild, §1.4's, and the #1171/#1172/#1173 rebuild), and a table that names one deploy while the box runs another is worse than a pointer. The operative record is `frozen_deploy_commit` + `frozen_image_ids` in the four set files, committed before the first counting roll and asserted by the driver on every counting roll (`verification_set_driver.py`); identical for both arms | |
 | engine isolation (C.2) | before every B cycle: `ollama ps` empty (keep-alive has paged the models out); before every A cycle: the `atlas` container stopped. Neither checkpoint coexists with Ollama-27B in the Spark's unified memory at usable KV | |
 
 ### 1.1 Revision after the first shakeout (2026-08-28, `cyc_6e068cdd7de0`, failed)
@@ -127,6 +127,116 @@ record: prefill runs ~600–700 tok/s, so a 38K prompt costs ~55 s before the fi
 arm B — that belongs to P2's wall-clock, not to a failure; and at 65,536 the KV pool reports
 16.8 GB → 274,656 tokens (17,166 blocks × 16 tok/block), so one full-length sequence is ~24%
 of it and the only cap-scaled cost is a 355 MB chunked-prefill reserve.
+
+### 1.5 The third shakeout, the replay matrix, and what arm B cannot do (2026-08-29)
+
+`cyc_cc5c58ff2cde`, on the frozen deploy at `55ad5995`, failed at
+`governance.merge_plan` after 8 manifest attempts across two rounds; the run recorded
+`blocked_unverified`. **§1.2's conclusion is falsified.** The startup line "content-loop
+watchdog ENABLED" is not a vendor log quirk and `--content-loop-watchdog false` is not in
+force. The `--dump` added by §1.3 is the only reason this is knowable: LangFuse records
+nothing for this capability (#1172) and no token usage for any framing generation (#1171).
+
+**The guard is armed, and four documented controls do not disarm it.** 11 of 25 responses
+in the shakeout carried `loop_watchdog_triggered: true`, `guard_stop` naming one of two
+detectors — `token_loop_watchdog` (what the flag targets) and `simhash_semantic_loop` (no
+CLI flag, no env var in `--help`). Tried and inert: the CLI flag; the env var
+(`ATLAS_CONTENT_LOOP_WATCHDOG=false`, confirmed set on the container, startup line
+unchanged, behaviour unchanged); the per-request `repetition_detection` object the help
+says "still outranks this", at `min_count: 64` against a default of 3; and
+`--content-loop-min-repeats 64`, the vendor's own documented remedy for output that is
+"short-period repetitive (code, tables)".
+
+**What it fires on, and what its rollback does.** The severed content is legitimately
+repetitive YAML — consecutive `- check: … / file: … / severity: error` blocks, one per
+file, which a 15-task plan can carry fifty of. That is the false-positive class the
+vendor's help names. The damage is not the stop but the rollback+re-steer (cap 2 per
+sequence) rewinding mid-token: `depends_on: []` emerges as `depend0]`,
+`frontend_compiles` as `frontend_compil`. Those corruptions *are* the validator's
+"while scanning a simple key" and "mapping values are not allowed here".
+
+**Replay matrix.** One stored merge_plan prompt (9,244 prompt tokens), replayed
+byte-identically, scored through `ImplementationPlan.from_yaml` — the handler's own gate,
+not a bare YAML parse:
+
+| row | change | accepted | guard-stopped |
+|---|---|---:|---:|
+| R1 | baseline (the §1.1–§1.4 serve line, FP8) | 0/3 | 1/3 |
+| R4 | per-request `repetition_detection`, `min_count: 64` | 0/3 | 2/3 |
+| R7 | `max_tokens: 16384` | 0/3 | 3/3 |
+| R6 | `reasoning_effort: high` | — | 400: no such tier |
+| R6′ | `reasoning_effort: medium` | 0/3 | 3/3 |
+| R8 | `xhigh` + `chat_template_kwargs.thinking_budget: 2048` | 0/3 | 3/3 |
+| R2 | `ATLAS_CONTENT_LOOP_WATCHDOG=false` (env) | 0/3 | 3/3 |
+| R3 | `--content-loop-min-repeats 64` | 0/3 | 3/3 |
+| R5 | `--kv-cache-dtype fp8` | 0/3 | 3/3 |
+| R10 | the vendor's own recipe, verbatim, NVFP4 checkpoint | 0/1 | 1/1 |
+| R11 | NVFP4 + recipe flags at serving size | 0/3 | 3/3 |
+| R12 | R11 + `ATLAS_SSM_DECODE_RING=1` | 0/3 | 3/3 |
+| R13 | R11 + `temperature: 0.2` | 0/3 | 3/3 |
+| R14 | R12 + `temperature: 0.2` | 0/3 | 3/3 |
+
+**14 configurations · 44 plan emissions · 41 guard-stopped · 0 accepted.** Of the 41, all
+were stopped *below* the completion cap — the budget was never the binding constraint on
+this arm.
+
+Two rows deserve their own note. **R10** used the vendor recipe
+(`atlas-recipes/recipes/qwen3.8/qwen3.8-27b-nvfp4-unsloth.yaml`) verbatim, including its
+`--max-batch-size 1` and `--gpu-memory-utilization 0.85`; that produces a 12,976-token KV
+pool on this box, which one 9,244-token prompt exhausts, so two of its three replays died
+on `KV cache exhausted`. The recipe says of itself that 32K "is a gate value, not a
+recommendation" — it is a qualification config, not a serving one. **R12/R14** forced the
+SSM decode-rollback ring back on, the only knob all day that visibly changed engine state
+(the "SKIPPED" line disappears, a 1.2 GB pool is allocated, and Phase-C
+rollback-to-boundary activates). It shifted the failure from corruption toward clean
+truncation — 2 of 3 parsed cleanly against a 27% base rate — without changing the verdict.
+
+**Arm-A control (R0).** The same prompt, in arm A's production request shape (`think:
+true`, `num_predict: 8192`), scored by the same validator:
+
+| replay | thinking | plan | finish | verdict |
+|---|---:|---:|---|---|
+| 1 | 16,716 ch | 12,573 ch | `stop` | **ACCEPTED (5 tasks)** |
+| 2 | 27,920 ch | 1,774 ch | `length` | rejected: missing `summary` |
+| 3 | 22,474 ch | 7,406 ch | `length` | rejected: missing `summary` |
+
+**1 of 3 on arm A against 0 of 44 on arm B** — and the two arms fail for different reasons.
+Arm A's failures are budget exhaustion with no guard involved; arm B's are the guard,
+below the budget. That difference is why retries rescue arm A and cannot rescue arm B:
+each arm-A attempt is an independent ~⅓ chance, so 8 attempts land a plan ~96% of the
+time, which is exactly why 11 of 11 recorded Next.js cycles show `framing_rerolls: 0`.
+Arm B's shakeout spent 8 attempts without one landing.
+
+**P1 is falsified on this workload.** Arm A decoded at 28.8–29.2 tok/s on this prompt
+against arm B's 12–14 tok/s, both decode-only figures from each engine's own reporting.
+The prediction was arm B ≥ 2× arm A; the observed direction is the reverse. The tuning
+matrix's 33.8 tok/s came from a short fill brief, and #1160 had already recorded framing
+decode at 12–18 tok/s — the throughput case does not survive contact with the framing
+workload, independently of the correctness failure.
+
+**Model support.** `Qwen/Qwen3.8-27B-FP8` is not in the supported-model table of the
+shipped image's README, of the GitHub README, or of the GB10 Deployment Guide; support
+for this model exists only as a recipe in `atlas-recipes`, annotated "tested on binary
+main 680b3a568". The kernel audit cited in §2 precondition 3 (236 lookups / 0 unresolved)
+was run against the **NVFP4** checkpoint, not the FP8 one the A/B has been serving. R11
+closes that gap: on the NVFP4 weights, with the audited kernel set, the outcome is
+identical.
+
+**Three defects this surfaced, all engine-independent** — #1171 (framing generations
+record zero token usage), #1172 (`merge_plan` emits no generation record at all), #1173
+(the completion budget ignores the reasoning level a capability declares, which is the
+whole of arm A's ⅓ failure rate). Fixed in one PR; the rebuild on its merge becomes the
+frozen deploy, superseding §1.4's.
+
+**How §1.2 went wrong, recorded so it is not repeated.** Its "4 of 4 clean plans" gate
+counted tasks in parsed YAML. The handler requires `version`, `project_id`, `cycle_id`,
+`prd_hash`, `tasks` and `summary`. A check weaker than the one in production cleared a
+remedy production then rejected — and the remedy had never taken effect at all. Every row
+above is scored through the production validator for that reason.
+
+**Standing.** No counting roll on arm B until a shakeout completes. The arms, order and
+predictions of §1 are otherwise unchanged; this section records what the shakeout phase
+found, not a change to the design.
 
 ## 2. Preconditions — all, or the numbers lie
 
