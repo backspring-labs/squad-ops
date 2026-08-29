@@ -144,15 +144,30 @@ THINKING_HEADROOM_TOKENS: dict[str, int] = {
 }
 
 
-def thinking_headroom(reasoning: str | None) -> int:
-    """Extra completion tokens for the reasoning level ``reasoning`` declares.
+def thinking_headroom(reasoning: str | None, spec: ModelSpec | None = None) -> int:
+    """Extra completion tokens for the reasoning ``reasoning`` will actually buy.
 
-    ``None`` — no level sent, so the wire is what it was before #927 — gets none.
-    An unknown level gets none rather than guessing: a level this table has not
-    been told about should show up as the old behaviour, not as a silent budget.
+    Keyed on what the *model* will do, not on what the capability declared. On a
+    ``TOGGLE`` model the two are different: the adapter maps every graded level to
+    a single boolean (``OllamaAdapter``: ``think = reasoning != NONE``), so a
+    capability declared MEDIUM thinks exactly as long as one declared HIGH and must
+    be budgeted the same. Keying on the declaration would under-budget every MEDIUM
+    capability on the production arm — ``development.develop`` foremost — in the way
+    #1173 was filed about.
+
+    ``None`` — no level sent, so the wire is what it was before #927 — gets none, as
+    does a level this table has not been told about: unknown means the old
+    behaviour, not a silently invented budget. A ``spec`` is optional so a caller
+    without one keeps the declared-level reading.
     """
     if reasoning is None:
         return 0
+    if (
+        spec is not None
+        and spec.reasoning_control == ReasoningControl.TOGGLE
+        and reasoning != ReasoningLevel.NONE
+    ):
+        return THINKING_HEADROOM_TOKENS[ReasoningLevel.HIGH]
     return THINKING_HEADROOM_TOKENS.get(reasoning, 0)
 
 

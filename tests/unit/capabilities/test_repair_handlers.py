@@ -157,8 +157,9 @@ class TestRepairEmissionClamp:
         #1173 changed what the clamp is: ``default_max_completion`` budgets the
         OUTPUT, and the thinking a capability declares is added on top, because
         thinking is billed against the same wire budget and then discarded.
-        ``development.correction_repair`` declares MEDIUM, so the budget is the
-        output clamp plus that level's headroom — not the bare clamp."""
+        ``development.correction_repair`` declares MEDIUM — but this model's dial is
+        a TOGGLE, so the level it declares and the thinking it gets are different
+        things, and the headroom is keyed on the latter."""
         from squadops.llm.model_registry import get_model_spec, thinking_headroom
 
         h = DevelopmentRepairHandler()
@@ -166,7 +167,7 @@ class TestRepairEmissionClamp:
         assert spec is not None  # premise: the V38 arm is registered (#1008)
         kwargs = h._build_chat_kwargs({"agent_model": "qwen3.8:27b", "agent_config_overrides": {}})
         assert kwargs["max_tokens"] == spec.default_max_completion + thinking_headroom(
-            kwargs.get("reasoning")
+            kwargs.get("reasoning"), spec
         )
         assert kwargs["max_tokens"] > spec.default_max_completion, (
             "this handler declares a reasoning level, so it must get room to think "
@@ -215,7 +216,7 @@ class TestRepairEmissionClamp:
         call = ctx.ports.llm.chat_stream_with_usage.call_args
         spec = get_model_spec("qwen3.8:27b")
         assert call.kwargs["max_tokens"] == spec.default_max_completion + thinking_headroom(
-            call.kwargs.get("reasoning")
+            call.kwargs.get("reasoning"), spec
         )
 
 

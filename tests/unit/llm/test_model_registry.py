@@ -155,6 +155,33 @@ class TestThinkingHeadroom:
         budget = spec.default_max_completion + thinking_headroom(ReasoningLevel.HIGH)
         assert budget >= 7_600 + 3_400
 
+    def test_a_toggle_model_budgets_every_graded_level_the_same(self):
+        """The dial decides, not the declaration. `OllamaAdapter` maps every graded
+        level onto one boolean (`think = reasoning != NONE`), so on a TOGGLE model a
+        MEDIUM capability thinks exactly as long as a HIGH one. Budgeting it by its
+        declaration under-budgets `development.develop` and both repair capabilities
+        on the production arm — the very failure #1173 was filed about."""
+        from squadops.llm.model_registry import MODEL_SPECS, ReasoningControl, thinking_headroom
+        from squadops.llm.models import ReasoningLevel
+
+        spec = MODEL_SPECS["qwen3.8:27b"]
+        assert spec.reasoning_control == ReasoningControl.TOGGLE  # premise
+        assert thinking_headroom(ReasoningLevel.MEDIUM, spec) == thinking_headroom(
+            ReasoningLevel.HIGH, spec
+        )
+        assert thinking_headroom(ReasoningLevel.MEDIUM, spec) > thinking_headroom(
+            ReasoningLevel.MEDIUM
+        ), "without the spec the declared level is read; with it, the dial is"
+
+    def test_a_toggle_model_still_spends_nothing_on_none(self):
+        """`think: false` is off, so NONE gets no headroom even on a toggle model —
+        otherwise the collapse would hand every transcription capability 6k tokens
+        it will never use."""
+        from squadops.llm.model_registry import MODEL_SPECS, thinking_headroom
+        from squadops.llm.models import ReasoningLevel
+
+        assert thinking_headroom(ReasoningLevel.NONE, MODEL_SPECS["qwen3.8:27b"]) == 0
+
     def test_an_unknown_level_does_not_invent_a_budget(self):
         """A level the table has not been told about falls back to the pre-#1173
         wire, not to a guessed allowance — the same no-masking-fallback rule the

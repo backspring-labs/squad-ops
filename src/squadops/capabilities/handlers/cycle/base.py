@@ -355,7 +355,8 @@ class _CycleTaskHandler(CapabilityHandler):
         max_tokens += thinking_headroom(
             resolve_reasoning_level(
                 self._capability_id, agent_overrides=agent_overrides, model_name=agent_model
-            )
+            ),
+            model_spec,
         )
         if "max_completion_tokens" in agent_overrides:
             max_tokens = agent_overrides["max_completion_tokens"]
@@ -392,7 +393,7 @@ class _CycleTaskHandler(CapabilityHandler):
             # #1173: output budget plus room for the declared thinking. These two were
             # computed four lines apart and never combined, so a HIGH capability paid
             # for its reasoning out of the document's allowance.
-            kwargs["max_tokens"] = spec.default_max_completion + thinking_headroom(reasoning)
+            kwargs["max_tokens"] = spec.default_max_completion + thinking_headroom(reasoning, spec)
         if "timeout_seconds" in overrides:
             kwargs["timeout_seconds"] = overrides["timeout_seconds"]
         if reasoning is not None:
