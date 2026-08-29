@@ -19,6 +19,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
+import time
 from typing import TYPE_CHECKING, Any
 
 from squadops.capabilities.handlers._plan_authoring import (
@@ -256,6 +257,7 @@ async def produce_plan(
     ]
 
     for attempt in range(1, max_attempts + 1):
+        started = time.perf_counter()
         try:
             response = await context.ports.llm.chat_stream_with_usage(messages, **chat_kwargs)
         except Exception as exc:
@@ -281,6 +283,17 @@ async def produce_plan(
 
         manifest, error_msg = _validate_manifest_candidate(
             yaml_content, min_subtasks, max_subtasks, profile_roles
+        )
+        _record_manifest_attempt(
+            context,
+            handler_name=handler_name,
+            model=chat_kwargs.get("model"),
+            prompt_text=messages[-1].content,
+            response=response,
+            latency_ms=(time.perf_counter() - started) * 1000,
+            attempt=attempt,
+            outcome="accepted" if error_msg is None else error_msg,
+            reasoning=chat_kwargs.get("reasoning"),
         )
 
         if error_msg is None and manifest is not None:
@@ -327,6 +340,63 @@ async def produce_plan(
         ]
 
     return None
+
+
+def _record_manifest_attempt(
+    context: Any,
+    *,
+    handler_name: str,
+    model: str | None,
+    prompt_text: str,
+    response: Any,
+    latency_ms: float,
+    attempt: int,
+    outcome: str,
+    reasoning: str | None,
+) -> None:
+    """Record one manifest attempt as a generation (#1172).
+
+    This path had no telemetry at all: `merge_plan` called the LLM and emitted
+    nothing, so the capability that decides whether a cycle can start building was
+    the one capability LangFuse could not see. Diagnosing its failures needed the
+    engine's own request dump and `docker logs` on the lead agent — neither of which
+    survives a rebuild.
+
+    One record per attempt, not a roll-up: the repair loop is the diagnostic object.
+    The prompt recorded is the user turn that produced this generation, which on a
+    repair round is the validator's complaint rather than the original brief.
+    Best-effort — observability must never fail an authoring run.
+    """
+    llm_obs = getattr(context.ports, "llm_observability", None)
+    if not llm_obs or not getattr(context, "correlation_context", None):
+        return
+    try:
+        from squadops.telemetry.models import (
+            PromptLayer,
+            PromptLayerMetadata,
+            build_generation_record,
+        )
+
+        record = build_generation_record(
+            model=model or context.ports.llm.default_model,
+            prompt_text=prompt_text,
+            response_text=getattr(response, "content", "") or "",
+            latency_ms=latency_ms,
+            usage=response,
+            reasoning=reasoning,
+            attempt=attempt,
+            outcome=outcome,
+        )
+        layers = PromptLayerMetadata(
+            prompt_layer_set_id="lead-plan-authoring",
+            layers=(
+                PromptLayer(layer_type="system", layer_id="governance-review-plan-manifest-system"),
+                PromptLayer(layer_type="user", layer_id="request.governance_review_plan_manifest"),
+            ),
+        )
+        llm_obs.record_generation(context.correlation_context, record, layers)
+    except Exception:  # pragma: no cover - best effort
+        logger.debug("%s: manifest generation not recorded", handler_name, exc_info=True)
 
 
 def _build_manifest_user_prompt_inline(v: dict[str, str]) -> str:

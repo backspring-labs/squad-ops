@@ -161,6 +161,13 @@ class GenerationRecord:
     # per generation rather than inferred from a token count.
     reasoning: str | None = None
 
+    # #1172: for a capability that retries against a validator, which attempt this
+    # was and what the validator said. A roll-up hides the repair loop, and the
+    # repair loop is the thing worth seeing — merge_plan can burn eight attempts
+    # while the record shows one task.
+    attempt: int | None = None
+    outcome: str | None = None
+
 
 def build_generation_record(
     *,
@@ -172,6 +179,8 @@ def build_generation_record(
     prompt_name: str | None = None,
     prompt_version: int | None = None,
     reasoning: str | None = None,
+    attempt: int | None = None,
+    outcome: str | None = None,
 ) -> GenerationRecord:
     """Build a :class:`GenerationRecord` from a completed generation.
 
@@ -201,4 +210,6 @@ def build_generation_record(
         prompt_name=prompt_name,
         prompt_version=prompt_version,
         reasoning=reasoning,
+        attempt=attempt,
+        outcome=outcome,
     )
