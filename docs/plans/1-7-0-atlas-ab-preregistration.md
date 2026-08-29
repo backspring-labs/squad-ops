@@ -13,7 +13,7 @@ configuration, stated in full**. The tuning pass that chose arm B is on #1160.
 |---|---|---|
 | squad profile | `full-38` | `full-38-atlas` — the same roster and eve override, model named as Atlas serves it |
 | model | `qwen3.8:27b`, **Q4_K_M** (Ollama's tag), 262K native window | `Qwen/Qwen3.8-27B-FP8`, **FP8 dequantized to BF16 in memory**, served window 32K |
-| engine | Ollama 0.32.14 as deployed; no tuning — every 1.6.x record sits on it | `avarok/atlas-gb10:latest` (built 2026-08-15), `serve Qwen/Qwen3.8-27B-FP8 --speculative --num-drafts 3 --enable-prefix-caching --scheduling-policy slai --kv-cache-dtype fp8 --max-seq-len 32768 --gpu-memory-utilization 0.75 --request-timeout 1800 --content-loop-watchdog false --lm-head-dtype bf16 --bind 0.0.0.0 --require-auth --auth-tokens-file … --no-auto-swap --no-tui` (`--request-timeout` added by §1.1; `--content-loop-watchdog false --lm-head-dtype bf16` by §1.2) |
+| engine | Ollama 0.32.14 as deployed; no tuning — every 1.6.x record sits on it | `avarok/atlas-gb10:latest` (built 2026-08-15), `serve Qwen/Qwen3.8-27B-FP8 --speculative --num-drafts 3 --enable-prefix-caching --scheduling-policy slai --max-seq-len 32768 --gpu-memory-utilization 0.75 --request-timeout 1800 --content-loop-watchdog false --lm-head-dtype bf16 --kv-cache-dtype bf16 --dump /dumps/atlas-requests.jsonl --bind 0.0.0.0 --require-auth --auth-tokens-file … --no-auto-swap --no-tui` (`--request-timeout` added by §1.1; `--content-loop-watchdog false --lm-head-dtype bf16` by §1.2; `--kv-cache-dtype bf16` replacing `fp8` and `--dump` by §1.3) |
 | why that serve line | — | the tuning matrix (#1160): FP8 12.5 t/s → MTP speculative K=3 29.5 → **K=4 33.8** → K=5 23.0 (over-drafting); NVFP4 12.8 and also dequantized (no memory or speed gain). Token counts identical across rows on the fill brief |
 | how the deploy is pointed at B | — | `docker compose -f docker-compose.yml -f docker-compose.atlas.yml up -d` (`ATLAS_MODEL=Qwen/Qwen3.8-27B-FP8`, secret `atlas_api_key`); back to A with plain `docker compose up -d`. Recreating the containers is also Appendix C.3's "restart the agent containers between arms" |
 | project / request profile | `group_run` / `validated-fullstack` | same |
@@ -58,6 +58,29 @@ measured cost). Both are server-side flags — the frozen deploy of §1.1 stands
 Ollama has no equivalent of either, so this is a serve-line difference between the arms, not
 a model one. **A third shakeout on arm B precedes B1.** The per-request evidence of both
 failed shakeouts and both gate runs is on #1160.
+
+### 1.3 Reading the rest of the serve defaults before the third shakeout (2026-08-29)
+
+Two failures from unread defaults prompted a full pass over the server's startup log,
+`--help`, the checkpoint's `generation_config.json` and Ollama's Modelfile:
+
+- **KV cache**: Atlas warned at every start that the checkpoint ships no `k_scale`/`v_scale`
+  tensors, so the FP8 KV cache used scale 1.0 — "silently clips BF16 into E4M3 range and
+  destroys dynamic range" — precisely where the ~17k-token qa briefs live. The model has 16
+  full-attention layers × 4 KV heads × 256 dims: BF16 KV is ~64 KB/token, ~2 GB per 32K
+  sequence, trivial under the 0.75 cap. **`--kv-cache-dtype bf16`** replaces `fp8`; no
+  calibration to get wrong.
+- **Sampling parity**: with no override the handlers send no sampling parameters, so each
+  engine's defaults apply. Both default to temperature 1, top-k 20, top-p 0.95, min-p 0 — the
+  1.6.x record ran at temperature 1 — and Atlas adds `top_n_sigma=1`, a logit filter it
+  recommends for agent workloads. Kept, as part of "best from Atlas"; stated here as an arm
+  difference.
+- **Behaviour defaults now known and set**: `thinking_default=true`, `max_thinking_budget=2048`
+  (`xhigh` = 4×), watchdog off (§1.2), MTP 3 drafts/step, prefix caching on, chunked prefill
+  8,192, `max_batch=8`.
+- **`--dump /dumps/atlas-requests.jsonl`**: every request and response on arm B, verbatim, to
+  a host-mounted file — the full-prompt store the record otherwise lacks (LangFuse caps
+  `input` at 10k chars). Arm A has no equivalent; the record says so.
 
 ## 2. Preconditions — all, or the numbers lie
 
