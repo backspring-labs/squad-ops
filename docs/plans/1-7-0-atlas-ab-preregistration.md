@@ -12,8 +12,8 @@ configuration, stated in full**. The tuning pass that chose arm B is on #1160.
 | | Arm A — Ollama (production, untouched) | Arm B — Atlas (tuned) |
 |---|---|---|
 | squad profile | `full-38` | `full-38-atlas` — the same roster and eve override, model named as Atlas serves it |
-| model | `qwen3.8:27b`, **Q4_K_M** (Ollama's tag), 262K native window | `Qwen/Qwen3.8-27B-FP8`, **FP8 dequantized to BF16 in memory**, served window 32K |
-| engine | Ollama 0.32.14 as deployed; no tuning — every 1.6.x record sits on it | `avarok/atlas-gb10:latest` (built 2026-08-15), `serve Qwen/Qwen3.8-27B-FP8 --speculative --num-drafts 3 --enable-prefix-caching --scheduling-policy slai --max-seq-len 32768 --gpu-memory-utilization 0.75 --request-timeout 1800 --content-loop-watchdog false --lm-head-dtype bf16 --kv-cache-dtype bf16 --dump /dumps/atlas-requests.jsonl --bind 0.0.0.0 --require-auth --auth-tokens-file … --no-auto-swap --no-tui` (`--request-timeout` added by §1.1; `--content-loop-watchdog false --lm-head-dtype bf16` by §1.2; `--kv-cache-dtype bf16` replacing `fp8` and `--dump` by §1.3) |
+| model | `qwen3.8:27b`, **Q4_K_M** (Ollama's tag), 262K native window | `Qwen/Qwen3.8-27B-FP8`, **FP8 dequantized to BF16 in memory**, served window 64K (§1.4) |
+| engine | Ollama 0.32.14 as deployed; no tuning — every 1.6.x record sits on it | `avarok/atlas-gb10:latest` (built 2026-08-15), `serve Qwen/Qwen3.8-27B-FP8 --speculative --num-drafts 3 --enable-prefix-caching --scheduling-policy slai --max-seq-len 65536 --gpu-memory-utilization 0.75 --request-timeout 1800 --content-loop-watchdog false --lm-head-dtype bf16 --kv-cache-dtype bf16 --dump /dumps/atlas-requests.jsonl --bind 0.0.0.0 --require-auth --auth-tokens-file … --no-auto-swap --no-tui` (`--request-timeout` added by §1.1; `--content-loop-watchdog false --lm-head-dtype bf16` by §1.2; `--kv-cache-dtype bf16` replacing `fp8` and `--dump` by §1.3; `--max-seq-len` raised from `32768` by §1.4) |
 | why that serve line | — | the tuning matrix (#1160): FP8 12.5 t/s → MTP speculative K=3 29.5 → **K=4 33.8** → K=5 23.0 (over-drafting); NVFP4 12.8 and also dequantized (no memory or speed gain). Token counts identical across rows on the fill brief |
 | how the deploy is pointed at B | — | `docker compose -f docker-compose.yml -f docker-compose.atlas.yml up -d` (`ATLAS_MODEL=Qwen/Qwen3.8-27B-FP8`, secret `atlas_api_key`); back to A with plain `docker compose up -d`. Recreating the containers is also Appendix C.3's "restart the agent containers between arms" |
 | project / request profile | `group_run` / `validated-fullstack` | same |
@@ -81,6 +81,43 @@ Two failures from unread defaults prompted a full pass over the server's startup
 - **`--dump /dumps/atlas-requests.jsonl`**: every request and response on arm B, verbatim, to
   a host-mounted file — the full-prompt store the record otherwise lacks (LangFuse caps
   `input` at 10k chars). Arm A has no equivalent; the record says so.
+
+### 1.4 The served window, read against the arm's own prompts (2026-08-29)
+
+The third revision from an unread serve default, and the first that would not have failed
+loudly. `--max-seq-len 32768` was the first-serve recipe's number (#1158), carried into the
+registry entry the prompt guard reads. The guard spends `context_window −
+max_completion_tokens` on the prompt: **24,576 usable prompt tokens on arm B** against
+**253,952 on arm A** (`qwen3.8:27b`, 262,144 − 8,192). Over budget it does not fail — it
+deletes the `## Prior Analysis from Upstream Roles` section and sends the rest
+(`src/squadops/capabilities/handlers/prompt_guard.py`), raising
+`PROMPT_EXCEEDS_CONTEXT_WINDOW` only if the remainder still will not fit. Framing prompts
+never reach the guard at all (its only callers are the dev and qa handlers) and would have
+met the server's limit directly, as in §1.1.
+
+What this arm's prompts actually are — Ollama's own `new prompt` lines for the 27B,
+n = 1,145 since 2026-08-22, `n_ctx_slot = 262144`:
+
+| median | p90 | p99 | max | > 24,576 | > 32,768 |
+|---|---|---|---|---|---|
+| 9,895 | 20,212 | 31,137 | 38,210 | ~5.9% | 0.87% |
+
+Roughly **one generation in seventeen** would have run on arm B with its upstream analysis
+deleted and on arm A intact — a difference in what the model was asked, invisible in the
+verdict, that the record would have credited to the engine. **Revision:** `--max-seq-len
+65536` on the serve line and `context_window=65_536` on the registry entry; 38,210 plus the
+8,192 completion clamp fits with headroom. The KV pool is paged and sized independently of
+the cap (16.2 GB ≈ 265K tokens at ~64 KB/token BF16), so one 64K sequence costs ~4 GB of it
+and nothing at the observed median. Arm A is untouched — and its 262,144 is the *served*
+window, not just the checkpoint's claim: every 27B load in the Ollama server log reports
+`n_ctx = 262144`. The registry entry ships in the images, so **the agent and runtime-api
+images are rebuilt on this commit and that rebuild is the frozen deploy** (superseding
+§1.1's, whose ids the §1 table still named); the ids are pinned in the set files before the
+first counting roll. The third shakeout runs on this line.
+
+Whether Atlas rejects or silently truncates past its window is asserted in the registry
+comment but has never been measured. One over-window request is probed before the shakeout
+and the answer recorded here.
 
 ## 2. Preconditions — all, or the numbers lie
 

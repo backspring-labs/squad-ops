@@ -91,12 +91,19 @@ MODEL_SPECS: dict[str, ModelSpec] = {
     ),
     # Atlas serves models by HuggingFace path, so the same weights carry a second name
     # (SIP-0106 §3.4 — model identity is provider-scoped). The window is the one the
-    # local-spark recipe serves (`--max-seq-len 32768`, #1158), not the checkpoint's
-    # native 262K: Atlas rejects a prompt past the served window, and the prompt-size
-    # guard reads this number. The completion clamp matches the Ollama entry above.
+    # A/B recipe serves (`--max-seq-len 65536`), not the checkpoint's native 262K:
+    # Atlas rejects a prompt past the served window, and the prompt-size guard reads
+    # this number. 65,536 replaces the first recipe's 32,768 (#1158) because that
+    # window minus the 8,192 completion clamp leaves 24,576 usable prompt tokens, and
+    # 5.9% of this model's real prompts are longer than that — 1,145 prompts measured
+    # off the Ollama arm's own server log (median 9,895, p90 20,212, p99 31,137, max
+    # 38,210). Under 32,768 the guard would strip the prior-analysis section from
+    # roughly one generation in seventeen on the Atlas arm and none on the Ollama arm
+    # (`capabilities/handlers/prompt_guard.py`), which decides an engine comparison by
+    # the serve line. #1160 §1.4. The completion clamp matches the Ollama entry above.
     "Qwen/Qwen3.8-27B-FP8": ModelSpec(
         name="Qwen/Qwen3.8-27B-FP8",
-        context_window=32_768,
+        context_window=65_536,
         default_max_completion=8_192,
         reasoning_control=ReasoningControl.TOGGLE,
     ),
