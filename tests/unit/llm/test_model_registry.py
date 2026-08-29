@@ -40,8 +40,19 @@ class TestModelSpec:
         reasoning level (the channel stays on) and the prompt guard has no window —
         and the window must be the served one, since Atlas rejects prompts past it."""
         spec = MODEL_SPECS["Qwen/Qwen3.8-27B-FP8"]
-        assert spec.context_window == 32_768
+        assert spec.context_window == 65_536
         assert spec.default_max_completion == MODEL_SPECS["qwen3.8:27b"].default_max_completion
+
+    def test_the_atlas_windows_prompt_budget_covers_the_measured_prompts(self):
+        """The guard spends ``context_window - default_max_completion`` on the prompt
+        and silently drops the prior-analysis section above it (prompt_guard). The
+        longest real prompt measured on these weights is 38,210 tokens (#1160 §1.4,
+        n=1,145 off the Ollama arm), so a budget below that truncates the Atlas arm
+        where the Ollama arm — same weights, 262K served — is never truncated, and
+        the A/B reads a serve-line difference as an engine difference. The first
+        recipe's 32,768 failed this by 13,634 tokens."""
+        spec = MODEL_SPECS["Qwen/Qwen3.8-27B-FP8"]
+        assert spec.context_window - spec.default_max_completion >= 38_210
 
     def test_all_specs_context_exceeds_completion(self):
         """Every registered model must have context_window > default_max_completion."""

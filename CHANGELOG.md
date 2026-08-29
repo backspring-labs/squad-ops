@@ -35,7 +35,9 @@ All notable changes to SquadOps are recorded here. Format loosely follows
   served Qwen3.8 template requires; streamed `reasoning_content` deltas never reach the
   text. Registered as the conformance suite's third case, with the measured shapes.
 - `ChatMessage` / `LLMResponse` gain `reasoning_tokens` (None when not reported, never
-  zero); `Qwen/Qwen3.8-27B-FP8` joins the model registry with the served 32K window.
+  zero); `Qwen/Qwen3.8-27B-FP8` joins the model registry with the window the A/B recipe
+  serves — 64K, raised from the first recipe's 32K because that left the prompt guard a
+  24,576-token budget and 5.9% of the arm's real prompts run longer (#1160 §1.4).
 
 ### Added — reasoning is a level on the port (#927)
 - **The port carries `reasoning: none | low | medium | high`**, never a provider's
