@@ -194,7 +194,7 @@ Tests read service configuration with this precedence: **environment variables >
 works). Defaults match the docker-compose stack (root `.env`):
 
 ```env
-POSTGRES_URL=postgresql://squadops:squadops-dev@localhost:5432/squadops
+POSTGRES_URL=postgresql://squadops:squadops-dev@localhost:5432/squadops_test
 RABBITMQ_USER=squadops
 RABBITMQ_PASSWORD=squadops-dev
 RABBITMQ_HOST=localhost

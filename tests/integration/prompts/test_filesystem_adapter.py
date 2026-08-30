@@ -8,6 +8,7 @@ Tests verify:
 - Fragment resolution with winning rule
 """
 
+import re
 from pathlib import Path
 
 import pytest
@@ -130,8 +131,14 @@ Lead-specific identity content.
         """Should load and parse manifest.yaml correctly."""
         manifest = real_repo.get_manifest()
 
-        assert manifest.version == "0.8.5"
+        # `real_repo` reads the shipped manifest, so a frozen version literal fails on
+        # every legitimate prompt change — it asserted "0.8.5" against a manifest long
+        # since at 0.9.21 (#1099). Assert the shape the parser must produce instead.
+        assert re.fullmatch(r"\d+\.\d+\.\d+", manifest.version), (
+            f"manifest version is not semver: {manifest.version!r}"
+        )
         assert len(manifest.fragments) > 0
+        assert all(fr.fragment_id and fr.path for fr in manifest.fragments)
 
     def test_manifest_caching(self, real_repo):
         """Manifest should be cached after first load."""

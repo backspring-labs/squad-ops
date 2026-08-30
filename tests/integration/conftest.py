@@ -56,7 +56,7 @@ def load_test_config():
     Defaults match the docker-compose stack (root ``.env``).
     """
     config = {
-        "POSTGRES_URL": "postgresql://squadops:squadops-dev@localhost:5432/squadops",
+        "POSTGRES_URL": DEFAULT_TEST_POSTGRES_URL,
         "RABBITMQ_USER": "squadops",
         "RABBITMQ_PASSWORD": "squadops-dev",
         "RABBITMQ_HOST": "localhost",
@@ -85,6 +85,94 @@ def load_test_config():
             config[key] = env_val
 
     return config
+
+
+# --- Integration-test database isolation (#1099) -------------------------------------
+# These suites TRUNCATE cycle tables. They previously defaulted to the *deployment*
+# database (`…/squadops`), so `pytest tests/integration` destroyed real cycle history —
+# on 2026-08-30 it emptied `cycle_gate_decisions`, and only a stale-teardown FK error
+# stopped it taking `cycle_registry` and `cycle_runs` too. The destructive fixtures are
+# correct; pointing them at live data was the defect. So the database name is a seam
+# with one owner and a guard, not a literal repeated in each test module.
+
+DEPLOYMENT_DB_NAME = "squadops"
+TEST_DB_NAME = "squadops_test"
+DEFAULT_TEST_POSTGRES_URL = f"postgresql://squadops:squadops-dev@localhost:5432/{TEST_DB_NAME}"
+
+
+def _db_name(dsn: str) -> str:
+    """Database name from a DSN, ignoring any ?query suffix."""
+    return dsn.rsplit("/", 1)[-1].split("?", 1)[0]
+
+
+def integration_postgres_dsn() -> str:
+    """The DSN every Postgres integration test must use.
+
+    Resolves through load_test_config() so env and test_config.env still win, then
+    refuses anything that names the deployment database. Call this instead of writing
+    a DSN literal in a test module.
+    """
+    dsn = load_test_config()["POSTGRES_URL"]
+    if _db_name(dsn) == DEPLOYMENT_DB_NAME:
+        raise RuntimeError(
+            f"Refusing to run destructive integration tests against the deployment "
+            f"database {DEPLOYMENT_DB_NAME!r} (DSN: {dsn}). These fixtures delete from "
+            f"cycle_registry / cycle_runs / cycle_gate_decisions. Use {TEST_DB_NAME!r} "
+            f"(the default) or set POSTGRES_URL to another database. See #1099."
+        )
+    return dsn
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _guard_against_deployment_database():
+    """Fail the whole session before any test runs if the DSN names the deployment DB.
+
+    Autouse and session-scoped so a module that forgets integration_postgres_dsn()
+    still cannot reach live data — the guard is not opt-in.
+    """
+    dsn = load_test_config()["POSTGRES_URL"]
+    if _db_name(dsn) == DEPLOYMENT_DB_NAME:
+        pytest.exit(
+            f"ABORTED: POSTGRES_URL points at the deployment database "
+            f"{DEPLOYMENT_DB_NAME!r}. Integration fixtures delete cycle data. "
+            f"Unset POSTGRES_URL to use {TEST_DB_NAME!r}, or point it elsewhere. (#1099)",
+            returncode=2,
+        )
+
+
+def ensure_test_database() -> str:
+    """Create the test database if absent; return its DSN. Idempotent."""
+    dsn = integration_postgres_dsn()
+    import psycopg2  # already a test dep via the runtime stack
+    from psycopg2 import sql
+
+    admin = dsn.rsplit("/", 1)[0] + "/postgres"
+    conn = psycopg2.connect(admin)
+    try:
+        conn.autocommit = True
+        with conn.cursor() as cur:
+            cur.execute("select 1 from pg_database where datname = %s", (TEST_DB_NAME,))
+            if not cur.fetchone():
+                cur.execute(sql.SQL("create database {}").format(sql.Identifier(TEST_DB_NAME)))
+    finally:
+        conn.close()
+    return dsn
+
+
+# --- #242: in CI, a missing service is a FAILURE, not a skip -------------------------
+# The health check below skips when a service is absent, which is right for a laptop
+# with nothing running. In CI it is dangerous: the job would skip all 67 tests and
+# report green, recreating the silent rot this suite is meant to catch. When
+# SQUADOPS_REQUIRE_SERVICES=1 the same condition fails loudly instead.
+
+REQUIRE_SERVICES = os.getenv("SQUADOPS_REQUIRE_SERVICES", "").lower() in ("1", "true", "yes")
+
+
+def _missing_service(message: str):
+    """Skip locally, fail in CI."""
+    if REQUIRE_SERVICES:
+        pytest.fail(f"SQUADOPS_REQUIRE_SERVICES=1 but {message}", pytrace=False)
+    pytest.skip(message)
 
 
 def check_service_health(
@@ -309,7 +397,7 @@ def check_required_services():
     if not postgres_healthy:
         all_services_healthy = False
         print("   💡 To start PostgreSQL: docker-compose up -d postgres")
-        pytest.skip(
+        _missing_service(
             "PostgreSQL is not running on localhost:5432. Start with 'docker-compose up -d postgres'"
         )
 
@@ -320,7 +408,7 @@ def check_required_services():
     if not redis_healthy:
         all_services_healthy = False
         print("   💡 To start Redis: docker-compose up -d redis")
-        pytest.skip(
+        _missing_service(
             "Redis is not running on localhost:6379. Start with 'docker-compose up -d redis'"
         )
 
@@ -331,7 +419,7 @@ def check_required_services():
     if not rabbitmq_healthy:
         all_services_healthy = False
         print("   💡 To start RabbitMQ: docker-compose up -d rabbitmq")
-        pytest.skip(
+        _missing_service(
             "RabbitMQ is not running on localhost:5672. Start with 'docker-compose up -d rabbitmq'"
         )
 

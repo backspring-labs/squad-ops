@@ -216,7 +216,7 @@ class TestPulseCheckE2E:
                 new_callable=AsyncMock,
             ),
             patch(
-                "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
+                "adapters.cycles.pulse_boundary_runner.run_pulse_verification",
                 side_effect=all_pass,
             ),
         ):
@@ -265,7 +265,7 @@ class TestPulseCheckE2E:
                 new_callable=AsyncMock,
             ),
             patch(
-                "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
+                "adapters.cycles.pulse_boundary_runner.run_pulse_verification",
                 side_effect=fail_then_pass,
             ),
         ):
@@ -310,7 +310,7 @@ class TestPulseCheckE2E:
                 new_callable=AsyncMock,
             ),
             patch(
-                "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
+                "adapters.cycles.pulse_boundary_runner.run_pulse_verification",
                 side_effect=always_fail,
             ),
         ):
@@ -355,7 +355,7 @@ class TestPulseCheckE2E:
                 new_callable=AsyncMock,
             ),
             patch(
-                "adapters.cycles.dispatched_flow_executor.run_pulse_verification",
+                "adapters.cycles.pulse_boundary_runner.run_pulse_verification",
                 side_effect=all_pass,
             ),
         ):
