@@ -106,8 +106,35 @@ cannot rescue arm B: each arm-A attempt is an independent chance, so 8 attempts 
 high probability, which is why 11 of 11 recorded Next.js cycles show `framing_rerolls: 0`. Arm
 B's shakeout spent 8 attempts without one landing.
 
-**R15 — the same control at the budget #1173 now computes (`num_predict: 14336`).** Pending;
-filled in below on completion.
+**R15 — the same control at the budget #1173 now computes (`num_predict: 14336`):**
+
+| replay | eval tokens | plan | finish | verdict |
+|---|---:|---:|---|---|
+| 1 | 11,732 | 15,449 ch | `stop` | **ACCEPTED (7 tasks)** |
+| 2 | 8,285 | 11,909 ch | `stop` | **ACCEPTED (7 tasks)** |
+| 3 | 9,586 | 10,074 ch | `stop` | **ACCEPTED (4 tasks)** |
+| 4 | 8,204 | 10,975 ch | `stop` | **ACCEPTED (6 tasks)** |
+| 5 | 7,350 | 12,806 ch | `stop` | **ACCEPTED (8 tasks)** |
+
+**5 of 5**, against 1 of 3 at the old flat clamp. The mechanism is the one #1173 names: the 8,192
+cap truncated the document before `summary` could be emitted, and both R0 failures said exactly
+that. One replay (11,732 tokens) genuinely needed room past the old cap; the rest finish well
+below the new one, which is why the fix is nearly free.
+
+**Cost per attempt barely moved.** Mean 305 s at 14,336 against 289 s at 8,192 — +5.5% — because
+a *failed* attempt at 8,192 burned the full cap by definition, while a successful attempt at
+14,336 averages 9,031 tokens. The budget is not buying longer generations; it is buying an end to
+wasted ones.
+
+**Wall-clock consequence, derived rather than measured.** At a 1-in-3 accept rate the handler's
+retry loop expects 3 attempts to land a plan (3 × 289 s ≈ 14.5 min); at the observed rate it
+expects 1 (≈ 5.1 min). Against framing runs that historically took 28.4–37.8 min against
+implementation's 14.8–21.9, a ~9 min saving is a material share of cycle wall clock. This is
+arithmetic from replay timings, **not** a measured cycle: `agent_task_log` holds zero rows and
+#1172 meant `merge_plan` emitted no generation record, so the rest of framing's ~34 min cannot
+currently be attributed. The fix-validation shakeout `cyc_74a6ad13d309` is the direct
+measurement; n here is 8 replays, and it is the mechanism rather than the rate that carries the
+claim.
 
 ## 5. Model support
 
