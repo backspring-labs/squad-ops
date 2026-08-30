@@ -159,6 +159,22 @@ def ensure_test_database() -> str:
     return dsn
 
 
+# --- #242: in CI, a missing service is a FAILURE, not a skip -------------------------
+# The health check below skips when a service is absent, which is right for a laptop
+# with nothing running. In CI it is dangerous: the job would skip all 67 tests and
+# report green, recreating the silent rot this suite is meant to catch. When
+# SQUADOPS_REQUIRE_SERVICES=1 the same condition fails loudly instead.
+
+REQUIRE_SERVICES = os.getenv("SQUADOPS_REQUIRE_SERVICES", "").lower() in ("1", "true", "yes")
+
+
+def _missing_service(message: str):
+    """Skip locally, fail in CI."""
+    if REQUIRE_SERVICES:
+        pytest.fail(f"SQUADOPS_REQUIRE_SERVICES=1 but {message}", pytrace=False)
+    pytest.skip(message)
+
+
 def check_service_health(
     service_name: str, host: str, port: int, timeout: int = 30, retries: int = 3
 ) -> bool:
@@ -381,7 +397,7 @@ def check_required_services():
     if not postgres_healthy:
         all_services_healthy = False
         print("   💡 To start PostgreSQL: docker-compose up -d postgres")
-        pytest.skip(
+        _missing_service(
             "PostgreSQL is not running on localhost:5432. Start with 'docker-compose up -d postgres'"
         )
 
@@ -392,7 +408,7 @@ def check_required_services():
     if not redis_healthy:
         all_services_healthy = False
         print("   💡 To start Redis: docker-compose up -d redis")
-        pytest.skip(
+        _missing_service(
             "Redis is not running on localhost:6379. Start with 'docker-compose up -d redis'"
         )
 
@@ -403,7 +419,7 @@ def check_required_services():
     if not rabbitmq_healthy:
         all_services_healthy = False
         print("   💡 To start RabbitMQ: docker-compose up -d rabbitmq")
-        pytest.skip(
+        _missing_service(
             "RabbitMQ is not running on localhost:5672. Start with 'docker-compose up -d rabbitmq'"
         )
 

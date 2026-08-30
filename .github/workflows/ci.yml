@@ -51,6 +51,99 @@ jobs:
       - name: Regression suite (ruff check + format + test-quality lint + pytest)
         run: bash scripts/dev/run_regression_tests.sh
 
+  integration:
+    # #242: nothing ran tests/integration/ on PRs, so four independent breakages sat in
+    # test_pulse_check_e2e.py unnoticed (#211) and sixteen tests failed on every run of
+    # main for weeks (#1099). The gate was unit-only; this is the missing lane.
+    #
+    # Services are real containers rather than mocks because that is what these tests
+    # are for. Two things make the job trustworthy rather than decorative:
+    #   * SQUADOPS_REQUIRE_SERVICES=1 turns "service missing" from a skip into a failure.
+    #     Without it a broken service definition would skip all 67 tests and report green
+    #     — the same silent rot this job exists to prevent.
+    #   * The run asserts a floor on tests actually executed, so a collection error or a
+    #     conftest change that quietly empties the suite fails instead of passing.
+    #
+    # POSTGRES_URL names squadops_test, never the deployment database (#1099).
+    name: integration
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: squadops
+          POSTGRES_PASSWORD: squadops-dev
+          POSTGRES_DB: squadops_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U squadops"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+      rabbitmq:
+        image: rabbitmq:3.12-management
+        ports: ["5672:5672", "15672:15672"]
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 10s --health-timeout 10s --health-retries 15
+    env:
+      SQUADOPS_REQUIRE_SERVICES: "1"
+      POSTGRES_URL: postgresql://squadops:squadops-dev@localhost:5432/squadops_test
+      RABBITMQ_USER: squadops
+      RABBITMQ_PASSWORD: squadops-dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            tests/requirements.txt
+            ci-constraints.txt
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install -r tests/requirements.txt -c ci-constraints.txt
+
+      - name: Integration suite (real services, serviceless tests included)
+        run: |
+          python -m pytest tests/integration -v --no-header -p no:cacheprovider \
+            --junitxml=integration-results.xml
+
+      - name: The suite actually ran
+        # A green job that executed nothing is the failure mode #242 is about. Floor is
+        # set below the current pass count so ordinary additions do not trip it, but a
+        # collapse to zero (or to the handful that need no services) fails.
+        run: |
+          python - <<'EOF'
+          import xml.etree.ElementTree as ET, sys
+          r = ET.parse("integration-results.xml").getroot()
+          suite = r if r.tag == "testsuite" else r[0]
+          total = int(suite.get("tests", 0)); skipped = int(suite.get("skipped", 0))
+          ran = total - skipped
+          print(f"collected={total} skipped={skipped} executed={ran}")
+          FLOOR = 50
+          if ran < FLOOR:
+              sys.exit(f"FAIL: only {ran} tests executed (floor {FLOOR}). "
+                       "Services likely unavailable or the suite was emptied — #242.")
+          print(f"OK: {ran} tests executed")
+          EOF
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-results
+          path: integration-results.xml
+
   skeleton-gate:
     # SIP-0099 acceptance surface: the deterministic expander must materialize a
     # walking skeleton that BUILDS and BOOTS with zero manual intervention, on plain
