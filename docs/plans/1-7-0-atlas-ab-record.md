@@ -160,6 +160,42 @@ previously exist, and all fixed in #1174:
 and #1172. An A/B that returns a negative on its headline question and three production fixes on
 the way is not a wasted set.
 
+**Validated end to end on 2026-08-30** by fix-validation shakeout `cyc_74a6ad13d309`, on the
+post-#1174 frozen deploy (`05eae807bb3d`, head `bbf706ae`), non-counting by declaration:
+
+| field | value |
+|---|---|
+| verdict | **accepted** |
+| boot audit | **PASS** — installs, builds, boots, answers 5 contract probes |
+| functional (verdict AND audit AND zero intervention) | **yes** |
+| criteria verified / total | 14 / 14 |
+| correction rounds | 0 |
+| framing runs / re-rolls | 1 / 0 |
+| wall clock | 43 min (framing 30, implementation 13) |
+| gate | `progress_plan_review` → approved by `system:no_open_questions` |
+
+Each fix is confirmed by its own evidence, not by the cycle passing:
+
+- **#1171** — all 11 generations in the window carry non-zero prompt and completion token usage.
+  Zero-usage count: 0. Previously every framing generation reached LangFuse costed at nothing.
+- **#1172** — `task-run_fb18e5b6-006-governance.merge_plan` appears in LangFuse at all, carrying
+  `attempt: 1` and `outcome: accepted`. That capability was previously invisible, which is why
+  §1.5's guard diagnosis had to come from `--dump` instead.
+- **#1173** — `merge_plan` landed on **attempt 1**. At the pre-fix per-attempt rate the handler's
+  retry loop expected three. This is the first cycle-level observation of the budget fix, and it
+  is only observable because #1172 landed with it.
+- Reasoning levels thread correctly per capability (#927): `medium` for research and develop,
+  `high` for the framing authors, `none` for `qa.test` and `builder.assemble`.
+
+**On wall clock, the measurement is weaker than the arithmetic.** Framing at 30.1 min sits at the
+fast end of the historical band for successful framing runs (28.4–37.8, mean 34.2) but inside it.
+The derived estimate above (~9 min) is not confirmed by this cycle, which shows roughly 4 min
+against the mean. One cycle cannot separate a real improvement from variance on a spread that
+wide, and the 1-in-3 rate it was derived from came from replaying a single stored prompt that may
+be harder than typical. What *is* established is the mechanism and the attempt count: `merge_plan`
+now lands first try, visibly. The wall-clock claim needs several cycles, and should not be quoted
+as measured until it has them.
+
 ## 7. Incident
 
 On 2026-08-29 the arm-A control was run directly against Ollama while the Atlas container still
