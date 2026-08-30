@@ -92,6 +92,11 @@ jobs:
           --health-interval 10s --health-timeout 10s --health-retries 15
     env:
       SQUADOPS_REQUIRE_SERVICES: "1"
+      # Agent containers are a dev-box thing; CI has no images for them. Without this the
+      # session health check skips EVERY test (measured: 99 collected, 99 skipped, 0 run)
+      # and the job would have gone green having executed nothing — which the floor check
+      # below caught on the first run, doing exactly its job.
+      SKIP_AGENT_CHECK: "1"
       POSTGRES_URL: postgresql://squadops:squadops-dev@localhost:5432/squadops_test
       RABBITMQ_USER: squadops
       RABBITMQ_PASSWORD: squadops-dev
@@ -130,7 +135,12 @@ jobs:
           total = int(suite.get("tests", 0)); skipped = int(suite.get("skipped", 0))
           ran = total - skipped
           print(f"collected={total} skipped={skipped} executed={ran}")
-          FLOOR = 50
+          # Calibrated to catch COLLAPSE, not to police an exact count. Locally with the
+          # full stack 67 execute; CI has postgres/redis/rabbitmq but no Keycloak, LangFuse
+          # or agent containers, so its steady state is lower. 30 sits well below any
+          # plausible real run and far above the 0 that a broken health check produces.
+          # Raise it once CI's steady-state number has held for a few runs.
+          FLOOR = 30
           if ran < FLOOR:
               sys.exit(f"FAIL: only {ran} tests executed (floor {FLOOR}). "
                        "Services likely unavailable or the suite was emptied — #242.")
