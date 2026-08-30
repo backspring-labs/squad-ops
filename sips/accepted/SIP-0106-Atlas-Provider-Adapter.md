@@ -152,6 +152,81 @@ references #301 without closing it (§10.1); the headline throughput number is
 fixing but **no longer a precondition of anything** under Ruling 2 — the Prefect log line
 carries throughput adequately for an owner reading results.
 
+## 1.2 Post-acceptance amendments
+
+Recorded here, in the SIP, because a release plan is superseded at the cut and a code comment
+is invisible to a reader of the spec (CLAUDE.md, the §5a rule). `updated_at` is deliberately
+untouched — it means *last status transition*, and these dated entries are the content record.
+
+### 1.2a P4/P5 return a negative — Atlas is not adopted (owner ruling, 2026-08-29)
+
+**What changed.** The A/B this SIP's P5 exists to produce (#1160) is **stopped without counting
+rolls**. Atlas is not adopted as a provider. The `AtlasAdapter` merged under P4 (#1165) stays in
+the tree, inert, selected by nobody — the dark-ship rule of §4 is what makes that safe and is
+why no revert is required.
+
+**The evidence, in full.** Recorded in `docs/plans/1-7-0-atlas-ab-preregistration.md` §1.5 and
+the record beside it:
+
+- **0 accepted plans out of 44 emissions across 14 serve configurations.** 41 were stopped by
+  Atlas's content-loop guard, every one of them *below* the completion cap, so the budget was
+  never the binding constraint. Scored through `ImplementationPlan.from_yaml` — the handler's
+  own gate, not a bare YAML parse.
+- **The guard cannot be disarmed.** Four documented controls are inert against it: the
+  `--content-loop-watchdog false` CLI flag, the `ATLAS_CONTENT_LOOP_WATCHDOG` env var, the
+  per-request `repetition_detection` object the vendor's help says "still outranks this", and
+  `--content-loop-min-repeats`. A second detector, `simhash_semantic_loop`, has no CLI flag and
+  no env var at all.
+- **It fires on correct output and corrupts it.** The severed content is legitimately repetitive
+  YAML — consecutive `- check: / file: / severity:` blocks, which a 15-task plan carries fifty
+  of. The damage is the rollback-and-re-steer rewinding mid-token (`depends_on: []` emerging as
+  `depend0]`), which *is* the validator's "malformed YAML".
+- **P1 is falsified in the reverse direction.** Predicted: arm B ≥ 2× arm A on decode rate.
+  Observed on the framing workload: arm A 28.8–29.2 tok/s, arm B 12–14 tok/s, both decode-only
+  from each engine's own reporting. P2–P6 are unanswerable — they read from counted cycles that
+  never ran, because arm B cannot clear `governance.merge_plan` to reach build.
+- **Model support was never there.** `Qwen/Qwen3.8-27B-FP8` is absent from the supported-model
+  table of the shipped image's README, the GitHub README, and the GB10 Deployment Guide; it
+  exists only as an `atlas-recipes` entry annotated "tested on binary main 680b3a568". R11
+  reproduced the identical outcome on the NVFP4 checkpoint the §2 precondition-3 kernel audit
+  actually covered, closing that gap rather than leaving it as a possible explanation.
+
+**What this does not change.** Everything this SIP built other than the Atlas adapter stands and
+is shipped: provider selection as required configuration (§3.1, #1157/#1164), declared rather
+than inferred capabilities (§3.2), on-port model availability (§3.3), provider-scoped model
+identity (§3.4), and the conformance suite (§3.6). The negative is about one engine, not about
+the seam — and the seam is what made the engine swappable enough to reject cheaply.
+
+### 1.2b P6 activates: vLLM becomes the A/B's second arm (owner ruling, 2026-08-29)
+
+§3.5a wrote P6 as "optional, non-gating" and named its secondary value: "it hedges P4/P5 failure
+— a second migration target already proven through the same gate." P4/P5 failed; the hedge is
+called. **vLLM replaces Atlas as arm B against production Ollama.** P6 is no longer optional.
+
+Already in place, requiring no new work: `adapters/llm/vllm.py`, `VLLMAdapter` green at 16 unit
+tests, factory selection on `provider == "vllm"`, `"vllm"` in the config schema, and coverage in
+the shared conformance suite. Outstanding: a live serve on the box, a `docker-compose.vllm.yml`
+on the pattern of `docker-compose.atlas.yml`, verification sets, and a fresh pre-registration —
+the Atlas one does not transfer, since its §1 fixed parameters and §3 predictions are engine-specific.
+
+**The gating unknown is the one §3.5a already stated** and it is now on the critical path rather
+than optional: "vLLM's maturity on DGX Spark's GB10 Grace Blackwell / ARM64 platform is
+**unverified here** … If it will not run well on the box, the control arm is unavailable and P6
+drops … **Verify before scheduling it, not after.**" A feasibility probe therefore precedes the
+new pre-registration. If it fails, this SIP's provider work still stands on Ollama alone and the
+A/B question closes for want of a second engine.
+
+### 1.2c A trap this SIP names cost the box 95 minutes (2026-08-29)
+
+Appendix C.5 trap 1 — both engines resident at once — is not only a measurement hazard on the
+Spark's **unified** 121 GiB. On 2026-08-29 an arm-A control replay was run directly against
+Ollama while the Atlas container still held `--gpu-memory-utilization 0.90`; the box went into
+swap thrash at 17:50 and was unreachable until a power cycle at ~19:25. Ollama's own log records
+it deciding to load anyway: `free="7.8 GiB"` against `need to reduce device memory by 28802 MiB`.
+Filed as #1177 (the A/B rig's arm-exclusivity guard is bypassable) and #1178 (the box has no OOM
+containment: no `systemd-oomd`, no earlyoom, no `MemoryMax=`). Any vLLM A/B inherits the trap and
+must carry the guard.
+
 ## 2. Problem Statement
 
 ### 2.0 What Atlas is (recorded here because nothing else records it)
