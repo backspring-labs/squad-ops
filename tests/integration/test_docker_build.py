@@ -155,7 +155,15 @@ def test_built_container_has_squadops_package(build_qa_image):
     )
 
     assert result.returncode == 0, f"Package import failed: {result.stderr}"
-    assert "0.8" in result.stdout or "0.9" in result.stdout, f"Unexpected version: {result.stdout}"
+    # A hardcoded "0.8"/"0.9" prefix asserted a version the project left behind — it was
+    # failing against 1.6.6 (#1099). The real invariant is that the image ships the same
+    # version as the source tree it was built from; that catches a stale image, which a
+    # prefix match never did.
+    from squadops import __version__ as source_version
+
+    assert result.stdout.strip() == source_version, (
+        f"image ships {result.stdout.strip()!r}, source tree is {source_version!r} — stale image?"
+    )
 
 
 @pytest.mark.integration

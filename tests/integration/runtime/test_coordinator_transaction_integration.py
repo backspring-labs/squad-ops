@@ -9,7 +9,6 @@ that the committed path writes the lease and mode together.
 
 from __future__ import annotations
 
-import os
 import socket
 import uuid
 from pathlib import Path
@@ -19,12 +18,11 @@ import pytest_asyncio
 
 from squadops.runtime import reasons
 from squadops.runtime.coordinator import RuntimeCoordinator
+from tests.integration.conftest import integration_postgres_dsn
 
 pytestmark = [pytest.mark.docker, pytest.mark.domain_runtime]
 
-POSTGRES_URL = os.getenv(
-    "POSTGRES_URL", "postgresql://squadops:squadops-dev@localhost:5432/squadops"
-)
+POSTGRES_URL = integration_postgres_dsn()  # #1099: never the deployment DB
 
 try:
     import asyncpg  # noqa: F401

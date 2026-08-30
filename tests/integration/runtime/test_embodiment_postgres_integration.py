@@ -10,7 +10,6 @@ detached history and a second agent's active embodiment are fine.
 
 from __future__ import annotations
 
-import os
 import socket
 import uuid
 from pathlib import Path
@@ -19,12 +18,11 @@ import pytest
 import pytest_asyncio
 
 from squadops.runtime.embodiment import Embodiment
+from tests.integration.conftest import integration_postgres_dsn
 
 pytestmark = [pytest.mark.docker, pytest.mark.domain_runtime]
 
-POSTGRES_URL = os.getenv(
-    "POSTGRES_URL", "postgresql://squadops:squadops-dev@localhost:5432/squadops"
-)
+POSTGRES_URL = integration_postgres_dsn()  # #1099: never the deployment DB
 
 try:
     import asyncpg

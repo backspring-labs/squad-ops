@@ -8,7 +8,6 @@ enforcement, and data durability across adapter restarts.
 from __future__ import annotations
 
 import asyncio
-import os
 import uuid
 from datetime import UTC, datetime
 
@@ -28,6 +27,7 @@ from squadops.cycles.models import (
     TaskFlowPolicy,
     ValidationError,
 )
+from tests.integration.conftest import integration_postgres_dsn
 
 pytestmark = [pytest.mark.docker, pytest.mark.domain_orchestration]
 
@@ -35,10 +35,7 @@ pytestmark = [pytest.mark.docker, pytest.mark.domain_orchestration]
 # Skip if Postgres is not reachable
 # ---------------------------------------------------------------------------
 
-POSTGRES_URL = os.getenv(
-    "POSTGRES_URL",
-    "postgresql://squadops:squadops-dev@localhost:5432/squadops",
-)
+POSTGRES_URL = integration_postgres_dsn()  # #1099: never the deployment DB
 
 try:
     import asyncpg  # noqa: F401
@@ -82,6 +79,16 @@ async def pool():
     await p.close()
 
 
+async def _truncate_cycle_tables(pool):
+    """Empty cycle_registry and everything that references it, transitively.
+
+    Safe only because the session guard in tests/integration/conftest.py has already
+    refused to connect to the deployment database (#1099).
+    """
+    async with pool.acquire() as conn:
+        await conn.execute("TRUNCATE TABLE cycle_registry CASCADE")
+
+
 @pytest_asyncio.fixture
 async def migrated_pool(pool):
     """Pool with migrations applied + clean state for test isolation."""
@@ -92,19 +99,15 @@ async def migrated_pool(pool):
     migrations_dir = Path(__file__).parents[3] / "infra" / "migrations"
     await apply_migrations(pool, migrations_dir)
 
-    # Clean tables before test (reverse FK order)
-    async with pool.acquire() as conn:
-        await conn.execute("DELETE FROM cycle_gate_decisions")
-        await conn.execute("DELETE FROM cycle_runs")
-        await conn.execute("DELETE FROM cycle_registry")
-
+    # Clean between tests. TRUNCATE ... CASCADE rather than a hand-listed DELETE order:
+    # the old list named cycle_gate_decisions / cycle_runs / cycle_registry and was written
+    # before pulse_verification_records, run_checkpoints and run_verification_summaries
+    # gained FKs onto cycle_runs, so every run raised ForeignKeyViolationError at setup —
+    # the sixteen failures of #1099. CASCADE derives the dependents from the live schema,
+    # so a new child table does not silently rot this fixture again.
+    await _truncate_cycle_tables(pool)
     yield pool
-
-    # Clean tables after test
-    async with pool.acquire() as conn:
-        await conn.execute("DELETE FROM cycle_gate_decisions")
-        await conn.execute("DELETE FROM cycle_runs")
-        await conn.execute("DELETE FROM cycle_registry")
+    await _truncate_cycle_tables(pool)
 
 
 @pytest_asyncio.fixture
