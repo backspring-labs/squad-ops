@@ -86,6 +86,14 @@ jobs:
           --health-interval 10s --health-timeout 5s --health-retries 10
       rabbitmq:
         image: rabbitmq:3.12-management
+        # The broker must CREATE the user the tests authenticate as. Setting only
+        # RABBITMQ_USER/PASSWORD in the job env configures the client side; the stock image
+        # ships `guest` alone, so every AMQP test failed with
+        # "PLAIN login refused: user 'squadops' - invalid credentials". Must match the
+        # RABBITMQ_USER / RABBITMQ_PASSWORD under `env:` below.
+        env:
+          RABBITMQ_DEFAULT_USER: squadops
+          RABBITMQ_DEFAULT_PASS: squadops-dev
         ports: ["5672:5672", "15672:15672"]
         options: >-
           --health-cmd "rabbitmq-diagnostics -q ping"
