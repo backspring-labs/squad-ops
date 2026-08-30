@@ -278,6 +278,13 @@ class OllamaAdapter(LLMPort):
                 completion_tokens=completion_tok,
                 total_tokens=total_tok,
                 tokens_per_second=tps,
+                # #410: qwen3-family models return thinking here, separate from content.
+                # It was read past and dropped, so the tokens it cost were paid for,
+                # counted in eval_count, and then invisible to every consumer. `.get`
+                # with no default keeps None (channel absent) distinct from "" (present
+                # and empty), which is the difference between "did not think" and
+                # "thought and said nothing".
+                reasoning_text=message_data.get("thinking"),
             )
         except httpx.TimeoutException as e:
             raise LLMTimeoutError(f"Ollama chat timed out after {timeout}s") from e

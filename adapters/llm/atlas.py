@@ -303,6 +303,11 @@ class AtlasAdapter(LLMPort):
             total_tokens=total_tok,
             tokens_per_second=tps,
             reasoning_tokens=reasoning_tok,
+            # #410: the OpenAI-compatible reasoning channel. Atlas documents it at
+            # ``message.reasoning_content`` (SIP-0106 §2.0); vLLM populates the same
+            # field when served with a --reasoning-parser. `.get` with no default
+            # keeps None (no channel) distinct from "" (channel present, empty).
+            reasoning_text=message.get("reasoning_content"),
         )
 
     async def _stream_frames(
