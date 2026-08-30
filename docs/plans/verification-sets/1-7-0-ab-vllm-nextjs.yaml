@@ -9,7 +9,7 @@
 name: 1-7-0-ab-vllm-nextjs
 pre_registration: docs/plans/1-7-0-atlas-ab-preregistration.md  # historical only; see STATUS above
 project: group_run
-squad_profile: full-38
+squad_profile: full-38-atlas
 request_profile: validated-fullstack
 overrides:
   build_profile: nextjs_ts
@@ -23,6 +23,15 @@ launch_notes: >-
   1.7.0 Atlas A/B — arm ollama, COUNTED roll {roll} of {n} on nextjs_ts. Frozen deploy per the
   pre-registration; predictions P1–P5; the pair's other arm is the comparison.
 shakeout_notes: >-
+  PROFILE NAME CAVEAT: this runs `full-38-atlas`, whose name says Atlas. It is used because
+  its model ids are `Qwen/Qwen3.8-27B-FP8` — the HuggingFace path, which is how BOTH Atlas and
+  vLLM name the same checkpoint (SIP-0106 §3.4, provider-scoped identity). The profile's model
+  pins are therefore exactly right for vLLM; only its name and description are Atlas-specific,
+  and those are over-narrow rather than wrong. A `full-38-vllm` profile would need a
+  runtime-api rebuild (config/squad-profiles.yaml is baked into the image), which would change
+  the frozen deploy identity mid-diagnostic. The ENGINE actually used is recorded truthfully by
+  the driver's own deploy-identity line (`vllm Qwen/Qwen3.8-27B-FP8 http://...:8000`), not by
+  the profile name. Fix the naming before anything COUNTED runs on vLLM.
   vLLM engine bring-up shakeout, NON-COUNTING by declaration before launch. First cycle ever
   on this engine. Serve line: upstream vllm/vllm-openai 0.28.0, Qwen3.8-27B-FP8,
   --gpu-memory-utilization 0.75, --max-model-len 32768, --reasoning-parser qwen3 (load-bearing:
