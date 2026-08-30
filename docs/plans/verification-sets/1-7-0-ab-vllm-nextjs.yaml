@@ -1,0 +1,37 @@
+# 1.7.0 arm vLLM — Next.js+TS. Engine bring-up, NOT an A/B arm yet.
+# STATUS 2026-08-30: the Atlas A/B is stopped (negative result, SIP-0106 §1.2a) and the
+# vLLM-vs-Ollama pre-registration is NOT yet written. This set exists to shake out the
+# vLLM engine end to end. Nothing run from it counts until a pre-registration exists;
+# `n_rolls` and the launch notes below are inert placeholders until then.
+#
+# Arm entry is `~/atlas/scripts/arm.sh V` — never by starting vLLM by hand. The Spark's
+# memory is unified and two 27B servers livelocked the box on 2026-08-29 (#1177).
+name: 1-7-0-ab-vllm-nextjs
+pre_registration: docs/plans/1-7-0-atlas-ab-preregistration.md  # historical only; see STATUS above
+project: group_run
+squad_profile: full-38
+request_profile: validated-fullstack
+overrides:
+  build_profile: nextjs_ts
+  dev_capability: nextjs_ts
+gate_name: progress_plan_review
+n_rolls: 2
+gate_notes: >-
+  1.7.0 Atlas A/B, arm ollama. Approved under the pre-registered gate policy — identical text
+  applied to every roll of this set. System plan validation passed; no additional judgment applied.
+launch_notes: >-
+  1.7.0 Atlas A/B — arm ollama, COUNTED roll {roll} of {n} on nextjs_ts. Frozen deploy per the
+  pre-registration; predictions P1–P5; the pair's other arm is the comparison.
+shakeout_notes: >-
+  vLLM engine bring-up shakeout, NON-COUNTING by declaration before launch. First cycle ever
+  on this engine. Serve line: upstream vllm/vllm-openai 0.28.0, Qwen3.8-27B-FP8,
+  --gpu-memory-utilization 0.75, --max-model-len 32768, --reasoning-parser qwen3 (load-bearing:
+  without it the model's thinking returns inline in content and would corrupt merge_plan's
+  YAML). Live port conformance passed 14/14 against this server before launch.
+loaded_checks:
+  runtime-api: >-
+    from squadops.config import load_config; c = load_config();
+    print(c.llm.provider, c.llm.model, c.llm.url)
+  eve: >-
+    from squadops.config import load_config; c = load_config();
+    print(c.llm.provider, c.llm.model, c.llm.url)
