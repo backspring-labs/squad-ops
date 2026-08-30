@@ -1,0 +1,45 @@
+# vLLM arm (SIP-0106 P6, activated by §1.2b after the Atlas A/B returned a negative).
+# Pairs with ~/atlas/scripts/vllm_serve.sh. Usage:
+#   VLLM_MODEL=Qwen/Qwen3.8-27B docker compose -f docker-compose.yml -f docker-compose.vllm.yml up -d ...
+# No API key: vLLM serves unauthenticated on the loopback, unlike Atlas (--require-auth).
+services:
+  runtime-api:
+    environment:
+      SQUADOPS__LLM__PROVIDER: vllm
+      SQUADOPS__LLM__URL: http://host.docker.internal:8000
+      SQUADOPS__LLM__MODEL: "${VLLM_MODEL:?set VLLM_MODEL to the HF id vLLM serves}"
+  max:
+    environment:
+      SQUADOPS__LLM__PROVIDER: vllm
+      SQUADOPS__LLM__URL: http://host.docker.internal:8000
+      SQUADOPS__LLM__MODEL: "${VLLM_MODEL:?set VLLM_MODEL to the HF id vLLM serves}"
+  nat:
+    environment:
+      SQUADOPS__LLM__PROVIDER: vllm
+      SQUADOPS__LLM__URL: http://host.docker.internal:8000
+      SQUADOPS__LLM__MODEL: "${VLLM_MODEL:?set VLLM_MODEL to the HF id vLLM serves}"
+  neo:
+    environment:
+      SQUADOPS__LLM__PROVIDER: vllm
+      SQUADOPS__LLM__URL: http://host.docker.internal:8000
+      SQUADOPS__LLM__MODEL: "${VLLM_MODEL:?set VLLM_MODEL to the HF id vLLM serves}"
+  eve:
+    environment:
+      SQUADOPS__LLM__PROVIDER: vllm
+      SQUADOPS__LLM__URL: http://host.docker.internal:8000
+      SQUADOPS__LLM__MODEL: "${VLLM_MODEL:?set VLLM_MODEL to the HF id vLLM serves}"
+  data:
+    environment:
+      SQUADOPS__LLM__PROVIDER: vllm
+      SQUADOPS__LLM__URL: http://host.docker.internal:8000
+      SQUADOPS__LLM__MODEL: "${VLLM_MODEL:?set VLLM_MODEL to the HF id vLLM serves}"
+  bob:
+    environment:
+      SQUADOPS__LLM__PROVIDER: vllm
+      SQUADOPS__LLM__URL: http://host.docker.internal:8000
+      SQUADOPS__LLM__MODEL: "${VLLM_MODEL:?set VLLM_MODEL to the HF id vLLM serves}"
+  joi:
+    environment:
+      SQUADOPS__LLM__PROVIDER: vllm
+      SQUADOPS__LLM__URL: http://host.docker.internal:8000
+      SQUADOPS__LLM__MODEL: "${VLLM_MODEL:?set VLLM_MODEL to the HF id vLLM serves}"

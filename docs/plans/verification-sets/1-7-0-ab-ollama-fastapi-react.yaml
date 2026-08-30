@@ -1,6 +1,8 @@
-# 1.7.0 Atlas A/B (#1160), arm OLLAMA — FastAPI+React pair (correction texture). Pre-registration:
-# docs/plans/1-7-0-atlas-ab-preregistration.md. Rolls interleave with the other arm
-# (A3, B3); the arm switch and engine isolation are manual between rolls.
+# 1.7.0 arm OLLAMA — FastAPI+React (correction texture). Pre-registration (historical,
+# the set it was authored for): docs/plans/1-7-0-atlas-ab-preregistration.md
+# STATUS 2026-08-29: the Atlas A/B (#1160) is STOPPED — negative result, no counted
+# rolls ran. This set is retained for fix-validation shakeouts and will be rewritten
+# against the vLLM-vs-Ollama pre-registration when that is authored (SIP-0106 §1.2b).
 name: 1-7-0-ab-ollama-fastapi-react
 pre_registration: docs/plans/1-7-0-atlas-ab-preregistration.md
 project: group_run
@@ -16,8 +18,12 @@ launch_notes: >-
   1.7.0 Atlas A/B — arm ollama, COUNTED roll {roll} of {n} on fastapi-react_ts. Frozen deploy per the
   pre-registration; predictions P1, P3, P4, P6; the pair's other arm is the comparison.
 shakeout_notes: >-
-  1.7.0 Atlas A/B — arm ollama SHAKEOUT, NON-COUNTING by declaration before launch: the first
-  cycle ever on this engine; also the warm-up Appendix C.2 requires, recorded and flagged.
+  Fix-validation shakeout, NON-COUNTING by declaration before launch. Validates #1171 (framing
+  generations costed at zero tokens), #1172 (merge_plan emitted no generation record) and #1173
+  (completion budget ignored declared reasoning level) end to end on the post-#1174 frozen
+  deploy. Not an A/B roll: the Atlas A/B was stopped on 2026-08-29 as a negative result
+  (SIP-0106 §1.2a, docs/plans/1-7-0-atlas-ab-record.md). The superseding pre-registration for
+  the vLLM-vs-Ollama A/B is not yet written; the counted-roll fields below are inert until it is.
 loaded_checks:
   runtime-api: >-
     from squadops.config import load_config; c = load_config();
