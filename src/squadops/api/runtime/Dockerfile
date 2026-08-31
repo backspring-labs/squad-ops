@@ -7,7 +7,7 @@
 #   docker build -t squadops-runtime-api -f src/squadops/api/runtime/Dockerfile .
 
 # Stage 1: Build validation
-FROM python:3.11-slim AS builder
+FROM python:3.12-slim AS builder
 WORKDIR /build
 
 # Copy source for validation
@@ -20,7 +20,7 @@ RUN python -c "from pathlib import Path; assert Path('src/squadops/api/runtime/m
 
 
 # Stage 2: Runtime image
-FROM python:3.11-slim
+FROM python:3.12-slim
 WORKDIR /app
 ENV SQUADOPS_BASE_PATH=/app
 

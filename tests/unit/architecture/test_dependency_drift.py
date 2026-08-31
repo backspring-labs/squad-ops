@@ -8,10 +8,14 @@ Verified on 2026-08-30 in the running agent container, not merely read off the f
 numpy 1.26.4 in the image against 2.4.6 in CI, lancedb 0.8.2 against 0.33.0, pyarrow
 15.0.0 against 24.0.0 — major-version gaps under the memory system and the array stack.
 
-Closing those is an upgrade with real breakage risk and is deliberately NOT this check's
-job. This is a **ratchet**: it accepts the divergence that exists today, recorded in
-``DIVERGENCE_BASELINE``, and fails when the gap widens or narrows without the baseline
-being updated. It exists so the gap cannot grow silently while the upgrade is pending.
+The images-up upgrade closed 40 of the 42, and the locks are now compiled *against*
+ci-constraints.txt (``scripts/maintainer/update_deps.sh``), so a shared package cannot
+diverge by construction. What remains is what genuinely cannot follow CI, and this check
+is now about **documentation** rather than a frozen count: every divergence must appear
+in ``requirements/constraint-exceptions.txt`` with a recorded reason, and every listed
+exception must still be real. A hardcoded baseline could record 42 anonymous numbers; a
+reason file cannot, which is the point — "why is this one allowed" has an answer next to
+the name.
 """
 
 from __future__ import annotations
@@ -26,55 +30,21 @@ pytestmark = [pytest.mark.unit, pytest.mark.domain_contracts]
 REPO = Path(__file__).resolve().parents[3]
 CI_CONSTRAINTS = REPO / "ci-constraints.txt"
 LOCKS = ("requirements/api.lock", "requirements/agent.lock", "requirements/base.lock")
+EXCEPTIONS_FILE = REPO / "requirements" / "constraint-exceptions.txt"
 
-#: Packages the image locks and ci-constraints.txt currently disagree on. Every entry is
-#: a version CI does not actually test. SHRINK this list as the images-up upgrade lands;
-#: never grow it to make a red test pass — a new entry means a dependency was added or
-#: bumped on one side only, which is the defect this guards.
-DIVERGENCE_BASELINE = {
-    "a2a-sdk",
-    "aio-pika",
-    "aiormq",
-    "anyio",
-    "asyncpg",
-    "attrs",
-    "certifi",
-    "charset-normalizer",
-    "click",
-    "cryptography",
-    "ecdsa",
-    "fastapi",
-    "google-api-core",
-    "google-auth",
-    "googleapis-common-protos",
-    "greenlet",
-    "idna",
-    "lancedb",
-    "numpy",
-    "packaging",
-    "pamqp",
-    "propcache",
-    "proto-plus",
-    "protobuf",
-    "pyarrow",
-    "pyasn1",
-    "pydantic",
-    "pydantic-core",
-    "python-dotenv",
-    "python-multipart",
-    "pyyaml",
-    "redis",
-    "requests",
-    "rpds-py",
-    "sqlalchemy",
-    "sse-starlette",
-    "starlette",
-    "tqdm",
-    "urllib3",
-    "uvicorn",
-    "wrapt",
-    "yarl",
-}
+
+def _documented_exceptions() -> set[str]:
+    """Packages allowed to diverge, read from the file that carries their reasons.
+
+    The same file ``update_deps.sh`` filters out of the constraint, so the exception a
+    compile honours and the exception a test permits are one fact, not two.
+    """
+    return {
+        line.split("#", 1)[0].strip().lower().replace("_", "-")
+        for line in EXCEPTIONS_FILE.read_text().splitlines()
+        if line.split("#", 1)[0].strip()
+    }
+
 
 _PIN = re.compile(r"^([A-Za-z0-9._-]+)==([^\s;]+)")
 
@@ -102,27 +72,59 @@ def _observed_divergence() -> dict[str, tuple[str, str]]:
     return seen
 
 
-def test_no_new_dependency_divergence():
-    """A package the images and CI newly disagree on is a version CI never tests."""
+def test_every_divergence_is_documented():
+    """A package the images and CI disagree on is a version CI never tests.
+
+    Since the locks compile against ci-constraints.txt, reaching this state at all takes
+    a deliberate act: adding the package to the exceptions file, or removing the
+    constraint. The first is fine and must carry a reason; the second should be loud.
+    """
     observed = _observed_divergence()
-    new = sorted(set(observed) - DIVERGENCE_BASELINE)
-    assert not new, (
-        "These packages newly disagree between the image locks and ci-constraints.txt:\n"
-        + "\n".join(f"  {p:24} image={observed[p][0]:14} CI={observed[p][1]}" for p in new)
+    undocumented = sorted(set(observed) - _documented_exceptions())
+    assert not undocumented, (
+        "These packages disagree between the image locks and ci-constraints.txt with no\n"
+        "recorded reason:\n"
+        + "\n".join(f"  {p:24} image={observed[p][0]:14} CI={observed[p][1]}" for p in undocumented)
         + "\n\nCI's greens say nothing about the versions the images actually install."
-        "\nReconcile the pin rather than adding it to DIVERGENCE_BASELINE — the baseline"
-        "\nrecords the debt #1041 inherited, not a place to park new debt."
+        "\nRe-run scripts/maintainer/update_deps.sh to reconcile. If the package genuinely"
+        "\ncannot follow CI, add it to requirements/constraint-exceptions.txt WITH THE"
+        "\nREASON — an entry without one is not an exception, it is unfinished work."
     )
 
 
-def test_baseline_has_no_stale_entries():
-    """A resolved divergence must leave the baseline, so the debt stays countable."""
+def test_no_exception_outlives_its_reason():
+    """A listed exception that no longer diverges must go.
+
+    An exceptions file that accumulates is how a documented exception becomes an
+    undocumented one: nobody re-reads a name that has been there for a year, and the
+    reason quietly stops being true.
+    """
     observed = _observed_divergence()
-    stale = sorted(DIVERGENCE_BASELINE - set(observed))
+    stale = sorted(_documented_exceptions() - set(observed))
     assert not stale, (
-        "These packages no longer diverge — good. Remove them from DIVERGENCE_BASELINE:\n"
+        "These packages no longer diverge — good. Remove them from\n"
+        "requirements/constraint-exceptions.txt, with their reasons:\n"
         + "\n".join(f"  {p}" for p in stale)
-        + "\n\nAn unpruned baseline hides how much of #1041 is left."
+    )
+
+
+def test_every_exception_carries_a_reason():
+    """The file's own rule, enforced: a bare name is not an exception.
+
+    Without this the file degrades into exactly the anonymous list it replaced.
+    """
+    lines = EXCEPTIONS_FILE.read_text().splitlines()
+    unreasoned = []
+    for i, line in enumerate(lines):
+        if not line.split("#", 1)[0].strip():
+            continue
+        preceding = [ln for ln in lines[:i][::-1]]
+        commented = next((ln for ln in preceding if ln.strip()), "")
+        if not commented.lstrip().startswith("#"):
+            unreasoned.append(line.strip())
+    assert not unreasoned, (
+        "These exceptions have no comment above them explaining why they cannot follow\n"
+        "ci-constraints.txt:\n" + "\n".join(f"  {p}" for p in unreasoned)
     )
 
 
@@ -133,3 +135,36 @@ def test_the_locks_and_constraints_are_parseable_and_nonempty():
     for lock in LOCKS:
         pins = _pins(REPO / lock)
         assert len(pins) > 10, f"{lock} parsed to only {len(pins)} pins"
+
+
+def test_the_locks_agree_with_each_other():
+    """Two images running the same ``src/squadops/`` code must install the same versions.
+
+    The bug this caught: the checks above compare each lock against ci-constraints and
+    never against each other, so a package absent from CI's set could sit at different
+    versions in two images indefinitely. api.lock had langfuse 2.36.2 with packaging
+    23.2 while agent.lock had 2.60.10 with 24.2 — a 24-minor gap in the LangFuse client,
+    under one shared adapter (``adapters/telemetry/langfuse/``).
+
+    It survived a regeneration because ``pip-compile`` treats an existing lock as a
+    preference and keeps any pin that still satisfies the constraint, so both files were
+    rewritten and neither moved. ``update_deps.sh`` passes ``--upgrade`` for exactly this
+    reason; this test is what notices if that ever stops being true.
+    """
+    pins = {lock: _pins(REPO / lock) for lock in LOCKS}
+    disagreements: list[str] = []
+    for i, left in enumerate(LOCKS):
+        for right in LOCKS[i + 1 :]:
+            shared = set(pins[left]) & set(pins[right])
+            for pkg in sorted(shared):
+                if pins[left][pkg] != pins[right][pkg]:
+                    disagreements.append(
+                        f"  {pkg:24} {Path(left).name}={pins[left][pkg]:14} "
+                        f"{Path(right).name}={pins[right][pkg]}"
+                    )
+    assert not disagreements, (
+        "These packages are pinned at different versions across the image locks:\n"
+        + "\n".join(disagreements)
+        + "\n\nThe same framework code runs in both images. Re-run"
+        "\nscripts/maintainer/update_deps.sh (which passes --upgrade) to reconcile."
+    )

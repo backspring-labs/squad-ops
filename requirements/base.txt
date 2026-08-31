@@ -1,11 +1,20 @@
 # SquadOps Base Dependencies (shared by all containers)
+#
+# Every shared pin here is a FLOOR, not a ceiling: `scripts/maintainer/update_deps.sh`
+# compiles these with `-c ci-constraints.txt`, so any package CI also pins resolves to
+# CI's exact version. That is what makes the deployed set a subset of the tested set by
+# construction rather than by discipline (#1041) — before this, the locks resolved
+# independently and 42 packages disagreed, so the regression suite exercised versions no
+# deployed image installed. Pin a package exactly here only when its version must NOT
+# follow CI, and say why (see pyflakes in base.txt).
+
 
 # Core data models
 pydantic>=2.7.3
 
 # Configuration
-python-dotenv==1.0.0
-pyyaml==6.0.1
+python-dotenv>=1.0.0
+pyyaml>=6.0.1
 
 # HTTP client
 httpx>=0.27.0

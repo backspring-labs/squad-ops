@@ -6,7 +6,7 @@
 # Usage:
 #   docker build -t squadops-sandbox-service -f src/squadops/sandbox/Dockerfile .
 
-FROM python:3.11-slim
+FROM python:3.12-slim
 WORKDIR /app
 ENV SQUADOPS_BASE_PATH=/app
 

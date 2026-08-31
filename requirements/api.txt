@@ -1,21 +1,36 @@
 # SquadOps Runtime API Container Dependencies
+#
+# Every shared pin here is a FLOOR, not a ceiling: `scripts/maintainer/update_deps.sh`
+# compiles these with `-c ci-constraints.txt`, so any package CI also pins resolves to
+# CI's exact version. That is what makes the deployed set a subset of the tested set by
+# construction rather than by discipline (#1041) — before this, the locks resolved
+# independently and 42 packages disagreed, so the regression suite exercised versions no
+# deployed image installed. Pin a package exactly here only when its version must NOT
+# follow CI, and say why (see pyflakes in base.txt).
+
 -r base.txt
 
 # Web framework
-fastapi==0.104.1
-uvicorn==0.24.0
-python-multipart==0.0.6
+fastapi>=0.104.1
+uvicorn>=0.24.0
+python-multipart>=0.0.6
 jinja2>=3.1.2
 
 # Message queue
-aio-pika==9.3.1
+aio-pika>=9.3.1
 
 # Database
-asyncpg==0.29.0
+asyncpg>=0.29.0
 sqlalchemy>=2.0.0
 
-# Health checker (platform_health routes)
-redis>=5.0.0,<6.0.0
+# Health checker (platform_health routes).
+# The `<6.0.0` cap was a conventional major bound with no recorded rationale, and it
+# excluded the redis CI has been testing against all along (8.0.0) — the #1041 gap in
+# one line. Relaxed to a floor so the constraint governs; usage is `redis.asyncio`
+# in two places (`api/runtime/main.py`, `adapters/persistence/chat_cache.py`).
+# The `langfuse<3.0` cap below is NOT of this kind: v3 is a breaking API change, the
+# adapter targets v2, and compose runs `langfuse/langfuse:2`. It stays.
+redis>=5.0.0
 
 # Auth (SIP-0062)
 python-jose[cryptography]>=3.3.0
