@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 from collections import Counter
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
@@ -24,6 +25,7 @@ from squadops.capabilities.handlers.build_profiles import (
     ROUTING_BUILDER_PRESENT,
     ROUTING_FALLBACK_NO_BUILDER,
 )
+from squadops.capabilities.reasoning_policy import REASONING_OVERRIDE_KEY
 from squadops.capabilities.scaffold import (
     InterfaceManifest,
     frozen_surface_index_lines,
@@ -59,6 +61,7 @@ from squadops.cycles.models import (
     SquadProfile,
     WorkloadType,
 )
+from squadops.cycles.profile_utils import validate_reasoning_override
 from squadops.cycles.proposed_role_tasks import role_to_id
 from squadops.tasks.models import TaskEnvelope
 
@@ -764,6 +767,48 @@ def _bind_plan_criteria(plan, contract):
     return bound
 
 
+def _apply_cycle_reasoning(
+    agent_overrides: Mapping[str, Any], cycle_reasoning: str | None
+) -> Mapping[str, Any]:
+    """The agent's overrides with the cycle-level reasoning level layered on (#927).
+
+    A cycle-level value WINS over the profile's. That is the point of the rung: an
+    experiment says "run this cycle at this level" and should not be silently
+    overruled by a profile written for ordinary use. With no cycle-level value the
+    overrides are returned untouched, so the profile's own override still applies and
+    a cycle that sets nothing sends nothing.
+    """
+    if cycle_reasoning is None:
+        return agent_overrides
+    return {**agent_overrides, REASONING_OVERRIDE_KEY: cycle_reasoning}
+
+
+def _resolve_cycle_reasoning(cycle: Cycle) -> str | None:
+    """The cycle-level reasoning level, validated, or None when unset (#927).
+
+    #927's chain is model dial -> capability declaration -> agent override ->
+    cycle/CRP override, precedence increasing left to right. This is the last rung:
+    a level from the CRP's ``applied_defaults`` or the run's ``execution_overrides``,
+    which lets an experiment say "run this cycle at this level" without editing the
+    squad profile for every arm.
+
+    Validated here rather than trusted. A misspelt level would otherwise reach the
+    adapter and be sent as though it were real — the failure
+    ``validate_reasoning_override`` already prevents for the profile-level knob — and
+    it fails once at plan time rather than silently on every generation.
+
+    Its own function because it is a property of the cycle, not of a step, and
+    because inlining it pushed ``generate_task_plan`` past the complexity limit.
+    """
+    level = cycle.resolved_config().get(REASONING_OVERRIDE_KEY)
+    if level is None:
+        return None
+    errors = validate_reasoning_override({REASONING_OVERRIDE_KEY: level})
+    if errors:
+        raise ValueError(f"cycle-level reasoning override is invalid: {errors[0]}")
+    return level
+
+
 def generate_task_plan(
     cycle: Cycle,
     run: Run,
@@ -797,6 +842,7 @@ def generate_task_plan(
         Ordered list of TaskEnvelopes, one per pipeline step.
     """
     profile_roles = {a.role for a in profile.agents if a.enabled}
+    cycle_reasoning = _resolve_cycle_reasoning(cycle)
 
     # SIP-0093 PR 93.3: framing workload threads plan_authoring_contributors
     # through resolved_config so the proposer steps are added/skipped per
@@ -896,7 +942,7 @@ def generate_task_plan(
         resolved = step_resolutions[step_index]
         agent_id = resolved.agent_id
         agent_model = resolved.model
-        agent_overrides = resolved.config_overrides
+        agent_overrides = _apply_cycle_reasoning(resolved.config_overrides, cycle_reasoning)
 
         metadata: dict = {
             "step_index": step_index,
