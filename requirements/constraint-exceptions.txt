@@ -1,0 +1,28 @@
+# Packages the image locks may NOT follow ci-constraints.txt on (#1041).
+#
+# `scripts/maintainer/update_deps.sh` compiles the locks against ci-constraints.txt so
+# the deployed set is a subset of the tested set by construction. Where that is
+# genuinely impossible, the package is listed here WITH ITS REASON and filtered out of
+# the constraint before compiling. `tests/unit/architecture/test_dependency_drift.py`
+# reads this file: a divergence not listed here fails CI, and a listing that no longer
+# diverges fails too, so the exception set stays exactly as large as reality.
+#
+# One name per line, reason in the comment above it. An entry without a reason is not
+# an exception, it is unfinished work.
+
+# langfuse 2.x — every published 2.x release caps `packaging<25.0` (checked across
+# 2.36.2, 2.50.0, 2.59.7, 2.60.10 on 2026-08-31), while CI pins packaging==26.2. The
+# deployment cannot leave langfuse v2: the adapter targets the v2 API (SIP-0061) and
+# docker-compose runs the `langfuse/langfuse:2` server. So this is not a pin anyone
+# chose — it is the transitive consequence of a server version, and it means CI has
+# been testing a `packaging` no langfuse-v2 deployment can install. Revisit when the
+# LangFuse v3 migration is taken, not before.
+packaging
+
+# wrapt — the same cause as `packaging` above, found the same way: langfuse 2.x caps
+# `wrapt<2.0` and CI pins 2.2.2. Both are transitive consequences of the LangFuse
+# server version, not choices anyone made about wrapt. Enumerated by resolving
+# langfuse 2.60.10's requires_dist against ci-constraints.txt rather than by
+# rediscovering them one failed compile at a time; those two are the complete set as
+# of 2026-08-31.
+wrapt

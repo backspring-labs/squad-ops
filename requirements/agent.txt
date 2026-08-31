@@ -1,11 +1,20 @@
 # SquadOps Agent Container Dependencies
+#
+# Every shared pin here is a FLOOR, not a ceiling: `scripts/maintainer/update_deps.sh`
+# compiles these with `-c ci-constraints.txt`, so any package CI also pins resolves to
+# CI's exact version. That is what makes the deployed set a subset of the tested set by
+# construction rather than by discipline (#1041) — before this, the locks resolved
+# independently and 42 packages disagreed, so the regression suite exercised versions no
+# deployed image installed. Pin a package exactly here only when its version must NOT
+# follow CI, and say why (see pyflakes in base.txt).
+
 -r base.txt
 
 # Message queue
-aio-pika==9.3.1
+aio-pika>=9.3.1
 
 # Memory system (SIP-042)
-lancedb==0.8.2
+lancedb>=0.8.2
 
 # A2A Messaging (SIP-0085)
 a2a-sdk[http-server]>=0.3.0
