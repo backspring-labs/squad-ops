@@ -5,6 +5,10 @@
 # Nightly backup of the deployment Postgres (#1181). Installed deliberately rather than by
 # bootstrap: it writes host systemd units and needs sudo, so a fresh clone should not
 # silently acquire it — only a machine actually holding data worth keeping.
+#
+# OWNER RULING 2026-08-30: this is NOT to be wired into bootstrap for future machines. It
+# stays a deliberate per-machine step. Recorded here so the absence reads as a decision
+# rather than an oversight, and so nobody "fixes" it by adding it to a profile.
 [Unit]
 Description=SquadOps deployment database backup
 After=docker.service
