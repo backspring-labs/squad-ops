@@ -270,3 +270,53 @@ def test_the_fill_seam_capture_is_wired_at_the_parse_site():
     assert min(log_lines) > min(parse_calls), (
         "the capture must follow the parse — before it, there is nothing to report"
     )
+
+
+class TestReasoningSplitSeparatesTheTwoFailures:
+    """#924 named ``chars=0 completion_tokens=6866`` as the line confirming its
+    diagnosis. It does not: that shape fits both "thought the budget away" and
+    "emitted tokens the parser rejected", which have opposite fixes."""
+
+    def test_budget_exhaustion_and_rejected_output_are_distinguishable(self, caplog):
+        with caplog.at_level(logging.INFO):
+            log_emission_shape("qa_test", "", 6866, 6800)
+            log_emission_shape("qa_test", "", 6866, 0)
+        exhausted, rejected = caplog.messages[-2], caplog.messages[-1]
+        assert "reasoning_tokens=6800" in exhausted
+        assert "reasoning_tokens=0" in rejected
+        assert exhausted != rejected, "the two failure modes must not render identically"
+
+    def test_absent_reasoning_figure_is_omitted_not_zero_filled(self, caplog):
+        """A caller with no reasoning figure must not have one invented for it —
+        reporting 0 would assert the model did not think, which is a claim."""
+        with caplog.at_level(logging.INFO):
+            log_emission_shape("qa_test", "content", 413)
+        assert "reasoning_tokens" not in caplog.messages[-1]
+        assert "completion_tokens=413" in caplog.messages[-1]
+
+
+def test_every_emission_call_site_reports_the_reasoning_split():
+    """All 18 call sites pass a reasoning figure.
+
+    A seam that logs only ``completion_tokens`` is the one where #924's ambiguity
+    survives — and it would be silently absent rather than wrong, which is why this
+    is asserted structurally rather than left to review.
+    """
+    import re
+
+    handlers = Path(__file__).resolve().parents[3] / "src/squadops/capabilities/handlers"
+    call = re.compile(r"log_emission_shape\((?:[^()]|\([^()]*\))*\)")
+    missing = []
+    total = 0
+    for path in handlers.rglob("*.py"):
+        text = path.read_text()
+        for m in call.finditer(text):
+            if "def log_emission" in m.group(0):
+                continue
+            total += 1
+            if "reasoning_tokens" not in m.group(0):
+                missing.append(
+                    f"{path.relative_to(handlers)}:{text[: m.start()].count(chr(10)) + 1}"
+                )
+    assert total >= 18, f"expected the known call sites, found {total} — did the scan break?"
+    assert not missing, "call sites not reporting the reasoning split:\n  " + "\n  ".join(missing)

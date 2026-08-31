@@ -104,6 +104,7 @@ class GovernanceReviewPlanHandler(_PlanningTaskHandler):
             f"{self._handler_name}:frontmatter_retry",
             response.content if response else None,
             getattr(response, "completion_tokens", None),
+            getattr(response, "reasoning_tokens", None),
         )
         return response.content if response and response.content else None
 

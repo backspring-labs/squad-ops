@@ -166,7 +166,9 @@ class DataAnalyzeFailureHandler(_CycleTaskHandler):
             return HandlerResult(success=False, outputs={}, _evidence=evidence, error=str(exc))
 
         content = response.content
-        log_emission_shape(self._handler_name, content, response.completion_tokens)
+        log_emission_shape(
+            self._handler_name, content, response.completion_tokens, response.reasoning_tokens
+        )
 
         # #1008: one bounded re-ask when extraction fails (the V38 shakedown's
         # mid-object truncation) — the handler owns the retried call so model,
@@ -179,7 +181,10 @@ class DataAnalyzeFailureHandler(_CycleTaskHandler):
             ]
             retry = await context.ports.llm.chat_stream_with_usage(retry_messages, **chat_kwargs)
             log_emission_shape(
-                f"{self._handler_name}:json_reask", retry.content, retry.completion_tokens
+                f"{self._handler_name}:json_reask",
+                retry.content,
+                retry.completion_tokens,
+                retry.reasoning_tokens,
             )
             return retry.content
 

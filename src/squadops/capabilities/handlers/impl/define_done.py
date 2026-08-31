@@ -97,7 +97,9 @@ class GovernanceDefineDoneHandler(_CycleTaskHandler):
             )
 
         content = response.content
-        log_emission_shape(self._handler_name, content, response.completion_tokens)
+        log_emission_shape(
+            self._handler_name, content, response.completion_tokens, response.reasoning_tokens
+        )
 
         # #1008: one bounded re-ask when extraction fails (V38 shakedown truncation).
         async def _reask(feedback: str) -> str:
@@ -108,7 +110,10 @@ class GovernanceDefineDoneHandler(_CycleTaskHandler):
             ]
             retry = await context.ports.llm.chat_stream_with_usage(retry_messages, **chat_kwargs)
             log_emission_shape(
-                f"{self._handler_name}:json_reask", retry.content, retry.completion_tokens
+                f"{self._handler_name}:json_reask",
+                retry.content,
+                retry.completion_tokens,
+                retry.reasoning_tokens,
             )
             return retry.content
 

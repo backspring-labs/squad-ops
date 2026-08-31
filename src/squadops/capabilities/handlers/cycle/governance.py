@@ -166,7 +166,9 @@ class GovernanceReviewHandler(_CycleTaskHandler):
             return self._fail_result(start_time, inputs, str(exc))
 
         content = response.content
-        log_emission_shape(self._handler_name, content, response.completion_tokens)
+        log_emission_shape(
+            self._handler_name, content, response.completion_tokens, response.reasoning_tokens
+        )
         llm_duration_ms = (time.perf_counter() - start_time) * 1000
 
         # Record LLM generation for tracing, through the shared implementation (#929).

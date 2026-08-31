@@ -273,7 +273,12 @@ async def produce_plan(
             messages = messages[:2]
             continue
 
-        log_emission_shape("plan_authoring_service", response.content, response.completion_tokens)
+        log_emission_shape(
+            "plan_authoring_service",
+            response.content,
+            response.completion_tokens,
+            response.reasoning_tokens,
+        )
         extracted = extract_fenced_files(response.content)
         manifest_files = [f for f in extracted if f["filename"] == "implementation_plan.yaml"]
         if manifest_files:
