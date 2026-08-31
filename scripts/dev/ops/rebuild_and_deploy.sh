@@ -188,6 +188,15 @@ echo -e "${BLUE}📊 Step 2: Ensuring Docker Compose infrastructure is running..
 echo "Starting infrastructure services (rabbitmq, postgres, redis, prefect)..."
 docker compose up -d rabbitmq postgres redis prefect-server
 
+# Back up the database before anything else touches it (#1181). Cheap insurance at the
+# moment the risk is highest: this script rebuilds images and restarts services, and
+# migrations are applied at runtime-api startup. Non-fatal — a backup problem must not
+# block a deploy, but it must be loud.
+if [ -x "$REPO_ROOT/scripts/dev/ops/backup_db.sh" ]; then
+    echo "Backing up the database before deploying..."
+    bash "$REPO_ROOT/scripts/dev/ops/backup_db.sh" || echo -e "${YELLOW}⚠️  Backup failed — deploying anyway, but you have no fresh restore point${NC}"
+fi
+
 # Conditionally start runtime-api and console if they're being rebuilt
 if [ "$REBUILD_RUNTIME_API" = true ] || [ "$REBUILD_ALL" = true ]; then
     echo "Starting runtime-api..."

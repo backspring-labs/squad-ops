@@ -1,0 +1,21 @@
+# TEMPLATE — not a valid unit as committed. __USER__ and __REPO_ROOT__ are substituted by
+# scripts/dev/ops/install_backup_timer.sh, because the user and checkout path differ per
+# machine and a hardcoded one would be wrong everywhere but here.
+#
+# Nightly backup of the deployment Postgres (#1181). Installed deliberately rather than by
+# bootstrap: it writes host systemd units and needs sudo, so a fresh clone should not
+# silently acquire it — only a machine actually holding data worth keeping.
+[Unit]
+Description=SquadOps deployment database backup
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=__USER__
+# --verify on the nightly: a dump nobody has restored is a hypothesis. It costs one restore
+# into a scratch database and is the difference between having backups and believing you do.
+ExecStart=/bin/bash __REPO_ROOT__/scripts/dev/ops/backup_db.sh --verify
+# Never let a backup run compete with a cycle for the box.
+Nice=10
+IOSchedulingClass=idle
