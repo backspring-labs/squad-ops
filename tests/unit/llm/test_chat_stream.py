@@ -118,6 +118,56 @@ class TestOllamaChatStream:
         chunks = [c async for c in adapter.chat_stream(messages)]
         assert chunks == ["hello", " world"]
 
+    @pytest.mark.parametrize(
+        "thinking_frames,expected",
+        [
+            # No frame carries the key at all: the model did not think.
+            ([], None),
+            # A frame carries the key with an empty value: the model thought and
+            # said nothing. Collapsing this to None loses the difference, which is
+            # the one #924 needs to tell its two failure modes apart.
+            ([""], ""),
+            # The ordinary case, assembled across frames rather than last-one-wins.
+            (["reasoned ", "in ", "pieces"], "reasoned in pieces"),
+        ],
+        ids=["absent-channel", "present-but-empty", "assembled-across-frames"],
+    )
+    async def test_stream_with_usage_assembles_thinking(self, thinking_frames, expected):
+        """`message.thinking` reaches `reasoning_text`, absent stays None (#1194).
+
+        Guards two regressions at once: dropping the channel (what #1194 was), and
+        zero-filling an absent channel to "" (which would report that every
+        non-thinking call thought and returned nothing).
+        """
+        from adapters.llm.ollama import OllamaAdapter
+
+        adapter = OllamaAdapter(base_url="http://fake:11434")
+
+        lines = [json.dumps({"message": {"thinking": t}, "done": False}) for t in thinking_frames]
+        lines += [
+            json.dumps({"message": {"content": "hello"}, "done": False}),
+            json.dumps({"done": True, "message": {"content": " world"}, "eval_count": 7}),
+        ]
+
+        mock_response = AsyncMock()
+        mock_response.raise_for_status = MagicMock()
+
+        async def fake_aiter_lines():
+            for line in lines:
+                yield line
+
+        mock_response.aiter_lines = fake_aiter_lines
+        mock_client = AsyncMock()
+        mock_client.stream = MagicMock(return_value=_AsyncContextManager(mock_response))
+        adapter._client = mock_client
+
+        message = await adapter.chat_stream_with_usage([ChatMessage(role="user", content="hi")])
+
+        assert message.reasoning_text == expected
+        # The thinking channel is never spliced into the answer.
+        assert message.content == "hello world"
+        assert message.completion_tokens == 7
+
     async def test_stream_timeout_raises(self):
         """Timeout during streaming raises LLMTimeoutError."""
         from adapters.llm.ollama import OllamaAdapter

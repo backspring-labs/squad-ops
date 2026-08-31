@@ -211,9 +211,15 @@ def ollama_ok(request: httpx.Request) -> httpx.Response:
                     **_ollama_usage(),
                 },
             )
-        # NDJSON: content frames, then a terminal `done` frame carrying both the
-        # final content fragment and the usage totals.
+        # NDJSON: thinking frames, then content frames, then a terminal `done` frame
+        # carrying both the final content fragment and the usage totals. The thinking
+        # frames come first and carry no content, which is what the live server does
+        # (measured 2026-08-31: 44 thinking chunks ahead of 3 content chunks).
         lines = [
+            json.dumps({"message": {"role": "assistant", "thinking": part}, "done": False})
+            for part in _in_two(OLLAMA_THINKING)
+        ]
+        lines += [
             json.dumps({"message": {"role": "assistant", "content": part}, "done": False})
             for part in OLLAMA_STREAM_PARTS
         ]
@@ -259,6 +265,19 @@ VLLM_CONTENT = "the assembled answer"
 OLLAMA_THINKING = "ollama thought this, in message.thinking"
 VLLM_REASONING = "vllm thought this, in message.reasoning_content"
 ATLAS_REASONING = "thinking, separately"
+
+
+def _in_two(text: str) -> tuple[str, str]:
+    """Split a reasoning constant across two stream frames (#1194).
+
+    The channel arrives incrementally like content does, so a fixture that emits it
+    in one frame cannot distinguish an adapter that accumulates the deltas from one
+    that keeps only the last. Both halves are non-empty for every constant here.
+    """
+    mid = len(text) // 2
+    return text[:mid], text[mid:]
+
+
 VLLM_STREAM_PARTS = ["the ", "assembled ", "answer"]
 
 # The usage frame rides its own terminal chunk (stream_options.include_usage),
@@ -314,6 +333,10 @@ def vllm_ok(request: httpx.Request) -> httpx.Response:
                 },
             )
         frames = [
+            {"choices": [{"index": 0, "delta": {"reasoning_content": part}}]}
+            for part in _in_two(VLLM_REASONING)
+        ]
+        frames += [
             {"choices": [{"index": 0, "delta": {"role": "assistant", "content": part}}]}
             for part in VLLM_STREAM_PARTS
         ]
@@ -415,7 +438,10 @@ def atlas_ok(request: httpx.Request) -> httpx.Response:
                 },
             )
         frames: list[dict] = [{"choices": [{"index": 0, "delta": {"role": "assistant"}}]}]
-        frames.append({"choices": [{"index": 0, "delta": {"reasoning_content": "thinking, "}}]})
+        frames.extend(
+            {"choices": [{"index": 0, "delta": {"reasoning_content": part}}]}
+            for part in _in_two(ATLAS_REASONING)
+        )
         frames.extend(
             {"choices": [{"index": 0, "delta": {"content": part}}]} for part in ATLAS_STREAM_PARTS
         )

@@ -424,6 +424,8 @@ class VLLMAdapter(LLMPort):
         resolved = model or self._default_model
         started = time.monotonic()
         chunks: list[str] = []
+        reasoning_chunks: list[str] = []
+        saw_reasoning = False
         usage_frame: dict[str, Any] = {}
 
         async for frame in self._stream_frames(
@@ -438,9 +440,20 @@ class VLLMAdapter(LLMPort):
             if frame.get("usage"):
                 usage_frame = frame
             for choice in frame.get("choices") or []:
-                content = (choice.get("delta") or {}).get("content")
+                delta = choice.get("delta") or {}
+                content = delta.get("content")
                 if content:
                     chunks.append(content)
+                # #1194: ``delta.reasoning_content`` is the streamed half of the
+                # channel ``_chat`` already reads at ``message.reasoning_content``.
+                # Skipping it here is right for ``chat_stream`` (thinking is not
+                # content) but wrong for this method, whose whole job is to assemble
+                # the complete message. ``is not None`` keeps an absent channel
+                # distinct from a present-and-empty one.
+                reasoning = delta.get("reasoning_content")
+                if reasoning is not None:
+                    saw_reasoning = True
+                    reasoning_chunks.append(reasoning)
 
         elapsed = time.monotonic() - started
         prompt_tok, completion_tok, total_tok = _usage_from(usage_frame)
@@ -462,6 +475,7 @@ class VLLMAdapter(LLMPort):
             completion_tokens=completion_tok,
             total_tokens=total_tok,
             tokens_per_second=tps,
+            reasoning_text="".join(reasoning_chunks) if saw_reasoning else None,
         )
 
     def list_models(self) -> list[str]:

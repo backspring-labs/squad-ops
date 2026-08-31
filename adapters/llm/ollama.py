@@ -78,11 +78,15 @@ class OllamaAdapter(LLMPort):
     def capabilities(self) -> dict[str, bool]:
         """Declare what this adapter actually does (#572's rule, see the port).
 
-        ``thinking_tokens`` is False deliberately, and it is not a statement
-        about the models: qwen3-family models emit ``message.thinking`` through
-        Ollama by default, and this adapter reads only ``message.content``.
-        Reasoning tokens are paid for and cannot be separated from content here
-        (#410). Declaring True would tell a caller it could split them.
+        ``thinking_tokens`` is False because Ollama reports no separate thinking
+        token count — ``eval_count`` is the total, and the response carries no
+        thinking count field (measured 2026-08-31 on qwen3.8:27b). It is a
+        vendor limitation, not an adapter choice, and not a statement about the
+        models: qwen3-family models emit ``message.thinking``, and this adapter
+        does read it — into ``reasoning_text``, non-streaming since #410 and
+        streaming since #1194. So the thinking channel is visible; what cannot
+        be produced is a token split, and declaring True would tell a caller it
+        could split them. #1195 tracks what that costs the #924 diagnostic.
 
         ``reasoning_control`` is True: a level maps onto the ``think`` flag
         (#927), so the channel can at least be switched off where the output is
@@ -324,6 +328,8 @@ class OllamaAdapter(LLMPort):
 
         try:
             chunks: list[str] = []
+            reasoning_chunks: list[str] = []
+            saw_reasoning = False
             usage_data: dict[str, Any] = {}
 
             async with client.stream(
@@ -342,17 +348,29 @@ class OllamaAdapter(LLMPort):
                         logger.debug("Skipping malformed Ollama stream line")
                         continue
 
-                    # Capture the final done chunk for usage metadata
+                    # The final ``done`` chunk carries the usage metadata and may
+                    # carry a last message payload too, so it is read for both rather
+                    # than through a branch that duplicates the message handling.
                     if chunk.get("done"):
                         usage_data = chunk
-                        # Final chunk may also contain content
-                        content = chunk.get("message", {}).get("content", "")
-                        if content:
-                            chunks.append(content)
-                    else:
-                        content = chunk.get("message", {}).get("content", "")
-                        if content:
-                            chunks.append(content)
+
+                    message = chunk.get("message") or {}
+                    content = message.get("content", "")
+                    if content:
+                        chunks.append(content)
+                    # #1194: the thinking channel arrives as its own chunks, interleaved
+                    # with the content ones. Reading only ``content`` discarded it
+                    # entirely: on the 2026-08-31 shakeouts 23 of 27 generations asked
+                    # the model to think, Ollama returned the text, and every one
+                    # recorded ``reasoning_text: null``. #410 fixed this on ``chat()``
+                    # (non-streaming); every cycle handler calls this method instead.
+                    # ``is not None`` keeps "channel absent" distinct from "channel
+                    # present and empty" — the distinction ``chat()`` preserves with a
+                    # defaultless ``.get`` and the reason this is not ``if thinking:``.
+                    thinking = message.get("thinking")
+                    if thinking is not None:
+                        saw_reasoning = True
+                        reasoning_chunks.append(thinking)
 
             tps = _compute_tokens_per_second(usage_data)
             prompt_tok = usage_data.get("prompt_eval_count")
@@ -377,6 +395,10 @@ class OllamaAdapter(LLMPort):
                 completion_tokens=completion_tok,
                 total_tokens=total_tok,
                 tokens_per_second=tps,
+                # ``reasoning_tokens`` stays unset: Ollama reports no separate thinking
+                # count (``eval_count`` is the total), which is what ``capabilities()``
+                # declares with ``THINKING_TOKENS: False``. See #1195.
+                reasoning_text="".join(reasoning_chunks) if saw_reasoning else None,
             )
         except httpx.TimeoutException as e:
             raise LLMTimeoutError(
