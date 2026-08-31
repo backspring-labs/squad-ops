@@ -38,6 +38,7 @@ from squadops.cycles.preflight import (
     bind_mode_authoring_decision,
     combine,
     model_availability_decision,
+    model_registration_decision,
     required_check_tooling_decision,
     required_roles_decision,
     stack_dev_capability_decision,
@@ -140,6 +141,11 @@ async def _run_create_preflight(profile: SquadProfile, config: dict) -> tuple[Fi
         # framing workload later.
         stack_dev_capability_decision(config),
         model_availability_decision(profile, await _pulled_model_names()),
+        # #1145: pulled is not the same as registered. A model the backend serves but
+        # MODEL_SPECS does not know runs with the overflow guard disabled and a
+        # different completion budget than a registered model on the same capability —
+        # silently, until it shows up as an odd result in a measurement window.
+        model_registration_decision(profile),
         # SIP-0096 §6.5: a required check whose tooling is knowably absent is a
         # create-time reject, never a mid-run blocked_unverified surprise.
         required_check_tooling_decision(

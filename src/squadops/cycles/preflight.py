@@ -38,6 +38,7 @@ from squadops.cycles.models import (
     WORKLOAD_REQUIRED_ROLES,
     WorkloadType,
 )
+from squadops.llm.model_registry import get_model_spec
 
 if TYPE_CHECKING:
     from squadops.cycles.models import SquadProfile
@@ -262,6 +263,60 @@ def _canonical_model(name: str) -> str:
     inference: ``qwen3:7b`` never matches ``qwen3:27b`` (SIP §137, decided).
     """
     return name if ":" in name else f"{name}:latest"
+
+
+def model_registration_decision(profile: SquadProfile) -> PreflightDecision:
+    """Warn when a profile's enabled agents name a model absent from ``MODEL_SPECS``.
+
+    A model can be *pulled* and still unknown to the budget system, and the two are
+    checked separately because they fail differently:
+    ``model_availability_decision`` catches "the backend cannot serve this"; this
+    catches "the framework cannot bound this".
+
+    **What an unregistered model actually costs (#1145).** ``get_model_spec`` returns
+    ``None`` and three paths then diverge:
+
+    * ``_resolve_model_budget`` keeps the capability ceiling but loses the context
+      window, which disables the SIP-0073 overflow guard outright — a correctness
+      gap, not a cost one.
+    * ``_build_chat_kwargs`` fell through with no ``max_tokens`` at all, so the
+      provider's own default applied (now aligned to the ceiling, also #1145).
+    * Nothing anywhere required registration, so a cycle could be admitted,
+      dispatched and completed on a model the budget system knew nothing about.
+
+    The registry's own comments record this biting twice in opposite directions: a
+    missing entry once silently *capped* React work at a 4,000-token fallback, and an
+    unclamped ``qwen3.8`` once "would hand arm B a 12,000-token dev ceiling arm A
+    never had" — two arms of a comparison running under different budgets, which
+    quietly invalidates the comparison.
+
+    **Warning, not blocking.** A blocking check would make every new model a
+    create-time hard stop, including on a box exploring one deliberately; the
+    measured harm is silence rather than the absence itself. A counting run should
+    treat this as fatal, but that judgment belongs to the pre-registration, which can
+    read the finding — not to this function, which cannot know it is a counting run.
+    """
+    required = sorted({a.model for a in profile.agents if a.enabled and a.model})
+    unregistered = [m for m in required if get_model_spec(m) is None]
+    if not unregistered:
+        return PreflightDecision()
+
+    listed = ", ".join(f"`{m}`" for m in unregistered)
+    return PreflightDecision(
+        warnings=(
+            Finding(
+                code="model_unregistered",
+                severity="warning",
+                message=(
+                    f"Model(s) {listed} have no MODEL_SPECS entry. The completion clamp "
+                    f"falls back to the capability ceiling and the context-window "
+                    f"overflow guard is DISABLED for them, so budgets will differ from a "
+                    f"registered model on the same capability. Register them in "
+                    f"src/squadops/llm/model_registry.py before running a measured set."
+                ),
+            ),
+        )
+    )
 
 
 def model_availability_decision(

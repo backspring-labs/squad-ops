@@ -31,6 +31,7 @@ def _guard_prompt_size(
     user_prompt: str,
     max_completion_tokens: int,
     context_window: int | None,
+    model_name: str | None = None,
 ) -> str:
     """Guard prompt against context window overflow.
 
@@ -43,6 +44,9 @@ def _guard_prompt_size(
         user_prompt: The user prompt text (may be truncated).
         max_completion_tokens: Reserved tokens for LLM completion output.
         context_window: Total context window size in tokens, or None if unknown.
+        model_name: The model the budget was resolved for, so a disabled guard can
+            name which model is unregistered instead of leaving the reader to work
+            it out (#1145). Optional: a caller with no model to name still warns.
 
     Returns:
         The (possibly truncated) user_prompt.
@@ -52,7 +56,18 @@ def _guard_prompt_size(
             truncation. The error message is a JSON string with fixed keys.
     """
     if context_window is None:
-        logger.debug("No context window known; skipping prompt size guard")
+        # #1145: WARNING, not debug. A None context window means the model has no
+        # MODEL_SPECS entry, which disables the SIP-0073 overflow guard entirely — a
+        # correctness gap, not a cost one. At debug level the only trace of a
+        # disabled guard was a line nobody reads. A check that did not execute is
+        # disclosed, never silent: the same rule blocked_unverified applies to a
+        # verification that never ran.
+        logger.warning(
+            "OVERFLOW GUARD DISABLED for %s: no context window known (model is absent "
+            "from MODEL_SPECS), so the prompt is sent unchecked against the model's "
+            "limit. Register the model to restore the guard.",
+            model_name or "unknown model",
+        )
         return user_prompt
 
     available = context_window - max_completion_tokens

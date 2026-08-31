@@ -534,8 +534,13 @@ class TestCreateCyclePreflight:
         resp = client.post("/api/v1/projects/hello_squad/cycles", json=self._REQUEST)
         assert resp.status_code == 200
         warnings = resp.json()["warnings"]
-        assert [w["code"] for w in warnings] == ["model_unverifiable"]
-        assert "unreachable" in warnings[0]["message"]  # actionable operator text
+        # Availability is this test's subject. #1145 added a second, independent check
+        # (model_unregistered), and `gpt-4` is a stand-in with no MODEL_SPECS entry, so
+        # it fires here too. Asserting the whole list would make this test fail whenever
+        # an unrelated check is added — it is scoped to the code under test instead.
+        availability = [w for w in warnings if w["code"] != "model_unregistered"]
+        assert [w["code"] for w in availability] == ["model_unverifiable"]
+        assert "unreachable" in availability[0]["message"]  # actionable operator text
 
     def test_no_warnings_when_models_are_verified(self, client):
         with patch(
@@ -544,4 +549,6 @@ class TestCreateCyclePreflight:
         ):
             resp = client.post("/api/v1/projects/hello_squad/cycles", json=self._REQUEST)
         assert resp.status_code == 200
-        assert resp.json()["warnings"] == []
+        # Scoped to availability for the reason above: `gpt-4` is pulled here but has no
+        # MODEL_SPECS entry, which #1145's check reports separately and correctly.
+        assert [w for w in resp.json()["warnings"] if w["code"] != "model_unregistered"] == []

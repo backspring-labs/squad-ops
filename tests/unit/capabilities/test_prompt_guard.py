@@ -6,6 +6,7 @@ Tests _estimate_tokens() heuristic and _guard_prompt_size() truncation logic.
 from __future__ import annotations
 
 import json
+import logging
 
 import pytest
 
@@ -246,3 +247,35 @@ class TestStructuredPayloadKeys:
             user_prompt=user,
         )
         assert set(payload.keys()) == self._REQUIRED_KEYS
+
+
+class TestDisabledGuardIsAudible:
+    """#1145: a None context window means the model has no MODEL_SPECS entry, which
+    disables the SIP-0073 overflow guard entirely. That is a correctness gap, and it
+    was reported at debug level — a line nobody reads."""
+
+    def test_skipping_the_guard_warns_and_names_the_model(self, caplog):
+        with caplog.at_level(logging.WARNING):
+            out = _guard_prompt_size("sys", "user prompt", 1000, None, "some-unregistered-model")
+        assert out == "user prompt"
+        assert caplog.records, "a disabled overflow guard must not be silent at WARNING"
+        message = caplog.records[-1].getMessage()
+        assert caplog.records[-1].levelno == logging.WARNING
+        assert "some-unregistered-model" in message
+        assert "OVERFLOW GUARD DISABLED" in message
+
+    def test_a_known_context_window_does_not_warn(self):
+        """The warning must fire on the disabled case only, or it is noise that
+        trains readers to ignore it."""
+        import logging as _logging
+
+        logger = _logging.getLogger("squadops.capabilities.handlers.prompt_guard")
+        records = []
+        handler = _logging.Handler()
+        handler.emit = records.append
+        logger.addHandler(handler)
+        try:
+            _guard_prompt_size("sys", "user", 100, 8192, "qwen3.8:27b")
+        finally:
+            logger.removeHandler(handler)
+        assert not [r for r in records if r.levelno >= _logging.WARNING]
