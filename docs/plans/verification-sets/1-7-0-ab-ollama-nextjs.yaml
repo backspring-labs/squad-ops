@@ -14,11 +14,15 @@ overrides:
 gate_name: progress_plan_review
 n_rolls: 2
 gate_notes: >-
-  1.7.0 Atlas A/B, arm ollama. Approved under the pre-registered gate policy — identical text
-  applied to every roll of this set. System plan validation passed; no additional judgment applied.
+  Approved under the pre-registered gate policy — identical text applied to every roll of this
+  set. System plan validation passed; no additional judgment applied. (NOT an Atlas A/B roll:
+  that set was stopped 2026-08-30 as a negative result, SIP-0106 §1.2a. This text is recorded
+  verbatim on every gate decision, so it must not name a set the run is not part of.)
 launch_notes: >-
-  1.7.0 Atlas A/B — arm ollama, COUNTED roll {roll} of {n} on nextjs_ts. Frozen deploy per the
-  pre-registration; predictions P1–P5; the pair's other arm is the comparison.
+  1.7.0 arm ollama, COUNTED roll {roll} of {n} on nextjs_ts. INERT until a superseding
+  pre-registration exists — the Atlas A/B this text was written for was stopped 2026-08-30 as a
+  negative result (SIP-0106 §1.2a), so no counted roll should be launched from this set as it
+  stands. Frozen deploy per whichever pre-registration replaces it.
 shakeout_notes: >-
   Fix-validation shakeout, NON-COUNTING by declaration before launch. Validates #1171 (framing
   generations costed at zero tokens), #1172 (merge_plan emitted no generation record) and #1173
