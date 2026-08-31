@@ -192,10 +192,18 @@ class LangFuseAdapter(LLMObservabilityPort):
         # defaults to None — so LangFuse reported null throughput for every
         # generation from SIP-0061 until the fix. Copy-everything-redact-two states
         # the actual intent and cannot drift when a field is added.
+        # #410: reasoning_text is the third TEXT field and needs redacting like the other
+        # two. The note above is right that copy-everything cannot drop a field — but it
+        # does not make a newly added text field redacted, which is a different promise.
         redacted_record = replace(
             record,
             prompt_text=self._redaction.redact(record.prompt_text),
             response_text=self._redaction.redact(record.response_text),
+            reasoning_text=(
+                self._redaction.redact(record.reasoning_text)
+                if record.reasoning_text is not None
+                else None
+            ),
         )
         self._enqueue(
             _BufferEntry(
@@ -432,6 +440,10 @@ class LangFuseAdapter(LLMObservabilityPort):
                     "latency_ms": record.latency_ms,
                     "tokens_per_second": record.tokens_per_second,
                     "reasoning": record.reasoning,
+                    # #410: the thinking text itself, not just the level it was asked
+                    # for. Roughly 60% of generation time bought this and none of it
+                    # was visible anywhere until now.
+                    "reasoning_text": record.reasoning_text,
                     "attempt": record.attempt,
                     "outcome": record.outcome,
                     "prompt_layer_set_id": prompt_layers.prompt_layer_set_id,

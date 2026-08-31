@@ -73,6 +73,10 @@ class AdapterCase:
     # assertion needs one: an adapter that maps by the model's dial sends nothing
     # for a dial-less model, which is the contract, not a defect.
     reasoning_model: str
+    #: #410: the text this provider's ``ok`` handler returns in its reasoning channel,
+    #: whatever the dialect calls that field. None for a dialect that has no such
+    #: channel — the port must then report None, not "".
+    reasoning_text: str | None
 
     def __str__(self) -> str:  # pytest id
         return self.name
@@ -199,7 +203,11 @@ def ollama_ok(request: httpx.Request) -> httpx.Response:
             return httpx.Response(
                 200,
                 json={
-                    "message": {"role": "assistant", "content": OLLAMA_CONTENT},
+                    "message": {
+                        "role": "assistant",
+                        "content": OLLAMA_CONTENT,
+                        "thinking": OLLAMA_THINKING,
+                    },
                     **_ollama_usage(),
                 },
             )
@@ -246,6 +254,11 @@ def ollama_nameless_model(request: httpx.Request) -> httpx.Response:
 
 VLLM_MODELS = ["Qwen/Qwen2.5-7B-Instruct", "meta-llama/Llama-3.2-3B-Instruct"]
 VLLM_CONTENT = "the assembled answer"
+#: #410: what each dialect returns in its reasoning channel, under the field name that
+#: dialect uses. The port must surface all three as ``reasoning_text``.
+OLLAMA_THINKING = "ollama thought this, in message.thinking"
+VLLM_REASONING = "vllm thought this, in message.reasoning_content"
+ATLAS_REASONING = "thinking, separately"
 VLLM_STREAM_PARTS = ["the ", "assembled ", "answer"]
 
 # The usage frame rides its own terminal chunk (stream_options.include_usage),
@@ -288,7 +301,14 @@ def vllm_ok(request: httpx.Request) -> httpx.Response:
                     "id": "chatcmpl-1",
                     "model": model,
                     "choices": [
-                        {"index": 0, "message": {"role": "assistant", "content": VLLM_CONTENT}}
+                        {
+                            "index": 0,
+                            "message": {
+                                "role": "assistant",
+                                "content": VLLM_CONTENT,
+                                "reasoning_content": VLLM_REASONING,
+                            },
+                        }
                     ],
                     "usage": _vllm_usage(),
                 },
@@ -385,7 +405,7 @@ def atlas_ok(request: httpx.Request) -> httpx.Response:
                             "index": 0,
                             "message": {
                                 "role": "assistant",
-                                "reasoning_content": "thinking, separately",
+                                "reasoning_content": ATLAS_REASONING,
                                 "content": ATLAS_CONTENT,
                             },
                             "finish_reason": "stop",
@@ -436,6 +456,7 @@ ADAPTER_CASES: list[AdapterCase] = [
         completion_tokens=_EVAL_COUNT,
         tokens_per_second=6.0,  # exact: derived from reported ns timings
         reasoning_model="qwen3.6:27b",
+        reasoning_text=OLLAMA_THINKING,
     ),
     AdapterCase(
         name="vllm",
@@ -456,6 +477,7 @@ ADAPTER_CASES: list[AdapterCase] = [
         # The registry is keyed on the name the adapter is handed; a real vLLM
         # serves HF paths, whose entries are #1145/#1159's to add.
         reasoning_model="qwen3.6:27b",
+        reasoning_text=VLLM_REASONING,
     ),
     AdapterCase(
         name="atlas",
@@ -475,6 +497,7 @@ ADAPTER_CASES: list[AdapterCase] = [
         completion_tokens=_ATLAS_COMPLETION_TOKENS,
         tokens_per_second=_ATLAS_TPS,  # exact: the engine's own `response_token/s`
         reasoning_model="Qwen/Qwen3.8-27B-FP8",
+        reasoning_text=ATLAS_REASONING,
     ),
 ]
 

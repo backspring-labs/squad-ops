@@ -322,6 +322,29 @@ class TestCapabilityHonesty:
         else:
             assert bare == none == high
 
+    async def test_reasoning_text_reaches_the_port(self, case):
+        """A provider that separates its reasoning channel must surface it as
+        ``reasoning_text``, whatever the dialect calls the field.
+
+        The bug this guards (#410): Ollama returns thinking at ``message.thinking``
+        and the adapter read only ``message.content``, so ~60% of generation time
+        was paid for, counted in ``eval_count``, and then dropped — invisible to
+        LangFuse and undiagnosable without cross-referencing token counts against
+        stored output length. Atlas and vLLM use ``message.reasoning_content``.
+        Asserted here rather than per-adapter so a fourth provider cannot quietly
+        drop the channel.
+        """
+        adapter = case.build()
+        with wire(case.ok):
+            reply = await adapter.chat(_messages(), model=case.reasoning_model)
+
+        assert reply.reasoning_text == case.reasoning_text, (
+            f"{case.name} did not surface its reasoning channel: "
+            f"got {reply.reasoning_text!r}, expected {case.reasoning_text!r}"
+        )
+        # The channel is separate from the answer, not folded into it.
+        assert case.reasoning_text not in reply.content
+
     async def test_streaming_usage_declaration_matches_behavior(self, case):
         """Declared True means real counts, not the port's chat() fallback —
         which returns a valid message carrying no streaming usage at all."""

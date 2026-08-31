@@ -66,6 +66,13 @@ class LLMResponse:
     # Reasoning tokens counted separately from content, when the provider reports them
     # (``thinking_tokens: True``). None = not reported; never zero-filled (#410, #1159).
     reasoning_tokens: int | None = None
+    #: #410: the reasoning/thinking TEXT the provider returned, when it returns it
+    #: separately from the answer. ``reasoning_tokens`` says how much was paid for;
+    #: this is what was bought. ``None`` = the provider reported none (either it does
+    #: not separate the channel, or none was produced) — never "" for absent, so a
+    #: model that thought and returned an empty channel stays distinguishable from one
+    #: that did not think at all.
+    reasoning_text: str | None = None
 
 
 @dataclass(frozen=True)
@@ -97,3 +104,4 @@ class ChatMessage:
     total_tokens: int | None = None
     tokens_per_second: float | None = None
     reasoning_tokens: int | None = None  # see LLMResponse.reasoning_tokens
+    reasoning_text: str | None = None  # see LLMResponse.reasoning_text (#410)

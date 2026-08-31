@@ -167,6 +167,17 @@ class GenerationRecord:
     # while the record shows one task.
     attempt: int | None = None
     outcome: str | None = None
+    # #410: the thinking text itself. Ollama returns it as ``message.thinking``,
+    # Atlas and vLLM as ``message.reasoning_content``; every one of them was read
+    # past and dropped, so the ~60% of generation time that bought it appeared in
+    # no telemetry at all and the spend was undiagnosable without cross-referencing
+    # eval_count against stored output length. Capped like the other text fields.
+    reasoning_text: str | None = None
+
+
+def _capped(text: str | None) -> str | None:
+    """Cap observability text, preserving None (absent) as distinct from "" (empty)."""
+    return None if text is None else text[:MAX_OBSERVABILITY_TEXT_LENGTH]
 
 
 def build_generation_record(
@@ -181,6 +192,7 @@ def build_generation_record(
     reasoning: str | None = None,
     attempt: int | None = None,
     outcome: str | None = None,
+    reasoning_text: str | None = None,
 ) -> GenerationRecord:
     """Build a :class:`GenerationRecord` from a completed generation.
 
@@ -202,6 +214,12 @@ def build_generation_record(
         model=model,
         prompt_text=prompt_text[:MAX_OBSERVABILITY_TEXT_LENGTH],
         response_text=response_text[:MAX_OBSERVABILITY_TEXT_LENGTH],
+        # Falls back to ``usage`` like the token fields, so a caller already passing the
+        # response object gets the thinking text without a second argument. An explicit
+        # value still wins, for a caller that has it from somewhere else.
+        reasoning_text=_capped(
+            reasoning_text if reasoning_text is not None else getattr(usage, "reasoning_text", None)
+        ),
         latency_ms=latency_ms,
         prompt_tokens=getattr(usage, "prompt_tokens", None),
         completion_tokens=getattr(usage, "completion_tokens", None),
