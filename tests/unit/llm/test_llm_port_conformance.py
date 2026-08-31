@@ -16,6 +16,8 @@ join this file when that surface lands.
 
 from __future__ import annotations
 
+import json
+
 import httpx
 import pytest
 
@@ -447,3 +449,74 @@ class TestPortSurface:
             )
 
         assert response.model == case.override_model
+
+
+class TestSamplingPairReachesTheWire:
+    """#901: `temperature` was reachable from a squad profile and `top_p` was not.
+
+    For Qwen-family models those two are a documented pair, so an operator tuning a
+    profile could set one, have the other rejected with a 422, and land on a third
+    configuration the model was never tuned for.
+    """
+
+    async def test_top_p_reaches_the_provider_alongside_temperature(self, case):
+        """A knob the profile permits but the adapter drops is the same defect one
+        layer down — the operator sets it, nothing rejects it, and it does nothing."""
+        seen: dict = {}
+
+        def capture(request):
+            if request.content:
+                seen.update(json.loads(request.content))
+            return case.ok(request)
+
+        with wire(capture):
+            await case.build().chat_stream_with_usage(_messages(), temperature=0.7, top_p=0.8)
+
+        # Ollama nests sampling under `options`; the OpenAI shape puts it top level.
+        body = seen.get("options", seen)
+        assert body.get("temperature") == 0.7, f"{case.name} dropped temperature"
+        assert body.get("top_p") == 0.8, f"{case.name} dropped top_p"
+
+    async def test_an_unset_top_p_sends_nothing_rather_than_a_default(self, case):
+        """Sending an invented value would replace the model's own tuned default with
+        a number nobody chose — which is the failure #901 describes, arrived at from
+        the other direction."""
+        seen: dict = {}
+
+        def capture(request):
+            if request.content:
+                seen.update(json.loads(request.content))
+            return case.ok(request)
+
+        with wire(capture):
+            await case.build().chat_stream_with_usage(_messages())
+
+        body = seen.get("options", seen)
+        assert "top_p" not in body, f"{case.name} invented a top_p"
+
+    async def test_top_p_and_reasoning_do_not_bind_to_each_other(self, case):
+        """The regression this guards, found while writing the fix: every payload
+        builder took `reasoning` positionally, directly after `temperature`. Inserting
+        a sampling knob between them bound `reasoning` to `top_p` at every call site,
+        with no type error to catch it — both are `float | None`/`str | None` in a
+        chain of positional arguments. The call sites are keyword-only now; this fails
+        if anyone reverts that.
+        """
+        seen: dict = {}
+
+        def capture(request):
+            if request.content:
+                seen.update(json.loads(request.content))
+            return case.ok(request)
+
+        with wire(capture):
+            await case.build().chat_stream_with_usage(
+                _messages(), model=case.reasoning_model, top_p=0.8, reasoning="none"
+            )
+
+        body = seen.get("options", seen)
+        assert body.get("top_p") == 0.8, f"{case.name}: top_p did not survive"
+        # Whatever the dialect calls its reasoning switch, it must not be 0.8.
+        assert 0.8 not in [
+            seen.get(k) for k in ("think", "reasoning_effort", "chat_template_kwargs")
+        ]

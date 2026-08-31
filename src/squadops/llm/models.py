@@ -44,6 +44,10 @@ class LLMRequest:
     prompt: str
     model: str | None = None
     temperature: float = 0.7
+    #: #901: temperature's documented pair. Defaults to None rather than to a value —
+    #: a number here would be a third configuration nobody chose, where None leaves the
+    #: model's own tuned default in place. ``temperature`` keeps its historical 0.7.
+    top_p: float | None = None
     max_tokens: int = 4000
     format: str | None = None  # "json" for structured output
     timeout_seconds: float = 180.0

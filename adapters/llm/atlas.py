@@ -159,6 +159,7 @@ class AtlasAdapter(LLMPort):
         model: str,
         max_tokens: int | None,
         temperature: float | None,
+        top_p: float | None = None,
         reasoning: str | None = None,
         *,
         stream: bool = False,
@@ -172,6 +173,13 @@ class AtlasAdapter(LLMPort):
             payload["max_tokens"] = max_tokens
         if temperature is not None:
             payload["temperature"] = temperature
+        # #901: the pair. `top_p` is a standard field on the OpenAI shape, so it needs
+        # no dialect translation — unlike top_k/min_p, which are deliberately NOT added
+        # here (see requirements note in the PR): they are not standard on this surface
+        # and would be dropped or rejected depending on the server, which is the same
+        # silent-half-configuration defect this fixes.
+        if top_p is not None:
+            payload["top_p"] = top_p
         if reasoning is not None:
             payload["reasoning_effort"] = _REASONING_EFFORT.get(reasoning, reasoning)
         if stream:
@@ -221,6 +229,7 @@ class AtlasAdapter(LLMPort):
             model=model,
             max_tokens=request.max_tokens,
             temperature=request.temperature,
+            top_p=request.top_p,
             timeout_seconds=request.timeout_seconds,
             reasoning=request.reasoning,
             operation="generate",
@@ -241,6 +250,7 @@ class AtlasAdapter(LLMPort):
         model: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        top_p: float | None = None,
         timeout_seconds: float | None = None,
         reasoning: str | None = None,
     ) -> ChatMessage:
@@ -249,6 +259,7 @@ class AtlasAdapter(LLMPort):
             model=model or self._default_model,
             max_tokens=max_tokens,
             temperature=temperature,
+            top_p=top_p,
             timeout_seconds=timeout_seconds,
             reasoning=reasoning,
             operation="chat",
@@ -261,6 +272,7 @@ class AtlasAdapter(LLMPort):
         model: str,
         max_tokens: int | None,
         temperature: float | None,
+        top_p: float | None,
         timeout_seconds: float | None,
         reasoning: str | None,
         operation: str,
@@ -271,7 +283,7 @@ class AtlasAdapter(LLMPort):
         try:
             response = await client.post(
                 "/v1/chat/completions",
-                json=self._payload(messages, model, max_tokens, temperature, reasoning),
+                json=self._payload(messages, model, max_tokens, temperature, top_p, reasoning),
                 timeout=timeout,
             )
             response.raise_for_status()
@@ -313,9 +325,11 @@ class AtlasAdapter(LLMPort):
     async def _stream_frames(
         self,
         messages: list[ChatMessage],
+        *,
         model: str,
         max_tokens: int | None,
         temperature: float | None,
+        top_p: float | None,
         timeout: float,
         reasoning: str | None,
         operation: str,
@@ -327,7 +341,7 @@ class AtlasAdapter(LLMPort):
                 "POST",
                 "/v1/chat/completions",
                 json=self._payload(
-                    messages, model, max_tokens, temperature, reasoning, stream=True
+                    messages, model, max_tokens, temperature, top_p, reasoning, stream=True
                 ),
                 timeout=timeout,
             ) as response:
@@ -351,6 +365,7 @@ class AtlasAdapter(LLMPort):
         model: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        top_p: float | None = None,
         timeout_seconds: float | None = None,
         reasoning: str | None = None,
     ) -> AsyncIterator[str]:
@@ -359,12 +374,13 @@ class AtlasAdapter(LLMPort):
         resolved = model or self._default_model
         async for frame in self._stream_frames(
             messages,
-            resolved,
-            max_tokens,
-            temperature,
-            timeout_seconds or self._timeout,
-            reasoning,
-            "chat_stream",
+            model=resolved,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            top_p=top_p,
+            timeout=timeout_seconds or self._timeout,
+            reasoning=reasoning,
+            operation="chat_stream",
         ):
             for choice in frame.get("choices") or []:
                 content = (choice.get("delta") or {}).get("content")
@@ -377,6 +393,7 @@ class AtlasAdapter(LLMPort):
         model: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        top_p: float | None = None,
         timeout_seconds: float | None = None,
         reasoning: str | None = None,
     ) -> ChatMessage:
@@ -390,12 +407,13 @@ class AtlasAdapter(LLMPort):
         finish_reason: str | None = None
         async for frame in self._stream_frames(
             messages,
-            resolved,
-            max_tokens,
-            temperature,
-            timeout_seconds or self._timeout,
-            reasoning,
-            "chat_stream_with_usage",
+            model=resolved,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            top_p=top_p,
+            timeout=timeout_seconds or self._timeout,
+            reasoning=reasoning,
+            operation="chat_stream_with_usage",
         ):
             for choice in frame.get("choices") or []:
                 delta = choice.get("delta") or {}

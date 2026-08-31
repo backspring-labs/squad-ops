@@ -49,6 +49,7 @@ class NoOpLLMPort(LLMPort):
         model: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        top_p: float | None = None,
         timeout_seconds: float | None = None,
         reasoning: str | None = None,
     ) -> ChatMessage:
@@ -60,6 +61,7 @@ class NoOpLLMPort(LLMPort):
         model: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        top_p: float | None = None,
         timeout_seconds: float | None = None,
         reasoning: str | None = None,
     ) -> AsyncIterator[str]:

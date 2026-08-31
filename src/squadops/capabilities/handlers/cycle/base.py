@@ -398,6 +398,8 @@ class _CycleTaskHandler(CapabilityHandler):
             kwargs["model"] = agent_model
         if "temperature" in overrides:
             kwargs["temperature"] = overrides["temperature"]
+        if "top_p" in overrides:
+            kwargs["top_p"] = overrides["top_p"]
         # #927: keyed on the agent's model exactly as the completion clamp is — a
         # task dispatched without one sends no level, as it gets no clamp.
         reasoning = resolve_reasoning_level(

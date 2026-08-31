@@ -64,6 +64,7 @@ class LLMPort(ABC):
         model: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        top_p: float | None = None,
         timeout_seconds: float | None = None,
         reasoning: str | None = None,
     ) -> ChatMessage:
@@ -74,6 +75,9 @@ class LLMPort(ABC):
             model: Optional model override
             max_tokens: Maximum completion tokens (adapter default if None)
             temperature: Sampling temperature (adapter default if None)
+            top_p: Nucleus sampling mass. Qwen-family models document temperature and
+                top_p as a matched pair, so setting one without the other asks for a
+                configuration the model was never tuned for (#901).
             timeout_seconds: Request timeout (adapter default if None)
             reasoning: A :class:`~squadops.llm.models.ReasoningLevel` — how much
                 reasoning this generation wants. ``None`` sends nothing and
@@ -99,6 +103,7 @@ class LLMPort(ABC):
         model: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        top_p: float | None = None,
         timeout_seconds: float | None = None,
         reasoning: str | None = None,
     ) -> AsyncIterator[str]:
@@ -119,6 +124,7 @@ class LLMPort(ABC):
         model: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        top_p: float | None = None,
         timeout_seconds: float | None = None,
         reasoning: str | None = None,
     ) -> ChatMessage:
@@ -139,6 +145,7 @@ class LLMPort(ABC):
             model=model,
             max_tokens=max_tokens,
             temperature=temperature,
+            top_p=top_p,
             timeout_seconds=timeout_seconds,
             reasoning=reasoning,
         )
