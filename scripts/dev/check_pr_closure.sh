@@ -18,18 +18,23 @@
 # Needs `gh` authenticated (GH_TOKEN in CI) and GH_REPO or a git remote.
 set -euo pipefail
 
-# Quoted syntax is not a reference: strip fenced blocks, inline code spans and
-# HTML comments (the template's own instructions live in one) before scanning.
-# The guard's first live run failed on its own PR, whose Evidence section quoted
-# `Closes #1096` as a test case.
-body="$(cat | perl -0pe 's/```.*?```//gs; s/<!--.*?-->//gs; s/`[^`\n]*`//g')"
+# Quoted syntax is not a reference: fenced blocks, inline code spans and HTML comments
+# (the template's own instructions live in one) are stripped before scanning. The guard's
+# first live run failed on its own PR, whose Evidence section quoted `Closes #1096` as a
+# test case.
+#
+# Both the stripping and the keyword set now live in closing_refs.py (#1135), shared with
+# the release-package capture, which had its own narrower regex over the RAW body and so
+# credited quoted text as closure — the v1.6.5 package claimed PR #1114 closed #1096,
+# #1106 and #999999, all lifted out of that PR's own test log. One home, so the guard and
+# the permanent record cannot drift apart again. Stdlib-only and python3 is preinstalled
+# on ubuntu-latest, so this adds no setup step to the workflow.
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+raw="$(cat)"
+body="$(printf '%s' "$raw" | python3 "$here/closing_refs.py" --strip)"
 repo="${GH_REPO:-$(gh repo view --json nameWithOwner -q .nameWithOwner)}"
 
-closing_numbers="$(
-  printf '%s' "$body" \
-    | grep -oiE '\b(close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)[[:space:]]*:?[[:space:]]*#[0-9]+' \
-    | grep -oE '[0-9]+$' | sort -un || true
-)"
+closing_numbers="$(printf '%s' "$raw" | python3 "$here/closing_refs.py" --refs)"
 optout_count="$(
   printf '%s' "$body" \
     | grep -ciE '(refs?[[:space:]]+#[0-9]+.*remaining:[[:space:]]*[^[:space:]]|^[[:space:]]*no issue:[[:space:]]*[^[:space:]])' || true

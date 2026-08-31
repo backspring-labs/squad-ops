@@ -32,7 +32,15 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RELEASES = REPO_ROOT / "site" / "content" / "releases"
-CLOSES = re.compile(r"\b(?:closes|fixes|resolves)\s+#(\d+)", re.IGNORECASE)
+
+# What counts as a closing reference lives in one place, shared with the pre-merge guard
+# (#1135). This script used to match the RAW body with a narrower regex, which credited
+# quoted text as closure — the v1.6.5 capture claimed #1114 closed #1096, #1106 and
+# #999999, all lifted out of that PR's own test log — and under-credited the tenses
+# GitHub honours. A package is committed as a snapshot the site never re-derives, so a
+# wrong cell is permanent unless caught at preview.
+sys.path.insert(0, str(REPO_ROOT / "scripts" / "dev"))
+from closing_refs import closing_refs, quoted_refs  # noqa: E402
 
 
 def run(*args: str, check: bool = True) -> str:
@@ -85,7 +93,8 @@ def merged_prs(previous: str | None, tag: str) -> list[dict]:
                 "title": data["title"],
                 "author": (data.get("author") or {}).get("login", ""),
                 "labels": [label["name"] for label in data.get("labels", [])],
-                "closes": sorted({int(n) for n in CLOSES.findall(data.get("body") or "")}),
+                "closes": closing_refs(data.get("body") or ""),
+                "quoted_not_closed": quoted_refs(data.get("body") or ""),
                 "merged_at": (data.get("mergedAt") or "")[:10],
             }
         )
@@ -358,6 +367,16 @@ def main() -> int:
             f"\n--- {len(package['pull_requests'])} PRs, {len(package['sip_moves'])} SIP moves, "
             f"{len(package['cycles'])} cycles, {len(screenshots)} screenshots ---"
         )
+        # An empty Closes cell has two causes — the PR closed nothing, or it only quoted
+        # the syntax. Naming the quoted ones makes the difference readable here, which is
+        # the one place a wrong cell can still be caught (#1135).
+        quoted = [(pr["number"], pr["quoted_not_closed"]) for pr in package["pull_requests"]]
+        for number, refs in quoted:
+            if refs:
+                print(
+                    f"note: PR #{number} mentions {' '.join(f'#{n}' for n in refs)} "
+                    "inside quoted text — not credited as closures"
+                )
         print("re-run with --write to commit the package")
         return 0
 
@@ -388,6 +407,12 @@ def main() -> int:
                 f"--force: carried forward {len(prior_cycles)} captured cycle(s) — "
                 "this run supplied none"
             )
+
+    # A preview diagnostic, not evidence: it says why a Closes cell is empty, which
+    # only matters while someone can still act on it. Keeping it out of the snapshot
+    # leaves the committed schema unchanged (#1135).
+    for pr in package["pull_requests"]:
+        pr.pop("quoted_not_closed", None)
 
     target.mkdir(parents=True, exist_ok=True)
     assets.mkdir(exist_ok=True)
