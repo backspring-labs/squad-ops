@@ -358,7 +358,18 @@ class AgentRunner:
                 f"No LLM model configured for agent '{self.agent_id}'. "
                 "Set model in instances.yaml, LLM_MODEL env var, or config.llm.model"
             )
-        logger.info(f"Using LLM model: {llm_model}", extra={"agent_id": self.agent_id})
+        # #930: this is the adapter's FALLBACK, not the model the agent will use. Cycle
+        # tasks carry a model from the squad profile and every handler resolves
+        # `agent_model or context.ports.llm.default_model`, so the profile wins and this
+        # value is reached only by a call that names none. Logging it as "Using LLM model"
+        # asserted the opposite: on 2026-08-30 the data agent announced
+        # "Using LLM model: qwen2.5:3b-instruct" and then ran the whole cycle on a 27B,
+        # which is exactly the kind of line someone reads while debugging a model problem.
+        logger.info(
+            f"LLM fallback model: {llm_model} "
+            f"(used only when a task names no model; squad-profile models take precedence)",
+            extra={"agent_id": self.agent_id},
+        )
         llm = create_llm_provider(
             provider=config.llm.provider,
             base_url=config.llm.url,
