@@ -364,3 +364,129 @@ class TestSquadSnapshotIsAnIdentity:
         assert a.frozen_deploy_commit == b.frozen_deploy_commit
         assert a.expected_squad_snapshot_prefix == b.expected_squad_snapshot_prefix
         assert a.expected_config_hash_prefix != b.expected_config_hash_prefix
+
+
+def _fake_psql(*, impl_runs: int, active: int, terminal_row: str = ""):
+    """Script the three queries `ended_without_implementation` asks, by their subject.
+
+    Dispatching on a substring rather than the whole SQL keeps the tests about the
+    decision the function makes, not about its formatting.
+    """
+
+    def psql(query: str) -> str:
+        if "workload_type='implementation'" in query:
+            return str(impl_runs)
+        if "status in ('running','queued')" in query:
+            return str(active)
+        if "status in ('failed','cancelled')" in query:
+            return terminal_row
+        raise AssertionError(f"unexpected query: {query}")
+
+    return psql
+
+
+class TestEndedWithoutImplementation:
+    """#1168: a cycle that never builds anything must end the drive loop, not outlast it.
+
+    `terminal_impl` only reads implementation runs, so a failed framing left `drive`
+    polling for the full four-hour MAX_WAIT_S — no record, no watcher, and the next
+    set's preflight stuck behind a process that would not exit (cyc_6e068cdd7de0).
+    """
+
+    def test_a_failed_framing_with_nothing_left_running_reports_its_reason(
+        self, driver, monkeypatch
+    ):
+        monkeypatch.setattr(
+            driver,
+            "psql",
+            _fake_psql(
+                impl_runs=0,
+                active=0,
+                terminal_row="failed: Rewinding to checkpoint after "
+                "governance.prepare_plan_authoring_brief failure",
+            ),
+        )
+        assert driver.ended_without_implementation("cyc_x") == (
+            "failed: Rewinding to checkpoint after governance.prepare_plan_authoring_brief failure"
+        )
+
+    def test_an_open_gate_is_not_an_ending(self, driver, monkeypatch):
+        """The regression that would matter most: a framing sitting `completed` at an
+        unapproved gate has no implementation run and nothing running. Ending here would
+        abandon every cycle at its gate — the ordinary path of every shakeout."""
+        monkeypatch.setattr(driver, "psql", _fake_psql(impl_runs=0, active=0, terminal_row=""))
+        assert driver.ended_without_implementation("cyc_x") is None
+
+    def test_an_existing_implementation_run_defers_to_terminal_impl(self, driver, monkeypatch):
+        """Two probes answering the same question would race; `terminal_impl` owns it
+        the moment an implementation run exists, whatever that run's status."""
+        monkeypatch.setattr(
+            driver, "psql", _fake_psql(impl_runs=1, active=0, terminal_row="failed: whatever")
+        )
+        assert driver.ended_without_implementation("cyc_x") is None
+
+    @pytest.mark.parametrize("active", [1, 3], ids=["one-running", "several-running"])
+    def test_work_still_in_flight_is_never_an_ending(self, driver, monkeypatch, active):
+        """A queued or running task means the cycle may still create an implementation
+        run. Ending here would cut a live cycle short and bank a red record for it."""
+        monkeypatch.setattr(
+            driver,
+            "psql",
+            _fake_psql(impl_runs=0, active=active, terminal_row="failed: not yet"),
+        )
+        assert driver.ended_without_implementation("cyc_x") is None
+
+    def test_a_cancelled_framing_is_reported_as_cancelled_not_failed(self, driver, monkeypatch):
+        """#1168 sketched a `framing_failed: true` flag. 32 framing runs in the real table
+        ended `cancelled`, and calling those a failure puts a wrong word in a banked
+        record — so the status travels with the reason."""
+        monkeypatch.setattr(
+            driver,
+            "psql",
+            _fake_psql(impl_runs=0, active=0, terminal_row="cancelled: operator cancelled"),
+        )
+        assert driver.ended_without_implementation("cyc_x").startswith("cancelled: ")
+
+    def test_a_missing_failure_reason_says_so_rather_than_trailing_a_colon(
+        self, driver, monkeypatch
+    ):
+        """`failure_reason` is nullable. A bare `failed: ` in the record reads as a
+        truncated message rather than as an absent one."""
+        monkeypatch.setattr(
+            driver,
+            "psql",
+            _fake_psql(impl_runs=0, active=0, terminal_row="failed: no failure_reason recorded"),
+        )
+        assert driver.ended_without_implementation("cyc_x") == "failed: no failure_reason recorded"
+
+
+class TestDriveLoopExitsOnAFailedFraming:
+    """The #1168 hang itself: the probe is only half the fix — `drive` has to consult it."""
+
+    def test_drive_returns_the_reason_instead_of_polling_to_the_timeout(self, driver, monkeypatch):
+        monkeypatch.setattr(driver, "gate_pending", lambda _c: None)
+        monkeypatch.setattr(driver, "terminal_impl", lambda _c: None)
+        monkeypatch.setattr(
+            driver, "ended_without_implementation", lambda _c: "failed: framing died"
+        )
+
+        def no_sleep(_s):
+            raise AssertionError("drive slept — it did not notice the cycle had ended")
+
+        monkeypatch.setattr(driver.time, "sleep", no_sleep)
+
+        assert driver.drive(object(), "cyc_x") == "failed: framing died"
+
+    def test_the_ordinary_path_still_returns_none_when_implementation_is_terminal(
+        self, driver, monkeypatch
+    ):
+        """`drive` gained a return value; the ordinary path must keep meaning 'nothing
+        to report' or every green shakeout would be recorded as ended-early."""
+        monkeypatch.setattr(driver, "gate_pending", lambda _c: None)
+        monkeypatch.setattr(driver, "terminal_impl", lambda _c: "completed")
+        monkeypatch.setattr(
+            driver,
+            "ended_without_implementation",
+            lambda _c: (_ for _ in ()).throw(AssertionError("consulted before terminal_impl")),
+        )
+        assert driver.drive(object(), "cyc_x") is None

@@ -337,8 +337,57 @@ def terminal_impl(cycle_id: str) -> str | None:
     return status if status and status != "running" and active == "0" else None
 
 
-def drive(cfg: SetConfig, cycle_id: str) -> None:
-    """Approve the gate (§6 constant, verbatim) when it opens; return when the impl run is terminal."""
+def ended_without_implementation(cycle_id: str) -> str | None:
+    """``"<status>: <reason>"`` once the cycle has stopped without ever creating an
+    implementation run, else None.
+
+    **Why this exists (#1168).** ``terminal_impl`` only ever reports on an implementation
+    run. A cycle whose framing fails never creates one, so it returned None on every poll
+    and ``drive`` span for the full four-hour ``MAX_WAIT_S`` — no record written, the
+    watcher never woken, and the next set's preflight blocked behind a process that would
+    not exit. Measured on the 1.7.0 Atlas shakeout ``cyc_6e068cdd7de0`` (2026-08-28,
+    framing failed at ``governance.prepare_plan_authoring_brief``); killed by hand.
+
+    Named for the condition rather than for ``framing_failed`` as #1168 sketched it,
+    because a framing that is *cancelled* reaches this state too and did so 32 times in
+    the run table — calling that a failure would put a wrong word in a banked record.
+
+    The three clauses are ordered cheapest-first and each is load-bearing: an
+    implementation run existing at all means ``terminal_impl`` owns the answer; anything
+    running or queued means the cycle may still create one; and only then is a run that
+    ended ``failed``/``cancelled`` the reason it never will. A framing sitting
+    ``completed`` at an open gate matches none of them, so the gate loop keeps its turn.
+    """
+    if (
+        psql(
+            f"select count(*) from cycle_runs where cycle_id='{cycle_id}' "
+            "and workload_type='implementation';"
+        )
+        != "0"
+    ):
+        return None
+    if (
+        psql(
+            f"select count(*) from cycle_runs where cycle_id='{cycle_id}' "
+            "and status in ('running','queued');"
+        )
+        != "0"
+    ):
+        return None
+    return (
+        psql(
+            "select status||': '||coalesce(nullif(failure_reason,''),'no failure_reason recorded') "
+            f"from cycle_runs where cycle_id='{cycle_id}' and status in ('failed','cancelled') "
+            "order by run_number desc limit 1;"
+        )
+        or None
+    )
+
+
+def drive(cfg: SetConfig, cycle_id: str) -> str | None:
+    """Approve the gate (§6 constant, verbatim) when it opens; return once the cycle can
+    produce nothing further. Returns the reason when it ended with no implementation run
+    (#1168), None on the ordinary path."""
     started = time.time()
     approved: set[str] = set()
     while time.time() - started < MAX_WAIT_S:
@@ -355,7 +404,11 @@ def drive(cfg: SetConfig, cycle_id: str) -> None:
         done = terminal_impl(cycle_id)
         if done:
             log(f"implementation run terminal: {done}")
-            return
+            return None
+        red = ended_without_implementation(cycle_id)
+        if red:
+            log(f"cycle ended with no implementation run — {red}")
+            return red
         time.sleep(POLL_S)
     raise SystemExit(f"driver timed out after {MAX_WAIT_S}s on {cycle_id}")
 
@@ -861,6 +914,11 @@ def render(cfg: SetConfig, title: str, rec: dict) -> str:
         "## Headline",
         "",
         f"- verdict: **{rec.get('verdict')}**",
+        *(
+            [f"- ended with NO implementation run — {rec['ended_without_implementation']}"]
+            if rec.get("ended_without_implementation")
+            else []
+        ),
         f"- boot audit: **{'PASS' if audit.get('passed') else 'FAIL' if audit.get('ran') else 'NOT RUN'}**"
         + (
             f" — {audit.get('detail', '')}" if audit.get("ran") else f" ({audit.get('reason', '')})"
@@ -945,8 +1003,9 @@ def _run_cycle(
         if assert_hash:
             log("   the roll is NOT comparable; recording and stopping")
             return 3
-    drive(cfg, cyc)
+    ended_early = drive(cfg, cyc)
     rec = collect(cfg, cyc)
+    rec["ended_without_implementation"] = ended_early
     rec["stack"] = stack
     rec["config_hash"] = chash
     rec["launched_at"] = launched_at
@@ -976,7 +1035,11 @@ def _run_cycle(
     print("LEDGER CHECKS:", json.dumps(rec["ledger_checks"], indent=2))
     print("LOOP TEXTURE:", json.dumps(rec["loop_texture"], indent=2))
     p0 = rec["static_checks"].get("p0") or {}
-    return 4 if p0.get("refused") else 0
+    if p0.get("refused"):
+        return 4
+    # A red framing is a recorded outcome, not a silent zero: a chained set or a watcher
+    # reading only the exit code would otherwise treat "never built anything" as a pass.
+    return 5 if ended_early else 0
 
 
 def cmd_preflight(cfg: SetConfig, counting: bool) -> int:
