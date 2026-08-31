@@ -105,6 +105,7 @@ class GovernanceReviewPlanHandler(_PlanningTaskHandler):
             response.content if response else None,
             getattr(response, "completion_tokens", None),
             getattr(response, "reasoning_tokens", None),
+            getattr(response, "reasoning_text", None),
         )
         return response.content if response and response.content else None
 

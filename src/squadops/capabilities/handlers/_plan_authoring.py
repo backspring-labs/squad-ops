@@ -154,7 +154,11 @@ async def retry_yaml_call(
 
         content = response.content
         log_emission_shape(
-            handler_name, content, response.completion_tokens, response.reasoning_tokens
+            handler_name,
+            content,
+            response.completion_tokens,
+            response.reasoning_tokens,
+            response.reasoning_text,
         )
         # Each handler tells us which filename to expect via the
         # closure in parse_and_validate; this layer just hands over the

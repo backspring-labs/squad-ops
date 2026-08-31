@@ -752,7 +752,11 @@ class _CycleTaskHandler(CapabilityHandler):
         # that block is gated on `llm_obs and correlation_context`, so a capture placed
         # there would go missing in exactly the setups where the emission is unexplained.
         log_emission_shape(
-            self._handler_name, content, response.completion_tokens, response.reasoning_tokens
+            self._handler_name,
+            content,
+            response.completion_tokens,
+            response.reasoning_tokens,
+            response.reasoning_text,
         )
 
         # Record LLM generation for LangFuse tracing (SIP-0061 Option B)

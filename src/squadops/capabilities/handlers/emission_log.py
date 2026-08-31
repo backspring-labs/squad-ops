@@ -75,6 +75,7 @@ def log_emission_shape(
     content: object,
     completion_tokens: object,
     reasoning_tokens: object = None,
+    reasoning_text: object = None,
 ) -> None:
     """Record the shape of one completion.
 
@@ -108,7 +109,23 @@ def log_emission_shape(
     head = " ".join(text[:160].split())
     # Rendered as a fraction rather than a bare count: "6800 of 6866" reads as budget
     # exhaustion at a glance, where two separate numbers have to be divided by the reader.
-    reasoning_part = "" if reasoning_tokens is None else f" reasoning_tokens={reasoning_tokens}"
+    #
+    # **The fallback (#1195).** Ollama reports no separate thinking token count —
+    # ``eval_count`` is the total and there is no thinking count field — so on the arm
+    # that runs production ``reasoning_tokens`` is always None and #924's line rendered
+    # nothing at all. Measured across both 2026-08-31 shakeouts: 35 emission-shape lines,
+    # zero splits. The text is available where the count is not (#410, #1194), so its
+    # LENGTH stands in. It is deliberately named ``reasoning_chars`` and not folded into
+    # the token field: characters are not tokens, and a reader comparing this against
+    # ``completion_tokens`` must not be invited to divide one by the other. It answers
+    # the question #924 actually asks — did the model spend the call thinking, or emit
+    # something the parser rejected — which is a matter of magnitude, not of exact units.
+    if reasoning_tokens is not None:
+        reasoning_part = f" reasoning_tokens={reasoning_tokens}"
+    elif reasoning_text is not None:
+        reasoning_part = f" reasoning_chars={len(str(reasoning_text))}"
+    else:
+        reasoning_part = ""
     logger.info(
         "%s emission shape: chars=%d completion_tokens=%s%s fences=%s head=%r",
         handler_name,

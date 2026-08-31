@@ -292,15 +292,49 @@ class TestReasoningSplitSeparatesTheTwoFailures:
         with caplog.at_level(logging.INFO):
             log_emission_shape("qa_test", "content", 413)
         assert "reasoning_tokens" not in caplog.messages[-1]
+        assert "reasoning_chars" not in caplog.messages[-1]
         assert "completion_tokens=413" in caplog.messages[-1]
+
+    def test_the_text_length_stands_in_where_the_provider_reports_no_count(self, caplog):
+        """#1195: Ollama reports no thinking token count, so on the arm that runs
+        production #924's line rendered nothing — 35 emission-shape lines across both
+        2026-08-31 shakeouts, zero splits. The text is there where the count is not."""
+        with caplog.at_level(logging.INFO):
+            log_emission_shape("qa_test", "", 6866, None, "x" * 6800)
+        message = caplog.messages[-1]
+        assert "reasoning_chars=6800" in message
+        # Characters are not tokens: the two must never share a field name, or a reader
+        # will divide one by the other and get a meaningless ratio.
+        assert "reasoning_tokens" not in message
+
+    def test_a_real_count_wins_over_the_text_length(self, caplog):
+        """A provider that reports the count (Atlas) must not have it replaced by an
+        approximation just because the text is also present."""
+        with caplog.at_level(logging.INFO):
+            log_emission_shape("qa_test", "", 6866, 6800, "x" * 99)
+        message = caplog.messages[-1]
+        assert "reasoning_tokens=6800" in message
+        assert "reasoning_chars" not in message
+
+    def test_an_empty_thinking_channel_is_reported_as_zero_length_not_omitted(self, caplog):
+        """ "" and None differ: a model that thought and returned nothing is not a model
+        that did not think. Omitting the empty case would collapse them again."""
+        with caplog.at_level(logging.INFO):
+            log_emission_shape("qa_test", "content", 413, None, "")
+        assert "reasoning_chars=0" in caplog.messages[-1]
 
 
 def test_every_emission_call_site_reports_the_reasoning_split():
-    """All 18 call sites pass a reasoning figure.
+    """All 18 call sites pass BOTH reasoning figures.
 
     A seam that logs only ``completion_tokens`` is the one where #924's ambiguity
     survives — and it would be silently absent rather than wrong, which is why this
     is asserted structurally rather than left to review.
+
+    Both halves are required (#1195). ``reasoning_tokens`` alone renders nothing on
+    Ollama, which reports no thinking count, so a call site passing only the count
+    would read green here and log nothing on the arm that runs production — exactly
+    the failure this test exists to prevent, one field further in.
     """
     import re
 
@@ -314,9 +348,9 @@ def test_every_emission_call_site_reports_the_reasoning_split():
             if "def log_emission" in m.group(0):
                 continue
             total += 1
-            if "reasoning_tokens" not in m.group(0):
-                missing.append(
-                    f"{path.relative_to(handlers)}:{text[: m.start()].count(chr(10)) + 1}"
-                )
+            absent = [f for f in ("reasoning_tokens", "reasoning_text") if f not in m.group(0)]
+            if absent:
+                line = text[: m.start()].count(chr(10)) + 1
+                missing.append(f"{path.relative_to(handlers)}:{line} (no {', '.join(absent)})")
     assert total >= 18, f"expected the known call sites, found {total} — did the scan break?"
     assert not missing, "call sites not reporting the reasoning split:\n  " + "\n  ".join(missing)

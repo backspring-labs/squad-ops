@@ -118,7 +118,11 @@ class GovernanceCorrectionDecisionHandler(_CycleTaskHandler):
 
         content = response.content
         log_emission_shape(
-            self._handler_name, content, response.completion_tokens, response.reasoning_tokens
+            self._handler_name,
+            content,
+            response.completion_tokens,
+            response.reasoning_tokens,
+            response.reasoning_text,
         )
 
         # #1008: one bounded re-ask when extraction fails (V38 shakedown truncation).
@@ -134,6 +138,7 @@ class GovernanceCorrectionDecisionHandler(_CycleTaskHandler):
                 retry.content,
                 retry.completion_tokens,
                 retry.reasoning_tokens,
+                retry.reasoning_text,
             )
             return retry.content
 

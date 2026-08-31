@@ -278,6 +278,7 @@ async def produce_plan(
             response.content,
             response.completion_tokens,
             response.reasoning_tokens,
+            response.reasoning_text,
         )
         extracted = extract_fenced_files(response.content)
         manifest_files = [f for f in extracted if f["filename"] == "implementation_plan.yaml"]
