@@ -363,6 +363,22 @@ class _CycleTaskHandler(CapabilityHandler):
 
         return model_name, max_tokens, context_window
 
+    def _capability_ceiling(self) -> int | None:
+        """This capability's declared completion ceiling, or None if unresolvable.
+
+        Used as the fallback bound for a model with no MODEL_SPECS entry (#1145), so
+        the two budget paths agree. Returns None rather than raising: a handler whose
+        capability id does not resolve should not lose its LLM call over a budget
+        lookup, and None reproduces exactly the old unbounded behaviour for that case
+        instead of inventing a number.
+        """
+        try:
+            from squadops.capabilities.dev_capabilities import get_capability
+
+            return get_capability(self._capability_id).max_completion_tokens
+        except Exception:
+            return None
+
     def _build_chat_kwargs(self, inputs: dict[str, Any]) -> dict[str, Any]:
         """Build chat() kwargs from agent config overrides (SIP-0075 §3.2).
 
@@ -394,6 +410,18 @@ class _CycleTaskHandler(CapabilityHandler):
             # computed four lines apart and never combined, so a HIGH capability paid
             # for its reasoning out of the document's allowance.
             kwargs["max_tokens"] = spec.default_max_completion + thinking_headroom(reasoning, spec)
+        else:
+            # #1145: an unregistered model previously fell through with NO max_tokens at
+            # all, so the adapter omitted num_predict and the provider's own default
+            # applied — the one path with no framework-side bound. Path A
+            # (_resolve_model_budget) already falls back to the capability ceiling; this
+            # path now agrees with it instead of having no opinion. Deliberately the
+            # ceiling and not an invented per-model clamp: guessing a budget for an
+            # unknown model is the fallback-that-masks-missing-config this repo bans, and
+            # the preflight check added alongside is what stops the model being unknown.
+            ceiling = self._capability_ceiling()
+            if ceiling is not None:
+                kwargs["max_tokens"] = ceiling
         if "timeout_seconds" in overrides:
             kwargs["timeout_seconds"] = overrides["timeout_seconds"]
         if reasoning is not None:

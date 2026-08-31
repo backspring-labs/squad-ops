@@ -32,6 +32,7 @@ from squadops.cycles.preflight import (
     bind_mode_authoring_decision,
     combine,
     model_availability_decision,
+    model_registration_decision,
     required_check_tooling_decision,
     required_roles_decision,
 )
@@ -411,3 +412,66 @@ def test_bind_mode_check_is_composed_into_the_create_preflight():
 
     source = inspect.getsource(cycles_route._run_create_preflight)
     assert "bind_mode_authoring_decision(config)" in source
+
+
+class TestModelRegistrationDecision:
+    """#1145: a model can be pulled and still unknown to the budget system.
+
+    The two checks fail differently — availability catches "the backend cannot
+    serve this", registration catches "the framework cannot bound this" — and an
+    unregistered model runs with the SIP-0073 overflow guard disabled and a
+    different completion budget than a registered one on the same capability.
+    """
+
+    def _profile_with_models(self, *models):
+        agents = tuple(
+            AgentProfileEntry(agent_id=f"a{i}", role="dev", model=m, enabled=True)
+            for i, m in enumerate(models)
+        )
+        return SquadProfile(
+            profile_id="p", name="T", description="", version=1, agents=agents, created_at=NOW
+        )
+
+    def test_a_registered_model_produces_no_finding(self):
+        decision = model_registration_decision(self._profile_with_models("qwen3.8:27b"))
+        assert decision.warnings == ()
+        assert not decision.rejected
+
+    def test_an_unregistered_model_warns_and_names_it(self):
+        decision = model_registration_decision(
+            self._profile_with_models("some-model-nobody-registered")
+        )
+        assert len(decision.warnings) == 1
+        finding = decision.warnings[0]
+        assert finding.code == "model_unregistered"
+        assert "some-model-nobody-registered" in finding.message
+        # The operator needs to know what it costs, not merely that it happened.
+        assert "overflow guard is DISABLED" in finding.message
+
+    def test_it_warns_rather_than_blocks(self):
+        """Blocking would make every new model a create-time hard stop, including on a
+        box deliberately exploring one. The measured harm is the silence, not the
+        absence — a counting run treats this as fatal by reading the finding, which is
+        the pre-registration's judgment to make, not this function's."""
+        decision = model_registration_decision(self._profile_with_models("unregistered-x"))
+        assert decision.rejected is False
+        assert decision.blocking == ()
+
+    def test_disabled_agents_are_not_checked(self):
+        """Consistent with model_availability_decision: only enabled agents run."""
+        agents = (
+            AgentProfileEntry(agent_id="a", role="dev", model="unregistered-y", enabled=False),
+            AgentProfileEntry(agent_id="b", role="qa", model="qwen3.8:27b", enabled=True),
+        )
+        profile = SquadProfile(
+            profile_id="p", name="T", description="", version=1, agents=agents, created_at=NOW
+        )
+        assert model_registration_decision(profile).warnings == ()
+
+    def test_several_unregistered_models_are_reported_together(self):
+        """One finding listing all of them, not one finding each — the operator fixes
+        the registry once."""
+        decision = model_registration_decision(self._profile_with_models("un-a", "un-b"))
+        assert len(decision.warnings) == 1
+        assert "un-a" in decision.warnings[0].message
+        assert "un-b" in decision.warnings[0].message

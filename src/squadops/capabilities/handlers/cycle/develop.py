@@ -482,6 +482,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
                 user_prompt,
                 max_tokens,
                 context_window,
+                model_name,
             )
         except ValueError as exc:
             return self._fail_result(start_time, inputs, str(exc))
