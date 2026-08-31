@@ -227,6 +227,35 @@ Filed as #1177 (the A/B rig's arm-exclusivity guard is bypassable) and #1178 (th
 containment: no `systemd-oomd`, no earlyoom, no `MemoryMax=`). Any vLLM A/B inherits the trap and
 must carry the guard.
 
+### 1.2d The router §7 defers routing *to* has been deleted (owner ruling, 2026-08-31)
+
+**What changed.** §7 defers "make `LLMRouter` provider-aware (route per task type to different
+providers)" — "deferred, not rejected … the router's documented 0.8.8 future … Successor SIP."
+`LLMRouter` no longer exists. It was deleted under #944 as dead code: never constructed outside
+tests, while its own docstring claimed "wiring ensures router is always used (bundle returns
+router, not raw adapter)" — false since the agent composition root builds the raw adapter and
+passes it straight to the bundle (`agents/entrypoint.py:362`, `:444`).
+
+**Why this is recorded here and not only in the issue.** §7's deferral reads as "the vehicle
+exists, the policy is later." After this, the vehicle does not exist. A reader taking §7 at face
+value would go looking for a class to extend and find nothing — and silence about a disposition
+reads as shipped (CLAUDE.md §5a).
+
+**What is unchanged.** The *capability* stays deferred, not rejected: per-task-type provider
+routing (a small model for verdicts, a large one for authoring) is still a real thing worth
+having and still needs two working providers first. What changes is only its starting point. A
+successor SIP designs the routing seam against the provider surface as it then stands; it does
+not resume from 139 lines that were maintained four times, once per port method added, without
+ever being called.
+
+**Evidence.** `rg "LLMRouter\("` returned four hits before the deletion, all under `tests/`.
+Nothing in `src/` or `adapters/` instantiated it. Deleting it also retired a deliberate
+exemption in `tests/unit/capabilities/test_emission_log.py`, which excused `router.py` from the
+every-LLM-seam-captures check on the grounds that it was off the production path — an exemption
+that would otherwise have outlived the file it named.
+
+**Who ruled it.** Owner, 2026-08-31, authorising #944 in the pre-shakeout batch.
+
 ## 2. Problem Statement
 
 ### 2.0 What Atlas is (recorded here because nothing else records it)

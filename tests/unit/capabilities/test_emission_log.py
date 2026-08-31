@@ -19,13 +19,11 @@ pytestmark = [pytest.mark.domain_capabilities]
 _REPO = Path(__file__).resolve().parents[3]
 _ROOTS = (_REPO / "src", _REPO / "adapters")
 
-#: ``LLMRouter.chat_stream_with_usage`` is a pure pass-through to the provider and is
-#: NOT on the production path — the agent entrypoint injects the provider adapter
-#: directly (``bootstrap/system.py`` ← ``adapters/llm/factory.py``). Capturing there
-#: would log nothing today and double-log every emission if the router were ever
-#: wired, since the handler seams below already capture. Exempt deliberately, with
-#: the reason recorded, rather than silently skipped.
-_PASS_THROUGH = {"src/squadops/llm/router.py"}
+#: No production file is exempt. The one entry this held — ``src/squadops/llm/router.py``
+#: — was exempted because ``LLMRouter`` was a pass-through off the production path; #944
+#: deleted the class, so the exemption went with it rather than outliving its subject as
+#: a rule about a file that no longer exists.
+_PASS_THROUGH: set[str] = set()
 
 
 def _seam_counts(path: Path) -> tuple[int, int]:

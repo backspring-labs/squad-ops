@@ -1,4 +1,4 @@
-"""Tests for chat_stream() on LLMPort, Ollama adapter, and LLMRouter (SIP-0085 Phase 1)."""
+"""Tests for chat_stream() on LLMPort and the Ollama adapter (SIP-0085 Phase 1)."""
 
 from __future__ import annotations
 
@@ -289,61 +289,6 @@ class TestOllamaChatStream:
                 "temperature": 0.5,
             }
         )
-
-
-# ---------------------------------------------------------------------------
-# Router forwarding tests
-# ---------------------------------------------------------------------------
-
-
-class TestRouterChatStreamForwarding:
-    """LLMRouter.chat_stream() forwards to provider."""
-
-    async def test_router_forwards_stream_chunks(self):
-        from squadops.llm.router import LLMRouter
-
-        provider = _StreamingLLM(["a", "b", "c"])
-        router = LLMRouter(provider)
-        messages = [ChatMessage(role="user", content="hi")]
-        chunks = [c async for c in router.chat_stream(messages)]
-        assert chunks == ["a", "b", "c"]
-
-    async def test_router_forwards_stream_params(self):
-        from squadops.llm.router import LLMRouter
-
-        captured: dict[str, Any] = {}
-
-        class _CapturingLLM(_StreamingLLM):
-            async def chat_stream(
-                self,
-                messages: list[ChatMessage],
-                **kwargs: Any,
-            ) -> AsyncIterator[str]:
-                captured.update(kwargs)
-                yield "ok"
-
-        provider = _CapturingLLM()
-        router = LLMRouter(provider)
-        messages = [ChatMessage(role="user", content="hi")]
-        chunks = [
-            c
-            async for c in router.chat_stream(
-                messages,
-                model="m",
-                max_tokens=10,
-                temperature=0.1,
-                timeout_seconds=5.0,
-                reasoning="none",
-            )
-        ]
-        assert chunks == ["ok"]
-        assert captured == {
-            "model": "m",
-            "max_tokens": 10,
-            "temperature": 0.1,
-            "timeout_seconds": 5.0,
-            "reasoning": "none",
-        }
 
 
 # ---------------------------------------------------------------------------
