@@ -70,7 +70,12 @@ def classify_fences(text: str) -> dict[str, int]:
     return counts
 
 
-def log_emission_shape(handler_name: str, content: object, completion_tokens: object) -> None:
+def log_emission_shape(
+    handler_name: str,
+    content: object,
+    completion_tokens: object,
+    reasoning_tokens: object = None,
+) -> None:
     """Record the shape of one completion.
 
     **Why this exists (#924).** SIP-0104 window rolls 3 and 5 both ended with every
@@ -85,17 +90,31 @@ def log_emission_shape(handler_name: str, content: object, completion_tokens: ob
     counts by kind, and a short head sample — enough to separate "emitted nothing",
     "emitted the wrong fence", and "emitted fills that the parser rejected" at a
     glance, without persisting whole completions or their prompt material.
+
+    **Why ``reasoning_tokens`` (#924, closable only since #410).** The issue named
+    ``chars=0 completion_tokens=6866`` as the line that would confirm its diagnosis
+    outright. It does not: that shape is equally consistent with "the model thought the
+    budget away and never reached the emission" and "the model emitted 6,866 tokens the
+    parser rejected", which have opposite fixes. The reasoning split separates them —
+    ``chars=0 completion_tokens=6866 reasoning_tokens=6800`` is the first, and
+    ``reasoning_tokens=0`` the second. The count was on the port already; #410 is what
+    made adapters actually populate it, so the line can now say which failure it is
+    rather than leaving the reader to infer.
     """
     if content is None:
         return
     text = str(content)
     counts = classify_fences(text)
     head = " ".join(text[:160].split())
+    # Rendered as a fraction rather than a bare count: "6800 of 6866" reads as budget
+    # exhaustion at a glance, where two separate numbers have to be divided by the reader.
+    reasoning_part = "" if reasoning_tokens is None else f" reasoning_tokens={reasoning_tokens}"
     logger.info(
-        "%s emission shape: chars=%d completion_tokens=%s fences=%s head=%r",
+        "%s emission shape: chars=%d completion_tokens=%s%s fences=%s head=%r",
         handler_name,
         len(text),
         completion_tokens,
+        reasoning_part,
         counts,
         head,
     )
