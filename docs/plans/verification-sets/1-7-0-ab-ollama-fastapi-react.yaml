@@ -1,8 +1,8 @@
 # 1.7.0 arm OLLAMA — FastAPI+React (correction texture). Pre-registration (historical,
 # the set it was authored for): docs/plans/1-7-0-atlas-ab-preregistration.md
 # STATUS 2026-08-29: the Atlas A/B (#1160) is STOPPED — negative result, no counted
-# rolls ran. This set is retained for fix-validation shakeouts and will be rewritten
-# against the vLLM-vs-Ollama pre-registration when that is authored (SIP-0106 §1.2b).
+# rolls ran. This set is retained for fix- and rebuild-validation shakeouts and will be
+# rewritten against the vLLM-vs-Ollama pre-registration when that is authored (SIP-0106 §1.2b).
 name: 1-7-0-ab-ollama-fastapi-react
 pre_registration: docs/plans/1-7-0-atlas-ab-preregistration.md
 project: group_run
@@ -14,24 +14,41 @@ n_rolls: 1
 gate_notes: >-
   Approved under the pre-registered gate policy — identical text applied to every roll of this
   set. System plan validation passed; no additional judgment applied. (NOT an Atlas A/B roll:
-  that set was stopped 2026-08-30 as a negative result, SIP-0106 §1.2a. This text is recorded
+  that set was stopped 2026-08-29 as a negative result, SIP-0106 §1.2a. This text is recorded
   verbatim on every gate decision, so it must not name a set the run is not part of.)
 launch_notes: >-
   1.7.0 arm ollama, COUNTED roll {roll} of {n} on fastapi-react_ts. INERT until a superseding
-  pre-registration exists — the Atlas A/B this text was written for was stopped 2026-08-30 as a
+  pre-registration exists — the Atlas A/B this text was written for was stopped 2026-08-29 as a
   negative result (SIP-0106 §1.2a), so no counted roll should be launched from this set as it
   stands. Frozen deploy per whichever pre-registration replaces it.
 shakeout_notes: >-
-  Fix-validation shakeout, NON-COUNTING by declaration before launch. Validates #1171 (framing
-  generations costed at zero tokens), #1172 (merge_plan emitted no generation record) and #1173
-  (completion budget ignored declared reasoning level) end to end on the post-#1174 frozen
-  deploy. Not an A/B roll: the Atlas A/B was stopped on 2026-08-29 as a negative result
-  (SIP-0106 §1.2a, docs/plans/1-7-0-atlas-ab-record.md). The superseding pre-registration for
-  the vLLM-vs-Ollama A/B is not yet written; the counted-roll fields below are inert until it is.
+  Rebuild-validation shakeout, NON-COUNTING by declaration before launch. The images this runs
+  on were rebuilt from main. The shakeouts that last passed on these sets (cyc_74a6ad13d309
+  nextjs, cyc_bfeee6cd779c fastapi-react) ran on images built 2026-08-29 from 0525bbed, and
+  twenty-four files under src/ and adapters/ changed afterwards — the three LLM adapters, the
+  LangFuse adapter, the cycle handler base, the agent entrypoint and the cycles route — none of
+  it exercised by a cycle until this one. What is new in the deploy: the reasoning channel
+  reaching the port and LangFuse (#410), the emission log reporting the reasoning split (#924),
+  the boot log naming a fallback model as a fallback (#930), an unregistered model failing
+  loudly on all three paths (#1145), and the cycle/CRP reasoning override (#927). Not an A/B
+  roll: the Atlas A/B was stopped on 2026-08-29 as a negative result (SIP-0106 §1.2a,
+  docs/plans/1-7-0-atlas-ab-record.md); the counted-roll fields (n_rolls, launch_notes) stay
+  inert until the superseding vLLM-vs-Ollama pre-registration is written.
+# Each check prints a fact the POST-REBUILD code alone can produce, so a rebuild that exited 0
+# with a stale image reads as ERROR or False here rather than passing silently (#326/#522). The
+# config line is retained: it is what caught the vLLM deploy whose config was right and whose
+# network path was not.
 loaded_checks:
   runtime-api: >-
-    from squadops.config import load_config; c = load_config();
-    print(c.llm.provider, c.llm.model, c.llm.url)
+    from squadops.config import load_config; import squadops.cycles.task_plan as tp,
+    squadops.cycles.preflight as pf; c = load_config(); print(c.llm.provider, c.llm.model,
+    c.llm.url, "| 927:", hasattr(tp, "_apply_cycle_reasoning"), "1145:", hasattr(pf,
+    "model_registration_decision"))
   eve: >-
-    from squadops.config import load_config; c = load_config();
-    print(c.llm.provider, c.llm.model, c.llm.url)
+    from squadops.config import load_config; import inspect; from squadops.llm.models import
+    LLMResponse; from squadops.telemetry.models import GenerationRecord; from
+    squadops.capabilities.handlers.emission_log import log_emission_shape; c = load_config();
+    print(c.llm.provider, c.llm.model, c.llm.url, "| 410:", "reasoning_text" in
+    LLMResponse.__dataclass_fields__ and "reasoning_text" in
+    GenerationRecord.__dataclass_fields__, "924:", "reasoning_tokens" in
+    inspect.signature(log_emission_shape).parameters)
