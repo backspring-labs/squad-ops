@@ -1,0 +1,12 @@
+[Unit]
+Description=Nightly SquadOps database backup
+
+[Timer]
+# 04:00 local, when the box is least likely to be mid-cycle.
+OnCalendar=*-*-* 04:00:00
+# The Spark has hard-halted five times; a missed window must still run on next boot.
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target
