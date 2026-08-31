@@ -517,7 +517,11 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
 
         content = response.content
         log_emission_shape(
-            self._handler_name, content, response.completion_tokens, response.reasoning_tokens
+            self._handler_name,
+            content,
+            response.completion_tokens,
+            response.reasoning_tokens,
+            response.reasoning_text,
         )
         llm_duration_ms = (time.perf_counter() - start_time) * 1000
 
@@ -623,6 +627,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
                         followup_response.content,
                         followup_response.completion_tokens,
                         followup_response.reasoning_tokens,
+                        followup_response.reasoning_text,
                     )
                     new_extracted = extract_fenced_files(followup_response.content)
                     new_artifacts = [
