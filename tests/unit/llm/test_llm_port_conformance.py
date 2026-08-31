@@ -345,6 +345,33 @@ class TestCapabilityHonesty:
         # The channel is separate from the answer, not folded into it.
         assert case.reasoning_text not in reply.content
 
+    async def test_reasoning_text_reaches_the_port_when_streamed(self, case):
+        """The streaming path must surface the channel too — it is the path in service.
+
+        The bug this guards (#1194): #410 added ``reasoning_text`` and fixed
+        ``chat()``, but every cycle handler calls ``chat_stream_with_usage()``,
+        which read only the content delta and returned a message leaving the field
+        unset. The symbol was present in the deployed image and the non-streaming
+        test above passed, so nothing flagged it — while 23 of 27 generations on the
+        2026-08-31 shakeouts asked the model to think and recorded
+        ``reasoning_text: null``. A test on the path nothing calls proves nothing
+        about the path everything calls, which is why this sits beside it rather
+        than replacing it.
+        """
+        adapter = case.build()
+        if not adapter.supports(LLMCapability.STREAMING_USAGE):
+            pytest.skip("streaming_usage not declared")
+
+        with wire(case.ok):
+            message = await adapter.chat_stream_with_usage(_messages(), model=case.reasoning_model)
+
+        assert message.reasoning_text == case.reasoning_text, (
+            f"{case.name} dropped its reasoning channel on the streaming path: "
+            f"got {message.reasoning_text!r}, expected {case.reasoning_text!r}"
+        )
+        # Assembled from every delta, not just the last one the stream carried.
+        assert case.reasoning_text not in message.content
+
     async def test_streaming_usage_declaration_matches_behavior(self, case):
         """Declared True means real counts, not the port's chat() fallback —
         which returns a valid message carrying no streaming usage at all."""

@@ -384,6 +384,8 @@ class AtlasAdapter(LLMPort):
         resolved = model or self._default_model
         started = time.monotonic()
         chunks: list[str] = []
+        reasoning_chunks: list[str] = []
+        saw_reasoning = False
         usage_frame: dict[str, Any] = {}
         finish_reason: str | None = None
         async for frame in self._stream_frames(
@@ -396,9 +398,20 @@ class AtlasAdapter(LLMPort):
             "chat_stream_with_usage",
         ):
             for choice in frame.get("choices") or []:
-                content = (choice.get("delta") or {}).get("content")
+                delta = choice.get("delta") or {}
+                content = delta.get("content")
                 if content:
                     chunks.append(content)
+                # #1194: ``delta.reasoning_content`` is the streamed half of the
+                # channel ``_chat`` already reads at ``message.reasoning_content``.
+                # Skipping it here is right for ``chat_stream`` (thinking is not
+                # content) but wrong for this method, whose whole job is to assemble
+                # the complete message. ``is not None`` keeps an absent channel
+                # distinct from a present-and-empty one.
+                reasoning = delta.get("reasoning_content")
+                if reasoning is not None:
+                    saw_reasoning = True
+                    reasoning_chunks.append(reasoning)
                 if choice.get("finish_reason"):
                     finish_reason = choice["finish_reason"]
             if frame.get("usage"):
@@ -415,6 +428,7 @@ class AtlasAdapter(LLMPort):
             total_tokens=total_tok,
             tokens_per_second=tps,
             reasoning_tokens=reasoning_tok,
+            reasoning_text="".join(reasoning_chunks) if saw_reasoning else None,
         )
 
     def list_models(self) -> list[str]:
