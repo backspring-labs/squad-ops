@@ -137,6 +137,25 @@ class TestValidateAgentEntries:
         errors = validate_agent_entries(agents)
         assert any("unknown config_overrides keys" in e for e in errors)
 
+    def test_the_sampling_pair_is_reachable_together(self):
+        """#901: `temperature` was permitted and `top_p` rejected with a 422.
+
+        For Qwen-family models those are a documented pair — the model card publishes
+        them together — so an operator tuning a profile could set one, have the other
+        refused as an unknown key, and land on a third configuration the model was
+        never tuned for. Asserted as a pair rather than as two keys, because reaching
+        only one of them is the defect.
+        """
+        agents = [
+            {
+                "agent_id": "neo",
+                "role": "dev",
+                "model": "qwen3.8:27b",
+                "config_overrides": {"temperature": 0.7, "top_p": 0.8},
+            }
+        ]
+        assert validate_agent_entries(agents) == []
+
     @pytest.mark.parametrize("bad", ["hgih", "", None, 2, True])
     def test_reasoning_override_must_be_a_level(self, bad):
         """#927: nothing downstream re-checks the value — a misspelt level

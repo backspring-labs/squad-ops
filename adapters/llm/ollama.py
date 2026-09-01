@@ -128,6 +128,7 @@ class OllamaAdapter(LLMPort):
             "stream": False,
             "options": {
                 "temperature": request.temperature,
+                **({} if request.top_p is None else {"top_p": request.top_p}),
                 "num_predict": request.max_tokens,
             },
         }
@@ -185,6 +186,7 @@ class OllamaAdapter(LLMPort):
         model: str,
         max_tokens: int | None,
         temperature: float | None,
+        top_p: float | None = None,
         reasoning: str | None = None,
         *,
         stream: bool = False,
@@ -210,6 +212,13 @@ class OllamaAdapter(LLMPort):
             options["num_predict"] = max_tokens
         if temperature is not None:
             options["temperature"] = temperature
+        # #901: the pair. Ollama takes `top_p` in `options` exactly as it takes
+        # `temperature`, so this is the same arm. `top_k`/`min_p` are deliberately NOT
+        # added: Ollama would accept them but the OpenAI-shaped adapters have no
+        # standard field for either, so a profile setting one would be honoured on one
+        # provider and silently ignored on two — the defect this fixes, reintroduced.
+        if top_p is not None:
+            options["top_p"] = top_p
         if options:
             payload["options"] = options
         if reasoning is not None:
@@ -223,6 +232,7 @@ class OllamaAdapter(LLMPort):
         model: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        top_p: float | None = None,
         timeout_seconds: float | None = None,
         reasoning: str | None = None,
     ) -> ChatMessage:
@@ -246,6 +256,7 @@ class OllamaAdapter(LLMPort):
             resolved_model,
             max_tokens,
             temperature,
+            top_p,
             reasoning,
             stream=False,
         )
@@ -305,6 +316,7 @@ class OllamaAdapter(LLMPort):
         model: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        top_p: float | None = None,
         timeout_seconds: float | None = None,
         reasoning: str | None = None,
     ) -> ChatMessage:
@@ -322,6 +334,7 @@ class OllamaAdapter(LLMPort):
             resolved_model,
             max_tokens,
             temperature,
+            top_p,
             reasoning,
             stream=True,
         )
@@ -417,6 +430,7 @@ class OllamaAdapter(LLMPort):
         model: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        top_p: float | None = None,
         timeout_seconds: float | None = None,
         reasoning: str | None = None,
     ) -> AsyncIterator[str]:
@@ -433,6 +447,7 @@ class OllamaAdapter(LLMPort):
             resolved_model,
             max_tokens,
             temperature,
+            top_p,
             reasoning,
             stream=True,
         )

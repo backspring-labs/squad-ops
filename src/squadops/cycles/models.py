@@ -181,6 +181,10 @@ class PreflightRejectedError(CycleError):
 ALLOWED_CONFIG_OVERRIDE_KEYS = frozenset(
     {
         "temperature",
+        # #901: temperature's documented pair. Qwen-family model cards publish the two
+        # together; permitting one and rejecting the other with a 422 meant an operator
+        # tuning a squad could only reach a configuration the model was never tuned for.
+        "top_p",
         "max_completion_tokens",
         "timeout_seconds",
         "reasoning",  # a ReasoningLevel, overriding the capability's declaration (#927)
