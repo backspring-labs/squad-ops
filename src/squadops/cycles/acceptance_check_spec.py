@@ -475,6 +475,77 @@ def parse_method_path_status(token: str) -> tuple[str, str, int] | None:
 # the parser already rejects authoring errors against this spec. The ``example``
 # on each entry is rendered into the proposer prompt (issue #182) and is
 # asserted parser-valid by test.
+#: Languages the framework emits and therefore reasons about. A check that does not
+#: apply to one of these is not covering it — and #1216 is that the difference used to
+#: be invisible: `is_check_applicable` returns False and the injection loop simply
+#: `continue`s, so a `.ts` emission got less checking than an identical `.py` one and
+#: the resulting green looked the same.
+EMISSION_LANGUAGES: frozenset[str] = frozenset({".py", ".js", ".jsx", ".ts", ".tsx"})
+
+#: Framework-injected file-scoped checks that deliberately do not cover a language,
+#: WITH THE REASON. Not a suppression list: an entry here is a coverage gap the
+#: evidence should disclose, and `uncovered_languages` reads it so a green can say
+#: what it did not check rather than implying it checked everything.
+#:
+#: `test_every_coverage_gap_is_declared` fails on an undeclared gap, so adding a
+#: stack-specific check without saying what it leaves uncovered is a CI failure rather
+#: than a discovery three rolls later (#939 sat open five weeks and cost a shakeout).
+#: An entry whose gap no longer exists fails too, so the list stays exactly as large
+#: as reality — the same two-sided shape as requirements/constraint-exceptions.txt.
+DECLARED_COVERAGE_GAPS: dict[str, dict[str, str]] = {
+    CHECK_UNDEFINED_NAMES: dict.fromkeys(
+        (".js", ".jsx", ".ts", ".tsx"),
+        "No JS/TS scope analyser exists in the agent image — measured: tsc is not on "
+        "PATH (TypeScript lives in the app's own node_modules/.bin) and eslint 6.4.0 "
+        "exits 2 without a config, which is #645's fails-on-any-content class. "
+        "Closing it means provisioning a real analyser into the qa image. Tracked as "
+        "#939; it cost cyc_58d92ca2b407, where a .ts fill used `created` without "
+        "declaring it and reached test execution.",
+    ),
+    CHECK_DECLARED_IMPORTS: dict.fromkeys(
+        (".py",),
+        "Python declares dependencies in requirements files, not a manifest beside "
+        "the source, and resolution is environment-wide rather than per-directory. "
+        "The equivalent check is a different check, not this one with another "
+        "extension — no Python emission is silently less checked as a result, since "
+        "undefined_names and the syntax gate both cover .py.",
+    ),
+}
+
+
+def framework_file_scoped_checks() -> dict[str, frozenset[str]]:
+    """``{check: applicable_extensions}`` for the checks #1216 governs.
+
+    One predicate, read by both the disclosure and the guard. They were written
+    separately first and disagreed immediately — the rendered menu listed gaps for
+    checks the test never required declaring, which is the same class of drift the
+    generated-doc rule exists to prevent, one level in.
+    """
+    return {
+        name: spec.applicable_extensions
+        for name, spec in CHECK_SPECS.items()
+        if spec.framework_injected
+        and spec.required_params == frozenset({"file"})
+        and spec.applicable_extensions
+    }
+
+
+def uncovered_languages(check_name: str) -> dict[str, str]:
+    """``{extension: reason}`` a framework-injected check does not cover.
+
+    The disclosure surface for #1216: a caller rendering evidence can say which
+    languages went unchecked and why, instead of leaving a green to imply coverage
+    the run never had.
+    """
+    extensions = framework_file_scoped_checks().get(check_name)
+    if extensions is None:
+        return {}
+    declared = DECLARED_COVERAGE_GAPS.get(check_name, {})
+    return {
+        ext: declared.get(ext, "undeclared gap") for ext in sorted(EMISSION_LANGUAGES - extensions)
+    }
+
+
 CHECK_SPECS: dict[str, CheckSpec] = {
     CHECK_UNDEFINED_NAMES: CheckSpec(
         name=CHECK_UNDEFINED_NAMES,
@@ -1052,6 +1123,28 @@ def render_check_governance_menu() -> str:
                 spec.blocking_default,
             )
         )
+    gap_rows = [
+        (name, ext, reason)
+        for name in sorted(CHECK_SPECS)
+        for ext, reason in sorted(uncovered_languages(name).items())
+    ]
+    if gap_rows:
+        lines += [
+            "",
+            "## Declared coverage gaps",
+            "",
+            "Framework-injected checks that do not cover a language the framework emits,",
+            "with the reason (#1216). A gap here is disclosure, not suppression: an emission",
+            "in that language is checked less than an identical one elsewhere, and this is",
+            "where a reader finds out. An undeclared gap fails",
+            "`test_every_coverage_gap_is_declared`.",
+            "",
+            "| check | language | reason |",
+            "|---|---|---|",
+        ]
+        for name, ext, reason in gap_rows:
+            lines.append(f"| `{name}` | `{ext}` | {' '.join(reason.split())} |")
+
     lines += [
         "",
         "`command_exit_zero` ownership is per-command in truth. The forms it may take",
