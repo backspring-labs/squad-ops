@@ -16,12 +16,87 @@ import pytest
 
 from squadops.cycles.acceptance_check_spec import (
     CHECK_SPECS,
+    CHECK_UNDEFINED_NAMES,
+    DECLARED_COVERAGE_GAPS,
     DECLARED_UNBUILT_CHECKS,
+    EMISSION_LANGUAGES,
     CheckSpec,
+    framework_file_scoped_checks,
     render_check_governance_menu,
+    uncovered_languages,
 )
 
 pytestmark = [pytest.mark.domain_contracts]
+
+
+class TestCoverageGapsAreDeclared:
+    """#1216: a check that does not cover a stack was silently skipped.
+
+    `is_check_applicable` returns False for a non-matching extension and the injection
+    loop `continue`s, so a `.ts` emission received less checking than an identical
+    `.py` one and the green looked the same. Two neighbouring layers already refuse
+    loudly in this situation — the verification-set driver's #818 rule ("a stack with
+    no registered P0 check is refused loudly, never silently passed") and scaffold
+    emission's #838 registry-disagreement rule. This layer stayed quiet, and #939 sat
+    open five weeks before a shakeout paid for it.
+    """
+
+    def test_every_coverage_gap_is_declared(self):
+        """Bug caught: a stack-specific check added without saying what it leaves
+        uncovered — which is how #939 became invisible. Fails at CI rather than at a
+        roll three weeks later."""
+        undeclared = {}
+        for name, extensions in framework_file_scoped_checks().items():
+            gaps = EMISSION_LANGUAGES - extensions
+            missing = sorted(gaps - set(DECLARED_COVERAGE_GAPS.get(name, {})))
+            if missing:
+                undeclared[name] = missing
+        assert not undeclared, (
+            "These checks do not cover a language and do not say so:\n"
+            + "\n".join(f"  {n}: {', '.join(e)}" for n, e in sorted(undeclared.items()))
+            + "\n\nAdd them to DECLARED_COVERAGE_GAPS with the reason, or widen the "
+            "check.\nAn undeclared gap means an emission in that language is checked "
+            "less than\nan identical one elsewhere, and nothing says so."
+        )
+
+    def test_no_declared_gap_outlives_the_gap(self):
+        """Bug caught: a stale entry claiming a gap that has been closed. An
+        accumulating list is how a declared gap becomes an undeclared one — nobody
+        re-reads a reason that has been there a year."""
+        stale = {}
+        for name, gaps in DECLARED_COVERAGE_GAPS.items():
+            spec = CHECK_SPECS.get(name)
+            assert spec is not None, f"DECLARED_COVERAGE_GAPS names unknown check {name}"
+            covered = sorted(set(gaps) & spec.applicable_extensions)
+            if covered:
+                stale[name] = covered
+        assert not stale, (
+            "These gaps are declared but the check now covers them — remove the "
+            "entries:\n" + "\n".join(f"  {n}: {', '.join(e)}" for n, e in sorted(stale.items()))
+        )
+
+    def test_every_declared_gap_carries_a_reason(self):
+        """Bug caught: the list degrading into the anonymous skip it replaced. A bare
+        extension with no reason is not a declaration, it is unfinished work."""
+        unreasoned = [
+            f"{name}:{ext}"
+            for name, gaps in DECLARED_COVERAGE_GAPS.items()
+            for ext, reason in gaps.items()
+            if len(reason.strip()) < 40
+        ]
+        assert not unreasoned, "These declared gaps have no usable reason:\n  " + "\n  ".join(
+            unreasoned
+        )
+
+    def test_the_disclosure_names_what_went_unchecked(self):
+        """The point of the declaration: evidence can state the gap. `undefined_names`
+        covers .py only, so a reader asking what it did not check gets the four JS/TS
+        extensions and why — rather than a green that implies full coverage."""
+        gaps = uncovered_languages(CHECK_UNDEFINED_NAMES)
+        assert sorted(gaps) == [".js", ".jsx", ".ts", ".tsx"]
+        assert all("#939" in reason or "analyser" in reason for reason in gaps.values())
+        assert uncovered_languages("nonexistent_check") == {}
+
 
 _MENU_PATH = Path(__file__).resolve().parents[3] / "docs" / "architecture" / "typed-check-menu.md"
 
