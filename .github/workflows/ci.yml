@@ -19,6 +19,43 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    # Decides whether the integration lane has anything to say about this PR. Its own
+    # job because GitHub starts a job's `services:` BEFORE its steps run — a filter
+    # step inside `integration` would still pay for Postgres, Redis and RabbitMQ, which
+    # is most of that lane's 6.9 minutes. The decision has to happen in a job that owns
+    # no services, and `integration` has to be skipped as a whole.
+    name: relevant changes
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: filter
+        name: Did anything outside docs change?
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"   # pushes to main always run it (#1099)
+            exit 0
+          fi
+          base="origin/${{ github.base_ref }}"
+          git fetch --quiet origin "${{ github.base_ref }}"
+          changed="$(git diff --name-only "$base"...HEAD)"
+          echo "changed files:"; echo "$changed" | sed 's/^/  /'
+          # Docs-only means every path is prose. Anything else — source, tests, CI,
+          # requirements, config — runs the lane. Deliberately inverted: the default
+          # is to RUN, and only an all-prose diff opts out, so a path nobody thought
+          # about is covered rather than silently exempt.
+          if echo "$changed" | grep -qvE '^(docs/|sips/|README\.md$|CHANGELOG\.md$|CLAUDE\.md$|.*\.md$)'; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=false" >> "$GITHUB_OUTPUT"
+            echo "docs-only diff — skipping the integration lane"
+          fi
+
   test:
     name: lint + regression
     runs-on: ubuntu-latest
@@ -66,6 +103,13 @@ jobs:
     #
     # POSTGRES_URL names squadops_test, never the deployment database (#1099).
     name: integration
+    needs: changes
+    # Safe to skip as a whole: `integration` is NOT a required status check (required
+    # are `closing reference present`, `lint + regression`, `scaffold skeleton gate`),
+    # so a skipped run cannot block a merge. The required lanes stay unconditional —
+    # `lint + regression` in particular, which is what catches doc-adjacent breakage
+    # like the generated typed-check menu drifting from the registry.
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     services:
       postgres:
