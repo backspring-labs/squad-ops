@@ -457,3 +457,89 @@ def test_failed_probe_captures_the_apps_own_traceback(tmp_path):
     assert outcomes[0].app_traceback is not None
     assert "NameError" in outcomes[0].app_traceback
     assert "respones" in outcomes[0].app_traceback
+
+
+class TestAFailingProbeFailsTheTask:
+    """#1223: a failing contract probe rejected the run and asked nobody to fix it.
+
+    Probes execute in `qa.test`, but `passed` was computed from `test_result` alone, so
+    a suite that passed while the delivered app violated its contract left the task
+    SUCCESSFUL. The verdict roll-up then rejected the run with ZERO correction rounds —
+    `cyc_d0392c0a9c3d`, where the app answered 400 where the contract expects 422.
+
+    Failing the task is what routes it, not what assigns blame: `FailureLocus` already
+    calls this the SUBJECT case ("the suite ran and the app failed it"), and
+    `analyze_failure`/`correction_decision` decide ownership from there.
+    """
+
+    @staticmethod
+    def _handler():
+        from squadops.capabilities.handlers.cycle.qa_test import QATestHandler
+
+        return QATestHandler
+
+    @staticmethod
+    def _outputs(rows):
+        from squadops.cycles.task_outcome import TaskOutcome
+
+        return {
+            "validation_result": {"passed": True, "checks": rows},
+            "outcome_class": TaskOutcome.SUCCESS,
+        }
+
+    def test_the_roll5_shape_now_fails_the_task(self):
+        from squadops.cycles.task_outcome import TaskOutcome
+
+        outputs = self._outputs(
+            [
+                {
+                    "check": "vc-probe-runs-rejects-blank",
+                    "criterion_id": "vc-probe-runs-rejects-blank",
+                    "status": "failed",
+                    "reason": "status 400 != expected 422",
+                }
+            ]
+        )
+        self._handler()._fail_task_on_failing_probes(outputs)
+        assert outputs["outcome_class"] == TaskOutcome.SEMANTIC_FAILURE
+        assert outputs["validation_result"]["passed"] is False
+
+    def test_a_passing_probe_leaves_a_successful_task_alone(self):
+        from squadops.cycles.task_outcome import TaskOutcome
+
+        outputs = self._outputs(
+            [{"check": "vc-probe-runs", "criterion_id": "vc-probe-runs", "status": "passed"}]
+        )
+        self._handler()._fail_task_on_failing_probes(outputs)
+        assert outputs["outcome_class"] == TaskOutcome.SUCCESS
+        assert outputs["validation_result"]["passed"] is True
+
+    def test_a_skipped_probe_is_not_a_failure(self):
+        """`skipped` means the probe could not run, not that the app is wrong. Failing
+        the task on it would send a repair after a defect nobody observed."""
+        from squadops.cycles.task_outcome import TaskOutcome
+
+        outputs = self._outputs(
+            [{"check": "vc-probe-x", "criterion_id": "vc-probe-x", "status": "skipped"}]
+        )
+        self._handler()._fail_task_on_failing_probes(outputs)
+        assert outputs["outcome_class"] == TaskOutcome.SUCCESS
+
+    def test_a_non_probe_row_is_not_read_here(self):
+        """Only criterion-stamped rows are probes. `frontend_build` and the suite rows
+        have their own verdict paths, and double-counting them here would fail a task
+        twice for one defect."""
+        from squadops.cycles.task_outcome import TaskOutcome
+
+        outputs = self._outputs([{"check": "frontend_build", "passed": False}])
+        self._handler()._fail_task_on_failing_probes(outputs)
+        assert outputs["outcome_class"] == TaskOutcome.SUCCESS
+
+    def test_an_errored_probe_fails_the_task_too(self):
+        from squadops.cycles.task_outcome import TaskOutcome
+
+        outputs = self._outputs(
+            [{"check": "vc-probe-y", "criterion_id": "vc-probe-y", "status": "error"}]
+        )
+        self._handler()._fail_task_on_failing_probes(outputs)
+        assert outputs["outcome_class"] == TaskOutcome.SEMANTIC_FAILURE
