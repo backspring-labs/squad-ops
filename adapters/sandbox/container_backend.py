@@ -344,20 +344,42 @@ class ContainerBackend(NoOpExecutionSandbox):
         ready = await self._await_ready(base_url)
         duration = time.monotonic() - started
         if not ready:
+            # #1214: read the logs BEFORE anything removes the container, and ask
+            # whether it is still running — a container that exited did not time out,
+            # it crashed, and saying "startup_timeout" sends triage after readiness
+            # when the answer is a traceback. The app container is no longer started
+            # with --rm precisely so this evidence still exists to be read.
             try:
                 diagnostics = _tail_lines(await self._container.logs(container_id))
             except ToolContainerError:
                 diagnostics = ()
             try:
+                running, exit_code = await self._container.state(container_id)
+            except ToolContainerError:
+                running, exit_code = True, None  # undecidable: keep the weaker claim
+            classification = "startup_timeout" if running else f"startup_crash:exit={exit_code}"
+            if not diagnostics:
+                # An empty account is itself a finding — say so rather than render
+                # "FAIL boot:" with nothing after the colon, which reads as a bug in
+                # the auditor rather than as an app that logged nothing.
+                diagnostics = (
+                    f"container {'is still running' if running else f'exited {exit_code}'} "
+                    "and produced no log output",
+                )
+            try:
                 await self._container.stop(container_id)
             except ToolContainerError:
                 pass  # teardown converges; the container may already be gone
+            try:
+                await self._container.remove(container_id)
+            except ToolContainerError:
+                pass  # same: removal is best-effort, the diagnostics are already read
             return StartResult(
                 **base,
                 status=OperationStatus.FAILED,
                 ran=True,
                 duration_seconds=duration,
-                exit_classification="startup_timeout",
+                exit_classification=classification,
                 process_identity=container_id,
                 ready=False,
                 startup_diagnostics=diagnostics,
@@ -452,6 +474,11 @@ class ContainerBackend(NoOpExecutionSandbox):
         self._running.pop(revision.cycle_id, None)
         try:
             await self._container.stop(cleanup_handle)
+            # #1214: --rm is gone from the app container so a crash keeps its logs,
+            # which means every successful teardown now owns the removal that Docker
+            # used to do. Inside the same try: a stop that raises is handled below,
+            # and a container that cannot be stopped cannot be removed either.
+            await self._container.remove(cleanup_handle)
         except ToolContainerError as e:
             if "no such container" in str(e).lower():
                 return StopResult(

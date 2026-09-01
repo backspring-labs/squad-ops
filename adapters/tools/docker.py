@@ -149,10 +149,14 @@ class DockerAdapter(ContainerPort):
 
     async def run_detached(self, spec: ContainerSpec) -> str:
         """Start a container detached; returns its id."""
+        # Deliberately NOT --rm (#1214): an app that crashes on startup exits within
+        # a second, Docker removes the container at that moment, and the readiness
+        # poll then runs to its full timeout before asking for logs that no longer
+        # exist. The failure mode was inverted — a slow app kept its evidence, a hard
+        # crash destroyed it. Removal is explicit now, after the logs are read.
         exit_code, stdout, stderr = await self._run_docker(
             "run",
             "-d",
-            "--rm",
             *self._render_run_args(spec),
             timeout=spec.timeout_seconds,
         )
@@ -192,6 +196,25 @@ class DockerAdapter(ContainerPort):
         exit_code, _, stderr = await self._run_docker("stop", container_id)
         if exit_code != 0:
             raise ToolContainerError(f"Failed to stop container: {stderr}")
+
+    async def remove(self, container_id: str) -> None:
+        """Remove a container, running or exited (#1214)."""
+        exit_code, _, stderr = await self._run_docker("rm", "-f", container_id)
+        if exit_code != 0 and "no such container" not in stderr.lower():
+            raise ToolContainerError(f"Failed to remove container: {stderr}")
+
+    async def state(self, container_id: str) -> tuple[bool, int | None]:
+        """``(is_running, exit_code)`` from ``docker inspect`` (#1214)."""
+        exit_code, stdout, stderr = await self._run_docker(
+            "inspect", "-f", "{{.State.Running}} {{.State.ExitCode}}", container_id
+        )
+        if exit_code != 0:
+            raise ToolContainerError(f"Failed to inspect container: {stderr}")
+        parts = stdout.strip().split()
+        if len(parts) != 2:
+            raise ToolContainerError(f"Unparseable inspect output: {stdout!r}")
+        running = parts[0].lower() == "true"
+        return running, (None if running else int(parts[1]))
 
     async def logs(self, container_id: str, tail: int | None = None) -> str:
         """Get container logs."""
