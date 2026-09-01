@@ -198,6 +198,9 @@ repair round gains one in-container evaluation, the correction budget was sized 
 in-process cost, and §4's texture reads wall clock per round so the cost is a number in the
 record.
 
+**Ruled 2026-09-01: B** (owner). #939 and #1229 open on that rule; A and C are closed as
+options for this line.
+
 **Replays.** #939: the stored `repair-…-00-qa.test_repair` suite of `cyc_58d92ca2b407` through
 the new check is rejected naming `created` at `__tests__/runs.test.ts:30`; the 1.7.0 gating
 roll's suites (`cyc_2a88dabad94b`, green) pass; a `.jsx` suite from a 1.6.6 green roll passes.
@@ -415,8 +418,8 @@ wait on is #1131.
 
 ## 6. What this plan does not decide
 
-- **The §2.2 seam ruling.** The options and the recommendation are stated; the call is the
-  owner's, before either PR opens.
+- ~~The §2.2 seam ruling.~~ Ruled B by the owner on 2026-09-01, the day this plan was
+  written; recorded in §2.2.
 - **#668's option.** The issue's fork (typed check / prompt contract / analyze-time diff /
   demote DOM suites); recommendation 1 + 2, stated in §2.3.
 - **Whether #598's criterion becomes blocking in-cycle.** Reporting-only this line; promotion
@@ -434,4 +437,4 @@ wait on is #1131.
   the cut record §2/§4, the 1.6.6 record §3 and the stored artifacts of the rolls named in §1.
   Two corrections to the pack's own issue text, from the tree: `GENERATOR_VERSION` is not the pin
   for stack #1 (the reference contract's frozen digests are), and `envelope_example` is
-  stack-neutral and stays.
+  stack-neutral and stays. Same day, before merge: the owner ruled B on §2.2's seam decision.
