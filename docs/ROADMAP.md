@@ -22,7 +22,19 @@ Each even-minor consumer sits strictly behind the release that earns its trust: 
 
 ## Release Timeline
 
-### v1.6.6 (2026-08-28) — Current — the React-arm patch line
+### v1.7.0 (2026-09-01) — Current — the Reasoning line opens
+
+**The odd minor above 1.6's Authorship release, and the first of five 1.7.x lines — not the last.** The measured pack is **Reasoning**: the model's thinking channel stops being a paid-for side effect and becomes declared, observable and controllable. A per-capability reasoning level on the port with a cycle-level override (#927); the thinking text captured and emitted on all three adapters (#410) and — after the roll that proved it was still invisible — on the *streaming* path every handler actually calls (#1194); the emission log reporting the reasoning split so #924's two failure modes stop looking identical, with a character fallback where Ollama reports no token count (#1195); an unregistered model failing loudly on all three paths (#1145); a boot log that names a fallback as a fallback (#930).
+
+**The CI-truth rider closes the ground beneath it.** The deployed images and CI had been resolving dependencies independently since March and June respectively — two frozen snapshots taken three months apart, 42 packages disagreeing, including numpy 1.26 against 2.4 and lancedb 0.8 against 0.33 under the memory system. The locks now compile *against* `ci-constraints.txt`, so the deployed set is a subset of the tested set by construction: **42 divergences down to 2, both documented with their reasons** (#1041). Every container moves to Python 3.12 (#237). Also in the rider: `top_p` reaches the provider so temperature stops being half a documented pair (#901), the dead `LLMRouter` is gone (#944), the release package stops crediting `Closes #N` inside code spans (#1135), and the integration lane stops rotting unnoticed (#1099, #242).
+
+**The evidence** (`docs/plans/1-7-0-cut-record.md`): a two-stack shakeout pair on frozen deploy `bbf42f8d` with **zero code drift between the deploy and the tag** — Next.js+TS `cyc_2a88dabad94b` **15/15** and FastAPI+React `cyc_cb49b16c2fa6` **15/15**, both accepted, **zero correction rounds**, both boot audits PASS, P0 held on both.
+
+**It took six rolls to get there, and that is the more useful record.** Rolls 3–5 produced five rejections across four distinct causes, every one a real defect the shakeouts surfaced: an import gate that refused valid Python (#1211), a crashed app that left an empty boot reason because its container was `--rm` (#1214), a test importing an undeclared npm package (#1217), a probe failure that rejected a run and asked nobody to fix it (#1223), and a dev repair that could never be verified being retried until the budget ran out (#1221). Three of the four original causes were emission defects a check should have caught, and **all three sat on the JS/TS side** — which is why a coverage gap is now declared with its reason or CI fails (#1216), and why 1.7.1's Stack Seams pack leads with #939.
+
+**Stated at the cut, not implied:** `.ts` emissions still have no unresolved-name guard (#939 — declared in `docs/architecture/typed-check-menu.md`); dev repairs on `nextjs_ts` still cannot be *verified* where their toolchain is absent, only failed fast (#1221 option C); LangFuse holds roughly three-quarters of generations (#1206, folded into #929); and prompts are not replayable from telemetry, ~70% discarded at storage. **Atlas is not adopted** — the A/B returned a negative (0 accepted plans of 44 emissions across 14 configurations) and SIP-0106 stays `accepted` with its open phases named rather than promoted.
+
+### v1.6.6 (2026-08-28) — the React-arm patch line
 
 **Six fixes, every one built from a 1.6.5 FastAPI+React rejection, patched in place (the structural extraction is 1.7's #1131).** A manifest `default: null` froze a non-nullable field and 500'd POST /runs on five of six rolls (#1125); the frozen React test harness never unmounted between tests (#1127); the passing retest's report was overwritten by the failed one and misdirected the next analysis (#1111); the self-mocking check defined "invokes the app" as a Next.js `app/api/` import and failed a green React suite (#1126 — each stack now declares its own definition); a repair patch refused by verification counted as a round and ended two rolls after zero applied repairs (#1129); an entity-typed `request:` got an empty probe body (#1128 — one resolver, and a synthesized body model).
 
@@ -555,9 +567,9 @@ The following areas are identified for future work but do not block 1.0 readines
 
 ## Stats
 
-*As of 2026-08-28 (v1.6.6):*
+*As of 2026-09-01 (v1.7.0):*
 
-- **Framework version**: 1.6.6
+- **Framework version**: 1.7.0
 - **SIPs**: 65 implemented, 9 accepted (SIP-0088, 0090–0093, 0101, 0102, 0104, 0105), 20 deprecated (registry)
 - **Tests**: 7,900+ passing in the regression suite
 - **Python source**: ~61,000 lines (src + adapters; ~88,000 test lines, ~119,000 doc lines)
