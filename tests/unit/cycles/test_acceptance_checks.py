@@ -1506,6 +1506,53 @@ class TestDeclaredImports:
         outcome = await self._run(tmp_path, source, self._DECLARED)
         assert outcome.status == "passed", f"{label} was wrongly reported"
 
+    async def test_a_next_js_path_alias_is_not_a_scoped_package(self, tmp_path):
+        """Bug caught: THE regression this check shipped with. `@/lib/store` is a
+        tsconfig path alias; splitting it as the scoped package `@/lib` failed every
+        Next.js route file in cyc_05abfc7c1f00, exhausted the run's three correction
+        rounds on a defect that did not exist, and took the roll with it. A scoped
+        package needs a NON-EMPTY scope."""
+        import json as _json
+
+        (tmp_path / "app" / "api" / "runs").mkdir(parents=True)
+        (tmp_path / "package.json").write_text(_json.dumps({"dependencies": {"next": "^14"}}))
+        (tmp_path / "app/api/runs/route.ts").write_text(
+            "import { NextResponse } from 'next/server'\n"
+            "import { badRequest } from '@/lib/errors'\n"
+            "import { store } from '@/lib/store'\n"
+        )
+        outcome = await get_check("declared_imports").evaluate(
+            {"file": "app/api/runs/route.ts"}, tmp_path
+        )
+        assert outcome.status == "passed", getattr(outcome, "reason", "")
+
+    async def test_a_declared_tsconfig_alias_is_not_a_package(self, tmp_path):
+        """The general form: a project may alias any prefix to any path. An aliased
+        specifier is a path, not a package name, whatever the prefix looks like."""
+        import json as _json
+
+        (tmp_path / "src").mkdir(parents=True)
+        (tmp_path / "package.json").write_text(_json.dumps({"dependencies": {}}))
+        (tmp_path / "tsconfig.json").write_text(
+            _json.dumps({"compilerOptions": {"paths": {"~utils/*": ["./src/utils/*"]}}})
+        )
+        (tmp_path / "src/a.ts").write_text("import x from '~utils/fmt'\n")
+        outcome = await get_check("declared_imports").evaluate({"file": "src/a.ts"}, tmp_path)
+        assert outcome.status == "passed"
+
+    async def test_an_unparseable_tsconfig_reports_nothing(self, tmp_path):
+        """tsconfig permits comments and trailing commas that json.loads rejects. A
+        strict parse failing must not become a report — undecidable is undecidable,
+        which is the property this check violated once already."""
+        import json as _json
+
+        (tmp_path / "src").mkdir(parents=True)
+        (tmp_path / "package.json").write_text(_json.dumps({"dependencies": {}}))
+        (tmp_path / "tsconfig.json").write_text('{ "compilerOptions": { /* comment */ } }')
+        (tmp_path / "src/a.ts").write_text("import x from '@/anything'\n")
+        outcome = await get_check("declared_imports").evaluate({"file": "src/a.ts"}, tmp_path)
+        assert outcome.status == "passed"
+
     async def test_require_and_dynamic_import_forms_are_read(self, tmp_path):
         """A specifier is a specifier whichever keyword introduces it. Reading only
         `import ... from` would leave two forms silently unchecked."""
