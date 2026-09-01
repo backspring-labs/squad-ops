@@ -136,6 +136,26 @@ not adopted (§1.2a) and the A/B is re-placed on vLLM (§1.2b), which is parked 
 gap named. Promoting a SIP whose P4/P5 produced a negative would tell the next reader the
 opposite of what happened.
 
+## 5a. SIP promotion sweep — nothing promoted, and why
+
+Step 5 of the cut procedure, recorded because it is one of the unguarded steps and
+"nothing to do" is a result that should be written down rather than inferred from silence.
+
+Ten SIPs sit in `sips/accepted/`. **None is promoted at this cut.** This line's measured
+pack was issue-driven — #927, #410, #924, #1145, #930 have no SIP of their own — so no
+accepted SIP's children were closed by it.
+
+The one SIP this line touched materially is **SIP-0106**, and it stays `accepted` by
+decision rather than by omission: its P4/P5 returned a negative (§1.2a), the A/B is
+re-placed on vLLM (§1.2b) which is parked on measurement (#1184), and #1158 is open. It
+also gained §1.2d in this line, recording that `LLMRouter` — the class §7 deferred making
+provider-aware — was deleted as dead code, so the deferral now points at nothing and a
+successor SIP starts from the provider surface as it stands.
+
+**SIP-0104** keeps its known gap: the verification-scaffold emitter registry holds one
+stack, so `fullstack_fastapi_react` has no fill slots (#1122, an `enhancement` an odd minor
+cannot carry).
+
 ## 6. Issues closed in this line
 
 #237, #410, #901, #924, #927, #930, #944, #1041, #1099, #1135, #1145, #1168, #1181, #1194,

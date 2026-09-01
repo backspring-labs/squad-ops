@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 SquadOps is a multi-agent orchestration framework for software development. It uses a hexagonal architecture (ports & adapters) with dependency injection for testability.
 
-**Framework Version**: 1.6.6 (single-sourced from `pyproject.toml`; installed metadata is the
+**Framework Version**: 1.7.0 (single-sourced from `pyproject.toml`; installed metadata is the
 install-time copy and is used only when no source tree is present — #1089)
 **Python Requirement**: 3.12 everywhere — containers, CI and dev (#237). Production ran 3.11 until 2026-08-31 while CI tested on 3.12; the lock files were compiled on 3.11 and CI's constraints on 3.12, which is half of what #1041 was.
 

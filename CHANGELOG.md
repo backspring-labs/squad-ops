@@ -5,7 +5,22 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
-**1.7.0 — the Reasoning line opens.** Plan: `docs/plans/1-7-0-plan.md` (rev 3).
+Nothing yet. Next line: **1.7.1 — Stack Seams** (`docs/plans/1-7-0-plan.md` §3.1), leading
+with #939 — `.ts` emissions have no unresolved-name guard, which this cut ships declared
+rather than fixed.
+
+## [1.7.0] — 2026-09-01
+
+**The Reasoning line opens.** Plan: `docs/plans/1-7-0-plan.md` (rev 3). Cut record:
+`docs/plans/1-7-0-cut-record.md`.
+
+Gated on a two-stack shakeout pair on frozen deploy `bbf42f8d`, **zero code drift between
+the deploy and the tag**: Next.js+TS `cyc_2a88dabad94b` 15/15 and FastAPI+React
+`cyc_cb49b16c2fa6` 15/15, both accepted, zero correction rounds, both boot audits PASS.
+
+It took six rolls. Rolls 3–5 produced five rejections across four distinct causes, every one
+a real defect the shakeouts surfaced — recorded in the cut record §3 because the plan's
+calibration assumes a line's rolls mostly pass and this one did not.
 
 ### Changed — the LLM provider is required configuration (#1157, SIP-0106 Ruling 3)
 - **`SQUADOPS__LLM__PROVIDER` is required and never defaulted.** Two adapters were in the
