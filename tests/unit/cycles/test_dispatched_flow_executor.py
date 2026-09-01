@@ -1337,3 +1337,52 @@ class TestResumeDoesNotReseedSkeleton:
         # the guard must not break execution — the resumed run still finishes
         statuses = [c.args[1] for c in mock_registry.update_run_status.call_args_list]
         assert statuses[-1] == RunStatus.COMPLETED
+
+
+class TestCorrectionDeadlockIsNotRetried:
+    """#1221: a repair whose verification can never return a verdict was re-dispatched
+    until the budget ran out.
+
+    pf-47/pf-49 named this — "no repair can EVER produce an executed verdict, so the
+    loop burns its whole budget rejecting repairs unheard" — and implemented the escape
+    for `qa.test`, whose `test_result` can decide instead. `development.develop`
+    produces none, so on `nextjs_ts` (whose criteria need node, absent from runtime-api)
+    every dev repair was refused unheard. `cyc_05abfc7c1f00` spent all three rounds on
+    `app/api/runs/route.ts`, re-dispatching an identical task after two identical
+    unverifiable verdicts.
+    """
+
+    @staticmethod
+    def _deadlocked(status, reason, retest=False):
+        from adapters.cycles.dispatched_flow_executor import correction_is_deadlocked
+
+        return correction_is_deadlocked(status, reason, retest_decides=retest)
+
+    def test_the_roll5_shape_terminates(self):
+        """The exact verdict that looped: unverifiable, no blocking check executed,
+        and a dev task with no behavioral evidence to decide instead."""
+        assert self._deadlocked("unverifiable", "no_executed_blocking_checks") is True
+
+    def test_no_typed_criteria_terminates_too(self):
+        """The sibling unevaluable reason. Making `checks=1` honestly `checks=0` produces
+        this one, so treating only the other would move the deadlock rather than end it."""
+        assert self._deadlocked("unverifiable", "no_typed_criteria") is True
+
+    def test_a_task_with_behavioral_evidence_keeps_its_escape(self):
+        """pf-47/pf-49's remedy must survive: when a retest CAN decide, the loop is not
+        deadlocked and terminating would throw away a verdict that was available."""
+        assert self._deadlocked("unverifiable", "no_executed_blocking_checks", retest=True) is False
+
+    def test_a_real_check_failure_still_loops(self):
+        """A patch that failed a check that actually executed is repairable — the next
+        round has something to act on. Terminating here would abandon repairs that work,
+        which is a far worse trade than the waste this fixes."""
+        assert self._deadlocked("failed", "unresolved_imports:x imports y") is False
+
+    def test_an_unverifiable_verdict_for_another_reason_still_loops(self):
+        """Only the structurally-unevaluable reasons are deadlocks. An evaluator error or
+        an unparseable criterion may resolve on the next emission."""
+        assert self._deadlocked("unverifiable", "unparseable_criteria") is False
+
+    def test_a_passing_patch_is_not_a_deadlock(self):
+        assert self._deadlocked("passed", None) is False
