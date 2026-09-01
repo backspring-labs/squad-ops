@@ -532,9 +532,10 @@ class TestAcceptPatch:
         assert action == "continue"
         assert holder == {}
 
-    async def test_unverifiable_contract_falls_back_to_continue(self, executor):
-        """Bug caught: accepting a patch with no typed criteria — zero
-        executed evidence (the §6.2 false-green shape)."""
+    async def test_unverifiable_contract_is_not_accepted_and_is_not_retried(self, executor):
+        """Bug caught: accepting a patch with no typed criteria — zero executed evidence
+        (the §6.2 false-green shape). Still not accepted; since #1221 it also stops
+        retrying, because no later round can produce a verdict either."""
         import dataclasses as _dc
 
         envelope = self._builder_envelope()
@@ -548,8 +549,8 @@ class TestAcceptPatch:
             [{"name": "qa_handoff.md", "content": "# QA Handoff\n## How to Test\n"}],
             holder,
         )
-        assert action == "continue"
-        assert holder == {}
+        assert action == "break_correction"
+        assert holder == {}, "still fail-closed: the patch is not accepted"
 
 
 class TestAcceptPatchRetest:
@@ -1075,9 +1076,21 @@ class TestAcceptPatchStructurallyUnevaluable:
         assert action == "continue"
         assert "patched_result" not in holder
 
-    async def test_no_behavioral_evidence_stays_fail_closed(self, executor, cycle):
-        """Unevaluable checks WITHOUT a test_result → nothing can decide → continue.
-        The §6.2 principle holds: never accept on absent evidence."""
+    async def test_no_behavioral_evidence_stays_fail_closed_and_stops_retrying(
+        self, executor, cycle
+    ):
+        """Unevaluable checks WITHOUT a test_result → nothing can decide.
+
+        The §6.2 principle is unchanged and is what `holder == {}` asserts: **never
+        accept on absent evidence.** The patch is still not accepted.
+
+        What changed (#1221) is the retry, not the acceptance. Returning "continue" here
+        re-dispatched an identical task whose verification could never speak — pf-47/pf-49
+        named that deadlock and fixed it only for tasks carrying a `test_result`. A
+        `development.develop` repair has none, so cyc_05abfc7c1f00 spent all three rounds
+        on one file with two identical unverifiable verdicts. "break_correction" advances
+        without repair rather than accepting: fail-closed, and one named reason instead of
+        three rounds of silence."""
         import dataclasses as _dc
 
         result = self._failed_frontend_qa_result()
@@ -1089,8 +1102,8 @@ class TestAcceptPatchStructurallyUnevaluable:
         action = await executor._try_accept_patch(
             self._frontend_qa_envelope(), result, self._repair(), holder, **self._kwargs(cycle)
         )
-        assert action == "continue"
-        assert holder == {}
+        assert action == "break_correction"
+        assert holder == {}, "still fail-closed: the patch is not accepted"
 
     async def test_evaluator_error_stays_fail_closed(self, executor, cycle, monkeypatch):
         """A broken checker proves nothing about the patch and does NOT unlock the

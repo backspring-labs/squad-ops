@@ -119,6 +119,32 @@ _REPAIR_REJECTION_ENTRY_LIMIT = 3
 _REPAIR_REJECTION_CHAR_LIMIT = 500
 
 
+def correction_is_deadlocked(
+    verification_status: str, verification_reason: str | None, *, retest_decides: bool
+) -> bool:
+    """True when no further round could ever produce a verdict (#1221).
+
+    The invariant: **a repair loop must never re-dispatch a task whose verification
+    cannot, even in principle, return a verdict.** pf-47/pf-49 asserted exactly that and
+    implemented it for one task type — its `retest_decides` escape needs a `test_result`,
+    which only ``qa.test`` produces. A ``development.develop`` repair has none, so on a
+    stack whose criteria cannot execute in this environment (runtime-api has no node, so
+    stack #2's compile checks skip) every dev repair is refused unheard and the loop
+    spends its whole budget learning nothing. `cyc_05abfc7c1f00` burned all three rounds
+    on `app/api/runs/route.ts`, re-dispatching an identical task after two identical
+    unverifiable verdicts.
+
+    Terminating does not fix the inability to verify — the checks belong where their
+    toolchain exists, which is a larger change deliberately taken after the 1.7.0 cut.
+    It replaces three rounds of silence with one named reason.
+    """
+    return (
+        verification_status == PATCH_UNVERIFIABLE
+        and verification_reason in STRUCTURALLY_UNEVALUABLE_REASONS
+        and not retest_decides
+    )
+
+
 def _record_repair_rejection(carry: dict[str, list[str]] | None, task_id: str, entry: str) -> None:
     """Append a rejected-repair fact to the run-lived carry (#870), bounded.
 
@@ -3115,6 +3141,23 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 envelope.task_id,
                 verification.reason,
             )
+        # #1221: structurally unevaluable AND no behavioral evidence to stand in for the
+        # checks is a deadlock, not a rejection. pf-47/pf-49 named this exactly — "no
+        # repair can EVER produce an executed verdict, so the loop burns its whole budget
+        # rejecting repairs unheard" — and answered it with `retest_decides`, which needs
+        # a `test_result` only `qa.test` produces. A `development.develop` repair has
+        # none, so on a stack whose criteria cannot execute here (runtime-api has no node,
+        # so stack #2's compile checks skip) every dev repair is refused unheard.
+        # cyc_05abfc7c1f00 spent all three rounds on `app/api/runs/route.ts` this way,
+        # re-dispatching an identical task after two identical unverifiable verdicts.
+        #
+        # Terminating is not a fix for the inability to verify — the toolchain belongs
+        # where the checks can run, which is #1221's option C and deliberately after the
+        # cut. It stops the waste and, more importantly, replaces three rounds of silence
+        # with one named reason a reader can act on.
+        unrepairable_here = correction_is_deadlocked(
+            verification.status, verification.reason, retest_decides=retest_decides
+        )
         if verification.status != PATCH_PASSED and not retest_decides:
             # #870: tell the next round WHY this repair was rejected — the named
             # failed checks with reasons, not just a status in the log.
@@ -3128,6 +3171,17 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 f"({verification.reason or 'failed checks'})"
                 + (f" — {failed_detail}" if failed_detail else ""),
             )
+            if unrepairable_here:
+                logger.warning(
+                    "correction_terminated_unverifiable task=%s task_type=%s reason=%s — "
+                    "no check owning the repaired files can execute in this environment "
+                    "and the task carries no behavioral evidence to decide instead; "
+                    "further rounds cannot produce a verdict (#1221)",
+                    envelope.task_id,
+                    envelope.task_type,
+                    verification.reason,
+                )
+                return "break_correction"
             return "continue"
 
         corrected_outputs = dict(result.outputs or {})
