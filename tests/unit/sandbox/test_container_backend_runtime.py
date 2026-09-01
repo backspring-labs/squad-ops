@@ -48,6 +48,9 @@ class RuntimeFakeContainer(ContainerPort):
     ):
         self.specs: list[ContainerSpec] = []
         self.stopped: list[str] = []
+        self.removed: list[str] = []
+        self.log_output = "boot line 1\nboot line 2"
+        self.container_state: tuple[bool, int | None] = (True, None)
         self._detach_error = detach_error
         self._stop_error = stop_error
 
@@ -68,8 +71,14 @@ class RuntimeFakeContainer(ContainerPort):
         if self._stop_error is not None:
             raise self._stop_error
 
+    async def remove(self, container_id: str) -> None:
+        self.removed.append(container_id)
+
+    async def state(self, container_id: str) -> tuple[bool, int | None]:
+        return self.container_state
+
     async def logs(self, container_id: str, tail: int | None = None) -> str:
-        return "boot line 1\nboot line 2"
+        return self.log_output
 
     async def health(self) -> dict:  # pragma: no cover - unused
         return {"healthy": True}
@@ -144,6 +153,50 @@ class TestStartApplication:
         assert result.ready is False
         assert container.stopped == ["cid-app"]
         assert "boot line 2" in result.startup_diagnostics
+
+    async def test_a_crashed_app_is_not_reported_as_a_timeout(self, store, seeded):
+        """Bug caught: #1214. An app that dies at import exits in a second, and the
+        old path reported `startup_timeout` for it — sending triage after readiness
+        and latency when the answer was a traceback. cyc_f322ef960af9 failed this way
+        on a FastAPIError and the audit said nothing about it."""
+        container = RuntimeFakeContainer()
+        container.container_state = (False, 3)
+        container.log_output = "Traceback...\nFastAPIError: Prefix and path cannot be both empty"
+        script = [httpx.ConnectError("refused") for _ in range(50)]
+
+        result = await _backend(container, store, script).start_application(revision=seeded)
+
+        assert result.exit_classification == "startup_crash:exit=3"
+        assert any("FastAPIError" in line for line in result.startup_diagnostics)
+
+    async def test_the_container_is_removed_only_after_its_logs_are_read(self, store, seeded):
+        """Bug caught: the #1214 mechanism itself. The app container ran with `--rm`,
+        so a crash removed it before the readiness poll finished and `logs` was asked
+        of a container that no longer existed — diagnostics silently empty. Removal is
+        explicit now, and must not precede the read."""
+        container = RuntimeFakeContainer()
+        container.container_state = (False, 1)
+        script = [httpx.ConnectError("refused") for _ in range(50)]
+
+        result = await _backend(container, store, script).start_application(revision=seeded)
+
+        assert container.removed == ["cid-app"], "the container must be removed, not leaked"
+        assert result.startup_diagnostics, "logs must be read before removal"
+
+    async def test_an_app_that_logged_nothing_says_so(self, store, seeded):
+        """Bug caught: the empty-reason rendering. `FAIL boot:` with nothing after the
+        colon reads as a broken auditor. An app that genuinely produced no output is a
+        finding, and the record should state it rather than render a blank."""
+        container = RuntimeFakeContainer()
+        container.container_state = (False, 137)
+        container.log_output = ""
+        script = [httpx.ConnectError("refused") for _ in range(50)]
+
+        result = await _backend(container, store, script).start_application(revision=seeded)
+
+        assert result.startup_diagnostics
+        assert "no log output" in result.startup_diagnostics[0]
+        assert "137" in result.startup_diagnostics[0]
 
     async def test_spawn_failure_is_environment_unavailable(self, store, seeded):
         """Bug caught: the roll-4 class at the runtime unit — a container that

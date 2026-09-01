@@ -44,6 +44,44 @@ class ContainerPort(ABC):
         ...
 
     @abstractmethod
+    async def remove(self, container_id: str) -> None:
+        """Remove a container, running or exited.
+
+        Separate from ``stop`` because the app container is deliberately NOT started
+        with ``--rm`` (#1214): a container that auto-removes on exit takes its logs
+        with it, and an app that crashes on startup is exactly when those logs are
+        the only account of why. Removal therefore has to be explicit, after anything
+        that wants to read them has done so.
+
+        Args:
+            container_id: ID of container to remove
+
+        Raises:
+            ToolContainerError: Failed to remove container
+        """
+        ...
+
+    @abstractmethod
+    async def state(self, container_id: str) -> tuple[bool, int | None]:
+        """``(is_running, exit_code)`` for a container.
+
+        Lets a caller tell a crash from a hang. Without it a delivered app that died
+        in a second and one that never answered are both reported as
+        ``startup_timeout`` (#1214), which points triage at readiness when the answer
+        is a traceback.
+
+        Args:
+            container_id: ID of container to inspect
+
+        Returns:
+            Whether the container is running, and its exit code when it is not.
+
+        Raises:
+            ToolContainerError: Failed to inspect container
+        """
+        ...
+
+    @abstractmethod
     async def logs(self, container_id: str, tail: int | None = None) -> str:
         """Get container logs.
 

@@ -50,6 +50,12 @@ class FakeContainer(ContainerPort):
     async def stop(self, container_id: str) -> None:  # pragma: no cover - unused
         pass
 
+    async def remove(self, container_id: str) -> None:  # pragma: no cover - unused
+        pass
+
+    async def state(self, container_id: str) -> tuple[bool, int | None]:  # pragma: no cover
+        return (False, 0)
+
     async def logs(self, container_id: str, tail: int | None = None) -> str:  # pragma: no cover
         return ""
 

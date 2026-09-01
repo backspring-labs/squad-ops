@@ -85,7 +85,12 @@ async def test_run_detached_publishes_to_loopback_and_returns_id(monkeypatch):
     )
     assert container_id == "abc123"
     args = list(calls[0])
-    assert args[:3] == ["run", "-d", "--rm"]
+    assert args[:2] == ["run", "-d"]
+    # #1214: deliberately NOT --rm, asserted rather than assumed. The flag used to sit
+    # here and took a crashed app's logs with it — the container was removed the moment
+    # it exited, so the readiness poll ran to its timeout and then asked for logs that
+    # no longer existed. Removal is explicit now, after the diagnostics are read.
+    assert "--rm" not in args, "an auto-removed app container destroys its own crash logs"
     assert args[args.index("-p") + 1] == "127.0.0.1:0:8000"
 
 
