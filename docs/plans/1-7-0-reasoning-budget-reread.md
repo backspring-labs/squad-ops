@@ -57,6 +57,9 @@ container logs' `emission shape:` lines.)
   on this evidence alone: one set on one workload is not the ten-emission distribution that
   justified it, and the failure it prevents is expensive. But it is no longer load-bearing
   here, and that is worth knowing before anyone treats it as a tuned constant.
+  **Qualified by §6:** unused *at the declared level*. Raised to `high`, the same handler
+  emitted 7,120 tokens — 87% of the old 8,192 cap. The override is one reasoning level away
+  from load-bearing, which is not what "unused headroom" conveys on its own.
 - **Thinking genuinely consumes the budget, so #924's premise holds.** Present on 29 of 35
   emissions, median ~1,100 tokens, maximum ~4,541 — up to 73% of a single emission
   (`development.author_manifest`). The caps simply absorb it.
@@ -149,3 +152,74 @@ measurement outcome. A version this evidence would support: *the `none`/`high` s
 re-measured on the deployed stack, and any divergence from #924's figure explained.* That is
 proposed here, not applied — changing a cut criterion mid-line is a ruling, and §6.1 is
 unedited by this document.
+
+
+## 6. Amendment — the same-task measurement (2026-08-31, after this file was merged)
+
+§3 recorded a 1.4× split from a synthetic probe and two readings it could not separate.
+A diagnostic cycle has since measured the same capability at both levels on real prompts,
+and the answer is neither reading alone.
+
+### What was run
+
+`cyc_fccfca06a0a8`, non-counting, outside every pre-registered set: the `full-38` squad on
+`validated-fullstack` with #927's cycle-level reasoning override set to `high`
+(`execution_overrides: {"reasoning": "high"}`, confirmed persisted). `qa.test` is declared
+`ReasoningLevel.NONE`, so the override — the last rung of #927's precedence chain — raises
+it to `high` for that run. Framing 33.2 min, implementation 21.5 min, verdict **accepted**.
+
+### The numbers
+
+| arm | cycle | completion tokens | content chars | reasoning chars |
+|---|---|---:|---:|---:|
+| `none` | `cyc_c70eeb8f9459` (fastapi-react) | 1,842 | 6,089 | — |
+| `none` | `cyc_b2bbbc234d12` (nextjs) | 3,657 | 12,930 | — |
+| `high` | `cyc_fccfca06a0a8` | 7,120 | 9,664 | 15,003 |
+| `high` | `cyc_fccfca06a0a8` | 4,897 | 4,534 | 14,495 |
+
+**Median 2.2×. Against the same stack (fastapi-react, 1,842 → 7,120), 3.9×.**
+
+### What it settles
+
+**Both §3 readings were partly right and neither was sufficient.** The synthetic probe *was*
+too small — a real fill brief drew ~15,000 characters of thinking where the probe drew 1,158,
+and the ratio roughly doubles-to-triples once the brief is real. But 2.2–3.9× is still far
+from 13.9%, so probe size does not close the gap on its own, and the reading that
+#1173/#927 changed the distribution keeps its support.
+
+The honest summary is that **#924's 13.9× does not reproduce on the current stack even on a
+real brief**, and that the figure quoted in #924 should not be treated as the expected cost
+of the channel today.
+
+### What it corrects in §2
+
+§2 called #998's 12,288 completion override "currently unused headroom", on evidence from
+runs where `qa.test` sat at its declared `none`. At `high` the same handler emitted 7,120
+tokens — **87% of the old 8,192 cap** and 58% of the override. The override is unused at the
+declared level and load-bearing one reasoning level away. Anyone reading §2 as licence to
+drop it back to 8,192 should read this first.
+
+### The limitation, stated
+
+The cycle-level override is all-or-nothing: framing also ran at `high`, producing a
+different plan and therefore a different qa brief (content 9,664 against the baseline's
+6,089). This is the same capability on the same stack with a *comparable* brief, not a
+controlled A/B on an identical prompt. A per-capability override would need a squad-profile
+edit, which is a code change; the cycle-level knob is what #927 provides and it is coarse
+by construction.
+
+### One thing checked and cleared
+
+The framing run's verdict is `blocked_unverified`, which looked alarming beside an
+`accepted` implementation. It is not related to the override: **every framing run on record
+carries it**, including both accepted shakeouts and every cycle back through 2026-08-30. It
+is the ordinary SIP-0096 state for a workload that produces a plan and executes nothing.
+Recorded so the next reader does not re-raise it.
+
+### Disposition, revised
+
+Criterion 2's first sub-clause now has a same-capability re-measurement on the deployed
+stack with the delta from #924 explained rather than merely disclosed. §5's proposed wording
+stands and this evidence meets it: *the `none`/`high` split re-measured on the deployed stack
+for one capability at both levels, with the delta from #924's figure recorded and its causes
+named.* The wording change is still an owner ruling; §6.1 remains unedited.
