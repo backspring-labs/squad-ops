@@ -1453,6 +1453,99 @@ class TestFrontendCompiles:
 # ---------------------------------------------------------------------------
 
 
+class TestDeclaredImports:
+    """cyc_0a0a33b4776e's loss: a qa test imported `@testing-library/user-event`
+    beside three declared `@testing-library/*` siblings. Vite could not resolve it,
+    the suite never ran, and three correction rounds went to a defect two files
+    already decided — the specifiers are in the source, the dependencies in
+    package.json beside it. `unresolved_imports` ignores everything outside the
+    workspace by design, so nothing covered this boundary (#1217)."""
+
+    @staticmethod
+    async def _run(
+        tmp_path: Path,
+        source: str,
+        manifest: dict | None = None,
+        rel: str = "frontend/src/__tests__/runs.test.jsx",
+    ):
+        import json as _json
+
+        target = tmp_path / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(source)
+        if manifest is not None:
+            (tmp_path / "frontend" / "package.json").write_text(_json.dumps(manifest))
+        return await get_check("declared_imports").evaluate({"file": rel}, tmp_path)
+
+    _DECLARED = {"devDependencies": {"@testing-library/react": "^16", "vitest": "^2"}}
+
+    async def test_the_undeclared_sibling_package_is_caught(self, tmp_path):
+        outcome = await self._run(
+            tmp_path,
+            'import { render } from "@testing-library/react"\n'
+            'import userEvent from "@testing-library/user-event"\n',
+            self._DECLARED,
+        )
+        assert outcome.status == "failed"
+        assert outcome.actual["undeclared"] == ["@testing-library/user-event"]
+
+    @pytest.mark.parametrize(
+        ("label", "source"),
+        [
+            ("declared_dep", 'import { render } from "@testing-library/react"\n'),
+            ("relative", 'import App from "../App"\n'),
+            ("absolute", 'import x from "/abs/thing"\n'),
+            ("node_builtin", 'import path from "path"\n'),
+            ("node_prefixed", 'import path from "node:path"\n'),
+            ("subpath_of_declared", 'import x from "vitest/config"\n'),
+        ],
+    )
+    async def test_resolvable_imports_are_not_reported(self, tmp_path, label, source):
+        """Each of these resolves at runtime. A check that fires on them is #645's
+        fails-on-correct-content class, which is worse than the gap it closes."""
+        outcome = await self._run(tmp_path, source, self._DECLARED)
+        assert outcome.status == "passed", f"{label} was wrongly reported"
+
+    async def test_require_and_dynamic_import_forms_are_read(self, tmp_path):
+        """A specifier is a specifier whichever keyword introduces it. Reading only
+        `import ... from` would leave two forms silently unchecked."""
+        outcome = await self._run(
+            tmp_path,
+            'const a = require("missing-cjs")\nconst b = await import("missing-dynamic")\n',
+            self._DECLARED,
+        )
+        assert outcome.status == "failed"
+        assert set(outcome.actual["undeclared"]) == {"missing-cjs", "missing-dynamic"}
+
+    async def test_every_undeclared_package_is_reported_not_just_the_first(self, tmp_path):
+        """A repair fixes what the evidence names — the same drip-feed reasoning as
+        undefined_names below."""
+        outcome = await self._run(
+            tmp_path,
+            'import a from "pkg-one"\nimport b from "pkg-two"\n',
+            self._DECLARED,
+        )
+        assert outcome.actual["undeclared"] == ["pkg-one", "pkg-two"]
+
+    @pytest.mark.parametrize("manifest", [None], ids=["absent"])
+    async def test_a_missing_manifest_is_undecidable_not_a_failure(self, tmp_path, manifest):
+        """No package.json above the file is not evidence that an import is wrong.
+        Failing here would indict every emission in a tree that keeps its manifest
+        somewhere this check did not look."""
+        outcome = await self._run(tmp_path, 'import x from "anything"\n', manifest)
+        assert outcome.status == "skipped"
+
+    async def test_an_unparseable_manifest_is_undecidable_too(self, tmp_path):
+        target = tmp_path / "frontend/src/__tests__/runs.test.jsx"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text('import x from "anything"\n')
+        (tmp_path / "frontend" / "package.json").write_text("{ not json")
+        outcome = await get_check("declared_imports").evaluate(
+            {"file": "frontend/src/__tests__/runs.test.jsx"}, tmp_path
+        )
+        assert outcome.status == "skipped"
+
+
 class TestUndefinedNames:
     """shk-2's loss: `create_run` called `RunEvent(...)` without importing it. Valid
     syntax, imports fine, every AST check green — the name resolves nowhere only when

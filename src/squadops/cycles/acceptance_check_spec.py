@@ -379,6 +379,15 @@ CHECK_UNDEFINED_NAMES = "undefined_names"
 #: task that wrote it.
 CHECK_UNTERMINATED_SOURCE = "unterminated_source"
 
+#: #1217: a bare-specifier import naming a package the workspace never declares.
+#: `unresolved_imports` (#591) deliberately ignores anything outside the workspace,
+#: so nothing covered this boundary and a qa test importing
+#: `@testing-library/user-event` — beside three declared `@testing-library/*`
+#: siblings — reached test execution and spent three correction rounds
+#: (cyc_0a0a33b4776e). Named here for the same single-source reason as the
+#: constants above: the injection filter keys on it.
+CHECK_DECLARED_IMPORTS = "declared_imports"
+
 # #629 (1.5 A6/D2): the blocking suite-vs-contract check. Multi-reader constant
 # (injection in task_plan, locus routing in failure_evidence, the evaluator,
 # tests) — same single-source rule as the two above.
@@ -478,6 +487,26 @@ CHECK_SPECS: dict[str, CheckSpec] = {
         notes=(
             "Applied by the framework to .py emissions from handlers on the "
             "typed-acceptance seam (dev, builder); never authored."
+        ),
+        failure_ownership=OWNERSHIP_PRODUCT,
+        qa_available=True,
+        signature_participation=True,
+        outcome_contribution=True,
+        replayable=True,
+        blocking_default="error",
+    ),
+    CHECK_DECLARED_IMPORTS: CheckSpec(
+        name=CHECK_DECLARED_IMPORTS,
+        applicable_extensions=frozenset({".js", ".jsx", ".ts", ".tsx"}),
+        required_params=frozenset({"file"}),
+        param_types={"file": str},
+        path_params=frozenset({"file"}),
+        framework_injected=True,
+        example={"file": "frontend/src/__tests__/runs.test.jsx"},
+        notes=(
+            "Applied by the framework to JS/TS emissions: every bare-specifier "
+            "import must be declared in the nearest package.json, or be a Node "
+            "builtin. Relative and absolute paths are unresolved_imports' business."
         ),
         failure_ownership=OWNERSHIP_PRODUCT,
         qa_available=True,

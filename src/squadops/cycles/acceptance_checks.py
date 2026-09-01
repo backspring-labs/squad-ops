@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import json
 import logging
 import re
 import shutil
@@ -30,6 +31,7 @@ from typing import Any
 
 from squadops.cycles.acceptance_check_spec import (
     CHECK_CONTRACT_ASSERTIONS,
+    CHECK_DECLARED_IMPORTS,
     CHECK_ENDPOINT_DEFINED,
     CHECK_FILL_SLOT_SIGNATURE,
     CHECK_SPECS,
@@ -488,6 +490,157 @@ class UndefinedNamesCheck(BaseCheck):
                 reason=f"undefined name(s): {names}",
                 file=str(params["file"]),
                 undefined=undefined,
+            )
+        return CheckOutcome.passed(file=str(params["file"]))
+
+
+#: Node's own modules are provided by the runtime, not by the manifest, so importing
+#: one is not an undeclared dependency. `node:`-prefixed forms are handled separately.
+_NODE_BUILTINS = frozenset(
+    {
+        "assert",
+        "buffer",
+        "child_process",
+        "cluster",
+        "console",
+        "crypto",
+        "dns",
+        "events",
+        "fs",
+        "http",
+        "http2",
+        "https",
+        "net",
+        "os",
+        "path",
+        "perf_hooks",
+        "process",
+        "querystring",
+        "readline",
+        "stream",
+        "string_decoder",
+        "timers",
+        "tls",
+        "tty",
+        "url",
+        "util",
+        "v8",
+        "vm",
+        "worker_threads",
+        "zlib",
+    }
+)
+
+#: `import x from "pkg"`, `export ... from "pkg"`, `require("pkg")`, `import("pkg")`.
+#: Regex rather than a JS parser on purpose: no JS/TS parser exists in the agent
+#: image (measured — `tsc` is not on PATH and eslint 6.4.0 exits 2 without a config),
+#: and the specifier is a string literal in a fixed keyword position, which is the one
+#: part of JS syntax a regex reads safely. Anything it cannot see, it does not report.
+_JS_IMPORT_SPECIFIER = re.compile(
+    r"""(?:\bfrom\s*|\bimport\s*\(\s*|\brequire\s*\(\s*|\bimport\s+)['"]([^'"]+)['"]""",
+)
+
+
+#: A scoped package is `@scope/name`; everything else takes the first path segment,
+#: so `lodash/merge` is declared by `lodash`.
+def _package_root(specifier: str) -> str:
+    parts = specifier.split("/")
+    return "/".join(parts[:2]) if specifier.startswith("@") else parts[0]
+
+
+def _nearest_package_json(file_path: Path, workspace_root: Path) -> Path | None:
+    """The `package.json` governing ``file_path``, searching upward to the workspace root.
+
+    Upward rather than at a fixed location because a stack may nest one (`frontend/`)
+    or hold it at the root, and hard-coding either would make the check silently
+    inapplicable on the other — the #1216 failure mode this check exists to avoid
+    reproducing.
+    """
+    current = file_path.parent
+    root = workspace_root.resolve()
+    while True:
+        candidate = current / "package.json"
+        if candidate.is_file():
+            return candidate
+        if current.resolve() == root or current.parent == current:
+            return None
+        current = current.parent
+
+
+@register_check(CHECK_DECLARED_IMPORTS)
+class DeclaredImportsCheck(BaseCheck):
+    """Bare-specifier imports a JS/TS emission uses but the workspace never declares (#1217).
+
+    `cyc_0a0a33b4776e` shipped a `runs.test.jsx` importing
+    `@testing-library/user-event` beside three declared `@testing-library/*` siblings.
+    Vite failed to resolve it, the suite never ran, and three correction rounds went
+    to a defect two files could have decided at emission time: the specifiers are in
+    the source, the dependencies are in `package.json` beside it.
+
+    `unresolved_imports` (#591) cannot cover this — it ignores everything outside the
+    workspace by design. This is that check's counterpart at the boundary it excludes.
+
+    **Conservative in the same way its Python sibling is.** It reports only when the
+    manifest is present, parses, and demonstrably does not declare the package. A
+    missing or unparseable `package.json` is undecidable, not a failure — a JS file
+    with no manifest above it is not evidence of anything.
+    """
+
+    async def evaluate(
+        self,
+        params: dict[str, Any],
+        workspace_root: Path,
+        *,
+        stack: str | None = None,
+    ) -> CheckOutcome:
+        try:
+            file_path = _safe_resolve(params["file"], workspace_root)
+        except _SafetyError as exc:
+            return CheckOutcome.error(reason=exc.reason)
+        if not file_path.is_file():
+            return CheckOutcome.failed(reason="file_not_found", file=str(params["file"]))
+        try:
+            source = file_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return CheckOutcome.error(reason="file_unreadable")
+
+        manifest_path = _nearest_package_json(file_path, workspace_root)
+        if manifest_path is None:
+            return CheckOutcome.skipped(reason="no_package_json_above_file")
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return CheckOutcome.skipped(reason="package_json_unreadable")
+
+        declared = set()
+        for section in (
+            "dependencies",
+            "devDependencies",
+            "peerDependencies",
+            "optionalDependencies",
+        ):
+            value = manifest.get(section)
+            if isinstance(value, dict):
+                declared.update(value)
+
+        missing: list[str] = []
+        for specifier in _JS_IMPORT_SPECIFIER.findall(source):
+            # Relative and absolute paths are unresolved_imports' business, and a
+            # builtin is provided by the runtime rather than by the manifest.
+            if specifier.startswith((".", "/")) or specifier.startswith("node:"):
+                continue
+            root = _package_root(specifier)
+            if root in declared or root in _NODE_BUILTINS:
+                continue
+            if root not in missing:
+                missing.append(root)
+
+        if missing:
+            return CheckOutcome.failed(
+                reason=f"undeclared import(s): {', '.join(missing)}",
+                file=str(params["file"]),
+                undeclared=missing,
+                manifest=str(manifest_path.relative_to(workspace_root)),
             )
         return CheckOutcome.passed(file=str(params["file"]))
 
