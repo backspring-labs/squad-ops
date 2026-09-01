@@ -284,6 +284,49 @@ class QATestHandler(_CycleTaskHandler):
 
         return "\n".join(parts)
 
+    @staticmethod
+    def _fail_task_on_failing_probes(outputs: dict[str, Any]) -> None:
+        """A failing contract probe fails this task, so the correction loop engages (#1223).
+
+        Probes execute here but their rows were appended as evidence only: ``passed`` is
+        computed from ``test_result`` alone, so a suite that passes while the delivered
+        app violates its contract left the task SUCCESSFUL. The run was then rejected by
+        the verdict roll-up with **zero correction rounds** — a diagnosis nobody was asked
+        to act on (cyc_d0392c0a9c3d: the app answered 400 where the contract expects 422).
+
+        Failing the task is what routes it, not what assigns blame. ``FailureLocus``
+        already draws the line for this handler — "OWN_ARTIFACT = the test suite itself is
+        broken (eve re-authors); SUBJECT = the suite ran and the app failed it (dev
+        repairs)" — and a probe failure is the SUBJECT case by that definition. From there
+        ``data.analyze_failure`` and ``governance.correction_decision`` decide ownership on
+        the evidence, which matters because the evidence is genuinely ambiguous: 400 vs 422
+        is either a route contradicting the contract or a contract declaring a status the
+        design never meant, and those have opposite repairs. A constant routing every probe
+        failure to dev would send half of them to rewrite code that was already correct.
+        """
+        from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
+        from squadops.cycles.verification_integrity import ResultStatus
+
+        vr = outputs.get("validation_result") or {}
+        failing = [
+            row
+            for row in (vr.get("checks") or [])
+            if isinstance(row, dict)
+            and row.get("criterion_id")
+            and row.get("status") in {ResultStatus.FAILED, ResultStatus.ERROR}
+        ]
+        if not failing:
+            return
+        vr["passed"] = False
+        outputs["outcome_class"] = TaskOutcome.SEMANTIC_FAILURE
+        outputs.setdefault("failure_classification", FailureClassification.WORK_PRODUCT)
+        logger.info(
+            "qa.test: %d contract probe(s) failed — failing the task so correction "
+            "engages (#1223): %s",
+            len(failing),
+            ", ".join(str(r.get("criterion_id")) for r in failing),
+        )
+
     async def _append_contract_probe_rows(
         self,
         inputs: dict[str, Any],
@@ -954,6 +997,7 @@ class QATestHandler(_CycleTaskHandler):
         # suite's run must not under-count contract-criterion coverage. The
         # patched files overlay the dispatch-time sources (#639).
         await self._append_contract_probe_rows(inputs, outputs, patched_files=extracted)
+        self._fail_task_on_failing_probes(outputs)
 
         duration_ms = (time.perf_counter() - start_time) * 1000
         evidence = HandlerEvidence.create(
@@ -1534,6 +1578,7 @@ class QATestHandler(_CycleTaskHandler):
         # SIP-0098 98.5: execute seeded behavioral probes and append their rows
         # (both verdict paths, like frontend_build above — additive evidence).
         await self._append_contract_probe_rows(inputs, outputs)
+        self._fail_task_on_failing_probes(outputs)
 
         # SIP-0104 P5: classify shell failures, correlate with the probe rows just
         # appended, and bank the evidence summary. After the probes on purpose —
