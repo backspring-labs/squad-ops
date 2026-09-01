@@ -1,0 +1,424 @@
+version: 1.7.0
+tag: v1.7.0
+previous_tag: v1.6.6
+date: '2026-09-01'
+commit: 1fe515518201197127f393b5d05202e0ff1f74c7
+narrative: "**The Reasoning line opens.** Plan: `docs/plans/1-7-0-plan.md` (rev 3).\
+  \ Cut record:\n`docs/plans/1-7-0-cut-record.md`.\n\nGated on a two-stack shakeout\
+  \ pair on frozen deploy `bbf42f8d`, **zero code drift between\nthe deploy and the\
+  \ tag**: Next.js+TS `cyc_2a88dabad94b` 15/15 and FastAPI+React\n`cyc_cb49b16c2fa6`\
+  \ 15/15, both accepted, zero correction rounds, both boot audits PASS.\n\nIt took\
+  \ six rolls. Rolls 3–5 produced five rejections across four distinct causes, every\
+  \ one\na real defect the shakeouts surfaced — recorded in the cut record §3 because\
+  \ the plan's\ncalibration assumes a line's rolls mostly pass and this one did not.\n\
+  \n### Changed — the LLM provider is required configuration (#1157, SIP-0106 Ruling\
+  \ 3)\n- **`SQUADOPS__LLM__PROVIDER` is required and never defaulted.** Two adapters\
+  \ were in the\n  tree while the factory defaulted `provider=\"ollama\"`, the agent\
+  \ entrypoint never passed\n  one and `LLMConfig` had no field — the vLLM adapter\
+  \ was unreachable by any configuration\n  since it landed. Now `LLMConfig.provider`\
+  \ and `create_llm_provider(provider, …)` have no\n  default; a missing value fails\
+  \ at config load the way an unknown one fails in the\n  factory. Every deploy surface\
+  \ writes the value: the eight SquadOps service blocks in\n  `docker-compose.yml`,\
+  \ `.env.example` (uncommented), the test fixtures. The switch to\n  another provider\
+  \ is one PR changing that value (SIP-0106 §5).\n- **Both composition roots go through\
+  \ the factory**: the runtime-api no longer constructs\n  `OllamaAdapter` directly\
+  \ (the LLM half of #301), and the cycle-create model preflight asks\n  the port\
+  \ for `MODEL_LISTING` instead of `isinstance(OllamaAdapter)` — on any other\n  provider\
+  \ it was silently unverifiable.\n- The mis-nested `SQUADOPS__LLM__USE__LOCAL` example\
+  \ and the `use_local` field it never\n  reached are gone.\n\n### Added — the Atlas\
+  \ adapter (#1159, SIP-0106 P4)\n- **`adapters/llm/atlas.py`**, selected by `SQUADOPS__LLM__PROVIDER=atlas`:\
+  \ its own file,\n  not a subclass of the vLLM adapter (SIP-0106 §3.5a), because\
+  \ the dialect diverges where\n  it matters — every item measured on the Spark on\
+  \ 2026-08-28. A bearer token is mandatory\n  once the server is bound off localhost\
+  \ (`SQUADOPS__LLM__API_KEY`, a `secret://` ref the\n  loader resolves; a 401 names\
+  \ that setting rather than reporting a network failure); the\n  engine's own `response_token/s`\
+  \ is reported instead of a wall-clock derivation;\n  `reasoning_tokens` are counted\
+  \ separately (`thinking_tokens: True`); the port's level\n  maps onto Atlas's `reasoning_effort`\
+  \ ladder verbatim except `high → xhigh`, which the\n  served Qwen3.8 template requires;\
+  \ streamed `reasoning_content` deltas never reach the\n  text. Registered as the\
+  \ conformance suite's third case, with the measured shapes.\n- `ChatMessage` / `LLMResponse`\
+  \ gain `reasoning_tokens` (None when not reported, never\n  zero); `Qwen/Qwen3.8-27B-FP8`\
+  \ joins the model registry with the window the A/B recipe\n  serves — 64K, raised\
+  \ from the first recipe's 32K because that left the prompt guard a\n  24,576-token\
+  \ budget and 5.9% of the arm's real prompts run longer (#1160 §1.4).\n\n### Added\
+  \ — reasoning is a level on the port (#927)\n- **The port carries `reasoning: none\
+  \ | low | medium | high`**, never a provider's\n  switch. Ollama maps `none → think:false`\
+  \ and any graded level → `think:true`; vLLM\n  maps by the dial the model spec declares\
+  \ (`chat_template_kwargs.enable_thinking`\n  for a toggle model, `reasoning_effort`\
+  \ for an effort model, nothing for a model\n  with no channel). `LLMCapability.REASONING_CONTROL`\
+  \ declares whether a level\n  reaches the wire, and the conformance suite asserts\
+  \ the declaration against the\n  request bodies for every adapter. No level sent\
+  \ ⇒ the wire is byte-identical to\n  what it was before this change.\n- **Every\
+  \ capability declares how much reasoning its output wants**\n  (`capabilities/reasoning_policy.py`):\
+  \ a transcription — filling scaffold slots,\n  a repair verdict, a stored report\
+  \ — is `none`; an argument — the manifest, the\n  analyses, the plan — is `high`.\
+  \ #924 measured the difference on the deployed qa\n  fill brief: 5,727 completion\
+  \ tokens with the channel on, 413 with it off, the same\n  eight fences. No default:\
+  \ an undeclared capability raises, and a test over the\n  handler registry makes\
+  \ the gap a CI failure.\n- **Resolution is the chain every other knob uses**: the\
+  \ declaration →\n  `config_overrides.reasoning` (a new allowed key, value validated\
+  \ at the profile\n  boundary) → the model's dial (`ModelSpec.reasoning_control`,\
+  \ required on every\n  registry entry; qwen3.x `toggle`, qwen2.5/llama3 `none` —\
+  \ a model with no channel\n  gets no level, since Ollama rejects `think` for it).\n\
+  - **`GenerationRecord.reasoning`** carries the sent level to LangFuse, so \"how\n\
+  \  much did this call think\" is read per generation rather than inferred from a\n\
+  \  token count."
+pull_requests:
+- number: 1227
+  title: 'chore(release): 1.7.0 — the Reasoning line'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-01'
+- number: 1226
+  title: 'docs(plan): the 1.7.0 cut record — what the shakeouts did not exercise'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-01'
+- number: 1225
+  title: 'fix(correction): a repair that can never be verified stops being retried'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1221
+  merged_at: '2026-09-01'
+- number: 1224
+  title: 'fix(qa): a failing contract probe fails its task, so the correction loop
+    engages'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1223
+  merged_at: '2026-09-01'
+- number: 1222
+  title: 'fix(checks): a path alias is not a scoped package — declared_imports stops
+    failing every Next.js route'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-01'
+- number: 1220
+  title: 'ci: a docs-only PR stops paying for the integration lane'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-01'
+- number: 1219
+  title: 'feat(checks): a coverage gap is declared with its reason, or CI fails'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1216
+  merged_at: '2026-09-01'
+- number: 1218
+  title: 'feat(checks): a JS/TS emission''s npm imports must be declared'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1217
+  merged_at: '2026-09-01'
+- number: 1215
+  title: 'fix(sandbox): a crashed app keeps its logs, and stops being called a timeout'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1214
+  merged_at: '2026-09-01'
+- number: 1212
+  title: 'fix(verification): a submodule is not an unbound name — the import pre-gate
+    stops refusing valid repairs'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1211
+  merged_at: '2026-09-01'
+- number: 1210
+  title: 'docs(plan): §6.1 stops asking for two things the system cannot do, and drops
+    a deferred issue'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-01'
+- number: 1209
+  title: 'docs(plan): the same-task none/high measurement, and the headroom claim
+    it qualifies'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-01'
+- number: 1208
+  title: 'feat(llm): top_p reaches the provider, so temperature stops being half a
+    pair'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 901
+  merged_at: '2026-09-01'
+- number: 1207
+  title: 'docs(plan): the reasoning budget re-read, and the #924 split that does not
+    reproduce'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-31'
+- number: 1203
+  title: 'chore(deps): the images install what CI tests — 42 divergences down to 2,
+    both documented'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 237
+  - 1041
+  merged_at: '2026-08-31'
+- number: 1202
+  title: 'fix(maintainer): one home for what counts as a closing reference'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1135
+  merged_at: '2026-08-31'
+- number: 1201
+  title: 'feat(observability): the reasoning text''s length stands in where the provider
+    reports no count'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1195
+  merged_at: '2026-08-31'
+- number: 1200
+  title: 'chore(llm): delete LLMRouter — 139 lines never constructed, maintained four
+    times'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 944
+  merged_at: '2026-08-31'
+- number: 1199
+  title: 'fix(driver): a cycle that never builds anything ends the drive loop instead
+    of outlasting it'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1168
+  merged_at: '2026-08-31'
+- number: 1198
+  title: 'fix(llm): the reasoning channel survives the streaming path, which is the
+    one cycles use'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1194
+  - 1196
+  merged_at: '2026-08-31'
+- number: 1193
+  title: 'docs(plan): the ollama sets describe the rebuild they now validate, and
+    their checks can tell a stale image'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-31'
+- number: 1192
+  title: 'docs(plan): the ollama sets'' gate and launch notes stop claiming an Atlas
+    A/B that was stopped'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-31'
+- number: 1191
+  title: 'feat(cycles): the cycle/CRP reasoning override — #927''s fourth rung'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 927
+  merged_at: '2026-08-31'
+- number: 1190
+  title: 'fix(llm): an unregistered model stops degrading silently on all three paths'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1145
+  merged_at: '2026-08-31'
+- number: 1189
+  title: 'fix(agents): the boot log names the fallback model as a fallback, not as
+    the model in use'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 930
+  merged_at: '2026-08-31'
+- number: 1188
+  title: 'feat(observability): the emission log reports the reasoning split, so #924''s
+    two failures stop looking identical'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 924
+  merged_at: '2026-08-31'
+- number: 1187
+  title: 'feat(ops): back up the deployment database, and prove the backup restores'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1181
+  merged_at: '2026-08-31'
+- number: 1186
+  title: 'feat(llm): the reasoning channel reaches the port and LangFuse instead of
+    being dropped'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 410
+  merged_at: '2026-08-31'
+- number: 1185
+  title: 'test(architecture): ratchet the image-vs-CI dependency divergence so it
+    cannot widen silently'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-30'
+- number: 1183
+  title: 'fix(tests)+ci: the integration suite stops targeting the deployment database,
+    the sixteen go green, and CI runs them'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 242
+  - 1099
+  merged_at: '2026-08-30'
+- number: 1179
+  title: 'docs(plan): the Atlas A/B returns a negative — the record, the SIP amendment,
+    and vLLM as the second arm'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1160
+  merged_at: '2026-08-30'
+- number: 1175
+  title: 'docs(plan): Atlas A/B §1.5 — the third shakeout, the 14-configuration replay
+    matrix, and the arm-A control (#1160)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-29'
+- number: 1174
+  title: 'fix: the framing half of a cycle is observable and correctly budgeted —
+    one seam for generation records, per-attempt manifest telemetry, and a completion
+    budget that accounts for declared thinking'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1171
+  - 1172
+  - 1173
+  merged_at: '2026-08-29'
+- number: 1170
+  title: 'fix(llm): the Atlas arm''s served window covers its own prompts — 32K left
+    the prompt guard 24,576 tokens (#1160 §1.4)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-29'
+- number: 1169
+  title: 'docs(plan): Atlas A/B pre-registration §1.2 — the content-loop watchdog
+    cut long YAML; serve line adds --content-loop-watchdog false, --lm-head-dtype
+    bf16 (#1160)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-29'
+- number: 1167
+  title: 'fix(llm): Atlas''s server-side request cut is a timeout, not a complete
+    message; serve line sets --request-timeout (#1160 shakeout)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-28'
+- number: 1166
+  title: 'docs(plan): 1.7.0 Atlas A/B pre-registration — two deploys, arm B tuned
+    (FP8 + MTP K=4); full-38-atlas profile; the compose override that points the deploy
+    at Atlas (#1160)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-28'
+- number: 1165
+  title: 'feat(llm): Atlas adapter — the DGX Spark engine behind LLMPort, from the
+    measured dialect (#1159, SIP-0106 P4)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1159
+  merged_at: '2026-08-28'
+- number: 1164
+  title: 'feat(config): the LLM provider is required configuration — selected by name
+    through the factory at both composition roots (#1157)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1157
+  merged_at: '2026-08-28'
+- number: 1163
+  title: 'fix(maintainer): SIP files are named for the SIP — the title''s name, at
+    most three words'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-28'
+- number: 1162
+  title: 'docs(sip): accept SIP-0106 Atlas Provider Adapter — rev 2 (§10.2 settled
+    live, owner rulings, Appendix B measured); plan rev 3.1'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-28'
+- number: 1161
+  title: 'feat(llm): reasoning is a level on the port, declared per capability, mapped
+    by each adapter (#927, 1.7.0 Reasoning)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-28'
+- number: 1156
+  title: 'docs(plan): 1.7.0 rev 3 — name the 1.7.0 line (Reasoning), renumber 1.7.0–1.7.4,
+    split the cut criteria'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-28'
+- number: 1155
+  title: 'docs(release): capture the v1.6.6 release package'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-08-28'
+sip_moves:
+- sip: SIP-0106-Atlas-Provider-Adapter
+  from: null
+  to: accepted
+cycles:
+- cycle_id: cyc_2a88dabad94b
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:declared_imports
+  - acceptance:frontend_compiles
+  - acceptance:regex_match
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-api-runs
+  - vc-probe-api-runs-join
+  - vc-probe-api-runs-join-duplicate
+  - vc-probe-api-runs-leave
+  - vc-probe-api-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+screenshots: []
