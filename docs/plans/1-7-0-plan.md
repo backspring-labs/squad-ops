@@ -474,14 +474,14 @@ its pack's predictions all hold — and the standing cut procedure in `CLAUDE.md
 1. Pack Reasoning fully landed: #927 (the level on the port, the contract declaring it, the
    Ollama mapping), #410 (the thinking channel captured and emitted), #1145, #930; #924's
    budget half re-read against the new distribution and recorded either way.
-2. Pack Reasoning's verification story held (§2.1): the #924 probe replayed through the port
-   with the `none`/`high` split reproduced from our own telemetry and thinking text present
-   in LangFuse on the `high` run; one shakeout per stack with fills-first (Q0) holding; the
-   adapter characterization suite green in CI against the recorded transcript.
-3. The rider landed: #901, #929, #944 (the dead `LLMRouter` gone, the call sequence extracted),
-   and the CI-truth items #1099, #242, #1041, #237 — so the integration job is green on main
-   and CI runs the dependency set the images install, *before* any later line's greens are
-   read.
+2. Pack Reasoning's verification story held (§2.1): the `none`/`high` split **re-measured on
+   the deployed stack** for one capability at both levels, with the delta from #924's figure
+   recorded and its causes named, and thinking text present in LangFuse on the `high` run;
+   fills-first (Q0) holding on every stack that **has** fill slots; the adapter
+   characterization suite green in CI against the recorded transcript.
+3. The rider landed: #901, #944 (the dead `LLMRouter` gone), and the CI-truth items #1099,
+   #242, #1041, #237 — so the integration job is green on main and CI runs the dependency set
+   the images install, *before* any later line's greens are read.
 4. Zero code drift between the shakeout deploy and the tag; the release package captured on
    the first try with the `Closes` column correct (#1135 in this rider).
 5. Stated at the cut: what the shakeouts did not exercise, every remaining pack's placement
@@ -490,6 +490,38 @@ its pack's predictions all hold — and the standing cut procedure in `CLAUDE.md
 6. The Atlas Provider Adapter SIP (SIP-0106): **accepted and numbered before #1159 opened**; promoted to
    `implemented` at this cut only if #1157, #1159 and #1160 are all merged, else left
    `accepted` with the open phases named (§2.1a).
+
+### 6.1a Amendments to §6.1 (2026-08-31)
+
+Three corrections, each made because the criterion encoded something untrue about the
+system rather than because a measurement came back inconvenient. That distinction is the
+whole guard on editing a cut criterion: correcting a false premise keeps the gate, fitting
+the text to a disappointing number removes it.
+
+**Criterion 2, the #924 split — "reproduced from our own telemetry" was unachievable.**
+Every prompt stored in LangFuse is capped at ~10,300 characters against real prompts of
+~8,600 tokens median and up to 25,992, so roughly 70% of every prompt is discarded before
+storage and there is no replayable prompt in telemetry. Independently, the split does not
+reproduce: measured at 2.2× (3.9× against the same stack) where #924 recorded 13.9×.
+Restated to require the re-measurement and an accounting for the delta, both of which
+`docs/plans/1-7-0-reasoning-budget-reread.md` now carries. The re-measurement was run
+*before* this wording was proposed, so the text is not fitted to its result.
+
+**Criterion 2, fills-first — "one shakeout per stack" asked for something one stack cannot
+do.** The verification-scaffold emitter registry
+(`capabilities/verification_scaffold_emission.py`) contains a single entry, `nextjs_ts`. An
+unregistered stack is an explicit documented skip, so `fullstack_fastapi_react` emits no
+fill slots and has no fill order to hold. Q0 **held** on the stack that has them —
+`cyc_b2bbbc234d12`, 7 fill fences at 1176–2409, first additive fence at 2762. The gap is
+#1122, which is labelled `enhancement` and therefore cannot land in an odd minor: requiring
+it here would require something the parity convention forbids. Named under criterion 5
+instead.
+
+**Criterion 3, #929 removed.** Deferred (owner ruling, 2026-08-31) to be designed together
+with #1206, because both must choose a value for `prompt_layer_set_id` and settling it twice
+would move the LangFuse grouping twice. #929 is a refactor that was listed beside CI-truth
+items; the criterion's substance — the integration job green on main, CI running the
+dependency set the images install — is unaffected and met. Reasoning recorded on the issue.
 
 ### 6.2 The line's close — before 1.8 opens
 
