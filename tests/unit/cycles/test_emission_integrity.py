@@ -125,6 +125,78 @@ class TestUnresolvedImports:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding="utf-8")
 
+    def test_a_submodule_is_not_an_unbound_name(self, tmp_path) -> None:
+        """Bug caught: #1211, replayed from the shape that rejected a cut-gating
+        shakeout. `from backend import store` resolves against the filesystem, not
+        against what `__init__.py` binds — Python imports the submodule. Reporting it
+        refused a valid repair in patch verification's pre-gate, before any criterion
+        ran, and cost `cyc_052ca0358191` three correction rounds and its verdict.
+        """
+        self._write(
+            tmp_path,
+            {
+                "backend/__init__.py": "",
+                "backend/store.py": "def reset() -> None:\n    pass\n",
+                "test_runs.py": "from backend import store as _store\n",
+            },
+        )
+
+        assert unresolved_imports(tmp_path) == []
+
+    def test_a_subpackage_is_not_an_unbound_name_either(self, tmp_path) -> None:
+        """The directory form of the same thing — `pkg/name/__init__.py` rather than
+        `pkg/name.py`. Fixing only the file form would leave the false positive alive
+        for any package that groups its submodules."""
+        self._write(
+            tmp_path,
+            {
+                "backend/__init__.py": "",
+                "backend/store/__init__.py": "def reset() -> None:\n    pass\n",
+                "test_runs.py": "from backend import store\n",
+            },
+        )
+
+        assert unresolved_imports(tmp_path) == []
+
+    def test_a_genuinely_absent_name_is_still_reported(self, tmp_path) -> None:
+        """The #591 finding must survive the #1211 fix. A name that is neither bound in
+        `__init__.py` nor backed by a submodule file does not resolve, and silencing it
+        would trade one false verdict for the opposite one."""
+        self._write(
+            tmp_path,
+            {
+                "backend/__init__.py": "",
+                "backend/store.py": "def reset() -> None:\n    pass\n",
+                "test_runs.py": "from backend import store, nonexistent\n",
+            },
+        )
+
+        findings = unresolved_imports(tmp_path)
+
+        assert len(findings) == 1
+        source, module, missing = findings[0]
+        assert source == "test_runs.py"
+        assert module == "backend"
+        assert missing == ("nonexistent",), "the submodule filter must not swallow real misses"
+
+    def test_an_absent_name_inside_a_present_submodule_is_still_reported(self, tmp_path) -> None:
+        """`from backend.store import gone` names a module that exists and a name it does
+        not bind — the submodule filter must not reach this case at all, since the target
+        resolves to store.py rather than to a package `__init__`."""
+        self._write(
+            tmp_path,
+            {
+                "backend/__init__.py": "",
+                "backend/store.py": "def reset() -> None:\n    pass\n",
+                "test_runs.py": "from backend.store import reset, gone\n",
+            },
+        )
+
+        findings = unresolved_imports(tmp_path)
+
+        assert len(findings) == 1
+        assert findings[0][2] == ("gone",)
+
     def test_pf37_restored_frozen_model_leaves_routes_unimportable(self, tmp_path) -> None:
         """Bug caught: THE #591 defect, replayed from pf-37's real shape — the
         exact name set correction-00 imported against the frozen module."""

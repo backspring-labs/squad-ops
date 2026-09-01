@@ -311,6 +311,22 @@ def _resolve_module_path(
     return None
 
 
+def _is_submodule_of(package_init: Path, name: str) -> bool:
+    """True when ``name`` is a submodule of the package ``package_init`` initialises.
+
+    ``from package import name`` resolves against the filesystem, not against what
+    ``__init__.py`` binds — Python imports the submodule. Treating an unbound name as
+    missing is the #1211 false positive: it refused ``from backend import store`` while
+    ``backend/store.py`` sat beside it defining exactly what the test called, and the
+    refusal happened in patch verification's pre-gate, so a valid repair was thrown out
+    before any criterion ran.
+    """
+    if package_init.name != "__init__.py":
+        return False
+    package_dir = package_init.parent
+    return (package_dir / f"{name}.py").is_file() or (package_dir / name / "__init__.py").is_file()
+
+
 def unresolved_imports(workspace_root: Path | str) -> list[tuple[str, str, tuple[str, ...]]]:
     """Intra-package imports the workspace cannot satisfy (#591).
 
@@ -321,6 +337,11 @@ def unresolved_imports(workspace_root: Path | str) -> list[tuple[str, str, tuple
     present, parses, and demonstrably does not bind it. Unreadable or
     undecidable modules are skipped, and imports pointing outside the workspace
     are ignored entirely, so third-party and stdlib imports never appear here.
+
+    A submodule is not an unbound name (#1211). ``from package import submodule``
+    resolves from the filesystem whatever ``__init__.py`` binds, so a name backed by
+    ``package/name.py`` or ``package/name/__init__.py`` is resolvable and is not
+    reported. Without that, the conservatism above is claimed rather than implemented.
     """
     workspace_root = Path(workspace_root)
     findings: list[tuple[str, str, tuple[str, ...]]] = []
@@ -351,7 +372,13 @@ def unresolved_imports(workspace_root: Path | str) -> list[tuple[str, str, tuple
             defined = parsed[target]
             if defined is None:
                 continue
-            missing = tuple(sorted(a.name for a in node.names if a.name not in defined))
+            missing = tuple(
+                sorted(
+                    a.name
+                    for a in node.names
+                    if a.name not in defined and not _is_submodule_of(target, a.name)
+                )
+            )
             if missing:
                 label = ("." * node.level) + (node.module or "")
                 findings.append((source_rel, label, missing))
