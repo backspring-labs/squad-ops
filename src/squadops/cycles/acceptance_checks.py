@@ -541,11 +541,49 @@ _JS_IMPORT_SPECIFIER = re.compile(
 )
 
 
-#: A scoped package is `@scope/name`; everything else takes the first path segment,
-#: so `lodash/merge` is declared by `lodash`.
-def _package_root(specifier: str) -> str:
+#: A scoped package is `@scope/name` with a NON-EMPTY scope; everything else takes the
+#: first path segment, so `lodash/merge` is declared by `lodash`.
+#:
+#: The empty-scope case is why this returns None rather than a name (#1217 follow-up):
+#: `@/lib/store` is a tsconfig path alias, not a package, and treating it as the scoped
+#: package `@/lib` failed every Next.js route file in cyc_05abfc7c1f00 and burned the
+#: run's whole correction budget on a defect that did not exist.
+def _package_root(specifier: str) -> str | None:
     parts = specifier.split("/")
-    return "/".join(parts[:2]) if specifier.startswith("@") else parts[0]
+    if specifier.startswith("@"):
+        scope = parts[0][1:]
+        if not scope:
+            return None  # `@/...` — a path alias, decidable only against tsconfig
+        return "/".join(parts[:2])
+    return parts[0]
+
+
+def _alias_prefixes(file_path: Path, workspace_root: Path) -> tuple[str, ...]:
+    """Path-alias prefixes declared in the nearest tsconfig/jsconfig, e.g. ``("@/",)``.
+
+    A project may alias anything to anywhere, and an aliased specifier is a path, not a
+    package — reporting one is the #645 fails-on-correct-content class this check spent
+    a roll proving it could still commit. Read as prefixes rather than resolved, because
+    the question here is only "is this a package name", never "where does it point".
+    """
+    current = file_path.parent
+    root = workspace_root.resolve()
+    while True:
+        for name in ("tsconfig.json", "jsconfig.json"):
+            candidate = current / name
+            if not candidate.is_file():
+                continue
+            try:
+                # tsconfig permits comments and trailing commas; a strict parse failing
+                # must not turn into a report. Undecidable is undecidable.
+                config = json.loads(candidate.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                return ()
+            paths = (config.get("compilerOptions") or {}).get("paths") or {}
+            return tuple(sorted(p.split("*")[0] for p in paths if isinstance(p, str)))
+        if current.resolve() == root or current.parent == current:
+            return ()
+        current = current.parent
 
 
 def _nearest_package_json(file_path: Path, workspace_root: Path) -> Path | None:
@@ -623,13 +661,18 @@ class DeclaredImportsCheck(BaseCheck):
             if isinstance(value, dict):
                 declared.update(value)
 
+        aliases = _alias_prefixes(file_path, workspace_root)
         missing: list[str] = []
         for specifier in _JS_IMPORT_SPECIFIER.findall(source):
             # Relative and absolute paths are unresolved_imports' business, and a
             # builtin is provided by the runtime rather than by the manifest.
             if specifier.startswith((".", "/")) or specifier.startswith("node:"):
                 continue
+            if aliases and specifier.startswith(aliases):
+                continue  # a declared path alias resolves to a file, not a package
             root = _package_root(specifier)
+            if root is None:
+                continue  # empty-scope specifier: an alias by construction
             if root in declared or root in _NODE_BUILTINS:
                 continue
             if root not in missing:
