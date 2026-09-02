@@ -240,6 +240,10 @@
        "params": {}
       }
      ],
+     "acceptance_workspace_files": {
+      "backend/models.py": "x",
+      "backend/routes.py": "def ok(): ..."
+     },
      "agent_config_overrides": {},
      "agent_model": null,
      "artifact_refs": [
@@ -353,7 +357,8 @@
       "`RunsListView` (route `/`): root container `runs-list`; anchors: `runs-list`, `run-item`, `run-participant-count`, `empty-state`, `create-run-link`",
       "`CreateRunView` (route `/create`): root container `create-run-view`; anchors: `create-run-view`, `create-run-form`, `field-title`, `field-datetime`, `field-location`, `field-distance`, `field-pace-target`, `field-route-notes`, `submit-create`, `form-error`",
       "`RunDetailView` (route `/runs/:id`): root container `run-detail`; anchors: `run-detail`, `participant-list`, `participant-item`, `join-form`, `join-name-input`, `join-submit`, `leave-form`, `leave-name-input`, `leave-submit`, `action-error`, `not-found`"
-     ]
+     ],
+     "workspace_revision_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     },
     "task_type": "qa.test_repair"
    }

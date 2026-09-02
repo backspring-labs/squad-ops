@@ -412,6 +412,28 @@ def retest_forwarded_inputs(failed_inputs: Mapping[str, Any]) -> dict[str, Any]:
     return forwarded
 
 
+#: #1229: a repair evaluates the failed task's typed criteria on its own patched tree
+#: BEFORE returning — in the agent container, where the stack's toolchain lives — and the
+#: executor's verification consumes those executed rows. That evaluation needs the same
+#: workspace the primary and the verifier materialise (#643: module-level checks false-fail
+#: a correct fill in a patch-only tree), so the repair forwards it exactly as the retest
+#: does: presence-keyed, with the revision id that names the tree.
+REPAIR_PRESENCE_KEYS: tuple[str, ...] = (
+    "acceptance_workspace_files",
+    "workspace_revision_id",
+)
+
+
+def repair_forwarded_inputs(failed_inputs: Mapping[str, Any]) -> dict[str, Any]:
+    """The failed task's typed-acceptance workspace a repair dispatch carries (#1229).
+
+    Presence-keyed: a key forwarded as empty would claim a tree the original dispatch
+    never carried. ``acceptance_criteria`` and ``resolved_config`` already ride the repair
+    envelope; this adds only what the agent-side evaluation is missing.
+    """
+    return {key: failed_inputs[key] for key in REPAIR_PRESENCE_KEYS if failed_inputs.get(key)}
+
+
 def get_context_contract(task_type: str) -> ContextAssemblyContract:
     """The task type's declared contract; the empty contract for undeclared
     types (base enrichment only — chain context and artifact refs)."""

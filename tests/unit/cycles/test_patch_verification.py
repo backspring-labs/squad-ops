@@ -554,3 +554,182 @@ class TestFileOwnedGate:
         )
         assert result.status == PATCH_FAILED
         assert result.reason == "file_owned_criteria"
+
+
+# --- #1229: the verdict comes from wherever the check actually ran ----------------------
+
+_REPLAYS = __import__("pathlib").Path(__file__).resolve().parents[2] / "fixtures" / "roll_replays"
+
+
+def _nextjs_tree_with_the_1221_patch():
+    """The Next.js skeleton the failed task was evaluated against, and the first repair
+    ``cyc_05abfc7c1f00`` produced for ``app/api/runs/route.ts`` — stored bytes."""
+    from squadops.capabilities.scaffold import expand
+    from tests.unit.capabilities._stack_fixtures import manifest_for_stack
+
+    tree = {f["name"]: f["content"] for f in expand(manifest_for_stack("nextjs_ts"))}
+    patch = [
+        {
+            "name": "app/api/runs/route.ts",
+            "content": (_REPLAYS / "1-7-0-1221-repair-00-app-api-runs-route.ts").read_text(),
+        }
+    ]
+    return tree, patch
+
+
+_ROUTE_PARAMS = {"file": "app/api/runs/route.ts", "project_dir": "."}
+
+
+def _compiles_criterion() -> list[TypedCheck]:
+    return [
+        TypedCheck(
+            check="frontend_compiles",
+            params=dict(_ROUTE_PARAMS),
+            severity="error",
+            description="the route compiles (vc-compiles-app-api-runs-route)",
+        )
+    ]
+
+
+def _agent_rows(status: str, params: dict | None = None) -> dict:
+    return {
+        "environment": "agent:dev",
+        "checks": [
+            {
+                "check": "acceptance:frontend_compiles",
+                "severity": "error",
+                "params": dict(params or _ROUTE_PARAMS),
+                "status": status,
+                "reason": "ok" if status == "passed" else "frontend_build_failed",
+                "actual": None,
+            }
+        ],
+    }
+
+
+class TestTheVerdictComesFromWhereTheCheckRan:
+    """``cyc_05abfc7c1f00``: three rounds on ``app/api/runs/route.ts``, two identical
+    ``unverifiable`` verdicts, a run at 1/14. The criterion owning a ``.ts`` file needs
+    node, runtime-api has none, so nothing blocking ever executed here. The repair now
+    evaluates the same criteria where the toolchain lives and sends the rows along; this
+    environment keeps cross-checking what it can."""
+
+    @staticmethod
+    def _no_npm_here(monkeypatch):
+        from squadops.cycles import acceptance_checks
+
+        monkeypatch.setattr(acceptance_checks.shutil, "which", lambda name: None)
+
+    async def test_without_the_repairs_rows_the_1221_shape_is_still_unverifiable(self, monkeypatch):
+        """The control: nothing executed in either environment is still not a verdict, and
+        the #1221 backstop still names it a deadlock."""
+        from adapters.cycles.dispatched_flow_executor import correction_is_deadlocked
+
+        self._no_npm_here(monkeypatch)
+        tree, patch = _nextjs_tree_with_the_1221_patch()
+        result = await verify_patched_artifacts(
+            _compiles_criterion(), patch, workspace_files=tree, stack="nextjs_ts"
+        )
+        assert result.status == PATCH_UNVERIFIABLE
+        assert result.reason == "no_executed_blocking_checks"
+        assert result.decided_by_agent == 0
+        assert correction_is_deadlocked(result.status, result.reason, retest_decides=False)
+
+    async def test_the_repairs_own_execution_decides_what_this_environment_cannot_run(
+        self, monkeypatch
+    ):
+        self._no_npm_here(monkeypatch)
+        tree, patch = _nextjs_tree_with_the_1221_patch()
+        result = await verify_patched_artifacts(
+            _compiles_criterion(),
+            patch,
+            workspace_files=tree,
+            stack="nextjs_ts",
+            agent_checks=_agent_rows("passed"),
+        )
+        assert result.status == PATCH_PASSED
+        assert result.decided_by_agent == 1
+        by_env = {
+            (r.executed_in, r.status) for r in result.checks if r.check == "frontend_compiles"
+        }
+        assert ("runtime-api", "skipped") in by_env
+        assert ("agent:dev", "passed") in by_env
+
+    async def test_an_executed_failure_in_the_repairs_container_rejects(self, monkeypatch):
+        self._no_npm_here(monkeypatch)
+        tree, patch = _nextjs_tree_with_the_1221_patch()
+        result = await verify_patched_artifacts(
+            _compiles_criterion(),
+            patch,
+            workspace_files=tree,
+            stack="nextjs_ts",
+            agent_checks=_agent_rows("failed"),
+        )
+        assert result.status == PATCH_FAILED
+
+    async def test_rows_for_another_file_say_nothing_about_this_criterion(self, monkeypatch):
+        """Bug caught: matching on the check name alone — a green row for a sibling route
+        would vouch for a file the repair never compiled."""
+        self._no_npm_here(monkeypatch)
+        tree, patch = _nextjs_tree_with_the_1221_patch()
+        result = await verify_patched_artifacts(
+            _compiles_criterion(),
+            patch,
+            workspace_files=tree,
+            stack="nextjs_ts",
+            agent_checks=_agent_rows(
+                "passed", {"file": "app/api/runs/[run_id]/route.ts", "project_dir": "."}
+            ),
+        )
+        assert result.status == PATCH_UNVERIFIABLE
+        assert result.reason == "no_executed_blocking_checks"
+
+    async def test_an_agent_pass_never_overrides_a_failure_that_executed_here(self):
+        """Bug caught: the agent's rows treated as the verdict rather than as evidence —
+        a failure this environment executed must stand whatever the repair reported."""
+        rows = {
+            "environment": "agent:dev",
+            "checks": [
+                {
+                    "check": "acceptance:regex_match",
+                    "severity": "error",
+                    "params": {"file": "qa_handoff.md", "pattern": f"## {section}"},
+                    "status": "passed",
+                    "reason": "ok",
+                }
+                for section in ("How to Run", "How to Test", "Implemented Scope")
+            ],
+        }
+        result = await verify_patched_artifacts(
+            _heading_criteria(),
+            [{"name": "qa_handoff.md", "content": BROKEN_DOC}],
+            agent_checks=rows,
+        )
+        assert result.status == PATCH_FAILED
+        assert result.decided_by_agent == 0
+
+    async def test_a_local_evaluator_error_the_repair_executed_does_not_abort(self, monkeypatch):
+        """An evaluator that breaks HERE on a criterion the repair executed cleanly is this
+        environment's problem, not the patch's; without the repair's row it still aborts,
+        exactly as before."""
+        from squadops.cycles import patch_verification
+        from squadops.cycles.acceptance_checks import CheckOutcome
+
+        async def broken(criterion, workspace_root, **kwargs):
+            return CheckOutcome.error(reason="boom")
+
+        monkeypatch.setattr(patch_verification, "evaluate_criterion", broken)
+        tree, patch = _nextjs_tree_with_the_1221_patch()
+        with_rows = await verify_patched_artifacts(
+            _compiles_criterion(),
+            patch,
+            workspace_files=tree,
+            stack="nextjs_ts",
+            agent_checks=_agent_rows("passed"),
+        )
+        assert with_rows.status == PATCH_PASSED
+        without = await verify_patched_artifacts(
+            _compiles_criterion(), patch, workspace_files=tree, stack="nextjs_ts"
+        )
+        assert without.status == PATCH_UNVERIFIABLE
+        assert without.reason == "evaluator_error:frontend_compiles"
