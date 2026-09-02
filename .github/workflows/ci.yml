@@ -217,6 +217,28 @@ jobs:
           name: integration-results
           path: integration-results.xml
 
+  # #1151: cut step 7 (the release package) is unguarded — CLAUDE.md says so. Every semver
+  # tag must have a captured, non-hollow package under site/content/releases/<tag>/; the
+  # package lands AFTER the tag by procedure, so this runs on every push and PR rather than
+  # on the tag push: main goes red the moment a tag is pushed without its package and green
+  # again when the capture lands. The interval is the signal (#789, #1076).
+  release-packages:
+    name: release packages captured
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: pip install pyyaml -c ci-constraints.txt
+      - name: Every released tag has a captured, non-hollow package
+        run: python scripts/dev/check_release_packages.py
+
   skeleton-gate:
     # SIP-0099 acceptance surface: the deterministic expander must materialize a
     # walking skeleton that BUILDS and BOOTS with zero manual intervention, on plain

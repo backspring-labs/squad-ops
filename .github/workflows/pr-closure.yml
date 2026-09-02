@@ -29,4 +29,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           PR_BODY: ${{ github.event.pull_request.body }}
+          # #1151: a release/* PR must carry a `SIP sweep:` line (cut step 5).
+          PR_HEAD_REF: ${{ github.head_ref }}
         run: printf '%s' "$PR_BODY" | scripts/dev/check_pr_closure.sh

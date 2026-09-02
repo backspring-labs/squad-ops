@@ -241,8 +241,10 @@ procedure costs: six consecutive releases tagged but never advertised.
 | 7 | **Capture the release package** — `python scripts/maintainer/build_release_package.py <version> --cycle <cycle-id> --project <project>` to PREVIEW, read the cycle evidence, then re-run with `--write` and commit `site/content/releases/vX.Y.Z/` |
 
 Steps 1–3 are guarded by `tests/unit/architecture/test_docs_version_sync.py`, and step 6's
-Release is now automated on tag push. **Steps 4, 5 and 7 remain unguarded**, which is why
-they are written down.
+Release is now automated on tag push. Step 5 is checked by the `SIP sweep:` line a
+`release/*` PR body must carry (`check_pr_closure.sh`, #1151) and step 7 by
+`scripts/dev/check_release_packages.py` on every push (#1151). **Step 4 remains unguarded**,
+which is why it is written down.
 
 **Why step 6 is automated rather than listed.** Across v1.4.0–v1.6.1, *zero* releases were
 published at cut time — every one was backfilled later. The step sat in the cut checklist
