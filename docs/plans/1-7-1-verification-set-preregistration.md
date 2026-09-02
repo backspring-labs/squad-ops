@@ -1,0 +1,141 @@
+# 1.7.1 — Verification Sets: Pre-registration
+
+**In force from roll 1, by the commit hash of this document on its branch, and unchanged
+thereafter.** Written 2026-09-02 (early morning ET), after the rebuild on the stacked 1.7.1
+pack and after both shakeouts, before the first counted launch. Merging it is the owner's act
+and does not change what it pre-registers; the branch commit is the record.
+
+This is the 1.7.1 plan's §4 (`docs/plans/1-7-1-plan.md`, rev 1 with as-landed notes) as data:
+**six counting rolls on FastAPI+React** (the measurement — every item of §2.3 came from this
+stack) and **two on Next.js+TS** (this time not only a regression arm: #939 and #1229 change
+what a Next.js roll does). Everything not restated here is inherited **verbatim** from the
+1.6.6 pre-registration (`docs/plans/1-6-6-verification-set-preregistration.md`) and, through
+it, 1.6.5, 1.6.4 and 1.6.3: §5 (scoring), §5.1 (roll validity — void / reset / counted), §6
+and §6.1 (the gate constant and the two approval paths), §7 (prohibited while open).
+
+**The instrument moved with the pack.** The driver (`scripts/dev/verification_set_driver.py`)
+gained the readouts §4 of the plan promised, so R1–R7 below are read from the per-roll record
+rather than by hand: per-check failed-row counts from the stored typed-check evaluations
+(`typed_checks`: kind gate, anchors, additive containment, undefined names, the reporting-only
+packaging findings) with `checks_by_environment`; the routing tokens `qa_owned_routed` and
+`absent_anchor_routed`; the qa repair brief's `repair_brief_case_counts`; and rule B's
+`decided_by_agent` against `unverifiable_toolchain_absent`, all from the runtime-api log
+window. Every fixed parameter is read from
+`docs/plans/verification-sets/1-7-1-fastapi-react.yaml` and `…/1-7-1-nextjs.yaml`.
+
+---
+
+## 1. Fixed parameters
+
+| Parameter | Value |
+|---|---|
+| N (rolls) | **6 counted** on FastAPI+React (§3) and **2 counted** on Next.js+TS (§4). 1.6.6 §1.3 on what these sizes can and cannot say holds unchanged: exercise, not a rate. |
+| Bar | **none** on either rate; each prediction is pass/fail on its own terms |
+| Project / PRD / squad / request profile | `group_run`, `full-38`, `validated-fullstack` — identical to 1.6.6 and 1.7.0 |
+| Overrides | FastAPI+React: none. Next.js+TS: `build_profile=nextjs_ts`, `dev_capability=nextjs_ts` |
+| `resolved_config_hash` | FastAPI+React `TBD-from-shakeout`, Next.js+TS `TBD-from-shakeout` — recorded by the shakeouts and asserted on every counting roll; a roll on any other hash is void |
+| `squad_profile_snapshot_ref` | `TBD-from-shakeout` — a roll on any other snapshot is void |
+| Deploy — commit | **`d95f8e21`** — the head of `feat/1123-scoped-qa-repair`, the stacked tip of the pack: #1243 (#1130) → #1244 (#598) → #1245 (#1022) → #1246 (#668) → #1247 (#1123), on main `e8193bb9` (which already carries #939, #1229 and #1153). **Not main.** See §2 and §7. |
+| Deploy — 7 image ids | runtime-api `ccd81952be2e` · max `f6e8b8dfbe69` · neo `da9da7ab0bae` · nat `58089c21e847` · bob `9816af4df1b0` · eve `e4368e889bb0` · data `1f1358c9488b` — built 2026-09-02 06:04 ET from `d95f8e21`; asserted at every counting launch by the driver |
+| Loaded, not built | verified in-container before the shakeouts (`docker exec … python -c`): every container imports the pack's seams (`qa_owned_suite_defects`, `absent_anchor_cases`, `INJECTION_SCOPE_SUITE` → `additive_containment`, `row_is_blocking_failure`, `anchor_findings`, `containment_findings`, `parse_pytest_failure_rows`, `parse_vitest_failure_text`, `client_surface_instructions`, the three new evaluators); `tsc` on PATH in neo and eve, absent in runtime-api and bob (as `DECLARED_TOOLING_GAPS` declares) |
+| Gate policy | 1.6.3 §6 constant, verbatim in each set config's `gate_notes`; `--as-agent`; the decider is recorded per roll |
+| Audit instrument | `scripts/dev/audit_delivered_app.py` at the deploy commit |
+| Driver | `verification_set_driver.py roll --set docs/plans/verification-sets/1-7-1-fastapi-react.yaml --roll N`, then `…/1-7-1-nextjs.yaml` — one roll per invocation |
+| Order | FastAPI+React rolls 1–6 first (the measurement), then Next.js+TS rolls 1–2 |
+
+---
+
+## 2. Preconditions
+
+- **The deploy is the stacked pack tip, not main — pre-declared.** The owner asked (2026-09-01,
+  before bed) for the pack to be stacked as PRs and the validations run overnight; the only
+  tree that carries the whole pack is the last PR's head. The five PRs are unchanged from the
+  moment the images were built; **merging those exact commits does not void a roll** (the
+  merge commits add no tree change), and any other merge, a rebuild, or a force-push to any of
+  the five branches does. The owner may instead void the set and re-run from main — that is
+  the owner's call, recorded here as the alternative.
+- **Launches run from the pre-registration branch** (`docs/1-7-1-preregistration`), which is
+  where the set configs and the driver readouts exist; the owner's 2026-08-27 ruling was
+  "every launch runs from `main`". Stated as a deviation the owner rules on, not hidden: the
+  launch checkout affects only the driver and its configs (not the deploy), and the driver
+  pins that branch's HEAD at roll 1 so nothing moves under the set.
+- **Both shakeouts on THIS deploy, read before roll 1:** TBD — filled from the shakeout
+  records (`var/verification_sets/1-7-1-*/`), with what each exercised.
+- **Fault-injected diagnostics (plan §4), non-counting by declaration:** TBD — one per
+  prediction no roll is likely to exercise (R6: a Next.js fill with an undeclared name; R7: a
+  Next.js dev emission forced into a repair; R2/R4 on the React arm). Reported as diagnostics,
+  never as rolls.
+- Leases 0, nothing in flight, HEAD pinned, working tree clean, at every launch (driver
+  preflight).
+- **No merges to main while either set is open** except the five stacked PRs unchanged (§7).
+
+---
+
+## 3. FastAPI+React (`fullstack_fastapi_react`) — the measurement, six rolls
+
+Every prediction is one item of the pack, read only from the evidence named; each has the
+roll that falsified it before the fix.
+
+| # | prediction | falsified by | read from | prior evidence |
+|---|---|---|---|---|
+| **R1** | (#1153) no qa emission carrying an assertion whose literal contradicts a declared field kind reaches test execution | one such assertion in a stored, executed suite | `typed_checks.kind_gate_rejections` (rejections at emission are the positive trace); stored suites | 1.6.6 roll 3 |
+| **R2** | (#1130) a failure the suite raised in its own frame in a qa-owned file is routed to `qa.test_repair` with that file as the target | one such failure whose repair targets an app file | `loop_texture.qa_owned_routed`; `correction_repair_locus` lines | 1.6.5 roll 3 |
+| **R3** | (#668) every stored RTL suite that renders queries some declared anchor, and every imported view is located through some anchor of its own | one covering suite executed with none | `typed_checks.dom_anchor_findings` (rejections at emission); stored suites | fay-14 |
+| **R4** | (#1123) every `qa.test_repair` brief names the failing cases, and a failing assertion on an anchor absent from the inventory is routed to qa | a qa repair dispatched with a case count of 0 while the failed row carried cases; one absent-anchor failure sent to the dev chain | `loop_texture.repair_brief_case_counts`, `loop_texture.absent_anchor_routed` | 1.6.6 roll 6 (brief); no stored red for the anchor half |
+| **R5** | (#1022) no additive suite that fetches a live server or invokes nothing of the application reaches test execution | one such suite executed | `typed_checks.additive_rejections`; stored suites | C3, C4 |
+| **R7** | (#1229) no repair on this stack returns `unverifiable / no_executed_blocking_checks` because its criteria's toolchain was absent where verification ran | one such verdict | `loop_texture.unverifiable_toolchain_absent`; `decided_by_agent`; `checks_by_environment` | 1.7.0 roll 4 (Next.js) |
+| **S0–S3, Q3, P0** | carried from 1.6.6 unchanged | as there | as there | held |
+
+**Texture, no prediction attached:** the verdict rate against 1.6.6's 4 of 6 (interval, no
+bar); correction rounds; greens by repair versus by re-dispatch; refused versus applied
+patches; qa primary completion tokens against 1.6.6's `3233–6594`; `checks_by_environment`;
+the reporting-only `container_packaging_findings` per roll (#598 — readouts, never a verdict).
+
+**What this arm cannot read:** a repair never attempted (R2, R4, R7 need a correction round);
+a manifest with no view anchors (R3); an emission with no additive suite (R5). Unexercised is
+not passed; each roll's record says which predictions it exercised.
+
+**Early stop, one direction.** A falsified R1–R7 (or S0–S3/Q3/P0) stops this set. A good
+result is never grounds to stop early. A stop in one set does not stop the other.
+
+---
+
+## 4. Next.js+TS (`nextjs_ts`) — two rolls, and what changed on this stack
+
+#939 (tsc on `.ts/.tsx/.js/.jsx` emissions) and #1229 (rule B: a repair evaluates its own
+patch in the producing agent's container, and runtime-api consumes the rows) change what a
+Next.js roll does; #1022's gate applies to its additive suites; #668/#1123 bind only where a
+manifest declares view anchors and a suite renders (Next.js suites call route handlers, so
+R3/R4 are vacuous here unless a page test is emitted).
+
+| # | prediction | falsified by | read from |
+|---|---|---|---|
+| **R6** | (#939) no `.ts`/`.tsx` emission with an unresolved name reaches test execution | one `ReferenceError: … is not defined` in a stored per-round `test_report.md` | `typed_checks.undefined_name_rejections` (the positive trace); per-round reports |
+| **R7** | (#1229) no repair returns `unverifiable / no_executed_blocking_checks` because its toolchain was absent where verification ran | one such verdict | `loop_texture.unverifiable_toolchain_absent`; `decided_by_agent` |
+| **R5** | (#1022) as §3 | as §3 | as §3 |
+| **Q0, Q5, P0, Coverage** | carried from 1.6.6 §4 unchanged | as there | as there |
+
+**Texture:** correction rounds against 1.6.6's 2/0 and 1.7.0's 0/0; `checks_by_environment`.
+
+**Early stop, one direction, per set** — as §3.
+
+---
+
+## 5. Delegation
+
+Executed by the assistant under the owner's delegation of 2026-09-01 for both sets —
+FastAPI+React rolls 1–6, then Next.js+TS rolls 1–2: launch, gate approval with the §6
+constant, collection, and the per-roll record; **the counted/void/reset reading and the
+prediction check are made at each roll boundary before the next launch**; a reset or a
+falsified prediction stops that set for the owner.
+
+## 6. Gate constant
+
+Inherited verbatim (1.6.3 §6, §6.1); the text is in each set config's `gate_notes`.
+
+## 7. Prohibited while open
+
+Inherited verbatim (1.6.3 §7) with one pre-declared exception: no merges to main **other than
+the five stacked pack PRs, unchanged**; no rebuilds; no config edits; no manual intervention on
+any roll; a rebuild voids every roll after it; a force-push to any of the five branches voids
+the set.
