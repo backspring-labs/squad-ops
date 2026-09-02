@@ -208,7 +208,21 @@ window. Every fixed parameter is read from
   - **On `06408dfe` — Next.js+TS `cyc_fe9d9c565456`**: launched 19:13Z after the React
     finding, for what else it might find; stopped by the assistant at 19:29Z during framing
     when the owner merged #1265 and asked for the rebuild; no record, nothing read from it.
-  - **On `f85de47a` (the pinned deploy) — FastAPI+React:** TBD — filled from the record.
+  - **On `f85de47a` (the pinned deploy) — FastAPI+React `cyc_78120209a65f`** (19:32→20:35Z,
+    62 min): accepted, audit PASS, 19/19, P0 held, gate `system:no_open_questions`,
+    `checks_by_environment` `{agent:development: 19, agent:qa: 12, agent:builder: 2}`,
+    every emission-time typed row passed, `container_packaging` 1 reporting-only finding,
+    two correction rounds — **both dev repairs of a qa failure, both decided and applied**:
+    - Round 0 (backend suite): the dev container evaluated the qa task's seven criteria on
+      the forwarded suite — `rows=7 executed=7 failed=0` — runtime-api `passed checks=16
+      agent_rows=7`, retest `Repaired suite passed`, evidence superseded (#1111).
+    - Round 1 (frontend suite): `rows=3 executed=3 failed=0`; runtime-api `passed checks=8
+      decided_by_agent=1 agent_rows=3` — **R7 held on a live round for the first time**: the
+      `frontend_compiles` row runtime-api cannot execute was decided by the dev container's
+      executed pass. Retest passed.
+    No new seam finding. Unexercised, as on every React shakeout: R2/R4 (no qa-owned
+    defect), R3/R5 vacuous only where a plan names no frontend suite — this plan named one,
+    and `additive_containment` bound and passed on it.
   - **On `f85de47a` (the pinned deploy) — Next.js+TS:** TBD — filled from the record.
 - **Diagnostics for the predictions no roll is likely to exercise (plan §4), non-counting
   by declaration — run 2026-09-02 06:20 ET, in the deployed containers, on the stored
