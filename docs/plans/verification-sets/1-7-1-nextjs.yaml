@@ -47,12 +47,12 @@ loaded_checks:
 # Pins: filled from the shakeout before roll 1; empty means "no counting roll may launch".
 expected_config_hash_prefix: ""
 expected_squad_snapshot_prefix: "575707c58536cf3b"
-frozen_deploy_commit: "dfe466ab"
+frozen_deploy_commit: "06408dfe"
 frozen_image_ids:
-  runtime-api: 173316830b11
-  max: 28b20f7479b3
-  neo: 3c9dd9271553
-  nat: d916d357c024
-  bob: dab6abb8f0f7
-  eve: 7631cc721813
-  data: 58c3b8395693
+  runtime-api: 1b3ba246611d
+  max: 1c47ec79c29f
+  neo: 91e38853f741
+  nat: dbdc6cd51866
+  bob: 544d9315c3fa
+  eve: ee2ef6644194
+  data: ed490b25e257
