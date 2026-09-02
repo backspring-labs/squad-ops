@@ -369,6 +369,41 @@ def validate_transition(current_status: str, new_status: str) -> tuple[bool, str
     return True, ""
 
 
+def upsert_registry_entry(registry: dict[str, Any], entry: dict[str, Any]) -> bool:
+    """Write ``entry`` over the row that already indexes this SIP, else append it.
+
+    Proposals are indexed before they are numbered (#1144: a row with ``sip_number: null``
+    keyed by ``sip_uid``), so acceptance must update that row rather than add a second one
+    — an unconditional append here made every accepted proposal a ``duplicate_uid``
+    critical finding. Returns True when an existing row was updated.
+    """
+    sips = registry.setdefault("sips", [])
+    uid = entry.get("sip_uid")
+    if uid:
+        for existing in sips:
+            if existing.get("sip_uid") == uid:
+                existing.update(entry)
+                return True
+    sips.append(entry)
+    return False
+
+
+def registry_sort_key(row: dict[str, Any]) -> tuple[int, int]:
+    """Numbered rows in number-then-variant order; unnumbered proposals after them."""
+    sip_num = row.get("sip_number")
+    variant = row.get("variant")
+    if variant is None or variant == 1:
+        variant_sort = 0
+    elif isinstance(variant, str) and variant.startswith("v"):
+        try:
+            variant_sort = int(variant[1:])
+        except ValueError:
+            variant_sort = 999
+    else:
+        variant_sort = 999
+    return (sip_num if sip_num is not None else 10**6, variant_sort)
+
+
 def find_sip_in_registry(
     registry: dict[str, Any], sip_number: int | None = None, sip_uid: str | None = None
 ) -> dict[str, Any] | None:
@@ -736,26 +771,10 @@ def update_sip_status(sip_file: Path, new_status: str) -> bool:
             "updated_at": datetime.now().isoformat() + "Z",
         }
 
-        registry["sips"].append(registry_entry)
+        if upsert_registry_entry(registry, registry_entry):
+            print("   Registry: updated the proposal's existing row in place")
         registry["last_assigned"] = sip_number
-
-        # Sort registry by SIP number (handle None values and variant types)
-        def sort_key(x):
-            sip_num = x.get("sip_number") or 0
-            variant = x.get("variant")
-            # Handle variant: None/1 -> 0, string variants -> parse number if possible, else 999
-            if variant is None or variant == 1:
-                variant_sort = 0
-            elif isinstance(variant, str) and variant.startswith("v"):
-                try:
-                    variant_sort = int(variant[1:])
-                except ValueError:
-                    variant_sort = 999
-            else:
-                variant_sort = 999
-            return (sip_num, variant_sort)
-
-        registry["sips"].sort(key=sort_key)
+        registry["sips"].sort(key=registry_sort_key)
 
         print(f"\n✅ SIP-{sip_number:04d} status updated: {current_status} → {new_status}")
         print(f"   Title: {title}")

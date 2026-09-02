@@ -8,14 +8,15 @@ SIPs are organized by lifecycle status in subdirectories:
 
 ```
 sips/
-  registry.yaml          # Canonical registry of all numbered SIPs
+  registry.yaml          # Canonical index of every SIP, numbered or not
   proposed/             # Unnumbered SIPs (drafts, proposals)
   accepted/              # Accepted SIPs (numbered, approved)
   implemented/           # Implemented SIPs (framework matches specification)
   deprecated/           # Deprecated SIPs (superseded or retired)
 ```
 
-The `registry.yaml` file is the authoritative index of all numbered SIPs and is maintained automatically by maintainer scripts.
+The `registry.yaml` file is the authoritative index of **every** SIP — an unnumbered proposal is a row with `sip_number: null` keyed by its `sip_uid` (#1144) — and is maintained by maintainer scripts. A new draft gets its row from
+`python scripts/maintainer/cleanup_sip_registry.py --index-proposals`, which also stamps the `sip_uid` into the file; `scripts/maintainer/audit_sip_registry.py` checks the registry against the files and runs in the regression gate (`tests/unit/architecture/test_sip_registry_audit.py`), so an unindexed draft, a frontmatter status that disagrees with the folder, or prose in a date field fails CI.
 
 ## SIP Lifecycle
 

@@ -6,7 +6,8 @@ Automatically fixes issues identified by audit_sip_registry.py
 
 import re
 import sys
-from datetime import datetime
+import time
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,7 @@ import yaml
 
 # Import audit functions
 sys.path.insert(0, str(Path(__file__).parent))
+import audit_sip_registry as audit  # noqa: E402 — the module's own path insert above
 from audit_sip_registry import (
     REGISTRY_FILE,
     REPO_ROOT,
@@ -300,6 +302,91 @@ def add_orphaned_files(registry: dict[str, Any], dry_run: bool = False) -> int:
     return fixed
 
 
+# --- Proposals are indexed, not just numbered SIPs (#1144) ---------------------------
+#
+# ``sips/README.md`` scoped the registry to numbered SIPs, so 24 live proposals had no
+# index anywhere and two published surfaces disagreed (the site published 31 proposed, the
+# "authoritative index" held 7). The README's own status definition already says a proposal
+# "has sip_uid but sip_number: null" — this writes exactly that row, and stamps the uid into
+# the file when the draft has none, so the row and the file share one stable key that
+# ``update_sip_status.py`` carries through acceptance (it updates the row in place).
+#
+# ``updated_at`` is left null on a proposal's row: it means *last status transition*, and a
+# proposal has had none. The stamp is a textual insert so nothing else in the frontmatter is
+# reformatted or re-dated.
+
+
+def new_sip_uid(existing: set[str]) -> str:
+    """A uid in the legacy shape (``time.time()`` at 100 ns resolution), unique in ``existing``."""
+    candidate = int(time.time() * 1e7)
+    while str(candidate) in existing:
+        candidate += 1
+    return str(candidate)
+
+
+def stamp_sip_uid(file_path: Path, sip_uid: str) -> bool:
+    """Insert ``sip_uid`` as the first frontmatter line; False if the file has no frontmatter."""
+    content = file_path.read_text(encoding="utf-8")
+    if not re.match(r"^---\s*\n", content):
+        return False
+    head, rest = content.split("\n", 1)
+    file_path.write_text(f"{head}\nsip_uid: '{sip_uid}'\n{rest}", encoding="utf-8")
+    return True
+
+
+def _timestamp_text(value: Any) -> str | None:
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    return str(value) if value else None
+
+
+def index_proposals(registry: dict[str, Any], dry_run: bool = False) -> int:
+    """Give every unnumbered proposal in ``sips/proposed/`` a registry row."""
+    indexed = 0
+    sips = registry.setdefault("sips", [])
+    registry_files = {Path(s.get("path", "")).name for s in sips if s.get("path")}
+    known_uids = {str(s.get("sip_uid")) for s in sips if s.get("sip_uid")}
+
+    for filename, file_path in sorted(audit.find_all_sip_files().items()):
+        if file_path.parent != audit.PROPOSED_DIR or filename in registry_files:
+            continue
+        metadata = extract_metadata_from_file(file_path)
+        if not metadata:
+            print(
+                f"   skipped {filename}: no YAML frontmatter — derive one with "
+                "update_sip_status.py's ensure_frontmatter, then re-run"
+            )
+            continue
+        if metadata.get("sip_number") is not None:
+            continue  # a numbered orphan is --add-orphaned's case, not a proposal
+        sip_uid = str(metadata.get("sip_uid") or "") or None
+        if sip_uid is None:
+            sip_uid = new_sip_uid(known_uids)
+            if not dry_run and not stamp_sip_uid(file_path, sip_uid):
+                print(f"   skipped {filename}: could not stamp sip_uid")
+                continue
+        known_uids.add(sip_uid)
+        author = metadata.get("author") or metadata.get("authors") or "Unknown"
+        if isinstance(author, list):
+            author = ", ".join(str(a) for a in author)
+        entry = {
+            "sip_uid": sip_uid,
+            "sip_number": None,
+            "title": metadata.get("title") or file_path.stem,
+            "path": str(file_path.relative_to(audit.REPO_ROOT)),
+            "status": "proposed",
+            "author": author,
+            "approver": None,
+            "created_at": _timestamp_text(metadata.get("created_at")),
+            "updated_at": None,
+        }
+        print(f"   {'would index' if dry_run else 'indexed'} {filename} (sip_uid {sip_uid})")
+        if not dry_run:
+            sips.append(entry)
+        indexed += 1
+    return indexed
+
+
 def main():
     """Main cleanup function."""
     import argparse
@@ -330,6 +417,11 @@ def main():
     parser.add_argument(
         "--add-orphaned", action="store_true", help="Add orphaned numbered files to registry"
     )
+    parser.add_argument(
+        "--index-proposals",
+        action="store_true",
+        help="Give every unnumbered proposal in sips/proposed/ a registry row (#1144)",
+    )
     parser.add_argument("--all", action="store_true", help="Fix all issues")
 
     args = parser.parse_args()
@@ -342,6 +434,7 @@ def main():
             args.fix_variants,
             args.fix_uids,
             args.add_orphaned,
+            args.index_proposals,
             args.all,
         ]
     ):
@@ -357,6 +450,7 @@ def main():
         print("  --fix-variants             Add variant fields to duplicate numbers")
         print("  --fix-uids                 Fix duplicate sip_uids by syncing with file metadata")
         print("  --add-orphaned             Add orphaned numbered files to registry")
+        print("  --index-proposals          Give every unnumbered proposal a registry row")
         print("  --all                      Apply all fixes")
         print("\nUse --dry-run to preview changes without applying them")
         return 1
@@ -413,6 +507,13 @@ def main():
         print("➕ Adding orphaned numbered files to registry...")
         fixed = add_orphaned_files(registry, dry_run)
         print(f"   {'Would add' if dry_run else 'Added'}: {fixed} files")
+        total_fixed += fixed
+
+    # Index unnumbered proposals (#1144)
+    if fix_all or args.index_proposals:
+        print("📇 Indexing unnumbered proposals...")
+        fixed = index_proposals(registry, dry_run)
+        print(f"   {'Would index' if dry_run else 'Indexed'}: {fixed} proposals")
         total_fixed += fixed
 
     # Save registry if not dry run
