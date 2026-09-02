@@ -72,11 +72,21 @@ _MANIFEST = _REPO / "examples" / "03_group_run" / "interface_manifest.yaml"
 #   change. Retrospective obligation met by statement: that harness can only REJECT a
 #   working application, never pass a broken one, so the 1.4 FAY figure (6/6) carries no
 #   qualification — every app that passed under it passes under this one.
+# * v12 (2026-09-06, #1087 / #1112) differs from v11 in exactly one ``frozen`` entry: the
+#   sha256 of ``backend/store.py``, which now exports one store per ROOT-persisted entity
+#   (``run_event_store`` on the reference) and names the embedded shapes and projections
+#   that have none, instead of a dict per declared entity. Classified **reference_defect**:
+#   the pinned store handed the qa author a table for a shape no correct app writes, and
+#   two working applications were rejected for asserting on it in the 1.6.3 set. The
+#   retrospective obligation is met by statement: a wider store can only make a working
+#   app REJECTED (an assertion on an empty phantom table), never let a broken one pass, so
+#   the 1.4 FAY figure (6/6) carries no qualification — every app that passed under it
+#   passes under this one. v11 stays in the fixtures directory as that form's record.
 _EVIDENCE_CONTRACT = (
     _REPO / "tests" / "fixtures" / "reference_contract" / "contract_v9_art_4f368ea08799.yaml"
 )
 _CONTRACT = (
-    _REPO / "tests" / "fixtures" / "reference_contract" / "contract_v11_harness_cleanup_1127.yaml"
+    _REPO / "tests" / "fixtures" / "reference_contract" / "contract_v12_root_tables_1087.yaml"
 )
 
 # The ingested artifacts, by content hash. Measured 2026-08-07 against the vault:
@@ -86,7 +96,7 @@ _CONTRACT = (
 # run against. A change here is a change to the evidence base, not a refactor.
 _MANIFEST_SHA256 = "52d8ea7e204e0ceca9c94a60a7b10f18a24519e594ce5c51654674b82a15a826"
 _EVIDENCE_CONTRACT_SHA256 = "7622f570c949fe9504bfebdcd0562e77e78b4d8bff54d9d670001b7f6482e6fe"
-_CONTRACT_SHA256 = "04ab6c725a1a8ffffc285091dbad6e994514436df8908932c36a6b4e42503a4f"
+_CONTRACT_SHA256 = "2a03cc48efb68e80b38ce0eb17a3cb2e5267c8248920cacc1ab1667dd3369d11"
 
 
 def _sha256(path: Path) -> str:
@@ -117,7 +127,7 @@ def test_reference_contract_is_still_the_ingested_artifact():
         "evidence was measured against; they are history, and history is not regenerated."
     )
     assert _sha256(_CONTRACT) == _CONTRACT_SHA256, (
-        "tests/fixtures/reference_contract/contract_v11_harness_cleanup_1127.yaml no longer matches "
+        "tests/fixtures/reference_contract/contract_v12_root_tables_1087.yaml no longer matches "
         "its pinned hash. Regenerating it in place would make the derivation test below "
         "tautological — a deriver change is classified per the M0 taxonomy and lands with a "
         "new hash here, deliberately."
@@ -168,7 +178,10 @@ def test_the_current_form_differs_from_the_evidence_contract_only_as_classified(
 
     * #1079 (``ambiguity_removal``): the success probes carry ``json_has``;
     * #1127 (``reference_defect``): the frozen harness ``frontend/src/test-setup.js`` moved,
-      because it now registers ``afterEach(cleanup)`` — one ``frozen`` entry, no other.
+      because it now registers ``afterEach(cleanup)``;
+    * #1087 (``reference_defect``): the frozen store ``backend/store.py`` moved, because it
+      now exports one store per root-persisted entity and names the shapes that have none
+      — two ``frozen`` entries, no other.
     """
     v9 = yaml.safe_load(_EVIDENCE_CONTRACT.read_text(encoding="utf-8"))
     current = yaml.safe_load(_CONTRACT.read_text(encoding="utf-8"))
@@ -187,14 +200,21 @@ def test_the_current_form_differs_from_the_evidence_contract_only_as_classified(
         for old, new in zip(v9["frozen"], current["frozen"], strict=True)
         if old != new
     ]
-    assert [path for path, _, _ in moved] == ["frontend/src/test-setup.js"]
-    ((path, v9_sha, current_sha),) = moved
-    emitted = next(
-        f["content"]
+    assert [path for path, _, _ in moved] == ["backend/store.py", "frontend/src/test-setup.js"]
+    expanded = {
+        f["name"]: f["content"]
         for f in expand(InterfaceManifest.from_yaml(_MANIFEST.read_text(encoding="utf-8")))
-        if f["name"] == path
-    )
-    assert hashlib.sha256(emitted.encode()).hexdigest() == current_sha
-    assert "afterEach(cleanup)" in emitted
+    }
+    for path, _v9_sha, current_sha in moved:
+        emitted = expanded[path]
+        assert hashlib.sha256(emitted.encode()).hexdigest() == current_sha, path
+    # #1127: the harness unmounts between tests.
+    assert "afterEach(cleanup)" in expanded["frontend/src/test-setup.js"]
+    # #1087: the store is the roots only — RunEvent is stored; Participant (an embedded
+    # shape) is named as having no store.
+    store = expanded["backend/store.py"]
+    assert "run_event_store: dict[str, RunEvent]" in store
+    assert "participant_store" not in store
+    assert "never rows themselves: Participant" in store
     current["frozen"] = v9["frozen"]
     assert current == v9

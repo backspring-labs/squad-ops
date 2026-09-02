@@ -1,0 +1,107 @@
+version: 1
+kind: interface_manifest
+project_id: group_run
+source_prd: "PRD: group_run (1-Hour Cycle MVP+) v0.5"
+stack: fullstack_fastapi_react
+scope: "Five REST endpoints for run creation, listing, detail, join, and leave with in-memory persistence plus three frontend views; excludes auth, persistent storage, external APIs, real-time features, and all expansion-tier items"
+entities:
+  - name: Participant
+    fields:
+      - { name: id, type: string, required: true, generated: true }
+      - { name: name, type: string, required: true }
+  - name: Run
+    fields:
+      - { name: id, type: string, required: true, generated: true }
+      - { name: title, type: string, required: true }
+      - { name: datetime, type: string, required: true }
+      - { name: meeting_location, type: string, required: true }
+      - { name: distance, type: string, required: false, default: null }
+      - { name: pace_target, type: string, required: false, default: null }
+      - { name: route_notes, type: string, required: false, default: null }
+      - { name: participants, type: "list[Participant]", required: false, default: [] }
+      - { name: created_at, type: string, required: true, generated: true }
+api:
+  base_path: /api
+  request_shapes:
+    RunCreate:
+      required: [title, datetime, meeting_location]
+      optional: [distance, pace_target, route_notes]
+    JoinRequest:
+      required: [name]
+    LeaveRequest:
+      required: [name]
+  endpoints:
+    - method: POST
+      path: /runs
+      summary: create a group run event
+      request: RunCreate
+      response: Run
+      success_status: 201
+      errors: [validation_error]
+    - method: GET
+      path: /runs
+      summary: list all runs
+      response: "list[Run]"
+    - method: GET
+      path: "/runs/{run_id}"
+      summary: get run details with participant list
+      response: Run
+      errors: [run_not_found]
+    - method: POST
+      path: "/runs/{run_id}/join"
+      summary: join a run with a participant name
+      request: JoinRequest
+      response: Run
+      errors: [run_not_found, duplicate_name, validation_error]
+    - method: POST
+      path: "/runs/{run_id}/leave"
+      summary: remove a participant from a run by name
+      request: LeaveRequest
+      response: Run
+      errors: [run_not_found, not_a_participant, validation_error]
+  error_contract:
+    shape: '{"error": {"code": "...", "message": "..."}}'
+    codes:
+      validation_error: { http: 422 }
+      run_not_found: { http: 404 }
+      duplicate_name: { http: 409 }
+      not_a_participant: { http: 404 }
+frontend:
+  framework: react_vite
+  routes:
+    - path: /runs
+      view: RunListView
+      purpose: list all runs showing title, datetime, location, participant count; link to create new run and to detail view; display empty state
+      testids: [run-list-view, run-list, run-row, run-row-title, run-row-datetime, run-row-location, run-row-count, create-run-link, empty-state]
+    - path: /runs/new
+      view: CreateRunView
+      purpose: form with required fields (title, datetime, meeting_location) and optional fields (distance, pace_target, route_notes); submit creates run and navigates to detail
+      testids: [create-run-view, create-run-form, create-run-title, create-run-datetime, create-run-location, create-run-distance, create-run-pace, create-run-notes, create-run-submit, create-run-error]
+    - path: "/runs/:run_id"
+      view: RunDetailView
+      purpose: full run details, participant name list, join form, leave form, error display, not-found state for unknown run id
+      testids: [run-detail-view, run-title, run-datetime, run-location, run-distance, run-pace, run-notes, participant-list, participant-row, participant-name, join-form, join-name-input, join-submit, leave-form, leave-name-input, leave-submit, error-message, not-found-state]
+persistence: in_memory
+decisions:
+  - id: duplicate-name-comparison
+    choice: case-insensitive
+    warrant: "PRD §5.4 — 'case sensitivity behavior should be defined in implementation; default recommendation: case-insensitive uniqueness'"
+  - id: leave-unknown-name-behavior
+    choice: "return 404 with error code NOT_A_PARTICIPANT"
+    warrant: "PRD §5.5 — 'choose one and document in QA handoff'; 404 selected for clear client-side branching and RESTful semantics over a 200 no-op"
+  - id: datetime-representation
+    choice: "free-form string with no parsing or format validation beyond non-empty"
+    warrant: "PRD §5.1 — 'string input acceptable for MVP'; avoids datetime library dependency and locale issues in a 1-hour cycle"
+  - id: list-ordering
+    choice: insertion order (order of creation)
+    warrant: "PRD §5.2 does not specify sort order; Expansion Tier 1.2 defers explicit datetime sorting; insertion order is the natural default for an in-memory dict"
+  - id: id-generation-scheme
+    choice: "UUID hex truncated to 12 characters (Run) and 8 characters (Participant)"
+    warrant: "PRD does not specify id format; UUID avoids collision without a shared counter; truncation keeps URLs and display compact"
+
+provenance:
+  mode: authored
+  cycle_id: cyc_cb49b16c2fa6
+  task_id: task-run_79e82915-003-development.author_manifest
+  attempts: 1
+  revisions: []
