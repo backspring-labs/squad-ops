@@ -24,6 +24,7 @@ The executor treats the three verdicts as:
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import logging
 import tempfile
@@ -61,6 +62,15 @@ PATCH_UNVERIFIABLE = "unverifiable"
 # (pf-47: 4 repairs rejected unheard; pf-49: same signature).
 REASON_NO_EXECUTED_BLOCKING_CHECKS = "no_executed_blocking_checks"
 REASON_NO_TYPED_CRITERIA = "no_typed_criteria"
+#: #1259: a criterion's file is neither in the patch nor in the tree it was verified on. A
+#: dev repair of a qa failure is judged against the qa task's suite-bound checks
+#: (#1240/#1246); the failed suite is not in the accepted workspace and the dev never emits
+#: it, so both environments returned ``failed(file_not_found)`` and the verifier read that as
+#: an executed failure — the Next.js shakeout on dfe466ab (cyc_9c379355b5e8, round 0) refused
+#: a correct route fix on it. Such a row says nothing about the patch: it is recorded as
+#: skipped with this reason, in both environments, and the retest decides as it did before
+#: those checks existed.
+REASON_FILE_NOT_IN_PATCH = "file_not_in_patch"
 STRUCTURALLY_UNEVALUABLE_REASONS = frozenset(
     {REASON_NO_EXECUTED_BLOCKING_CHECKS, REASON_NO_TYPED_CRITERIA}
 )
@@ -414,6 +424,29 @@ async def _evaluate_file_owned_gate(
     return records, failed
 
 
+def _patched_names(artifacts: list[dict[str, Any]]) -> frozenset[str]:
+    """The workspace-relative names the patch carries, normalised like the checks' params."""
+    return frozenset(
+        _relname(a.get("name")) for a in artifacts if isinstance(a, dict) and a.get("name")
+    )
+
+
+def _relname(name: Any) -> str:
+    return str(name or "").replace("\\", "/").lstrip("./")
+
+
+def _absent_file_is_not_evidence(
+    record: PatchCheckRecord, patched: frozenset[str]
+) -> PatchCheckRecord:
+    """#1259: a ``file_not_found`` failure on a file the patch does not carry becomes a skip."""
+    if record.status != ResultStatus.FAILED or record.reason != "file_not_found":
+        return record
+    target = _relname((record.params or {}).get("file"))
+    if not target or target in patched:
+        return record
+    return dataclasses.replace(record, status=ResultStatus.SKIPPED, reason=REASON_FILE_NOT_IN_PATCH)
+
+
 async def _evaluate_task_criteria(
     typed: list[TypedCheck],
     workspace_root: Path,
@@ -422,6 +455,7 @@ async def _evaluate_task_criteria(
     stack: str | None,
     typed_acceptance_enabled: bool,
     command_acceptance_enabled: bool,
+    patched: frozenset[str] = frozenset(),
 ) -> list[tuple[TypedCheck, str]]:
     """Evaluate the failed task's own criteria here, appending rows to *records*.
 
@@ -437,7 +471,7 @@ async def _evaluate_task_criteria(
             typed_acceptance_enabled=typed_acceptance_enabled,
             command_acceptance_enabled=command_acceptance_enabled,
         )
-        records.append(
+        record = _absent_file_is_not_evidence(
             PatchCheckRecord(
                 check=criterion.check,
                 severity=criterion.severity,
@@ -446,9 +480,11 @@ async def _evaluate_task_criteria(
                 reason=outcome.reason,
                 actual=outcome.actual,
                 params=dict(criterion.params or {}),
-            )
+            ),
+            patched,
         )
-        statuses.append((criterion, outcome.status))
+        records.append(record)
+        statuses.append((criterion, record.status))
     return statuses
 
 
@@ -587,7 +623,11 @@ async def verify_patched_artifacts(
     if typed is None:
         return PatchVerification(status=PATCH_UNVERIFIABLE, reason="unparseable_criteria")
     gate = _dedupe_file_owned(file_owned_criteria, typed)
-    agent_records = agent_check_records(agent_checks)
+    patched = _patched_names(artifacts)
+    agent_records = [
+        _absent_file_is_not_evidence(record, patched)
+        for record in agent_check_records(agent_checks)
+    ]
     if not typed and not gate:
         # #1255: carry the rows the repair executed so the verdict — and the executor's
         # ``agent_rows=`` log line — say what the agent did. The builder repair in
@@ -669,6 +709,7 @@ async def verify_patched_artifacts(
             stack=stack,
             typed_acceptance_enabled=typed_acceptance_enabled,
             command_acceptance_enabled=command_acceptance_enabled,
+            patched=patched,
         )
         blocking_failure, blocking_passed, evaluator_error, decided_by_agent = _task_verdict(
             local, agent_records
