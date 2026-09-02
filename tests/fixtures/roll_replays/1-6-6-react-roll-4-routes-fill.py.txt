@@ -1,0 +1,143 @@
+"""API route handlers for the group_run application."""
+
+from datetime import datetime, timezone
+from uuid import uuid4
+
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
+
+from .models import Run, RunDetail, Participant, RunCreate, JoinRequest, LeaveRequest
+from .store import run_store, run_detail_store, participant_store
+from .errors import ApiError
+
+router = APIRouter()
+
+
+@router.post("/runs", response_model=Run, status_code=201)
+def post_runs(payload: RunCreate) -> Run:
+    """Create a new run event from a RunCreate payload."""
+    # Validate required fields
+    if not payload.title or not payload.title.strip():
+        raise ApiError("validation_error", "Field 'title' is required and must be non-empty.")
+    if not payload.datetime or not payload.datetime.strip():
+        raise ApiError("validation_error", "Field 'datetime' is required and must be non-empty.")
+    if not payload.meeting_location or not payload.meeting_location.strip():
+        raise ApiError("validation_error", "Field 'meeting_location' is required and must be non-empty.")
+
+    run_id = str(uuid4())
+
+    run = Run(
+        id=run_id,
+        title=payload.title,
+        datetime=payload.datetime,
+        meeting_location=payload.meeting_location,
+        distance=payload.distance,
+        pace_target=payload.pace_target,
+        route_notes=payload.route_notes,
+        participant_count=0,
+    )
+
+    run_detail = RunDetail(
+        id=run_id,
+        title=payload.title,
+        datetime=payload.datetime,
+        meeting_location=payload.meeting_location,
+        distance=payload.distance,
+        pace_target=payload.pace_target,
+        route_notes=payload.route_notes,
+        participants=[],
+        participant_count=0,
+    )
+
+    run_store[run_id] = run
+    run_detail_store[run_id] = run_detail
+
+    return run
+
+
+@router.get("/runs", response_model=list[Run])
+def get_runs() -> list[Run]:
+    """List all runs sorted by datetime in lexical order."""
+    runs = list(run_store.values())
+    runs.sort(key=lambda r: r.datetime or "")
+    return runs
+
+
+@router.get("/runs/{run_id}", response_model=RunDetail)
+def get_runs_run_id(run_id: str) -> RunDetail:
+    """Retrieve a single RunDetail including the participant list."""
+    if run_id not in run_detail_store:
+        raise ApiError("run_not_found", f"Run with id '{run_id}' was not found.")
+    return run_detail_store[run_id]
+
+
+@router.post("/runs/{run_id}/join", response_model=RunDetail, status_code=200)
+def post_runs_run_id_join(run_id: str, payload: JoinRequest) -> RunDetail:
+    """Join a run by participant name. Rejects duplicate names case-insensitively."""
+    if not payload.name or not payload.name.strip():
+        raise ApiError("validation_error", "Participant name is required and must be non-empty.")
+
+    if run_id not in run_detail_store:
+        raise ApiError("run_not_found", f"Run with id '{run_id}' was not found.")
+
+    run_detail = run_detail_store[run_id]
+    normalized_name = payload.name.strip().lower()
+
+    # Check for duplicate (case-insensitive)
+    for p in run_detail.participants:
+        if p.name.strip().lower() == normalized_name:
+            raise ApiError("duplicate_name", f"Participant '{payload.name}' is already joined to this run.")
+
+    participant = Participant(
+        name=payload.name.strip(),
+        joined_at=datetime.now(timezone.utc).isoformat(),
+    )
+
+    run_detail.participants.append(participant)
+    run_detail.participant_count = len(run_detail.participants)
+
+    # Update the Run in run_store to keep participant_count in sync
+    if run_id in run_store:
+        run_store[run_id].participant_count = run_detail.participant_count
+
+    # Track in participant_store using a composite key
+    part_key = f"{run_id}:{normalized_name}"
+    participant_store[part_key] = participant
+
+    return run_detail
+
+
+@router.post("/runs/{run_id}/leave", response_model=RunDetail, status_code=200)
+def post_runs_run_id_leave(run_id: str, payload: LeaveRequest) -> RunDetail:
+    """Leave a run by participant name. Returns error if name not found."""
+    if not payload.name or not payload.name.strip():
+        raise ApiError("validation_error", "Participant name is required and must be non-empty.")
+
+    if run_id not in run_detail_store:
+        raise ApiError("run_not_found", f"Run with id '{run_id}' was not found.")
+
+    run_detail = run_detail_store[run_id]
+    normalized_name = payload.name.strip().lower()
+
+    # Find and remove the participant (case-insensitive match)
+    found_index = None
+    for i, p in enumerate(run_detail.participants):
+        if p.name.strip().lower() == normalized_name:
+            found_index = i
+            break
+
+    if found_index is None:
+        raise ApiError("participant_not_found", f"Participant '{payload.name}' is not joined to this run.")
+
+    run_detail.participants.pop(found_index)
+    run_detail.participant_count = len(run_detail.participants)
+
+    # Sync run_store
+    if run_id in run_store:
+        run_store[run_id].participant_count = run_detail.participant_count
+
+    # Remove from participant_store
+    part_key = f"{run_id}:{normalized_name}"
+    participant_store.pop(part_key, None)
+
+    return run_detail

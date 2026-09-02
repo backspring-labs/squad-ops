@@ -179,8 +179,9 @@ def test_module_state_is_named_so_a_data_module_does_not_read_as_a_stub():
     it already had — five typed checks against a file no agent may change."""
     line = _line_for("backend/store.py")
 
-    assert "participant_store: dict[str, Participant]" in line
     assert "run_event_store: dict[str, RunEvent]" in line
+    # #1087: the embedded shape has no store, so the index must not advertise one
+    assert "participant_store" not in line
     # the function is still named; state does not displace it
     assert "reset" in line
 

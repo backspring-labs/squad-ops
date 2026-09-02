@@ -391,6 +391,16 @@ a log by hand:
   scaffold change: the reference contract's frozen digests move.** It therefore lands *after*
   #1131 and its no-change proof, and the fixture is regenerated on the owner's go, never as a
   side effect.
+
+  **As landed (2026-09-02, PR off main — NOT in the deploy tip).** The React store, the
+  routes stub's import and the brief's store paragraph read `root_persisted_entities`;
+  `shape_entities` names the rest with why. The #1112 signal landed is **field containment
+  per resource prefix**, not the one written above: checked against the vault first, "returned
+  by exactly one read endpoint" would have demoted `Run` on 1.6.6 roll 1 (one read-by-id, never
+  an element), and the rule that separates roll 4's `Run`/`RunDetail` is that one's fields are
+  a proper subset of the other's under `/runs`. Roll 3's `LeaveResult.removed` is the edge that
+  remains — not provably a projection, keeps its table, recorded on #1112. The fixture
+  regeneration (v12) rides in its own last commit, flagged for the owner.
 - **Packaging fidelity** — #582 (`[project.dependencies]` mirrored from the real imports, the
   `sqlalchemy` audit, a fresh-venv install smoke in CI), #637 (a CI job that installs each
   service's lock and imports its composition root — the cheap remedy the issue names), #1144

@@ -657,8 +657,11 @@ class TestModelSurfaceInstructions:
 
         assert "`backend/store.py`" in blob
         assert "`run_event_store`" in blob
-        assert "`participant_store`" in blob
         assert "reset()" in blob
+        # #1087: `Participant` is `RunEvent.participants`' element shape — it has no store,
+        # and the brief says so rather than naming a handle the module does not export.
+        assert "`participant_store`" not in blob
+        assert "`Participant` have no store" in blob
 
     def test_non_memory_persistence_omits_the_store_line(self):
         from squadops.capabilities.scaffold import model_surface_instructions
@@ -753,11 +756,17 @@ class TestScaffoldOwnedStore:
         assert "from .models import" in store
         assert "\nfrom models import" not in store
 
-    def test_one_store_per_declared_entity(self):
+    def test_one_store_per_root_entity_and_the_shapes_are_named(self):
+        """Bug caught (#1087, stack #1 half): a dict per DECLARED entity handed the developer
+        a `participant_store` for a shape that only ever lives inside `RunEvent.participants`
+        — 1.6.6 roll 4's fill kept three such stores in sync by hand. Only the root gets a
+        store; the shapes are named on the module with why they have none."""
         manifest = _group_run_manifest()
         store = _by_name(expand(manifest))["backend/store.py"]
-        for entity in manifest.entities:
-            assert f"_store: dict[str, {entity.name}]" in store
+        assert "run_event_store: dict[str, RunEvent] = {}" in store
+        assert "participant_store" not in store
+        assert "never rows themselves: Participant." in store
+        assert "from .models import RunEvent\n" in store  # only what it stores
 
     def test_routes_stub_wires_the_store_so_the_fill_uses_it(self):
         """If the fill slot doesn't see the store it will invent one — which is the whole
@@ -1210,8 +1219,12 @@ def test_the_store_paragraph_in_the_model_brief_is_the_stacks_own():
     store_lines = [line for line in react if "backend/store.py" in line]
     assert len(store_lines) == 1
     assert "from .store import" in store_lines[0]
-    for entity in manifest.entities:
-        assert f"`{stack_fastapi_react._snake(entity.name)}_store`" in store_lines[0]
+    roots = scaffold.root_persisted_entities(manifest)
+    assert roots, "the fixture declares at least one stored entity"
+    for name in roots:
+        assert f"`{stack_fastapi_react._snake(name)}_store`" in store_lines[0]
+    for name in scaffold.shape_entities(manifest):  # #1087: shapes have no store handle
+        assert f"`{stack_fastapi_react._snake(name)}_store`" not in store_lines[0]
 
     nextjs = scaffold.model_surface_instructions(manifest_for_stack("nextjs_ts"))
     assert nextjs, "the Next.js brief still carries the model surface"

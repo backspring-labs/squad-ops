@@ -166,15 +166,39 @@ class TestP0PerStack:
         assert out["passed"] is False
         assert any("Participant[]" in line for line in out["models_mismatches"])
 
-    def test_stack1_seeded_tree_holds_and_records_the_phantom_store(self, driver):
+    def test_stack1_seeded_tree_holds_and_records_no_store_beyond_the_roots(self, driver):
         """Asserted: models.py carries `list[Participant]` (the _py_type pass-through).
-        Recorded, not asserted: the per-entity store beyond the roots — #1087's open half."""
+        Recorded, not asserted: the stores beyond the roots — the React store used to hand
+        `Participant` (an embedded shape) a dict of its own; since #1087's stack #1 half it
+        exports the root only, and the readout is empty on the expander's own tree."""
         m = manifest_for_stack("fullstack_fastapi_react")
         out = driver.p0_checks(
             "fullstack_fastapi_react", m, _seeded_reader("fullstack_fastapi_react", m)
         )
         assert out["passed"] is True
         assert "participants: list[Participant]" in out["models_expected_collection_lines"]
+        assert out["store_names"] == ["run_event"]
+        assert out["stores_beyond_roots"] == []
+
+    def test_stack1_p0_still_records_a_phantom_store_a_stale_deploy_would_seed(self, driver):
+        """A deploy built before the root-table store seeds `participant_store`; the readout
+        must still name it (texture the roll record reads), and must not fail the roll —
+        the store is recorded, not asserted."""
+        m = manifest_for_stack("fullstack_fastapi_react")
+
+        def tamper(files):
+            return {
+                "backend/store.py": files["backend/store.py"].replace(
+                    "run_event_store: dict[str, RunEvent] = {}",
+                    "participant_store: dict[str, Participant] = {}\n"
+                    "run_event_store: dict[str, RunEvent] = {}",
+                )
+            }
+
+        out = driver.p0_checks(
+            "fullstack_fastapi_react", m, _seeded_reader("fullstack_fastapi_react", m, tamper)
+        )
+        assert out["passed"] is True
         assert out["stores_beyond_roots"] == ["participant"]
 
     def test_stack1_p0_is_falsified_by_a_string_typed_collection(self, driver):

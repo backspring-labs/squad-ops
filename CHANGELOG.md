@@ -56,6 +56,31 @@ agent container, at emission and at repair, and each image provisions its toolch
 - 1.6.6 React roll 3 replayed: the stored suite is rejected at line 167 with `removed:
   boolean` named; the accepted rolls 1 and 5's suites pass under their own manifests.
 
+### Changed — the React store hands its authors root tables only (#1087, #1112)
+- **One store per root-persisted entity on stack #1**, by the same `root_persisted_entities`
+  rule that has driven the Next.js `TABLES` since 1.6.4 — the frozen `backend/store.py`,
+  the routes stub's `from .store import …` and the developer brief's store paragraph all
+  read it. The shapes that get no store are named on the module and in the brief with why
+  (embedded in or projected from a row). Replayed against the vault: 1.6.6 roll 4's accepted
+  fill imported `run_store, run_detail_store, participant_store` and kept the three in sync
+  by hand on every join and leave; under the root-table store it has one, `run_detail_store`.
+- **#1112's single-object projection, resolved on proof**: two single-object responses under
+  one resource prefix (`/runs`) are two shapes of one row when one's field names are a
+  proper subset of the other's — `Run {…, participant_count}` is `RunDetail` without its
+  participants, `JoinResult {id, participants}` is `Run` after a join — and the widest shape
+  is the row. An entity with a field no sibling declares (`LeaveResult.removed`) is not
+  provably a projection and keeps its table: the remaining edge, stated. Grouping by resource
+  keeps two genuine roots apart when one's fields happen to be a subset of the other's. The
+  plan's candidate signal (returned by exactly one read endpoint) was checked against the
+  vault first: it would have demoted `Run` on 1.6.6 roll 1, and was not landed.
+- **The reference contract's frozen digest for `backend/store.py` moves** (v11 → v12,
+  `contract_v12_root_tables_1087.yaml`), classified `reference_defect` under the M0
+  taxonomy: the pinned store handed the reference manifest a `participant_store` for the
+  element shape of `RunEvent.participants`. Retrospective obligation met by statement — a
+  phantom table can only reject a working application, never pass a broken one, so the 1.4
+  Functional App Yield figure carries no qualification. **Not in the 1.7.1 deploy tip**: a
+  deliberate scaffold change, merged after the set closes or with the drift stated.
+
 ### Changed — a repair is verified where its checks can run (#1229, rule B)
 - **The repair evaluates the failed task's typed criteria on its own patched tree before
   returning** — in the agent container, where the stack's toolchain lives, through the same

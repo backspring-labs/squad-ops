@@ -665,6 +665,37 @@ def materialize(manifest: InterfaceManifest, dest: Path) -> int:
     return len(files)
 
 
+def _resource_prefix(path: str) -> str:
+    """``/runs/{run_id}/join`` → ``/runs``: the collection an endpoint acts on.
+
+    Everything after the first path parameter addresses one member of that collection
+    (``/{run_id}``) or an action on it (``/join``), so the single-object entities returned
+    under one prefix are shapes of one stored thing, not of several.
+    """
+    kept: list[str] = []
+    for segment in path.strip().split("/"):
+        if "{" in segment:
+            break
+        kept.append(segment)
+    return "/".join(kept) or "/"
+
+
+def _projection_of_a_sibling(
+    name: str, siblings: list[str], fields_of: dict[str, set[str]]
+) -> bool:
+    """``name`` is provably a shape of another entity returned under the same resource:
+    every one of its field names is one of the sibling's, and the sibling has more.
+
+    A proper subset is the one relation the manifest states outright — ``JoinResult
+    {id, participants}`` is ``Run`` seen after a join, ``Run {…, participant_count}`` is
+    ``RunDetail`` without its participants. An entity carrying a field no sibling has
+    (``LeaveResult.removed``) is not provably a projection and keeps its table; narrowing
+    on that guess is the failure this rule exists to prevent, in the other direction.
+    """
+    own = fields_of.get(name, set())
+    return any(other != name and own < fields_of.get(other, set()) for other in siblings)
+
+
 def root_persisted_entities(manifest: InterfaceManifest) -> tuple[str, ...]:
     """The entities a correct application persists as rows of their own (#1087).
 
@@ -684,6 +715,18 @@ def root_persisted_entities(manifest: InterfaceManifest) -> tuple[str, ...]:
     returned only inside ``list[RunSummary]`` and ``Participant`` is never returned at
     all. Declaration order is kept so the store's first table is stable.
 
+    **Single-object projections (#1112).** Two single-object responses under one resource
+    can be two shapes of one stored thing: 1.6.6 roll 4 declared ``Run`` (the create's
+    response, with ``participant_count``) and ``RunDetail`` (the read-by-id, with
+    ``participants``), and its developer kept ``run_store``, ``run_detail_store`` and a
+    ``participant_store`` in sync by hand across every handler. The relation the manifest
+    states is field containment: an entity whose field names are a proper subset of a
+    sibling's under the same resource prefix is that sibling's projection and gets no
+    table — the widest shape is the row. An entity with a field no sibling has is not
+    provably a projection and keeps its table (roll 3's ``LeaveResult.removed``). Grouping
+    by resource keeps two genuine roots apart when one's fields happen to be a subset of
+    the other's (``/api/summaries`` beside ``/api/runs``).
+
     Two fallbacks, both deliberate and both widening: a manifest whose endpoints return
     only collections keeps every entity some endpoint returns; one with no typed responses
     keeps every entity. Narrowing on a guess would remove a table a correct app needs,
@@ -691,16 +734,44 @@ def root_persisted_entities(manifest: InterfaceManifest) -> tuple[str, ...]:
     """
     # Duck-typed like the expander's other manifest readers: the stack modules' tests hand
     # in bare entity lists, and a manifest with no api section has no typed responses.
-    declared = [e.name for e in (getattr(manifest, "entities", ()) or ())]
+    entities = list(getattr(manifest, "entities", ()) or ())
+    declared = [e.name for e in entities]
+    fields_of = {e.name: {f.name for f in (getattr(e, "fields", ()) or ())} for e in entities}
     endpoints = getattr(getattr(manifest, "api", None), "endpoints", ()) or ()
     responses = [ep.response for ep in endpoints if getattr(ep, "response", None)]
-    single = {r.strip() for r in responses if base_type_name(r) == r.strip()}
-    roots = [name for name in declared if name in single]
+    # Single-object responses, grouped by the resource they are returned under.
+    by_resource: dict[str, list[str]] = {}
+    for ep in endpoints:
+        response = getattr(ep, "response", None)
+        if not response or base_type_name(response) != response.strip():
+            continue
+        name = response.strip()
+        if name not in fields_of:
+            continue
+        members = by_resource.setdefault(_resource_prefix(getattr(ep, "path", "")), [])
+        if name not in members:
+            members.append(name)
+    roots = [
+        name
+        for name in declared
+        if any(
+            name in members and not _projection_of_a_sibling(name, members, fields_of)
+            for members in by_resource.values()
+        )
+    ]
     if roots:
         return tuple(roots)
     any_response = {base_type_name(r) for r in responses}
     roots = [name for name in declared if name in any_response]
     return tuple(roots) if roots else tuple(declared)
+
+
+def shape_entities(manifest: InterfaceManifest) -> tuple[str, ...]:
+    """The declared entities that are NOT stored on their own — the complement of
+    :func:`root_persisted_entities`, in declaration order: embedded shapes and projections.
+    Named on the frozen store so the developer reads why they have no table (#1087)."""
+    roots = set(root_persisted_entities(manifest))
+    return tuple(e.name for e in (getattr(manifest, "entities", ()) or ()) if e.name not in roots)
 
 
 def fill_slot_paths(manifest: InterfaceManifest) -> tuple[str, ...]:

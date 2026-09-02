@@ -631,9 +631,10 @@ def _p0_fullstack_fastapi_react(manifest: Any, seeded: Reader) -> dict:
 
     Asserted: every collection field in ``backend/models.py`` carries the manifest's
     element type (``_py_type`` passes entity names through — the #1096 class cannot
-    recur here, and this is where that stays true). Recorded, NOT asserted: the store
-    exports one dict per declared entity by design (#1087's stack #1 half is open), so
-    ``stores_beyond_roots`` is texture for the roll that finally measures it.
+    recur here, and this is where that stays true). Recorded, NOT asserted: any store
+    beyond the roots. Since #1087's stack #1 half the expander emits the roots only, so on a
+    current deploy ``stores_beyond_roots`` reads ``[]``; on one built before it, the
+    per-entity dicts — texture either way, never a verdict.
     """
     from squadops.capabilities.scaffold import root_persisted_entities
     from squadops.capabilities.stack_fastapi_react import _py_type
