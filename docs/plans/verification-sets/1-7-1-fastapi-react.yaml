@@ -43,7 +43,14 @@ loaded_checks:
     print(app_invocation_for("fullstack_fastapi_react") is not None, app_invocation_for("nextjs_ts") is not None,
     "tsc" if shutil.which("tsc") else "no-tsc")
 # Pins: filled from the shakeout before roll 1; empty means "no counting roll may launch".
-expected_config_hash_prefix: ""
-expected_squad_snapshot_prefix: ""
-frozen_deploy_commit: ""
-frozen_image_ids: {}
+expected_config_hash_prefix: "c4d6a2165acf"
+expected_squad_snapshot_prefix: "575707c58536cf3b"
+frozen_deploy_commit: "d95f8e21"
+frozen_image_ids:
+  runtime-api: ccd81952be2e
+  max: f6e8b8dfbe69
+  neo: da9da7ab0bae
+  nat: 58089c21e847
+  bob: 9816af4df1b0
+  eve: e4368e889bb0
+  data: 1f1358c9488b

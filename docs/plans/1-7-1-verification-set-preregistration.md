@@ -33,8 +33,8 @@ window. Every fixed parameter is read from
 | Bar | **none** on either rate; each prediction is pass/fail on its own terms |
 | Project / PRD / squad / request profile | `group_run`, `full-38`, `validated-fullstack` — identical to 1.6.6 and 1.7.0 |
 | Overrides | FastAPI+React: none. Next.js+TS: `build_profile=nextjs_ts`, `dev_capability=nextjs_ts` |
-| `resolved_config_hash` | FastAPI+React `TBD-from-shakeout`, Next.js+TS `TBD-from-shakeout` — recorded by the shakeouts and asserted on every counting roll; a roll on any other hash is void |
-| `squad_profile_snapshot_ref` | `TBD-from-shakeout` — a roll on any other snapshot is void |
+| `resolved_config_hash` | FastAPI+React `c4d6a2165acf`, Next.js+TS `TBD-from-shakeout` — **unchanged from 1.6.6** on the React arm (the pack changed code, not configuration); asserted on every counting roll; a roll on any other hash is void |
+| `squad_profile_snapshot_ref` | `575707c58536cf3b…` — unchanged from 1.6.6 and 1.7.0; a roll on any other snapshot is void |
 | Deploy — commit | **`d95f8e21`** — the head of `feat/1123-scoped-qa-repair`, the stacked tip of the pack: #1243 (#1130) → #1244 (#598) → #1245 (#1022) → #1246 (#668) → #1247 (#1123), on main `e8193bb9` (which already carries #939, #1229 and #1153). **Not main.** See §2 and §7. |
 | Deploy — 7 image ids | runtime-api `ccd81952be2e` · max `f6e8b8dfbe69` · neo `da9da7ab0bae` · nat `58089c21e847` · bob `9816af4df1b0` · eve `e4368e889bb0` · data `1f1358c9488b` — built 2026-09-02 06:04 ET from `d95f8e21`; asserted at every counting launch by the driver |
 | Loaded, not built | verified in-container before the shakeouts (`docker exec … python -c`): every container imports the pack's seams (`qa_owned_suite_defects`, `absent_anchor_cases`, `INJECTION_SCOPE_SUITE` → `additive_containment`, `row_is_blocking_failure`, `anchor_findings`, `containment_findings`, `parse_pytest_failure_rows`, `parse_vitest_failure_text`, `client_surface_instructions`, the three new evaluators); `tsc` on PATH in neo and eve, absent in runtime-api and bob (as `DECLARED_TOOLING_GAPS` declares) |
@@ -59,8 +59,21 @@ window. Every fixed parameter is read from
   "every launch runs from `main`". Stated as a deviation the owner rules on, not hidden: the
   launch checkout affects only the driver and its configs (not the deploy), and the driver
   pins that branch's HEAD at roll 1 so nothing moves under the set.
-- **Both shakeouts on THIS deploy, read before roll 1:** TBD — filled from the shakeout
-  records (`var/verification_sets/1-7-1-*/`), with what each exercised.
+- **Both shakeouts on THIS deploy, read before roll 1:**
+  - **FastAPI+React `cyc_04e7d5896054`** (10:08→10:53Z, 44 min): accepted, audit PASS,
+    15/15, 0 corrections, gate `system:no_open_questions`, P0 held. Every typed row passed:
+    `checks_by_environment` `{agent:development: 19, agent:builder: 6, agent:qa: 7}`;
+    `container_packaging` ran on the builder's `Dockerfile` and passed (a clean recipe on
+    this deploy — the reporting-only readout works and reads 0); `assertion_kinds_match`
+    bound and passed on `backend/tests/test_runs.py`. **What it did not exercise, and
+    why:** the plan's `qa.test` names one artifact, `backend/tests/test_runs.py` — no
+    frontend suite — so `dom_anchor_queries` had nothing to bind and `additive_containment`
+    nothing to judge: **R3 and R5 are vacuous on this stack unless a roll's plan names a
+    frontend suite** (the 1.7.0 gating roll named none either; the 1.6.6 rolls that did
+    placed it under `frontend/src/__tests__/`, outside the declared qa namespace
+    `frontend/src/tests/`, which the anchor binding filters on — a fact for the record, not
+    changed here). R1 bound and held; R2/R4/R7 unexercised (no correction round).
+  - **Next.js+TS:** TBD — filled from `var/verification_sets/1-7-1-nextjs/`.
 - **Diagnostics for the predictions no roll is likely to exercise (plan §4), non-counting
   by declaration — run 2026-09-02 06:20 ET, in the deployed containers, on the stored
   artifacts that cost each item.** These are in-container replays of the deployed code path,
