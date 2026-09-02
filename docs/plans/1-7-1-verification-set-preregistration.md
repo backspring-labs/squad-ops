@@ -181,7 +181,30 @@ window. Every fixed parameter is read from
       carried the one failing case (`repair_brief_case_counts [1]`); a scaffold fill slot
       filled twice produced the placeholder assertion of the second emission.
     **This deploy is superseded** by #1262 (#1259, #1261).
-  - **On `06408dfe` (the pinned deploy) — FastAPI+React:** TBD — filled from the record.
+  - **On `06408dfe` — FastAPI+React `cyc_4ec4ad5e2ca1`** (18:01→19:04Z, 61 min): **rejected**,
+    audit FAIL (`FastAPIError: Prefix and path cannot be both empty (path operation:
+    post_runs)`), 13/18, P0 held, three correction rounds, 8 failed emissions banked,
+    `checks_by_environment` `{agent:development: 19, agent:qa: 16, agent:builder: 2}`, every
+    emission-time typed row passed. The application defect was the cycle's own: the dev's
+    `backend/routes.py` declared `@router.post("")` / `@router.get("")` on a prefix-less
+    router, and the seed's `include_router(router)` refused it at boot. **What the loop did
+    with it is the deploy's:**
+    - Round 0 (builder): the builder's first emission had no fenced blocks; its repair
+      re-emitted `backend/routes.py` — a dev file — and the unresolved-import pre-gate
+      refused the patch (`main.py imports router from .routes (not defined there)`); the
+      task was re-dispatched and succeeded. The pre-gate did its job; the emission
+      ownership veto (#1014) does not cover a builder writing a dev file — texture.
+    - Rounds 1–2 (dev repairs of the qa failure): the dev's `/runs`-prefixed routes were the
+      correct fix, evaluated in its container on a tree without the qa suite — six executed
+      failures about a file the patch never touched — and refused twice; the fix was never
+      applied and the cycle spent its rounds. **#1259's rule did not fire:** it was keyed on
+      the verifier's overlay, which carries the failed task's own suite, so in runtime-api
+      the file counted as "in the patch". **#1264** (fixed in PR): the repair envelope
+      carries the failed task's emitted files and the repair materialises them beneath the
+      accepted workspace — the tree the verifier overlays, rule B's premise — and the
+      backstop is keyed on the repair's own artifact names. Replayed on the stored patch and
+      suite. **This deploy is superseded** by #1264's merge; the Next.js shakeout on it is
+      run for what else it finds, not as this deploy's evidence.
   - **On `06408dfe` (the pinned deploy) — Next.js+TS:** TBD — filled from the record.
 - **Diagnostics for the predictions no roll is likely to exercise (plan §4), non-counting
   by declaration — run 2026-09-02 06:20 ET, in the deployed containers, on the stored
