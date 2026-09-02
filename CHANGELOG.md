@@ -64,6 +64,12 @@ agent container, at emission and at repair, and each image provisions its toolch
   in the agent. Replay: the cycle's first stored patch, under the skeleton it landed in,
   with npm absent here — unverifiable and deadlocked without the repair's rows, decided
   by them with.
+- **The declaration has an environment axis.** `CheckSpec.required_tooling` names the
+  executables an evaluator shells out to (`frontend_compiles` → npm, `undefined_names` →
+  tsc); a role whose handlers evaluate typed checks provisions each as data or declares the
+  gap in `DECLARED_TOOLING_GAPS` with its reason — the builder image, which emits no
+  frontend source, is the first. A two-sided guard reads the provisioning files the images
+  are built from and holds both sides; the typed-check menu renders the table.
 
 ## [1.7.0] — 2026-09-01
 

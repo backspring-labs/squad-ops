@@ -37,6 +37,26 @@ where a reader finds out. An undeclared gap fails
 |---|---|---|
 | `declared_imports` | `.py` | Python declares dependencies in requirements files, not a manifest beside the source, and resolution is environment-wide rather than per-directory. The equivalent check is a different check, not this one with another extension — no Python emission is silently less checked as a result, since undefined_names and the syntax gate both cover .py. |
 
+## Tooling each check needs, and where it is declared absent
+
+A typed check executes in the producing role's agent container (#1229, rule B),
+so a role whose handlers evaluate typed checks provisions each tool below as data
+(`agents/instances/<role>/system-packages.txt`, `npm-global-packages.txt`) or
+declares the gap with its reason. Both sides are held by
+`test_typed_check_tooling_is_provisioned_where_checks_run`. A check whose tool is
+absent where it runs skips as `missing_tooling` and says so; it never fails the
+emission, and it never reads as a pass.
+
+| check | tools |
+|---|---|
+| `frontend_compiles` | `npm` |
+| `undefined_names` | `tsc` |
+
+| role | tool | why absent |
+|---|---|---|
+| `builder` | `npm` | The builder assembles packaging (Dockerfile, nginx, requirements) and emits no frontend source, so frontend_compiles never applies to its artifacts; its image declares no Node.js. Verified absent 2026-09-01 after the rebuild. The day an assemble emits a .js/.ts file this entry must go and the role must provision it. |
+| `builder` | `tsc` | Same as npm: no frontend emission from the builder, so undefined_names' tsc half never runs there. Declared rather than provisioned so the image stays what the role needs. |
+
 `command_exit_zero` ownership is per-command in truth. The forms it may take
 are inventoried below — this replaces the standing caveat that called the
 surface untrustworthy pending #707's allowlist inventory.
