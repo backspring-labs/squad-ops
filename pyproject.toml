@@ -19,19 +19,66 @@ authors = [
 ]
 readme = "README.md"
 license = { text = "MIT" }
-# You can add dependencies here later if you want to publish as a package.
+# What `import squadops` and the `squadops` console script need, unconditionally, at the
+# floors requirements/base.txt carries (#582). The images pin exact versions through
+# requirements/*.lock, compiled against ci-constraints.txt (#1041); this list is the
+# library-side view of the same facts — what `pip install squadops`, dependabot and
+# pip-audit read. It was empty until 1.7.1, so a bare install ImportError'd at first use.
+# tests/unit/architecture/test_project_dependencies_mirror_imports.py holds it to the
+# real imports in both directions and to base.txt's floors.
+dependencies = [
+  "pydantic>=2.7.3",
+  "python-dotenv>=1.0.0",
+  "pyyaml>=6.0.1",
+  "httpx>=0.27.0",
+  "jsonschema>=4.20.0",
+  # Exact, as in base.txt: its verdicts gate task acceptance (#689).
+  "pyflakes==3.4.0",
+  # The console script below is installed by every install, so what it imports is core.
+  "typer>=0.9",
+  "rich>=13.0",
+]
 
 [project.scripts]
 squadops = "squadops.cli.main:app"
 
 [project.optional-dependencies]
-langfuse = ["langfuse>=2.0"]
-cli = ["typer>=0.9", "httpx>=0.25", "rich>=13.0"]
-pulse = ["jsonschema>=4.0", "httpx>=0.25"]
+# Per-image sets, mirrored line for line from requirements/api.txt and agent.txt (the
+# same guard test holds them equal). The images install the compiled locks; these are
+# the metadata view so `pip install squadops[api]` resolves the runtime API's imports.
+api = [
+  "fastapi>=0.104.1",
+  "uvicorn>=0.24.0",
+  "python-multipart>=0.0.6",
+  "aio-pika>=9.3.1",
+  "asyncpg>=0.29.0",
+  "redis>=5.0.0",
+  "python-jose[cryptography]>=3.3.0",
+  "langfuse>=2.0,<3.0",
+  "ulid-py>=1.1.0,<2.0",
+]
+agent = [
+  "aio-pika>=9.3.1",
+  "lancedb>=0.8.2",
+  "a2a-sdk[http-server]>=0.3.0",
+  "uvicorn>=0.30.0",
+  "langfuse>=2.0,<3.0",
+]
+langfuse = ["langfuse>=2.0,<3.0"]
+# adapters/telemetry/otel.py imports the SDK lazily and swallows its absence; no image
+# installs it and the test harness always had it, so it was declared nowhere (#582).
+otel = ["opentelemetry-api>=1.22.0", "opentelemetry-sdk>=1.22.0"]
 # Adapter-specific deps. Previously undeclared and pulled in only transitively
 # (via Prefect in the Docker images), so minimal/CI envs failed to import the
 # adapters and unit collection aborted. See issues #206 / #191.
 auth = ["python-jose[cryptography]>=3.3"] # adapters/auth/keycloak (JWT validation)
+
+[tool.setuptools.package-data]
+# The package ships its prompt assets, request profiles and manifest schemas as data
+# next to the code that reads them through importlib.resources. Without this a wheel
+# (any non-editable install) carries the .py files alone and `load_profile()` finds no
+# profiles — the images sidestep it with `pip install -e .`, a bare install does not.
+squadops = ["**/*.yaml", "**/*.md", "**/*.json"]
 
 #######################################
 # Ruff - Linting & basic code hygiene #

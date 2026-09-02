@@ -8,12 +8,12 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
 
-from squadops.api.middleware.auth import require_scopes
-from squadops.api.routes.cycles.dtos import (
+from squadops.api.cycle_schemas import (
     CheckpointSummaryResponse,
     GateDecisionRequest,
     RunResumeRequest,
 )
+from squadops.api.middleware.auth import require_scopes
 from squadops.api.routes.cycles.errors import handle_cycle_error
 from squadops.api.routes.cycles.mapping import compute_workload_progress, run_to_response
 from squadops.auth.models import Scope

@@ -1,5 +1,12 @@
 """
 Pydantic DTOs for SIP-0064 cycle API request/response serialization.
+
+Beside ``api/schemas.py`` rather than under ``api/routes/cycles/`` (#582): the contracts
+layer reads ``CycleCreateRequest`` to validate request-profile defaults, and importing any
+module of a routes package runs that package's ``__init__``, which imports every router and
+therefore FastAPI (and python-multipart, at route registration). That chain made the
+``squadops`` console script depend on the API framework it only ever talks to over HTTP.
+A DTO is pydantic alone; it lives where nothing framework-shaped is executed to reach it.
 """
 
 from __future__ import annotations

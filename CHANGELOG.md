@@ -124,6 +124,35 @@ agent container, at emission and at repair, and each image provisions its toolch
   saying what was promoted or that nothing was and why; `check_pr_closure.sh` enforces it with
   the head ref the closure workflow now passes. The live tag-push exercise remains for the
   1.7.1 cut itself.
+### Fixed — a bare `pip install squadops` works (#582)
+- **`[project.dependencies]` was empty.** The dependency truth lived only in
+  `requirements/*.txt`, so a package installed from its own metadata raised
+  `ModuleNotFoundError: pydantic` at first import, and dependabot, pip-audit and any
+  downstream `pip install` saw no tree at all. Core now mirrors `requirements/base.txt`'s
+  floors plus the console script's own imports (`typer`, `rich`); `api` and `agent` extras
+  mirror `requirements/api.txt` and `agent.txt` line for line. The `cli` and `pulse`
+  extras, satisfied by core and referenced nowhere, are gone. A guard test holds every
+  list to the real imports in both directions — each undeclared import and each declared
+  package nothing imports fails CI — and to the requirements files they mirror.
+- **The package ships its data.** Prompt fragments, request templates, cycle request
+  profiles and manifest schemas are read through `importlib.resources`; a wheel carried
+  none of them. `package-data` now includes them; the images were unaffected only because
+  they install editable.
+- **The console script no longer needs the API framework.** `squadops cycles …` imported
+  `CycleCreateRequest` through the routes package, whose `__init__` imports every router
+  and so FastAPI and python-multipart. The DTO module moved to `api/cycle_schemas.py`,
+  beside `api/schemas.py`; a test imports the CLI with `fastapi` blocked.
+- **Audit: `sqlalchemy` and `jinja2` were declared in `requirements/api.txt` and imported by
+  nothing** (the ORM backend went in 1.3.0, #234; nothing ever rendered a template). Both
+  leave `api.txt` and, with their sole-purpose transitives `greenlet` and `markupsafe`, the
+  compiled `api.lock` — the entries pip-compile would drop, removed by hand rather than by
+  a full `--upgrade` recompile, which is #1204's territory.
+- **A `fresh-venv install` CI job** installs the package from a clean venv with no editable
+  install, extras or test harness, then imports it, runs `squadops --help` and checks the
+  shipped assets from outside the checkout.
+- Found on the way, filed as **#1241**: `adapters/capabilities/aci_executor.py` imports
+  `agents.tasks.models`, which does not exist, so `import adapters.capabilities` fails; the
+  guard carries it as a documented exception keyed to the issue.
 
 ### Changed — what is stack-specific lives behind the stack seam (#1131)
 - **Stack #1 has its own module.** The inline `fullstack_fastapi_react` expander (651 lines)

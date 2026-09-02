@@ -10,13 +10,13 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends
 
-from squadops.api.middleware.auth import require_scopes
-from squadops.api.routes.cycles.dtos import (
+from squadops.api.cycle_schemas import (
     ProfileCloneRequest,
     ProfileCreateRequest,
     ProfileUpdateRequest,
     SetActiveProfileRequest,
 )
+from squadops.api.middleware.auth import require_scopes
 from squadops.api.routes.cycles.errors import handle_cycle_error
 from squadops.api.routes.cycles.mapping import profile_to_response
 from squadops.auth.models import Scope
