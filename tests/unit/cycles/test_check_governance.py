@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from squadops.cycles.acceptance_check_spec import (
+    CHECK_DECLARED_IMPORTS,
     CHECK_SPECS,
     CHECK_UNDEFINED_NAMES,
     DECLARED_COVERAGE_GAPS,
@@ -89,12 +90,16 @@ class TestCoverageGapsAreDeclared:
         )
 
     def test_the_disclosure_names_what_went_unchecked(self):
-        """The point of the declaration: evidence can state the gap. `undefined_names`
-        covers .py only, so a reader asking what it did not check gets the four JS/TS
-        extensions and why — rather than a green that implies full coverage."""
-        gaps = uncovered_languages(CHECK_UNDEFINED_NAMES)
-        assert sorted(gaps) == [".js", ".jsx", ".ts", ".tsx"]
-        assert all("#939" in reason or "analyser" in reason for reason in gaps.values())
+        """The point of the declaration: evidence can state the gap. `declared_imports`
+        covers the four JS/TS extensions only, so a reader asking what it did not check
+        gets `.py` and why — rather than a green that implies full coverage. And the
+        gap this mechanism was built for is closed: `undefined_names` reads every
+        emission language since #939, so it declares nothing (the two-sided guard
+        above would fail if it still did)."""
+        gaps = uncovered_languages(CHECK_DECLARED_IMPORTS)
+        assert sorted(gaps) == [".py"]
+        assert all("requirements" in reason for reason in gaps.values())
+        assert uncovered_languages(CHECK_UNDEFINED_NAMES) == {}
         assert uncovered_languages("nonexistent_check") == {}
 
 

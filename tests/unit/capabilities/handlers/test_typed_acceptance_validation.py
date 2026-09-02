@@ -868,13 +868,31 @@ class TestFrameworkInjectedUndefinedNames:
         rows = [c for c in result.checks if c["check"] == "acceptance:undefined_names"]
         assert [r["status"] for r in rows] == ["passed"]
 
-    async def test_only_python_artifacts_are_injected(self):
+    async def test_injection_follows_the_checks_languages(self):
+        """Bug caught: the injection filter regressing to `.py` only (the pre-#939 world,
+        where a `.jsx` emission with an undeclared name was checked by nothing), or
+        widening past the check's languages onto a file it cannot read. A `.jsx` gets a
+        row; `notes.md` does not. Where tsc is absent the row is an honest skip that
+        names the tool, never a silent pass."""
+        import shutil
+
         h = DevelopmentDevelopHandler()
         result = await h._validate_output(
             _inputs([], expected=("frontend/src/App.jsx",)),
             [_art("frontend/src/App.jsx", "export default () => <div/>;"), _art("notes.md", "# x")],
         )
-        assert [c for c in result.checks if c["check"] == "acceptance:undefined_names"] == []
+        rows = {
+            c["params"]["file"]: c
+            for c in result.checks
+            if c["check"] == "acceptance:undefined_names"
+        }
+        assert set(rows) == {"frontend/src/App.jsx"}
+        row = rows["frontend/src/App.jsx"]
+        if shutil.which("tsc") is None:
+            assert row["status"] == "skipped"
+            assert row["actual"]["missing_module"] == "tsc"
+        else:
+            assert row["status"] == "passed"
 
     async def test_injection_covers_every_python_file_in_a_multi_file_emission(self):
         h = DevelopmentDevelopHandler()

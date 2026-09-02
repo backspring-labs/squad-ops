@@ -9,6 +9,7 @@ Coverage:
 
 from __future__ import annotations
 
+import shutil
 import sys
 from pathlib import Path
 
@@ -1689,10 +1690,104 @@ class TestUndefinedNames:
         assert outcome.status == "failed"
         assert outcome.reason == "file_not_found"
 
-    async def test_non_python_target_skips(self, tmp_path):
+    async def test_a_frontend_target_without_tsc_skips_as_missing_tooling(
+        self, tmp_path, monkeypatch
+    ):
+        """#939: the JS/TS half is tsc, provisioned per role as data; where no role
+        declared it (runtime-api today) the check skips and NAMES the tool, the #462
+        rule — never a silent pass, never a failure charged to the emission."""
+        from squadops.cycles import acceptance_checks
+
+        monkeypatch.setattr(acceptance_checks.shutil, "which", lambda name: None)
         (tmp_path / "view.jsx").write_text("export default function V(){ return <div/> }")
         outcome = await get_check("undefined_names").evaluate({"file": "view.jsx"}, tmp_path)
         assert outcome.status == "skipped"
+        assert outcome.reason == "missing_tooling"
+        assert outcome.actual["missing_module"] == "tsc"
+
+    async def test_an_extension_outside_the_analysers_skips(self, tmp_path):
+        (tmp_path / "util.mjs").write_text("export const x = y\n")
+        outcome = await get_check("undefined_names").evaluate({"file": "util.mjs"}, tmp_path)
+        assert outcome.status == "skipped"
+
+    def test_tsc_diagnostics_are_filtered_to_the_file_and_to_unresolved_names(self):
+        """Bug caught: a workspace materialised without node_modules reports every import
+        as TS2307, and another file's TS2304 is another file's — neither may reach this
+        file's verdict. Paths are matched after tsc's ``./`` prefix is dropped."""
+        from squadops.cycles.acceptance_checks import tsc_syntax_errors_in, tsc_undefined_names
+
+        out = (
+            "__tests__/scaffold/red.scaffold.test.ts(1,50): error TS2307: Cannot find module "
+            "'vitest' or its corresponding type declarations.\n"
+            "__tests__/scaffold/red.scaffold.test.ts(30,30): error TS2304: Cannot find name "
+            "'created'.\n"
+            "__tests__/other.test.ts(4,3): error TS2304: Cannot find name 'other'.\n"
+            "./__tests__/scaffold/red.scaffold.test.ts(41,5): error TS2552: Cannot find name "
+            "'partcipants'. Did you mean 'participants'?\n"
+            "__tests__/broken.test.ts(2,1): error TS1005: ')' expected.\n"
+        )
+        assert tsc_undefined_names(out, "__tests__/scaffold/red.scaffold.test.ts") == [
+            {"name": "created", "line": 30},
+            {"name": "partcipants", "line": 41},
+        ]
+        assert tsc_undefined_names(out, "./__tests__/other.test.ts") == [
+            {"name": "other", "line": 4}
+        ]
+        assert tsc_undefined_names(out, "__tests__/clean.test.ts") == []
+        assert tsc_syntax_errors_in(out, "__tests__/broken.test.ts") is True
+        assert tsc_syntax_errors_in(out, "__tests__/scaffold/red.scaffold.test.ts") is False
+
+    async def test_tsc_runs_once_per_workspace_and_each_file_reads_its_own_lines(
+        self, tmp_path, monkeypatch
+    ):
+        """Bug caught: a task emits many files and the criterion is file-scoped — running
+        tsc per file multiplies a 700 ms project check by the file count. One run per
+        materialised tree; and the verdict for each file is that file's diagnostics."""
+        from squadops.cycles import acceptance_checks
+
+        calls: list[list[str]] = []
+
+        async def fake_run(argv, cwd, timeout_s):
+            calls.append(argv)
+            return (
+                2,
+                "__tests__/a.test.ts(3,9): error TS2304: Cannot find name 'created'.\n"
+                "__tests__/a.test.ts(1,30): error TS2307: Cannot find module 'vitest'.\n",
+                "",
+            )
+
+        monkeypatch.setattr(acceptance_checks.shutil, "which", lambda name: "/usr/bin/tsc")
+        monkeypatch.setattr(acceptance_checks, "_run_argv", fake_run)
+        acceptance_checks._TSC_OUTPUT_CACHE.clear()
+        (tmp_path / "tsconfig.json").write_text("{}")
+        (tmp_path / "__tests__").mkdir()
+        (tmp_path / "__tests__" / "a.test.ts").write_text("expect(created)\n")
+        (tmp_path / "__tests__" / "b.test.ts").write_text("const b = 1\n")
+
+        a = await get_check("undefined_names").evaluate({"file": "__tests__/a.test.ts"}, tmp_path)
+        b = await get_check("undefined_names").evaluate({"file": "__tests__/b.test.ts"}, tmp_path)
+        assert a.status == "failed"
+        assert a.actual["undefined"] == [{"name": "created", "line": 3}]
+        assert b.status == "passed"
+        assert len(calls) == 1
+        assert calls[0][:4] == ["tsc", "--noEmit", "-p", "."]
+
+    async def test_a_syntax_error_is_the_syntax_gates_and_is_not_reported_twice(
+        self, tmp_path, monkeypatch
+    ):
+        from squadops.cycles import acceptance_checks
+
+        async def fake_run(argv, cwd, timeout_s):
+            return 2, "app/x.ts(2,1): error TS1005: ')' expected.\n", ""
+
+        monkeypatch.setattr(acceptance_checks.shutil, "which", lambda name: "/usr/bin/tsc")
+        monkeypatch.setattr(acceptance_checks, "_run_argv", fake_run)
+        acceptance_checks._TSC_OUTPUT_CACHE.clear()
+        (tmp_path / "app").mkdir()
+        (tmp_path / "app" / "x.ts").write_text("f(\n")
+        outcome = await get_check("undefined_names").evaluate({"file": "app/x.ts"}, tmp_path)
+        assert outcome.status == "skipped"
+        assert outcome.reason == "unsupported_stack_or_syntax"
 
     async def test_path_escaping_the_workspace_is_an_error(self, tmp_path):
         outcome = await get_check("undefined_names").evaluate(
@@ -1782,3 +1877,69 @@ class TestFillSlotSignature:
         )
         assert result.status == "failed"
         assert result.reason == "file_not_found"
+
+
+_REPLAYS = Path(__file__).resolve().parents[2] / "fixtures" / "roll_replays"
+
+
+@pytest.mark.skipif(
+    shutil.which("tsc") is None,
+    reason="tsc is provisioned in CI and the dev/qa images (npm-global-packages.txt, #939)",
+)
+class TestUndefinedNamesReplaysTheRollThatCostIt:
+    """1.7.0 roll 4, ``cyc_58d92ca2b407``: a qa repair's scaffold shell used ``created``
+    in its fill without declaring it, reached vitest, and failed ``ReferenceError`` —
+    nothing between the emission and the runner had looked. The stored shell, replayed
+    through the check under the very tsconfig the Next.js skeleton emits, must name it;
+    the same shell from the accepted gating roll must pass (the over-rejection control)."""
+
+    @staticmethod
+    async def _replay(tmp_path: Path, fixture: str):
+        from squadops.capabilities.stack_nextjs_ts import _TSCONFIG
+        from squadops.cycles import acceptance_checks
+
+        acceptance_checks._TSC_OUTPUT_CACHE.clear()
+        (tmp_path / "tsconfig.json").write_text(_TSCONFIG)
+        rel = f"__tests__/scaffold/{fixture}"
+        (tmp_path / "__tests__" / "scaffold").mkdir(parents=True)
+        (tmp_path / rel).write_text((_REPLAYS / fixture).read_text())
+        return await get_check("undefined_names").evaluate({"file": rel}, tmp_path)
+
+    async def test_the_roll_4_shell_is_rejected_naming_the_name_and_the_line(self, tmp_path):
+        outcome = await self._replay(
+            tmp_path, "1-7-0-roll-4-fill-with-undeclared-name.scaffold.test.ts"
+        )
+        assert outcome.status == "failed"
+        assert outcome.actual["undefined"] == [{"name": "created", "line": 30}]
+        assert outcome.actual["analyzer"] == "tsc"
+
+    async def test_the_gating_rolls_shell_passes(self, tmp_path):
+        outcome = await self._replay(tmp_path, "1-7-0-roll-6-green.scaffold.test.ts")
+        assert outcome.status == "passed"
+
+    async def test_a_react_jsx_suite_without_a_tsconfig_is_checked_too(self, tmp_path):
+        """The React stack emits no tsconfig; ``--allowJs --checkJs`` over the explicit
+        file list reports the same class in plain JSX (measured 2026-09-01)."""
+        from squadops.cycles import acceptance_checks
+
+        acceptance_checks._TSC_OUTPUT_CACHE.clear()
+        views = tmp_path / "frontend" / "src"
+        views.mkdir(parents=True)
+        (views / "views.test.jsx").write_text(
+            "import { describe, it, expect } from 'vitest'\n"
+            "describe('x', () => { it('y', () => { expect(created).toBe(1) }) })\n"
+        )
+        (views / "clean.test.jsx").write_text(
+            "import { describe, it, expect } from 'vitest'\n"
+            "const created = 1\n"
+            "describe('x', () => { it('y', () => { expect(created).toBe(1) }) })\n"
+        )
+        red = await get_check("undefined_names").evaluate(
+            {"file": "frontend/src/views.test.jsx"}, tmp_path
+        )
+        green = await get_check("undefined_names").evaluate(
+            {"file": "frontend/src/clean.test.jsx"}, tmp_path
+        )
+        assert red.status == "failed"
+        assert [u["name"] for u in red.actual["undefined"]] == ["created"]
+        assert green.status == "passed"

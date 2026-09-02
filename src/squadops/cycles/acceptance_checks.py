@@ -169,6 +169,35 @@ def _restricted_env() -> dict[str, str]:
     return {k: v for k, v in os.environ.items() if k in keep}
 
 
+async def _run_argv(argv: list[str], cwd: Path, timeout_s: int) -> tuple[int | None, str, str]:
+    """Run one tool under the restricted env; ``(returncode, stdout, stderr)``, rc None on
+    timeout. Shared by the checks that shell out (the frontend build, tsc)."""
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *argv,
+            cwd=str(cwd),
+            env=_restricted_env(),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except (OSError, ValueError) as exc:
+        return 1, "", f"spawn failed: {exc}"
+    try:
+        stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout_s)
+    except TimeoutError:
+        proc.kill()
+        try:
+            await proc.wait()
+        except Exception:  # pragma: no cover - best-effort cleanup
+            pass
+        return None, "", ""
+    return (
+        proc.returncode,
+        stdout_b.decode("utf-8", errors="replace"),
+        stderr_b.decode("utf-8", errors="replace"),
+    )
+
+
 # Bare interpreter names a contract may emit for `command_exit_zero`.
 _BARE_INTERPRETERS = frozenset({"python", "python3"})
 
@@ -421,6 +450,126 @@ class UnterminatedSourceCheck(BaseCheck):
         return CheckOutcome.passed(file=str(params["file"]))
 
 
+# --- undefined_names on JS/TS (#939) ---------------------------------------------------
+#
+# The per-file unresolved-name check the Python half gets from pyflakes, on the four
+# frontend extensions, from ``tsc``. A TypeScript project (a ``tsconfig.json`` at the
+# workspace root — the Next.js skeleton emits one) is checked as a project, so ``paths``
+# and ``include`` are the app's own; a tree without one (the React SPA's ``frontend/``) is
+# checked as an explicit file list with ``--allowJs --checkJs``, which reports ``Cannot
+# find name`` in plain JS/JSX too (measured 2026-09-01 in the qa image, typescript 5.5.3).
+# tsc runs ONCE per materialised tree and the diagnostics are filtered per file, because
+# the criterion is file-scoped and a task emits many files. Only the unresolved-name codes
+# count: a workspace materialised without ``node_modules`` reports every import as TS2307,
+# and that is not this check's question — ``declared_imports`` and the build own it.
+TSC_TIMEOUT_S = 60
+TSC_UNDEFINED_NAME_CODES: frozenset[str] = frozenset({"TS2304", "TS2552"})
+_TSC_SOURCE_SUFFIXES: frozenset[str] = frozenset({".ts", ".tsx", ".js", ".jsx"})
+_TSC_EXPLICIT_FLAGS: tuple[str, ...] = (
+    "--noEmit",
+    "--allowJs",
+    "--checkJs",
+    "--jsx",
+    "react-jsx",
+    "--target",
+    "es2022",
+    "--module",
+    "esnext",
+    "--moduleResolution",
+    "bundler",
+    "--skipLibCheck",
+)
+_TSC_DIAGNOSTIC = re.compile(
+    r"^(?P<path>[^\n(]+?)\((?P<line>\d+),(?P<col>\d+)\): error (?P<code>TS\d+): (?P<message>.*)$"
+)
+_TSC_UNDEFINED_NAME = re.compile(r"Cannot find name '(?P<name>[^']+)'")
+_TSC_SKIP_DIRS: frozenset[str] = frozenset({"node_modules", ".next", "dist", "build", ".git"})
+#: tsc output per (workspace, mode, tree signature) — a task's criteria evaluate one file
+#: each over one materialised tree, so the second file must not pay for a second run.
+_TSC_OUTPUT_CACHE: dict[tuple, str | None] = {}
+_TSC_OUTPUT_CACHE_MAX = 8
+
+
+def _normalise_rel(path: str) -> str:
+    p = path.replace("\\", "/")
+    while p.startswith("./"):
+        p = p[2:]
+    return p
+
+
+def tsc_undefined_names(output: str, file_rel: str) -> list[dict[str, Any]]:
+    """``[{name, line}]`` for the unresolved-name diagnostics tsc reported in ``file_rel``.
+
+    tsc prints one diagnostic per line, ``path(line,col): error TScode: message``, with the
+    path relative to its working directory; only the codes in ``TSC_UNDEFINED_NAME_CODES``
+    and only the lines for ``file_rel`` count, so a workspace full of TS2307 (no
+    ``node_modules``) and another file's defects leave this file's verdict alone.
+    """
+    want = _normalise_rel(file_rel)
+    found: list[dict[str, Any]] = []
+    for raw in output.splitlines():
+        m = _TSC_DIAGNOSTIC.match(raw.strip())
+        if not m or m["code"] not in TSC_UNDEFINED_NAME_CODES:
+            continue
+        if _normalise_rel(m["path"]) != want:
+            continue
+        name = _TSC_UNDEFINED_NAME.search(m["message"])
+        found.append({"name": name["name"] if name else m["message"], "line": int(m["line"])})
+    return found
+
+
+def tsc_syntax_errors_in(output: str, file_rel: str) -> bool:
+    """True when tsc reported a syntax diagnostic (TS1xxx) in ``file_rel``."""
+    want = _normalise_rel(file_rel)
+    for raw in output.splitlines():
+        m = _TSC_DIAGNOSTIC.match(raw.strip())
+        if m and m["code"].startswith("TS1") and _normalise_rel(m["path"]) == want:
+            return True
+    return False
+
+
+def _tsc_sources(root: Path) -> list[Path]:
+    return sorted(
+        p
+        for p in root.rglob("*")
+        if p.is_file()
+        and p.suffix.lower() in _TSC_SOURCE_SUFFIXES
+        and not (set(p.relative_to(root).parts[:-1]) & _TSC_SKIP_DIRS)
+    )
+
+
+async def _tsc_output(root: Path, *, project: bool) -> str | None:
+    """tsc's combined output for ``root`` (``None`` on timeout), cached per tree.
+
+    ``project`` checks the tree under its own ``tsconfig.json``; otherwise the explicit
+    file list with the JS-capable flags.
+    """
+    sources = _tsc_sources(root)
+    signature = (
+        str(root),
+        project,
+        tuple((str(p.relative_to(root)), p.stat().st_size, p.stat().st_mtime_ns) for p in sources),
+    )
+    if signature in _TSC_OUTPUT_CACHE:
+        return _TSC_OUTPUT_CACHE[signature]
+    if project:
+        argv = ["tsc", "--noEmit", "-p", ".", "--pretty", "false"]
+    else:
+        argv = [
+            "tsc",
+            *_TSC_EXPLICIT_FLAGS,
+            "--pretty",
+            "false",
+            *(str(p.relative_to(root)) for p in sources),
+        ]
+    rc, stdout, stderr = await _run_argv(argv, root, TSC_TIMEOUT_S)
+    output = None if rc is None else f"{stdout}\n{stderr}"
+    if len(_TSC_OUTPUT_CACHE) >= _TSC_OUTPUT_CACHE_MAX:
+        _TSC_OUTPUT_CACHE.pop(next(iter(_TSC_OUTPUT_CACHE)))
+    _TSC_OUTPUT_CACHE[signature] = output
+    return output
+
+
 @register_check(CHECK_UNDEFINED_NAMES)
 class UndefinedNamesCheck(BaseCheck):
     """Names a ``.py`` file uses but never binds — the call-time ``NameError`` class (#689).
@@ -445,6 +594,15 @@ class UndefinedNamesCheck(BaseCheck):
     Skipping there would ship this check as exactly the looks-enforced-but-isn't no-op
     SIP-0096 exists to kill — on the one defect class that already cost a full
     correction budget.
+
+    **The JS/TS half (#939)** is ``tsc`` — see the module comment above the helpers. It
+    is provisioned per role as data (``agents/instances/<role>/npm-global-packages.txt``,
+    the dev and qa images), which is the #462 skip-never-fail case, exactly as ``npm`` is
+    for ``frontend_compiles``: absent where no role declared it (runtime-api today, until
+    #1229 moves repair verification to the agent), the check skips as ``missing_tooling``
+    and says so. 1.7.0 roll 4 (``cyc_58d92ca2b407``) is the replay: a scaffold shell's
+    fill used ``created`` without declaring it, reached vitest, and failed
+    ``ReferenceError`` — with node in the image and no analyser, nothing looked.
     """
 
     async def evaluate(
@@ -458,6 +616,8 @@ class UndefinedNamesCheck(BaseCheck):
             file_path = _safe_resolve(params["file"], workspace_root)
         except _SafetyError as exc:
             return CheckOutcome.error(reason=exc.reason)
+        if file_path.suffix.lower() in _TSC_SOURCE_SUFFIXES:
+            return await self._evaluate_frontend(params, file_path, workspace_root)
         if (skip := _unparseable_source_skip(file_path)) is not None:
             return skip
         if not file_path.is_file():
@@ -492,6 +652,37 @@ class UndefinedNamesCheck(BaseCheck):
                 undefined=undefined,
             )
         return CheckOutcome.passed(file=str(params["file"]))
+
+    async def _evaluate_frontend(
+        self, params: dict[str, Any], file_path: Path, workspace_root: Path
+    ) -> CheckOutcome:
+        """The JS/TS half (#939): tsc's unresolved-name diagnostics for this one file."""
+        if not file_path.is_file():
+            return CheckOutcome.failed(reason="file_not_found", file=str(params["file"]))
+        if shutil.which("tsc") is None:
+            return CheckOutcome.skipped(reason="missing_tooling", missing_module="tsc")
+        project = (workspace_root / "tsconfig.json").is_file() and file_path.suffix.lower() in {
+            ".ts",
+            ".tsx",
+        }
+        output = await _tsc_output(workspace_root, project=project)
+        if output is None:
+            return CheckOutcome.error(reason="command_timeout", timeout_s=TSC_TIMEOUT_S)
+        rel = _normalise_rel(str(params["file"]))
+        if tsc_syntax_errors_in(output, rel):
+            # The syntax gate owns unparseable emissions; reporting it twice would make
+            # one defect look like two (the same rule as the Python half).
+            return CheckOutcome.skipped(reason="unsupported_stack_or_syntax")
+        undefined = tsc_undefined_names(output, rel)
+        if undefined:
+            names = ", ".join(f"{u['name']} (line {u['line']})" for u in undefined)
+            return CheckOutcome.failed(
+                reason=f"undefined name(s): {names}",
+                file=str(params["file"]),
+                undefined=undefined,
+                analyzer="tsc",
+            )
+        return CheckOutcome.passed(file=str(params["file"]), analyzer="tsc")
 
 
 #: Node's own modules are provided by the runtime, not by the manifest, so importing
@@ -1628,30 +1819,7 @@ class FrontendCompilesCheck(BaseCheck):
     @staticmethod
     async def _run(argv: list[str], cwd: Path, timeout_s: int) -> tuple[int | None, str, str]:
         """Run one build step; ``(returncode, stdout, stderr)``, rc None on timeout."""
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                *argv,
-                cwd=str(cwd),
-                env=_restricted_env(),
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-        except (OSError, ValueError) as exc:
-            return 1, "", f"spawn failed: {exc}"
-        try:
-            stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout_s)
-        except TimeoutError:
-            proc.kill()
-            try:
-                await proc.wait()
-            except Exception:  # pragma: no cover - best-effort cleanup
-                pass
-            return None, "", ""
-        return (
-            proc.returncode,
-            stdout_b.decode("utf-8", errors="replace"),
-            stderr_b.decode("utf-8", errors="replace"),
-        )
+        return await _run_argv(argv, cwd, timeout_s)
 
 
 # ---------------------------------------------------------------------------

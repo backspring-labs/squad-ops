@@ -493,15 +493,6 @@ EMISSION_LANGUAGES: frozenset[str] = frozenset({".py", ".js", ".jsx", ".ts", ".t
 #: An entry whose gap no longer exists fails too, so the list stays exactly as large
 #: as reality — the same two-sided shape as requirements/constraint-exceptions.txt.
 DECLARED_COVERAGE_GAPS: dict[str, dict[str, str]] = {
-    CHECK_UNDEFINED_NAMES: dict.fromkeys(
-        (".js", ".jsx", ".ts", ".tsx"),
-        "No JS/TS scope analyser exists in the agent image — measured: tsc is not on "
-        "PATH (TypeScript lives in the app's own node_modules/.bin) and eslint 6.4.0 "
-        "exits 2 without a config, which is #645's fails-on-any-content class. "
-        "Closing it means provisioning a real analyser into the qa image. Tracked as "
-        "#939; it cost cyc_58d92ca2b407, where a .ts fill used `created` without "
-        "declaring it and reached test execution.",
-    ),
     CHECK_DECLARED_IMPORTS: dict.fromkeys(
         (".py",),
         "Python declares dependencies in requirements files, not a manifest beside "
@@ -549,15 +540,20 @@ def uncovered_languages(check_name: str) -> dict[str, str]:
 CHECK_SPECS: dict[str, CheckSpec] = {
     CHECK_UNDEFINED_NAMES: CheckSpec(
         name=CHECK_UNDEFINED_NAMES,
-        applicable_extensions=frozenset({".py"}),
+        applicable_extensions=frozenset({".py", ".js", ".jsx", ".ts", ".tsx"}),
         required_params=frozenset({"file"}),
         param_types={"file": str},
         path_params=frozenset({"file"}),
         framework_injected=True,
         example={"file": "backend/routes.py"},
         notes=(
-            "Applied by the framework to .py emissions from handlers on the "
-            "typed-acceptance seam (dev, builder); never authored."
+            "Applied by the framework to every emission from handlers on the "
+            "typed-acceptance seam (dev, builder, qa); never authored. Python runs "
+            "pyflakes in-process; .ts/.tsx/.js/.jsx run `tsc --noEmit` once per "
+            "workspace and filter its unresolved-name diagnostics (TS2304/TS2552) to "
+            "the file (#939). tsc is provisioned per role as data "
+            "(agents/instances/<role>/npm-global-packages.txt); where no role declared "
+            "it the check skips (missing_tooling), it does not fail."
         ),
         failure_ownership=OWNERSHIP_PRODUCT,
         qa_available=True,
@@ -972,10 +968,13 @@ LANGUAGES_WITHOUT_COMMAND_FORM: tuple[LanguageWithoutCommandForm, ...] = (
     LanguageWithoutCommandForm(
         language="TypeScript (.ts/.tsx)",
         reason=(
-            "no TypeScript checker is provisionable — tsc lives in the app's own "
-            "node_modules/.bin and never on PATH, and `node --check` refuses both "
-            "extensions before parsing (ERR_UNKNOWN_FILE_EXTENSION, node v20.19.2, "
-            "measured 2026-08-10)"
+            "the command safelist carries no TypeScript checker. `tsc` is provisioned "
+            "globally in the dev and qa images since #939 (npm-global-packages.txt) for "
+            "the undefined_names check, but a safelist entry is a separate decision: "
+            "runtime-api has no node, so an authored `tsc` criterion would be #707's "
+            "passes-the-allowlist-but-cannot-run class there until #1229. `node --check` "
+            "refuses both extensions before parsing (ERR_UNKNOWN_FILE_EXTENSION, node "
+            "v20.19.2, measured 2026-08-10)"
         ),
         verified_by=(
             "frontend_compiles / frontend_build — `next build` runs tsc itself and "

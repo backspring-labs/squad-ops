@@ -5,9 +5,44 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
-Nothing yet. Next line: **1.7.1 — Stack Seams** (`docs/plans/1-7-0-plan.md` §3.1), leading
-with #939 — `.ts` emissions have no unresolved-name guard, which this cut ships declared
-rather than fixed.
+**The 1.7.1 line — Stack Seams** (`docs/plans/1-7-1-plan.md`). Owner's ruling on the
+check-environment seam, 2026-09-01: **B** — typed checks execute in the producing role's
+agent container, at emission and at repair, and each image provisions its toolchain as data.
+
+### Changed — what is stack-specific lives behind the stack seam (#1131)
+- **Stack #1 has its own module.** The inline `fullstack_fastapi_react` expander (651 lines)
+  moved from `scaffold.py` to `stack_fastapi_react.py`, registered through `ScaffoldStack`
+  exactly as stack #2 is; the reference contract's frozen digests are unchanged, and every
+  FastAPI+React manifest fixture expands byte-for-byte identically (3 manifests, 57 files).
+  `base_type_name` — manifest vocabulary the block had carried — lives in the leaf
+  `type_tokens.py`. The rationale was harvested first into SIP-0105 (#1149, 23 entries).
+- **A structural guard**: no string literal in live code under `capabilities/handlers/` or
+  `cycles/` names a stack's layout or toolchain unless the module is a `stack_*` module or
+  the line is allowlisted with its reason; a second test fails when an entry stops firing.
+  Run against `1b9b93a9` it fires on the `app/api/` literal that discarded a green React
+  suite in the 1.6.5 set.
+- **One suite-suffix vocabulary** (`JS_SUITE_SUFFIXES`, `AppInvocation.suite_suffixes`) read
+  by the self-mocking detector, its inventory, the runner's uncollected-suite check and the
+  qa handler; the runner's `.ts`-only copy had never named an ignored `*.test.jsx` on the
+  React stack. **The fill brief's store paragraph is the stack's** (`store_brief_lines`):
+  moving it found `model_surface_instructions` telling the Next.js developer that
+  `backend/store.py` defines its stores — Next.js now declares none and loses a wrong
+  instruction.
+
+### Added — `undefined_names` reads `.ts`, `.tsx`, `.js` and `.jsx` (#939)
+- The per-file unresolved-name check the Python half gets from pyflakes, on the four
+  frontend extensions, from `tsc --noEmit` — run once per materialised tree, its
+  `TS2304`/`TS2552` diagnostics filtered to the file. A TypeScript project is checked under
+  its own `tsconfig.json`; a tree without one (the React `frontend/`) as an explicit file
+  list with `--allowJs --checkJs`, which reports the class in plain JSX (measured).
+- `typescript@5.5.3` is provisioned into the dev and qa images as data
+  (`agents/instances/<role>/npm-global-packages.txt`, the Node analog of
+  `system-packages.txt`), and CI installs the same globals from the same file so the roll
+  replays execute there. Where no role declared it — runtime-api, until #1229 — the check
+  skips as `missing_tooling` and says so.
+- The four declared coverage gaps for the check are gone; the typed-check menu regenerated.
+  Replay: the Reasoning line's roll-4 shell (`cyc_58d92ca2b407`, `created` undeclared at
+  line 30) is rejected naming the name and the line; the gating roll's shell passes.
 
 ## [1.7.0] — 2026-09-01
 

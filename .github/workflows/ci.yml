@@ -79,6 +79,17 @@ jobs:
           # upstream release can't silently change what CI tests.
           pip install -r tests/requirements.txt -c ci-constraints.txt
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # #939: undefined_names runs `tsc` on .ts/.js emissions. CI provisions the same npm
+      # globals the qa image does, read from the same file, so the roll-replay tests
+      # execute here instead of skipping — CI tests what ships (#1041's rule).
+      - name: Install the qa image's npm globals
+        run: npm install -g --no-audit --no-fund $(grep -vE '^\s*#|^\s*$' agents/instances/qa/npm-global-packages.txt)
+
       - name: Prompt-fragment manifest is in sync
         run: python scripts/dev/regen_fragment_manifest.py --check
 
