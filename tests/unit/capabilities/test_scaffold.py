@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from squadops.capabilities import scaffold
+from squadops.capabilities import scaffold, stack_fastapi_react
 from squadops.capabilities.handlers.build_profiles import get_profile
 from squadops.capabilities.scaffold import InterfaceManifest, expand
 
@@ -1002,7 +1002,7 @@ class TestDomAnchorContract:
         assert "empty-state" in stub
 
     def test_route_without_testids_renders_the_plain_stub(self):
-        stub = scaffold._view_stub(scaffold.Route(path="/x", view="XView"))
+        stub = stack_fastapi_react._view_stub(scaffold.Route(path="/x", view="XView"))
         assert "data-testid" not in stub
         assert "DOM anchors" not in stub
         assert "export default function XView()" in stub
