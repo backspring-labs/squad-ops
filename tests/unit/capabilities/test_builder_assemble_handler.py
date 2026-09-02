@@ -1032,7 +1032,15 @@ class TestTypedAcceptance:
             "required_files",
             "acceptance:undefined_names",
             "acceptance:unterminated_source",
+            "acceptance:container_packaging",
         ]
-        for row in checks[1:]:
+        for row in checks[1:3]:
             assert row["status"] == "passed"
             assert row["params"]["file"] == "my_app/__main__.py"
+        # #598: the assembly emits a Dockerfile, so the recipe-scoped check is injected on
+        # it — at the spec's warning severity, which the seam reads as advisory: `passed`
+        # is stamped True whatever the findings say, so the row can never fail the task.
+        packaging = checks[3]
+        assert packaging["params"]["file"] == "Dockerfile"
+        assert packaging["severity"] == "warning"
+        assert packaging["passed"] is True

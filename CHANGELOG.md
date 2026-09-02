@@ -29,6 +29,26 @@ agent container, at emission and at repair, and each image provisions its toolch
   `backend/routes.py:24`) stays on the dev chain; a stored collection error and a
   rewritten assert are not defects. The log line carries `qa_owned_routed` for the set's
   R2 readout.
+### Added — the emitted container's packaging gets its findings, reporting-only (#598)
+- **`container_packaging`**, a typed check the framework injects on every emitted
+  container recipe (a file named `Dockerfile`; recipe-scoped, since a recipe has no
+  suffix for the extension predicate to see): three static findings over the recipe, the
+  build context it copies from and the entry script it runs — `npm ci` with no lockfile
+  reachable, a `COPY --from` of `dist-packages` off an official `python:*` image, and
+  apt's nginx default site left in place under a `conf.d` server block. pf-38's three
+  build/run failures behind an accepted verdict, as findings; pf-39 (identical seeds)
+  reproduces two of them and the check tells the two recipes apart. It never builds or
+  starts an image — `package_builds` is that criterion and stays declared unbuilt.
+- **Reporting-only, by severity.** The spec's `blocking_default` is `warning`, and a new
+  predicate `row_is_blocking_failure` is the one reading of "this row failed" for the
+  verdict ledger, the correction signature and the failure category — an executed
+  warning-row failure is banked on the task's evaluation artifact and never rejects a run,
+  enters a chain's identity or opens a correction. Whether it becomes blocking, and whether
+  the image is built in-cycle, are the owner's separate calls (plan §6).
+- Over the vault before landing: 203 stored recipes, 135 with at least one finding —
+  `npm ci` without a lockfile on 121, the nginx default site on 31, `dist-packages` on 2
+  (pf-38 and one sibling); 68 clean. Reporting-only means those are readouts, not
+  rejections.
 
 ### Changed — what is stack-specific lives behind the stack seam (#1131)
 - **Stack #1 has its own module.** The inline `fullstack_fastapi_react` expander (651 lines)

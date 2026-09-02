@@ -24,6 +24,7 @@ from typing import Any
 
 from squadops.cycles.failure_evidence import FailureEvidenceCategory, derive_failure_category
 from squadops.cycles.verification_integrity import ResultStatus
+from squadops.cycles.verification_normalize import row_is_blocking_failure
 
 #: The decision-handler vocabulary value meaning "no structural candidate".
 CANDIDATE_NONE = "none"
@@ -99,11 +100,7 @@ def failure_signature(failure_evidence: dict[str, Any]) -> frozenset[tuple[str, 
     for row in checks:
         if not isinstance(row, dict):
             continue
-        failed = row.get("passed") is False or row.get("status") in (
-            ResultStatus.FAILED,
-            ResultStatus.ERROR,
-        )
-        if not failed:
+        if not row_is_blocking_failure(row):
             continue
         check_id = str(row.get("check", ""))
         if not check_id:

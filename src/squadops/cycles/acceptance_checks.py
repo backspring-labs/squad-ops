@@ -31,6 +31,7 @@ from typing import Any
 
 from squadops.cycles.acceptance_check_spec import (
     CHECK_ASSERTION_KINDS,
+    CHECK_CONTAINER_PACKAGING,
     CHECK_CONTRACT_ASSERTIONS,
     CHECK_DECLARED_IMPORTS,
     CHECK_ENDPOINT_DEFINED,
@@ -46,6 +47,7 @@ from squadops.cycles.acceptance_check_spec import (
     parse_method_path,
     parse_method_path_status,
 )
+from squadops.cycles.container_packaging import packaging_findings
 from squadops.cycles.source_termination import (
     SCANNABLE_EXTENSIONS,
     check_termination,
@@ -2025,6 +2027,65 @@ class FrontendCompilesCheck(BaseCheck):
     async def _run(argv: list[str], cwd: Path, timeout_s: int) -> tuple[int | None, str, str]:
         """Run one build step; ``(returncode, stdout, stderr)``, rc None on timeout."""
         return await _run_argv(argv, cwd, timeout_s)
+
+
+@register_check(CHECK_CONTAINER_PACKAGING)
+class ContainerPackagingCheck(BaseCheck):
+    """#598: the emitted container's packaging, read statically and reported only.
+
+    The recipe (``file``) against the materialised tree — the accepted workspace plus this
+    task's own artifacts, which is the build context an image would be built from. The
+    findings are the three pf-38 defects (``container_packaging.packaging_findings``); the
+    outcome fails with them named so they are banked, and the warning severity the spec
+    declares keeps that failure advisory everywhere it is read. Never builds an image."""
+
+    async def evaluate(
+        self,
+        params: dict[str, Any],
+        workspace_root: Path,
+        *,
+        stack: str | None = None,
+    ) -> CheckOutcome:
+        try:
+            recipe = _safe_resolve(params["file"], workspace_root)
+        except _SafetyError as exc:
+            return CheckOutcome.error(reason=exc.reason)
+        if not recipe.is_file():
+            return CheckOutcome.failed(reason="file_not_found", file=str(params["file"]))
+        try:
+            text = recipe.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return CheckOutcome.error(reason="file_unreadable")
+
+        root = workspace_root.resolve()
+        tree: list[str] = []
+        for path in root.rglob("*"):
+            if len(tree) >= DEFAULT_GLOB_MATCH_CAP:
+                break
+            if path.is_file():
+                tree.append(path.relative_to(root).as_posix())
+
+        def read_file(rel: str) -> str | None:
+            try:
+                target = _safe_resolve(rel, root)
+            except _SafetyError:
+                return None
+            if not target.is_file():
+                return None
+            try:
+                return target.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                return None
+
+        findings = packaging_findings(text, str(params["file"]), tree, read_file)
+        if findings:
+            codes = sorted({f["finding"] for f in findings})
+            return CheckOutcome.failed(
+                reason=f"{len(findings)} packaging finding(s): {', '.join(codes)}",
+                file=str(params["file"]),
+                findings=findings,
+            )
+        return CheckOutcome.passed(file=str(params["file"]), findings=[])
 
 
 # ---------------------------------------------------------------------------

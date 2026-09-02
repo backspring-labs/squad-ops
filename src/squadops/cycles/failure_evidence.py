@@ -19,6 +19,7 @@ from squadops.cycles.check_registry import (
 )
 from squadops.cycles.emission_integrity import extraction_loss_suspected
 from squadops.cycles.verification_integrity import ResultStatus
+from squadops.cycles.verification_normalize import row_is_blocking_failure
 
 #: Check rows whose failure means the suite contradicts a declaration (the contract's
 #: pinned statuses, the manifest's field kinds) — the suite's own defect, by construction.
@@ -191,10 +192,7 @@ def derive_failure_category(evidence: dict[str, Any]) -> str:
     ]
     if skipped_boot:
         return FailureEvidenceCategory.SANDBOX_PREEXEC_FAILURE
-    if any(
-        r.get("passed") is False or r.get("status") in (ResultStatus.FAILED, ResultStatus.ERROR)
-        for r in rows
-    ):
+    if any(row_is_blocking_failure(r) for r in rows):
         return FailureEvidenceCategory.EXECUTED_AND_FAILED
     return FailureEvidenceCategory.EVIDENCE_UNAVAILABLE
 

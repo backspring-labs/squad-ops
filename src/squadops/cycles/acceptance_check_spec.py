@@ -55,6 +55,15 @@ FAILURE_OWNERSHIP_VALUES: frozenset[str] = frozenset(
 )
 
 
+#: Where a framework-injected ``file`` check is applied (``CheckSpec.injection_scope``).
+#: ``file``: each emitted artifact whose extension the check parses. ``recipe``: each
+#: container recipe (#598). The handler seam reads ``framework_injected_checks(scope)``;
+#: nothing infers a scope from the shape of another field.
+INJECTION_SCOPE_FILE = "file"
+INJECTION_SCOPE_RECIPE = "recipe"
+INJECTION_SCOPES = frozenset({INJECTION_SCOPE_FILE, INJECTION_SCOPE_RECIPE})
+
+
 @dataclass(frozen=True)
 class CheckSpec:
     """Static contract for a typed acceptance check.
@@ -114,6 +123,13 @@ class CheckSpec:
             task could never produce an executed verdict. Declared here so the
             authoring vocabulary renders it and dispatch can strip dead checks;
             derived consumers cannot drift from this table.
+        injection_scope: WHICH emitted artifacts a framework-injected ``file`` check
+            is applied to (``INJECTION_SCOPES``): ``file`` — every artifact whose
+            extension the check parses (the default); ``recipe`` — every container
+            recipe (``is_container_recipe``), which has no extension for the file
+            rule to see (#598). Declared, not inferred from an empty
+            ``applicable_extensions``: a file-scoped check that happened to declare
+            none would otherwise turn into a recipe check by accident.
 
     Governance attributes (1.5 A5, #730 — required keyword-only so every
     present and future entry DECLARES its governance; there is no default to
@@ -156,6 +172,7 @@ class CheckSpec:
     required_tooling: frozenset[str] = frozenset()
     applicable_extensions: frozenset[str] = frozenset()
     framework_injected: bool = False
+    injection_scope: str = "file"
     failure_ownership: str = field(kw_only=True)
     qa_available: bool = field(kw_only=True)
     signature_participation: bool = field(kw_only=True)
@@ -171,6 +188,10 @@ class CheckSpec:
         if self.blocking_default not in ALLOWED_SEVERITIES:
             raise ValueError(
                 f"check {self.name!r}: unknown blocking_default {self.blocking_default!r}"
+            )
+        if self.injection_scope not in INJECTION_SCOPES:
+            raise ValueError(
+                f"check {self.name!r}: unknown injection_scope {self.injection_scope!r}"
             )
 
 
@@ -426,6 +447,28 @@ CHECK_HARNESS_BOUNDARY = "harness_boundary"
 # literal that stops matching resolves to "this stack has no views" rather than erroring.
 CHECK_FRONTEND_COMPILES = "frontend_compiles"
 
+# #598: the emitted container's packaging, read statically — the three pf-38 defects as
+# findings over the recipe and the tree it copies from. REPORTING-ONLY this line
+# (``blocking_default="warning"``): the seam never missions on it, the verdict ledger, the
+# correction signature and the failure category read it as advisory, and the findings are
+# banked on the task's typed-check evaluation artifact for the per-round record. Whether it
+# becomes blocking, and whether the image is built in-cycle (``package_builds``, declared
+# unbuilt below), are the owner's separate calls (1.7.1 plan §6).
+CHECK_CONTAINER_PACKAGING = "container_packaging"
+#: The recipe an emission is recognised by: a file named ``Dockerfile`` at any depth, or
+#: ``Dockerfile.<variant>``. Container vocabulary, not a stack's — both stacks package with
+#: one, and the builder emits it under this name on every profile.
+CONTAINER_RECIPE_BASENAME = "Dockerfile"
+
+
+def is_container_recipe(path: str) -> bool:
+    """Whether ``path`` names a container recipe (``Dockerfile`` / ``Dockerfile.<variant>``)."""
+    from pathlib import PurePosixPath
+
+    name = PurePosixPath(path).name
+    return name == CONTAINER_RECIPE_BASENAME or name.startswith(CONTAINER_RECIPE_BASENAME + ".")
+
+
 # #629 (1.5 A6/D2): the ADVISORY prose-vs-contract identity. Deliberately NOT a
 # ``CHECK_SPECS`` entry — that would make it plan-authorable; it names the
 # warning rows the plan-prose lint emits (``implementation_plan``), keeping its
@@ -532,9 +575,26 @@ def framework_file_scoped_checks() -> dict[str, frozenset[str]]:
         name: spec.applicable_extensions
         for name, spec in CHECK_SPECS.items()
         if spec.framework_injected
+        and spec.injection_scope == INJECTION_SCOPE_FILE
         and spec.required_params == frozenset({"file"})
         and spec.applicable_extensions
     }
+
+
+def framework_injected_checks(scope: str) -> tuple[str, ...]:
+    """The framework-injected ``file`` checks declared for ``scope`` (``INJECTION_SCOPES``),
+    sorted — what the handler seam applies to an emission, read from the specs rather
+    than from a list kept beside them (#1082's drift). A check's scope is its own
+    declaration; an unknown scope names nothing."""
+    return tuple(
+        sorted(
+            name
+            for name, spec in CHECK_SPECS.items()
+            if spec.framework_injected
+            and spec.required_params == frozenset({"file"})
+            and spec.injection_scope == scope
+        )
+    )
 
 
 def uncovered_languages(check_name: str) -> dict[str, str]:
@@ -958,7 +1018,47 @@ CHECK_SPECS: dict[str, CheckSpec] = {
         replayable=True,
         blocking_default="error",
     ),
+    CHECK_CONTAINER_PACKAGING: CheckSpec(
+        name=CHECK_CONTAINER_PACKAGING,
+        required_params=frozenset({"file"}),
+        param_types={"file": str},
+        path_params=frozenset({"file"}),
+        # Recipe-scoped, not suffix-scoped: a Dockerfile has no extension, and this is
+        # not a language check — ``applicable_extensions`` stays empty so the #1216
+        # coverage disclosure (a language axis) does not claim it, and injection keys
+        # on ``is_container_recipe`` through the declared scope.
+        framework_injected=True,
+        injection_scope=INJECTION_SCOPE_RECIPE,
+        example={"file": "Dockerfile"},
+        notes=(
+            "Applied by the framework to every emitted container recipe (a file named "
+            "Dockerfile), REPORTING-ONLY: three static findings over the recipe, the tree "
+            "it copies from and the entry script it runs — `npm ci` with no lockfile in "
+            "the build context, a `COPY --from` of dist-packages off an official python "
+            "image, and apt's nginx default site left in place under a conf.d server "
+            "block (#598: pf-38's three build/run failures behind an accepted verdict). "
+            "Does not build or start the image; `package_builds` is that criterion and "
+            "stays declared unbuilt. Findings are banked on the evaluation artifact; the "
+            "warning severity keeps them out of the verdict, the correction signature "
+            "and the repair loop."
+        ),
+        failure_ownership=OWNERSHIP_PRODUCT,
+        qa_available=False,
+        # Reporting-only: it never fails a task, so a chain's identity must not read it.
+        signature_participation=False,
+        # Advisory rows are not ledger inputs (verification_normalize); banked elsewhere.
+        outcome_contribution=False,
+        replayable=True,
+        blocking_default="warning",
+    ),
 }
+
+
+def framework_recipe_scoped_checks() -> tuple[str, ...]:
+    """The framework-injected checks applied to container recipes (#598) — the
+    ``recipe`` scope of ``framework_injected_checks``, kept as a name because the
+    handler seam and the menu read it beside ``is_container_recipe``."""
+    return framework_injected_checks(INJECTION_SCOPE_RECIPE)
 
 
 @dataclass(frozen=True)
@@ -984,7 +1084,9 @@ DECLARED_UNBUILT_CHECKS: tuple[DeclaredUnbuiltCheck, ...] = (
         reason=(
             "'the emitted container builds and runs' requires docker-in-"
             "verification (sandbox territory, SIP-0102 steps 3-7) and "
-            "blueprint-owned packaging facts (Generalized Build)"
+            "blueprint-owned packaging facts (Generalized Build). The static "
+            "half — pf-38's three recipe defects as findings — is "
+            "`container_packaging`, reporting-only (#598, 1.7.1)"
         ),
         trigger="Stack Blueprint lands (1.6)",
     ),
