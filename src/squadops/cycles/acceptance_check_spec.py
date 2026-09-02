@@ -472,6 +472,16 @@ CHECK_FRONTEND_COMPILES = "frontend_compiles"
 # becomes blocking, and whether the image is built in-cycle (``package_builds``, declared
 # unbuilt below), are the owner's separate calls (1.7.1 plan §6).
 CHECK_CONTAINER_PACKAGING = "container_packaging"
+
+# #1255: the handoff document carries the build profile's required sections. Bound at plan
+# time onto the builder task that owns the document (``task_plan._handoff_section_criteria``)
+# with the profile's sections as self-contained params, the way the contract-assertion, kind
+# and anchor gates are — never authored. The rule is ``capabilities.handoff_sections``, the
+# same one the builder handler's validation applies, so the emission seam, the repair's own
+# evaluation and runtime-api's verifier all read one fact. Before this, a builder task had no
+# typed criterion over its handoff at all once #1252 stripped the plan's regexes, and the
+# repair of a missing section was ``unverifiable / no_typed_criteria`` — discarded unheard.
+CHECK_SECTIONS_PRESENT = "sections_present"
 #: The recipe an emission is recognised by: a file named ``Dockerfile`` at any depth, or
 #: ``Dockerfile.<variant>``. Container vocabulary, not a stack's — both stacks package with
 #: one, and the builder emits it under this name on every profile.
@@ -1073,6 +1083,32 @@ CHECK_SPECS: dict[str, CheckSpec] = {
             "(#668: fay-14's suite made zero anchor queries in every version)."
         ),
         failure_ownership=OWNERSHIP_SUITE,
+        qa_available=True,
+        signature_participation=True,
+        outcome_contribution=True,
+        replayable=True,
+        blocking_default="error",
+    ),
+    CHECK_SECTIONS_PRESENT: CheckSpec(
+        name=CHECK_SECTIONS_PRESENT,
+        applicable_extensions=frozenset({".md"}),
+        required_params=frozenset({"file", "sections"}),
+        param_types={"file": str, "sections": list},
+        path_params=frozenset({"file"}),
+        framework_injected=True,
+        example={
+            "file": "qa_handoff.md",
+            "sections": ["## How to Run", "## How to Test", "## Expected Behavior"],
+        },
+        notes=(
+            "Bound by the framework onto the builder task that owns the handoff document, "
+            "with the build profile's required sections as params; never authored. A section "
+            "is present when any of its phrasings appears anywhere in the document, in any "
+            "order (`capabilities.handoff_sections` — the builder handler's own rule, so the "
+            "emission seam and the repair verifier cannot disagree). Each failure names the "
+            "sections missing. Runs anywhere: pure text, no toolchain."
+        ),
+        failure_ownership=OWNERSHIP_PRODUCT,
         qa_available=True,
         signature_participation=True,
         outcome_contribution=True,

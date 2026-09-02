@@ -9,6 +9,22 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 check-environment seam, 2026-09-01: **B** — typed checks execute in the producing role's
 agent container, at emission and at repair, and each image provisions its toolchain as data.
 
+### Fixed — the handoff's required sections are a typed criterion, so a builder repair can be decided (#1255)
+- The 1.7.1 React shakeout on the main-built deploy (`cyc_c6db3ffc1f4e`) rejected the
+  builder's first handoff for two missing sections, the round-0 repair carried every one
+  of them, and runtime-api discarded it — `unverifiable / no_typed_criteria` — then left
+  the task failed under #1221. Once #1252 stripped the plan's handoff regexes, a builder
+  task carried no typed criterion at all: the section rule lived only inside the builder
+  handler's validation, and `container_packaging` is injected at the handler seam, so the
+  verifier held nothing to run. `sections_present` is now bound at plan time onto the
+  builder task that owns the handoff, with the build profile's sections as params (never
+  authored, #1254's direction); the handler's validation and the evaluator read one rule
+  (`capabilities.handoff_sections`, the keyword match the builder has always applied), so
+  the emission seam, the repair's own evaluation and runtime-api's verifier agree. The
+  verifier's `no_typed_criteria` verdict now carries the rows the repair executed — the
+  builder had reported one and the log said `agent_rows=0`. Replayed on both stored
+  documents: the first fails naming the two sections, the repair passes.
+
 ### Fixed — a plan-authored regex over the handoff's headings no longer fails the builder (#1252)
 - The 1.7.1 React shakeout `cyc_8118588858a6` spent two of its three correction rounds on
   the word order of two headings: the plan authored `## .*(Backend|Server|API).*(Run|Start|

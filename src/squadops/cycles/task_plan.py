@@ -22,6 +22,7 @@ from uuid import uuid4
 
 from squadops.capabilities.context_assembly import get_context_contract
 from squadops.capabilities.handlers.build_profiles import (
+    QA_HANDOFF_REQUIRED_SECTIONS,
     ROUTING_BUILDER_PRESENT,
     ROUTING_FALLBACK_NO_BUILDER,
 )
@@ -41,6 +42,7 @@ from squadops.cycles.acceptance_check_spec import (
     CHECK_DOM_ANCHOR_QUERIES,
     CHECK_FILL_SLOT_SIGNATURE,
     CHECK_HARNESS_BOUNDARY,
+    CHECK_SECTIONS_PRESENT,
     is_check_applicable,
 )
 from squadops.cycles.agent_config import resolve_agent_config
@@ -339,6 +341,8 @@ _KNOWN_WORKLOAD_TYPES = {
 
 # Task types that are build steps (for routing_reason metadata)
 _BUILD_TASK_TYPES = {s[0] for s in BUILD_TASK_STEPS} | {s[0] for s in BUILDER_ASSEMBLY_TASK_STEPS}
+# The builder role's own assembly tasks — the ones the build profile's handoff rule binds to.
+_BUILDER_TASK_TYPES = {task for task, role in BUILDER_ASSEMBLY_TASK_STEPS if role == "builder"}
 
 # Workload-invariant tail (#439): assembly and verification are workload-owned.
 # Plan substitution may replace dev work but must never descope these — a
@@ -815,6 +819,27 @@ def _harness_boundary_criteria(
     ]
 
 
+def _handoff_section_criteria(task_type: str, plan_task: Any) -> list[TypedCheck]:
+    """#1255: the build profile's required handoff sections, bound onto the builder task that
+    owns the handoff document — one ``sections_present`` check with the profile's sections as
+    self-contained params, so the builder seam evaluates it at emission, the repair evaluates
+    it on its patch, and runtime-api's verifier evaluates the same row and can decide. The
+    planner never authors it (#1254's direction: derived surfaces are not authorable); it
+    is the typed form of the handler's own validation, not a second rule. Empty for every
+    other task type and for a builder task that does not own the document."""
+    if task_type not in _BUILDER_TASK_TYPES:
+        return []
+    return [
+        TypedCheck(
+            check=CHECK_SECTIONS_PRESENT,
+            params={"file": art, "sections": list(QA_HANDOFF_REQUIRED_SECTIONS)},
+            id=f"handoff-sections:{art}",
+        )
+        for art in plan_task.expected_artifacts
+        if str(art).split("/")[-1] == HANDOFF_DOCUMENT
+    ]
+
+
 def _fill_slot_signature_criteria(
     task_type: str,
     plan_task: Any,
@@ -1113,6 +1138,9 @@ def generate_task_plan(
             acceptance.extend(
                 _fill_slot_signature_criteria(task_type, plan_task, interface_manifest)
             )
+            # #1255: the build profile's handoff sections, bound onto the builder task that
+            # owns the document — the handler's validation as a criterion every seam reads.
+            acceptance.extend(_handoff_section_criteria(task_type, plan_task))
             inputs["acceptance_criteria"] = acceptance
 
         inject_contract_inputs(inputs, contract, task_type, interface_manifest)

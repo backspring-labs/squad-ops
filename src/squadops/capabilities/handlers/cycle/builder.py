@@ -12,6 +12,7 @@ from squadops.capabilities.handlers.base import (
     HandlerEvidence,
     HandlerResult,
 )
+from squadops.capabilities.handoff_sections import missing_sections
 from squadops.llm.exceptions import LLMError
 from squadops.llm.models import ChatMessage
 
@@ -92,19 +93,11 @@ class BuilderAssembleHandler(_CycleTaskHandler):
             if qa_handoff_content is None:
                 return "qa_handoff.md not found in builder output"
 
-            qa_lower = qa_handoff_content.lower()
-            _SECTION_KEYWORDS: dict[str, tuple[str, ...]] = {
-                "## How to Run": ("how to run", "running", "## run"),
-                "## How to Test": ("how to test", "testing", "## test"),
-                "## Expected Behavior": ("expected behavior", "expected output", "## expected"),
-            }
-            missing_sections = []
-            for section in required_sections:
-                keywords = _SECTION_KEYWORDS.get(section, (section.lower(),))
-                if not any(kw in qa_lower for kw in keywords):
-                    missing_sections.append(section)
-            if missing_sections:
-                return f"qa_handoff.md missing required sections: {missing_sections}"
+            # #1255: one rule, shared with the ``sections_present`` criterion the framework
+            # binds onto this task — this validation is the backstop, not a second rule.
+            missing = missing_sections(qa_handoff_content, required_sections)
+            if missing:
+                return f"qa_handoff.md missing required sections: {missing}"
 
         missing_files = [rf for rf in effective_required if rf not in extracted_basenames]
         if missing_files:

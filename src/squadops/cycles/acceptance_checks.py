@@ -38,6 +38,7 @@ from squadops.cycles.acceptance_check_spec import (
     CHECK_DOM_ANCHOR_QUERIES,
     CHECK_ENDPOINT_DEFINED,
     CHECK_FILL_SLOT_SIGNATURE,
+    CHECK_SECTIONS_PRESENT,
     CHECK_SPECS,
     CHECK_UNDEFINED_NAMES,
     CHECK_UNTERMINATED_SOURCE,
@@ -2082,6 +2083,50 @@ class DomAnchorQueriesCheck(BaseCheck):
                 **observations,
             )
         return CheckOutcome.passed(file=rel, findings=[], **observations)
+
+
+@register_check(CHECK_SECTIONS_PRESENT)
+class SectionsPresentCheck(BaseCheck):
+    """#1255: a markdown document carries every required section, by name, in any order.
+
+    ``sections`` are the build profile's (the framework binds them onto the builder task
+    that owns the handoff); the rule is ``handoff_sections.missing_sections`` — the same
+    one the builder handler's validation applies. An empty ``sections`` judges nothing
+    and skips."""
+
+    async def evaluate(
+        self,
+        params: dict[str, Any],
+        workspace_root: Path,
+        *,
+        stack: str | None = None,
+    ) -> CheckOutcome:
+        from squadops.capabilities.handoff_sections import missing_sections
+
+        rel = str(params["file"])
+        sections = [str(s) for s in (params.get("sections") or []) if str(s).strip()]
+        if not sections:
+            return CheckOutcome.skipped(reason="no_sections_declared", file=rel)
+        try:
+            target = _safe_resolve(rel, workspace_root)
+        except _SafetyError as exc:
+            return CheckOutcome.error(reason=exc.reason)
+        if not target.is_file():
+            return CheckOutcome.failed(reason="file_not_found", file=rel)
+        try:
+            content = target.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return CheckOutcome.error(reason="file_unreadable")
+
+        missing = missing_sections(content, sections)
+        if missing:
+            return CheckOutcome.failed(
+                reason=f"missing section(s): {', '.join(missing)}",
+                file=rel,
+                missing=missing,
+                sections=sections,
+            )
+        return CheckOutcome.passed(file=rel, missing=[], sections=sections)
 
 
 @register_check(CHECK_ADDITIVE_CONTAINMENT)
