@@ -446,3 +446,93 @@ class TestCorrectionIsHandedTheDispatchedEnvelope:
 
         assert recorded["envelope"] is enriched
         assert recorded["envelope"].inputs["acceptance_workspace_files"] == {"package.json": "{}"}
+
+
+class TestTheVerifierIsHandedTheRepairsRows:
+    """#1256: `_try_accept_patch` verified against the FAILED task's `repair_typed_checks`
+    — a key the repair handler writes on its OWN outputs — so rule B never delivered a
+    row in a live cycle (cyc_c6db3ffc1f4e: neo `rows=10 executed=10`, runtime-api
+    `agent_rows=0`, twice). The rows now ride the protocol result; this pins that the
+    verifier receives them and not anything the failed result carries."""
+
+    async def test_the_protocol_results_rows_reach_verify_patched_artifacts(
+        self, mock_prefect_workflow_tracker, cycle, failed_envelope, reply_router, monkeypatch
+    ):
+        from adapters.cycles import dispatched_flow_executor as executor_module
+        from adapters.cycles.correction_runner import CorrectionProtocolResult
+        from squadops.cycles.patch_verification import (
+            PATCH_UNVERIFIABLE,
+            REASON_NO_EXECUTED_BLOCKING_CHECKS,
+            PatchVerification,
+        )
+        from squadops.cycles.task_outcome import TaskOutcome
+
+        ex = _make_executor(mock_prefect_workflow_tracker, reply_router)
+        rows = {
+            "environment": "agent:dev",
+            "checks": [
+                {
+                    "check": "acceptance:frontend_compiles",
+                    "status": "failed",
+                    "severity": "error",
+                    "params": {"file": "frontend/src/views/RunListView.jsx"},
+                }
+            ],
+        }
+        ex._correction_runner = MagicMock()
+        ex._correction_runner.run_correction_protocol = AsyncMock(
+            return_value=CorrectionProtocolResult(
+                correction_path="patch",
+                repair_artifacts=[
+                    {"name": "frontend/src/views/RunListView.jsx", "content": "export default 1\n"}
+                ],
+                repair_typed_checks=(rows,),
+            )
+        )
+        handed: dict = {}
+
+        async def capture(criteria, artifacts, **kwargs):
+            handed.update(kwargs)
+            return PatchVerification(
+                status=PATCH_UNVERIFIABLE, reason=REASON_NO_EXECUTED_BLOCKING_CHECKS
+            )
+
+        monkeypatch.setattr(executor_module, "verify_patched_artifacts", capture)
+        decoy = {"environment": "agent:nobody", "checks": [{"check": "acceptance:decoy"}]}
+        failed = TaskResult(
+            task_id=failed_envelope.task_id,
+            status="FAILED",
+            error="acceptance:frontend_compiles failed",
+            outputs={
+                "outcome_class": TaskOutcome.SEMANTIC_FAILURE,
+                "artifacts": [],
+                # The failed task's own outputs never carry the repair's rows; before
+                # #1256 this key was the only place the executor looked.
+                "repair_typed_checks": decoy,
+            },
+        )
+
+        action = await ex._handle_task_outcome(
+            result=failed,
+            envelope=failed_envelope,
+            enriched_envelope=failed_envelope,
+            patched_result_holder={},
+            cycle=cycle,
+            run_id="run_001",
+            task_attempt_counts={failed_envelope.task_id: 1},
+            consecutive_failures={},
+            correction_counter={"n": 0},
+            correction_signature_state={},
+            scaffold_enforcement_carry=[],
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+        )
+
+        assert handed["agent_checks"] == (rows,)
+        assert handed["agent_checks"] is not decoy
+        # The stubbed verdict is #1221's deadlock shape, so the round terminates — the
+        # hand-off above is what is under test, not the verdict.
+        assert action == "break_correction"
