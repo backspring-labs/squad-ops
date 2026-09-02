@@ -9,6 +9,18 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 check-environment seam, 2026-09-01: **B** — typed checks execute in the producing role's
 agent container, at emission and at repair, and each image provisions its toolchain as data.
 
+### Changed — what the 1.7.1 shakeouts taught, written where it outlives the line
+- Four deploys, each shakeout pair finding the next seam defect, three of them latent in
+  the pack's own PRs: the tests had handed each seam its input and never entered where the
+  cycle enters. `docs/TEST_QUALITY_STANDARD.md` gains anti-pattern 6a (a seam test that hands
+  the seam its input) and a wiring-test row in the minimum coverage; the PR template's
+  Evidence asks for the entry point exercised, the evaluation-seam table for a new or newly
+  bound typed check, and what a removed thing produced and for whom; `CLAUDE.md` gains the
+  typed-check binding rule (#1259), the mirror rule on removal (#1253 → #1255), and the
+  shakeout loop's exit rule with the diagnostic and readout rules (#1256, #1261). The
+  procedure around the driver — the loop, diagnostics, readouts, detached launches,
+  re-attaching a dead driver, cancelling an orphaned run — is
+  `docs/plans/verification-sets/README.md`, which the driver's docstring now points at.
 ### Fixed — a file the patch never carries is not evidence against the patch (#1259)
 - The Next.js shakeout on the final 1.7.1 deploy (`cyc_9c379355b5e8`, round 0) refused a
   correct route fix: the dev repair of a qa failure is judged against the qa task's

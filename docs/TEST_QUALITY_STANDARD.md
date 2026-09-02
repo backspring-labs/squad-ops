@@ -139,6 +139,43 @@ async def test_handler_handles_varied_responses(self, response):
     # Assert based on expected behavior per response type
 ```
 
+### 6a. Seam Tests That Hand the Seam Its Input
+
+A test that constructs a seam's input by hand proves the seam and says nothing about who
+calls it. Three defects in the 1.7.1 line were latent from their own PRs for exactly this
+reason, and every one was found by a live cycle rather than by CI:
+
+- #1250 — the repair hand-off was tested with an envelope that already carried the
+  workspace key; the executor handed the runner a different envelope that never had it.
+- #1256 — the verifier was tested with the repair's rows passed straight in; the executor
+  read them off the *failed task's* result, where they never are. Rule B ran for three
+  weeks and never delivered a row in a live round.
+- #1261 — the tsc classifier was tested with a `TS1005` line; the live tree carried
+  `TS18048`, which the prefix rule also matched.
+
+```python
+# Anti-pattern: the seam is proven, the wiring is not
+async def test_agent_rows_decide():
+    verdict = await verify_patched_artifacts(criteria, patch, agent_checks=rows)
+    assert verdict.decided_by_agent == 1
+
+# Correct: enter where the live path enters, with the collaborators the live path has
+async def test_the_protocol_results_rows_reach_the_verifier(monkeypatch):
+    ex._correction_runner.run_correction_protocol = AsyncMock(
+        return_value=CorrectionProtocolResult(correction_path="patch", repair_typed_checks=(rows,))
+    )
+    monkeypatch.setattr(executor_module, "verify_patched_artifacts", capture)
+    await ex._handle_task_outcome(result=failed, envelope=envelope, ...)
+    assert handed["agent_checks"] == (rows,)
+```
+
+For any change to a seam another component calls — a new output key, a new parameter, a
+row another environment consumes — the PR carries **both**: the seam test, and one test
+that enters at the caller the live cycle uses (the executor's outcome handler, the
+correction protocol, the check registry) and asserts what arrives. Name the entry point in
+the PR's Evidence section. Fixtures replayed from stored artifacts prove the seam's logic;
+only the wiring test proves the cycle reaches it.
+
 ### 6. Tests That Can Never Fail
 
 **Bad:**
@@ -159,6 +196,8 @@ The dataclass field has `default_factory=dict`. Python guarantees this. The test
 - **Data transformation correctness** — input X produces output Y (exact values)
 - **Error handling** — what happens when things break (not just that they don't break when things work)
 - **Invariants** — immutability, uniqueness, ordering guarantees that business logic depends on
+- **Wiring of a changed seam** — one test that enters at the live caller and asserts what
+  reaches the seam (anti-pattern 6a); the seam's own test is necessary, not sufficient
 
 ### P1: Test When Non-Trivial
 - **Edge cases** — empty inputs, max-length inputs, boundary values, None where Optional
@@ -197,6 +236,7 @@ For each new feature (handler, model, port method), provide:
 | Error paths | 1-2 (missing input, invalid input, upstream failure) |
 | Edge cases | 1-2 (empty, boundary, None) |
 | Integration seam | 1 (round-trip or DTO mapping, if applicable) |
+| Seam wiring | 1 per changed seam, entering at the live caller (anti-pattern 6a) |
 
 A handler with 4 strong tests is worth more than 20 weak ones.
 

@@ -31,6 +31,10 @@ Usage:
 ``shakeout`` is NON-COUNTING by declaration: it records the deploy's identity instead of
 asserting it (first cycle on new images — nothing to hold to yet). ``roll`` asserts the
 frozen image ids, pins HEAD on roll 1 and holds it, and asserts the config hash.
+
+The procedure around this script — the shakeout loop and its exit rule, what a diagnostic
+must be, how a launch survives the session, how a dead driver is re-attached — is
+``docs/plans/verification-sets/README.md``.
 """
 
 from __future__ import annotations
