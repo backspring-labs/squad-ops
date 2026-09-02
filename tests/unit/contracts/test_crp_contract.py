@@ -7,7 +7,7 @@ and that hash computation matches between CLI and server.
 
 import pytest
 
-from squadops.api.routes.cycles.dtos import CycleCreateRequest
+from squadops.api.cycle_schemas import CycleCreateRequest
 from squadops.contracts.cycle_request_profiles import (
     compute_overrides,
     list_profiles,

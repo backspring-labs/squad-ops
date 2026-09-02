@@ -10,11 +10,11 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 
-from squadops.api.middleware.auth import require_scopes
-from squadops.api.routes.cycles.dtos import (
+from squadops.api.cycle_schemas import (
     CycleRequestProfileResponse,
     PromptMetaResponse,
 )
+from squadops.api.middleware.auth import require_scopes
 from squadops.auth.models import Scope
 
 router = APIRouter(

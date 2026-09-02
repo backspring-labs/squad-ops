@@ -99,6 +99,46 @@ jobs:
       - name: Regression suite (ruff check + format + test-quality lint + pytest)
         run: bash scripts/dev/run_regression_tests.sh
 
+  install-smoke:
+    # #582: until 1.7.1 the package declared no runtime dependencies, so a bare
+    # `pip install squadops` produced a package that raised at first import — and every
+    # lane here sidestepped it with `pip install -e .` plus tests/requirements.txt. This job
+    # installs the package the way a downstream consumer does: a fresh venv, no editable
+    # install, no extras, no test harness. It proves the metadata alone yields a working
+    # import, a working console script and the data assets the code reads at runtime.
+    # ci-constraints.txt only holds it to the versions CI tests (#1041); it adds nothing.
+    name: fresh-venv install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install from metadata alone
+        run: |
+          python -m venv "$RUNNER_TEMP/fresh"
+          "$RUNNER_TEMP/fresh/bin/pip" install --upgrade pip
+          "$RUNNER_TEMP/fresh/bin/pip" install . -c ci-constraints.txt
+          "$RUNNER_TEMP/fresh/bin/pip" list --format=freeze
+
+      - name: The package imports, the console script runs, the assets shipped
+        # Outside the checkout, so a missing file cannot be found in the source tree.
+        working-directory: ${{ runner.temp }}
+        run: |
+          fresh/bin/python -c "import squadops, squadops.cli.main"
+          fresh/bin/squadops --help
+          fresh/bin/python - <<'EOF'
+          import importlib.resources as r
+          from squadops.contracts.cycle_request_profiles import list_profiles
+          profiles = list_profiles()
+          assert profiles, "no cycle request profiles shipped — package-data is missing"
+          assert r.files("squadops.prompts").joinpath("fragments/manifest.yaml").is_file()
+          print(f"{len(profiles)} request profiles, prompt fragment manifest present")
+          EOF
+
   integration:
     # #242: nothing ran tests/integration/ on PRs, so four independent breakages sat in
     # test_pulse_check_e2e.py unnoticed (#211) and sixteen tests failed on every run of

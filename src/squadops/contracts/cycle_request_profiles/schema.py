@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field, field_validator
 
-from squadops.api.routes.cycles.dtos import CycleCreateRequest
+from squadops.api.cycle_schemas import CycleCreateRequest
 
 # Ground truth for allowed default keys — derived from the server DTO (D9).
 _ALLOWED_DEFAULT_KEYS = set(CycleCreateRequest.model_fields.keys())

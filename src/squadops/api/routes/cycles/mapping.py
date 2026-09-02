@@ -4,7 +4,7 @@ Domain ↔ DTO mapping functions for SIP-0064.
 
 from __future__ import annotations
 
-from squadops.api.routes.cycles.dtos import (
+from squadops.api.cycle_schemas import (
     AgentProfileEntryResponse,
     ArtifactRefResponse,
     CycleOutcomeDTO,

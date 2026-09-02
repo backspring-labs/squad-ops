@@ -8,8 +8,8 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
+from squadops.api.cycle_schemas import BaselinePromoteRequest
 from squadops.api.middleware.auth import require_scopes
-from squadops.api.routes.cycles.dtos import BaselinePromoteRequest
 from squadops.api.routes.cycles.errors import handle_cycle_error
 from squadops.api.routes.cycles.mapping import artifact_to_response
 from squadops.auth.models import Scope

@@ -13,7 +13,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from squadops.api.routes.cycles.dtos import (
+from squadops.api.cycle_schemas import (
     GateDecisionRequest,
 )
 from squadops.api.routes.cycles.mapping import artifact_to_response, run_to_response

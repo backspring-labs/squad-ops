@@ -13,13 +13,13 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 
-from squadops.api.middleware.auth import require_scopes
-from squadops.api.routes.cycles.dtos import (
+from squadops.api.cycle_schemas import (
     ModelSpecResponse,
     PulledModelResponse,
     PullModelRequest,
     PullStatusResponse,
 )
+from squadops.api.middleware.auth import require_scopes
 from squadops.auth.models import Scope
 from squadops.ports.llm.provider import LLMCapability
 
