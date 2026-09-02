@@ -1,9 +1,10 @@
 # 1.7.1 — Verification Sets: Pre-registration
 
 **In force from roll 1, by the commit hash of this document on its branch, and unchanged
-thereafter.** Written 2026-09-02 (early morning ET), after the rebuild on the stacked 1.7.1
-pack and after both shakeouts, before the first counted launch. Merging it is the owner's act
-and does not change what it pre-registers; the branch commit is the record.
+thereafter.** Written 2026-09-02, revised the same day as each shakeout's finding became a
+merged fix and the deploy was rebuilt from main (§2), before the first counted launch.
+Merging it is the owner's act and does not change what it pre-registers; the branch commit is
+the record.
 
 This is the 1.7.1 plan's §4 (`docs/plans/1-7-1-plan.md`, rev 1 with as-landed notes) as data:
 **six counting rolls on FastAPI+React** (the measurement — every item of §2.3 came from this
@@ -35,9 +36,9 @@ window. Every fixed parameter is read from
 | Overrides | FastAPI+React: none. Next.js+TS: `build_profile=nextjs_ts`, `dev_capability=nextjs_ts` |
 | `resolved_config_hash` | FastAPI+React `c4d6a2165acf`, Next.js+TS `TBD-from-shakeout` — **unchanged from 1.6.6** on the React arm (the pack changed code, not configuration); asserted on every counting roll; a roll on any other hash is void |
 | `squad_profile_snapshot_ref` | `575707c58536cf3b…` — unchanged from 1.6.6 and 1.7.0; a roll on any other snapshot is void |
-| Deploy — commit | **`a00870d6`** — the head of `fix/1229-repair-forwards-the-dispatched-workspace`, the stacked tip of the pack: #1243 (#1130) → #1244 (#598) → #1245 (#1022) → #1246 (#668) → #1247 (#1123) → #1250 (the shakeout's fix), on main `e8193bb9` (which already carries #939, #1229 and #1153). The first tip, `d95f8e21`, was superseded by the Next.js shakeout's finding (§2). **Not main.** See §2 and §7. |
-| Deploy — 7 image ids | runtime-api `027f44a81ccf` · max `0717c85c4992` · neo `235ffc803e53` · nat `3fd32c6bca60` · bob `af9a719b425c` · eve `45fd005a625b` · data `431a5499cd36` — built 2026-09-02 08:08 ET from `a00870d6`; asserted at every counting launch by the driver; every container verified to carry the hand-off fix and the instrument lines (`docker exec … inspect.getsource`), `tsc` in neo and eve only. (The superseded set from `d95f8e21`: runtime-api `ccd81952be2e` · max `f6e8b8dfbe69` · neo `da9da7ab0bae` · nat `58089c21e847` · bob `9816af4df1b0` · eve `e4368e889bb0` · data `1f1358c9488b`.) |
-| Loaded, not built | verified in-container before the shakeouts (`docker exec … python -c`): every container imports the pack's seams (`qa_owned_suite_defects`, `absent_anchor_cases`, `INJECTION_SCOPE_SUITE` → `additive_containment`, `row_is_blocking_failure`, `anchor_findings`, `containment_findings`, `parse_pytest_failure_rows`, `parse_vitest_failure_text`, `client_surface_instructions`, the three new evaluators); `tsc` on PATH in neo and eve, absent in runtime-api and bob (as `DECLARED_TOOLING_GAPS` declares) |
+| Deploy — commit | **`816cc8f0`** — **main**, the merge of #1253. Main carries the whole pack merged by the owner on 2026-09-02: #1242 (#1144), #1243 (#1130), #1244 (#598), #1245 (#1022), #1246 (#668), #1247 (#1123), #1248 (#1151), #1249 (#582), #1250 (#1229's hand-off fix), #1253 (#1252's handoff validator), on top of #939, #1229 and #1153. Two earlier deploys were shaken out and superseded — the stacked tips `d95f8e21` and `a00870d6` (§2); the owner's ruling was to rebuild from main once the pack merged, which removes the "not main" deviation the first draft of this document pre-declared. |
+| Deploy — 7 image ids | runtime-api `6db6411b4e4b` · max `32b0170b2fd4` · neo `96a955fff072` · nat `636435ff47ad` · bob `fa04483c8ed7` · eve `43e1858c0c18` · data `6caacbbb1680` — built 2026-09-02 13:38–13:41Z from `816cc8f0`; asserted at every counting launch by the driver. (Superseded sets: from `a00870d6`, runtime-api `027f44a81ccf` · max `0717c85c4992` · neo `235ffc803e53` · nat `3fd32c6bca60` · bob `af9a719b425c` · eve `45fd005a625b` · data `431a5499cd36`; from `d95f8e21`, runtime-api `ccd81952be2e` · max `f6e8b8dfbe69` · neo `da9da7ab0bae` · nat `58089c21e847` · bob `9816af4df1b0` · eve `e4368e889bb0` · data `1f1358c9488b`.) |
+| Loaded, not built | verified in all seven containers after the `816cc8f0` build (`docker exec -i … python -`, `inspect.getsource` on the loaded objects): the executor hands the correction runner the enriched envelope (#1250) and logs `agent_rows=… agent_executed=…`; `validate_handoff_criteria` is wired at the framing gate and the dispatch strip logs `handoff_regex_stripped` (#1253); `squadops.api.cycle_schemas` imports (#582); every container imports the pack's seams (`qa_owned_suite_defects`, `absent_anchor_cases`, `INJECTION_SCOPE_SUITE` → `additive_containment`, `anchor_findings`, `containment_findings`, `parse_pytest_failure_rows`, `parse_vitest_failure_text`, `client_surface_instructions`, `_attach_typed_checks`); `tsc` on PATH in neo and eve, absent in runtime-api and bob (as `DECLARED_TOOLING_GAPS` declares); `/health` reports 1.7.0 |
 | Gate policy | 1.6.3 §6 constant, verbatim in each set config's `gate_notes`; `--as-agent`; the decider is recorded per roll |
 | Audit instrument | `scripts/dev/audit_delivered_app.py` at the deploy commit |
 | Driver | `verification_set_driver.py roll --set docs/plans/verification-sets/1-7-1-fastapi-react.yaml --roll N`, then `…/1-7-1-nextjs.yaml` — one roll per invocation |
@@ -47,20 +48,21 @@ window. Every fixed parameter is read from
 
 ## 2. Preconditions
 
-- **The deploy is the stacked pack tip, not main — pre-declared.** The owner asked (2026-09-01,
-  before bed) for the pack to be stacked as PRs and the validations run overnight; the only
-  tree that carries the whole pack is the last PR's head. The six PRs are unchanged from the
-  moment the images were built; **merging those exact commits does not void a roll** (the
-  merge commits add no tree change), and any other merge, a rebuild, or a force-push to any of
-  the five branches does. The owner may instead void the set and re-run from main — that is
-  the owner's call, recorded here as the alternative.
-- **Launches run from the pre-registration branch** (`docs/1-7-1-preregistration`), which is
-  where the set configs and the driver readouts exist; the owner's 2026-08-27 ruling was
-  "every launch runs from `main`". Stated as a deviation the owner rules on, not hidden: the
-  launch checkout affects only the driver and its configs (not the deploy), and the driver
-  pins that branch's HEAD at roll 1 so nothing moves under the set.
-- **Both shakeouts on THIS deploy, read before roll 1:**
-  - **FastAPI+React `cyc_04e7d5896054`** (10:08→10:53Z, 44 min): accepted, audit PASS,
+- **The deploy is main.** The first draft of this document pre-declared a stacked-tip deploy
+  (the owner asked on 2026-09-01, before bed, for the pack to be stacked as PRs and validated
+  overnight, and only the last PR's head carried the whole pack). Two stacked tips were built
+  and shaken out; each shakeout found a defect, each defect became a PR, and the owner merged
+  the whole pack on 2026-09-02 and ruled that the rolls run on a deploy built from main. The
+  pins in §1 are that build. The two superseded deploys and what each shakeout found are kept
+  below because they are the reason this deploy exists.
+- **Counted launches run from `main`** (the owner's 2026-08-27 ruling), which requires this
+  document and the two set configs to be merged before roll 1 — the driver and its readouts
+  are on main already; only the configs and this pre-registration are on the branch. The
+  shakeouts below were launched from the pre-registration branch (non-counting by
+  declaration; the launch checkout affects only the driver and its configs, not the deploy).
+- **Shakeouts, in order, read before roll 1.** Two per deploy; a deploy on which either stack
+  produced a fix is superseded, and both re-run on the fix:
+  - **On `d95f8e21` — FastAPI+React `cyc_04e7d5896054`** (10:08→10:53Z, 44 min): accepted, audit PASS,
     15/15, 0 corrections, gate `system:no_open_questions`, P0 held. Every typed row passed:
     `checks_by_environment` `{agent:development: 19, agent:builder: 6, agent:qa: 7}`;
     `container_packaging` ran on the builder's `Dockerfile` and passed (a clean recipe on
@@ -73,7 +75,7 @@ window. Every fixed parameter is read from
     placed it under `frontend/src/__tests__/`, outside the declared qa namespace
     `frontend/src/tests/`, which the anchor binding filters on — a fact for the record, not
     changed here). R1 bound and held; R2/R4/R7 unexercised (no correction round).
-  - **Next.js+TS `cyc_3ac86805439f`** (10:54→11:56Z, 61 min; its driver process was stopped
+  - **On `d95f8e21` — Next.js+TS `cyc_3ac86805439f`** (10:54→11:56Z, 61 min; its driver process was stopped
     from outside the session at ~11:00Z and a watcher re-attached, approving the gate with
     the §6 constant at 11:24Z): **rejected** after three correction rounds, audit FAIL, 8/15,
     26 failed emissions banked, `container_packaging` reporting `npm_ci_without_lockfile` on
@@ -85,13 +87,29 @@ window. Every fixed parameter is read from
     which #1221's option A left the task failed and the run could not recover. Cause, read
     from the executor: it verifies against the enriched envelope's workspace but handed the
     correction runner the base envelope, so rule B's forwarding found no workspace and the
-    repair's build check skipped for want of a frontend tree. Fixed in #1250 (stacked on
-    #1247), with the agent rows' statuses and reasons now logged. **This shakeout's deploy is
-    superseded**; both shakeouts re-run on the rebuilt deploy below, whose identity replaces
-    the pins in §1. R4's readout on this run: `repair_brief_case_counts [0]` — the qa repair
+    repair's build check skipped for want of a frontend tree. Fixed in #1250 (merged), with
+    the agent rows' statuses and reasons now logged. **This shakeout's deploy is superseded.**
+    R4's readout on this run: `repair_brief_case_counts [0]` — the qa repair
     of round 2 followed an emission failure (no fenced block), so the failed row carried no
     cases; the record must distinguish that from a brief that dropped cases it had.
-  - **Re-run on the rebuilt deploy (`a00870d6`):** TBD — filled from the records.
+  - **On `a00870d6` — FastAPI+React `cyc_8118588858a6`** (12:10→13:08Z, 57 min): accepted,
+    audit PASS, 17/17, gate `system:no_open_questions`, P0 held, `checks_by_environment`
+    `{agent:qa: 16, agent:development: 19, agent:builder: 21}`, `container_packaging` 1
+    reporting-only finding — **and three correction rounds, all spent on `regex_match` (6
+    failed rows)**: the planner had authored regexes over `qa_handoff.md` that fixed the
+    ORDER of the handoff's section headings, and the builder — whose profile requires those
+    sections by name in any order — was rejected three times for a heading order no rule
+    required. Filed as #1252, fixed in #1253 (a `validate_handoff_criteria` validator at the
+    framing gate, a dispatch-time strip of any regex over the handoff, the authoring rule
+    `no-regex-on-the-handoff`, and the vocabulary's regex example moved off the handoff), and
+    the audit over 40 stored plans behind it is #1254 (planner authors checks the framework
+    injects; 1.7.2's rider). R1 bound and held; R2/R4/R7 unexercised — the rounds were
+    builder rounds, not dev or qa repairs, so no typed row was decided by an agent. **This
+    deploy is superseded** by #1253's merge. Next.js+TS was not re-run on `a00870d6`: the
+    owner merged the pack while the React re-run was being read, and the default ruling
+    (rebuild from main) made a third deploy the one to shake out.
+  - **On `816cc8f0` (the pinned deploy) — FastAPI+React:** TBD — filled from the record.
+  - **On `816cc8f0` (the pinned deploy) — Next.js+TS:** TBD — filled from the record.
 - **Diagnostics for the predictions no roll is likely to exercise (plan §4), non-counting
   by declaration — run 2026-09-02 06:20 ET, in the deployed containers, on the stored
   artifacts that cost each item.** These are in-container replays of the deployed code path,
@@ -113,7 +131,8 @@ window. Every fixed parameter is read from
     a counted roll confirms them only where a correction round occurs.
 - Leases 0, nothing in flight, HEAD pinned, working tree clean, at every launch (driver
   preflight).
-- **No merges to main while either set is open** except the five stacked PRs unchanged (§7).
+- **No merges to main while either set is open** (§7); the pre-registration PR itself merges
+  before roll 1, and the driver pins main's HEAD at that launch.
 
 ---
 
@@ -181,7 +200,6 @@ Inherited verbatim (1.6.3 §6, §6.1); the text is in each set config's `gate_no
 
 ## 7. Prohibited while open
 
-Inherited verbatim (1.6.3 §7) with one pre-declared exception: no merges to main **other than
-the five stacked pack PRs, unchanged**; no rebuilds; no config edits; no manual intervention on
-any roll; a rebuild voids every roll after it; a force-push to any of the five branches voids
-the set.
+Inherited verbatim (1.6.3 §7): no merges to main; no rebuilds; no config edits; no manual
+intervention on any roll; a rebuild voids every roll after it. (The first draft carried an
+exception for the five stacked pack PRs; the pack is merged and the exception is gone.)
