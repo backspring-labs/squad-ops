@@ -31,6 +31,12 @@
       "backend/routes.py",
       "backend/models.py"
      ],
+     "failed_task_artifacts": [
+      {
+       "content": "def broken(): ...",
+       "name": "backend/routes.py"
+      }
+     ],
      "failed_task_type": "development.develop",
      "failure_analysis": {
       "analysis_summary": "the emitted routes module fails its endpoint check",
@@ -125,6 +131,12 @@
      "expected_artifacts": [
       "backend/routes.py",
       "backend/models.py"
+     ],
+     "failed_task_artifacts": [
+      {
+       "content": "def broken(): ...",
+       "name": "backend/routes.py"
+      }
      ],
      "failed_task_type": "development.develop",
      "failure_analysis": {

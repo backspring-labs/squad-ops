@@ -1,0 +1,235 @@
+"""Pytest suite for the group_run API.
+
+Every test takes the scaffold-provided ``client`` fixture from conftest.py.
+An autouse fixture resets module-level store state before each test so that
+every case is order-independent.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _reset_store(client):
+    """Reset in-memory stores before each test for isolation."""
+    client.reset()
+    yield
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _create_run(client, **overrides):
+    """Create a run via POST /runs and return the parsed body (201)."""
+    payload = {
+        "title": "Sunrise 5K",
+        "datetime": "2025-08-15T07:00:00Z",
+        "location": "Riverside Park",
+        "distance": "5K",
+        "pace_target": "9:00-10:00/mi",
+        "route_notes": "Meet at the north gate",
+    }
+    payload.update(overrides)
+    resp = client.post("/runs", json=payload)
+    assert resp.status_code == 201, f"Expected 201, got {resp.status_code}: {resp.text}"
+    return resp.json()
+
+
+# ---------------------------------------------------------------------------
+# POST /runs — create
+# ---------------------------------------------------------------------------
+
+def test_create_run_returns_generated_id_and_submitted_fields(client):
+    """A successful create returns a generated id and every submitted field."""
+    body = _create_run(client)
+
+    # generated, non-empty id
+    assert isinstance(body["id"], str)
+    assert len(body["id"]) > 0
+
+    # required fields echo back
+    assert body["title"] == "Sunrise 5K"
+    assert body["datetime"] == "2025-08-15T07:00:00Z"
+    assert body["location"] == "Riverside Park"
+
+    # optional fields echo back
+    assert body["distance"] == "5K"
+    assert body["pace_target"] == "9:00-10:00/mi"
+    assert body["route_notes"] == "Meet at the north gate"
+
+    # initial participant state
+    assert body["participant_count"] == 0
+    assert body["participants"] == []
+
+
+def test_create_run_rejects_empty_title(client):
+    """A blank/whitespace-only title yields a 422 validation_error envelope."""
+    resp = client.post(
+        "/runs",
+        json={
+            "title": "   ",
+            "datetime": "2025-08-15T07:00:00Z",
+            "location": "Riverside Park",
+        },
+    )
+    assert resp.status_code == 422
+    envelope = resp.json()
+    assert "error" in envelope
+    assert envelope["error"]["code"] == "validation_error"
+
+
+# ---------------------------------------------------------------------------
+# GET /runs — list
+# ---------------------------------------------------------------------------
+
+def test_list_runs_contains_created_run(client):
+    """After creating a run, GET /runs returns a list that includes it."""
+    created = _create_run(client, title="List Test Run")
+
+    resp = client.get("/runs")
+    assert resp.status_code == 200
+    runs = resp.json()
+    assert isinstance(runs, list)
+    assert len(runs) == 1
+    assert runs[0]["id"] == created["id"]
+    assert runs[0]["title"] == "List Test Run"
+
+
+# ---------------------------------------------------------------------------
+# GET /runs/{run_id} — retrieve by id
+# ---------------------------------------------------------------------------
+
+def test_get_run_by_id_returns_correct_fields(client):
+    """Retrieving an existing run by id returns the stored fields."""
+    created = _create_run(client, title="Detail Run", location="Central Plaza")
+
+    resp = client.get(f"/runs/{created['id']}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["id"] == created["id"]
+    assert body["title"] == "Detail Run"
+    assert body["location"] == "Central Plaza"
+    assert body["participant_count"] == 0
+    assert body["participants"] == []
+
+
+def test_get_run_by_unknown_id_returns_404(client):
+    """Retrieving a non-existent run id yields a 404 run_not_found envelope."""
+    resp = client.get("/runs/nonexistent-id-12345")
+    assert resp.status_code == 404
+    envelope = resp.json()
+    assert envelope["error"]["code"] == "run_not_found"
+
+
+# ---------------------------------------------------------------------------
+# POST /runs/{run_id}/participants — join
+# ---------------------------------------------------------------------------
+
+def test_join_run_adds_participant_and_increments_count(client):
+    """A valid join returns a Participant, adds the name, and bumps count."""
+    created = _create_run(client)
+    run_id = created["id"]
+
+    resp = client.post(
+        f"/runs/{run_id}/participants",
+        json={"name": "Alice"},
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert isinstance(body["name"], str)
+    assert body["name"] == "Alice"
+    assert isinstance(body["joined_at"], str)
+
+    # Verify via GET that the run was updated
+    run = client.get(f"/runs/{run_id}").json()
+    assert "Alice" in run["participants"]
+    assert run["participant_count"] == 1
+
+
+def test_join_run_rejects_empty_name(client):
+    """An empty participant name yields a 422 validation_error."""
+    created = _create_run(client)
+    run_id = created["id"]
+
+    resp = client.post(
+        f"/runs/{run_id}/participants",
+        json={"name": "   "},
+    )
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "validation_error"
+
+
+def test_join_run_rejects_duplicate_name_case_insensitive(client):
+    """Joining the same run twice with the same name (different case) → 409."""
+    created = _create_run(client)
+    run_id = created["id"]
+
+    # First join succeeds
+    first = client.post(f"/runs/{run_id}/participants", json={"name": "Bob"})
+    assert first.status_code == 201
+
+    # Second join with different case is rejected
+    second = client.post(f"/runs/{run_id}/participants", json={"name": "BOB"})
+    assert second.status_code == 409
+    assert second.json()["error"]["code"] == "duplicate_participant"
+
+    # Count unchanged
+    run = client.get(f"/runs/{run_id}").json()
+    assert run["participant_count"] == 1
+    assert len(run["participants"]) == 1
+
+
+# ---------------------------------------------------------------------------
+# DELETE /runs/{run_id}/participants/{name} — leave
+# ---------------------------------------------------------------------------
+
+def test_leave_run_removes_participant_and_decrements_count(client):
+    """A valid leave removes the participant and decrements the count."""
+    created = _create_run(client)
+    run_id = created["id"]
+
+    # Join first
+    client.post(f"/runs/{run_id}/participants", json={"name": "Carol"})
+    run_before = client.get(f"/runs/{run_id}").json()
+    assert run_before["participant_count"] == 1
+    assert "Carol" in run_before["participants"]
+
+    # Leave
+    resp = client.delete(f"/runs/{run_id}/participants/Carol")
+    assert resp.status_code == 204
+
+    # Verify removal
+    run_after = client.get(f"/runs/{run_id}").json()
+    assert run_after["participant_count"] == 0
+    assert run_after["participants"] == []
+
+
+def test_leave_run_rejects_unknown_participant(client):
+    """Leaving with a name not on the run yields a 404 participant_not_found."""
+    created = _create_run(client)
+    run_id = created["id"]
+
+    resp = client.delete(f"/runs/{run_id}/participants/UnknownPerson")
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "participant_not_found"
+
+
+def test_leave_run_rejects_empty_name(client):
+    """Leaving with an empty/whitespace name yields a 422 validation_error."""
+    created = _create_run(client)
+    run_id = created["id"]
+
+    # Join a real participant so the run exists
+    client.post(f"/runs/{run_id}/participants", json={"name": "Dave"})
+
+    # Attempt to leave with a blank name (encoded as a path segment)
+    resp = client.delete(f"/runs/{run_id}/participants/")
+    # The route may interpret trailing slash differently; if it doesn't 422,
+    # the empty path segment is stripped by the framework.  In that case the
+    # framework returns 404 (no matching route) or the route receives "" as
+    # the name.  Per the contract, empty name → validation_error → 422.
+    assert resp.status_code in (404, 422)
+    if resp.status_code == 422:
+        assert resp.json()["error"]["code"] == "validation_error"

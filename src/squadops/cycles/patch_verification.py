@@ -28,6 +28,7 @@ import dataclasses
 import json
 import logging
 import tempfile
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -588,6 +589,7 @@ async def verify_patched_artifacts(
     command_acceptance_enabled: bool = True,
     file_owned_criteria: list[TypedCheck] | None = None,
     agent_checks: Any = None,
+    repaired: Sequence[str] | None = None,
 ) -> PatchVerification:
     """Re-run the failed task's typed acceptance criteria against *artifacts*.
 
@@ -623,7 +625,15 @@ async def verify_patched_artifacts(
     if typed is None:
         return PatchVerification(status=PATCH_UNVERIFIABLE, reason="unparseable_criteria")
     gate = _dedupe_file_owned(file_owned_criteria, typed)
-    patched = _patched_names(artifacts)
+    # #1264: "the files the patch carries" are the REPAIR's own emissions. ``artifacts`` is
+    # the overlay — it also carries the failed task's files (the qa suite rides the qa
+    # failure), which is exactly what the repairing agent's tree lacks; keyed on the
+    # overlay, #1259's rule kept every one of the agent's absent-suite rows as a failure.
+    patched = (
+        frozenset(_relname(n) for n in repaired if n)
+        if repaired is not None
+        else _patched_names(artifacts)
+    )
     agent_records = [
         _absent_file_is_not_evidence(record, patched)
         for record in agent_check_records(agent_checks)

@@ -3115,6 +3115,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             # carried on the protocol result (#1256). ``result`` here is the FAILED task's;
             # reading the rows off it found none in every live round (cyc_c6db3ffc1f4e).
             agent_checks=repair_typed_checks,
+            # #1264: the repair's own files, not the overlay's (which carries the failed
+            # task's artifacts too) — what #1259's absent-file rule is keyed on.
+            repaired=[a.get("name") for a in repair_artifacts if isinstance(a, dict)],
         )
         # pf-33: name the failed checks — "status=failed reason= checks=7" forced
         # a by-hand artifact replay to learn WHICH check rejected the patch.

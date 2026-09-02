@@ -41,6 +41,7 @@ from typing import TYPE_CHECKING, Any
 from adapters.cycles.execution_errors import _ExecutionError
 from squadops.capabilities.context_assembly import (
     REPAIR_CONTEXT_CONTRACT,
+    forwarded_failed_artifacts,
     manifest_surface_fragments,
     repair_forwarded_inputs,
     retest_forwarded_inputs,
@@ -1695,6 +1696,9 @@ class CorrectionRunner:
                 # #1229: the typed-acceptance workspace, so the repair can evaluate its
                 # own patch against the tree it lands in, where the toolchain lives.
                 repair_inputs.update(repair_forwarded_inputs(failed_inputs))
+                # #1264: the failed task's own files, so the repair evaluates the failed
+                # task's criteria on the tree the verifier will overlay — not one missing them.
+                repair_inputs.update(forwarded_failed_artifacts(result.outputs))
                 # #970 (1.6.5 D), presence-keyed: the scaffold + the task's current
                 # merged shells + the slots whose fills failed, for a qa repair.
                 repair_inputs.update(

@@ -8,6 +8,7 @@ Covers:
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -451,3 +452,80 @@ class TestTheRepairEvaluatesItsOwnPatch:
             {"prd": "x", "resolved_config": {}, "expected_artifacts": ["backend/routes.py"]},
         )
         assert "repair_typed_checks" not in result.outputs
+
+
+class TestTheRepairEvaluatesOnTheVerifiersTree:
+    """#1264: the verifier overlays the failed task's own files beneath the patch; the
+    repair's agent-side evaluation must see the same tree. Replayed from the React shakeout
+    on 06408dfe (cyc_4ec4ad5e2ca1): a dev repair of a qa failure evaluated the suite's
+    criteria on a tree without the suite — every row `file_not_found`, the fix refused
+    twice. Bug caught: the two environments judging different trees."""
+
+    _REPLAYS = Path(__file__).resolve().parents[2] / "fixtures" / "roll_replays"
+
+    def _inputs(self, *, with_failed_artifacts: bool) -> dict:
+        from squadops.capabilities.context_assembly import REPAIR_FAILED_ARTIFACTS_KEY
+
+        suite = (self._REPLAYS / "1-7-1-react-shakeout-5-qa-round-0-test_runs.py.txt").read_text(
+            encoding="utf-8"
+        )
+        inputs = {
+            "prd": "x",
+            "resolved_config": {"build_profile": "fullstack_fastapi_react"},
+            "acceptance_criteria": [
+                {
+                    "check": "function_defined",
+                    "params": {
+                        "file": "backend/tests/test_runs.py",
+                        "name_prefix": "test_",
+                        "min_count": 8,
+                    },
+                }
+            ],
+            "expected_artifacts": ["backend/routes.py"],
+            "workspace_revision_id": "rev-1",
+        }
+        if with_failed_artifacts:
+            inputs[REPAIR_FAILED_ARTIFACTS_KEY] = [
+                {"name": "backend/tests/test_runs.py", "content": suite}
+            ]
+        return inputs
+
+    def _patch(self) -> str:
+        route = (
+            self._REPLAYS / "1-7-1-react-shakeout-5-repair-01-backend-routes.py.txt"
+        ).read_text(encoding="utf-8")
+        return f"```python:backend/routes.py\n{route}```\n"
+
+    async def test_the_failed_tasks_files_are_beneath_the_patch(self):
+        from squadops.capabilities.handlers.impl.repair_handlers import (
+            DevelopmentCorrectionRepairHandler,
+        )
+
+        h = DevelopmentCorrectionRepairHandler()
+        result = await h.handle(
+            _make_context(self._patch()), self._inputs(with_failed_artifacts=True)
+        )
+        rows = {r["check"]: r for r in result.outputs["repair_typed_checks"]["checks"]}
+        assert rows["acceptance:function_defined"]["status"] == "passed"
+        assert rows["acceptance:function_defined"]["actual"]["matched_count"] >= 8
+
+    async def test_without_them_the_suites_criterion_cannot_see_the_suite(self):
+        """The control — the shakeout's shape: the row is `file_not_found`, which the
+        verifier's backstop (#1259/#1264) discounts, but only the tree makes it evidence."""
+        from squadops.capabilities.handlers.impl.repair_handlers import (
+            DevelopmentCorrectionRepairHandler,
+        )
+
+        h = DevelopmentCorrectionRepairHandler()
+        result = await h.handle(
+            _make_context(self._patch()), self._inputs(with_failed_artifacts=False)
+        )
+        rows = {r["check"]: r for r in result.outputs["repair_typed_checks"]["checks"]}
+        assert (
+            rows["acceptance:function_defined"]["status"],
+            rows["acceptance:function_defined"]["reason"],
+        ) == (
+            "failed",
+            "file_not_found",
+        )

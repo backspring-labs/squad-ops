@@ -428,6 +428,35 @@ REPAIR_PRESENCE_KEYS: tuple[str, ...] = (
     "workspace_revision_id",
 )
 
+#: #1264: the failed task's own emitted files, forwarded to its repair from the failed
+#: RESULT (not the failed inputs — a task's artifacts are its output). The verifier overlays
+#: them beneath the patch (``result.outputs["artifacts"]`` rides the failure); the repair's
+#: agent-side evaluation must see the same tree, or a dev repair of a qa failure evaluates the
+#: qa suite's criteria on a tree without the suite and every row is ``file_not_found``
+#: (cyc_4ec4ad5e2ca1: six executed failures about a file the patch never touched, twice).
+REPAIR_FAILED_ARTIFACTS_KEY = "failed_task_artifacts"
+
+
+def forwarded_failed_artifacts(result_outputs: Mapping[str, Any] | None) -> dict[str, Any]:
+    """``{REPAIR_FAILED_ARTIFACTS_KEY: [...]}`` when the failed result emitted files, else
+    ``{}`` — presence-keyed like ``repair_forwarded_inputs``, so an empty forward never
+    claims a tree."""
+    files = failed_task_artifacts(result_outputs)
+    return {REPAIR_FAILED_ARTIFACTS_KEY: files} if files else {}
+
+
+def failed_task_artifacts(result_outputs: Mapping[str, Any] | None) -> list[dict[str, str]]:
+    """``[{name, content}]`` for every emitted file on a failed result — the set the verifier
+    overlays, in the shape the handler materialises. Entries without both are not files."""
+    out: list[dict[str, str]] = []
+    for art in (result_outputs or {}).get("artifacts") or ():
+        if not isinstance(art, dict):
+            continue
+        name, content = art.get("name"), art.get("content")
+        if isinstance(name, str) and name and isinstance(content, str):
+            out.append({"name": name, "content": content})
+    return out
+
 
 def repair_forwarded_inputs(failed_inputs: Mapping[str, Any]) -> dict[str, Any]:
     """The failed task's typed-acceptance workspace a repair dispatch carries (#1229).

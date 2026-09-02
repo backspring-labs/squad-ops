@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
+from squadops.capabilities.context_assembly import REPAIR_FAILED_ARTIFACTS_KEY
 from squadops.capabilities.handlers.cycle_tasks import _classify_file, _CycleTaskHandler
 from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
 from squadops.cycles.failure_evidence import failing_cases_from_evidence
@@ -319,7 +320,18 @@ class _RepairPromptMixin:
             return
         checks: list[dict[str, Any]] = []
         missing: list[str] = []
-        await self._evaluate_typed_acceptance(inputs, artifacts, checks, missing, {})
+        # #1264: the verifier overlays the failed task's own files beneath the patch; so
+        # does this evaluation, or a dev repair of a qa failure judges the qa suite's
+        # criteria on a tree without the suite (cyc_4ec4ad5e2ca1: six `file_not_found`
+        # failures about a file the patch never touched, and a correct fix refused twice).
+        workspace = dict(inputs.get("acceptance_workspace_files") or {})
+        for art in inputs.get(REPAIR_FAILED_ARTIFACTS_KEY) or ():
+            if isinstance(art, dict) and isinstance(art.get("name"), str):
+                workspace[art["name"]] = str(art.get("content") or "")
+        evaluation_inputs = (
+            {**inputs, "acceptance_workspace_files": workspace} if workspace else inputs
+        )
+        await self._evaluate_typed_acceptance(evaluation_inputs, artifacts, checks, missing, {})
         rows = [c for c in checks if str(c.get("check", "")).startswith("acceptance:")]
         outputs["repair_typed_checks"] = {
             "environment": f"agent:{self._role}",

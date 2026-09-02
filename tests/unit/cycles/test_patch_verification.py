@@ -923,3 +923,94 @@ class TestAbsentFilesAreNotEvidenceAboutThePatch:
             for r in verdict.checks
             if r.executed_in != "runtime-api"
         ] == [("agent:dev", "failed", "file_not_found")]
+
+
+class TestTheAbsentFileRuleIsKeyedOnTheRepairsOwnFiles:
+    """#1264: the verifier's overlay carries the failed task's artifacts (the qa suite rides
+    the qa failure), so #1259's rule — keyed on the overlay — read the suite as "carried by
+    the patch" and kept the agent's ``file_not_found`` rows as failures. Replayed from the
+    React shakeout on 06408dfe (cyc_4ec4ad5e2ca1, round 1): the dev's `/runs`-prefixed
+    routes refused twice. Bug caught: the backstop keyed on the wrong set."""
+
+    _REPLAYS = Path(__file__).resolve().parents[2] / "fixtures" / "roll_replays"
+    _SUITE = "backend/tests/test_runs.py"
+    _ROUTE = "backend/routes.py"
+
+    def _criteria(self):
+        return [
+            TypedCheck(
+                check="function_defined",
+                params={"file": self._SUITE, "name_prefix": "test_", "min_count": 8},
+                id="fn",
+            ),
+            TypedCheck(
+                check="assertion_kinds_match",
+                params={"file": self._SUITE, "field_kinds": {"title": "string"}},
+                id="kinds",
+            ),
+        ]
+
+    def _files(self):
+        suite = (self._REPLAYS / "1-7-1-react-shakeout-5-qa-round-0-test_runs.py.txt").read_text(
+            encoding="utf-8"
+        )
+        route = (
+            self._REPLAYS / "1-7-1-react-shakeout-5-repair-01-backend-routes.py.txt"
+        ).read_text(encoding="utf-8")
+        return suite, route
+
+    def _agent_rows(self):
+        return {
+            "environment": "agent:dev",
+            "checks": [
+                {
+                    "check": f"acceptance:{c.check}",
+                    "status": "failed",
+                    "severity": "error",
+                    "reason": "file_not_found",
+                    "params": dict(c.params),
+                }
+                for c in self._criteria()
+            ],
+        }
+
+    async def test_the_overlay_carrying_the_suite_no_longer_turns_absent_rows_into_failures(
+        self,
+    ):
+        from squadops.cycles.patch_verification import (
+            PATCH_PASSED,
+            REASON_FILE_NOT_IN_PATCH,
+            verify_patched_artifacts,
+        )
+
+        suite, route = self._files()
+        overlay = [{"name": self._SUITE, "content": suite}, {"name": self._ROUTE, "content": route}]
+        verdict = await verify_patched_artifacts(
+            self._criteria(),
+            overlay,
+            stack="fullstack_fastapi_react",
+            agent_checks=self._agent_rows(),
+            repaired=[self._ROUTE],
+        )
+        # Local rows execute on the real suite and pass; the agent's absent-suite rows are
+        # not evidence about a patch that never carried the suite.
+        assert verdict.status == PATCH_PASSED
+        assert {(r.executed_in, r.status, r.reason) for r in verdict.checks} == {
+            ("runtime-api", "passed", "ok"),
+            ("agent:dev", "skipped", REASON_FILE_NOT_IN_PATCH),
+        }
+
+    async def test_without_the_repairs_names_the_overlay_still_decides_the_set(self):
+        """The pre-#1264 reading, kept for direct callers that pass only the patch: with no
+        ``repaired`` given, the overlay is the patch — the same rows reject."""
+        from squadops.cycles.patch_verification import PATCH_FAILED, verify_patched_artifacts
+
+        suite, route = self._files()
+        overlay = [{"name": self._SUITE, "content": suite}, {"name": self._ROUTE, "content": route}]
+        verdict = await verify_patched_artifacts(
+            self._criteria(),
+            overlay,
+            stack="fullstack_fastapi_react",
+            agent_checks=self._agent_rows(),
+        )
+        assert verdict.status == PATCH_FAILED
