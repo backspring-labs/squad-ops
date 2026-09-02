@@ -2078,3 +2078,42 @@ class TestDomAnchorQueriesEvaluator:
         )
         assert outcome.status == "failed"
         assert outcome.reason == "file_not_found"
+
+
+class TestTscSyntaxCodesAreTheFourDigitRange:
+    """#1261: ``TS18048`` (``'x' is possibly 'undefined'``) starts with ``TS1`` and was read as
+    a syntax error, so ``undefined_names`` skipped five of nine accepted test files on the
+    Next.js shakeout (cyc_9c379355b5e8). Bug caught: a type diagnostic silently turning the
+    undefined-name check off for the file that carries it."""
+
+    _RUN = (
+        "__tests__/runs_api.test.ts(31,12): error TS18048: 'body' is possibly 'undefined'.\n"
+        "__tests__/runs_api.test.ts(40,5): error TS18046: 'res' is of type 'unknown'.\n"
+        "__tests__/runs_api.test.ts(1,24): error TS2307: Cannot find module 'vitest' or its "
+        "corresponding type declarations.\n"
+        "__tests__/broken.test.ts(2,1): error TS1005: ')' expected.\n"
+    )
+
+    @pytest.mark.parametrize(
+        "code,syntax",
+        [
+            ("TS1005", True),
+            ("TS1128", True),
+            ("TS1999", True),
+            ("TS18048", False),
+            ("TS18046", False),
+            ("TS2307", False),
+            ("TS2304", False),
+            ("TSxyz", False),
+        ],
+    )
+    def test_the_code_is_classified_by_value(self, code, syntax):
+        from squadops.cycles.acceptance_checks import tsc_is_syntax_code
+
+        assert tsc_is_syntax_code(code) is syntax
+
+    def test_the_shakeouts_type_diagnostics_do_not_read_as_syntax(self):
+        from squadops.cycles.acceptance_checks import tsc_syntax_errors_in
+
+        assert tsc_syntax_errors_in(self._RUN, "__tests__/runs_api.test.ts") is False
+        assert tsc_syntax_errors_in(self._RUN, "__tests__/broken.test.ts") is True

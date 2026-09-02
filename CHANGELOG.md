@@ -23,6 +23,14 @@ agent container, at emission and at repair, and each image provisions its toolch
   (the retest decides); with the suite in the tree → `passed`. The refused fix's absence let
   the re-authored suite drop the case that found the defect — filed as #1260, 1.7.2.
 
+### Fixed — a TS18xxx type diagnostic no longer turns `undefined_names` off for its file (#1261)
+- `tsc_syntax_errors_in` read any code starting with `TS1` as syntax, so `TS18048` ("possibly
+  undefined") and `TS18046` ("of type unknown") — type checking, the common shape of a real
+  test file — made the check return `skipped / unsupported_stack_or_syntax`: five of nine
+  accepted test files on the same shakeout were never checked for undefined names, and R6's
+  readout counts failed rows, so a green roll cannot see it. Syntax codes are TS1000–TS1999
+  and are classified by value.
+
 ### Fixed — rule B's rows reach the verifier (#1256)
 - `_try_accept_patch` read `repair_typed_checks` off the FAILED task's result — a key the
   repair handler writes on its own outputs — and the correction protocol returned only the
