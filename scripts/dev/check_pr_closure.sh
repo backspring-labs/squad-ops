@@ -40,6 +40,19 @@ optout_count="$(
     | grep -ciE '(refs?[[:space:]]+#[0-9]+.*remaining:[[:space:]]*[^[:space:]]|^[[:space:]]*no issue:[[:space:]]*[^[:space:]])' || true
 )"
 
+# #1151: cut step 5 (the SIP promotion sweep) is unguarded — CLAUDE.md says so. A release
+# PR (branch release/*) must record the sweep in its body as a `SIP sweep:` line saying
+# what was promoted or that nothing was and why; the closure workflow passes the head ref.
+head_ref="${PR_HEAD_REF:-}"
+if [[ "$head_ref" == release/* ]] && ! printf '%s' "$body" | grep -qiE '^[[:space:]]*SIP sweep:[[:space:]]*[^[:space:]]'; then
+  cat >&2 <<'MSG'
+pr-closure: FAIL — a release PR must record cut step 5 in its body:
+  SIP sweep: <what was promoted to implemented, or "nothing — <why>">
+  (CLAUDE.md "Release cut", step 5; the sweep is the unguarded step this line enforces — #1151)
+MSG
+  exit 1
+fi
+
 if [ -z "$closing_numbers" ] && [ "$optout_count" -eq 0 ]; then
   cat >&2 <<'MSG'
 pr-closure: FAIL — the PR body carries no closing reference and no opt-out.

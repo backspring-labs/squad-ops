@@ -111,6 +111,19 @@ agent container, at emission and at repair, and each image provisions its toolch
   `npm ci` without a lockfile on 121, the nginx default site on 31, `dist-packages` on 2
   (pf-38 and one sibling); 68 clean. Reporting-only means those are readouts, not
   rejections.
+### Added — cut steps 5 and 7 get their guards (#1151)
+- **Step 7, the release package:** `scripts/dev/check_release_packages.py` checks that every
+  semver tag has a captured, non-hollow package under `site/content/releases/<tag>/` — from
+  `v1.6.2` on, a non-empty cycle list with at least one row actually captured (a verdict and a
+  positive run count; a row of nulls is #1076's shape and fails by name). Runs in CI on every
+  push and PR rather than on the tag push, because the package lands after the tag by
+  procedure: main goes red the moment a tag is pushed without its package and green again when
+  the capture lands. Passes on the current release's real package; fails on a synthetic
+  hollow one.
+- **Step 5, the SIP sweep:** a `release/*` PR must carry a `SIP sweep:` line in its body
+  saying what was promoted or that nothing was and why; `check_pr_closure.sh` enforces it with
+  the head ref the closure workflow now passes. The live tag-push exercise remains for the
+  1.7.1 cut itself.
 
 ### Changed — what is stack-specific lives behind the stack seam (#1131)
 - **Stack #1 has its own module.** The inline `fullstack_fastapi_react` expander (651 lines)
