@@ -582,11 +582,18 @@ async def verify_patched_artifacts(
     if typed is None:
         return PatchVerification(status=PATCH_UNVERIFIABLE, reason="unparseable_criteria")
     gate = _dedupe_file_owned(file_owned_criteria, typed)
+    agent_records = agent_check_records(agent_checks)
     if not typed and not gate:
-        return PatchVerification(status=PATCH_UNVERIFIABLE, reason=REASON_NO_TYPED_CRITERIA)
+        # #1255: carry the rows the repair executed so the verdict — and the executor's
+        # ``agent_rows=`` log line — say what the agent did. The builder repair in
+        # cyc_c6db3ffc1f4e reported one executed row and this returned none.
+        return PatchVerification(
+            status=PATCH_UNVERIFIABLE,
+            reason=REASON_NO_TYPED_CRITERIA,
+            checks=tuple(agent_records),
+        )
 
     records: list[PatchCheckRecord] = []
-    agent_records = agent_check_records(agent_checks)
     # #734 Slice A: name the exact workspace mapping evaluated below — computed
     # from the parameter (the post-filter mapping handed in), never store state.
     from squadops.sandbox.models import compute_revision_id
