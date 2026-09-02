@@ -172,7 +172,7 @@ class TestMergeFillArtifacts:
             },
         ]
         merged_artifacts, suite_files, evidence = QATestHandler()._merge_fill_artifacts(
-            scaffold_input, fills, artifacts
+            scaffold_input, fills, artifacts, NEXTJS_APP_INVOCATION
         )
         names = [a["name"] for a in merged_artifacts]
         assert "__tests__/extra.test.ts" in names
@@ -197,7 +197,7 @@ class TestMergeFillArtifacts:
             "    expect(all(TABLES.Participant)).toHaveLength(1)\n```\n"
         )
         merged_artifacts, _, evidence = QATestHandler()._merge_fill_artifacts(
-            {**scaffold_input, "store_tables": ["RunEvent"]}, fills, []
+            {**scaffold_input, "store_tables": ["RunEvent"]}, fills, [], NEXTJS_APP_INVOCATION
         )
         assert evidence["counts"]["rejected"] == 1
         create_shell = next(
@@ -218,7 +218,7 @@ class TestMergeFillArtifacts:
             "    expect(body.participants).toContain('sample')\n```\n"
         )
         merged_artifacts, _, evidence = QATestHandler()._merge_fill_artifacts(
-            {**scaffold_input, "slot_element_kinds": kinds}, fills, []
+            {**scaffold_input, "slot_element_kinds": kinds}, fills, [], NEXTJS_APP_INVOCATION
         )
         assert evidence["counts"]["rejected"] == 1
         join_shell = next(
@@ -255,7 +255,9 @@ class TestMergeFillArtifacts:
                 "type": "test",
             },
         ]
-        _, _, evidence = QATestHandler()._merge_fill_artifacts(scaffold_input, fills, artifacts)
+        _, _, evidence = QATestHandler()._merge_fill_artifacts(
+            scaffold_input, fills, artifacts, NEXTJS_APP_INVOCATION
+        )
 
         strength = evidence["assertion_strength"]
         assert strength["additive_files"] == ["__tests__/a.test.ts", "__tests__/b.test.ts"]
@@ -280,10 +282,12 @@ class TestMergeFillArtifacts:
                 "type": "test",
             }
         ]
-        _, _, evidence = QATestHandler()._merge_fill_artifacts(scaffold_input, fills, artifacts)
+        _, _, evidence = QATestHandler()._merge_fill_artifacts(
+            scaffold_input, fills, artifacts, NEXTJS_APP_INVOCATION
+        )
         findings = evidence["additive_containment"]
         assert any("fetches a live server" in f for f in findings)
-        assert any("imports no application module" in f for f in findings)
+        assert any("invokes nothing of the application" in f for f in findings)
 
     def test_a_clean_additive_suite_banks_no_containment_findings(self, scaffold_input):
         """The key is always present so "clean" is distinguishable from "not assessed" —
@@ -299,7 +303,9 @@ class TestMergeFillArtifacts:
                 "type": "test",
             }
         ]
-        _, _, evidence = QATestHandler()._merge_fill_artifacts(scaffold_input, fills, artifacts)
+        _, _, evidence = QATestHandler()._merge_fill_artifacts(
+            scaffold_input, fills, artifacts, NEXTJS_APP_INVOCATION
+        )
         assert evidence["additive_containment"] == []
 
     def test_an_emission_that_drops_every_additive_file_banks_an_empty_list(self, scaffold_input):
@@ -310,7 +316,9 @@ class TestMergeFillArtifacts:
         fills = parse_fill_emission(
             "```fill:slot-vc-probe-api-runs\n    expect(body.id).toBeTruthy()\n```\n"
         )
-        _, _, evidence = QATestHandler()._merge_fill_artifacts(scaffold_input, fills, [])
+        _, _, evidence = QATestHandler()._merge_fill_artifacts(
+            scaffold_input, fills, [], NEXTJS_APP_INVOCATION
+        )
         assert evidence["assertion_strength"]["additive_files"] == []
 
 

@@ -1943,3 +1943,72 @@ class TestUndefinedNamesReplaysTheRollThatCostIt:
         assert red.status == "failed"
         assert [u["name"] for u in red.actual["undefined"]] == ["created"]
         assert green.status == "passed"
+
+
+class TestAdditiveContainmentEvaluator:
+    """#1022 at the typed-acceptance seam: the injected `additive_containment` check on a
+    materialised workspace, replayed from stored suites. The evaluator reads the scaffold
+    stack from its own params — the seam's `stack` argument is the check vocabulary,
+    which Next.js does not declare, so relying on it would skip every Next.js suite."""
+
+    _REPLAYS = Path(__file__).resolve().parents[2] / "fixtures" / "roll_replays"
+
+    async def _run(self, tmp_path, fixture: str, rel: str, stack: str | None):
+        from squadops.cycles.acceptance_checks import AdditiveContainmentCheck
+
+        target = tmp_path / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text((self._REPLAYS / fixture).read_text(encoding="utf-8"), encoding="utf-8")
+        params = {"file": rel} if stack is None else {"file": rel, "stack": stack}
+        return await AdditiveContainmentCheck().evaluate(params, tmp_path, stack=None)
+
+    async def test_c3s_stored_suite_fails_naming_the_rule_and_what_the_stack_counts(self, tmp_path):
+        outcome = await self._run(
+            tmp_path, "v7-c3-repair-00-api-runs.test.ts", "__tests__/api-runs.test.ts", "nextjs_ts"
+        )
+        assert outcome.status == "failed"
+        assert outcome.reason == "1 containment finding(s): no_application_invocation"
+        assert outcome.actual["file"] == "__tests__/api-runs.test.ts"
+        assert [f["rule"] for f in outcome.actual["findings"]] == ["no_application_invocation"]
+        assert "app/api/**/route" in outcome.actual["findings"][0]["detail"]
+
+    @pytest.mark.parametrize(
+        ("fixture", "rel", "stack"),
+        [
+            ("v7-slot-2-green-runs.test.ts", "__tests__/runs.test.ts", "nextjs_ts"),
+            ("1-7-0-nextjs-roll-6-runs.test.ts", "__tests__/runs.test.ts", "nextjs_ts"),
+            (
+                "1-6-6-react-roll-6-frontend-suite.test.jsx",
+                "frontend/src/__tests__/runs.test.jsx",
+                "fullstack_fastapi_react",
+            ),
+        ],
+    )
+    async def test_the_accepted_rolls_suites_pass(self, tmp_path, fixture, rel, stack):
+        outcome = await self._run(tmp_path, fixture, rel, stack)
+        assert outcome.status == "passed"
+        assert outcome.actual == {"file": rel, "findings": []}
+
+    async def test_without_a_stack_param_the_check_skips_rather_than_judging(self, tmp_path):
+        """Judged nothing must never read as clean (#986): no declaration, no verdict."""
+        outcome = await self._run(
+            tmp_path, "v7-c3-repair-00-api-runs.test.ts", "__tests__/api-runs.test.ts", None
+        )
+        assert outcome.status == "skipped"
+        assert outcome.reason == "unknown_stack"
+
+    async def test_a_source_file_is_not_a_suite_and_skips(self, tmp_path):
+        outcome = await self._run(
+            tmp_path, "v7-slot-2-green-runs.test.ts", "lib/store.ts", "nextjs_ts"
+        )
+        assert outcome.status == "skipped"
+        assert outcome.reason == "not_a_suite"
+
+    async def test_a_missing_file_fails_rather_than_passing_silently(self, tmp_path):
+        from squadops.cycles.acceptance_checks import AdditiveContainmentCheck
+
+        outcome = await AdditiveContainmentCheck().evaluate(
+            {"file": "__tests__/gone.test.ts", "stack": "nextjs_ts"}, tmp_path, stack=None
+        )
+        assert outcome.status == "failed"
+        assert outcome.reason == "file_not_found"

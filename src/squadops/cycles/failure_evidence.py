@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from squadops.cycles.acceptance_check_spec import (
+    CHECK_ADDITIVE_CONTAINMENT,
     CHECK_ASSERTION_KINDS,
     CHECK_CONTRACT_ASSERTIONS,
 )
@@ -290,8 +291,11 @@ def _own_artifact_row(row: dict[str, Any]) -> bool:
     # its attempts; roll 6's delivered app passed a hand boot audit while the cycle
     # rejected it. Structural — read off the suite's own source — so it cannot be
     # produced BY an app defect.
+    # #1022 joins them at the emission seam: the suite fetched a live server or invoked
+    # nothing of the application — read off its bytes against the stack's declaration.
     if (
-        check in (CHECK_NO_SELF_MOCKING_TESTS, CHECK_NO_STUB_FALLBACK_TESTS)
+        check
+        in (CHECK_NO_SELF_MOCKING_TESTS, CHECK_NO_STUB_FALLBACK_TESTS, CHECK_ADDITIVE_CONTAINMENT)
         and row.get("passed") is False
     ):
         return True

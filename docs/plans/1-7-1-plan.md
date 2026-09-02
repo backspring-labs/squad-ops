@@ -357,6 +357,16 @@ cost C3 its whole correction budget. Replay: C3 and C4's stored additive suites 
 with a named finding; the V7 slot-2/3 greens and the four accepted 1.6.6 React rolls' suites
 pass.
 
+**As landed (2026-09-02).** `additive_containment`, a typed check with a third injection
+scope (`suite`) so it lands on suite files only and carries the scaffold stack as its own
+param; rules (1) and (2) as written, (2) by `AppInvocation.invokes` on each stack; rule (3)
+is not duplicated — the self-mocking and stub-fallback detectors already fire at emission
+(qa_test.py, #1126) and keep that fact. Replayed: C3, C4 and V7 slot 3's first repair
+rejected (`no_application_invocation`: each reached the app only through `@/lib/api`); the
+slot-2/3 greens, the 1.6.6 Next.js roll 1, the 1.7.0 roll 6 and the accepted React rolls'
+frontend suites pass. R5 reads failed `additive_containment` rows in the per-round
+typed-check evaluations.
+
 ### 2.4 What is deliberately not built
 
 - **#1122 — SIP-0104 shells and fill slots for stack #1.** An `enhancement`, which an odd minor

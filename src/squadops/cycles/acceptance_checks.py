@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Any
 
 from squadops.cycles.acceptance_check_spec import (
+    CHECK_ADDITIVE_CONTAINMENT,
     CHECK_ASSERTION_KINDS,
     CHECK_CONTAINER_PACKAGING,
     CHECK_CONTRACT_ASSERTIONS,
@@ -2027,6 +2028,59 @@ class FrontendCompilesCheck(BaseCheck):
     async def _run(argv: list[str], cwd: Path, timeout_s: int) -> tuple[int | None, str, str]:
         """Run one build step; ``(returncode, stdout, stderr)``, rc None on timeout."""
         return await _run_argv(argv, cwd, timeout_s)
+
+
+@register_check(CHECK_ADDITIVE_CONTAINMENT)
+class AdditiveContainmentCheck(BaseCheck):
+    """#1022: an author-written JS/TS suite is contained by the stack's own definition.
+
+    Two rules over the suite's bytes (``additive_containment.containment_findings``): a
+    fetch of a live server inside the in-process harness, and a suite that invokes
+    nothing the stack counts as the application. The stack is the ``stack`` param the
+    framework injected (the scaffold name; the evaluator's ``stack`` argument carries the
+    check vocabulary, which Next.js does not declare); without it, or for a stack that
+    declares no ``AppInvocation``, the check skips — judged nothing, never clean. The
+    failure names each rule and what the stack counts, so the re-emission brief and the
+    repair carry it."""
+
+    async def evaluate(
+        self,
+        params: dict[str, Any],
+        workspace_root: Path,
+        *,
+        stack: str | None = None,
+    ) -> CheckOutcome:
+        from squadops.capabilities.additive_containment import containment_findings
+        from squadops.capabilities.scaffold import app_invocation_for
+
+        rel = str(params["file"])
+        invocation = app_invocation_for(str(params.get("stack") or ""))
+        if invocation is None:
+            return CheckOutcome.skipped(
+                reason="unknown_stack", file=rel, stack=params.get("stack") or stack
+            )
+        if not invocation.is_suite(rel):
+            return CheckOutcome.skipped(reason="not_a_suite", file=rel)
+        try:
+            target = _safe_resolve(rel, workspace_root)
+        except _SafetyError as exc:
+            return CheckOutcome.error(reason=exc.reason)
+        if not target.is_file():
+            return CheckOutcome.failed(reason="file_not_found", file=rel)
+        try:
+            content = target.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return CheckOutcome.error(reason="file_unreadable")
+
+        findings = containment_findings(rel, content, invocation)
+        if findings:
+            rules = sorted({f.rule for f in findings})
+            return CheckOutcome.failed(
+                reason=f"{len(findings)} containment finding(s): {', '.join(rules)}",
+                file=rel,
+                findings=[{"rule": f.rule, "detail": f.detail} for f in findings],
+            )
+        return CheckOutcome.passed(file=rel, findings=[])
 
 
 @register_check(CHECK_CONTAINER_PACKAGING)

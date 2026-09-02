@@ -204,26 +204,70 @@ class TestInjectionScopeIsDeclared:
 
     def test_the_two_scopes_partition_the_injected_file_checks(self):
         from squadops.cycles.acceptance_check_spec import (
+            CHECK_ADDITIVE_CONTAINMENT,
             CHECK_CONTAINER_PACKAGING,
             CHECK_SPECS,
             CHECK_UNDEFINED_NAMES,
             INJECTION_SCOPE_FILE,
             INJECTION_SCOPE_RECIPE,
+            INJECTION_SCOPE_SUITE,
             framework_injected_checks,
         )
 
         file_scoped = framework_injected_checks(INJECTION_SCOPE_FILE)
         recipe_scoped = framework_injected_checks(INJECTION_SCOPE_RECIPE)
+        suite_scoped = framework_injected_checks(INJECTION_SCOPE_SUITE)
         assert CHECK_UNDEFINED_NAMES in file_scoped
         assert recipe_scoped == (CHECK_CONTAINER_PACKAGING,)
-        assert not set(file_scoped) & set(recipe_scoped)
+        assert suite_scoped == (CHECK_ADDITIVE_CONTAINMENT,)
+        scoped = [set(file_scoped), set(recipe_scoped), set(suite_scoped)]
+        assert sum(len(x) for x in scoped) == len(set().union(*scoped))
         every_injected_file_check = {
             name
             for name, spec in CHECK_SPECS.items()
             if spec.framework_injected and spec.required_params == frozenset({"file"})
         }
-        assert set(file_scoped) | set(recipe_scoped) == every_injected_file_check
+        assert set().union(*scoped) == every_injected_file_check
         assert framework_injected_checks("not-a-scope") == ()
+
+    def test_the_seam_applies_each_scope_to_its_own_artifacts(self):
+        from squadops.cycles.acceptance_check_spec import (
+            CHECK_ADDITIVE_CONTAINMENT,
+            CHECK_CONTAINER_PACKAGING,
+            CHECK_UNDEFINED_NAMES,
+        )
+
+        """#1022: a suite-scoped check lands on the suite file only — never on the source
+        beside it, whose extension it also parses — and carries the scaffold stack as its
+        own param; the recipe check lands on the Dockerfile; the file checks on both
+        parseable files. A .py suite gets no JS containment row."""
+        from squadops.capabilities.handlers.cycle.base import _framework_injected_criteria
+
+        artifacts = [
+            {"name": "app/page.tsx", "content": ""},
+            {"name": "__tests__/runs.test.ts", "content": ""},
+            {"name": "backend/tests/test_runs.py", "content": ""},
+            {"name": "Dockerfile", "content": ""},
+        ]
+        rows = _framework_injected_criteria(artifacts, (), scaffold_stack="nextjs_ts")
+        by_check: dict[str, list[dict]] = {}
+        for row in rows:
+            by_check.setdefault(row.check, []).append(row.params)
+        assert by_check[CHECK_ADDITIVE_CONTAINMENT] == [
+            {"file": "__tests__/runs.test.ts", "stack": "nextjs_ts"}
+        ]
+        assert by_check[CHECK_CONTAINER_PACKAGING] == [{"file": "Dockerfile"}]
+        assert {p["file"] for p in by_check[CHECK_UNDEFINED_NAMES]} == {
+            "app/page.tsx",
+            "__tests__/runs.test.ts",
+            "backend/tests/test_runs.py",
+        }
+        # An unknown scaffold stack injects the check without a stack param: the
+        # evaluator then skips as unknown_stack rather than judging by a guess.
+        bare = _framework_injected_criteria(artifacts[1:2], (), scaffold_stack="")
+        assert [r.params for r in bare if r.check == CHECK_ADDITIVE_CONTAINMENT] == [
+            {"file": "__tests__/runs.test.ts"}
+        ]
 
     def test_an_unknown_scope_is_rejected_at_declaration(self):
         import dataclasses

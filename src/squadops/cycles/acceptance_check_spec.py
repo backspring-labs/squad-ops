@@ -61,7 +61,10 @@ FAILURE_OWNERSHIP_VALUES: frozenset[str] = frozenset(
 #: nothing infers a scope from the shape of another field.
 INJECTION_SCOPE_FILE = "file"
 INJECTION_SCOPE_RECIPE = "recipe"
-INJECTION_SCOPES = frozenset({INJECTION_SCOPE_FILE, INJECTION_SCOPE_RECIPE})
+#: Each emitted JS/TS suite file (``JS_SUITE_SUFFIXES``, the harness's own vocabulary):
+#: a check whose rules only mean something for a test, not for the source it tests (#1022).
+INJECTION_SCOPE_SUITE = "suite"
+INJECTION_SCOPES = frozenset({INJECTION_SCOPE_FILE, INJECTION_SCOPE_RECIPE, INJECTION_SCOPE_SUITE})
 
 
 @dataclass(frozen=True)
@@ -127,9 +130,11 @@ class CheckSpec:
             is applied to (``INJECTION_SCOPES``): ``file`` — every artifact whose
             extension the check parses (the default); ``recipe`` — every container
             recipe (``is_container_recipe``), which has no extension for the file
-            rule to see (#598). Declared, not inferred from an empty
-            ``applicable_extensions``: a file-scoped check that happened to declare
-            none would otherwise turn into a recipe check by accident.
+            rule to see (#598); ``suite`` — every emitted JS/TS suite file whose
+            extension the check parses, never the source beside it (#1022). Declared,
+            not inferred from an empty ``applicable_extensions``: a file-scoped check
+            that happened to declare none would otherwise turn into a recipe check by
+            accident.
 
     Governance attributes (1.5 A5, #730 — required keyword-only so every
     present and future entry DECLARES its governance; there is no default to
@@ -440,6 +445,12 @@ CHECK_FILL_SLOT_SIGNATURE = "fill_slot_signature"
 # above, and it earns one for the same reason they do: a literal in an injection filter
 # silently injects nothing after a rename.
 CHECK_HARNESS_BOUNDARY = "harness_boundary"
+# #1022: an author-written JS/TS suite is contained by the stack's own definition of
+# "invokes the application" (``AppInvocation``) at emission — a live-server fetch inside an
+# in-process harness, or a suite that invokes nothing of the application, is rejected with
+# a named finding before it can spend a correction round. Promoted from #1052's
+# reporting-only findings on the evidence of the V7, 1.6.6 and 1.7.0 rolls.
+CHECK_ADDITIVE_CONTAINMENT = "additive_containment"
 
 # #822: the per-view bundler check. Named here because `VerificationContract.view_slots`
 # filters on it to identify a stack's view files for repair targeting — the same
@@ -552,6 +563,13 @@ EMISSION_LANGUAGES: frozenset[str] = frozenset({".py", ".js", ".jsx", ".ts", ".t
 #: An entry whose gap no longer exists fails too, so the list stays exactly as large
 #: as reality — the same two-sided shape as requirements/constraint-exceptions.txt.
 DECLARED_COVERAGE_GAPS: dict[str, dict[str, str]] = {
+    CHECK_ADDITIVE_CONTAINMENT: dict.fromkeys(
+        (".py",),
+        "A pytest suite runs the application in-process through TestClient, so a "
+        "live-server fetch is not its failure mode, and its containment is the harness "
+        "boundary, the contract-assertion gate and the assertion-kind gate. The JS/TS "
+        "rules would misread every Python suite as invoking nothing.",
+    ),
     CHECK_DECLARED_IMPORTS: dict.fromkeys(
         (".py",),
         "Python declares dependencies in requirements files, not a manifest beside "
@@ -575,7 +593,7 @@ def framework_file_scoped_checks() -> dict[str, frozenset[str]]:
         name: spec.applicable_extensions
         for name, spec in CHECK_SPECS.items()
         if spec.framework_injected
-        and spec.injection_scope == INJECTION_SCOPE_FILE
+        and spec.injection_scope in (INJECTION_SCOPE_FILE, INJECTION_SCOPE_SUITE)
         and spec.required_params == frozenset({"file"})
         and spec.applicable_extensions
     }
@@ -1012,6 +1030,38 @@ CHECK_SPECS: dict[str, CheckSpec] = {
             "it does not fail."
         ),
         failure_ownership=OWNERSHIP_PRODUCT,
+        qa_available=True,
+        signature_participation=True,
+        outcome_contribution=True,
+        replayable=True,
+        blocking_default="error",
+    ),
+    CHECK_ADDITIVE_CONTAINMENT: CheckSpec(
+        name=CHECK_ADDITIVE_CONTAINMENT,
+        applicable_extensions=frozenset({".ts", ".tsx", ".js", ".jsx"}),
+        required_params=frozenset({"file"}),
+        # The scaffold stack, injected as a self-contained param (#629's pattern): the
+        # evaluator's `stack` argument carries the check vocabulary (`fastapi`; Next.js
+        # declares none), and the stack's `AppInvocation` is keyed by the scaffold name.
+        optional_params=frozenset({"stack"}),
+        param_types={"file": str, "stack": str},
+        path_params=frozenset({"file"}),
+        framework_injected=True,
+        injection_scope=INJECTION_SCOPE_SUITE,
+        example={"file": "__tests__/runs.test.ts", "stack": "nextjs_ts"},
+        notes=(
+            "Applied by the framework to every emitted JS/TS suite file (the harness's "
+            "suite suffixes), on both stacks, at emission and on a repair's patch. Two "
+            "rules read off the suite's own bytes against the stack's declaration of what "
+            "invokes the application (`AppInvocation`): a fetch of a live server inside "
+            "the in-process harness (nothing listens; the call can only hang or throw), and "
+            "a suite that invokes nothing the stack counts as the application (it can only "
+            "assert against its own stubs). Each failure names the rule and what the stack "
+            "counts, so the re-emission brief carries it (#1022; the C3/C4 corpus reds and "
+            "every V7 counted red). Python suites are contained by their own gates "
+            "(harness_boundary, contract_assertions_match, assertion_kinds_match)."
+        ),
+        failure_ownership=OWNERSHIP_SUITE,
         qa_available=True,
         signature_participation=True,
         outcome_contribution=True,

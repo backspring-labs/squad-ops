@@ -52,6 +52,11 @@ STACK_NAME = "nextjs_ts"
 APP_INVOCATION = AppInvocation(
     invocation_import=r"""^\s*(?:import\b[^\n]*?from\s*|.*\brequire\s*\(\s*)['"`][^'"`]*app/api/""",
     subject_mock=r"""(?:vi|jest)\s*\.\s*mock\s*\(\s*['"`][^'"`]*app/api/""",
+    invocation_description=(
+        "an import of an `app/api/**/route` handler module, called directly with a "
+        "`new Request(...)` — the in-process model; `@/lib/api` is the browser client and "
+        "reaches no server under vitest"
+    ),
 )
 
 _TS_TYPES = {

@@ -797,3 +797,34 @@ class TestQaOwnedSuiteDefectLocus:
         ]
         assert qa_owned_suite_defects("not evidence") == []
         assert qa_owned_suite_defects({"validation_result": {"checks": [{"check": "x"}]}}) == []
+
+
+class TestAdditiveContainmentLocus:
+    """#1022: a failed `additive_containment` row is the suite's own defect — read off
+    the suite's bytes against the stack's declaration, so it cannot be produced by an
+    app defect and routes to the qa re-author, never the dev chain."""
+
+    _evidence_with_check = TestClassifyFailureLocus._evidence_with_check
+
+    def test_a_failed_containment_row_is_own_artifact(self):
+        from squadops.cycles.acceptance_check_spec import CHECK_ADDITIVE_CONTAINMENT
+
+        rows = [
+            {
+                "check": CHECK_ADDITIVE_CONTAINMENT,
+                "passed": False,
+                "status": "failed",
+                "params": {"file": "__tests__/api-runs.test.ts", "stack": "nextjs_ts"},
+            },
+            {"check": "tests_pass", "executed": True, "exit_code": 1, "passed": False},
+        ]
+        evidence = {"validation_result": {"passed": False, "checks": rows}}
+        assert classify_failure_locus(evidence) == FailureLocus.OWN_ARTIFACT
+
+    def test_a_passed_containment_row_changes_nothing(self):
+        from squadops.cycles.acceptance_check_spec import CHECK_ADDITIVE_CONTAINMENT
+
+        row = {"check": CHECK_ADDITIVE_CONTAINMENT, "passed": True, "status": "passed"}
+        tests_pass = {"check": "tests_pass", "executed": True, "exit_code": 1, "passed": False}
+        evidence = {"validation_result": {"passed": False, "checks": [row, tests_pass]}}
+        assert classify_failure_locus(evidence) == FailureLocus.SUBJECT
