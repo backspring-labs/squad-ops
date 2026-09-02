@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Any
 
 from squadops.cycles.acceptance_check_spec import (
+    CHECK_ASSERTION_KINDS,
     CHECK_CONTRACT_ASSERTIONS,
     CHECK_DECLARED_IMPORTS,
     CHECK_ENDPOINT_DEFINED,
@@ -966,6 +967,210 @@ def _prefixed_pinned_path(
         if m == method and path != p and path.endswith(p):
             return p
     return None
+
+
+# --- assertion_kinds_match (#1153) ----------------------------------------------------
+#
+# A free-authored suite asserts a response field equals a literal; the manifest declares
+# the field's kind. When the literal's kind cannot be the declared kind, no application
+# can satisfy the assertion and no repair should try. Both extractors return
+# ``(field, literal kind, line)`` and deliberately stop at what is decidable from the
+# text: a comparison to a name, a call, ``None``/``null``, a negated matcher, or a field
+# the manifest names with more than one kind, is not this check's to judge.
+
+_KIND_BOOLEAN = "boolean"
+_KIND_NUMBER = "number"
+_KIND_STRING = "string"
+_KIND_LIST = "list"
+_KIND_OBJECT = "object"
+
+
+def _py_accessed_field(node: ast.AST) -> str | None:
+    """``x["field"]`` / ``x.get("field")`` → ``field``; anything else → None."""
+    if isinstance(node, ast.Subscript):
+        key = node.slice
+        if isinstance(key, ast.Constant) and isinstance(key.value, str):
+            return key.value
+        return None
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "get"
+        and node.args
+        and isinstance(node.args[0], ast.Constant)
+        and isinstance(node.args[0].value, str)
+    ):
+        return node.args[0].value
+    return None
+
+
+def _py_literal_kind(node: ast.AST) -> str | None:
+    if isinstance(node, ast.Constant):
+        value = node.value
+        if isinstance(value, bool):
+            return _KIND_BOOLEAN
+        if isinstance(value, int | float):
+            return _KIND_NUMBER
+        if isinstance(value, str):
+            return _KIND_STRING
+        return None
+    if (
+        isinstance(node, ast.UnaryOp)
+        and isinstance(node.op, ast.USub)
+        and isinstance(node.operand, ast.Constant)
+        and isinstance(node.operand.value, int | float)
+        and not isinstance(node.operand.value, bool)
+    ):
+        return _KIND_NUMBER
+    if isinstance(node, ast.List | ast.Tuple):
+        return _KIND_LIST
+    if isinstance(node, ast.Dict):
+        return _KIND_OBJECT
+    return None
+
+
+def assertion_literal_kinds_python(tree: ast.AST) -> list[tuple[str, str, int]]:
+    """Every ``assert <field access> == <literal>`` (either order, ``is`` included), as
+    ``(field, literal kind, line)``."""
+    out: list[tuple[str, str, int]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assert) or not isinstance(node.test, ast.Compare):
+            continue
+        cmp = node.test
+        if len(cmp.ops) != 1 or not isinstance(cmp.ops[0], ast.Eq | ast.Is):
+            continue
+        left, right = cmp.left, cmp.comparators[0]
+        for access, other in ((left, right), (right, left)):
+            field = _py_accessed_field(access)
+            kind = _py_literal_kind(other)
+            if field and kind:
+                out.append((field, kind, node.lineno))
+                break
+    return out
+
+
+_JS_MATCHER = re.compile(r"\.\s*(?:toBe|toEqual|toStrictEqual)\s*\(")
+_JS_FIELD_TAIL = re.compile(r"""(?:\.([A-Za-z_$][\w$]*)|\[\s*['"]([^'"]+)['"]\s*\])\s*$""")
+_JS_NUMBER = re.compile(r"-?\d+(?:\.\d+)?")
+
+
+def _js_literal_kind(literal: str) -> str | None:
+    if not literal or literal in ("null", "undefined"):
+        return None
+    if literal in ("true", "false"):
+        return _KIND_BOOLEAN
+    if literal[0] in "'\"`":
+        return _KIND_STRING
+    if _JS_NUMBER.fullmatch(literal):
+        return _KIND_NUMBER
+    if literal[0] == "[":
+        return _KIND_LIST
+    if literal[0] == "{":
+        return _KIND_OBJECT
+    return None
+
+
+def assertion_literal_kinds_js(source: str) -> list[tuple[str, str, int]]:
+    """Every ``expect(<...>.field).toBe(<literal>)`` / ``toEqual`` / ``toStrictEqual``, as
+    ``(field, literal kind, line)``. A ``.not.`` before the matcher is skipped."""
+    out: list[tuple[str, str, int]] = []
+    for m in _JS_MATCHER.finditer(source):
+        head = source[: m.start()].rstrip()
+        if re.search(r"\.\s*not$", head) or not head.endswith(")"):
+            continue
+        depth, i = 0, len(head) - 1
+        while i >= 0:
+            if head[i] == ")":
+                depth += 1
+            elif head[i] == "(":
+                depth -= 1
+                if depth == 0:
+                    break
+            i -= 1
+        if i < 0 or not head[:i].rstrip().endswith("expect"):
+            continue
+        tail = _JS_FIELD_TAIL.search(head[i + 1 : -1].strip())
+        if not tail:
+            continue
+        depth, j = 1, m.end()
+        while j < len(source) and depth:
+            depth += {"(": 1, ")": -1}.get(source[j], 0)
+            j += 1
+        kind = _js_literal_kind(source[m.end() : j - 1].strip())
+        if kind:
+            out.append((tail.group(1) or tail.group(2), kind, source.count("\n", 0, m.start()) + 1))
+    return out
+
+
+@register_check(CHECK_ASSERTION_KINDS)
+class AssertionKindsMatchCheck(BaseCheck):
+    """A suite's literal assertions diffed against the manifest's declared field kinds (#1153).
+
+    1.6.6 React roll 3 (``cyc_38d1e1689766``): the manifest declared
+    ``LeaveResult.removed: boolean``; every qa emission asserted
+    ``body["removed"] == "Carol"``; the round-0 repair set it ``True`` — correct per the
+    contract — and was rejected by the suite's own assertion, three rounds running. The
+    free-authored counterpart of #1094's fill kind gate: the contradiction is between
+    the assertion and a declared kind, so it is decidable at emission, and the suite is
+    re-authored with the field and its kind named rather than a correct app repaired
+    against a wrong test.
+
+    Params are self-contained (the #629 pattern): ``field_kinds`` carries the manifest's
+    kinds by name, only for names the manifest declares with one kind, so the evaluator
+    needs no manifest and never guesses which entity a body is.
+    """
+
+    async def evaluate(
+        self,
+        params: dict[str, Any],
+        workspace_root: Path,
+        *,
+        stack: str | None = None,
+    ) -> CheckOutcome:
+        try:
+            file_path = _safe_resolve(params["file"], workspace_root)
+        except _SafetyError as exc:
+            return CheckOutcome.error(reason=exc.reason)
+        if not file_path.is_file():
+            return CheckOutcome.failed(reason="file_not_found", file=str(params["file"]))
+        kinds = params.get("field_kinds")
+        if not isinstance(kinds, dict) or not kinds:
+            # An injected check with no declaration is an injection bug, never the
+            # suite's fault (the same rule as fill_slot_signature).
+            return CheckOutcome.error(reason="missing_field_kinds")
+        try:
+            source = file_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return CheckOutcome.error(reason="file_unreadable")
+        ext = file_path.suffix.lower()
+        if ext == ".py":
+            try:
+                asserted = assertion_literal_kinds_python(
+                    ast.parse(source, filename=str(file_path))
+                )
+            except SyntaxError:
+                return CheckOutcome.skipped(reason="unsupported_stack_or_syntax")
+        elif ext in _TSC_SOURCE_SUFFIXES:
+            asserted = assertion_literal_kinds_js(source)
+        else:
+            return CheckOutcome.skipped(reason="unsupported_file_extension")
+        contradictions = [
+            {"line": line, "field": field, "asserted": kind, "declared": str(kinds[field])}
+            for field, kind, line in asserted
+            if field in kinds and str(kinds[field]) != kind
+        ]
+        if contradictions:
+            detail = "; ".join(
+                f"line {c['line']}: {c['field']} asserted as {c['asserted']}, "
+                f"the manifest declares {c['field']}: {c['declared']}"
+                for c in contradictions
+            )
+            return CheckOutcome.failed(
+                reason=f"assertion contradicts a declared field kind: {detail}",
+                file=str(params["file"]),
+                contradictions=contradictions,
+            )
+        return CheckOutcome.passed(file=str(params["file"]), assertions_read=len(asserted))
 
 
 @register_check(CHECK_FILL_SLOT_SIGNATURE)

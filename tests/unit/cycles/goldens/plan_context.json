@@ -387,7 +387,8 @@
   "02:qa.test": {
    "acceptance_criteria": [
     "TypedCheck(check='harness_boundary', params={'file': 'backend/tests/test_items.py', 'entry_modules': ['backend.main', 'app.main', 'main']}, severity='error', description='', id='scaffold-harness:backend/tests/test_items.py')",
-    "TypedCheck(check='contract_assertions_match', params={'file': 'backend/tests/test_items.py', 'endpoints': ['POST /items 201', 'POST /items 409'], 'allowed_error_statuses': [409]}, severity='error', description='', id='contract-assertions:backend/tests/test_items.py')"
+    "TypedCheck(check='contract_assertions_match', params={'file': 'backend/tests/test_items.py', 'endpoints': ['POST /items 201', 'POST /items 409'], 'allowed_error_statuses': [409]}, severity='error', description='', id='contract-assertions:backend/tests/test_items.py')",
+    "TypedCheck(check='assertion_kinds_match', params={'file': 'backend/tests/test_items.py', 'field_kinds': {'datetime': 'string', 'distance': 'string', 'id': 'string', 'location': 'string', 'name': 'string', 'pace_target': 'string', 'participants': 'list', 'route_notes': 'string', 'title': 'string'}}, severity='error', description='', id='assertion-kinds:backend/tests/test_items.py')"
    ],
    "agent_config_overrides": {},
    "agent_model": "m",

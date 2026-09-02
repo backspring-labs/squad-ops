@@ -1,0 +1,189 @@
+"""Backend API integration tests — core CRUD and join/leave.
+
+Executed via ``pytest .`` from the workspace root.  The ``client`` fixture
+is provided by the scaffold-owned ``conftest.py``; every test receives it as
+an argument.  In-memory store state is reset before each test via
+``backend.store.reset()``.
+"""
+
+import pytest
+
+from backend.store import reset
+
+
+@pytest.fixture(autouse=True)
+def _clean_store():
+    """Reset in-memory store before every test for order-independence."""
+    reset()
+
+
+# ---------------------------------------------------------------------------
+# helpers
+# ---------------------------------------------------------------------------
+
+def _make_run(client, **overrides) -> dict:
+    """POST a valid run and return the parsed JSON body (asserts 201)."""
+    payload = {
+        "title": "Friday 5K",
+        "datetime": "2026-09-05T17:30",
+        "meeting_location": "Riverside Park",
+    }
+    payload.update(overrides)
+    resp = client.post("/runs", json=payload)
+    assert resp.status_code == 201, f"expected 201, got {resp.status_code}: {resp.text}"
+    return resp.json()
+
+
+# ---------------------------------------------------------------------------
+# 1. Create
+# ---------------------------------------------------------------------------
+
+def test_create_run(client):
+    """POST /runs with valid fields → 201 + full Run object with generated id."""
+    body = _make_run(client)
+
+    # Generated identity
+    assert "id" in body
+    assert isinstance(body["id"], str) and len(body["id"]) > 0
+
+    # Required fields echoed back
+    assert body["title"] == "Friday 5K"
+    assert body["datetime"] == "2026-09-05T17:30"
+    assert body["meeting_location"] == "Riverside Park"
+
+    # Defaults / server-set fields
+    assert body["participants"] == []
+    assert "created_at" in body
+
+
+def test_create_run_missing_required(client):
+    """POST /runs with blank title → 422 validation_error envelope."""
+    resp = client.post(
+        "/runs",
+        json={
+            "title": "",
+            "datetime": "2026-09-05T17:30",
+            "meeting_location": "Riverside Park",
+        },
+    )
+    assert resp.status_code == 422
+    err = resp.json()
+    assert "error" in err
+    assert err["error"]["code"] == "validation_error"
+    assert "message" in err["error"]
+
+
+# ---------------------------------------------------------------------------
+# 2. List
+# ---------------------------------------------------------------------------
+
+def test_list_runs(client):
+    """GET /runs after creating one → list contains it with correct fields."""
+    created = _make_run(client)
+
+    resp = client.get("/runs")
+    assert resp.status_code == 200
+    runs = resp.json()
+    assert isinstance(runs, list)
+    assert len(runs) == 1
+
+    item = runs[0]
+    assert item["id"] == created["id"]
+    assert item["title"] == "Friday 5K"
+    assert item["datetime"] == "2026-09-05T17:30"
+    assert item["meeting_location"] == "Riverside Park"
+    assert item["participants"] == []
+
+
+# ---------------------------------------------------------------------------
+# 3. Detail (known + unknown)
+# ---------------------------------------------------------------------------
+
+def test_get_run_detail(client):
+    """GET /runs/{id} → full detail; unknown id → 404 run_not_found."""
+    created = _make_run(client)
+    run_id = created["id"]
+
+    # --- known run ---
+    resp = client.get(f"/runs/{run_id}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["id"] == run_id
+    assert body["title"] == "Friday 5K"
+    assert body["datetime"] == "2026-09-05T17:30"
+    assert body["meeting_location"] == "Riverside Park"
+    assert body["participants"] == []
+    assert "created_at" in body
+
+    # --- unknown run ---
+    resp = client.get("/runs/does-not-exist-99999")
+    assert resp.status_code == 404
+    err = resp.json()
+    assert "error" in err
+    assert err["error"]["code"] == "run_not_found"
+    assert "message" in err["error"]
+
+
+# ---------------------------------------------------------------------------
+# 4. Join
+# ---------------------------------------------------------------------------
+
+def test_join_run(client):
+    """POST /runs/{id}/join → participant appears in updated run."""
+    run_id = _make_run(client)["id"]
+
+    resp = client.post(f"/runs/{run_id}/join", json={"name": "Alice"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "Alice" in body["participants"]
+    assert len(body["participants"]) == 1
+
+
+def test_join_run_duplicate(client):
+    """Second join with same name (case-insensitive) → 409 duplicate_participant."""
+    run_id = _make_run(client)["id"]
+
+    # First join succeeds
+    resp = client.post(f"/runs/{run_id}/join", json={"name": "Alice"})
+    assert resp.status_code == 200
+
+    # Second join (different case) is rejected
+    resp = client.post(f"/runs/{run_id}/join", json={"name": "alice"})
+    assert resp.status_code == 409
+    err = resp.json()
+    assert "error" in err
+    assert err["error"]["code"] == "duplicate_participant"
+    assert "message" in err["error"]
+
+
+# ---------------------------------------------------------------------------
+# 5. Leave
+# ---------------------------------------------------------------------------
+
+def test_leave_run(client):
+    """Join then leave → participant is removed, count back to zero."""
+    run_id = _make_run(client)["id"]
+
+    # Join first
+    resp = client.post(f"/runs/{run_id}/join", json={"name": "Bob"})
+    assert resp.status_code == 200
+    assert "Bob" in resp.json()["participants"]
+
+    # Leave
+    resp = client.post(f"/runs/{run_id}/leave", json={"name": "Bob"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "Bob" not in body["participants"]
+    assert len(body["participants"]) == 0
+
+
+def test_leave_run_not_found(client):
+    """Leave with a name not on the run → 404 participant_not_found."""
+    run_id = _make_run(client)["id"]
+
+    resp = client.post(f"/runs/{run_id}/leave", json={"name": "Charlie"})
+    assert resp.status_code == 404
+    err = resp.json()
+    assert "error" in err
+    assert err["error"]["code"] == "participant_not_found"
+    assert "message" in err["error"]

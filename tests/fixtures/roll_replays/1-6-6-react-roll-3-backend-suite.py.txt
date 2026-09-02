@@ -1,0 +1,199 @@
+"""Backend API integration tests — group_run core behaviors (PRD §5.1–§5.5).
+
+All tests receive the scaffold-provided ``client`` fixture (FastAPI TestClient
+bound in-process).  No test constructs its own client or imports the app
+entry module.  Each test is order-independent: it creates its own fixture
+data through the public API.
+"""
+
+
+def test_create_run_success(client):
+    """POST /runs with a valid payload → 201, generated id, submitted fields echoed."""
+    payload = {
+        "title": "Saturday Morning Run",
+        "datetime": "2025-01-18T08:00:00",
+        "meeting_location": "Central Park Gate 5",
+        "distance": "5K",
+        "pace_target": "9:00-10:00/mi",
+        "route_notes": "Follow the lake loop",
+    }
+    resp = client.post("/runs", json=payload)
+    assert resp.status_code == 201
+    body = resp.json()
+    assert "id" in body and body["id"]
+    assert body["title"] == "Saturday Morning Run"
+    assert body["datetime"] == "2025-01-18T08:00:00"
+    assert body["meeting_location"] == "Central Park Gate 5"
+    assert body["distance"] == "5K"
+    assert body["pace_target"] == "9:00-10:00/mi"
+    assert body["route_notes"] == "Follow the lake loop"
+    assert body["participants"] == []
+
+
+def test_create_run_missing_required(client):
+    """POST /runs with empty title → 422 validation_error envelope."""
+    resp = client.post("/runs", json={
+        "title": "",
+        "datetime": "2025-01-18T08:00:00",
+        "meeting_location": "Central Park Gate 5",
+    })
+    assert resp.status_code == 422
+    body = resp.json()
+    assert body["error"]["code"] == "validation_error"
+
+
+def test_list_runs(client):
+    """Create a run, then GET /runs includes it with correct summary fields."""
+    create = client.post("/runs", json={
+        "title": "List Test Run",
+        "datetime": "2025-02-01T07:00:00",
+        "meeting_location": "Riverside Trail",
+    })
+    assert create.status_code == 201
+    run_id = create.json()["id"]
+
+    resp = client.get("/runs")
+    assert resp.status_code == 200
+    runs = resp.json()
+    assert isinstance(runs, list) and len(runs) >= 1
+    match = [r for r in runs if r["id"] == run_id]
+    assert len(match) == 1
+    assert match[0]["title"] == "List Test Run"
+    assert match[0]["datetime"] == "2025-02-01T07:00:00"
+    assert match[0]["meeting_location"] == "Riverside Trail"
+    assert match[0]["participant_count"] == 0
+
+
+def test_get_run_detail(client):
+    """GET /runs/{id} returns the full Run object including participants list."""
+    create = client.post("/runs", json={
+        "title": "Detail Run",
+        "datetime": "2025-03-01T09:00:00",
+        "meeting_location": "Hilltop Park",
+    })
+    assert create.status_code == 201
+    run_id = create.json()["id"]
+
+    resp = client.get(f"/runs/{run_id}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["id"] == run_id
+    assert body["title"] == "Detail Run"
+    assert body["datetime"] == "2025-03-01T09:00:00"
+    assert body["meeting_location"] == "Hilltop Park"
+    assert "participants" in body
+    assert isinstance(body["participants"], list)
+
+
+def test_get_run_not_found(client):
+    """GET /runs/nonexistent → 404 run_not_found envelope."""
+    resp = client.get("/runs/nonexistent")
+    assert resp.status_code == 404
+    body = resp.json()
+    assert body["error"]["code"] == "run_not_found"
+
+
+def test_join_run_success(client):
+    """POST /runs/{id}/join with a valid name → 201, participant in list."""
+    create = client.post("/runs", json={
+        "title": "Join Run",
+        "datetime": "2025-04-01T06:30:00",
+        "meeting_location": "Lake Shore",
+    })
+    assert create.status_code == 201
+    run_id = create.json()["id"]
+
+    resp = client.post(f"/runs/{run_id}/join", json={"name": "Alice"})
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["id"] == run_id
+    assert "Alice" in body["participants"]
+
+
+def test_join_run_duplicate(client):
+    """Second join with same name → 409 duplicate_participant envelope."""
+    create = client.post("/runs", json={
+        "title": "Dup Run",
+        "datetime": "2025-05-01T07:00:00",
+        "meeting_location": "Pine Trail",
+    })
+    assert create.status_code == 201
+    run_id = create.json()["id"]
+
+    first = client.post(f"/runs/{run_id}/join", json={"name": "Bob"})
+    assert first.status_code == 201
+
+    second = client.post(f"/runs/{run_id}/join", json={"name": "Bob"})
+    assert second.status_code == 409
+    body = second.json()
+    assert body["error"]["code"] == "duplicate_participant"
+
+
+def test_join_run_empty_name(client):
+    """Join with empty name → 422 validation_error envelope."""
+    create = client.post("/runs", json={
+        "title": "Empty Join Run",
+        "datetime": "2025-06-01T08:00:00",
+        "meeting_location": "Maple Ave",
+    })
+    assert create.status_code == 201
+    run_id = create.json()["id"]
+
+    resp = client.post(f"/runs/{run_id}/join", json={"name": ""})
+    assert resp.status_code == 422
+    body = resp.json()
+    assert body["error"]["code"] == "validation_error"
+
+
+def test_leave_run_success(client):
+    """Join then leave → 200, participant removed, removed field set."""
+    create = client.post("/runs", json={
+        "title": "Leave Run",
+        "datetime": "2025-07-01T05:30:00",
+        "meeting_location": "Oak Grove",
+    })
+    assert create.status_code == 201
+    run_id = create.json()["id"]
+
+    join = client.post(f"/runs/{run_id}/join", json={"name": "Carol"})
+    assert join.status_code == 201
+    assert "Carol" in join.json()["participants"]
+
+    leave = client.post(f"/runs/{run_id}/leave", json={"name": "Carol"})
+    assert leave.status_code == 200
+    body = leave.json()
+    assert body["id"] == run_id
+    assert "Carol" not in body["participants"]
+    assert body["removed"] == "Carol"
+
+
+def test_leave_run_not_found(client):
+    """Leave with a name not on the run → 404 run_not_found envelope."""
+    create = client.post("/runs", json={
+        "title": "Leave NF Run",
+        "datetime": "2025-08-01T06:00:00",
+        "meeting_location": "Birch Path",
+    })
+    assert create.status_code == 201
+    run_id = create.json()["id"]
+
+    resp = client.post(f"/runs/{run_id}/leave", json={"name": "Nonexistent"})
+    assert resp.status_code == 404
+    body = resp.json()
+    assert body["error"]["code"] == "run_not_found"
+
+
+def test_leave_run_empty_name(client):
+    """Leave with empty name → 422 validation_error envelope."""
+    create = client.post("/runs", json={
+        "title": "Empty Leave Run",
+        "datetime": "2025-09-01T07:30:00",
+        "meeting_location": "Willow Bend",
+    })
+    assert create.status_code == 201
+    run_id = create.json()["id"]
+
+    resp = client.post(f"/runs/{run_id}/leave", json={"name": ""})
+    assert resp.status_code == 422
+    body = resp.json()
+    assert body["error"]["code"] == "validation_error"

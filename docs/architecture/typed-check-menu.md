@@ -9,6 +9,7 @@ Regenerate: `UPDATE_CHECK_MENU=1 pytest tests/unit/cycles/test_check_governance.
 
 | check | origin | ownership | qa | signature | outcome | replayable | blocking default |
 |---|---|---|---|---|---|---|---|
+| `assertion_kinds_match` | injected | suite | yes | yes | yes | yes | error |
 | `command_exit_zero` | authored | product | yes | no | yes | no | error |
 | `contract_assertions_match` | injected | suite | yes | yes | yes | yes | error |
 | `count_at_least` | authored | product | yes | yes | yes | yes | error |

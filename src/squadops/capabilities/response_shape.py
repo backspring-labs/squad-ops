@@ -122,6 +122,55 @@ def element_kinds(shape: ResponseShape | None) -> dict[str, dict[str, Any]]:
     return out
 
 
+#: Manifest type tokens → the kind an assertion's literal must have. Buckets, not
+#: languages: a suite asserts a Python or JavaScript literal, and the question is whether
+#: a string can ever equal a declared boolean. ``list[X]`` and entity references are
+#: bucketed by their own shape.
+_FIELD_KIND_BUCKETS = {
+    "string": "string",
+    "text": "string",
+    "datetime": "string",
+    "date": "string",
+    "time": "string",
+    "integer": "number",
+    "int": "number",
+    "number": "number",
+    "float": "number",
+    "decimal": "number",
+    "boolean": "boolean",
+    "bool": "boolean",
+}
+
+
+def declared_field_kinds(manifest: InterfaceManifest | None) -> dict[str, str]:
+    """``field name -> kind`` for every field name the manifest declares with ONE kind (#1153).
+
+    The assertion-kind gate binds a suite's ``body["removed"] == "Carol"`` to the declared
+    kind of ``removed`` by name, because a free-authored suite never says which entity a
+    response body is. A name declared with different kinds on different entities is left
+    out — the gate must never guess, since a false positive in a blocking check recreates
+    the unwinnable loop it exists to end (the same rule #629's status gate runs under).
+    Kinds: ``string``, ``number``, ``boolean``, ``list``, ``object``.
+    """
+    if manifest is None:
+        return {}
+    entity_names = {e.name for e in manifest.entities}
+    seen: dict[str, set[str]] = {}
+    for entity in manifest.entities:
+        for f in entity.fields:
+            token = str(f.type).strip()
+            if token.startswith("list[") and token.endswith("]"):
+                kind = "list"
+            elif token in _FIELD_KIND_BUCKETS:
+                kind = _FIELD_KIND_BUCKETS[token]
+            elif token in entity_names:
+                kind = "object"
+            else:
+                continue
+            seen.setdefault(f.name, set()).add(kind)
+    return {name: next(iter(kinds)) for name, kinds in sorted(seen.items()) if len(kinds) == 1}
+
+
 def derive_response_shape(
     manifest: InterfaceManifest, response: str | None
 ) -> ResponseShape | None:

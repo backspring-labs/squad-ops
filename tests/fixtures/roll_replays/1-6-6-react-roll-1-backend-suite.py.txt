@@ -1,0 +1,145 @@
+"""Backend API tests for core run and participant behaviors.
+
+Covers create, list, detail, join, duplicate-join, leave, and leave-unknown
+scenarios against the FastAPI app via the scaffold-provided ``client`` fixture.
+"""
+
+import pytest
+
+from backend.store import reset
+
+
+@pytest.fixture(autouse=True)
+def _clean_state():
+    """Reset all in-memory stores before every test for order-independence."""
+    reset()
+    yield
+
+
+def _create_run(client, **overrides):
+    """Helper: POST a valid run and return the response."""
+    payload = {
+        "title": "Morning 5K",
+        "datetime": "2026-09-01 07:00",
+        "location": "Riverside Park",
+    }
+    payload.update(overrides)
+    return client.post("/runs", json=payload)
+
+
+def test_create_run_and_list(client):
+    """POST /runs with valid fields returns 201; the run appears in GET /runs."""
+    resp = _create_run(client)
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["id"]
+    assert body["title"] == "Morning 5K"
+    assert body["datetime"] == "2026-09-01 07:00"
+    assert body["location"] == "Riverside Park"
+    assert body["participants"] == []
+
+    # Verify the run appears in the list
+    list_resp = client.get("/runs")
+    assert list_resp.status_code == 200
+    runs = list_resp.json()
+    assert len(runs) == 1
+    assert runs[0]["id"] == body["id"]
+    assert runs[0]["title"] == "Morning 5K"
+    assert runs[0]["participant_count"] == 0
+
+
+def test_create_run_missing_required_field(client):
+    """POST /runs without 'location' returns 422 validation_error."""
+    resp = client.post(
+        "/runs",
+        json={"title": "Test Run", "datetime": "2026-09-01 07:00"},
+    )
+    assert resp.status_code == 422
+    body = resp.json()
+    assert body["error"]["code"] == "validation_error"
+
+
+def test_join_run_valid(client):
+    """POST /runs/{id}/join with a valid name adds the participant."""
+    create = _create_run(client)
+    run_id = create.json()["id"]
+
+    join_resp = client.post(f"/runs/{run_id}/join", json={"name": "Alice"})
+    assert join_resp.status_code == 200
+    body = join_resp.json()
+    names = [p["name"] for p in body["participants"]]
+    assert "Alice" in names
+    assert len(body["participants"]) == 1
+
+
+def test_join_run_duplicate_name(client):
+    """POST /runs/{id}/join with a duplicate name (case-insensitive) returns 409."""
+    create = _create_run(client)
+    run_id = create.json()["id"]
+
+    # First join succeeds
+    first = client.post(f"/runs/{run_id}/join", json={"name": "Alice"})
+    assert first.status_code == 200
+
+    # Duplicate with different casing should be rejected
+    dup_resp = client.post(f"/runs/{run_id}/join", json={"name": "alice"})
+    assert dup_resp.status_code == 409
+    body = dup_resp.json()
+    assert body["error"]["code"] == "duplicate_participant"
+
+
+def test_leave_run_valid(client):
+    """POST /runs/{id}/leave with a valid name removes the participant."""
+    create = _create_run(client)
+    run_id = create.json()["id"]
+
+    # Join first
+    client.post(f"/runs/{run_id}/join", json={"name": "Bob"})
+
+    # Leave
+    leave_resp = client.post(f"/runs/{run_id}/leave", json={"name": "Bob"})
+    assert leave_resp.status_code == 200
+    body = leave_resp.json()
+    assert len(body["participants"]) == 0
+
+
+def test_leave_run_unknown_name(client):
+    """POST /runs/{id}/leave with an unknown name returns 404 participant_not_found."""
+    create = _create_run(client)
+    run_id = create.json()["id"]
+
+    leave_resp = client.post(f"/runs/{run_id}/leave", json={"name": "Nobody"})
+    assert leave_resp.status_code == 404
+    body = leave_resp.json()
+    assert body["error"]["code"] == "participant_not_found"
+
+
+def test_get_run_by_valid_id(client):
+    """GET /runs/{id} returns the full run with all expected fields."""
+    create = _create_run(
+        client,
+        distance="5K",
+        pace_target="9:00/mi",
+        route_notes="Flat loop",
+    )
+    run_id = create.json()["id"]
+
+    detail_resp = client.get(f"/runs/{run_id}")
+    assert detail_resp.status_code == 200
+    body = detail_resp.json()
+    assert body["id"] == run_id
+    assert body["title"] == "Morning 5K"
+    assert body["datetime"] == "2026-09-01 07:00"
+    assert body["location"] == "Riverside Park"
+    assert body["distance"] == "5K"
+    assert body["pace_target"] == "9:00/mi"
+    assert body["route_notes"] == "Flat loop"
+    assert "participants" in body
+
+
+def test_get_run_unknown_id(client):
+    """GET /runs/{id} with an unknown id returns 404 run_not_found."""
+    resp = client.get("/runs/does-not-exist")
+    assert resp.status_code == 404
+    body = resp.json()
+    assert body["error"]["code"] == "run_not_found"
