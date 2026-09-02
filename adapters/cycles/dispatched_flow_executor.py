@@ -68,6 +68,7 @@ from squadops.cycles.models import (
 )
 from squadops.cycles.naming import flow_run_name
 from squadops.cycles.patch_verification import (
+    EXECUTED_IN_RUNTIME_API,
     PATCH_PASSED,
     PATCH_UNVERIFIABLE,
     STRUCTURALLY_UNEVALUABLE_REASONS,
@@ -2898,10 +2899,18 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         attempt = correction_counter["n"]
         correction_counter["n"] = attempt + 1
 
+        # The DISPATCHED envelope, as the retest hand-off below already passes: the
+        # correction runner forwards the failed task's typed-acceptance workspace to the
+        # repair from `envelope.inputs` (#1229, rule B), and only the enriched envelope
+        # carries it (`acceptance_workspace_files`, cut at dispatch — #643). Handed the
+        # base envelope, the repair evaluated its patch in a patch-only tree, its
+        # frontend build skipped for want of a frontend, and the verdict came back
+        # `unverifiable / no_executed_blocking_checks` — the 1.7.0 shape, on the deploy
+        # built to end it (1.7.1 Next.js shakeout cyc_3ac86805439f, 2026-09-02).
         protocol = await self._correction_runner.run_correction_protocol(
             run_id=run_id,
             cycle=cycle,
-            envelope=envelope,
+            envelope=enriched_envelope if enriched_envelope is not None else envelope,
             result=result,
             correction_attempts=attempt,
             prior_outputs=prior_outputs,
@@ -3113,9 +3122,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             if record.severity == "error" and record.status in ("failed", "error")
         ]
         failed_checks = [record.check for record in failed_records]
+        agent_rows = [r for r in verification.checks if r.executed_in != EXECUTED_IN_RUNTIME_API]
         logger.info(
             "patch_verification task=%s task_type=%s status=%s reason=%s checks=%d failed=%s "
-            "decided_by_agent=%d",
+            "decided_by_agent=%d agent_rows=%d agent_executed=%d",
             envelope.task_id,
             envelope.task_type,
             verification.status,
@@ -3123,6 +3133,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             len(verification.checks),
             ",".join(failed_checks) or "-",
             verification.decided_by_agent,
+            len(agent_rows),
+            sum(1 for r in agent_rows if r.status in ("passed", "failed")),
         )
         # pf-47/pf-49: when a task's checks are structurally unevaluable (a frontend
         # test file — every AST check skips by design), "unverifiable" is not caution,

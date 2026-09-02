@@ -329,12 +329,26 @@ class _RepairPromptMixin:
         executed = sum(
             1 for c in rows if c.get("status") in (ResultStatus.PASSED, ResultStatus.FAILED)
         )
+        # Every row with its status, and the reason when it did not execute: the Next.js
+        # shakeout of 2026-09-02 logged "rows=4 executed=2" and nothing in any store said
+        # WHICH two skipped or why — the diagnosis had to be read out of the code paths.
         logger.info(
-            "repair_typed_checks environment=agent:%s rows=%d executed=%d failed=%d",
+            "repair_typed_checks environment=agent:%s rows=%d executed=%d failed=%d checks=%s",
             self._role,
             len(rows),
             executed,
             sum(1 for c in rows if c.get("status") == ResultStatus.FAILED),
+            " ".join(
+                f"{str(c.get('check', '')).removeprefix('acceptance:')}:{c.get('status')}"
+                + (
+                    f"({c.get('reason')})"
+                    if c.get("status") not in (ResultStatus.PASSED, ResultStatus.FAILED)
+                    and c.get("reason")
+                    else ""
+                )
+                for c in rows
+            )
+            or "-",
         )
 
     async def _render_qa_fill_mode_section(

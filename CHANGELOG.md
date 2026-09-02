@@ -29,6 +29,24 @@ agent container, at emission and at repair, and each image provisions its toolch
   `backend/routes.py:24`) stays on the dev chain; a stored collection error and a
   rewritten assert are not defects. The log line carries `qa_owned_routed` for the set's
   R2 readout.
+### Fixed — the repair is handed the dispatched envelope, so rule B's workspace reaches it (#1229 live gap)
+- The 1.7.1 Next.js shakeout (`cyc_3ac86805439f`) reproduced the shape rule B was built
+  to end: a dev repair evaluated its own patch in the dev container — four rows, two
+  executed, none failed — and runtime-api still returned `unverifiable /
+  no_executed_blocking_checks`. Read from the code, not inferred: the executor's own
+  verification reads the accepted workspace from the **enriched** envelope, but handed
+  the correction runner the **base** one, so `repair_forwarded_inputs` found no
+  `acceptance_workspace_files`, the repair's build check skipped for want of a frontend
+  tree, and the one local blocking criterion could not execute in either environment.
+  The retest hand-off already passed the enriched envelope; the correction hand-off now
+  does too. The unit tests of #1238 exercised an envelope that already carried the key;
+  a runner-level test now pins the forwarding and an executor-level test pins which
+  envelope is handed over.
+- **Instrumented, so the next such diagnosis is a log line, not a code-path reading:**
+  the agent-side `repair_typed_checks` line names every row with its status and skip
+  reason; the executor's `patch_verification` line carries `agent_rows` and
+  `agent_executed`.
+
 ### Changed — the qa repair is scoped to the failing cases, and routes on an undeclared anchor (#1123)
 - **The repair brief names the cases that failed.** The `tests_pass` row carries the
   runner's structured failures as `failing_cases` (file, title, line, first message —

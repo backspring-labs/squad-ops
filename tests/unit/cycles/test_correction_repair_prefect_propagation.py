@@ -384,3 +384,65 @@ class TestPulseRepairTaskRunPropagation:
             ctx = call.kwargs["context"]
             assert ctx["flow_run_id"] == "fr_main"
             assert ctx["task_run_id"].startswith("tr_")
+
+
+class TestCorrectionIsHandedTheDispatchedEnvelope:
+    """#1229's live gap (1.7.1 Next.js shakeout, cyc_3ac86805439f): the executor verified a
+    repair against the ENRICHED envelope's workspace but handed the correction runner the
+    BASE envelope, so rule B's forwarding found no `acceptance_workspace_files` and the
+    repair's build check skipped for want of a frontend tree. The retest hand-off already
+    passed the enriched envelope; this pins the correction hand-off to the same one."""
+
+    async def test_the_enriched_envelope_reaches_the_correction_runner(
+        self, mock_prefect_workflow_tracker, cycle, failed_envelope, reply_router
+    ):
+        from squadops.cycles.task_outcome import TaskOutcome
+
+        ex = _make_executor(mock_prefect_workflow_tracker, reply_router)
+        recorded: dict = {}
+
+        async def record(**kwargs):
+            recorded.update(kwargs)
+            raise RuntimeError("stop here — only the hand-off is under test")
+
+        ex._correction_runner = MagicMock()
+        ex._correction_runner.run_correction_protocol = AsyncMock(side_effect=record)
+
+        import dataclasses
+
+        enriched = dataclasses.replace(
+            failed_envelope,
+            inputs={
+                **(failed_envelope.inputs or {}),
+                "acceptance_workspace_files": {"package.json": "{}"},
+                "workspace_revision_id": "rev-enriched",
+            },
+        )
+        failed = TaskResult(
+            task_id=failed_envelope.task_id,
+            status="FAILED",
+            error="acceptance:frontend_compiles failed",
+            outputs={"outcome_class": TaskOutcome.SEMANTIC_FAILURE, "artifacts": []},
+        )
+
+        with pytest.raises(RuntimeError, match="stop here"):
+            await ex._handle_task_outcome(
+                result=failed,
+                envelope=failed_envelope,
+                enriched_envelope=enriched,
+                cycle=cycle,
+                run_id="run_001",
+                task_attempt_counts={failed_envelope.task_id: 1},
+                consecutive_failures={},
+                correction_counter={"n": 0},
+                correction_signature_state={},
+                scaffold_enforcement_carry=[],
+                prior_outputs={},
+                all_artifact_refs=[],
+                stored_artifacts=[],
+                completed_task_ids=[],
+                plan_delta_refs=[],
+            )
+
+        assert recorded["envelope"] is enriched
+        assert recorded["envelope"].inputs["acceptance_workspace_files"] == {"package.json": "{}"}
