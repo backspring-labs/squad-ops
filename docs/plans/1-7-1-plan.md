@@ -355,6 +355,16 @@ manifest does not carry, and that is #1122's rung. Replay: roll 6's stored front
 report → the two failing cases isolated in the brief; the 1.6.5 shakeout `cyc_3cde35fa5204`'s
 five DOM failures → the absent-anchor ones routed to qa, the rest untouched.
 
+**As landed (2026-09-02).** (1) as written: `failing_cases` on the `tests_pass` row,
+rendered as the qa repair's REPAIR SCOPE block; vitest's text is parsed when its JSON
+report is missing, and it is the replay parser. (2) as written, on #668's
+`unknown_anchors`. The replay claim above was wrong on the facts: the 1.6.5 shakeout's
+DOM failures (four in round 0, five later) all name anchors the manifest declares —
+duplicate renders and one missing element — so none is absent-anchor and all stay the
+dev chain's. That report is the signal's stored control; its stored exercise does not
+exist in the vault (zero suites query an undeclared anchor). R4's first half reads
+`correction_repair_brief` lines; its second half can only be confirmed where exercised.
+
 **#1022 — additive-suite containment.** The scaffold gate
 (`src/squadops/capabilities/verification_scaffold_gate.py`) validates the fill surface with
 named findings; additive suites — the files a qa author writes beyond it — have none, and they

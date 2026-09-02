@@ -409,7 +409,12 @@ async def run_node_tests(
         stderr = raw_stderr.decode(errors="replace")[:_STDOUT_LIMIT]
 
         report = _read_vitest_report(report_path)
-        failure_rows = parse_vitest_failure_rows(report, cwd) if report else []
+        # #1123: the JSON report is the machine report; when it was not written (a
+        # reporter crash, a disk error) the text still names every failed case, and a
+        # repair brief with no case list re-authors the whole file.
+        failure_rows = (
+            parse_vitest_failure_rows(report, cwd) if report else parse_vitest_failure_text(stdout)
+        )
         uncollected = (
             uncollected_test_files(report, cwd, [f["path"] for f in test_files]) if report else []
         )
@@ -818,7 +823,36 @@ def failed_tests_pass_row(
             {**defect, "qa_owned": bool(qa_owned and qa_owned(str(defect.get("file", ""))))}
             for defect in result.suite_defects
         ],
+        # #1123: WHICH cases failed and what the runner said about each — the repair brief
+        # names them and forbids touching the rest; a brief with no list re-authored the
+        # whole file (1.6.6 React roll 6, two failing cases of four). Bounded: identity
+        # plus the first message, so a hundred-case red cannot flood the row.
+        "failing_cases": failing_cases(result.test_failures),
     }
+
+
+_FAILING_CASES_LIMIT = 40
+_FAILING_CASE_MESSAGE_LIMIT = 300
+
+
+def failing_cases(test_failures) -> list[dict]:
+    """``[{file, title, line, message}]`` for the repair brief, in report order, bounded."""
+    cases: list[dict] = []
+    for row in test_failures or ():
+        if not isinstance(row, dict) or not (row.get("file") or row.get("title")):
+            continue
+        messages = row.get("messages") or []
+        cases.append(
+            {
+                "file": str(row.get("file") or ""),
+                "title": str(row.get("title") or ""),
+                "line": row.get("line"),
+                "message": str(messages[0] if messages else "")[:_FAILING_CASE_MESSAGE_LIMIT],
+            }
+        )
+        if len(cases) >= _FAILING_CASES_LIMIT:
+            break
+    return cases
 
 
 def parse_vitest_failure_rows(report: dict, workspace_root: str) -> list[dict]:
@@ -1057,6 +1091,33 @@ def suite_defects(rows: list[dict], source_files: list[dict[str, str]]) -> list[
                 }
             )
     return defects
+
+
+#: vitest's summary lines: `` × <file> > <suite> > <title>`` followed by ``   → <message>``
+#: (the ``✗`` glyph on older reporters). The same failure repeats in the ``FAIL`` detail
+#: block; the summary is read once so two shapes cannot double-count a case.
+_VITEST_TEXT_CASE = re.compile(
+    r"^ [×✗] (?P<file>\S+) > (?P<title>.+?)(?: \d+ms)?\n\s+→ (?P<message>.+)$", re.M
+)
+
+
+def parse_vitest_failure_text(stdout: str) -> list[dict]:
+    """Per-failure rows from vitest's text output — the fallback when no JSON report was
+    written, and the shape every stored ``test_report.md`` carries for replay (#1123).
+
+    Same row shape as ``parse_vitest_failure_rows`` (``file, title, messages, line,
+    suite_level``); ``line`` is unknown from the text. ``title`` keeps the ``suite > case``
+    path vitest prints, which is what a repair brief needs to name the case."""
+    return [
+        {
+            "file": m.group("file"),
+            "title": m.group("title").strip(),
+            "messages": [m.group("message").strip()[:2000]],
+            "line": None,
+            "suite_level": False,
+        }
+        for m in _VITEST_TEXT_CASE.finditer(stdout)
+    ]
 
 
 def _read_vitest_report(report_path: str) -> dict | None:

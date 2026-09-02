@@ -145,3 +145,62 @@ async def test_dev_repair_never_renders_the_client_surface():
     )
     assert out == ""
     renderer.render.assert_not_awaited()
+
+
+def _roll_6_evidence():
+    """1.6.6 React roll 6's final frontend report, through the runner's text parser and
+    the shared row builder — the cases the brief must name."""
+    from pathlib import Path
+
+    from squadops.capabilities.handlers.test_runner import (
+        RunTestsResult,
+        failed_tests_pass_row,
+        parse_vitest_failure_text,
+    )
+
+    replays = Path(__file__).resolve().parents[2] / "fixtures" / "roll_replays"
+    text = (replays / "1-6-6-react-roll-6-frontend-final-test_report.md").read_text()
+    stdout = text.split("## stdout", 1)[1].split("```")[1]
+    rows = parse_vitest_failure_text(stdout)
+    row = failed_tests_pass_row(
+        RunTestsResult(executed=True, exit_code=1, runner="vitest", test_failures=tuple(rows))
+    )
+    return {"validation_result": {"passed": False, "checks": [row]}}
+
+
+async def test_qa_repair_renders_the_failing_cases_from_the_runners_rows():
+    """#1123 (1): the brief names the cases that failed — roll 6's one of four — and
+    nothing else; before this the repair re-authored the whole file with no list."""
+    handler = QATestRepairHandler()
+    renderer = AsyncMock()
+    renderer.render.return_value = MagicMock(content="SCOPE BLOCK")
+
+    out = await handler._render_failing_cases_section(
+        _context(renderer), {"failure_evidence": _roll_6_evidence()}
+    )
+
+    assert out == "SCOPE BLOCK"
+    (template_id, variables) = renderer.render.await_args.args
+    assert template_id == "request.qa_test_repair_failing_cases_appendix"
+    assert variables["case_count"] == 1
+    assert variables["case_lines"] == (
+        "- `src/__tests__/runs.test.jsx` › RunDetailView > renders participant names and "
+        "submits join with expected payload — expected undefined to be defined"
+    )
+
+
+async def test_dev_repair_and_an_evidence_less_qa_repair_render_no_scope_block():
+    renderer = AsyncMock()
+    assert (
+        await DevelopmentCorrectionRepairHandler()._render_failing_cases_section(
+            _context(renderer), {"failure_evidence": _roll_6_evidence()}
+        )
+        == ""
+    )
+    assert (
+        await QATestRepairHandler()._render_failing_cases_section(
+            _context(renderer), {"failure_evidence": {"validation_result": {"checks": []}}}
+        )
+        == ""
+    )
+    renderer.render.assert_not_awaited()

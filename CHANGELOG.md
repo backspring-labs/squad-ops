@@ -29,6 +29,25 @@ agent container, at emission and at repair, and each image provisions its toolch
   `backend/routes.py:24`) stays on the dev chain; a stored collection error and a
   rewritten assert are not defects. The log line carries `qa_owned_routed` for the set's
   R2 readout.
+### Changed — the qa repair is scoped to the failing cases, and routes on an undeclared anchor (#1123)
+- **The repair brief names the cases that failed.** The `tests_pass` row carries the
+  runner's structured failures as `failing_cases` (file, title, line, first message —
+  bounded), and the qa repair renders them as an authoritative REPAIR SCOPE block through
+  a new appendix asset: repair exactly these, keep the passing cases byte-for-byte. Before
+  this the repair re-authored the whole file with no list (1.6.6 React roll 6: two failing
+  cases of four). When vitest's JSON report was not written, its text is parsed for the
+  same rows — the shape every stored report carries, so live and replay read one parser.
+- **An assertion on an anchor no view declares is the suite's defect.** Read from the
+  suite's own bytes (#668's `unknown_anchors`) and only then matched to the runner's
+  failing case (`Unable to find an element by: [data-testid="…"]`), so the verdict alone
+  never routes; the repair targets the suite that made the assertion. A declared anchor
+  the view failed to render stays the dev chain's. Stated: no stored roll asserts an
+  undeclared anchor — the 1.6.5 shakeout's four DOM failures all name declared anchors
+  and stay the views' — so this signal has a synthetic exercise and a stored control, not
+  a stored red.
+- Readouts for the set: `correction_repair_brief` logs the case count a qa repair carries;
+  `absent_anchor_routed` marks the routing.
+
 ### Added — the DOM anchor contract gets its enforcement layer (#668)
 - **`dom_anchor_queries`**, a typed check the planner binds onto every bound qa.test
   frontend suite when the manifest declares view anchors, with the inventory as
