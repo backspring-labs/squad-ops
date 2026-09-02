@@ -36,10 +36,6 @@ where a reader finds out. An undeclared gap fails
 | check | language | reason |
 |---|---|---|
 | `declared_imports` | `.py` | Python declares dependencies in requirements files, not a manifest beside the source, and resolution is environment-wide rather than per-directory. The equivalent check is a different check, not this one with another extension — no Python emission is silently less checked as a result, since undefined_names and the syntax gate both cover .py. |
-| `undefined_names` | `.js` | No JS/TS scope analyser exists in the agent image — measured: tsc is not on PATH (TypeScript lives in the app's own node_modules/.bin) and eslint 6.4.0 exits 2 without a config, which is #645's fails-on-any-content class. Closing it means provisioning a real analyser into the qa image. Tracked as #939; it cost cyc_58d92ca2b407, where a .ts fill used `created` without declaring it and reached test execution. |
-| `undefined_names` | `.jsx` | No JS/TS scope analyser exists in the agent image — measured: tsc is not on PATH (TypeScript lives in the app's own node_modules/.bin) and eslint 6.4.0 exits 2 without a config, which is #645's fails-on-any-content class. Closing it means provisioning a real analyser into the qa image. Tracked as #939; it cost cyc_58d92ca2b407, where a .ts fill used `created` without declaring it and reached test execution. |
-| `undefined_names` | `.ts` | No JS/TS scope analyser exists in the agent image — measured: tsc is not on PATH (TypeScript lives in the app's own node_modules/.bin) and eslint 6.4.0 exits 2 without a config, which is #645's fails-on-any-content class. Closing it means provisioning a real analyser into the qa image. Tracked as #939; it cost cyc_58d92ca2b407, where a .ts fill used `created` without declaring it and reached test execution. |
-| `undefined_names` | `.tsx` | No JS/TS scope analyser exists in the agent image — measured: tsc is not on PATH (TypeScript lives in the app's own node_modules/.bin) and eslint 6.4.0 exits 2 without a config, which is #645's fails-on-any-content class. Closing it means provisioning a real analyser into the qa image. Tracked as #939; it cost cyc_58d92ca2b407, where a .ts fill used `created` without declaring it and reached test execution. |
 
 `command_exit_zero` ownership is per-command in truth. The forms it may take
 are inventoried below — this replaces the standing caveat that called the
@@ -65,7 +61,7 @@ surface is only acceptable while something else verifies the code.
 
 | language | why no form | verified instead by |
 |---|---|---|
-| TypeScript (.ts/.tsx) | no TypeScript checker is provisionable — tsc lives in the app's own node_modules/.bin and never on PATH, and `node --check` refuses both extensions before parsing (ERR_UNKNOWN_FILE_EXTENSION, node v20.19.2, measured 2026-08-10) | frontend_compiles / frontend_build — `next build` runs tsc itself and next.config.mjs declines to ignore type errors, so the bundler check IS the type check (#822 bend register entry 6) |
+| TypeScript (.ts/.tsx) | the command safelist carries no TypeScript checker. `tsc` is provisioned globally in the dev and qa images since #939 (npm-global-packages.txt) for the undefined_names check, but a safelist entry is a separate decision: runtime-api has no node, so an authored `tsc` criterion would be #707's passes-the-allowlist-but-cannot-run class there until #1229. `node --check` refuses both extensions before parsing (ERR_UNKNOWN_FILE_EXTENSION, node v20.19.2, measured 2026-08-10) | frontend_compiles / frontend_build — `next build` runs tsc itself and next.config.mjs declines to ignore type errors, so the bundler check IS the type check (#822 bend register entry 6) |
 
 ## Declared-unbuilt (visible, not evaluable, not authorable)
 

@@ -122,14 +122,36 @@ class TestFrameworkInjectionReachesQa:
         assert row["status"] == "failed"
         assert result.passed is False
 
-    async def test_no_injection_on_out_of_family_emission(self):
-        # #605 skip property preserved: a .js suite gets no python check
+    async def test_a_js_suite_gets_the_js_check_and_out_of_language_files_none(self):
+        """#605's property, restated for #939: a `.js` suite is never fed the Python
+        analyser — it gets the JS one, which skips honestly where tsc is absent and
+        passes a suite whose names are all imported — and a file in no emission
+        language (a JSON fixture) gets no row at all. Either way the task passes."""
+        import shutil
+
         h = QATestHandler()
         result = await h._validate_output(
             _inputs(expected=("frontend/tests/app.test.js",)),
-            [_art("frontend/tests/app.test.js", "test('x', () => {})")],
+            [
+                _art(
+                    "frontend/tests/app.test.js",
+                    "import { test } from 'vitest'\ntest('x', () => {})\n",
+                ),
+                _art("frontend/tests/fixture.json", "{}"),
+            ],
         )
-        assert not any(c["check"] == "acceptance:undefined_names" for c in result.checks)
+        rows = {
+            c["params"]["file"]: c
+            for c in result.checks
+            if c["check"] == "acceptance:undefined_names"
+        }
+        assert set(rows) == {"frontend/tests/app.test.js"}
+        row = rows["frontend/tests/app.test.js"]
+        if shutil.which("tsc") is None:
+            assert row["status"] == "skipped"
+            assert row["actual"]["missing_module"] == "tsc"
+        else:
+            assert row["status"] == "passed"
         assert result.passed is True
 
 
