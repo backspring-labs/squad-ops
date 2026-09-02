@@ -26,6 +26,7 @@ from squadops.capabilities.handlers.build_profiles import (
     ROUTING_FALLBACK_NO_BUILDER,
 )
 from squadops.capabilities.reasoning_policy import REASONING_OVERRIDE_KEY
+from squadops.capabilities.response_shape import declared_field_kinds
 from squadops.capabilities.scaffold import (
     InterfaceManifest,
     frozen_surface_index_lines,
@@ -34,6 +35,7 @@ from squadops.capabilities.scaffold import (
     testid_surface_instructions,
 )
 from squadops.cycles.acceptance_check_spec import (
+    CHECK_ASSERTION_KINDS,
     CHECK_CONTRACT_ASSERTIONS,
     CHECK_FILL_SLOT_SIGNATURE,
     CHECK_HARNESS_BOUNDARY,
@@ -684,6 +686,36 @@ def _contract_assertion_criteria(
     ]
 
 
+def _assertion_kind_criteria(
+    task_type: str,
+    plan_task: Any,
+    contract: VerificationContract | None,
+    interface_manifest: InterfaceManifest | None,
+) -> list[TypedCheck]:
+    """#1153: manifest-owned ``assertion_kinds_match`` checks for a bound qa.test task — one
+    per expected suite file in the stack's QA namespace, params carrying the manifest's
+    declared field kinds as self-contained data (names declared with one kind only), so the
+    evaluator needs no manifest access. 1.6.6 React roll 3: a suite asserted a declared
+    boolean equal to a name and a correct repair was rejected three rounds running; the
+    #1094 fill gate already refuses this for fills, this is its free-authored counterpart.
+    Empty in author mode, non-qa tasks, and manifests declaring no checkable kind."""
+    if task_type != "qa.test" or contract is None or interface_manifest is None:
+        return []
+    kinds = declared_field_kinds(interface_manifest)
+    if not kinds:
+        return []
+    stack = contract.skeleton.expander
+    return [
+        TypedCheck(
+            check=CHECK_ASSERTION_KINDS,
+            params={"file": art, "field_kinds": dict(kinds)},
+            id=f"assertion-kinds:{art}",
+        )
+        for art in plan_task.expected_artifacts
+        if is_check_applicable(CHECK_ASSERTION_KINDS, art) and is_qa_test_path_for_stack(art, stack)
+    ]
+
+
 def _harness_boundary_criteria(
     task_type: str, plan_task: Any, contract: VerificationContract | None
 ) -> list[TypedCheck]:
@@ -994,6 +1026,11 @@ def generate_task_plan(
             # bound qa.test suite files — layer 1's authoring block is guidance,
             # this is the guarantee.
             acceptance.extend(_contract_assertion_criteria(task_type, plan_task, contract))
+            # #1153: the manifest's declared field kinds, enforced on the suite's own
+            # literal assertions — the free-authored counterpart of the fill kind gate.
+            acceptance.extend(
+                _assertion_kind_criteria(task_type, plan_task, contract, interface_manifest)
+            )
             # #730 D1 / #504: scaffold-owned signature enforcement on .py fill
             # slots — the pf-40 report, promoted to blocking.
             acceptance.extend(

@@ -1,0 +1,110 @@
+version: 1
+kind: interface_manifest
+project_id: group_run
+source_prd: "PRD: group_run (1-Hour Cycle MVP+) v0.5"
+stack: fullstack_fastapi_react
+scope: "Full-stack vertical slice for creating, listing, viewing, joining, and leaving group run events with in-memory persistence; excludes authentication, persistent storage, real-time features, maps, notifications, and all post-MVP enhancements"
+
+entities:
+  - name: Run
+    fields:
+      - { name: id, type: string, required: true, generated: true }
+      - { name: title, type: string, required: true }
+      - { name: datetime, type: string, required: true }
+      - { name: meeting_location, type: string, required: true }
+      - { name: distance, type: string, required: false, default: null }
+      - { name: pace_target, type: string, required: false, default: null }
+      - { name: route_notes, type: string, required: false, default: null }
+      - { name: participants, type: "list[string]", required: false, default: [] }
+      - { name: created_at, type: string, required: true, generated: true }
+
+api:
+  base_path: ""
+  request_shapes:
+    RunCreate:
+      required: [title, datetime, meeting_location]
+      optional: [distance, pace_target, route_notes]
+    JoinRequest:
+      required: [name]
+    LeaveRequest:
+      required: [name]
+  endpoints:
+    - method: POST
+      path: /runs
+      summary: Create a new group run event
+      request: RunCreate
+      response: Run
+      success_status: 201
+      errors: [validation_error]
+    - method: GET
+      path: /runs
+      summary: List all group run events with participant counts
+      response: "list[Run]"
+    - method: GET
+      path: "/runs/{run_id}"
+      summary: Get a single run with its full details and participant list
+      response: Run
+      errors: [run_not_found]
+    - method: POST
+      path: "/runs/{run_id}/join"
+      summary: Add a participant to a run by name
+      request: JoinRequest
+      response: Run
+      success_status: 200
+      errors: [run_not_found, duplicate_participant, validation_error]
+    - method: POST
+      path: "/runs/{run_id}/leave"
+      summary: Remove a participant from a run by name
+      request: LeaveRequest
+      response: Run
+      success_status: 200
+      errors: [run_not_found, participant_not_found, validation_error]
+  error_contract:
+    shape: '{"error": {"code": "...", "message": "..."}}'
+    codes:
+      validation_error: { http: 422 }
+      run_not_found: { http: 404 }
+      duplicate_participant: { http: 409 }
+      participant_not_found: { http: 404 }
+
+frontend:
+  framework: react_vite
+  routes:
+    - path: /
+      view: RunsListView
+      purpose: List all group runs showing title, datetime, location, and participant count; provide link to create a new run; display empty state when no runs exist
+      testids: [runs-list-view, runs-list, run-row, run-title-in-list, new-run-link, empty-state]
+    - path: /runs/new
+      view: RunCreateView
+      purpose: Form with required fields (title, datetime, location) and optional fields (distance, pace target, route notes) to create a run; redirect to detail view on success; display validation errors
+      testids: [run-create-view, create-run-form, run-title-input, run-datetime-input, run-location-input, run-distance-input, run-pace-input, run-notes-input, create-run-submit, create-error]
+    - path: /runs/:run_id
+      view: RunDetailView
+      purpose: Display full run details, participant name list with count, join form, leave form, and error states for not-found or duplicate participant
+      testids: [run-detail-view, run-title-display, run-datetime-display, run-location-display, participant-list, participant-count, join-form, join-name-input, join-submit, leave-form, leave-name-input, leave-submit, detail-error, not-found-state]
+
+persistence: in_memory
+
+decisions:
+  - id: duplicate-name-case-insensitive
+    choice: "Participant names are compared case-insensitively for uniqueness; original casing is preserved for display"
+    warrant: "PRD §5.4: 'default recommendation: case-insensitive uniqueness'; objective_frame D1"
+  - id: leave-missing-participant-is-error
+    choice: "POST /runs/{run_id}/leave with a name not present on the run returns 404 (participant_not_found) rather than a silent no-op"
+    warrant: "PRD §5.5: 'choose one and document in QA handoff'; objective_frame D2 selects explicit error over no-op"
+  - id: run-list-ordering
+    choice: "GET /runs returns runs in insertion (creation) order; no explicit sort is applied in core scope"
+    warrant: "PRD §5.2 does not mandate a sort order; technical_design U12 confirms insertion order; datetime sort is Tier-1 expansion (PRD §4.1)"
+  - id: name-whitespace-stripping
+    choice: "Participant names are trimmed of surrounding whitespace before the empty-check and duplicate comparison"
+    warrant: "PRD §5.4 'Name cannot be empty' implies a trimmed non-empty check; objective_frame D1 normalization step"
+  - id: error-envelope-shape
+    choice: "All error responses use the shape rooted at the 'error' key: {\"error\": {\"code\", \"message\"}}"
+    warrant: "Scaffold blueprint mandates this frozen envelope for all stacks; objective_frame D3 preferred FastAPI-native {detail} but the scaffold contract supersedes"
+
+provenance:
+  mode: authored
+  cycle_id: cyc_ae0631fddfc5
+  task_id: task-run_0cee63b9-003-development.author_manifest
+  attempts: 1
+  revisions: []

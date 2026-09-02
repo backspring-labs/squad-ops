@@ -1,0 +1,125 @@
+version: 1
+kind: interface_manifest
+project_id: group_run
+source_prd: "PRD: group_run (1-Hour Cycle MVP+) v0.5"
+stack: fullstack_fastapi_react
+scope: >
+  Core vertical slice for coordinating a group run: create, list, detail, join, leave,
+  and duplicate-name rejection. Deliberately excludes authentication, persistent storage,
+  external APIs, real-time updates, and all expansion tiers unless separately declared.
+entities:
+  - name: Run
+    fields:
+      - { name: id,               type: string,         required: true,  generated: true }
+      - { name: title,            type: string,         required: true }
+      - { name: datetime,         type: string,         required: true }
+      - { name: meeting_location, type: string,         required: true }
+      - { name: distance,         type: string,         required: false }
+      - { name: pace_target,      type: string,         required: false }
+      - { name: route_notes,      type: string,         required: false }
+      - { name: participants,     type: "list[string]", required: true,  default: [] }
+  - name: RunSummary
+    fields:
+      - { name: id,                type: string,  required: true }
+      - { name: title,             type: string,  required: true }
+      - { name: datetime,          type: string,  required: true }
+      - { name: meeting_location,  type: string,  required: true }
+      - { name: participant_count, type: integer, required: true }
+  - name: JoinResult
+    fields:
+      - { name: id,           type: string,         required: true }
+      - { name: participants, type: "list[string]", required: true }
+  - name: LeaveResult
+    fields:
+      - { name: id,           type: string,         required: true }
+      - { name: participants, type: "list[string]", required: true }
+      - { name: removed,      type: boolean,        required: true }
+api:
+  base_path: /api
+  request_shapes:
+    RunCreate:
+      required: [title, datetime, meeting_location]
+      optional: [distance, pace_target, route_notes]
+    ParticipantName:
+      required: [name]
+  endpoints:
+    - method: POST
+      path: /runs
+      summary: create a run event
+      request: RunCreate
+      response: Run
+      success_status: 201
+      errors: [validation_error]
+    - method: GET
+      path: /runs
+      summary: list all runs with participant counts
+      response: "list[RunSummary]"
+    - method: GET
+      path: /runs/{run_id}
+      summary: get run detail with full participant list
+      response: Run
+      errors: [run_not_found]
+    - method: POST
+      path: /runs/{run_id}/join
+      summary: join a run by participant name
+      request: ParticipantName
+      response: JoinResult
+      success_status: 201
+      errors: [validation_error, run_not_found, duplicate_participant]
+    - method: POST
+      path: /runs/{run_id}/leave
+      summary: leave a run by participant name
+      request: ParticipantName
+      response: LeaveResult
+      errors: [validation_error, run_not_found]
+  error_contract:
+    shape: '{"error": {"code": "...", "message": "..."}}'
+    codes:
+      validation_error:       { http: 422 }
+      run_not_found:          { http: 404 }
+      duplicate_participant:  { http: 409 }
+frontend:
+  framework: react_vite
+  routes:
+    - path: /
+      view: RunList
+      purpose: display upcoming runs with title, datetime, location, and participant count; link to create
+      testids: [run-list-view, run-list, run-row, run-title, run-datetime, run-location, run-participant-count, create-run-link]
+    - path: /runs/new
+      view: RunCreate
+      purpose: form to create a new run event with required and optional fields
+      testids: [run-create-view, run-create-form, create-title, create-datetime, create-location, create-distance, create-pace-target, create-route-notes, create-submit, create-error]
+    - path: /runs/:run_id
+      view: RunDetail
+      purpose: show full run details, participant list, join form, and leave form; display error states
+      testids: [run-detail-view, run-title, run-datetime, run-location, run-distance, run-pace-target, run-route-notes, participant-list, participant-item, join-form, join-name, join-submit, leave-form, leave-name, leave-submit, join-error, leave-error, not-found-error]
+persistence: in_memory
+decisions:
+  - id: duplicate-name-comparison
+    choice: "Case-insensitive uniqueness: compare using stripped-and-lowercased values; preserve original casing for display"
+    warrant: "PRD §5.4 — 'case sensitivity behavior should be defined in implementation; default recommendation: case-insensitive uniqueness'"
+  - id: leave-unknown-participant
+    choice: "POST /api/runs/{run_id}/leave with a name not on the run returns 200 with removed: false (no-op), not 404"
+    warrant: "PRD §5.5 — 'backend returns clear error (or no-op with clear response; choose one and document in QA handoff)'; no-op chosen to avoid 404 ambiguity in unauthenticated flow"
+  - id: join-success-status
+    choice: "POST /api/runs/{run_id}/join returns 201 — the join creates a new participant association"
+    warrant: "PRD §5.4 treats the joined participant as a newly created record; 201 signals resource creation to the client"
+  - id: list-ordering
+    choice: "GET /api/runs returns runs sorted by datetime field in lexical (string) order, ascending"
+    warrant: "PRD §4.1 Tier 1 item 2 — 'Sort runs in list by datetime string (best-effort lexical sort acceptable for MVP)'"
+  - id: no-authentication
+    choice: "All endpoints are public; no session, token, or user-identity mechanism exists"
+    warrant: "PRD §9 — 'No authentication'; PRD §7 — 'No auth/session state'"
+  - id: id-generation
+    choice: "Run id is a UUID v4 string generated server-side at create time"
+    warrant: "PRD §5.1 — 'Successful create returns created run with generated id'; no PRD constraint on format, UUID chosen for uniqueness without coordination"
+  - id: leave-success-status
+    choice: "POST /api/runs/{run_id}/leave returns 200 — removing a participant mutates an existing resource rather than creating one"
+    warrant: "PRD §5.5 — leave is a removal action on an existing participant; no new resource is created"
+
+provenance:
+  mode: authored
+  cycle_id: cyc_38d1e1689766
+  task_id: task-run_5982f848-003-development.author_manifest
+  attempts: 1
+  revisions: []

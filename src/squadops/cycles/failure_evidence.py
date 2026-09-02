@@ -9,13 +9,23 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from squadops.cycles.acceptance_check_spec import CHECK_CONTRACT_ASSERTIONS
+from squadops.cycles.acceptance_check_spec import (
+    CHECK_ASSERTION_KINDS,
+    CHECK_CONTRACT_ASSERTIONS,
+)
 from squadops.cycles.check_registry import (
     CHECK_NO_SELF_MOCKING_TESTS,
     CHECK_NO_STUB_FALLBACK_TESTS,
 )
 from squadops.cycles.emission_integrity import extraction_loss_suspected
 from squadops.cycles.verification_integrity import ResultStatus
+
+#: Check rows whose failure means the suite contradicts a declaration (the contract's
+#: pinned statuses, the manifest's field kinds) — the suite's own defect, by construction.
+_DECLARATION_OWNED_SUITE_CHECKS: frozenset[str] = frozenset(
+    {f"acceptance:{CHECK_CONTRACT_ASSERTIONS}", f"acceptance:{CHECK_ASSERTION_KINDS}"}
+)
+
 
 if TYPE_CHECKING:
     from squadops.tasks.models import TaskEnvelope, TaskResult
@@ -253,10 +263,11 @@ def classify_failure_locus(failure_evidence: Any) -> str:
             return FailureLocus.OWN_ARTIFACT
         # #629: the frozen contract says the suite's own assertions are wrong
         # (status pinned by a probe, asserted differently — or a pinned path
-        # requested through an undeclared prefix). Safe from the test-gaming
-        # guard: the signal comes from the contract, not from the app failing
-        # the suite — for qa.test, OWN_ARTIFACT = eve re-authors the suite.
-        if check == f"acceptance:{CHECK_CONTRACT_ASSERTIONS}" and row.get("passed") is False:
+        # requested through an undeclared prefix). #1153: the manifest says the
+        # suite's own literal cannot be the declared kind. Both safe from the
+        # test-gaming guard: the signal comes from a declaration, not from the app
+        # failing the suite — for qa.test, OWN_ARTIFACT = eve re-authors the suite.
+        if check in _DECLARATION_OWNED_SUITE_CHECKS and row.get("passed") is False:
             return FailureLocus.OWN_ARTIFACT
         # #988: the suite never invoked the application — it mocked the route module,
         # or replaced the fetch seam and imported no route at all (#915), or hid the

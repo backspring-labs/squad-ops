@@ -393,6 +393,10 @@ CHECK_DECLARED_IMPORTS = "declared_imports"
 # tests) — same single-source rule as the two above.
 CHECK_CONTRACT_ASSERTIONS = "contract_assertions_match"
 
+# #1153: the blocking suite-vs-declared-kind check — the free-authored counterpart of
+# #1094's fill kind gate. Multi-reader constant (injection in task_plan, locus routing in
+# failure_evidence, the evaluator, tests), same single-source rule as the one above.
+CHECK_ASSERTION_KINDS = "assertion_kinds_match"
 # #730 D1 / #504: the fill-slot signature surface, promoted from report to
 # blocking injected check. Constant beside its CHECK_SPECS key so a rename
 # moves both together.
@@ -867,6 +871,42 @@ CHECK_SPECS: dict[str, CheckSpec] = {
             "endpoint statuses (`endpoints` tokens, `METHOD /path STATUS`); a "
             "pinned path requested through an undeclared prefix is also a "
             "violation. Never authored."
+        ),
+        failure_ownership=OWNERSHIP_SUITE,
+        qa_available=True,
+        signature_participation=True,
+        outcome_contribution=True,
+        replayable=True,
+        blocking_default="error",
+    ),
+    CHECK_ASSERTION_KINDS: CheckSpec(
+        name=CHECK_ASSERTION_KINDS,
+        applicable_extensions=frozenset({".py", ".js", ".jsx", ".ts", ".tsx"}),
+        required_params=frozenset({"file", "field_kinds"}),
+        param_types={"file": str, "field_kinds": dict},
+        requires_stack_context=False,
+        path_params=frozenset({"file"}),
+        framework_injected=True,
+        example={
+            "file": "backend/tests/test_runs.py",
+            "field_kinds": {"removed": "boolean", "participants": "list", "id": "string"},
+        },
+        # #1153 / 1.6.6 React roll 3: the manifest and the frozen model declared
+        # `LeaveResult.removed: boolean`; four qa emissions asserted it equal to a
+        # participant's NAME; the round-0 repair set it True — correct per contract —
+        # and was rejected by the suite's own assertion, three rounds running. The
+        # contradiction is between the assertion and a declared kind, so it is
+        # decidable at emission, before any repair round.
+        notes=(
+            "Injected by the framework on bind-mode qa.test tasks, per suite file: an "
+            "assertion that compares a response field to a literal whose kind cannot "
+            "be the field's declared kind (a string against `boolean`, a number against "
+            "`string`, an object against `list`) fails, naming the field, the line and "
+            "the declared kind. `field_kinds` carries only names the manifest declares "
+            'with one kind. Python suites are read by AST (`assert body["f"] == x`, '
+            '`.get("f")`, `is True`); JS/TS suites by their `expect(...f).toBe(x)` / '
+            "`.toEqual(x)` forms. Comparisons to names, calls or `None` are out of scope "
+            "by design. Never authored."
         ),
         failure_ownership=OWNERSHIP_SUITE,
         qa_available=True,
