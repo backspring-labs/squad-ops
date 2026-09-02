@@ -222,6 +222,18 @@ or `failed`, never `unverifiable / no_executed_blocking_checks`. The same replay
 stack with a `frontend/src/*.jsx` repair — unverifiable in runtime-api today for the same
 reason, with no roll yet to show it.
 
+**#939 as landed (2026-09-01).** The analyser is `tsc` (typescript 5.5.3, the version the
+Next.js skeleton pins for the app), provisioned into the dev and qa images through a new
+per-role `npm-global-packages.txt` read by the same generic Dockerfile step pattern as
+`system-packages.txt`; CI installs the same file's globals so the replays execute there.
+`UndefinedNamesCheck` runs tsc once per materialised tree and filters `TS2304`/`TS2552` to
+the file; a TypeScript project is checked under its own `tsconfig.json`, a tree without one
+as an explicit list with `--allowJs --checkJs`, which was measured to report the class in
+plain JSX. Where tsc is absent the check skips as `missing_tooling` — the #462 rule `npm`
+already follows — so runtime-api's repair verification is unchanged until #1229. The roll-4
+shell and the gating roll's shell are committed as `tests/fixtures/roll_replays/` and the
+replay is a test. The four declared gaps are gone; the menu is regenerated.
+
 ### 2.3 The free-authored-assertion class, at the seam — #1153, #1130, #668 → #1123, #1022
 
 Each item names its mechanism, its replay (the stored artifact from §1 through the new code,
