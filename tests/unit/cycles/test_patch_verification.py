@@ -733,3 +733,69 @@ class TestTheVerdictComesFromWhereTheCheckRan:
         )
         assert without.status == PATCH_UNVERIFIABLE
         assert without.reason == "evaluator_error:frontend_compiles"
+
+
+class TestAgentRowsFromEveryRepairStep:
+    """#1256: the executor hands the verifier the protocol result's rows — one handler
+    output per repair step, each in its own environment. Bug caught: a round whose dev
+    step and qa step both evaluated rows and only one environment's records reaching
+    the verdict, or a single handler output no longer being read."""
+
+    def _step(self, environment: str, check: str, status: str) -> dict:
+        return {
+            "environment": environment,
+            "checks": [
+                {
+                    "check": f"acceptance:{check}",
+                    "status": status,
+                    "severity": "error",
+                    "params": {"file": "frontend/src/views/RunListView.jsx"},
+                }
+            ],
+        }
+
+    def test_a_sequence_of_step_outputs_yields_every_environments_records(self):
+        from squadops.cycles.patch_verification import agent_check_records
+
+        records = agent_check_records(
+            (
+                self._step("agent:dev", "frontend_compiles", "failed"),
+                self._step("agent:qa", "dom_anchor_queries", "passed"),
+            )
+        )
+        assert [(r.check, r.status, r.executed_in) for r in records] == [
+            ("frontend_compiles", "failed", "agent:dev"),
+            ("dom_anchor_queries", "passed", "agent:qa"),
+        ]
+
+    def test_a_single_handler_output_and_an_empty_sequence_still_read(self):
+        from squadops.cycles.patch_verification import agent_check_records
+
+        single = agent_check_records(self._step("agent:dev", "undefined_names", "passed"))
+        assert [(r.check, r.executed_in) for r in single] == [("undefined_names", "agent:dev")]
+        assert agent_check_records(()) == []
+        assert agent_check_records([{"environment": "agent:dev", "checks": []}]) == []
+
+    async def test_a_dev_steps_executed_failure_rejects_the_patch_runtime_api_could_not_judge(
+        self,
+    ):
+        """The shakeout's round 1: neo reported ``frontend_compiles: failed`` on the patch
+        and runtime-api — no node — skipped the same row and logged ``agent_rows=0``."""
+        from squadops.cycles.patch_verification import PATCH_FAILED, verify_patched_artifacts
+
+        criterion = TypedCheck(
+            check="frontend_compiles",
+            params={"file": "frontend/src/views/RunListView.jsx"},
+            id="c1",
+        )
+        verdict = await verify_patched_artifacts(
+            [criterion],
+            [{"name": "frontend/src/views/RunListView.jsx", "content": "export default 1\n"}],
+            agent_checks=(self._step("agent:dev", "frontend_compiles", "failed"),),
+        )
+        assert verdict.status == PATCH_FAILED
+        assert [
+            (r.check, r.status, r.executed_in)
+            for r in verdict.checks
+            if r.executed_in != "runtime-api"
+        ] == [("frontend_compiles", "failed", "agent:dev")]

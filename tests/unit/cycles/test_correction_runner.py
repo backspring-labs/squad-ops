@@ -5255,3 +5255,125 @@ class TestRepairCarriesTheDispatchedWorkspace(TestCorrectionRunnerStandalone):
         assert len(repairs) == 1
         assert repairs[0].inputs["acceptance_workspace_files"] == workspace
         assert repairs[0].inputs["workspace_revision_id"] == "rev-diag"
+
+
+class TestTheProtocolResultCarriesTheRepairsRows(TestCorrectionRunnerStandalone):
+    """#1256: rule B's rows ride the protocol result to the executor's verifier. The 1.7.1
+    React shakeout (cyc_c6db3ffc1f4e) had neo report ``rows=10 executed=10`` on both dev
+    repairs while runtime-api logged ``agent_rows=0`` — the executor read the rows off the
+    FAILED task's result, and the protocol returned only the repair's files."""
+
+    _ROWS = {
+        "environment": "agent:dev",
+        "workspace_revision_id": "rev-diag",
+        "checks": [
+            {
+                "check": "acceptance:frontend_compiles",
+                "status": "failed",
+                "severity": "error",
+                "params": {"file": "app/api/runs/route.ts"},
+                "reason": "tsc: TS2322",
+            }
+        ],
+    }
+
+    def _failed_dev_envelope_1256(self):
+        from squadops.tasks.models import TaskEnvelope
+
+        return TaskEnvelope(
+            task_id="task_dev_failed",
+            agent_id="neo",
+            cycle_id="cyc_001",
+            pulse_id="p",
+            project_id="hello_squad",
+            task_type="development.develop",
+            correlation_id="corr",
+            causation_id=None,
+            trace_id="t",
+            span_id="s",
+            inputs={
+                "expected_artifacts": ["app/api/runs/route.ts"],
+                "subtask_focus": "runs route",
+                "subtask_description": "the runs route fill",
+                "acceptance_criteria": [],
+                "resolved_config": {"dev_capability": "nextjs_ts", "build_profile": "nextjs_ts"},
+            },
+            metadata={"role": "dev"},
+        )
+
+    def _responder(self, with_rows: bool):
+        def responder(envelope):
+            if envelope.task_type == "data.analyze_failure":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={"classification": "work_product", "analysis_summary": "type error"},
+                )
+            if envelope.task_type == "governance.correction_decision":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={
+                        "correction_path": "patch",
+                        "decision_rationale": "fix the cast",
+                        "affected_task_types": ["development.develop"],
+                    },
+                )
+            outputs = {
+                "artifacts": [
+                    {
+                        "name": "app/api/runs/route.ts",
+                        "content": "export async function GET() { return Response.json([]) }\n",
+                        "media_type": "text/typescript",
+                        "type": "source",
+                    }
+                ]
+            }
+            if with_rows:
+                outputs["repair_typed_checks"] = self._ROWS
+            return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs=outputs)
+
+        return responder
+
+    async def _run(self, with_rows: bool):
+        runner, _registry, _vault, _bus = self._make_runner(self._responder(with_rows))
+        envelope = self._failed_dev_envelope_1256()
+        failed = TaskResult(
+            task_id=envelope.task_id,
+            status="FAILED",
+            error="acceptance:frontend_compiles failed",
+            outputs={"validation_result": {"passed": False, "checks": []}, "artifacts": []},
+        )
+        return await runner.run_correction_protocol(
+            run_id="run_001",
+            cycle=Cycle(
+                cycle_id="cyc_001",
+                project_id="hello_squad",
+                created_at=NOW,
+                created_by="system",
+                prd_ref="prd_123",
+                squad_profile_id="full",
+                squad_profile_snapshot_ref="sha256:abc",
+                task_flow_policy=TaskFlowPolicy(mode="sequential"),
+                build_strategy="fresh",
+            ),
+            envelope=envelope,
+            result=failed,
+            correction_attempts=0,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+        )
+
+    async def test_the_repair_steps_rows_ride_the_protocol_result(self):
+        protocol = await self._run(with_rows=True)
+        assert protocol.correction_path == "patch"
+        assert [a["name"] for a in protocol.repair_artifacts] == ["app/api/runs/route.ts"]
+        assert protocol.repair_typed_checks == (self._ROWS,)
+
+    async def test_a_step_that_banked_no_rows_contributes_nothing(self):
+        protocol = await self._run(with_rows=False)
+        assert protocol.correction_path == "patch"
+        assert protocol.repair_typed_checks == ()

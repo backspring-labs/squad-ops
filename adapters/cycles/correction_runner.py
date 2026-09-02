@@ -841,6 +841,17 @@ def _apply_emission_ownership_veto(
     return kept
 
 
+def _repair_step_rows(repair_result: Any) -> list[dict[str, Any]]:
+    """The ``repair_typed_checks`` a repair step banked on its outputs (#1229), as the
+    protocol result carries them (#1256): one entry when the step evaluated any row,
+    none otherwise — a step that emitted nothing, or ran before rule B, contributes
+    nothing rather than an empty environment."""
+    rows = (getattr(repair_result, "outputs", None) or {}).get("repair_typed_checks")
+    if isinstance(rows, dict) and rows.get("checks"):
+        return [rows]
+    return []
+
+
 @dataclass(frozen=True)
 class CorrectionProtocolResult:
     """Outcome of one correction-protocol run.
@@ -853,6 +864,13 @@ class CorrectionProtocolResult:
 
     correction_path: str
     repair_artifacts: list[dict[str, Any]] = field(default_factory=list)
+    #: #1256: the rows each repair step evaluated on its own patch, in step order (rule B,
+    #: #1229) — the handler's ``repair_typed_checks`` output, one entry per step that
+    #: produced any, each carrying its own environment (a round may run a dev step and a
+    #: qa step). Until this, the executor read the rows off the FAILED task's result and
+    #: found none: the 1.7.1 React shakeout's dev repairs reported ``rows=10 executed=10``
+    #: and runtime-api logged ``agent_rows=0`` on both rounds.
+    repair_typed_checks: tuple[dict[str, Any], ...] = ()
     #: #1053: repair steps ran and produced no content at all. Distinct from "produced
     #: a bad repair" and from "no repair step ran": arm B of the 2026-08-23 pair banked
     #: `repair_output.md` at ZERO bytes on two of its three rounds, under the handler's
@@ -1596,6 +1614,7 @@ class CorrectionRunner:
         # subject-implementation surface (_resolve_repair_target aims repairs at
         # the SUBJECT and would point a test re-author at app source files).
         repair_artifacts: list[dict[str, Any]] = []
+        repair_typed_checks: list[dict[str, Any]] = []
         repair_steps_ran = False
         empty_signatures: list[str] = []
         if correction_path == "patch":
@@ -1729,6 +1748,9 @@ class CorrectionRunner:
                 # #389: surface the repair's emitted files to the executor for
                 # behavioral patch verification.
                 step_artifacts = (repair_result.outputs or {}).get("artifacts") or []
+                # #1256: the rows this step evaluated on its own patch (rule B) ride the
+                # protocol result to the executor's verifier beside the files.
+                repair_typed_checks.extend(_repair_step_rows(repair_result))
                 # #998: the handler names what kind of nothing it emitted; keep it for
                 # the round's disclosure below.
                 empty_signatures.extend(_empty_emission_signature(repair_result))
@@ -1802,6 +1824,7 @@ class CorrectionRunner:
         return CorrectionProtocolResult(
             correction_path=correction_path,
             repair_artifacts=repair_artifacts,
+            repair_typed_checks=tuple(repair_typed_checks),
             emission_empty=emission_empty,
             empty_emission_signatures=tuple(empty_signatures) if emission_empty else (),
         )

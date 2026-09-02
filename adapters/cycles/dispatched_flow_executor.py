@@ -18,7 +18,7 @@ import json
 import logging
 import os
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from hashlib import sha256
 from typing import TYPE_CHECKING, Any
@@ -3012,6 +3012,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 budget_guard=budget_guard,
                 interface_manifest=interface_manifest,
                 repair_rejection_carry=repair_rejection_carry,
+                repair_typed_checks=protocol.repair_typed_checks,
             )
             return action
         elif correction_path == "continue":
@@ -3041,6 +3042,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         budget_guard: Callable[[], None] | None = None,
         interface_manifest: Any = None,
         repair_rejection_carry: dict[str, list[str]] | None = None,
+        repair_typed_checks: Sequence[dict[str, Any]] = (),
     ) -> str:
         """Behaviorally verify a patch (#389); return "accept_patch" or "continue".
 
@@ -3109,8 +3111,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             typed_acceptance_enabled=resolved_config.get("typed_acceptance", True),
             command_acceptance_enabled=resolved_config.get("command_acceptance_checks", True),
             file_owned_criteria=file_owned,
-            # #1229: what the repair executed on its own patch, in its own container.
-            agent_checks=(result.outputs or {}).get("repair_typed_checks"),
+            # #1229: what the repair executed on its own patch, in its own container —
+            # carried on the protocol result (#1256). ``result`` here is the FAILED task's;
+            # reading the rows off it found none in every live round (cyc_c6db3ffc1f4e).
+            agent_checks=repair_typed_checks,
         )
         # pf-33: name the failed checks — "status=failed reason= checks=7" forced
         # a by-hand artifact replay to learn WHICH check rejected the patch.

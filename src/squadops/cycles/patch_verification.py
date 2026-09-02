@@ -466,6 +466,11 @@ def agent_check_records(agent_checks: Any) -> list[PatchCheckRecord]:
     the ``acceptance:``-prefixed rows ``_evaluate_typed_acceptance`` banks. Anything that
     is not such a row is ignored — the shape is the handler's, not the transport's.
     """
+    # #1256: one entry per repair step of the round (a dev step and a qa step each
+    # evaluate in their own environment) — the executor hands the protocol result's
+    # sequence; a single handler output still reads as before.
+    if isinstance(agent_checks, (list, tuple)):
+        return [record for step in agent_checks for record in agent_check_records(step)]
     if not isinstance(agent_checks, dict):
         return []
     environment = str(agent_checks.get("environment") or "agent")

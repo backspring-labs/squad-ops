@@ -9,6 +9,18 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 check-environment seam, 2026-09-01: **B** — typed checks execute in the producing role's
 agent container, at emission and at repair, and each image provisions its toolchain as data.
 
+### Fixed — rule B's rows reach the verifier (#1256)
+- `_try_accept_patch` read `repair_typed_checks` off the FAILED task's result — a key the
+  repair handler writes on its own outputs — and the correction protocol returned only the
+  repair's files, so the rows a repair evaluated in its own container (#1229, shipped in
+  #1238) never reached runtime-api's verifier in a live cycle: the 1.7.1 React shakeout
+  `cyc_c6db3ffc1f4e` had the dev container report `rows=10 executed=10
+  frontend_compiles:failed` on both repairs of the qa task's failure while runtime-api
+  logged `agent_rows=0` and fell through to the retest. The protocol result now carries
+  each repair step's rows in step order (a dev step and a qa step each evaluate in their
+  own environment), the executor hands them to the verifier, and the verifier reads the
+  sequence. Every `decided_by_agent` in the line's records before this was 0.
+
 ### Fixed — the handoff's required sections are a typed criterion, so a builder repair can be decided (#1255)
 - The 1.7.1 React shakeout on the main-built deploy (`cyc_c6db3ffc1f4e`) rejected the
   builder's first handoff for two missing sections, the round-0 repair carried every one
