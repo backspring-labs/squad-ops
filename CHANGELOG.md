@@ -9,6 +9,28 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 check-environment seam, 2026-09-01: **B** — typed checks execute in the producing role's
 agent container, at emission and at repair, and each image provisions its toolchain as data.
 
+### Fixed — a file the patch never carries is not evidence against the patch (#1259)
+- The Next.js shakeout on the final 1.7.1 deploy (`cyc_9c379355b5e8`, round 0) refused a
+  correct route fix: the dev repair of a qa failure is judged against the qa task's
+  suite-bound checks (`assertion_kinds_match`, `dom_anchor_queries`), the failed suite is
+  not in the accepted workspace and the dev never emits it, so both environments returned
+  `failed(file_not_found)` and the verifier read an executed failure — "an executed failure
+  anywhere rejects". Before #1240/#1246 those criteria all skipped on a `.ts`/`.jsx` suite
+  and the retest decided; with #1256 delivering the agent's rows, every dev patch of a qa
+  failure on either stack took this path. A `file_not_found` on a file the patch does not
+  carry is now `skipped / file_not_in_patch` in both environments; one on a file the patch
+  names keeps its rejection power. Replayed: the refused patch → `no_executed_blocking_checks`
+  (the retest decides); with the suite in the tree → `passed`. The refused fix's absence let
+  the re-authored suite drop the case that found the defect — filed as #1260, 1.7.2.
+
+### Fixed — a TS18xxx type diagnostic no longer turns `undefined_names` off for its file (#1261)
+- `tsc_syntax_errors_in` read any code starting with `TS1` as syntax, so `TS18048` ("possibly
+  undefined") and `TS18046` ("of type unknown") — type checking, the common shape of a real
+  test file — made the check return `skipped / unsupported_stack_or_syntax`: five of nine
+  accepted test files on the same shakeout were never checked for undefined names, and R6's
+  readout counts failed rows, so a green roll cannot see it. Syntax codes are TS1000–TS1999
+  and are classified by value.
+
 ### Fixed — rule B's rows reach the verifier (#1256)
 - `_try_accept_patch` read `repair_typed_checks` off the FAILED task's result — a key the
   repair handler writes on its own outputs — and the correction protocol returned only the

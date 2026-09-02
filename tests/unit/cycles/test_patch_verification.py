@@ -5,6 +5,8 @@ generative task after a good repair (re-roll clobbers the patch), or the
 verifier accepting a patch without positive executed evidence.
 """
 
+from pathlib import Path
+
 from squadops.cycles.implementation_plan import TypedCheck
 from squadops.cycles.patch_verification import (
     PATCH_FAILED,
@@ -799,3 +801,125 @@ class TestAgentRowsFromEveryRepairStep:
             for r in verdict.checks
             if r.executed_in != "runtime-api"
         ] == [("frontend_compiles", "failed", "agent:dev")]
+
+
+class TestAbsentFilesAreNotEvidenceAboutThePatch:
+    """#1259: the Next.js shakeout on dfe466ab (cyc_9c379355b5e8, round 0) refused a correct
+    route fix because the qa task's suite-bound checks — evaluated in the dev container and
+    here — returned ``failed(file_not_found)`` for a suite the patch never carries. Bug
+    caught: a dev repair of a qa failure rejected for a reason that says nothing about it;
+    and the opposite regression — a repair that names a file and does not produce it
+    sailing through."""
+
+    _REPLAYS = Path(__file__).resolve().parents[2] / "fixtures" / "roll_replays"
+    _SUITE = "__tests__/runs_api.test.ts"
+
+    def _criteria(self):
+        return [
+            TypedCheck(
+                check="assertion_kinds_match",
+                params={"file": self._SUITE, "field_kinds": {"capacity": "number"}},
+                id="kinds",
+            ),
+            TypedCheck(
+                check="dom_anchor_queries",
+                params={"file": self._SUITE, "anchors": {"RunListView": ["run-list"]}},
+                id="anchors",
+            ),
+        ]
+
+    def _route(self) -> dict:
+        return {
+            "name": "app/api/runs/route.ts",
+            "content": (
+                self._REPLAYS / "1-7-1-nextjs-shakeout-3-repair-00-app-api-runs-route.ts"
+            ).read_text(encoding="utf-8"),
+        }
+
+    def _agent_rows(self, file: str) -> dict:
+        return {
+            "environment": "agent:dev",
+            "checks": [
+                {
+                    "check": f"acceptance:{c.check}",
+                    "status": "failed",
+                    "severity": "error",
+                    "reason": "file_not_found",
+                    "params": {**c.params, "file": file},
+                }
+                for c in self._criteria()
+            ],
+        }
+
+    async def test_the_round_0_patch_is_no_longer_refused_on_the_suite_it_never_carried(self):
+        from squadops.cycles.patch_verification import (
+            PATCH_UNVERIFIABLE,
+            REASON_FILE_NOT_IN_PATCH,
+            REASON_NO_EXECUTED_BLOCKING_CHECKS,
+            verify_patched_artifacts,
+        )
+
+        verdict = await verify_patched_artifacts(
+            self._criteria(),
+            [self._route()],
+            workspace_files={"lib/store.ts": "export const TABLES = {}"},
+            agent_checks=self._agent_rows(self._SUITE),
+        )
+        # Nothing executed against the patch — the retest decides, as before #1240/#1246.
+        assert (verdict.status, verdict.reason) == (
+            PATCH_UNVERIFIABLE,
+            REASON_NO_EXECUTED_BLOCKING_CHECKS,
+        )
+        assert {(r.status, r.reason) for r in verdict.checks} == {
+            ("skipped", REASON_FILE_NOT_IN_PATCH)
+        }
+        assert {r.executed_in for r in verdict.checks} == {"runtime-api", "agent:dev"}
+
+    async def test_with_the_suite_in_the_tree_the_same_patch_passes(self):
+        from squadops.cycles.patch_verification import PATCH_PASSED, verify_patched_artifacts
+
+        suite = (self._REPLAYS / "1-7-1-nextjs-shakeout-3-qa-round-0-runs_api.test.ts").read_text(
+            encoding="utf-8"
+        )
+        verdict = await verify_patched_artifacts(
+            self._criteria(),
+            [self._route(), {"name": self._SUITE, "content": suite}],
+            workspace_files={"lib/store.ts": "export const TABLES = {}"},
+        )
+        assert verdict.status == PATCH_PASSED
+        assert [(r.check, r.status) for r in verdict.checks] == [
+            ("assertion_kinds_match", "passed"),
+            ("dom_anchor_queries", "passed"),
+        ]
+
+    async def test_an_agent_row_missing_a_file_the_patch_carries_still_rejects(self):
+        """The control: the agent says a file the patch names is not there — that is about
+        the patch (its tree lacked what the repair claimed), and it keeps its rejection power."""
+        from squadops.cycles.patch_verification import PATCH_FAILED, verify_patched_artifacts
+
+        criteria = [
+            TypedCheck(
+                check="assertion_kinds_match",
+                params={"file": "app/api/runs/route.ts", "field_kinds": {"capacity": "number"}},
+                id="kinds",
+            )
+        ]
+        rows = {
+            "environment": "agent:dev",
+            "checks": [
+                {
+                    "check": "acceptance:assertion_kinds_match",
+                    "status": "failed",
+                    "severity": "error",
+                    "reason": "file_not_found",
+                    "params": criteria[0].params,
+                }
+            ],
+        }
+        verdict = await verify_patched_artifacts(criteria, [self._route()], agent_checks=rows)
+        assert verdict.status == PATCH_FAILED
+        assert [
+            (r.executed_in, r.status, r.reason)
+            for r in verdict.checks
+            if r.executed_in != "runtime-api"
+        ] == [("agent:dev", "failed", "file_not_found")]

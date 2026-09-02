@@ -524,12 +524,27 @@ def tsc_undefined_names(output: str, file_rel: str) -> list[dict[str, Any]]:
     return found
 
 
+#: tsc's syntax diagnostics are TS1000–TS1999. The five-digit TS18xxx family (``'x' is
+#: possibly 'undefined'``, ``'x' is of type 'unknown'``) is type checking — and it shares
+#: the ``TS1`` prefix. The Next.js shakeout on dfe466ab (cyc_9c379355b5e8) skipped
+#: ``undefined_names`` on five of nine accepted test files for exactly that (#1261).
+_TSC_SYNTAX_CODES = range(1000, 2000)
+
+
+def tsc_is_syntax_code(code: str) -> bool:
+    """Whether a ``TSnnnn`` code is a syntax diagnostic (TS1000–TS1999), by value not prefix."""
+    try:
+        return int(code[2:]) in _TSC_SYNTAX_CODES
+    except ValueError:
+        return False
+
+
 def tsc_syntax_errors_in(output: str, file_rel: str) -> bool:
-    """True when tsc reported a syntax diagnostic (TS1xxx) in ``file_rel``."""
+    """True when tsc reported a syntax diagnostic (TS1000–TS1999) in ``file_rel``."""
     want = _normalise_rel(file_rel)
     for raw in output.splitlines():
         m = _TSC_DIAGNOSTIC.match(raw.strip())
-        if m and m["code"].startswith("TS1") and _normalise_rel(m["path"]) == want:
+        if m and tsc_is_syntax_code(m["code"]) and _normalise_rel(m["path"]) == want:
             return True
     return False
 
