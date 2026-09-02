@@ -44,6 +44,27 @@ agent container, at emission and at repair, and each image provisions its toolch
   Replay: the Reasoning line's roll-4 shell (`cyc_58d92ca2b407`, `created` undeclared at
   line 30) is rejected naming the name and the line; the gating roll's shell passes.
 
+### Changed — a repair is verified where its checks can run (#1229, rule B)
+- **The repair evaluates the failed task's typed criteria on its own patched tree before
+  returning** — in the agent container, where the stack's toolchain lives, through the same
+  `_evaluate_typed_acceptance` the primaries use and against the same workspace (forwarded
+  to the repair presence-keyed, as the retest already did). The rows ride the patch as
+  `repair_typed_checks`, with the environment that executed them.
+- **The executor's verification consumes them.** It still re-runs what it can here as a
+  cross-check; for a criterion this environment cannot execute, the repair's executed row is
+  the verdict. An executed failure anywhere rejects; an agent pass never overrides a failure
+  that executed here; `no_executed_blocking_checks` fires only when neither environment
+  executed a blocking criterion, and #1221's deadlock break stays as the backstop. Records
+  say where each row ran (`executed_in`), and the verification names how many criteria
+  the agent decided.
+- Before this, runtime-api — which has no node — was the only judge, so a dev repair on
+  the Next.js stack could never earn a verdict (`cyc_05abfc7c1f00`, three rounds of
+  `unverifiable` on one route). And the framework-injected checks (`undefined_names`,
+  `declared_imports`, `unterminated_source`) never ran on a repair at all there; they do
+  in the agent. Replay: the cycle's first stored patch, under the skeleton it landed in,
+  with npm absent here — unverifiable and deadlocked without the repair's rows, decided
+  by them with.
+
 ## [1.7.0] — 2026-09-01
 
 **The Reasoning line opens.** Plan: `docs/plans/1-7-0-plan.md` (rev 3). Cut record:

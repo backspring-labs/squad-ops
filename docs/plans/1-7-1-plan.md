@@ -246,6 +246,21 @@ already follows — so runtime-api's repair verification is unchanged until #122
 shell and the gating roll's shell are committed as `tests/fixtures/roll_replays/` and the
 replay is a test. The four declared gaps are gone; the menu is regenerated.
 
+**#1229 as landed (2026-09-01).** The repair handlers gained one post-emission step
+(`_after_emission`, which the qa repair overrides to merge fills first): the failed task's
+typed criteria — framework-injected family included — evaluated on the patched tree in the
+agent container, banked as `repair_typed_checks` with the environment that ran them. The
+repair envelope forwards the typed-acceptance workspace presence-keyed
+(`repair_forwarded_inputs`, beside the retest's). `verify_patched_artifacts` takes the rows:
+this environment re-runs what it can as a cross-check, the repair's executed row decides
+what it cannot run, an executed failure anywhere rejects, and the no-executed-checks exit
+fires only when neither environment executed; records carry `executed_in` and the verdict
+carries `decided_by_agent`. Replay: `cyc_05abfc7c1f00`'s first stored patch under the
+Next.js skeleton with npm absent — unverifiable and deadlocked without the rows, decided by
+them with. **Not in this PR:** the environment-keyed declaration (each role image
+provisions every tool the specs it evaluates need, or declares the gap — the builder image
+has no node and no tsc, verified after the rebuild); it is the next small PR of this line.
+
 ### 2.3 The free-authored-assertion class, at the seam — #1153, #1130, #668 → #1123, #1022
 
 Each item names its mechanism, its replay (the stored artifact from §1 through the new code,
