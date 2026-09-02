@@ -1,0 +1,51 @@
+# 1.7.1 verification set — Next.js+TS (nextjs_ts), 2 counting rolls (plan §4). Predictions
+# R6/R7 (#939, #1229 — what a Next.js roll now does differently) with Q0/Q3/Q5/P0 carried. Same project, squad and request profile as 1.6.6 and 1.7.0; pins filled at
+# pre-registration from the shakeout on the frozen deploy and asserted on every counting roll.
+# The deploy is the STACKED TIP of the pack PRs (#1243 → #1244 → #1245 → #1246 → #1247), built
+# from the last branch's head; merging those exact PRs unchanged does not void a roll.
+name: 1-7-1-nextjs
+pre_registration: docs/plans/1-7-1-verification-set-preregistration.md
+project: group_run
+squad_profile: full-38
+request_profile: validated-fullstack
+overrides:
+  build_profile: nextjs_ts
+  dev_capability: nextjs_ts
+gate_name: progress_plan_review
+n_rolls: 2
+# Copied verbatim onto every gate approval — the driver substitutes NOTHING in this text.
+gate_notes: >-
+  1.7.1 verification set. Approved under the pre-registered gate policy
+  (pre-registration §6) — identical text applied to every roll of this set.
+  System plan validation passed; no additional judgment applied.
+# {roll} and {n} are the only substitutions the driver makes.
+launch_notes: >-
+  1.7.1 Next.js+TS (nextjs_ts) verification set — COUNTED roll {roll} of {n}. Frozen deploy per the
+  pre-registration (the stacked pack tip); predictions R6/R7; scoring per
+  1.6.3 §5; validity per §5.1; a falsified prediction stops the set.
+shakeout_notes: >-
+  1.7.1 Next.js+TS (nextjs_ts) SHAKEOUT — NON-COUNTING by declaration before launch. First cycle on the deploy
+  built from the stacked 1.7.1 pack tip (#1130 #598 #1022 #668 #1123 on main's #939 #1229
+  #1153). Diagnostic only, not a measurement; its identity becomes the set's pins.
+# "Loaded, not built": run inside the container and recorded with the deploy identity.
+loaded_checks:
+  runtime-api: >-
+    from squadops.cycles.failure_evidence import qa_owned_suite_defects, absent_anchor_cases;
+    from squadops.cycles.acceptance_check_spec import INJECTION_SCOPE_SUITE, framework_injected_checks;
+    from squadops.cycles.verification_normalize import row_is_blocking_failure;
+    from squadops.cycles.patch_verification import EXECUTED_IN_RUNTIME_API;
+    print(framework_injected_checks(INJECTION_SCOPE_SUITE), framework_injected_checks("recipe"),
+    row_is_blocking_failure({"passed": True, "status": "failed"}))
+  eve: >-
+    import shutil; from squadops.capabilities.dom_anchor_queries import anchor_findings;
+    from squadops.capabilities.additive_containment import containment_findings;
+    from squadops.cycles.acceptance_checks import AdditiveContainmentCheck, DomAnchorQueriesCheck;
+    from squadops.capabilities.handlers.test_runner import parse_pytest_failure_rows, suite_defects;
+    from squadops.capabilities.scaffold import client_surface_instructions, app_invocation_for;
+    print(app_invocation_for("fullstack_fastapi_react") is not None, app_invocation_for("nextjs_ts") is not None,
+    "tsc" if shutil.which("tsc") else "no-tsc")
+# Pins: filled from the shakeout before roll 1; empty means "no counting roll may launch".
+expected_config_hash_prefix: ""
+expected_squad_snapshot_prefix: ""
+frozen_deploy_commit: ""
+frozen_image_ids: {}
