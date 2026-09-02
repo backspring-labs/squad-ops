@@ -37,19 +37,20 @@ import yaml
 # Each stack's expander lives in its own module (#822 for stack #2, #1131 for stack #1);
 # this module is the manifest model, the parser and the ``ScaffoldStack`` registry. No
 # cycle: the stack modules annotate against ``InterfaceManifest`` under ``TYPE_CHECKING``
-# and import nothing here at runtime. ``_snake`` is stack #1's store-naming rule, which the
-# fill brief below still renders from here — it moves behind the seam with #1131's follow-up.
+# and import nothing here at runtime.
 from squadops.capabilities.app_invocation import AppInvocation
 from squadops.capabilities.stack_fastapi_react import (
     APP_INVOCATION as _APP_INVOCATION_FASTAPI_REACT,
 )
 from squadops.capabilities.stack_fastapi_react import STACK_NAME as _FASTAPI_REACT_NAME
-from squadops.capabilities.stack_fastapi_react import _snake
 from squadops.capabilities.stack_fastapi_react import (
     expand_fullstack_fastapi_react as _expand_fullstack_fastapi_react,
 )
 from squadops.capabilities.stack_fastapi_react import (
     fill_slots_fullstack_fastapi_react as _fill_slots_fullstack_fastapi_react,
+)
+from squadops.capabilities.stack_fastapi_react import (
+    store_brief_lines as _store_brief_lines_fastapi_react,
 )
 from squadops.capabilities.stack_nextjs_ts import APP_INVOCATION as _APP_INVOCATION_NEXTJS_TS
 from squadops.capabilities.stack_nextjs_ts import STACK_NAME as _NEXTJS_TS_NAME
@@ -867,9 +868,11 @@ def model_surface_instructions(manifest: InterfaceManifest | None) -> list[str]:
     signature form makes the field vocabulary exact for both consumers of this transport
     (the initial fill prompt and the repair prompt).
 
-    Also names the frozen store: pf-45's dev re-declared local store dicts in the fill
-    slot, shadowing ``backend/store.py`` — the scaffold's ``reset()`` then cleared the
-    unused stores, so test isolation silently broke.
+    Also names the frozen store, through the stack's own ``store_brief_lines``
+    declaration: pf-45's dev re-declared local store dicts in the fill slot, shadowing
+    ``backend/store.py`` — the scaffold's ``reset()`` then cleared the unused stores, so
+    test isolation silently broke. The paragraph is the stack's because its file names
+    are; a stack that declares none gets none.
 
     Empty when there is no manifest (author mode, non-scaffold stacks) — additive, like
     every other entry on that transport.
@@ -904,15 +907,9 @@ def model_surface_instructions(manifest: InterfaceManifest | None) -> list[str]:
             "and shape the response in the fill slot; do not edit or re-emit the model module"
         ),
     ]
-    if manifest.persistence == "in_memory":
-        stores = ", ".join(f"`{_snake(e.name)}_store`" for e in manifest.entities)
-        lines.append(
-            f"`backend/store.py` is scaffold-frozen and already defines the in-memory "
-            f"stores: {stores} (plus `reset()` for test isolation). Import them "
-            "(`from .store import ...`); do NOT declare your own store dicts — a shadow "
-            "store is invisible to `reset()`, so state leaks between tests and the suite "
-            "fails on isolation"
-        )
+    known = _STACKS.get(manifest.stack)
+    if known is not None and known.store_brief_lines is not None:
+        lines.extend(known.store_brief_lines(manifest))
     return lines
 
 
@@ -1456,6 +1453,16 @@ class ScaffoldStack:
     #: implementer. Default False — silently-wrong has no safe default, and an
     #: unregistered/unknown stack has no skeleton at all.
     skeleton_pins_success_status: bool = False
+    #: #1131: the lines the developer's model-surface brief adds about this stack's frozen
+    #: store — the names it defines, how to import them, why not to shadow them (pf-45).
+    #: A callable over the manifest because the names derive from the entities. Until the
+    #: move this paragraph was written inline in ``model_surface_instructions`` and told
+    #: EVERY stack that ``backend/store.py`` defines its stores and to
+    #: ``from .store import`` them — including the one whose store is ``lib/store.ts``
+    #: (measured 2026-09-01 on the Next.js fixture manifest). Unset means the brief says
+    #: nothing about the store: a stack without a paragraph of its own declares none
+    #: rather than inheriting another stack's.
+    store_brief_lines: Callable[[InterfaceManifest], list[str]] | None = None
 
 
 _STACKS: dict[str, ScaffoldStack] = {
@@ -1477,6 +1484,7 @@ _STACKS: dict[str, ScaffoldStack] = {
         # (``status_code=``, the pf-39 fix) — structural, fill-proof.
         skeleton_pins_success_status=True,
         dev_capability=_FASTAPI_REACT_NAME,
+        store_brief_lines=_store_brief_lines_fastapi_react,
     ),
     # #822 stack #2, a module from the start; stack #1 joined it in #1131 (the reference
     # contract's frozen digests are the proof that the move changed no template byte).

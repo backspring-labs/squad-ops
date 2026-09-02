@@ -111,6 +111,10 @@ _RUNTIME_WITNESS = {
 #: a field empty everywhere is unevidenced, not optional.
 _DECLARED_OPTIONAL = {
     ("ScaffoldStack", "harness_entry_modules"): "Node has no test/app import boundary to forbid",
+    ("ScaffoldStack", "store_brief_lines"): (
+        "the Next.js brief describes its store through the frozen-surface index (#861); "
+        "it declares no store paragraph rather than inheriting stack #1's"
+    ),
     ("probe profile", "prepare_argv"): "uvicorn needs no build step before boot",
 }
 
@@ -215,6 +219,7 @@ def _observe(stack_name: str) -> dict[str, str]:
         "frozen_index": json.dumps(sorted(scaffold.frozen_surface_index_lines(manifest))),
         "qa_namespace": json.dumps(sorted(scaffold.qa_test_namespace(manifest))),
         "error_seam_prose": json.dumps(scaffold.error_seam_instructions(manifest)),
+        "model_surface_prose": json.dumps(scaffold.model_surface_instructions(manifest)),
         "harness_entry": json.dumps(list(scaffold.harness_entry_modules(stack.name))),
         "pack_name": scaffold_contract._CRITERIA_PACKS[stack.criteria_pack].name,
     }

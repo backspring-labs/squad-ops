@@ -130,6 +130,18 @@ check) and that fill-brief line move behind the seam in a follow-up PR of this l
 deletes their allowlist entries — split from the move so the byte-identical proof stays a
 proof of a move and nothing else.
 
+**The follow-up, as landed (2026-09-01).** The suite-suffix vocabulary is declared once, as
+`JS_SUITE_SUFFIXES` on the invocation leaf and `AppInvocation.suite_suffixes`; the detector,
+its inventory, the runner's uncollected-suite check and the qa handler's additive count all
+read it, and the three allowlist entries are gone. The runner's copy had been `.ts`-only, so
+an ignored `*.test.jsx` on the React stack was never named; it is now. The fill brief's store
+paragraph moved behind the seam as `ScaffoldStack.store_brief_lines`, and doing so found a
+live bleed: `model_surface_instructions` told every in-memory stack — the Next.js developer
+included — that `backend/store.py` defines its stores and to `from .store import` them.
+Stack #1 declares the paragraph (bytes unchanged); Next.js declares none and loses a wrong
+instruction, which is a visible change to the stack #2 dev brief and is named here so the
+§4 Next.js arm reads it as such.
+
 ### 2.2 The seam decision — a check runs where its toolchain exists (#939, #1229)
 
 **What the tree says, 2026-09-01.** Typed acceptance checks run at emission **in the producing

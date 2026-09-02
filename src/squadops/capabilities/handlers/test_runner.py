@@ -21,6 +21,8 @@ import tempfile
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from squadops.capabilities.app_invocation import JS_SUITE_SUFFIXES
+
 logger = logging.getLogger(__name__)
 
 _STDOUT_LIMIT = 64 * 1024  # 64 KB
@@ -833,11 +835,6 @@ def parse_vitest_failure_rows(report: dict, workspace_root: str) -> list[dict]:
     return rows
 
 
-#: Suffixes that make a handed-in file unambiguously a suite meant to run. A helper
-#: module beside the tests is legitimately uncollected; a `*.test.ts` never is.
-_RUNNABLE_TEST_SUFFIXES = (".test.ts", ".test.tsx", ".spec.ts", ".spec.tsx")
-
-
 def _read_vitest_report(report_path: str) -> dict | None:
     import json
 
@@ -861,12 +858,15 @@ def uncollected_test_files(report: dict, workspace_root: str, handed_in: list[st
     Silent non-collection is the #884 class one step down: not "no test files found"
     but "this one was ignored", which every other signal reports as green because the
     files that DID collect passed.
+
+    A helper module beside the tests is legitimately uncollected; a file the harness
+    collects by suffix (``JS_SUITE_SUFFIXES`` — vitest's vocabulary, declared once) never
+    is. Until #1131 this read a ``.ts``-only copy of that list, so an ignored
+    ``*.test.jsx`` on the React stack was never named.
     """
     collected = collected_files(report, workspace_root)
     return sorted(
-        path
-        for path in handed_in
-        if path.endswith(_RUNNABLE_TEST_SUFFIXES) and path not in collected
+        path for path in handed_in if path.endswith(JS_SUITE_SUFFIXES) and path not in collected
     )
 
 

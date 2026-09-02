@@ -710,6 +710,7 @@ class QATestHandler(_CycleTaskHandler):
         fill_merge_evidence: dict[str, Any],
         scaffold_input: dict[str, Any],
         artifacts: list[dict],
+        invocation: AppInvocation | None,
     ) -> None:
         """Run the P5 pipeline and land its summary (SIP-0104 §5/§6).
 
@@ -757,7 +758,8 @@ class QATestHandler(_CycleTaskHandler):
             1
             for a in artifacts
             if a.get("type") == "test"
-            and str(a.get("name", "")).endswith((".test.ts", ".spec.ts"))
+            and invocation is not None
+            and invocation.is_suite(str(a.get("name", "")))
             and a.get("name") not in shell_paths
         )
         summary = build_scaffold_evidence_summary(
@@ -938,7 +940,7 @@ class QATestHandler(_CycleTaskHandler):
             _authenticity_row(
                 CHECK_NO_SELF_MOCKING_TESTS,
                 mock_paths,
-                inspected_js_test_paths(artifacts) if invocation else [],
+                inspected_js_test_paths(artifacts, invocation),
             )
         )
         if mock_offenders:
@@ -1465,7 +1467,7 @@ class QATestHandler(_CycleTaskHandler):
                 _authenticity_row(
                     CHECK_NO_SELF_MOCKING_TESTS,
                     mock_paths,
-                    inspected_js_test_paths(artifacts) if invocation else [],
+                    inspected_js_test_paths(artifacts, invocation),
                 )
             )
             if mock_offenders:
@@ -1591,6 +1593,7 @@ class QATestHandler(_CycleTaskHandler):
                 fill_merge_evidence,
                 scaffold_input,
                 artifacts,
+                self._app_invocation(inputs),
             )
 
         duration_ms = (time.perf_counter() - start_time) * 1000

@@ -16,6 +16,7 @@ import pytest
 
 from squadops.capabilities.handlers.cycle.qa_test import QATestHandler
 from squadops.capabilities.scaffold_contract import emit_contract_dict
+from squadops.capabilities.stack_nextjs_ts import APP_INVOCATION as NEXTJS_APP_INVOCATION
 from squadops.capabilities.verification_scaffold_emission import (
     GENERATOR_VERSION,
     emit_verification_scaffold,
@@ -456,7 +457,7 @@ def test_containment_findings_reach_outputs_scaffold_evidence(scaffold_input, em
     }
 
     handler._append_scaffold_evidence(
-        outputs, test_result, merged, fill_merge_evidence, scaffold_input, []
+        outputs, test_result, merged, fill_merge_evidence, scaffold_input, [], NEXTJS_APP_INVOCATION
     )
 
     assert outputs["scaffold_evidence"]["additive_containment"] == [

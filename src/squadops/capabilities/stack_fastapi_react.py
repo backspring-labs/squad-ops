@@ -691,3 +691,25 @@ def fill_slots_fullstack_fastapi_react(manifest: InterfaceManifest) -> tuple[str
     """The route bodies, plus one component per declared route."""
     views = tuple(f"frontend/src/views/{r.view}.jsx" for r in manifest.frontend.routes)
     return ("backend/routes.py", *dict.fromkeys(views))
+
+
+def store_brief_lines(manifest: InterfaceManifest) -> list[str]:
+    """What the developer's model-surface brief says about this stack's frozen store.
+
+    pf-45's dev re-declared local store dicts in the fill slot, shadowing
+    ``backend/store.py`` — the scaffold's ``reset()`` then cleared the unused stores and
+    test isolation silently broke. The stores are named by the same rule ``store.py``
+    defines them (``_snake``), so the brief and the module cannot disagree. Declared here
+    because the text is this stack's: ``backend/store.py``, ``from .store import`` and
+    ``<entity>_store`` describe nothing on a Next.js tree — and were being said to one.
+    """
+    if manifest.persistence != "in_memory":
+        return []
+    stores = ", ".join(f"`{_snake(e.name)}_store`" for e in manifest.entities)
+    return [
+        f"`backend/store.py` is scaffold-frozen and already defines the in-memory "
+        f"stores: {stores} (plus `reset()` for test isolation). Import them "
+        "(`from .store import ...`); do NOT declare your own store dicts — a shadow "
+        "store is invisible to `reset()`, so state leaks between tests and the suite "
+        "fails on isolation"
+    ]

@@ -437,3 +437,14 @@ class TestAdditiveContainmentReachesTheRecord:
             emission.manifest, dispositions, [], [], additive_test_count=0
         )
         assert summary.to_dict()["additive_containment"] == []
+
+
+def test_an_ignored_react_suite_is_named_too():
+    """Bug caught (#1131): the runner's "uncollected" check read a ``.ts``-only suffix list,
+    so a ``*.test.jsx`` the harness ignored on the React stack was never named — the
+    pf-53 class, invisible on one stack. The vocabulary is the harness's, declared once."""
+    from squadops.capabilities.handlers.test_runner import uncollected_test_files
+
+    report = {"testResults": [{"name": "/ws/src/__tests__/harness.test.jsx", "status": "passed"}]}
+    handed_in = ["src/__tests__/harness.test.jsx", "src/views.test.jsx", "src/api.js"]
+    assert uncollected_test_files(report, "/ws", handed_in) == ["src/views.test.jsx"]

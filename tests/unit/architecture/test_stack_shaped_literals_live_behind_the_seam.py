@@ -53,17 +53,6 @@ _ALLOWLIST: set[tuple[str, str]] = {
     # and the entry module it must not import — keyed by `test_framework` at the call.
     (_H + "test_runner.py", "conftest"),
     (_H + "test_runner.py", "main.py"),
-    # `_RUNNABLE_TEST_SUFFIXES`: which handed-in files are unambiguously a suite. A JS-only
-    # vocabulary no stack declares — MOVES BEHIND THE SEAM in #1131's follow-up; this entry
-    # is deleted with it.
-    *{(_H + "test_runner.py", lit) for lit in (".test.ts", ".test.tsx", ".spec.ts", ".spec.tsx")},
-    # `_JS_TEST_SUFFIXES`: same vocabulary, same follow-up, same deletion.
-    *{
-        (_H + "stub_detection.py", lit)
-        for lit in (".test.ts", ".test.tsx", ".spec.ts", ".spec.tsx")
-    },
-    # The qa handler picks runnable JS suites by suffix — same follow-up.
-    *{(_H + "cycle/qa_test.py", lit) for lit in (".test.ts", ".spec.ts")},
     # SIP-0104's scaffold executor runs the fill-mode suite; the only registered emitter is
     # `nextjs_ts`, so vitest is the only runner it has. Becomes the stack's the day a second
     # emitter registers (#1122).
