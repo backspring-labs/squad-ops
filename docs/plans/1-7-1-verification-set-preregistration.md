@@ -36,9 +36,9 @@ window. Every fixed parameter is read from
 | Overrides | FastAPI+React: none. Next.js+TS: `build_profile=nextjs_ts`, `dev_capability=nextjs_ts` |
 | `resolved_config_hash` | FastAPI+React `c4d6a2165acf`, Next.js+TS `TBD-from-shakeout` — **unchanged from 1.6.6** on the React arm (the pack changed code, not configuration); asserted on every counting roll; a roll on any other hash is void |
 | `squad_profile_snapshot_ref` | `575707c58536cf3b…` — unchanged from 1.6.6 and 1.7.0; a roll on any other snapshot is void |
-| Deploy — commit | **`816cc8f0`** — **main**, the merge of #1253. Main carries the whole pack merged by the owner on 2026-09-02: #1242 (#1144), #1243 (#1130), #1244 (#598), #1245 (#1022), #1246 (#668), #1247 (#1123), #1248 (#1151), #1249 (#582), #1250 (#1229's hand-off fix), #1253 (#1252's handoff validator), on top of #939, #1229 and #1153. Two earlier deploys were shaken out and superseded — the stacked tips `d95f8e21` and `a00870d6` (§2); the owner's ruling was to rebuild from main once the pack merged, which removes the "not main" deviation the first draft of this document pre-declared. |
-| Deploy — 7 image ids | runtime-api `6db6411b4e4b` · max `32b0170b2fd4` · neo `96a955fff072` · nat `636435ff47ad` · bob `fa04483c8ed7` · eve `43e1858c0c18` · data `6caacbbb1680` — built 2026-09-02 13:38–13:41Z from `816cc8f0`; asserted at every counting launch by the driver. (Superseded sets: from `a00870d6`, runtime-api `027f44a81ccf` · max `0717c85c4992` · neo `235ffc803e53` · nat `3fd32c6bca60` · bob `af9a719b425c` · eve `45fd005a625b` · data `431a5499cd36`; from `d95f8e21`, runtime-api `ccd81952be2e` · max `f6e8b8dfbe69` · neo `da9da7ab0bae` · nat `58089c21e847` · bob `9816af4df1b0` · eve `e4368e889bb0` · data `1f1358c9488b`.) |
-| Loaded, not built | verified in all seven containers after the `816cc8f0` build (`docker exec -i … python -`, `inspect.getsource` on the loaded objects): the executor hands the correction runner the enriched envelope (#1250) and logs `agent_rows=… agent_executed=…`; `validate_handoff_criteria` is wired at the framing gate and the dispatch strip logs `handoff_regex_stripped` (#1253); `squadops.api.cycle_schemas` imports (#582); every container imports the pack's seams (`qa_owned_suite_defects`, `absent_anchor_cases`, `INJECTION_SCOPE_SUITE` → `additive_containment`, `anchor_findings`, `containment_findings`, `parse_pytest_failure_rows`, `parse_vitest_failure_text`, `client_surface_instructions`, `_attach_typed_checks`); `tsc` on PATH in neo and eve, absent in runtime-api and bob (as `DECLARED_TOOLING_GAPS` declares); `/health` reports 1.7.0 |
+| Deploy — commit | **`dfe466ab`** — **main**, the merge of #1258. Main carries the whole pack merged by the owner on 2026-09-02: #1242 (#1144), #1243 (#1130), #1244 (#598), #1245 (#1022), #1246 (#668), #1247 (#1123), #1248 (#1151), #1249 (#582), #1250 (#1229's hand-off fix), #1253 (#1252's handoff validator), #1257 (#1255) and #1258 (#1256) — the last two found by the third shakeout — on top of #939, #1229 and #1153. Three earlier deploys were shaken out and superseded — the stacked tips `d95f8e21` and `a00870d6`, then main at `816cc8f0` (§2); the owner's ruling was to rebuild from main once the pack merged, which removes the "not main" deviation the first draft of this document pre-declared. |
+| Deploy — 7 image ids | runtime-api `173316830b11` · max `28b20f7479b3` · neo `3c9dd9271553` · nat `d916d357c024` · bob `dab6abb8f0f7` · eve `7631cc721813` · data `58c3b8395693` — built 2026-09-02 15:25–15:26Z from `dfe466ab`; asserted at every counting launch by the driver. (Superseded sets: from `816cc8f0`, runtime-api `6db6411b4e4b` · max `32b0170b2fd4` · neo `96a955fff072` · nat `636435ff47ad` · bob `fa04483c8ed7` · eve `43e1858c0c18` · data `6caacbbb1680`; from `a00870d6`, runtime-api `027f44a81ccf` · max `0717c85c4992` · neo `235ffc803e53` · nat `3fd32c6bca60` · bob `af9a719b425c` · eve `45fd005a625b` · data `431a5499cd36`; from `d95f8e21`, runtime-api `ccd81952be2e` · max `f6e8b8dfbe69` · neo `da9da7ab0bae` · nat `58089c21e847` · bob `9816af4df1b0` · eve `e4368e889bb0` · data `1f1358c9488b`.) |
+| Loaded, not built | verified in all seven containers after the `dfe466ab` build (`docker exec -i … python -`, `inspect.getsource` on the loaded objects): `sections_present` is in the registry and `task_plan._handoff_section_criteria` binds it, the builder handler reads the shared section rule (#1257); `CorrectionProtocolResult.repair_typed_checks` exists, the executor hands `agent_checks=repair_typed_checks` to the verifier and the verifier reads the sequence (#1258); the executor hands the correction runner the enriched envelope (#1250) and logs `agent_rows=… agent_executed=…`; `validate_handoff_criteria` is wired at the framing gate and the dispatch strip logs `handoff_regex_stripped` (#1253); `squadops.api.cycle_schemas` imports (#582); every container imports the pack's seams (`qa_owned_suite_defects`, `absent_anchor_cases`, `INJECTION_SCOPE_SUITE` → `additive_containment`, `anchor_findings`, `containment_findings`, `parse_pytest_failure_rows`, `parse_vitest_failure_text`, `client_surface_instructions`, `_attach_typed_checks`); `tsc` on PATH in neo and eve, absent in runtime-api and bob (as `DECLARED_TOOLING_GAPS` declares); `/health` reports 1.7.0 |
 | Gate policy | 1.6.3 §6 constant, verbatim in each set config's `gate_notes`; `--as-agent`; the decider is recorded per roll |
 | Audit instrument | `scripts/dev/audit_delivered_app.py` at the deploy commit |
 | Driver | `verification_set_driver.py roll --set docs/plans/verification-sets/1-7-1-fastapi-react.yaml --roll N`, then `…/1-7-1-nextjs.yaml` — one roll per invocation |
@@ -52,9 +52,10 @@ window. Every fixed parameter is read from
   (the owner asked on 2026-09-01, before bed, for the pack to be stacked as PRs and validated
   overnight, and only the last PR's head carried the whole pack). Two stacked tips were built
   and shaken out; each shakeout found a defect, each defect became a PR, and the owner merged
-  the whole pack on 2026-09-02 and ruled that the rolls run on a deploy built from main. The
-  pins in §1 are that build. The two superseded deploys and what each shakeout found are kept
-  below because they are the reason this deploy exists.
+  the whole pack on 2026-09-02 and ruled that the rolls run on a deploy built from main; the
+  first main build was shaken out too and found two more seam defects, merged the same day.
+  The pins in §1 are the second main build. The three superseded deploys and what each
+  shakeout found are kept below because they are the reason this deploy exists.
 - **Counted launches run from `main`** (the owner's 2026-08-27 ruling), which requires this
   document and the two set configs to be merged before roll 1 — the driver and its readouts
   are on main already; only the configs and this pre-registration are on the branch. The
@@ -108,8 +109,37 @@ window. Every fixed parameter is read from
     deploy is superseded** by #1253's merge. Next.js+TS was not re-run on `a00870d6`: the
     owner merged the pack while the React re-run was being read, and the default ruling
     (rebuild from main) made a third deploy the one to shake out.
-  - **On `816cc8f0` (the pinned deploy) — FastAPI+React:** TBD — filled from the record.
-  - **On `816cc8f0` (the pinned deploy) — Next.js+TS:** TBD — filled from the record.
+  - **On `816cc8f0` (main, the merge of #1253) — FastAPI+React `cyc_c6db3ffc1f4e`**
+    (13:44→14:58Z, 72 min): accepted, audit PASS, 15/15, P0 held, `checks_by_environment`
+    `{agent:development: 19, agent:builder: 1, agent:qa: 22}`, no packaging finding, gate
+    approved by the driver's agent user with the §6 constant — **and three correction
+    rounds that found two more seam defects, each read from the code, filed and fixed the
+    same day:**
+    - Round 0: the builder's handoff stopped after `## How to Run`; the handler's
+      validation named the two missing sections; the builder's repair carried every one of
+      them; runtime-api returned `unverifiable / no_typed_criteria checks=0 agent_rows=0`
+      and #1221 left the task failed. A builder task carried **no typed criterion at all**
+      once #1252 stripped the plan's handoff regexes — the section rule lived only inside
+      the handler, and `container_packaging` is injected at the handler seam. **#1255**,
+      fixed in #1257: `sections_present`, bound at plan time onto the builder task that
+      owns the handoff with the profile's sections as params, one rule shared with the
+      handler's validation; the verifier's `no_typed_criteria` verdict carries the agent's
+      rows.
+    - Rounds 1–2: dev repairs of the qa task's failure. The dev container reported
+      `rows=10 executed=10 frontend_compiles:failed` on both; runtime-api logged
+      `agent_rows=0` both times and the retest decided (pf-47's path; the retest failed
+      on exactly the suite the patch would have been rejected for). The executor read
+      `repair_typed_checks` off the **failed task's** result, and the correction protocol
+      returned only the repair's files — **rule B had never delivered a row to the verifier
+      in a live cycle; every `decided_by_agent` in this line's records was 0.** **#1256**,
+      fixed in #1258: the protocol result carries each repair step's rows, the executor
+      hands them to the verifier. **This deploy is superseded** by both merges.
+  - **On `816cc8f0` — Next.js+TS `cyc_a72490f76caf`**: launched 15:10Z, stopped by the
+    assistant at 15:24Z during framing (four of the framing tasks dispatched, no
+    implementation run) when the owner merged #1257 and #1258 and asked for the rebuild;
+    no record written, nothing read from it.
+  - **On `dfe466ab` (the pinned deploy) — FastAPI+React:** TBD — filled from the record.
+  - **On `dfe466ab` (the pinned deploy) — Next.js+TS:** TBD — filled from the record.
 - **Diagnostics for the predictions no roll is likely to exercise (plan §4), non-counting
   by declaration — run 2026-09-02 06:20 ET, in the deployed containers, on the stored
   artifacts that cost each item.** These are in-container replays of the deployed code path,
