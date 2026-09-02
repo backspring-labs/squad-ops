@@ -449,7 +449,7 @@ class TestCriteriaScopeGateCheck:
         mock_registry.get_run.return_value = _run_with_gate_decision(GateDecisionValue.APPROVED)
         doc_plan = _PLAN_YAML_SOURCE_REGEX.replace(
             "file: frontend/src/views/RunDetailView.jsx, pattern: 'apiFetch\\('",
-            "file: qa_handoff.md, pattern: '## How to Test'",
+            "file: README.md, pattern: '## How to Test'",
         )
         stored = [_plan_artifact(executor._artifact_vault, "art_plan", doc_plan)]
 

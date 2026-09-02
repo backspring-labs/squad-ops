@@ -1,0 +1,240 @@
+version: 1
+project_id: group_run
+cycle_id: cyc_04e7d5896054
+prd_hash: f744843dfd14d2be71d30ddaa2e6d5c3fe0b574cd42aec168802bde58ac40005
+tasks:
+- task_index: 0
+  task_type: development.develop
+  role: dev
+  focus: Implement all REST endpoints in backend/routes.py
+  description: "Fill in the route handlers for the group_run API in backend/routes.py.\n\
+    The scaffold already defines models (Run, Participant, RunSummary,\nRunCreate,\
+    \ ParticipantBody), in-memory stores (run_store,\nparticipant_store, run_summary_store),\
+    \ and error infrastructure (ApiError,\nregister_error_handlers). Wire the endpoints:\n\
+    \n- Create a run event (title, datetime, meeting_location required;\n  distance,\
+    \ pace_target, route_notes optional)\n- List upcoming runs (returns summaries\
+    \ with participant_count)\n- Get a single run by id (full detail including participant\
+    \ list)\n- Join a run by participant name (reject duplicates case-insensitively)\n\
+    - Leave a run by participant name (clear error if name not found)\n\nUse the store\
+    \ module for state. Raise ApiError for validation failures\nand not-found conditions.\
+    \ The conftest.py client fixture provides the\nTestClient for integration tests\
+    \ — do not construct one in routes.\n"
+  expected_artifacts:
+  - backend/routes.py
+  acceptance_criteria:
+  - Creating a run validates required fields and returns the created event with a
+    generated id.
+  - Listing runs returns a collection of summaries including participant_count.
+  - Getting a run by id returns full detail with the participant list; unknown id
+    yields a clear not-found error.
+  - Joining adds the participant and rejects duplicate names (case-insensitive) with
+    a descriptive error.
+  - Leaving removes the participant; an absent name produces a clear error response.
+  depends_on: []
+  criteria_refs:
+  - vc-routes-endpoints
+  - vc-routes-apierror
+  - vc-routes-compiles
+  - vc-routes-imports
+- task_index: 1
+  task_type: development.develop
+  role: dev
+  focus: Build the RunsListView (upcoming runs list page)
+  description: 'Implement frontend/src/views/RunsListView.jsx. The frozen App.jsx
+    already
+
+    wires this to the /runs route and the frozen api.js provides apiFetch.
+
+
+    Display a list of runs (title, datetime, meeting_location, participant
+
+    count). Link each row to the detail view (/runs/:id). Show an empty-state
+
+    message when no runs exist. Fetch data on mount via apiFetch.
+
+    '
+  expected_artifacts:
+  - frontend/src/views/RunsListView.jsx
+  acceptance_criteria:
+  - Renders each run's title, datetime, meeting location, and participant count.
+  - Shows a clear empty-state message when the list is empty.
+  - Each run entry links to its detail view.
+  depends_on: []
+  criteria_refs:
+  - vc-view-compiles-runs-list-view
+- task_index: 2
+  task_type: development.develop
+  role: dev
+  focus: Build the CreateRunView (run creation form)
+  description: 'Implement frontend/src/views/CreateRunView.jsx. The frozen App.jsx
+    wires
+
+    this to the /create route and api.js provides apiFetch.
+
+
+    Provide a form with fields: title (required), datetime (required),
+
+    meeting_location (required), distance (optional), pace_target (optional),
+
+    route_notes (optional). Validate required fields are non-empty before
+
+    submit. On success, navigate to the runs list. Display backend error
+
+    messages inline.
+
+    '
+  expected_artifacts:
+  - frontend/src/views/CreateRunView.jsx
+  acceptance_criteria:
+  - Renders input fields for all six run attributes with required-field markers on
+    title, datetime, meeting_location.
+  - Submits the form to the backend and navigates to the runs list on success.
+  - Displays a user-visible error message when the backend rejects the payload.
+  depends_on: []
+  criteria_refs:
+  - vc-view-compiles-create-run-view
+- task_index: 3
+  task_type: development.develop
+  role: dev
+  focus: Build the RunDetailView (run detail, join, leave)
+  description: 'Implement frontend/src/views/RunDetailView.jsx. The frozen App.jsx
+    wires
+
+    this to the /runs/:id route and api.js provides apiFetch.
+
+
+    Display all run details (title, datetime, location, distance, pace,
+
+    notes) and the current participant list. Provide a join form (name
+
+    input + submit) and a leave form (name input + submit). Update the
+
+    participant list and count after join/leave actions. Show clear error
+
+    messages for duplicate-name joins, not-found runs, and failed leaves.
+
+    '
+  expected_artifacts:
+  - frontend/src/views/RunDetailView.jsx
+  acceptance_criteria:
+  - Displays all run event fields and the current participant list with count.
+  - Join form accepts a name, submits to backend, and refreshes the participant list
+    on success.
+  - Leave form accepts a name, submits to backend, and refreshes the participant list
+    on success.
+  - Shows a descriptive error message for duplicate-name joins and failed leaves.
+  depends_on: []
+  criteria_refs:
+  - vc-view-compiles-run-detail-view
+- task_index: 4
+  task_type: builder.assemble
+  role: builder
+  focus: Package build output, Dockerfile, and qa_handoff.md
+  description: "Assemble the deployable package and author the QA handoff document.\n\
+    \n1. Dockerfile: multi-stage build for the FastAPI backend (Python) and\n   React\
+    \ frontend (Node build → static serve or simple static mount).\n   Ensure the\
+    \ container exposes the backend on a documented port and\n   serves the frontend\
+    \ bundle.\n\n2. qa_handoff.md: a clear operator-facing document covering:\n  \
+    \ - How to run the backend locally\n   - How to run the frontend locally\n   -\
+    \ How to run the test suite\n   - Expected behavior (happy paths and error cases)\n\
+    \   - Implemented scope (core + any expansion items)\n   - Known limitations and\
+    \ assumptions\n\nAll dev tasks (0-3) must be complete before this task runs.\n"
+  expected_artifacts:
+  - Dockerfile
+  - qa_handoff.md
+  acceptance_criteria:
+  - Dockerfile produces a runnable container with both backend and frontend.
+  - check: regex_match
+    description: qa_handoff contains How to Run section
+    file: qa_handoff.md
+    pattern: '## How to Run'
+    count_min: 1
+  - check: regex_match
+    description: qa_handoff contains How to Test section
+    file: qa_handoff.md
+    pattern: '## How to Test'
+    count_min: 1
+  - check: regex_match
+    description: qa_handoff contains Expected Behavior section
+    file: qa_handoff.md
+    pattern: '## Expected Behavior'
+    count_min: 1
+  - check: regex_match
+    description: qa_handoff contains Implemented Scope section
+    file: qa_handoff.md
+    pattern: '## Implemented Scope'
+    count_min: 1
+  - check: regex_match
+    description: qa_handoff contains Known Limitations section
+    file: qa_handoff.md
+    pattern: '## Known Limitations'
+    count_min: 1
+  depends_on:
+  - 0
+  - 1
+  - 2
+  - 3
+- task_index: 5
+  task_type: qa.test
+  role: qa
+  focus: Write integration tests for core API behavior
+  description: 'Author backend/tests/test_runs.py covering the core API contract using
+
+    the scaffold-provided client fixture (from conftest.py). Do NOT import
+
+    backend.main or construct TestClient directly — use the injected client.
+
+
+    Minimum coverage:
+
+    - Create a valid run and verify the response contains the expected fields
+
+    - Create a run with missing required field and verify rejection
+
+    - List runs and verify the created run appears
+
+    - Get run detail by id and verify participant list is present
+
+    - Join a run with a name and verify the participant appears
+
+    - Join the same run with the same name again and verify rejection
+
+    - Leave the run and verify the participant is removed
+
+    - Leave a run with a name not present and verify error behavior
+
+    - Get a non-existent run id and verify not-found error
+
+
+    Each test should be independent (use reset() from backend.store between
+
+    tests if needed via a fixture or setup).
+
+    '
+  expected_artifacts:
+  - backend/tests/test_runs.py
+  acceptance_criteria:
+  - check: function_defined
+    description: At least 6 test functions defined
+    file: backend/tests/test_runs.py
+    name_prefix: test_
+    min_count: 6
+  - check: harness_boundary
+    description: Tests use the scaffold client fixture, not a direct import
+    file: backend/tests/test_runs.py
+    entry_modules:
+    - backend.main
+    client_ctor: TestClient
+  - Tests cover create, list, detail, join, duplicate-join rejection, leave, and not-found
+    scenarios.
+  depends_on:
+  - 4
+summary:
+  total_dev_tasks: 4
+  total_qa_tasks: 1
+  total_tasks: 6
+  estimated_layers:
+  - backend
+  - frontend
+  - packaging
+  - test

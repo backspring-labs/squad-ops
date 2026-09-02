@@ -821,7 +821,9 @@ CHECK_SPECS: dict[str, CheckSpec] = {
         # double-quoting \w / \. is exactly what broke YAML parsing in #182's wake.
         # The example targets a DOCUMENT on purpose (#464): regex on source
         # files is rejected at plan validation — teach the allowed shape.
-        example={"file": "qa_handoff.md", "pattern": r"## How to \w+", "count_min": 2},
+        # #1252: NOT the handoff — its sections are the profile's, checked by name; the
+        # vocabulary's own example taught 213 authored regexes over it in 40 stored plans.
+        example={"file": "README.md", "pattern": r"## How to \w+", "count_min": 2},
         notes=(
             "Documents only (.md/.txt/.rst) — a regex on a SOURCE file is "
             "rejected at plan validation (#464). To assert a source file defines "

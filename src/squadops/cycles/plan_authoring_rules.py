@@ -30,6 +30,9 @@ AUTHOR_FACING: dict[str, str] = {
     "validate_qa_artifact_ownership": "qa-owns-only-tests",
     "validate_module_existence": "imports-must-exist",
     "validate_criteria_scope": "regex-only-on-documents",
+    # #1252: the handoff's sections are the profile's, checked by name; a regex over
+    # its headings polices word order the builder's template never promised.
+    "validate_handoff_criteria": "no-regex-on-the-handoff",
     "validate_command_checks": "commands-must-run-here",
     "validate_against_profile": "roles-must-exist",
     # Renamed from "qa-tests-pytest-discoverable" by #846: the rule reads the stack's

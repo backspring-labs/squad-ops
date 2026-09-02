@@ -1936,7 +1936,7 @@ class TestInterWorkloadGatePlanValidation:
 
         doc_plan = _PLAN_YAML_SOURCE_REGEX_WL.replace(
             "file: frontend/src/views/RunDetailView.jsx, pattern: 'apiFetch\\('",
-            "file: qa_handoff.md, pattern: '## How to Test'",
+            "file: README.md, pattern: '## How to Test'",
         )
         import dataclasses
 

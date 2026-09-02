@@ -3927,6 +3927,16 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                             parsed_plan.validate_builder_floor(cycle.resolved_config()),
                         )
                     )
+                    # #1252: a regex over the handoff's headings restates the profile's
+                    # own section check in a brittle form; the 1.7.1 React shakeout spent
+                    # two of three correction rounds on heading word order. Rejected here
+                    # with the rule named, for a free framing re-roll.
+                    errors.extend(
+                        classifier.collect(
+                            "validate_handoff_criteria",
+                            parsed_plan.validate_handoff_criteria(),
+                        )
+                    )
             elif (
                 ref.filename == SEEDED_MANIFEST_FILENAME or artifact_type == MANIFEST_ARTIFACT_TYPE
             ):
@@ -4217,6 +4227,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # style-lottery regex costs seconds at the gate, not an hour of
         # correction budget mid-implementation.
         errors += plan.validate_criteria_scope()
+        # #1252: same seam again — a regex over the handoff's headings.
+        errors += plan.validate_handoff_criteria()
         # #426: same seam again — a builder task without a build_profile is
         # refused by generate_task_plan anyway, but only after the gate
         # approved the plan and the implementation run was admitted.

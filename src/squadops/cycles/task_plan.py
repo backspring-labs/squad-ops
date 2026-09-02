@@ -46,6 +46,7 @@ from squadops.cycles.acceptance_check_spec import (
 from squadops.cycles.agent_config import resolve_agent_config
 from squadops.cycles.failure_evidence import FailureLocus
 from squadops.cycles.implementation_plan import (
+    HANDOFF_DOCUMENT,
     ImplementationPlan,
     TypedCheck,
     resolve_contract_refs,
@@ -467,8 +468,19 @@ def _resolve_legacy_steps(
     return steps, builder_used
 
 
+CHECK_REGEX_MATCH = "regex_match"
+
+
+def _is_handoff_regex(criterion: TypedCheck) -> bool:
+    return (
+        criterion.check == CHECK_REGEX_MATCH
+        and str(criterion.params.get("file", "")).split("/")[-1] == HANDOFF_DOCUMENT
+    )
+
+
 def _applicable_acceptance(plan_task: Any) -> list:
-    """The task's authored acceptance criteria, minus checks that can never evaluate.
+    """The task's authored acceptance criteria, minus checks that can never evaluate, and
+    minus regexes over the handoff document (#1252).
 
     pf-47/pf-49: the author dresses non-Python files in Python-AST checks (pytest
     idioms on ``.jsx`` test files) because the vocabulary never told it which checks
@@ -482,6 +494,21 @@ def _applicable_acceptance(plan_task: Any) -> list:
     acceptance: list = []
     for criterion in plan_task.acceptance_criteria:
         if isinstance(criterion, TypedCheck):
+            if _is_handoff_regex(criterion):
+                # #1252: the 1.7.1 React shakeout (cyc_8118588858a6) spent two of three
+                # correction rounds on the WORD ORDER of two handoff headings — the plan
+                # authored `## .*(Backend|Server|API).*(Run|Start|Setup|Launch)` and the
+                # builder wrote `## How to Run the Backend`, its template's own convention.
+                # The handoff's sections are the profile's, checked by name in any order
+                # (builder.py `_validate_builder_output`); a regex the planner phrases
+                # fresh each cycle polices how the author restated a fact it never saw.
+                logger.warning(
+                    "handoff_regex_stripped task=%s pattern=%r — the handoff's sections are "
+                    "the build profile's, checked by name (#1252)",
+                    plan_task.task_index,
+                    criterion.params.get("pattern"),
+                )
+                continue
             target = str(criterion.params.get("file", ""))
             if target and not is_check_applicable(criterion.check, target):
                 logger.warning(
