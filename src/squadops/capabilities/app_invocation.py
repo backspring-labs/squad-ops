@@ -69,6 +69,10 @@ class AppInvocation:
     #: The test files this rule judges, by basename suffix — the harness's collection
     #: vocabulary. A file outside it (a helper beside the suites) is never a suite.
     suite_suffixes: tuple[str, ...] = JS_SUITE_SUFFIXES
+    #: What ``invocation_import`` means, in words, for the finding a rejected suite is
+    #: handed back with (#1022): the author is told what this stack counts as invoking
+    #: the application, not shown a regex. Empty renders nothing.
+    invocation_description: str = ""
 
     def is_suite(self, path: str) -> bool:
         """True for a test file this stack's harness collects (by its basename suffix)."""

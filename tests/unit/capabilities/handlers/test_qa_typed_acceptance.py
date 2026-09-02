@@ -135,7 +135,10 @@ class TestFrameworkInjectionReachesQa:
             [
                 _art(
                     "frontend/tests/app.test.js",
-                    "import { test } from 'vitest'\ntest('x', () => {})\n",
+                    # #1022: a suite on this stack must invoke the application — this one
+                    # renders the real App, so the containment gate has nothing to say.
+                    "import { test } from 'vitest'\nimport { render } from '@testing-library/react'\n"
+                    "import App from '../src/App'\ntest('x', () => { render(<App />) })\n",
                 ),
                 _art("frontend/tests/fixture.json", "{}"),
             ],
@@ -170,7 +173,12 @@ class TestEvidenceGapParityWithDev:
         ]
         result = await h._validate_output(
             _inputs(criteria, expected=("frontend/tests/app.test.tsx",)),
-            [_art("frontend/tests/app.test.tsx", "import {test} from 'vitest'")],
+            [
+                _art(
+                    "frontend/tests/app.test.tsx",
+                    "import {test} from 'vitest'\nimport App from '../src/App'\ntest('x', () => {})",
+                )
+            ],
         )
         row = next(c for c in result.checks if c["check"] == "acceptance:import_present")
         assert row["evidence_gap"] is True

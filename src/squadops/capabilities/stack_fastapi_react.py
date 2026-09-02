@@ -48,6 +48,10 @@ APP_INVOCATION = AppInvocation(
         NETWORK_SEAM_FETCH_STUB
         + r"""    | (?:vi|jest)\s*\.\s*mock\s*\(\s*['"`][^'"`]*/api(?:\.[jt]sx?)?['"`]"""
     ),
+    invocation_description=(
+        "rendering the real `App` or a `views/*` component from `frontend/src/` under a "
+        "`MemoryRouter`, with `fetch` (or the `api.js` client) stubbed beneath it"
+    ),
 )
 
 _PY_PRIMITIVES = {"string": "str", "integer": "int", "number": "float", "boolean": "bool"}

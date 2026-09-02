@@ -9,6 +9,7 @@ Regenerate: `UPDATE_CHECK_MENU=1 pytest tests/unit/cycles/test_check_governance.
 
 | check | origin | ownership | qa | signature | outcome | replayable | blocking default |
 |---|---|---|---|---|---|---|---|
+| `additive_containment` | injected | suite | yes | yes | yes | yes | error |
 | `assertion_kinds_match` | injected | suite | yes | yes | yes | yes | error |
 | `command_exit_zero` | authored | product | yes | no | yes | no | error |
 | `container_packaging` | injected | product | no | no | no | yes | warning |
@@ -37,6 +38,7 @@ where a reader finds out. An undeclared gap fails
 
 | check | language | reason |
 |---|---|---|
+| `additive_containment` | `.py` | A pytest suite runs the application in-process through TestClient, so a live-server fetch is not its failure mode, and its containment is the harness boundary, the contract-assertion gate and the assertion-kind gate. The JS/TS rules would misread every Python suite as invoking nothing. |
 | `declared_imports` | `.py` | Python declares dependencies in requirements files, not a manifest beside the source, and resolution is environment-wide rather than per-directory. The equivalent check is a different check, not this one with another extension — no Python emission is silently less checked as a result, since undefined_names and the syntax gate both cover .py. |
 
 ## Tooling each check needs, and where it is declared absent

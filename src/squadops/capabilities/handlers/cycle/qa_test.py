@@ -645,6 +645,7 @@ class QATestHandler(_CycleTaskHandler):
         scaffold_input: dict[str, Any],
         fill_emission: Any,
         artifacts: list[dict],
+        invocation: AppInvocation | None,
     ) -> tuple[list[dict], list[dict], dict[str, Any]]:
         """Merge parsed fills into the scaffold and bound the additive surface.
 
@@ -704,14 +705,12 @@ class QATestHandler(_CycleTaskHandler):
                 # attempt ran 9. `extracted_files` went 1 -> 0 in a log line nobody read.
                 "additive_files": sorted(a["name"] for a in kept),
             },
-            # #1022: containment findings for the additive surface, banked and NOT
-            # enforced. Every V7 counted red was additive-suite-side while all nine
-            # delivered apps passed independent boot audits — the apps were fine, the
-            # tests were not. The gate's shape is a design-review question (#1022), so
-            # this records what a gate WOULD flag across real rolls first. Deploying a
-            # rejection whose premise was never checked against real traffic is what
-            # #1049 cost tonight.
-            "additive_containment": assess_additive_suite(kept),
+            # #1022: the containment findings for the additive surface, banked here for
+            # the per-round record as #1052 first shipped them — and since 1.7.1 ALSO
+            # enforced, as the typed check `additive_containment` on every suite file at
+            # the typed-acceptance seam. Same function, so the record and the verdict
+            # cannot disagree.
+            "additive_containment": [str(f) for f in assess_additive_suite(kept, invocation)],
         }
         merged_suite_files = [{"filename": f.path, "content": f.content} for f in merged.files]
         return kept + merged_artifacts, merged_suite_files, evidence
@@ -1260,7 +1259,7 @@ class QATestHandler(_CycleTaskHandler):
         shell_drop_paths: set[str] = set()
         if scaffold_input:
             artifacts, merged_suite_files, fill_merge_evidence = self._merge_fill_artifacts(
-                scaffold_input, fill_emission, artifacts
+                scaffold_input, fill_emission, artifacts, self._app_invocation(inputs)
             )
             merged_names = {m["filename"] for m in merged_suite_files}
             shell_drop_paths = merged_names
@@ -1357,7 +1356,12 @@ class QATestHandler(_CycleTaskHandler):
                             )
                             fill_emission = folded.emission
                             artifacts, merged_suite_files, fill_merge_evidence = (
-                                self._merge_fill_artifacts(scaffold_input, fill_emission, artifacts)
+                                self._merge_fill_artifacts(
+                                    scaffold_input,
+                                    fill_emission,
+                                    artifacts,
+                                    self._app_invocation(inputs),
+                                )
                             )
                             shell_drop_paths = {m["filename"] for m in merged_suite_files}
                             evidence_extra["fill_merge"] = fill_merge_evidence

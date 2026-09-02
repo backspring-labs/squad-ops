@@ -29,6 +29,25 @@ agent container, at emission and at repair, and each image provisions its toolch
   `backend/routes.py:24`) stays on the dev chain; a stored collection error and a
   rewritten assert are not defects. The log line carries `qa_owned_routed` for the set's
   R2 readout.
+### Added — additive-suite containment is a gate (#1022)
+- **`additive_containment`**, a typed check the framework injects on every emitted JS/TS
+  suite file (the harness's suite suffixes) on both stacks, at emission and on a repair's
+  patch: two rules read off the suite's own bytes against the stack's declaration of what
+  invokes the application (`AppInvocation`, #1126) — a fetch of a live server inside the
+  in-process harness, and a suite that invokes nothing the stack counts as the application.
+  Each failure names the rule and what the stack counts, in words, so the re-emission
+  brief carries it; a failed row is the suite's own defect and routes to the qa re-author.
+  #1052 shipped the same rules reporting-only; promoted on the evidence of the V7 corpus
+  (C3, C4 and slot 3's first repair rejected; the slot-2 and slot-3 greens pass) and the
+  accepted rolls' suites of the last two lines on both stacks (all pass). Python suites are contained by
+  their own gates and the `.py` gap is declared.
+- **A third injection scope, `suite`** — the check lands on the suite file only, never the
+  source beside it whose extension it also parses, and carries the scaffold stack as a
+  self-contained param (the seam's `stack` argument is the check vocabulary, which Next.js
+  does not declare). The handler seam is now one table over the three scopes.
+- **`AppInvocation.invocation_description`** — what a stack counts as invoking the
+  application, in words, for the finding an author is handed back.
+
 ### Added — the emitted container's packaging gets its findings, reporting-only (#598)
 - **`container_packaging`**, a typed check the framework injects on every emitted
   container recipe (a file named `Dockerfile`; recipe-scoped, since a recipe has no

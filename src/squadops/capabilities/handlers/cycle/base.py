@@ -7,21 +7,25 @@ from __future__ import annotations
 import logging
 import tempfile
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from squadops.capabilities.app_invocation import JS_SUITE_SUFFIXES
 from squadops.capabilities.handlers.base import (
     CapabilityHandler,
     HandlerEvidence,
     HandlerResult,
 )
 from squadops.capabilities.reasoning_policy import resolve_reasoning_level
+from squadops.capabilities.scaffold import scaffold_stack_for
 from squadops.cycles.acceptance_check_spec import (
     CHECK_SPECS,
     CONFIG_OFF_SKIP_REASONS,
     INJECTION_SCOPE_FILE,
+    INJECTION_SCOPE_RECIPE,
+    INJECTION_SCOPE_SUITE,
     framework_injected_checks,
-    framework_recipe_scoped_checks,
     is_check_applicable,
     is_container_recipe,
 )
@@ -51,21 +55,23 @@ from squadops.capabilities.handlers.emission_log import log_emission_shape
 logger = logging.getLogger(__name__)
 
 
-#: Checks the framework injects here, derived from the registry rather than
-#: listed beside it (#1082 added the second one, and a hand-kept list is how the
-#: menu and the injector would drift). The filter is exactly what this seam can
-#: satisfy: a framework-injected check whose only parameter is the file the task
-#: emitted. Checks needing more (``fill_slot_signature``'s routes,
-#: ``contract_assertions_match``'s endpoints) are injected where that context
-#: lives, and are excluded here by construction rather than by memory.
-#: Read by declared scope (#598): a recipe-scoped check is ``file``-parametrised too,
-#: and a local copy of the rule would have injected it on every artifact of every
-#: emission.
-_FILE_SCOPED_FRAMEWORK_CHECKS: tuple[str, ...] = framework_injected_checks(INJECTION_SCOPE_FILE)
+#: Which emitted artifacts a framework-injected ``file`` check applies to, by the scope
+#: the spec declares (``CheckSpec.injection_scope``): a table, so a new scope is a row
+#: here and a constant there, never a third loop. ``file``: every artifact whose
+#: extension the check parses. ``recipe``: every container recipe, which has no
+#: extension for the file rule to see (#598). ``suite``: every JS/TS suite file the
+#: harness collects (``JS_SUITE_SUFFIXES``), never the source beside it (#1022).
+_INJECTION_SCOPE_APPLIES: dict[str, Callable[[str, str], bool]] = {
+    INJECTION_SCOPE_FILE: is_check_applicable,
+    INJECTION_SCOPE_RECIPE: lambda _check, name: is_container_recipe(name),
+    INJECTION_SCOPE_SUITE: lambda check, name: (
+        name.endswith(JS_SUITE_SUFFIXES) and is_check_applicable(check, name)
+    ),
+}
 
 
 def _framework_injected_criteria(
-    artifacts: list[dict], authored: tuple[TypedCheck, ...]
+    artifacts: list[dict], authored: tuple[TypedCheck, ...], *, scaffold_stack: str = ""
 ) -> list[TypedCheck]:
     """Checks the framework applies to this emission regardless of what was authored (#689).
 
@@ -81,46 +87,29 @@ def _framework_injected_criteria(
     Scoped to the producer's own emitted artifacts, so it can never indict a file this
     task did not write. An authored row for the same check and file wins — the author
     may have set a different severity, and two rows for one file would double-count in
-    the evidence.
+    the evidence. The checks and their scopes are read from the specs (#1082 added the
+    second injected check, and a hand-kept list is how the menu and the injector would
+    drift); ``scaffold_stack`` rides a suite-scoped check as a self-contained param, the
+    stack's own definition of "invokes the application" being what it judges by (#1022).
     """
     already = {(c.check, str(c.params.get("file", ""))) for c in authored}
     injected: list[TypedCheck] = []
-    for check_name in _FILE_SCOPED_FRAMEWORK_CHECKS:
-        spec = CHECK_SPECS[check_name]
-        seen: set[str] = set()
-        for art in artifacts:
-            name = art.get("name") if art.get("name") is not None else art.get("path")
-            if not isinstance(name, str) or not is_check_applicable(check_name, name):
-                continue
-            if name in seen or (check_name, name) in already:
-                continue
-            seen.add(name)
-            injected.append(
-                TypedCheck(
-                    check=check_name,
-                    params={"file": name},
-                    severity=spec.blocking_default,
+    for scope, applies in _INJECTION_SCOPE_APPLIES.items():
+        for check_name in framework_injected_checks(scope):
+            spec = CHECK_SPECS[check_name]
+            for art in artifacts:
+                name = art.get("name") if art.get("name") is not None else art.get("path")
+                if not isinstance(name, str) or not applies(check_name, name):
+                    continue
+                if (check_name, name) in already:
+                    continue
+                already.add((check_name, name))
+                params: dict[str, Any] = {"file": name}
+                if scope == INJECTION_SCOPE_SUITE and scaffold_stack:
+                    params["stack"] = scaffold_stack
+                injected.append(
+                    TypedCheck(check=check_name, params=params, severity=spec.blocking_default)
                 )
-            )
-    # #598: recipe-scoped — a Dockerfile has no suffix, so the extension predicate above
-    # cannot see it. Same scoping (the producer's own artifacts), same dedup against an
-    # authored row, and the spec's severity (warning: reporting-only this line).
-    for check_name in framework_recipe_scoped_checks():
-        spec = CHECK_SPECS[check_name]
-        for art in artifacts:
-            name = art.get("name") if art.get("name") is not None else art.get("path")
-            if not isinstance(name, str) or not is_container_recipe(name):
-                continue
-            if (check_name, name) in already:
-                continue
-            already.add((check_name, name))
-            injected.append(
-                TypedCheck(
-                    check=check_name,
-                    params={"file": name},
-                    severity=spec.blocking_default,
-                )
-            )
     return injected
 
 
@@ -517,11 +506,13 @@ class _CycleTaskHandler(CapabilityHandler):
             )
 
         authored_criteria = list(split.typed)
-        typed_criteria = authored_criteria + _framework_injected_criteria(artifacts, split.typed)
+        resolved_config = inputs.get("resolved_config", {})
+        typed_criteria = authored_criteria + _framework_injected_criteria(
+            artifacts, split.typed, scaffold_stack=scaffold_stack_for(resolved_config)
+        )
         if not typed_criteria:
             return
 
-        resolved_config = inputs.get("resolved_config", {})
         typed_acceptance_enabled = resolved_config.get("typed_acceptance", True)
         command_acceptance_enabled = resolved_config.get("command_acceptance_checks", True)
         stack = resolve_check_stack(resolved_config)

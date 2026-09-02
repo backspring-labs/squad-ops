@@ -63,7 +63,10 @@ _ALLOWLIST: set[tuple[str, str]] = {
     # --- the check specs render into `docs/architecture/typed-check-menu.md`: an `example=`
     # names one real path from one stack each, and descriptions are prose. Documentation
     # embedded in the spec, not a predicate the program branches on.
-    *{(_C + "acceptance_check_spec.py", lit) for lit in ("routes.py", "app/api/", "main.py")},
+    *{
+        (_C + "acceptance_check_spec.py", lit)
+        for lit in ("routes.py", "app/api/", "main.py", ".test.ts")
+    },
     (_C + "acceptance_check_spec.py", "pytest"),
     # Prose in a validation message naming the pytest `test_*` convention.
     (_C + "implementation_plan.py", "pytest"),
