@@ -278,6 +278,15 @@ rejected with `removed: boolean` named; a suite asserting `body["removed"] is Tr
 the suites of the four accepted 1.6.6 React rolls pass (the over-rejection control). On the evidence this flips roll 3
 outright.
 
+**As landed (2026-09-01).** `assertion_kinds_match`, injected at plan time beside #629's
+status gate (`task_plan._assertion_kind_criteria`), with `declared_field_kinds` — derived in
+`response_shape.py` beside #1094's element kinds, names declared with one kind only — as
+self-contained params. Python suites are read by AST, React suites by their vitest forms;
+a failed row routes as the suite's own. Replayed: roll 3's stored suite rejected at line 167
+naming `removed: boolean`; rolls 1 and 5's stored suites pass under their own manifests
+(two controls in the vault, not four — the other two accepted rolls' suites were not
+copied). Prediction R1 stands as written.
+
 **#1130 — route a qa-owned defect to `qa.test_repair`.** The repair unit exists and is never
 chosen: `qa.test` has an own-artifact entry (`src/squadops/cycles/task_plan.py:254`,
 `QA_TEST_REPAIR_STEPS`), `own_artifact_role` (:258) resolves it, and

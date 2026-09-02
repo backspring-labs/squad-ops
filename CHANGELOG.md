@@ -44,6 +44,18 @@ agent container, at emission and at repair, and each image provisions its toolch
   Replay: the Reasoning line's roll-4 shell (`cyc_58d92ca2b407`, `created` undeclared at
   line 30) is rejected naming the name and the line; the gating roll's shell passes.
 
+### Added — the assertion-kind gate for free-authored suites (#1153)
+- **`assertion_kinds_match`**, the free-authored counterpart of #1094's fill kind gate:
+  injected on bind-mode qa.test tasks per suite file with the manifest's declared field
+  kinds as data (names declared with one kind only), it fails an assertion whose literal
+  cannot be the declared kind — `body["removed"] == "Carol"` against `removed: boolean` —
+  naming the field, the line and the kind, so the re-emission carries them. Python suites
+  are read by AST; React suites by their `expect(…).toBe/toEqual` forms; comparisons to
+  names, calls, `None` or negated matchers are out of scope by design. A failed row is the
+  suite's own defect for locus routing, like #629's.
+- 1.6.6 React roll 3 replayed: the stored suite is rejected at line 167 with `removed:
+  boolean` named; the accepted rolls 1 and 5's suites pass under their own manifests.
+
 ### Changed — a repair is verified where its checks can run (#1229, rule B)
 - **The repair evaluates the failed task's typed criteria on its own patched tree before
   returning** — in the agent container, where the stack's toolchain lives, through the same
