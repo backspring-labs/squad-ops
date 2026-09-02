@@ -1,0 +1,9 @@
+# QA agent role — npm globals, the Node analog of system-packages.txt. Installed at
+# image build time for this role only (agents/Dockerfile reads this file; no role name
+# is hardcoded there). One `name@version` per line; comments and blank lines ignored.
+#
+# typescript: the undefined_names check runs `tsc --noEmit` on .ts/.tsx/.js/.jsx
+# emissions (#939) — a per-file unresolved-name check, the JS/TS counterpart of pyflakes.
+# Pinned to the version the Next.js skeleton pins in its own package.json
+# (stack_nextjs_ts._package_json) so the analyser and the app's compiler agree.
+typescript@5.5.3

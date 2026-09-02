@@ -75,14 +75,27 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # step above. A role declares its native packages in
 # agents/instances/<role>/system-packages.txt (comments and blank lines ignored);
 # the role name is NOT hardcoded here, so a new build-capable role (or a renamed
-# one) is a data change, not a Dockerfile edit (#306). Today only the qa role
-# declares any — Node.js/npm for the frontend build check + vitest.
+# one) is a data change, not a Dockerfile edit (#306). The dev and qa roles declare
+# Node.js/npm — the frontend build check, vitest, and the typed checks that need node.
 RUN sys_pkgs="agents/instances/${AGENT_ROLE}/system-packages.txt"; \
     if [ -f "$sys_pkgs" ]; then \
       pkgs="$(grep -vE '^\s*#|^\s*$' "$sys_pkgs")"; \
       if [ -n "$pkgs" ]; then \
         apt-get update && apt-get install -y --no-install-recommends $pkgs \
         && rm -rf /var/lib/apt/lists/*; \
+      fi; \
+    fi
+
+# Install per-role npm globals — the Node analog of the apt step above (#939). A role
+# declares them in agents/instances/<role>/npm-global-packages.txt (`name@version`, one
+# per line; comments and blank lines ignored). npm itself comes from system-packages.txt,
+# so a role that lists an npm global without declaring npm fails here, loudly, at build
+# time rather than as a silently skipped check at emission time.
+RUN npm_pkgs="agents/instances/${AGENT_ROLE}/npm-global-packages.txt"; \
+    if [ -f "$npm_pkgs" ]; then \
+      pkgs="$(grep -vE '^\s*#|^\s*$' "$npm_pkgs")"; \
+      if [ -n "$pkgs" ]; then \
+        npm install -g --no-audit --no-fund $pkgs; \
       fi; \
     fi
 
