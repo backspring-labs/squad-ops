@@ -61,10 +61,24 @@ window. Every fixed parameter is read from
   pins that branch's HEAD at roll 1 so nothing moves under the set.
 - **Both shakeouts on THIS deploy, read before roll 1:** TBD — filled from the shakeout
   records (`var/verification_sets/1-7-1-*/`), with what each exercised.
-- **Fault-injected diagnostics (plan §4), non-counting by declaration:** TBD — one per
-  prediction no roll is likely to exercise (R6: a Next.js fill with an undeclared name; R7: a
-  Next.js dev emission forced into a repair; R2/R4 on the React arm). Reported as diagnostics,
-  never as rolls.
+- **Diagnostics for the predictions no roll is likely to exercise (plan §4), non-counting
+  by declaration — run 2026-09-02 06:20 ET, in the deployed containers, on the stored
+  artifacts that cost each item.** These are in-container replays of the deployed code path,
+  not fault-injected cycles: the deploy has no fault-injection hook and none was added to a
+  frozen deploy. Stated as what they are.
+  - **R6** — `UndefinedNamesCheck` in the **qa container** (`squadops-eve`, tsc on PATH) on
+    1.7.0 roll 4's stored shell (`art_0e4eaa25d42d`, the fill that used `created` undeclared):
+    `failed — undefined name(s): created (line 30)`; on the accepted roll-6 shell
+    (`art_5ad70b6aacb9`): `passed`. The path that reached vitest in 1.7.0 is rejected at
+    emission on this deploy.
+  - **R7** — `verify_patched_artifacts` in **runtime-api** (no node) on the #1221 repair
+    patch (`art_e71d58a6e45c`) with an `undefined_names` criterion: without agent rows,
+    `unverifiable / no_executed_blocking_checks` (the 1.7.0 shape); with the repair's own
+    executed rows as `_attach_typed_checks` emits them (`environment: agent:development`),
+    `passed`, `decided_by_agent: 1`. Rule B decides where 1.7.0 could not.
+  - **R2/R4 on the React arm** — no in-container diagnostic: both are routing decisions in
+    the correction runner, replayed in the PRs' tests from 1.6.5 roll 3 and 1.6.6 roll 6;
+    a counted roll confirms them only where a correction round occurs.
 - Leases 0, nothing in flight, HEAD pinned, working tree clean, at every launch (driver
   preflight).
 - **No merges to main while either set is open** except the five stacked PRs unchanged (§7).
