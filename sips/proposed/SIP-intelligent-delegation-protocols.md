@@ -1,4 +1,5 @@
 ---
+sip_uid: '17883224960419790'
 status: proposed
 title: Intelligent Delegation Protocols for SquadOps
 ---

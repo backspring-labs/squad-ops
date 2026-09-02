@@ -2,7 +2,7 @@
 sip_uid: "17642554775871658"
 sip_number: 18
 title: "-SIP-018-Squad-Context-Protocol"
-status: "accepted"
+status: "proposed"
 author: "Unknown"
 approver: "None"
 created_at: "2025-10-03T18:44:56.927519Z"

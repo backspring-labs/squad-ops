@@ -5,7 +5,7 @@ title: -SIP-0061-Warm-Boot-Analysis-Protocol-WBA-Ops-Mode
 status: deprecated
 author: Unknown
 approver: None
-created_at: FBA integration for better fulfillment tracking.
+created_at: '2026-01-10T10:32:53Z'
 updated_at: '2025-11-28T15:53:49.165616Z'
 original_filename: SIP-006.1-Warm-Boot-Analysis-Ops-Mode.md
 ---

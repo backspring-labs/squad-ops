@@ -5,7 +5,7 @@ title: "Rev-3-Decorator-Based-CapabilitySkillTool-System"
 status: "implemented"
 author: "SquadOps Build Partner"
 approver: "None"
-created_at: "2025-01-XX"
+created_at: '2025-01-01T00:00:00Z'
 updated_at: "2025-11-27T10:12:48.901774Z"
 original_filename: "SIP-040-REV3-DECORATOR-SYSTEM.md"
 ---

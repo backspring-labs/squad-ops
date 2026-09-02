@@ -5,7 +5,7 @@ title: "OpenTelemetry-Testing-Results"
 status: "implemented"
 author: "Unknown"
 approver: "None"
-created_at: "Metrics Flow:**"
+created_at: '2025-11-27T10:12:48.894997Z'
 updated_at: "2025-11-27T10:12:48.894997Z"
 original_filename: "SIP-027-TEST-RESULTS.md"
 ---

@@ -5,7 +5,7 @@ title: "Rev-2-Phase-0-Critical-Architectural-Fixes"
 status: "implemented"
 author: "SquadOps Build Partner"
 approver: "None"
-created_at: "2025-01-XX"
+created_at: '2025-01-01T00:00:00Z'
 updated_at: "2025-11-27T10:12:48.900946Z"
 original_filename: "SIP-040-REV2-PHASE0-ARCHITECTURAL-FIXES.md"
 ---

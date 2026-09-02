@@ -1,4 +1,5 @@
 ---
+sip_uid: '17883224960388794'
 title: Capability-Backed Agents (Capability Packs, Working Sets, Skill-Mediated Tool Use)
 status: proposed
 author: Jason Ladd

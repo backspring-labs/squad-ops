@@ -1,4 +1,5 @@
 ---
+sip_uid: '17883224960414984'
 status: proposed
 title: Skill Layer for Capabilities (Capability → Skill → Tool)
 author: SquadOps Team

@@ -5,7 +5,7 @@ title: Rev-1-Agent-Specs-and-Configuration-ACPAligned-YAML-Standard
 status: implemented
 author: Jason Ladd
 approver: None
-created_at: 2025‑11‑08
+created_at: '2025-11-08'
 updated_at: '2025-12-07T19:51:05.579796Z'
 original_filename: SIP-046-REV1-AGENT-SPECS-AND-CONFIGURATION.md
 ---

@@ -5,7 +5,7 @@ title: SIP-Management-Workflow-Protocol
 status: implemented
 author: drafts SIP → commits PR to /protocols/.
 approver: None
-created_at: SIP Registry automatically.
+created_at: '2025-12-07T19:50:57.903937Z'
 updated_at: '2025-12-07T19:50:57.903005Z'
 original_filename: SIP-019-SIP-Management-Workflow.md
 ---

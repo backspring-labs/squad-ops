@@ -2,10 +2,10 @@
 sip_uid: "17642554775914219"
 sip_number: 27
 title: "Telemetry-Implementation-Execution-Plan-Multi-Cloud"
-status: "implemented"
+status: "deprecated"
 author: "Unknown"
 approver: "None"
-created_at: "BaseAgent to Use TelemetryClient"
+created_at: '2025-11-27T10:12:48.895643Z'
 updated_at: "2025-11-27T10:12:48.895643Z"
 original_filename: "SIP-027-EXECUTION-PLAN.md"
 ---

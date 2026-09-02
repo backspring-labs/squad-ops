@@ -5,7 +5,7 @@ title: Testing-Framework-and-Philosophy
 status: implemented
 author: Unknown
 approver: None
-created_at: 'Process**: Explicit snapshot updates required'
+created_at: '2025-12-07T19:51:07.193762Z'
 updated_at: '2025-12-07T19:51:07.192882Z'
 original_filename: SIP-026-Testing-Framework-Protocol.md
 ---

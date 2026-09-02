@@ -5,7 +5,7 @@ title: Scout
 status: deprecated
 author: Unknown
 approver: None
-created_at: '**Role DNA** (baseline) or **Instance DNA** (delta) as needed (SIP-004).'
+created_at: '2025-11-27T10:12:48.882287Z'
 updated_at: '2026-01-10T11:15:35.323533Z'
 original_filename: SIP-009-Role-First-Practice-Range-Protocol.md
 ---

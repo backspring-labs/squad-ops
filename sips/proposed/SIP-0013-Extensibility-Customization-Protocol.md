@@ -5,7 +5,7 @@ title: "Extensibility-Customization-Protocol"
 status: "proposed"
 author: "Unknown"
 approver: "None"
-created_at: "extension/customization points."
+created_at: '2025-11-27T10:12:48.884497Z'
 updated_at: "2025-11-27T10:12:48.884497Z"
 original_filename: "SIP-013_Extensibility_Customization.md"
 ---

@@ -403,7 +403,7 @@ sips:
   status: implemented
   author: Jason Ladd
   approver: None
-  created_at: '2025-01-01T00:00:00Z'
+  created_at: '2025-11-08'
   updated_at: '2025-12-07T19:51:05.580366Z'
   variant: null
 - sip_uid: 01KB4B74MN5BHXZH42ZRPEYVAG
@@ -955,3 +955,213 @@ sips:
   approver: jladd
   created_at: '2026-08-08T00:00:00Z'
   updated_at: '2026-08-28T10:14:01.297052Z'
+- sip_uid: '17883224960370906'
+  sip_number: null
+  title: QA-First Test Strategy for 1-Hour SquadOps Cycles (group_run Focus)
+  path: sips/proposed/IDEA-QA-First-Test-Strategy-1h-Cycles-group_run.md
+  status: proposed
+  author: Unknown
+  approver: null
+  created_at: '2026-02-24T00:00:00Z'
+  updated_at: null
+- sip_uid: '17883224960375774'
+  sip_number: null
+  title: API Contract Hardening
+  path: sips/proposed/SIP-API-Contract-Hardening.md
+  status: proposed
+  author: SquadOps Architecture
+  approver: null
+  created_at: '2026-02-28T00:00:00Z'
+  updated_at: null
+- sip_uid: '17883224960377942'
+  sip_number: null
+  title: Agent Comms Delivery Guarantees
+  path: sips/proposed/SIP-Agent-Comms-Delivery-Guarantees.md
+  status: proposed
+  author: jladd
+  approver: null
+  created_at: '2026-07-08T00:00:00Z'
+  updated_at: null
+- sip_uid: '17883224960380156'
+  sip_number: null
+  title: Agent Embodiment Runtime
+  path: sips/proposed/SIP-Agent-Embodiment-Runtime.md
+  status: proposed
+  author: Jason Ladd
+  approver: null
+  created_at: '2026-08-19T00:00:00Z'
+  updated_at: null
+- sip_uid: '17883224960382348'
+  sip_number: null
+  title: Campaign Orchestration
+  path: sips/proposed/SIP-Campaign-Orchestration.md
+  status: proposed
+  author: jladd
+  approver: null
+  created_at: '2026-07-04T00:00:00Z'
+  updated_at: null
+- sip_uid: '17883224960384636'
+  sip_number: null
+  title: Campaign-Driven Self-Improvement and Test Bay
+  path: sips/proposed/SIP-Campaign-Self-Improvement-and-Test-Bay-Requirements.md
+  status: proposed
+  author: jladd
+  approver: null
+  created_at: '2026-07-02T00:00:00Z'
+  updated_at: null
+- sip_uid: '17883224960388794'
+  sip_number: null
+  title: Capability-Backed Agents (Capability Packs, Working Sets, Skill-Mediated
+    Tool Use)
+  path: sips/proposed/SIP-Capability-Backed-Agents.md
+  status: proposed
+  author: Jason Ladd
+  approver: null
+  created_at: '2026-07-01'
+  updated_at: null
+- sip_uid: '17883224960392436'
+  sip_number: null
+  title: Continuum Runtime Console
+  path: sips/proposed/SIP-Continuum-Runtime-Console.md
+  status: proposed
+  author: Jason Ladd
+  approver: null
+  created_at: '2026-06-30'
+  updated_at: null
+- sip_uid: '17883224960394576'
+  sip_number: null
+  title: Cross-Cycle Memory
+  path: sips/proposed/SIP-Cross-Cycle-Memory.md
+  status: proposed
+  author: Jason Ladd
+  approver: null
+  created_at: '2026-08-03T00:00:00Z'
+  updated_at: null
+- sip_uid: '17883224960396698'
+  sip_number: null
+  title: Cycle Evaluation Scorecard
+  path: sips/proposed/SIP-Cycle-Evaluation-Scorecard.md
+  status: proposed
+  author: SquadOps Architecture
+  approver: null
+  created_at: '2026-02-28T00:00:00Z'
+  updated_at: null
+- sip_uid: '17883224960398652'
+  sip_number: null
+  title: Cycle Request-Profile Naming Taxonomy
+  path: sips/proposed/SIP-Cycle-Request-Profile-Naming-Taxonomy.md
+  status: proposed
+  author: SquadOps Architecture (Spark lane)
+  approver: null
+  created_at: '2026-07-01T00:00:00Z'
+  updated_at: null
+- sip_uid: '17883224960400410'
+  sip_number: null
+  title: Design Decision Register
+  path: sips/proposed/SIP-Design-Decision-Register.md
+  status: proposed
+  author: jladd
+  approver: null
+  created_at: '2026-08-21T00:00:00Z'
+  updated_at: null
+- sip_uid: '17883224960402220'
+  sip_number: null
+  title: Duty Continuity and Handoff Ledger (DutyLog)
+  path: sips/proposed/SIP-Duty-Continuity-and-Handoff-Ledger.md
+  status: proposed
+  author: Jason Ladd
+  approver: null
+  created_at: '2026-06-24'
+  updated_at: null
+- sip_uid: '17883224960404130'
+  sip_number: null
+  title: Edge Deployment Profile for Lightweight SquadOps Nodes
+  path: sips/proposed/SIP-Edge-Deployment-Profile.md
+  status: proposed
+  author: jladd
+  approver: null
+  created_at: '2026-03-16T00:00:00Z'
+  updated_at: null
+- sip_uid: '17883224960406118'
+  sip_number: null
+  title: Experiment Queue and Cycle Assessment Framework
+  path: sips/proposed/SIP-Experiment-Queue-and-Cycle-Assessment.md
+  status: proposed
+  author: SquadOps Architecture
+  approver: null
+  created_at: '2026-03-29'
+  updated_at: null
+- sip_uid: '17883224960407968'
+  sip_number: null
+  title: Fine-Grained Issue Enumeration
+  path: sips/proposed/SIP-Fine-Grained-Issue-Enumeration.md
+  status: proposed
+  author: jladd
+  approver: null
+  created_at: '2026-07-10T00:00:00Z'
+  updated_at: null
+- sip_uid: '17883224960409982'
+  sip_number: null
+  title: LLM Emission Contracts — Typed Response Handling with Provider-Agnostic Structured
+    Output
+  path: sips/proposed/SIP-LLM-Emission-Contracts.md
+  status: proposed
+  author: SquadOps Architecture
+  approver: null
+  created_at: '2026-07-25T00:00:00Z'
+  updated_at: null
+- sip_uid: '17883224960411882'
+  sip_number: null
+  title: Planning Sequence — Strategy Before Research
+  path: sips/proposed/SIP-Planning-Sequence-Strategy-First.md
+  status: proposed
+  author: SquadOps Architecture
+  approver: null
+  created_at: '2026-04-19T00:00:00Z'
+  updated_at: null
+- sip_uid: '17883224960413168'
+  sip_number: null
+  title: Post-Retest Governance Acceptance Review
+  path: sips/proposed/SIP-Post-Retest-Governance-Acceptance-Review.md
+  status: proposed
+  author: Unknown
+  approver: null
+  created_at: null
+  updated_at: null
+- sip_uid: '17883224960414984'
+  sip_number: null
+  title: Skill Layer for Capabilities (Capability → Skill → Tool)
+  path: sips/proposed/SIP-Skill-Layer-For-Capabilities.md
+  status: proposed
+  author: SquadOps Team
+  approver: null
+  created_at: '2026-07-11T00:00:00Z'
+  updated_at: null
+- sip_uid: '17883224960416254'
+  sip_number: null
+  title: Test-First Verification
+  path: sips/proposed/SIP-Test-First-Verification.md
+  status: proposed
+  author: Unknown
+  approver: null
+  created_at: null
+  updated_at: null
+- sip_uid: '17883224960418230'
+  sip_number: null
+  title: Version Bump Hardening — Single-Sourced Strings, Guardrails, and Automated
+    Changelog
+  path: sips/proposed/SIP-Version-Bump-Hardening.md
+  status: proposed
+  author: SquadOps Architecture
+  approver: null
+  created_at: '2026-04-19T00:00:00Z'
+  updated_at: null
+- sip_uid: '17883224960419790'
+  sip_number: null
+  title: Intelligent Delegation Protocols for SquadOps
+  path: sips/proposed/SIP-intelligent-delegation-protocols.md
+  status: proposed
+  author: Unknown
+  approver: null
+  created_at: null
+  updated_at: null
