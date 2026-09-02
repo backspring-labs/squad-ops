@@ -150,17 +150,47 @@ def test_failure_only_tests_pass_row_is_not_double_recorded():
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.parametrize("status", ["passed", "failed", "skipped", "error"])
-def test_typed_acceptance_status_passes_through(status):
+@pytest.mark.parametrize(
+    ("status", "passed"),
+    [("passed", True), ("skipped", True), ("failed", False), ("error", False)],
+)
+def test_typed_acceptance_status_passes_through(status, passed):
+    """A row whose ``passed`` agrees with its status reaches the ledger with the status
+    verbatim — the RC-9 seam stamps ``passed`` from severity × status, so a blocking row
+    that failed carries ``passed: False`` and an executed pass carries ``passed: True``."""
     out = {
         "validation_result": {
             "checks": [
-                {"check": "acceptance:file_exists", "status": status, "reason": "r", "passed": True}
+                {
+                    "check": "acceptance:file_exists",
+                    "status": status,
+                    "reason": "r",
+                    "passed": passed,
+                }
             ]
         }
     }
     r = _by_id(normalize_task_checks(out))
     assert r["acceptance:file_exists"].status == status
+
+
+@pytest.mark.parametrize("status", ["failed", "error"])
+def test_an_advisory_failure_is_kept_out_of_the_ledger(status):
+    """#598: a typed row at a non-blocking severity executes and fails but the seam stamps
+    ``passed: True`` (RC-9) — disclosure, never acceptance evidence. Before this the ledger
+    took the status verbatim, and the first advisory row ever produced would have
+    rejected the run at §6.2 for a check that was never a criterion."""
+    out = {
+        "validation_result": {
+            "checks": [
+                {"check": "acceptance:container_packaging", "status": status, "passed": True},
+                {"check": "acceptance:file_exists", "status": "passed", "passed": True},
+            ]
+        }
+    }
+    r = _by_id(normalize_task_checks(out))
+    assert "acceptance:container_packaging" not in r
+    assert r["acceptance:file_exists"].status == "passed"
 
 
 def test_typed_skipped_carries_reason_for_disclosure():

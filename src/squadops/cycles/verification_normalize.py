@@ -96,6 +96,19 @@ def normalize_task_checks(
             results.append(_from_passed_row(cid, row))
             continue
         if "status" in row:
+            # #598: a typed row at a non-blocking severity (RC-9: severity and status
+            # are independent; the seam stamps `passed: True` on a warning/info row
+            # whatever its status) is disclosure, not acceptance evidence. Recording
+            # its executed failure here verbatim would reject the run at §6.2 for a
+            # check that was never a criterion — the first advisory row ever produced
+            # would have been a false REJECTED. It stays on the task's typed-check
+            # evaluation artifact and its `validation_result`, where the per-round
+            # record reads it; the ledger holds what the verdict may read.
+            if not row_is_blocking_failure(row) and row.get("status") in (
+                ResultStatus.FAILED,
+                ResultStatus.ERROR,
+            ):
+                continue
             # Typed-acceptance row: carries a CheckOutcome status verbatim.
             # SIP-0098 98.3: a bind-mode row also carries the contract criterion id.
             results.append(
@@ -122,6 +135,20 @@ def normalize_task_checks(
     if subject is not None:
         results = [dataclasses.replace(r, subject=subject) for r in results]
     return results
+
+
+def row_is_blocking_failure(row: Mapping[str, Any]) -> bool:
+    """Whether a producer check row records a failure the loop may act on.
+
+    One predicate for the three readers that judge a row (the verdict ledger above, the
+    correction signature, the failure category). A row that carries ``passed`` is judged
+    by it — the typed-acceptance seam derives ``passed`` from severity × status (RC-9),
+    so a warning/info row that executed and failed reads ``passed: True`` and is advisory
+    (#598). A row with no ``passed`` at all is judged by its ``status``, as before.
+    """
+    if "passed" in row:
+        return row.get("passed") is False
+    return row.get("status") in (ResultStatus.FAILED, ResultStatus.ERROR)
 
 
 def _from_passed_row(cid: str, row: Mapping[str, Any]) -> CheckResult:

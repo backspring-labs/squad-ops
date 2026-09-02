@@ -193,3 +193,44 @@ def test_every_entry_must_declare_its_governance_explicitly():
             replayable=True,
             blocking_default="fatal",
         )
+
+
+class TestInjectionScopeIsDeclared:
+    """#598: where a framework-injected ``file`` check is applied is the spec's own
+    declaration. The first cut inferred "recipe" from an empty ``applicable_extensions``,
+    which would have turned any file-scoped check that declared none into a recipe check
+    silently — and a file-scoped injection that read the #1216 predicate dropped every
+    check without extensions from emission."""
+
+    def test_the_two_scopes_partition_the_injected_file_checks(self):
+        from squadops.cycles.acceptance_check_spec import (
+            CHECK_CONTAINER_PACKAGING,
+            CHECK_SPECS,
+            CHECK_UNDEFINED_NAMES,
+            INJECTION_SCOPE_FILE,
+            INJECTION_SCOPE_RECIPE,
+            framework_injected_checks,
+        )
+
+        file_scoped = framework_injected_checks(INJECTION_SCOPE_FILE)
+        recipe_scoped = framework_injected_checks(INJECTION_SCOPE_RECIPE)
+        assert CHECK_UNDEFINED_NAMES in file_scoped
+        assert recipe_scoped == (CHECK_CONTAINER_PACKAGING,)
+        assert not set(file_scoped) & set(recipe_scoped)
+        every_injected_file_check = {
+            name
+            for name, spec in CHECK_SPECS.items()
+            if spec.framework_injected and spec.required_params == frozenset({"file"})
+        }
+        assert set(file_scoped) | set(recipe_scoped) == every_injected_file_check
+        assert framework_injected_checks("not-a-scope") == ()
+
+    def test_an_unknown_scope_is_rejected_at_declaration(self):
+        import dataclasses
+
+        import pytest
+
+        from squadops.cycles.acceptance_check_spec import CHECK_SPECS, CHECK_UNDEFINED_NAMES
+
+        with pytest.raises(ValueError, match="injection_scope"):
+            dataclasses.replace(CHECK_SPECS[CHECK_UNDEFINED_NAMES], injection_scope="suite-ish")

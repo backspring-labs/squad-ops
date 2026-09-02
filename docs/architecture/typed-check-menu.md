@@ -11,6 +11,7 @@ Regenerate: `UPDATE_CHECK_MENU=1 pytest tests/unit/cycles/test_check_governance.
 |---|---|---|---|---|---|---|---|
 | `assertion_kinds_match` | injected | suite | yes | yes | yes | yes | error |
 | `command_exit_zero` | authored | product | yes | no | yes | no | error |
+| `container_packaging` | injected | product | no | no | no | yes | warning |
 | `contract_assertions_match` | injected | suite | yes | yes | yes | yes | error |
 | `count_at_least` | authored | product | yes | yes | yes | yes | error |
 | `declared_imports` | injected | product | yes | yes | yes | yes | error |
@@ -88,4 +89,4 @@ surface is only acceptable while something else verifies the code.
 
 | check | why not yet | trigger |
 |---|---|---|
-| `package_builds` | 'the emitted container builds and runs' requires docker-in-verification (sandbox territory, SIP-0102 steps 3-7) and blueprint-owned packaging facts (Generalized Build) | Stack Blueprint lands (1.6) |
+| `package_builds` | 'the emitted container builds and runs' requires docker-in-verification (sandbox territory, SIP-0102 steps 3-7) and blueprint-owned packaging facts (Generalized Build). The static half — pf-38's three recipe defects as findings — is `container_packaging`, reporting-only (#598, 1.7.1) | Stack Blueprint lands (1.6) |

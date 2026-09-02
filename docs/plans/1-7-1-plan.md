@@ -418,6 +418,13 @@ a log by hand:
   itself — build and start the emitted image — changes what a cycle does, so it lands
   **reporting-only this line** and whether it becomes blocking is a separate call (§6), the way
   every new detection has entered a measurement window.
+  **As landed (2026-09-02).** `container_packaging`, recipe-scoped (a `Dockerfile` has no
+  suffix) and `warning` by default; `row_is_blocking_failure` makes the ledger, the
+  correction signature and the failure category read one rule for "this row failed", so an
+  advisory row that executed and failed is banked and never rejects. Replayed: pf-38's
+  stored recipe carries all three findings by line; pf-39's carries two; over 203 stored
+  recipes 135 carry at least one (the lockless `npm ci` on 121). The in-cycle build stays
+  §6's call.
 
 **How we know:** the suite green, the guard green, `pip install` from a clean venv boots the
 runtime API, the lock-import job green for every image, the tag-push guard exercised on the

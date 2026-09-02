@@ -19,7 +19,11 @@ from squadops.capabilities.reasoning_policy import resolve_reasoning_level
 from squadops.cycles.acceptance_check_spec import (
     CHECK_SPECS,
     CONFIG_OFF_SKIP_REASONS,
+    INJECTION_SCOPE_FILE,
+    framework_injected_checks,
+    framework_recipe_scoped_checks,
     is_check_applicable,
+    is_container_recipe,
 )
 from squadops.cycles.acceptance_checks import CheckOutcome
 from squadops.cycles.acceptance_evaluation import (
@@ -54,13 +58,10 @@ logger = logging.getLogger(__name__)
 #: emitted. Checks needing more (``fill_slot_signature``'s routes,
 #: ``contract_assertions_match``'s endpoints) are injected where that context
 #: lives, and are excluded here by construction rather than by memory.
-_FILE_SCOPED_FRAMEWORK_CHECKS: tuple[str, ...] = tuple(
-    sorted(
-        name
-        for name, spec in CHECK_SPECS.items()
-        if spec.framework_injected and spec.required_params == frozenset({"file"})
-    )
-)
+#: Read by declared scope (#598): a recipe-scoped check is ``file``-parametrised too,
+#: and a local copy of the rule would have injected it on every artifact of every
+#: emission.
+_FILE_SCOPED_FRAMEWORK_CHECKS: tuple[str, ...] = framework_injected_checks(INJECTION_SCOPE_FILE)
 
 
 def _framework_injected_criteria(
@@ -94,6 +95,25 @@ def _framework_injected_criteria(
             if name in seen or (check_name, name) in already:
                 continue
             seen.add(name)
+            injected.append(
+                TypedCheck(
+                    check=check_name,
+                    params={"file": name},
+                    severity=spec.blocking_default,
+                )
+            )
+    # #598: recipe-scoped — a Dockerfile has no suffix, so the extension predicate above
+    # cannot see it. Same scoping (the producer's own artifacts), same dedup against an
+    # authored row, and the spec's severity (warning: reporting-only this line).
+    for check_name in framework_recipe_scoped_checks():
+        spec = CHECK_SPECS[check_name]
+        for art in artifacts:
+            name = art.get("name") if art.get("name") is not None else art.get("path")
+            if not isinstance(name, str) or not is_container_recipe(name):
+                continue
+            if (check_name, name) in already:
+                continue
+            already.add((check_name, name))
             injected.append(
                 TypedCheck(
                     check=check_name,
