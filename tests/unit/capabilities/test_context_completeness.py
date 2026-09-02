@@ -584,6 +584,10 @@ async def test_every_threaded_repair_surface_has_a_renderer():
     )
     variables = fill_call.args[1]
     # dom_testid is the qa-keyed twin of testid; the dev appendix renders one of them.
-    expected = {s for s in surfaces if s != "dom_testid_surface"}
+    # frozen_client_surface (#668) is qa-directed — what the suite's mock of the client
+    # must honour — and is rendered by the qa repair's `_render_client_surface_section`
+    # (test_repair_dom_anchor); the view author has the client's own source in the frozen
+    # tree and its call in every view stub.
+    expected = {s for s in surfaces if s not in ("dom_testid_surface", "frozen_client_surface")}
     missing = sorted(s for s in expected if s not in variables)
     assert not missing, f"{missing} ride the repair envelope but reach no prompt"

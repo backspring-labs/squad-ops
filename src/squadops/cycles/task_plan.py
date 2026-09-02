@@ -29,6 +29,7 @@ from squadops.capabilities.reasoning_policy import REASONING_OVERRIDE_KEY
 from squadops.capabilities.response_shape import declared_field_kinds
 from squadops.capabilities.scaffold import (
     InterfaceManifest,
+    client_surface_instructions,
     frozen_surface_index_lines,
     harness_entry_modules,
     is_qa_test_path_for_stack,
@@ -37,6 +38,7 @@ from squadops.capabilities.scaffold import (
 from squadops.cycles.acceptance_check_spec import (
     CHECK_ASSERTION_KINDS,
     CHECK_CONTRACT_ASSERTIONS,
+    CHECK_DOM_ANCHOR_QUERIES,
     CHECK_FILL_SLOT_SIGNATURE,
     CHECK_HARNESS_BOUNDARY,
     is_check_applicable,
@@ -611,9 +613,7 @@ def inject_contract_inputs(
         # assert a surface dev is told to preserve, instead of inventing
         # roles/text the view never promised (fay-6/fay-12 churn). Data only;
         # the query-only-these prose is a managed asset (#448).
-        testid_lines = testid_surface_instructions(interface_manifest)
-        if testid_lines:
-            inputs["dom_testid_surface"] = testid_lines
+        _thread_frontend_surfaces(inputs, interface_manifest)
         # SIP-0104 P3: the deterministic test scaffold — slot table + shell files —
         # so qa.test authors in fill mode. Re-derived from the manifest here rather
         # than threaded from the seed artifacts: Gate 1's byte-equivalence pin makes
@@ -713,6 +713,51 @@ def _assertion_kind_criteria(
         )
         for art in plan_task.expected_artifacts
         if is_check_applicable(CHECK_ASSERTION_KINDS, art) and is_qa_test_path_for_stack(art, stack)
+    ]
+
+
+def _thread_frontend_surfaces(
+    inputs: dict[str, Any], interface_manifest: InterfaceManifest | None
+) -> None:
+    """The manifest-derived surfaces a frontend suite author is shown, presence-keyed:
+    the DOM anchor inventory (#659) and, since #668, the frozen client's call surface —
+    anchors say where the suite looks, the client says what its mock must honour. Data
+    only; the prose for each lives in a managed appendix asset (#448)."""
+    testid_lines = testid_surface_instructions(interface_manifest)
+    if testid_lines:
+        inputs["dom_testid_surface"] = testid_lines
+    client_lines = client_surface_instructions(interface_manifest)
+    if client_lines:
+        inputs["frozen_client_surface"] = client_lines
+
+
+def _dom_anchor_criteria(
+    task_type: str,
+    plan_task: Any,
+    contract: VerificationContract | None,
+    interface_manifest: InterfaceManifest | None,
+) -> list[TypedCheck]:
+    """#668: manifest-owned ``dom_anchor_queries`` checks for a bound qa.test task — one per
+    expected frontend suite file in the stack's QA namespace, params carrying the manifest's
+    anchor inventory (``{view: [data-testid, …]}``, root first) as self-contained data.
+    fay-14's suite made zero anchor queries in every version while the views carried the
+    anchors from first fill; the appendix that says "query only these" is guidance, this is
+    the guarantee. Empty in author mode, non-qa tasks, and manifests declaring no anchors."""
+    if task_type != "qa.test" or contract is None or interface_manifest is None:
+        return []
+    inventory = {r.view: list(r.testids) for r in interface_manifest.frontend.routes if r.testids}
+    if not inventory:
+        return []
+    stack = contract.skeleton.expander
+    return [
+        TypedCheck(
+            check=CHECK_DOM_ANCHOR_QUERIES,
+            params={"file": art, "anchors": dict(inventory)},
+            id=f"dom-anchors:{art}",
+        )
+        for art in plan_task.expected_artifacts
+        if is_check_applicable(CHECK_DOM_ANCHOR_QUERIES, art)
+        and is_qa_test_path_for_stack(art, stack)
     ]
 
 
@@ -1030,6 +1075,11 @@ def generate_task_plan(
             # literal assertions — the free-authored counterpart of the fill kind gate.
             acceptance.extend(
                 _assertion_kind_criteria(task_type, plan_task, contract, interface_manifest)
+            )
+            # #668: the manifest's DOM anchors, enforced on the suite's own queries — the
+            # anchor appendix is guidance, this is the guarantee.
+            acceptance.extend(
+                _dom_anchor_criteria(task_type, plan_task, contract, interface_manifest)
             )
             # #730 D1 / #504: scaffold-owned signature enforcement on .py fill
             # slots — the pf-40 report, promoted to blocking.

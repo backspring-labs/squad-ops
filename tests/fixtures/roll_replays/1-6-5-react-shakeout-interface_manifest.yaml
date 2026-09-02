@@ -1,0 +1,119 @@
+version: 1
+kind: interface_manifest
+project_id: group_run
+source_prd: "group_run PRD v0.5 (SIP-0098 §6.7, product-only content)"
+stack: fullstack_fastapi_react
+scope: >
+  Core MVP for a 1-hour autonomous cycle: create a group run, list runs,
+  view run detail with participants, join by name, leave by name,
+  duplicate-name rejection, and basic validation — all with in-memory
+  persistence. Deliberately excludes authentication, database, external
+  APIs, WebSocket/realtime, pagination, filtering, and all expansion items
+  from PRD §4.1.
+entities:
+  - name: Run
+    fields:
+      - { name: id, type: string, required: true, generated: true }
+      - { name: title, type: string, required: true }
+      - { name: date_time, type: string, required: true }
+      - { name: meeting_location, type: string, required: true }
+      - { name: distance, type: string, required: false }
+      - { name: pace_target, type: string, required: false }
+      - { name: route_notes, type: string, required: false }
+      - { name: participant_count, type: integer, required: true }
+  - name: RunDetail
+    fields:
+      - { name: id, type: string, required: true, generated: true }
+      - { name: title, type: string, required: true }
+      - { name: date_time, type: string, required: true }
+      - { name: meeting_location, type: string, required: true }
+      - { name: distance, type: string, required: false }
+      - { name: pace_target, type: string, required: false }
+      - { name: route_notes, type: string, required: false }
+      - { name: participant_count, type: integer, required: true }
+      - { name: participants, type: "list[string]", required: true }
+api:
+  base_path: /api
+  request_shapes:
+    RunCreate:
+      required: [title, date_time, meeting_location]
+      optional: [distance, pace_target, route_notes]
+    ParticipantJoin:
+      required: [name]
+  endpoints:
+    - method: POST
+      path: /runs
+      summary: Create a new run event
+      request: RunCreate
+      response: Run
+      success_status: 201
+      errors: [validation_error]
+    - method: GET
+      path: /runs
+      summary: List all runs with participant counts
+      response: "list[Run]"
+    - method: GET
+      path: "/runs/{run_id}"
+      summary: Get full run detail including participant names
+      response: RunDetail
+      errors: [run_not_found]
+    - method: POST
+      path: "/runs/{run_id}/participants"
+      summary: Join a run with a participant name
+      request: ParticipantJoin
+      response: RunDetail
+      success_status: 201
+      errors: [run_not_found, validation_error, duplicate_participant]
+    - method: DELETE
+      path: "/runs/{run_id}/participants/{participant_name}"
+      summary: Leave a run by participant name
+      response: RunDetail
+      errors: [run_not_found]
+  error_contract:
+    shape: '{"error": {"code": "...", "message": "..."}}'
+    codes:
+      validation_error: { http: 422 }
+      run_not_found: { http: 404 }
+      duplicate_participant: { http: 409 }
+frontend:
+  framework: react_vite
+  routes:
+    - path: /
+      view: RunsListView
+      purpose: Display list of runs (title, datetime, location, participant count); empty-state message; link to create page
+      testids: [runs-view, runs-list, run-card, run-card-title, run-card-datetime, run-card-location, run-card-count, create-run-link, runs-empty-state]
+    - path: /create
+      view: RunCreateView
+      purpose: Form to create a new run with required fields (title, datetime, location) and optional fields (distance, pace, notes); client-side required-field validation; navigate to list on success
+      testids: [create-run-view, create-run-form, create-run-title, create-run-datetime, create-run-location, create-run-distance, create-run-pace, create-run-notes, create-run-submit, create-run-error]
+    - path: "/runs/:runId"
+      view: RunDetailView
+      purpose: Full run details, participant name list, join form (name input), leave form (name input), error display for not-found / duplicate / validation
+      testids: [run-detail-view, run-detail-title, run-detail-datetime, run-detail-location, run-detail-distance, run-detail-pace, run-detail-notes, participants-list, participant-item, join-form, join-name-input, join-submit, leave-form, leave-name-input, leave-submit, run-detail-error, run-detail-not-found]
+persistence: in_memory
+decisions:
+  - id: duplicate-name-case-sensitivity
+    choice: "Case-insensitive comparison for duplicate detection; original casing preserved for display"
+    warrant: "PRD §5.4 — 'default recommendation: case-insensitive uniqueness'; PRD §4.1 Tier 2 item 5 confirms name normalization as expansion, not core"
+  - id: leave-unknown-name
+    choice: "404 with error_code run_not_found when the participant name is not present on the run"
+    warrant: "PRD §5.5 — 'If participant name does not exist on the run, backend returns clear error (or no-op with clear response; choose one and document in QA handoff)'; 404 is more explicit and testable than a silent 200 no-op"
+  - id: list-ordering
+    choice: "Insertion order (no sorting); datetime-based sort is reserved for expansion Tier 1 item 2"
+    warrant: "PRD §4.1 Tier 1 item 2 — 'Basic Datetime Sorting' is pre-approved expansion, not core scope; PRD §5.2 requires no specific ordering"
+  - id: join-participant-201
+    choice: "POST /api/runs/{run_id}/participants returns 201 — the join creates a new participant record on the run"
+    warrant: "PRD §5.4 treats the act of joining as creating a participant entry; 201 signals resource creation to the client"
+  - id: participant-as-string
+    choice: "Participants are plain name strings within the run, not independent entities with their own identifiers"
+    warrant: "PRD §5.4–§5.5 — join and leave are keyed solely by name; PRD §9 explicitly excludes authentication and user-identity models"
+  - id: leave-response-body
+    choice: "DELETE /api/runs/{run_id}/participants/{participant_name} returns 200 with the updated RunDetail body"
+    warrant: "PRD §5.5 — 'Participant count updates' and 'Participant is removed from participant list'; returning the updated detail lets the frontend re-render without a second fetch"
+
+provenance:
+  mode: authored
+  cycle_id: cyc_3cde35fa5204
+  task_id: task-run_761f58f4-003-development.author_manifest
+  attempts: 1
+  revisions: []

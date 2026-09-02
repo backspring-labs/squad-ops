@@ -263,6 +263,9 @@ class _RepairPromptMixin:
         dom_anchor = await self._render_dom_anchor_section(context, inputs)
         if dom_anchor:
             inputs = {**inputs, "dom_anchor_section": dom_anchor}
+        client_surface = await self._render_client_surface_section(context, inputs)
+        if client_surface:
+            inputs = {**inputs, "client_surface_section": client_surface}
         frozen = await self._render_qa_frozen_surface_section(context, inputs)
         if frozen:
             inputs = {**inputs, "frozen_surface_section": frozen}
@@ -590,6 +593,30 @@ class _RepairPromptMixin:
         rendered = await renderer.render(
             "request.development_develop_testid_surface_appendix",
             {"testid_lines": "\n".join(f"- {line}" for line in lines)},
+        )
+        return rendered.content
+
+    async def _render_client_surface_section(
+        self, context: ExecutionContext, inputs: dict[str, Any]
+    ) -> str:
+        """The qa frozen-client appendix, or "" (non-qa role, no lines, no renderer).
+
+        #668: the re-authored suite mocks beneath the same frozen client the original
+        dispatch was shown (``_client_surface_section`` in the qa_test handler); a repair
+        blind to the client's surface re-invents it. Same appendix asset, same lines.
+        """
+        if self._role != "qa":
+            return ""
+        renderer = getattr(context.ports, "request_renderer", None)
+        if renderer is None:
+            return ""
+        lines = [str(line).strip() for line in (inputs.get("frozen_client_surface") or [])]
+        lines = [line for line in lines if line]
+        if not lines:
+            return ""
+        rendered = await renderer.render(
+            "request.qa_test_client_surface_appendix",
+            {"client_lines": "\n".join(f"- {line}" for line in lines)},
         )
         return rendered.content
 

@@ -2012,3 +2012,69 @@ class TestAdditiveContainmentEvaluator:
         )
         assert outcome.status == "failed"
         assert outcome.reason == "file_not_found"
+
+
+class TestDomAnchorQueriesEvaluator:
+    """#668 at the typed-acceptance seam, replayed from stored suites under their own
+    manifests' inventories (the params the planner binds)."""
+
+    _REPLAYS = Path(__file__).resolve().parents[2] / "fixtures" / "roll_replays"
+
+    def _inventory(self, manifest_name: str) -> dict[str, list[str]]:
+        import yaml
+
+        manifest = yaml.safe_load((self._REPLAYS / manifest_name).read_text(encoding="utf-8"))
+        return {r["view"]: list(r["testids"]) for r in manifest["frontend"]["routes"]}
+
+    async def _run(self, tmp_path, fixture: str, rel: str, anchors: dict):
+        from squadops.cycles.acceptance_checks import DomAnchorQueriesCheck
+
+        target = tmp_path / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text((self._REPLAYS / fixture).read_text(encoding="utf-8"), encoding="utf-8")
+        return await DomAnchorQueriesCheck().evaluate({"file": rel, "anchors": anchors}, tmp_path)
+
+    async def test_fay_14_fails_naming_the_view_and_its_anchors(self, tmp_path):
+        outcome = await self._run(
+            tmp_path,
+            "fay-14-RunDetailView.test.jsx",
+            "frontend/src/tests/RunDetailView.test.jsx",
+            self._inventory("fay-14-interface_manifest.yaml"),
+        )
+        assert outcome.status == "failed"
+        assert outcome.reason == "2 anchor finding(s): no_anchor_queries, view_anchors_not_queried"
+        assert [f["rule"] for f in outcome.actual["findings"]] == [
+            "no_anchor_queries",
+            "view_anchors_not_queried",
+        ]
+        assert outcome.actual["covered_views"] == ["RunDetailView"]
+        assert outcome.actual["queried"] == []
+        assert outcome.actual["text_queries"] == 55
+
+    async def test_the_accepted_roll_6_suite_passes_with_its_observations_banked(self, tmp_path):
+        outcome = await self._run(
+            tmp_path,
+            "1-6-6-react-roll-6-frontend-suite.test.jsx",
+            "frontend/src/tests/runs.test.jsx",
+            self._inventory("1-6-6-react-roll-6-interface_manifest.yaml"),
+        )
+        assert outcome.status == "passed"
+        assert outcome.actual["findings"] == []
+        assert outcome.actual["unknown_anchors"] == []
+        assert len(outcome.actual["queried"]) == 10
+
+    async def test_an_empty_inventory_skips_rather_than_passing(self, tmp_path):
+        outcome = await self._run(
+            tmp_path, "fay-14-RunDetailView.test.jsx", "frontend/src/tests/x.test.jsx", {}
+        )
+        assert outcome.status == "skipped"
+        assert outcome.reason == "no_anchor_inventory"
+
+    async def test_a_missing_file_fails(self, tmp_path):
+        from squadops.cycles.acceptance_checks import DomAnchorQueriesCheck
+
+        outcome = await DomAnchorQueriesCheck().evaluate(
+            {"file": "frontend/src/tests/gone.test.jsx", "anchors": {"V": ["v-root"]}}, tmp_path
+        )
+        assert outcome.status == "failed"
+        assert outcome.reason == "file_not_found"

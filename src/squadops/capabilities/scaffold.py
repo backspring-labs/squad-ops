@@ -44,6 +44,9 @@ from squadops.capabilities.stack_fastapi_react import (
 )
 from squadops.capabilities.stack_fastapi_react import STACK_NAME as _FASTAPI_REACT_NAME
 from squadops.capabilities.stack_fastapi_react import (
+    client_surface_lines as _client_surface_lines_fastapi_react,
+)
+from squadops.capabilities.stack_fastapi_react import (
     expand_fullstack_fastapi_react as _expand_fullstack_fastapi_react,
 )
 from squadops.capabilities.stack_fastapi_react import (
@@ -939,6 +942,21 @@ def testid_surface_instructions(manifest: InterfaceManifest | None) -> list[str]
     ]
 
 
+def client_surface_instructions(manifest: InterfaceManifest | None) -> list[str]:
+    """The frozen client's call surface for ``manifest``'s stack, or ``[]`` (#668).
+
+    Companion to ``testid_surface_instructions``: anchors say WHERE a suite looks, the
+    client says WHAT its mock must honour. Data only; the stack declares the lines
+    (``ScaffoldStack.client_surface_lines``) and the qa appendix asset carries the prose.
+    """
+    if manifest is None:
+        return []
+    known = _STACKS.get(manifest.stack)
+    if known is None or known.client_surface_lines is None:
+        return []
+    return list(known.client_surface_lines(manifest))
+
+
 def _class_field_names(node: ast.ClassDef) -> list[str]:
     """Annotated attribute names declared directly on a class body."""
     return [
@@ -1463,6 +1481,11 @@ class ScaffoldStack:
     #: nothing about the store: a stack without a paragraph of its own declares none
     #: rather than inheriting another stack's.
     store_brief_lines: Callable[[InterfaceManifest], list[str]] | None = None
+    #: #668: the frozen API client's call surface, one line per export, for the suite
+    #: author who mocks beneath it — data derived from the bytes the stack freezes; the
+    #: prose is the appendix asset's. Unset means the stack freezes no client the suite
+    #: author needs shown (Next.js suites call route handlers directly).
+    client_surface_lines: Callable[[InterfaceManifest], list[str]] | None = None
 
 
 _STACKS: dict[str, ScaffoldStack] = {
@@ -1485,6 +1508,7 @@ _STACKS: dict[str, ScaffoldStack] = {
         skeleton_pins_success_status=True,
         dev_capability=_FASTAPI_REACT_NAME,
         store_brief_lines=_store_brief_lines_fastapi_react,
+        client_surface_lines=_client_surface_lines_fastapi_react,
     ),
     # #822 stack #2, a module from the start; stack #1 joined it in #1131 (the reference
     # contract's frozen digests are the proof that the move changed no template byte).

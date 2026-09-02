@@ -451,6 +451,12 @@ CHECK_HARNESS_BOUNDARY = "harness_boundary"
 # a named finding before it can spend a correction round. Promoted from #1052's
 # reporting-only findings on the evidence of the V7, 1.6.6 and 1.7.0 rolls.
 CHECK_ADDITIVE_CONTAINMENT = "additive_containment"
+# #668: the DOM anchor contract's enforcement layer. A suite that renders a view queries
+# the manifest's data-testid anchors — and, for every contract view it imports, some
+# anchor of that view — instead of the roles, text and structure the views never
+# promised. Plan-time injected per suite file with the inventory as self-contained
+# params, the way the contract-assertion and kind gates are (#629, #1153).
+CHECK_DOM_ANCHOR_QUERIES = "dom_anchor_queries"
 
 # #822: the per-view bundler check. Named here because `VerificationContract.view_slots`
 # filters on it to identify a stack's view files for repair targeting — the same
@@ -563,6 +569,11 @@ EMISSION_LANGUAGES: frozenset[str] = frozenset({".py", ".js", ".jsx", ".ts", ".t
 #: An entry whose gap no longer exists fails too, so the list stays exactly as large
 #: as reality — the same two-sided shape as requirements/constraint-exceptions.txt.
 DECLARED_COVERAGE_GAPS: dict[str, dict[str, str]] = {
+    CHECK_DOM_ANCHOR_QUERIES: dict.fromkeys(
+        (".py",),
+        "A pytest suite exercises HTTP endpoints through TestClient and renders no DOM; "
+        "the anchor contract is a frontend-suite surface.",
+    ),
     CHECK_ADDITIVE_CONTAINMENT: dict.fromkeys(
         (".py",),
         "A pytest suite runs the application in-process through TestClient, so a "
@@ -1030,6 +1041,36 @@ CHECK_SPECS: dict[str, CheckSpec] = {
             "it does not fail."
         ),
         failure_ownership=OWNERSHIP_PRODUCT,
+        qa_available=True,
+        signature_participation=True,
+        outcome_contribution=True,
+        replayable=True,
+        blocking_default="error",
+    ),
+    CHECK_DOM_ANCHOR_QUERIES: CheckSpec(
+        name=CHECK_DOM_ANCHOR_QUERIES,
+        applicable_extensions=frozenset({".jsx", ".tsx", ".js", ".ts"}),
+        required_params=frozenset({"file", "anchors"}),
+        param_types={"file": str, "anchors": dict},
+        path_params=frozenset({"file"}),
+        framework_injected=True,
+        example={
+            "file": "frontend/src/tests/RunDetailView.test.jsx",
+            "anchors": {"RunDetailView": ["run-detail-view", "participant-list"]},
+        },
+        notes=(
+            "Bound by the planner onto every bound qa.test suite file when the manifest "
+            "declares view anchors; never authored. `anchors` is the manifest's inventory "
+            "(`{view: [data-testid, ...]}`, root first). Two rules over the suite's own "
+            "bytes: a suite that renders must query at least one declared anchor, and a "
+            "suite that imports a contract view must query some anchor of that view — any "
+            "of them, not the root (seven of nine accepted-roll suites never query a root). "
+            "Each failure names the view and its anchors. Banked beside the verdict: the "
+            "anchors queried that the inventory does not declare (`unknown_anchors`, the "
+            "qa-side signal #1123 routes on) and the count of text/role/label queries "
+            "(#668: fay-14's suite made zero anchor queries in every version)."
+        ),
+        failure_ownership=OWNERSHIP_SUITE,
         qa_available=True,
         signature_participation=True,
         outcome_contribution=True,

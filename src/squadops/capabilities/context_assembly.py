@@ -45,6 +45,8 @@ SURFACE_TESTID = "testid_surface"
 #: The qa-keyed landing of the SAME testid inventory (#667): identical
 #: deriver, distinct envelope key — each handler reads its own variant.
 SURFACE_DOM_TESTID = "dom_testid_surface"
+#: #668: the frozen client's call surface — what a suite's mock of the client must honour.
+SURFACE_CLIENT = "frozen_client_surface"
 #: #861: what each scaffold-frozen file declares. The plan author has had this since pf-42;
 #: the developer that must IMPORT from those files had not, and roll 7 died of it — it wrote
 #: `import { runStore } from '@/lib/store'` against a module exporting
@@ -365,6 +367,7 @@ REPAIR_CONTEXT_CONTRACT = ContextAssemblyContract(
         SURFACE_MODEL,
         SURFACE_TESTID,
         SURFACE_DOM_TESTID,
+        SURFACE_CLIENT,
         SURFACE_FROZEN,
         SURFACE_RESPONSE,
     ),
@@ -385,6 +388,8 @@ RETEST_PRESENCE_KEYS: tuple[str, ...] = (
     # the forwarded-vs-reassembled distinction, visible for the first time.
     "workspace_revision_id",
     SURFACE_DOM_TESTID,
+    # #668: the retest's re-author mocks beneath the same frozen client.
+    SURFACE_CLIENT,
     # SIP-0104 P3: a retest that re-authors from scratch must still be in fill
     # mode — losing the key would flip it back to whole-suite authorship.
     "verification_scaffold",
@@ -475,6 +480,7 @@ def manifest_surface_fragments(
     # response floor already has one home and a second copy would be a second answer.
     from squadops.capabilities.response_shape import response_surface_instructions
     from squadops.capabilities.scaffold import (
+        client_surface_instructions,
         error_seam_instructions,
         frozen_surface_index_lines,
         model_surface_instructions,
@@ -486,6 +492,7 @@ def manifest_surface_fragments(
         SURFACE_MODEL: model_surface_instructions,
         SURFACE_TESTID: testid_surface_instructions,
         SURFACE_DOM_TESTID: testid_surface_instructions,
+        SURFACE_CLIENT: client_surface_instructions,
         SURFACE_FROZEN: frozen_surface_index_lines,
         SURFACE_RESPONSE: response_surface_instructions,
     }

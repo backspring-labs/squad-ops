@@ -16,6 +16,7 @@ Regenerate: `UPDATE_CHECK_MENU=1 pytest tests/unit/cycles/test_check_governance.
 | `contract_assertions_match` | injected | suite | yes | yes | yes | yes | error |
 | `count_at_least` | authored | product | yes | yes | yes | yes | error |
 | `declared_imports` | injected | product | yes | yes | yes | yes | error |
+| `dom_anchor_queries` | injected | suite | yes | yes | yes | yes | error |
 | `endpoint_defined` | authored | product | yes | yes | yes | yes | error |
 | `field_present` | authored | product | yes | yes | yes | yes | error |
 | `fill_slot_signature` | injected | product | no | yes | yes | yes | error |
