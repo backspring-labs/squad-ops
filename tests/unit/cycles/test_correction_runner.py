@@ -5131,3 +5131,127 @@ class TestAbsentAnchorRouting:
         routed = [r.message for r in caplog.records if "absent_anchor_routed" in r.message]
         assert len(routed) == 1
         assert "invented-anchor" in routed[0]
+
+
+class TestRepairCarriesTheDispatchedWorkspace(TestCorrectionRunnerStandalone):
+    """#1229 on the live seam: the repair envelope carries the failed task's typed-acceptance
+    workspace when the envelope the protocol is handed carries it. The 1.7.1 Next.js
+    shakeout (cyc_3ac86805439f) handed the protocol the BASE envelope — no workspace — and
+    the repair's own build check skipped for want of a frontend; this pins the runner's
+    half, the executor test pins which envelope it is handed."""
+
+    def _failed_dev_envelope(self, workspace):
+        from squadops.tasks.models import TaskEnvelope
+
+        return TaskEnvelope(
+            task_id="task_dev_failed",
+            agent_id="neo",
+            cycle_id="cyc_001",
+            pulse_id="p",
+            project_id="hello_squad",
+            task_type="development.develop",
+            correlation_id="corr",
+            causation_id=None,
+            trace_id="t",
+            span_id="s",
+            inputs={
+                "expected_artifacts": ["app/api/runs/route.ts"],
+                "subtask_focus": "runs route",
+                "subtask_description": "the runs route fill",
+                "acceptance_criteria": [],
+                "resolved_config": {"dev_capability": "nextjs_ts", "build_profile": "nextjs_ts"},
+                "acceptance_workspace_files": workspace,
+                "workspace_revision_id": "rev-diag",
+            },
+            metadata={"role": "dev"},
+        )
+
+    @staticmethod
+    def _responder(captured):
+        def responder(envelope):
+            captured.append(envelope)
+            if envelope.task_type == "data.analyze_failure":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={"classification": "work_product", "analysis_summary": "type error"},
+                )
+            if envelope.task_type == "governance.correction_decision":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={
+                        "correction_path": "patch",
+                        "decision_rationale": "fix the cast",
+                        "affected_task_types": ["development.develop"],
+                    },
+                )
+            return TaskResult(
+                task_id=envelope.task_id,
+                status="SUCCEEDED",
+                outputs={
+                    "artifacts": [
+                        {
+                            "name": "app/api/runs/route.ts",
+                            "content": "export async function GET() { return Response.json([]) }\n",
+                            "media_type": "text/typescript",
+                            "type": "source",
+                        }
+                    ]
+                },
+            )
+
+        return responder
+
+    async def test_the_repair_envelope_carries_the_workspace_the_failed_envelope_carried(self):
+        captured: list = []
+        runner, _registry, _vault, _bus = self._make_runner(self._responder(captured))
+        workspace = {"package.json": "{}", "lib/store.ts": "export const TABLES = {}"}
+        envelope = self._failed_dev_envelope(workspace)
+        failed = TaskResult(
+            task_id=envelope.task_id,
+            status="FAILED",
+            error="acceptance:frontend_compiles failed",
+            outputs={
+                "validation_result": {
+                    "passed": False,
+                    "checks": [
+                        {
+                            "check": "acceptance:frontend_compiles",
+                            "status": "failed",
+                            "passed": False,
+                            "params": {"file": "app/api/runs/route.ts"},
+                        }
+                    ],
+                },
+                "artifacts": [],
+            },
+        )
+
+        await runner.run_correction_protocol(
+            run_id="run_001",
+            cycle=Cycle(
+                cycle_id="cyc_001",
+                project_id="hello_squad",
+                created_at=NOW,
+                created_by="system",
+                prd_ref="prd_123",
+                squad_profile_id="full",
+                squad_profile_snapshot_ref="sha256:abc",
+                task_flow_policy=TaskFlowPolicy(mode="sequential"),
+                build_strategy="fresh",
+            ),
+            envelope=envelope,
+            result=failed,
+            correction_attempts=0,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+        )
+
+        repairs = [e for e in captured if e.task_type == "development.correction_repair"]
+        assert len(repairs) == 1
+        assert repairs[0].inputs["acceptance_workspace_files"] == workspace
+        assert repairs[0].inputs["workspace_revision_id"] == "rev-diag"

@@ -264,6 +264,16 @@ declares both — and a two-sided guard that derives the evaluating roles from t
 and provisioning from the files the images are built from. `CHECK_ENV_TOOLS` gained `tsc`
 after the rebuild that provisioned it.
 
+**Shakeout finding (2026-09-02, the deploy built from the stacked pack).** The Next.js
+shakeout `cyc_3ac86805439f` returned a dev repair `unverifiable / no_executed_blocking_checks`
+with `decided_by_agent=0` while the dev container had logged `repair_typed_checks rows=4
+executed=2` — R7 falsified on a non-counting run. Cause, read from the executor: its own
+verification takes the accepted workspace from the enriched envelope, the correction runner
+was handed the base one, so rule B's forwarding found no workspace and the repair's build
+check skipped for want of a frontend tree. Fixed before roll 1 (the correction hand-off now
+mirrors the retest's), and instrumented so the agent rows' statuses and skip reasons are
+logged. The set's pins move to the rebuilt deploy; both shakeouts re-run on it.
+
 ### 2.3 The free-authored-assertion class, at the seam — #1153, #1130, #668 → #1123, #1022
 
 Each item names its mechanism, its replay (the stored artifact from §1 through the new code,
