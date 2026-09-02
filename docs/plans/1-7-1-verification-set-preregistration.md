@@ -138,8 +138,49 @@ window. Every fixed parameter is read from
     assistant at 15:24Z during framing (four of the framing tasks dispatched, no
     implementation run) when the owner merged #1257 and #1258 and asked for the rebuild;
     no record written, nothing read from it.
-  - **On `dfe466ab` (the pinned deploy) — FastAPI+React:** TBD — filled from the record.
-  - **On `dfe466ab` (the pinned deploy) — Next.js+TS:** TBD — filled from the record.
+  - **On `dfe466ab` (the pinned deploy) — FastAPI+React `cyc_898d88bd9a17`** (15:28→16:14Z,
+    45 min; its driver process was stopped from outside the session at ~16:00Z during plan
+    review and a detached watcher re-attached, approving nothing — the gate went
+    `system:no_open_questions`): accepted, audit PASS, 15/15, 0 corrections, P0 held,
+    `checks_by_environment` `{agent:development: 15, agent:qa: 8, agent:builder: 2}`; the
+    builder's two rows are `sections_present` (bound by #1257, passed on the first
+    emission) and `container_packaging` (passed). `frontend_compiles` 2, `undefined_names`
+    4, every typed row passed; 1 failed emission banked, no packaging finding. As on the
+    first shakeout: the plan names no frontend suite, so R3/R5 are vacuous here, and with no
+    correction round R2/R4/R7 are unexercised — R7 in particular (#1256's fix) has not yet
+    been seen deciding a live round.
+  - **On `dfe466ab` — Next.js+TS `cyc_9c379355b5e8`** (16:15→17:15Z, 59 min): accepted,
+    audit PASS, 17/17, P0 held, gate `system:no_open_questions`, `checks_by_environment`
+    `{agent:qa: 114, agent:development: 28, agent:builder: 2}`, `container_packaging` 1
+    reporting-only finding (`npm_ci_without_lockfile`, the same recipe defect as the earlier
+    Next.js shakeout), `sections_present` bound and passed — **and two correction rounds
+    that found three more defects, read from the artifacts and the code:**
+    - **#1256 confirmed live** — round 0's dev repair evaluated five rows in its container
+      and runtime-api received them: `agent_rows=5 agent_executed=5`, the first live round
+      in which rule B's rows reached the verifier. `decided_by_agent` stayed 0 because the
+      same rows executed locally too.
+    - **#1259** (fixed in PR, this line): the qa task's first suite found a real route
+      defect (`capacity` dropped when sent as a number); the dev's correct fix was refused
+      because the qa task's suite-bound checks (`assertion_kinds_match`,
+      `dom_anchor_queries`) were evaluated on trees without the failed suite — the accepted
+      workspace in the dev container, and the patch in runtime-api — and `file_not_found`
+      counted as an executed failure in both. Replayed: suite absent → both fail; suite
+      present → both pass. Before #1240/#1246 those criteria skipped on a `.ts` suite and
+      the retest decided; every dev patch of a qa failure on either stack took this path.
+    - **#1260** (filed, recommended 1.7.2): with the fix refused, `qa.test` was re-dispatched
+      and re-authored its suite **without** the capacity case; the third emission passed
+      25/25 and the cycle shipped the defect green. A re-dispatch carries no memory of the
+      cases that failed; needs a design, not a patch.
+    - **#1261** (fixed in PR, this line): `undefined_names` skipped
+      `unsupported_stack_or_syntax` on five of the nine accepted test files — the ones
+      carrying `TS18048`/`TS18046` type diagnostics, which the classifier read as syntax by
+      their `TS1` prefix. Rebuilt the evaluated tree from the manifest and fills and ran tsc
+      in the qa image to prove it. R6's readout counts failed rows, so a green roll cannot
+      see this gap.
+    - Texture: round 1's `qa.test_repair` emitted no content (refunded, #1053); R4's brief
+      carried the one failing case (`repair_brief_case_counts [1]`); a scaffold fill slot
+      filled twice produced the placeholder assertion of the second emission.
+    **This deploy is superseded** by the PR carrying #1259 and #1261.
 - **Diagnostics for the predictions no roll is likely to exercise (plan §4), non-counting
   by declaration — run 2026-09-02 06:20 ET, in the deployed containers, on the stored
   artifacts that cost each item.** These are in-container replays of the deployed code path,
