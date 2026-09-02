@@ -840,3 +840,86 @@ class TestFailedTestsPassRowOwnership:
         ]
         unstamped = failed_tests_pass_row(result)
         assert [d["qa_owned"] for d in unstamped["suite_defects"]] == [False, False]
+
+
+# ---------------------------------------------------------------------------
+# #1123: the failing cases the repair brief names
+# ---------------------------------------------------------------------------
+
+
+class TestParseVitestFailureText:
+    """The text fallback for a missing JSON report, and the shape every stored
+    ``test_report.md`` carries — replayed from the rolls #1123 was filed from."""
+
+    def test_roll_6s_final_report_names_its_one_failing_case(self):
+        from squadops.capabilities.handlers.test_runner import parse_vitest_failure_text
+
+        rows = parse_vitest_failure_text(
+            _stored_stdout("1-6-6-react-roll-6-frontend-final-test_report.md")
+        )
+        assert rows == [
+            {
+                "file": "src/__tests__/runs.test.jsx",
+                "title": (
+                    "RunDetailView > renders participant names and submits join with expected payload"
+                ),
+                "messages": ["expected undefined to be defined"],
+                "line": None,
+                "suite_level": False,
+            }
+        ]
+
+    def test_the_shakeouts_four_dom_failures_are_four_rows_with_their_anchors_named(self):
+        from squadops.capabilities.handlers.test_runner import parse_vitest_failure_text
+
+        rows = parse_vitest_failure_text(
+            _stored_stdout("1-6-5-react-shakeout-round-0-test_report.md")
+        )
+        assert [r["messages"][0] for r in rows] == [
+            'Found multiple elements by: [data-testid="runs-view"]',
+            'Unable to find an element by: [data-testid="create-run-error"]',
+            'Found multiple elements by: [data-testid="create-run-title"]',
+            'Found multiple elements by: [data-testid="join-name-input"]',
+        ]
+        assert {r["file"] for r in rows} == {"src/__tests__/runs.test.jsx"}
+        assert rows[0]["title"].startswith("RunsListView > shows the empty state")
+
+    @pytest.mark.parametrize(
+        "stdout", ["", " ✓ src/x.test.ts > a > b\n Test Files  1 passed (1)\n"]
+    )
+    def test_a_green_report_yields_no_rows(self, stdout):
+        from squadops.capabilities.handlers.test_runner import parse_vitest_failure_text
+
+        assert parse_vitest_failure_text(stdout) == []
+
+
+class TestFailingCases:
+    def test_the_row_carries_each_case_with_its_first_message_bounded(self):
+        from squadops.capabilities.handlers.test_runner import (
+            RunTestsResult,
+            failed_tests_pass_row,
+        )
+
+        rows = (
+            {
+                "file": "a.test.jsx",
+                "title": "renders",
+                "messages": ["x" * 500, "second"],
+                "line": 12,
+            },
+            {"file": "a.test.jsx", "title": "", "messages": [], "line": None, "suite_level": True},
+            {"file": "", "title": ""},
+        )
+        row = failed_tests_pass_row(
+            RunTestsResult(executed=True, exit_code=1, runner="vitest", test_failures=rows)
+        )
+        assert row["failing_cases"] == [
+            {"file": "a.test.jsx", "title": "renders", "line": 12, "message": "x" * 300},
+            {"file": "a.test.jsx", "title": "", "line": None, "message": ""},
+        ]
+
+    def test_a_hundred_case_red_is_bounded(self):
+        from squadops.capabilities.handlers.test_runner import failing_cases
+
+        rows = [{"file": "a.test.jsx", "title": f"case {i}", "messages": ["m"]} for i in range(100)]
+        assert len(failing_cases(rows)) == 40

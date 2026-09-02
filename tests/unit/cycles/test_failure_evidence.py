@@ -839,3 +839,100 @@ def test_a_failed_dom_anchor_row_is_the_suites_own_defect():
     ]
     evidence = {"validation_result": {"passed": False, "checks": rows}}
     assert classify_failure_locus(evidence) == FailureLocus.OWN_ARTIFACT
+
+
+class TestAbsentAnchorCases:
+    """#1123 (2): a failing case that asserted an anchor no view declares is the suite's
+    defect; a declared anchor the view failed to render is the view's."""
+
+    _ANCHOR_ROW = {
+        "check": "acceptance:dom_anchor_queries",
+        "passed": True,
+        "status": "passed",
+        "actual": {
+            "unknown_anchors": ["invented-anchor"],
+            "queried": ["run-list", "invented-anchor"],
+        },
+    }
+
+    def _tests_pass(self, messages):
+        return {
+            "check": "tests_pass",
+            "executed": True,
+            "exit_code": 1,
+            "passed": False,
+            "runner": "vitest",
+            "suite_broken": False,
+            "failing_cases": [
+                {
+                    "file": "frontend/src/tests/runs.test.jsx",
+                    "title": f"case {i}",
+                    "line": None,
+                    "message": m,
+                }
+                for i, m in enumerate(messages)
+            ],
+        }
+
+    def test_an_undeclared_anchor_in_a_failing_case_is_own_artifact(self):
+        from squadops.cycles.failure_evidence import absent_anchor_cases
+
+        evidence = {
+            "validation_result": {
+                "passed": False,
+                "checks": [
+                    self._ANCHOR_ROW,
+                    self._tests_pass(
+                        [
+                            'Unable to find an element by: [data-testid="invented-anchor"]',
+                            "expected 200 to be 201",
+                        ]
+                    ),
+                ],
+            }
+        }
+        cases = absent_anchor_cases(evidence)
+        assert [(c["title"], c["absent_anchors"]) for c in cases] == [
+            ("case 0", ["invented-anchor"])
+        ]
+        assert classify_failure_locus(evidence) == FailureLocus.OWN_ARTIFACT
+
+    def test_the_shakeouts_declared_anchor_failures_stay_the_views(self):
+        """1.6.5 shakeout `cyc_3cde35fa5204`: four DOM failures, every anchor they name
+        declared by the manifest — the views rendered duplicates or omitted one. Nothing
+        here is the suite's, and the dev chain keeps them (the issue's stated coverage)."""
+        from squadops.cycles.failure_evidence import absent_anchor_cases
+
+        declared_only = {**self._ANCHOR_ROW, "actual": {"unknown_anchors": [], "queried": ["x"]}}
+        evidence = {
+            "validation_result": {
+                "passed": False,
+                "checks": [
+                    declared_only,
+                    self._tests_pass(
+                        [
+                            'Found multiple elements by: [data-testid="runs-view"]',
+                            'Unable to find an element by: [data-testid="create-run-error"]',
+                        ]
+                    ),
+                ],
+            }
+        }
+        assert absent_anchor_cases(evidence) == []
+        assert classify_failure_locus(evidence) == FailureLocus.SUBJECT
+
+    def test_without_an_anchor_row_nothing_is_read_into_the_message(self):
+        from squadops.cycles.failure_evidence import absent_anchor_cases
+
+        evidence = {
+            "validation_result": {
+                "passed": False,
+                "checks": [
+                    self._tests_pass(
+                        ['Unable to find an element by: [data-testid="invented-anchor"]']
+                    )
+                ],
+            }
+        }
+        assert absent_anchor_cases(evidence) == []
+        assert absent_anchor_cases("not evidence") == []

@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 
 from squadops.capabilities.handlers.cycle_tasks import _classify_file, _CycleTaskHandler
 from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
+from squadops.cycles.failure_evidence import failing_cases_from_evidence
 from squadops.cycles.verification_integrity import ResultStatus
 
 logger = logging.getLogger(__name__)
@@ -266,6 +267,9 @@ class _RepairPromptMixin:
         client_surface = await self._render_client_surface_section(context, inputs)
         if client_surface:
             inputs = {**inputs, "client_surface_section": client_surface}
+        failing_cases = await self._render_failing_cases_section(context, inputs)
+        if failing_cases:
+            inputs = {**inputs, "failing_cases_section": failing_cases}
         frozen = await self._render_qa_frozen_surface_section(context, inputs)
         if frozen:
             inputs = {**inputs, "frozen_surface_section": frozen}
@@ -593,6 +597,37 @@ class _RepairPromptMixin:
         rendered = await renderer.render(
             "request.development_develop_testid_surface_appendix",
             {"testid_lines": "\n".join(f"- {line}" for line in lines)},
+        )
+        return rendered.content
+
+    async def _render_failing_cases_section(
+        self, context: ExecutionContext, inputs: dict[str, Any]
+    ) -> str:
+        """The qa REPAIR SCOPE block — the cases the runner reported failing — or "".
+
+        #1123: the qa repair re-authored the whole file with no list of what failed
+        (1.6.6 React roll 6: two failing cases of four, the passing two rewritten with
+        them). The cases come from the runner's structured rows on the failed task's
+        ``tests_pass`` row (``failing_cases``); the "repair only these" prose lives in
+        the appendix asset (CLAUDE.md #448). Non-qa roles, no evidence, no renderer → "".
+        """
+        if self._role != "qa":
+            return ""
+        renderer = getattr(context.ports, "request_renderer", None)
+        if renderer is None:
+            return ""
+        cases = failing_cases_from_evidence(inputs.get("failure_evidence"))
+        if not cases:
+            return ""
+        lines = []
+        for case in cases:
+            where = case["file"] + (f":{case['line']}" if case.get("line") else "")
+            title = case["title"] or "(suite-level)"
+            message = f" — {case['message']}" if case.get("message") else ""
+            lines.append(f"`{where}` › {title}{message}")
+        rendered = await renderer.render(
+            "request.qa_test_repair_failing_cases_appendix",
+            {"case_lines": "\n".join(f"- {line}" for line in lines), "case_count": len(lines)},
         )
         return rendered.content
 

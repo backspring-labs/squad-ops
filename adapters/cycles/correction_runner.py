@@ -629,6 +629,7 @@ def _locus_and_repair_target(
     """
     from squadops.cycles.failure_evidence import (
         FailureLocus,
+        absent_anchor_cases,
         classify_failure_locus,
         qa_owned_suite_defects,
     )
@@ -681,6 +682,26 @@ def _locus_and_repair_target(
             failed_inputs.get("subtask_focus"),
             failed_inputs.get("subtask_description"),
         )
+    # #1123: a failing case asserted an anchor no view declares — the suite that made
+    # the assertion is the target, not the views a dev repair would bend toward it.
+    anchor_cases = absent_anchor_cases(failure_evidence)
+    if failure_locus == FailureLocus.OWN_ARTIFACT and anchor_cases:
+        defect_files = list(dict.fromkeys(str(c["file"]) for c in anchor_cases if c.get("file")))
+        target = [f for f in own_expected if f in defect_files] or defect_files or own_expected
+        logger.info(
+            "correction_repair_locus: own_artifact — absent_anchor_routed: %s asserted "
+            "undeclared anchor(s) %s; %s re-authors %s (#1123)",
+            ", ".join(defect_files) or "?",
+            ", ".join(sorted({a for c in anchor_cases for a in c.get("absent_anchors", [])})),
+            failed_task_type,
+            ", ".join(target),
+        )
+        return (
+            failure_locus,
+            target,
+            failed_inputs.get("subtask_focus"),
+            failed_inputs.get("subtask_description"),
+        )
     if failure_locus == FailureLocus.OWN_ARTIFACT and own_expected:
         logger.info(
             "correction_repair_locus: own_artifact — %s re-produces %s",
@@ -697,6 +718,22 @@ def _locus_and_repair_target(
         failure_evidence, failed_inputs, failure_analysis
     )
     return (failure_locus, expected, focus, description)
+
+
+def _log_repair_brief(task_type: str, role: str, failure_evidence: Any, targets: list[str]) -> None:
+    """#1123: the set's R4 readout — how many failing cases a qa repair brief carries (the
+    brief renders exactly the ``failing_cases`` rows on the failed task's ``tests_pass``
+    row). Logged for the qa role only; a dev repair has no case list to scope."""
+    if role != "qa":
+        return
+    from squadops.cycles.failure_evidence import failing_cases_from_evidence
+
+    logger.info(
+        "correction_repair_brief: %s carries %d failing case(s) for %s",
+        task_type,
+        len(failing_cases_from_evidence(failure_evidence)),
+        ", ".join(targets) or "?",
+    )
 
 
 def _apply_ownership_veto(
@@ -1591,6 +1628,7 @@ class CorrectionRunner:
                     [str(e) for e in (failed_inputs.get("expected_artifacts") or [])],
                 )
                 repair_task_id = f"repair-{run_id[:12]}-{correction_attempts:02d}-{task_type}"
+                _log_repair_brief(task_type, role, failure_evidence, step_expected_artifacts)
                 resolved = resolve_agent_config(role, profile)
                 agent_id = resolved.agent_id
                 agent_model = resolved.model

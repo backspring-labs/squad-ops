@@ -7,6 +7,7 @@ have no adapter dependencies.
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING, Any
 
 from squadops.cycles.acceptance_check_spec import (
@@ -263,6 +264,12 @@ def classify_failure_locus(failure_evidence: Any) -> str:
     # tests_pass row must not route to the dev chain before these are consulted.
     if any(_own_artifact_row(row) for row in checks):
         return FailureLocus.OWN_ARTIFACT
+    # #1123: a failing case that could not find an anchor NO view declares is a qa-side
+    # defect no application can satisfy — read from the suite's source (the anchor row's
+    # unknown_anchors, #668) and only then matched to the runner's failing case, so the
+    # verdict alone never routes.
+    if absent_anchor_cases(failure_evidence):
+        return FailureLocus.OWN_ARTIFACT
     scaffold_locus = _locus_from_scaffold_classification(failure_evidence)
     if scaffold_locus is not None:
         return scaffold_locus
@@ -272,6 +279,58 @@ def classify_failure_locus(failure_evidence: Any) -> str:
             if locus is not None:
                 return locus
     return FailureLocus.UNKNOWN
+
+
+def failing_cases_from_evidence(failure_evidence: Any) -> list[dict[str, Any]]:
+    """The runner's failing cases on the failed task's ``tests_pass`` row(s), in order."""
+    if not isinstance(failure_evidence, dict):
+        return []
+    rows = (failure_evidence.get("validation_result") or {}).get("checks") or []
+    return [
+        case
+        for row in rows
+        if isinstance(row, dict) and row.get("check") == "tests_pass"
+        for case in row.get("failing_cases") or []
+        if isinstance(case, dict)
+    ]
+
+
+_TESTID_IN_MESSAGE = re.compile(r"""data-testid=["']([^"']+)["']""")
+
+
+def absent_anchor_cases(failure_evidence: Any) -> list[dict[str, Any]]:
+    """The runner's failing cases whose message names an anchor no view declares (#1123).
+
+    Two rows meet: the ``dom_anchor_queries`` row (#668) banks ``unknown_anchors`` off the
+    suite's own bytes; the ``tests_pass`` row carries ``failing_cases`` from the runner.
+    A case that says ``Unable to find an element by: [data-testid="x"]`` for an ``x`` in
+    that set asserts a surface the manifest never promised — the suite's defect, never
+    the view's. A declared anchor the view failed to render stays the dev chain's.
+    """
+    if not isinstance(failure_evidence, dict):
+        return []
+    rows = [
+        r
+        for r in (failure_evidence.get("validation_result") or {}).get("checks") or []
+        if isinstance(r, dict)
+    ]
+    unknown: set[str] = set()
+    for row in rows:
+        if row.get("check") == f"acceptance:{CHECK_DOM_ANCHOR_QUERIES}":
+            unknown.update(str(a) for a in (row.get("actual") or {}).get("unknown_anchors") or [])
+    if not unknown:
+        return []
+    cases: list[dict[str, Any]] = []
+    for row in rows:
+        if row.get("check") != "tests_pass" or row.get("passed") is not False:
+            continue
+        for case in row.get("failing_cases") or []:
+            if not isinstance(case, dict):
+                continue
+            named = set(_TESTID_IN_MESSAGE.findall(str(case.get("message") or "")))
+            if named & unknown:
+                cases.append({**case, "absent_anchors": sorted(named & unknown)})
+    return cases
 
 
 def _own_artifact_row(row: dict[str, Any]) -> bool:

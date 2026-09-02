@@ -5079,3 +5079,55 @@ class TestQaOwnedDefectRouting:
 
         assert locus == FailureLocus.OWN_ARTIFACT
         assert target == ["backend/tests/test_runs.py"]
+
+
+class TestAbsentAnchorRouting:
+    """#1123 (2): the repair target is the suite that asserted an undeclared anchor."""
+
+    def test_the_suite_is_the_target_and_the_readout_line_is_logged(self, caplog):
+        from adapters.cycles.correction_runner import _locus_and_repair_target
+        from squadops.cycles.failure_evidence import FailureLocus
+
+        evidence = {
+            "validation_result": {
+                "passed": False,
+                "checks": [
+                    {
+                        "check": "acceptance:dom_anchor_queries",
+                        "passed": True,
+                        "status": "passed",
+                        "actual": {"unknown_anchors": ["invented-anchor"]},
+                    },
+                    {
+                        "check": "tests_pass",
+                        "executed": True,
+                        "exit_code": 1,
+                        "passed": False,
+                        "failing_cases": [
+                            {
+                                "file": "frontend/src/tests/runs.test.jsx",
+                                "title": "RunListView > shows rows",
+                                "line": None,
+                                "message": 'Unable to find an element by: [data-testid="invented-anchor"]',
+                            }
+                        ],
+                    },
+                ],
+            }
+        }
+        inputs = {
+            "expected_artifacts": [
+                "backend/tests/test_runs.py",
+                "frontend/src/tests/runs.test.jsx",
+            ],
+            "subtask_focus": "suites",
+            "subtask_description": "d",
+        }
+        with caplog.at_level("INFO", logger="adapters.cycles.correction_runner"):
+            locus, target, _, _ = _locus_and_repair_target("qa.test", evidence, inputs, None)
+
+        assert locus == FailureLocus.OWN_ARTIFACT
+        assert target == ["frontend/src/tests/runs.test.jsx"]
+        routed = [r.message for r in caplog.records if "absent_anchor_routed" in r.message]
+        assert len(routed) == 1
+        assert "invented-anchor" in routed[0]
