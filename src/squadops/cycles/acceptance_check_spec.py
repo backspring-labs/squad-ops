@@ -146,6 +146,14 @@ class CheckSpec:
     path_params: frozenset[str] = frozenset()
     example: dict[str, object] = field(default_factory=dict)
     notes: str = ""
+    #: The executables the evaluator shells out to, by the names ``CHECK_ENV_TOOLS`` uses.
+    #: Empty means the check runs on the always-present runtime (Python, a base-lock
+    #: dependency). The owner's rule B (#1229): a typed check executes in the producing
+    #: role's agent container, so every role whose handlers evaluate typed checks
+    #: provisions each tool here as data, or declares the gap in
+    #: ``DECLARED_TOOLING_GAPS`` — ``test_typed_check_tooling_is_provisioned_where_checks_run``
+    #: reads the provisioning files and holds both sides.
+    required_tooling: frozenset[str] = frozenset()
     applicable_extensions: frozenset[str] = frozenset()
     framework_injected: bool = False
     failure_ownership: str = field(kw_only=True)
@@ -217,12 +225,14 @@ def is_check_applicable(check_name: str, file_path: str) -> bool:
 #                               fails. argv[0] is ``python``, which is why an
 #                               executable-name gate could never have caught it and
 #                               why this list now keys on the tool a form NEEDS.
-#   ``tsc --noEmit``          — never on PATH; TypeScript lives in the app's own
-#                               ``node_modules/.bin``. ``scaffold_contract``'s
-#                               ``_nextjs_ts_slot_criteria`` had already reached this
-#                               conclusion for stack #2's criteria pack (#822) —
-#                               ``next build`` runs tsc, so ``frontend_compiles`` IS
-#                               the type check. The safelist never got the memo.
+#   ``tsc --noEmit``          — was never on PATH (TypeScript lived in the app's own
+#                               ``node_modules/.bin``); since #939 it IS provisioned in
+#                               the dev and qa images (npm-global-packages.txt) for the
+#                               ``undefined_names`` evaluator. Still no safelist form:
+#                               an authored ``tsc`` criterion would also be evaluated
+#                               in runtime-api's cross-check, which has no node, and
+#                               ``next build`` runs tsc anyway, so ``frontend_compiles``
+#                               IS the type check (#822, ``_nextjs_ts_slot_criteria``).
 #   ``eslint <args...>``      — present (Debian's npm pulls in v6.4.0) but unusable:
 #                               with no eslint config in the tree it exits 2 before
 #                               reading a line of source, which is #645's "fails on
@@ -238,12 +248,14 @@ def is_check_applicable(check_name: str, file_path: str) -> bool:
 #: validator is #707: two modules cannot hold one fact without eventually disagreeing
 #: about it.
 #:
-#: ``pytest``/``npm``/``npx`` are provisioned but reach no safelisted form. They stay
-#: because this set describes the environment, not the vocabulary; the subset rule
-#: runs one way only. (``pytest`` is also qa-only — absent from the dev image — so a
-#: form needing it would want a per-role declaration this set does not carry.)
+#: ``pytest``/``npm``/``npx``/``tsc`` are provisioned but reach no safelisted form. They
+#: stay because this set describes the environment, not the vocabulary; the subset rule
+#: runs one way only. This set is the UNION over the agent images; the per-role truth is
+#: the provisioning data itself (``agents/instances/<role>/system-packages.txt`` and
+#: ``npm-global-packages.txt``), which ``required_tooling`` below is checked against role
+#: by role — ``tsc`` was added 2026-09-01 after the rebuild that provisioned it (#939).
 CHECK_ENV_TOOLS: frozenset[str] = frozenset(
-    {"python", "python3", "pytest", "node", "npm", "npx", "pyflakes"}
+    {"python", "python3", "pytest", "node", "npm", "npx", "pyflakes", "tsc"}
 )
 
 
@@ -540,6 +552,8 @@ def uncovered_languages(check_name: str) -> dict[str, str]:
 CHECK_SPECS: dict[str, CheckSpec] = {
     CHECK_UNDEFINED_NAMES: CheckSpec(
         name=CHECK_UNDEFINED_NAMES,
+        # tsc for the four frontend extensions; the .py half is pyflakes, a base-lock dependency.
+        required_tooling=frozenset({"tsc"}),
         applicable_extensions=frozenset({".py", ".js", ".jsx", ".ts", ".tsx"}),
         required_params=frozenset({"file"}),
         param_types={"file": str},
@@ -770,6 +784,7 @@ CHECK_SPECS: dict[str, CheckSpec] = {
     ),
     "frontend_compiles": CheckSpec(
         name="frontend_compiles",
+        required_tooling=frozenset({"npm"}),
         applicable_extensions=frozenset({".js", ".jsx", ".ts", ".tsx"}),
         required_params=frozenset({"file"}),
         optional_params=frozenset({"timeout_s", "project_dir"}),
@@ -961,6 +976,34 @@ class LanguageWithoutCommandForm:
     verified_by: str
 
 
+#: The environment axis of the declaration (#1229, rule B's third bullet): a role whose
+#: handlers evaluate typed checks and whose image does NOT provision a tool a check's
+#: evaluator needs, with the reason. Keyed ``(role, tool)``. Two-sided, like
+#: ``DECLARED_COVERAGE_GAPS``: an entry for a role that now provisions the tool fails the
+#: guard, so the list cannot outlive the gap. runtime-api is not a role here — under rule
+#: B it re-runs typed checks only as a cross-check and provisions no stack toolchain.
+DECLARED_TOOLING_GAPS: dict[tuple[str, str], str] = {
+    ("builder", "npm"): (
+        "The builder assembles packaging (Dockerfile, nginx, requirements) and emits no "
+        "frontend source, so frontend_compiles never applies to its artifacts; its image "
+        "declares no Node.js. Verified absent 2026-09-01 after the rebuild. The day an "
+        "assemble emits a .js/.ts file this entry must go and the role must provision it."
+    ),
+    ("builder", "tsc"): (
+        "Same as npm: no frontend emission from the builder, so undefined_names' tsc half "
+        "never runs there. Declared rather than provisioned so the image stays what the "
+        "role needs."
+    ),
+}
+
+
+def required_tooling_by_check() -> dict[str, frozenset[str]]:
+    """``check -> tools`` for every spec whose evaluator shells out — the guard's input."""
+    return {
+        name: spec.required_tooling for name, spec in CHECK_SPECS.items() if spec.required_tooling
+    }
+
+
 #: Languages the command safelist cannot reach. Rendered into the generated check menu,
 #: so the gap is visible where the vocabulary is documented rather than inferred from a
 #: list that happens not to mention it.
@@ -1143,6 +1186,29 @@ def render_check_governance_menu() -> str:
         ]
         for name, ext, reason in gap_rows:
             lines.append(f"| `{name}` | `{ext}` | {' '.join(reason.split())} |")
+
+    tooling = required_tooling_by_check()
+    if tooling:
+        lines += [
+            "",
+            "## Tooling each check needs, and where it is declared absent",
+            "",
+            "A typed check executes in the producing role's agent container (#1229, rule B),",
+            "so a role whose handlers evaluate typed checks provisions each tool below as data",
+            "(`agents/instances/<role>/system-packages.txt`, `npm-global-packages.txt`) or",
+            "declares the gap with its reason. Both sides are held by",
+            "`test_typed_check_tooling_is_provisioned_where_checks_run`. A check whose tool is",
+            "absent where it runs skips as `missing_tooling` and says so; it never fails the",
+            "emission, and it never reads as a pass.",
+            "",
+            "| check | tools |",
+            "|---|---|",
+        ]
+        for name in sorted(tooling):
+            lines.append(f"| `{name}` | {', '.join(f'`{t}`' for t in sorted(tooling[name]))} |")
+        lines += ["", "| role | tool | why absent |", "|---|---|---|"]
+        for (role, tool), reason in sorted(DECLARED_TOOLING_GAPS.items()):
+            lines.append(f"| `{role}` | `{tool}` | {' '.join(reason.split())} |")
 
     lines += [
         "",

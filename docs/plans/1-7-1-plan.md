@@ -257,9 +257,12 @@ what it cannot run, an executed failure anywhere rejects, and the no-executed-ch
 fires only when neither environment executed; records carry `executed_in` and the verdict
 carries `decided_by_agent`. Replay: `cyc_05abfc7c1f00`'s first stored patch under the
 Next.js skeleton with npm absent — unverifiable and deadlocked without the rows, decided by
-them with. **Not in this PR:** the environment-keyed declaration (each role image
-provisions every tool the specs it evaluates need, or declares the gap — the builder image
-has no node and no tsc, verified after the rebuild); it is the next small PR of this line.
+them with. **The environment-keyed declaration landed the same day, in its own PR:**
+`CheckSpec.required_tooling` (npm for `frontend_compiles`, tsc for `undefined_names`),
+`DECLARED_TOOLING_GAPS` keyed `(role, tool)` — the builder, which emits no frontend source,
+declares both — and a two-sided guard that derives the evaluating roles from the handlers
+and provisioning from the files the images are built from. `CHECK_ENV_TOOLS` gained `tsc`
+after the rebuild that provisioned it.
 
 ### 2.3 The free-authored-assertion class, at the seam — #1153, #1130, #668 → #1123, #1022
 
