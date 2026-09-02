@@ -9,6 +9,20 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 check-environment seam, 2026-09-01: **B** — typed checks execute in the producing role's
 agent container, at emission and at repair, and each image provisions its toolchain as data.
 
+### Fixed — a plan-authored regex over the handoff's headings no longer fails the builder (#1252)
+- The 1.7.1 React shakeout `cyc_8118588858a6` spent two of its three correction rounds on
+  the word order of two headings: the plan authored `## .*(Backend|Server|API).*(Run|Start|
+  Setup|Launch)` and the builder wrote `## How to Run the Backend (API Server)`, the
+  convention its own template dictates. The document had every required section from its
+  first version. The handoff's sections are the build profile's fact, already checked by
+  name in any order; the planner's regex, phrased fresh each cycle, was brittle duplication
+  of that check — the same morning's first shakeout passed only because its plan happened
+  to phrase `## How to Run`. Dropped at dispatch with a named log line
+  (`handoff_regex_stripped`), beside the inapplicable-check strip; the builder template no
+  longer promises to apply it and the plan-authoring rules gain **no-regex-on-the-handoff**.
+  Replayed: both shakeouts' stored plans — six and five handoff rows dropped, every other
+  criterion untouched.
+
 ### Fixed — a qa-owned defect in a free-authored suite is routed to the qa role (#1130)
 - **pytest's `-q --tb=short` text is its machine report.** The runner parses it into the
   same per-failure rows vitest's JSON reporter gives — file, title, messages, line — plus

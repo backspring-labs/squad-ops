@@ -190,6 +190,10 @@ class PlanSummary:
     estimated_layers: list[str] = field(default_factory=list)
 
 
+#: The builder's handoff document (#1252): its sections are the build profile's fact.
+HANDOFF_DOCUMENT = "qa_handoff.md"
+
+
 @dataclass(frozen=True)
 class ImplementationPlan:
     """Structured build decomposition plan — a control-plane artifact.
@@ -530,6 +534,30 @@ class ImplementationPlan:
             self._regex_on_source_message(task, target)
             for task, criterion, target in self._regex_on_source_criteria()
             if criterion.severity == "error"
+        ]
+
+    def validate_handoff_criteria(self) -> list[str]:
+        """#1252: no ``regex_match`` over the builder's handoff document.
+
+        The handoff's required sections are the build profile's fact, checked by the
+        builder handler by name and in any order. A regex the planner phrases fresh each
+        cycle over those headings polices how the builder restated a fact it never saw:
+        the 1.7.1 React shakeout ``cyc_8118588858a6`` spent two of three correction rounds
+        on the word order of two headings (``## .*(Backend|Server|API).*(Run|Start|Setup|
+        Launch)`` against the template's own ``## How to Run the Backend``). Rejected here
+        with the rule named, so the author is taught; ``task_plan._applicable_acceptance``
+        strips any that reach dispatch as the deterministic backstop.
+        """
+        return [
+            f"task {task.task_index} ({task.task_type}): regex_match on "
+            f"{criterion.params.get('file')} ({criterion.params.get('pattern')!r}) — the "
+            "handoff's sections are the build profile's, checked by name in any order; "
+            "name the sections in the task description instead (rule no-regex-on-the-handoff)"
+            for task in self.tasks
+            for criterion in task.acceptance_criteria
+            if isinstance(criterion, TypedCheck)
+            and criterion.check == "regex_match"
+            and str(criterion.params.get("file", "")).split("/")[-1] == HANDOFF_DOCUMENT
         ]
 
     def validate_command_checks(self) -> list[str]:

@@ -1,0 +1,211 @@
+version: 1
+project_id: group_run
+cycle_id: cyc_8118588858a6
+prd_hash: f744843dfd14d2be71d30ddaa2e6d5c3fe0b574cd42aec168802bde58ac40005
+tasks:
+- task_index: 0
+  task_type: development.develop
+  role: dev
+  focus: Implement backend REST routes for run CRUD and participant join/leave
+  description: "Fill the route bodies in backend/routes.py against the frozen models,\n\
+    store, and error-handler scaffolding. Implement:\n\n- Create a run (validate required\
+    \ fields: title, datetime, meeting_location;\n  accept optional distance, pace_target,\
+    \ route_notes). Respond with the\n  created Run including its generated id.\n\
+    - List all runs (return Run projections with participant_count).\n- Get run detail\
+    \ (return RunDetail including participants list).\n- Join a run by name (case-insensitive\
+    \ duplicate check within the run;\n  reject empty names). Respond with the updated\
+    \ RunDetail.\n- Leave a run by name (reject empty names; if name not present,\
+    \ raise\n  ApiError with a clear message). Respond with the updated RunDetail.\n\
+    \nUse the frozen backend.store module state (run_store, run_detail_store,\nparticipant_store)\
+    \ for in-memory persistence. Raise backend.errors.ApiError\nfor all validation\
+    \ and not-found cases so the registered error handlers\nproduce a consistent error\
+    \ payload.\n"
+  expected_artifacts:
+  - backend/routes.py
+  acceptance_criteria:
+  - All five core operations (create, list, detail, join, leave) are implemented with
+    correct in-memory store mutations.
+  - Duplicate participant join (case-insensitive) is rejected with a clear error message.
+  - Empty required fields on create and empty name on join/leave produce descriptive
+    error responses.
+  depends_on: []
+  criteria_refs:
+  - vc-routes-endpoints
+  - vc-routes-apierror
+  - vc-routes-compiles
+  - vc-routes-imports
+- task_index: 1
+  task_type: development.develop
+  role: dev
+  focus: Build the Create Run form view with client-side validation
+  description: "Implement frontend/src/views/CreateRunView.jsx. The view renders a\
+    \ form\nwith fields: title (required), date/time (required), meeting location\n\
+    (required), distance (optional), pace target (optional), route notes\n(optional).\n\
+    \n- Perform client-side required-field validation before submit.\n- Call the backend\
+    \ create endpoint via the frozen api.js helper\n  (apiFetch).\n- On success, navigate\
+    \ to the runs list.\n- On error, display the server's error message inline.\n\
+    - Disable the submit button while the request is in flight.\n\nUse only the frozen\
+    \ dependencies (react, react-router-dom). No external\nUI library. Minimal functional\
+    \ styling.\n"
+  expected_artifacts:
+  - frontend/src/views/CreateRunView.jsx
+  acceptance_criteria:
+  - Form renders all six fields with required indicators on the three mandatory ones.
+  - Submitting with empty required fields shows an inline validation message and does
+    not call the API.
+  - Successful create navigates away from the form.
+  depends_on: []
+  criteria_refs:
+  - vc-view-compiles-create-run-view
+- task_index: 2
+  task_type: development.develop
+  role: dev
+  focus: Build the upcoming runs list view with empty state
+  description: "Implement frontend/src/views/RunListView.jsx. The view fetches the\
+    \ runs\nlist from the backend via apiFetch and renders a list where each entry\n\
+    shows: title, date/time, meeting location, and participant count.\n\n- Each entry\
+    \ links to the detail view (react-router-dom route).\n- When the list is empty,\
+    \ display a clear empty-state message with a CTA\n  to create a run.\n- On fetch\
+    \ error, display a readable error message.\n\nUse only frozen dependencies. Minimal\
+    \ functional styling.\n"
+  expected_artifacts:
+  - frontend/src/views/RunListView.jsx
+  acceptance_criteria:
+  - Each run entry displays title, datetime, meeting location, and participant count.
+  - Entries are navigable to the run detail route.
+  - Empty state is shown when no runs exist, with a link or button to the create view.
+  depends_on: []
+  criteria_refs:
+  - vc-view-compiles-run-list-view
+- task_index: 3
+  task_type: development.develop
+  role: dev
+  focus: Build the run detail view with participant list, join form, and leave action
+  description: "Implement frontend/src/views/RunDetailView.jsx. The view fetches a\
+    \ single\nrun's detail (including participants) and renders:\n\n- All event details\
+    \ (title, datetime, meeting location, distance, pace\n  target, route notes —\
+    \ hide empty optional fields).\n- Participant list (names) with a count.\n- Join\
+    \ form: a single name input + submit. On duplicate rejection,\n  display the error\
+    \ message. On success, refresh the participant list.\n- Leave form: a single name\
+    \ input + submit. On not-found, display the\n  error message. On success, refresh\
+    \ the participant list.\n- If the run ID is not found, display a clear not-found\
+    \ state.\n\nUse only frozen dependencies. Minimal functional styling.\n"
+  expected_artifacts:
+  - frontend/src/views/RunDetailView.jsx
+  acceptance_criteria:
+  - Event details render with optional fields hidden when empty.
+  - Participant list shows each name and the total count.
+  - Join form accepts a name, calls the API, and updates the participant list on success
+    or shows the error on rejection.
+  - Leave form accepts a name, calls the API, and updates the participant list on
+    success or shows the error on not-found.
+  depends_on: []
+  criteria_refs:
+  - vc-view-compiles-run-detail-view
+- task_index: 4
+  task_type: builder.assemble
+  role: builder
+  focus: Assemble Dockerfile and produce qa_handoff.md
+  description: "Produce the packaging and documentation artifacts for the cycle:\n\
+    \n1. Dockerfile — a multi-stage or single-stage Dockerfile that installs\n   backend\
+    \ Python dependencies (from backend/requirements.txt) and frontend\n   npm dependencies\
+    \ (from frontend/package.json), builds the frontend,\n   and exposes the backend\
+    \ on the expected port with a sensible entrypoint.\n\n2. qa_handoff.md — a clear,\
+    \ sectioned handoff document that a reviewer\n   can follow to run and test the\
+    \ build. Required sections (use these\n   exact or equivalent ## headers):\n \
+    \  - How to Run the Backend\n   - How to Run the Frontend\n   - How to Test\n\
+    \   - Expected Behavior\n   - Implemented Scope\n   - Known Limitations\n\n  \
+    \ Include the exact commands to start each service, a brief description\n   of\
+    \ the happy-path flow, which features are implemented, and any\n   simplifications\
+    \ or gaps (e.g., in-memory persistence, no auth).\n"
+  expected_artifacts:
+  - Dockerfile
+  - qa_handoff.md
+  acceptance_criteria:
+  - check: regex_match
+    description: qa_handoff contains a backend run instructions section
+    file: qa_handoff.md
+    pattern: '## .*(Backend|Server|API).*(Run|Start|Setup|Launch)'
+    count_min: 1
+  - check: regex_match
+    description: qa_handoff contains a frontend run instructions section
+    file: qa_handoff.md
+    pattern: '## .*(Frontend|Client|UI).*(Run|Start|Setup|Launch)'
+    count_min: 1
+  - check: regex_match
+    description: qa_handoff contains a test instructions section
+    file: qa_handoff.md
+    pattern: '## .*(Test|Verify|Validation)'
+    count_min: 1
+  - check: regex_match
+    description: qa_handoff contains an expected behavior section
+    file: qa_handoff.md
+    pattern: '## .*(Expected|Behavior)'
+    count_min: 1
+  - check: regex_match
+    description: qa_handoff contains an implemented scope section
+    file: qa_handoff.md
+    pattern: '## .*(Scope|Implemented|Delivered)'
+    count_min: 1
+  - check: regex_match
+    description: qa_handoff contains a known limitations section
+    file: qa_handoff.md
+    pattern: '## .*(Limitation|Known|Caveat)'
+    count_min: 1
+  - Dockerfile installs backend and frontend dependencies and exposes the application
+    on a documented port.
+  depends_on:
+  - 0
+  - 1
+  - 2
+  - 3
+- task_index: 5
+  task_type: qa.test
+  role: qa
+  focus: Write pytest suite covering core API behavior
+  description: "Author backend/tests/test_runs.py using the frozen conftest.py client\n\
+    fixture (do not construct a TestClient directly or import backend.main\nas a test\
+    \ target). Cover at minimum:\n\n- Create run: valid payload returns the created\
+    \ run with an id; missing\n  required field is rejected.\n- List runs: a previously\
+    \ created run appears in the list with\n  participant_count.\n- Run detail: returns\
+    \ participants list and all event fields.\n- Join run: valid name adds a participant;\
+    \ duplicate name (case-insensitive)\n  is rejected; empty name is rejected.\n\
+    - Leave run: valid name removes a participant; nonexistent name is\n  rejected;\
+    \ empty name is rejected.\n\nUse the `client` fixture from conftest.py for all\
+    \ API calls. Each test\nfunction should be independently runnable (reset store\
+    \ between tests if\nneeded via the frozen reset() helper).\n"
+  expected_artifacts:
+  - backend/tests/test_runs.py
+  acceptance_criteria:
+  - check: function_defined
+    description: At least 6 test functions cover the core API behaviors
+    file: backend/tests/test_runs.py
+    name_prefix: test_
+    min_count: 6
+  - check: harness_boundary
+    description: Tests use the scaffold client fixture, not a direct TestClient or
+      app import
+    file: backend/tests/test_runs.py
+    entry_modules:
+    - backend.main
+    client_ctor: TestClient
+  - check: command_exit_zero
+    description: Test file is syntactically valid Python
+    argv:
+    - python
+    - -m
+    - py_compile
+    - backend/tests/test_runs.py
+  - Each test is independently runnable without depending on execution order.
+  depends_on:
+  - 0
+  - 4
+summary:
+  total_dev_tasks: 4
+  total_qa_tasks: 1
+  total_tasks: 6
+  estimated_layers:
+  - backend-api
+  - frontend-views
+  - packaging
+  - test

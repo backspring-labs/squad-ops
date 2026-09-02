@@ -39,6 +39,12 @@ only. A regex against source prescribes another author's stylistic choices — q
 identifier spelling — and rejects correct code. Verify source with the structural checks
 instead.
 
+**no-regex-on-the-handoff** — Do not author `regex_match` against `qa_handoff.md`. Its
+required sections are the build profile's and are checked by section name in any order;
+a pattern over its headings prescribes a word order the builder's own template does not
+use, and is dropped at dispatch. Name the sections the builder must cover in the task's
+description instead.
+
 **commands-must-run-here** — An error-severity `command_exit_zero` uses one of the
 safelisted forms, against a file type that tool accepts. The safelist is the entire
 universe of runnable commands — every form on it is provisioned in every role container,

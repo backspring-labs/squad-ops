@@ -66,7 +66,7 @@ The exact set of required and optional files for this build, plus the
 build profile. Produce exactly that set — no more, no less.
 
 Where a Contract Expectations block appears above, every one of its checks is
-evaluated against your output exactly as written. A `regex_match` on
-`qa_handoff.md` means that pattern must appear in the file you emit — sections
-it names are required for THIS task even where the profile lists them as
-optional, on top of the profile's own non-negotiable set.
+evaluated against your output exactly as written. The `qa_handoff.md` sections
+are the profile's own set, checked by section name in any order — no pattern
+over the handoff's headings is applied to this task, so write the headings in
+the convention above and put the effort into the bodies.

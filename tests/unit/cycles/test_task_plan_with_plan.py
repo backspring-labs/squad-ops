@@ -867,7 +867,7 @@ tasks:
         name_prefix: "test_"
         min_count: 3
       - check: regex_match
-        file: qa_handoff.md
+        file: README.md
         pattern: "## How to Test"
     depends_on: []
 summary:
@@ -902,5 +902,7 @@ summary:
         typed = [c for c in criteria if not isinstance(c, str)]
 
         assert any(c.check == "function_defined" for c in typed)
-        # regex on a document is #464-legal and not file-type-mismatched
+        # regex on a document is #464-legal and not file-type-mismatched (README.md here:
+        # a regex over qa_handoff.md is the profile's section check restated and is
+        # stripped — #1252)
         assert any(c.check == "regex_match" for c in typed)
