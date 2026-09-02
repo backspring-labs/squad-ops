@@ -270,6 +270,8 @@ headings — a plan-authored `regex_match` over `qa_handoff.md` against the buil
 own `## How to Run` convention. Not the pack's: plan-authoring variance over a fact the
 profile already checks by name. Filed as #1252 and fixed before roll 1 (the regex rows are
 dropped at dispatch; the prompts say so), so a counted roll cannot spend its budget on it.
+The class is wider — the planner also authors `harness_boundary` (doubled on every bound qa
+suite), `py_compile` beside the syntax gates — and is filed as #1254 for the 1.7.2 rider.
 
 **Shakeout finding (2026-09-02, the deploy built from the stacked pack).** The Next.js
 shakeout `cyc_3ac86805439f` returned a dev repair `unverifiable / no_executed_blocking_checks`
