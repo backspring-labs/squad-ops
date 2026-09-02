@@ -96,7 +96,8 @@ window. Every fixed parameter is read from
   by declaration — run 2026-09-02 06:20 ET, in the deployed containers, on the stored
   artifacts that cost each item.** These are in-container replays of the deployed code path,
   not fault-injected cycles: the deploy has no fault-injection hook and none was added to a
-  frozen deploy. Stated as what they are.
+  frozen deploy. Stated as what they are; the hook is filed as #1251, recommended as 1.7.2's
+  precondition.
   - **R6** — `UndefinedNamesCheck` in the **qa container** (`squadops-eve`, tsc on PATH) on
     1.7.0 roll 4's stored shell (`art_0e4eaa25d42d`, the fill that used `created` undeclared):
     `failed — undefined name(s): created (line 30)`; on the accepted roll-6 shell
