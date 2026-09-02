@@ -18,6 +18,7 @@ import re
 import shutil
 import sys
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -55,12 +56,22 @@ class RunTestsResult:
     # run_build_validation — exactly the #306 not-executed case that must not read
     # green once frontend_build is a required check.
     frontend_build: BuildCheckResult | None = None
-    # SIP-0104 P5: per-failure observation rows from the runner's machine report
-    # (vitest JSON reporter): {file, title, messages, line, suite_level}. The evidence
-    # pipeline classifies scaffold-shell failures from these; empty when the runner
-    # produced no machine report (pytest runs, report write failure) — additive, never
-    # load-bearing for the pass/fail verdict.
+    # SIP-0104 P5: per-failure observation rows — {file, title, messages, line,
+    # suite_level} — from the runner's machine report (vitest JSON reporter) or, since
+    # #1130, from pytest's own ``-q --tb=short`` text (which also yields ``exception`` and
+    # the traceback ``frames``, innermost last). The evidence pipeline classifies
+    # scaffold-shell failures from these; empty when a report could not be written or
+    # parsed — additive, never load-bearing for the pass/fail verdict.
     test_failures: tuple[dict, ...] = ()
+    # #1130: failures the SUITE raised in its own frame before any application code ran —
+    # a NameError in the test module, or an argument-binding TypeError at a call into the
+    # harness (``TestClient.delete() got an unexpected keyword argument 'json'``, three
+    # tests of 1.6.5 roll 3, repaired on the dev chain 3/3 rounds). Derived from
+    # ``test_failures`` by ``suite_defects``; the qa handler stamps ownership on each row
+    # before the locus classifier reads it. Empty for vitest rows (no frames are parsed
+    # from a JS stack here) and for every pytest failure whose innermost frame is the
+    # application's or the harness's.
+    suite_defects: tuple[dict, ...] = ()
     # Test files handed to the runner that it never collected — authored suites that
     # cannot run and therefore verify nothing, while the surrounding suite reads green.
     # Measured on SIP-0104 window roll 1 (cyc_04d36309d793): qa authored a ~9KB suite at
@@ -245,6 +256,7 @@ async def run_generated_tests(
         stderr = raw_stderr.decode(errors="replace")[:_STDOUT_LIMIT]
 
         exit_code = proc.returncode or 0
+        failure_rows = parse_pytest_failure_rows(stdout, [f["path"] for f in test_files])
         return RunTestsResult(
             executed=True,
             exit_code=exit_code,
@@ -253,6 +265,8 @@ async def run_generated_tests(
             test_file_count=len(test_files),
             source_file_count=len(source_files),
             runner="pytest",
+            test_failures=tuple(failure_rows),
+            suite_defects=tuple(suite_defects(failure_rows, source_files)),
             # pytest speaks suite-health through exit codes: 2/5 = the suite
             # itself is broken; 1 = it ran and judged the subject; 3/4 stay
             # ambiguous (the pf-35 exit-4 lesson — app-import failures surface
@@ -766,13 +780,21 @@ def failing_test_identities(test_failures) -> tuple[str, ...]:
     return tuple(sorted(identities))
 
 
-def failed_tests_pass_row(result: RunTestsResult) -> dict:
+def failed_tests_pass_row(
+    result: RunTestsResult, *, qa_owned: Callable[[str], bool] | None = None
+) -> dict:
     """The ``tests_pass`` check row for a failing run.
 
     One builder because there are two call sites (first pass and retest) that must not
     drift: #626 added ``runner``/``suite_broken`` to both by hand, and the next field
     added to only one of them is a silent, per-path behavior difference. Two seams, one
     fact — the class of bug this repo has paid for more than once.
+
+    ``qa_owned`` is the stack's own test-namespace predicate (``is_qa_test_path_for_stack``
+    bound to the cycle's stack): the runner knows which frame raised, the stack knows who
+    owns the file, and the row carries both so the locus classifier reads a fact, never an
+    opinion (#1130). Without a predicate no defect is stamped qa-owned — the conservative
+    direction, as the test-gaming guard requires.
     """
     return {
         "check": "tests_pass",
@@ -785,10 +807,17 @@ def failed_tests_pass_row(result: RunTestsResult) -> dict:
         "runner": result.runner,
         "suite_broken": result.suite_broken,
         # #878 (full): WHICH tests failed, so two different suite failures stop
-        # collapsing into one aggregate signature. Empty for runners that produce no
-        # machine report (pytest today) — the signature then falls back byte-identically
-        # to the aggregate form.
+        # collapsing into one aggregate signature. Empty when the runner's report could
+        # not be parsed — the signature then falls back byte-identically to the
+        # aggregate form.
         "failing_tests": failing_test_identities(result.test_failures),
+        # #1130: the failures the suite raised in its own frame, each stamped with whether
+        # the stack says the file is the qa role's — the routing signal for a qa-owned
+        # defect in a free-authored suite.
+        "suite_defects": [
+            {**defect, "qa_owned": bool(qa_owned and qa_owned(str(defect.get("file", ""))))}
+            for defect in result.suite_defects
+        ],
     }
 
 
@@ -833,6 +862,201 @@ def parse_vitest_failure_rows(report: dict, workspace_root: str) -> list[dict]:
                 }
             )
     return rows
+
+
+# --- pytest's ``-q --tb=short`` text is its machine report (#1130) -------------------
+#
+# pytest ships no JSON reporter; its short-traceback text is stable and is what every
+# stored ``test_report.md`` carries, so the parser reads the same bytes live and in replay.
+# Vocabulary of that format: a failure section opens with ``____ <test name> ____`` (or
+# ``____ ERROR collecting <path> ____``), lists traceback frames as ``<path>:<line>: in
+# <function>`` outermost first, then the exception as ``E   <Type>: <message>`` (or
+# ``E   assert …`` under assertion rewriting), and the run closes with a ``short test
+# summary info`` block of ``FAILED <path>::<test> - <message>`` / ``ERROR <path>`` lines.
+_PYTEST_SECTION = re.compile(r"^_{3,} (?P<title>.+?) _{3,}$")
+_PYTEST_COLLECTING = re.compile(r"^ERROR collecting (?P<file>\S+)$")
+_PYTEST_FRAME = re.compile(r"^(?P<file>[^\s:]+?\.py):(?P<line>\d+): in (?P<func>\S+)$")
+_PYTEST_E_LINE = re.compile(r"^E\s{2,}(?P<text>.*)$")
+_PYTEST_SUMMARY = re.compile(
+    r"^(?:FAILED|ERROR) (?P<file>[^\s:]+?\.py)(?:::(?P<title>\S+))?(?: - .*)?$"
+)
+_PYTEST_BLOCK_EDGE = re.compile(r"^(?:={3,}|!{3,}) ")
+_PYTEST_EXCEPTION = re.compile(r"^(?P<exc>[A-Za-z_][\w.]*)(?::\s?(?P<msg>.*))?$")
+_ASSERTION_ERROR = "AssertionError"
+
+# The exception classes a suite can raise in its own frame that no application defect can
+# produce (#1130). A NameError is resolved in the test module's namespace; an
+# argument-binding TypeError is raised while binding the call's arguments, before the
+# callee's body runs. Everything else — KeyError on a response body, AttributeError on a
+# parsed payload, ImportError of a name the app should export — can be the application's
+# doing and stays ambiguous, which the test-gaming guard routes toward the dev chain.
+_SUITE_OWN_EXCEPTIONS = frozenset({"NameError"})
+_ARGUMENT_BINDING_ERROR = re.compile(
+    r"^(?P<callee>[\w.]+)\(\) (?:"
+    r"got an unexpected keyword argument"
+    r"|got multiple values for (?:keyword )?argument"
+    r"|missing \d+ required (?:positional|keyword-only) arguments?"
+    r"|takes (?:no|(?:at most |exactly |from \d+ to )?\d+) (?:positional )?arguments?"
+    r")"
+)
+_SUITE_DEFECT_MESSAGE_LIMIT = 500
+
+
+def _resolve_handed_in(printed: str, handed_in: list[str]) -> str:
+    """The handed-in test path pytest's printed path names, or the printed path.
+
+    pytest prints paths relative to its rootdir, which an emitted ``backend/pytest.ini``
+    moves below the workspace root: the 1.6.6 rolls printed ``tests/test_runs.py`` for the
+    artifact ``backend/tests/test_runs.py`` while 1.6.5's printed the full path."""
+    norm = printed.lstrip("./")
+    for path in handed_in:
+        if path == norm or path.endswith("/" + norm):
+            return path
+    return norm
+
+
+def parse_pytest_failure_rows(stdout: str, handed_in: list[str]) -> list[dict]:
+    """Per-failure observation rows from pytest's ``-q --tb=short`` output (#1130).
+
+    The vitest row shape — ``{file, title, messages, line, suite_level}`` — plus
+    ``exception`` (the class name; ``AssertionError`` for a rewritten ``assert``) and
+    ``frames`` (``[{file, line, func}]``, outermost first, so ``frames[-1]`` is where the
+    exception was raised). ``file`` is the handed-in path when the printed one resolves to
+    it. A collection error is one ``suite_level`` row for the file. Pure; returns ``[]``
+    for output with no failure section.
+    """
+    sections: list[dict] = []
+    current: dict | None = None
+    summary: dict[str, str] = {}
+    for raw in stdout.splitlines():
+        line = raw.rstrip()
+        header = _PYTEST_SECTION.match(line)
+        if header:
+            title = header.group("title")
+            collecting = _PYTEST_COLLECTING.match(title)
+            current = {
+                "title": "" if collecting else title,
+                "collect_file": collecting.group("file") if collecting else None,
+                "frames": [],
+                "e_lines": [],
+            }
+            sections.append(current)
+            continue
+        if _PYTEST_BLOCK_EDGE.match(line):
+            current = None
+        summary_line = _PYTEST_SUMMARY.match(line)
+        if summary_line and current is None:
+            summary[summary_line.group("title") or ""] = summary_line.group("file")
+            continue
+        if current is None:
+            continue
+        frame = _PYTEST_FRAME.match(line)
+        if frame:
+            current["frames"].append(
+                {
+                    "file": _resolve_handed_in(frame.group("file"), handed_in),
+                    "line": int(frame.group("line")),
+                    "func": frame.group("func"),
+                }
+            )
+            continue
+        e_line = _PYTEST_E_LINE.match(line)
+        if e_line:
+            current["e_lines"].append(e_line.group("text"))
+
+    rows: list[dict] = []
+    for section in sections:
+        frames = section["frames"]
+        title = section["title"]
+        own = next((f for f in frames if f["func"] == title), frames[0] if frames else None)
+        if section["collect_file"]:
+            file = _resolve_handed_in(section["collect_file"], handed_in)
+            line_no = None
+        else:
+            file = (own or {}).get("file") or summary.get(title, "")
+            line_no = (own or {}).get("line")
+        exception, messages = _exception_from_e_lines(section["e_lines"])
+        rows.append(
+            {
+                "file": file,
+                "title": title,
+                "messages": [m[:2000] for m in messages],
+                "line": line_no,
+                "suite_level": section["collect_file"] is not None,
+                "exception": exception,
+                "frames": frames,
+            }
+        )
+    return rows
+
+
+def _exception_from_e_lines(e_lines: list[str]) -> tuple[str, list[str]]:
+    """``(exception class, messages)`` from a section's ``E`` lines."""
+    if not e_lines:
+        return "", []
+    first = e_lines[0]
+    if first.startswith("assert ") or first == "assert":
+        return _ASSERTION_ERROR, e_lines
+    match = _PYTEST_EXCEPTION.match(first)
+    if match and (match.group("msg") is not None or first.endswith(("Error", "Exception"))):
+        return match.group("exc"), e_lines
+    return "", e_lines
+
+
+def _callee_defined_in(callee: str, source_files: list[dict[str, str]]) -> bool:
+    """True when the application's own sources define the callee an argument-binding
+    error names (``create_run`` or ``RunStore.add``) — then the mismatch may be the
+    app's signature drifting from its declaration, and the failure stays ambiguous."""
+    parts = callee.split(".")
+    func = re.compile(rf"^\s*(?:async\s+)?def {re.escape(parts[-1])}\(", re.M)
+    cls = re.compile(rf"^\s*class {re.escape(parts[-2])}\b", re.M) if len(parts) > 1 else None
+    for rec in source_files:
+        if not str(rec.get("path", "")).endswith(".py"):
+            continue
+        content = str(rec.get("content", ""))
+        if func.search(content) or (cls is not None and cls.search(content)):
+            return True
+    return False
+
+
+def suite_defects(rows: list[dict], source_files: list[dict[str, str]]) -> list[dict]:
+    """The failures a suite raised in its own frame before any application code ran (#1130).
+
+    A row qualifies when its innermost traceback frame is the failing file itself and the
+    exception is one the application cannot have caused: a ``NameError``, or an
+    argument-binding ``TypeError`` whose callee the application does not define (the
+    1.6.5 roll 3 shape — ``TestClient.delete() got an unexpected keyword argument
+    'json'``, raised at the call site before any request was made). Each entry is
+    ``{file, title, line, exception, message}``; the message is the first ``E`` line.
+    """
+    defects: list[dict] = []
+    for row in rows:
+        frames = row.get("frames") or []
+        if not frames or not row.get("file"):
+            continue
+        innermost = frames[-1]
+        if innermost.get("file") != row["file"]:
+            continue
+        exception = str(row.get("exception") or "")
+        message = str((row.get("messages") or [""])[0])
+        if exception in _SUITE_OWN_EXCEPTIONS:
+            own = True
+        elif exception == "TypeError":
+            binding = _ARGUMENT_BINDING_ERROR.match(message.split(": ", 1)[-1])
+            own = bool(binding) and not _callee_defined_in(binding.group("callee"), source_files)
+        else:
+            own = False
+        if own:
+            defects.append(
+                {
+                    "file": row["file"],
+                    "title": str(row.get("title") or ""),
+                    "line": innermost.get("line"),
+                    "exception": exception,
+                    "message": message[:_SUITE_DEFECT_MESSAGE_LIMIT],
+                }
+            )
+    return defects
 
 
 def _read_vitest_report(report_path: str) -> dict | None:

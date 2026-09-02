@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -570,3 +571,272 @@ class TestFailedTestsPassRow:
         assert row["failing_tests"] == ("a.test.ts::creates",)
         assert row["passed"] is False
         assert row["runner"] == "vitest"
+
+
+# ---------------------------------------------------------------------------
+# #1130: pytest's ``-q --tb=short`` text is its machine report
+# ---------------------------------------------------------------------------
+
+_REPLAYS = Path(__file__).resolve().parents[2] / "fixtures" / "roll_replays"
+
+
+def _stored_stdout(report_name: str) -> str:
+    """The pytest block a stored ``test_report.md`` carries — the bytes the runner saw."""
+    text = (_REPLAYS / report_name).read_text(encoding="utf-8")
+    return text.split("## stdout", 1)[1].split("```")[1]
+
+
+class TestParsePytestFailureRows:
+    """Replayed against stored reports: the roll whose routing defect this fixes and the
+    controls that must not read as suite defects. A parser tested on invented text
+    would pass on text no roll ever produced."""
+
+    def test_roll_3_yields_one_row_per_failed_test_with_the_raising_frame(self):
+        from squadops.capabilities.handlers.test_runner import parse_pytest_failure_rows
+
+        rows = parse_pytest_failure_rows(
+            _stored_stdout("1-6-5-react-roll-3-round-0-test_report.md"),
+            ["backend/tests/test_runs.py"],
+        )
+
+        assert [(r["title"], r["line"], r["exception"]) for r in rows] == [
+            ("test_join_and_leave_run", 69, "TypeError"),
+            ("test_empty_participant_name_on_leave", 149, "TypeError"),
+            ("test_leave_unknown_participant", 167, "TypeError"),
+        ]
+        assert {r["file"] for r in rows} == {"backend/tests/test_runs.py"}
+        assert all(r["suite_level"] is False for r in rows)
+        # The only frame is the test's own — the harness raised while binding arguments.
+        assert rows[0]["frames"] == [
+            {"file": "backend/tests/test_runs.py", "line": 69, "func": "test_join_and_leave_run"}
+        ]
+        assert rows[0]["messages"] == [
+            "TypeError: TestClient.delete() got an unexpected keyword argument 'json'"
+        ]
+
+    def test_a_path_printed_below_the_rootdir_resolves_to_the_handed_in_artifact(self):
+        """1.6.6 roll 6 printed ``tests/test_runs.py`` (an emitted ``backend/pytest.ini``
+        moved pytest's rootdir); the artifact is ``backend/tests/test_runs.py`` and the
+        innermost frame is the application's — nine rows, none the suite's own."""
+        from squadops.capabilities.handlers.test_runner import parse_pytest_failure_rows
+
+        rows = parse_pytest_failure_rows(
+            _stored_stdout("1-6-6-react-roll-6-round-0-test_report.md"),
+            ["backend/tests/test_runs.py"],
+        )
+
+        assert len(rows) == 9
+        assert {r["file"] for r in rows} == {"backend/tests/test_runs.py"}
+        assert {r["exception"] for r in rows} == {"AttributeError"}
+        assert {r["frames"][-1]["file"] for r in rows} == {"backend/routes.py"}
+        assert rows[0]["frames"][0] == {
+            "file": "backend/tests/test_runs.py",
+            "line": 40,
+            "func": "test_create_run_success",
+        }
+
+    def test_a_collection_error_is_one_suite_level_row_naming_the_file(self):
+        from squadops.capabilities.handlers.test_runner import parse_pytest_failure_rows
+
+        rows = parse_pytest_failure_rows(
+            _stored_stdout("collection-error-cyc_1d2e21ab0cfb-test_report.md"),
+            ["backend/tests/test_api.py"],
+        )
+
+        assert len(rows) == 1
+        assert rows[0]["file"] == "backend/tests/test_api.py"
+        assert rows[0]["title"] == ""
+        assert rows[0]["suite_level"] is True
+        assert rows[0]["line"] is None
+        assert rows[0]["exception"] == "ModuleNotFoundError"
+        assert rows[0]["frames"][-1] == {
+            "file": "backend/tests/test_api.py",
+            "line": 3,
+            "func": "<module>",
+        }
+
+    def test_a_rewritten_assert_reads_as_an_assertion_error(self):
+        from squadops.capabilities.handlers.test_runner import parse_pytest_failure_rows
+
+        rows = parse_pytest_failure_rows(
+            _stored_stdout("1-6-6-react-roll-6-assert-test_report.md"),
+            ["backend/tests/test_runs.py"],
+        )
+
+        assert [(r["title"], r["line"], r["exception"]) for r in rows] == [
+            ("test_join_run_duplicate_rejected", 165, "AssertionError")
+        ]
+        assert rows[0]["messages"][0] == "assert 200 == 409"
+
+    @pytest.mark.parametrize(
+        "stdout",
+        ["", "........   [100%]\n11 passed in 0.05s\n", "no tests ran in 0.01s\n"],
+    )
+    def test_output_without_a_failure_section_yields_no_rows(self, stdout):
+        from squadops.capabilities.handlers.test_runner import parse_pytest_failure_rows
+
+        assert parse_pytest_failure_rows(stdout, ["backend/tests/test_runs.py"]) == []
+
+
+class TestSuiteDefects:
+    """Which failures the suite raised in its own frame before any application code ran —
+    the routing signal. Over-attribution here sends an app defect to a test re-author
+    (the test-gaming guard's failure mode), so every ambiguous shape must stay out."""
+
+    def _rows(self, report_name: str, handed_in: str):
+        from squadops.capabilities.handlers.test_runner import parse_pytest_failure_rows
+
+        return parse_pytest_failure_rows(_stored_stdout(report_name), [handed_in])
+
+    def test_roll_3s_binding_errors_at_the_harness_call_are_the_suites_own(self):
+        from squadops.capabilities.handlers.test_runner import suite_defects
+
+        rows = self._rows("1-6-5-react-roll-3-round-0-test_report.md", "backend/tests/test_runs.py")
+        sources = [{"path": "backend/routes.py", "content": "def leave_run():\n    pass\n"}]
+
+        assert suite_defects(rows, sources) == [
+            {
+                "file": "backend/tests/test_runs.py",
+                "title": title,
+                "line": line,
+                "exception": "TypeError",
+                "message": (
+                    "TypeError: TestClient.delete() got an unexpected keyword argument 'json'"
+                ),
+            }
+            for title, line in [
+                ("test_join_and_leave_run", 69),
+                ("test_empty_participant_name_on_leave", 149),
+                ("test_leave_unknown_participant", 167),
+            ]
+        ]
+
+    @pytest.mark.parametrize(
+        ("report_name", "handed_in", "why"),
+        [
+            (
+                "1-6-6-react-roll-6-round-0-test_report.md",
+                "backend/tests/test_runs.py",
+                "the innermost frame is backend/routes.py — the app raised",
+            ),
+            (
+                "collection-error-cyc_1d2e21ab0cfb-test_report.md",
+                "backend/tests/test_api.py",
+                "an import the app should satisfy stays ambiguous (the pf-35 lesson)",
+            ),
+            (
+                "1-6-6-react-roll-6-assert-test_report.md",
+                "backend/tests/test_runs.py",
+                "an assertion is the suite judging the app",
+            ),
+        ],
+    )
+    def test_stored_controls_are_not_the_suites_own(self, report_name, handed_in, why):
+        from squadops.capabilities.handlers.test_runner import suite_defects
+
+        assert suite_defects(self._rows(report_name, handed_in), []) == [], why
+
+    def test_a_binding_error_into_a_callee_the_app_defines_stays_ambiguous(self):
+        """``create_run(name=…)`` failing to bind may be the app's signature drifting
+        from its declaration — the dev chain's question, not a test re-author's."""
+        from squadops.capabilities.handlers.test_runner import (
+            parse_pytest_failure_rows,
+            suite_defects,
+        )
+
+        stdout = (
+            "F\n"
+            "=================================== FAILURES ===================================\n"
+            "______________________________ test_direct_call ______________________________\n"
+            "backend/tests/test_runs.py:12: in test_direct_call\n"
+            "    create_run(name='x', pace=3)\n"
+            "E   TypeError: create_run() got an unexpected keyword argument 'pace'\n"
+            "=========================== short test summary info ============================\n"
+            "FAILED backend/tests/test_runs.py::test_direct_call - TypeError: create_run()...\n"
+            "1 failed in 0.01s\n"
+        )
+        rows = parse_pytest_failure_rows(stdout, ["backend/tests/test_runs.py"])
+        app = [{"path": "backend/routes.py", "content": "def create_run(name):\n    ...\n"}]
+
+        assert suite_defects(rows, []) != []
+        assert suite_defects(rows, app) == []
+
+    def test_a_name_error_in_the_test_module_is_the_suites_own(self):
+        from squadops.capabilities.handlers.test_runner import (
+            parse_pytest_failure_rows,
+            suite_defects,
+        )
+
+        stdout = (
+            "______________________________ test_uses_undefined ______________________________\n"
+            "backend/tests/test_runs.py:30: in test_uses_undefined\n"
+            "    assert created['id']\n"
+            "E   NameError: name 'created' is not defined\n"
+            "=========================== short test summary info ============================\n"
+            "FAILED backend/tests/test_runs.py::test_uses_undefined - NameError: name 'cr...\n"
+        )
+        rows = parse_pytest_failure_rows(stdout, ["backend/tests/test_runs.py"])
+
+        assert suite_defects(rows, []) == [
+            {
+                "file": "backend/tests/test_runs.py",
+                "title": "test_uses_undefined",
+                "line": 30,
+                "exception": "NameError",
+                "message": "NameError: name 'created' is not defined",
+            }
+        ]
+
+    def test_a_frame_below_the_test_is_not_the_suites_own(self):
+        """The same binding error raised inside the frozen conftest's helper: the
+        innermost frame is not the failing file, so the row is not the suite's."""
+        from squadops.capabilities.handlers.test_runner import (
+            parse_pytest_failure_rows,
+            suite_defects,
+        )
+
+        stdout = (
+            "______________________________ test_via_helper ______________________________\n"
+            "backend/tests/test_runs.py:12: in test_via_helper\n"
+            "    leave(client, 'Alice')\n"
+            "backend/tests/conftest.py:40: in leave\n"
+            "    return client.delete('/x', json={'name': name})\n"
+            "E   TypeError: TestClient.delete() got an unexpected keyword argument 'json'\n"
+        )
+        rows = parse_pytest_failure_rows(
+            stdout, ["backend/tests/test_runs.py", "backend/tests/conftest.py"]
+        )
+
+        assert rows[0]["file"] == "backend/tests/test_runs.py"
+        assert rows[0]["frames"][-1]["file"] == "backend/tests/conftest.py"
+        assert suite_defects(rows, []) == []
+
+
+class TestFailedTestsPassRowOwnership:
+    def test_the_row_stamps_each_defect_with_the_stacks_ownership(self):
+        """A defect in ``backend/tests/`` is the qa role's on the React stack; one in a
+        file outside the namespace is not; and with no predicate nothing is — the
+        conservative direction the locus classifier relies on."""
+        from squadops.capabilities.handlers.test_runner import (
+            RunTestsResult,
+            failed_tests_pass_row,
+        )
+        from squadops.capabilities.scaffold import is_qa_test_path_for_stack
+
+        defects = (
+            {"file": "backend/tests/test_runs.py", "title": "t", "line": 1, "exception": "E"},
+            {"file": "backend/routes_test.py", "title": "u", "line": 2, "exception": "E"},
+        )
+        result = RunTestsResult(
+            executed=True, exit_code=1, runner="pytest", suite_broken=False, suite_defects=defects
+        )
+
+        stamped = failed_tests_pass_row(
+            result, qa_owned=lambda p: is_qa_test_path_for_stack(p, "fullstack_fastapi_react")
+        )
+        assert [(d["file"], d["qa_owned"]) for d in stamped["suite_defects"]] == [
+            ("backend/tests/test_runs.py", True),
+            ("backend/routes_test.py", False),
+        ]
+        unstamped = failed_tests_pass_row(result)
+        assert [d["qa_owned"] for d in unstamped["suite_defects"]] == [False, False]

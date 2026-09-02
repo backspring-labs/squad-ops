@@ -8,6 +8,7 @@ import asyncio
 import logging
 import tempfile
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -96,6 +97,19 @@ def _authenticity_row(check: str, offenders: list[str], inspected: list[str]) ->
     if offenders:
         row["offenders"] = offenders
     return row
+
+
+def _qa_owned_for(inputs: dict[str, Any]) -> Callable[[str], bool]:
+    """The stack's own test-namespace predicate, bound to this cycle's stack (#1130).
+
+    Ownership of a failing file is the stack's fact (``is_qa_test_path_for_stack``), read
+    from the same ``resolved_config`` the boot and self-mocking seams read (#822, #1126);
+    an unknown stack owns nothing, so no defect is stamped qa-owned.
+    """
+    from squadops.capabilities.scaffold import is_qa_test_path_for_stack, scaffold_stack_for
+
+    stack = scaffold_stack_for(inputs.get("resolved_config"))
+    return lambda path: is_qa_test_path_for_stack(path, stack)
 
 
 class QATestHandler(_CycleTaskHandler):
@@ -905,7 +919,7 @@ class QATestHandler(_CycleTaskHandler):
                 summary = f"Repaired suite not executed: {reason}"
             from squadops.capabilities.handlers.test_runner import failed_tests_pass_row
 
-            checks.append(failed_tests_pass_row(test_result))
+            checks.append(failed_tests_pass_row(test_result, qa_owned=_qa_owned_for(inputs)))
             missing.append(detail)
         else:
             summary = "Repaired suite passed"
@@ -1407,7 +1421,9 @@ class QATestHandler(_CycleTaskHandler):
 
             from squadops.capabilities.handlers.test_runner import failed_tests_pass_row
 
-            validation.checks.append(failed_tests_pass_row(test_result))
+            validation.checks.append(
+                failed_tests_pass_row(test_result, qa_owned=_qa_owned_for(inputs))
+            )
             validation.passed = False
             validation.missing_components.append(detail)
             validation.summary = (

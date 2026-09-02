@@ -9,6 +9,27 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 check-environment seam, 2026-09-01: **B** — typed checks execute in the producing role's
 agent container, at emission and at repair, and each image provisions its toolchain as data.
 
+### Fixed — a qa-owned defect in a free-authored suite is routed to the qa role (#1130)
+- **pytest's `-q --tb=short` text is its machine report.** The runner parses it into the
+  same per-failure rows vitest's JSON reporter gives — file, title, messages, line — plus
+  the exception class and the traceback frames, so a pytest failure now carries which
+  tests failed (the #878 identities were vitest-only until here; the correction signature
+  on a pytest suite is per-test from this release).
+- **The suite's own-frame failures are a fact the runner states** (`suite_defects`): a
+  `NameError` in the test module, or an argument-binding `TypeError` at a call into the
+  harness — raised before any application code runs, so no app defect can produce them.
+  A binding error into a callee the application defines, an `ImportError`, a `KeyError`
+  on a response body and every assertion stay ambiguous and route as before.
+- **The stack stamps ownership, the classifier routes on it, the router targets the
+  file.** `failed_tests_pass_row` stamps each defect with `is_qa_test_path_for_stack`;
+  a stamped row is an own-artifact signal beside #629/#988/#1153's; the repair target is
+  the defective suite alone, not the task's other suites. Replayed: 1.6.5 roll 3's stored
+  report routes to `qa.test_repair` targeting `backend/tests/test_runs.py` (three
+  `TestClient.delete(json=…)` rows); 1.6.6 roll 6's report (the app raised at
+  `backend/routes.py:24`) stays on the dev chain; a stored collection error and a
+  rewritten assert are not defects. The log line carries `qa_owned_routed` for the set's
+  R2 readout.
+
 ### Changed — what is stack-specific lives behind the stack seam (#1131)
 - **Stack #1 has its own module.** The inline `fullstack_fastapi_react` expander (651 lines)
   moved from `scaffold.py` to `stack_fastapi_react.py`, registered through `ScaffoldStack`

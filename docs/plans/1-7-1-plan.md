@@ -303,6 +303,20 @@ collection in the suite's own frame before any application code is exercised. Th
 `failure_analysis.md` through the router → target `backend/tests/test_runs.py`, chain
 `qa.test_repair`, never `backend/routes.py`.
 
+**As landed (2026-09-02).** The plan's signal did not exist for pytest: `test_failures`
+rows came only from vitest's JSON reporter, and pytest ships no machine report. The runner
+now parses its own `-q --tb=short` text — the bytes every stored `test_report.md`
+carries, so live and replay read the same parser — into the same rows plus the exception
+class and traceback frames. The roll-3 error was not raised *at collection*; it was raised
+in the test body, at the call into the harness, before any request was made. The signal
+as built is that: the innermost frame is the failing file itself and the exception is one
+no app defect can produce (`NameError`, or an argument-binding `TypeError` whose callee
+the application does not define). Ownership is stamped on the row by the stack's own
+predicate at the two `tests_pass` seams; the classifier treats a stamped row as an
+own-artifact signal; the router targets the stamped file alone. Replayed as the plan
+asked: roll 3 → `qa.test_repair`, target `backend/tests/test_runs.py`; roll 6 (the app
+raised) → dev chain; a stored collection error and a rewritten assert → not defects.
+
 **#668 — the DOM anchor contract's enforcement layer**, which #1123's signal needs. The anchor
 inventory is already threaded to the qa author (`handlers/cycle/qa_test.py:536`,
 `_dom_anchor_section`) and to the repair (`handlers/impl/repair_handlers.py:539`); fay-14

@@ -627,7 +627,11 @@ def _locus_and_repair_target(
     re-author would aim it at app source files. Every other locus keeps the
     existing target resolution unchanged.
     """
-    from squadops.cycles.failure_evidence import FailureLocus, classify_failure_locus
+    from squadops.cycles.failure_evidence import (
+        FailureLocus,
+        classify_failure_locus,
+        qa_owned_suite_defects,
+    )
 
     failure_locus = classify_failure_locus(failure_evidence)
     own_expected = [str(e) for e in (failed_inputs.get("expected_artifacts") or []) if e]
@@ -651,6 +655,29 @@ def _locus_and_repair_target(
         return (
             failure_locus,
             shells,
+            failed_inputs.get("subtask_focus"),
+            failed_inputs.get("subtask_description"),
+        )
+    # #1130: the suite raised in its own frame in a file the stack says is the qa role's
+    # (1.6.5 roll 3: ``TestClient.delete(json=…)`` in ``backend/tests/test_runs.py``,
+    # sent to the dev chain 3/3 rounds). The target is THAT file — the failed task's
+    # other suites, if any, were not the defect and are not re-authored.
+    qa_defects = qa_owned_suite_defects(failure_evidence)
+    if failure_locus == FailureLocus.OWN_ARTIFACT and qa_defects:
+        defect_files = list(dict.fromkeys(str(d["file"]) for d in qa_defects if d.get("file")))
+        target = [f for f in own_expected if f in defect_files] or defect_files
+        logger.info(
+            "correction_repair_locus: own_artifact — qa_owned_routed: %s raised %s in its own "
+            "frame (%s); %s re-authors %s (#1130)",
+            ", ".join(defect_files),
+            ", ".join(sorted({str(d.get("exception") or "?") for d in qa_defects})),
+            "; ".join(f"{d.get('title') or d.get('file')}:{d.get('line')}" for d in qa_defects[:5]),
+            failed_task_type,
+            ", ".join(target),
+        )
+        return (
+            failure_locus,
+            target,
             failed_inputs.get("subtask_focus"),
             failed_inputs.get("subtask_description"),
         )

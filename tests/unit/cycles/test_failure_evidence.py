@@ -745,3 +745,55 @@ class TestScaffoldClassificationLocus:
     def test_an_empty_classification_changes_nothing(self):
         evidence = self._evidence({})
         assert classify_failure_locus(evidence) == FailureLocus.UNKNOWN
+
+
+class TestQaOwnedSuiteDefectLocus:
+    """#1130: a suite that raised in its own frame, in a file the stack says is the qa
+    role's, is the qa role's own artifact — even though the run executed and pytest
+    said exit 1. 1.6.5 roll 3 read as SUBJECT for three rounds on exactly that row."""
+
+    _evidence_with_check = TestClassifyFailureLocus._evidence_with_check
+
+    @staticmethod
+    def _row(qa_owned: bool):
+        return {
+            "check": "tests_pass",
+            "executed": True,
+            "exit_code": 1,
+            "passed": False,
+            "runner": "pytest",
+            "suite_broken": False,
+            "failing_tests": ("backend/tests/test_runs.py::test_join_and_leave_run",),
+            "suite_defects": [
+                {
+                    "file": "backend/tests/test_runs.py",
+                    "title": "test_join_and_leave_run",
+                    "line": 69,
+                    "exception": "TypeError",
+                    "message": "TypeError: TestClient.delete() got an unexpected keyword …",
+                    "qa_owned": qa_owned,
+                }
+            ],
+        }
+
+    def test_a_qa_owned_own_frame_defect_outranks_the_executed_exit_1_verdict(self):
+        evidence = self._evidence_with_check(self._row(qa_owned=True))
+        assert classify_failure_locus(evidence) == FailureLocus.OWN_ARTIFACT
+
+    def test_an_unowned_own_frame_defect_leaves_the_subject_verdict_alone(self):
+        evidence = self._evidence_with_check(self._row(qa_owned=False))
+        assert classify_failure_locus(evidence) == FailureLocus.SUBJECT
+
+    def test_the_helper_returns_only_the_stamped_entries(self):
+        from squadops.cycles.failure_evidence import qa_owned_suite_defects
+
+        owned = self._row(qa_owned=True)
+        unowned = self._row(qa_owned=False)
+        unowned["suite_defects"][0]["file"] = "backend/other_test.py"
+        evidence = {"validation_result": {"passed": False, "checks": [unowned, owned]}}
+
+        assert [d["file"] for d in qa_owned_suite_defects(evidence)] == [
+            "backend/tests/test_runs.py"
+        ]
+        assert qa_owned_suite_defects("not evidence") == []
+        assert qa_owned_suite_defects({"validation_result": {"checks": [{"check": "x"}]}}) == []
