@@ -21,6 +21,20 @@ agent container, at emission and at repair, and each image provisions its toolch
   procedure around the driver — the loop, diagnostics, readouts, detached launches,
   re-attaching a dead driver, cancelling an orphaned run — is
   `docs/plans/verification-sets/README.md`, which the driver's docstring now points at.
+### Fixed — the repair evaluates the failed task's criteria on the tree the verifier overlays (#1264)
+- The React shakeout on `06408dfe` (`cyc_4ec4ad5e2ca1`) refused a correct route fix twice
+  and was rejected: the dev repair of a qa failure evaluated the qa suite's criteria in its
+  own container on a tree without the suite — the failed emission is not in the accepted
+  workspace and the dev never emits it — so six rows were executed failures about a file
+  the patch never touched, and #1259's backstop, keyed on the verifier's overlay (which
+  carries the failed task's files), kept them. The repair envelope now carries the failed
+  task's own emitted files (`failed_task_artifacts`) and the repair materialises them
+  beneath the accepted workspace before its patch — the same tree the verifier overlays,
+  which is what rule B promised — and the backstop is keyed on the repair's own artifact
+  names. Replayed: the suite's criteria pass on the dev's patch once the suite is in the
+  tree; with the overlay carrying the suite and the agent's absent-suite rows, the patch
+  passes instead of being refused.
+
 ### Fixed — a file the patch never carries is not evidence against the patch (#1259)
 - The Next.js shakeout on the final 1.7.1 deploy (`cyc_9c379355b5e8`, round 0) refused a
   correct route fix: the dev repair of a qa failure is judged against the qa task's

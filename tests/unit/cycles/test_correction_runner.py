@@ -5377,3 +5377,120 @@ class TestTheProtocolResultCarriesTheRepairsRows(TestCorrectionRunnerStandalone)
         protocol = await self._run(with_rows=False)
         assert protocol.correction_path == "patch"
         assert protocol.repair_typed_checks == ()
+
+
+class TestTheRepairEnvelopeCarriesTheFailedTasksFiles(TestCorrectionRunnerStandalone):
+    """#1264: the failed task's own emitted files ride its repair envelope, so the repair
+    evaluates the failed task's criteria on the tree the verifier overlays."""
+
+    def _failed_qa_envelope_1264(self):
+        from squadops.tasks.models import TaskEnvelope
+
+        return TaskEnvelope(
+            task_id="task_qa_failed",
+            agent_id="eve",
+            cycle_id="cyc_001",
+            pulse_id="p",
+            project_id="hello_squad",
+            task_type="qa.test",
+            correlation_id="corr",
+            causation_id=None,
+            trace_id="t",
+            span_id="s",
+            inputs={
+                "expected_artifacts": ["backend/tests/test_runs.py"],
+                "implementation_artifacts": ["backend/routes.py"],
+                "subtask_focus": "runs suite",
+                "subtask_description": "the runs suite",
+                "acceptance_criteria": [],
+                "resolved_config": {"build_profile": "fullstack_fastapi_react"},
+            },
+            metadata={"role": "qa"},
+        )
+
+    @staticmethod
+    def _responder_1264(captured):
+        def responder(envelope):
+            captured.append(envelope)
+            if envelope.task_type == "data.analyze_failure":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={
+                        "classification": "work_product",
+                        "analysis_summary": "router paths",
+                        "implicated_files": ["backend/routes.py"],
+                    },
+                )
+            if envelope.task_type == "governance.correction_decision":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={
+                        "correction_path": "patch",
+                        "decision_rationale": "prefix the paths",
+                        "affected_task_types": ["development.develop"],
+                    },
+                )
+            return TaskResult(
+                task_id=envelope.task_id,
+                status="SUCCEEDED",
+                outputs={
+                    "artifacts": [
+                        {
+                            "name": "backend/routes.py",
+                            "content": "router = None\n",
+                            "media_type": "text/x-python",
+                            "type": "source",
+                        }
+                    ]
+                },
+            )
+
+        return responder
+
+    async def test_the_failed_qa_suite_rides_the_dev_repair_envelope(self):
+        from squadops.capabilities.context_assembly import REPAIR_FAILED_ARTIFACTS_KEY
+
+        captured: list = []
+        runner, _registry, _vault, _bus = self._make_runner(self._responder_1264(captured))
+        envelope = self._failed_qa_envelope_1264()
+        suite = {"name": "backend/tests/test_runs.py", "content": "def test_create_run(): ...\n"}
+        failed = TaskResult(
+            task_id=envelope.task_id,
+            status="FAILED",
+            error="tests failed (exit code 4)",
+            outputs={
+                "validation_result": {"passed": False, "checks": []},
+                "artifacts": [suite, {"name": "test_report.md", "content": "exit 4"}],
+                "test_result": {"exit_code": 4, "passed": False},
+            },
+        )
+        await runner.run_correction_protocol(
+            run_id="run_001",
+            cycle=Cycle(
+                cycle_id="cyc_001",
+                project_id="hello_squad",
+                created_at=NOW,
+                created_by="system",
+                prd_ref="prd_123",
+                squad_profile_id="full",
+                squad_profile_snapshot_ref="sha256:abc",
+                task_flow_policy=TaskFlowPolicy(mode="sequential"),
+                build_strategy="fresh",
+            ),
+            envelope=envelope,
+            result=failed,
+            correction_attempts=0,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+        )
+        repairs = [e for e in captured if e.task_type.endswith("correction_repair")]
+        assert len(repairs) == 1
+        assert repairs[0].inputs[REPAIR_FAILED_ARTIFACTS_KEY] == [
+            suite,
+            {"name": "test_report.md", "content": "exit 4"},
+        ]
