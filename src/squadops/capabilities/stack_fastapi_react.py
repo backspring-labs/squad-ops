@@ -23,6 +23,7 @@ comments below are the same decisions in place; the register is the durable reco
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
 from squadops.capabilities.app_invocation import NETWORK_SEAM_FETCH_STUB, AppInvocation
@@ -514,6 +515,41 @@ export async function apiFetch(path, options = {}) {
   return response.json()
 }
 """
+
+
+#: ``export async function name(params)`` / ``export class Name`` in the frozen client.
+_CLIENT_EXPORT_RE = re.compile(
+    r"^export\s+(?:async\s+)?(?:function\s+(?P<func>\w+)\s*\((?P<params>[^)]*)\)"
+    r"|class\s+(?P<cls>\w+))",
+    re.M,
+)
+
+
+def client_surface_lines(manifest: InterfaceManifest) -> list[str]:
+    """The frozen ``frontend/src/api.js`` client's call surface, one line per export (#668).
+
+    The suite author mocks or stubs beneath this client and never sees it rendered — the
+    fay-14 mismatch class: a mock shaped for a client the author imagined. Derived from
+    the template the stack freezes, so the lines cannot drift from the bytes; the prose
+    around them lives in the appendix asset. The manifest is unused today (the client is
+    manifest-independent) and taken for the seam's signature.
+    """
+    del manifest
+    lines: list[str] = []
+    for m in _CLIENT_EXPORT_RE.finditer(_API_JS):
+        if m.group("func"):
+            lines.append(
+                f"`{m.group('func')}({m.group('params').strip()})` exported from "
+                "`frontend/src/api.js` — prefixes `/api`, sends JSON headers, returns the "
+                "parsed JSON body (`null` on 204) and throws `ApiError` on a non-2xx response"
+            )
+        else:
+            lines.append(
+                f"`{m.group('cls')}(code, message, status)` exported from "
+                "`frontend/src/api.js` — the error a non-2xx "
+                '`{"error": {code, message}}` envelope becomes'
+            )
+    return lines
 
 
 def _app_jsx(manifest: InterfaceManifest) -> str:

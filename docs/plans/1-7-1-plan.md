@@ -329,6 +329,19 @@ queries) is flagged; a suite querying `run-detail`/`participant-list` per the in
 Scope stated on the issue and kept: anchors arbitrate *where* the suite looks, not the
 data-fetch contract.
 
+**As landed (2026-09-02).** Options 1 + 2 as recommended. The typed check is
+`dom_anchor_queries`, planner-bound per frontend suite with the inventory as params; its
+rules are "a rendering suite queries some declared anchor" and "an imported view is
+located through some anchor of its own" — *some*, not the root: measured over the vault
+first, the root form would have rejected seven of nine accepted-roll suites. The anchor
+block already rendered as an authoritative contract (#667); what landed on the prompt side
+is the owner's 2026-07-31 addition — the frozen client's call surface, derived from the
+stack's template bytes and threaded to the qa author, the repair and the retest. The
+mock-honours-the-surface check is not in this line: fay-14 stubbed `global.fetch` and
+mocked no client export, so the named replay cannot exercise it; 34 stored suites that
+mock `../api` are the replay set for a follow-up. Replayed: fay-14 → both rules, 55 text
+queries; 1.6.6 React roll 6 → clean, ten anchors, no root. R3 as written.
+
 **#1123 — scope the qa repair, route on a machine signal.** Two deterministic pieces. (1) The
 `qa.test_repair` brief names the failing cases from the runner's structured rows
 (`test_failures`, `failing_test_identities` at `test_runner.py:746`) with the runner's messages

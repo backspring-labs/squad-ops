@@ -1,0 +1,112 @@
+version: 1
+kind: interface_manifest
+project_id: group-run
+source_prd: "PRD: group_run (1-Hour Cycle MVP+) v0.5"
+stack: fullstack_fastapi_react
+scope: "Core run-event coordination (create, list, detail, join, leave) with in-memory persistence and three React views; deliberately excludes authentication, persistent database, real-time features, external APIs, capacity limits, datetime parsing, and all Tier 2–3 expansion items."
+entities:
+  - name: Run
+    fields:
+      - { name: id, type: string, required: true, generated: true }
+      - { name: title, type: string, required: true }
+      - { name: datetime, type: string, required: true }
+      - { name: location, type: string, required: true }
+      - { name: distance, type: string, required: false }
+      - { name: pace_target, type: string, required: false }
+      - { name: route_notes, type: string, required: false }
+      - { name: participants, type: "list[string]", required: true, default: [] }
+      - { name: participant_count, type: integer, required: true, default: 0 }
+api:
+  base_path: /api
+  request_shapes:
+    RunCreate:
+      required: [title, datetime, location]
+      optional: [distance, pace_target, route_notes]
+    JoinRequest:
+      required: [name]
+    LeaveRequest:
+      required: [name]
+  endpoints:
+    - method: POST
+      path: /runs
+      summary: Create a new run event
+      request: RunCreate
+      response: Run
+      success_status: 201
+      errors: [validation_error]
+    - method: GET
+      path: /runs
+      summary: List all run events
+      response: "list[Run]"
+    - method: GET
+      path: /runs/{run_id}
+      summary: Retrieve a single run event with its participant list
+      response: Run
+      errors: [run_not_found]
+    - method: POST
+      path: /runs/{run_id}/join
+      summary: Add a participant to a run by name
+      request: JoinRequest
+      response: Run
+      errors: [run_not_found, duplicate_participant, validation_error]
+    - method: POST
+      path: /runs/{run_id}/leave
+      summary: Remove a participant from a run by name
+      request: LeaveRequest
+      response: Run
+      errors: [run_not_found, participant_not_found, validation_error]
+  error_contract:
+    shape: '{"error": {"code": "...", "message": "..."}}'
+    codes:
+      run_not_found: { http: 404 }
+      duplicate_participant: { http: 409 }
+      participant_not_found: { http: 404 }
+      validation_error: { http: 422 }
+frontend:
+  framework: react_vite
+  routes:
+    - path: /
+      view: RunListView
+      purpose: Display all run events (title, datetime, location, participant count); provide a create-run CTA; show an empty state when no runs exist
+      testids: [run-list-view, run-list, run-card, run-card-title, run-card-datetime, run-card-location, run-card-participant-count, create-run-link, empty-state]
+    - path: /create
+      view: CreateRunView
+      purpose: Form to create a new run event with required fields (title, datetime, location) and optional fields (distance, pace target, route notes); client-side required-field validation before submit
+      testids: [create-run-view, create-run-form, create-run-title, create-run-datetime, create-run-location, create-run-distance, create-run-pace, create-run-notes, create-run-submit, create-run-error]
+    - path: /runs/:runId
+      view: RunDetailView
+      purpose: Display full run details and participant list; provide join form (name input) and leave form (name input); show duplicate-join error and not-found state
+      testids: [run-detail-view, run-detail-title, run-detail-datetime, run-detail-location, run-detail-distance, run-detail-pace, run-detail-notes, participant-list, participant-name, join-form, join-name-input, join-submit, leave-form, leave-name-input, leave-submit, run-detail-error, not-found-state]
+persistence: in_memory
+decisions:
+  - id: duplicate-name-comparison
+    choice: "Case-insensitive comparison using casefold(); names are trimmed before comparison and the original casing is preserved in the stored/displayed list"
+    warrant: "PRD §5.4 — 'case sensitivity behavior should be defined in implementation; default recommendation: case-insensitive uniqueness'"
+  - id: leave-not-found-behavior
+    choice: "POST /api/runs/{run_id}/leave with a name not present on the run returns 404 with error code PARTICIPANT_NOT_FOUND; it is not a silent no-op"
+    warrant: "PRD §5.5 — 'backend returns clear error (or no-op with clear response; choose one and document in QA handoff)'"
+  - id: datetime-handling
+    choice: "Datetime is stored and returned as an opaque free-form string; the server performs no format validation, timezone conversion, or parsing"
+    warrant: "PRD §5.1 — 'string input acceptable for MVP'; PRD §13 defers 'Datetime parsing + sorting improvements' to post-MVP"
+  - id: run-id-generation
+    choice: "Server-generated UUID4 hex string (32 characters), returned in the 201 create response and used as the path parameter for all subsequent run-scoped endpoints"
+    warrant: "PRD §5.1 — 'Successful create returns created run with generated id'; Technical design D8"
+  - id: participant-ordering
+    choice: "Participants are listed in join order (FIFO append); leaving a participant removes them from the list without reordering remaining entries"
+    warrant: "PRD §5.4 — 'Joined participant appears in participant list immediately' implies append-to-end semantics"
+  - id: list-ordering
+    choice: "GET /api/runs returns runs in creation (insertion) order with no default sorting by datetime or title"
+    warrant: "PRD §4.1 Tier 1 item 2 lists 'Basic Datetime Sorting' as expansion scope, confirming core has no sort guarantee"
+  - id: participant-count-derivation
+    choice: "participant_count is always equal to len(participants) and is computed at serialization time; it is never independently stored or mutated"
+    warrant: "PRD §5.6 requires 'participant count' to reflect the actual list; Technical design D4 — eliminates count-drift bugs"
+  - id: api-base-path
+    choice: "All backend endpoints are served under the /api prefix; the frontend issues requests to /api/… via a Vite dev-server proxy to the FastAPI process"
+    warrant: "Objective frame D6 — 'Relative /api prefix with Vite dev-server proxy to http://localhost:8000'; no hardcoded host in frontend code"
+
+provenance:
+  mode: authored
+  cycle_id: cyc_0c4664c2ae9a
+  task_id: task-run_1650579c-003-development.author_manifest
+  attempts: 1
+  revisions: []

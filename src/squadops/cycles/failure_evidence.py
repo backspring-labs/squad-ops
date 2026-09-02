@@ -13,6 +13,7 @@ from squadops.cycles.acceptance_check_spec import (
     CHECK_ADDITIVE_CONTAINMENT,
     CHECK_ASSERTION_KINDS,
     CHECK_CONTRACT_ASSERTIONS,
+    CHECK_DOM_ANCHOR_QUERIES,
 )
 from squadops.cycles.check_registry import (
     CHECK_NO_SELF_MOCKING_TESTS,
@@ -23,9 +24,14 @@ from squadops.cycles.verification_integrity import ResultStatus
 from squadops.cycles.verification_normalize import row_is_blocking_failure
 
 #: Check rows whose failure means the suite contradicts a declaration (the contract's
-#: pinned statuses, the manifest's field kinds) — the suite's own defect, by construction.
+#: pinned statuses, the manifest's field kinds, the manifest's DOM anchors — #668) — the
+#: suite's own defect, by construction.
 _DECLARATION_OWNED_SUITE_CHECKS: frozenset[str] = frozenset(
-    {f"acceptance:{CHECK_CONTRACT_ASSERTIONS}", f"acceptance:{CHECK_ASSERTION_KINDS}"}
+    {
+        f"acceptance:{CHECK_CONTRACT_ASSERTIONS}",
+        f"acceptance:{CHECK_ASSERTION_KINDS}",
+        f"acceptance:{CHECK_DOM_ANCHOR_QUERIES}",
+    }
 )
 
 

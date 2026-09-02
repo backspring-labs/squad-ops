@@ -1216,3 +1216,49 @@ def test_the_store_paragraph_in_the_model_brief_is_the_stacks_own():
     nextjs = scaffold.model_surface_instructions(manifest_for_stack("nextjs_ts"))
     assert nextjs, "the Next.js brief still carries the model surface"
     assert not [line for line in nextjs if "backend/store.py" in line or ".store import" in line]
+
+
+class TestClientSurfaceLines:
+    """#668: the frozen client's call surface is derived from the bytes the stack freezes,
+    so the lines the suite author reads cannot drift from the client the views call."""
+
+    def test_the_react_stack_names_every_export_of_its_frozen_client(self):
+        from pathlib import Path
+
+        import yaml
+
+        from squadops.capabilities.scaffold import InterfaceManifest, client_surface_instructions
+        from squadops.capabilities.stack_fastapi_react import _API_JS
+
+        replays = Path(__file__).resolve().parents[2] / "fixtures" / "roll_replays"
+        manifest = InterfaceManifest.from_dict(
+            yaml.safe_load(
+                (replays / "1-6-6-react-roll-6-interface_manifest.yaml").read_text(encoding="utf-8")
+            )
+        )
+        lines = client_surface_instructions(manifest)
+        assert [line.split("`")[1] for line in lines] == [
+            "ApiError(code, message, status)",
+            "apiFetch(path, options = {})",
+        ]
+        assert "export async function apiFetch(path, options = {})" in _API_JS
+        assert all("`frontend/src/api.js`" in line for line in lines)
+
+    def test_a_stack_freezing_no_client_declares_none(self):
+        import dataclasses
+        from pathlib import Path
+
+        import yaml
+
+        from squadops.capabilities.scaffold import InterfaceManifest, client_surface_instructions
+
+        assert client_surface_instructions(None) == []
+        replays = Path(__file__).resolve().parents[2] / "fixtures" / "roll_replays"
+        manifest = InterfaceManifest.from_dict(
+            yaml.safe_load(
+                (replays / "1-6-6-react-roll-6-interface_manifest.yaml").read_text(encoding="utf-8")
+            )
+        )
+        # Next.js suites call route handlers directly; the stack declares no client surface.
+        assert client_surface_instructions(dataclasses.replace(manifest, stack="nextjs_ts")) == []
+        assert client_surface_instructions(dataclasses.replace(manifest, stack="unknown")) == []

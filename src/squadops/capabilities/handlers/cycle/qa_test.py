@@ -571,6 +571,29 @@ class QATestHandler(_CycleTaskHandler):
         )
         return rendered.content
 
+    async def _client_surface_section(
+        self, context: ExecutionContext, inputs: dict[str, Any]
+    ) -> str:
+        """Render the FROZEN API CLIENT block from executor-threaded lines, or "" (#668).
+
+        Anchors arbitrate where the suite looks; this arbitrates what its mock of the
+        client must honour — fay-14's suite stubbed a client shaped by imagination. The
+        lines are stack-derived data (``scaffold.client_surface_instructions``); the
+        prose lives in the appendix asset (CLAUDE.md #448).
+        """
+        lines = [str(line).strip() for line in (inputs.get("frozen_client_surface") or [])]
+        lines = [line for line in lines if line]
+        if not lines:
+            return ""
+        renderer = getattr(context.ports, "request_renderer", None)
+        if renderer is None:
+            return ""
+        rendered = await renderer.render(
+            "request.qa_test_client_surface_appendix",
+            {"client_lines": "\n".join(f"- {line}" for line in lines)},
+        )
+        return rendered.content
+
     async def _frozen_surface_section(
         self, context: ExecutionContext, inputs: dict[str, Any]
     ) -> str:
@@ -1066,6 +1089,9 @@ class QATestHandler(_CycleTaskHandler):
             dom_anchor_section = await self._dom_anchor_section(context, inputs)
             if dom_anchor_section:
                 user_prompt = f"{user_prompt}\n{dom_anchor_section}"
+            client_surface_section = await self._client_surface_section(context, inputs)
+            if client_surface_section:
+                user_prompt = f"{user_prompt}\n{client_surface_section}"
             frozen_section = await self._frozen_surface_section(context, inputs)
             if frozen_section:
                 user_prompt = f"{user_prompt}\n{frozen_section}"

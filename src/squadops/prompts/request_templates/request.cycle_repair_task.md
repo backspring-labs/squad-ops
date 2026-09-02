@@ -16,6 +16,7 @@ optional_variables:
   - fill_only_section
   - contract_expectations
   - dom_anchor_section
+  - client_surface_section
   - frozen_surface_section
   - loop_state
   - qa_fill_mode_section
@@ -27,6 +28,7 @@ You are repairing a failed `{{failed_task_type}}` task. Your job is to re-produc
 {{qa_fill_mode_section}}
 {{contract_expectations}}
 {{dom_anchor_section}}
+{{client_surface_section}}
 {{frozen_surface_section}}
 
 ### Failed Task Contract

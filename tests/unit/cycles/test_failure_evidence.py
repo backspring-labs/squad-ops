@@ -828,3 +828,14 @@ class TestAdditiveContainmentLocus:
         tests_pass = {"check": "tests_pass", "executed": True, "exit_code": 1, "passed": False}
         evidence = {"validation_result": {"passed": False, "checks": [row, tests_pass]}}
         assert classify_failure_locus(evidence) == FailureLocus.SUBJECT
+
+
+def test_a_failed_dom_anchor_row_is_the_suites_own_defect():
+    """#668: the manifest's anchors are a declaration; a suite that ignores them is the
+    qa role's to re-author, never the dev chain's — even when tests_pass also failed."""
+    rows = [
+        {"check": "acceptance:dom_anchor_queries", "passed": False, "status": "failed"},
+        {"check": "tests_pass", "executed": True, "exit_code": 1, "passed": False},
+    ]
+    evidence = {"validation_result": {"passed": False, "checks": rows}}
+    assert classify_failure_locus(evidence) == FailureLocus.OWN_ARTIFACT

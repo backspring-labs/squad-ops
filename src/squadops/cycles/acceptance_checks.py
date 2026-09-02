@@ -35,6 +35,7 @@ from squadops.cycles.acceptance_check_spec import (
     CHECK_CONTAINER_PACKAGING,
     CHECK_CONTRACT_ASSERTIONS,
     CHECK_DECLARED_IMPORTS,
+    CHECK_DOM_ANCHOR_QUERIES,
     CHECK_ENDPOINT_DEFINED,
     CHECK_FILL_SLOT_SIGNATURE,
     CHECK_SPECS,
@@ -2028,6 +2029,59 @@ class FrontendCompilesCheck(BaseCheck):
     async def _run(argv: list[str], cwd: Path, timeout_s: int) -> tuple[int | None, str, str]:
         """Run one build step; ``(returncode, stdout, stderr)``, rc None on timeout."""
         return await _run_argv(argv, cwd, timeout_s)
+
+
+@register_check(CHECK_DOM_ANCHOR_QUERIES)
+class DomAnchorQueriesCheck(BaseCheck):
+    """#668: a frontend suite locates elements through the manifest's anchors.
+
+    ``anchors`` is the inventory the planner bound (``{view: [data-testid, ...]}``); the
+    rules and the banked observations are ``dom_anchor_queries``' (pure over the bytes).
+    An empty inventory judges nothing and skips — the planner never binds one, but a
+    hand-authored row could."""
+
+    async def evaluate(
+        self,
+        params: dict[str, Any],
+        workspace_root: Path,
+        *,
+        stack: str | None = None,
+    ) -> CheckOutcome:
+        from squadops.capabilities.dom_anchor_queries import (
+            anchor_findings,
+            anchor_observations,
+        )
+
+        rel = str(params["file"])
+        inventory = {
+            str(view): [str(a) for a in anchors]
+            for view, anchors in (params.get("anchors") or {}).items()
+            if isinstance(anchors, (list, tuple)) and anchors
+        }
+        if not inventory:
+            return CheckOutcome.skipped(reason="no_anchor_inventory", file=rel)
+        try:
+            target = _safe_resolve(rel, workspace_root)
+        except _SafetyError as exc:
+            return CheckOutcome.error(reason=exc.reason)
+        if not target.is_file():
+            return CheckOutcome.failed(reason="file_not_found", file=rel)
+        try:
+            content = target.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return CheckOutcome.error(reason="file_unreadable")
+
+        observations = anchor_observations(content, inventory)
+        findings = anchor_findings(content, inventory)
+        if findings:
+            rules = sorted({f.rule for f in findings})
+            return CheckOutcome.failed(
+                reason=f"{len(findings)} anchor finding(s): {', '.join(rules)}",
+                file=rel,
+                findings=[{"rule": f.rule, "detail": f.detail} for f in findings],
+                **observations,
+            )
+        return CheckOutcome.passed(file=rel, findings=[], **observations)
 
 
 @register_check(CHECK_ADDITIVE_CONTAINMENT)

@@ -442,6 +442,10 @@
    "expected_artifacts": [
     "backend/tests/test_items.py"
    ],
+   "frozen_client_surface": [
+    "`ApiError(code, message, status)` exported from `frontend/src/api.js` \u2014 the error a non-2xx `{\"error\": {code, message}}` envelope becomes",
+    "`apiFetch(path, options = {})` exported from `frontend/src/api.js` \u2014 prefixes `/api`, sends JSON headers, returns the parsed JSON body (`null` on 204) and throws `ApiError` on a non-2xx response"
+   ],
    "implementation_artifacts": [
     "backend/routes.py"
    ],

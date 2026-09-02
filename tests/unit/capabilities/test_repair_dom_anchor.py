@@ -113,3 +113,35 @@ def test_repair_template_declares_and_uses_dom_anchor_section():
     text = _TEMPLATE.read_text(encoding="utf-8")
     assert "- dom_anchor_section" in text  # declared optional var
     assert "{{dom_anchor_section}}" in text  # placed in the body
+
+
+_CLIENT_LINES = [
+    "`apiFetch(path, options = {})` exported from `frontend/src/api.js` — prefixes `/api`",
+]
+
+
+async def test_qa_repair_renders_the_frozen_client_surface_from_threaded_lines():
+    """#668: the re-authored suite mocks beneath the same client the original dispatch
+    was shown; a repair blind to its surface re-invents it (fay-14's class)."""
+    handler = QATestRepairHandler()
+    renderer = AsyncMock()
+    renderer.render.return_value = MagicMock(content="CLIENT BLOCK")
+
+    out = await handler._render_client_surface_section(
+        _context(renderer), {"frozen_client_surface": _CLIENT_LINES}
+    )
+
+    assert out == "CLIENT BLOCK"
+    (template_id, variables) = renderer.render.await_args.args
+    assert template_id == "request.qa_test_client_surface_appendix"
+    assert variables["client_lines"] == "- " + _CLIENT_LINES[0]
+
+
+async def test_dev_repair_never_renders_the_client_surface():
+    handler = DevelopmentCorrectionRepairHandler()
+    renderer = AsyncMock()
+    out = await handler._render_client_surface_section(
+        _context(renderer), {"frozen_client_surface": _CLIENT_LINES}
+    )
+    assert out == ""
+    renderer.render.assert_not_awaited()

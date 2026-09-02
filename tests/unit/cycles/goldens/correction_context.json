@@ -177,6 +177,10 @@
        "summary": "1/2 checks passed"
       }
      },
+     "frozen_client_surface": [
+      "`ApiError(code, message, status)` exported from `frontend/src/api.js` \u2014 the error a non-2xx `{\"error\": {code, message}}` envelope becomes",
+      "`apiFetch(path, options = {})` exported from `frontend/src/api.js` \u2014 prefixes `/api`, sends JSON headers, returns the parsed JSON body (`null` on 204) and throws `ApiError` on a non-2xx response"
+     ],
      "frozen_surface": [
       "- `backend/__init__.py` \u2014 import as `backend`",
       "- `backend/main.py` \u2014 import as `backend.main`; functions health(); its own imports `.errors`, `.routes`, `fastapi`, `fastapi.middleware.cors`, `os`",
@@ -310,6 +314,10 @@
        "summary": "no artifacts"
       }
      },
+     "frozen_client_surface": [
+      "`ApiError(code, message, status)` exported from `frontend/src/api.js` \u2014 the error a non-2xx `{\"error\": {code, message}}` envelope becomes",
+      "`apiFetch(path, options = {})` exported from `frontend/src/api.js` \u2014 prefixes `/api`, sends JSON headers, returns the parsed JSON body (`null` on 204) and throws `ApiError` on a non-2xx response"
+     ],
      "frozen_surface": [
       "- `backend/__init__.py` \u2014 import as `backend`",
       "- `backend/main.py` \u2014 import as `backend.main`; functions health(); its own imports `.errors`, `.routes`, `fastapi`, `fastapi.middleware.cors`, `os`",

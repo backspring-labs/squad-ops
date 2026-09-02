@@ -29,6 +29,30 @@ agent container, at emission and at repair, and each image provisions its toolch
   `backend/routes.py:24`) stays on the dev chain; a stored collection error and a
   rewritten assert are not defects. The log line carries `qa_owned_routed` for the set's
   R2 readout.
+### Added — the DOM anchor contract gets its enforcement layer (#668)
+- **`dom_anchor_queries`**, a typed check the planner binds onto every bound qa.test
+  frontend suite when the manifest declares view anchors, with the inventory as
+  self-contained params: a suite that renders must query at least one declared anchor,
+  and a suite that imports a contract view must query some anchor of that view — any of
+  them, not the root, because seven of the nine accepted-roll suites that import a view
+  never query its root container and every one queries some anchor of it (measured over
+  the vault before landing). Each failure names the view and its anchors; a failed row is
+  the suite's own defect. Banked beside the verdict: the anchors queried that no view
+  declares (`unknown_anchors`, the qa-side signal #1123 routes on) and the count of
+  text/role/label queries. Replayed: fay-14's suite (`cyc_42eed09efbec`) breaks both rules
+  with 55 text queries and zero anchors; the accepted 1.6.6 React roll-6 suite passes.
+- **The frozen client's call surface reaches the suite author** — the owner's 2026-07-31
+  addition. The React stack derives one line per export of its frozen `frontend/src/api.js`
+  (`apiFetch(path, options = {})`, `ApiError(code, message, status)`) from the template
+  bytes; the planner threads them as `frozen_client_surface` beside the anchors, the qa
+  authoring and repair prompts render them through a new appendix asset, and the repair
+  and retest contracts carry the surface. Next.js declares none (its suites call route
+  handlers directly).
+- Not in this PR, stated: a check that a suite's mock of the client honours that surface.
+  fay-14 stubbed `global.fetch` (legitimate beneath the client) and mocked no client
+  export, so its stored suite cannot exercise such a check; 34 stored suites do mock
+  `../api`, and that replay set is the next step, named on the issue.
+
 ### Added — additive-suite containment is a gate (#1022)
 - **`additive_containment`**, a typed check the framework injects on every emitted JS/TS
   suite file (the harness's suite suffixes) on both stacks, at emission and on a repair's

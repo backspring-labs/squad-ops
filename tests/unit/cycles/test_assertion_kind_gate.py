@@ -271,3 +271,66 @@ class TestReplays:
         )
         assert outcome.status == "passed"
         assert outcome.actual["assertions_read"] > 0
+
+
+class TestDomAnchorInjection:
+    """#668: the planner binds `dom_anchor_queries` onto every bound qa.test frontend suite
+    with the manifest's inventory as self-contained params — and onto nothing else."""
+
+    def _manifest(self):
+        from pathlib import Path
+
+        import yaml
+
+        from squadops.capabilities.scaffold import InterfaceManifest
+
+        path = (
+            Path(__file__).resolve().parents[2]
+            / "fixtures"
+            / "roll_replays"
+            / "1-6-6-react-roll-6-interface_manifest.yaml"
+        )
+        return InterfaceManifest.from_dict(yaml.safe_load(path.read_text(encoding="utf-8")))
+
+    def test_bound_frontend_suites_get_the_inventory_and_backend_suites_do_not(self):
+        from types import SimpleNamespace
+
+        from squadops.cycles.task_plan import _dom_anchor_criteria
+
+        manifest = self._manifest()
+        contract = SimpleNamespace(skeleton=SimpleNamespace(expander="fullstack_fastapi_react"))
+        task = SimpleNamespace(
+            expected_artifacts=[
+                "backend/tests/test_runs.py",
+                "frontend/src/tests/runs.test.jsx",
+                "frontend/src/App.jsx",
+            ]
+        )
+
+        checks = _dom_anchor_criteria("qa.test", task, contract, manifest)
+
+        assert [c.id for c in checks] == ["dom-anchors:frontend/src/tests/runs.test.jsx"]
+        assert checks[0].params["file"] == "frontend/src/tests/runs.test.jsx"
+        assert set(checks[0].params["anchors"]) == {"RunListView", "CreateRunView", "RunDetailView"}
+        assert checks[0].params["anchors"]["RunDetailView"][0] == "run-detail-view"
+        assert _dom_anchor_criteria("development.develop", task, contract, manifest) == []
+        assert _dom_anchor_criteria("qa.test", task, None, manifest) == []
+        assert _dom_anchor_criteria("qa.test", task, contract, None) == []
+
+    def test_a_manifest_declaring_no_anchors_binds_nothing(self):
+        import dataclasses
+        from types import SimpleNamespace
+
+        from squadops.cycles.task_plan import _dom_anchor_criteria
+
+        manifest = self._manifest()
+        bare = dataclasses.replace(
+            manifest,
+            frontend=dataclasses.replace(
+                manifest.frontend,
+                routes=tuple(dataclasses.replace(r, testids=()) for r in manifest.frontend.routes),
+            ),
+        )
+        contract = SimpleNamespace(skeleton=SimpleNamespace(expander="fullstack_fastapi_react"))
+        task = SimpleNamespace(expected_artifacts=["frontend/src/tests/runs.test.jsx"])
+        assert _dom_anchor_criteria("qa.test", task, contract, bare) == []
