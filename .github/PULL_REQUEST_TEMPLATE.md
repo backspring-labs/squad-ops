@@ -14,4 +14,6 @@
 
 ## Evidence
 
-<!-- Tests run, replay, cycle ids, records — what shows it works. -->
+<!-- Tests run, replay, cycle ids, records — what shows it works.
+     Extraction / move PRs (#1149): the rationale was harvested BEFORE the move — cite it:
+       Rationale: SIP-NNNN harvest entries N–M (or "none load-bearing, because …") -->
