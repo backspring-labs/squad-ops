@@ -35,8 +35,8 @@ window. Every fixed parameter is read from
 | Overrides | FastAPI+React: none. Next.js+TS: `build_profile=nextjs_ts`, `dev_capability=nextjs_ts` |
 | `resolved_config_hash` | FastAPI+React `c4d6a2165acf`, Next.js+TS `TBD-from-shakeout` — **unchanged from 1.6.6** on the React arm (the pack changed code, not configuration); asserted on every counting roll; a roll on any other hash is void |
 | `squad_profile_snapshot_ref` | `575707c58536cf3b…` — unchanged from 1.6.6 and 1.7.0; a roll on any other snapshot is void |
-| Deploy — commit | **`d95f8e21`** — the head of `feat/1123-scoped-qa-repair`, the stacked tip of the pack: #1243 (#1130) → #1244 (#598) → #1245 (#1022) → #1246 (#668) → #1247 (#1123), on main `e8193bb9` (which already carries #939, #1229 and #1153). **Not main.** See §2 and §7. |
-| Deploy — 7 image ids | runtime-api `ccd81952be2e` · max `f6e8b8dfbe69` · neo `da9da7ab0bae` · nat `58089c21e847` · bob `9816af4df1b0` · eve `e4368e889bb0` · data `1f1358c9488b` — built 2026-09-02 06:04 ET from `d95f8e21`; asserted at every counting launch by the driver |
+| Deploy — commit | **`a00870d6`** — the head of `fix/1229-repair-forwards-the-dispatched-workspace`, the stacked tip of the pack: #1243 (#1130) → #1244 (#598) → #1245 (#1022) → #1246 (#668) → #1247 (#1123) → #1250 (the shakeout's fix), on main `e8193bb9` (which already carries #939, #1229 and #1153). The first tip, `d95f8e21`, was superseded by the Next.js shakeout's finding (§2). **Not main.** See §2 and §7. |
+| Deploy — 7 image ids | runtime-api `027f44a81ccf` · max `0717c85c4992` · neo `235ffc803e53` · nat `3fd32c6bca60` · bob `af9a719b425c` · eve `45fd005a625b` · data `431a5499cd36` — built 2026-09-02 08:08 ET from `a00870d6`; asserted at every counting launch by the driver; every container verified to carry the hand-off fix and the instrument lines (`docker exec … inspect.getsource`), `tsc` in neo and eve only. (The superseded set from `d95f8e21`: runtime-api `ccd81952be2e` · max `f6e8b8dfbe69` · neo `da9da7ab0bae` · nat `58089c21e847` · bob `9816af4df1b0` · eve `e4368e889bb0` · data `1f1358c9488b`.) |
 | Loaded, not built | verified in-container before the shakeouts (`docker exec … python -c`): every container imports the pack's seams (`qa_owned_suite_defects`, `absent_anchor_cases`, `INJECTION_SCOPE_SUITE` → `additive_containment`, `row_is_blocking_failure`, `anchor_findings`, `containment_findings`, `parse_pytest_failure_rows`, `parse_vitest_failure_text`, `client_surface_instructions`, the three new evaluators); `tsc` on PATH in neo and eve, absent in runtime-api and bob (as `DECLARED_TOOLING_GAPS` declares) |
 | Gate policy | 1.6.3 §6 constant, verbatim in each set config's `gate_notes`; `--as-agent`; the decider is recorded per roll |
 | Audit instrument | `scripts/dev/audit_delivered_app.py` at the deploy commit |
@@ -49,7 +49,7 @@ window. Every fixed parameter is read from
 
 - **The deploy is the stacked pack tip, not main — pre-declared.** The owner asked (2026-09-01,
   before bed) for the pack to be stacked as PRs and the validations run overnight; the only
-  tree that carries the whole pack is the last PR's head. The five PRs are unchanged from the
+  tree that carries the whole pack is the last PR's head. The six PRs are unchanged from the
   moment the images were built; **merging those exact commits does not void a roll** (the
   merge commits add no tree change), and any other merge, a rebuild, or a force-push to any of
   the five branches does. The owner may instead void the set and re-run from main — that is
@@ -73,7 +73,25 @@ window. Every fixed parameter is read from
     placed it under `frontend/src/__tests__/`, outside the declared qa namespace
     `frontend/src/tests/`, which the anchor binding filters on — a fact for the record, not
     changed here). R1 bound and held; R2/R4/R7 unexercised (no correction round).
-  - **Next.js+TS:** TBD — filled from `var/verification_sets/1-7-1-nextjs/`.
+  - **Next.js+TS `cyc_3ac86805439f`** (10:54→11:56Z, 61 min; its driver process was stopped
+    from outside the session at ~11:00Z and a watcher re-attached, approving the gate with
+    the §6 constant at 11:24Z): **rejected** after three correction rounds, audit FAIL, 8/15,
+    26 failed emissions banked, `container_packaging` reporting `npm_ci_without_lockfile` on
+    the builder's recipe (readout, not a verdict). **The shakeout did its job: R7 falsified
+    on the deploy built to end it.** The first dev emission failed `frontend_compiles` on a
+    real type error; the dev repair evaluated its own patch in the dev container
+    (`repair_typed_checks environment=agent:dev rows=4 executed=2 failed=0`) and runtime-api
+    still returned `unverifiable / no_executed_blocking_checks decided_by_agent=0`, after
+    which #1221's option A left the task failed and the run could not recover. Cause, read
+    from the executor: it verifies against the enriched envelope's workspace but handed the
+    correction runner the base envelope, so rule B's forwarding found no workspace and the
+    repair's build check skipped for want of a frontend tree. Fixed in #1250 (stacked on
+    #1247), with the agent rows' statuses and reasons now logged. **This shakeout's deploy is
+    superseded**; both shakeouts re-run on the rebuilt deploy below, whose identity replaces
+    the pins in §1. R4's readout on this run: `repair_brief_case_counts [0]` — the qa repair
+    of round 2 followed an emission failure (no fenced block), so the failed row carried no
+    cases; the record must distinguish that from a brief that dropped cases it had.
+  - **Re-run on the rebuilt deploy (`a00870d6`):** TBD — filled from the records.
 - **Diagnostics for the predictions no roll is likely to exercise (plan §4), non-counting
   by declaration — run 2026-09-02 06:20 ET, in the deployed containers, on the stored
   artifacts that cost each item.** These are in-container replays of the deployed code path,
