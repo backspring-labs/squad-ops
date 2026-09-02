@@ -274,6 +274,17 @@ window and the CHANGELOG said they were excluded — the record was wrong until 
 was rebased and re-documented. If something must go in, rebase and re-document rather than
 letting the tag and the notes disagree.
 
+**The shakeout is a loop with an exit rule, not an event.** A pre-registration that assumes one
+shakeout pair is wrong the moment the first pair finds something: 1.7.1 ran four deploys and
+each pair found the next seam defect (#1250, #1252, #1255/#1256, #1259/#1261). State the exit
+rule before the first launch — a pair on one deploy with no new seam finding — budget the
+rounds, and have the cut record report how many it took, which is evidence about the pack.
+A diagnostic pre-registered for a prediction no roll is likely to exercise must run the
+roll's own path with the fault injected (#1251); a call into the seam with its input in hand
+is a replay of the function, and is named as one. Every readout counts non-execution
+(skips, by reason) beside failure — R6's gap arrived as skipped rows, invisible to a count of
+failed ones (#1261). Procedure: `docs/plans/verification-sets/README.md`.
+
 **Say what the cut evidence does NOT cover.** A release whose headline is "validated by a
 green roll" has to be exact about what that roll ran on. Where the tagged tree differs from
 the validated deploy, name the difference and say whether it is additive or behavioural —
@@ -285,7 +296,7 @@ v1.6.0 could record zero code drift; v1.6.2 could not, and said so.
 
 **Close issues from PRs**: Every PR body must include `Closes #NNN` (or `Fixes #NNN`) for each issue it fully resolves, so the merge auto-closes them. A bare `(#NNN)` reference does **not** close the issue — that gap left #133/#205 credited-but-open after 1.1.1 (closed 2026-06-29 during the #281 reconcile). If a PR only partially addresses an issue, reference it without `Closes` and say what remains. **Enforced** since 2026-08-26 by `.github/workflows/pr-closure.yml` (#1113 — six 1.6.4 fix PRs shipped without the line): the body must carry `Closes #N` to an *open* issue, or `Refs #N — remaining: …`, or `No issue: …`; `scripts/dev/check_pr_closure.sh` runs the same check locally. The template is `.github/PULL_REQUEST_TEMPLATE.md` (`gh pr create --body-file` bypasses it, which is why the check exists).
 
-**Ownership before extension (edit-time rule)**: Before adding content, config, or a new pattern to ANY file, check whether an existing seam already owns that concern (`ports/`, a service or module named for it). Use the seam or flag the conflict *before* editing — "the neighboring code does it this way" is never justification. Content edits (prompt text, string blocks, config literals) get the same scrutiny as logic; they are where shortcuts hide. Canonical example: prompt content belongs in `src/squadops/prompts/fragments/` via PromptService, not inline string literals in handlers (#448 — two fixes shipped as inline literals while the fragment system sat unused for build handlers).
+**Ownership before extension (edit-time rule)**: Before adding content, config, or a new pattern to ANY file, check whether an existing seam already owns that concern (`ports/`, a service or module named for it). Use the seam or flag the conflict *before* editing — "the neighboring code does it this way" is never justification. Content edits (prompt text, string blocks, config literals) get the same scrutiny as logic; they are where shortcuts hide. Canonical example: prompt content belongs in `src/squadops/prompts/fragments/` via PromptService, not inline string literals in handlers (#448 — two fixes shipped as inline literals while the fragment system sat unused for build handlers). **The mirror rule on removal:** before deleting or stripping something, say what evidence it produced and who consumed it. #1253 stripped the planner's handoff regexes — correctly — and exposed that they had been the builder task's only typed criteria; the verifier had been living on them, and the next builder repair was discarded unheard (#1255). Owner's ruling of the same shape at the seams: require, don't default.
 
 **Proactive guidance**: If you observe a workflow or code best practice being bypassed, call it out early — don't wait to be asked. Examples:
 - Workflow: developing on main instead of a feature branch, skipping tests, hardcoding secrets
@@ -303,6 +314,17 @@ v1.6.0 could record zero code drift; v1.6.2 could not, and said so.
 - **Lanes:** authenticated, managed REST resources → `/api/v1/<resource>` (default home for anything new). `/health/*` = read-only, unauthenticated operational probes/heartbeats **only** — never a writable business resource (it's the only no-auth lane). `/auth/*` = identity. **Do not add `/api/v2`** — extend v1.
 - A new prefix/variant is a deliberate, justified decision, never a default. "It doesn't collide" is not a justification.
 - Known deviations under cleanup: unversioned `/api/chat`+`/api/agents` (#219); `/health`+`/auth` plain-string error bodies vs the standard `{"error": {...}}` envelope (#218). Don't add to these.
+
+**Typed checks (adding or binding one)**: a criterion is evaluated in more places than the
+one you are adding it for. Before binding a check onto a task's artifacts, table every seam
+that evaluates that task's criteria and the tree each one sees — emission (the role's
+container: accepted workspace + its own emission), agent-side repair (the *repairing* role's
+container: accepted workspace + its patch, which may be another role's files), the verifier
+(runtime-api: accepted workspace + the failed task's artifacts + the patch), the file-owned
+gate, the retest — and state the outcome on a tree that lacks the file. #1240 and #1246 bound
+executing checks onto qa suites; a dev repair of a qa failure evaluated them on trees without
+the suite, `file_not_found` counted as an executed failure in both environments, and a correct
+fix was refused (#1259). The table goes in the PR's Evidence section.
 
 **Structure**:
 - Permanent utilities: `scripts/dev/`
@@ -324,6 +346,7 @@ v1.6.0 could record zero code drift; v1.6.2 could not, and said so.
 - Every test file must include at least one error/edge case test per public function tested
 - Prefer 4 strong tests over 20 weak ones — quality over count
 - **Self-check before committing tests**: re-read each test and delete any that only assert class attributes, only check `is not None`, or duplicate another test's coverage with different constants
+- **A changed seam needs a wiring test** (`docs/TEST_QUALITY_STANDARD.md` anti-pattern 6a): one test that enters at the caller the live cycle uses and asserts what reaches the seam. A test that hands the seam its input proves the seam, not the wiring — #1250, #1256 and #1261 were each latent from their own PR and found by a live cycle. Name the entry point in the PR's Evidence.
 
 **Docker**:
 - Don't modify `docker-compose.yml` or change service/container names without explicit request
