@@ -223,7 +223,17 @@ window. Every fixed parameter is read from
     No new seam finding. Unexercised, as on every React shakeout: R2/R4 (no qa-owned
     defect), R3/R5 vacuous only where a plan names no frontend suite — this plan named one,
     and `additive_containment` bound and passed on it.
-  - **On `f85de47a` (the pinned deploy) — Next.js+TS:** TBD — filled from the record.
+  - **On `f85de47a` (the pinned deploy) — Next.js+TS `cyc_9cfe0d9e3668`** (20:35→21:26Z,
+    49 min): accepted, audit PASS, 15/15, P0 held, 0 corrections, gate approved by the
+    driver's agent user with the §6 constant, `checks_by_environment` `{agent:qa: 38,
+    agent:development: 28, agent:builder: 2}`, `container_packaging` 1 reporting-only
+    finding (the Next.js recipe's `npm ci` without a lockfile, third time), every other
+    typed row passed — **`undefined_names` executed on all sixteen `.ts`/`.tsx` files, no
+    skips** (#1261 held live where the earlier deploy skipped five), `dom_anchor_queries`,
+    `assertion_kinds_match` and `additive_containment` (9) bound and passed on the suites.
+    No correction round, so R2/R4/R7 unexercised on this stack; R7 held on the React pair.
+    **No new seam finding on either stack. The exit rule is met on `f85de47a`; these are the
+    pins roll 1 asserts.**
 - **Diagnostics for the predictions no roll is likely to exercise (plan §4), non-counting
   by declaration — run 2026-09-02 06:20 ET, in the deployed containers, on the stored
   artifacts that cost each item.** These are in-container replays of the deployed code path,
