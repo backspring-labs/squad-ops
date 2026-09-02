@@ -3100,6 +3100,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             typed_acceptance_enabled=resolved_config.get("typed_acceptance", True),
             command_acceptance_enabled=resolved_config.get("command_acceptance_checks", True),
             file_owned_criteria=file_owned,
+            # #1229: what the repair executed on its own patch, in its own container.
+            agent_checks=(result.outputs or {}).get("repair_typed_checks"),
         )
         # pf-33: name the failed checks — "status=failed reason= checks=7" forced
         # a by-hand artifact replay to learn WHICH check rejected the patch.
@@ -3112,13 +3114,15 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         ]
         failed_checks = [record.check for record in failed_records]
         logger.info(
-            "patch_verification task=%s task_type=%s status=%s reason=%s checks=%d failed=%s",
+            "patch_verification task=%s task_type=%s status=%s reason=%s checks=%d failed=%s "
+            "decided_by_agent=%d",
             envelope.task_id,
             envelope.task_type,
             verification.status,
             verification.reason or "",
             len(verification.checks),
             ",".join(failed_checks) or "-",
+            verification.decided_by_agent,
         )
         # pf-47/pf-49: when a task's checks are structurally unevaluable (a frontend
         # test file — every AST check skips by design), "unverifiable" is not caution,

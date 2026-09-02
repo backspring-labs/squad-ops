@@ -24,6 +24,7 @@ The executor treats the three verdicts as:
 
 from __future__ import annotations
 
+import json
 import logging
 import tempfile
 from dataclasses import dataclass
@@ -40,6 +41,7 @@ from squadops.cycles.emission_integrity import (
     unresolved_imports,
 )
 from squadops.cycles.implementation_plan import TypedCheck
+from squadops.cycles.verification_integrity import ResultStatus
 from squadops.cycles.write_authorization import WriteAuthorization
 
 logger = logging.getLogger(__name__)
@@ -64,6 +66,11 @@ STRUCTURALLY_UNEVALUABLE_REASONS = frozenset(
 )
 
 
+#: Where a verification row was executed. The verifier runs in runtime-api; a row the
+#: repair evaluated in its own container arrives with ``agent:<role>`` (#1229).
+EXECUTED_IN_RUNTIME_API = "runtime-api"
+
+
 @dataclass(frozen=True)
 class PatchCheckRecord:
     """One typed criterion's outcome against the patched workspace."""
@@ -73,7 +80,11 @@ class PatchCheckRecord:
     status: str  # CheckOutcome status: passed | failed | error | skipped
     description: str = ""
     reason: str | None = None
-    actual: str | None = None
+    actual: Any = None
+    #: The criterion's params — the identity a row from another environment is matched on.
+    params: dict[str, Any] | None = None
+    #: Which environment executed this row (#1229).
+    executed_in: str = EXECUTED_IN_RUNTIME_API
 
     def to_check_row(self) -> dict[str, Any]:
         """Render in the handler-emitted ``checks`` row shape.
@@ -88,6 +99,8 @@ class PatchCheckRecord:
             "description": self.description,
             "status": self.status,
             "reason": self.reason,
+            "params": self.params,
+            "executed_in": self.executed_in,
             "actual": self.actual,
             "passed": not (self.severity == "error" and self.status in {"failed", "error"}),
             "patch_verified": True,
@@ -107,6 +120,10 @@ class PatchVerification:
     checks: tuple[PatchCheckRecord, ...] = ()
     reason: str | None = None
     workspace_revision_id: str | None = None
+    #: #1229: blocking criteria whose verdict came from the repair's own execution,
+    #: because this environment could not execute them. Zero when everything that
+    #: decided ran here.
+    decided_by_agent: int = 0
 
 
 def rebase_artifact_paths(
@@ -389,6 +406,7 @@ async def _evaluate_file_owned_gate(
                 description=criterion.description or "file-owned criterion (#870)",
                 reason=outcome.reason,
                 actual=outcome.actual,
+                params=dict(criterion.params or {}),
             )
         )
         if criterion.severity == "error" and outcome.status == "failed":
@@ -404,15 +422,13 @@ async def _evaluate_task_criteria(
     stack: str | None,
     typed_acceptance_enabled: bool,
     command_acceptance_enabled: bool,
-) -> tuple[bool, int, str | None]:
-    """Evaluate the failed task's own criteria, appending rows to *records*.
+) -> list[tuple[TypedCheck, str]]:
+    """Evaluate the failed task's own criteria here, appending rows to *records*.
 
-    Returns ``(blocking_failure, blocking_passed, evaluator_error_check)`` for the
-    RC-9 verdict logic in ``verify_patched_artifacts``; a non-None third element
-    aborts evaluation (evaluator broke — the whole verification is untrustworthy).
+    Returns ``(criterion, local status)`` per criterion; the verdict is ``_task_verdict``'s,
+    over these and whatever the repair executed in its own container (#1229).
     """
-    blocking_failure = False
-    blocking_passed = 0
+    statuses: list[tuple[TypedCheck, str]] = []
     for criterion in typed:
         outcome = await evaluate_criterion(
             criterion,
@@ -429,17 +445,96 @@ async def _evaluate_task_criteria(
                 description=criterion.description or "",
                 reason=outcome.reason,
                 actual=outcome.actual,
+                params=dict(criterion.params or {}),
             )
         )
+        statuses.append((criterion, outcome.status))
+    return statuses
+
+
+_EXECUTED = frozenset({ResultStatus.PASSED, ResultStatus.FAILED})
+
+
+def _criterion_key(check: str, params: Any) -> tuple[str, str]:
+    return check, json.dumps(params or {}, sort_keys=True, default=str)
+
+
+def agent_check_records(agent_checks: Any) -> list[PatchCheckRecord]:
+    """The rows a repair evaluated in its own container, as verification records (#1229).
+
+    ``agent_checks`` is the handler's ``repair_typed_checks`` output: ``environment`` and
+    the ``acceptance:``-prefixed rows ``_evaluate_typed_acceptance`` banks. Anything that
+    is not such a row is ignored — the shape is the handler's, not the transport's.
+    """
+    if not isinstance(agent_checks, dict):
+        return []
+    environment = str(agent_checks.get("environment") or "agent")
+    records: list[PatchCheckRecord] = []
+    for row in agent_checks.get("checks") or ():
+        if not isinstance(row, dict):
+            continue
+        name = str(row.get("check") or "")
+        if not name.startswith("acceptance:"):
+            continue
+        records.append(
+            PatchCheckRecord(
+                check=name[len("acceptance:") :],
+                severity=str(row.get("severity") or "error"),
+                status=str(row.get("status") or ""),
+                description=str(row.get("description") or ""),
+                reason=row.get("reason"),
+                actual=row.get("actual"),
+                params=dict(row.get("params") or {}),
+                executed_in=environment,
+            )
+        )
+    return records
+
+
+def _task_verdict(
+    local: list[tuple[TypedCheck, str]], agent: list[PatchCheckRecord]
+) -> tuple[bool, int, str | None, int]:
+    """RC-9 over both environments: ``(blocking_failure, blocking_passed, evaluator_error,
+    decided_by_agent)``.
+
+    Per blocking criterion: an executed failure anywhere rejects — an agent pass never
+    overrides a failure that executed here, and vice versa. An executed pass anywhere
+    counts as positive evidence. A local evaluator error aborts the verification, as it
+    always did, unless the repair executed that very criterion — then the error was this
+    environment's, not the patch's. Rows are matched on ``(check, params)``; an agent row
+    for another file or another check says nothing about this criterion.
+    """
+    executed_by_agent = {
+        _criterion_key(r.check, r.params): r.status for r in agent if r.status in _EXECUTED
+    }
+    blocking_failure = False
+    blocking_passed = 0
+    evaluator_error: str | None = None
+    decided_by_agent = 0
+    for criterion, status in local:
         if criterion.severity != "error":
             continue
-        if outcome.status == "error":
-            return blocking_failure, blocking_passed, criterion.check
-        if outcome.status == "failed":
+        remote = executed_by_agent.get(_criterion_key(criterion.check, criterion.params))
+        if ResultStatus.FAILED in (status, remote):
             blocking_failure = True
-        elif outcome.status == "passed":
+        elif ResultStatus.PASSED in (status, remote):
             blocking_passed += 1
-    return blocking_failure, blocking_passed, None
+        if status not in _EXECUTED and remote in _EXECUTED:
+            decided_by_agent += 1
+        if status == ResultStatus.ERROR and remote not in _EXECUTED and evaluator_error is None:
+            evaluator_error = criterion.check
+    return blocking_failure, blocking_passed, evaluator_error, decided_by_agent
+
+
+def _gate_failed_by_agent(gate: list[TypedCheck], agent: list[PatchCheckRecord]) -> bool:
+    """#870's rejection power, extended to what the repair executed: a file-owned criterion
+    this environment could not run, that failed where it did run, rejects the patch."""
+    failed = {
+        _criterion_key(r.check, r.params)
+        for r in agent
+        if r.status == ResultStatus.FAILED and r.severity == "error"
+    }
+    return any(_criterion_key(c.check, c.params) in failed for c in gate if c.severity == "error")
 
 
 async def verify_patched_artifacts(
@@ -451,8 +546,17 @@ async def verify_patched_artifacts(
     typed_acceptance_enabled: bool = True,
     command_acceptance_enabled: bool = True,
     file_owned_criteria: list[TypedCheck] | None = None,
+    agent_checks: Any = None,
 ) -> PatchVerification:
     """Re-run the failed task's typed acceptance criteria against *artifacts*.
+
+    ``agent_checks`` (#1229, the owner's rule B) are the rows the repair evaluated on its
+    own patched tree in the agent container — where the stack's toolchain lives. This
+    environment re-runs what it can as a cross-check and takes the repair's executed rows
+    as the verdict for what it cannot run; ``no_executed_blocking_checks`` fires only when
+    neither environment executed a blocking criterion. Before this, runtime-api — which
+    has no node — was the only judge, so on the Next.js stack a dev repair could never
+    earn a verdict (``cyc_05abfc7c1f00``, three rounds of ``unverifiable``).
 
     Mirrors the handler-side RC-9 blocking matrix: only ``severity=error``
     criteria can block; ``skipped`` never blocks. Any evaluator ``error`` on
@@ -470,11 +574,9 @@ async def verify_patched_artifacts(
     qa.test failure is otherwise judged against nothing structural at all
     (roll 12: four re-emitted routes that no longer compiled sailed to the
     retest). The gate is deliberately MONOTONE: an executed blocking failure
-    rejects the patch; an evaluator error or skip changes nothing (this
-    environment may lack the stack's toolchain — runtime-api has no node, so
-    stack #2's compile checks cannot execute here today; the behavioral retest
-    remains the compile gate in the qa environment). Gate rows never count as
-    positive acceptance evidence — compiling is necessary, not sufficient.
+    rejects the patch — executed here or, since #1229, in the repair's own
+    container — and an evaluator error or skip changes nothing. Gate rows never
+    count as positive acceptance evidence — compiling is necessary, not sufficient.
     """
     typed = _coerce_typed_criteria(criteria)
     if typed is None:
@@ -484,6 +586,7 @@ async def verify_patched_artifacts(
         return PatchVerification(status=PATCH_UNVERIFIABLE, reason=REASON_NO_TYPED_CRITERIA)
 
     records: list[PatchCheckRecord] = []
+    agent_records = agent_check_records(agent_checks)
     # #734 Slice A: name the exact workspace mapping evaluated below — computed
     # from the parameter (the post-filter mapping handed in), never store state.
     from squadops.sandbox.models import compute_revision_id
@@ -528,7 +631,8 @@ async def verify_patched_artifacts(
             command_acceptance_enabled=command_acceptance_enabled,
         )
         records.extend(gate_records)
-        if gate_failed:
+        records.extend(agent_records)
+        if gate_failed or _gate_failed_by_agent(gate, agent_records):
             return PatchVerification(
                 status=PATCH_FAILED,
                 checks=tuple(records),
@@ -546,7 +650,7 @@ async def verify_patched_artifacts(
                 workspace_revision_id=revision_id,
             )
 
-        blocking_failure, blocking_passed, evaluator_error = await _evaluate_task_criteria(
+        local = await _evaluate_task_criteria(
             typed,
             workspace_root,
             records,
@@ -554,9 +658,12 @@ async def verify_patched_artifacts(
             typed_acceptance_enabled=typed_acceptance_enabled,
             command_acceptance_enabled=command_acceptance_enabled,
         )
+        blocking_failure, blocking_passed, evaluator_error, decided_by_agent = _task_verdict(
+            local, agent_records
+        )
         if evaluator_error is not None:
-            # Evaluator couldn't run in this environment — the whole
-            # verification is untrustworthy, not just this row.
+            # Evaluator couldn't run in this environment and the repair did not run it
+            # either — the whole verification is untrustworthy, not just this row.
             return PatchVerification(
                 status=PATCH_UNVERIFIABLE,
                 checks=tuple(records),
@@ -566,12 +673,16 @@ async def verify_patched_artifacts(
 
     if blocking_failure:
         return PatchVerification(
-            status=PATCH_FAILED, checks=tuple(records), workspace_revision_id=revision_id
+            status=PATCH_FAILED,
+            checks=tuple(records),
+            workspace_revision_id=revision_id,
+            decided_by_agent=decided_by_agent,
         )
     if blocking_passed == 0:
-        # Every blocking criterion was skipped (disabled config, unset stack).
-        # Accepting a patch requires positive executed evidence — "nothing
-        # failed because nothing ran" is the false-green shape (§6.2).
+        # Every blocking criterion was skipped in BOTH environments (disabled config,
+        # unset stack, a toolchain no role provisions). Accepting a patch requires
+        # positive executed evidence — "nothing failed because nothing ran" is the
+        # false-green shape (§6.2).
         return PatchVerification(
             status=PATCH_UNVERIFIABLE,
             checks=tuple(records),
@@ -579,5 +690,8 @@ async def verify_patched_artifacts(
             workspace_revision_id=revision_id,
         )
     return PatchVerification(
-        status=PATCH_PASSED, checks=tuple(records), workspace_revision_id=revision_id
+        status=PATCH_PASSED,
+        checks=tuple(records),
+        workspace_revision_id=revision_id,
+        decided_by_agent=decided_by_agent,
     )

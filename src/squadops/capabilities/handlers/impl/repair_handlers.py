@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 
 from squadops.capabilities.handlers.cycle_tasks import _classify_file, _CycleTaskHandler
 from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
+from squadops.cycles.verification_integrity import ResultStatus
 
 logger = logging.getLogger(__name__)
 
@@ -271,7 +272,63 @@ class _RepairPromptMixin:
         qa_fill_mode = await self._render_qa_fill_mode_section(context, inputs)
         if qa_fill_mode:
             inputs = {**inputs, "qa_fill_mode_section": qa_fill_mode}
-        return await super().handle(context, inputs)
+        result = await super().handle(context, inputs)
+        await self._after_emission(inputs, result)
+        return result
+
+    async def _after_emission(self, inputs: dict[str, Any], result: HandlerResult) -> None:
+        """What happens to the emission before it leaves the agent: the typed checks.
+
+        A handler with its own post-processing (the qa repair merges fills first)
+        overrides this and calls up, so the checks always run on the artifacts the
+        executor will verify — never on an intermediate shape.
+        """
+        await self._attach_typed_checks(inputs, result)
+
+    async def _attach_typed_checks(self, inputs: dict[str, Any], result: HandlerResult) -> None:
+        """#1229 (the owner's rule B): the repair evaluates the failed task's typed criteria
+        on its own patched tree HERE — in the agent container, where the stack's toolchain
+        lives — and hands the executed rows to the executor's verification with the patch.
+
+        Until this, a repair was verified only in runtime-api, which has no node: on the
+        Next.js stack every check owning a ``.ts`` file skipped there, no blocking check
+        executed, and the verdict was ``unverifiable`` three rounds running
+        (``cyc_05abfc7c1f00``; #1221 stopped the loop, it could not make the verdict
+        obtainable). The rows are the same shape the primary handlers bank
+        (``_evaluate_typed_acceptance``, framework-injected checks included — which the
+        executor-side verification never ran on a repair at all), evaluated on the same
+        workspace the verifier materialises (``acceptance_workspace_files``, forwarded by
+        ``repair_forwarded_inputs``). They are evidence for the verifier, not a verdict
+        on the task: a failing row here does not fail the repair task, it lets the
+        verifier reject the patch with an executed reason instead of a shrug.
+        """
+        outputs = getattr(result, "outputs", None)
+        if not getattr(result, "success", False) or not isinstance(outputs, dict):
+            return
+        if outputs.get("emission_failure"):
+            return
+        artifacts = list(outputs.get("artifacts") or [])
+        if not artifacts:
+            return
+        checks: list[dict[str, Any]] = []
+        missing: list[str] = []
+        await self._evaluate_typed_acceptance(inputs, artifacts, checks, missing, {})
+        rows = [c for c in checks if str(c.get("check", "")).startswith("acceptance:")]
+        outputs["repair_typed_checks"] = {
+            "environment": f"agent:{self._role}",
+            "workspace_revision_id": inputs.get("workspace_revision_id"),
+            "checks": rows,
+        }
+        executed = sum(
+            1 for c in rows if c.get("status") in (ResultStatus.PASSED, ResultStatus.FAILED)
+        )
+        logger.info(
+            "repair_typed_checks environment=agent:%s rows=%d executed=%d failed=%d",
+            self._role,
+            len(rows),
+            executed,
+            sum(1 for c in rows if c.get("status") == ResultStatus.FAILED),
+        )
 
     async def _render_qa_fill_mode_section(
         self, context: ExecutionContext, inputs: dict[str, Any]
@@ -718,12 +775,8 @@ class QATestRepairHandler(_RepairPromptMixin, _CycleTaskHandler):
             return fill_artifacts
         return fill_artifacts + _artifacts_from_fenced_blocks(rest, self._artifact_name)
 
-    async def handle(
-        self,
-        context: ExecutionContext,
-        inputs: dict[str, Any],
-    ) -> HandlerResult:
-        result = await super().handle(context, inputs)
+    async def _after_emission(self, inputs: dict[str, Any], result: HandlerResult) -> None:
+        """Merge the fills into their shells first; the typed checks run on the merged set."""
         scaffold_input = inputs.get("verification_scaffold")
         if scaffold_input and isinstance(result.outputs, dict):
             artifacts, evidence = _merge_repair_fills(
@@ -737,7 +790,7 @@ class QATestRepairHandler(_RepairPromptMixin, _CycleTaskHandler):
                 evidence.get("dropped_shell_rewrites"),
                 evidence.get("counts"),
             )
-        return result
+        await super()._after_emission(inputs, result)
 
 
 def _merge_repair_fills(

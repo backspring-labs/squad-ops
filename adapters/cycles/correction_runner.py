@@ -42,6 +42,7 @@ from adapters.cycles.execution_errors import _ExecutionError
 from squadops.capabilities.context_assembly import (
     REPAIR_CONTEXT_CONTRACT,
     manifest_surface_fragments,
+    repair_forwarded_inputs,
     retest_forwarded_inputs,
 )
 from squadops.cycles.agent_config import resolve_agent_config
@@ -1607,6 +1608,9 @@ class CorrectionRunner:
                 # stripping the anchors — hence the registry-declared
                 # re-derivation above (presence-keyed: no manifest, no keys).
                 repair_inputs.update(repair_surfaces)
+                # #1229: the typed-acceptance workspace, so the repair can evaluate its
+                # own patch against the tree it lands in, where the toolchain lives.
+                repair_inputs.update(repair_forwarded_inputs(failed_inputs))
                 # #970 (1.6.5 D), presence-keyed: the scaffold + the task's current
                 # merged shells + the slots whose fills failed, for a qa repair.
                 repair_inputs.update(

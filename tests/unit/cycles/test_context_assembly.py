@@ -244,3 +244,24 @@ class TestWorkspaceRevisionStamp:
         from squadops.sandbox.models import compute_revision_id
 
         assert await _stamped_id(reply_router, []) == compute_revision_id({})
+
+
+def test_a_repair_forwards_the_typed_acceptance_workspace_presence_keyed():
+    """#1229: the repair evaluates its patch against the tree it lands in, so the failed
+    task's workspace rides the repair envelope — and only when the original dispatch
+    carried it. Bug caught: a key forwarded as empty claims a tree that never existed."""
+    from squadops.capabilities.context_assembly import repair_forwarded_inputs
+
+    failed = {
+        "acceptance_criteria": [{"check": "x"}],
+        "acceptance_workspace_files": {"backend/models.py": "class Run: ..."},
+        "workspace_revision_id": "rev-7",
+    }
+    assert repair_forwarded_inputs(failed) == {
+        "acceptance_workspace_files": {"backend/models.py": "class Run: ..."},
+        "workspace_revision_id": "rev-7",
+    }
+    assert (
+        repair_forwarded_inputs({"acceptance_workspace_files": {}, "workspace_revision_id": ""})
+        == {}
+    )

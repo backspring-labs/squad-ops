@@ -399,3 +399,55 @@ class TestRepairReasoningLevel:
         )
         call_kwargs = ctx.ports.llm.chat_stream_with_usage.call_args.kwargs
         assert call_kwargs["reasoning"] == "medium"
+
+
+# ---------------------------------------------------------------------------
+# #1229 — the repair evaluates its own patch where the toolchain lives
+# ---------------------------------------------------------------------------
+
+
+class TestTheRepairEvaluatesItsOwnPatch:
+    """Bug caught: a repair verified only in runtime-api, which has no node, so on the
+    Next.js stack no blocking check ever executed and three rounds ended ``unverifiable``
+    (``cyc_05abfc7c1f00``). The repair now runs the failed task's typed criteria — the
+    framework-injected family included — on its own patched tree and ships the rows."""
+
+    async def test_typed_check_rows_ride_with_the_patch(self):
+        from squadops.capabilities.handlers.impl.repair_handlers import (
+            DevelopmentCorrectionRepairHandler,
+        )
+
+        h = DevelopmentCorrectionRepairHandler()
+        ctx = _make_context(
+            "```python:backend/routes.py\ndef create_run():\n    return RunEvent()\n```\n"
+        )
+        result = await h.handle(
+            ctx,
+            {
+                "prd": "x",
+                "resolved_config": {"build_profile": "fullstack_fastapi_react"},
+                "acceptance_criteria": [],
+                "expected_artifacts": ["backend/routes.py"],
+                "workspace_revision_id": "rev-1",
+            },
+        )
+        assert result.success is True, "the rows are evidence for the verifier, not a verdict"
+        evidence = result.outputs["repair_typed_checks"]
+        assert evidence["environment"] == f"agent:{h._role}"
+        assert evidence["workspace_revision_id"] == "rev-1"
+        rows = {r["check"]: r for r in evidence["checks"]}
+        assert rows["acceptance:undefined_names"]["status"] == "failed"
+        assert "RunEvent" in rows["acceptance:undefined_names"]["reason"]
+        assert rows["acceptance:undefined_names"]["params"] == {"file": "backend/routes.py"}
+
+    async def test_an_empty_emission_carries_no_rows(self):
+        from squadops.capabilities.handlers.impl.repair_handlers import (
+            DevelopmentCorrectionRepairHandler,
+        )
+
+        h = DevelopmentCorrectionRepairHandler()
+        result = await h.handle(
+            _make_context(""),
+            {"prd": "x", "resolved_config": {}, "expected_artifacts": ["backend/routes.py"]},
+        )
+        assert "repair_typed_checks" not in result.outputs
