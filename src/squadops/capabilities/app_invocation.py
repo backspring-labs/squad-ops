@@ -29,6 +29,24 @@ NETWORK_SEAM_FETCH_STUB = r"""(?x)
     | (?:vi|jest)\s*\.\s*spyOn\s*\(\s*global(?:This)?\s*,\s*['"`]fetch['"`]
 """
 
+#: The test-file suffixes a vitest harness collects — vitest's default include
+#: (``**/*.{test,spec}.[jt]s?(x)``). These are the files the invocation rule judges and
+#: the files the runner reports as uncollected. Both stacks run vitest, so both declare
+#: this set; a stack whose harness collects a different shape declares its own on its
+#: ``AppInvocation``. Until #1131 this list lived in the shared detector as a JS-only
+#: vocabulary no stack had declared, and the runner kept a narrower copy (``.ts`` only)
+#: that could not name an uncollected ``.test.jsx`` on the React stack.
+JS_SUITE_SUFFIXES: tuple[str, ...] = (
+    ".test.ts",
+    ".test.tsx",
+    ".test.js",
+    ".test.jsx",
+    ".spec.ts",
+    ".spec.tsx",
+    ".spec.js",
+    ".spec.jsx",
+)
+
 
 @dataclass(frozen=True)
 class AppInvocation:
@@ -48,6 +66,14 @@ class AppInvocation:
     #: when nothing invokes the app — mocking is not the defect, mocking INSTEAD of
     #: invoking is.
     network_seam_mock: str = NETWORK_SEAM_FETCH_STUB
+    #: The test files this rule judges, by basename suffix — the harness's collection
+    #: vocabulary. A file outside it (a helper beside the suites) is never a suite.
+    suite_suffixes: tuple[str, ...] = JS_SUITE_SUFFIXES
+
+    def is_suite(self, path: str) -> bool:
+        """True for a test file this stack's harness collects (by its basename suffix)."""
+        name = path.replace("\\", "/").rsplit("/", 1)[-1]
+        return name.endswith(self.suite_suffixes)
 
     def invokes(self, content: str) -> bool:
         return re.search(self.invocation_import, content, re.MULTILINE) is not None

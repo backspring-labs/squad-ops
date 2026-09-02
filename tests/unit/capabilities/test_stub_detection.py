@@ -358,3 +358,31 @@ describe('runs', () => {
         files = [{"name": "x.test.js", "content": "global.fetch = vi.fn()\n"}]
         assert detect_self_mocking_tests(files, None) == []
         assert app_invocation_for("cobol_cics") is None
+
+
+def test_which_files_are_suites_is_the_invocations_declaration():
+    """Bug caught: a shared suffix list reintroduced in the detector, or the detector
+    ignoring the stack's declaration — the #1131 class. A stack that declares only
+    ``.spec.ts`` suites must have its ``.test.ts`` files neither judged nor inventoried,
+    and the default declaration must judge them."""
+    import dataclasses
+
+    from squadops.capabilities.handlers.stub_detection import (
+        detect_self_mocking_tests,
+        inspected_js_test_paths,
+    )
+
+    self_mocking = {
+        "name": "__tests__/runs.test.ts",
+        "content": "vi.mock('@/app/api/runs/route')\nimport { POST } from '@/app/api/runs/route'\n",
+    }
+    files = [self_mocking, {"name": "__tests__/helpers/factory.ts", "content": "export {}"}]
+    assert [p for p, _ in detect_self_mocking_tests(files, NEXTJS_APP_INVOCATION)] == [
+        "__tests__/runs.test.ts"
+    ]
+    assert inspected_js_test_paths(files, NEXTJS_APP_INVOCATION) == ["__tests__/runs.test.ts"]
+
+    spec_only = dataclasses.replace(NEXTJS_APP_INVOCATION, suite_suffixes=(".spec.ts",))
+    assert detect_self_mocking_tests(files, spec_only) == []
+    assert inspected_js_test_paths(files, spec_only) == []
+    assert inspected_js_test_paths(files, None) == []

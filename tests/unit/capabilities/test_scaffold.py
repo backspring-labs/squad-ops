@@ -1195,3 +1195,24 @@ class TestBriefCarriesSuccessStatus:
 
         monkeypatch.setattr("squadops.capabilities.dev_capabilities.get_capability", _no_appendix)
         assert scaffold_module.brief_carries_success_status_for("nextjs_ts") is False
+
+
+def test_the_store_paragraph_in_the_model_brief_is_the_stacks_own():
+    """Bug caught (measured 2026-09-01, #1131): ``model_surface_instructions`` told every
+    in-memory stack that ``backend/store.py`` defines its stores and to
+    ``from .store import`` them — the Next.js developer, whose store is ``lib/store.ts``,
+    included. The paragraph is stack #1's declaration; a stack that declares none gets
+    none, and stack #1's names its stores by the same rule ``store.py`` defines them."""
+    from tests.unit.capabilities._stack_fixtures import manifest_for_stack
+
+    manifest = manifest_for_stack("fullstack_fastapi_react")
+    react = scaffold.model_surface_instructions(manifest)
+    store_lines = [line for line in react if "backend/store.py" in line]
+    assert len(store_lines) == 1
+    assert "from .store import" in store_lines[0]
+    for entity in manifest.entities:
+        assert f"`{stack_fastapi_react._snake(entity.name)}_store`" in store_lines[0]
+
+    nextjs = scaffold.model_surface_instructions(manifest_for_stack("nextjs_ts"))
+    assert nextjs, "the Next.js brief still carries the model surface"
+    assert not [line for line in nextjs if "backend/store.py" in line or ".store import" in line]

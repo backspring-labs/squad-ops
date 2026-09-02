@@ -107,19 +107,6 @@ def detect_stub_fallback_tests(files: list[dict]) -> list[str]:
 # and region enforcement rejects any edit to that. Additive files carry the same rule as
 # prose in the brief and nothing enforced it. This closes that asymmetry.
 
-#: Suffixes of the JS/TS test files a qa author emits. Python suites take the
-#: stub-fallback path above; the two vocabularies never overlap.
-_JS_TEST_SUFFIXES: tuple[str, ...] = (
-    ".test.ts",
-    ".test.tsx",
-    ".test.js",
-    ".test.jsx",
-    ".spec.ts",
-    ".spec.tsx",
-    ".spec.js",
-    ".spec.jsx",
-)
-
 #: The stack's declaration of how a suite invokes the application, and the shared
 #: fetch-stub half of the network-seam rule (#1126). Defined in the leaf module
 #: ``capabilities.app_invocation`` so the stack modules can declare one without importing
@@ -131,12 +118,6 @@ MOCKS_THE_NETWORK = (
     "replaces the seam it would reach the application through and never invokes it — "
     "the suite asserts what it told its own mock to return"
 )
-
-
-def _is_js_test_file(path: str) -> bool:
-    """True for the JS/TS test files a qa author emits (``*.test.ts`` / ``*.spec.tsx``…)."""
-    name = path.replace("\\", "/").rsplit("/", 1)[-1]
-    return name.endswith(_JS_TEST_SUFFIXES)
 
 
 def detect_self_mocking_tests(
@@ -165,7 +146,7 @@ def detect_self_mocking_tests(
     offenders: list[tuple[str, str]] = []
     for f in files:
         path, content = _file_field(f)
-        if not path or not _is_js_test_file(path):
+        if not path or not invocation.is_suite(path):
             continue
         if invocation.mocks_subject(content):
             offenders.append((path, MOCKS_THE_SUBJECT))
@@ -191,6 +172,14 @@ def inspected_python_test_paths(files: list[dict]) -> list[str]:
     return sorted(path for path, _ in map(_file_field, files) if path and _is_test_file(path))
 
 
-def inspected_js_test_paths(files: list[dict]) -> list[str]:
-    """Return the paths ``detect_self_mocking_tests`` will actually examine."""
-    return sorted(path for path, _ in map(_file_field, files) if path and _is_js_test_file(path))
+def inspected_js_test_paths(files: list[dict], invocation: AppInvocation | None) -> list[str]:
+    """Return the paths ``detect_self_mocking_tests`` will actually examine.
+
+    Which files count as suites is the stack's declaration (``invocation.suite_suffixes``),
+    the same one the detector applies — so the inventory and the verdict cannot disagree
+    about what was looked at. ``None`` (an unregistered stack) inspects nothing, exactly as
+    the detector judges nothing.
+    """
+    if invocation is None:
+        return []
+    return sorted(path for path, _ in map(_file_field, files) if path and invocation.is_suite(path))
