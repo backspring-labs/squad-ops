@@ -83,6 +83,24 @@ agent container, at emission and at repair, and each image provisions its toolch
   frontend source, is the first. A two-sided guard reads the provisioning files the images
   are built from and holds both sides; the typed-check menu renders the table.
 
+### Changed — the SIP registry indexes every SIP, and its audit runs in CI (#1144)
+- **`sips/registry.yaml` holds a row for every file under `sips/`**, numbered or not: an
+  unnumbered proposal is `sip_number: null` keyed by its `sip_uid` — what `sips/README.md`
+  always said a proposal carries, and what the registry omitted for 24 live drafts while
+  calling itself the authoritative index (7 rows against 31 published). `cleanup_sip_registry.py
+  --index-proposals` writes the rows and stamps the uid into the file; acceptance now updates
+  that row in place instead of appending a duplicate; proposals sort after numbered SIPs.
+- **The audit is a regression-gate test** (`test_sip_registry_audit.py`): zero critical, zero
+  data-quality findings, every file indexed. It had been wired to nothing — no workflow, no
+  test, no cut step — which is how 19 findings accumulated unreported.
+- **The findings are fixed at their source**: nine frontmatter statuses that disagreed with
+  the folder (four `proposed/` files claiming `accepted`, five `deprecated/` files claiming
+  `implemented`); prose scraped into `created_at` by the legacy migration in nineteen files
+  (the audit checked only the registry's copy, so the four #1144 named were fifteen more
+  once the file's own field was read); one draft with no frontmatter at all. The timestamp
+  rule accepts day precision (`2026-02-23`), which nine correct registry values had been
+  reported against.
+
 ## [1.7.0] — 2026-09-01
 
 **The Reasoning line opens.** Plan: `docs/plans/1-7-0-plan.md` (rev 3). Cut record:

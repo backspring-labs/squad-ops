@@ -1,3 +1,10 @@
+---
+sip_uid: '17883224960370906'
+status: proposed
+title: QA-First Test Strategy for 1-Hour SquadOps Cycles (group_run Focus)
+author: Unknown
+created_at: '2026-02-24T00:00:00Z'
+---
 # IDEA — QA-First Test Strategy for 1-Hour SquadOps Cycles (group_run Focus)
 
 ## Status

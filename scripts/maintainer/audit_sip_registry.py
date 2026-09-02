@@ -3,11 +3,19 @@
 SIP Registry Audit Script
 Comprehensive validation of sips/registry.yaml against actual SIP files.
 Identifies issues and provides cleanup recommendations.
+
+The registry indexes EVERY SIP file under ``sips/`` — numbered or not (#1144). An
+unnumbered proposal is a row with ``sip_number: null`` keyed by its ``sip_uid``, which is
+what ``sips/README.md`` has always said a proposal carries; ``cleanup_sip_registry.py
+--index-proposals`` writes those rows. ``tests/unit/architecture/test_sip_registry_audit.py``
+runs this audit in the regression gate, so a finding here fails CI rather than waiting for
+someone to remember to run it.
 """
 
 import re
 import sys
 from collections import defaultdict
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -80,12 +88,19 @@ def extract_metadata_from_file(file_path: Path) -> dict[str, Any] | None:
 
 
 def is_valid_iso_timestamp(value: Any) -> bool:
-    """Check if value is a valid ISO 8601 timestamp."""
+    """ISO 8601 at day or second precision — as a string, or as the ``date``/``datetime``
+    object YAML parses an unquoted value into.
+
+    Day precision is accepted because it is the precision a SIP author writes
+    (``created_at: '2026-02-23'``); the second-precision-only rule this replaced reported
+    nine correct values as invalid (#1144). Prose in a date field is still invalid.
+    """
+    if isinstance(value, (datetime, date)):
+        return True
     if not isinstance(value, str):
         return False
 
-    # Check for ISO 8601 format: YYYY-MM-DDTHH:MM:SS[.sss][Z]
-    pattern = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z?$"
+    pattern = r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d+)?Z?)?$"
     return bool(re.match(pattern, value))
 
 
@@ -224,6 +239,28 @@ def audit_registry() -> dict[str, Any]:
                         }
                     )
 
+                # Check the file's own timestamps: the registry mirrors them at every
+                # transition, so prose scraped into a date field (the legacy-migration
+                # corruption #1144 found in four proposals) propagates from here.
+                for field in ("created_at", "updated_at"):
+                    file_value = file_metadata.get(field)
+                    if file_value and not is_valid_iso_timestamp(file_value):
+                        issues["data_quality"].append(
+                            {
+                                "type": "invalid_file_timestamp",
+                                "sip_number": sip_number,
+                                "sip_uid": sip_uid,
+                                "title": title,
+                                "field": field,
+                                "value": str(file_value),
+                                "file": str(file_path.relative_to(REPO_ROOT)),
+                                "message": (
+                                    f"{field} in the file's frontmatter is not a "
+                                    f"timestamp: {file_value!r}"
+                                ),
+                            }
+                        )
+
         # Check 4: Invalid timestamps
         created_at = sip.get("created_at")
         if created_at and not is_valid_iso_timestamp(created_at):
@@ -297,14 +334,19 @@ def audit_registry() -> dict[str, Any]:
             if metadata:
                 sip_number = metadata.get("sip_number")
                 if sip_number is None:
-                    # Proposals are expected to not be in registry
-                    issues["informational"].append(
+                    # A proposal is a registry row with sip_number null (#1144); one
+                    # without a row is invisible to every registry-driven consumer.
+                    issues["data_quality"].append(
                         {
-                            "type": "orphaned_proposal",
+                            "type": "unindexed_proposal",
                             "file": str(file_path.relative_to(REPO_ROOT)),
                             "sip_uid": metadata.get("sip_uid"),
                             "title": metadata.get("title"),
-                            "message": f"Proposal file not in registry: {filename}",
+                            "message": (
+                                f"Proposal not indexed in the registry: {filename} — run "
+                                "`python scripts/maintainer/cleanup_sip_registry.py "
+                                "--index-proposals`"
+                            ),
                         }
                     )
                 else:
@@ -453,10 +495,18 @@ def print_audit_report(audit_results: dict[str, Any]) -> None:
         )
 
     invalid_timestamp_count = sum(
-        1 for i in issues["data_quality"] if i["type"] == "invalid_timestamp"
+        1
+        for i in issues["data_quality"]
+        if i["type"] in ("invalid_timestamp", "invalid_file_timestamp")
     )
     if invalid_timestamp_count > 0:
         recommendations.append(f"Fix {invalid_timestamp_count} invalid timestamp format(s)")
+
+    unindexed_count = sum(1 for i in issues["data_quality"] if i["type"] == "unindexed_proposal")
+    if unindexed_count > 0:
+        recommendations.append(
+            f"Index {unindexed_count} proposal(s): cleanup_sip_registry.py --index-proposals"
+        )
 
     mismatch_count = sum(1 for i in issues["critical"] if i["type"] == "status_folder_mismatch")
     if mismatch_count > 0:

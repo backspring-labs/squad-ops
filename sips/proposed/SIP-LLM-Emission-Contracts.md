@@ -1,4 +1,5 @@
 ---
+sip_uid: '17883224960409982'
 status: proposed
 title: LLM Emission Contracts — Typed Response Handling with Provider-Agnostic Structured
   Output

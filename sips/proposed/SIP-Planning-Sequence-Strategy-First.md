@@ -1,4 +1,5 @@
 ---
+sip_uid: '17883224960411882'
 status: proposed
 title: Planning Sequence — Strategy Before Research
 author: SquadOps Architecture

@@ -1,4 +1,5 @@
 ---
+sip_uid: '17883224960396698'
 status: proposed
 title: Cycle Evaluation Scorecard
 author: SquadOps Architecture

@@ -1,4 +1,5 @@
 ---
+sip_uid: '17883224960406118'
 title: Experiment Queue and Cycle Assessment Framework
 status: proposed
 authors: SquadOps Architecture

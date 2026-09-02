@@ -2,7 +2,7 @@
 sip_uid: "17642554775949717"
 sip_number: 32
 title: "Activity-Feed-API"
-status: "implemented"
+status: "deprecated"
 author: "Unknown"
 approver: "None"
 created_at: "2025-10-16T00:00:00Z"

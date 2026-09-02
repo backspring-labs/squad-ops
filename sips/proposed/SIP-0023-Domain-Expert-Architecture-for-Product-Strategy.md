@@ -2,10 +2,10 @@
 sip_uid: "17642554775906691"
 sip_number: 23
 title: "Domain-Expert-Architecture-for-Product-Strategy"
-status: "accepted"
+status: "proposed"
 author: "Unknown"
 approver: "None"
-created_at: "Challenges**: Domain knowledge updates require modifying core strategy agent"
+created_at: '2025-11-27T10:12:48.892116Z'
 updated_at: "2025-11-27T10:12:48.892116Z"
 original_filename: "SIP-023-Domain-Expert-Architecture.md"
 ---

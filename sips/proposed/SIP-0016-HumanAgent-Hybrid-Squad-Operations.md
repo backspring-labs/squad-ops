@@ -5,7 +5,7 @@ title: "HumanAgent-Hybrid-Squad-Operations"
 status: "proposed"
 author: "Unknown"
 approver: "None"
-created_at: "early fixes** or reprioritize."
+created_at: '2025-11-27T10:12:48.886498Z'
 updated_at: "2025-11-27T10:12:48.886498Z"
 original_filename: "SIP-016_Human_Agent_Hybrid.md"
 ---

@@ -2,10 +2,10 @@
 sip_uid: "17642554775899329"
 sip_number: 22
 title: "Specialized-Development-Agent-Roles"
-status: "implemented"
+status: "deprecated"
 author: "Unknown"
 approver: "None"
-created_at: "Lead Agent**"
+created_at: '2025-11-27T10:12:48.891105Z'
 updated_at: "2025-11-27T10:12:48.891105Z"
 original_filename: "SIP-022-Specialized-Dev-Agent-Roles.md"
 ---

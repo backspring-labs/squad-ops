@@ -1,4 +1,5 @@
 ---
+sip_uid: '17883224960404130'
 title: Edge Deployment Profile for Lightweight SquadOps Nodes
 status: proposed
 author: jladd

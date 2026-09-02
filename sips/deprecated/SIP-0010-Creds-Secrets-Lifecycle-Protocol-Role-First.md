@@ -5,7 +5,7 @@ title: Creds-Secrets-Lifecycle-Protocol-Role-First
 status: deprecated
 author: Unknown
 approver: None
-created_at: presence + expiry window (<7d → Warning, expired → Blocking).
+created_at: '2025-11-27T10:12:48.882894Z'
 updated_at: '2026-01-10T11:15:37.187382Z'
 original_filename: SIP-010-Creds-Secrets-Lifecycle-Protocol.md
 ---

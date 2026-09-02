@@ -5,7 +5,7 @@ title: -SIP-006-Warm-Boot-Analysis-Protocol-WBA
 status: deprecated
 author: Unknown
 approver: None
-created_at: customer response heuristics.
+created_at: '2026-01-10T10:32:53Z'
 updated_at: '2025-11-28T15:53:47.402549Z'
 original_filename: SIP-006-Warm-Boot-Analysis-Protocol.md
 ---

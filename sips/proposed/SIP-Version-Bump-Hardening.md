@@ -1,4 +1,5 @@
 ---
+sip_uid: '17883224960418230'
 status: proposed
 title: Version Bump Hardening — Single-Sourced Strings, Guardrails, and Automated
   Changelog

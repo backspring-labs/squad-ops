@@ -5,7 +5,7 @@ title: -SIP-00X-Paperclip-Protocol-Squad-Passive-Income-Flipping
 status: deprecated
 author: Unknown
 approver: None
-created_at: bankroll.
+created_at: '2025-10-03T18:44:56.922290Z'
 updated_at: '2025-11-28T15:50:37.001702Z'
 original_filename: SIP-003-Paperclip-Protocol-Squad.md
 ---

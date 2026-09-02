@@ -2,7 +2,7 @@
 sip_uid: "17642554775939927"
 sip_number: 28
 title: "Hybrid-Deployment-Model-Industry-Aligned-Architecture-for-Multi-Environment-Deployments"
-status: "accepted"
+status: "proposed"
 author: "System Architecture"
 approver: "None"
 created_at: "2025-10-13T00:00:00Z"

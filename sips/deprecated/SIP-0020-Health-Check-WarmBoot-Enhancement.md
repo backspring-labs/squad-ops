@@ -2,10 +2,10 @@
 sip_uid: '17642554775888268'
 sip_number: 20
 title: Health-Check-WarmBoot-Enhancement
-status: implemented
+status: "deprecated"
 author: Unknown
 approver: None
-created_at: (modify existing), bug-fix (fix existing), refactor (improve existing),
+created_at: '2025-12-07T19:51:00.190894Z'
   deployment (deploy existing)
 updated_at: '2025-12-07T19:51:00.189625Z'
 original_filename: SIP-020-Health-Check-WarmBoot-Enhancement.md
