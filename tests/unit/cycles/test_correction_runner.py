@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -4961,3 +4962,120 @@ class TestOwnArtifactNeverNarrows:
             "frontend/src/views/RunsListView.jsx",
             "frontend/src/__tests__/runs.test.jsx",
         ]
+
+
+class TestQaOwnedDefectRouting:
+    """#1130: the repair router targets the suite the runner says raised in its own frame.
+    Replayed from 1.6.5 roll 3's stored report through the real row builder and the real
+    stack predicate; the 1.6.6 roll-6 report (the app raised) is the control."""
+
+    _REPLAYS = Path(__file__).resolve().parents[2] / "fixtures" / "roll_replays"
+
+    def _evidence_from_report(self, report_name: str, *, probe_failed: bool):
+        from squadops.capabilities.handlers.test_runner import (
+            RunTestsResult,
+            failed_tests_pass_row,
+            parse_pytest_failure_rows,
+            suite_defects,
+        )
+        from squadops.capabilities.scaffold import is_qa_test_path_for_stack
+
+        text = (self._REPLAYS / report_name).read_text(encoding="utf-8")
+        stdout = text.split("## stdout", 1)[1].split("```")[1]
+        rows = parse_pytest_failure_rows(stdout, ["backend/tests/test_runs.py"])
+        result = RunTestsResult(
+            executed=True,
+            exit_code=1,
+            runner="pytest",
+            suite_broken=False,
+            test_failures=tuple(rows),
+            suite_defects=tuple(suite_defects(rows, [])),
+        )
+        checks = [
+            failed_tests_pass_row(
+                result,
+                qa_owned=lambda p: is_qa_test_path_for_stack(p, "fullstack_fastapi_react"),
+            )
+        ]
+        if probe_failed:
+            # Roll 3 ALSO had a real app defect the same round (two probes got 422).
+            checks.append(
+                {
+                    "check": "probe",
+                    "criterion_id": "vc-probe-runs-participants",
+                    "passed": False,
+                    "status": "failed",
+                }
+            )
+        return {"validation_result": {"passed": False, "checks": checks}}
+
+    _failed_inputs = {
+        "expected_artifacts": [
+            "backend/tests/test_runs.py",
+            "frontend/src/tests/App.test.jsx",
+        ],
+        "subtask_focus": "Backend and frontend suites",
+        "subtask_description": "Free-authored suites for the React stack.",
+        "resolved_config": {"dev_capability": "fullstack_fastapi_react"},
+    }
+
+    def test_roll_3_routes_to_the_qa_repair_targeting_only_the_defective_suite(self, caplog):
+        from adapters.cycles.correction_runner import _locus_and_repair_target
+        from squadops.cycles.failure_evidence import FailureLocus
+        from squadops.cycles.task_plan import QA_TEST_REPAIR_STEPS, repair_steps_for
+
+        evidence = self._evidence_from_report(
+            "1-6-5-react-roll-3-round-0-test_report.md", probe_failed=True
+        )
+        with caplog.at_level("INFO", logger="adapters.cycles.correction_runner"):
+            locus, target, focus, description = _locus_and_repair_target(
+                "qa.test",
+                evidence,
+                self._failed_inputs,
+                {"implicated_files": ["backend/routes.py"]},
+            )
+
+        assert locus == FailureLocus.OWN_ARTIFACT
+        # The frontend suite was not the defect and is not re-authored.
+        assert target == ["backend/tests/test_runs.py"]
+        assert (focus, description) == (
+            "Backend and frontend suites",
+            "Free-authored suites for the React stack.",
+        )
+        assert repair_steps_for("qa.test", locus) == QA_TEST_REPAIR_STEPS
+        routed = [r.message for r in caplog.records if "qa_owned_routed" in r.message]
+        assert len(routed) == 1
+        assert "backend/tests/test_runs.py raised TypeError in its own frame" in routed[0]
+        assert "test_join_and_leave_run:69" in routed[0]
+
+    def test_roll_6s_app_frame_failure_stays_on_the_dev_chain(self):
+        from adapters.cycles.correction_runner import _locus_and_repair_target
+        from squadops.cycles.failure_evidence import FailureLocus
+        from squadops.cycles.task_plan import REPAIR_TASK_STEPS, repair_steps_for
+
+        evidence = self._evidence_from_report(
+            "1-6-6-react-roll-6-round-0-test_report.md", probe_failed=False
+        )
+        locus, target, _, _ = _locus_and_repair_target(
+            "qa.test", evidence, self._failed_inputs, None
+        )
+
+        assert locus == FailureLocus.SUBJECT
+        assert target != ["backend/tests/test_runs.py"]
+        assert repair_steps_for("qa.test", locus) == REPAIR_TASK_STEPS
+
+    def test_a_defect_file_outside_the_expected_artifacts_is_still_the_target(self):
+        """The stamped file names the artifact; when the plan's expected list does not
+        carry it (a suite the author added), the defect file itself is the target."""
+        from adapters.cycles.correction_runner import _locus_and_repair_target
+        from squadops.cycles.failure_evidence import FailureLocus
+
+        evidence = self._evidence_from_report(
+            "1-6-5-react-roll-3-round-0-test_report.md", probe_failed=False
+        )
+        inputs = {**self._failed_inputs, "expected_artifacts": ["backend/tests/test_api.py"]}
+
+        locus, target, _, _ = _locus_and_repair_target("qa.test", evidence, inputs, None)
+
+        assert locus == FailureLocus.OWN_ARTIFACT
+        assert target == ["backend/tests/test_runs.py"]

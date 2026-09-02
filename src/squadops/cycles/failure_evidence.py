@@ -256,36 +256,8 @@ def classify_failure_locus(failure_evidence: Any) -> str:
     # suite both contradicts the contract AND fails, repairing the app against a
     # contract-contradicting suite is exactly the pf-54 budget burn — the
     # tests_pass row must not route to the dev chain before these are consulted.
-    for row in checks:
-        check = row.get("check")
-        if check == "expected_artifacts" and row.get("passed") is False:
-            # The task's own named output files are missing from its emission.
-            return FailureLocus.OWN_ARTIFACT
-        # #629: the frozen contract says the suite's own assertions are wrong
-        # (status pinned by a probe, asserted differently — or a pinned path
-        # requested through an undeclared prefix). #1153: the manifest says the
-        # suite's own literal cannot be the declared kind. Both safe from the
-        # test-gaming guard: the signal comes from a declaration, not from the app
-        # failing the suite — for qa.test, OWN_ARTIFACT = eve re-authors the suite.
-        if check in _DECLARATION_OWNED_SUITE_CHECKS and row.get("passed") is False:
-            return FailureLocus.OWN_ARTIFACT
-        # #988: the suite never invoked the application — it mocked the route module,
-        # or replaced the fetch seam and imported no route at all (#915), or hid the
-        # entrypoint behind an ImportError stub and tested the reconstruction (#276).
-        # Such a suite's verdict on the app carries no information about the app, so
-        # routing its failure to the dev chain spends the repair budget rewriting
-        # working code against evidence produced by a test of itself. The pre-V7
-        # shakedown did exactly that and exhausted its attempts; roll 6's delivered
-        # app passed a hand boot audit while the cycle rejected it.
-        #
-        # Safe from the test-gaming guard on the same footing as the contract row
-        # above: the signal is structural — read off the suite's own source — not the
-        # app failing the suite, so it cannot be produced BY an app defect.
-        if (
-            check in (CHECK_NO_SELF_MOCKING_TESTS, CHECK_NO_STUB_FALLBACK_TESTS)
-            and row.get("passed") is False
-        ):
-            return FailureLocus.OWN_ARTIFACT
+    if any(_own_artifact_row(row) for row in checks):
+        return FailureLocus.OWN_ARTIFACT
     scaffold_locus = _locus_from_scaffold_classification(failure_evidence)
     if scaffold_locus is not None:
         return scaffold_locus
@@ -295,6 +267,70 @@ def classify_failure_locus(failure_evidence: Any) -> str:
             if locus is not None:
                 return locus
     return FailureLocus.UNKNOWN
+
+
+def _own_artifact_row(row: dict[str, Any]) -> bool:
+    """A check row that names the task's OWN emission as the defect (#568's own-artifact
+    signals), each safe from the test-gaming guard because none is the app's verdict."""
+    check = row.get("check")
+    if check == "expected_artifacts" and row.get("passed") is False:
+        # The task's own named output files are missing from its emission.
+        return True
+    # #629: the frozen contract says the suite's own assertions are wrong (status pinned
+    # by a probe, asserted differently — or a pinned path requested through an undeclared
+    # prefix). #1153: the manifest says the suite's own literal cannot be the declared
+    # kind. Both safe from the test-gaming guard: the signal comes from a declaration, not
+    # from the app failing the suite — for qa.test, OWN_ARTIFACT = the qa role re-authors.
+    if check in _DECLARATION_OWNED_SUITE_CHECKS and row.get("passed") is False:
+        return True
+    # #988: the suite never invoked the application — it mocked the route module, or
+    # replaced the fetch seam and imported no route at all (#915), or hid the entrypoint
+    # behind an ImportError stub and tested the reconstruction (#276). Such a suite's
+    # verdict on the app carries no information about the app, so routing its failure to
+    # the dev chain spends the repair budget rewriting working code against evidence
+    # produced by a test of itself. The pre-V7 shakedown did exactly that and exhausted
+    # its attempts; roll 6's delivered app passed a hand boot audit while the cycle
+    # rejected it. Structural — read off the suite's own source — so it cannot be
+    # produced BY an app defect.
+    if (
+        check in (CHECK_NO_SELF_MOCKING_TESTS, CHECK_NO_STUB_FALLBACK_TESTS)
+        and row.get("passed") is False
+    ):
+        return True
+    # #1130: the runner says the suite raised in its own frame before any application
+    # code ran (a NameError in the test module, an argument-binding TypeError at a call
+    # into the harness) and the stack says the file is the qa role's. 1.6.5 roll 3
+    # carried exactly this — three tests dying on ``TestClient.delete(json=…)`` — and
+    # every repair went to backend/routes.py because an executed pytest exit 1 reads as
+    # "the app failed the suite". A machine fact about where the exception was raised,
+    # not the app's verdict.
+    return check == "tests_pass" and bool(_qa_owned_defects(row))
+
+
+def _qa_owned_defects(tests_pass_row: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        d
+        for d in tests_pass_row.get("suite_defects") or []
+        if isinstance(d, dict) and d.get("qa_owned") is True
+    ]
+
+
+def qa_owned_suite_defects(failure_evidence: Any) -> list[dict[str, Any]]:
+    """The suite's own-frame failures the stack attributes to the qa role (#1130).
+
+    Read from the ``tests_pass`` rows the runner built (``failed_tests_pass_row``); each
+    entry is ``{file, title, line, exception, message, qa_owned}``. The repair router
+    targets their files; the classifier routes on their presence.
+    """
+    if not isinstance(failure_evidence, dict):
+        return []
+    rows = (failure_evidence.get("validation_result") or {}).get("checks") or []
+    return [
+        d
+        for row in rows
+        if isinstance(row, dict) and row.get("check") == "tests_pass"
+        for d in _qa_owned_defects(row)
+    ]
 
 
 def _locus_from_scaffold_classification(failure_evidence: dict[str, Any]) -> str | None:
