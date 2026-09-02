@@ -118,6 +118,18 @@ belong; the check-spec examples are documentation and are allowlisted as that.
 `detect_self_mocking_tests` (`stub_detection.py:142–174`) takes an `AppInvocation` since #1126,
 returns `[]` when the stack declares none, and needs nothing.
 
+**As landed (2026-09-01).** The move and the guard shipped together; the guard carries a
+reviewed allowlist, each entry with its reason, and a second test fails when an entry no
+longer fires. Two helpers in the block were not stack payload and the move said so rather
+than carrying them: `_base_type_name` is manifest vocabulary the shared lint calls, and now
+lives as `base_type_name` in `capabilities/type_tokens.py`, a leaf both the model and the
+stack modules import; `_snake` is stack #1's store-naming rule, which the fill brief in
+`scaffold.py` still renders, so the brief imports it from the stack module for now. The
+suffix vocabularies (`_JS_TEST_SUFFIXES`, `_RUNNABLE_TEST_SUFFIXES`, the qa handler's suffix
+check) and that fill-brief line move behind the seam in a follow-up PR of this line, which
+deletes their allowlist entries — split from the move so the byte-identical proof stays a
+proof of a move and nothing else.
+
 ### 2.2 The seam decision — a check runs where its toolchain exists (#939, #1229)
 
 **What the tree says, 2026-09-01.** Typed acceptance checks run at emission **in the producing
@@ -438,3 +450,6 @@ wait on is #1131.
   Two corrections to the pack's own issue text, from the tree: `GENERATOR_VERSION` is not the pin
   for stack #1 (the reference contract's frozen digests are), and `envelope_example` is
   stack-neutral and stays. Same day, before merge: the owner ruled B on §2.2's seam decision.
+- **Rev 1, as-landed note (2026-09-01)** — §2.1 records how the move and the guard actually
+  shipped: the leaf for `base_type_name`, the `_snake` import, and the suffix-vocabulary
+  follow-up split out of the move.

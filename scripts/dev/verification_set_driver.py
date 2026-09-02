@@ -635,7 +635,8 @@ def _p0_fullstack_fastapi_react(manifest: Any, seeded: Reader) -> dict:
     exports one dict per declared entity by design (#1087's stack #1 half is open), so
     ``stores_beyond_roots`` is texture for the roll that finally measures it.
     """
-    from squadops.capabilities.scaffold import _py_type, root_persisted_entities
+    from squadops.capabilities.scaffold import root_persisted_entities
+    from squadops.capabilities.stack_fastapi_react import _py_type
 
     models = seeded("backend/models.py") or ""
     store = seeded("backend/store.py") or ""
