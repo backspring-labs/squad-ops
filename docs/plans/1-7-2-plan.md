@@ -273,8 +273,126 @@ timeout for two things) — no roll in this line or the last has hit either boun
 
 ---
 
+## 8a. The #1268 reading — 2026-09-03
+
+§2.1 gates the fix on reading the contentless generations *before* any change is chosen
+(`feedback: instrument before fixing`). This section is that reading, and the fix it selects.
+
+### What was read
+
+- **All 31 `qa.test` / `qa.test_repair` generations of the seven counted rolls**, from
+  LangFuse: prompt (capped at 10,000 chars, `telemetry/models.py:134`), usage, latency and
+  the per-generation metadata, which carries the reasoning level actually sent.
+- **The five banked contentless emissions of Next.js roll 2 in full** —
+  `art_fc4fdc92cd4d`, `art_6e15a5b5a05f`, `art_1d7f616690b5`, `art_4225f34d48c8`,
+  `art_065386df941c` (`cyc_5b027f3e74fc` / `run_d515e656db78`), 109–265 bytes each.
+- **Thirteen 1.6.6-era `qa.test` generations** (2026-08-27/28) as the contrast §2.1 asks for.
+- **The agent emission-shape window for the whole counted set**: 162 emissions logged, 16
+  contentless (13 `qa_test_handler`, 2 `qa_test_repair_handler`, 1 `qa_test_handler:self_eval`).
+
+### What the emissions are
+
+A single sentence of intent and nothing else — "I'll examine the workspace to confirm the
+store API, the route handler export signatures, and the DELETE participants endpoint before
+writing tests." One of the sixteen goes further and shows what the model was about to do:
+`chars=467 … head='Let me first examine the current state of the workspace … <function_calls>
+<invoke name="fs.read_file"><parameter name="path">backen'`. **The model is announcing a tool
+call and stopping.** There is no tool loop at this seam and no tools are offered.
+
+### The three candidates §2.1 names, and what the reading does to each
+
+| candidate | verdict | on what evidence |
+|---|---|---|
+| the Reasoning line's stop/budget handling (1.7.0 §2.1) | **this is it** — but not as a *budget* | see below |
+| the streaming path's `reasoning_text` handling (#1194) | **falsified** | `metadata.reasoning = "none"` on every one, so `think: false` was sent and there was no thinking channel to drop. `reasoning_text` is null because none was produced, not because it was lost. |
+| prompt growth from the 1.7.1 qa additions | **falsified as a cause** | 1.6.6 ran 8,568–21,875-token prompts and returned 3,233–6,594 completion tokens. On the 1.7.x tree an 8,853-token prompt goes contentless (`cyc_ca02bed7fbb4` repair) and a 21,758-token one succeeds (`cyc_f05692bb3ceb`). There is no size threshold; the failure is stochastic at every size. |
+
+Also falsified, and worth stating because #1268's own text hedges on it: **it is not a
+truncation.** Outputs are 67–303 completion tokens against a `num_predict` of 12,288, every
+one with `done_reason: stop`, and the model's context length is 262,144 — the prompt is
+nowhere near a bound.
+
+### The one systematic difference between the two trees
+
+`metadata.reasoning` is `None` on every 1.6.6 generation and `"none"` on every 1.7.x one.
+Those are different wires, not different spellings: `None` means the handler passed no level
+and the payload carried **no `think` key at all**, so the model's own default applied;
+`"none"` means `ReasoningLevel.NONE`, which the Ollama adapter sends as **`think: false`**
+(`adapters/llm/ollama.py`, `_build_chat_payload`).
+
+The change is `918b4f87`, 2026-08-28, "#927 phase 2 — every capability declares how much
+reasoning its output wants", which declared `qa.test` and `qa.test_repair` as
+`ReasoningLevel.NONE` and, in the same commit, began recording the level in the generation
+metadata. #1268's own dating matches it with nothing to spare: zero contentless emissions in
+the 1.6.6 counted rolls (a deploy that predates the commit), the first one 2026-08-31 02:31Z
+on the first deploy that carried it.
+
+### The paired live A/B — the mechanism, measured rather than inferred
+
+A correlation across two deploys is not a mechanism, so it was put to the model directly.
+Same system prompt (the real assembled `qa`/`agent_start`/`qa.test` prompt), same user
+prompt, same `num_predict`, no temperature (production sends none, so the model's own
+default applies), 17,049 prompt tokens against the roll's 15,854–16,040 — arms interleaved:
+
+| arm | wire | usable emissions (≥1 addressed fence) |
+|---|---|---|
+| **A** | `think: false` — production today | **1 of 6** (18,425 chars once; then 96, 1,034, 106, 115, 143 chars, no fence) |
+| **B** | no `think` key — the pre-#927 wire | **6 of 6** (9,582–17,906 chars, 2 fences each, 4,226–8,554 thinking chars) |
+| **C** | `think: true` — the wire the policy can actually send | **6 of 6** (11,798–13,248 chars, 2 fences each, 7,932–24,330 thinking chars) |
+
+Arms B and C are indistinguishable in outcome and both differ from A; the wire the fix can
+actually send is therefore the wire that was measured. Arm C exists because **the reasoning
+policy cannot express arm B.** `resolve_reasoning_level`
+returns a level or `None`, and `None` only for a model with no reasoning channel at all; for
+qwen3.8:27b any non-NONE level becomes `think: true`. Landing the fix on arm B alone would
+replace a measured inference with an unmeasured one.
+
+**What the A/B does not establish.** The prompt is a faithful *reconstruction*, not the
+roll's bytes: LangFuse stores the first 10,000 chars, and the remainder was rebuilt from the
+roll's own vault sources and the repo's own qa appendices. It reproduces the shape and the
+size, and it reproduces the failure; it is not the same string. N = 6 per arm, one model, one
+task type. The claim it supports is the one it was run for: on this seam the `think` flag
+moves the contentless rate, and no other candidate does.
+
+### What the fix costs, stated
+
+#927's declaration was not arbitrary. #924 measured the deployed qa **fill brief** at 5,727
+completion tokens with the channel on and 413 with it off, for the same eight fill fences —
+"reason where the output is an argument, don't where the output is a transcription", and
+filling declared slots is transcription. That measurement stands. What it did not measure is
+the **primary authoring** task on this prompt, which is not transcription: arm B spends
+4,226–8,554 characters of thinking and returns a whole suite, and arm A returns a sentence
+five times in six. A round saved on tokens costs a correction round, and #1268 counts what
+that came to — fourteen attempts across seven rolls, five of seven rolls shaped by it.
+
+### The fix
+
+**One change, per §8: the declaration, for the two authoring capabilities only.** Arm C is
+the fix's own wire and it held 6 of 6.
+`qa.test` and `qa.test_repair` move off `ReasoningLevel.NONE`. Every other `NONE` entry
+stays — including the fill-mode paths #924 actually measured, which are transcription and
+keep the channel off. Prediction **L1** reads it, and L1 is the line's one bar: a contentless
+first attempt on a counted roll blocks the cut.
+
+§8's stated fallback — retry-with-fact — is **not** taken as the primary fix, because the
+reading is not inconclusive. It remains the right backstop and is worth having on its own
+merits: a contentless emission should be re-prompted with its own emission-shape fact rather
+than silently re-rolled. That is a separate item, not this one.
+
+### One consequence for §4
+
+#1276 renamed the prediction readouts the carried rows R1/R3/R5/R6/R7 are "read from … as
+there": `kind_gate_rejections` → `assertion_kinds_match_rows`, and so on, each now a
+`{reason: count}` map with non-execution beside failure, and `unverifiable_toolchain_absent`
+→ `unverifiable_by_reason`. The predictions are unchanged; the names and shapes they are read
+from are not. The 1.7.1 plan and pre-registration keep the old names, being the record of
+what the instrument was called when those sets ran.
+
 ## 9. Revision history
 
+- **Rev 2 (2026-09-03)** — §8a records the #1268 reading and the fix it selects (the
+  `think: false` the #927 declaration sends, measured against its own control), and notes
+  #1276's rename of the readouts §4 carries. Nothing else in the plan changes.
 - **Rev 1 (2026-09-03)** — written the day v1.7.1 was tagged; §8 turned from open items into
   recommendations the same day at the owner's request. Written from the 1.7.1 record, the 1.7.0
   plan §2.3/§3.1, issues #1268–#1273 and #1276, and the stored artifacts of the seven counted
