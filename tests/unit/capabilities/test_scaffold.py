@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import dataclasses as dc
 import importlib.util
+import re
 from pathlib import Path
 
 import pytest
@@ -447,11 +448,17 @@ def test_qa_test_namespace_is_deterministic_and_bounds_qa_paths():
     from squadops.capabilities.scaffold import is_qa_test_path, qa_test_namespace
 
     m = _group_run_manifest()
-    assert qa_test_namespace(m) == ("backend/tests/", "frontend/src/tests/")
+    assert qa_test_namespace(m) == (
+        "backend/tests/",
+        "frontend/src/__tests__/",
+        "frontend/src/tests/",
+    )
     assert qa_test_namespace(m) == qa_test_namespace(_group_run_manifest())  # deterministic
 
     assert is_qa_test_path("backend/tests/test_runs.py", m)
     assert is_qa_test_path("./frontend/src/tests/flows.test.jsx", m)  # normalized
+    # #1270: where the stack's own harness is seeded, and where the qa role emits beside it.
+    assert is_qa_test_path("frontend/src/__tests__/runs.test.jsx", m)
     assert not is_qa_test_path("backend/main.py", m)  # frozen source, not QA-owned
     assert not is_qa_test_path("backend/routes.py", m)  # fill slot, not QA-owned
     assert not is_qa_test_path("tests/test_runs.py", m)  # undeclared top-level tests dir
@@ -1262,3 +1269,34 @@ class TestClientSurfaceLines:
         # Next.js suites call route handlers directly; the stack declares no client surface.
         assert client_surface_instructions(dataclasses.replace(manifest, stack="nextjs_ts")) == []
         assert client_surface_instructions(dataclasses.replace(manifest, stack="unknown")) == []
+
+
+def test_qa_namespace_covers_what_the_stack_seeds():
+    """A stack's declared QA namespace must contain the suites the stack itself seeds.
+
+    The React stack declared `frontend/src/tests/` and seeds its harness at
+    `frontend/src/__tests__/` (#1270). Nothing held the two together, so every React
+    frontend suite — the seeded harness and every suite the qa role authored beside it —
+    fell outside its own stack's QA namespace, and each consumer that asks "who owns this
+    file" got "nobody": #1130's own-frame attribution among them, which is how 1.7.1 roll
+    4 spent two dev repairs on a defect in the qa role's own file.
+    """
+    from squadops.capabilities.app_invocation import JS_SUITE_SUFFIXES
+    from squadops.capabilities.scaffold import is_qa_test_path_for_stack
+    from tests.unit.capabilities._stack_fixtures import manifest_for_stack
+
+    py_suite = re.compile(r"(^|/)test_[^/]*\.py$|_test\.py$")
+    checked = 0
+    for stack in ("fullstack_fastapi_react", "nextjs_ts"):
+        seeded = [f["name"] for f in scaffold.expand(manifest_for_stack(stack))]
+        suites = [
+            name for name in seeded if name.endswith(JS_SUITE_SUFFIXES) or py_suite.search(name)
+        ]
+        assert suites, f"{stack} seeds no suite — the guard would pass vacuously"
+        for name in suites:
+            assert is_qa_test_path_for_stack(name, stack), (
+                f"{stack} seeds {name} outside its own qa_test_namespace "
+                f"{scaffold._STACKS[stack].qa_test_namespace}"
+            )
+        checked += len(suites)
+    assert checked >= 2, "both stacks must contribute a seeded suite"

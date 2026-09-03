@@ -266,7 +266,7 @@ async def run_generated_tests(
             source_file_count=len(source_files),
             runner="pytest",
             test_failures=tuple(failure_rows),
-            suite_defects=tuple(suite_defects(failure_rows, source_files)),
+            suite_defects=tuple(suite_defects(failure_rows, source_files, "pytest")),
             # pytest speaks suite-health through exit codes: 2/5 = the suite
             # itself is broken; 1 = it ran and judged the subject; 3/4 stay
             # ambiguous (the pf-35 exit-4 lesson — app-import failures surface
@@ -412,12 +412,13 @@ async def run_node_tests(
         # #1123: the JSON report is the machine report; when it was not written (a
         # reporter crash, a disk error) the text still names every failed case, and a
         # repair brief with no case list re-authors the whole file.
+        handed_in = [f["path"] for f in test_files]
         failure_rows = (
-            parse_vitest_failure_rows(report, cwd) if report else parse_vitest_failure_text(stdout)
+            parse_vitest_failure_rows(report, cwd, handed_in)
+            if report
+            else parse_vitest_failure_text(stdout)
         )
-        uncollected = (
-            uncollected_test_files(report, cwd, [f["path"] for f in test_files]) if report else []
-        )
+        uncollected = uncollected_test_files(report, cwd, handed_in) if report else []
         if uncollected:
             logger.warning(
                 "vitest collected no suite for %d handed-in test file(s): %s — these "
@@ -441,6 +442,10 @@ async def run_node_tests(
             # qa role's own file).
             suite_broken=_vitest_suite_broken(exit_code, stdout, stderr),
             test_failures=tuple(failure_rows),
+            # #1270: the vitest side never computed these, so a suite that died at its
+            # own call site routed to the dev chain — which the ownership veto then
+            # forbade from touching the file (1.7.1 React roll 4, R2 falsified).
+            suite_defects=tuple(suite_defects(failure_rows, source_files, "vitest")),
             uncollected_test_files=tuple(uncollected),
         )
 
@@ -855,13 +860,64 @@ def failing_cases(test_failures) -> list[dict]:
     return cases
 
 
-def parse_vitest_failure_rows(report: dict, workspace_root: str) -> list[dict]:
+#: A V8 stack frame as vitest reports it: ``    at [<fn> (]<file>:<line>:<col>[)]``.
+#: The bare form (no function name) is what a top-level ``await`` in a test body produces,
+#: which is where roll 4's three failures were raised.
+_JS_STACK_FRAME = re.compile(
+    r"^\s+at (?:.*?\()?(?P<file>[^\s()]+?):(?P<line>\d+):(?P<col>\d+)\)?$", re.M
+)
+#: ``TypeError: <message>`` on the first line of a V8 stack.
+_JS_EXCEPTION = re.compile(r"^(?P<exc>[A-Za-z_$][\w$]*(?:Error|Exception))(?::|$)")
+
+
+def js_exception_and_frames(
+    message: str, workspace_root: str, handed_in: list[str]
+) -> tuple[str, list[dict]]:
+    """The exception class and traceback frames a V8 stack carries (#1270).
+
+    vitest's JSON report gives ``failureMessages`` — the error's own ``stack`` — and no
+    structured frames, so the rows the routing seam reads had neither an exception class
+    nor a raising frame and could not be classified at all. Returned **outermost first**,
+    matching the pytest rows' convention, so ``frames[-1]`` is where the exception was
+    raised in both languages and one classifier reads both.
+
+    Paths are made workspace-relative; a ``file://`` frame inside ``node_modules`` is the
+    framework's own and is dropped, because a frame the application did not write says
+    nothing about who owns the failure.
+    """
+    root = workspace_root.rstrip("/") + "/"
+    first = message.strip().splitlines()[0] if message.strip() else ""
+    exception_match = _JS_EXCEPTION.match(first)
+    frames: list[dict] = []
+    for match in _JS_STACK_FRAME.finditer(message):
+        raw = match.group("file")
+        if raw.startswith("file://") or "/node_modules/" in raw:
+            continue
+        rel = raw[len(root) :] if raw.startswith(root) else raw
+        frames.append(
+            {
+                "file": _resolve_reported_path(rel, handed_in),
+                "line": int(match.group("line")),
+                "func": "",
+            }
+        )
+    frames.reverse()
+    return (exception_match.group("exc") if exception_match else ""), frames
+
+
+def parse_vitest_failure_rows(
+    report: dict, workspace_root: str, handed_in: list[str]
+) -> list[dict]:
     """Per-failure observation rows from a vitest JSON report (SIP-0104 P5).
 
     One row per failed test — ``{file, title, messages, line, suite_level}`` with
     ``file`` workspace-relative — plus one ``suite_level`` row per suite that died
     before any test ran (unresolved import / transform crash). Pure, so the evidence
     pipeline's corpus runs against synthesized and captured reports alike.
+
+    ``exception`` and ``frames`` ride the row too (#1270), read off the stack in
+    ``failureMessages``: without them a vitest failure could not be classified as the
+    suite's own, whatever it raised.
     """
     from squadops.capabilities.handlers.scaffold_execution import _VITEST_STATUS_FAILED
 
@@ -869,7 +925,9 @@ def parse_vitest_failure_rows(report: dict, workspace_root: str) -> list[dict]:
     rows: list[dict] = []
     for suite in report.get("testResults", ()):
         name = str(suite.get("name", ""))
-        rel = name[len(root) :] if name.startswith(root) else name
+        rel = _resolve_reported_path(
+            name[len(root) :] if name.startswith(root) else name, handed_in
+        )
         results = suite.get("assertionResults") or []
         if suite.get("status") == _VITEST_STATUS_FAILED and not results:
             rows.append(
@@ -886,13 +944,19 @@ def parse_vitest_failure_rows(report: dict, workspace_root: str) -> list[dict]:
             if result.get("status") != _VITEST_STATUS_FAILED:
                 continue
             location = result.get("location") or {}
+            messages = [str(m)[:2000] for m in (result.get("failureMessages") or [])]
+            exception, frames = js_exception_and_frames(
+                messages[0] if messages else "", workspace_root, handed_in
+            )
             rows.append(
                 {
                     "file": rel,
                     "title": str(result.get("title", "")),
-                    "messages": [str(m)[:2000] for m in (result.get("failureMessages") or [])],
+                    "messages": messages,
                     "line": location.get("line"),
                     "suite_level": False,
+                    "exception": exception,
+                    "frames": frames,
                 }
             )
     return rows
@@ -936,12 +1000,21 @@ _ARGUMENT_BINDING_ERROR = re.compile(
 _SUITE_DEFECT_MESSAGE_LIMIT = 500
 
 
-def _resolve_handed_in(printed: str, handed_in: list[str]) -> str:
-    """The handed-in test path pytest's printed path names, or the printed path.
+def _resolve_reported_path(printed: str, handed_in: list[str]) -> str:
+    """The handed-in test path a runner's reported path names, or the reported path.
 
-    pytest prints paths relative to its rootdir, which an emitted ``backend/pytest.ini``
-    moves below the workspace root: the 1.6.6 rolls printed ``tests/test_runs.py`` for the
-    artifact ``backend/tests/test_runs.py`` while 1.6.5's printed the full path."""
+    Both runners report below the workspace root and neither says so. pytest prints
+    relative to its rootdir, which an emitted ``backend/pytest.ini`` moves down: the 1.6.6
+    rolls printed ``tests/test_runs.py`` for the artifact ``backend/tests/test_runs.py``.
+    vitest runs in the package directory, so the React stack's whole frontend suite comes
+    back as ``src/__tests__/runs.test.jsx`` for ``frontend/src/__tests__/runs.test.jsx``
+    (#1270) — and only the pytest side ever resolved it, which cost two things at once:
+    every collected React frontend suite was reported ``NOT COLLECTED (these ran
+    nothing)`` into the analyzer's evidence, and a row whose path does not match the
+    handed-in artifact cannot be attributed to the role that authored it, so the own-frame
+    classification this resolver feeds would have found roll 4's defect and still routed
+    it to the dev chain.
+    """
     norm = printed.lstrip("./")
     for path in handed_in:
         if path == norm or path.endswith("/" + norm):
@@ -988,7 +1061,7 @@ def parse_pytest_failure_rows(stdout: str, handed_in: list[str]) -> list[dict]:
         if frame:
             current["frames"].append(
                 {
-                    "file": _resolve_handed_in(frame.group("file"), handed_in),
+                    "file": _resolve_reported_path(frame.group("file"), handed_in),
                     "line": int(frame.group("line")),
                     "func": frame.group("func"),
                 }
@@ -1004,7 +1077,7 @@ def parse_pytest_failure_rows(stdout: str, handed_in: list[str]) -> list[dict]:
         title = section["title"]
         own = next((f for f in frames if f["func"] == title), frames[0] if frames else None)
         if section["collect_file"]:
-            file = _resolve_handed_in(section["collect_file"], handed_in)
+            file = _resolve_reported_path(section["collect_file"], handed_in)
             line_no = None
         else:
             file = (own or {}).get("file") or summary.get(title, "")
@@ -1053,16 +1126,154 @@ def _callee_defined_in(callee: str, source_files: list[dict[str, str]]) -> bool:
     return False
 
 
-def suite_defects(rows: list[dict], source_files: list[dict[str, str]]) -> list[dict]:
+#: The application file suffixes a JavaScript/TypeScript app is written in.
+_JS_SOURCE_SUFFIXES = (".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs")
+
+
+def _js_name_defined_in(name: str, source_files: list[dict[str, str]], *, callable_: bool) -> bool:
+    """True when the application's own JS/TS sources define ``name``.
+
+    The counterpart of ``_callee_defined_in``: it is what keeps a real application defect
+    on the dev chain. ``store.addParticipant is not a function`` and ``userEvent.click is
+    not a function`` are the same JavaScript shape, and only one of them is the suite's
+    doing — the difference is whether the application knows the name at all.
+
+    ``callable_`` asks for a *function-valued* definition, because a JSX attribute is not
+    one: the roll-4 views are full of ``type="text"``, and a definition test that accepted
+    it would have read ``userEvent.type is not a function`` as the application's defect
+    and left the misrouting this fixes exactly where it was.
+    """
+    escaped = re.escape(name)
+    if callable_:
+        patterns = (
+            rf"\bfunction\s+{escaped}\s*\(",
+            rf"\b{escaped}\s*[:=]\s*(?:async\s+)?(?:function\b|\(|[\w$]+\s*=>)",
+            rf"^\s*(?:async\s+)?{escaped}\s*\([^)]*\)\s*\{{",
+        )
+    else:
+        patterns = (rf"\b{escaped}\s*[:=]", rf"\.{escaped}\b")
+    compiled = [re.compile(pattern, re.M) for pattern in patterns]
+    for rec in source_files:
+        if not str(rec.get("path", "")).endswith(_JS_SOURCE_SUFFIXES):
+            continue
+        content = str(rec.get("content", ""))
+        if any(pattern.search(content) for pattern in compiled):
+            return True
+    return False
+
+
+@dataclass(frozen=True)
+class OwnFrameShape:
+    """One exception shape a suite can raise in its own frame, and what makes it ambiguous.
+
+    ``message`` must capture a ``name`` group when ``ambiguous_when_app_defines`` is set:
+    the name the suite reached for, which the application defining would make the failure
+    the application's. ``message`` of ``None`` means the exception class alone qualifies —
+    an identifier that does not resolve in the test module's own namespace is the test's
+    by construction, in either language.
+    """
+
+    exception: str
+    message: re.Pattern[str] | None = None
+    #: ``None`` = never ambiguous; otherwise a key of ``_APP_DEFINES`` — the kind of
+    #: definition whose presence in the application's sources makes the failure the
+    #: application's rather than the suite's.
+    ambiguous_when_app_defines: str | None = None
+
+
+#: What each runner's language lets a suite raise in its own frame (#1130, #1270).
+#:
+#: **Per runner, because the shapes are the language's, not the loop's.** The original
+#: table was pytest's alone — ``NameError`` and the argument-binding ``TypeError`` — and
+#: 1.7.1 React roll 4 put a vitest ``TypeError: default.click is not a function`` through
+#: it: the suite imported ``userEvent`` from the wrong package and died at its own call
+#: site, the row matched neither branch, and two dev repairs were spent on a file the dev
+#: role was forbidden by the ownership veto to touch (R2, falsified). The routing seam
+#: stays runner-neutral: it consumes ``suite_defects``, which is where the language lives.
+_OWN_FRAME_SHAPES: dict[str, tuple[OwnFrameShape, ...]] = {
+    "pytest": (
+        # A NameError is resolved in the test module's namespace; nothing the application
+        # does can produce one there.
+        OwnFrameShape(exception="NameError"),
+        # Raised while binding the call's arguments, before the callee's body runs — the
+        # 1.6.5 roll 3 shape, ``TestClient.delete() got an unexpected keyword argument``.
+        OwnFrameShape(
+            exception="TypeError",
+            message=_ARGUMENT_BINDING_ERROR,
+            ambiguous_when_app_defines="python_callable",
+        ),
+    ),
+    "vitest": (
+        # JavaScript's NameError.
+        OwnFrameShape(
+            exception="ReferenceError", message=re.compile(r"(?P<name>[\w$]+) is not defined")
+        ),
+        # Roll 4's shape. Vite mangles the object (``__vi_import_3__.default.click``), so
+        # the method name is what survives into the message and what the guard reads.
+        OwnFrameShape(
+            exception="TypeError",
+            message=re.compile(r"(?:^|[.\s])(?P<name>[\w$]+) is not a function"),
+            ambiguous_when_app_defines="js_callable",
+        ),
+        # Kept guarded rather than excluded: a read of a property the application never
+        # names is the suite's, and a read of one it does is the application returning
+        # less than the suite was promised — which stays with the dev chain.
+        OwnFrameShape(
+            exception="TypeError",
+            message=re.compile(
+                r"Cannot read properties of undefined \(reading '(?P<name>[^']+)'\)"
+            ),
+            ambiguous_when_app_defines="js_member",
+        ),
+    ),
+}
+
+
+#: How to ask whether the application defines the name a suite reached for, per language.
+_APP_DEFINES: dict[str, Callable[[str, list[dict[str, str]]], bool]] = {
+    "python_callable": _callee_defined_in,
+    "js_callable": lambda name, files: _js_name_defined_in(name, files, callable_=True),
+    "js_member": lambda name, files: _js_name_defined_in(name, files, callable_=False),
+}
+
+
+def _matches_own_frame_shape(
+    shape: OwnFrameShape, exception: str, message: str, source_files: list[dict[str, str]]
+) -> bool:
+    if exception != shape.exception:
+        return False
+    if shape.message is None:
+        return True
+    match = shape.message.search(message)
+    if not match:
+        return False
+    if shape.ambiguous_when_app_defines is None:
+        return True
+    groups = match.groupdict()
+    name = groups.get("name") or groups.get("callee") or ""
+    return bool(name) and not _APP_DEFINES[shape.ambiguous_when_app_defines](name, source_files)
+
+
+def suite_defects(rows: list[dict], source_files: list[dict[str, str]], runner: str) -> list[dict]:
     """The failures a suite raised in its own frame before any application code ran (#1130).
 
     A row qualifies when its innermost traceback frame is the failing file itself and the
-    exception is one the application cannot have caused: a ``NameError``, or an
-    argument-binding ``TypeError`` whose callee the application does not define (the
-    1.6.5 roll 3 shape — ``TestClient.delete() got an unexpected keyword argument
-    'json'``, raised at the call site before any request was made). Each entry is
-    ``{file, title, line, exception, message}``; the message is the first ``E`` line.
+    exception is one of the shapes ``runner``'s language declares (``_OWN_FRAME_SHAPES``)
+    that the application cannot have caused. Each entry is ``{file, title, line,
+    exception, message}``.
+
+    ``runner`` is required rather than defaulted: a runner with no declaration produces no
+    defects, and doing that silently is how the vitest side went unrouted for a whole line
+    (#1270). It is named in the log instead.
     """
+    shapes = _OWN_FRAME_SHAPES.get(runner)
+    if shapes is None:
+        logger.warning(
+            "suite_defects: runner %r declares no own-frame shapes — every failure of its "
+            "suites routes to the subject chain (#1270)",
+            runner,
+        )
+        return []
     defects: list[dict] = []
     for row in rows:
         frames = row.get("frames") or []
@@ -1073,13 +1284,10 @@ def suite_defects(rows: list[dict], source_files: list[dict[str, str]]) -> list[
             continue
         exception = str(row.get("exception") or "")
         message = str((row.get("messages") or [""])[0])
-        if exception in _SUITE_OWN_EXCEPTIONS:
-            own = True
-        elif exception == "TypeError":
-            binding = _ARGUMENT_BINDING_ERROR.match(message.split(": ", 1)[-1])
-            own = bool(binding) and not _callee_defined_in(binding.group("callee"), source_files)
-        else:
-            own = False
+        own = any(
+            _matches_own_frame_shape(shape, exception, message.split(": ", 1)[-1], source_files)
+            for shape in shapes
+        )
         if own:
             defects.append(
                 {
@@ -1107,7 +1315,13 @@ def parse_vitest_failure_text(stdout: str) -> list[dict]:
 
     Same row shape as ``parse_vitest_failure_rows`` (``file, title, messages, line,
     suite_level``); ``line`` is unknown from the text. ``title`` keeps the ``suite > case``
-    path vitest prints, which is what a repair brief needs to name the case."""
+    path vitest prints, which is what a repair brief needs to name the case.
+
+    **No ``exception`` or ``frames`` (#1270), declared rather than silent.** vitest's
+    summary lines carry the message and no stack, so a failure read from them cannot be
+    attributed to the suite's own frame and routes to the subject chain as it always did.
+    The stack is in the FAIL detail block on stderr; the JSON report is the live path and
+    carries it structurally, so this fallback is left as the degraded reading it is."""
     return [
         {
             "file": m.group("file"),
@@ -1130,11 +1344,19 @@ def _read_vitest_report(report_path: str) -> dict | None:
         return None
 
 
-def collected_files(report: dict, workspace_root: str) -> set[str]:
-    """Workspace-relative paths of every suite the runner actually collected."""
+def collected_files(report: dict, workspace_root: str, handed_in: list[str]) -> set[str]:
+    """Handed-in paths of every suite the runner actually collected.
+
+    Resolved against the handed-in list rather than left package-relative: vitest runs in
+    ``frontend/`` and every React suite came back unmatched, so ``uncollected_test_files``
+    named a suite that had just run six tests (#1270).
+    """
     root = workspace_root.rstrip("/") + "/"
     names = {str(suite.get("name", "")) for suite in report.get("testResults", ())}
-    return {name[len(root) :] if name.startswith(root) else name for name in names}
+    return {
+        _resolve_reported_path(name[len(root) :] if name.startswith(root) else name, handed_in)
+        for name in names
+    }
 
 
 def uncollected_test_files(report: dict, workspace_root: str, handed_in: list[str]) -> list[str]:
@@ -1149,7 +1371,7 @@ def uncollected_test_files(report: dict, workspace_root: str, handed_in: list[st
     is. Until #1131 this read a ``.ts``-only copy of that list, so an ignored
     ``*.test.jsx`` on the React stack was never named.
     """
-    collected = collected_files(report, workspace_root)
+    collected = collected_files(report, workspace_root, handed_in)
     return sorted(
         path for path in handed_in if path.endswith(JS_SUITE_SUFFIXES) and path not in collected
     )

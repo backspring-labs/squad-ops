@@ -41,7 +41,14 @@ def test_bound_record_carries_bytes_for_every_frozen_path():
     # A fill slot is NOT frozen; the QA namespace + conftest are recorded/frozen.
     assert "backend/routes.py" not in rec.frozen_paths()
     assert "conftest.py" in rec.frozen_paths()  # SIP-0100 Piece A harness, auto-frozen
-    assert rec.qa_namespace == ("backend/tests/", "frontend/src/tests/")
+    # #1270: ``frontend/src/__tests__/`` is where this stack seeds its harness, and the
+    # declaration had omitted it — so the bound record told every consumer that no React
+    # frontend suite was in the qa namespace.
+    assert rec.qa_namespace == (
+        "backend/tests/",
+        "frontend/src/__tests__/",
+        "frontend/src/tests/",
+    )
 
 
 def test_frozen_bytes_normalizes_path_and_misses_return_none():

@@ -1493,7 +1493,14 @@ _STACKS: dict[str, ScaffoldStack] = {
         name=_FASTAPI_REACT_NAME,
         expand=_expand_fullstack_fastapi_react,
         fill_slots=_fill_slots_fullstack_fastapi_react,
-        qa_test_namespace=("backend/tests/", "frontend/src/tests/"),
+        # ``frontend/src/__tests__/`` is where this stack seeds its own harness
+        # (``stack_fastapi_react.py``, ``_HARNESS_TEST_JSX``) and therefore where the qa
+        # role emits beside it. The declaration named only ``frontend/src/tests/``, a
+        # directory the stack never writes — so no React frontend suite was inside its
+        # own stack's qa namespace, and every ownership decision keyed on it (#1130's
+        # own-frame attribution among them) read the suite as nobody's (#1270).
+        # ``test_qa_namespace_covers_what_the_stack_seeds`` holds this to the expander.
+        qa_test_namespace=("backend/tests/", "frontend/src/__tests__/", "frontend/src/tests/"),
         harness_entry_modules=("backend.main", "app.main", "main"),
         check_stack="fastapi",
         # Today a pack is named for the stack that needs it; the indirection exists so a

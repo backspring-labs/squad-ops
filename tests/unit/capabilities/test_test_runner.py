@@ -694,7 +694,7 @@ class TestSuiteDefects:
         rows = self._rows("1-6-5-react-roll-3-round-0-test_report.md", "backend/tests/test_runs.py")
         sources = [{"path": "backend/routes.py", "content": "def leave_run():\n    pass\n"}]
 
-        assert suite_defects(rows, sources) == [
+        assert suite_defects(rows, sources, "pytest") == [
             {
                 "file": "backend/tests/test_runs.py",
                 "title": title,
@@ -734,7 +734,7 @@ class TestSuiteDefects:
     def test_stored_controls_are_not_the_suites_own(self, report_name, handed_in, why):
         from squadops.capabilities.handlers.test_runner import suite_defects
 
-        assert suite_defects(self._rows(report_name, handed_in), []) == [], why
+        assert suite_defects(self._rows(report_name, handed_in), [], "pytest") == [], why
 
     def test_a_binding_error_into_a_callee_the_app_defines_stays_ambiguous(self):
         """``create_run(name=…)`` failing to bind may be the app's signature drifting
@@ -758,8 +758,8 @@ class TestSuiteDefects:
         rows = parse_pytest_failure_rows(stdout, ["backend/tests/test_runs.py"])
         app = [{"path": "backend/routes.py", "content": "def create_run(name):\n    ...\n"}]
 
-        assert suite_defects(rows, []) != []
-        assert suite_defects(rows, app) == []
+        assert suite_defects(rows, [], "pytest") != []
+        assert suite_defects(rows, app, "pytest") == []
 
     def test_a_name_error_in_the_test_module_is_the_suites_own(self):
         from squadops.capabilities.handlers.test_runner import (
@@ -777,7 +777,7 @@ class TestSuiteDefects:
         )
         rows = parse_pytest_failure_rows(stdout, ["backend/tests/test_runs.py"])
 
-        assert suite_defects(rows, []) == [
+        assert suite_defects(rows, [], "pytest") == [
             {
                 "file": "backend/tests/test_runs.py",
                 "title": "test_uses_undefined",
@@ -809,7 +809,7 @@ class TestSuiteDefects:
 
         assert rows[0]["file"] == "backend/tests/test_runs.py"
         assert rows[0]["frames"][-1]["file"] == "backend/tests/conftest.py"
-        assert suite_defects(rows, []) == []
+        assert suite_defects(rows, [], "pytest") == []
 
 
 class TestFailedTestsPassRowOwnership:
@@ -923,3 +923,165 @@ class TestFailingCases:
 
         rows = [{"file": "a.test.jsx", "title": f"case {i}", "messages": ["m"]} for i in range(100)]
         assert len(failing_cases(rows)) == 40
+
+
+class TestVitestOwnFrameShapes:
+    """#1270: the own-frame classifier is per runner, and the vitest side had no shapes.
+
+    The oracle is 1.7.1 React roll 4's own machine report: the roll's suite
+    (`art_b119474ce8fa`) re-run against the roll's own views inside the deployed qa image,
+    reproducing the three `TypeError`s at lines 108/124/182 exactly as the stored
+    `test_report.md` (`art_ca049f81b1c7`) recorded them. The JSON report is the live path —
+    the roll's own log says it was written — so that is what these read.
+    """
+
+    _REPORT = (
+        Path(__file__).resolve().parents[2]
+        / "fixtures"
+        / "roll_replays"
+        / ("1-7-1-react-roll-4-vitest-report.json")
+    )
+    _ROOT = "/tmp/roll4ws"
+    _HANDED_IN = [
+        "frontend/src/__tests__/harness.test.jsx",
+        "frontend/src/__tests__/runs.test.jsx",
+    ]
+    _SUITE = "frontend/src/__tests__/runs.test.jsx"
+
+    def _rows(self):
+        import json
+
+        from squadops.capabilities.handlers.test_runner import parse_vitest_failure_rows
+
+        report = json.loads(self._REPORT.read_text(encoding="utf-8"))
+        return parse_vitest_failure_rows(report, self._ROOT, self._HANDED_IN)
+
+    def test_roll_4s_wrong_import_dies_in_the_suites_own_frame(self):
+        """`userEvent` imported from `@testing-library/react` instead of
+        `.../user-event`: the call dies at the suite's call site before any component
+        method runs. R2 read this as falsified; the row matched neither pytest shape."""
+        from squadops.capabilities.handlers.test_runner import suite_defects
+
+        defects = suite_defects(self._rows(), [], "vitest")
+        assert [(d["file"], d["line"], d["exception"]) for d in defects] == [
+            (self._SUITE, 108, "TypeError"),
+            (self._SUITE, 124, "TypeError"),
+            (self._SUITE, 182, "TypeError"),
+        ]
+
+    def test_a_method_the_application_defines_stays_ambiguous(self):
+        """The other half of the same JavaScript shape: `store.addParticipant is not a
+        function` when the app forgot the export is the APP's defect, and must stay on the
+        dev chain. Only the application's knowledge of the name separates the two."""
+        from squadops.capabilities.handlers.test_runner import suite_defects
+
+        rows = [
+            {
+                "file": self._SUITE,
+                "title": "joins a run",
+                "messages": ["TypeError: __vi_import_1__.store.addParticipant is not a function"],
+                "line": None,
+                "suite_level": False,
+                "exception": "TypeError",
+                "frames": [{"file": self._SUITE, "line": 40, "func": ""}],
+            }
+        ]
+        app = [
+            {
+                "path": "frontend/src/store.js",
+                "content": "export const store = {\n  addParticipant: (id, name) => null,\n}\n",
+            }
+        ]
+        assert suite_defects(rows, [], "vitest") != []
+        assert suite_defects(rows, app, "vitest") == []
+
+    def test_a_jsx_attribute_is_not_a_definition_of_the_method(self):
+        """The guard that decides the case above must not be satisfied by `type="text"`.
+        The roll-4 views carry eleven of those, and a definition test that accepted one
+        would leave `userEvent.type is not a function` attributed to the application —
+        exactly the misrouting this fixes."""
+        from squadops.capabilities.handlers.test_runner import suite_defects
+
+        views = [
+            {
+                "path": "frontend/src/views/RunCreateView.jsx",
+                "content": '<input type="text" data-testid="create-title" />\n',
+            }
+        ]
+        defects = suite_defects(self._rows(), views, "vitest")
+        assert len(defects) == 3
+
+    def test_a_reference_error_is_javascripts_name_error(self):
+        from squadops.capabilities.handlers.test_runner import suite_defects
+
+        rows = [
+            {
+                "file": self._SUITE,
+                "title": "renders",
+                "messages": ["ReferenceError: renderWithRouter is not defined"],
+                "line": None,
+                "suite_level": False,
+                "exception": "ReferenceError",
+                "frames": [{"file": self._SUITE, "line": 12, "func": ""}],
+            }
+        ]
+        assert [d["exception"] for d in suite_defects(rows, [], "vitest")] == ["ReferenceError"]
+
+    def test_an_assertion_is_the_suite_judging_the_application(self):
+        """The control: vitest's assertion diffs carry no stack, so no frame says the
+        suite raised — and an assertion is the suite doing its job, not failing at it."""
+        from squadops.capabilities.handlers.test_runner import suite_defects
+
+        rows = [
+            {
+                "file": self._SUITE,
+                "title": "creates a run",
+                "messages": ["AssertionError: expected 500 to be 201 // Object.is equality"],
+                "line": 21,
+                "suite_level": False,
+                "exception": "AssertionError",
+                "frames": [],
+            }
+        ]
+        assert suite_defects(rows, [], "vitest") == []
+
+    def test_a_runner_with_no_declared_shapes_says_so(self, caplog):
+        """A runner absent from the table produces no defects — which is what the vitest
+        side silently did for a whole line. It is named in the log now."""
+        from squadops.capabilities.handlers.test_runner import suite_defects
+
+        with caplog.at_level("WARNING"):
+            assert suite_defects(self._rows(), [], "jest") == []
+        assert any("'jest'" in m or '"jest"' in m or "jest" in m for m in caplog.messages)
+
+    def test_framework_frames_are_dropped_so_the_raising_frame_is_the_suites(self):
+        """Roll 4's stacks are ten frames deep and nine are vitest's own runner. If those
+        counted, `frames[-1]` would be a `node_modules` file and nothing would classify."""
+        rows = self._rows()
+        assert all(len(r["frames"]) == 1 for r in rows)
+        assert all(r["frames"][-1]["file"] == self._SUITE for r in rows)
+
+    def test_a_collected_suite_is_never_reported_uncollected(self):
+        """Roll 4's stored report says `NOT COLLECTED (these ran nothing):
+        frontend/src/__tests__/runs.test.jsx` about a suite that had just run six tests.
+        vitest reports relative to `frontend/`, the handed-in paths are workspace-relative,
+        and nothing resolved the two — so the analyzer's evidence carried a false claim on
+        every React roll with a frontend suite."""
+        import json
+
+        from squadops.capabilities.handlers.test_runner import uncollected_test_files
+
+        report = json.loads(self._REPORT.read_text(encoding="utf-8"))
+        assert uncollected_test_files(report, self._ROOT, self._HANDED_IN) == []
+
+    def test_a_genuinely_ignored_suite_is_still_named(self):
+        """The control for the line above: resolution must not turn the signal off."""
+        import json
+
+        from squadops.capabilities.handlers.test_runner import uncollected_test_files
+
+        report = json.loads(self._REPORT.read_text(encoding="utf-8"))
+        handed_in = [*self._HANDED_IN, "frontend/src/__tests__/ignored.test.jsx"]
+        assert uncollected_test_files(report, self._ROOT, handed_in) == [
+            "frontend/src/__tests__/ignored.test.jsx"
+        ]
