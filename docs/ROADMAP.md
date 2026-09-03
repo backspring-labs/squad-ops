@@ -579,6 +579,6 @@ The following areas are identified for future work but do not block 1.0 readines
 
 - **Framework version**: 1.7.1
 - **SIPs**: 65 implemented, 9 accepted (SIP-0088, 0090–0093, 0101, 0102, 0104, 0105), 20 deprecated (registry)
-- **Tests**: 7,900+ passing in the regression suite
+- **Tests**: 8,600+ passing in the regression suite
 - **Python source**: ~61,000 lines (src + adapters; ~88,000 test lines, ~119,000 doc lines)
 - **~6 months** from initial repo (2025-09-20) to 1.0.0 release (2026-03-10)
