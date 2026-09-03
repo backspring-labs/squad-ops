@@ -39,8 +39,6 @@ from squadops.llm.models import ReasoningLevel
 #: Per capability: the level its output wants. Grouped by the judgment behind it.
 REASONING_BY_CAPABILITY: dict[str, str] = {
     # --- transcription: the prompt determines the output; the model restates it ---
-    "qa.test": ReasoningLevel.NONE,  # fills scaffold slots (#924's measured case)
-    "qa.test_repair": ReasoningLevel.NONE,
     "builder.assemble": ReasoningLevel.NONE,
     "builder.assemble_repair": ReasoningLevel.NONE,
     "governance.correction_decision": ReasoningLevel.NONE,  # a verdict from evidence
@@ -55,6 +53,16 @@ REASONING_BY_CAPABILITY: dict[str, str] = {
     "data.profile_cycle_metrics": ReasoningLevel.NONE,
     "governance.publish_handoff": ReasoningLevel.NONE,  # a stored report
     # --- implementation and revision: derivation with real choices inside it ---
+    # #1268: qa's authoring pair moved here from transcription. #924 measured the qa FILL
+    # BRIEF — 5,727 completion tokens with the channel on, 413 with it off, the same eight
+    # fill fences — and filling declared slots is transcription, so the measurement was
+    # right about what it measured. Authoring a suite from a PRD and a workspace is not:
+    # it chooses what to assert, against which surface, in what order. With the channel off
+    # the model returned a sentence of intent and stopped — five of seven 1.7.1 counted
+    # rolls were shaped by it, fourteen attempts, zero in 1.6.6 (plan 1.7.2 §8a, measured
+    # live: think:false 1 of 6 usable emissions, think:true 6 of 6, same prompt).
+    "qa.test": ReasoningLevel.MEDIUM,
+    "qa.test_repair": ReasoningLevel.MEDIUM,
     "development.develop": ReasoningLevel.MEDIUM,
     "development.repair": ReasoningLevel.MEDIUM,
     "development.correction_repair": ReasoningLevel.MEDIUM,

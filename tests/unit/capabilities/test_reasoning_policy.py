@@ -45,11 +45,34 @@ class TestDeclarations:
             default_reasoning_level("no.such.capability")
 
     def test_the_two_measured_anchors(self):
-        """#924's two ends. The fill is a transcription (413 tokens without the
-        channel, 5,727 with); the manifest is an argument. Flipping the first
-        restores the 13.9x waste silently; flipping the second strips reasoning
-        from the one output that chooses endpoints and statuses."""
-        assert REASONING_BY_CAPABILITY["qa.test"] == ReasoningLevel.NONE
+        """The two ends, and the one that MOVED — both anchored on measurements.
+
+        `development.author_manifest` is #924's argument end and has not moved: stripping
+        reasoning there takes it from the one output that chooses endpoints and statuses.
+
+        `builder.assemble` stands in for #924's transcription end. `qa.test` used to, on
+        #924's measurement of the qa FILL BRIEF: 413 completion tokens with the channel off
+        against 5,727 with it on, the same eight fill fences — a 13.9x saving on an output
+        whose answer is already in the prompt. That measurement was right about what it
+        measured, and it is why every fill-shaped capability is still `NONE`.
+
+        It moved because `qa.test` is two output shapes under one capability id. Authoring
+        a suite from a PRD and a workspace is not transcription, and with the channel off
+        the model returned a sentence of intent and stopped: fourteen attempts across the
+        1.7.1 counted rolls, five of seven rolls shaped by it, zero in 1.6.6 — which ran
+        the same squad on the wire that sent no `think` key at all. Measured live on the
+        deployed model with the real prompt (1.7.2 plan §8a): `think: false` produced 1
+        usable emission in 6, `think: true` produced 6 in 6.
+
+        **The cost is real and is not hidden by this test.** On the authoring prompt the
+        channel roughly doubles completion tokens; on a pure fill brief #924's 13.9x still
+        applies, and `qa.test` pays it in fill mode because the declaration is per
+        capability. Splitting the level by emission mode is the follow-up (#1285); this is
+        the one change the plan's §8 allows, and prediction L1 is what reads it.
+        """
+        assert REASONING_BY_CAPABILITY["qa.test"] == ReasoningLevel.MEDIUM
+        assert REASONING_BY_CAPABILITY["qa.test_repair"] == ReasoningLevel.MEDIUM
+        assert REASONING_BY_CAPABILITY["builder.assemble"] == ReasoningLevel.NONE
         assert REASONING_BY_CAPABILITY["development.author_manifest"] == ReasoningLevel.HIGH
 
 
@@ -57,6 +80,12 @@ class TestResolution:
     def test_declaration_applies_on_a_switchable_model(self):
         assert (
             resolve_reasoning_level("qa.test", agent_overrides={}, model_name="qwen3.6:27b")
+            == ReasoningLevel.MEDIUM
+        )
+        assert (
+            resolve_reasoning_level(
+                "builder.assemble", agent_overrides={}, model_name="qwen3.6:27b"
+            )
             == ReasoningLevel.NONE
         )
 

@@ -364,13 +364,20 @@ class TestRepairReasoningLevel:
         )
         assert kwargs["reasoning"] == REASONING_BY_CAPABILITY["development.correction_repair"]
 
-    def test_qa_repair_switches_the_channel_off(self):
-        """The qa-owned repair is a transcription of a failing assertion into a
-        correct one; #924's measurement says the channel is the budget here."""
+    def test_qa_repair_sends_its_declared_level_too(self):
+        """Same invariant as the dev repair above: this file tests the WIRING, and the
+        value is the declaration's business (`test_reasoning_policy`).
+
+        It used to pin ``"none"`` outright, on the reading that a qa repair transcribes a
+        failing assertion into a correct one. The 1.7.1 rolls falsified that: the repair
+        handler produced two of the sixteen contentless emissions (225 and 149 chars, no
+        fence), the same shape as the authoring path, and #1268 moved both. Pinning the
+        value in two places is how one of them ends up describing a wire that changed.
+        """
         kwargs = QATestRepairHandler()._build_chat_kwargs(
             {"agent_model": "qwen3.8:27b", "agent_config_overrides": {}}
         )
-        assert kwargs["reasoning"] == "none"
+        assert kwargs["reasoning"] == REASONING_BY_CAPABILITY["qa.test_repair"]
 
     def test_profile_override_wins(self):
         kwargs = DevelopmentRepairHandler()._build_chat_kwargs(
