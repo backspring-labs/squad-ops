@@ -909,8 +909,24 @@ class QATestHandler(_CycleTaskHandler):
             parts.append("\nProduce ONLY the files listed in Expected Output Files. ")
         else:
             parts.append("\n")
+        # #1272: the example names THIS task's own expected file. React roll 5 copied the
+        # literal `path/to/file` placeholder and emitted a correct suite at
+        # `path/backend/tests/test_runs.py`; nothing expected that path, every criterion
+        # naming the real one failed `file_not_found`, and a whole round was spent on a
+        # suite that was already right. A placeholder in an example is an invitation to
+        # copy it, and one token of it cost a round.
+        # In FILL mode the authored filename belongs only to the appendix, where it is
+        # marked additive — naming it here restores the second deliverable the slot table
+        # competes with — so the concrete example is the non-fill path's alone.
+        expected = [str(e) for e in (inputs.get("expected_artifacts") or []) if str(e).strip()]
+        example = (
+            f"```{self._fence_lang(expected[0])}:{expected[0]}```"
+            if expected and not fill_mode
+            else "```<language>:<that file's own path>```"
+        )
         parts.append(
-            "Use fenced code blocks with ```language:path/to/file``` format. "
+            f"Use fenced code blocks whose header carries the file's own path — {example} — "
+            "never a placeholder and never a prefixed variant of it. "
             "Do not reproduce source artifacts."
         )
         return "".join(parts)

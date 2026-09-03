@@ -18,6 +18,7 @@ optional_variables:
   - dom_anchor_section
   - client_surface_section
   - failing_cases_section
+  - app_traceback_section
   - frozen_surface_section
   - loop_state
   - qa_fill_mode_section
@@ -31,6 +32,7 @@ You are repairing a failed `{{failed_task_type}}` task. Your job is to re-produc
 {{dom_anchor_section}}
 {{client_surface_section}}
 {{failing_cases_section}}
+{{app_traceback_section}}
 {{frozen_surface_section}}
 
 ### Failed Task Contract
@@ -41,7 +43,9 @@ Focus: {{subtask_focus}}
 
 ### Required Output Artifacts
 
-The repair MUST produce the following file(s) by name, using fenced code blocks in the format ` ```language:path/to/file ` so the framework can extract them:
+The repair MUST produce the following file(s) by name, using fenced code blocks whose header carries the file's own path — for the file(s)
+named above, exactly as they are written there (` ```language:<that path> `) — so the
+framework can extract them:
 
 {{expected_artifacts}}
 
@@ -87,4 +91,6 @@ The lead reviewed the failure and chose to patch (not rewind). Their rationale:
 
 ---
 
-Produce the named artifacts now. Use fenced code blocks (` ```language:path/to/file `) for every file you emit. Do not include explanatory prose between code blocks unless it is essential.
+Produce the named artifacts now. Use fenced code blocks for every file you emit, each header carrying that file's own
+path as named above — never a placeholder path, and never a prefix the task did not ask
+for. Do not include explanatory prose between code blocks unless it is essential.

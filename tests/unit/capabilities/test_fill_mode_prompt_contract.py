@@ -97,5 +97,12 @@ def test_the_orthogonal_guards_survive_in_both_modes(fill_mode):
     """
     prompt = QATestHandler()._build_focused_prompt(_inputs(fill_mode=fill_mode))
 
-    assert "```language:path/to/file```" in prompt
+    # #1272: the fence example names the task's OWN expected file now — the literal
+    # `path/to/file` was copied verbatim by React roll 5 and cost a round. What this test
+    # guards is that the instruction survives, not the placeholder it used to use.
+    assert "fenced code blocks whose header carries the file's own path" in prompt
+    assert "path/to/file" not in prompt
     assert "Do not reproduce source artifacts." in prompt
+    # The concrete example is the non-fill path's alone: in fill mode the authored
+    # filename belongs only to the appendix (the assertion two tests above).
+    assert ("```typescript:__tests__/runs.test.ts```" in prompt) is (fill_mode is False)

@@ -57,9 +57,12 @@ Part of SIP-Enhanced-Agent-Build-Capabilities, Phase 1.
 
 from __future__ import annotations
 
+import logging
 import re
 
 from squadops.capabilities.handlers.impl._json_extraction import _strip_think_blocks
+
+logger = logging.getLogger(__name__)
 
 # Strict format header: ```<lang>:<path>
 _STRICT_HEADER_RE = re.compile(r"^```(\w+):(\S+)\s*$", re.MULTILINE)
@@ -461,7 +464,48 @@ def extract_fenced_files(
         if fallback is not None:
             return [fallback]
 
-    return results
+    return _strip_placeholder_prefix(results, expected_artifacts)
+
+
+#: The literal segment the fence-format examples used to open with (``path/to/file``). A
+#: model that copies the example writes a real file under a directory nothing expects.
+_PLACEHOLDER_PREFIX = "path/"
+
+
+def _strip_placeholder_prefix(
+    records: list[dict], expected_artifacts: list[str] | None
+) -> list[dict]:
+    """Drop a leading ``path/`` the expected list does not ask for, and say so (#1272).
+
+    React roll 5: the qa role copied the fence-format example's ``path/to/file`` literally
+    and emitted a correct suite at ``path/backend/tests/test_runs.py``. Nothing expected
+    that path, so every criterion naming the real one failed ``file_not_found`` and a whole
+    round was spent on a suite that was already right.
+
+    A backstop, not the fix — the examples now name the task's own expected file. It fires
+    only when the prefix cannot be what the task asked for: an expected artifact genuinely
+    under ``path/`` keeps it, and a task expecting nothing in particular is left alone,
+    because then there is nothing to say the prefix is wrong.
+    """
+    expected = set(expected_artifacts or ())
+    if not expected:
+        return records
+    for record in records:
+        name = str(record.get("filename") or "")
+        if not name.startswith(_PLACEHOLDER_PREFIX) or name in expected:
+            continue
+        stripped = name[len(_PLACEHOLDER_PREFIX) :]
+        if stripped not in expected:
+            continue
+        logger.warning(
+            "fence path placeholder: %r emitted under the example's literal %r segment; "
+            "stripped to %r, which the task expects (#1272)",
+            name,
+            _PLACEHOLDER_PREFIX,
+            stripped,
+        )
+        record["filename"] = stripped
+    return records
 
 
 def _single_expected_artifact_fallback(

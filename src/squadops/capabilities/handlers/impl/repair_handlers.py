@@ -256,6 +256,9 @@ class _RepairPromptMixin:
             # same round — which is what the R4 readout has been reading.
             "failing_cases_section": str(inputs.get("failing_cases_section") or ""),
             "client_surface_section": str(inputs.get("client_surface_section") or ""),
+            # #788: the application's own traceback. #687 put it on the evidence for the
+            # analyzer; the repairer never saw it and worked from the description instead.
+            "app_traceback_section": str(inputs.get("app_traceback_section") or ""),
         }
 
     async def handle(
@@ -289,6 +292,9 @@ class _RepairPromptMixin:
         failing_cases = await self._render_failing_cases_section(context, inputs)
         if failing_cases:
             inputs = {**inputs, "failing_cases_section": failing_cases}
+        app_traceback = await self._render_app_traceback_section(context, inputs)
+        if app_traceback:
+            inputs = {**inputs, "app_traceback_section": app_traceback}
         frozen = await self._render_qa_frozen_surface_section(context, inputs)
         if frozen:
             inputs = {**inputs, "frozen_surface_section": frozen}
@@ -667,6 +673,45 @@ class _RepairPromptMixin:
         rendered = await renderer.render(
             "request.qa_test_repair_failing_cases_appendix",
             {"case_lines": "\n".join(f"- {line}" for line in lines), "case_count": str(len(lines))},
+        )
+        return rendered.content
+
+    async def _render_app_traceback_section(
+        self, context: ExecutionContext, inputs: dict[str, Any]
+    ) -> str:
+        """The failing run's own traceback, or "" (#788).
+
+        #687 hoisted app-side tracebacks onto the evidence so the ANALYZER could read them
+        — "the stack trace is THE diagnosis for a behavioral failure". The repair prompt
+        renders five authoritative evidence blocks and never included it, so the repairer
+        worked from the analyzer's *description* of the error rather than the error. In
+        `cyc_dd3855f353c0` the analyzer recommended `from ..store import reset` — provably
+        impossible from `backend/tests/`, which the traceback said in as many words — and
+        the repair followed it into `ImportError: attempted relative import with no known
+        parent package`, spending the last round.
+
+        Rendered from a managed asset, not an inline literal (CLAUDE.md #448); the lines
+        are the stored traceback text.
+        """
+        blocks = [
+            entry
+            for entry in ((inputs.get("failure_evidence") or {}).get("app_tracebacks") or [])
+            if isinstance(entry, dict) and str(entry.get("traceback") or "").strip()
+        ]
+        if not blocks:
+            return ""
+        renderer = getattr(context.ports, "request_renderer", None)
+        if renderer is None:
+            return ""
+        rendered = await renderer.render(
+            "request.cycle_repair_app_traceback_appendix",
+            {
+                "traceback_blocks": "\n\n".join(
+                    f"`{entry.get('check') or 'check'}`:\n```\n"
+                    f"{str(entry['traceback']).strip()}\n```"
+                    for entry in blocks
+                )
+            },
         )
         return rendered.content
 

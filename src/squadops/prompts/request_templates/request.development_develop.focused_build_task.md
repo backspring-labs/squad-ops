@@ -35,4 +35,6 @@ PRD:
 {{prior_artifacts}}
 
 Produce ONLY the files listed in Expected Output Files. Use fenced code blocks with
-```language:path/to/file``` format. Do not reproduce files from prior artifacts.
+```language:<the file's own path>``` format, using the paths named above exactly as
+written — never a placeholder or a prefixed variant. Do not reproduce files from prior
+artifacts.
