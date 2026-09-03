@@ -5782,3 +5782,121 @@ class TestVitestOwnFrameRoutesToTheQaRepair(TestCorrectionRunnerStandalone):
         repair = next(e for e in captured if e.task_type == "qa.test_repair")
         assert repair.inputs["expected_artifacts"] == [self._SUITE]
         assert repair.metadata["role"] == "qa"
+
+
+class TestProseOnlyRepairIsRefunded(TestCorrectionRunnerStandalone):
+    """#1273: a repair that returns prose and no file has emitted nothing to verify.
+
+    Next.js roll 1 (`cyc_9be98128f0e9`): the re-taken repair returned 149 characters of
+    intent. The extractor's fallback wrapped it as `repair_output.md` — a non-empty
+    artifact — so the refund rule counted it as content, the round was spent rather than
+    re-taken, and the loop terminated as `unverifiable` for a file that was never written.
+
+    Entry point is `run_correction_protocol`, the call the executor makes; the assertion is
+    on `emission_empty`, which is what the executor's refund reads.
+    """
+
+    def _envelope(self):
+        from squadops.tasks.models import TaskEnvelope
+
+        return TaskEnvelope(
+            task_id="task-run_737ba4e8-m006-qa.test",
+            agent_id="eve",
+            cycle_id="cyc_001",
+            pulse_id="p",
+            project_id="hello_squad",
+            task_type="qa.test",
+            correlation_id="corr",
+            causation_id=None,
+            trace_id="t",
+            span_id="s",
+            inputs={
+                "expected_artifacts": ["__tests__/runs.test.ts"],
+                "subtask_focus": "the runs suite",
+                "resolved_config": {"dev_capability": "nextjs_ts"},
+            },
+            metadata={"role": "qa"},
+        )
+
+    def _responder(self, repair_outputs):
+        def responder(envelope):
+            if envelope.task_type == "data.analyze_failure":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={"classification": "work_product", "analysis_summary": "no file"},
+                )
+            if envelope.task_type == "governance.correction_decision":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={
+                        "correction_path": "patch",
+                        "decision_rationale": "re-author",
+                        "affected_task_types": ["qa.test"],
+                    },
+                )
+            return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs=repair_outputs)
+
+        return responder
+
+    async def _emission_empty(self, cycle, repair_outputs):
+        runner, _registry, _vault, _bus = self._make_runner(self._responder(repair_outputs))
+        protocol = await runner.run_correction_protocol(
+            run_id="run_737ba4e8e1e7",
+            cycle=cycle,
+            envelope=self._envelope(),
+            result=TaskResult(
+                task_id="task-run_737ba4e8-m006-qa.test",
+                status="FAILED",
+                error="No valid fenced code blocks found",
+                # The roll's own re-take shape: the qa task emitted nothing, so the
+                # failure is its OWN artifact and the repair runs under the qa role.
+                outputs={
+                    "emission_failure": {
+                        "reason": "no_fenced_blocks",
+                        "response_chars": 172,
+                        "expected_artifacts": ["__tests__/runs.test.ts"],
+                    }
+                },
+            ),
+            correction_attempts=0,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+        )
+        return protocol.emission_empty
+
+    async def test_a_prose_only_repair_emits_nothing_and_is_refunded(self, cycle):
+        from squadops.capabilities.handlers.impl.repair_handlers import (
+            _artifacts_from_fenced_blocks,
+        )
+
+        # Built through the real extractor, so the test cannot pass on a hand-made shape
+        # the handler would never produce.
+        artifacts = _artifacts_from_fenced_blocks(
+            "I'll verify the actual view and store interfaces before writing the test.",
+            "repair_output.md",
+        )
+        assert [a["name"] for a in artifacts] == ["repair_output.md"]
+        assert await self._emission_empty(cycle, {"artifacts": artifacts}) is True
+
+    async def test_a_repair_that_writes_the_file_is_not_refunded(self, cycle):
+        """The control: a real emission is content, and spending the round is correct."""
+        from squadops.capabilities.handlers.impl.repair_handlers import (
+            _artifacts_from_fenced_blocks,
+        )
+
+        artifacts = _artifacts_from_fenced_blocks(
+            "Fixed:\n\n```typescript:__tests__/runs.test.ts\nit('works', () => {})\n```\n",
+            "repair_output.md",
+        )
+        assert [a["name"] for a in artifacts] == ["__tests__/runs.test.ts"]
+        assert await self._emission_empty(cycle, {"artifacts": artifacts}) is False
+
+    async def test_an_empty_file_is_still_no_emission(self, cycle):
+        """#1053's original case must keep working: a zero-byte file is still nothing."""
+        empty = [{"name": "__tests__/runs.test.ts", "content": "", "type": "test"}]
+        assert await self._emission_empty(cycle, {"artifacts": empty}) is True
