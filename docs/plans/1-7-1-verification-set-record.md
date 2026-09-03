@@ -72,7 +72,7 @@ prediction is stated, per the 1.6.6 rule (§7 there).
 | # | prediction | exercised by | outcome |
 |---|---|---|---|
 | **R1** (#1153) | no qa assertion contradicting a declared kind reaches execution | every roll; positively on Next.js roll 2 | **held** — Next.js roll 2's three repairs asserted `participants` (declared `list`) and `participantCount` (declared `number`) as strings and the gate refused each at the verifier, on rule-B agent rows (`agent_executed=7` ×3); nothing contradicting a kind reached execution on any roll. React roll 5's readout of "1" is a `file_not_found` row (§4.6) |
-| **R2** (#1130) | an own-frame failure in a qa-owned file is routed to `qa.test_repair` with that file as target | React roll 4, round 1 | **FALSIFIED.** `TypeError: default.click is not a function` raised at `runs.test.jsx:108` (qa-owned; the suite imported `userEvent` from the wrong package); the analyzer implicated only that file; the runner vetoed it from the dev target (#884) and dispatched `development.correction_repair` against app files. `qa_owned_routed = 0`. Mechanism, read from the code: `test_runner.suite_defects()` stamps own-frame defects only for `NameError` or a Python argument-binding `TypeError` (`test_runner.py:927-931`); the JavaScript shape matches neither. The fix works for the pytest shape it was built from (1.6.5 roll 3) and not for this one. The plan's narrower wording ("a collection-time error") would read this as unexercised; the pre-registration governs. Owner's ruling: cut as is; the detector gap goes to 1.7.2 (§4.3) |
+| **R2** (#1130) | an own-frame failure in a qa-owned file is routed to `qa.test_repair` with that file as target | React roll 4, round 1 | **FALSIFIED.** `TypeError: default.click is not a function` raised at `runs.test.jsx:108` (qa-owned; the suite imported `userEvent` from the wrong package); the analyzer implicated only that file; the runner vetoed it from the dev target (#884) and dispatched `development.correction_repair` against app files. `qa_owned_routed = 0`. Mechanism, read from the code: `test_runner.suite_defects()` stamps own-frame defects only for `NameError` or a Python argument-binding `TypeError` (`test_runner.py:927-931`); the JavaScript shape matches neither. The fix works for the pytest shape it was built from (1.6.5 roll 3) and not for this one. The plan's narrower wording ("a collection-time error") would read this as unexercised; the pre-registration governs. Owner's ruling: cut as is; the detector gap is #1270 (§4.3) |
 | **R3** (#668) | every rendering RTL suite queries a declared anchor | React rolls 4–5, Next.js roll 1 (`dom_anchor_queries` bound) | **held** — 0 anchor findings |
 | **R4** (#1123) | every `qa.test_repair` brief names the failing cases | five qa repairs on React 2/5 and Next.js 1/2; one brief with a non-empty failed row (Next.js roll 1, round 1) | **held where a failed row carried cases; ambiguous on the refund re-take.** Every brief with 0 cases was built from a failed row that carried none (contentless emissions; a suite at the wrong path). Next.js roll 1 round 1 carried its 1 case correctly; after that repair was refunded, the re-taken round was briefed from the *refunded emission* and carried 0 while the original row still carried the case (§4.5). By the letter the brief matched the row the runner read; by intent the case was lost. Not read as established falsification; the owner rules |
 | **R5** (#1022) | no additive suite fetching a live server or invoking nothing reaches execution | React rolls 1, 4, 5; Next.js roll 1 (positive) | **held** — Next.js roll 1's UI suite (`react-dom/server` render, no route) was rejected at emission (`no_application_invocation`) and routed to the qa re-author, as designed. "Reaches execution" is read as #1022 built it: the handler runs every emitted suite before the typed evaluation, and the gate's effect is that the rejected suite's verdict is the suite's own defect. Note that the run was nonetheless rejected on that suite's `tests_pass` row after the re-author failed twice (§4.5) |
@@ -110,10 +110,11 @@ now a two-step: read, then release (§7).
 
 ## 4. Findings
 
-Drafted 2026-09-03 for the owner's go (five drafts in the session scratchpad; the instrument corrections of §4.6 are driver work, not an issue), each cited to the
-stored artifacts; placed 1.7.2 by the owner's ruling to cut as is.
+Filed 2026-09-03 on the owner's go, each cited to the stored artifacts; placed 1.7.2 by the
+owner's ruling to cut as is. **#1268 — the contentless first-attempt qa emission — is the top of
+1.7.2**: it is the origin every other finding was reached through (§5), dated to the 1.7.0 tree.
 
-### 4.1 A qa.test repair of an ABSENT suite is accepted without the #456 retest — React roll 2, Next.js roll 1
+### 4.1 #1269 — a qa.test repair of an ABSENT suite is accepted without the #456 retest — React roll 2, Next.js roll 1
 `qa.test` emitted a preamble (React roll 2 twice: 122 / 165 tokens; Next.js roll 1's API suite
 once); `qa.test_repair` produced the suite and ran it green in the qa container
 (`agent_executed=5` and `=6`, incl. the executing check); no retest was dispatched —
@@ -122,7 +123,7 @@ once); `qa.test_repair` produced the suite and ran it green in the qa container
 `frontend_build` stayed `subject_missing` → `blocked_unverified`. Pre-existing (#456-era), exposed
 by the contentless emission. Audit PASS.
 
-### 4.2 A re-dispatched qa.test's passing rows never reach the ledger — React roll 5
+### 4.2 #1271 — a re-dispatched qa.test's passing rows never reach the ledger — React roll 5
 Attempt 1 at `path/backend/tests/test_runs.py` (§4.4) → 7 failed rows; repair refused; attempt 2
 at the right path → `art_792d67a6dd27`, 8/8 passed, identities identical. Summary: rejected on
 attempt 1's rows; none of attempt 2's typed rows in `verified`. Replay through
@@ -130,16 +131,16 @@ attempt 1's rows; none of attempt 2's typed rows in `verified`. Replay through
 rejected. The §6.5 resolver works; the rows were never recorded. Drop site not established
 (candidates named in the draft). Pre-existing (#379-era recording path). Audit PASS.
 
-### 4.3 #1130's own-frame detector is pytest-shaped — React roll 4 (R2)
+### 4.3 #1270 — #1130's own-frame detector is pytest-shaped — React roll 4 (R2)
 §2. Fix shape: per-runner own-frame declaration (stack-aware, per the owner's 08-27 ruling),
 validated against `art_b119474ce8fa`.
 
-### 4.4 The fence template `language:path/to/file` copied literally — React roll 5
+### 4.4 #1272 — the fence template `language:path/to/file` copied literally — React roll 5
 `fences={'path': 1} head='```python:path/backend/tests/test_runs.py'`. Correct content at the wrong
 path; a whole round spent. Prompt-asset fix (concrete example on the task's own expected file) plus
 a parser backstop.
 
-### 4.5 The refund path re-briefs from the refunded emission, and prose-only output counts as content — Next.js roll 1
+### 4.5 #1273 — the refund path re-briefs from the refunded emission, and prose-only output counts as content — Next.js roll 1
 Round 1's brief carried the failing case; the repair emitted nothing and was refunded (#1053, "1 of
 3"); the re-take's `analyze_failure` ran on the refunded emission and its brief carried 0 cases;
 the re-taken repair emitted 149 chars of prose, banked as `repair_output.md`, which the refund
@@ -165,7 +166,9 @@ toolchain. The run was rejected on the `tests_pass` row of the suite the gate ha
   rolls (first attempt on rolls 1, 2 ×2, 4; the repair on roll 5); Next.js 9 of 11 primary
   attempts across 2 rolls. 1.6.6 recorded none. The qa role writes intent ("I'll verify the
   workspace state…") and stops. Reported as measured for the Reasoning line (1.7.0); no prediction
-  attached, and it shaped five of seven rolls.
+  attached, and it shaped five of seven rolls. Filed as **#1268**, top of 1.7.2, with the dated
+  count across 1.6.6 (zero in eight rolls), the 1.7.0-tree shakeouts (first seen 2026-08-31,
+  before any pack code) and this set.
 - qa primary completion tokens on emissions that produced a suite: React 2,073–3,059 (1.6.6:
   3,233–6,594); Next.js repairs 2,068–4,920.
 - Wall clock 45–65 min per roll (1.6.6: 43–74). Zero framing re-rolls on either set; the gate was
