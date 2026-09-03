@@ -110,7 +110,7 @@ now a two-step: read, then release (§7).
 
 ## 4. Findings
 
-Drafted 2026-09-03 for the owner's go (six drafts in the session scratchpad), each cited to the
+Drafted 2026-09-03 for the owner's go (five drafts in the session scratchpad; the instrument corrections of §4.6 are driver work, not an issue), each cited to the
 stored artifacts; placed 1.7.2 by the owner's ruling to cut as is.
 
 ### 4.1 A qa.test repair of an ABSENT suite is accepted without the #456 retest — React roll 2, Next.js roll 1
