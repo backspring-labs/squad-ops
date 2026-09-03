@@ -2190,3 +2190,67 @@ class TestPassingQaEvidenceReachesTheLedger:
             assert result.success is True, f"{role} did not pass — the premise is gone"
             checks = (result.outputs.get("validation_result") or {}).get("checks") or []
             assert checks, f"a passing {role} task banked no validation rows"
+
+
+class TestTheRetainedCasesReachTheRedispatchedPrompt:
+    """#1260, the other half: the executor threads the cases, and the prompt must show them.
+
+    A carry nothing renders is a carry that changes nothing. Entered at
+    `QATestHandler.handle` with a rendering request renderer, asserting on the prompt the
+    model was actually sent.
+    """
+
+    _CASE = {
+        "file": "__tests__/runs_api.test.ts",
+        "title": "accepts optional fields (distance, pace, routeNotes, capacity)",
+        "line": 214,
+        "message": "expected 20 to be undefined",
+    }
+
+    def _renderer(self):
+        """A renderer over the REAL template assets — the appendix is a managed asset
+        (CLAUDE.md #448), so a stub returning canned prose would test nothing."""
+        from adapters.prompts.factory import create_prompt_asset_source
+        from squadops.prompts.renderer import RequestTemplateRenderer
+
+        return RequestTemplateRenderer(create_prompt_asset_source(provider="filesystem"))
+
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
+    async def test_the_carried_cases_are_named_in_the_prompt(
+        self, _mock_run, mock_context, qa_inputs
+    ):
+        mock_context.ports.request_renderer = self._renderer()
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
+        )
+        await QATestHandler().handle(
+            mock_context,
+            {
+                **qa_inputs,
+                "subtask_focus": "the runs suite",
+                "expected_artifacts": ["tests/test_main.py"],
+                "prior_failing_cases": [self._CASE],
+            },
+        )
+
+        sent = mock_context.ports.llm.chat_stream_with_usage.await_args.args[0]
+        prompt = "\n".join(str(m.content) for m in sent)
+        assert "accepts optional fields (distance, pace, routeNotes, capacity)" in prompt
+        assert "__tests__/runs_api.test.ts:214" in prompt
+        assert "must still cover these" in prompt
+
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
+    async def test_a_first_attempt_carries_no_such_block(self, _mock_run, mock_context, qa_inputs):
+        """The control: the appendix is presence-gated, so a first dispatch is byte-for-byte
+        what it was before this change."""
+        mock_context.ports.request_renderer = self._renderer()
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
+        )
+        await QATestHandler().handle(
+            mock_context,
+            {**qa_inputs, "subtask_focus": "the runs suite", "expected_artifacts": ["a.py"]},
+        )
+        sent = mock_context.ports.llm.chat_stream_with_usage.await_args.args[0]
+        prompt = "\n".join(str(m.content) for m in sent)
+        assert "CASES A PREVIOUS ATTEMPT EXPOSED" not in prompt

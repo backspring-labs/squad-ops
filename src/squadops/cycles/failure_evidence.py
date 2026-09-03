@@ -295,6 +295,22 @@ def failing_cases_from_evidence(failure_evidence: Any) -> list[dict[str, Any]]:
     ]
 
 
+def failing_case_lines(cases: list[dict[str, Any]]) -> list[str]:
+    """One brief line per failing case: ``\`file:line\` › title — message``.
+
+    Shared because two prompts render the same fact — the qa repair's brief (#1123) and the
+    re-dispatch's retained cases (#1260) — and a case formatted two ways is a case a reader
+    cannot match across the two suites.
+    """
+    lines = []
+    for case in cases:
+        where = str(case.get("file", "")) + (f":{case['line']}" if case.get("line") else "")
+        title = str(case.get("title") or "") or "(suite-level)"
+        message = f" — {case['message']}" if case.get("message") else ""
+        lines.append(f"`{where}` › {title}{message}")
+    return lines
+
+
 _TESTID_IN_MESSAGE = re.compile(r"""data-testid=["']([^"']+)["']""")
 
 

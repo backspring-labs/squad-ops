@@ -1633,3 +1633,125 @@ class TestTheTerminationNamesWhichAbsence:
 
         line = next(m for m in caplog.messages if "correction_terminated_unverifiable" in m)
         assert "execute in this environment" in line
+
+
+class TestTheNextAttemptKeepsTheCasesThisOneExposed:
+    """#1260: a re-dispatched `qa.test` must still cover what the previous suite found.
+
+    Next.js shakeout `cyc_9c379355b5e8`: the first suite's case
+    `accepts optional fields (distance, pace, routeNotes, capacity)` failed against a route
+    that drops a numeric `capacity` — a real defect in the delivered app. The dev's correct
+    fix was refused for an unrelated reason, the task was re-dispatched, and the second and
+    third suites do not contain the word `capacity` at all. The third passed 25/25 and the
+    cycle shipped the defect: **the suite that shipped was not the suite that found it.**
+
+    #1123 already carries the failing cases to a qa *repair*. The re-dispatch carried
+    nothing, so the fix is the same fact on the envelope the retry loop re-dispatches —
+    exactly where #566 puts its emission feedback.
+    """
+
+    _CASE = {
+        "file": "__tests__/runs_api.test.ts",
+        "title": "accepts optional fields (distance, pace, routeNotes, capacity)",
+        "line": 214,
+        "message": "expected 20 to be undefined",
+    }
+
+    @staticmethod
+    async def _route(executor, cycle, envelope, enriched, result):
+        import contextlib
+
+        from adapters.cycles.execution_errors import _ExecutionError
+
+        with contextlib.suppress(_ExecutionError):
+            await executor._handle_task_outcome(
+                result=result,
+                envelope=envelope,
+                enriched_envelope=enriched,
+                cycle=cycle,
+                run_id="run_6140efedaea6",
+                task_attempt_counts={},
+                consecutive_failures=0,
+                correction_counter={"n": 0},
+                correction_signature_state={},
+                scaffold_enforcement_carry=[],
+                prior_outputs={},
+                all_artifact_refs=[],
+                stored_artifacts=[],
+                completed_task_ids=[],
+                plan_delta_refs=[],
+                profile=None,
+                flow_run_id=None,
+                patched_result_holder={},
+                interface_manifest=None,
+            )
+
+    def _failed_result(self):
+        return TaskResult(
+            task_id="task-run_6140efed-m006-qa.test",
+            status="FAILED",
+            error="1 case failed",
+            outputs={
+                "outcome_class": TaskOutcome.SEMANTIC_FAILURE,
+                "validation_result": {
+                    "checks": [
+                        {"check": "tests_pass", "passed": False, "failing_cases": [self._CASE]}
+                    ]
+                },
+            },
+        )
+
+    def _envelope(self):
+        from squadops.tasks.models import TaskEnvelope
+
+        return TaskEnvelope(
+            task_id="task-run_6140efed-m006-qa.test",
+            agent_id="eve",
+            cycle_id="cyc_001",
+            pulse_id="p",
+            project_id="hello_squad",
+            task_type="qa.test",
+            correlation_id="corr",
+            causation_id=None,
+            trace_id="t",
+            span_id="s",
+            inputs={"resolved_config": {"dev_capability": "nextjs_ts"}},
+            metadata={"role": "qa"},
+        )
+
+    async def test_the_exposed_case_rides_the_envelope_the_retry_loop_redispatches(
+        self, executor, cycle
+    ):
+        """Entry point is `_handle_task_outcome` — what the retry loop calls before it
+        re-dispatches — and the assertion is on the ENRICHED envelope, because that is the
+        one dispatched again (the #566 lesson: the base envelope alone is not enough)."""
+        import dataclasses as _dc
+
+        envelope = self._envelope()
+        enriched = _dc.replace(envelope, inputs={**envelope.inputs, "artifact_contents": {}})
+
+        # The carry is threaded before the correction protocol runs; with a scripted
+        # registry the protocol then decides "abort", which is irrelevant to what this
+        # asserts and is suppressed rather than papered over with a fuller harness.
+        await self._route(executor, cycle, envelope, enriched, self._failed_result())
+
+        assert enriched.inputs["prior_failing_cases"] == [self._CASE]
+        assert envelope.inputs["prior_failing_cases"] == [self._CASE]
+
+    async def test_a_failure_with_no_cases_threads_nothing(self, executor, cycle):
+        """An emission failure has no behavioural evidence to carry, and threading an
+        empty list would render an appendix that names nothing."""
+        import dataclasses as _dc
+
+        envelope = self._envelope()
+        enriched = _dc.replace(envelope, inputs={**envelope.inputs})
+        result = TaskResult(
+            task_id=envelope.task_id,
+            status="FAILED",
+            error="No valid fenced code blocks found",
+            outputs={"outcome_class": TaskOutcome.SEMANTIC_FAILURE, "artifacts": []},
+        )
+
+        await self._route(executor, cycle, envelope, enriched, result)
+
+        assert "prior_failing_cases" not in enriched.inputs
