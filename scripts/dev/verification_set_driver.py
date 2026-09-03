@@ -806,6 +806,10 @@ def runtime_log_window(since: str) -> list[str]:
         "Dispatched task task-",
         "plan_defect terminal",
         "evidence superseded",
+        # 1.7.1 (plan §4): R2/R4's routing tokens ride correction_repair_locus lines; the
+        # qa repair's case count (R4) and rule B's agent-decided verifications (R7) do not.
+        "correction_repair_brief",
+        "decided_by_agent=",
     )
     return [line for line in out.splitlines() if any(k in line for k in keys)]
 
@@ -877,7 +881,84 @@ def texture_from_logs(logs: list[str]) -> dict:
             line[-200:] for line in logs if "not counted as a repeat (#1129)" in line
         ],
         "evidence_superseded": [line[-200:] for line in logs if "evidence superseded" in line],
+        # 1.7.1 (plan §4). R2: a qa-owned own-frame failure routed to the qa repair
+        # (#1130). R4: the qa repair brief's case count (#1123) and an undeclared-anchor
+        # routing. R7: patch verifications decided by the producing agent's own executed
+        # rows (#1229, rule B) versus those that came back unverifiable because nothing
+        # executed where verification ran.
+        "qa_owned_routed": [
+            line.split("correction_repair_locus:")[-1][:200]
+            for line in logs
+            if "qa_owned_routed" in line
+        ],
+        "absent_anchor_routed": [
+            line.split("correction_repair_locus:")[-1][:200]
+            for line in logs
+            if "absent_anchor_routed" in line
+        ],
+        "repair_brief_case_counts": [
+            int(m.group(1))
+            for m in (
+                re.search(r"carries (\d+) failing case", line)
+                for line in logs
+                if "correction_repair_brief:" in line
+            )
+            if m
+        ],
+        "decided_by_agent": sum(
+            int(m.group(1))
+            for m in (re.search(r"decided_by_agent=(\d+)", line) for line in logs)
+            if m
+        ),
+        "unverifiable_toolchain_absent": [
+            line[-200:]
+            for line in logs
+            if "patch_verification task=" in line
+            and "status=unverifiable" in line
+            and "no_executed_blocking_checks" in line
+        ],
     }
+
+
+#: The typed checks the 1.7.1 predictions read per roll (plan §4), by check name; a failed
+#: row of each is the rejection the prediction counts. Read from every stored
+#: ``typed_check_evaluation_*.json`` of the implementation run, so the readout is the
+#: stored state, never a log.
+_PREDICTION_CHECKS = {
+    "kind_gate_rejections": "assertion_kinds_match",
+    "additive_rejections": "additive_containment",
+    "dom_anchor_findings": "dom_anchor_queries",
+    "container_packaging_findings": "container_packaging",
+    "undefined_name_rejections": "undefined_names",
+}
+
+
+def typed_checks_by_check(cfg: SetConfig, cycle_id: str, impl_run: str) -> dict:
+    """Per-check row counts by status over the run's stored typed-check evaluations, the
+    prediction readouts derived from them, and ``checks_by_environment`` — which role's
+    container each evaluation ran in (the artifact's task type names the producing role;
+    rule B puts every emission-time evaluation there, #1229)."""
+    by_check: dict[str, dict[str, int]] = {}
+    by_env: dict[str, int] = {}
+    for art in artifact_dirs(cfg, cycle_id, impl_run):
+        for path in art.glob("typed_check_evaluation_*.json"):
+            try:
+                doc = json.loads(path.read_text())
+            except (OSError, ValueError):
+                continue
+            task_type = str(doc.get("task_type") or "")
+            role = task_type.split(".", 1)[0] if task_type else "?"
+            env = f"agent:{role}"
+            for row in doc.get("evaluations") or []:
+                name = str(row.get("check") or "").removeprefix("acceptance:")
+                status = str(row.get("status") or "?")
+                by_check.setdefault(name, {}).setdefault(status, 0)
+                by_check[name][status] += 1
+                by_env[env] = by_env.get(env, 0) + 1
+    readouts = {
+        key: by_check.get(check, {}).get("failed", 0) for key, check in _PREDICTION_CHECKS.items()
+    }
+    return {"by_check": by_check, "checks_by_environment": by_env, **readouts}
 
 
 def _fill_rejections(cfg: SetConfig, cycle_id: str, impl_run: str) -> list[str]:
@@ -942,6 +1023,26 @@ def render(cfg: SetConfig, title: str, rec: dict) -> str:
         f"| criteria verified / total | {rec['criteria_verified']} / {rec['criteria_total']} |",
         f"| criteria unevidenced | {', '.join(rec['criteria_unevidenced']) or '—'} |",
         f"| failed emissions banked (#971) | {rec['failed_emissions_banked']} |",
+        "| 1.7.1 R1 kind-gate rejections | "
+        f"{(rec.get('typed_checks') or {}).get('kind_gate_rejections', '—')} |",
+        "| 1.7.1 R2 qa-owned routed | "
+        f"{len((rec.get('loop_texture') or {}).get('qa_owned_routed', []))} |",
+        "| 1.7.1 R3 anchor findings | "
+        f"{(rec.get('typed_checks') or {}).get('dom_anchor_findings', '—')} |",
+        "| 1.7.1 R4 brief case counts / absent-anchor routed | "
+        f"{(rec.get('loop_texture') or {}).get('repair_brief_case_counts', [])} / "
+        f"{len((rec.get('loop_texture') or {}).get('absent_anchor_routed', []))} |",
+        "| 1.7.1 R5 additive rejections | "
+        f"{(rec.get('typed_checks') or {}).get('additive_rejections', '—')} |",
+        "| 1.7.1 R6 undefined-name rejections | "
+        f"{(rec.get('typed_checks') or {}).get('undefined_name_rejections', '—')} |",
+        "| 1.7.1 R7 decided by agent / unverifiable (toolchain absent) | "
+        f"{(rec.get('loop_texture') or {}).get('decided_by_agent', 0)} / "
+        f"{len((rec.get('loop_texture') or {}).get('unverifiable_toolchain_absent', []))} |",
+        "| checks by environment | "
+        f"{(rec.get('typed_checks') or {}).get('checks_by_environment', {})} |",
+        "| container packaging findings (reporting-only) | "
+        f"{(rec.get('typed_checks') or {}).get('container_packaging_findings', '—')} |",
         "",
         "## Gate decisions (decider recorded verbatim, never inferred)",
         "",
@@ -1027,6 +1128,9 @@ def _run_cycle(
     rec["static_checks"] = static_checks(cfg, stack, cyc, rec["impl_run_id"], framing)
     rec["ledger_checks"] = ledger_checks(rec)
     rec["loop_texture"] = loop_texture(cfg, cyc, rec["impl_run_id"], launched_at)
+    rec["typed_checks"] = (
+        typed_checks_by_check(cfg, cyc, rec["impl_run_id"]) if rec["impl_run_id"] else {}
+    )
     rec["boot_audit"] = (
         boot_audit(cfg, cyc, rec["impl_run_id"])
         if rec["impl_run_id"]
