@@ -51,6 +51,7 @@ from squadops.capabilities.handlers.cycle.validation import (
     _build_typed_check_evaluation_artifact,
 )
 from squadops.capabilities.handlers.emission_log import log_emission_shape
+from squadops.capabilities.handlers.fault_injection import inject as inject_fault
 
 logger = logging.getLogger(__name__)
 
@@ -760,6 +761,18 @@ class _CycleTaskHandler(CapabilityHandler):
 
         content = response.content
         llm_duration_ms = (time.perf_counter() - start_time) * 1000
+
+        # #1251: a declared fault transforms the emission HERE, before the shape is logged,
+        # so every readout downstream reads one consistent emission and the log records what
+        # the handler actually got. A normal cycle declares none and this returns the
+        # emission unchanged.
+        content = inject_fault(
+            content,
+            handler_name=self._handler_name,
+            task_id=context.task_id,
+            resolved_config=inputs.get("resolved_config"),
+            inputs=inputs,
+        )
 
         # #924: unconditional, and deliberately NOT inside the observability block below —
         # that block is gated on `llm_obs and correlation_context`, so a capture placed
