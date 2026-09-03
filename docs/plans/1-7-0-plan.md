@@ -568,3 +568,8 @@ dependency set the images install — is unaffected and met. Reasoning recorded 
   §2.1a names the two SIP promotions and their vehicles — acceptance in the rev 2 PR before
   #1159, implemented at the first cut with #1157/#1159/#1160 merged — and §6.1 gains
   criterion 6, on the owner's question whether the plan carried them.
+- **Amendment (2026-09-03, at the 1.7.1 cut)** — §3.1's rule that a falsified prediction "costs a
+  1.7.x.1 before the next pack opens" was not applied to 1.7.1's R2 (#1270): the owner cut 1.7.1
+  as is and the item leads 1.7.2, where its prediction is re-registered verbatim with the shape
+  that falsified it and exercised by fault injection (`docs/plans/1-7-2-plan.md` §5). The
+  rule's purpose is kept; the separate patch release is not, for the reason stated there.
