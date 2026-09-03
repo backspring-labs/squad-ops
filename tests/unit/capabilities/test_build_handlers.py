@@ -2077,3 +2077,116 @@ class TestRetestProbesPatchedTree:
         # The probe workspace must hold the tree the repair produced — probing
         # the dispatch-time copy is exactly the pf-50 false green.
         assert captured["routes"] == "REPAIRED (dropped the 201)"
+
+
+class TestPassingQaEvidenceReachesTheLedger:
+    """#1271: a PASSING qa.test must hand its validation evidence to the run ledger.
+
+    `normalize_task_checks` reads `outputs["validation_result"]["checks"]` and nothing
+    else, so evidence the handler builds and does not place there is evidence the ledger
+    never sees. On the qa surface it was placed on the failure branch only, so every
+    passing qa task recorded nothing — and a re-dispatched task's PASSING rows could not
+    supersede its earlier failing ones, which is what rejected 1.7.1 React roll 5
+    (`cyc_ca02bed7fbb4`) on stale rows after the re-authored suite passed 8/8.
+
+    #597 fixed exactly this on the dev surface and its comment recorded that "the qa
+    handler has always populated this on success". That was not true, and stayed untrue
+    for five weeks.
+    """
+
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
+    async def test_a_passing_qa_task_carries_its_checks_in_outputs(
+        self, _mock_run, mock_context, qa_inputs
+    ):
+        from squadops.cycles.verification_normalize import normalize_task_checks
+
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
+        )
+        # `output_validation` is what a cycle's CRP defaults turn on; without it the
+        # handler validates nothing and the question this test asks does not arise.
+        inputs = {
+            **qa_inputs,
+            "resolved_config": {"output_validation": True},
+            # Focused mode, as every cycle task runs (`m005-qa.test` in roll 5).
+            "subtask_focus": "runs API suite",
+            "expected_artifacts": ["tests/test_main.py", "tests/test_utils.py"],
+        }
+        result = await QATestHandler().handle(mock_context, inputs)
+
+        assert result.success is True
+        checks = (result.outputs.get("validation_result") or {}).get("checks") or []
+        names = {row.get("check") for row in checks}
+        assert "non_stub_files" in names, (
+            "a passing qa task banked no validation rows — the ledger records nothing and "
+            "its criteria cannot be credited"
+        )
+        recorded = normalize_task_checks(result.outputs, subject="task-run_x-m005-qa.test")
+        assert {r.check_id for r in recorded} >= {"non_stub_files"}
+
+    def test_recording_both_attempts_is_what_makes_the_run_acceptable(self):
+        """The oracle, replayed from roll 5's own two stored evaluations
+        (`art_b387885e1991` failed 6/8, `art_792d67a6dd27` passed 8/8, identities
+        identical). Aggregation supersedes correctly when it SEES both — which is why the
+        defect is upstream, in what the handler hands over, not in §6.5.
+        """
+        import json
+        from pathlib import Path
+
+        from squadops.cycles.verification_integrity import aggregate_verification
+        from squadops.cycles.verification_normalize import normalize_task_checks
+
+        replays = Path(__file__).resolve().parents[2] / "fixtures" / "roll_replays"
+        subject = "task-run_b5db6a3e-m005-qa.test"
+
+        def rows(name):
+            doc = json.loads((replays / name).read_text(encoding="utf-8"))
+            return normalize_task_checks(
+                {"validation_result": {"checks": doc["evaluations"]}}, subject=subject
+            )
+
+        first = rows("1-7-1-react-roll-5-qa-attempt-1-typed-checks.json")
+        second = rows("1-7-1-react-roll-5-qa-attempt-2-typed-checks.json")
+
+        assert aggregate_verification([*first, *second]).verdict == "accepted"
+        assert aggregate_verification(first).verdict == "rejected"
+
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
+    async def test_the_dev_and_qa_surfaces_agree_on_this(
+        self, _mock_run, mock_context, build_inputs, qa_inputs
+    ):
+        """Parity, held by a test rather than by a comment.
+
+        #597 fixed the dev surface and its comment asserted the qa surface already did
+        the same. Nothing checked that, it was false, and the divergence cost 1.7.1 React
+        roll 5. A third divergence needs a guard that fails, not a third comment.
+        """
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
+        )
+        qa = await QATestHandler().handle(
+            mock_context,
+            {
+                **qa_inputs,
+                "resolved_config": {"output_validation": True},
+                "subtask_focus": "runs API suite",
+                "expected_artifacts": ["tests/test_main.py", "tests/test_utils.py"],
+            },
+        )
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=LLM_MULTI_FILE_RESPONSE),
+        )
+        dev = await DevelopmentDevelopHandler().handle(
+            mock_context,
+            {
+                **build_inputs,
+                "resolved_config": {"output_validation": True},
+                "subtask_focus": "the source files",
+                "expected_artifacts": ["src/main.py", "src/utils.py"],
+            },
+        )
+
+        for role, result in (("qa", qa), ("dev", dev)):
+            assert result.success is True, f"{role} did not pass — the premise is gone"
+            checks = (result.outputs.get("validation_result") or {}).get("checks") or []
+            assert checks, f"a passing {role} task banked no validation rows"
