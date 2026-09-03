@@ -118,6 +118,32 @@ class PatchCheckRecord:
         }
 
 
+def skip_reasons(checks: Sequence[PatchCheckRecord]) -> str:
+    """``reason:count`` for every row that did not execute, most frequent first.
+
+    **Why (#1276).** A verification that ends ``unverifiable /
+    no_executed_blocking_checks`` says only that nothing executed. Two different
+    facts produce it — the toolchain is absent from this environment, or the file
+    the criterion names is not in the tree — and they have opposite fixes. The
+    1.7.1 R7 readout counted every such verdict as "toolchain absent" and the
+    Next.js roll 1 case (a prose-only repair, so the file was missing) was
+    indistinguishable in the record. The reasons are on the rows already; only the
+    line that a reader greps was missing them.
+
+    A row that ran and failed is not a skip: ``error`` is an outcome of execution.
+    """
+    counts: dict[str, int] = {}
+    for record in checks:
+        if record.status != ResultStatus.SKIPPED:
+            continue
+        reason = record.reason or "unstated"
+        counts[reason] = counts.get(reason, 0) + 1
+    return ",".join(
+        f"{reason}:{count}"
+        for reason, count in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    )
+
+
 @dataclass(frozen=True)
 class PatchVerification:
     """Aggregate verdict over all typed criteria.

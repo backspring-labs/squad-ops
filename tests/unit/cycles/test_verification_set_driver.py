@@ -10,6 +10,7 @@ window and reports "0 empty emissions" for a roll that had one.
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
@@ -490,3 +491,195 @@ class TestDriveLoopExitsOnAFailedFraming:
             lambda _c: (_ for _ in ()).throw(AssertionError("consulted before terminal_impl")),
         )
         assert driver.drive(object(), "cyc_x") is None
+
+
+class TestReadoutsByReason:
+    """#1276: a readout says on WHAT it fired, not only that it did.
+
+    Each test names the 1.7.1 misreading it would have caught (record §4.6). The oracle in
+    every case is the roll's own stored evidence, quoted from `var/verification_sets/`.
+    """
+
+    def test_a_kind_gate_row_that_failed_on_an_absent_file_is_not_a_gate_rejection(
+        self, driver, tmp_path, monkeypatch
+    ):
+        """React roll 5 reported `kind_gate_rejections: 1`. The row was
+        `assertion_kinds_match` failing with `file_not_found` — the gate rejected nothing;
+        a repair was evaluated against a tree that did not carry the suite (#1259)."""
+        art = tmp_path / "art_a"
+        art.mkdir()
+        (art / "typed_check_evaluation_task_6.json").write_text(
+            json.dumps(
+                {
+                    "task_type": "qa.test",
+                    "evaluations": [
+                        {
+                            "check": "acceptance:assertion_kinds_match",
+                            "status": "failed",
+                            "reason": "file_not_found",
+                        },
+                        {
+                            "check": "acceptance:assertion_kinds_match",
+                            "status": "passed",
+                            "reason": "ok",
+                        },
+                    ],
+                }
+            )
+        )
+        monkeypatch.setattr(driver, "artifact_dirs", lambda *a, **k: [art])
+        out = driver.typed_checks_by_check(object(), "cyc", "run")
+        assert out["assertion_kinds_match_rows"] == {
+            "failed": {"file_not_found": 1},
+            "skipped": {},
+        }
+        assert "kind_gate_rejections" not in out
+
+    def test_skipped_rows_are_reported_beside_failed_ones(self, driver, tmp_path, monkeypatch):
+        """#1261 arrived as skipped rows on an ACCEPTED emission — invisible to a count of
+        failed ones, and the R6 readout said `0`."""
+        art = tmp_path / "art_b"
+        art.mkdir()
+        (art / "typed_check_evaluation_task_0.json").write_text(
+            json.dumps(
+                {
+                    "task_type": "development.develop",
+                    "evaluations": [
+                        {
+                            "check": "acceptance:undefined_names",
+                            "status": "skipped",
+                            "reason": "unsupported_stack_or_syntax",
+                        }
+                    ]
+                    * 5,
+                }
+            )
+        )
+        monkeypatch.setattr(driver, "artifact_dirs", lambda *a, **k: [art])
+        out = driver.typed_checks_by_check(object(), "cyc", "run")
+        assert out["undefined_names_rows"]["skipped"] == {"unsupported_stack_or_syntax": 5}
+        assert out["undefined_names_rows"]["failed"] == {}
+
+    def test_a_row_with_no_reason_is_named_unstated_not_dropped(
+        self, driver, tmp_path, monkeypatch
+    ):
+        art = tmp_path / "art_c"
+        art.mkdir()
+        (art / "typed_check_evaluation_task_1.json").write_text(
+            json.dumps(
+                {
+                    "task_type": "qa.test",
+                    "evaluations": [
+                        {"check": "acceptance:additive_containment", "status": "failed"}
+                    ],
+                }
+            )
+        )
+        monkeypatch.setattr(driver, "artifact_dirs", lambda *a, **k: [art])
+        out = driver.typed_checks_by_check(object(), "cyc", "run")
+        assert out["additive_containment_rows"]["failed"] == {"unstated": 1}
+
+    def test_an_unverifiable_verdict_is_counted_by_its_own_reason(self, driver):
+        """Next.js roll 1's `unverifiable_toolchain_absent: 1` came from an absent FILE (a
+        prose-only repair), not an absent toolchain — the readout could not tell them apart."""
+        absent_file = (
+            "patch_verification task=task-a task_type=qa.test status=unverifiable "
+            "reason=no_executed_blocking_checks checks=4 failed=- decided_by_agent=0 "
+            "agent_rows=2 agent_executed=0 skips=file_not_found:2"
+        )
+        absent_tooling = (
+            "patch_verification task=task-b task_type=development.develop status=unverifiable "
+            "reason=no_executed_blocking_checks checks=3 failed=- decided_by_agent=0 "
+            "agent_rows=0 agent_executed=0 skips=missing_tooling:3"
+        )
+        no_criteria = (
+            "patch_verification task=task-c task_type=qa.test status=unverifiable "
+            "reason=no_typed_criteria checks=0 failed=- skips=-"
+        )
+        out = driver.texture_from_logs([absent_file, absent_tooling, no_criteria])
+        assert out["unverifiable_by_reason"] == {
+            "no_executed_blocking_checks": 2,
+            "no_typed_criteria": 1,
+        }
+        assert out["no_execution_by_skip_reason"] == {"missing_tooling": 3, "file_not_found": 2}
+
+    def test_a_repair_brief_records_where_its_evidence_came_from(self, driver):
+        """R4's falsifier — a 0-case brief while the failed row carried cases — is only
+        readable when the record says which result the brief was built from (#1273)."""
+        refunded = (
+            "correction_repair_brief: qa.test_repair carries 0 failing case(s) for "
+            "__tests__/runs.test.ts from=repair-run_d515-00-qa.test_repair tests_pass_rows=0"
+        )
+        original = (
+            "correction_repair_brief: qa.test_repair carries 3 failing case(s) for "
+            "__tests__/runs.test.ts from=task-run_d515-m006-qa.test tests_pass_rows=1"
+        )
+        out = driver.texture_from_logs([refunded, original])
+        assert out["repair_brief_case_counts"] == [
+            {"cases": 0, "from": "repair-run_d515-00-qa.test_repair", "tests_pass_rows": 0},
+            {"cases": 3, "from": "task-run_d515-m006-qa.test", "tests_pass_rows": 1},
+        ]
+
+    def test_a_pre_1276_brief_line_still_parses_with_its_source_unknown(self, driver):
+        """The 1.7.1 records were written from a line with no `from=`; reading an old
+        window must not crash, and must not invent a source."""
+        out = driver.texture_from_logs(
+            ["correction_repair_brief: qa.test_repair carries 2 failing case(s) for a.ts"]
+        )
+        assert out["repair_brief_case_counts"] == [
+            {"cases": 2, "from": "?", "tests_pass_rows": None}
+        ]
+
+
+class TestEmissionShapes:
+    """#1276/#1268: the emission fact is read from the emission, in the agent's own window.
+
+    `empty_repair_emissions` used to key on the runtime-api's "repair emitted no content"
+    token, which both 1.7.1 prose-only repairs failed to produce, and the contentless first
+    attempts that shaped five of seven counted rolls appeared in no readout at all.
+    """
+
+    _CONTENTLESS = (
+        "2026-09-03 08:14:39,401 - squadops.capabilities.handlers.emission_log - INFO - "
+        "qa_test_handler emission shape: chars=148 completion_tokens=114 "
+        "fences={'fill': 0, 'path': 0, 'plain': 0} head=\"I'll examine the workspace\""
+    )
+    _REPAIR_PROSE = (
+        "2026-09-03 06:10:18,578 - squadops.capabilities.handlers.emission_log - INFO - "
+        "qa_test_repair_handler emission shape: chars=225 completion_tokens=154 "
+        "fences={'fill': 0, 'path': 0, 'plain': 0} head=\"I'll verify the workspace state\""
+    )
+    _HEALTHY = (
+        "2026-09-03 03:54:49,217 - squadops.capabilities.handlers.emission_log - INFO - "
+        "qa_define_test_strategy_handler emission shape: chars=21509 completion_tokens=5943 "
+        "reasoning_chars=2181 fences={'fill': 0, 'path': 3, 'plain': 0} head='# QA Test Strategy'"
+    )
+
+    def test_a_preamble_with_no_fence_is_contentless_and_carries_its_own_numbers(self, driver):
+        out = driver.texture_from_emission_shapes([self._CONTENTLESS, self._HEALTHY])
+        assert out["emissions_logged"] == 2
+        assert [
+            (s["handler"], s["chars"], s["completion_tokens"]) for s in out["contentless_emissions"]
+        ] == [("qa_test_handler", 148, "114")]
+        assert out["contentless_by_handler"] == {"qa_test_handler": 1}
+
+    def test_a_long_emission_that_addresses_no_file_is_not_contentless(self, driver):
+        """A 21k-char strategy document with fences is a healthy emission; the readout must
+        not report every fence-less emission as a failure — that is the #932 shape."""
+        long_plain = self._HEALTHY.replace("'path': 3", "'path': 0")
+        out = driver.texture_from_emission_shapes([long_plain])
+        assert out["contentless_emissions"] == []
+
+    def test_a_prose_only_repair_is_an_empty_repair_emission(self, driver):
+        """Next.js roll 1: the repair emitted 225 chars of intent, was VERIFIED rather than
+        refunded (#1273), and `empty_repair_emissions` reported nothing."""
+        out = driver.texture_from_emission_shapes([self._REPAIR_PROSE, self._CONTENTLESS])
+        assert [s["handler"] for s in out["empty_repair_emissions"]] == ["qa_test_repair_handler"]
+
+    def test_the_reasoning_split_is_kept_when_the_line_carries_it(self, driver):
+        shapes = driver.emission_shapes([self._HEALTHY])
+        assert shapes[0]["reasoning_chars"] == "2181"
+        assert shapes[0]["fences"] == {"fill": 0, "path": 3, "plain": 0}
+
+    def test_a_line_that_is_not_an_emission_shape_is_ignored(self, driver):
+        assert driver.emission_shapes(["INFO - something else entirely"]) == []

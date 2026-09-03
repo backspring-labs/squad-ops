@@ -60,6 +60,19 @@ failed. A check that stops running on the files it was meant to guard produces a
 with a smaller denominator, and a count of failed rows cannot see it. 1.7.1's R6 gap arrived
 as five `skipped / unsupported_stack_or_syntax` rows on the accepted emission (#1261).
 
+**Read every readout by its reason, not by its count (#1276).** An integer says a prediction
+fired; it never says on what, and three of 1.7.1's readouts were misread because the reason
+was thrown away where the rows were counted (record §4.6): "1 kind-gate rejection" was
+`assertion_kinds_match` failing with `file_not_found`, "unverifiable — toolchain absent" was
+an absent *file*, and "0 empty repair emissions" was two prose-only repairs the runtime-api
+token never named. So a readout is a `{reason: count}` map, and a readout whose name asserts
+a reason it cannot see is renamed for the check it reads.
+
+**An emission fact is read from the emission.** The producing agent's own `emission shape:`
+line (`chars`, `completion_tokens`, `fences`) is the fact; a downstream token is a
+consequence and can be absent while the fact holds. The driver reads the agent containers'
+window beside the runtime-api's for exactly this.
+
 The readouts are read from the per-roll record, never by hand from the log; the record is
 the driver's `render` of what it collected, and what it collected is listed in the driver.
 
