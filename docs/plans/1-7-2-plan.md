@@ -155,15 +155,18 @@ roll-verified list — evidence persisted and a marker echoed are characterizati
 and need no roll. **#1087/#1112** carry from the 1.7.1 rider (the WIP branch exists; fixture
 regenerated on the owner's go).
 
-That is sixteen; the 1.7.0 ceiling is fifteen. **#225 and #219 move to 1.7.3 if review load
-requires** — a rider may move to a neighbour without changing the packs.
+That is sixteen; the 1.7.0 ceiling is fifteen. **#225 and #219 move to 1.7.3 now** — the two
+smallest, neither touching a seam this pack's predictions read — so the rider is fourteen and
+the decision is made here rather than under review load.
 
 ---
 
 ## 4. The verification set — exercise, by injection where a roll will not reach it
 
-Two counting sets on one frozen deploy, the same sizing — **FastAPI+React N = 6, Next.js+TS
-N = 2** — with two changes from 1.7.1, both from its record §7:
+Two counting sets on one frozen deploy — **FastAPI+React N = 6, Next.js+TS N = 3** (up from
+2: both 1.7.1 Next.js rolls went through the contentless-emission path, so that arm reads L1
+directly and L2/L4 fire there first; a third roll is one more chance to reach delivery at the
+cost of an hour) — with two changes from 1.7.1, both from its record §7:
 
 - **Every prediction has an exercise plan stated before roll 1.** Where the last three sets
   show a roll is unlikely to reach it (L2, L4, L5, L7 need a specific failure shape), a
@@ -194,6 +197,13 @@ deploy with no new seam finding, budgeted at three rounds, the count reported in
 
 **Early stop, one direction.** A falsified L1–L8 stops the set. The set's record and the cut
 say what the rolls did not exercise.
+
+**One bar, and only one: L1.** The line's other predictions keep 1.7.1's convention — no
+rate bar, a falsification stops the set and the cut says so. L1 is different because #1268 is
+the condition every other item is measured *through*: a set in which a first attempt is still
+contentless has not measured the pack, it has measured the loop's recovery from the same
+fault again. So **a falsified L1 blocks the cut** — the fix is revised from the new evidence
+and the set re-rolled — where 1.7.1's R2 did not.
 
 ---
 
@@ -244,23 +254,29 @@ timeout for two things) — no roll in this line or the last has hit either boun
 
 ---
 
-## 8. What this plan does not decide
+## 8. Decisions made by recommendation — the owner overrules, not fills in
 
-- **#1268's fix** — decided from the reading in step 2, recorded here as an amendment.
-- **Whether L1 should be a bar** — it is a prediction with a falsifier; whether the line's cut
-  requires it to hold is the owner's call at pre-registration.
-- **#1260's envelope shape** — the brief's case list reused, or a new key; decided in the PR
-  with the table of seams.
-- **Whether the Next.js arm stays at N = 2** — 1.7.1's arm tested the gates and not delivery;
-  if #1268's fix is in the qa prompt, the arm reads it and N = 2 is enough; if not, the owner
-  may size it up at pre-registration.
-- **#414** — design review, as before.
+- **#1268's fix** is decided from the reading in step 2 and recorded as an amendment here.
+  What is decided now: it is **one** change, and if the reading is inconclusive the fix is the
+  retry-with-fact (a contentless emission re-prompted with the emission-shape fact in the
+  retry feedback), because that holds L1 regardless of cause and leaves the cause readable in
+  the next record.
+- **L1 is the line's one bar** (§4) — a falsified L1 blocks the cut.
+- **Next.js+TS N = 3** (§4).
+- **#1260 reuses the repair brief's case list** — the same presence-keyed `failing_cases` the
+  #1123 brief carries, threaded onto the re-dispatch envelope; no new key, one home for one
+  fact (`feedback: gate on prose means missing derivation` — the fact is derived, not
+  restated).
+- **#225 and #219 go to 1.7.3 now** (§3).
+- **#414 stays at design review** — the refund mechanics #1273 touches are not a budget
+  redesign, and no 1.7.1 roll exhausted a budget for a severity-blind reason.
 
 ---
 
 ## 9. Revision history
 
-- **Rev 1 (2026-09-03)** — written the day v1.7.1 was tagged, from the 1.7.1 record, the 1.7.0
+- **Rev 1 (2026-09-03)** — written the day v1.7.1 was tagged; §8 turned from open items into
+  recommendations the same day at the owner's request. Written from the 1.7.1 record, the 1.7.0
   plan §2.3/§3.1, issues #1268–#1273 and #1276, and the stored artifacts of the seven counted
   rolls. Re-cuts Loop Honesty's first half around the 1.7.1 evidence: the four recovery-path
   seams and #1260 replace #994/#995/#968 (to 1.7.3), #999/#1110 move to the CI rider, #1270 and
