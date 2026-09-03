@@ -5,6 +5,34 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.7.1] — 2026-09-03
+
+**Stack Seams — the first patch line of 1.7.** Plan: `docs/plans/1-7-1-plan.md`. Record:
+`docs/plans/1-7-1-verification-set-record.md`.
+
+Validated by a pre-registered two-set verification run on frozen deploy `f85de47a` (HEAD
+pinned at `8b58061c`), **zero code drift between the deploy and the tag** — the tag adds only
+the pre-registration and the record: **FastAPI+React 3 of 5** (rolls 1, 3 and 4 accepted, roll
+2 blocked, roll 5 rejected, the sixth withheld by the early-stop rule when R2 falsified on roll
+4) and **Next.js+TS 0 of 2**. The delivered app passed the boot audit on **all seven** rolls.
+Rule B evaluated every one of the eleven repairs in the producing role's container; the kind
+gate (#1153) refused three contradicting repairs on Next.js roll 2; additive containment
+(#1022) rejected a suite that invoked nothing; no undefined name reached execution (#939).
+
+**What the rolls do not validate, said here rather than implied.** R2 (#1130) is falsified on
+the JavaScript own-frame shape — the detector is pytest-shaped (#1270). The Next.js arm
+validated the gates, not delivery: the qa role's first-attempt emission was a sentence of
+intent and nothing else on nine of eleven attempts there and five times on React — **new since
+the 1.7.0 tree (first seen 2026-08-31; zero in 1.6.6's eight rolls), not introduced by this
+pack, mechanism unread, and the top of 1.7.2 (#1268)**. Every other non-green is a
+pre-existing recovery-path seam that a contentless emission reached for the first time: the
+retest skipped when the failed result carries no `test_result` (#1269), a re-dispatched task's
+passing rows never recorded (#1271), the refund path re-briefed from the empty emission with
+prose counted as content (#1273); plus the fence-template placeholder copied literally (#1272).
+One process deviation is recorded (record §3.3). Carried, not built: #1251, #1254, #1260,
+#1087/#1112. It took six shakeout deploys to reach the counted set; the exit rule (a pair with
+no new seam finding) was met on the sixth.
+
 **The 1.7.1 line — Stack Seams** (`docs/plans/1-7-1-plan.md`). Owner's ruling on the
 check-environment seam, 2026-09-01: **B** — typed checks execute in the producing role's
 agent container, at emission and at repair, and each image provisions its toolchain as data.

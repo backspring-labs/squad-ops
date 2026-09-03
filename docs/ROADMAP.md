@@ -22,7 +22,15 @@ Each even-minor consumer sits strictly behind the release that earns its trust: 
 
 ## Release Timeline
 
-### v1.7.0 (2026-09-01) — Current — the Reasoning line opens
+### v1.7.1 (2026-09-03) — Current — Stack Seams
+
+**The first patch line of 1.7, above the Reasoning line.** The pack is the seam between what a check declares and where it can run: typed checks execute in the producing role's agent container at emission and at repair (rule B, #1229), each image provisioning its toolchain as data (#1239); `undefined_names` reads `.ts`/`.tsx`/`.js`/`.jsx` through `tsc` (#939); the free-authored-assertion class the 1.6.6 record named gets its gates — assertion kinds (#1153), DOM anchors (#668), additive-suite containment (#1022) — and the qa repair is scoped to the failing cases (#1123); a qa-owned own-frame defect routes to the qa role (#1130); the emitted container's packaging is read, reporting-only (#598); stack #1 moves behind the stack seam and SIP-0105 harvests its rationale (#1131, #1149). Six shakeout deploys found and fixed five seam defects latent in the pack's own PRs (#1250, #1252, #1255, #1256, #1259, #1261, #1264), which is why the test standard now demands a wiring test and the cut record counts the deploys.
+
+**The evidence** (`docs/plans/1-7-1-verification-set-record.md`): a pre-registered two-set run on frozen deploy `f85de47a`, HEAD pinned at `8b58061c`, **zero code drift between the deploy and the tag** — **FastAPI+React 3 of 5** (rolls 1, 3, 4 accepted; the sixth withheld by the early-stop rule when R2 falsified on roll 4) and **Next.js+TS 0 of 2**; the delivered app passed the boot audit on **all seven** rolls. Rule B ran on every one of the eleven repairs; the kind gate refused three contradicting repairs; additive containment rejected a suite that invoked nothing; no undefined name reached execution.
+
+**Stated at the cut, not implied.** R2 is falsified on the JavaScript own-frame shape — #1130's detector is pytest-shaped (#1270). The Next.js arm validated the gates, not delivery: **the qa role's first-attempt emission became a sentence of intent and nothing else** — nine of eleven attempts there, five on React — a shape first seen on the 1.7.0 tree on 2026-08-31 and absent from 1.6.6's eight rolls; not introduced by this pack, mechanism unread, and **the top of 1.7.2 (#1268)**. Every other non-green is a pre-existing recovery-path seam that a contentless emission reached for the first time: the retest skipped when the failed result carries no `test_result` (#1269), a re-dispatched task's passing rows never recorded (#1271), the refund path re-briefed from the empty emission with prose counted as content (#1273); and the fence-template placeholder copied literally (#1272). Carried, not built: #1251, #1254, #1260, #1087/#1112. Next: 1.7.2 — Loop Honesty, opening with #1268.
+
+### v1.7.0 (2026-09-01) — the Reasoning line opens
 
 **The odd minor above 1.6's Authorship release, and the first of five 1.7.x lines — not the last.** The measured pack is **Reasoning**: the model's thinking channel stops being a paid-for side effect and becomes declared, observable and controllable. A per-capability reasoning level on the port with a cycle-level override (#927); the thinking text captured and emitted on all three adapters (#410) and — after the roll that proved it was still invisible — on the *streaming* path every handler actually calls (#1194); the emission log reporting the reasoning split so #924's two failure modes stop looking identical, with a character fallback where Ollama reports no token count (#1195); an unregistered model failing loudly on all three paths (#1145); a boot log that names a fallback as a fallback (#930).
 
@@ -567,10 +575,10 @@ The following areas are identified for future work but do not block 1.0 readines
 
 ## Stats
 
-*As of 2026-09-01 (v1.7.0):*
+*As of 2026-09-03 (v1.7.1):*
 
-- **Framework version**: 1.7.0
+- **Framework version**: 1.7.1
 - **SIPs**: 65 implemented, 9 accepted (SIP-0088, 0090–0093, 0101, 0102, 0104, 0105), 20 deprecated (registry)
-- **Tests**: 7,900+ passing in the regression suite
+- **Tests**: 8,600+ passing in the regression suite
 - **Python source**: ~61,000 lines (src + adapters; ~88,000 test lines, ~119,000 doc lines)
 - **~6 months** from initial repo (2025-09-20) to 1.0.0 release (2026-03-10)
