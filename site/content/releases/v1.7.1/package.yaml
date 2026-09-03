@@ -1,0 +1,939 @@
+version: 1.7.1
+tag: v1.7.1
+previous_tag: v1.7.0
+date: '2026-09-03'
+commit: 018d63f21f8a905af032d30c327db6627444cffb
+narrative: "**Stack Seams — the first patch line of 1.7.** Plan: `docs/plans/1-7-1-plan.md`.\
+  \ Record:\n`docs/plans/1-7-1-verification-set-record.md`.\n\nValidated by a pre-registered\
+  \ two-set verification run on frozen deploy `f85de47a` (HEAD\npinned at `8b58061c`),\
+  \ **zero code drift between the deploy and the tag** — the tag adds only\nthe pre-registration\
+  \ and the record: **FastAPI+React 3 of 5** (rolls 1, 3 and 4 accepted, roll\n2 blocked,\
+  \ roll 5 rejected, the sixth withheld by the early-stop rule when R2 falsified on\
+  \ roll\n4) and **Next.js+TS 0 of 2**. The delivered app passed the boot audit on\
+  \ **all seven** rolls.\nRule B evaluated every one of the eleven repairs in the\
+  \ producing role's container; the kind\ngate (#1153) refused three contradicting\
+  \ repairs on Next.js roll 2; additive containment\n(#1022) rejected a suite that\
+  \ invoked nothing; no undefined name reached execution (#939).\n\n**What the rolls\
+  \ do not validate, said here rather than implied.** R2 (#1130) is falsified on\n\
+  the JavaScript own-frame shape — the detector is pytest-shaped (#1270). The Next.js\
+  \ arm\nvalidated the gates, not delivery: the qa role's first-attempt emission was\
+  \ a sentence of\nintent and nothing else on nine of eleven attempts there and five\
+  \ times on React — **new since\nthe 1.7.0 tree (first seen 2026-08-31; zero in 1.6.6's\
+  \ eight rolls), not introduced by this\npack, mechanism unread, and the top of 1.7.2\
+  \ (#1268)**. Every other non-green is a\npre-existing recovery-path seam that a\
+  \ contentless emission reached for the first time: the\nretest skipped when the\
+  \ failed result carries no `test_result` (#1269), a re-dispatched task's\npassing\
+  \ rows never recorded (#1271), the refund path re-briefed from the empty emission\
+  \ with\nprose counted as content (#1273); plus the fence-template placeholder copied\
+  \ literally (#1272).\nOne process deviation is recorded (record §3.3). Carried,\
+  \ not built: #1251, #1254, #1260,\n#1087/#1112. It took six shakeout deploys to\
+  \ reach the counted set; the exit rule (a pair with\nno new seam finding) was met\
+  \ on the sixth.\n\n**The 1.7.1 line — Stack Seams** (`docs/plans/1-7-1-plan.md`).\
+  \ Owner's ruling on the\ncheck-environment seam, 2026-09-01: **B** — typed checks\
+  \ execute in the producing role's\nagent container, at emission and at repair, and\
+  \ each image provisions its toolchain as data.\n\n### Changed — what the 1.7.1 shakeouts\
+  \ taught, written where it outlives the line\n- Four deploys, each shakeout pair\
+  \ finding the next seam defect, three of them latent in\n  the pack's own PRs: the\
+  \ tests had handed each seam its input and never entered where the\n  cycle enters.\
+  \ `docs/TEST_QUALITY_STANDARD.md` gains anti-pattern 6a (a seam test that hands\n\
+  \  the seam its input) and a wiring-test row in the minimum coverage; the PR template's\n\
+  \  Evidence asks for the entry point exercised, the evaluation-seam table for a\
+  \ new or newly\n  bound typed check, and what a removed thing produced and for whom;\
+  \ `CLAUDE.md` gains the\n  typed-check binding rule (#1259), the mirror rule on\
+  \ removal (#1253 → #1255), and the\n  shakeout loop's exit rule with the diagnostic\
+  \ and readout rules (#1256, #1261). The\n  procedure around the driver — the loop,\
+  \ diagnostics, readouts, detached launches,\n  re-attaching a dead driver, cancelling\
+  \ an orphaned run — is\n  `docs/plans/verification-sets/README.md`, which the driver's\
+  \ docstring now points at.\n### Fixed — the repair evaluates the failed task's criteria\
+  \ on the tree the verifier overlays (#1264)\n- The React shakeout on `06408dfe`\
+  \ (`cyc_4ec4ad5e2ca1`) refused a correct route fix twice\n  and was rejected: the\
+  \ dev repair of a qa failure evaluated the qa suite's criteria in its\n  own container\
+  \ on a tree without the suite — the failed emission is not in the accepted\n  workspace\
+  \ and the dev never emits it — so six rows were executed failures about a file\n\
+  \  the patch never touched, and #1259's backstop, keyed on the verifier's overlay\
+  \ (which\n  carries the failed task's files), kept them. The repair envelope now\
+  \ carries the failed\n  task's own emitted files (`failed_task_artifacts`) and the\
+  \ repair materialises them\n  beneath the accepted workspace before its patch —\
+  \ the same tree the verifier overlays,\n  which is what rule B promised — and the\
+  \ backstop is keyed on the repair's own artifact\n  names. Replayed: the suite's\
+  \ criteria pass on the dev's patch once the suite is in the\n  tree; with the overlay\
+  \ carrying the suite and the agent's absent-suite rows, the patch\n  passes instead\
+  \ of being refused.\n\n### Fixed — a file the patch never carries is not evidence\
+  \ against the patch (#1259)\n- The Next.js shakeout on the final 1.7.1 deploy (`cyc_9c379355b5e8`,\
+  \ round 0) refused a\n  correct route fix: the dev repair of a qa failure is judged\
+  \ against the qa task's\n  suite-bound checks (`assertion_kinds_match`, `dom_anchor_queries`),\
+  \ the failed suite is\n  not in the accepted workspace and the dev never emits it,\
+  \ so both environments returned\n  `failed(file_not_found)` and the verifier read\
+  \ an executed failure — \"an executed failure\n  anywhere rejects\". Before #1240/#1246\
+  \ those criteria all skipped on a `.ts`/`.jsx` suite\n  and the retest decided;\
+  \ with #1256 delivering the agent's rows, every dev patch of a qa\n  failure on\
+  \ either stack took this path. A `file_not_found` on a file the patch does not\n\
+  \  carry is now `skipped / file_not_in_patch` in both environments; one on a file\
+  \ the patch\n  names keeps its rejection power. Replayed: the refused patch → `no_executed_blocking_checks`\n\
+  \  (the retest decides); with the suite in the tree → `passed`. The refused fix's\
+  \ absence let\n  the re-authored suite drop the case that found the defect — filed\
+  \ as #1260, 1.7.2.\n\n### Fixed — a TS18xxx type diagnostic no longer turns `undefined_names`\
+  \ off for its file (#1261)\n- `tsc_syntax_errors_in` read any code starting with\
+  \ `TS1` as syntax, so `TS18048` (\"possibly\n  undefined\") and `TS18046` (\"of\
+  \ type unknown\") — type checking, the common shape of a real\n  test file — made\
+  \ the check return `skipped / unsupported_stack_or_syntax`: five of nine\n  accepted\
+  \ test files on the same shakeout were never checked for undefined names, and R6's\n\
+  \  readout counts failed rows, so a green roll cannot see it. Syntax codes are TS1000–TS1999\n\
+  \  and are classified by value.\n\n### Fixed — rule B's rows reach the verifier\
+  \ (#1256)\n- `_try_accept_patch` read `repair_typed_checks` off the FAILED task's\
+  \ result — a key the\n  repair handler writes on its own outputs — and the correction\
+  \ protocol returned only the\n  repair's files, so the rows a repair evaluated in\
+  \ its own container (#1229, shipped in\n  #1238) never reached runtime-api's verifier\
+  \ in a live cycle: the 1.7.1 React shakeout\n  `cyc_c6db3ffc1f4e` had the dev container\
+  \ report `rows=10 executed=10\n  frontend_compiles:failed` on both repairs of the\
+  \ qa task's failure while runtime-api\n  logged `agent_rows=0` and fell through\
+  \ to the retest. The protocol result now carries\n  each repair step's rows in step\
+  \ order (a dev step and a qa step each evaluate in their\n  own environment), the\
+  \ executor hands them to the verifier, and the verifier reads the\n  sequence. Every\
+  \ `decided_by_agent` in the line's records before this was 0.\n\n### Fixed — the\
+  \ handoff's required sections are a typed criterion, so a builder repair can be\
+  \ decided (#1255)\n- The 1.7.1 React shakeout on the main-built deploy (`cyc_c6db3ffc1f4e`)\
+  \ rejected the\n  builder's first handoff for two missing sections, the round-0\
+  \ repair carried every one\n  of them, and runtime-api discarded it — `unverifiable\
+  \ / no_typed_criteria` — then left\n  the task failed under #1221. Once #1252 stripped\
+  \ the plan's handoff regexes, a builder\n  task carried no typed criterion at all:\
+  \ the section rule lived only inside the builder\n  handler's validation, and `container_packaging`\
+  \ is injected at the handler seam, so the\n  verifier held nothing to run. `sections_present`\
+  \ is now bound at plan time onto the\n  builder task that owns the handoff, with\
+  \ the build profile's sections as params (never\n  authored, #1254's direction);\
+  \ the handler's validation and the evaluator read one rule\n  (`capabilities.handoff_sections`,\
+  \ the keyword match the builder has always applied), so\n  the emission seam, the\
+  \ repair's own evaluation and runtime-api's verifier agree. The\n  verifier's `no_typed_criteria`\
+  \ verdict now carries the rows the repair executed — the\n  builder had reported\
+  \ one and the log said `agent_rows=0`. Replayed on both stored\n  documents: the\
+  \ first fails naming the two sections, the repair passes.\n\n### Fixed — a plan-authored\
+  \ regex over the handoff's headings no longer fails the builder (#1252)\n- The 1.7.1\
+  \ React shakeout `cyc_8118588858a6` spent two of its three correction rounds on\n\
+  \  the word order of two headings: the plan authored `## .*(Backend|Server|API).*(Run|Start|\n\
+  \  Setup|Launch)` and the builder wrote `## How to Run the Backend (API Server)`,\
+  \ the\n  convention its own template dictates. The document had every required section\
+  \ from its\n  first version. The handoff's sections are the build profile's fact,\
+  \ already checked by\n  name in any order; the planner's regex, phrased fresh each\
+  \ cycle, was brittle duplication\n  of that check — the same morning's first shakeout\
+  \ passed only because its plan happened\n  to phrase `## How to Run`. Dropped at\
+  \ dispatch with a named log line\n  (`handoff_regex_stripped`), beside the inapplicable-check\
+  \ strip; the builder template no\n  longer promises to apply it and the plan-authoring\
+  \ rules gain **no-regex-on-the-handoff**.\n  Replayed: both shakeouts' stored plans\
+  \ — six and five handoff rows dropped, every other\n  criterion untouched.\n\n###\
+  \ Fixed — a qa-owned defect in a free-authored suite is routed to the qa role (#1130)\n\
+  - **pytest's `-q --tb=short` text is its machine report.** The runner parses it\
+  \ into the\n  same per-failure rows vitest's JSON reporter gives — file, title,\
+  \ messages, line — plus\n  the exception class and the traceback frames, so a pytest\
+  \ failure now carries which\n  tests failed (the #878 identities were vitest-only\
+  \ until here; the correction signature\n  on a pytest suite is per-test from this\
+  \ release).\n- **The suite's own-frame failures are a fact the runner states** (`suite_defects`):\
+  \ a\n  `NameError` in the test module, or an argument-binding `TypeError` at a call\
+  \ into the\n  harness — raised before any application code runs, so no app defect\
+  \ can produce them.\n  A binding error into a callee the application defines, an\
+  \ `ImportError`, a `KeyError`\n  on a response body and every assertion stay ambiguous\
+  \ and route as before.\n- **The stack stamps ownership, the classifier routes on\
+  \ it, the router targets the\n  file.** `failed_tests_pass_row` stamps each defect\
+  \ with `is_qa_test_path_for_stack`;\n  a stamped row is an own-artifact signal beside\
+  \ #629/#988/#1153's; the repair target is\n  the defective suite alone, not the\
+  \ task's other suites. Replayed: 1.6.5 roll 3's stored\n  report routes to `qa.test_repair`\
+  \ targeting `backend/tests/test_runs.py` (three\n  `TestClient.delete(json=…)` rows);\
+  \ 1.6.6 roll 6's report (the app raised at\n  `backend/routes.py:24`) stays on the\
+  \ dev chain; a stored collection error and a\n  rewritten assert are not defects.\
+  \ The log line carries `qa_owned_routed` for the set's\n  R2 readout.\n### Fixed\
+  \ — the repair is handed the dispatched envelope, so rule B's workspace reaches\
+  \ it (#1229 live gap)\n- The 1.7.1 Next.js shakeout (`cyc_3ac86805439f`) reproduced\
+  \ the shape rule B was built\n  to end: a dev repair evaluated its own patch in\
+  \ the dev container — four rows, two\n  executed, none failed — and runtime-api\
+  \ still returned `unverifiable /\n  no_executed_blocking_checks`. Read from the\
+  \ code, not inferred: the executor's own\n  verification reads the accepted workspace\
+  \ from the **enriched** envelope, but handed\n  the correction runner the **base**\
+  \ one, so `repair_forwarded_inputs` found no\n  `acceptance_workspace_files`, the\
+  \ repair's build check skipped for want of a frontend\n  tree, and the one local\
+  \ blocking criterion could not execute in either environment.\n  The retest hand-off\
+  \ already passed the enriched envelope; the correction hand-off now\n  does too.\
+  \ The unit tests of #1238 exercised an envelope that already carried the key;\n\
+  \  a runner-level test now pins the forwarding and an executor-level test pins which\n\
+  \  envelope is handed over.\n- **Instrumented, so the next such diagnosis is a log\
+  \ line, not a code-path reading:**\n  the agent-side `repair_typed_checks` line\
+  \ names every row with its status and skip\n  reason; the executor's `patch_verification`\
+  \ line carries `agent_rows` and\n  `agent_executed`.\n\n### Changed — the qa repair\
+  \ is scoped to the failing cases, and routes on an undeclared anchor (#1123)\n-\
+  \ **The repair brief names the cases that failed.** The `tests_pass` row carries\
+  \ the\n  runner's structured failures as `failing_cases` (file, title, line, first\
+  \ message —\n  bounded), and the qa repair renders them as an authoritative REPAIR\
+  \ SCOPE block through\n  a new appendix asset: repair exactly these, keep the passing\
+  \ cases byte-for-byte. Before\n  this the repair re-authored the whole file with\
+  \ no list (1.6.6 React roll 6: two failing\n  cases of four). When vitest's JSON\
+  \ report was not written, its text is parsed for the\n  same rows — the shape every\
+  \ stored report carries, so live and replay read one parser.\n- **An assertion on\
+  \ an anchor no view declares is the suite's defect.** Read from the\n  suite's own\
+  \ bytes (#668's `unknown_anchors`) and only then matched to the runner's\n  failing\
+  \ case (`Unable to find an element by: [data-testid=\"…\"]`), so the verdict alone\n\
+  \  never routes; the repair targets the suite that made the assertion. A declared\
+  \ anchor\n  the view failed to render stays the dev chain's. Stated: no stored roll\
+  \ asserts an\n  undeclared anchor — the 1.6.5 shakeout's four DOM failures all name\
+  \ declared anchors\n  and stay the views' — so this signal has a synthetic exercise\
+  \ and a stored control, not\n  a stored red.\n- Readouts for the set: `correction_repair_brief`\
+  \ logs the case count a qa repair carries;\n  `absent_anchor_routed` marks the routing.\n\
+  \n### Added — the DOM anchor contract gets its enforcement layer (#668)\n- **`dom_anchor_queries`**,\
+  \ a typed check the planner binds onto every bound qa.test\n  frontend suite when\
+  \ the manifest declares view anchors, with the inventory as\n  self-contained params:\
+  \ a suite that renders must query at least one declared anchor,\n  and a suite that\
+  \ imports a contract view must query some anchor of that view — any of\n  them,\
+  \ not the root, because seven of the nine accepted-roll suites that import a view\n\
+  \  never query its root container and every one queries some anchor of it (measured\
+  \ over\n  the vault before landing). Each failure names the view and its anchors;\
+  \ a failed row is\n  the suite's own defect. Banked beside the verdict: the anchors\
+  \ queried that no view\n  declares (`unknown_anchors`, the qa-side signal #1123\
+  \ routes on) and the count of\n  text/role/label queries. Replayed: fay-14's suite\
+  \ (`cyc_42eed09efbec`) breaks both rules\n  with 55 text queries and zero anchors;\
+  \ the accepted 1.6.6 React roll-6 suite passes.\n- **The frozen client's call surface\
+  \ reaches the suite author** — the owner's 2026-07-31\n  addition. The React stack\
+  \ derives one line per export of its frozen `frontend/src/api.js`\n  (`apiFetch(path,\
+  \ options = {})`, `ApiError(code, message, status)`) from the template\n  bytes;\
+  \ the planner threads them as `frozen_client_surface` beside the anchors, the qa\n\
+  \  authoring and repair prompts render them through a new appendix asset, and the\
+  \ repair\n  and retest contracts carry the surface. Next.js declares none (its suites\
+  \ call route\n  handlers directly).\n- Not in this PR, stated: a check that a suite's\
+  \ mock of the client honours that surface.\n  fay-14 stubbed `global.fetch` (legitimate\
+  \ beneath the client) and mocked no client\n  export, so its stored suite cannot\
+  \ exercise such a check; 34 stored suites do mock\n  `../api`, and that replay set\
+  \ is the next step, named on the issue.\n\n### Added — additive-suite containment\
+  \ is a gate (#1022)\n- **`additive_containment`**, a typed check the framework injects\
+  \ on every emitted JS/TS\n  suite file (the harness's suite suffixes) on both stacks,\
+  \ at emission and on a repair's\n  patch: two rules read off the suite's own bytes\
+  \ against the stack's declaration of what\n  invokes the application (`AppInvocation`,\
+  \ #1126) — a fetch of a live server inside the\n  in-process harness, and a suite\
+  \ that invokes nothing the stack counts as the application.\n  Each failure names\
+  \ the rule and what the stack counts, in words, so the re-emission\n  brief carries\
+  \ it; a failed row is the suite's own defect and routes to the qa re-author.\n \
+  \ #1052 shipped the same rules reporting-only; promoted on the evidence of the V7\
+  \ corpus\n  (C3, C4 and slot 3's first repair rejected; the slot-2 and slot-3 greens\
+  \ pass) and the\n  accepted rolls' suites of the last two lines on both stacks (all\
+  \ pass). Python suites are contained by\n  their own gates and the `.py` gap is\
+  \ declared.\n- **A third injection scope, `suite`** — the check lands on the suite\
+  \ file only, never the\n  source beside it whose extension it also parses, and carries\
+  \ the scaffold stack as a\n  self-contained param (the seam's `stack` argument is\
+  \ the check vocabulary, which Next.js\n  does not declare). The handler seam is\
+  \ now one table over the three scopes.\n- **`AppInvocation.invocation_description`**\
+  \ — what a stack counts as invoking the\n  application, in words, for the finding\
+  \ an author is handed back.\n\n### Added — the emitted container's packaging gets\
+  \ its findings, reporting-only (#598)\n- **`container_packaging`**, a typed check\
+  \ the framework injects on every emitted\n  container recipe (a file named `Dockerfile`;\
+  \ recipe-scoped, since a recipe has no\n  suffix for the extension predicate to\
+  \ see): three static findings over the recipe, the\n  build context it copies from\
+  \ and the entry script it runs — `npm ci` with no lockfile\n  reachable, a `COPY\
+  \ --from` of `dist-packages` off an official `python:*` image, and\n  apt's nginx\
+  \ default site left in place under a `conf.d` server block. pf-38's three\n  build/run\
+  \ failures behind an accepted verdict, as findings; pf-39 (identical seeds)\n  reproduces\
+  \ two of them and the check tells the two recipes apart. It never builds or\n  starts\
+  \ an image — `package_builds` is that criterion and stays declared unbuilt.\n- **Reporting-only,\
+  \ by severity.** The spec's `blocking_default` is `warning`, and a new\n  predicate\
+  \ `row_is_blocking_failure` is the one reading of \"this row failed\" for the\n\
+  \  verdict ledger, the correction signature and the failure category — an executed\n\
+  \  warning-row failure is banked on the task's evaluation artifact and never rejects\
+  \ a run,\n  enters a chain's identity or opens a correction. Whether it becomes\
+  \ blocking, and whether\n  the image is built in-cycle, are the owner's separate\
+  \ calls (plan §6).\n- Over the vault before landing: 203 stored recipes, 135 with\
+  \ at least one finding —\n  `npm ci` without a lockfile on 121, the nginx default\
+  \ site on 31, `dist-packages` on 2\n  (pf-38 and one sibling); 68 clean. Reporting-only\
+  \ means those are readouts, not\n  rejections.\n### Added — cut steps 5 and 7 get\
+  \ their guards (#1151)\n- **Step 7, the release package:** `scripts/dev/check_release_packages.py`\
+  \ checks that every\n  semver tag has a captured, non-hollow package under `site/content/releases/<tag>/`\
+  \ — from\n  `v1.6.2` on, a non-empty cycle list with at least one row actually captured\
+  \ (a verdict and a\n  positive run count; a row of nulls is #1076's shape and fails\
+  \ by name). Runs in CI on every\n  push and PR rather than on the tag push, because\
+  \ the package lands after the tag by\n  procedure: main goes red the moment a tag\
+  \ is pushed without its package and green again when\n  the capture lands. Passes\
+  \ on the current release's real package; fails on a synthetic\n  hollow one.\n-\
+  \ **Step 5, the SIP sweep:** a `release/*` PR must carry a `SIP sweep:` line in\
+  \ its body\n  saying what was promoted or that nothing was and why; `check_pr_closure.sh`\
+  \ enforces it with\n  the head ref the closure workflow now passes. The live tag-push\
+  \ exercise remains for the\n  1.7.1 cut itself.\n### Fixed — a bare `pip install\
+  \ squadops` works (#582)\n- **`[project.dependencies]` was empty.** The dependency\
+  \ truth lived only in\n  `requirements/*.txt`, so a package installed from its own\
+  \ metadata raised\n  `ModuleNotFoundError: pydantic` at first import, and dependabot,\
+  \ pip-audit and any\n  downstream `pip install` saw no tree at all. Core now mirrors\
+  \ `requirements/base.txt`'s\n  floors plus the console script's own imports (`typer`,\
+  \ `rich`); `api` and `agent` extras\n  mirror `requirements/api.txt` and `agent.txt`\
+  \ line for line. The `cli` and `pulse`\n  extras, satisfied by core and referenced\
+  \ nowhere, are gone. A guard test holds every\n  list to the real imports in both\
+  \ directions — each undeclared import and each declared\n  package nothing imports\
+  \ fails CI — and to the requirements files they mirror.\n- **The package ships its\
+  \ data.** Prompt fragments, request templates, cycle request\n  profiles and manifest\
+  \ schemas are read through `importlib.resources`; a wheel carried\n  none of them.\
+  \ `package-data` now includes them; the images were unaffected only because\n  they\
+  \ install editable.\n- **The console script no longer needs the API framework.**\
+  \ `squadops cycles …` imported\n  `CycleCreateRequest` through the routes package,\
+  \ whose `__init__` imports every router\n  and so FastAPI and python-multipart.\
+  \ The DTO module moved to `api/cycle_schemas.py`,\n  beside `api/schemas.py`; a\
+  \ test imports the CLI with `fastapi` blocked.\n- **Audit: `sqlalchemy` and `jinja2`\
+  \ were declared in `requirements/api.txt` and imported by\n  nothing** (the ORM\
+  \ backend went in 1.3.0, #234; nothing ever rendered a template). Both\n  leave\
+  \ `api.txt` and, with their sole-purpose transitives `greenlet` and `markupsafe`,\
+  \ the\n  compiled `api.lock` — the entries pip-compile would drop, removed by hand\
+  \ rather than by\n  a full `--upgrade` recompile, which is #1204's territory.\n\
+  - **A `fresh-venv install` CI job** installs the package from a clean venv with\
+  \ no editable\n  install, extras or test harness, then imports it, runs `squadops\
+  \ --help` and checks the\n  shipped assets from outside the checkout.\n- Found on\
+  \ the way, filed as **#1241**: `adapters/capabilities/aci_executor.py` imports\n\
+  \  `agents.tasks.models`, which does not exist, so `import adapters.capabilities`\
+  \ fails; the\n  guard carries it as a documented exception keyed to the issue.\n\
+  \n### Changed — what is stack-specific lives behind the stack seam (#1131)\n- **Stack\
+  \ #1 has its own module.** The inline `fullstack_fastapi_react` expander (651 lines)\n\
+  \  moved from `scaffold.py` to `stack_fastapi_react.py`, registered through `ScaffoldStack`\n\
+  \  exactly as stack #2 is; the reference contract's frozen digests are unchanged,\
+  \ and every\n  FastAPI+React manifest fixture expands byte-for-byte identically\
+  \ (3 manifests, 57 files).\n  `base_type_name` — manifest vocabulary the block had\
+  \ carried — lives in the leaf\n  `type_tokens.py`. The rationale was harvested first\
+  \ into SIP-0105 (#1149, 23 entries).\n- **A structural guard**: no string literal\
+  \ in live code under `capabilities/handlers/` or\n  `cycles/` names a stack's layout\
+  \ or toolchain unless the module is a `stack_*` module or\n  the line is allowlisted\
+  \ with its reason; a second test fails when an entry stops firing.\n  Run against\
+  \ `1b9b93a9` it fires on the `app/api/` literal that discarded a green React\n \
+  \ suite in the 1.6.5 set.\n- **One suite-suffix vocabulary** (`JS_SUITE_SUFFIXES`,\
+  \ `AppInvocation.suite_suffixes`) read\n  by the self-mocking detector, its inventory,\
+  \ the runner's uncollected-suite check and the\n  qa handler; the runner's `.ts`-only\
+  \ copy had never named an ignored `*.test.jsx` on the\n  React stack. **The fill\
+  \ brief's store paragraph is the stack's** (`store_brief_lines`):\n  moving it found\
+  \ `model_surface_instructions` telling the Next.js developer that\n  `backend/store.py`\
+  \ defines its stores — Next.js now declares none and loses a wrong\n  instruction.\n\
+  \n### Added — `undefined_names` reads `.ts`, `.tsx`, `.js` and `.jsx` (#939)\n-\
+  \ The per-file unresolved-name check the Python half gets from pyflakes, on the\
+  \ four\n  frontend extensions, from `tsc --noEmit` — run once per materialised tree,\
+  \ its\n  `TS2304`/`TS2552` diagnostics filtered to the file. A TypeScript project\
+  \ is checked under\n  its own `tsconfig.json`; a tree without one (the React `frontend/`)\
+  \ as an explicit file\n  list with `--allowJs --checkJs`, which reports the class\
+  \ in plain JSX (measured).\n- `typescript@5.5.3` is provisioned into the dev and\
+  \ qa images as data\n  (`agents/instances/<role>/npm-global-packages.txt`, the Node\
+  \ analog of\n  `system-packages.txt`), and CI installs the same globals from the\
+  \ same file so the roll\n  replays execute there. Where no role declared it — runtime-api,\
+  \ until #1229 — the check\n  skips as `missing_tooling` and says so.\n- The four\
+  \ declared coverage gaps for the check are gone; the typed-check menu regenerated.\n\
+  \  Replay: the Reasoning line's roll-4 shell (`cyc_58d92ca2b407`, `created` undeclared\
+  \ at\n  line 30) is rejected naming the name and the line; the gating roll's shell\
+  \ passes.\n\n### Added — the assertion-kind gate for free-authored suites (#1153)\n\
+  - **`assertion_kinds_match`**, the free-authored counterpart of #1094's fill kind\
+  \ gate:\n  injected on bind-mode qa.test tasks per suite file with the manifest's\
+  \ declared field\n  kinds as data (names declared with one kind only), it fails\
+  \ an assertion whose literal\n  cannot be the declared kind — `body[\"removed\"\
+  ] == \"Carol\"` against `removed: boolean` —\n  naming the field, the line and the\
+  \ kind, so the re-emission carries them. Python suites\n  are read by AST; React\
+  \ suites by their `expect(…).toBe/toEqual` forms; comparisons to\n  names, calls,\
+  \ `None` or negated matchers are out of scope by design. A failed row is the\n \
+  \ suite's own defect for locus routing, like #629's.\n- 1.6.6 React roll 3 replayed:\
+  \ the stored suite is rejected at line 167 with `removed:\n  boolean` named; the\
+  \ accepted rolls 1 and 5's suites pass under their own manifests.\n\n### Changed\
+  \ — a repair is verified where its checks can run (#1229, rule B)\n- **The repair\
+  \ evaluates the failed task's typed criteria on its own patched tree before\n  returning**\
+  \ — in the agent container, where the stack's toolchain lives, through the same\n\
+  \  `_evaluate_typed_acceptance` the primaries use and against the same workspace\
+  \ (forwarded\n  to the repair presence-keyed, as the retest already did). The rows\
+  \ ride the patch as\n  `repair_typed_checks`, with the environment that executed\
+  \ them.\n- **The executor's verification consumes them.** It still re-runs what\
+  \ it can here as a\n  cross-check; for a criterion this environment cannot execute,\
+  \ the repair's executed row is\n  the verdict. An executed failure anywhere rejects;\
+  \ an agent pass never overrides a failure\n  that executed here; `no_executed_blocking_checks`\
+  \ fires only when neither environment\n  executed a blocking criterion, and #1221's\
+  \ deadlock break stays as the backstop. Records\n  say where each row ran (`executed_in`),\
+  \ and the verification names how many criteria\n  the agent decided.\n- Before this,\
+  \ runtime-api — which has no node — was the only judge, so a dev repair on\n  the\
+  \ Next.js stack could never earn a verdict (`cyc_05abfc7c1f00`, three rounds of\n\
+  \  `unverifiable` on one route). And the framework-injected checks (`undefined_names`,\n\
+  \  `declared_imports`, `unterminated_source`) never ran on a repair at all there;\
+  \ they do\n  in the agent. Replay: the cycle's first stored patch, under the skeleton\
+  \ it landed in,\n  with npm absent here — unverifiable and deadlocked without the\
+  \ repair's rows, decided\n  by them with.\n- **The declaration has an environment\
+  \ axis.** `CheckSpec.required_tooling` names the\n  executables an evaluator shells\
+  \ out to (`frontend_compiles` → npm, `undefined_names` →\n  tsc); a role whose handlers\
+  \ evaluate typed checks provisions each as data or declares the\n  gap in `DECLARED_TOOLING_GAPS`\
+  \ with its reason — the builder image, which emits no\n  frontend source, is the\
+  \ first. A two-sided guard reads the provisioning files the images\n  are built\
+  \ from and holds both sides; the typed-check menu renders the table.\n\n### Changed\
+  \ — the SIP registry indexes every SIP, and its audit runs in CI (#1144)\n- **`sips/registry.yaml`\
+  \ holds a row for every file under `sips/`**, numbered or not: an\n  unnumbered\
+  \ proposal is `sip_number: null` keyed by its `sip_uid` — what `sips/README.md`\n\
+  \  always said a proposal carries, and what the registry omitted for 24 live drafts\
+  \ while\n  calling itself the authoritative index (7 rows against 31 published).\
+  \ `cleanup_sip_registry.py\n  --index-proposals` writes the rows and stamps the\
+  \ uid into the file; acceptance now updates\n  that row in place instead of appending\
+  \ a duplicate; proposals sort after numbered SIPs.\n- **The audit is a regression-gate\
+  \ test** (`test_sip_registry_audit.py`): zero critical, zero\n  data-quality findings,\
+  \ every file indexed. It had been wired to nothing — no workflow, no\n  test, no\
+  \ cut step — which is how 19 findings accumulated unreported.\n- **The findings\
+  \ are fixed at their source**: nine frontmatter statuses that disagreed with\n \
+  \ the folder (four `proposed/` files claiming `accepted`, five `deprecated/` files\
+  \ claiming\n  `implemented`); prose scraped into `created_at` by the legacy migration\
+  \ in nineteen files\n  (the audit checked only the registry's copy, so the four\
+  \ #1144 named were fifteen more\n  once the file's own field was read); one draft\
+  \ with no frontmatter at all. The timestamp\n  rule accepts day precision (`2026-02-23`),\
+  \ which nine correct registry values had been\n  reported against."
+pull_requests:
+- number: 1274
+  title: 'chore(release): 1.7.1 — Stack Seams'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-03'
+- number: 1267
+  title: 'docs(plan): the 1.7.1 verification-set record'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-03'
+- number: 1266
+  title: 'docs(plans): 1.7.1 verification-set pre-registration — six shakeout deploys,
+    exit rule met on f85de47a'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-03'
+- number: 1265
+  title: 'fix(cycles): the repair evaluates the failed task''s criteria on the tree
+    the verifier overlays (#1264)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1264
+  merged_at: '2026-09-02'
+- number: 1263
+  title: 'docs: what the 1.7.1 shakeouts taught, written where it outlives the line'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-02'
+- number: 1262
+  title: 'fix(cycles): an absent file is not evidence against a patch, and TS18xxx
+    is not a syntax error (#1259, #1261)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1259
+  - 1261
+  merged_at: '2026-09-02'
+- number: 1258
+  title: 'fix(cycles): rule B''s rows ride the protocol result to the verifier (#1256)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1256
+  merged_at: '2026-09-02'
+- number: 1257
+  title: 'fix(cycles): the handoff''s required sections are a typed criterion, so
+    a builder repair can be decided (#1255)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1255
+  merged_at: '2026-09-02'
+- number: 1253
+  title: 'fix(plan): a plan-authored regex over the handoff''s headings no longer
+    fails the builder (#1252)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1252
+  merged_at: '2026-09-02'
+- number: 1250
+  title: 'fix(executor): the correction runner is handed the dispatched envelope,
+    so rule B''s workspace reaches the repair (#1229 live gap)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-02'
+- number: 1249
+  title: 'chore(packaging): [project.dependencies] mirrored from the real imports,
+    the package ships its data, a fresh-venv install job (#582)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 582
+  merged_at: '2026-09-02'
+- number: 1248
+  title: 'ci(release): cut steps 5 and 7 get their guards — the SIP sweep line on
+    release PRs, the captured package on every push (#1151)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1151
+  merged_at: '2026-09-02'
+- number: 1247
+  title: 'feat(correction): the qa repair is scoped to the failing cases, and routes
+    on an undeclared anchor (#1123)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1123
+  merged_at: '2026-09-02'
+- number: 1246
+  title: 'feat(checks): the DOM anchor contract gets its enforcement layer, and the
+    frozen client''s call surface reaches the suite author (#668)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-02'
+- number: 1245
+  title: 'feat(checks): additive-suite containment is a gate — named findings at the
+    qa emission seam (#1022)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1022
+  merged_at: '2026-09-02'
+- number: 1244
+  title: 'feat(checks): the emitted container''s packaging gets its findings — reporting-only
+    (#598)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-02'
+- number: 1243
+  title: 'fix(correction): a qa-owned own-frame failure routes to the qa repair, targeting
+    the suite (#1130)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1130
+  merged_at: '2026-09-02'
+- number: 1242
+  title: 'chore(sips): the registry indexes every SIP, and its audit runs in CI (#1144)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1144
+  merged_at: '2026-09-02'
+- number: 1240
+  title: 'feat(checks): the assertion-kind gate — a free-authored suite''s literals
+    against the manifest''s declared field kinds (#1153)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1153
+  merged_at: '2026-09-02'
+- number: 1239
+  title: 'feat(checks): the declaration has an environment axis — required tooling
+    per check, declared gaps per role (rule B)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-02'
+- number: 1238
+  title: 'feat(correction): a repair is verified where its checks can run — the agent
+    evaluates its own patch, the executor consumes the rows (#1229)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1229
+  merged_at: '2026-09-02'
+- number: 1237
+  title: 'fix(site): a SIP renamed by promotion no longer blocks the deploy'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1236
+  merged_at: '2026-09-02'
+- number: 1235
+  title: 'feat(checks): undefined_names reads .ts/.tsx/.js/.jsx through tsc, provisioned
+    per role as data (#939)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 939
+  merged_at: '2026-09-02'
+- number: 1234
+  title: 'refactor(seam): the suite-suffix vocabulary and the store paragraph live
+    behind the stack seam (#1131 follow-up)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-02'
+- number: 1233
+  title: 'refactor(scaffold): stack #1 gets its own module, and a guard that stack-shaped
+    literals live behind the seam (#1131)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1131
+  merged_at: '2026-09-02'
+- number: 1232
+  title: 'docs(plan): record the owner''s ruling on the 1.7.1 seam decision — B'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-02'
+- number: 1231
+  title: 'docs(sip): harvest the stack #1 expander''s rationale into SIP-0105 (#1149)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-02'
+- number: 1230
+  title: 'docs(plan): the 1.7.1 line plan — Stack Seams'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-01'
+- number: 1228
+  title: 'docs(release): capture the v1.7.0 release package'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-01'
+sip_moves:
+- sip: IDEA-QA-First-Test-Strategy-1h-Cycles-group_run
+  from: null
+  to: proposed
+- sip: SIP-0003-v2-Paperclip-Protocol-Squad-Passive-Income-Flipping
+  from: null
+  to: deprecated
+- sip: SIP-0006-Warm-Boot-Analysis-Protocol-WBA
+  from: null
+  to: deprecated
+- sip: SIP-0006-v2-Warm-Boot-Analysis-Protocol-WBA-Ops-Mode
+  from: null
+  to: deprecated
+- sip: SIP-0009-Scout
+  from: null
+  to: deprecated
+- sip: SIP-0010-Creds-Secrets-Lifecycle-Protocol-Role-First
+  from: null
+  to: deprecated
+- sip: SIP-0012-Pattern-First-Development-Escalation-Protocol
+  from: null
+  to: proposed
+- sip: SIP-0013-Extensibility-Customization-Protocol
+  from: null
+  to: proposed
+- sip: SIP-0016-HumanAgent-Hybrid-Squad-Operations
+  from: null
+  to: proposed
+- sip: SIP-0018-Enterprise-Process-CoE-Enablement
+  from: null
+  to: proposed
+- sip: SIP-0018-v2-Squad-Context-Protocol
+  from: null
+  to: proposed
+- sip: SIP-0019-SIP-Management-Workflow-Protocol
+  from: null
+  to: implemented
+- sip: SIP-0020-Health-Check-WarmBoot-Enhancement
+  from: null
+  to: deprecated
+- sip: SIP-0022-Specialized-Development-Agent-Roles
+  from: null
+  to: deprecated
+- sip: SIP-0023-Domain-Expert-Architecture-for-Product-Strategy
+  from: null
+  to: proposed
+- sip: SIP-0026-Testing-Framework-and-Philosophy
+  from: null
+  to: implemented
+- sip: SIP-0027-OpenTelemetry-Testing-Results
+  from: null
+  to: implemented
+- sip: SIP-0027-v2-Telemetry-Implementation-Execution-Plan-Multi-Cloud
+  from: null
+  to: deprecated
+- sip: SIP-0027-v3-WarmBoot-Telemetry-Orchestration-Protocol-Enhanced-Observability-and-Event-Drive
+  from: null
+  to: deprecated
+- sip: SIP-0028-Hybrid-Deployment-Model-Industry-Aligned-Architecture-for-Multi-Environment-Depl
+  from: null
+  to: proposed
+- sip: SIP-0032-Activity-Feed-API
+  from: null
+  to: deprecated
+- sip: SIP-0040-Rev-2-Phase-0-Critical-Architectural-Fixes
+  from: null
+  to: implemented
+- sip: SIP-0040-v2-Rev-3-Decorator-Based-CapabilitySkillTool-System
+  from: null
+  to: implemented
+- sip: SIP-0046-Rev-1-Agent-Specs-and-Configuration-ACPAligned-YAML-Standard
+  from: null
+  to: implemented
+- sip: SIP-0105-Stack-Blueprint-Contract
+  from: null
+  to: accepted
+- sip: SIP-API-Contract-Hardening
+  from: null
+  to: proposed
+- sip: SIP-Agent-Comms-Delivery-Guarantees
+  from: null
+  to: proposed
+- sip: SIP-Agent-Embodiment-Runtime
+  from: null
+  to: proposed
+- sip: SIP-Campaign-Orchestration
+  from: null
+  to: proposed
+- sip: SIP-Campaign-Self-Improvement-and-Test-Bay-Requirements
+  from: null
+  to: proposed
+- sip: SIP-Capability-Backed-Agents
+  from: null
+  to: proposed
+- sip: SIP-Continuum-Runtime-Console
+  from: null
+  to: proposed
+- sip: SIP-Cross-Cycle-Memory
+  from: null
+  to: proposed
+- sip: SIP-Cycle-Evaluation-Scorecard
+  from: null
+  to: proposed
+- sip: SIP-Cycle-Request-Profile-Naming-Taxonomy
+  from: null
+  to: proposed
+- sip: SIP-Design-Decision-Register
+  from: null
+  to: proposed
+- sip: SIP-Duty-Continuity-and-Handoff-Ledger
+  from: null
+  to: proposed
+- sip: SIP-Edge-Deployment-Profile
+  from: null
+  to: proposed
+- sip: SIP-Experiment-Queue-and-Cycle-Assessment
+  from: null
+  to: proposed
+- sip: SIP-Fine-Grained-Issue-Enumeration
+  from: null
+  to: proposed
+- sip: SIP-LLM-Emission-Contracts
+  from: null
+  to: proposed
+- sip: SIP-Planning-Sequence-Strategy-First
+  from: null
+  to: proposed
+- sip: SIP-Post-Retest-Governance-Acceptance-Review
+  from: null
+  to: proposed
+- sip: SIP-Skill-Layer-For-Capabilities
+  from: null
+  to: proposed
+- sip: SIP-Test-First-Verification
+  from: null
+  to: proposed
+- sip: SIP-Version-Bump-Hardening
+  from: null
+  to: proposed
+- sip: SIP-intelligent-delegation-protocols
+  from: null
+  to: proposed
+cycles:
+- cycle_id: cyc_4d52bbd34a32
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:command_exit_zero
+  - acceptance:container_packaging
+  - acceptance:declared_imports
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:sections_present
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_9c085ec2e9e5
+  captured: true
+  status: completed
+  verdict: blocked_unverified
+  verified:
+  - acceptance:command_exit_zero
+  - acceptance:container_packaging
+  - acceptance:declared_imports
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:sections_present
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - non_stub_files
+  failed:
+  - required_files
+  required_unmet:
+  - frontend_build
+  - tests_pass
+  unverified:
+  - frontend_build
+  - tests_pass
+  run_count: 2
+- cycle_id: cyc_f05692bb3ceb
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:command_exit_zero
+  - acceptance:declared_imports
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:sections_present
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_de4b2dea73a0
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:command_exit_zero
+  - acceptance:declared_imports
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:sections_present
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_ca02bed7fbb4
+  captured: true
+  status: completed
+  verdict: rejected
+  verified:
+  - acceptance:command_exit_zero
+  - acceptance:declared_imports
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:sections_present
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed:
+  - expected_artifacts
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:assertion_kinds_match
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_9be98128f0e9
+  captured: true
+  status: completed
+  verdict: rejected
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:frontend_compiles
+  - acceptance:sections_present
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - vc-probe-api-runs
+  - vc-probe-api-runs-join
+  - vc-probe-api-runs-join-duplicate
+  - vc-probe-api-runs-leave
+  - vc-probe-api-runs-rejects-blank
+  failed:
+  - tests_pass
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_5b027f3e74fc
+  captured: true
+  status: failed
+  verdict: blocked_unverified
+  verified:
+  - acceptance:declared_imports
+  - acceptance:frontend_compiles
+  - acceptance:sections_present
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - non_stub_files
+  - required_files
+  failed: []
+  required_unmet:
+  - frontend_build
+  - tests_pass
+  unverified:
+  - frontend_build
+  - tests_pass
+  run_count: 2
+screenshots: []
