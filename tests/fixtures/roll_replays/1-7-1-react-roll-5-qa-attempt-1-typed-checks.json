@@ -1,0 +1,195 @@
+{
+  "version": 1,
+  "task_index": 5,
+  "task_type": "qa.test",
+  "evaluated_at": "2026-09-03T06:08:30.855140+00:00",
+  "workspace_revision_id": "d9ff75ce1385602971a1ef0093a88747560743e60192ab0a3446f6eb94a11a2b",
+  "evaluations": [
+    {
+      "check": "acceptance:function_defined",
+      "severity": "error",
+      "params": {
+        "file": "backend/tests/test_runs.py",
+        "name_prefix": "test_",
+        "min_count": 5
+      },
+      "description": "At least 5 test functions covering create, list, join, duplicate, leave",
+      "status": "failed",
+      "actual": {
+        "file": "backend/tests/test_runs.py"
+      },
+      "reason": "file_not_found",
+      "passed": false,
+      "evidence_gap": false,
+      "task_index": 5,
+      "check_index": 0,
+      "criterion_id": null
+    },
+    {
+      "check": "acceptance:harness_boundary",
+      "severity": "error",
+      "params": {
+        "file": "backend/tests/test_runs.py",
+        "entry_modules": [
+          "backend.main"
+        ],
+        "client_ctor": "TestClient"
+      },
+      "description": "Tests use the conftest client fixture, not a direct app import or TestClient construction",
+      "status": "failed",
+      "actual": {
+        "file": "backend/tests/test_runs.py"
+      },
+      "reason": "file_not_found",
+      "passed": false,
+      "evidence_gap": false,
+      "task_index": 5,
+      "check_index": 1,
+      "criterion_id": null
+    },
+    {
+      "check": "acceptance:command_exit_zero",
+      "severity": "error",
+      "params": {
+        "argv": [
+          "python",
+          "-m",
+          "py_compile",
+          "backend/tests/test_runs.py"
+        ]
+      },
+      "description": "Test file is syntactically valid Python",
+      "status": "failed",
+      "actual": {
+        "exit_code": 1,
+        "stdout_tail": "",
+        "stderr_tail": "[Errno 2] No such file or directory: 'backend/tests/test_runs.py'"
+      },
+      "reason": "non_zero_exit",
+      "passed": false,
+      "evidence_gap": false,
+      "task_index": 5,
+      "check_index": 2,
+      "criterion_id": null
+    },
+    {
+      "check": "acceptance:harness_boundary",
+      "severity": "error",
+      "params": {
+        "file": "backend/tests/test_runs.py",
+        "entry_modules": [
+          "backend.main",
+          "app.main",
+          "main"
+        ]
+      },
+      "description": "",
+      "status": "failed",
+      "actual": {
+        "file": "backend/tests/test_runs.py"
+      },
+      "reason": "file_not_found",
+      "passed": false,
+      "evidence_gap": false,
+      "task_index": 5,
+      "check_index": 3,
+      "criterion_id": "scaffold-harness:backend/tests/test_runs.py"
+    },
+    {
+      "check": "acceptance:contract_assertions_match",
+      "severity": "error",
+      "params": {
+        "file": "backend/tests/test_runs.py",
+        "endpoints": [
+          "POST /runs 201",
+          "POST /runs 422",
+          "POST /runs/{run_id}/join 200",
+          "POST /runs/{run_id}/join 409",
+          "POST /runs/{run_id}/leave 200"
+        ],
+        "allowed_error_statuses": [
+          404,
+          409,
+          422
+        ]
+      },
+      "description": "",
+      "status": "failed",
+      "actual": {
+        "file": "backend/tests/test_runs.py"
+      },
+      "reason": "file_not_found",
+      "passed": false,
+      "evidence_gap": false,
+      "task_index": 5,
+      "check_index": 4,
+      "criterion_id": "contract-assertions:backend/tests/test_runs.py"
+    },
+    {
+      "check": "acceptance:assertion_kinds_match",
+      "severity": "error",
+      "params": {
+        "file": "backend/tests/test_runs.py",
+        "field_kinds": {
+          "capacity": "number",
+          "datetime": "string",
+          "distance": "string",
+          "id": "string",
+          "meeting_location": "string",
+          "pace_target": "string",
+          "participant_count": "number",
+          "participants": "list",
+          "route_notes": "string",
+          "title": "string"
+        }
+      },
+      "description": "",
+      "status": "failed",
+      "actual": {
+        "file": "backend/tests/test_runs.py"
+      },
+      "reason": "file_not_found",
+      "passed": false,
+      "evidence_gap": false,
+      "task_index": 5,
+      "check_index": 5,
+      "criterion_id": "assertion-kinds:backend/tests/test_runs.py"
+    },
+    {
+      "check": "acceptance:undefined_names",
+      "severity": "error",
+      "params": {
+        "file": "path/backend/tests/test_runs.py"
+      },
+      "description": "",
+      "status": "passed",
+      "actual": {
+        "file": "path/backend/tests/test_runs.py"
+      },
+      "reason": "ok",
+      "passed": true,
+      "evidence_gap": false,
+      "task_index": 5,
+      "check_index": 6,
+      "criterion_id": null
+    },
+    {
+      "check": "acceptance:unterminated_source",
+      "severity": "error",
+      "params": {
+        "file": "path/backend/tests/test_runs.py"
+      },
+      "description": "",
+      "status": "passed",
+      "actual": {
+        "file": "path/backend/tests/test_runs.py"
+      },
+      "reason": "ok",
+      "passed": true,
+      "evidence_gap": false,
+      "task_index": 5,
+      "check_index": 7,
+      "criterion_id": null
+    }
+  ]
+}

@@ -1600,7 +1600,20 @@ class QATestHandler(_CycleTaskHandler):
 
             outputs["outcome_class"] = TaskOutcome.SEMANTIC_FAILURE
             outputs["failure_classification"] = FailureClassification.WORK_PRODUCT
-            outputs["validation_result"] = evidence_extra.get("validation_result", {})
+
+        # #1271: validation evidence rides BOTH branches, exactly as #597 made it on the
+        # dev surface. It was failure-only here, so a PASSING qa task handed the ledger
+        # nothing: `normalize_task_checks` reads `validation_result.checks` and nothing
+        # else, and aggregation supersedes per (check_id, subject) — so a check that only
+        # ever appears when it FAILS can never be superseded by its own later pass. React
+        # roll 5 was rejected on the first attempt's six failed rows while the re-authored
+        # suite passed all eight with identical identities (#1271).
+        #
+        # #597's own comment recorded that "the qa handler has always populated this on
+        # success". It did not, and the claim outlived the fix it was written beside by
+        # five weeks — which is the argument for the parity test rather than the comment.
+        if "validation_result" in evidence_extra:
+            outputs["validation_result"] = evidence_extra["validation_result"]
 
         # #407: record the fullstack frontend build as a first-class SIP-0096
         # check on BOTH the pass and fail paths. run_build_validation folds a
