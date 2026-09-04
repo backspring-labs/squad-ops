@@ -1347,3 +1347,151 @@ class TestRepairRejectionCarry:
         assert all(len(e) <= 500 for e in entries)
         # None carry (legacy call paths) is a no-op, never an error.
         _record_repair_rejection(None, "task_x", "entry")
+
+
+class TestRetestIsKeyedOnWhatThePatchContains:
+    """#1269: a repair that supplies a suite is retested, whether or not the FAILED
+    attempt had one.
+
+    React roll 2 (`cyc_9c085ec2e9e5`): `qa.test` emitted a 120-char preamble and no fenced
+    block, so it never produced a `test_result`. The repair then produced
+    `tests/test_runs.py` and was accepted on typed rows alone — the #456 retest was gated
+    on the failed result already carrying a `test_result` to supersede. No suite ever ran
+    under the harness, `tests_pass` and `frontend_build` ended `subject_missing`, and the
+    run blocked while the delivered app booted fine.
+
+    Keyed on the patch (owner's ruling, 2026-09-03): the evidence families synthesised from
+    `test_result` can only be produced by running a suite, so the question is whether there
+    IS one to run. The artifacts answer it; the stack's own declared conventions (#846) say
+    which of them the runner would collect.
+    """
+
+    _CONFIG = {"dev_capability": "fullstack_fastapi_react"}
+    _SUITE = "backend/tests/test_runs.py"
+
+    def _qa_envelope(self):
+        from squadops.cycles.implementation_plan import TypedCheck
+        from squadops.tasks.models import TaskEnvelope
+
+        return TaskEnvelope(
+            task_id="task-run_b1fe6d33-m005-qa.test",
+            agent_id="eve",
+            cycle_id="cyc_001",
+            pulse_id="p",
+            project_id="hello_squad",
+            task_type="qa.test",
+            correlation_id="corr",
+            causation_id=None,
+            trace_id="t",
+            span_id="s",
+            inputs={
+                "resolved_config": self._CONFIG,
+                "expected_artifacts": [self._SUITE],
+                "acceptance_criteria": [
+                    TypedCheck(
+                        check="regex_match",
+                        params={"file": self._SUITE, "pattern": "def test_"},
+                        severity="error",
+                        description="the suite defines a test",
+                    )
+                ],
+            },
+            metadata={"role": "qa"},
+        )
+
+    def _emission_failure_result(self):
+        """The roll-2 shape: nothing extracted, so NO `test_result` to supersede."""
+        return TaskResult(
+            task_id="task-run_b1fe6d33-m005-qa.test",
+            status="FAILED",
+            outputs={"artifacts": [], "outcome_class": TaskOutcome.SEMANTIC_FAILURE},
+            error="No valid fenced code blocks found",
+        )
+
+    @staticmethod
+    def _repair(name):
+        return [{"name": name, "content": "def test_ok(client):\n    assert True\n"}]
+
+    async def test_a_repair_that_supplies_the_absent_suite_is_retested(self, executor):
+        from unittest.mock import AsyncMock
+
+        executor._correction_runner.reexecute_repaired_suite = AsyncMock(
+            return_value=TaskResult(
+                task_id="retest-run_x-00-qa.test",
+                status="SUCCEEDED",
+                outputs={"test_result": {"tests_passed": True, "executed": True}},
+            )
+        )
+        holder: dict = {}
+        action = await executor._try_accept_patch(
+            self._qa_envelope(),
+            self._emission_failure_result(),
+            self._repair(self._SUITE),
+            holder,
+            run_id="run_b1fe6d338eb2",
+            cycle=executor._cycle_registry.get_cycle.return_value,
+        )
+
+        assert executor._correction_runner.reexecute_repaired_suite.await_count == 1, (
+            "the repaired suite was accepted without ever being run"
+        )
+        assert action == "accept_patch"
+        assert holder["patched_result"].outputs["test_result"]["tests_passed"] is True
+
+    async def test_a_patch_with_no_suite_in_it_is_not_retested(self, executor):
+        """The control, and the bound on the new breadth: a repair that touches only
+        application files still has nothing for the harness to run, so nothing is
+        dispatched — the behaviour every non-suite repair had before."""
+        from unittest.mock import AsyncMock
+
+        executor._correction_runner.reexecute_repaired_suite = AsyncMock()
+        envelope = self._qa_envelope()
+        import dataclasses as _dc
+
+        envelope = _dc.replace(
+            envelope,
+            inputs={
+                **envelope.inputs,
+                "acceptance_criteria": [
+                    __import__(
+                        "squadops.cycles.implementation_plan", fromlist=["TypedCheck"]
+                    ).TypedCheck(
+                        check="regex_match",
+                        params={"file": "backend/routes.py", "pattern": "def "},
+                        severity="error",
+                        description="routes define handlers",
+                    )
+                ],
+            },
+        )
+        holder: dict = {}
+        await executor._try_accept_patch(
+            envelope,
+            self._emission_failure_result(),
+            self._repair("backend/routes.py"),
+            holder,
+            run_id="run_b1fe6d338eb2",
+            cycle=executor._cycle_registry.get_cycle.return_value,
+        )
+        assert executor._correction_runner.reexecute_repaired_suite.await_count == 0
+
+    def test_the_stacks_own_conventions_decide_what_counts_as_a_suite(self):
+        """Not the artifact's `type`: a repair's files are typed by extension, so the
+        repaired `backend/tests/test_runs.py` arrives as `code` and a type-keyed rule
+        would miss the very case this fixes."""
+        from adapters.cycles.dispatched_flow_executor import _repaired_suite_files
+
+        assert _repaired_suite_files([{"name": self._SUITE, "type": "code"}], self._CONFIG) == [
+            self._SUITE
+        ]
+        assert _repaired_suite_files([{"name": "backend/routes.py"}], self._CONFIG) == []
+        # The other stack answers with its own conventions, not pytest's.
+        assert _repaired_suite_files(
+            [{"name": "__tests__/runs.test.ts"}], {"dev_capability": "nextjs_ts"}
+        ) == ["__tests__/runs.test.ts"]
+        assert (
+            _repaired_suite_files(
+                [{"name": "backend/tests/test_runs.py"}], {"dev_capability": "nextjs_ts"}
+            )
+            == []
+        )

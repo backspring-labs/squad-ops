@@ -18,7 +18,7 @@ import json
 import logging
 import os
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from hashlib import sha256
 from typing import TYPE_CHECKING, Any
@@ -180,6 +180,33 @@ def refund_empty_emission_attempt(
     correction_counter["empty_refunds"] = refunds + 1
     correction_counter["n"] = attempt
     return True
+
+
+def _repaired_suite_files(
+    patched_artifacts: Sequence[Mapping[str, Any]], resolved_config: Mapping[str, Any]
+) -> list[str]:
+    """The patched files this stack's runner would collect as a suite (#1269).
+
+    Read through the stack's declared test-file conventions
+    (``test_file_patterns_for``/``matches_test_file_patterns``, #846) rather than through
+    the artifact's ``type``: a repair's files are typed by extension, so a repaired
+    ``backend/tests/test_runs.py`` arrives as ``code`` and a ``type``-keyed rule would
+    miss exactly the case this exists for.
+    """
+    from squadops.capabilities.dev_capabilities import (
+        matches_test_file_patterns,
+        test_file_patterns_for,
+    )
+
+    patterns = test_file_patterns_for(resolved_config)
+    if not patterns:
+        return []
+    return [
+        name
+        for artifact in patched_artifacts
+        if isinstance(artifact, Mapping) and (name := str(artifact.get("name") or ""))
+        if matches_test_file_patterns(name, patterns)
+    ]
 
 
 class DispatchedFlowExecutor(FlowExecutionPort):
@@ -3217,8 +3244,23 @@ class DispatchedFlowExecutor(FlowExecutionPort):
 
         # #456: behavioral-evidence-backed task — re-execute the repaired
         # suite before accepting; fresh test_result supersedes the stale one.
+        #
+        # #1269: keyed on what the PATCH CONTAINS, not on the failed result already
+        # carrying a `test_result`. A qa.test that failed at EMISSION never had one — it
+        # emitted a preamble and no fenced block — so the repair that finally produced the
+        # suite was accepted on typed rows alone, no retest ran, and `tests_pass` and
+        # `frontend_build` ended `subject_missing`: the run blocked with the delivered app
+        # booting fine (React roll 2, cyc_9c085ec2e9e5). The evidence families synthesised
+        # from `test_result` can only ever be produced by running the suite, so the
+        # question is whether there IS a suite to run — which the patch answers.
+        #
+        # Owner's ruling (2026-09-03): key on the patch rather than on a per-task-type
+        # evidence-contract table. The artifacts already carry the fact, and a table would
+        # be a second home for it. "Will the runner discover this?" is the stack's own
+        # question, asked through the stack's own declared conventions (#846).
         retest_rows: list[dict[str, Any]] = []
-        if isinstance(corrected_outputs.get("test_result"), dict):
+        repaired_suites = _repaired_suite_files(patched_artifacts, resolved_config)
+        if isinstance(corrected_outputs.get("test_result"), dict) or repaired_suites:
             if cycle is None:
                 logger.warning(
                     "patch_verification task=%s carries test_result but no retest "
