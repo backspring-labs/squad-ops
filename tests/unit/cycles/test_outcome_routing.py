@@ -1811,3 +1811,52 @@ class TestTheRetryLineNamesTheSignatureItRetriesOn:
 
         line = next(r.getMessage() for r in caplog.records if "Retryable failure" in r.getMessage())
         assert "signature=none" in line
+
+
+class TestTheExecutorStampsTheReAttemptMarker:
+    """#1304: entered at `execute_run`, because the unit tests for `_is_first_attempt` pass
+    a hand-built inputs dict and therefore cannot see whether anything sets it.
+
+    Before this stamp existed, a correction re-dispatch carried no marker at all, and an
+    injected fault re-broke every repaired emission.
+    """
+
+    async def test_a_retried_task_carries_prior_attempts_on_its_next_dispatch(
+        self, executor, mock_queue
+    ):
+        seen: list[dict] = []
+        original = mock_queue.reply_router.responder
+
+        responder = _scripted_responder({0: ("FAILED", None, "transient")})
+
+        def recording(env):
+            seen.append(dict(env.get("inputs") or {}))
+            return responder(env)
+
+        mock_queue.reply_router.responder = recording
+        with patch(
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+        mock_queue.reply_router.responder = original
+
+        assert not seen[0].get("prior_attempts"), "the first dispatch is a first attempt"
+        assert seen[1].get("prior_attempts") == 1, (
+            "the retry must carry the marker — without it a fault re-applies and the loop "
+            "can never be observed recovering"
+        )
+
+    async def test_a_task_that_never_fails_carries_no_marker(self, executor, mock_queue):
+        """The stamp must not appear on the happy path, or every emission would read as a
+        re-attempt and the fault would never fire at all."""
+        seen: list[dict] = []
+        responder = _scripted_responder({})
+
+        def recording(env):
+            seen.append(dict(env.get("inputs") or {}))
+            return responder(env)
+
+        mock_queue.reply_router.responder = recording
+        await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        assert all(not s.get("prior_attempts") for s in seen)

@@ -2886,6 +2886,17 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         #
         # Same fact, same shape, threaded onto the envelope the retry loop re-dispatches —
         # exactly as #566's emission feedback is.
+        # #1304: every task whose outcome is handled has, by definition, made an attempt.
+        # Stamp it so the attempt that follows can be told apart from the first, whatever
+        # caused the re-run. The fault injector reads this (`PRIOR_ATTEMPTS_KEY`); before
+        # it existed, a re-dispatch from the CORRECTION loop carried no marker at all, so
+        # an injected fault re-broke every repaired emission and the loop could never be
+        # observed recovering.
+        _prior = int(envelope.inputs.get("prior_attempts") or 0) + 1
+        envelope.inputs["prior_attempts"] = _prior
+        if enriched_envelope is not None:
+            enriched_envelope.inputs["prior_attempts"] = _prior
+
         retained = failing_cases_from_evidence(result.outputs or {})
         if retained:
             envelope.inputs["prior_failing_cases"] = retained
