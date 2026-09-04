@@ -211,6 +211,32 @@ def _repaired_suite_files(
     ]
 
 
+def record_task_evidence(ledger: RunLedger, task_result, task_id: str) -> None:
+    """Normalize a task's verification outputs into the run ledger.
+
+    The end-of-run aggregation choke point reads this ledger, and every result is stamped
+    with the producing task id (#379) so a repaired-and-re-run check resolves to its final
+    state per ``(check_id, subject)``. Self-filtering: a transport retry carries no
+    ``validation_result``/``test_result``, so nothing is recorded.
+
+    Best-effort by design — a normalizer defect must never break task execution; the
+    report path is guarded the same way.
+
+    **One function, three callers (#1148).** This was a closure inside the sequential
+    loop, so the fan-out path had no way to reach it and recorded nothing: a
+    ``fan_out_fan_in`` run produced a verdict over an empty ledger, and under SIP-0096's
+    "only executed-and-passed credits" rule that reads as `blocked_unverified` at best and
+    as a silently thinner ledger at worst.
+    """
+    if task_result is None or not getattr(task_result, "outputs", None):
+        return
+    try:
+        for check_result in normalize_task_checks(task_result.outputs, subject=task_id):
+            ledger.record_check_result(check_result)
+    except Exception:
+        logger.warning("Verification-evidence recording failed", exc_info=True)
+
+
 class DispatchedFlowExecutor(FlowExecutionPort):
     """Flow executor that dispatches tasks to agent containers via RabbitMQ.
 
@@ -562,7 +588,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                         interface_manifest=interface_manifest,
                     )
                 elif mode == "fan_out_fan_in":
-                    await self._execute_fan_out(plan, run_id, cycle, flow_run_id)
+                    await self._execute_fan_out(plan, run_id, cycle, flow_run_id, ledger=ledger)
                 elif mode == "fan_out_soft_gates":
                     await self._execute_sequential(
                         plan,
@@ -1708,22 +1734,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 return action
 
             def _record_task_evidence(task_result, _envelope=envelope) -> None:
-                # Normalize this task's verification outputs into the run ledger for
-                # the end-of-run aggregation choke point. Every result is stamped with
-                # the producing task id (#379) so a repaired-and-re-run check resolves
-                # to its final state at aggregation. ``_envelope`` is bound as a default
-                # (B023) so it captures THIS iteration's task, matching _route_outcome.
-                # Best-effort: a normalizer defect must never break task execution (the
-                # report path is guarded the same).
-                if task_result is None or not getattr(task_result, "outputs", None):
-                    return
-                try:
-                    for check_result in normalize_task_checks(
-                        task_result.outputs, subject=_envelope.task_id
-                    ):
-                        ledger.record_check_result(check_result)
-                except Exception:
-                    logger.warning("Verification-evidence recording failed", exc_info=True)
+                # ``_envelope`` is bound as a default (B023) so it captures THIS
+                # iteration's task, matching _route_outcome. The body is shared with the
+                # fan-out path (#1148) — see ``record_task_evidence``.
+                record_task_evidence(ledger, task_result, _envelope.task_id)
 
             try:
                 task_succeeded, result = await self._task_dispatcher.dispatch_with_retry(
@@ -3722,8 +3736,15 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         run_id: str,
         cycle: Cycle,
         flow_run_id: str | None = None,
+        *,
+        ledger: RunLedger | None = None,
     ) -> None:
-        """Fan-out/fan-in: dispatch all tasks concurrently, await all."""
+        """Fan-out/fan-in: dispatch all tasks concurrently, await all.
+
+        ``ledger`` is keyword-only and optional so existing callers and tests that do not
+        care about evidence keep working; when supplied, every task's verification
+        outputs are recorded exactly as the sequential path records them (#1148).
+        """
 
         if await self._is_cancelled(run_id):
             raise _CancellationError(run_id)
@@ -3768,12 +3789,12 @@ class DispatchedFlowExecutor(FlowExecutionPort):
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # SIP-0096 Phase 2 slice-1 gap: this fan-out path does NOT yet record
-        # verification evidence to the run ledger (the sequential path does, at the
-        # dispatch-with-retry seam). Harmless while the throttle is off (no shipped
-        # profile declares required_checks) — a FAN_OUT_FAN_IN cycle simply records
-        # zero evidence, same as pre-Phase-2. MUST be wired before slice 4 turns the
-        # throttle on, or a required check would falsely block here. Tracked in #375.
+        # #1148: the SIP-0096 Phase 2 slice-1 gap, closed. This path recorded NO
+        # verification evidence while the sequential path recorded it at the
+        # dispatch-with-retry seam, so a FAN_OUT_FAN_IN cycle produced a verdict over an
+        # empty ledger. It was harmless only because no shipped profile declares
+        # `required_checks` and the production profile runs sequential — which is exactly
+        # why it had to close before anyone reaches for parallelism rather than after.
         all_artifact_refs: list[str] = []
         for i, result in enumerate(results):
             task_context = {
@@ -3790,6 +3811,11 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     payload={"task_type": plan[i].task_type, "error": str(result)},
                 )
                 raise _ExecutionError(f"Task {plan[i].task_id} raised exception: {result}")
+            # #1148: recorded for every awaited result, success or failure — a failed
+            # task's rows are evidence too, and the sequential path records them at the
+            # same point.
+            if ledger is not None:
+                record_task_evidence(ledger, result, plan[i].task_id)
             if result.status == "SUCCEEDED":
                 self._cycle_event_bus.emit(
                     EventType.TASK_SUCCEEDED,
