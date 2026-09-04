@@ -795,3 +795,91 @@ class TestTheRecordNamesTheDeployItObserved:
         cfg = self._cfg(driver, tmp_path)
         out = driver.render(cfg, "shakeout (non-counting)", self._rec(deploy={"head": "d6165d2a"}))
         assert "**unset** (typed, not measured)" in out
+
+
+class TestAFaultDeclarationSurvivesTheSetConfig:
+    """#1298: the carriage from a set config to the agent's emission seam.
+
+    The hook (#1251) and the readouts (#1276) were both built and tested against the shape
+    the *handler* sees. Nothing exercised the shape the *driver* produces, and the driver
+    could not express a declaration at all: `str(["qa_suite_absent"])` is `"['qa_suite_absent']"`,
+    which the framework's guard correctly refuses at cycle create.
+    """
+
+    def _cfg(self, driver, tmp_path, faults):
+        import yaml
+
+        p = tmp_path / "set.yaml"
+        p.write_text(
+            yaml.safe_dump(
+                {
+                    "name": "d",
+                    "project": "group_run",
+                    "squad_profile": "full-38",
+                    "request_profile": "validated-fullstack",
+                    "gate_name": "g",
+                    "gate_notes": "g",
+                    "launch_notes": "r {roll}/{n}",
+                    "shakeout_notes": "s",
+                    "n_rolls": 1,
+                    "overrides": {"fault_injection": faults},
+                }
+            )
+        )
+        return driver.load_set_config(p)
+
+    def test_a_yaml_list_is_carried_as_the_comma_form_the_cli_can_express(self, driver, tmp_path):
+        """`--set k=v` takes strings, so the list has to become one. Before this it became
+        `"['qa_suite_absent']"` and the cycle create was refused."""
+        cfg = self._cfg(driver, tmp_path, ["qa_suite_absent", "repair_prose_only"])
+        assert cfg.overrides["fault_injection"] == "qa_suite_absent,repair_prose_only"
+        assert "[" not in cfg.overrides["fault_injection"]
+
+    def test_the_launch_command_carries_the_declaration_verbatim(self, driver, tmp_path):
+        cfg = self._cfg(driver, tmp_path, ["qa_suite_absent", "repair_prose_only"])
+        sets = " ".join(f"--set {k}={v}" for k, v in cfg.overrides.items())
+        assert sets == "--set fault_injection=qa_suite_absent,repair_prose_only"
+
+    def test_a_single_fault_is_named_not_spelled_out_letter_by_letter(self, driver, tmp_path):
+        """The bug the readouts had: a single fault arrives as a string, and both `preflight`
+        and the record renderer iterated it directly — so a diagnostic's own record named the
+        fault as `_, a, b, e, …` and could not say what it had injected."""
+        cfg = self._cfg(driver, tmp_path, "qa_suite_absent")
+        assert driver.declared_fault_names(cfg.overrides) == ("qa_suite_absent",)
+
+    def test_a_counting_roll_declaring_a_fault_is_refused_and_the_fault_is_readable(
+        self, driver, tmp_path, monkeypatch
+    ):
+        """The refusal fired before this fix too — a non-empty string is truthy — but named
+        the fault by its letters. The outcome was right and the message was unusable."""
+        cfg = self._cfg(driver, tmp_path, ["qa_suite_absent"])
+        monkeypatch.setattr(driver, "psql", lambda *a, **k: "0")
+        monkeypatch.setattr(driver, "sh", lambda *a, **k: "")
+        problems = driver.preflight(cfg, counting=True)
+        refusals = [p for p in problems if "fault injection" in p]
+        assert refusals, "a counting roll declaring a fault must be refused"
+        assert "(qa_suite_absent)" in refusals[0]
+
+    def test_no_declaration_leaves_the_overrides_untouched(self, driver, tmp_path):
+        import yaml
+
+        p = tmp_path / "set.yaml"
+        p.write_text(
+            yaml.safe_dump(
+                {
+                    "name": "d",
+                    "project": "group_run",
+                    "squad_profile": "full-38",
+                    "request_profile": "validated-fullstack",
+                    "gate_name": "g",
+                    "gate_notes": "g",
+                    "launch_notes": "r {roll}/{n}",
+                    "shakeout_notes": "s",
+                    "n_rolls": 1,
+                    "overrides": {"build_profile": "nextjs_ts"},
+                }
+            )
+        )
+        cfg = driver.load_set_config(p)
+        assert cfg.overrides == {"build_profile": "nextjs_ts"}
+        assert driver.declared_fault_names(cfg.overrides) == ()

@@ -270,3 +270,63 @@ class TestTheFaultReachesTheHandlerTheLiveCycleCalls:
         loop must refund the round rather than verify it."""
         names = await self._repair({DECLARATION_KEY: ["repair_prose_only"]})
         assert "backend/tests/test_runs.py" not in names
+
+
+class TestTheDeclarationSurvivesTheWireItArrivesOn:
+    """#1298: `execution_overrides` reaches a cycle through `cycles create --set k=v`, whose
+    values are strings with no coercion. A declaration of two faults has no other way to
+    arrive, so a comma-separated string is the list — without it the chained diagnostic
+    could not be launched at all."""
+
+    def test_two_faults_arrive_as_one_comma_string(self):
+        assert declared_faults(
+            {DECLARATION_KEY: "qa_suite_vitest_own_frame_type_error,repair_prose_only"}
+        ) == ("qa_suite_vitest_own_frame_type_error", "repair_prose_only")
+
+    def test_the_comma_form_validates_the_same_as_a_list(self):
+        comma = validate_declaration({DECLARATION_KEY: "qa_suite_absent,repair_prose_only"})
+        listed = validate_declaration({DECLARATION_KEY: ["qa_suite_absent", "repair_prose_only"]})
+        assert comma == listed
+
+    def test_surrounding_whitespace_is_not_part_of_a_name(self):
+        assert declared_faults({DECLARATION_KEY: " qa_suite_absent , repair_prose_only "}) == (
+            "qa_suite_absent",
+            "repair_prose_only",
+        )
+
+    def test_an_empty_segment_is_dropped_rather_than_becoming_a_nameless_fault(self):
+        """A trailing comma is a typo, not a declaration of nothing — and an empty name
+        would be refused as unknown, failing the cycle for the wrong reason."""
+        assert declared_faults({DECLARATION_KEY: "qa_suite_absent,"}) == ("qa_suite_absent",)
+        assert declared_faults({DECLARATION_KEY: ","}) == ()
+
+    def test_a_single_name_still_arrives_whole(self):
+        assert declared_faults({DECLARATION_KEY: "qa_suite_absent"}) == ("qa_suite_absent",)
+
+
+def test_the_drivers_fault_normaliser_agrees_with_the_frameworks():
+    """The driver keeps its own copy on purpose — it must refuse a counting roll even
+    against a deploy whose framework predates this module (`driver:76-78`) — so the two are
+    held to each other here. A divergence would mean the driver's refusal and the agent's
+    application disagree about what was declared, which is how a diagnostic reports a fault
+    it did not run.
+    """
+    import sys
+
+    sys.path.insert(0, str(_SRC.parents[1] / "scripts" / "dev"))
+    from verification_set_driver import declared_fault_names
+
+    cases = [
+        None,
+        {},
+        {DECLARATION_KEY: ""},
+        {DECLARATION_KEY: "qa_suite_absent"},
+        {DECLARATION_KEY: "qa_suite_absent,repair_prose_only"},
+        {DECLARATION_KEY: " qa_suite_absent , repair_prose_only "},
+        {DECLARATION_KEY: "qa_suite_absent,"},
+        {DECLARATION_KEY: ","},
+        {DECLARATION_KEY: ["qa_suite_absent", "repair_prose_only"]},
+        {DECLARATION_KEY: ("qa_suite_absent",)},
+    ]
+    for case in cases:
+        assert declared_fault_names(case) == declared_faults(case), f"disagree on {case!r}"

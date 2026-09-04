@@ -146,14 +146,22 @@ class UnreachableFault(ValueError):
 
 
 def declared_faults(resolved_config: Mapping[str, Any] | None) -> tuple[str, ...]:
-    """The fault names a cycle declares, in declaration order. Empty for a normal cycle."""
+    """The fault names a cycle declares, in declaration order. Empty for a normal cycle.
+
+    **A comma-separated string is a list** (#1298). ``execution_overrides`` reaches a cycle
+    through ``squadops cycles create --set k=v``, whose values are strings with no coercion,
+    so a declaration of two faults has no other way to arrive. Without this the chained
+    diagnostic — one cycle taking an own-frame suite failure and then a prose-only repair —
+    could not be launched at all, and that chain is how the 1.7.2 set exercises three of its
+    predictions. Fault names are identifiers and never contain a comma.
+    """
     if not resolved_config:
         return ()
     declared = resolved_config.get(DECLARATION_KEY)
     if not declared:
         return ()
     if isinstance(declared, str):
-        return (declared,)
+        declared = [part for part in (p.strip() for p in declared.split(",")) if part]
     return tuple(str(name) for name in declared)
 
 
