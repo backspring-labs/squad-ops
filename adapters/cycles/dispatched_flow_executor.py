@@ -53,6 +53,7 @@ from squadops.cycles.contract_derivation import (
     is_interface_manifest,
 )
 from squadops.cycles.correction_signature import REPAIR_REFUSED_MARKER
+from squadops.cycles.failure_evidence import failing_cases_from_evidence
 from squadops.cycles.frozen_check_validation import frozen_check_violations
 from squadops.cycles.manifest_authoring import (
     GATE_DECIDED_BY_NO_QUESTIONS,
@@ -2873,6 +2874,29 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 exhausted, so a repair that never converges fails the run)
         """
         outcome = (result.outputs or {}).get("outcome_class") if result.outputs else None
+
+        # #1260: whatever happens next — a retry, or a re-dispatch after a refused patch —
+        # the attempt that follows must still cover the cases this one exposed. A
+        # re-dispatched `qa.test` is a fresh emission with no memory: the Next.js shakeout
+        # `cyc_9c379355b5e8` found a real defect (a route that drops a numeric `capacity`),
+        # had its correct fix refused for an unrelated reason, re-authored the suite WITHOUT
+        # the case, and shipped the defect green — the suite that shipped was not the suite
+        # that found it. #1123 already carries this fact to a qa REPAIR; the re-dispatch
+        # carried nothing.
+        #
+        # Same fact, same shape, threaded onto the envelope the retry loop re-dispatches —
+        # exactly as #566's emission feedback is.
+        retained = failing_cases_from_evidence(result.outputs or {})
+        if retained:
+            envelope.inputs["prior_failing_cases"] = retained
+            if enriched_envelope is not None:
+                enriched_envelope.inputs["prior_failing_cases"] = retained
+            logger.info(
+                "prior_failing_cases: %d case(s) from %s ride the next attempt (#1260): %s",
+                len(retained),
+                envelope.task_id,
+                ", ".join(str(c.get("name") or c.get("title") or "?") for c in retained),
+            )
 
         # D5 fallback table: classify unclassified failures
         if outcome is None:

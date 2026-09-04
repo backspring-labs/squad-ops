@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Any
 from squadops.capabilities.context_assembly import REPAIR_FAILED_ARTIFACTS_KEY
 from squadops.capabilities.handlers.cycle_tasks import _classify_file, _CycleTaskHandler
 from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
-from squadops.cycles.failure_evidence import failing_cases_from_evidence
+from squadops.cycles.failure_evidence import failing_case_lines, failing_cases_from_evidence
 from squadops.cycles.verification_integrity import ResultStatus
 
 logger = logging.getLogger(__name__)
@@ -245,6 +245,17 @@ class _RepairPromptMixin:
             # #970 / #969 (1.6.5 D): the SAME fill-mode brief qa.test authored under,
             # plus the slots whose fills failed. "" for non-qa repairs or no scaffold.
             "qa_fill_mode_section": str(inputs.get("qa_fill_mode_section") or ""),
+            # #1289: these two were computed in handle(), threaded onto `inputs`, and
+            # never passed here — so `{{failing_cases_section}}` and
+            # `{{client_surface_section}}` rendered EMPTY on every repair the framework
+            # has ever run. #1123's "REPAIR SCOPE (authoritative)" brief, the instruction
+            # that stops a qa repair rewriting a whole suite, never reached a model; nor
+            # did #668's frozen client surface. Confirmed on the stored prompt for
+            # `repair-run_737ba4e8-00-qa.test_repair` (8,550 chars, whole prompt, neither
+            # block present) while the runner logged "carries 1 failing case(s)" for the
+            # same round — which is what the R4 readout has been reading.
+            "failing_cases_section": str(inputs.get("failing_cases_section") or ""),
+            "client_surface_section": str(inputs.get("client_surface_section") or ""),
         }
 
     async def handle(
@@ -652,15 +663,10 @@ class _RepairPromptMixin:
         cases = failing_cases_from_evidence(inputs.get("failure_evidence"))
         if not cases:
             return ""
-        lines = []
-        for case in cases:
-            where = case["file"] + (f":{case['line']}" if case.get("line") else "")
-            title = case["title"] or "(suite-level)"
-            message = f" — {case['message']}" if case.get("message") else ""
-            lines.append(f"`{where}` › {title}{message}")
+        lines = failing_case_lines(cases)
         rendered = await renderer.render(
             "request.qa_test_repair_failing_cases_appendix",
-            {"case_lines": "\n".join(f"- {line}" for line in lines), "case_count": len(lines)},
+            {"case_lines": "\n".join(f"- {line}" for line in lines), "case_count": str(len(lines))},
         )
         return rendered.content
 

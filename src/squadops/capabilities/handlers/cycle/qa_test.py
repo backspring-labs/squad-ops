@@ -51,6 +51,7 @@ from squadops.capabilities.handlers.cycle.validation import (
 from squadops.capabilities.handlers.emission_log import log_emission_shape
 from squadops.capabilities.handlers.fault_injection import inject as inject_fault
 from squadops.capabilities.reasoning_policy import reasoning_kwargs, resolve_reasoning_level
+from squadops.cycles.failure_evidence import failing_case_lines
 
 logger = logging.getLogger(__name__)
 
@@ -595,6 +596,36 @@ class QATestHandler(_CycleTaskHandler):
         )
         return rendered.content
 
+    async def _retained_cases_section(
+        self, context: ExecutionContext, inputs: dict[str, Any]
+    ) -> str:
+        """Render the cases a previous attempt exposed, or "" (#1260).
+
+        A re-dispatched ``qa.test`` is a fresh emission with no memory of the suite it
+        replaces. The Next.js shakeout `cyc_9c379355b5e8` found a real defect — a route
+        that drops a numeric ``capacity`` — had its correct fix refused for an unrelated
+        reason, re-authored the suite without the case, and shipped the defect on a green
+        verdict. #1123 already carries this fact to a qa *repair*; the executor now threads
+        the same rows onto the re-dispatch (``prior_failing_cases``), and this renders them.
+
+        Same fact and same line format as the repair brief (``failing_case_lines``); the
+        instruction differs, because a re-author is not a repair — it must still COVER the
+        behaviour rather than edit the case in place. The prose lives in the appendix asset
+        (CLAUDE.md #448).
+        """
+        cases = [c for c in (inputs.get("prior_failing_cases") or []) if isinstance(c, dict)]
+        if not cases:
+            return ""
+        renderer = getattr(context.ports, "request_renderer", None)
+        if renderer is None:
+            return ""
+        lines = failing_case_lines(cases)
+        rendered = await renderer.render(
+            "request.qa_test_retained_cases_appendix",
+            {"case_lines": "\n".join(f"- {line}" for line in lines), "case_count": str(len(lines))},
+        )
+        return rendered.content
+
     async def _frozen_surface_section(
         self, context: ExecutionContext, inputs: dict[str, Any]
     ) -> str:
@@ -1093,6 +1124,9 @@ class QATestHandler(_CycleTaskHandler):
             client_surface_section = await self._client_surface_section(context, inputs)
             if client_surface_section:
                 user_prompt = f"{user_prompt}\n{client_surface_section}"
+            retained_cases_section = await self._retained_cases_section(context, inputs)
+            if retained_cases_section:
+                user_prompt = f"{user_prompt}\n{retained_cases_section}"
             frozen_section = await self._frozen_surface_section(context, inputs)
             if frozen_section:
                 user_prompt = f"{user_prompt}\n{frozen_section}"

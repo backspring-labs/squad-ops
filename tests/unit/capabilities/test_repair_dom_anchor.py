@@ -182,7 +182,10 @@ async def test_qa_repair_renders_the_failing_cases_from_the_runners_rows():
     assert out == "SCOPE BLOCK"
     (template_id, variables) = renderer.render.await_args.args
     assert template_id == "request.qa_test_repair_failing_cases_appendix"
-    assert variables["case_count"] == 1
+    # #1289: a string. The renderer substitutes text and raises TypeError on an int —
+    # which this test never saw, because it stubs the renderer. The real render is
+    # exercised in `tests/unit/prompts/test_declared_template_variables_are_supplied.py`.
+    assert variables["case_count"] == "1"
     assert variables["case_lines"] == (
         "- `src/__tests__/runs.test.jsx` › RunDetailView > renders participant names and "
         "submits join with expected payload — expected undefined to be defined"
