@@ -1326,16 +1326,39 @@ def qa_test_namespace(manifest: InterfaceManifest) -> tuple[str, ...]:
     return _stack(manifest.stack).qa_test_namespace
 
 
+def _within_namespace(norm: str, entry: str) -> bool:
+    """Whether a normalized path lies in one namespace entry.
+
+    The entry's own shape says how it is read, so a stack declares its convention rather
+    than approximating it:
+
+    - **A bare directory name** (``__tests__/``) is a *convention* — matched as a path
+      segment at any depth, which is how a co-located test layout is expressed.
+    - **A multi-segment entry** (``backend/tests/``) is a *location* — matched at the
+      tree root, unchanged.
+
+    #1292 is what the missing first case cost: ``nextjs_ts``'s convention is co-located
+    ``__tests__/``, a root prefix cannot say that, so the declaration widened to ``app/``
+    and ``lib/`` to reach under them — and thereby claimed all twelve application files
+    its own expander seeds, including every API route.
+    """
+    bare = entry.strip("/")
+    if "/" not in bare:
+        return f"/{bare}/" in f"/{norm}"
+    return norm.startswith(entry)
+
+
 def is_qa_test_path_for_stack(path: str, stack: str) -> bool:
     """True when a workspace-relative ``path`` falls within ``stack``'s QA test namespace.
 
-    Membership is by normalized directory-prefix (``./`` and ``//`` collapsed); it does not
-    resolve traversal — Phase-2 authorization owns canonical-target identity (D7). Stack-keyed
-    (tolerant: unknown stack → no namespace) so bind-mode dispatch, which has the stack from the
-    contract, can use it without a manifest."""
+    Membership is by normalized directory entry (``./`` and ``//`` collapsed), read per
+    ``_within_namespace``; it does not resolve traversal — Phase-2 authorization owns
+    canonical-target identity (D7). Stack-keyed (tolerant: unknown stack → no namespace) so
+    bind-mode dispatch, which has the stack from the contract, can use it without a
+    manifest."""
     norm = str(path).strip().lstrip("./").replace("//", "/")
     known = _STACKS.get(stack)
-    return bool(known) and any(norm.startswith(ns) for ns in known.qa_test_namespace)
+    return bool(known) and any(_within_namespace(norm, ns) for ns in known.qa_test_namespace)
 
 
 def is_qa_test_path(path: str, manifest: InterfaceManifest) -> bool:
@@ -1524,8 +1547,13 @@ _STACKS: dict[str, ScaffoldStack] = {
         expand=_expand_nextjs_ts,
         fill_slots=_fill_slots_nextjs_ts,
         # Co-located `__tests__/` beside source, not a directory prefix at the tree root —
-        # one of the three FastAPI-shaped assumptions S2 selected this stack to break.
-        qa_test_namespace=("__tests__/", "app/", "lib/"),
+        # one of the three FastAPI-shaped assumptions S2 selected this stack to break. The
+        # bare name is the declaration of that convention; `_within_namespace` reads it as a
+        # segment at any depth. #1292: it previously carried `app/` and `lib/` beside it, to
+        # reach co-located tests through a root-prefix match, and those two entries claimed
+        # every application file the expander seeds — which is what defeated the emission
+        # guard in `verification_scaffold_emission`.
+        qa_test_namespace=("__tests__/",),
         # Node module resolution has no import boundary between tests and app, so there is
         # no equivalent of `backend.main` to forbid. Declared empty as a fact, not an omission.
         harness_entry_modules=(),

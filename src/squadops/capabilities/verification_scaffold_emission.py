@@ -28,6 +28,7 @@ import yaml
 from squadops.capabilities.scaffold import (
     criteria_pack_for,
     expand,
+    is_qa_test_path_for_stack,
     qa_test_namespace,
     verification_scaffold_for,
 )
@@ -132,7 +133,11 @@ def emit_verification_scaffold(
 
     namespace = qa_test_namespace(manifest)
     for path, _content, _slots in shells:
-        if not any(path.startswith(prefix) for prefix in namespace):
+        # #1292: through the stack's own predicate, not a second prefix match beside it.
+        # This loop re-implemented membership as `startswith`, so a namespace entry that
+        # declares a co-located convention was read here as a rooted prefix and the guard
+        # answered a different question from every other consumer of the same namespace.
+        if not is_qa_test_path_for_stack(path, manifest.stack):
             raise ScaffoldValidationError(
                 f"emitted scaffold file {path!r} lies outside the stack's qa test "
                 f"namespace {namespace} — the scaffold must live where qa files are "
