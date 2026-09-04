@@ -78,6 +78,27 @@ RUNTIME_API_CONTAINER = "squadops-runtime-api"
 #: to refuse a counting roll even against a deploy whose framework predates the module.
 FAULT_DECLARATION_KEY = "fault_injection"
 
+
+def declared_fault_names(overrides: Mapping[str, Any] | None) -> tuple[str, ...]:
+    """The faults a set config declares — the same normalisation the framework applies.
+
+    Duplicated rather than imported for the reason above: the driver must be able to refuse
+    a counting roll against a deploy whose framework predates the module. The two are held
+    to each other by ``test_the_drivers_fault_normaliser_agrees_with_the_frameworks``, so
+    the duplication cannot drift.
+
+    Before this existed, ``preflight`` and the record renderer each iterated the raw override
+    value. A single fault arrives from ``--set`` as a *string*, so iterating it yielded its
+    characters and the diagnostic's own record named the fault as `_, a, b, e, …` (#1298).
+    """
+    declared = (overrides or {}).get(FAULT_DECLARATION_KEY)
+    if not declared:
+        return ()
+    if isinstance(declared, str):
+        declared = [part for part in (p.strip() for p in declared.split(",")) if part]
+    return tuple(str(name) for name in declared)
+
+
 POLL_S = 30
 MAX_WAIT_S = 4 * 60 * 60
 
@@ -149,7 +170,13 @@ def load_set_config(path: Path) -> SetConfig:
     missing = [k for k in _REQUIRED if k not in raw]
     if missing:
         raise SystemExit(f"{path}: set config is missing {', '.join(missing)}")
-    overrides = {str(k): str(v) for k, v in (raw.get("overrides") or {}).items()}
+    # A list stays a readable list in the YAML and is carried as the comma form the CLI's
+    # `--set` can express (#1298); `str(["a"])` produced `"['a']"`, which the framework's
+    # guard then refused at cycle create.
+    overrides = {
+        str(k): (",".join(str(i) for i in v) if isinstance(v, list | tuple) else str(v))
+        for k, v in (raw.get("overrides") or {}).items()
+    }
     image_ids = {str(k): str(v) for k, v in (raw.get("frozen_image_ids") or {}).items()}
     unknown = sorted(set(image_ids) - set(DEPLOY_SERVICES))
     if unknown:
@@ -310,7 +337,7 @@ def preflight(cfg: SetConfig, *, counting: bool) -> list[str]:
     # what makes its red meaningless as a verdict. Refused for a counting roll, reported for
     # a shakeout, and never silent: an injected red in a counted record would read as the
     # squad failing.
-    faults = sorted(str(name) for name in (cfg.overrides.get(FAULT_DECLARATION_KEY) or ()) if name)
+    faults = sorted(declared_fault_names(cfg.overrides))
     if faults and counting:
         problems.append(
             f"§4: the set config declares fault injection ({', '.join(faults)}) — a cycle "
@@ -1250,12 +1277,12 @@ def render(cfg: SetConfig, title: str, rec: dict) -> str:
         *(
             [
                 "- **DIAGNOSTIC — injected fault(s): "
-                f"{', '.join(sorted(str(n) for n in cfg.overrides.get(FAULT_DECLARATION_KEY)))}"
+                f"{', '.join(sorted(declared_fault_names(cfg.overrides)))}"
                 "**. This cycle carried a deliberate emission defect (#1251): its verdict is "
                 "not a verdict about the squad, and it must not be counted.",
                 "",
             ]
-            if cfg.overrides.get(FAULT_DECLARATION_KEY)
+            if declared_fault_names(cfg.overrides)
             else []
         ),
         f"- verdict: **{rec.get('verdict')}**",
