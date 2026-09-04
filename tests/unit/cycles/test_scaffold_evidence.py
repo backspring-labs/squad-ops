@@ -312,7 +312,7 @@ class TestObservationParser:
                 },
             ]
         }
-        rows = parse_vitest_failure_rows(report, "/ws")
+        rows = parse_vitest_failure_rows(report, "/ws", [_CREATE_SHELL, _LIST_SHELL])
         assert rows == [
             {
                 "file": _CREATE_SHELL,
@@ -320,6 +320,11 @@ class TestObservationParser:
                 "messages": ["expected 500 to be 201 // Object.is equality"],
                 "line": 21,
                 "suite_level": False,
+                # #1270: the exception class and the raising frame ride the row now. This
+                # message is an assertion diff with no stack, so both come back empty —
+                # which is what keeps an assertion the suite's judgment of the app.
+                "exception": "",
+                "frames": [],
             },
             {
                 "file": _LIST_SHELL,
@@ -340,7 +345,7 @@ class TestObservationParser:
                 }
             ]
         }
-        assert parse_vitest_failure_rows(report, "/ws") == []
+        assert parse_vitest_failure_rows(report, "/ws", ["a.test.ts"]) == []
 
 
 class TestUncollectedTestFiles:

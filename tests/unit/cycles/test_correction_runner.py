@@ -4989,7 +4989,7 @@ class TestQaOwnedDefectRouting:
             runner="pytest",
             suite_broken=False,
             test_failures=tuple(rows),
-            suite_defects=tuple(suite_defects(rows, [])),
+            suite_defects=tuple(suite_defects(rows, [], "pytest")),
         )
         checks = [
             failed_tests_pass_row(
@@ -5586,7 +5586,7 @@ class TestRepairBriefReadout(TestCorrectionRunnerStandalone):
             runner="pytest",
             suite_broken=False,
             test_failures=tuple(rows),
-            suite_defects=tuple(suite_defects(rows, [])),
+            suite_defects=tuple(suite_defects(rows, [], "pytest")),
         )
         row = failed_tests_pass_row(
             result,
@@ -5643,3 +5643,142 @@ class TestRepairBriefReadout(TestCorrectionRunnerStandalone):
         assert len(lines) == 1
         assert "carries 0 failing case(s)" in lines[0]
         assert "tests_pass_rows=0" in lines[0]
+
+
+class TestVitestOwnFrameRoutesToTheQaRepair(TestCorrectionRunnerStandalone):
+    """#1270 / 1.7.1 R2: a vitest failure raised in the qa-owned suite's own frame
+    dispatches `qa.test_repair`, not a dev repair the ownership veto then empties.
+
+    Entry point is `run_correction_protocol` — the call the live cycle makes — so this
+    proves the routing, not the classifier. The evidence is roll 4's own machine report
+    (`tests/fixtures/roll_replays/1-7-1-react-roll-4-vitest-report.json`), built through
+    the real row parser, the real own-frame classifier and the real row builder.
+
+    What the roll did instead: `correction_repair_target: … ownership veto (#884) — qa-owned
+    frontend/src/__tests__/runs.test.jsx removed from dev-role repair target`, then
+    `development.correction_repair` twice, then green by a third re-dispatch.
+    """
+
+    _REPLAYS = Path(__file__).resolve().parents[2] / "fixtures" / "roll_replays"
+    _SUITE = "frontend/src/__tests__/runs.test.jsx"
+
+    def _roll_4_evidence(self):
+        from squadops.capabilities.handlers.test_runner import (
+            RunTestsResult,
+            failed_tests_pass_row,
+            parse_vitest_failure_rows,
+            suite_defects,
+        )
+        from squadops.capabilities.scaffold import is_qa_test_path_for_stack
+
+        report = json.loads(
+            (self._REPLAYS / "1-7-1-react-roll-4-vitest-report.json").read_text(encoding="utf-8")
+        )
+        handed_in = ["frontend/src/__tests__/harness.test.jsx", self._SUITE]
+        rows = parse_vitest_failure_rows(report, "/tmp/roll4ws", handed_in)
+        result = RunTestsResult(
+            executed=True,
+            exit_code=1,
+            runner="vitest",
+            suite_broken=False,
+            test_failures=tuple(rows),
+            suite_defects=tuple(suite_defects(rows, [], "vitest")),
+        )
+        row = failed_tests_pass_row(
+            result,
+            qa_owned=lambda path: is_qa_test_path_for_stack(path, "fullstack_fastapi_react"),
+        )
+        return {"validation_result": {"passed": False, "checks": [row]}}
+
+    def _qa_envelope(self):
+        from squadops.tasks.models import TaskEnvelope
+
+        return TaskEnvelope(
+            task_id="task-run_83e54c78-m006-qa.test",
+            agent_id="eve",
+            cycle_id="cyc_001",
+            pulse_id="p",
+            project_id="hello_squad",
+            task_type="qa.test",
+            correlation_id="corr",
+            causation_id=None,
+            trace_id="t",
+            span_id="s",
+            inputs={
+                "expected_artifacts": [self._SUITE],
+                "subtask_focus": "Frontend RTL suite",
+                "subtask_description": "React Testing Library suite for the three views.",
+                "resolved_config": {"dev_capability": "fullstack_fastapi_react"},
+            },
+            metadata={"role": "qa"},
+        )
+
+    @staticmethod
+    def _responder(captured):
+        def responder(envelope):
+            captured.append(envelope)
+            if envelope.task_type == "data.analyze_failure":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={
+                        "classification": "work_product",
+                        "analysis_summary": "the suite's own call site raised",
+                        # What the roll's analyzer said: only the qa file is implicated.
+                        "implicated_files": ["frontend/src/__tests__/runs.test.jsx"],
+                    },
+                )
+            if envelope.task_type == "governance.correction_decision":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={
+                        "correction_path": "patch",
+                        "decision_rationale": "re-author the suite",
+                        "affected_task_types": ["qa.test"],
+                    },
+                )
+            return TaskResult(
+                task_id=envelope.task_id,
+                status="SUCCEEDED",
+                outputs={
+                    "artifacts": [
+                        {
+                            "name": "frontend/src/__tests__/runs.test.jsx",
+                            "content": "import userEvent from '@testing-library/user-event'\n",
+                            "media_type": "text/jsx",
+                            "type": "test",
+                        }
+                    ]
+                },
+            )
+
+        return responder
+
+    async def test_the_repair_goes_to_the_qa_role_that_wrote_the_suite(self, cycle):
+        captured: list = []
+        runner, _registry, _vault, _bus = self._make_runner(self._responder(captured))
+
+        await runner.run_correction_protocol(
+            run_id="run_83e54c78dea8",
+            cycle=cycle,
+            envelope=self._qa_envelope(),
+            result=TaskResult(
+                task_id="task-run_83e54c78-m006-qa.test",
+                status="FAILED",
+                error="3 failed",
+                outputs=self._roll_4_evidence(),
+            ),
+            correction_attempts=0,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+        )
+
+        repairs = [e.task_type for e in captured if "repair" in e.task_type]
+        assert repairs == ["qa.test_repair"], f"dispatched {repairs}"
+        repair = next(e for e in captured if e.task_type == "qa.test_repair")
+        assert repair.inputs["expected_artifacts"] == [self._SUITE]
+        assert repair.metadata["role"] == "qa"

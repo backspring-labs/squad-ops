@@ -144,7 +144,15 @@ def test_the_reference_stack_still_answers_exactly_what_it_did():
         "frontend/src/views/CreateRunView.jsx",
         "frontend/src/views/RunDetailView.jsx",
     )
-    assert qa_test_namespace(manifest) == ("backend/tests/", "frontend/src/tests/")
+    # #1270: ``frontend/src/__tests__/`` is where the stack seeds its harness and was
+    # missing from the declaration. This literal is one of four that restate the value;
+    # ``test_qa_namespace_covers_what_the_stack_seeds`` is the one that DERIVES it from the
+    # expander, and is why a wrong value cannot survive a fourth time.
+    assert qa_test_namespace(manifest) == (
+        "backend/tests/",
+        "frontend/src/__tests__/",
+        "frontend/src/tests/",
+    )
     assert harness_entry_modules("fullstack_fastapi_react") == (
         "backend.main",
         "app.main",
