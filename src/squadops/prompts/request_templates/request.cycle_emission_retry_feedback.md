@@ -16,7 +16,8 @@ following these rules exactly:
 
 - Emit ONE fenced code block per required file, and nothing outside the fences
   except brief notes.
-- Every fence header MUST carry the file path in the form ` ```language:path/to/file `
+- Every fence header MUST carry the file's own path, exactly as the expected list above
+  writes it: ` ```language:<the expected path> `. Not a placeholder, not a prefixed variant.
   — for example ` ```python:backend/tests/test_runs.py `.
 - Close every fence with ` ``` ` on its own line.
 - Required files:

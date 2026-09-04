@@ -207,3 +207,63 @@ async def test_dev_repair_and_an_evidence_less_qa_repair_render_no_scope_block()
         == ""
     )
     renderer.render.assert_not_awaited()
+
+
+_ROLL_TRACEBACK = (
+    "Traceback (most recent call last):\n"
+    '  File "backend/tests/test_runs.py", line 3, in <module>\n'
+    "    from ..store import reset\n"
+    "ImportError: attempted relative import with no known parent package"
+)
+
+
+async def test_the_repair_is_briefed_with_the_applications_own_traceback():
+    """#788: the repairer reads the error, not a description of it.
+
+    `cyc_dd3855f353c0`: the analyzer recommended `from ..store import reset` — provably
+    impossible from `backend/tests/`, which the traceback said in as many words — and the
+    repair followed it into `ImportError: attempted relative import with no known parent
+    package`, spending the last of two rounds. #687 hoisted app tracebacks onto the
+    evidence for the ANALYZER; the repair prompt rendered five evidence blocks and never
+    this one.
+    """
+    from adapters.prompts.factory import create_prompt_asset_source
+    from squadops.prompts.renderer import RequestTemplateRenderer
+
+    renderer = RequestTemplateRenderer(create_prompt_asset_source(provider="filesystem"))
+    out = await QATestRepairHandler()._render_app_traceback_section(
+        _context(renderer),
+        {
+            "failure_evidence": {
+                "app_tracebacks": [{"check": "tests_pass", "traceback": _ROLL_TRACEBACK}]
+            }
+        },
+    )
+
+    assert "attempted relative import with no known parent package" in out
+    assert "backend/tests/test_runs.py" in out
+    assert "tests_pass" in out
+    assert "is the fact and the summary is an interpretation" in out
+
+
+async def test_a_failure_with_no_traceback_renders_no_block():
+    """Presence-gated: a failure that raised nothing renders byte-identically to before."""
+    renderer = AsyncMock()
+    for evidence in ({}, {"app_tracebacks": []}, {"app_tracebacks": [{"traceback": "  "}]}):
+        assert (
+            await QATestRepairHandler()._render_app_traceback_section(
+                _context(renderer), {"failure_evidence": evidence}
+            )
+            == ""
+        )
+    assert renderer.render.await_count == 0
+
+
+async def test_the_traceback_block_reaches_the_prompt_variables():
+    """The #1289 half: a section computed and not passed to the renderer is a section the
+    model never sees. Asserted here as well as by the declared-variable guard, because this
+    is the block whose absence #788 is about."""
+    supplied = QATestRepairHandler()._build_render_variables(
+        "prd", None, {"app_traceback_section": "TRACEBACK BLOCK"}
+    )
+    assert supplied["app_traceback_section"] == "TRACEBACK BLOCK"

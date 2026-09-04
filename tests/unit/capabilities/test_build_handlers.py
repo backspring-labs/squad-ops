@@ -2254,3 +2254,74 @@ class TestTheRetainedCasesReachTheRedispatchedPrompt:
         sent = mock_context.ports.llm.chat_stream_with_usage.await_args.args[0]
         prompt = "\n".join(str(m.content) for m in sent)
         assert "CASES A PREVIOUS ATTEMPT EXPOSED" not in prompt
+
+
+class TestTheFenceExampleNamesTheTasksOwnFile:
+    """#1272: one placeholder token, one round.
+
+    React roll 5 (`cyc_ca02bed7fbb4`): the qa role copied the fence-format example's
+    literal `path/to/file` and emitted a correct suite at
+    `path/backend/tests/test_runs.py`. Nothing expected that path, so every criterion
+    naming the real one failed `file_not_found` and the round was spent on a suite that was
+    already right. An example is an invitation to copy it.
+    """
+
+    def test_the_example_is_the_expected_artifact_not_a_placeholder(self):
+        prompt = QATestHandler()._build_focused_prompt(
+            {
+                "subtask_focus": "the runs suite",
+                "subtask_description": "pytest suite",
+                "expected_artifacts": ["backend/tests/test_runs.py"],
+            }
+        )
+        assert "```python:backend/tests/test_runs.py```" in prompt
+        assert "path/to/file" not in prompt
+
+    def test_a_task_naming_no_artifact_still_says_what_the_header_must_carry(self):
+        prompt = QATestHandler()._build_focused_prompt(
+            {"subtask_focus": "f", "subtask_description": "d", "expected_artifacts": []}
+        )
+        assert "path/to/file" not in prompt
+        assert "the file's own path" in prompt
+
+
+class TestThePlaceholderPrefixIsStrippedWhenItCannotBeRight:
+    """#1272's backstop: the example is fixed, and a copied prefix is still recovered."""
+
+    _BODY = "```python:%s\ndef test_ok(client):\n    assert True\n```\n"
+
+    def test_a_copied_prefix_the_task_does_not_expect_is_stripped(self):
+        from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
+
+        out = extract_fenced_files(
+            self._BODY % "path/backend/tests/test_runs.py", ["backend/tests/test_runs.py"]
+        )
+        assert [f["filename"] for f in out] == ["backend/tests/test_runs.py"]
+
+    def test_a_path_the_task_genuinely_expects_is_left_alone(self):
+        """The control: `path/` is a legal directory name, and stripping one the task
+        asked for would invent a different failure."""
+        from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
+
+        out = extract_fenced_files(
+            self._BODY % "path/backend/tests/test_runs.py",
+            ["path/backend/tests/test_runs.py"],
+        )
+        assert [f["filename"] for f in out] == ["path/backend/tests/test_runs.py"]
+
+    def test_nothing_is_stripped_when_the_task_expects_nothing_in_particular(self):
+        """With no expected list there is nothing to say the prefix is wrong, so the
+        backstop stays silent rather than guessing."""
+        from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
+
+        out = extract_fenced_files(self._BODY % "path/backend/tests/test_runs.py", None)
+        assert [f["filename"] for f in out] == ["path/backend/tests/test_runs.py"]
+
+    def test_the_strip_is_reported(self, caplog):
+        from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
+
+        with caplog.at_level("WARNING"):
+            extract_fenced_files(
+                self._BODY % "path/backend/tests/test_runs.py", ["backend/tests/test_runs.py"]
+            )
+        assert any("fence path placeholder" in m for m in caplog.messages)
