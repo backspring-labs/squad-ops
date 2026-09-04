@@ -1495,3 +1495,141 @@ class TestRetestIsKeyedOnWhatThePatchContains:
             )
             == []
         )
+
+
+class TestTheTerminationNamesWhichAbsence:
+    """#1273: `no_executed_blocking_checks` is produced by an absent TOOLCHAIN and by an
+    absent FILE, and #1221's message described only the first.
+
+    Next.js roll 1 terminated under "no check owning the repaired files can execute in this
+    environment" for a file the repair had never written — the reader is told to provision
+    a toolchain when the actual remedy is to refuse the prose-only repair (which the refund
+    rule now does). The two absences have opposite remedies, so the line has to say which.
+    """
+
+    def _qa_envelope(self):
+        from squadops.cycles.implementation_plan import TypedCheck
+        from squadops.tasks.models import TaskEnvelope
+
+        return TaskEnvelope(
+            task_id="task-run_737ba4e8-m006-qa.test",
+            agent_id="eve",
+            cycle_id="cyc_001",
+            pulse_id="p",
+            project_id="hello_squad",
+            task_type="qa.test",
+            correlation_id="corr",
+            causation_id=None,
+            trace_id="t",
+            span_id="s",
+            inputs={
+                "resolved_config": {"dev_capability": "nextjs_ts"},
+                "expected_artifacts": ["__tests__/runs.test.ts"],
+                "acceptance_criteria": [
+                    TypedCheck(
+                        check="function_defined",
+                        params={"file": "__tests__/runs.test.ts", "name": "it"},
+                        severity="error",
+                        description="the suite defines cases",
+                    )
+                ],
+            },
+            metadata={"role": "qa"},
+        )
+
+    def _emission_failure_result(self):
+        return TaskResult(
+            task_id="task-run_737ba4e8-m006-qa.test",
+            status="FAILED",
+            outputs={"artifacts": [], "outcome_class": TaskOutcome.SEMANTIC_FAILURE},
+            error="No valid fenced code blocks found",
+        )
+
+    def _records(self, *reasons):
+        from squadops.cycles.patch_verification import PatchCheckRecord
+
+        return tuple(
+            PatchCheckRecord(
+                check="function_defined",
+                severity="error",
+                status="skipped",
+                reason=reason,
+                params={"file": "__tests__/runs.test.ts"},
+            )
+            for reason in reasons
+        )
+
+    def test_both_spellings_of_an_absent_file_are_one_class(self):
+        """The verifier skips with `file_not_in_patch`; an evaluator running where the file
+        is genuinely gone fails with `file_not_found`. A reader needs the class."""
+        from squadops.cycles.patch_verification import (
+            FILE_ABSENT_REASONS,
+            REASON_FILE_NOT_IN_PATCH,
+        )
+
+        assert REASON_FILE_NOT_IN_PATCH in FILE_ABSENT_REASONS
+        assert "file_not_found" in FILE_ABSENT_REASONS
+        assert "missing_tooling" not in FILE_ABSENT_REASONS
+
+    async def test_an_absent_file_termination_names_the_file(self, executor, caplog):
+        import logging
+        from unittest.mock import AsyncMock
+
+        from squadops.cycles.patch_verification import PATCH_UNVERIFIABLE, PatchVerification
+
+        verification = PatchVerification(
+            status=PATCH_UNVERIFIABLE,
+            checks=self._records("file_not_found", "file_not_in_patch"),
+            reason="no_executed_blocking_checks",
+        )
+        with (
+            patch(
+                "adapters.cycles.dispatched_flow_executor.verify_patched_artifacts",
+                AsyncMock(return_value=verification),
+            ),
+            caplog.at_level(logging.WARNING, logger="adapters.cycles.dispatched_flow_executor"),
+        ):
+            action = await executor._try_accept_patch(
+                self._qa_envelope(),
+                self._emission_failure_result(),
+                [{"name": "repair_output.md", "content": "I'll verify the interfaces first."}],
+                {},
+            )
+
+        assert action == "break_correction"
+        line = next(m for m in caplog.messages if "correction_terminated_unverifiable" in m)
+        assert "__tests__/runs.test.ts" in line
+        assert "did not write" in line
+        assert "execute in this environment" not in line, (
+            "an absent file was reported as an absent toolchain — opposite remedies"
+        )
+
+    async def test_a_genuinely_absent_toolchain_keeps_its_own_wording(self, executor, caplog):
+        """The control: when nothing executed because the tooling is missing, the original
+        message is the right one and must survive."""
+        import logging
+        from unittest.mock import AsyncMock
+
+        from squadops.cycles.patch_verification import PATCH_UNVERIFIABLE, PatchVerification
+
+        verification = PatchVerification(
+            status=PATCH_UNVERIFIABLE,
+            checks=self._records("missing_tooling"),
+            reason="no_executed_blocking_checks",
+        )
+        with (
+            patch(
+                "adapters.cycles.dispatched_flow_executor.verify_patched_artifacts",
+                AsyncMock(return_value=verification),
+            ),
+            caplog.at_level(logging.WARNING, logger="adapters.cycles.dispatched_flow_executor"),
+        ):
+            await executor._try_accept_patch(
+                self._qa_envelope(),
+                self._emission_failure_result(),
+                [{"name": "repair_output.md", "content": "prose"}],
+                {},
+            )
+
+        line = next(m for m in caplog.messages if "correction_terminated_unverifiable" in m)
+        assert "execute in this environment" in line

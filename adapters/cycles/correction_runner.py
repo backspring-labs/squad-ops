@@ -1824,8 +1824,16 @@ class CorrectionRunner:
         # and counting it as an attempt is what spent arm B's budget. `repair_steps_ran`
         # keeps this distinct from a rewind/continue path, which legitimately emits
         # nothing and must never be refunded.
+        # #1273: the extraction FALLBACK is not an emission. A repair that returns prose
+        # and no fenced block produces one non-empty `repair_output.md` — which counted as
+        # content, so the round was spent rather than refunded, and the loop then
+        # terminated as `unverifiable` for a file that was never written (Next.js roll 1,
+        # cyc_9be98128f0e9). "Did the repair emit a FILE" is the question; the marker the
+        # extractor stamps is the answer.
         emission_empty = repair_steps_ran and not any(
-            str(a.get("content") or "").strip() for a in repair_artifacts if isinstance(a, dict)
+            str(a.get("content") or "").strip()
+            for a in repair_artifacts
+            if isinstance(a, dict) and not a.get("emission_fallback")
         )
         if emission_empty:
             logger.warning(

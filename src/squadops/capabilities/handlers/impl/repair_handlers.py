@@ -50,6 +50,13 @@ def _artifacts_from_fenced_blocks(content: str, fallback_name: str) -> list[dict
                 "content": content,
                 "media_type": "text/markdown",
                 "type": "document",
+                # #1273: this is the *no file was emitted* marker, not a file. It exists so
+                # the model's output is not silently dropped, and the refund rule has to be
+                # able to tell it from an emission: a repair that returned 149 characters
+                # of prose was counted as content, spent the round, and terminated the loop
+                # as "unverifiable" for a file that did not exist. Stamped rather than
+                # inferred from the name, which only this module knows.
+                "emission_fallback": True,
             },
         ]
     artifacts: list[dict[str, Any]] = []

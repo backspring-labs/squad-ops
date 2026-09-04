@@ -72,6 +72,14 @@ REASON_NO_TYPED_CRITERIA = "no_typed_criteria"
 #: skipped with this reason, in both environments, and the retest decides as it did before
 #: those checks existed.
 REASON_FILE_NOT_IN_PATCH = "file_not_in_patch"
+
+#: Every reason that means "the file this criterion names is not there" (#1273). Two
+#: producers say it differently — the verifier skips a row whose file the patch does not
+#: carry, and an evaluator running where the file is genuinely absent fails with
+#: ``file_not_found`` — and a reader deciding what to do about an unverifiable verdict
+#: needs the class, not the spelling. The distinction that matters downstream is
+#: absent FILE versus absent TOOLCHAIN, which have opposite remedies.
+FILE_ABSENT_REASONS = frozenset({REASON_FILE_NOT_IN_PATCH, "file_not_found"})
 STRUCTURALLY_UNEVALUABLE_REASONS = frozenset(
     {REASON_NO_EXECUTED_BLOCKING_CHECKS, REASON_NO_TYPED_CRITERIA}
 )

@@ -69,6 +69,7 @@ from squadops.cycles.models import (
 from squadops.cycles.naming import flow_run_name
 from squadops.cycles.patch_verification import (
     EXECUTED_IN_RUNTIME_API,
+    FILE_ABSENT_REASONS,
     PATCH_PASSED,
     PATCH_UNVERIFIABLE,
     STRUCTURALLY_UNEVALUABLE_REASONS,
@@ -3228,14 +3229,33 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 + (f" — {failed_detail}" if failed_detail else ""),
             )
             if unrepairable_here:
+                # #1273: say WHICH absence this was. `no_executed_blocking_checks` is
+                # produced by an absent toolchain AND by an absent file — every row
+                # skipping `file_not_found` because the repair wrote prose instead of the
+                # file — and the two have opposite remedies. Next.js roll 1 terminated
+                # under the toolchain wording for a file that was never written.
+                absent_files = sorted(
+                    {
+                        str((record.params or {}).get("file"))
+                        for record in verification.checks
+                        if record.reason in FILE_ABSENT_REASONS
+                        and (record.params or {}).get("file")
+                    }
+                )
                 logger.warning(
-                    "correction_terminated_unverifiable task=%s task_type=%s reason=%s — "
-                    "no check owning the repaired files can execute in this environment "
-                    "and the task carries no behavioral evidence to decide instead; "
-                    "further rounds cannot produce a verdict (#1221)",
+                    "correction_terminated_unverifiable task=%s task_type=%s reason=%s — %s; "
+                    "further rounds cannot produce a verdict (#1221, #1273)",
                     envelope.task_id,
                     envelope.task_type,
                     verification.reason,
+                    (
+                        "every check that could decide names a file the repair did not "
+                        f"write ({', '.join(absent_files)})"
+                        if absent_files
+                        else "no check owning the repaired files can execute in this "
+                        "environment and the task carries no behavioral evidence to "
+                        "decide instead"
+                    ),
                 )
                 return "break_correction"
             return "continue"
