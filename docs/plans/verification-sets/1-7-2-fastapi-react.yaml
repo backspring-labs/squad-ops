@@ -1,0 +1,76 @@
+# 1.7.2 verification set — FastAPI+React (fullstack_fastapi_react), 6 counting rolls (plan §4).
+# Predictions L1–L8 (the 1.7.2 pack: #1268 #1270 #1271 #1269 #1273 #1260 #788 #1272, on the
+# #1276/#1251 instrument) with R1/R3/R5/R6/R7 and S0–S3/Q0/Q3/Q5/P0 carried from 1.7.1
+# unchanged. Same project, squad and request profile as 1.6.6, 1.7.0 and 1.7.1 — the pack is
+# the only variable. Pins are filled at pre-registration from the last shakeout on the frozen
+# deploy and asserted on every counting roll; empty means no counting roll may launch.
+#
+# L1 is the line's one bar (plan §4): a falsified L1 blocks the cut, because #1268 is the
+# condition every other prediction is measured through.
+name: 1-7-2-fastapi-react
+pre_registration: docs/plans/1-7-2-verification-set-preregistration.md
+project: group_run
+squad_profile: full-38
+request_profile: validated-fullstack
+overrides: {}
+gate_name: progress_plan_review
+n_rolls: 6
+# Copied verbatim onto every gate approval — the driver substitutes NOTHING in this text.
+gate_notes: >-
+  1.7.2 verification set. Approved under the pre-registered gate policy
+  (pre-registration §6) — identical text applied to every roll of this set.
+  System plan validation passed; no additional judgment applied.
+# {roll} and {n} are the only substitutions the driver makes.
+launch_notes: >-
+  1.7.2 FastAPI+React (fullstack_fastapi_react) verification set — COUNTED roll {roll} of {n}.
+  Frozen deploy per the pre-registration; predictions L1–L8 with R1/R3/R5/R6/R7 carried;
+  scoring per 1.6.3 §5; validity per §5.1; a falsified prediction stops the set.
+shakeout_notes: >-
+  1.7.2 FastAPI+React (fullstack_fastapi_react) SHAKEOUT — NON-COUNTING by declaration before
+  launch. Cycle on the deploy built from the merged 1.7.2 pack (#1268 #1270 #1271 #1269 #1273
+  #1260 #788 #1272 on the #1276/#1251 instrument). Diagnostic only, not a measurement; the
+  last shakeout's identity becomes the set's pins.
+# "Loaded, not built": run inside the container and recorded with the deploy identity. Each
+# is a live CALL with its paired control, not a symbol import — a symbol can be present and
+# unreachable, which is the shape #1289 had for the whole of 1.7.1.
+loaded_checks:
+  # #1269: a repaired suite file is recognised through the stack's test-file patterns; an
+  # app file in the same patch is not. Empty second list = the retest gate is keyed on the
+  # patch's contents. #1273's skip reasons read by reason, not by count.
+  runtime-api: >-
+    from adapters.cycles.dispatched_flow_executor import _repaired_suite_files;
+    from squadops.cycles.patch_verification import PatchCheckRecord, skip_reasons;
+    cfg = {"build_profile": "fullstack_fastapi_react", "dev_capability": "fullstack_fastapi_react"};
+    print(_repaired_suite_files([{"name": "backend/tests/test_runs.py", "type": "code"}], cfg),
+    _repaired_suite_files([{"name": "backend/app/main.py", "type": "code"}], cfg),
+    skip_reasons([PatchCheckRecord(check="acceptance:x", severity="blocking",
+    status="skipped", reason="file_not_found")]))
+  # #1270 on roll 4's own row (vitest `is not a function` at the suite's own frame) with
+  # pytest as the paired control — 1 0 is the whole finding. #1280: the React qa namespace
+  # names the directory the stack actually seeds. #1251: the four declared faults.
+  eve: >-
+    from types import SimpleNamespace;
+    from squadops.capabilities.handlers.test_runner import suite_defects;
+    from squadops.capabilities.scaffold import qa_test_namespace;
+    from squadops.capabilities.handlers.fault_injection import FAULTS;
+    rows = [{"file": "frontend/src/__tests__/runs.test.jsx", "title": "creates a run",
+    "exception": "TypeError",
+    "messages": ["TypeError: __vi_import_3__.default.click is not a function"],
+    "frames": [{"file": "frontend/src/__tests__/runs.test.jsx", "line": 12}]}];
+    print(len(suite_defects(rows, [], "vitest")), len(suite_defects(rows, [], "pytest")),
+    qa_test_namespace(SimpleNamespace(stack="fullstack_fastapi_react")), sorted(FAULTS))
+  # #1289 and #788: the three blocks reach the renderer. Echoing the sentinels back is the
+  # only evidence that distinguishes this build from every build before it, where the
+  # variables were computed and dropped.
+  neo: >-
+    from squadops.capabilities.handlers.impl.repair_handlers import
+    DevelopmentCorrectionRepairHandler;
+    v = DevelopmentCorrectionRepairHandler()._build_render_variables("prd", None,
+    {"failing_cases_section": "CASES", "client_surface_section": "SURFACE",
+    "app_traceback_section": "TB"});
+    print(v["failing_cases_section"], v["client_surface_section"], v["app_traceback_section"])
+# Pins: filled from the last shakeout before roll 1; empty means "no counting roll may launch".
+expected_config_hash_prefix: ""
+expected_squad_snapshot_prefix: ""
+frozen_deploy_commit: ""
+frozen_image_ids: {}
