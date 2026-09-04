@@ -1755,3 +1755,59 @@ class TestTheNextAttemptKeepsTheCasesThisOneExposed:
         await self._route(executor, cycle, envelope, enriched, result)
 
         assert "prior_failing_cases" not in enriched.inputs
+
+
+class TestTheRetryLineNamesTheSignatureItRetriesOn:
+    """#1110: entered at ``execute_run``, the call the live cycle makes.
+
+    #998 classifies a zero-extraction emission — `cap_exhausted`, `empty`,
+    `unextractable` — and the executor attaches the marker so the handler can render an
+    aimed remedy. The retry log line said only that a retry happened, and LangFuse
+    truncates generation input at 10,000 chars while the retry prompt runs past it, so the
+    1.6.4 record had to state that whether the remedy reached the prompt was unobservable.
+    """
+
+    async def test_the_signature_and_token_facts_are_echoed_on_the_retry(
+        self, executor, mock_queue, caplog
+    ):
+        marker = {
+            "reason": "no_fenced_blocks",
+            "response_chars": 0,
+            "completion_tokens": 8192,
+            "completion_cap": 8192,
+            "signature": "cap_exhausted",
+        }
+        mock_queue.reply_router.responder = _scripted_responder(
+            {0: ("FAILED", {"emission_failure": marker}, "no fenced blocks")}
+        )
+        with (
+            patch(
+                "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+                new_callable=AsyncMock,
+            ),
+            caplog.at_level("INFO"),
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        line = next(r.getMessage() for r in caplog.records if "Retryable failure" in r.getMessage())
+        assert "signature=cap_exhausted" in line
+        assert "completion_tokens=8192" in line
+        assert "completion_cap=8192" in line
+
+    async def test_a_retry_with_no_emission_marker_says_so_rather_than_inventing_one(
+        self, executor, mock_queue, caplog
+    ):
+        """A transient failure carries no #998 marker. The line must read `signature=none`
+        — a blank or a guessed value there would be worse than the silence it replaced."""
+        mock_queue.reply_router.responder = _scripted_responder({0: ("FAILED", None, "transient")})
+        with (
+            patch(
+                "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+                new_callable=AsyncMock,
+            ),
+            caplog.at_level("INFO"),
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        line = next(r.getMessage() for r in caplog.records if "Retryable failure" in r.getMessage())
+        assert "signature=none" in line

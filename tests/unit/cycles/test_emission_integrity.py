@@ -373,3 +373,69 @@ class TestEmissionStats:
         # malformed stats never crash the evidence path
         assert not extraction_loss_suspected({"response_chars": "x"})
         assert not extraction_loss_suspected({})
+
+
+class TestTheRetryPathSaysWhetherTheRemedyReachedThePrompt:
+    """#1110: the 1.6.4 record had to write "whether the aimed-retry prompt rendered the
+    signature line is unobservable from stored state".
+
+    #998 classifies an empty emission and names a remedy per signature; the executor
+    attaches it and the handler renders it. Neither said so. LangFuse truncates generation
+    input at 10,000 chars (`MAX_OBSERVABILITY_TEXT_LENGTH`) and the retry prompt runs past
+    that, so the prompt itself could not be read back either.
+    """
+
+    async def _handler_with(self, renderer, marker):
+        from unittest.mock import MagicMock
+
+        from squadops.capabilities.handlers.cycle.develop import DevelopmentDevelopHandler
+
+        ctx = MagicMock()
+        ctx.ports.request_renderer = renderer
+        handler = DevelopmentDevelopHandler()
+        inputs = {"emission_retry_feedback": marker} if marker is not None else {}
+        return await handler._apply_emission_retry_feedback(ctx, inputs, "PROMPT")
+
+    def _renderer(self, content="APPENDIX"):
+        from unittest.mock import AsyncMock, MagicMock
+
+        rendered = MagicMock()
+        rendered.content = content
+        return MagicMock(render=AsyncMock(return_value=rendered))
+
+    async def test_appending_the_appendix_is_traced_with_its_signature(self, caplog):
+        marker = {
+            "reason": "no_fenced_blocks",
+            "signature": "cap_exhausted",
+            "response_chars": 0,
+            "completion_tokens": 8192,
+            "completion_cap": 8192,
+            "expected_artifacts": ["backend/routes.py"],
+        }
+        with caplog.at_level("INFO"):
+            out = await self._handler_with(self._renderer(), marker)
+        assert out.endswith("APPENDIX")
+        line = next(r.getMessage() for r in caplog.records if "feedback appended" in r.getMessage())
+        assert "signature=cap_exhausted" in line
+        assert "appendix_chars=8" in line
+
+    async def test_a_missing_renderer_is_loud_because_the_retry_then_re_rolls_blind(self, caplog):
+        """The case that matters. The executor classified the failure and attached a
+        remedy; with no renderer the appendix is dropped and the model sees the same prior
+        it already failed on. #1289 was this shape and went five weeks unnoticed."""
+        marker = {"reason": "no_fenced_blocks", "signature": "empty", "response_chars": 0}
+        with caplog.at_level("WARNING"):
+            out = await self._handler_with(None, marker)
+        assert out == "PROMPT", "the prompt is unchanged — that part is the prior behaviour"
+        record = next(r for r in caplog.records if "NOT appended" in r.getMessage())
+        assert record.levelname == "WARNING"
+        assert "signature=empty" in record.getMessage()
+        assert "re-rolls blind" in record.getMessage()
+
+    async def test_no_marker_at_all_is_not_a_retry_and_says_nothing(self, caplog):
+        """A first attempt has no marker. It must not emit a warning — an alarm on the
+        normal path is an alarm nobody reads."""
+        with caplog.at_level("INFO"):
+            out = await self._handler_with(self._renderer(), None)
+        assert out == "PROMPT"
+        assert not [r for r in caplog.records if "emission retry feedback" in r.getMessage()]

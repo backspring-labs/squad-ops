@@ -2925,10 +2925,21 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 envelope.inputs["emission_retry_feedback"] = feedback
                 if enriched_envelope is not None:
                     enriched_envelope.inputs["emission_retry_feedback"] = feedback
+            # #1110: echo the #998 signature and the token facts the aimed retry is
+            # built from. Without them the record could say only that a retry happened —
+            # the 1.6.4 set had to write "whether the aimed-retry prompt rendered the
+            # signature line is unobservable from stored state", because LangFuse truncates
+            # generation input at 10,000 chars and the retry prompt runs past it.
+            marker = envelope.inputs.get("emission_retry_feedback") or {}
             logger.info(
-                "Retryable failure for %s (attempt %d), retrying",
+                "Retryable failure for %s (attempt %d), retrying — signature=%s "
+                "response_chars=%s completion_tokens=%s completion_cap=%s",
                 envelope.task_id,
                 task_attempt_counts.get(envelope.task_id, 1),
+                marker.get("signature") or "none",
+                marker.get("response_chars"),
+                marker.get("completion_tokens"),
+                marker.get("completion_cap"),
             )
             return "continue"
 

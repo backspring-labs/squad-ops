@@ -321,6 +321,17 @@ class _CycleTaskHandler(CapabilityHandler):
             return user_prompt
         renderer = getattr(context.ports, "request_renderer", None)
         if renderer is None:
+            # #1110: loud, because this is the case that makes a retry blind. The executor
+            # classified the failure and attached a remedy; with no renderer the appendix
+            # is silently dropped and the model re-rolls on the same prior with nothing
+            # said. #1289 was this shape — a block computed, threaded, and never rendered —
+            # and it went five weeks unnoticed because the only trace was its absence.
+            logger.warning(
+                "emission retry feedback NOT appended for %s (no request_renderer) — this "
+                "retry re-rolls blind on the same prior; signature=%s",
+                self._handler_name,
+                marker.get("signature") or "none",
+            )
             return user_prompt
         from squadops.cycles.emission_integrity import emission_retry_reason_line
 
@@ -336,6 +347,17 @@ class _CycleTaskHandler(CapabilityHandler):
                 "reason_line": emission_retry_reason_line(marker),
                 "expected_files": expected_files,
             },
+        )
+        # #1110: the positive trace. The pair of lines — the executor's signature and this
+        # one — is what makes "the remedy reached the prompt" readable from stored state
+        # rather than inferred from the retry having happened at all.
+        logger.info(
+            "emission retry feedback appended for %s: signature=%s appendix_chars=%d "
+            "expected_files=%d",
+            self._handler_name,
+            marker.get("signature") or "none",
+            len(rendered.content or ""),
+            len(expected),
         )
         return f"{user_prompt}\n\n{rendered.content}"
 
