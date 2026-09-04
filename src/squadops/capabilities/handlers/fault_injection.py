@@ -87,9 +87,43 @@ def _vitest_own_frame_type_error(content: str) -> str:
     swapped = content.replace("@testing-library/user-event", "@testing-library/react")
     if swapped != content:
         return swapped
-    # No such import to break: append a call to a name the module never binds, which is
-    # the same class of failure (raised at the suite's own frame, `is not a function`).
-    return content
+    # No such import to break. #1300: this branch used to `return content`, with the
+    # fallback written as a comment and never implemented — so on an emission that imports
+    # no `userEvent` the fault logged APPLIED and changed nothing, and the diagnostic ran on
+    # as an ordinary green cycle. A fault whose shape depends on what the model happened to
+    # emit is not deterministic, and a diagnostic that is not deterministic is not an
+    # exercise.
+    #
+    # So the same class of failure is produced without inventing an import: a call to a
+    # non-function property of `expect`, which every vitest suite binds. It raises
+    # `TypeError: expect.__squadops_injected_fault__ is not a function` at the suite's own
+    # call site — roll 4's shape, matched by the vitest `is not a function` own-frame shape
+    # in `_OWN_FRAME_SHAPES`.
+    return _call_a_non_function_in_the_first_case(content)
+
+
+#: Inserted into the first test body when the import swap has nothing to swap. Named so a
+#: reader of a failing suite can find this module rather than hunt a real defect.
+_INJECTED_CALL = "  expect.__squadops_injected_fault__();  // #1251 injected fault"
+
+_FIRST_CASE_BODY = re.compile(
+    r"^(?P<indent>[ \t]*)(?:it|test)\s*\(\s*(?P<quote>['\"`]).*?(?P=quote)\s*,"
+    r"\s*(?:async\s+)?(?:\(\s*\)|[\w$]+)\s*=>\s*\{",
+    re.M,
+)
+
+
+def _call_a_non_function_in_the_first_case(content: str) -> str:
+    """Insert the injected call at the top of the first ``it``/``test`` body (#1300).
+
+    Returns the content unchanged when there is no case to insert into — the caller's
+    ``inject`` then reports DID NOT BITE rather than claiming an exercise.
+    """
+    match = _FIRST_CASE_BODY.search(content)
+    if match is None:
+        return content
+    at = match.end()
+    return f"{content[:at]}\n{match.group('indent')}{_INJECTED_CALL}{content[at:]}"
 
 
 @dataclass(frozen=True)
@@ -240,6 +274,21 @@ def inject(
             )
             continue
         faulted = fault.transform(content)
+        if faulted == content:
+            # #1300: "applied" and "applied and inert" used to print the same word, so a
+            # fault that could not bite read as an exercise. The only signal was the two
+            # char counts mid-line, which no readout compared.
+            logger.warning(
+                "fault_injection: DID NOT BITE %s on task=%s handler=%s — the emission was "
+                "returned unchanged (%d chars), so the downstream path runs as if no fault "
+                "were declared. THIS DIAGNOSTIC PROVES NOTHING about %s.",
+                name,
+                task_id,
+                handler_name,
+                len(content),
+                fault.exercises,
+            )
+            return content
         logger.warning(
             "fault_injection: APPLIED %s to task=%s handler=%s chars %d -> %d "
             "(found_in=%s exercises=%s) — this cycle is a DIAGNOSTIC and must not be counted",
