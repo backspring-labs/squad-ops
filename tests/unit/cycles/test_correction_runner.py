@@ -5494,3 +5494,152 @@ class TestTheRepairEnvelopeCarriesTheFailedTasksFiles(TestCorrectionRunnerStanda
             suite,
             {"name": "test_report.md", "content": "exit 4"},
         ]
+
+
+class TestRepairBriefReadout(TestCorrectionRunnerStandalone):
+    """#1276: the repair-brief line says which result the brief was built from.
+
+    The 1.7.1 R4 readout was a bare list of case counts, and a `0` in it is two different
+    facts: the failed result carried no behavioural evidence (correct), or it carried cases
+    and the round was re-briefed from a refunded repair's empty emission (#1273). The
+    record could not tell them apart. Entry point is ``run_correction_protocol`` — the call
+    the live cycle makes — so this proves the wiring, not the formatter. The evidence is
+    1.6.5 roll 3's stored report, replayed through the real row builder.
+    """
+
+    _REPLAYS = Path(__file__).resolve().parents[2] / "fixtures" / "roll_replays"
+
+    def _qa_envelope(self):
+        from squadops.tasks.models import TaskEnvelope
+
+        return TaskEnvelope(
+            task_id="task-run_001-m005-qa.test",
+            agent_id="eve",
+            cycle_id="cyc_001",
+            pulse_id="p",
+            project_id="hello_squad",
+            task_type="qa.test",
+            correlation_id="corr",
+            causation_id=None,
+            trace_id="t",
+            span_id="s",
+            inputs={
+                "expected_artifacts": ["backend/tests/test_runs.py"],
+                "subtask_focus": "Backend runs API pytest suite",
+                "subtask_description": "Comprehensive pytest test file.",
+                "resolved_config": {"dev_capability": "fullstack_fastapi_react"},
+            },
+            metadata={"role": "qa"},
+        )
+
+    @staticmethod
+    def _responder(envelope):
+        if envelope.task_type == "data.analyze_failure":
+            return TaskResult(
+                task_id=envelope.task_id,
+                status="SUCCEEDED",
+                outputs={"classification": "work_product", "analysis_summary": "suite raised"},
+            )
+        if envelope.task_type == "governance.correction_decision":
+            return TaskResult(
+                task_id=envelope.task_id,
+                status="SUCCEEDED",
+                outputs={
+                    "correction_path": "patch",
+                    "decision_rationale": "re-author",
+                    "affected_task_types": ["qa.test"],
+                },
+            )
+        return TaskResult(
+            task_id=envelope.task_id,
+            status="SUCCEEDED",
+            outputs={
+                "artifacts": [
+                    {
+                        "name": "backend/tests/test_runs.py",
+                        "content": "def test_ok(client):\n    assert True\n",
+                        "media_type": "text/x-python",
+                        "type": "test",
+                    }
+                ]
+            },
+        )
+
+    def _suite_raised_evidence(self):
+        """The 1.6.5 roll-3 report: three cases die at the suite's own call site."""
+        from squadops.capabilities.handlers.test_runner import (
+            RunTestsResult,
+            failed_tests_pass_row,
+            parse_pytest_failure_rows,
+            suite_defects,
+        )
+        from squadops.capabilities.scaffold import is_qa_test_path_for_stack
+
+        text = (self._REPLAYS / "1-6-5-react-roll-3-round-0-test_report.md").read_text(
+            encoding="utf-8"
+        )
+        stdout = text.split("## stdout", 1)[1].split("```")[1]
+        rows = parse_pytest_failure_rows(stdout, ["backend/tests/test_runs.py"])
+        result = RunTestsResult(
+            executed=True,
+            exit_code=1,
+            runner="pytest",
+            suite_broken=False,
+            test_failures=tuple(rows),
+            suite_defects=tuple(suite_defects(rows, [])),
+        )
+        row = failed_tests_pass_row(
+            result,
+            qa_owned=lambda path: is_qa_test_path_for_stack(path, "fullstack_fastapi_react"),
+        )
+        return {"validation_result": {"passed": False, "checks": [row]}}, row
+
+    async def _brief_lines(self, cycle, caplog, outputs):
+        import logging
+
+        runner, _registry, _vault, _bus = self._make_runner(self._responder)
+        with caplog.at_level(logging.INFO, logger="adapters.cycles.correction_runner"):
+            await runner.run_correction_protocol(
+                run_id="run_001",
+                cycle=cycle,
+                envelope=self._qa_envelope(),
+                result=TaskResult(
+                    task_id="task-run_001-m005-qa.test",
+                    status="FAILED",
+                    error="suite failed",
+                    outputs=outputs,
+                ),
+                correction_attempts=0,
+                prior_outputs={},
+                all_artifact_refs=[],
+                stored_artifacts=[],
+                completed_task_ids=[],
+                plan_delta_refs=[],
+            )
+        return [m for m in caplog.messages if "correction_repair_brief:" in m]
+
+    async def test_the_brief_names_the_result_its_cases_came_from(self, cycle, caplog):
+        evidence, row = self._suite_raised_evidence()
+        lines = await self._brief_lines(cycle, caplog, evidence)
+        assert len(lines) == 1
+        assert f"carries {len(row['failing_cases'])} failing case(s)" in lines[0]
+        assert "from=task-run_001-m005-qa.test" in lines[0]
+        assert "tests_pass_rows=1" in lines[0]
+
+    async def test_a_zero_case_brief_says_the_result_had_no_tests_pass_row(self, cycle, caplog):
+        """The honest zero: an emission failure has no behavioural evidence to carry, so
+        ``tests_pass_rows=0`` tells it apart from #1273's re-brief off a refunded round."""
+        lines = await self._brief_lines(
+            cycle,
+            caplog,
+            {
+                "emission_failure": {
+                    "reason": "no_fenced_blocks",
+                    "response_chars": 148,
+                    "expected_artifacts": ["backend/tests/test_runs.py"],
+                }
+            },
+        )
+        assert len(lines) == 1
+        assert "carries 0 failing case(s)" in lines[0]
+        assert "tests_pass_rows=0" in lines[0]

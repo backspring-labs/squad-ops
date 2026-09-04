@@ -202,7 +202,8 @@ def _failed_probe_ids(failure_evidence: Any) -> list[str]:
     """
     if not isinstance(failure_evidence, dict):
         return []
-    rows = (failure_evidence.get("validation_result") or {}).get("checks") or []
+    evidence = failure_evidence if isinstance(failure_evidence, dict) else {}
+    rows = (evidence.get("validation_result") or {}).get("checks") or []
     ids = [
         str(row.get("check"))
         for row in rows
@@ -721,19 +722,40 @@ def _locus_and_repair_target(
     return (failure_locus, expected, focus, description)
 
 
-def _log_repair_brief(task_type: str, role: str, failure_evidence: Any, targets: list[str]) -> None:
+def _log_repair_brief(
+    task_type: str,
+    role: str,
+    failure_evidence: Any,
+    targets: list[str],
+    evidence_from: str = "?",
+) -> None:
     """#1123: the set's R4 readout — how many failing cases a qa repair brief carries (the
     brief renders exactly the ``failing_cases`` rows on the failed task's ``tests_pass``
-    row). Logged for the qa role only; a dev repair has no case list to scope."""
+    row). Logged for the qa role only; a dev repair has no case list to scope.
+
+    **``from=`` and ``tests_pass_rows=`` (#1276).** The count alone cannot be read: a brief
+    carrying zero cases is correct when the failed result had no behavioural evidence to
+    carry, and is the #1273 defect when the result *did* and a refunded round re-briefed
+    from the repair's own empty emission instead. The two are told apart by which result
+    the evidence was built from and whether that result carried a ``tests_pass`` row at
+    all — both known here, neither on the line the 1.7.1 record was read from.
+    """
     if role != "qa":
         return
     from squadops.cycles.failure_evidence import failing_cases_from_evidence
 
+    evidence = failure_evidence if isinstance(failure_evidence, dict) else {}
+    rows = (evidence.get("validation_result") or {}).get("checks") or []
+    tests_pass_rows = sum(
+        1 for row in rows if isinstance(row, dict) and row.get("check") == "tests_pass"
+    )
     logger.info(
-        "correction_repair_brief: %s carries %d failing case(s) for %s",
+        "correction_repair_brief: %s carries %d failing case(s) for %s from=%s tests_pass_rows=%d",
         task_type,
         len(failing_cases_from_evidence(failure_evidence)),
         ", ".join(targets) or "?",
+        evidence_from,
+        tests_pass_rows,
     )
 
 
@@ -1648,7 +1670,13 @@ class CorrectionRunner:
                     [str(e) for e in (failed_inputs.get("expected_artifacts") or [])],
                 )
                 repair_task_id = f"repair-{run_id[:12]}-{correction_attempts:02d}-{task_type}"
-                _log_repair_brief(task_type, role, failure_evidence, step_expected_artifacts)
+                _log_repair_brief(
+                    task_type,
+                    role,
+                    failure_evidence,
+                    step_expected_artifacts,
+                    evidence_from=envelope.task_id,
+                )
                 resolved = resolve_agent_config(role, profile)
                 agent_id = resolved.agent_id
                 agent_model = resolved.model

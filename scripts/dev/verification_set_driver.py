@@ -16,6 +16,14 @@ fixed and its assumptions moved out of the code:
   (the #818 rule). The scratchpad opened ``lib/models.ts`` unconditionally.
 * **The log window is UTC-explicit.** ``docker logs --since`` read the wrong window
   because the timestamp carried no zone (1.6.4 record §4, "instrument defect").
+* **Every readout is read by its REASON, never by a count (#1276, 1.7.1 record §7).**
+  A prediction reads "exercised" or "falsified" off rows whose reason is not the one it
+  names otherwise: React roll 5's "1 kind-gate rejection" was ``assertion_kinds_match``
+  failing with ``file_not_found``, and Next.js roll 1's "unverifiable, toolchain absent"
+  was an absent *file*. Three of the 1.7.1 readouts were misread this way. So a readout
+  is a ``{reason: count}`` map, non-execution is reported beside failure (#1261 arrived as
+  skipped rows), and an emission fact is read from the emission — the producing agent's
+  own ``emission shape:`` line — not from a downstream token.
 
 Deliberately not a loop over a set: §5.1's *reset* rule requires someone to NOTICE a new
 harness-attributable failure, so everything mechanical is automated and the scoring
@@ -202,6 +210,24 @@ def sh(cmd: str, check: bool = True) -> str:
     if check and proc.returncode != 0:
         raise SystemExit(f"FAILED: {cmd}\n{proc.stdout}\n{proc.stderr}")
     return proc.stdout.strip()
+
+
+def docker_logs(container: str, since: str) -> list[str]:
+    """One container's log window, BOTH streams (#1276).
+
+    ``docker logs`` replays the container's stdout and stderr on the reader's own stdout
+    and stderr respectively, and ``sh`` returns stdout alone. The runtime-api's logging
+    lands on stdout, so every readout built from it happened to work; the agents' lands on
+    stderr, so the emission facts — logged where the emission happens — were unreadable to
+    an instrument that only ever looked at one stream. Which stream a container happens to
+    use is not a fact any readout should depend on.
+    """
+    proc = subprocess.run(
+        shlex.split(f"docker logs --since {since} {container}"),
+        capture_output=True,
+        text=True,
+    )
+    return (proc.stdout + proc.stderr).splitlines()
 
 
 def psql(query: str) -> str:
@@ -793,7 +819,7 @@ def ledger_checks(rec: dict) -> dict:
 
 
 def runtime_log_window(since: str) -> list[str]:
-    out = sh(f"docker logs --since {since} {RUNTIME_API_CONTAINER}", check=False)
+    lines = docker_logs(RUNTIME_API_CONTAINER, since)
     keys = (
         "correction_repair_target",
         "correction_repair_locus",
@@ -811,14 +837,129 @@ def runtime_log_window(since: str) -> list[str]:
         "correction_repair_brief",
         "decided_by_agent=",
     )
-    return [line for line in out.splitlines() if any(k in line for k in keys)]
+    return [line for line in lines if any(k in line for k in keys)]
+
+
+def agent_log_window(since: str) -> list[str]:
+    """The producing agents' ``emission shape:`` lines (#1276).
+
+    The loop's emission facts are logged where the emission happens — in the role's own
+    container — and the driver had only ever read the runtime-api's window. So
+    ``empty_repair_emissions`` keyed on a runtime-api token ("repair emitted no content")
+    that the 1.7.1 prose-only repairs never produced, and the contentless first attempts
+    that shaped five of seven counted rolls appeared in no readout at all.
+    """
+    lines: list[str] = []
+    for service in AGENT_SERVICES:
+        lines += [
+            line for line in docker_logs(f"squadops-{service}", since) if "emission shape:" in line
+        ]
+    return lines
 
 
 def loop_texture(cfg: SetConfig, cycle_id: str, impl_run: str | None, since: str) -> dict:
     logs = runtime_log_window(since)
     out = texture_from_logs(logs)
+    out.update(texture_from_emission_shapes(agent_log_window(since)))
     out["fill_rejections"] = _fill_rejections(cfg, cycle_id, impl_run) if impl_run else []
     return out
+
+
+def _field(line: str, key: str) -> str | None:
+    """``key=value`` off a space-separated log line — the shape executor readouts use."""
+    match = re.search(rf"\b{re.escape(key)}=(\S*)", line)
+    return match.group(1) if match else None
+
+
+def _count_by(values) -> dict[str, int]:
+    """``{value: count}``, most frequent first — the shape #1276 requires of every readout.
+
+    An integer says a prediction fired; it never says on what. Three 1.7.1 readouts were
+    misread because the reason was thrown away at exactly this line (record §4.6).
+    """
+    counts: dict[str, int] = {}
+    for value in values:
+        counts[value] = counts.get(value, 0) + 1
+    return dict(sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])))
+
+
+def _sum_pairs(entries) -> dict[str, int]:
+    """``reason:count`` entries summed by reason — the ``skips=`` field's own shape.
+
+    Counting the entries instead of their counts would report "1 missing_tooling" for a
+    verification where three rows skipped, which is the class of misreading #1276 is about.
+    """
+    counts: dict[str, int] = {}
+    for entry in entries:
+        reason, _, count = entry.partition(":")
+        try:
+            counts[reason] = counts.get(reason, 0) + (int(count) if count else 1)
+        except ValueError:
+            counts[reason] = counts.get(reason, 0) + 1
+    return dict(sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])))
+
+
+#: The agent-side emission-shape line (``handlers/emission_log.py``). ``reasoning_tokens``
+#: and ``reasoning_chars`` are alternatives — Ollama reports no thinking count, so the
+#: production arm renders the text's length instead (#1195).
+_EMISSION_SHAPE = re.compile(
+    r"(?P<handler>\S+) emission shape: chars=(?P<chars>\d+) "
+    r"completion_tokens=(?P<tokens>\S+)"
+    r"(?: reasoning_tokens=(?P<reasoning_tokens>\S+))?"
+    r"(?: reasoning_chars=(?P<reasoning_chars>\d+))?"
+    r" fences=(?P<fences>\{[^}]*\})"
+)
+
+#: An emission is CONTENTLESS when it addresses no file and is shorter than a sentence or
+#: two of intent (1.7.2 plan §4, prediction L1). The 1.7.1 sample ran 0–265 chars.
+CONTENTLESS_CHARS = 400
+
+
+def emission_shapes(lines: list[str]) -> list[dict]:
+    """Every agent emission's shape, parsed — pure, so the parse is testable."""
+    shapes = []
+    for line in lines:
+        match = _EMISSION_SHAPE.search(line)
+        if not match:
+            continue
+        fences = {
+            key: int(value) for key, value in re.findall(r"'(\w+)': (\d+)", match.group("fences"))
+        }
+        shapes.append(
+            {
+                "handler": match.group("handler"),
+                "chars": int(match.group("chars")),
+                "completion_tokens": match.group("tokens"),
+                "reasoning_tokens": match.group("reasoning_tokens"),
+                "reasoning_chars": match.group("reasoning_chars"),
+                "fences": fences,
+                "fences_total": sum(fences.values()),
+            }
+        )
+    return shapes
+
+
+def texture_from_emission_shapes(lines: list[str]) -> dict:
+    """The emission readouts, read from the emission itself (#1276, #1268).
+
+    ``contentless_emissions`` is prediction L1's instrument and carries each emission's
+    own ``chars``/``completion_tokens``, so a record says what the model actually returned
+    rather than that something was missing downstream. ``empty_repair_emissions`` is the
+    repair-handler subset of the same fact — it used to key on a runtime-api log token
+    that both 1.7.1 prose-only repairs failed to produce.
+    """
+    shapes = emission_shapes(lines)
+    contentless = [
+        shape
+        for shape in shapes
+        if shape["fences_total"] == 0 and shape["chars"] < CONTENTLESS_CHARS
+    ]
+    return {
+        "emissions_logged": len(shapes),
+        "contentless_emissions": contentless,
+        "contentless_by_handler": _count_by(shape["handler"] for shape in contentless),
+        "empty_repair_emissions": [shape for shape in contentless if "repair" in shape["handler"]],
+    }
 
 
 def texture_from_logs(logs: list[str]) -> dict:
@@ -869,9 +1010,6 @@ def texture_from_logs(logs: list[str]) -> dict:
             for line in logs
             if "re-fills slot" in line
         ],
-        "empty_repair_emissions": [
-            line[-160:] for line in logs if "repair emitted no content" in line
-        ],
         "self_eval_fill_merges": [line[-160:] for line in logs if "self_eval fills" in line],
         "refused_patches": refused,
         "applied_patches": applied,
@@ -896,10 +1034,22 @@ def texture_from_logs(logs: list[str]) -> dict:
             for line in logs
             if "absent_anchor_routed" in line
         ],
+        # #1276: the count alone cannot be read — a zero-case brief is correct when the
+        # failed result carried no behavioural evidence and is the #1273 defect when it
+        # did. Each record carries the count, the result the evidence was built from, and
+        # whether that result had a ``tests_pass`` row at all.
         "repair_brief_case_counts": [
-            int(m.group(1))
+            {
+                "cases": int(m.group("cases")),
+                "from": m.group("source") or "?",
+                "tests_pass_rows": int(m.group("rows")) if m.group("rows") else None,
+            }
             for m in (
-                re.search(r"carries (\d+) failing case", line)
+                re.search(
+                    r"carries (?P<cases>\d+) failing case\(s\) for .*?"
+                    r"(?: from=(?P<source>\S+) tests_pass_rows=(?P<rows>\d+))?$",
+                    line.rstrip(),
+                )
                 for line in logs
                 if "correction_repair_brief:" in line
             )
@@ -910,27 +1060,44 @@ def texture_from_logs(logs: list[str]) -> dict:
             for m in (re.search(r"decided_by_agent=(\d+)", line) for line in logs)
             if m
         ),
-        "unverifiable_toolchain_absent": [
-            line[-200:]
+        # #1276: "unverifiable" is a verdict, not a reason. The 1.7.1 R7 readout counted
+        # every ``no_executed_blocking_checks`` as an absent toolchain; Next.js roll 1's
+        # came from an absent file (a prose-only repair). Both facts are on the line —
+        # the verdict's own ``reason=`` and, since this issue, the rows' ``skips=``.
+        "unverifiable_by_reason": _count_by(
+            _field(line, "reason") or "unstated"
             for line in logs
-            if "patch_verification task=" in line
-            and "status=unverifiable" in line
-            and "no_executed_blocking_checks" in line
-        ],
+            if "patch_verification task=" in line and "status=unverifiable" in line
+        ),
+        "no_execution_by_skip_reason": _sum_pairs(
+            entry
+            for line in logs
+            if "patch_verification task=" in line and "status=unverifiable" in line
+            for entry in (_field(line, "skips") or "").split(",")
+            if entry and entry != "-"
+        ),
     }
 
 
-#: The typed checks the 1.7.1 predictions read per roll (plan §4), by check name; a failed
-#: row of each is the rejection the prediction counts. Read from every stored
+#: The typed checks the predictions read per roll, by check name. Read from every stored
 #: ``typed_check_evaluation_*.json`` of the implementation run, so the readout is the
 #: stored state, never a log.
+#:
+#: **Named for the check, not for a verdict (#1276).** These were ``kind_gate_rejections``
+#: and friends, and reported an integer: React roll 5's "1 kind-gate rejection" was
+#: ``assertion_kinds_match`` failing with ``file_not_found`` — the gate never rejected
+#: anything. A row's reason is the readout; the count is what the reason is counted by.
 _PREDICTION_CHECKS = {
-    "kind_gate_rejections": "assertion_kinds_match",
-    "additive_rejections": "additive_containment",
-    "dom_anchor_findings": "dom_anchor_queries",
-    "container_packaging_findings": "container_packaging",
-    "undefined_name_rejections": "undefined_names",
+    "assertion_kinds_match_rows": "assertion_kinds_match",
+    "additive_containment_rows": "additive_containment",
+    "dom_anchor_queries_rows": "dom_anchor_queries",
+    "container_packaging_rows": "container_packaging",
+    "undefined_names_rows": "undefined_names",
 }
+
+#: The row statuses a readout reports separately. ``skipped`` is here because #1261's gap
+#: arrived as skipped rows and was invisible to a count of failed ones (CLAUDE.md).
+_READOUT_STATUSES = ("failed", "skipped")
 
 
 def typed_checks_by_check(cfg: SetConfig, cycle_id: str, impl_run: str) -> dict:
@@ -938,7 +1105,7 @@ def typed_checks_by_check(cfg: SetConfig, cycle_id: str, impl_run: str) -> dict:
     prediction readouts derived from them, and ``checks_by_environment`` — which role's
     container each evaluation ran in (the artifact's task type names the producing role;
     rule B puts every emission-time evaluation there, #1229)."""
-    by_check: dict[str, dict[str, int]] = {}
+    by_check: dict[str, dict[str, dict[str, int]]] = {}
     by_env: dict[str, int] = {}
     for art in artifact_dirs(cfg, cycle_id, impl_run):
         for path in art.glob("typed_check_evaluation_*.json"):
@@ -952,11 +1119,21 @@ def typed_checks_by_check(cfg: SetConfig, cycle_id: str, impl_run: str) -> dict:
             for row in doc.get("evaluations") or []:
                 name = str(row.get("check") or "").removeprefix("acceptance:")
                 status = str(row.get("status") or "?")
-                by_check.setdefault(name, {}).setdefault(status, 0)
-                by_check[name][status] += 1
+                reason = str(row.get("reason") or "unstated")
+                reasons = by_check.setdefault(name, {}).setdefault(status, {})
+                reasons[reason] = reasons.get(reason, 0) + 1
                 by_env[env] = by_env.get(env, 0) + 1
     readouts = {
-        key: by_check.get(check, {}).get("failed", 0) for key, check in _PREDICTION_CHECKS.items()
+        key: {
+            status: dict(
+                sorted(
+                    by_check.get(check, {}).get(status, {}).items(),
+                    key=lambda kv: (-kv[1], kv[0]),
+                )
+            )
+            for status in _READOUT_STATUSES
+        }
+        for key, check in _PREDICTION_CHECKS.items()
     }
     return {"by_check": by_check, "checks_by_environment": by_env, **readouts}
 
@@ -984,6 +1161,22 @@ def _fill_rejections(cfg: SetConfig, cycle_id: str, impl_run: str) -> list[str]:
 # ---------------------------------------------------------------------------
 # Render
 # ---------------------------------------------------------------------------
+
+
+def _render_by_reason(counts: Mapping[str, int] | None) -> str:
+    """``2 missing_tooling, 1 file_not_found`` — never a bare integer (#1276)."""
+    if not counts:
+        return "0"
+    return ", ".join(f"{count} {reason}" for reason, count in counts.items())
+
+
+def _render_readout(readout: Mapping[str, Mapping[str, int]] | None) -> str:
+    """One prediction check's rows: failed by reason, then non-execution by reason."""
+    if not readout:
+        return "—"
+    return " · ".join(
+        f"{status} {_render_by_reason(readout.get(status))}" for status in _READOUT_STATUSES
+    )
 
 
 def render(cfg: SetConfig, title: str, rec: dict) -> str:
@@ -1023,26 +1216,31 @@ def render(cfg: SetConfig, title: str, rec: dict) -> str:
         f"| criteria verified / total | {rec['criteria_verified']} / {rec['criteria_total']} |",
         f"| criteria unevidenced | {', '.join(rec['criteria_unevidenced']) or '—'} |",
         f"| failed emissions banked (#971) | {rec['failed_emissions_banked']} |",
-        "| 1.7.1 R1 kind-gate rejections | "
-        f"{(rec.get('typed_checks') or {}).get('kind_gate_rejections', '—')} |",
-        "| 1.7.1 R2 qa-owned routed | "
+        "| contentless emissions (L1) | "
+        f"{_render_by_reason((rec.get('loop_texture') or {}).get('contentless_by_handler', {}))}"
+        f" of {(rec.get('loop_texture') or {}).get('emissions_logged', 0)} logged |",
+        "| R1 assertion_kinds_match rows | "
+        f"{_render_readout((rec.get('typed_checks') or {}).get('assertion_kinds_match_rows'))} |",
+        "| R2 qa-owned routed | "
         f"{len((rec.get('loop_texture') or {}).get('qa_owned_routed', []))} |",
-        "| 1.7.1 R3 anchor findings | "
-        f"{(rec.get('typed_checks') or {}).get('dom_anchor_findings', '—')} |",
-        "| 1.7.1 R4 brief case counts / absent-anchor routed | "
+        "| R3 dom_anchor_queries rows | "
+        f"{_render_readout((rec.get('typed_checks') or {}).get('dom_anchor_queries_rows'))} |",
+        "| R4 repair briefs (cases, from, tests_pass rows) / absent-anchor routed | "
         f"{(rec.get('loop_texture') or {}).get('repair_brief_case_counts', [])} / "
         f"{len((rec.get('loop_texture') or {}).get('absent_anchor_routed', []))} |",
-        "| 1.7.1 R5 additive rejections | "
-        f"{(rec.get('typed_checks') or {}).get('additive_rejections', '—')} |",
-        "| 1.7.1 R6 undefined-name rejections | "
-        f"{(rec.get('typed_checks') or {}).get('undefined_name_rejections', '—')} |",
-        "| 1.7.1 R7 decided by agent / unverifiable (toolchain absent) | "
+        "| R5 additive_containment rows | "
+        f"{_render_readout((rec.get('typed_checks') or {}).get('additive_containment_rows'))} |",
+        "| R6 undefined_names rows | "
+        f"{_render_readout((rec.get('typed_checks') or {}).get('undefined_names_rows'))} |",
+        "| R7 decided by agent / unverifiable by reason | "
         f"{(rec.get('loop_texture') or {}).get('decided_by_agent', 0)} / "
-        f"{len((rec.get('loop_texture') or {}).get('unverifiable_toolchain_absent', []))} |",
+        f"{_render_by_reason((rec.get('loop_texture') or {}).get('unverifiable_by_reason', {}))} |",
+        "| non-execution by skip reason | "
+        f"{_render_by_reason((rec.get('loop_texture') or {}).get('no_execution_by_skip_reason', {}))} |",
         "| checks by environment | "
         f"{(rec.get('typed_checks') or {}).get('checks_by_environment', {})} |",
-        "| container packaging findings (reporting-only) | "
-        f"{(rec.get('typed_checks') or {}).get('container_packaging_findings', '—')} |",
+        "| container_packaging rows (reporting-only) | "
+        f"{_render_readout((rec.get('typed_checks') or {}).get('container_packaging_rows'))} |",
         "",
         "## Gate decisions (decider recorded verbatim, never inferred)",
         "",

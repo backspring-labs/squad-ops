@@ -13,7 +13,9 @@ from squadops.cycles.patch_verification import (
     PATCH_PASSED,
     PATCH_UNVERIFIABLE,
     EvidenceSupersession,
+    PatchCheckRecord,
     overlay_artifacts,
+    skip_reasons,
     supersede_evidence_artifacts,
     verify_patched_artifacts,
 )
@@ -1014,3 +1016,39 @@ class TestTheAbsentFileRuleIsKeyedOnTheRepairsOwnFiles:
             agent_checks=self._agent_rows(),
         )
         assert verdict.status == PATCH_FAILED
+
+
+class TestSkipReasons:
+    """#1276: an ``unverifiable`` verdict must say WHY nothing executed.
+
+    1.7.1's R7 readout counted every ``no_executed_blocking_checks`` as an absent
+    toolchain. Next.js roll 1's came from an absent *file* — a prose-only repair — and the
+    two have opposite fixes (#1229 provisions a toolchain; #1273 refunds the round).
+    """
+
+    def _row(self, status, reason, check="frontend_compiles"):
+        return PatchCheckRecord(check=check, severity="error", status=status, reason=reason)
+
+    def test_skips_are_counted_by_reason_most_frequent_first(self):
+        rows = (
+            self._row("skipped", "missing_tooling"),
+            self._row("skipped", "file_not_found", check="tests_pass"),
+            self._row("skipped", "missing_tooling", check="undefined_names"),
+        )
+        assert skip_reasons(rows) == "missing_tooling:2,file_not_found:1"
+
+    def test_an_executed_row_is_never_a_skip_even_when_it_errored(self):
+        """``error`` is an outcome of running the check; folding it into the skip counts
+        would report a toolchain as absent on the run that proved it present."""
+        rows = (
+            self._row("passed", "ok"),
+            self._row("failed", "unresolved_imports"),
+            self._row("error", "evaluator_crashed"),
+        )
+        assert skip_reasons(rows) == ""
+
+    def test_a_skip_with_no_reason_is_named_rather_than_dropped(self):
+        assert skip_reasons((self._row("skipped", None),)) == "unstated:1"
+
+    def test_no_rows_at_all_renders_empty_not_a_reason(self):
+        assert skip_reasons(()) == ""

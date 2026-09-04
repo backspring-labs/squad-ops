@@ -73,6 +73,7 @@ from squadops.cycles.patch_verification import (
     PATCH_UNVERIFIABLE,
     STRUCTURALLY_UNEVALUABLE_REASONS,
     overlay_artifacts,
+    skip_reasons,
     supersede_evidence_artifacts,
     verify_patched_artifacts,
 )
@@ -3130,9 +3131,13 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         ]
         failed_checks = [record.check for record in failed_records]
         agent_rows = [r for r in verification.checks if r.executed_in != EXECUTED_IN_RUNTIME_API]
+        # #1276: why nothing executed, not just that nothing did. "unverifiable /
+        # no_executed_blocking_checks" reads as an absent toolchain and is equally
+        # produced by an absent FILE — the 1.7.1 Next.js roll 1 shape, where the R7
+        # readout could not tell the two apart because the line carried neither reason.
         logger.info(
             "patch_verification task=%s task_type=%s status=%s reason=%s checks=%d failed=%s "
-            "decided_by_agent=%d agent_rows=%d agent_executed=%d",
+            "decided_by_agent=%d agent_rows=%d agent_executed=%d skips=%s",
             envelope.task_id,
             envelope.task_type,
             verification.status,
@@ -3142,6 +3147,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             verification.decided_by_agent,
             len(agent_rows),
             sum(1 for r in agent_rows if r.status in ("passed", "failed")),
+            skip_reasons(verification.checks) or "-",
         )
         # pf-47/pf-49: when a task's checks are structurally unevaluable (a frontend
         # test file — every AST check skips by design), "unverifiable" is not caution,
