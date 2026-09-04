@@ -1271,32 +1271,100 @@ class TestClientSurfaceLines:
         assert client_surface_instructions(dataclasses.replace(manifest, stack="unknown")) == []
 
 
-def test_qa_namespace_covers_what_the_stack_seeds():
-    """A stack's declared QA namespace must contain the suites the stack itself seeds.
+def test_the_qa_namespace_is_exactly_the_suites_each_stack_seeds():
+    """For every stack, a seeded file is inside its QA namespace **iff** it is a suite.
 
-    The React stack declared `frontend/src/tests/` and seeds its harness at
-    `frontend/src/__tests__/` (#1270). Nothing held the two together, so every React
-    frontend suite — the seeded harness and every suite the qa role authored beside it —
-    fell outside its own stack's QA namespace, and each consumer that asks "who owns this
-    file" got "nobody": #1130's own-frame attribution among them, which is how 1.7.1 roll
-    4 spent two dev repairs on a defect in the qa role's own file.
+    Both directions, derived from the expander, because each direction has now cost a
+    release line:
+
+    - *Too narrow* (#1270/#1280): the React stack declared `frontend/src/tests/` and seeds
+      its harness at `frontend/src/__tests__/`. Every React frontend suite fell outside its
+      own stack's QA namespace, so each consumer that asks "who owns this file" got
+      "nobody" — which is how 1.7.1 roll 4 spent two dev repairs on a defect in the qa
+      role's own file.
+    - *Too wide* (#1292): `nextjs_ts` declared `app/` and `lib/` beside `__tests__/`, to
+      reach co-located tests through a root-prefix match, and thereby claimed all twelve
+      application files its expander seeds — including every API route. The guard in
+      `verification_scaffold_emission` that refuses a scaffold file outside the namespace
+      accepted the application's own source.
+
+    A one-directional guard cannot see the error it actually had. This one is the
+    biconditional, so neither restatement can survive.
     """
     from squadops.capabilities.app_invocation import JS_SUITE_SUFFIXES
     from squadops.capabilities.scaffold import is_qa_test_path_for_stack
     from tests.unit.capabilities._stack_fixtures import manifest_for_stack
 
     py_suite = re.compile(r"(^|/)test_[^/]*\.py$|_test\.py$")
-    checked = 0
+    checked_suites = 0
+    checked_app = 0
     for stack in ("fullstack_fastapi_react", "nextjs_ts"):
-        seeded = [f["name"] for f in scaffold.expand(manifest_for_stack(stack))]
-        suites = [
-            name for name in seeded if name.endswith(JS_SUITE_SUFFIXES) or py_suite.search(name)
-        ]
-        assert suites, f"{stack} seeds no suite — the guard would pass vacuously"
-        for name in suites:
-            assert is_qa_test_path_for_stack(name, stack), (
-                f"{stack} seeds {name} outside its own qa_test_namespace "
-                f"{scaffold._STACKS[stack].qa_test_namespace}"
-            )
-        checked += len(suites)
-    assert checked >= 2, "both stacks must contribute a seeded suite"
+        declared = scaffold._STACKS[stack].qa_test_namespace
+        for name in [f["name"] for f in scaffold.expand(manifest_for_stack(stack))]:
+            is_suite = name.endswith(JS_SUITE_SUFFIXES) or bool(py_suite.search(name))
+            owned = is_qa_test_path_for_stack(name, stack)
+            if is_suite:
+                checked_suites += 1
+                assert owned, (
+                    f"{stack} seeds the suite {name} OUTSIDE its own qa_test_namespace "
+                    f"{declared} — every consumer that asks who owns it gets 'nobody'"
+                )
+            else:
+                checked_app += 1
+                assert not owned, (
+                    f"{stack} seeds the application file {name} INSIDE its "
+                    f"qa_test_namespace {declared} — the qa role is recorded as owning "
+                    "application source, and the scaffold-emission guard accepts it"
+                )
+    assert checked_suites >= 2, "both stacks must contribute a seeded suite"
+    assert checked_app >= 2, "both stacks must contribute a seeded application file"
+
+
+def test_a_bare_namespace_entry_is_a_convention_and_a_path_is_a_location():
+    """The entry's shape is the declaration (#1292).
+
+    Without the segment reading, a co-located convention is inexpressible and the only way
+    to reach `app/runs/__tests__/page.test.tsx` is to declare `app/` — which also claims
+    `app/api/runs/route.ts`. Without the rooted reading, `backend/tests/` would match
+    `vendor/backend/tests/`, quietly widening the stack that was already correct.
+    """
+    from squadops.capabilities.scaffold import _within_namespace
+
+    # bare name: a segment at any depth, root included
+    assert _within_namespace("__tests__/harness.test.ts", "__tests__/")
+    assert _within_namespace("app/runs/__tests__/page.test.tsx", "__tests__/")
+    assert not _within_namespace("app/api/runs/route.ts", "__tests__/")
+    assert not _within_namespace("app/my__tests__helper.ts", "__tests__/")
+
+    # multi-segment: the tree root only
+    assert _within_namespace("backend/tests/test_runs.py", "backend/tests/")
+    assert not _within_namespace("vendor/backend/tests/test_runs.py", "backend/tests/")
+
+
+def test_the_scaffold_emission_guard_refuses_a_shell_in_application_source():
+    """The guard #1292 defeated, entered through the emitter it protects.
+
+    `verification_scaffold_emission` re-implemented namespace membership as `startswith`
+    beside the stack's own predicate. With `app/` in the Next.js namespace it accepted a
+    scaffold shell written into the application's source; with the declaration corrected
+    and the guard reading the predicate, it refuses.
+    """
+    from squadops.capabilities import verification_scaffold_emission as vse
+    from tests.unit.capabilities._stack_fixtures import manifest_for_stack
+
+    manifest = manifest_for_stack("nextjs_ts")
+    emission = vse.emit_verification_scaffold(manifest)
+    assert emission.files, "the emitter produced no shells — the guard would pass vacuously"
+    for f in emission.files:
+        assert scaffold.is_qa_test_path_for_stack(f["name"], "nextjs_ts")
+
+    from unittest import mock
+
+    from squadops.capabilities.scaffold import verification_scaffold_for
+
+    declared = verification_scaffold_for("nextjs_ts")
+    with mock.patch.dict(
+        vse._EMITTERS, {declared: lambda m, tree: [("app/page.tsx", "x", ())]}, clear=False
+    ):
+        with pytest.raises(vse.ScaffoldValidationError, match="outside the stack's qa test"):
+            vse.emit_verification_scaffold(manifest)
