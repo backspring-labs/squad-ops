@@ -51,7 +51,29 @@ and is recorded with the entry point it used. A call into the seam with its inpu
 a replay of the function: it proves the function and says nothing about whether the cycle
 reaches it. It may be recorded, named as exactly that, and it does not stand in for the
 prediction. 1.7.1's R7 diagnostic called the verifier with the repair's rows passed in and
-passed; the live path had never delivered a row (#1256). The fault-injection hook is #1251.
+passed; the live path had never delivered a row (#1256).
+
+**The hook (#1251).** A cycle declares faults in `execution_overrides`:
+
+```yaml
+overrides:
+  fault_injection: [qa_suite_absent]
+```
+
+Each name is a *shape a real roll produced*, not a policy — one pure transform over one
+emission, applied in the producing role's own container, so the whole downstream path runs
+as it would on a real defect. `squadops.capabilities.handlers.fault_injection.FAULTS` is the
+list; each entry names the roll it came from and the prediction it exercises, and a
+declaration naming an unknown fault, or one whose task's emission seam is not wired, is
+**refused at cycle create** — a fault that cannot fire would produce a green diagnostic,
+which reads as the loop handling something that never happened.
+
+A fault applies to a task's **first attempt only**, read off the inputs rather than
+remembered, because what the diagnostic is watching is the loop *recovering* from the fault.
+
+**Non-counting by construction.** `preflight --counting` refuses a set config that declares
+one, the driver's record opens with the fault named, and the create log warns on it. An
+injected red is never a verdict about the squad.
 
 ## Readouts
 

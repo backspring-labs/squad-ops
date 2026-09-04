@@ -73,6 +73,11 @@ DEPLOY_SERVICES = ("runtime-api", *AGENT_SERVICES)
 POSTGRES_CONTAINER = "squadops-postgres"
 RUNTIME_API_CONTAINER = "squadops-runtime-api"
 
+#: The ``execution_overrides`` key a fault-injected cycle declares (#1251). Kept as a
+#: literal here rather than imported: the driver runs from its own checkout and must be able
+#: to refuse a counting roll even against a deploy whose framework predates the module.
+FAULT_DECLARATION_KEY = "fault_injection"
+
 POLL_S = 30
 MAX_WAIT_S = 4 * 60 * 60
 
@@ -300,6 +305,20 @@ def preflight(cfg: SetConfig, *, counting: bool) -> list[str]:
     dirty = sh(f"git -C {REPO} status --porcelain")
     if dirty:
         problems.append(f"§7: working tree is dirty ({len(dirty.splitlines())} files)")
+    # #1251: a declared emission fault makes the cycle a DIAGNOSTIC. It runs the roll's own
+    # path with a deliberate defect in it, which is exactly what makes it useful and exactly
+    # what makes its red meaningless as a verdict. Refused for a counting roll, reported for
+    # a shakeout, and never silent: an injected red in a counted record would read as the
+    # squad failing.
+    faults = sorted(str(name) for name in (cfg.overrides.get(FAULT_DECLARATION_KEY) or ()) if name)
+    if faults and counting:
+        problems.append(
+            f"§4: the set config declares fault injection ({', '.join(faults)}) — a cycle "
+            "with a deliberate fault is a diagnostic and cannot be counted. Run it as a "
+            "shakeout, and name the fault beside every readout it produces."
+        )
+    elif faults:
+        log(f"DIAGNOSTIC: this cycle injects fault(s) {', '.join(faults)} — non-counting")
     if not counting:
         return problems
     if not cfg.frozen_image_ids:
@@ -1192,6 +1211,17 @@ def render(cfg: SetConfig, title: str, rec: dict) -> str:
         "",
         "## Headline",
         "",
+        *(
+            [
+                "- **DIAGNOSTIC — injected fault(s): "
+                f"{', '.join(sorted(str(n) for n in cfg.overrides.get(FAULT_DECLARATION_KEY)))}"
+                "**. This cycle carried a deliberate emission defect (#1251): its verdict is "
+                "not a verdict about the squad, and it must not be counted.",
+                "",
+            ]
+            if cfg.overrides.get(FAULT_DECLARATION_KEY)
+            else []
+        ),
         f"- verdict: **{rec.get('verdict')}**",
         *(
             [f"- ended with NO implementation run — {rec['ended_without_implementation']}"]

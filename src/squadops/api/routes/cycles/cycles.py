@@ -37,6 +37,7 @@ from squadops.cycles.preflight import (
     PreflightDecision,
     bind_mode_authoring_decision,
     combine,
+    fault_injection_decision,
     model_availability_decision,
     model_registration_decision,
     required_check_tooling_decision,
@@ -155,6 +156,10 @@ async def _run_create_preflight(profile: SquadProfile, config: dict) -> tuple[Fi
         # SIP-0102 102.2c: a skewed/unprovisioned sandbox environment is a
         # create-time reject, never a mid-run environment stall (roll-4).
         await _sandbox_preflight_decision(),
+        # #1251: a fault declaration that could never fire would produce a green
+        # diagnostic — a cycle reading as evidence the loop handled a fault that never
+        # happened. A usable one warns, so the create log says the cycle is a diagnostic.
+        fault_injection_decision(config),
     )
     if decision.rejected:
         raise PreflightRejectedError(decision.summary())

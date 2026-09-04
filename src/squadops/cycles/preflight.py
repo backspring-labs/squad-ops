@@ -378,6 +378,63 @@ def model_availability_decision(
     return PreflightDecision(blocking=tuple(findings))
 
 
+def fault_injection_decision(config: Mapping[str, Any]) -> PreflightDecision:
+    """Block an unusable fault declaration; announce a usable one (#1251).
+
+    A cycle may declare deliberate emission faults so a loop prediction can be exercised on
+    demand instead of waiting for a roll to break the right way. Two create-time-knowable
+    ways for that to be useless, both blocking here rather than at runtime:
+
+    - a fault name the framework does not define;
+    - a defined fault whose task's emission seam does not call the injector, so the fault
+      would never fire.
+
+    Either would produce a *green diagnostic* — a cycle that reads as evidence the loop
+    handled the fault when the fault never happened, which is worse than no diagnostic.
+
+    A valid declaration warns, loudly, because the one thing a fault-injected cycle must
+    never do is be mistaken for a counted roll.
+    """
+    from squadops.capabilities.handlers.fault_injection import (
+        FAULTS,
+        UnknownFault,
+        UnreachableFault,
+        declared_faults,
+        validate_declaration,
+    )
+
+    names = declared_faults(config)
+    if not names:
+        return PreflightDecision()
+    try:
+        validate_declaration(config)
+    except (UnknownFault, UnreachableFault) as exc:
+        return PreflightDecision(
+            blocking=(
+                Finding(
+                    code="fault_injection_unusable",
+                    severity="block",
+                    message=str(exc),
+                ),
+            )
+        )
+    return PreflightDecision(
+        warnings=tuple(
+            Finding(
+                code="fault_injection_declared",
+                severity="warning",
+                message=(
+                    f"fault `{name}` is injected into the first `{FAULTS[name].task}` "
+                    f"emission — this cycle is a DIAGNOSTIC and must not be counted as a "
+                    f"roll (exercises {FAULTS[name].exercises}; shape found in "
+                    f"{FAULTS[name].found_in})"
+                ),
+            )
+            for name in names
+        )
+    )
+
+
 def required_check_tooling_decision(
     required_check_ids: Iterable[str],
     available_tooling: Iterable[str] | None,
