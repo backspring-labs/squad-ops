@@ -66,9 +66,41 @@ Both are answered here rather than noted:
 
 ### Deploys and what each pair found
 
-| deploy | built | pair | finding |
+| deploy | built | pair | result and findings |
 |---|---|---|---|
-| `d6165d2a` | 2026-09-04 15:31Z | round 1 | **#1296** (instrument-only, PR #1297) — a record could not name the deploy it observed. Deploy **not** superseded; round kept. |
+| (`d6165d2a`) | 2026-09-04 15:31Z | **round 1 — both arms green** · React `cyc_0ac33bb2230b` accepted/PASS/functional, 61 min · Next.js `cyc_380505d906cc` accepted/PASS/functional, 52 min | **#1296** (PR #1297) — a record could not name the deploy it observed; instrument-only. **#1298** (PR #1299) — a fault declaration could not survive the set config: a list override was stringified so the chained diagnostic could not launch at all, and a single fault was reported letter by letter. **Superseded**, because #1298's fix is in `fault_injection.py`, which runs in the agent containers. |
+
+**Why round 1 does not exit the loop.** Both arms were green and neither cycle exposed a
+seam defect. But #1298's fix is deployed code, and the rule is that a deploy on which a
+shakeout produced a fix is superseded. The available counter-argument — that the change is
+inert for a cycle declaring no fault, since `declared_faults` returns `()` identically in
+both versions — is exactly the reasoning the rule exists to refuse, and the rebuild is
+required regardless: the diagnostics cannot run until the new parsing is in the containers.
+Round 1's readings are kept as evidence (below) and its deploy is not the pinned one.
+
+**What round 1 measured, carried forward as texture rather than as a pin:**
+
+| reading | React | Next.js |
+|---|---|---|
+| verdict · boot audit · functional | accepted · PASS · yes | accepted · PASS · yes |
+| contentless emissions (L1) | 0 of 20 | 0 of 19 |
+| criteria verified / total | 21 / 21 | 17 / 17 |
+| correction rounds | 1 | 0 |
+| non-execution by skip reason | 0 | 0 |
+| gate decider | `system:no_open_questions` | `agent:005159fd…` |
+| packaging (reporting-only, #598) | 0 | 1 — `npm_ci_without_lockfile` |
+
+L1 held on 39 of 39 first attempts across both arms. The 1.7.1 comparison is 3 of 5 on
+React and **0 of 2** on Next.js; a green Next.js pair member is the first in this line.
+
+The `npm_ci_without_lockfile` row is a defect in the application the cycle built, which the
+exit rule places with the cycle rather than the deploy; it is reporting-only by design
+(#598) and does not reset the loop.
+
+**Round 2 folds the diagnostics into the pair.** A diagnostic is a non-counting cycle on the
+same deploy, and it exercises the recovery path where this pack lives — so running the three
+alongside the pair means a defect they expose resets the loop at the same cost as any other
+round, instead of surfacing after the pins are set.
 
 *(Superseded deploys stay in this table, parenthesised, with what their shakeouts found.
 The pinned deploy is the last one.)*
