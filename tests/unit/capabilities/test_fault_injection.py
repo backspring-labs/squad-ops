@@ -330,3 +330,97 @@ def test_the_drivers_fault_normaliser_agrees_with_the_frameworks():
     ]
     for case in cases:
         assert declared_fault_names(case) == declared_faults(case), f"disagree on {case!r}"
+
+
+#: Two emissions a real qa.test could produce. The second is the one the first live
+#: diagnostic actually emitted (`cyc_b7c5da74eb5b`): a vitest suite importing nothing from
+#: `@testing-library/user-event`. Every declared fault must bite on BOTH.
+_EMISSIONS = {
+    "with the user-event import": _SUITE,
+    "without it": (
+        "I'll author the suite.\n\n"
+        "```jsx:frontend/src/__tests__/runs.test.jsx\n"
+        "import { render, screen } from '@testing-library/react'\n"
+        "import RunsListView from '../views/RunsListView'\n\n"
+        "test('renders the runs list', async () => {\n"
+        "  render(<RunsListView runs={[]} />)\n"
+        "  expect(screen.getByTestId('runs-list')).toBeInTheDocument()\n"
+        "})\n"
+        "```\n"
+    ),
+}
+
+
+@pytest.mark.parametrize("shape", sorted(_EMISSIONS))
+@pytest.mark.parametrize("name", sorted(FAULTS))
+def test_every_declared_fault_actually_changes_a_representative_emission(name, shape):
+    """A fault that returns its input is inert, and `inject` used to log it as APPLIED
+    anyway — so the cycle ran on as an ordinary green one while the record said a fault had
+    been injected (#1300).
+
+    The suite already tested each transform against an emission chosen to suit it, which is
+    exactly why an emission that did NOT suit it was never a failure: roll-4's import swap
+    had nothing to swap on a suite that imports no `userEvent`, and its fallback existed
+    only as a comment. This is the derived form — every fault, every representative shape.
+    """
+    content = _EMISSIONS[shape]
+    assert FAULTS[name].transform(content) != content, (
+        f"{name} returned its input unchanged on an emission {shape} — a fault that cannot "
+        "bite makes its diagnostic prove nothing"
+    )
+
+
+class TestAnInertFaultIsNamedAsInertRatherThanApplied:
+    def test_the_import_swap_falls_back_when_there_is_no_import_to_swap(self):
+        """Roll 4's shape reproduced without inventing an import: a call to a non-function
+        property of `expect`, which every vitest suite binds."""
+        out = _inject(
+            _EMISSIONS["without it"],
+            "task-run_x-m006-qa.test",
+            ["qa_suite_vitest_own_frame_type_error"],
+        )
+        assert "expect.__squadops_injected_fault__();" in out
+        assert "test('renders the runs list'" in out, "the case itself is untouched"
+        assert out.index("__squadops_injected_fault__") < out.index("render(<RunsListView")
+
+    def test_the_swap_is_still_preferred_when_the_import_is_there(self):
+        """The faithful transform first — the fallback is for the case it cannot reach."""
+        out = _inject(_SUITE, "task-run_x-m006-qa.test", ["qa_suite_vitest_own_frame_type_error"])
+        assert "@testing-library/react" in out
+        assert "__squadops_injected_fault__" not in out
+
+    def test_the_injected_call_is_read_as_an_own_frame_defect_so_it_routes_to_qa(self):
+        """The whole point of the shape. If the injected failure were attributed to the
+        application, the diagnostic would exercise the dev chain and L7 would go unread."""
+        from squadops.capabilities.handlers.test_runner import suite_defects
+
+        rows = [
+            {
+                "file": "frontend/src/__tests__/runs.test.jsx",
+                "title": "renders the runs list",
+                "exception": "TypeError",
+                "messages": ["TypeError: expect.__squadops_injected_fault__ is not a function"],
+                "frames": [{"file": "frontend/src/__tests__/runs.test.jsx", "line": 6}],
+            }
+        ]
+        assert len(suite_defects(rows, [], "vitest")) == 1
+
+    def test_an_emission_with_no_case_to_break_is_reported_as_not_biting(self, caplog):
+        """Still possible — a prose-only or fence-only emission has no test body. It must
+        say so instead of claiming an exercise."""
+        content = "```py:backend/tests/test_runs.py\ndef test_x(): pass\n```\n"
+        with caplog.at_level("WARNING"):
+            out = _inject(
+                content, "task-run_x-m006-qa.test", ["qa_suite_vitest_own_frame_type_error"]
+            )
+        assert out == content
+        record = next(r for r in caplog.records if "DID NOT BITE" in r.getMessage())
+        assert "PROVES NOTHING" in record.getMessage()
+        assert "APPLIED" not in record.getMessage()
+
+    def test_a_fault_that_bites_still_says_applied(self, caplog):
+        with caplog.at_level("WARNING"):
+            _inject(_SUITE, "task-run_x-m006-qa.test", ["qa_suite_absent"])
+        messages = [r.getMessage() for r in caplog.records]
+        assert any("fault_injection: APPLIED" in m for m in messages)
+        assert not any("DID NOT BITE" in m for m in messages)
