@@ -337,16 +337,105 @@ class TestComputeProfileSnapshotHash:
 # =============================================================================
 
 
-class TestGateRejectedStates:
-    def test_excludes_completed(self):
-        """COMPLETED must NOT be in GATE_REJECTED_STATES — inter-workload gates
-        are decided on completed runs."""
-        assert RunStatus.COMPLETED not in GATE_REJECTED_STATES
+async def _seeded_registry_with_run(status: str):
+    """A memory registry holding one cycle and one run in ``status`` (#1150).
 
-    def test_includes_failed_and_cancelled(self):
-        """Failed and cancelled runs should reject gate decisions."""
-        assert RunStatus.FAILED in GATE_REJECTED_STATES
-        assert RunStatus.CANCELLED in GATE_REJECTED_STATES
+    The registry's ``record_gate_decision`` is the single enforcement point (T11), so the
+    behavioural tests enter there rather than reading the constant.
+    """
+    import uuid
+
+    from adapters.cycles.memory_cycle_registry import MemoryCycleRegistry
+    from squadops.cycles.models import Cycle, FlowMode, Gate, TaskFlowPolicy
+
+    now = datetime.now(UTC)
+    cycle = Cycle(
+        cycle_id=str(uuid.uuid4()),
+        project_id="test-project",
+        created_at=now,
+        created_by="test",
+        prd_ref="prd/test.md",
+        squad_profile_id="full",
+        squad_profile_snapshot_ref="snap-001",
+        task_flow_policy=TaskFlowPolicy(
+            mode=FlowMode.SEQUENTIAL,
+            gates=(
+                Gate(
+                    name="progress_plan_review",
+                    description="gate",
+                    after_task_types=("governance.review",),
+                ),
+            ),
+        ),
+        build_strategy="fresh",
+        applied_defaults={},
+        execution_overrides={},
+    )
+    registry = MemoryCycleRegistry()
+    await registry.create_cycle(cycle)
+    run = await registry.create_run(
+        dataclasses.replace(_make_run(status=status), cycle_id=cycle.cycle_id)
+    )
+    return registry, cycle, run
+
+
+class TestGateRejectedStates:
+    """#1150: the set is derived from ``TERMINAL_STATES``, so these test the rule, not the
+    literal.
+
+    The tests that stood here asserted `FAILED in GATE_REJECTED_STATES` and
+    `CANCELLED in GATE_REJECTED_STATES` — a restatement of the constant's own definition,
+    which passes whether or not the derivation exists and, more to the point, would have
+    said nothing if a fourth terminal state were added. Both directions below are
+    parametrised over ``TERMINAL_STATES`` itself, so a new terminal state arrives as a new
+    case rather than as a silent gap.
+    """
+
+    @pytest.mark.parametrize("state", sorted(TERMINAL_STATES, key=lambda s: s.value))
+    def test_every_terminal_state_except_completed_rejects_a_gate_decision(self, state):
+        """COMPLETED is the one exception, and it is a design fact rather than an oversight:
+        inter-workload gates are decided ON completed runs (SIP-0083 D15), which is also why
+        the ``supersede`` edge COMPLETED → CANCELLED exists for the re-roll."""
+        assert (state in GATE_REJECTED_STATES) is (state is not RunStatus.COMPLETED)
+
+    def test_no_non_terminal_state_rejects_a_gate_decision(self):
+        """The other direction: a gate on a running or queued run is a normal decision."""
+        assert not (GATE_REJECTED_STATES - TERMINAL_STATES)
+
+    async def test_the_registry_refuses_a_gate_decision_on_a_failed_run(self):
+        """Entered at the enforcement point the live path uses, not at the constant.
+
+        ``record_gate_decision`` is the single enforcement point (T11); a derivation that
+        produced the right set but was read by nobody would pass every test above.
+        """
+        from squadops.cycles.models import RunTerminalError
+
+        registry, cycle, run = await _seeded_registry_with_run(status="failed")
+        with pytest.raises(RunTerminalError, match="gate-rejected"):
+            await registry.record_gate_decision(
+                run.run_id,
+                GateDecision(
+                    gate_name="progress_plan_review",
+                    decision="approved",
+                    decided_by="test",
+                    decided_at=datetime.now(UTC),
+                ),
+            )
+
+    async def test_the_registry_accepts_a_gate_decision_on_a_completed_run(self):
+        """The exception, exercised rather than asserted — this is the behaviour the
+        excluded COMPLETED exists for."""
+        registry, cycle, run = await _seeded_registry_with_run(status="completed")
+        updated = await registry.record_gate_decision(
+            run.run_id,
+            GateDecision(
+                gate_name="progress_plan_review",
+                decision="approved",
+                decided_by="test",
+                decided_at=datetime.now(UTC),
+            ),
+        )
+        assert [d.gate_name for d in updated.gate_decisions] == ["progress_plan_review"]
 
 
 # =============================================================================
