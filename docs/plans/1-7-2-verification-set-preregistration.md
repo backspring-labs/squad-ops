@@ -36,10 +36,10 @@ Both are answered here rather than noted:
 | Bar | **one, and only one: L1** (§4). Every other prediction is pass/fail on its own terms with no rate bar, as in 1.7.1. |
 | Project / PRD / squad / request profile | `group_run`, `full-38`, `validated-fullstack` — identical to 1.6.6, 1.7.0 and 1.7.1, so the pack is the only variable |
 | Overrides | FastAPI+React: none. Next.js+TS: `build_profile=nextjs_ts`, `dev_capability=nextjs_ts` |
-| `resolved_config_hash` | FastAPI+React `c4d6a2165acf`, Next.js+TS `d4d4f66217d8` — **both unchanged from 1.6.6/1.7.1** (the pack changed code, not configuration); observed on the round-1 shakeouts of each arm; asserted on every counting roll; a roll on any other hash is void |
+| `resolved_config_hash` | FastAPI+React `c4d6a2165acf`, Next.js+TS `d4d4f66217d8` — **both unchanged from 1.6.6/1.7.1**, and both re-observed on this deploy's round-4 pair (the pack changed code, not configuration); observed on the round-1 shakeouts of each arm; asserted on every counting roll; a roll on any other hash is void |
 | `squad_profile_snapshot_ref` | `575707c58536cf3b…` — unchanged from 1.6.6, 1.7.0 and 1.7.1; a roll on any other snapshot is void |
-| Deploy — commit | **filled from the last shakeout** (§2). A pin here is a value an operator types and nothing can check — `SOURCE_HASH` is a build arg, not an `ENV` or `LABEL`, so the commit an image was built from is unreadable at runtime (#1296). **The image ids below are the assertion**; this line is a label. |
-| Deploy — 7 image ids | **filled from the last shakeout** (§2); asserted at every counting launch by the driver, which refuses a roll on any mismatch. |
+| Deploy — commit | **`af08d162`** — main, the merge of #1309. Carries the whole §2 pack plus the three CI-verified items (#1150, #1110, #1148) and every instrument fix the shakeout loop produced (#1292, #1296, #1298, #1300, #1304, #1305). A pin here is a value an operator types and nothing can check — `SOURCE_HASH` is a build arg, not an `ENV` or `LABEL`, so the commit an image was built from is unreadable at runtime (#1296). **The image ids below are the assertion**; this line is a label. |
+| Deploy — 7 image ids | runtime-api `5be2ad7777b3` · max `7f9d47748495` · neo `ef1024e0fd62` · nat `1ff7ab88eee2` · bob `d085d0ef176e` · eve `1acb1d3b4834` · data `ec7fdcda43c5` — built 2026-09-05 00:47Z from `af08d162`; asserted at every counting launch by the driver, which refuses a roll on any mismatch. |
 | Loaded, not built | Verified per container as a **live call with its paired control**, never a symbol import: a symbol can be present and unreachable, which is the shape #1289 had for the whole of 1.7.1. The calls are in each set config's `loaded_checks` and their output is recorded in every record (#1297). |
 | Gate policy | 1.6.3 §6 constant, verbatim in each set config's `gate_notes`; `--as-agent`; the decider is recorded per roll |
 | Audit instrument | `scripts/dev/audit_delivered_app.py` at the deploy commit |
@@ -68,6 +68,8 @@ Both are answered here rather than noted:
 
 | deploy | built | pair | result and findings |
 |---|---|---|---|
+| **`af08d162`** | 2026-09-05 00:47Z | **round 4 — the exit pair** · React `cyc_cf66a3b34769` rejected (the #1312 handoff omission — a work-product defect, not a seam defect), boot audit PASS, 56 min · Next.js `cyc_1d26d5f6bbb5` **accepted**, boot audit PASS, 48 min | **No seam finding from the pair.** The three diagnostics on this deploy found #1310 and #1311 — both errors in this document's §3 exercise plan, both fixed in the document rather than in deployed code. **Exit rule met**; this is the pinned deploy. |
+| (`cb8ba117`, `5d01f80a`) | 2026-09-04 | diagnostics only | #1300 (a fault that cannot bite logged APPLIED), then #1304 (the fault keyed to a capability not a runner, and re-applying on correction re-dispatch) and #1305 (the fullstack merge dropped every `suite_defect`, making #1130/#1270 inert on the React stack) |
 | (`d6165d2a`) | 2026-09-04 15:31Z | **round 1 — both arms green** · React `cyc_0ac33bb2230b` accepted/PASS/functional, 61 min · Next.js `cyc_380505d906cc` accepted/PASS/functional, 52 min | **#1296** (PR #1297) — a record could not name the deploy it observed; instrument-only. **#1298** (PR #1299) — a fault declaration could not survive the set config: a list override was stringified so the chained diagnostic could not launch at all, and a single fault was reported letter by letter. **Superseded**, because #1298's fix is in `fault_injection.py`, which runs in the agent containers. |
 
 **Why round 1 does not exit the loop.** Both arms were green and neither cycle exposed a
@@ -97,6 +99,15 @@ The `npm_ci_without_lockfile` row is a defect in the application the cycle built
 exit rule places with the cycle rather than the deploy; it is reporting-only by design
 (#598) and does not reset the loop.
 
+**The loop took four rounds against a budget of three, and the cut record owes two numbers,
+not one: rounds taken, and rounds attributable to the pack.** The second is **zero**. Every
+supersede came from the measuring apparatus — #1292 (the Next.js qa namespace), #1296 (a
+record could not name its deploy), #1298 (a fault declaration could not survive the set
+config), #1300, #1304, #1305 — and none from the eight items being measured. Reported as one
+number it reads as an unstable pack; reported as two it says that three releases' worth of
+diagnostic machinery had never been run end to end and broke six ways on first contact. The
+budget was set before anyone knew that.
+
 **Round 2 folds the diagnostics into the pair.** A diagnostic is a non-counting cycle on the
 same deploy, and it exercises the recovery path where this pack lives — so running the three
 alongside the pair means a defect they expose resets the loop at the same cost as any other
@@ -123,16 +134,25 @@ own path with a real shape a real roll produced.
 a fault, and the record names the fault beside every readout it produces, so an injected red
 can never be read as a real one.
 
-| prediction | reached by an ordinary roll? | exercise plan |
-|---|---|---|
-| **L1** (#1268) | **yes** — every roll has a qa first attempt | read directly from the emission-shape readout on each counted roll |
-| **L2** (#1269) | unlikely — needs a repair of an *absent* suite | diagnostic: `fault_injection: [qa_suite_absent]` — the emission carries no fence, the repair supplies the suite, and the prediction is whether that repair is retested |
-| **L3** (#1271) | yes when any qa task is re-attempted | read from the summary's failed rows against the last stored evaluation |
-| **L4** (#1273) | unlikely — needs a prose-only repair | diagnostic: chained, below |
-| **L5** (#1260) | unlikely — needs a re-dispatch after a failure that named cases | **rides the chained diagnostic**, and needs no fault of its own: `prior_failing_cases` is threaded at the top of `_handle_task_outcome` (`dispatched_flow_executor.py:2889`) from *any* outcome carrying case evidence, before the retry/re-dispatch/repair decision |
-| **L6** (#788) | unlikely — needs a runtime error in the delivered app | read from the stored repair brief whenever a roll produces one; no fault reproduces an app traceback honestly, so if no roll produces one the record says **unexercised** |
-| **L7** (#1270) | unlikely — needs an own-frame failure in a qa-owned file | diagnostic: `fault_injection: [qa_suite_vitest_own_frame_type_error]` — roll 4's own one-line import edit |
-| **L8** (#1272) | unlikely — the fence template was fixed | diagnostic: `fault_injection: [qa_suite_at_path_prefix]` |
+| prediction | reached by an ordinary roll? | exercise plan | result |
+|---|---|---|---|
+| **L1** (#1268) | **yes** — every roll has a qa first attempt | read directly from the emission-shape readout on each counted roll | **live evidence: 0 contentless in ~100 emissions** across every cycle on the pack |
+| **L2** (#1269) | unlikely — needs a repair of an *absent* suite | *intended:* `fault_injection: [qa_suite_absent]` | **NOT EXERCISED — the fault reaches the wrong seam (#1310).** It drives the emission-retry path (#566/#998), the retry emits a good suite, and correction is never entered. The repair-retest seam #1269 fixed is never touched. |
+| **L3** (#1271) | yes when any qa task is re-attempted | read from the summary's failed rows against the last stored evaluation | unexercised so far |
+| **L4** (#1273) | unlikely — needs a prose-only repair | chained diagnostic, below | **HELD** — `cyc_9e217c266f5f`: the prose-only repair was refunded, not verified (`refund 1 of 3`) |
+| **L5** (#1260) | unlikely — needs a re-dispatch after a failure that named cases | rides the chained diagnostic | **HELD** — the failing case rode the re-take by title |
+| **L6** (#788) | unlikely — needs a runtime error in the delivered app | no fault reproduces an application traceback honestly; read from a stored repair brief if a roll produces one | unexercised; if no roll produces one the record says so |
+| **L7** (#1270) | unlikely — needs an own-frame failure in a qa-owned file | chained diagnostic, below | **HELD** — the injected own-frame `TypeError` in `frontend/src/__tests__/runs.test.jsx` routed to `qa.test_repair` against that file, and qa converged on the re-take |
+| **L8** (#1272) | unlikely — the fence template was fixed | *intended:* `fault_injection: [qa_suite_at_path_prefix]` | **NOT EXERCISED, and the readout is blind (#1311).** The fault cannot test L8's claim — it creates the condition the prediction says will not arise. Worse, L8 reads *stored artifact names*, which are post-repair: `extract_fenced_files` strips a leading `path/` when the result matches an expected artifact, so the readout can never observe the model emitting under the placeholder. |
+
+**Two of the three diagnostics were mis-assigned in this document, and running them is how that
+was found.** #1310 and #1311 are errors in this exercise plan, not defects in the pack or in
+the fault mechanism. Neither is fixed before roll 1; both are recorded here so the record
+cannot read as "exercised by injection, held".
+
+**L2 and L8 are therefore UNEXERCISED going into the counted rolls**, and a counted roll may
+still reach either on its own. Reading them as covered because a diagnostic ran is the exact
+failure #1300 exists to prevent, one level up.
 
 **The chained diagnostic — one cycle, three predictions.** Declaring
 `fault_injection: [qa_suite_vitest_own_frame_type_error, repair_prose_only]` fires each fault
@@ -169,6 +189,24 @@ covering L2, L4, L7, L8 with L5 riding the chain.
 *through*: a set in which a first attempt is still contentless has not measured the pack, it
 has measured the loop's recovery from the same fault again. **A falsified L1 blocks the cut**
 — the fix is revised from the new evidence and the set re-rolled — where 1.7.1's R2 did not.
+
+**A known non-pack rejection cause, declared before roll 1 (#1312).** The builder omits
+`qa_handoff.md` in roughly 9% of builder tasks (2 of 22 measured), and every blocking check on
+that task is bound to it — so the run is **rejected** with the pack untouched. Across nine
+counted rolls, expect on the order of one roll to hit it. Its signature is unmistakable and
+must be cited when it does:
+
+- the builder emits packaging files it was not asked for (`.env.example`, `docker-compose.yaml`)
+  and not `qa_handoff.md`, whose `expected_artifacts` were `['Dockerfile', 'qa_handoff.md']`;
+- `required_files` and `acceptance:sections_present` fail;
+- `correction_terminated_unverifiable … every check that could decide names a file the repair
+  did not write (qa_handoff.md)`;
+- the boot audit **passes** — the delivered app runs.
+
+A roll rejected on that signature is **not** evidence about any of L1–L8, and the record says
+so rather than letting it move the verdict-rate texture silently. #1312 is not fixed in this
+line: the fix is a design change that deletes the check surface #1254's 213 criteria sit on,
+and both are 1.7.3.
 
 **Texture, no prediction attached:** verdict rate against 1.7.1's 3 of 5 (no bar); correction
 rounds; greens by repair versus re-dispatch; refused versus applied versus refunded;
