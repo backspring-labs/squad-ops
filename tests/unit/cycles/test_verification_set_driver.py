@@ -24,6 +24,39 @@ pytestmark = [pytest.mark.domain_cycles]
 _REPO = Path(__file__).resolve().parents[3]
 _SETS = _REPO / "docs" / "plans" / "verification-sets"
 
+#: Every committed counting set, by release line and arm, with the arm's roll count.
+#: One table drives all four guards below, so covering a new line is one edit instead of
+#: three — and `test_the_guard_covers_every_committed_set` goes red when a set config is
+#: added to the directory and not to this table. That is the gap this table closes: the
+#: pin guard named the 1.7.2 defect exactly and never ran against it, because the lists
+#: it was parametrised on stopped at 1.6.6 and nothing noticed for three release lines.
+_COUNTING_SETS: dict[str, dict[str, int]] = {
+    "1-6-5": {"nextjs": 6, "fastapi-react": 6},
+    "1-6-6": {"nextjs": 2, "fastapi-react": 6},
+    "1-7-1": {"nextjs": 2, "fastapi-react": 6},
+    "1-7-2": {"nextjs": 3, "fastapi-react": 6},
+}
+_ARM_STACK = {"nextjs": "nextjs_ts", "fastapi-react": "fullstack_fastapi_react"}
+_COUNTING_SET_FILES = [
+    (f"{line}-{arm}.yaml", arm, rolls)
+    for line, arms in _COUNTING_SETS.items()
+    for arm, rolls in arms.items()
+]
+
+
+def _committed_counting_sets() -> set[str]:
+    """The set configs on disk that are counting arms of a line.
+
+    Excluded by naming convention rather than by a second list, so a new line's pair is
+    picked up automatically: `*-diagnostic-*` injects a fault and can never count, and
+    `*-ab-*` is an A/B arm, which carries no pin fields at all.
+    """
+    return {
+        path.name
+        for path in _SETS.glob("*.yaml")
+        if "-diagnostic-" not in path.name and "-ab-" not in path.name
+    }
+
 
 @pytest.fixture(scope="module")
 def driver():
@@ -115,12 +148,7 @@ class TestSetConfig:
 
     @pytest.mark.parametrize(
         "filename, stack",
-        [
-            ("1-6-5-nextjs.yaml", "nextjs_ts"),
-            ("1-6-5-fastapi-react.yaml", "fullstack_fastapi_react"),
-            ("1-6-6-nextjs.yaml", "nextjs_ts"),
-            ("1-6-6-fastapi-react.yaml", "fullstack_fastapi_react"),
-        ],
+        [(name, _ARM_STACK[arm]) for name, arm, _ in _COUNTING_SET_FILES],
     )
     def test_the_committed_set_configs_load_and_derive_their_stack(self, driver, filename, stack):
         """Bug caught: a typo in the file the shakeout will actually run with."""
@@ -336,28 +364,40 @@ class TestSquadSnapshotIsAnIdentity:
         assert driver.identity_mismatch(expected, actual) is mismatch
 
     @pytest.mark.parametrize(
-        ("filename", "n"),
-        [
-            ("1-6-5-nextjs.yaml", 6),
-            ("1-6-5-fastapi-react.yaml", 6),
-            ("1-6-6-nextjs.yaml", 2),
-            ("1-6-6-fastapi-react.yaml", 6),
-        ],
+        ("filename", "n"), [(name, rolls) for name, _, rolls in _COUNTING_SET_FILES]
     )
     def test_the_counting_sets_are_fully_pinned(self, driver, filename, n):
-        """Bug caught: a counting set whose config still carries the shakeout-time blanks —
-        the driver would then record instead of assert, and a rebuild mid-set would pass."""
+        """Bug caught: a set that has been pinned drifts — a pin hand-edited mid-set, or a
+        half-filled block where the driver records instead of asserting and a rebuild
+        mid-set passes. A set still in pre-registration has no pins yet, so the assertion
+        there is that the block is wholly blank rather than partly filled; catching a
+        wholly blank block at launch is `preflight --counting`'s job, and it does refuse."""
         import re
 
         cfg = driver.load_set_config(_SETS / filename)
         assert cfg.n_rolls == n
+        pins = (
+            cfg.expected_squad_snapshot_prefix,
+            cfg.expected_config_hash_prefix,
+            cfg.frozen_deploy_commit,
+        )
+        if not any(pins) and not cfg.frozen_image_ids:
+            return  # pre-registration: pinned at the end of the shakeout loop, not before
         assert re.fullmatch(r"[0-9a-f]{12,16}", cfg.expected_squad_snapshot_prefix)
         assert re.fullmatch(r"[0-9a-f]{12}", cfg.expected_config_hash_prefix)
         assert re.fullmatch(r"[0-9a-f]{8}", cfg.frozen_deploy_commit)
         assert set(cfg.frozen_image_ids) == set(driver.DEPLOY_SERVICES)
         assert all(re.fullmatch(r"[0-9a-f]{12}", v) for v in cfg.frozen_image_ids.values())
 
-    @pytest.mark.parametrize("line", ["1-6-5", "1-6-6"])
+    def test_the_guard_covers_every_committed_set(self):
+        """Bug caught: a release line's set configs are committed and never added to the
+        table, so the guards keep passing on old lines while the line about to launch is
+        unchecked. 1.7.0, 1.7.1 and 1.7.2 were each uncovered this way, and 1.7.2 shipped
+        two configs with empty pins that no counting roll could have launched from."""
+        enumerated = {name for name, _, _ in _COUNTING_SET_FILES}
+        assert _committed_counting_sets() == enumerated
+
+    @pytest.mark.parametrize("line", list(_COUNTING_SETS))
     def test_both_sets_share_the_deploy_and_snapshot_but_not_the_config_hash(self, driver, line):
         a = driver.load_set_config(_SETS / f"{line}-nextjs.yaml")
         b = driver.load_set_config(_SETS / f"{line}-fastapi-react.yaml")
