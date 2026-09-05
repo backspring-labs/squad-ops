@@ -76,54 +76,71 @@ def _prefix_paths_with_path_segment(content: str) -> str:
     return _FENCE_OPEN.sub(repl, content)
 
 
-def _vitest_own_frame_type_error(content: str) -> str:
-    """Import ``userEvent`` from the package that does not export it — the #1270 shape.
+#: Inserted into the first case when the import swap has nothing to swap. Named so a reader
+#: of a failing suite finds this module rather than hunting a real defect.
+_INJECTED_CALL_JS = "  expect.__squadops_injected_fault__();  // #1251 injected fault"
+_INJECTED_CALL_PY = "__squadops_injected_fault__()  # #1251 injected fault"
 
-    React roll 4: the suite imported ``userEvent`` from ``@testing-library/react`` instead
-    of ``@testing-library/user-event``, so three cases died at the suite's own call site
-    with ``TypeError: default.click is not a function``. The transform is the one-line
-    import edit that produced it, applied to whatever the model emitted.
-    """
-    swapped = content.replace("@testing-library/user-event", "@testing-library/react")
-    if swapped != content:
-        return swapped
-    # No such import to break. #1300: this branch used to `return content`, with the
-    # fallback written as a comment and never implemented — so on an emission that imports
-    # no `userEvent` the fault logged APPLIED and changed nothing, and the diagnostic ran on
-    # as an ordinary green cycle. A fault whose shape depends on what the model happened to
-    # emit is not deterministic, and a diagnostic that is not deterministic is not an
-    # exercise.
-    #
-    # So the same class of failure is produced without inventing an import: a call to a
-    # non-function property of `expect`, which every vitest suite binds. It raises
-    # `TypeError: expect.__squadops_injected_fault__ is not a function` at the suite's own
-    # call site — roll 4's shape, matched by the vitest `is not a function` own-frame shape
-    # in `_OWN_FRAME_SHAPES`.
-    return _call_a_non_function_in_the_first_case(content)
-
-
-#: Inserted into the first test body when the import swap has nothing to swap. Named so a
-#: reader of a failing suite can find this module rather than hunt a real defect.
-_INJECTED_CALL = "  expect.__squadops_injected_fault__();  // #1251 injected fault"
-
-_FIRST_CASE_BODY = re.compile(
+_FIRST_CASE_BODY_JS = re.compile(
     r"^(?P<indent>[ \t]*)(?:it|test)\s*\(\s*(?P<quote>['\"`]).*?(?P=quote)\s*,"
     r"\s*(?:async\s+)?(?:\(\s*\)|[\w$]+)\s*=>\s*\{",
     re.M,
 )
+_FIRST_CASE_BODY_PY = re.compile(
+    r"^(?P<indent>[ \t]*)(?:async\s+)?def\s+test_\w*\s*\([^)]*\)\s*(?:->[^:]+)?:[ \t]*$",
+    re.M,
+)
 
 
-def _call_a_non_function_in_the_first_case(content: str) -> str:
-    """Insert the injected call at the top of the first ``it``/``test`` body (#1300).
+def _inject_js_own_frame_call(content: str) -> str:
+    """A call to a non-function property of ``expect``, which every vitest suite binds.
 
-    Returns the content unchanged when there is no case to insert into — the caller's
-    ``inject`` then reports DID NOT BITE rather than claiming an exercise.
+    Raises ``TypeError: expect.__squadops_injected_fault__ is not a function`` at the
+    suite's own call site — roll 4's shape, without inventing an import.
     """
-    match = _FIRST_CASE_BODY.search(content)
+    match = _FIRST_CASE_BODY_JS.search(content)
     if match is None:
         return content
     at = match.end()
-    return f"{content[:at]}\n{match.group('indent')}{_INJECTED_CALL}{content[at:]}"
+    return f"{content[:at]}\n{match.group('indent')}{_INJECTED_CALL_JS}{content[at:]}"
+
+
+def _inject_py_own_frame_call(content: str) -> str:
+    """A call to a name the module never binds, inside the first ``test_`` function.
+
+    Raises ``NameError`` at the suite's own frame — the pytest own-frame shape
+    ``_OWN_FRAME_SHAPES`` declares, and one the application cannot have caused.
+    """
+    match = _FIRST_CASE_BODY_PY.search(content)
+    if match is None:
+        return content
+    at = match.end()
+    body_indent = match.group("indent") + "    "
+    return f"{content[:at]}\n{body_indent}{_INJECTED_CALL_PY}{content[at:]}"
+
+
+def _qa_suite_own_frame_failure(content: str) -> str:
+    """Make the qa suite die at its own call site, in whatever language it is written.
+
+    **Runner-aware, because a capability is not a runner (#1304).** This fault targets
+    ``qa.test``, and a cycle's plan may put a backend pytest suite on the qa task that runs
+    first — a vitest shape cannot bite a Python file, so whether the prediction got
+    exercised came down to which suite the planner happened to schedule. Two consecutive
+    diagnostics went that way: `cyc_06747fde42f2` bit only because a frontend task also
+    existed, and `cyc_ef8b997de07a` had one qa task, a pytest one, and exercised nothing.
+
+    ``_OWN_FRAME_SHAPES`` is already keyed by runner; this now consults the same fact.
+
+    Order is faithfulness first: the real import swap (React roll 4's own one-line edit),
+    then the language-appropriate synthesized call.
+    """
+    swapped = content.replace("@testing-library/user-event", "@testing-library/react")
+    if swapped != content:
+        return swapped
+    injected = _inject_js_own_frame_call(content)
+    if injected != content:
+        return injected
+    return _inject_py_own_frame_call(content)
 
 
 @dataclass(frozen=True)
@@ -156,9 +173,11 @@ FAULTS: dict[str, Fault] = {
         found_in="#1272 — React roll 5 (cyc_ca02bed7fbb4)",
         exercises="L8 (#1272): no emission lands under a literal `path/` prefix",
     ),
-    "qa_suite_vitest_own_frame_type_error": Fault(
+    # Renamed from `qa_suite_vitest_own_frame_type_error` (#1304): the shape is no longer
+    # vitest-only, and a name that says otherwise would misdescribe what a diagnostic ran.
+    "qa_suite_own_frame_failure": Fault(
         task="qa.test",
-        transform=_vitest_own_frame_type_error,
+        transform=_qa_suite_own_frame_failure,
         found_in="#1270 — React roll 4 (cyc_de4b2dea73a0), R2 falsified",
         exercises="L7 (#1270): an own-frame failure in a qa-owned file routes to `qa.test_repair`",
     ),
@@ -228,15 +247,30 @@ def validate_declaration(resolved_config: Mapping[str, Any] | None) -> tuple[str
 INJECTED_TASKS: frozenset[str] = frozenset({"qa.test", "qa.test_repair", "development.develop"})
 
 
+#: Set by the executor every time a task's outcome is handled, so the attempt that follows
+#: can be told apart from the first (#1304).
+PRIOR_ATTEMPTS_KEY = "prior_attempts"
+
+
 def _is_first_attempt(task_id: str, inputs: Mapping[str, Any] | None) -> bool:
     """Whether this emission is the task's first — read off the inputs, never remembered.
 
-    Two markers, because the loop re-runs a task in two different ways: the executor's
-    emission retry carries ``emission_retry_feedback`` (#566) under the same task id, and a
-    repair round gets a new task id whose attempt index is in it
-    (``repair-run_x-01-qa.test_repair``).
+    **Three markers, because two were not enough (#1304).** ``prior_attempts`` is the
+    general one: the executor stamps it whenever a task's outcome is handled, so any later
+    dispatch of that envelope carries it whatever caused the re-run. The other two are kept
+    because they are independently truthful and cost nothing — ``emission_retry_feedback``
+    (#566) for the emission retry, and a repair task's own attempt index.
+
+    Before ``prior_attempts``, a re-dispatch from the CORRECTION loop carried neither of
+    the other two, so the fault re-applied to every repaired emission and the loop could
+    never be seen recovering — which is the entire thing a diagnostic watches. Observed on
+    `cyc_06747fde42f2`: the same task id took the fault twice with a full correction round
+    between.
     """
-    if (inputs or {}).get("emission_retry_feedback"):
+    supplied = inputs or {}
+    if supplied.get(PRIOR_ATTEMPTS_KEY):
+        return False
+    if supplied.get("emission_retry_feedback"):
         return False
     attempt = re.search(r"-(\d{2})-", task_id)
     return attempt is None or attempt.group(1) == "00"

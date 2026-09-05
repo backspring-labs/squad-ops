@@ -15,7 +15,7 @@ project: group_run
 squad_profile: full-38
 request_profile: validated-fullstack
 overrides:
-  fault_injection: [qa_suite_vitest_own_frame_type_error, repair_prose_only]
+  fault_injection: [qa_suite_own_frame_failure, repair_prose_only]
 gate_name: progress_plan_review
 n_rolls: 1
 gate_notes: >-
