@@ -1813,6 +1813,106 @@ class TestTheRetryLineNamesTheSignatureItRetriesOn:
         assert "signature=none" in line
 
 
+class TestFanOutRecordsVerificationEvidence:
+    """#1148: the fan-out path recorded nothing into the run ledger.
+
+    The recorder was a closure inside the sequential loop, so `_execute_fan_out` had no
+    way to reach it: a `fan_out_fan_in` run produced a verdict over an EMPTY ledger, and
+    under SIP-0096's "only executed-and-passed credits" that reads as `blocked_unverified`
+    at best and a silently thinner ledger at worst. Harmless only because no shipped
+    profile declares `required_checks` and production runs sequential — which is the
+    reason to close it before anyone reaches for parallelism, not after.
+    """
+
+    def _env(self, task_id):
+        from squadops.tasks.models import TaskEnvelope
+
+        return TaskEnvelope(
+            task_id=task_id,
+            agent_id="neo",
+            cycle_id="cyc_001",
+            pulse_id="p",
+            project_id="hello_squad",
+            task_type="development.develop",
+            correlation_id="corr",
+            causation_id=None,
+            trace_id="t",
+            span_id="s",
+            inputs={},
+            metadata={"role": "dev"},
+        )
+
+    def _result(self, task_id, check, passed, status="SUCCEEDED"):
+        return TaskResult(
+            task_id=task_id,
+            status=status,
+            outputs={
+                "summary": "ok",
+                "role": "dev",
+                "validation_result": {
+                    "checks": [{"check": check, "passed": passed, "executed": True}]
+                },
+            },
+            error=None,
+        )
+
+    async def test_a_two_task_fan_out_puts_both_tasks_rows_in_the_ledger(self, executor, cycle):
+        from squadops.cycles.run_ledger import RunLedger
+
+        ledger = RunLedger()
+        plan = [self._env(f"task-{n}") for n in ("a", "b")]
+
+        async def _dispatch(env, run_id, **kw):
+            return self._result(env.task_id, f"check_{env.task_id}", True)
+
+        executor._task_dispatcher.dispatch_task = _dispatch
+        executor._task_dispatcher.create_task_run_if_enabled = AsyncMock(return_value=None)
+        executor._store_artifact = AsyncMock()
+
+        await executor._execute_fan_out(plan, "run_001", cycle, None, ledger=ledger)
+
+        subjects = {r.subject for r in ledger.check_results}
+        assert subjects == {"task-a", "task-b"}, (
+            "both tasks' evidence must reach the ledger; before #1148 the set was empty"
+        )
+
+    async def test_without_a_ledger_the_fan_out_still_runs(self, executor, cycle):
+        """The parameter is optional so existing callers keep working — a missing ledger
+        must not turn into an exception on the dispatch path."""
+        plan = [self._env("task-a")]
+
+        async def _dispatch(env, run_id, **kw):
+            return self._result(env.task_id, "check_a", True)
+
+        executor._task_dispatcher.dispatch_task = _dispatch
+        executor._task_dispatcher.create_task_run_if_enabled = AsyncMock(return_value=None)
+        executor._store_artifact = AsyncMock()
+
+        await executor._execute_fan_out(plan, "run_001", cycle, None)
+
+    async def test_a_failed_tasks_rows_are_recorded_too(self, executor, cycle):
+        """A failed task's checks are evidence. The sequential path records them at the
+        same point, and a ledger that holds only successes cannot show a failed→passed
+        history."""
+        from squadops.cycles.run_ledger import RunLedger
+
+        ledger = RunLedger()
+        plan = [self._env("task-a")]
+
+        async def _dispatch(env, run_id, **kw):
+            return self._result(env.task_id, "check_a", False, status="FAILED")
+
+        executor._task_dispatcher.dispatch_task = _dispatch
+        executor._task_dispatcher.create_task_run_if_enabled = AsyncMock(return_value=None)
+        executor._store_artifact = AsyncMock()
+
+        # the fan-out raises on a failed task — the point is that the evidence is
+        # recorded BEFORE it unwinds, which is where the sequential path records it too
+        with pytest.raises(Exception, match="task-a"):
+            await executor._execute_fan_out(plan, "run_001", cycle, None, ledger=ledger)
+        assert {r.subject for r in ledger.check_results} == {"task-a"}
+
+
 class TestTheExecutorStampsTheReAttemptMarker:
     """#1304: entered at `execute_run`, because the unit tests for `_is_first_attempt` pass
     a hand-built inputs dict and therefore cannot see whether anything sets it.

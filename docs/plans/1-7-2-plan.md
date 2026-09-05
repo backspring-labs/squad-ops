@@ -134,7 +134,7 @@ literal `path/` prefix; read from the stored artifact names.
 
 ---
 
-## 3. The rider — CI-verified, beside the pack
+## 3. The CI-verified list — frozen at three (owner's ruling, 2026-09-04)
 
 **Preconditions, before the pack's first roll-verified PR:**
 
@@ -145,19 +145,53 @@ literal `path/` prefix; read from the stored artifact names.
   §3 and `docs/plans/verification-sets/README.md` already require it; three of eight
   predictions here cannot be exercised without it.
 
-**Boundaries**, as the 1.7.0 plan §3.1 placed it: #154 (the all-packages import guard and
-its four moves), #377, #381, #305, #559, #922, #218 (with the route-lane test), #219, #225, and
-the identity-permutation test; riders #1148 (fan-out paths write verification evidence —
-parity with the seam §2.2 fixes) and #1150. **#1254** joins here: the planner authoring checks
-the framework injects is the Boundaries shape (two homes for one fact), and it doubled
-`harness_boundary` on every bound qa suite in 1.7.1. **#999** and **#1110** move here from the
-roll-verified list — evidence persisted and a marker echoed are characterization-testable
-and need no roll. **#1087/#1112** carry from the 1.7.1 rider (the WIP branch exists; fixture
-regenerated on the owner's go).
+### What shipped
 
-That is sixteen; the 1.7.0 ceiling is fifteen. **#225 and #219 move to 1.7.3 now** — the two
-smallest, neither touching a seam this pack's predictions read — so the rider is fourteen and
-the decision is made here rather than under review load.
+| item | what | PR |
+|---|---|---|
+| **#1150** | one home for the gate rule — `GATE_REJECTED_STATES` derived from `TERMINAL_STATES` | #1302 |
+| **#1110** | the retry path says whether the #998 remedy reached the prompt | #1303 |
+| **#1148** | the fan-out path records verification evidence | #1307 |
+
+### What moved to 1.7.3, and the count that decided it
+
+Eleven move: **#154, #377, #381, #305, #559, #922, #218, #1254, #999, #1087, #1112.**
+(#225 and #219 had already been moved to 1.7.3 at rev 1, making the original list fourteen.)
+
+**Why now.** The list was allocated to "the other lane, in parallel" and was never staffed:
+on 2026-09-04, thirteen of the fourteen had no branch at all, and the fourteenth (#1087) had
+one commit, 98 behind main, whose own message reads *"fork's work, 10 regression failures,
+NOT opened as a PR"*. Six of the eleven are shared-vocabulary refactors — import rewiring,
+status vocabularies, a three-way capability rename — which are multi-day each and, landing
+beside a pack whose reds must be attributable, would make a regression unattributable
+between the pack and the refactor. That is the reason CLAUDE.md quarantines structural
+refactors into their own release in the first place.
+
+**The count this line owes the record.** Several of these have been scheduled before and
+not shipped, and a plan that schedules them a fifth time without saying so is the "spec that
+no longer describes reality" failure in plan form:
+
+| item | release plans that scheduled it | times |
+|---|---|---|
+| #559 | 1.4.3, 1.4.4, 1.5.0, 1.7.0, 1.7.2 | **5** |
+| #154 | 1.4-evidence-arc, 1.5.0, 1.7.0, 1.7.2 | **4** |
+| #999 | 1.6.4, 1.7.0, 1.7.1, 1.7.2 | **4** |
+| #1110 | 1.6.5, 1.7.0, 1.7.1, 1.7.2 | 4 — **shipped here** |
+| #377, #381, #305 | 1.5.0, 1.7.0, 1.7.2 | 3 each |
+
+**So 1.7.3 must carry this list as its content, not beside a headline.** The structural
+reason these slip is that they are always secondary to something that gates a cut, and
+CI-verified work gates nothing. Attaching them to a 1.7.3 that already has "Loop Honesty,
+second half" as its headline reproduces the condition exactly. A release whose subject *is*
+this list is the only version of "deferred" that has ever been distinguishable from "never".
+
+### Drift the cut record must declare
+
+Three items of the intended 1.7.2 tree shipped and eleven did not. The cut record names the
+eleven and says they are additive-by-omission — nothing in the pack depends on them, and
+**#1254 is the one to call out by name**: it doubles `harness_boundary` on every bound qa
+suite, so the counted set measures a checks ledger with a known duplication in it. That is
+stated here, before roll 1, rather than discovered in the record.
 
 ---
 
@@ -389,6 +423,14 @@ from are not. The 1.7.1 plan and pre-registration keep the old names, being the 
 what the instrument was called when those sets ran.
 
 ## 9. Revision history
+
+- **Rev 3 (2026-09-04)** — §3 frozen at three shipped items (#1150, #1110, #1148) with
+  eleven moved to 1.7.3, on the owner's ruling. The list had never been staffed — thirteen
+  of fourteen with no branch, the fourteenth 98 commits behind and self-declared broken —
+  and §3 now carries the count of how many release plans have scheduled each item before,
+  because deferring #559 for the fifth time without recording it is how a plan stops
+  describing reality. Adds the drift the cut record must declare, naming #1254 as the one
+  omission the counted set can feel.
 
 - **Rev 2 (2026-09-03)** — §8a records the #1268 reading and the fix it selects (the
   `think: false` the #927 declaration sends, measured against its own control), and notes
