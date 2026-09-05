@@ -124,7 +124,7 @@ class TestTheTransformsReproduceTheShapesTheyName:
         assert _inject(content, "task-run_x-m006-qa.test", ["qa_suite_at_path_prefix"]) == content
 
     def test_the_own_frame_shape_is_roll_4s_one_line_import_edit(self):
-        out = _inject(_SUITE, "task-run_x-m006-qa.test", ["qa_suite_vitest_own_frame_type_error"])
+        out = _inject(_SUITE, "task-run_x-m006-qa.test", ["qa_suite_own_frame_failure"])
         assert "import userEvent from '@testing-library/react'" in out
         assert "@testing-library/user-event" not in out
 
@@ -132,7 +132,7 @@ class TestTheTransformsReproduceTheShapesTheyName:
         """Reported as applied-but-unchanged rather than silently mangling an emission it
         cannot break: the diagnostic's record then shows the fault did not bite."""
         content = "```py:backend/tests/test_runs.py\ndef test_x(): pass\n```\n"
-        out = _inject(content, "task-run_x-m006-qa.test", ["qa_suite_vitest_own_frame_type_error"])
+        out = _inject(content, "task-run_x-m006-qa.test", ["qa_suite_own_frame_failure"])
         assert out == content
 
 
@@ -270,3 +270,265 @@ class TestTheFaultReachesTheHandlerTheLiveCycleCalls:
         loop must refund the round rather than verify it."""
         names = await self._repair({DECLARATION_KEY: ["repair_prose_only"]})
         assert "backend/tests/test_runs.py" not in names
+
+
+class TestTheDeclarationSurvivesTheWireItArrivesOn:
+    """#1298: `execution_overrides` reaches a cycle through `cycles create --set k=v`, whose
+    values are strings with no coercion. A declaration of two faults has no other way to
+    arrive, so a comma-separated string is the list — without it the chained diagnostic
+    could not be launched at all."""
+
+    def test_two_faults_arrive_as_one_comma_string(self):
+        assert declared_faults(
+            {DECLARATION_KEY: "qa_suite_own_frame_failure,repair_prose_only"}
+        ) == ("qa_suite_own_frame_failure", "repair_prose_only")
+
+    def test_the_comma_form_validates_the_same_as_a_list(self):
+        comma = validate_declaration({DECLARATION_KEY: "qa_suite_absent,repair_prose_only"})
+        listed = validate_declaration({DECLARATION_KEY: ["qa_suite_absent", "repair_prose_only"]})
+        assert comma == listed
+
+    def test_surrounding_whitespace_is_not_part_of_a_name(self):
+        assert declared_faults({DECLARATION_KEY: " qa_suite_absent , repair_prose_only "}) == (
+            "qa_suite_absent",
+            "repair_prose_only",
+        )
+
+    def test_an_empty_segment_is_dropped_rather_than_becoming_a_nameless_fault(self):
+        """A trailing comma is a typo, not a declaration of nothing — and an empty name
+        would be refused as unknown, failing the cycle for the wrong reason."""
+        assert declared_faults({DECLARATION_KEY: "qa_suite_absent,"}) == ("qa_suite_absent",)
+        assert declared_faults({DECLARATION_KEY: ","}) == ()
+
+    def test_a_single_name_still_arrives_whole(self):
+        assert declared_faults({DECLARATION_KEY: "qa_suite_absent"}) == ("qa_suite_absent",)
+
+
+def test_the_drivers_fault_normaliser_agrees_with_the_frameworks():
+    """The driver keeps its own copy on purpose — it must refuse a counting roll even
+    against a deploy whose framework predates this module (`driver:76-78`) — so the two are
+    held to each other here. A divergence would mean the driver's refusal and the agent's
+    application disagree about what was declared, which is how a diagnostic reports a fault
+    it did not run.
+    """
+    import sys
+
+    sys.path.insert(0, str(_SRC.parents[1] / "scripts" / "dev"))
+    from verification_set_driver import declared_fault_names
+
+    cases = [
+        None,
+        {},
+        {DECLARATION_KEY: ""},
+        {DECLARATION_KEY: "qa_suite_absent"},
+        {DECLARATION_KEY: "qa_suite_absent,repair_prose_only"},
+        {DECLARATION_KEY: " qa_suite_absent , repair_prose_only "},
+        {DECLARATION_KEY: "qa_suite_absent,"},
+        {DECLARATION_KEY: ","},
+        {DECLARATION_KEY: ["qa_suite_absent", "repair_prose_only"]},
+        {DECLARATION_KEY: ("qa_suite_absent",)},
+    ]
+    for case in cases:
+        assert declared_fault_names(case) == declared_faults(case), f"disagree on {case!r}"
+
+
+#: Two emissions a real qa.test could produce. The second is the one the first live
+#: diagnostic actually emitted (`cyc_b7c5da74eb5b`): a vitest suite importing nothing from
+#: `@testing-library/user-event`. Every declared fault must bite on BOTH.
+_EMISSIONS = {
+    "with the user-event import": _SUITE,
+    "without it": (
+        "I'll author the suite.\n\n"
+        "```jsx:frontend/src/__tests__/runs.test.jsx\n"
+        "import { render, screen } from '@testing-library/react'\n"
+        "import RunsListView from '../views/RunsListView'\n\n"
+        "test('renders the runs list', async () => {\n"
+        "  render(<RunsListView runs={[]} />)\n"
+        "  expect(screen.getByTestId('runs-list')).toBeInTheDocument()\n"
+        "})\n"
+        "```\n"
+    ),
+    # #1304: the shape two consecutive live diagnostics actually met. The qa task the
+    # planner scheduled first was the BACKEND suite, and a vitest transform cannot bite a
+    # Python file — so L7 went unexercised twice while the fault reported itself applied.
+    "a pytest suite": (
+        "Here is the backend suite.\n\n"
+        "```python:backend/tests/test_runs.py\n"
+        "import pytest\n"
+        "from fastapi.testclient import TestClient\n\n\n"
+        "def test_leave_run_happy_path(client):\n"
+        '    """The participant leaves and the roster shrinks."""\n'
+        "    resp = client.post('/runs/1/leave', json={'name': 'ada'})\n"
+        "    assert resp.status_code == 200\n"
+        "```\n"
+    ),
+}
+
+
+@pytest.mark.parametrize("shape", sorted(_EMISSIONS))
+@pytest.mark.parametrize("name", sorted(FAULTS))
+def test_every_declared_fault_actually_changes_a_representative_emission(name, shape):
+    """A fault that returns its input is inert, and `inject` used to log it as APPLIED
+    anyway — so the cycle ran on as an ordinary green one while the record said a fault had
+    been injected (#1300).
+
+    The suite already tested each transform against an emission chosen to suit it, which is
+    exactly why an emission that did NOT suit it was never a failure: roll-4's import swap
+    had nothing to swap on a suite that imports no `userEvent`, and its fallback existed
+    only as a comment. This is the derived form — every fault, every representative shape.
+    """
+    content = _EMISSIONS[shape]
+    assert FAULTS[name].transform(content) != content, (
+        f"{name} returned its input unchanged on an emission {shape} — a fault that cannot "
+        "bite makes its diagnostic prove nothing"
+    )
+
+
+class TestAnInertFaultIsNamedAsInertRatherThanApplied:
+    def test_the_import_swap_falls_back_when_there_is_no_import_to_swap(self):
+        """Roll 4's shape reproduced without inventing an import: a call to a non-function
+        property of `expect`, which every vitest suite binds."""
+        out = _inject(
+            _EMISSIONS["without it"],
+            "task-run_x-m006-qa.test",
+            ["qa_suite_own_frame_failure"],
+        )
+        assert "expect.__squadops_injected_fault__();" in out
+        assert "test('renders the runs list'" in out, "the case itself is untouched"
+        assert out.index("__squadops_injected_fault__") < out.index("render(<RunsListView")
+
+    def test_the_swap_is_still_preferred_when_the_import_is_there(self):
+        """The faithful transform first — the fallback is for the case it cannot reach."""
+        out = _inject(_SUITE, "task-run_x-m006-qa.test", ["qa_suite_own_frame_failure"])
+        assert "@testing-library/react" in out
+        assert "__squadops_injected_fault__" not in out
+
+    def test_the_injected_call_is_read_as_an_own_frame_defect_so_it_routes_to_qa(self):
+        """The whole point of the shape. If the injected failure were attributed to the
+        application, the diagnostic would exercise the dev chain and L7 would go unread."""
+        from squadops.capabilities.handlers.test_runner import suite_defects
+
+        rows = [
+            {
+                "file": "frontend/src/__tests__/runs.test.jsx",
+                "title": "renders the runs list",
+                "exception": "TypeError",
+                "messages": ["TypeError: expect.__squadops_injected_fault__ is not a function"],
+                "frames": [{"file": "frontend/src/__tests__/runs.test.jsx", "line": 6}],
+            }
+        ]
+        assert len(suite_defects(rows, [], "vitest")) == 1
+
+    def test_an_emission_with_no_case_to_break_is_reported_as_not_biting(self, caplog):
+        """Still possible — a prose-only or fence-only emission has no test body. It must
+        say so instead of claiming an exercise."""
+        content = "```py:backend/tests/test_runs.py\ndef test_x(): pass\n```\n"
+        with caplog.at_level("WARNING"):
+            out = _inject(content, "task-run_x-m006-qa.test", ["qa_suite_own_frame_failure"])
+        assert out == content
+        record = next(r for r in caplog.records if "DID NOT BITE" in r.getMessage())
+        assert "PROVES NOTHING" in record.getMessage()
+        assert "APPLIED" not in record.getMessage()
+
+    def test_a_fault_that_bites_still_says_applied(self, caplog):
+        with caplog.at_level("WARNING"):
+            _inject(_SUITE, "task-run_x-m006-qa.test", ["qa_suite_absent"])
+        messages = [r.getMessage() for r in caplog.records]
+        assert any("fault_injection: APPLIED" in m for m in messages)
+        assert not any("DID NOT BITE" in m for m in messages)
+
+
+class TestTheOwnFrameFaultReadsTheEmissionsLanguage:
+    """#1304: the fault targets a capability, and a capability is not a runner.
+
+    A cycle's plan may schedule a backend pytest suite on the qa task that runs first, and
+    a vitest shape cannot bite a Python file. Two consecutive live diagnostics went that
+    way — `cyc_06747fde42f2` bit only because a frontend task also happened to exist, and
+    `cyc_ef8b997de07a` had a single pytest qa task and exercised nothing. Whether a
+    prediction is exercised must not depend on what the planner scheduled.
+    """
+
+    def test_a_python_suite_takes_a_name_error_in_its_own_first_case(self):
+        out = _inject(
+            _EMISSIONS["a pytest suite"], "task-run_x-m005-qa.test", ["qa_suite_own_frame_failure"]
+        )
+        assert "__squadops_injected_fault__()" in out
+        assert "def test_leave_run_happy_path(client):" in out, "the signature is untouched"
+        # inside the body, not at module level — a module-level NameError is a collection
+        # error, which is a different shape and routes differently
+        body = out.split("def test_leave_run_happy_path(client):", 1)[1]
+        injected = body.index("__squadops_injected_fault__()")
+        assert body[:injected].rsplit("\n", 1)[-1] == "    "
+
+    def test_the_python_injection_is_the_pytest_own_frame_shape(self):
+        """It must be a shape `_OWN_FRAME_SHAPES['pytest']` declares, or the diagnostic
+        exercises the dev chain instead of the routing it claims to."""
+        from squadops.capabilities.handlers.test_runner import suite_defects
+
+        rows = [
+            {
+                "file": "backend/tests/test_runs.py",
+                "title": "test_leave_run_happy_path",
+                "exception": "NameError",
+                "messages": ["NameError: name '__squadops_injected_fault__' is not defined"],
+                "frames": [{"file": "backend/tests/test_runs.py", "line": 8}],
+            }
+        ]
+        assert len(suite_defects(rows, [], "pytest")) == 1
+
+    def test_a_javascript_suite_still_takes_the_javascript_shape(self):
+        out = _inject(
+            _EMISSIONS["without it"], "task-run_x-m006-qa.test", ["qa_suite_own_frame_failure"]
+        )
+        assert "expect.__squadops_injected_fault__();" in out
+        assert "# #1251 injected fault" not in out, "no Python comment in a JSX file"
+
+    def test_the_faithful_import_swap_is_still_preferred(self):
+        out = _inject(_SUITE, "task-run_x-m006-qa.test", ["qa_suite_own_frame_failure"])
+        assert "@testing-library/react" in out
+        assert "__squadops_injected_fault__" not in out
+
+
+class TestAReDispatchIsNotAFirstAttempt:
+    """#1304: `prior_attempts` is the general marker.
+
+    A re-dispatch from the correction loop carried neither `emission_retry_feedback` nor a
+    repair attempt index, so the fault re-applied to every repaired emission and the loop
+    could never be seen recovering — which is the whole thing a diagnostic watches.
+    Observed on `cyc_06747fde42f2`: the same task id took the fault twice with a full
+    correction round in between.
+    """
+
+    def test_a_correction_re_dispatch_runs_clean(self):
+        out = _inject(
+            _SUITE,
+            "task-run_x-m006-qa.test",
+            ["qa_suite_own_frame_failure"],
+            inputs={"prior_attempts": 1},
+        )
+        assert out == _SUITE
+
+    def test_the_first_attempt_still_takes_it(self):
+        out = _inject(_SUITE, "task-run_x-m006-qa.test", ["qa_suite_own_frame_failure"], inputs={})
+        assert out != _SUITE
+
+    def test_a_zero_count_is_a_first_attempt_not_a_re_dispatch(self):
+        """The stamp counts handled outcomes, so 0 and absent mean the same thing. Reading
+        0 as truthy-adjacent would disable the fault everywhere."""
+        out = _inject(
+            _SUITE,
+            "task-run_x-m006-qa.test",
+            ["qa_suite_own_frame_failure"],
+            inputs={"prior_attempts": 0},
+        )
+        assert out != _SUITE
+
+    def test_the_emission_retry_marker_still_works_on_its_own(self):
+        """Kept as an independent marker — #566's retry sets it and nothing else."""
+        out = _inject(
+            _SUITE,
+            "task-run_x-m006-qa.test",
+            ["qa_suite_own_frame_failure"],
+            inputs={"emission_retry_feedback": {"reason": "no_fenced_blocks"}},
+        )
+        assert out == _SUITE

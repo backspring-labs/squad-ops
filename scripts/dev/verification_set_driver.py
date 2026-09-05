@@ -78,6 +78,27 @@ RUNTIME_API_CONTAINER = "squadops-runtime-api"
 #: to refuse a counting roll even against a deploy whose framework predates the module.
 FAULT_DECLARATION_KEY = "fault_injection"
 
+
+def declared_fault_names(overrides: Mapping[str, Any] | None) -> tuple[str, ...]:
+    """The faults a set config declares — the same normalisation the framework applies.
+
+    Duplicated rather than imported for the reason above: the driver must be able to refuse
+    a counting roll against a deploy whose framework predates the module. The two are held
+    to each other by ``test_the_drivers_fault_normaliser_agrees_with_the_frameworks``, so
+    the duplication cannot drift.
+
+    Before this existed, ``preflight`` and the record renderer each iterated the raw override
+    value. A single fault arrives from ``--set`` as a *string*, so iterating it yielded its
+    characters and the diagnostic's own record named the fault as `_, a, b, e, …` (#1298).
+    """
+    declared = (overrides or {}).get(FAULT_DECLARATION_KEY)
+    if not declared:
+        return ()
+    if isinstance(declared, str):
+        declared = [part for part in (p.strip() for p in declared.split(",")) if part]
+    return tuple(str(name) for name in declared)
+
+
 POLL_S = 30
 MAX_WAIT_S = 4 * 60 * 60
 
@@ -149,7 +170,13 @@ def load_set_config(path: Path) -> SetConfig:
     missing = [k for k in _REQUIRED if k not in raw]
     if missing:
         raise SystemExit(f"{path}: set config is missing {', '.join(missing)}")
-    overrides = {str(k): str(v) for k, v in (raw.get("overrides") or {}).items()}
+    # A list stays a readable list in the YAML and is carried as the comma form the CLI's
+    # `--set` can express (#1298); `str(["a"])` produced `"['a']"`, which the framework's
+    # guard then refused at cycle create.
+    overrides = {
+        str(k): (",".join(str(i) for i in v) if isinstance(v, list | tuple) else str(v))
+        for k, v in (raw.get("overrides") or {}).items()
+    }
     image_ids = {str(k): str(v) for k, v in (raw.get("frozen_image_ids") or {}).items()}
     unknown = sorted(set(image_ids) - set(DEPLOY_SERVICES))
     if unknown:
@@ -310,7 +337,7 @@ def preflight(cfg: SetConfig, *, counting: bool) -> list[str]:
     # what makes its red meaningless as a verdict. Refused for a counting roll, reported for
     # a shakeout, and never silent: an injected red in a counted record would read as the
     # squad failing.
-    faults = sorted(str(name) for name in (cfg.overrides.get(FAULT_DECLARATION_KEY) or ()) if name)
+    faults = sorted(declared_fault_names(cfg.overrides))
     if faults and counting:
         problems.append(
             f"§4: the set config declares fault injection ({', '.join(faults)}) — a cycle "
@@ -1198,6 +1225,42 @@ def _render_readout(readout: Mapping[str, Mapping[str, int]] | None) -> str:
     )
 
 
+def _render_deploy(cfg: SetConfig, rec: dict) -> list[str]:
+    """The deploy as OBSERVED at launch, kept apart from the config's typed pin (#1296).
+
+    `frozen_deploy_commit` is a string an operator writes into the set config, and nothing
+    can check it: the commit an image was built from is not recoverable from the image
+    (`SOURCE_HASH` is a build arg for cache-busting, not an ENV or LABEL). The image ids
+    and the loaded-module checks below ARE observed, and they are what identifies the
+    deploy — so they belong in the record rather than only in the launch log.
+    """
+    ident = rec.get("deploy") or {}
+    if not ident:
+        return []
+    loaded = {k: v for k, v in ident.items() if k.endswith(":loaded")}
+    images = {k: v for k, v in ident.items() if k != "head" and not k.endswith(":loaded")}
+    lines = [
+        "## Deploy — observed at launch, not asserted here",
+        "",
+        f"- driver HEAD `{ident.get('head', '?')}`",
+        f"- set config `frozen_deploy_commit`: "
+        f"{f'`{cfg.frozen_deploy_commit}`' if cfg.frozen_deploy_commit else '**unset** (typed, not measured)'}",
+        "",
+        "| service | image id |",
+        "|---|---|",
+        *(f"| {svc} | `{img}` |" for svc, img in sorted(images.items())),
+        "",
+    ]
+    if loaded:
+        lines += [
+            "**Loaded, not built** — each is a live call with its paired control:",
+            "",
+            *(f"- `{k.removesuffix(':loaded')}` → `{v}`" for k, v in sorted(loaded.items())),
+            "",
+        ]
+    return lines
+
+
 def render(cfg: SetConfig, title: str, rec: dict) -> str:
     audit = rec.get("boot_audit", {})
     functional = rec.get("verdict") == "accepted" and audit.get("passed") is True
@@ -1205,7 +1268,7 @@ def render(cfg: SetConfig, title: str, rec: dict) -> str:
         f"# {cfg.name} — {title}",
         "",
         f"**Cycle** `{rec['cycle_id']}` · stack `{rec.get('stack')}` · deploy "
-        f"`{cfg.frozen_deploy_commit or rec.get('deploy', {}).get('head', '?')}` · "
+        f"`{cfg.frozen_deploy_commit or rec.get('deploy', {}).get('head') or '?'}` · "
         f"config `{(rec.get('config_hash') or cfg.expected_config_hash_prefix or '?')[:12]}` · "
         f"squad snapshot `{(rec.get('squad_profile_snapshot_ref') or '?')[:12]}`",
         "",
@@ -1214,12 +1277,12 @@ def render(cfg: SetConfig, title: str, rec: dict) -> str:
         *(
             [
                 "- **DIAGNOSTIC — injected fault(s): "
-                f"{', '.join(sorted(str(n) for n in cfg.overrides.get(FAULT_DECLARATION_KEY)))}"
+                f"{', '.join(sorted(declared_fault_names(cfg.overrides)))}"
                 "**. This cycle carried a deliberate emission defect (#1251): its verdict is "
                 "not a verdict about the squad, and it must not be counted.",
                 "",
             ]
-            if cfg.overrides.get(FAULT_DECLARATION_KEY)
+            if declared_fault_names(cfg.overrides)
             else []
         ),
         f"- verdict: **{rec.get('verdict')}**",
@@ -1272,6 +1335,7 @@ def render(cfg: SetConfig, title: str, rec: dict) -> str:
         "| container_packaging rows (reporting-only) | "
         f"{_render_readout((rec.get('typed_checks') or {}).get('container_packaging_rows'))} |",
         "",
+        *_render_deploy(cfg, rec),
         "## Gate decisions (decider recorded verbatim, never inferred)",
         "",
     ]
@@ -1327,7 +1391,14 @@ def _write_record(cfg: SetConfig, stem: str, rec: dict, md: str) -> None:
 
 
 def _run_cycle(
-    cfg: SetConfig, stack: str, notes: str, *, title: str, stem: str, assert_hash: bool
+    cfg: SetConfig,
+    stack: str,
+    notes: str,
+    *,
+    title: str,
+    stem: str,
+    assert_hash: bool,
+    identity: Mapping[str, str],
 ) -> int:
     launched_at = log_since(datetime.now(UTC))
     cyc, run, chash = launch(cfg, notes)
@@ -1339,6 +1410,11 @@ def _run_cycle(
             return 3
     ended_early = drive(cfg, cyc)
     rec = collect(cfg, cyc)
+    # #1296: the identity this cycle was actually launched against, in the record rather
+    # than only in the log. `render`'s fallback to it has been dead since the field was
+    # written, because nothing ever put a `deploy` key here — so a shakeout, the one cycle
+    # whose deploy is by definition unpinned, printed `deploy ?`.
+    rec["deploy"] = dict(identity)
     rec["ended_without_implementation"] = ended_early
     rec["stack"] = stack
     rec["config_hash"] = chash
@@ -1408,6 +1484,7 @@ def cmd_shakeout(cfg: SetConfig, dry_run: bool) -> int:
         title="shakeout (non-counting)",
         stem="shakeout",
         assert_hash=False,
+        identity=ident,
     )
 
 
@@ -1416,8 +1493,15 @@ def cmd_roll(cfg: SetConfig, roll: int, dry_run: bool) -> int:
     if rc:
         return rc
     stack = stack_for(cfg)
+    # #1296: observed for a counted roll too, not only a shakeout. The image-id pin above
+    # already refuses a changed deploy; this puts the identity that passed that check —
+    # and the loaded-module checks — into the roll's own record, so "loaded, not built" is
+    # re-verified per roll instead of once per shakeout and inherited by assertion.
     if dry_run:
+        log(f"stack {stack}; deploy identity: {json.dumps(deploy_identity(cfg))}")
         return 0
+    ident = deploy_identity(cfg)
+    log(f"stack {stack}; deploy identity: {json.dumps(ident)}")
     cfg.records_path.mkdir(parents=True, exist_ok=True)
     if not cfg.head_pin.exists():
         cfg.head_pin.write_text(sh(f"git -C {REPO} rev-parse --short HEAD"))
@@ -1429,6 +1513,7 @@ def cmd_roll(cfg: SetConfig, roll: int, dry_run: bool) -> int:
         title=f"roll {roll} of {cfg.n_rolls}",
         stem=f"roll-{roll:02d}",
         assert_hash=True,
+        identity=ident,
     )
 
 

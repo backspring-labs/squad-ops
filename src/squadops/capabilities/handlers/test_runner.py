@@ -1496,15 +1496,35 @@ async def run_fullstack_tests(
         error_parts.append(f"frontend (non-blocking): {frontend_result.error}")
 
     # #626: the controlling side (D13 — backend when it executed, else the
-    # frontend) supplies runner identity and the suite-health verdict.
+    # frontend) supplies runner identity and the suite-health VERDICT, because those are
+    # single-valued and D13 says which side decides.
     controlling = backend_result if backend_result.executed else frontend_result
+    # #1305: EVIDENCE is not single-valued and comes from both sides.
+    #
+    # `suite_defects` was not set here at all, so it defaulted to `()` and both branches'
+    # own-frame findings were discarded at the merge — which made #1130 (pytest) and #1270
+    # (vitest) inert on this stack, the only stack that takes this path. The detector ran,
+    # found the defect, and nothing downstream ever saw it: no failure was stamped
+    # `qa_owned`, so every own-frame failure routed to the dev chain, which the #884
+    # ownership veto then forbade from touching the file. That is 1.7.1 React roll 4, and
+    # it reproduced exactly on the round-2 diagnostic `cyc_06747fde42f2` with the fault
+    # injected — `qa_owned_routed: []`.
+    #
+    # `test_failures` and `uncollected_test_files` took the controlling side only, so on
+    # any fullstack cycle where the backend executed, the frontend's failure rows never
+    # reached the evidence either. A frontend failure is evidence whether or not the
+    # backend also ran; non-blocking (D13) governs the VERDICT, not what is recorded.
     return RunTestsResult(
         executed=combined_executed,
         exit_code=combined_exit_code,
         runner=controlling.runner,
         suite_broken=controlling.suite_broken,
-        test_failures=controlling.test_failures,
-        uncollected_test_files=controlling.uncollected_test_files,
+        test_failures=tuple(backend_result.test_failures) + tuple(frontend_result.test_failures),
+        suite_defects=tuple(backend_result.suite_defects) + tuple(frontend_result.suite_defects),
+        uncollected_test_files=(
+            tuple(backend_result.uncollected_test_files)
+            + tuple(frontend_result.uncollected_test_files)
+        ),
         stdout="\n\n".join(combined_stdout_parts)[:_STDOUT_LIMIT],
         stderr="\n\n".join(combined_stderr_parts)[:_STDOUT_LIMIT],
         error="; ".join(error_parts) if error_parts else "",

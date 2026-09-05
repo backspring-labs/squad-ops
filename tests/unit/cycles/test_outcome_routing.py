@@ -1755,3 +1755,208 @@ class TestTheNextAttemptKeepsTheCasesThisOneExposed:
         await self._route(executor, cycle, envelope, enriched, result)
 
         assert "prior_failing_cases" not in enriched.inputs
+
+
+class TestTheRetryLineNamesTheSignatureItRetriesOn:
+    """#1110: entered at ``execute_run``, the call the live cycle makes.
+
+    #998 classifies a zero-extraction emission — `cap_exhausted`, `empty`,
+    `unextractable` — and the executor attaches the marker so the handler can render an
+    aimed remedy. The retry log line said only that a retry happened, and LangFuse
+    truncates generation input at 10,000 chars while the retry prompt runs past it, so the
+    1.6.4 record had to state that whether the remedy reached the prompt was unobservable.
+    """
+
+    async def test_the_signature_and_token_facts_are_echoed_on_the_retry(
+        self, executor, mock_queue, caplog
+    ):
+        marker = {
+            "reason": "no_fenced_blocks",
+            "response_chars": 0,
+            "completion_tokens": 8192,
+            "completion_cap": 8192,
+            "signature": "cap_exhausted",
+        }
+        mock_queue.reply_router.responder = _scripted_responder(
+            {0: ("FAILED", {"emission_failure": marker}, "no fenced blocks")}
+        )
+        with (
+            patch(
+                "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+                new_callable=AsyncMock,
+            ),
+            caplog.at_level("INFO"),
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        line = next(r.getMessage() for r in caplog.records if "Retryable failure" in r.getMessage())
+        assert "signature=cap_exhausted" in line
+        assert "completion_tokens=8192" in line
+        assert "completion_cap=8192" in line
+
+    async def test_a_retry_with_no_emission_marker_says_so_rather_than_inventing_one(
+        self, executor, mock_queue, caplog
+    ):
+        """A transient failure carries no #998 marker. The line must read `signature=none`
+        — a blank or a guessed value there would be worse than the silence it replaced."""
+        mock_queue.reply_router.responder = _scripted_responder({0: ("FAILED", None, "transient")})
+        with (
+            patch(
+                "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+                new_callable=AsyncMock,
+            ),
+            caplog.at_level("INFO"),
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        line = next(r.getMessage() for r in caplog.records if "Retryable failure" in r.getMessage())
+        assert "signature=none" in line
+
+
+class TestFanOutRecordsVerificationEvidence:
+    """#1148: the fan-out path recorded nothing into the run ledger.
+
+    The recorder was a closure inside the sequential loop, so `_execute_fan_out` had no
+    way to reach it: a `fan_out_fan_in` run produced a verdict over an EMPTY ledger, and
+    under SIP-0096's "only executed-and-passed credits" that reads as `blocked_unverified`
+    at best and a silently thinner ledger at worst. Harmless only because no shipped
+    profile declares `required_checks` and production runs sequential — which is the
+    reason to close it before anyone reaches for parallelism, not after.
+    """
+
+    def _env(self, task_id):
+        from squadops.tasks.models import TaskEnvelope
+
+        return TaskEnvelope(
+            task_id=task_id,
+            agent_id="neo",
+            cycle_id="cyc_001",
+            pulse_id="p",
+            project_id="hello_squad",
+            task_type="development.develop",
+            correlation_id="corr",
+            causation_id=None,
+            trace_id="t",
+            span_id="s",
+            inputs={},
+            metadata={"role": "dev"},
+        )
+
+    def _result(self, task_id, check, passed, status="SUCCEEDED"):
+        return TaskResult(
+            task_id=task_id,
+            status=status,
+            outputs={
+                "summary": "ok",
+                "role": "dev",
+                "validation_result": {
+                    "checks": [{"check": check, "passed": passed, "executed": True}]
+                },
+            },
+            error=None,
+        )
+
+    async def test_a_two_task_fan_out_puts_both_tasks_rows_in_the_ledger(self, executor, cycle):
+        from squadops.cycles.run_ledger import RunLedger
+
+        ledger = RunLedger()
+        plan = [self._env(f"task-{n}") for n in ("a", "b")]
+
+        async def _dispatch(env, run_id, **kw):
+            return self._result(env.task_id, f"check_{env.task_id}", True)
+
+        executor._task_dispatcher.dispatch_task = _dispatch
+        executor._task_dispatcher.create_task_run_if_enabled = AsyncMock(return_value=None)
+        executor._store_artifact = AsyncMock()
+
+        await executor._execute_fan_out(plan, "run_001", cycle, None, ledger=ledger)
+
+        subjects = {r.subject for r in ledger.check_results}
+        assert subjects == {"task-a", "task-b"}, (
+            "both tasks' evidence must reach the ledger; before #1148 the set was empty"
+        )
+
+    async def test_without_a_ledger_the_fan_out_still_runs(self, executor, cycle):
+        """The parameter is optional so existing callers keep working — a missing ledger
+        must not turn into an exception on the dispatch path."""
+        plan = [self._env("task-a")]
+
+        async def _dispatch(env, run_id, **kw):
+            return self._result(env.task_id, "check_a", True)
+
+        executor._task_dispatcher.dispatch_task = _dispatch
+        executor._task_dispatcher.create_task_run_if_enabled = AsyncMock(return_value=None)
+        executor._store_artifact = AsyncMock()
+
+        await executor._execute_fan_out(plan, "run_001", cycle, None)
+
+    async def test_a_failed_tasks_rows_are_recorded_too(self, executor, cycle):
+        """A failed task's checks are evidence. The sequential path records them at the
+        same point, and a ledger that holds only successes cannot show a failed→passed
+        history."""
+        from squadops.cycles.run_ledger import RunLedger
+
+        ledger = RunLedger()
+        plan = [self._env("task-a")]
+
+        async def _dispatch(env, run_id, **kw):
+            return self._result(env.task_id, "check_a", False, status="FAILED")
+
+        executor._task_dispatcher.dispatch_task = _dispatch
+        executor._task_dispatcher.create_task_run_if_enabled = AsyncMock(return_value=None)
+        executor._store_artifact = AsyncMock()
+
+        # the fan-out raises on a failed task — the point is that the evidence is
+        # recorded BEFORE it unwinds, which is where the sequential path records it too
+        with pytest.raises(Exception, match="task-a"):
+            await executor._execute_fan_out(plan, "run_001", cycle, None, ledger=ledger)
+        assert {r.subject for r in ledger.check_results} == {"task-a"}
+
+
+class TestTheExecutorStampsTheReAttemptMarker:
+    """#1304: entered at `execute_run`, because the unit tests for `_is_first_attempt` pass
+    a hand-built inputs dict and therefore cannot see whether anything sets it.
+
+    Before this stamp existed, a correction re-dispatch carried no marker at all, and an
+    injected fault re-broke every repaired emission.
+    """
+
+    async def test_a_retried_task_carries_prior_attempts_on_its_next_dispatch(
+        self, executor, mock_queue
+    ):
+        seen: list[dict] = []
+        original = mock_queue.reply_router.responder
+
+        responder = _scripted_responder({0: ("FAILED", None, "transient")})
+
+        def recording(env):
+            seen.append(dict(env.get("inputs") or {}))
+            return responder(env)
+
+        mock_queue.reply_router.responder = recording
+        with patch(
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep", new_callable=AsyncMock
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+        mock_queue.reply_router.responder = original
+
+        assert not seen[0].get("prior_attempts"), "the first dispatch is a first attempt"
+        assert seen[1].get("prior_attempts") == 1, (
+            "the retry must carry the marker — without it a fault re-applies and the loop "
+            "can never be observed recovering"
+        )
+
+    async def test_a_task_that_never_fails_carries_no_marker(self, executor, mock_queue):
+        """The stamp must not appear on the happy path, or every emission would read as a
+        re-attempt and the fault would never fire at all."""
+        seen: list[dict] = []
+        responder = _scripted_responder({})
+
+        def recording(env):
+            seen.append(dict(env.get("inputs") or {}))
+            return responder(env)
+
+        mock_queue.reply_router.responder = recording
+        await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        assert all(not s.get("prior_attempts") for s in seen)

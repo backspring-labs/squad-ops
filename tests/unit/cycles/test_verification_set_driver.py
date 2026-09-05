@@ -683,3 +683,203 @@ class TestEmissionShapes:
 
     def test_a_line_that_is_not_an_emission_shape_is_ignored(self, driver):
         assert driver.emission_shapes(["INFO - something else entirely"]) == []
+
+
+class TestTheRecordNamesTheDeployItObserved:
+    """#1296: `render`'s fallback to the observed identity was dead code.
+
+    Nothing ever wrote a `deploy` key into the record — `deploy_identity()` was called only
+    in `cmd_shakeout` and persisted to a side file — so the header always fell through to
+    `cfg.frozen_deploy_commit`, a string an operator types and nothing checks. A shakeout,
+    the one cycle whose deploy is unpinned by definition, therefore printed `deploy ?`.
+    """
+
+    def _cfg(self, driver, tmp_path, **overrides):
+        import yaml
+
+        base = {
+            "name": "t",
+            "project": "group_run",
+            "squad_profile": "full-38",
+            "request_profile": "validated-fullstack",
+            "gate_name": "g",
+            "gate_notes": "g",
+            "launch_notes": "r {roll}/{n}",
+            "shakeout_notes": "s",
+            "n_rolls": 2,
+        }
+        base.update(overrides)
+        p = tmp_path / "set.yaml"
+        p.write_text(yaml.safe_dump(base))
+        return driver.load_set_config(p)
+
+    def _rec(self, **extra):
+        """Every key `render` reads, taken from a real stored record's key set — `render`
+        indexes most of them directly, so a partial dict fails for the wrong reason."""
+        rec = {
+            "cycle_id": "cyc_abc",
+            "stack": "fullstack_fastapi_react",
+            "verdict": "accepted",
+            "config_hash": "c4d6a2165acf",
+            "squad_profile_snapshot_ref": "575707c58536",
+            "wall_clock_seconds": 60,
+            "launched_at": "2026-09-04T15:33:18Z",
+            "impl_run_id": "run_abc",
+            "boot_audit": {},
+            "static_checks": {},
+            "ledger_checks": {},
+            "loop_texture": {},
+            "typed_checks": {},
+            "gate_decisions": [],
+            "runs": [],
+            "failed_checks": [],
+            "criteria_verified": 0,
+            "criteria_total": 0,
+            "criteria_unevidenced": [],
+            "correction_rounds": 0,
+            "framing_runs": 1,
+            "framing_rerolls": 0,
+            "failed_emissions_banked": 0,
+            "ended_without_implementation": False,
+        }
+        rec.update(extra)
+        return rec
+
+    def test_an_unpinned_shakeout_names_the_head_it_observed_instead_of_a_question_mark(
+        self, driver, tmp_path
+    ):
+        cfg = self._cfg(driver, tmp_path)
+        rec = self._rec(deploy={"head": "d6165d2a", "eve": "25de15429a96"})
+        header = driver.render(cfg, "shakeout (non-counting)", rec).splitlines()[2]
+        assert "deploy `d6165d2a`" in header
+        assert "`?`" not in header
+
+    def test_without_an_observed_identity_it_still_says_unknown_rather_than_inventing_one(
+        self, driver, tmp_path
+    ):
+        """The degraded reading stays degraded: a record with no identity must not borrow
+        the config's typed pin as though it had been measured."""
+        cfg = self._cfg(driver, tmp_path)
+        out = driver.render(cfg, "shakeout (non-counting)", self._rec())
+        assert "deploy `?`" in out.splitlines()[2]
+        assert "## Deploy" not in out
+
+    def test_the_observed_image_ids_and_loaded_checks_reach_the_record(self, driver, tmp_path):
+        """They were only ever in the launch log, which no record carries — so a record
+        could not show what the deploy actually answered."""
+        cfg = self._cfg(driver, tmp_path)
+        rec = self._rec(
+            deploy={
+                "head": "d6165d2a",
+                "eve": "25de15429a96",
+                "runtime-api": "e6a9898ee18b",
+                "eve:loaded": "1 0 ('backend/tests/',)",
+            }
+        )
+        out = driver.render(cfg, "shakeout (non-counting)", rec)
+        assert "| eve | `25de15429a96` |" in out
+        assert "| runtime-api | `e6a9898ee18b` |" in out
+        assert "`eve` → `1 0 ('backend/tests/',)`" in out
+        # the loaded check is not also listed as an image
+        assert "| eve:loaded |" not in out
+
+    def test_the_typed_pin_is_labelled_as_typed_so_it_is_never_read_as_measured(
+        self, driver, tmp_path
+    ):
+        cfg = self._cfg(driver, tmp_path, frozen_deploy_commit="f85de47a")
+        out = driver.render(cfg, "roll 1 of 2", self._rec(deploy={"head": "d6165d2a"}))
+        assert "`frozen_deploy_commit`: `f85de47a`" in out
+        assert "driver HEAD `d6165d2a`" in out, "the observed head is stated beside the pin"
+
+    def test_an_unset_pin_is_named_as_unset_rather_than_rendered_blank(self, driver, tmp_path):
+        cfg = self._cfg(driver, tmp_path)
+        out = driver.render(cfg, "shakeout (non-counting)", self._rec(deploy={"head": "d6165d2a"}))
+        assert "**unset** (typed, not measured)" in out
+
+
+class TestAFaultDeclarationSurvivesTheSetConfig:
+    """#1298: the carriage from a set config to the agent's emission seam.
+
+    The hook (#1251) and the readouts (#1276) were both built and tested against the shape
+    the *handler* sees. Nothing exercised the shape the *driver* produces, and the driver
+    could not express a declaration at all: `str(["qa_suite_absent"])` is `"['qa_suite_absent']"`,
+    which the framework's guard correctly refuses at cycle create.
+    """
+
+    def _cfg(self, driver, tmp_path, faults):
+        import yaml
+
+        p = tmp_path / "set.yaml"
+        p.write_text(
+            yaml.safe_dump(
+                {
+                    "name": "d",
+                    "project": "group_run",
+                    "squad_profile": "full-38",
+                    "request_profile": "validated-fullstack",
+                    "gate_name": "g",
+                    "gate_notes": "g",
+                    "launch_notes": "r {roll}/{n}",
+                    "shakeout_notes": "s",
+                    "n_rolls": 1,
+                    "overrides": {"fault_injection": faults},
+                }
+            )
+        )
+        return driver.load_set_config(p)
+
+    def test_a_yaml_list_is_carried_as_the_comma_form_the_cli_can_express(self, driver, tmp_path):
+        """`--set k=v` takes strings, so the list has to become one. Before this it became
+        `"['qa_suite_absent']"` and the cycle create was refused."""
+        cfg = self._cfg(driver, tmp_path, ["qa_suite_absent", "repair_prose_only"])
+        assert cfg.overrides["fault_injection"] == "qa_suite_absent,repair_prose_only"
+        assert "[" not in cfg.overrides["fault_injection"]
+
+    def test_the_launch_command_carries_the_declaration_verbatim(self, driver, tmp_path):
+        cfg = self._cfg(driver, tmp_path, ["qa_suite_absent", "repair_prose_only"])
+        sets = " ".join(f"--set {k}={v}" for k, v in cfg.overrides.items())
+        assert sets == "--set fault_injection=qa_suite_absent,repair_prose_only"
+
+    def test_a_single_fault_is_named_not_spelled_out_letter_by_letter(self, driver, tmp_path):
+        """The bug the readouts had: a single fault arrives as a string, and both `preflight`
+        and the record renderer iterated it directly — so a diagnostic's own record named the
+        fault as `_, a, b, e, …` and could not say what it had injected."""
+        cfg = self._cfg(driver, tmp_path, "qa_suite_absent")
+        assert driver.declared_fault_names(cfg.overrides) == ("qa_suite_absent",)
+
+    def test_a_counting_roll_declaring_a_fault_is_refused_and_the_fault_is_readable(
+        self, driver, tmp_path, monkeypatch
+    ):
+        """The refusal fired before this fix too — a non-empty string is truthy — but named
+        the fault by its letters. The outcome was right and the message was unusable."""
+        cfg = self._cfg(driver, tmp_path, ["qa_suite_absent"])
+        monkeypatch.setattr(driver, "psql", lambda *a, **k: "0")
+        monkeypatch.setattr(driver, "sh", lambda *a, **k: "")
+        problems = driver.preflight(cfg, counting=True)
+        refusals = [p for p in problems if "fault injection" in p]
+        assert refusals, "a counting roll declaring a fault must be refused"
+        assert "(qa_suite_absent)" in refusals[0]
+
+    def test_no_declaration_leaves_the_overrides_untouched(self, driver, tmp_path):
+        import yaml
+
+        p = tmp_path / "set.yaml"
+        p.write_text(
+            yaml.safe_dump(
+                {
+                    "name": "d",
+                    "project": "group_run",
+                    "squad_profile": "full-38",
+                    "request_profile": "validated-fullstack",
+                    "gate_name": "g",
+                    "gate_notes": "g",
+                    "launch_notes": "r {roll}/{n}",
+                    "shakeout_notes": "s",
+                    "n_rolls": 1,
+                    "overrides": {"build_profile": "nextjs_ts"},
+                }
+            )
+        )
+        cfg = driver.load_set_config(p)
+        assert cfg.overrides == {"build_profile": "nextjs_ts"}
+        assert driver.declared_fault_names(cfg.overrides) == ()

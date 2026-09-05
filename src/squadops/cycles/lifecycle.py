@@ -56,9 +56,20 @@ TERMINAL_STATES: frozenset[RunStatus] = frozenset(
     {RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.CANCELLED}
 )
 
-# States that reject gate decisions — COMPLETED is intentionally excluded
-# because inter-workload gates are decided on completed runs (SIP-0083 D15).
-GATE_REJECTED_STATES: frozenset[RunStatus] = frozenset({RunStatus.FAILED, RunStatus.CANCELLED})
+#: The terminal states that reject a gate decision — **derived**, so it cannot disagree with
+#: ``TERMINAL_STATES`` (#1150).
+#:
+#: A gate decision is refused on a run that has already ended, with one exception:
+#: ``COMPLETED`` is excluded because inter-workload gates are decided *on* completed runs
+#: (SIP-0083 D15) — which is also why the ``supersede`` edge ``COMPLETED → CANCELLED``
+#: exists, for the re-roll. That single design fact is the whole content of this set.
+#:
+#: It used to be a second literal, ``frozenset({FAILED, CANCELLED})``, written beside a
+#: comment explaining the exclusion. Two homes for one fact, and the comment at the
+#: transition table already recorded that the original fix "passed its harness and never
+#: once fired live". Adding a fourth terminal state would have left this set silently
+#: wrong. Same class as #1070.
+GATE_REJECTED_STATES: frozenset[RunStatus] = TERMINAL_STATES - {RunStatus.COMPLETED}
 
 
 def validate_run_transition(current: RunStatus, target: RunStatus) -> None:

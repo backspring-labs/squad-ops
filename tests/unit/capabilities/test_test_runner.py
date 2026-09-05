@@ -1085,3 +1085,108 @@ class TestVitestOwnFrameShapes:
         assert uncollected_test_files(report, self._ROOT, handed_in) == [
             "frontend/src/__tests__/ignored.test.jsx"
         ]
+
+
+class TestTheFullstackMergeKeepsBothSidesEvidence:
+    """#1305: the merge dropped every `suite_defect`, so #1130 and #1270 were inert on the
+    only stack that takes this path.
+
+    Every existing test for the own-frame detectors calls `run_generated_tests` or
+    `run_node_tests` directly. That is exactly why a merge which discards their output was
+    never a failure — the guard has to be at the fullstack level, which is where the React
+    stack actually runs.
+    """
+
+    async def _merge(self, monkeypatch, backend, frontend):
+        from squadops.capabilities.handlers import test_runner as tr
+
+        async def _be(*a, **k):
+            return backend
+
+        async def _fe(*a, **k):
+            return frontend
+
+        monkeypatch.setattr(tr, "run_generated_tests", _be)
+        monkeypatch.setattr(tr, "run_node_tests", _fe)
+        return await tr.run_fullstack_tests(
+            [{"path": "backend/main.py", "content": ""}],
+            [
+                {"path": "backend/tests/test_runs.py", "content": ""},
+                {"path": "frontend/src/__tests__/views.test.jsx", "content": ""},
+            ],
+        )
+
+    def _result(self, runner, defect_file, failure_file, executed=True):
+        from squadops.capabilities.handlers.test_runner import RunTestsResult
+
+        return RunTestsResult(
+            executed=executed,
+            exit_code=1,
+            runner=runner,
+            suite_defects=(
+                {"file": defect_file, "title": "t", "line": 1, "exception": "TypeError"},
+            ),
+            test_failures=({"file": failure_file, "title": "t"},),
+            uncollected_test_files=(f"uncollected-{runner}",),
+        )
+
+    async def test_a_frontend_own_frame_defect_survives_a_backend_that_also_ran(self, monkeypatch):
+        """The live shape: the backend suite runs, the frontend suite dies at its own call
+        site, and the frontend defect is the one that decides who repairs it. Before this,
+        the merge kept neither side's."""
+        merged = await self._merge(
+            monkeypatch,
+            self._result("pytest", "backend/tests/test_runs.py", "backend/tests/test_runs.py"),
+            self._result(
+                "vitest",
+                "frontend/src/__tests__/views.test.jsx",
+                "frontend/src/__tests__/views.test.jsx",
+            ),
+        )
+        files = [d["file"] for d in merged.suite_defects]
+        assert "frontend/src/__tests__/views.test.jsx" in files
+        assert "backend/tests/test_runs.py" in files
+        assert len(merged.suite_defects) == 2
+
+    async def test_the_frontend_failure_rows_reach_the_evidence_too(self, monkeypatch):
+        """`test_failures` took the controlling side only, so a frontend failure was
+        invisible whenever the backend had also executed. Non-blocking (D13) governs the
+        verdict, not what is recorded."""
+        merged = await self._merge(
+            monkeypatch,
+            self._result("pytest", "backend/tests/test_runs.py", "backend/tests/test_runs.py"),
+            self._result(
+                "vitest",
+                "frontend/src/__tests__/views.test.jsx",
+                "frontend/src/__tests__/views.test.jsx",
+            ),
+        )
+        assert len(merged.test_failures) == 2
+        assert len(merged.uncollected_test_files) == 2
+
+    async def test_the_verdict_still_comes_from_the_controlling_side_alone(self, monkeypatch):
+        """The half that must NOT change: D13 says the backend decides pass/fail and #626
+        says one runner identity. Merging evidence must not merge the verdict."""
+        backend = self._result("pytest", "backend/tests/test_runs.py", "backend/tests/test_runs.py")
+        frontend = self._result(
+            "vitest",
+            "frontend/src/__tests__/views.test.jsx",
+            "frontend/src/__tests__/views.test.jsx",
+        )
+        merged = await self._merge(monkeypatch, backend, frontend)
+        assert merged.runner == "pytest", "the controlling side names the runner"
+        assert merged.suite_broken == backend.suite_broken
+
+    async def test_a_backend_that_did_not_run_leaves_the_frontend_controlling(self, monkeypatch):
+        """The other branch of D13, so the merge is not just tested in one direction."""
+        backend = self._result(
+            "pytest", "backend/tests/test_runs.py", "backend/tests/test_runs.py", executed=False
+        )
+        frontend = self._result(
+            "vitest",
+            "frontend/src/__tests__/views.test.jsx",
+            "frontend/src/__tests__/views.test.jsx",
+        )
+        merged = await self._merge(monkeypatch, backend, frontend)
+        assert merged.runner == "vitest"
+        assert len(merged.suite_defects) == 2, "evidence is still kept from both"

@@ -1,0 +1,58 @@
+# 1.7.2 DIAGNOSTIC — an own-frame suite failure, then a repair that emits only prose
+#
+# Not a roll and not a shakeout: a non-counting cycle that runs the roll's own path with a
+# deliberate fault injected at the producing agent's emission seam (#1251), so the whole
+# downstream path — typed checks, ownership attribution, routing, repair, verification,
+# retest, refund — runs as it would on a real defect. The driver REFUSES to count a cycle
+# whose config declares a fault, and names the fault beside every readout it produces.
+#
+# Exercises: L7 (#1270) routing, then L4 (#1273) refund, then L5 (#1260) case retention on the re-take
+# Shape's provenance: #1270 React roll 4 (cyc_de4b2dea73a0) and #1273 Next.js roll 1 (cyc_9be98128f0e9)
+name: 1-7-2-diagnostic-own-frame-then-prose-repair
+records_dir: var/verification_sets/1-7-2-diagnostics/own-frame-then-prose-repair
+pre_registration: docs/plans/1-7-2-verification-set-preregistration.md
+project: group_run
+squad_profile: full-38
+request_profile: validated-fullstack
+overrides:
+  fault_injection: [qa_suite_own_frame_failure, repair_prose_only]
+gate_name: progress_plan_review
+n_rolls: 1
+gate_notes: >-
+  1.7.2 verification set. Approved under the pre-registered gate policy
+  (pre-registration §7) — identical text applied to every roll of this set.
+  System plan validation passed; no additional judgment applied.
+launch_notes: >-
+  UNUSED — a diagnostic is never counted; the driver refuses a counting roll that declares
+  a fault.
+shakeout_notes: >-
+  1.7.2 DIAGNOSTIC — an own-frame suite failure, then a repair that emits only prose. NON-COUNTING by declaration before launch: this cycle injects a
+  deliberate fault at the qa emission seam (#1251) to exercise L7 (#1270) routing, then L4 (#1273) refund, then L5 (#1260) case retention on the re-take, which no roll of the last
+  three sets happened to reach. Its red is manufactured and must never be read as the squad
+  failing.
+loaded_checks:
+  runtime-api: >-
+    from adapters.cycles.dispatched_flow_executor import _repaired_suite_files;
+    from squadops.cycles.patch_verification import PatchCheckRecord, skip_reasons;
+    cfg = {"build_profile": "fullstack_fastapi_react", "dev_capability": "fullstack_fastapi_react"};
+    print(_repaired_suite_files([{"name": "backend/tests/test_runs.py", "type": "code"}], cfg),
+    _repaired_suite_files([{"name": "backend/app/main.py", "type": "code"}], cfg),
+    skip_reasons([PatchCheckRecord(check="acceptance:x", severity="blocking",
+    status="skipped", reason="file_not_found")]))
+  eve: >-
+    from squadops.capabilities.handlers.fault_injection import FAULTS, INJECTED_TASKS;
+    print(sorted(FAULTS), sorted(INJECTED_TASKS),
+    {n: f.exercises for n, f in sorted(FAULTS.items())})
+  neo: >-
+    from squadops.capabilities.handlers.impl.repair_handlers import
+    DevelopmentCorrectionRepairHandler;
+    v = DevelopmentCorrectionRepairHandler()._build_render_variables("prd", None,
+    {"failing_cases_section": "CASES", "client_surface_section": "SURFACE",
+    "app_traceback_section": "TB"});
+    print(v["failing_cases_section"], v["client_surface_section"], v["app_traceback_section"])
+# A diagnostic asserts no pins: it is run on the deploy the shakeout loop settled on, and
+# its record states the identity it observed (#1296).
+expected_config_hash_prefix: ""
+expected_squad_snapshot_prefix: ""
+frozen_deploy_commit: ""
+frozen_image_ids: {}
