@@ -127,6 +127,8 @@ literal `path/` prefix; read from the stored artifact names.
 - **#994, #995, #968, #1054, #1070, #936/#933** — Loop Honesty's second half, 1.7.3 as the
   1.7.0 plan placed it; #994/#995 are this pack's seam but its capacity is eight, and #968/#1054
   (the analysis checked against the source) are a different mechanism.
+  *Rev 4: re-placed to 1.7.4 by `docs/plans/1-7-3-plan.md` §6 — §3's ruling makes the
+  Boundaries list 1.7.3's whole content, and #1312/#1254 lead the 1.7.4 pack.*
 - **#414** — stays a design item at review; the refund mechanics #1273 touches are not a
   budget redesign.
 - **#1122** — an `enhancement`, the 1.8 lane, unchanged.
@@ -267,6 +269,8 @@ The infrastructure rider (#1147, #575, #577, #576, #578, #330, #300, #581, #560,
 roll reached any of it**, and pulling it forward would put CI-verified churn beside a pack
 whose reds must be attributable. The one exception considered and not taken: #1147 (one
 timeout for two things) — no roll in this line or the last has hit either bound.
+*Rev 4: the rider is re-placed to 1.7.4 by the 1.7.3 plan §6, for the reason §3 states —
+1.7.3 carries the Boundaries list and nothing beside it.*
 
 ---
 
@@ -284,7 +288,8 @@ timeout for two things) — no roll in this line or the last has hit either boun
    diagnostics to the exit rule, pre-register, roll — **no merges to main while the set is
    open**.
 8. Record from the per-round evidence; cut 1.7.2 by the seven steps in `CLAUDE.md`. Then 1.7.3
-   (Loop Honesty, second half; the infrastructure rider).
+   (Loop Honesty, second half; the infrastructure rider — *rev 4: both re-placed to 1.7.4;
+   1.7.3 is the Boundaries list per §3, planned in `docs/plans/1-7-3-plan.md`*).
 
 ---
 
@@ -423,6 +428,12 @@ from are not. The 1.7.1 plan and pre-registration keep the old names, being the 
 what the instrument was called when those sets ran.
 
 ## 9. Revision history
+
+- **Rev 4 (2026-09-05)** — §2.6, §6 and §7 step 8 still placed Loop Honesty's second half and
+  the infrastructure rider in 1.7.3, written at rev 1 before rev 3's §3 ruling made the
+  Boundaries list 1.7.3's subject. Each now carries a pointer to `docs/plans/1-7-3-plan.md`,
+  which re-places them to 1.7.4 by name. Nothing about the 1.7.2 pack or its set changes; the
+  pre-registration is untouched.
 
 - **Rev 3 (2026-09-04)** — §3 frozen at three shipped items (#1150, #1110, #1148) with
   eleven moved to 1.7.3, on the owner's ruling. The list had never been staffed — thirteen
