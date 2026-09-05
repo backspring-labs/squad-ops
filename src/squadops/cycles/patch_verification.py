@@ -104,6 +104,12 @@ class PatchCheckRecord:
     params: dict[str, Any] | None = None
     #: Which environment executed this row (#1229).
     executed_in: str = EXECUTED_IN_RUNTIME_API
+    #: The contract criterion this row evidences (SIP-0098 98.3), carried so the ledger can
+    #: supersede the failed attempt. #1021 made the criterion part of the supersession
+    #: identity ``(check_id, subject, criterion_id)``; this row shape never carried it, so a
+    #: patch-verified PASS landed under ``criterion_id=None`` and superseded nothing — the
+    #: failed attempt's row stayed the final state and rejected the run (#1318).
+    criterion_id: str | None = None
 
     def to_check_row(self) -> dict[str, Any]:
         """Render in the handler-emitted ``checks`` row shape.
@@ -121,6 +127,7 @@ class PatchCheckRecord:
             "params": self.params,
             "executed_in": self.executed_in,
             "actual": self.actual,
+            "criterion_id": self.criterion_id,
             "passed": not (self.severity == "error" and self.status in {"failed", "error"}),
             "patch_verified": True,
         }
@@ -452,6 +459,7 @@ async def _evaluate_file_owned_gate(
                 reason=outcome.reason,
                 actual=outcome.actual,
                 params=dict(criterion.params or {}),
+                criterion_id=criterion.id or None,
             )
         )
         if criterion.severity == "error" and outcome.status == "failed":
@@ -515,6 +523,7 @@ async def _evaluate_task_criteria(
                 reason=outcome.reason,
                 actual=outcome.actual,
                 params=dict(criterion.params or {}),
+                criterion_id=criterion.id or None,
             ),
             patched,
         )
@@ -562,6 +571,7 @@ def agent_check_records(agent_checks: Any) -> list[PatchCheckRecord]:
                 actual=row.get("actual"),
                 params=dict(row.get("params") or {}),
                 executed_in=environment,
+                criterion_id=(str(row["criterion_id"]) if row.get("criterion_id") else None),
             )
         )
     return records
