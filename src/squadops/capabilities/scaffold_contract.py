@@ -318,9 +318,21 @@ _CRITERIA_PACKS: dict[str, CriteriaPack] = {
         suite_criteria=lambda: [
             {"check": "tests_pass", "id": "vc-suite-passes", "requires": CAP_PYTHON},
         ],
-        # #874: pydantic 422s a blank required field before any stub or fill body runs;
-        # the declared error-contract mapping cannot change what the framework emits.
-        blank_rejection_status=422,
+        # The premise this used to carry — "pydantic 422s a blank required field before
+        # any stub or fill body runs, so the declared mapping cannot change what the
+        # framework emits" — is false, and this stack's own scaffold is what falsifies
+        # it: `backend/errors.py` (frozen) installs
+        # `app.add_exception_handler(RequestValidationError, _validation_error_handler)`,
+        # which returns `_ERROR_STATUS["validation_error"]`. Pydantic's 422 never reaches
+        # the client. The seam owns validation status here exactly as it does on
+        # `nextjs_ts`, so the expectation derives from the authored mapping — which is
+        # what #874 already concluded for the other stack while this literal stayed.
+        #
+        # Measured over every distinct stored manifest: 53 stack-1 manifests declare 422
+        # and passed; the 2 that declared 400 (`cyc_d0392c0a9c3d`, `cyc_9a1acc7623b4`)
+        # were rejected on a probe no app could satisfy, while 2 `nextjs_ts` manifests
+        # declaring the identical 400 passed because that pack derives.
+        blank_rejection_status=None,
     ),
 }
 

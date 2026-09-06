@@ -407,6 +407,162 @@ class TestSquadSnapshotIsAnIdentity:
         assert a.expected_config_hash_prefix != b.expected_config_hash_prefix
 
 
+class TestP0NullableHonoursDeclaredDefaults:
+    """A field declared ``required: false`` WITH a non-null default is not nullable.
+
+    The 1.7.2 shakeout on `e2dff444` (`cyc_9a1acc7623b4`) declared
+    ``participant_count: {type: int, required: false, default: 0}``. The scaffold rendered
+    ``participant_count: int = 0`` — what the manifest asked for — and P0 demanded
+    ``int | None = None``, which would discard the default. P0 is a carried prediction, so
+    on a counted roll that false positive stops the set.
+    """
+
+    @staticmethod
+    def _manifest(fields):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            entities=[SimpleNamespace(name="Run", fields=[SimpleNamespace(**f) for f in fields])]
+        )
+
+    @staticmethod
+    def _reader(models: str):
+        return lambda name: models if name == "backend/models.py" else ""
+
+    def _p0(self, driver, fields, models):
+        return driver.p0_checks(
+            "fullstack_fastapi_react", self._manifest(fields), self._reader(models)
+        )
+
+    def test_an_optional_field_with_a_declared_default_is_not_demanded_nullable(self, driver):
+        out = self._p0(
+            driver,
+            [
+                {
+                    "name": "participant_count",
+                    "type": "int",
+                    "required": False,
+                    "has_default": True,
+                    "default": 0,
+                    "generated": False,
+                }
+            ],
+            "class Run(BaseModel):\n    participant_count: int = 0\n",
+        )
+        assert out["models_nullable_mismatches"] == []
+        assert out["p0_optional_fields_nullable"] is True
+
+    def test_an_optional_field_with_no_default_is_still_demanded_nullable(self, driver):
+        """The #1125 rule the fix must not weaken: `str = None` is what pydantic rejects."""
+        out = self._p0(
+            driver,
+            [
+                {
+                    "name": "distance",
+                    "type": "string",
+                    "required": False,
+                    "has_default": False,
+                    "default": None,
+                    "generated": False,
+                }
+            ],
+            "class Run(BaseModel):\n    distance: str = None\n",
+        )
+        assert out["models_nullable_mismatches"] == ["distance: str | None = None"]
+        assert out["p0_optional_fields_nullable"] is False
+
+    def test_an_explicit_null_default_is_still_demanded_nullable(self, driver):
+        out = self._p0(
+            driver,
+            [
+                {
+                    "name": "route_notes",
+                    "type": "string",
+                    "required": True,
+                    "has_default": True,
+                    "default": None,
+                    "generated": False,
+                }
+            ],
+            "class Run(BaseModel):\n    route_notes: str\n",
+        )
+        assert out["models_nullable_mismatches"] == ["route_notes: str | None = None"]
+
+
+class TestStaleEvaluationsAreNamed:
+    """#1318: a later STORE carrying an earlier EVALUATION is a run judged on a tree that
+    no longer exists — and L3's declared read ("the last stored evaluation") cannot see it.
+    """
+
+    @staticmethod
+    def _tree(tmp_path, versions):
+        """versions: [(art_id, stored_at, evaluated_at, ws, [failed checks])]"""
+        import json as _json
+
+        for art_id, stored, evaluated, ws, failed in versions:
+            art = tmp_path / art_id
+            art.mkdir(parents=True)
+            (art / "metadata.json").write_text(_json.dumps({"created_at": stored}))
+            (art / "typed_check_evaluation_task_4.json").write_text(
+                _json.dumps(
+                    {
+                        "evaluated_at": evaluated,
+                        "workspace_revision_id": ws,
+                        "evaluations": [
+                            {"check": c, "status": "failed", "reason": "file_not_found"}
+                            for c in failed
+                        ],
+                    }
+                )
+            )
+        return tmp_path
+
+    def _run(self, driver, monkeypatch, tmp_path, versions):
+        tree = self._tree(tmp_path, versions)
+        monkeypatch.setattr(driver, "artifact_dirs", lambda *a, **k: sorted(tree.glob("art_*")))
+        return driver._stale_evaluations(object(), "cyc", "run")
+
+    def test_a_re_store_with_an_unchanged_evaluation_is_named(self, driver, monkeypatch, tmp_path):
+        """The roll-1 shape: stored twice, same evaluated_at, same workspace revision."""
+        rows = self._run(
+            driver,
+            monkeypatch,
+            tmp_path,
+            [
+                ("art_aaa", "2026-09-05 17:08:19", "17:08:18.97", "6b15b9aab690", ["acceptance:x"]),
+                ("art_bbb", "2026-09-05 17:10:15", "17:08:18.97", "6b15b9aab690", ["acceptance:x"]),
+            ],
+        )
+        assert len(rows) == 1
+        assert rows[0]["stored_versions"] == 2
+        assert rows[0]["failed_rows_carried"] == ["acceptance:x"]
+        assert rows[0]["last_stored"].endswith("17:10:15")
+
+    def test_a_genuine_re_evaluation_is_not_named(self, driver, monkeypatch, tmp_path):
+        """The fix's shape: stored twice because it was RE-RUN — a new workspace revision
+        and a new evaluated_at. Reporting this would make the readout cry wolf on exactly
+        the behaviour #1318 asks for."""
+        rows = self._run(
+            driver,
+            monkeypatch,
+            tmp_path,
+            [
+                ("art_aaa", "2026-09-05 17:08:19", "17:08:18.97", "6b15b9aab690", ["acceptance:x"]),
+                ("art_bbb", "2026-09-05 17:10:15", "17:10:15.40", "d4a09957dfc7", []),
+            ],
+        )
+        assert rows == []
+
+    def test_a_single_stored_evaluation_is_not_named(self, driver, monkeypatch, tmp_path):
+        rows = self._run(
+            driver,
+            monkeypatch,
+            tmp_path,
+            [("art_aaa", "2026-09-05 17:08:19", "17:08:18.97", "6b15b9aab690", ["acceptance:x"])],
+        )
+        assert rows == []
+
+
 def _fake_psql(*, impl_runs: int, active: int, terminal_row: str = ""):
     """Script the three queries `ended_without_implementation` asks, by their subject.
 

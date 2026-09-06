@@ -725,10 +725,22 @@ def _p0_fullstack_fastapi_react(manifest: Any, seeded: Reader) -> dict:
                 expected.append(want)
                 if want not in models:
                     mismatches.append(want)
-            elif (not f.required) or (f.has_default and f.default is None):
+            elif ((not f.required) or (f.has_default and f.default is None)) and not (
+                f.has_default and f.default is not None
+            ):
                 # #1125 (1.6.6 A, prediction R1): an optional field — declared
                 # ``required: false`` or ``default: null`` — freezes nullable. The
                 # ``str = None`` form pydantic rejects sat under five of six 1.6.5 rolls.
+                #
+                # A declared NON-NULL default is the exception, and it is the rule's
+                # boundary rather than a weakening of it: ``{required: false, default: 0}``
+                # renders ``int = 0``, which is what the manifest asked for, and demanding
+                # ``int | None = None`` would discard the default. #1125 was about an
+                # optional field with NO default; no manifest had produced the other shape
+                # until the 1.7.2 shakeout on `e2dff444` (`cyc_9a1acc7623b4`), where
+                # ``participant_count: {type: int, required: false, default: 0}`` FALSIFIED
+                # P0 against a scaffold that was right. P0 is a carried prediction, so on a
+                # counted roll that false positive would have stopped the set.
                 want = f"{f.name}: {_py_type(f.type)} | None = None"
                 nullable_expected.append(want)
                 if want not in models:
@@ -1181,7 +1193,71 @@ def typed_checks_by_check(cfg: SetConfig, cycle_id: str, impl_run: str) -> dict:
         }
         for key, check in _PREDICTION_CHECKS.items()
     }
-    return {"by_check": by_check, "checks_by_environment": by_env, **readouts}
+    return {
+        "by_check": by_check,
+        "checks_by_environment": by_env,
+        "stale_evaluations": _stale_evaluations(cfg, cycle_id, impl_run),
+        **readouts,
+    }
+
+
+def _stale_evaluations(cfg: SetConfig, cycle_id: str, impl_run: str) -> list[dict]:
+    """Evaluations stored more than once WITHOUT being re-run — L3's blind spot (#1318).
+
+    L3 (#1271) reads "the summary's failed rows against the last stored evaluation". On
+    1.7.2 roll 1 the last stored evaluation of the builder task WAS failed, so that read
+    said L3 held — while the artifact was a byte-identical re-store of the pre-patch
+    evaluation, written eleven milliseconds before the patch's own file landed. The miss
+    is only visible by comparing ``evaluated_at`` and ``workspace_revision_id`` across
+    versions of the same evaluation file: a later STORE carrying an earlier EVALUATION is
+    a run being judged on a tree that no longer exists.
+
+    Reports one row per such file, so a readout that cannot see its own miss is replaced
+    by one that names it.
+    """
+    versions: dict[str, list[tuple[str, str, str, list[str]]]] = {}
+    for art in artifact_dirs(cfg, cycle_id, impl_run):
+        meta = _metadata(art)
+        stored = str((meta or {}).get("created_at") or "")
+        for path in art.glob("typed_check_evaluation_*.json"):
+            try:
+                doc = json.loads(path.read_text())
+            except (OSError, ValueError):
+                continue
+            failed = sorted(
+                {
+                    str(row.get("check") or "")
+                    for row in doc.get("evaluations") or []
+                    if str(row.get("status") or "") in ("failed", "error")
+                }
+            )
+            versions.setdefault(path.name, []).append(
+                (
+                    stored,
+                    str(doc.get("evaluated_at") or ""),
+                    str(doc.get("workspace_revision_id") or "")[:12],
+                    failed,
+                )
+            )
+    stale: list[dict] = []
+    for name, rows in sorted(versions.items()):
+        if len(rows) < 2:
+            continue
+        rows.sort()
+        first, last = rows[0], rows[-1]
+        if last[1] == first[1] and last[2] == first[2]:
+            stale.append(
+                {
+                    "artifact": name,
+                    "stored_versions": len(rows),
+                    "first_stored": first[0],
+                    "last_stored": last[0],
+                    "evaluated_at": last[1],
+                    "workspace_revision_id": last[2],
+                    "failed_rows_carried": last[3],
+                }
+            )
+    return stale
 
 
 def _fill_rejections(cfg: SetConfig, cycle_id: str, impl_run: str) -> list[str]:
@@ -1222,6 +1298,20 @@ def _render_readout(readout: Mapping[str, Mapping[str, int]] | None) -> str:
         return "—"
     return " · ".join(
         f"{status} {_render_by_reason(readout.get(status))}" for status in _READOUT_STATUSES
+    )
+
+
+def _render_stale(rows: list[dict]) -> str:
+    """L3's own blind spot, named (#1318): a later STORE carrying an earlier EVALUATION.
+
+    ``-`` means every stored evaluation was actually re-run against the tree it judged.
+    """
+    if not rows:
+        return "-"
+    return " · ".join(
+        f"`{r['artifact']}` x{r['stored_versions']} @ ws `{r['workspace_revision_id']}` "
+        f"carrying {', '.join(r['failed_rows_carried']) or 'no failed rows'}"
+        for r in rows
     )
 
 
@@ -1334,6 +1424,8 @@ def render(cfg: SetConfig, title: str, rec: dict) -> str:
         f"{(rec.get('typed_checks') or {}).get('checks_by_environment', {})} |",
         "| container_packaging rows (reporting-only) | "
         f"{_render_readout((rec.get('typed_checks') or {}).get('container_packaging_rows'))} |",
+        "| L3 stale evaluations (re-stored, not re-run) | "
+        f"{_render_stale((rec.get('typed_checks') or {}).get('stale_evaluations') or [])} |",
         "",
         *_render_deploy(cfg, rec),
         "## Gate decisions (decider recorded verbatim, never inferred)",

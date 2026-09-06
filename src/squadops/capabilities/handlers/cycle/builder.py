@@ -340,7 +340,7 @@ class BuilderAssembleHandler(_CycleTaskHandler):
             get_profile,
         )
         from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
-        from squadops.cycles.check_registry import CHECK_REQUIRED_FILES
+        from squadops.cycles.check_registry import required_files_row
         from squadops.cycles.emission_integrity import emission_stats
 
         start_time = time.perf_counter()
@@ -492,9 +492,10 @@ class BuilderAssembleHandler(_CycleTaskHandler):
         # leaving the run with zero evidence and a vacuous `accepted` verdict.
         # Independent of the section check: this row tracks *files* only.
         effective_required = task_required_files or profile.required_files
-        extracted_basenames = {_os.path.basename(f["filename"]) for f in extracted}
-        rf_missing = [rf for rf in effective_required if rf not in extracted_basenames]
-        required_files_row = {"check": CHECK_REQUIRED_FILES, "passed": not rf_missing}
+        # #1318: the rule lives in check_registry so the accepted-patch path re-emits the
+        # SAME row from the patched set. Two copies of it is how the failed attempt's row
+        # stayed the ledger's final state after a patch supplied the missing file.
+        rf_row = required_files_row(effective_required, [f["filename"] for f in extracted])
 
         # Step 8 (#419): typed acceptance criteria — the plan's contract on
         # this builder task, evaluated identically to the dev seam (SIP-0092
@@ -502,7 +503,7 @@ class BuilderAssembleHandler(_CycleTaskHandler):
         # basenames (#107); typed checks address full paths in a materialized
         # workspace, so a path-prefix violation fails HERE, at the seam that
         # can repair it, instead of surfacing as an unfixable qa.test failure.
-        validation_checks: list[dict] = [required_files_row]
+        validation_checks: list[dict] = [rf_row]
         acceptance_missing: list[str] = []
         await self._evaluate_typed_acceptance(
             inputs, artifacts, validation_checks, acceptance_missing, typed_error_counts={}

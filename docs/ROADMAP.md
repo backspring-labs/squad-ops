@@ -22,7 +22,45 @@ Each even-minor consumer sits strictly behind the release that earns its trust: 
 
 ## Release Timeline
 
-### v1.7.1 (2026-09-03) — Current — Stack Seams
+### v1.7.2 (2026-09-06) — Current — Loop Honesty
+
+**The second patch line of 1.7.** The pack is the recovery path: what the loop does *after* a
+failure, and whether its own record of that is true. The line opens with **#1268** — on the 1.7.0
+tree the qa role's first attempt had become a sentence of intent and nothing else, and that one
+shape was reaching four pre-existing recovery seams for the first time. Fixing it exposes them:
+a passing qa task hands its evidence to the ledger (#1271), the retest is keyed on what the patch
+contains (#1269), a prose-only repair is refunded and the termination names which absence
+(#1273), the failing cases reach the model on the re-dispatch and at all (#1260, #1289), the
+repairer reads the traceback (#788), the fence example names the task's own file (#1272), and the
+own-frame detector becomes a per-runner declaration because the vitest side had none (#1270) —
+which only bites once the fullstack merge stops discarding every `suite_defect` (#1305). Two
+defects were found by the set itself: an accepted patch that superseded nothing because the
+ledger's identity had gained a criterion the patch row never carried (#1318, which voided a
+counted roll), and a rejects-blank probe that was unwinnable on stack 1 whenever a manifest
+declared 400 (#1321). The instrument gains fault injection (#1251), so a recovery-path prediction
+can be exercised rather than waited for.
+
+**The evidence** (`docs/plans/1-7-2-verification-set-record.md`): a pre-registered two-set run on
+frozen deploy `d95af712`, HEAD pinned at `b5e8fe12`, **zero code drift between the deploy and the
+tag** — **FastAPI+React 5 of 6** and **Next.js+TS 3 of 3**, the delivered app passing the boot
+audit on eight of nine rolls. **The line's bar was L1 and it held: 0 contentless qa first attempts
+across 172 emissions**, against three of five React rolls and both Next.js rolls on 1.7.1.
+
+**Stated at the cut, not implied.** **Five of the eight predictions never fired** — no
+absent-suite repair, no re-dispatched suite, no app runtime error, no qa-owned failure and no
+path-prefix emission arose in nine rolls, so L2, L5, L6, L7 and L8 are held only by injected
+diagnostics. The shakeout loop is reported as two numbers: **five rounds against a budget of
+three, and zero attributable to the pack** — twelve instrument defects, none in the items being
+measured, because three releases' worth of diagnostic machinery had never been run end to end.
+The one rejection is an application defect (join and leave returned a response missing the Run
+body), not a seam. Open at the cut and named rather than carried silently: a builder's
+unrequested source file is admitted because the failed-emission storage route performs no write
+authorization, and the repair that fixes it is dropped (#1323); the boot audit discards the
+response it judged (#1324); `qa_handoff.md` remains required, multiply-verified and read by
+nothing (#1312); nine unit-test directories sit outside the regression gate (#1316). Next: 1.7.3
+— the Boundaries list as the line's subject.
+
+### v1.7.1 (2026-09-03) — Stack Seams
 
 **The first patch line of 1.7, above the Reasoning line.** The pack is the seam between what a check declares and where it can run: typed checks execute in the producing role's agent container at emission and at repair (rule B, #1229), each image provisioning its toolchain as data (#1239); `undefined_names` reads `.ts`/`.tsx`/`.js`/`.jsx` through `tsc` (#939); the free-authored-assertion class the 1.6.6 record named gets its gates — assertion kinds (#1153), DOM anchors (#668), additive-suite containment (#1022) — and the qa repair is scoped to the failing cases (#1123); a qa-owned own-frame defect routes to the qa role (#1130); the emitted container's packaging is read, reporting-only (#598); stack #1 moves behind the stack seam and SIP-0105 harvests its rationale (#1131, #1149). Six shakeout deploys found and fixed five seam defects latent in the pack's own PRs (#1250, #1252, #1255, #1256, #1259, #1261, #1264), which is why the test standard now demands a wiring test and the cut record counts the deploys.
 
@@ -577,7 +615,7 @@ The following areas are identified for future work but do not block 1.0 readines
 
 *As of 2026-09-03 (v1.7.1):*
 
-- **Framework version**: 1.7.1
+- **Framework version**: 1.7.2
 - **SIPs**: 65 implemented, 9 accepted (SIP-0088, 0090–0093, 0101, 0102, 0104, 0105), 20 deprecated (registry)
 - **Tests**: 8,600+ passing in the regression suite
 - **Python source**: ~61,000 lines (src + adapters; ~88,000 test lines, ~119,000 doc lines)

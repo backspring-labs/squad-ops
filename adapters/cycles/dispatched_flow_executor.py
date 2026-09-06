@@ -21,6 +21,7 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from hashlib import sha256
+from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
@@ -46,6 +47,10 @@ from squadops.capabilities.context_assembly import (
 from squadops.cycles.acceptance_evaluation import resolve_check_stack
 from squadops.cycles.agent_config import build_agent_resolver
 from squadops.cycles.build_completeness import compute_missing_required_files
+from squadops.cycles.check_registry import (
+    CHECK_REQUIRED_FILES,
+    required_files_row,
+)
 from squadops.cycles.checkpoint import RunCheckpoint
 from squadops.cycles.contract_derivation import (
     CONTRACT_ARTIFACT_TYPE,
@@ -3339,6 +3344,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # be a second home for it. "Will the runner discover this?" is the stack's own
         # question, asked through the stack's own declared conventions (#846).
         retest_rows: list[dict[str, Any]] = []
+        # None means "no retest ran" — distinct from a retest that produced no
+        # artifacts, which supersede_evidence_artifacts treats the same way (drop).
+        retest_evidence: list[dict[str, Any]] | None = None
         repaired_suites = _repaired_suite_files(patched_artifacts, resolved_config)
         if isinstance(corrected_outputs.get("test_result"), dict) or repaired_suites:
             if cycle is None:
@@ -3421,20 +3429,65 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             # failed run's test_report.md and typed-check evaluation were re-stored
             # under the task id seconds AFTER the retest banked its passing report —
             # and the next analysis read the failure (1.6.5 FastAPI+React roll 1).
-            supersession = supersede_evidence_artifacts(
-                patched_artifacts, retest_outputs.get("artifacts")
+            retest_evidence = retest_outputs.get("artifacts")
+
+        # #1111, generalized by #1318: the failed attempt's own evidence must never be
+        # re-stored under the repaired task, whether or not a behavioral retest ran. Gated
+        # inside the retest branch it only covered tasks with a suite; a builder task has
+        # none, so 1.7.2 roll 1 re-stored the pre-patch typed-check evaluation eleven
+        # milliseconds before the patch's own file landed — same evaluated_at, same
+        # workspace revision, and the triage read the failure. A retest's fresh evidence
+        # replaces; with no retest the stale file is dropped, because the corrected result
+        # already carries the patch verification's rows.
+        supersession = supersede_evidence_artifacts(patched_artifacts, retest_evidence)
+        patched_artifacts = supersession.artifacts
+        if supersession.replaced or supersession.dropped:
+            logger.info(
+                "patch task=%s failed-attempt evidence superseded: replaced=%s dropped=%s "
+                "(retest=%s) (#1111/#1318)",
+                envelope.task_id,
+                ",".join(supersession.replaced) or "-",
+                ",".join(supersession.dropped) or "-",
+                "yes" if retest_evidence is not None else "no",
             )
-            patched_artifacts = supersession.artifacts
-            if supersession.replaced or supersession.dropped:
-                logger.info(
-                    "patch_retest task=%s evidence superseded by the passing retest: "
-                    "replaced=%s dropped=%s (#1111)",
-                    envelope.task_id,
-                    ",".join(supersession.replaced) or "-",
-                    ",".join(supersession.dropped) or "-",
-                )
 
         corrected_outputs["artifacts"] = patched_artifacts
+        # #1318: the ledger supersedes on ``(check_id, subject, criterion_id)``, so a
+        # framework-spine row the patch verification never reproduces keeps the FAILED
+        # attempt's value as the run's final state. Nothing but the builder handler writes
+        # ``required_files``, so on 1.7.2 roll 1 the patch supplied ``qa_handoff.md``,
+        # ``patch_verification`` passed, and the run was still rejected on the pre-patch row.
+        # Re-derive it from the PATCHED set through the handler's own rule — and only when
+        # the failed attempt actually emitted it: supersede what exists, never invent
+        # evidence for a task that never carried the check.
+        spine_rows: list[dict[str, Any]] = []
+        failed_rows = ((result.outputs or {}).get("validation_result") or {}).get("checks") or []
+        expected_artifacts = (envelope.inputs or {}).get("expected_artifacts") or []
+        carried_required_files = any(
+            isinstance(row, Mapping) and row.get("check") == CHECK_REQUIRED_FILES
+            for row in failed_rows
+        )
+        if expected_artifacts and carried_required_files:
+            spine_rows.append(
+                required_files_row(
+                    [PurePosixPath(str(name)).name for name in expected_artifacts if name],
+                    [a.get("name") for a in patched_artifacts if isinstance(a, dict)],
+                )
+            )
+            logger.info(
+                "patch task=%s re-derived %s on the patched set: passed=%s missing=%s (#1318)",
+                envelope.task_id,
+                CHECK_REQUIRED_FILES,
+                spine_rows[-1]["passed"],
+                ",".join(spine_rows[-1]["missing"]) or "-",
+            )
+        elif carried_required_files:
+            logger.warning(
+                "patch task=%s carried a %s failure but the task declares no "
+                "expected_artifacts — the pre-patch row will decide (#1318)",
+                envelope.task_id,
+                CHECK_REQUIRED_FILES,
+            )
         prior_validation = corrected_outputs.get("validation_result")
         corrected_outputs["validation_result"] = {
             **(prior_validation if isinstance(prior_validation, dict) else {}),
@@ -3444,7 +3497,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             # tree it verified against (verify_patched_artifacts computes it
             # from the exact mapping it materialized).
             "workspace_revision_id": verification.workspace_revision_id,
-            "checks": [r.to_check_row() for r in verification.checks] + retest_rows,
+            "checks": [r.to_check_row() for r in verification.checks] + retest_rows + spine_rows,
         }
         corrected_outputs.pop("outcome_class", None)
         patched_result_holder["patched_result"] = dataclasses.replace(
