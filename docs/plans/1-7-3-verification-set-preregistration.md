@@ -82,7 +82,7 @@ primary tokens") had no producer. All three are answered here rather than noted:
 | deploy | built from | images | purpose | found |
 |---|---|---|---|---|
 | A | `2b75c3e5` (main at #1334: the 1.7.2 tree + #1316 #1311 #1330 #1310 #1323 #1285-producer) | runtime-api `c83438b1dab7` · agents `718166749b69 fc69ea857fe0 d3a427c45a04 4ab1f69cbd02 670caad84a10 dd960db7372d` | instrument round 1 — the three diagnostics on a pre-list deploy | **#1347**: the absent-suite fault applied to all three correction re-dispatches (`cyc_1b3b225e593e`) — the emission-retry marker (#566) was never cleared, so the fault scope and the handler both read a correction re-take as an emission retry; L2's seam was reached each round; the run's red was manufactured |
-| A″ | `2b75c3e5` + `7eb930ba` (the #1347 fix, runtime-api only) | runtime-api `2c46f709e2d9` · agents as A | instrument round 2 — the three diagnostics re-run | *pending* |
+| A″ | `2b75c3e5` + `7eb930ba` (the #1347 fix, runtime-api only) | runtime-api `2c46f709e2d9` · agents as A | instrument round 2 — the three diagnostics re-run | **absent-suite `cyc_075b459f6aef`: the fault applied to the first attempt and the emission retry only; the correction re-take ran clean ("outside its scope — not applied"); L2's seam reached (repair retested, retest failed, re-take recovered); accepted, boot PASS, functional** — the instrument holds. Own-frame chain and path-prefix pending. |
 | B | main after #1342 (the structural block: #922 #559 #377 #381 #1241 #154 #218 #219) | `TBD` | the checkpoint pair | *pending* |
 | C… | main after the behavioural block (#305 #225 #999 #1087/#1112) | `TBD` | the shakeout loop to the exit rule; the pinned deploy is the last one | *pending* |
 
@@ -101,7 +101,7 @@ diagnostic is never a roll**, and since #1310 **a diagnostic is read by the seam
 | prediction | reached by an ordinary roll? | exercise plan | result |
 |---|---|---|---|
 | **L1** (#1268) | yes — every roll has a qa first attempt | read from the emission-shape readout on each counted roll | — |
-| **L2** (#1269) | unlikely | `1-7-3-diagnostic-absent-suite` — the fault now applies to every emission attempt (#1310), so the task fails into correction and the repair is retested; read from `seam_reached.qa_suite_absent` (correction ≥ 1 **and** a `patch_retest` for the qa task) | *A″ run pending; A's run reached the seam three times under #1347's manufactured re-dispatches* |
+| **L2** (#1269) | unlikely | `1-7-3-diagnostic-absent-suite` — the fault now applies to every emission attempt (#1310), so the task fails into correction and the repair is retested; read from `seam_reached.qa_suite_absent` (correction ≥ 1 **and** a `patch_retest` for the qa task) | **EXERCISED, HELD** on A″ (`cyc_075b459f6aef`): `seam_reached: true`, one `patch_retest` keyed on the qa task, the run recovered by re-take and was accepted. (A's run reached the seam three times under #1347's manufactured re-dispatches.) |
 | **L3** (#1271) | yes when any qa task is re-attempted | read from the summary's failed rows against the last stored evaluation, and from `stale_evaluations` (the 1.7.2 field that made the readout see its miss) | — |
 | **L4** (#1273) | unlikely | the chained diagnostic; read from `refused_rounds_not_counted` | — |
 | **L5** (#1260) | unlikely | rides the chain; read from the two stored suites by case title | — |
