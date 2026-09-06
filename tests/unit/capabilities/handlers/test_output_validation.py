@@ -654,7 +654,7 @@ class TestQATestExecutionFoldsIntoOutcome:
             "resolved_config": {
                 "output_validation": True,
                 "max_self_eval_passes": 0,
-                "dev_capability": "python_cli",
+                "development_profile": "python_cli",
             },
         }
 

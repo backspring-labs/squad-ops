@@ -343,7 +343,7 @@ async def test_a_fills_only_emission_is_not_a_zero_extraction_failure(scaffold_i
         {
             "prd": "group_run",
             "artifact_contents": {},
-            "resolved_config": {"dev_capability": "nextjs_ts"},
+            "resolved_config": {"development_profile": "nextjs_ts"},
             "subtask_focus": "fill the scaffold",
             "expected_artifacts": [],
             "verification_scaffold": scaffold_input,
@@ -418,7 +418,7 @@ async def test_the_evidence_pipeline_lands_in_outputs(scaffold_input, monkeypatc
         {
             "prd": "group_run",
             "artifact_contents": {},
-            "resolved_config": {"dev_capability": "nextjs_ts"},
+            "resolved_config": {"development_profile": "nextjs_ts"},
             "subtask_focus": "fill the scaffold",
             "expected_artifacts": [],
             "verification_scaffold": scaffold_input,
@@ -545,7 +545,7 @@ _INPUTS = {
     "prd": "group_run",
     "artifact_contents": {},
     "resolved_config": {
-        "dev_capability": "nextjs_ts",
+        "development_profile": "nextjs_ts",
         "output_validation": True,
         "max_self_eval_passes": 1,
     },

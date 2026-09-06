@@ -13,10 +13,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from squadops.capabilities.app_invocation import AppInvocation
-from squadops.capabilities.dev_capabilities import (
-    DEFAULT_DEV_CAPABILITY,
-    effective_capability_name,
-    get_capability,
+from squadops.capabilities.development_profiles import (
+    DEFAULT_DEVELOPMENT_PROFILE,
+    effective_development_profile,
+    get_development_profile,
 )
 from squadops.capabilities.handlers.base import (
     HandlerEvidence,
@@ -247,7 +247,9 @@ class QATestHandler(_CycleTaskHandler):
         support files the QA build/test workspace can't build the deliverable and
         the frontend build check (#290) + vitest skip on "no package.json" (#296).
         """
-        capability = get_capability(effective_capability_name(inputs.get("resolved_config")))
+        capability = get_development_profile(
+            effective_development_profile(inputs.get("resolved_config"))
+        )
         contents = inputs.get("artifact_contents", {})
         support = set(getattr(capability, "build_support_files", ()))
         sources = {}
@@ -275,10 +277,10 @@ class QATestHandler(_CycleTaskHandler):
         prior_outputs: dict[str, Any] | None,
         val_plan: str | None = None,
         sources: dict[str, str] | None = None,
-        capability_name: str = DEFAULT_DEV_CAPABILITY,
+        capability_name: str = DEFAULT_DEVELOPMENT_PROFILE,
     ) -> str:
         """Build prompt with validation plan + source code for test generation."""
-        capability = get_capability(capability_name)
+        capability = get_development_profile(capability_name)
         parts = [f"## Product Requirements Document\n\n{prd}"]
 
         if val_plan:
@@ -1113,11 +1115,11 @@ class QATestHandler(_CycleTaskHandler):
         prd = inputs.get("prd", "")
         prior_outputs = inputs.get("prior_outputs")
         resolved_config = inputs.get("resolved_config", {})
-        capability_name = effective_capability_name(resolved_config)
+        capability_name = effective_development_profile(resolved_config)
 
-        # Resolve capability (fail fast on unknown dev_capability)
+        # Resolve capability (fail fast on unknown development_profile)
         try:
-            capability = get_capability(capability_name)
+            capability = get_development_profile(capability_name)
         except ValueError as exc:
             return self._fail_result(start_time, inputs, str(exc))
 

@@ -1193,14 +1193,16 @@ class TestBriefCarriesSuccessStatus:
         guard is exactly the kind that silently stops working when a third stack lands.
         """
         from squadops.capabilities import scaffold as scaffold_module
-        from squadops.capabilities.dev_capabilities import get_capability
+        from squadops.capabilities.development_profiles import get_development_profile
 
-        real = get_capability
+        real = get_development_profile
 
         def _no_appendix(name: str):
             return dc.replace(real(name), fill_only_template="")
 
-        monkeypatch.setattr("squadops.capabilities.dev_capabilities.get_capability", _no_appendix)
+        monkeypatch.setattr(
+            "squadops.capabilities.development_profiles.get_development_profile", _no_appendix
+        )
         assert scaffold_module.brief_carries_success_status_for("nextjs_ts") is False
 
 

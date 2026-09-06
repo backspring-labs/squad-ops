@@ -264,7 +264,7 @@ class TestRunBuildValidationSurfacesFrontend:
     RunTestsResult; the folded-away skip is exactly the #306 case qa.test needs."""
 
     async def test_fullstack_surfaces_frontend_skip(self, monkeypatch):
-        from squadops.capabilities.dev_capabilities import TEST_FRAMEWORK_BOTH
+        from squadops.capabilities.development_profiles import TEST_FRAMEWORK_BOTH
         from squadops.capabilities.handlers import test_runner as tr
 
         async def _fullstack(*a, **k):
@@ -285,7 +285,7 @@ class TestRunBuildValidationSurfacesFrontend:
         assert result.frontend_build.ran is False  # the skip is surfaced, not dropped
 
     async def test_pytest_run_has_no_frontend_build(self, monkeypatch):
-        from squadops.capabilities.dev_capabilities import TEST_FRAMEWORK_PYTEST
+        from squadops.capabilities.development_profiles import TEST_FRAMEWORK_PYTEST
         from squadops.capabilities.handlers import test_runner as tr
 
         async def _gen(*a, **k):

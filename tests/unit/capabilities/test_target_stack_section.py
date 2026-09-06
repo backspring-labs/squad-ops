@@ -95,7 +95,7 @@ async def test_the_narrative_travels_with_the_stack_name():
 
 @pytest.mark.parametrize(
     "config",
-    [None, {}, {"dev_capability": "python_cli"}, {"build_profile": "not_a_registered_stack"}],
+    [None, {}, {"development_profile": "python_cli"}, {"build_profile": "not_a_registered_stack"}],
 )
 async def test_no_section_when_the_cycle_has_no_stack(config):
     """A free-form generation cycle has no stack decided for it. Asserting one would be a

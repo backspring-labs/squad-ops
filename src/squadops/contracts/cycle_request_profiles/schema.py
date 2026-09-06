@@ -23,7 +23,7 @@ _APPLIED_DEFAULTS_EXTRA_KEYS = {
     "pulse_checks",
     "cadence_policy",
     "build_profile",
-    "dev_capability",
+    "development_profile",
     "generation_timeout",
     "workload_sequence",
     "max_task_retries",

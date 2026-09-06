@@ -405,9 +405,9 @@ class _CycleTaskHandler(CapabilityHandler):
         instead of inventing a number.
         """
         try:
-            from squadops.capabilities.dev_capabilities import get_capability
+            from squadops.capabilities.development_profiles import get_development_profile
 
-            return get_capability(self._capability_id).max_completion_tokens
+            return get_development_profile(self._capability_id).max_completion_tokens
         except Exception:
             return None
 

@@ -380,8 +380,8 @@ class ImplementationPlan:
         qa task failed it* — VS's Next.js re-roll was rejected for declaring
         ``__tests__/store.test.ts``, and the remedy the message suggested ("include a
         test_*.py") would have been wrong. The stack has declared its conventions since
-        SIP-0072 (``DevelopmentCapability.test_file_patterns``); nothing asked it. Reached
-        through ``ScaffoldStack.dev_capability`` (#832) — an explicit declared pointer
+        SIP-0072 (``DevelopmentProfile.test_file_patterns``); nothing asked it. Reached
+        through ``ScaffoldStack.development_profile`` (#832) — an explicit declared pointer
         rather than a naming convention, which is the distinction Stage 2a exists to close.
 
         Verification-only tasks (``expected_artifacts: []``) are exempt — they emit
@@ -393,7 +393,7 @@ class ImplementationPlan:
         """
         if "tests_pass" not in (resolved_config.get("required_checks") or ()):
             return []
-        from squadops.capabilities.dev_capabilities import (
+        from squadops.capabilities.development_profiles import (
             matches_test_file_patterns,
             test_file_patterns_for,
         )

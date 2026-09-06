@@ -2,10 +2,10 @@ name: group_run
 description: >
   Scaffold-only cycle request profile for group_run.
   Uses the fullstack pipeline with prd-scaffold.md to validate
-  stack-aware development capabilities before attempting full scope.
+  stack-aware development profiles before attempting full scope.
 defaults:
   build_strategy: fresh
-  dev_capability: fullstack_fastapi_react
+  development_profile: fullstack_fastapi_react
   build_profile: fullstack_fastapi_react
   task_flow_policy:
     mode: sequential

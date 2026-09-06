@@ -11,7 +11,7 @@ config, bootstrap, cross-file wiring) is scaffolded here; only the endpoint/comp
 *bodies* are left for the model.
 
 This is pure logic (``manifest -> list[{name, content}]``) — no port, no NoOp, no
-factory, sibling to ``build_profiles.py``/``dev_capabilities.py``. The output shape
+factory, sibling to ``build_profiles.py``/``development_profiles.py``. The output shape
 (``{"name", "content"}``) matches ``patch_verification.materialize_artifacts`` so the
 expanded files ride the existing artifact-seeding rail with no new adapter.
 
@@ -1448,12 +1448,12 @@ class ScaffoldStack:
     #: not one fact duplicated — the interpreter is context-specific, only the launcher and
     #: entry point are stack-specific.
     probe_profile: str = ""
-    #: #832: the ``DEV_CAPABILITIES`` entry this stack requires — the prompt text,
+    #: #832: the ``DEVELOPMENT_PROFILES`` entry this stack requires — the prompt text,
     #: ``expected_extensions``, ``source_filter`` and ``test_framework`` a dev agent is given.
     #: A *name*, like the two fields above, so the capability vocabulary stays in its layer.
     #:
     #: Exists because a cycle declared its stack **twice**: ``build_profile`` selecting this
-    #: registry and ``dev_capability`` selecting that one, the same literal on adjacent CRP
+    #: registry and ``development_profile`` selecting that one, the same literal on adjacent CRP
     #: lines, bound by convention alone. Nothing stopped a cycle from expanding one stack's
     #: skeleton while instructing the dev agent to write another stack's files — every
     #: emission landing outside the fill slots, surfacing only as a plan that claims nothing.
@@ -1461,7 +1461,7 @@ class ScaffoldStack:
     #: Not a collapse of the two registries: ``python_cli``, ``python_api`` and ``react_app``
     #: are free-form capabilities for cycles with no scaffold stack at all. Not every dev
     #: capability is a stack; every stack needs one.
-    dev_capability: str = ""
+    development_profile: str = ""
     #: SIP-0104: the test-scaffold emitter this stack opts into — deterministic behavior
     #: shells with fill slots, emitted beside the skeleton at seed time. A *name* pointing
     #: at ``verification_scaffold_emission._EMITTERS``, like the three fields above.
@@ -1536,7 +1536,7 @@ _STACKS: dict[str, ScaffoldStack] = {
         # A declared success_status lands in the frozen route decorator
         # (``status_code=``, the pf-39 fix) — structural, fill-proof.
         skeleton_pins_success_status=True,
-        dev_capability=_FASTAPI_REACT_NAME,
+        development_profile=_FASTAPI_REACT_NAME,
         store_brief_lines=_store_brief_lines_fastapi_react,
         client_surface_lines=_client_surface_lines_fastapi_react,
     ),
@@ -1565,7 +1565,7 @@ _STACKS: dict[str, ScaffoldStack] = {
         error_seam=ERROR_SEAM_NEXTJS_TS,
         probe_profile="nextjs_next_start",
         app_invocation=_APP_INVOCATION_NEXTJS_TS,
-        dev_capability=_NEXTJS_TS_NAME,
+        development_profile=_NEXTJS_TS_NAME,
         # SIP-0104: the first (and so far only) stack with a deterministic test scaffold.
         # Stack #1 deliberately does not declare one — opt-in is explicit, never inherited.
         verification_scaffold=_NEXTJS_TS_NAME,
@@ -1601,20 +1601,20 @@ def brief_carries_success_status_for(stack: str) -> bool:
     side by side and are read together by the framing gate.
 
     #1042 threads the declared status onto the dev brief's response surface, but only
-    where that surface renders: a scaffoldable stack whose dev capability declares a
+    where that surface renders: a scaffoldable stack whose development profile declares a
     fill-only template. A stack with no such template gets no appendix, so prose
     remains its sole channel and the omission check must still block there.
 
     ``False`` for unknown stacks and unresolvable capabilities — the conservative answer
     when we cannot prove the fact travels is that it does not.
     """
-    from squadops.capabilities.dev_capabilities import get_capability
+    from squadops.capabilities.development_profiles import get_development_profile
 
     known = _STACKS.get(stack)
     if known is None or not is_scaffoldable_stack(stack):
         return False
     try:
-        capability = get_capability(known.dev_capability)
+        capability = get_development_profile(known.development_profile)
     except ValueError:
         return False
     return bool(capability.fill_only_template)
@@ -1667,10 +1667,10 @@ def probe_profile_for(stack: str) -> str:
     return known.probe_profile if known else ""
 
 
-def dev_capability_for(stack: str) -> str:
-    """The ``DEV_CAPABILITIES`` entry ``stack`` requires, or ``""`` (#832)."""
+def development_profile_for(stack: str) -> str:
+    """The ``DEVELOPMENT_PROFILES`` entry ``stack`` requires, or ``""`` (#832)."""
     known = _STACKS.get(stack)
-    return known.dev_capability if known else ""
+    return known.development_profile if known else ""
 
 
 def verification_scaffold_for(stack: str) -> str:
@@ -1685,12 +1685,12 @@ def verification_scaffold_for(stack: str) -> str:
     return known.verification_scaffold if known else ""
 
 
-def resolve_dev_capability(resolved_config: Mapping[str, Any] | None) -> str | None:
-    """The dev capability a cycle actually runs, or ``None`` if its config contradicts itself.
+def resolve_development_profile(resolved_config: Mapping[str, Any] | None) -> str | None:
+    """The development profile a cycle actually runs, or ``None`` if its config contradicts itself.
 
     One rule (#832): **the stack declares it; the config may restate it but not contradict
     it.** A ``build_profile`` naming a scaffoldable stack is the authority, so an absent
-    ``dev_capability`` is derived rather than defaulted to ``python_cli`` — which is how a
+    ``development_profile`` is derived rather than defaulted to ``python_cli`` — which is how a
     fullstack cycle could otherwise be handed CLI prompts.
 
     ``None`` means *contradiction*, and is deliberately distinguished from ``""``: the caller
@@ -1698,11 +1698,11 @@ def resolve_dev_capability(resolved_config: Mapping[str, Any] | None) -> str | N
     config value would hide the drift instead of ending it.
 
     A cycle with no scaffoldable ``build_profile`` is a free-form generation cycle
-    (``python_cli``, ``react_app``); its ``dev_capability`` is returned untouched.
+    (``python_cli``, ``react_app``); its ``development_profile`` is returned untouched.
     """
     config = resolved_config or {}
-    declared = str(config.get("dev_capability") or "")
-    required = dev_capability_for(str(config.get("build_profile") or ""))
+    declared = str(config.get("development_profile") or "")
+    required = development_profile_for(str(config.get("build_profile") or ""))
     if not required:
         return declared
     if declared and declared != required:

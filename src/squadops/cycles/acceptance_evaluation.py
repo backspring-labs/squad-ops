@@ -48,7 +48,7 @@ class SplitCriteria:
 _SERIALIZED_ROW_KEYS = frozenset({"check", "params", "severity", "description", "id"})
 
 # #503: check-stack derivation from the build profile. Live configs carry
-# ``build_profile``/``dev_capability`` but never a ``stack`` key, so every
+# ``build_profile``/``development_profile`` but never a ``stack`` key, so every
 # consumer that read ``resolved_config.get("stack")`` fed ``None`` into the
 # evaluators and the AST checks (endpoint_defined, field_present, ...) silently
 # skipped in every live cycle — while CI passed them via an explicit stack.

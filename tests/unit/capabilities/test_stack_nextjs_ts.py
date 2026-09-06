@@ -31,7 +31,7 @@ from pathlib import Path
 import pytest
 
 from squadops.capabilities import scaffold, scaffold_contract
-from squadops.capabilities.dev_capabilities import DEV_CAPABILITIES, TEST_FRAMEWORK_VITEST
+from squadops.capabilities.development_profiles import DEVELOPMENT_PROFILES, TEST_FRAMEWORK_VITEST
 from squadops.capabilities.handlers import probe_runner as pr
 from squadops.capabilities.scaffold import InterfaceManifest, expand, fill_slot_paths
 from squadops.capabilities.scaffold_contract import emit_contract_dict, emit_contract_yaml
@@ -216,16 +216,16 @@ def test_the_behavioral_probes_transfer_unchanged():
 
 
 def test_the_stack_is_answered_by_every_registry():
-    """Scaffold, criteria pack, probe profile, sandbox environment, dev capability. Forgetting
+    """Scaffold, criteria pack, probe profile, sandbox environment, development profile. Forgetting
     one produces a plausible wrong answer rather than an error — the S1 failure, now guarded
     across all five."""
     stack = scaffold._STACKS[_STACK]
 
     assert stack.criteria_pack in scaffold_contract._CRITERIA_PACKS
     assert stack.probe_profile in pr._PROFILES
-    assert stack.dev_capability in DEV_CAPABILITIES
+    assert stack.development_profile in DEVELOPMENT_PROFILES
     assert get_environment_contract(_STACK).app_port == 8000
-    assert DEV_CAPABILITIES[stack.dev_capability].test_framework == TEST_FRAMEWORK_VITEST
+    assert DEVELOPMENT_PROFILES[stack.development_profile].test_framework == TEST_FRAMEWORK_VITEST
 
 
 def test_the_probe_profile_builds_before_it_boots():
@@ -361,7 +361,7 @@ def test_the_test_supplement_states_the_serverless_execution_model():
     process with no server. The supplement is the stack-conditioned seam that owns
     this fact — if a rewrite drops it, that loss mode returns silently.
     """
-    supplement = DEV_CAPABILITIES[_STACK].test_prompt_supplement
+    supplement = DEVELOPMENT_PROFILES[_STACK].test_prompt_supplement
 
     assert "NO server" in supplement
     assert "localhost" in supplement  # the prohibition names the thing authors reach for
@@ -373,7 +373,7 @@ def test_the_test_supplement_shows_in_process_handler_invocation():
     supplement must also show the working pattern — import the route handler,
     invoke it with a Request, including the params form for dynamic routes.
     """
-    supplement = DEV_CAPABILITIES[_STACK].test_prompt_supplement
+    supplement = DEVELOPMENT_PROFILES[_STACK].test_prompt_supplement
 
     assert "from '@/app/api/runs/route'" in supplement
     assert "new Request(" in supplement

@@ -864,8 +864,8 @@ class TestDevHandlerCapabilityDefault:
         assert "__init__.py" in user_msg
 
     async def test_explicit_python_cli(self, mock_context, build_inputs):
-        """Explicit dev_capability=python_cli reproduces default behavior."""
-        build_inputs["resolved_config"] = {"dev_capability": "python_cli"}
+        """Explicit development_profile=python_cli reproduces default behavior."""
+        build_inputs["resolved_config"] = {"development_profile": "python_cli"}
         handler = DevelopmentDevelopHandler()
         result = await handler.handle(mock_context, build_inputs)
 
@@ -878,7 +878,7 @@ class TestDevHandlerCapabilityDefault:
 
 class TestDevHandlerFullstackCapability:
     async def test_fullstack_prompt_contains_backend_frontend(self, mock_context, build_inputs):
-        build_inputs["resolved_config"] = {"dev_capability": "fullstack_fastapi_react"}
+        build_inputs["resolved_config"] = {"development_profile": "fullstack_fastapi_react"}
         handler = DevelopmentDevelopHandler()
         result = await handler.handle(mock_context, build_inputs)
 
@@ -894,7 +894,7 @@ class TestDevHandlerFullstackCapability:
         mock_context,
         build_inputs,
     ):
-        build_inputs["resolved_config"] = {"dev_capability": "fullstack_fastapi_react"}
+        build_inputs["resolved_config"] = {"development_profile": "fullstack_fastapi_react"}
         handler = DevelopmentDevelopHandler()
         await handler.handle(mock_context, build_inputs)
 
@@ -904,7 +904,7 @@ class TestDevHandlerFullstackCapability:
         assert "python -m" not in user_msg
 
     async def test_fullstack_system_prompt_mentions_fullstack(self, mock_context, build_inputs):
-        build_inputs["resolved_config"] = {"dev_capability": "fullstack_fastapi_react"}
+        build_inputs["resolved_config"] = {"development_profile": "fullstack_fastapi_react"}
         handler = DevelopmentDevelopHandler()
         await handler.handle(mock_context, build_inputs)
 
@@ -915,7 +915,7 @@ class TestDevHandlerFullstackCapability:
 
 class TestDevHandlerUnknownCapability:
     async def test_unknown_capability_fails(self, mock_context, build_inputs):
-        build_inputs["resolved_config"] = {"dev_capability": "unknown_stack"}
+        build_inputs["resolved_config"] = {"development_profile": "unknown_stack"}
         handler = DevelopmentDevelopHandler()
         result = await handler.handle(mock_context, build_inputs)
 
@@ -924,7 +924,7 @@ class TestDevHandlerUnknownCapability:
         assert "python_cli" in result.error
 
     async def test_unknown_capability_does_not_call_llm(self, mock_context, build_inputs):
-        build_inputs["resolved_config"] = {"dev_capability": "unknown_stack"}
+        build_inputs["resolved_config"] = {"development_profile": "unknown_stack"}
         handler = DevelopmentDevelopHandler()
         await handler.handle(mock_context, build_inputs)
 
@@ -983,7 +983,7 @@ class TestQASourceFilterFullstack:
         )
         inputs = {
             "prd": "Fullstack app.",
-            "resolved_config": {"dev_capability": "fullstack_fastapi_react"},
+            "resolved_config": {"development_profile": "fullstack_fastapi_react"},
             "artifact_contents": {
                 "validation_plan.md": "# Plan",
                 "backend/main.py": "from fastapi import FastAPI",
@@ -1027,7 +1027,7 @@ class TestQAPromptCapability:
         )
         inputs = {
             "prd": "React app.",
-            "resolved_config": {"dev_capability": "react_app"},
+            "resolved_config": {"development_profile": "react_app"},
             "artifact_contents": {
                 "validation_plan.md": "# Plan",
                 "src/App.jsx": "export default function App() {}",
@@ -1047,7 +1047,7 @@ class TestQAPromptCapability:
         )
         inputs = {
             "prd": "Fullstack app.",
-            "resolved_config": {"dev_capability": "fullstack_fastapi_react"},
+            "resolved_config": {"development_profile": "fullstack_fastapi_react"},
             "artifact_contents": {
                 "validation_plan.md": "# Plan",
                 "backend/main.py": "from fastapi import FastAPI",
@@ -1064,7 +1064,7 @@ class TestQAPromptCapability:
 
 class TestQAUnknownCapability:
     async def test_unknown_capability_fails(self, mock_context, qa_inputs):
-        qa_inputs["resolved_config"] = {"dev_capability": "nonexistent"}
+        qa_inputs["resolved_config"] = {"development_profile": "nonexistent"}
         handler = QATestHandler()
         result = await handler.handle(mock_context, qa_inputs)
 
@@ -1104,7 +1104,7 @@ class TestQAUserPromptFenceLang:
         )
         inputs = {
             "prd": "React app.",
-            "resolved_config": {"dev_capability": "react_app"},
+            "resolved_config": {"development_profile": "react_app"},
             "artifact_contents": {
                 "validation_plan.md": "# Plan",
                 "src/App.jsx": "export default function App() {}",
@@ -1137,7 +1137,7 @@ class TestDevHandlerTokenBudget:
 
     async def test_fullstack_max_tokens(self, mock_context, build_inputs):
         """fullstack_fastapi_react → max_tokens=12000."""
-        build_inputs["resolved_config"] = {"dev_capability": "fullstack_fastapi_react"}
+        build_inputs["resolved_config"] = {"development_profile": "fullstack_fastapi_react"}
         handler = DevelopmentDevelopHandler()
         await handler.handle(mock_context, build_inputs)
 
@@ -1148,7 +1148,7 @@ class TestDevHandlerTokenBudget:
         """When model spec has lower limit, max_tokens is capped."""
         # qwen2.5:7b has default_max_completion=4096
         mock_context.ports.llm.default_model = "qwen2.5:7b"
-        build_inputs["resolved_config"] = {"dev_capability": "fullstack_fastapi_react"}
+        build_inputs["resolved_config"] = {"development_profile": "fullstack_fastapi_react"}
         handler = DevelopmentDevelopHandler()
         await handler.handle(mock_context, build_inputs)
 
@@ -1221,7 +1221,7 @@ class TestQAHandlerTokenBudget:
         mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
             return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
         )
-        qa_inputs["resolved_config"] = {"dev_capability": "fullstack_fastapi_react"}
+        qa_inputs["resolved_config"] = {"development_profile": "fullstack_fastapi_react"}
         handler = QATestHandler()
         await handler.handle(mock_context, qa_inputs)
 
@@ -1260,7 +1260,7 @@ class TestQAHandlerTestTimeout:
         mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
             return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
         )
-        qa_inputs["resolved_config"] = {"dev_capability": "fullstack_fastapi_react"}
+        qa_inputs["resolved_config"] = {"development_profile": "fullstack_fastapi_react"}
         qa_inputs["artifact_contents"]["backend/main.py"] = "from fastapi import FastAPI"
 
         with patch(

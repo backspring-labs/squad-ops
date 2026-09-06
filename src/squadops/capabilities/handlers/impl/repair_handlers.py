@@ -477,9 +477,9 @@ class _RepairPromptMixin:
         renderer = getattr(context.ports, "request_renderer", None)
         if renderer is None:
             return ""
-        from squadops.capabilities.dev_capabilities import (
-            effective_capability_name,
-            get_capability,
+        from squadops.capabilities.development_profiles import (
+            effective_development_profile,
+            get_development_profile,
         )
         from squadops.capabilities.scaffold import is_scaffoldable_stack
 
@@ -496,7 +496,7 @@ class _RepairPromptMixin:
         # Resolved exactly as develop resolves it; an unset template means NO appendix,
         # because wrong guidance is worse than none (#818).
         try:
-            capability = get_capability(effective_capability_name(resolved_config))
+            capability = get_development_profile(effective_development_profile(resolved_config))
         except ValueError:
             return ""
         if not capability.fill_only_template:

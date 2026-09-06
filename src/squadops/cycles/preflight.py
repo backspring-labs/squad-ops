@@ -209,11 +209,11 @@ def bind_mode_authoring_decision(config: Mapping[str, Any]) -> PreflightDecision
     )
 
 
-def stack_dev_capability_decision(config: Mapping[str, Any]) -> PreflightDecision:
+def stack_development_profile_decision(config: Mapping[str, Any]) -> PreflightDecision:
     """Block a cycle whose two stack declarations contradict each other (#832).
 
     A cycle names its stack twice: ``build_profile`` selects the expander, fill slots,
-    criteria pack and probe profile; ``dev_capability`` selects the dev agent's prompt text,
+    criteria pack and probe profile; ``development_profile`` selects the dev agent's prompt text,
     ``expected_extensions``, ``source_filter`` and ``test_framework``. The CRP sets both to
     the same literal on adjacent lines, and until this check nothing verified that.
 
@@ -227,27 +227,27 @@ def stack_dev_capability_decision(config: Mapping[str, Any]) -> PreflightDecisio
     rather than silently deriving, because overriding an explicit config value hides the drift
     instead of ending it — the operator should fix the profile.
     """
-    from squadops.capabilities.scaffold import dev_capability_for, resolve_dev_capability
+    from squadops.capabilities.scaffold import development_profile_for, resolve_development_profile
 
-    if resolve_dev_capability(config) is not None:
+    if resolve_development_profile(config) is not None:
         return PreflightDecision()
 
     build_profile = str(config.get("build_profile") or "")
-    required = dev_capability_for(build_profile)
-    declared = str(config.get("dev_capability") or "")
+    required = development_profile_for(build_profile)
+    declared = str(config.get("development_profile") or "")
     return PreflightDecision(
         blocking=(
             Finding(
-                code="stack_dev_capability_mismatch",
+                code="stack_development_profile_mismatch",
                 severity="block",
                 message=(
                     f"this cycle declares its stack twice and the two disagree: "
                     f"`build_profile` is `{build_profile}`, whose scaffold requires "
-                    f"dev capability `{required}`, but `dev_capability` is `{declared}`. "
+                    f"development profile `{required}`, but `development_profile` is `{declared}`. "
                     "The skeleton would expand for one stack while the dev agent is "
                     "instructed to write the other's files, so every emission would land "
                     "outside the fill slots and the plan would claim nothing. Set "
-                    f"`dev_capability: {required}` in the request profile or "
+                    f"`development_profile: {required}` in the request profile or "
                     "`execution_overrides`, or omit it — a scaffoldable `build_profile` "
                     "derives it."
                 ),

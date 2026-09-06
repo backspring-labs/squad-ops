@@ -11,7 +11,7 @@ description: >
   required_files) as the runnable-app backstop.
 defaults:
   build_strategy: fresh
-  dev_capability: fullstack_fastapi_react
+  development_profile: fullstack_fastapi_react
   build_profile: fullstack_fastapi_react
   task_flow_policy:
     mode: sequential

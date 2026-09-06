@@ -1506,7 +1506,7 @@ class TestRetestIsKeyedOnWhatThePatchContains:
     which of them the runner would collect.
     """
 
-    _CONFIG = {"dev_capability": "fullstack_fastapi_react"}
+    _CONFIG = {"development_profile": "fullstack_fastapi_react"}
     _SUITE = "backend/tests/test_runs.py"
 
     def _qa_envelope(self):
@@ -1627,11 +1627,11 @@ class TestRetestIsKeyedOnWhatThePatchContains:
         assert _repaired_suite_files([{"name": "backend/routes.py"}], self._CONFIG) == []
         # The other stack answers with its own conventions, not pytest's.
         assert _repaired_suite_files(
-            [{"name": "__tests__/runs.test.ts"}], {"dev_capability": "nextjs_ts"}
+            [{"name": "__tests__/runs.test.ts"}], {"development_profile": "nextjs_ts"}
         ) == ["__tests__/runs.test.ts"]
         assert (
             _repaired_suite_files(
-                [{"name": "backend/tests/test_runs.py"}], {"dev_capability": "nextjs_ts"}
+                [{"name": "backend/tests/test_runs.py"}], {"development_profile": "nextjs_ts"}
             )
             == []
         )
@@ -1663,7 +1663,7 @@ class TestTheTerminationNamesWhichAbsence:
             trace_id="t",
             span_id="s",
             inputs={
-                "resolved_config": {"dev_capability": "nextjs_ts"},
+                "resolved_config": {"development_profile": "nextjs_ts"},
                 "expected_artifacts": ["__tests__/runs.test.ts"],
                 "acceptance_criteria": [
                     TypedCheck(
@@ -1855,7 +1855,7 @@ class TestTheNextAttemptKeepsTheCasesThisOneExposed:
             causation_id=None,
             trace_id="t",
             span_id="s",
-            inputs={"resolved_config": {"dev_capability": "nextjs_ts"}},
+            inputs={"resolved_config": {"development_profile": "nextjs_ts"}},
             metadata={"role": "qa"},
         )
 

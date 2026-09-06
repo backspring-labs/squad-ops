@@ -15,7 +15,7 @@ import asyncio
 import pytest
 
 import squadops.capabilities.handlers.test_runner as tr
-from squadops.capabilities.dev_capabilities import (
+from squadops.capabilities.development_profiles import (
     TEST_FRAMEWORK_BOTH,
     TEST_FRAMEWORK_PYTEST,
     TEST_FRAMEWORK_VITEST,

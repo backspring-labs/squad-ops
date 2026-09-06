@@ -2,7 +2,7 @@
 
 Bug this guards: the profile must COMPOSE both quality levers — `validation`'s
 instrumentation AND the stack-aware builder path. If either silently drops (a
-missing `dev_capability`, instrumentation flags defaulting off, or the 2-run
+missing `development_profile`, instrumentation flags defaulting off, or the 2-run
 sequence collapsing to single-run), the profile degrades to a lean build and the
 #279 quality gain — a runnable app with a correction/typed-check trail — is lost.
 """
@@ -25,9 +25,9 @@ def test_profile_loads_and_is_listed():
 
 
 def test_composes_stack_aware_builder_path():
-    """Builder + stack lever: fullstack dev capability + builder-routed build."""
+    """Builder + stack lever: fullstack development profile + builder-routed build."""
     defaults = load_profile("validated-fullstack").defaults
-    assert defaults["dev_capability"] == "fullstack_fastapi_react"
+    assert defaults["development_profile"] == "fullstack_fastapi_react"
     assert defaults["build_profile"] == "fullstack_fastapi_react"
     # build_tasks: true routes through builder.assemble when the squad has a builder
     assert defaults["build_tasks"] is True
