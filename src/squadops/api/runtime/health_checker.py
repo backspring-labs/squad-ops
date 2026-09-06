@@ -128,22 +128,19 @@ class HealthChecker:
 
     # ── Network status derivation ───────────────────────────────────────
 
-    def _compute_network_status(self, last_heartbeat: datetime | None) -> str:
-        """Heartbeat-age reachability flag. **Legacy — being removed in #305.**
+    def _heartbeat_is_fresh(self, last_heartbeat: datetime | None) -> bool:
+        """Whether the last heartbeat is inside the timeout window.
 
-        `network_status` is a heartbeat-derived reachability signal on `agent_status`;
-        the canonical health signal is `runtime_status` on `agent_runtime_state`. As
-        of #305 Part A, no read surface consults `network_status` any more —
-        `runtime_status` is always-populated and the single source of truth. This
-        method survives only to feed the reconciliation loop's offline verdict; **#305
-        Part B removes it and drops the column** (after #158). **Do not add new
-        dependencies on it** (health-status model: `docs/agent-runtime-status-model.md`).
+        The one heartbeat-age verdict, feeding the reconciliation's offline mirror into
+        ``agent_runtime_state`` and the lifecycle telemetry's UNKNOWN. It used to be
+        ``_compute_network_status`` and to be stored as ``network_status`` on
+        ``agent_status`` — a second health vocabulary beside ``runtime_status``, which
+        #305 retired: health is ``runtime_status`` (``docs/agent-runtime-status-model.md``).
         """
         if last_heartbeat is None:
-            return "offline"
+            return False
         timeout = self._config.agent.heartbeat_timeout_window
-        elapsed = (datetime.utcnow() - last_heartbeat).total_seconds()
-        return "online" if elapsed <= timeout else "offline"
+        return (datetime.utcnow() - last_heartbeat).total_seconds() <= timeout
 
     # ── Agent status from DB ────────────────────────────────────────────
 
@@ -169,8 +166,7 @@ class HealthChecker:
             agents: list[dict[str, Any]] = []
 
             def _build_agent_dict(agent_id: str, row: Any) -> dict[str, Any]:
-                network_status = self._compute_network_status(row["last_heartbeat"])
-                if network_status == "offline":
+                if not self._heartbeat_is_fresh(row["last_heartbeat"]):
                     lifecycle_state = "UNKNOWN"
                 else:
                     lifecycle_state = row["lifecycle_state"] or "UNKNOWN"
@@ -181,7 +177,6 @@ class HealthChecker:
                     "agent_name": info.get("display_name", agent_id.title()),
                     "role": role,
                     "role_label": get_role_label(role),
-                    "network_status": network_status,
                     "lifecycle_state": lifecycle_state,
                     # SIP-0089 posture + canonical health (None when no runtime row)
                     "mode": row["mode"],
@@ -212,7 +207,6 @@ class HealthChecker:
                     "agent_name": info["display_name"],
                     "role": info.get("role", "unknown"),
                     "role_label": get_role_label(info.get("role", "unknown")),
-                    "network_status": "offline",
                     "lifecycle_state": "UNKNOWN",
                     "mode": None,
                     "runtime_status": None,
@@ -232,11 +226,10 @@ class HealthChecker:
             await conn.execute(
                 """
                 INSERT INTO agent_status
-                (agent_id, network_status, lifecycle_state, last_heartbeat, current_task_id, version, tps, memory_count, updated_at)
-                VALUES ($1, 'online', $2, $3, $4, $5, $6, $7, $8)
+                (agent_id, lifecycle_state, last_heartbeat, current_task_id, version, tps, memory_count, updated_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                 ON CONFLICT (agent_id)
                 DO UPDATE SET
-                    network_status = 'online',
                     lifecycle_state = $2, last_heartbeat = $3, current_task_id = $4,
                     version = $5, tps = $6, memory_count = $7, updated_at = $8
                 """,
@@ -338,7 +331,7 @@ class HealthChecker:
     # ── Reconciliation loop ─────────────────────────────────────────────
 
     async def reconciliation_loop(self) -> None:
-        """Periodic background task to recompute network_status for offline agents."""
+        """Periodic background task: mirror stale heartbeats into the runtime state."""
         interval = self._config.agent.reconciliation_interval
         while self._reconciliation_running:
             try:
@@ -349,43 +342,28 @@ class HealthChecker:
                 await asyncio.sleep(10)
 
     async def _reconcile_once(self) -> None:
-        """One reconciliation pass: recompute network_status from heartbeat age,
-        update agent_status, and mirror offline agents into agent_runtime_state
-        (SIP-0089 #159) so the coordinator's §11.3 offline guard sees them."""
-        timeout = self._config.agent.heartbeat_timeout_window
+        """One reconciliation pass: an agent whose heartbeat has aged out has its
+        lifecycle telemetry set to UNKNOWN and is mirrored offline into
+        agent_runtime_state (SIP-0089 #159) so the coordinator's §11.3 offline guard
+        sees it. Health itself is ``runtime_status``; nothing else is stored (#305)."""
         now = datetime.utcnow()
         offline_agents: list[str] = []
 
         async with self.pg_pool.acquire() as conn:
             rows = await conn.fetch(
-                "SELECT agent_id, last_heartbeat, lifecycle_state, network_status FROM agent_status"
+                "SELECT agent_id, last_heartbeat, lifecycle_state FROM agent_status"
             )
             for row in rows:
-                hb = row["last_heartbeat"]
-                computed = "online" if hb and (now - hb).total_seconds() <= timeout else "offline"
-                stored = row.get("network_status")
-                need_lifecycle = computed == "offline" and row.get("lifecycle_state") != "UNKNOWN"
-
-                if computed != stored or need_lifecycle:
-                    if need_lifecycle:
-                        await conn.execute(
-                            "UPDATE agent_status SET network_status=$1, lifecycle_state=$2, "
-                            "updated_at=$3 WHERE agent_id=$4",
-                            computed,
-                            "UNKNOWN",
-                            now,
-                            row["agent_id"],
-                        )
-                    else:
-                        await conn.execute(
-                            "UPDATE agent_status SET network_status=$1, updated_at=$2 "
-                            "WHERE agent_id=$3",
-                            computed,
-                            now,
-                            row["agent_id"],
-                        )
-                if computed == "offline":
-                    offline_agents.append(row["agent_id"])
+                if self._heartbeat_is_fresh(row["last_heartbeat"]):
+                    continue
+                if row.get("lifecycle_state") != "UNKNOWN":
+                    await conn.execute(
+                        "UPDATE agent_status SET lifecycle_state=$1, updated_at=$2 WHERE agent_id=$3",
+                        "UNKNOWN",
+                        now,
+                        row["agent_id"],
+                    )
+                offline_agents.append(row["agent_id"])
 
         # Mirror offline agents into runtime-state after releasing the read conn, so
         # the coordinator's §11.3 offline->duty rejection sees a crashed agent (#159).

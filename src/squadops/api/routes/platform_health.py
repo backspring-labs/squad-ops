@@ -59,8 +59,8 @@ async def get_agent_status_by_id(agent_id: str):
         async with hc.pg_pool.acquire() as conn:
             # LEFT JOIN the SIP-0089 runtime row so the single-agent route carries
             # posture (mode) + the canonical health signal (runtime_status), at
-            # parity with GET /health/agents (#230). network_status stays as a
-            # legacy/back-compat field only — health is runtime_status (#231).
+            # parity with GET /health/agents (#230). Health is runtime_status; the
+            # legacy network_status field is gone (#305 Part B).
             row = await conn.fetchrow(
                 "SELECT s.agent_id, s.lifecycle_state, s.version, s.tps, "
                 "s.memory_count, s.last_heartbeat, s.current_task_id, "
@@ -73,9 +73,10 @@ async def get_agent_status_by_id(agent_id: str):
         if not row:
             raise HTTPException(status_code=404, detail=f"Agent status {agent_id} not found")
 
-        network_status = hc._compute_network_status(row["last_heartbeat"])
         lifecycle_state = (
-            "UNKNOWN" if network_status == "offline" else (row["lifecycle_state"] or "UNKNOWN")
+            (row["lifecycle_state"] or "UNKNOWN")
+            if hc._heartbeat_is_fresh(row["last_heartbeat"])
+            else "UNKNOWN"
         )
 
         instances = hc._load_instances()
@@ -90,8 +91,6 @@ async def get_agent_status_by_id(agent_id: str):
             # SIP-0089 posture + canonical health (None when no runtime row) — #231
             "mode": row["mode"],
             "runtime_status": row["runtime_status"],
-            # Legacy/back-compat — derived from heartbeat age; do not depend on it (#231).
-            "network_status": network_status,
             "lifecycle_state": lifecycle_state,
             "version": row["version"],
             "tps": row["tps"],

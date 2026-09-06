@@ -235,3 +235,41 @@ class TestMigrationSQLStyle:
         create_stmts = re.findall(r"CREATE\s+(?:TABLE|INDEX)\b[^;]+", migration_sql, re.IGNORECASE)
         for stmt in create_stmts:
             assert "IF NOT EXISTS" in stmt.upper(), f"Non-idempotent DDL: {stmt[:80]}..."
+
+
+class TestTheNetworkStatusDropRunsUnderTheApplier:
+    """#305 Part B: the column drop is a real migration file the startup applier picks up,
+    in lexicographic order between the SIP-0089 range and the SIP-0096 one — and fresh
+    installs (init.sql) never create the column, so the two paths agree."""
+
+    _REPO = Path(__file__).resolve().parents[3]
+
+    async def test_the_drop_is_applied_from_the_real_migrations_dir(self):
+        conn = _make_conn()
+        pool = _make_pool(conn)
+        migrations_dir = self._REPO / "infra" / "migrations"
+
+        await apply_migrations(pool, migrations_dir)
+
+        executed = [str(c.args[0]) for c in conn.execute.await_args_list if c.args]
+        drops = [sql for sql in executed if "DROP COLUMN IF EXISTS network_status" in sql]
+        assert drops, "1150_drop_agent_status_network_status.sql was not executed"
+        # Applied in filename order: after the 1140 embodiments table, before the 1400
+        # verification summaries — the names are what the applier records as applied.
+        recorded = [
+            str(a)
+            for c in conn.execute.await_args_list + conn.fetchval.await_args_list
+            for a in c.args
+            if isinstance(a, str) and a.endswith(".sql")
+        ]
+        names = [n for n in recorded if n.startswith(("1140", "1150", "1400"))]
+        assert names.index("1150_drop_agent_status_network_status.sql") > names.index(
+            "1140_embodiments.sql"
+        )
+        assert names.index("1150_drop_agent_status_network_status.sql") < names.index(
+            "1400_run_verification_summaries.sql"
+        )
+
+    def test_fresh_installs_never_create_the_column(self):
+        init_sql = (self._REPO / "infra" / "init.sql").read_text(encoding="utf-8")
+        assert "network_status" not in init_sql

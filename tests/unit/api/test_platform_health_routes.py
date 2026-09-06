@@ -19,7 +19,7 @@ def mock_health_checker():
     """Create a mock HealthChecker."""
     hc = MagicMock()
     hc.pg_pool = MagicMock()
-    hc._compute_network_status = MagicMock(return_value="online")
+    hc._heartbeat_is_fresh = MagicMock(return_value=True)
     hc._get_display_name = MagicMock(return_value="Max")
 
     hc.check_rabbitmq = AsyncMock(return_value={"component": "RabbitMQ", "status": "online"})
@@ -129,7 +129,7 @@ class TestAgentStatusById:
         # at parity with the list route, with network_status demoted to back-compat.
         assert data["runtime_status"] == "online"
         assert data["mode"] == "cycle"
-        assert data["network_status"] == "online"  # legacy field still present
+        assert "network_status" not in data  # retired (#305 Part B)
 
     def test_get_agent_status_not_found(self, client, mock_health_checker):
         mock_conn = AsyncMock()

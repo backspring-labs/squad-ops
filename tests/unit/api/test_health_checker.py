@@ -51,19 +51,19 @@ def checker(mock_pg_pool, mock_config):
 
 class TestComputeNetworkStatus:
     def test_none_heartbeat_is_offline(self, checker):
-        assert checker._compute_network_status(None) == "offline"
+        assert checker._heartbeat_is_fresh(None) is False
 
     def test_recent_heartbeat_is_online(self, checker):
         recent = datetime.utcnow() - timedelta(seconds=30)
-        assert checker._compute_network_status(recent) == "online"
+        assert checker._heartbeat_is_fresh(recent) is True
 
     def test_stale_heartbeat_is_offline(self, checker):
         stale = datetime.utcnow() - timedelta(seconds=200)
-        assert checker._compute_network_status(stale) == "offline"
+        assert checker._heartbeat_is_fresh(stale) is False
 
     def test_just_within_timeout_is_online(self, checker):
         at_boundary = datetime.utcnow() - timedelta(seconds=89)
-        assert checker._compute_network_status(at_boundary) == "online"
+        assert checker._heartbeat_is_fresh(at_boundary) is True
 
 
 class TestGetDefaultInstances:

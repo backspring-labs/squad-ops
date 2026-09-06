@@ -30,7 +30,6 @@ class AgentStatusCreate(BaseModel):
     # Deprecated fields (ignored if present)
     agent_name: str | None = None
     status: str | None = None
-    network_status: str | None = None
 
 
 class AgentStatusUpdate(BaseModel):
