@@ -311,7 +311,7 @@ v1.6.0 could record zero code drift; v1.6.2 could not, and said so.
 - Version bumps via `scripts/maintainer/version_cli.py` only
 
 **API Conventions** (runtime-api HTTP surface):
-- Before adding or moving any route, read the **whole** existing surface — do not reason only about the neighborhood. Conform to the lane standard; if no standard covers your case, surface the gap and propose it **before** adding (#218).
+- **The standard is `docs/architecture/api-route-lanes.md`** (#218), enforced by `tests/unit/api/test_route_lanes.py`, which enumerates every registered router and fails a route off every lane. Before adding or moving any route, read the **whole** existing surface — do not reason only about the neighborhood. Conform to a lane; if none covers your case, surface the gap and propose it **before** adding.
 - **Lanes:** authenticated, managed REST resources → `/api/v1/<resource>` (default home for anything new). `/health/*` = read-only, unauthenticated operational probes/heartbeats **only** — never a writable business resource (it's the only no-auth lane). `/auth/*` = identity. **Do not add `/api/v2`** — extend v1.
 - A new prefix/variant is a deliberate, justified decision, never a default. "It doesn't collide" is not a justification.
 - Known deviations under cleanup: unversioned `/api/chat`+`/api/agents` (#219); `/health`+`/auth` plain-string error bodies vs the standard `{"error": {...}}` envelope (#218). Don't add to these.

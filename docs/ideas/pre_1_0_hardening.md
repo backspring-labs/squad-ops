@@ -62,7 +62,7 @@ Resilience and test coverage items that won't break API consumers if added post-
 - **Command injection**: Array-based subprocess calls throughout
 - **Secret management**: Strong validation, redaction, no leakage
 - **Auth middleware**: Proper token validation, no bypass conditions
-- **API versioning**: `/api/v1/` prefix consistent
+- **API versioning**: NOT consistent when this was written — four prefix conventions had accreted (#218). The owning standard is `docs/architecture/api-route-lanes.md`; the chat routes were the last off-lane surface (#219).
 - **State machine**: Lifecycle transitions well-guarded with frozen dataclasses
 - **Fenced code parser**: Path traversal protection (rejects `..`, absolute paths, colons)
 - **Test suite**: 2099 tests with domain markers, strict markers, auto-async
