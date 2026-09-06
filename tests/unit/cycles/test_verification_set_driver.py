@@ -407,6 +407,88 @@ class TestSquadSnapshotIsAnIdentity:
         assert a.expected_config_hash_prefix != b.expected_config_hash_prefix
 
 
+class TestP0NullableHonoursDeclaredDefaults:
+    """A field declared ``required: false`` WITH a non-null default is not nullable.
+
+    The 1.7.2 shakeout on `e2dff444` (`cyc_9a1acc7623b4`) declared
+    ``participant_count: {type: int, required: false, default: 0}``. The scaffold rendered
+    ``participant_count: int = 0`` — what the manifest asked for — and P0 demanded
+    ``int | None = None``, which would discard the default. P0 is a carried prediction, so
+    on a counted roll that false positive stops the set.
+    """
+
+    @staticmethod
+    def _manifest(fields):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            entities=[SimpleNamespace(name="Run", fields=[SimpleNamespace(**f) for f in fields])]
+        )
+
+    @staticmethod
+    def _reader(models: str):
+        return lambda name: models if name == "backend/models.py" else ""
+
+    def _p0(self, driver, fields, models):
+        return driver.p0_checks(
+            "fullstack_fastapi_react", self._manifest(fields), self._reader(models)
+        )
+
+    def test_an_optional_field_with_a_declared_default_is_not_demanded_nullable(self, driver):
+        out = self._p0(
+            driver,
+            [
+                {
+                    "name": "participant_count",
+                    "type": "int",
+                    "required": False,
+                    "has_default": True,
+                    "default": 0,
+                    "generated": False,
+                }
+            ],
+            "class Run(BaseModel):\n    participant_count: int = 0\n",
+        )
+        assert out["models_nullable_mismatches"] == []
+        assert out["p0_optional_fields_nullable"] is True
+
+    def test_an_optional_field_with_no_default_is_still_demanded_nullable(self, driver):
+        """The #1125 rule the fix must not weaken: `str = None` is what pydantic rejects."""
+        out = self._p0(
+            driver,
+            [
+                {
+                    "name": "distance",
+                    "type": "string",
+                    "required": False,
+                    "has_default": False,
+                    "default": None,
+                    "generated": False,
+                }
+            ],
+            "class Run(BaseModel):\n    distance: str = None\n",
+        )
+        assert out["models_nullable_mismatches"] == ["distance: str | None = None"]
+        assert out["p0_optional_fields_nullable"] is False
+
+    def test_an_explicit_null_default_is_still_demanded_nullable(self, driver):
+        out = self._p0(
+            driver,
+            [
+                {
+                    "name": "route_notes",
+                    "type": "string",
+                    "required": True,
+                    "has_default": True,
+                    "default": None,
+                    "generated": False,
+                }
+            ],
+            "class Run(BaseModel):\n    route_notes: str\n",
+        )
+        assert out["models_nullable_mismatches"] == ["route_notes: str | None = None"]
+
+
 class TestStaleEvaluationsAreNamed:
     """#1318: a later STORE carrying an earlier EVALUATION is a run judged on a tree that
     no longer exists — and L3's declared read ("the last stored evaluation") cannot see it.
