@@ -1079,3 +1079,145 @@ class TestAFaultDeclarationSurvivesTheSetConfig:
         cfg = driver.load_set_config(p)
         assert cfg.overrides == {"build_profile": "nextjs_ts"}
         assert driver.declared_fault_names(cfg.overrides) == ()
+
+
+class TestRefusalLinesAreTheFactNotAWindow:
+    """#1330: ``refused_patches`` banked ``line[-200:]``, and the 1.7.2 Next.js roll 2
+    record holds its two refusals as ``'tion task=…'`` and ``'pe=qa.test …'`` — the second
+    with its task id gone. The one texture field that says WHY a repair was refused,
+    cut mid-word by a width that a qa refusal's fact exceeds."""
+
+    # The stored shape, with the runtime-api's prefix restored in front of it.
+    _PREFIX = "2026-09-06 14:01:02,118 INFO squadops.adapters.cycles.dispatched_flow_executor: "
+    _FACT = (
+        "patch_verification task=task-run_0ed7b128-m007-qa.test task_type=qa.test "
+        "status=failed reason= checks=40 failed=assertion_kinds_match,assertion_kinds_match "
+        "decided_by_agent=0 agent_rows=38 agent_executed=38 skips=-"
+    )
+
+    def test_a_refusal_longer_than_the_old_window_keeps_its_head_and_its_task_id(self, driver):
+        assert len(self._FACT) > 200, "the fixture must exceed the old window to mean anything"
+        out = driver.texture_from_logs([self._PREFIX + self._FACT])
+        assert out["refused_patches"] == [self._FACT]
+
+    def test_an_unverifiable_then_redispatched_refusal_is_whole_too(self, driver):
+        unver = self._FACT.replace(
+            "status=failed reason=", "status=unverifiable reason=nothing_ran"
+        )
+        out = driver.texture_from_logs(
+            [
+                self._PREFIX + unver,
+                "Dispatched task task-run_0ed7b128-m007-qa.test (qa.test) to eve",
+            ]
+        )
+        assert out["refused_patches"] == [unver]
+
+    @pytest.mark.parametrize(
+        ("field", "line", "starts"),
+        [
+            (
+                "plan_defect_terminations",
+                "PFX correction_terminated_plan_defect task=t rounds=0..1 candidate=x " + "y" * 220,
+                "correction_terminated_plan_defect task=t",
+            ),
+            (
+                "evidence_superseded",
+                "PFX patch_retest task=t evidence superseded by the passing retest: " + "z" * 220,
+                "patch_retest task=t evidence superseded",
+            ),
+            (
+                "refused_rounds_not_counted",
+                "PFX plan_defect terminal: round 0's repair not counted as a repeat (#1129) "
+                + "w" * 220,
+                "plan_defect terminal: round 0",
+            ),
+            (
+                "self_eval_fill_merges",
+                "PFX self_eval fills merged: " + "v" * 220,
+                "self_eval fills merged:",
+            ),
+        ],
+    )
+    def test_every_banked_line_starts_at_its_marker_and_is_not_capped(
+        self, driver, field, line, starts
+    ):
+        out = driver.texture_from_logs([line])
+        assert len(out[field]) == 1
+        assert out[field][0].startswith(starts)
+        assert out[field][0] == line[len("PFX ") :].rstrip()
+
+    def test_a_line_without_the_marker_is_kept_whole_rather_than_dropped(self, driver):
+        assert driver._fact("  no marker here  ", "patch_verification task=") == "no marker here"
+
+
+class TestL8ReadsTheExtractorNotTheStoredName:
+    """#1311: L8 ("no emission lands under a literal ``path/`` prefix") was read from stored
+    artifact names — which are what the extractor LEFT after stripping the prefix (#1272).
+    The round-4 path-prefix diagnostic injected the condition on both qa emissions and
+    both stored names came back correct: the readout could not see its own miss. L8 is
+    two claims — the model's (L8a, the strip count) and the extractor's (L8b, the names)."""
+
+    _LINE = (
+        "2026-09-05 03:42:07,401 WARNING squadops.capabilities.handlers.fenced_parser: "
+        "fence path placeholder: 'path/backend/tests/test_runs.py' emitted under the "
+        "example's literal 'path/' segment; stripped to 'backend/tests/test_runs.py', "
+        "which the task expects (#1272)"
+    )
+
+    def test_the_diagnostics_shape_reads_as_a_model_emission_under_the_placeholder(self, driver):
+        """The round-4 roll: stored names clean, and the model emitted under ``path/``
+        on both qa tasks. The old readout said HELD; this one says two strips."""
+        strips = driver.placeholder_strips(
+            [self._LINE, self._LINE.replace("backend/tests/test_runs.py", "frontend/x.test.jsx")]
+        )
+        assert strips == [
+            {
+                "emitted": "path/backend/tests/test_runs.py",
+                "stripped_to": "backend/tests/test_runs.py",
+            },
+            {"emitted": "path/frontend/x.test.jsx", "stripped_to": "frontend/x.test.jsx"},
+        ]
+        assert (
+            driver.stored_under_placeholder(["backend/tests/test_runs.py", "frontend/x.test.jsx"])
+            == []
+        )
+
+    def test_a_stored_name_still_under_the_placeholder_is_the_extractor_half(self, driver):
+        assert driver.stored_under_placeholder(
+            ["path/backend/tests/test_runs.py", "backend/app.py", "path/z.py"]
+        ) == ["path/backend/tests/test_runs.py", "path/z.py"]
+
+    def test_the_agent_window_keeps_the_extractor_line_beside_emission_shapes(
+        self, driver, monkeypatch
+    ):
+        """Wiring: ``loop_texture`` reads the agent containers through ``agent_log_window``.
+        A filter that kept only ``emission shape:`` — the pre-#1311 driver — would drop
+        the line and the readout would be blind again, with every unit test above green."""
+        seen: list[str] = []
+
+        def fake_docker_logs(container: str, since: str) -> list[str]:
+            seen.append(container)
+            return [
+                "noise line",
+                "… emission shape: handler=qa.test chars=100 fences={'python': 1}",
+                self._LINE,
+            ]
+
+        monkeypatch.setattr(driver, "docker_logs", fake_docker_logs)
+        lines = driver.agent_log_window("2026-09-05T03:00:00Z")
+        assert seen == [f"squadops-{s}" for s in driver.AGENT_SERVICES]
+        per_container = [line for line in lines if "fence path placeholder" in line]
+        assert len(per_container) == len(driver.AGENT_SERVICES)
+        assert not any("noise" in line for line in lines)
+        assert len(driver.placeholder_strips(lines)) == len(driver.AGENT_SERVICES)
+
+    def test_the_driver_and_the_extractor_agree_on_the_placeholder(self, driver):
+        """The driver reads a deployed container's log, so it holds the literal rather
+        than importing it; this is what stops the two drifting apart."""
+        from squadops.capabilities.handlers import fenced_parser
+
+        assert driver._PLACEHOLDER_PREFIX == fenced_parser._PLACEHOLDER_PREFIX
+        # And the log line the driver parses is the one the extractor writes.
+        assert "fence path placeholder: %r emitted under the example's literal %r segment; " in (
+            Path(fenced_parser.__file__).read_text(encoding="utf-8")
+        )
