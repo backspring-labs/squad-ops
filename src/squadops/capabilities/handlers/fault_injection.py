@@ -35,6 +35,7 @@ import logging
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -143,9 +144,30 @@ def _qa_suite_own_frame_failure(content: str) -> str:
     return _inject_py_own_frame_call(content)
 
 
+class FaultScope(Enum):
+    """Which attempts of the target task take the fault — the scope of "once" (#1310).
+
+    "Apply once" (#1304) exists so the loop can be *seen recovering*; but which recovery a
+    fault exists to watch differs per fault, and one global rule put ``qa_suite_absent``
+    on the wrong side of it. Its recovery is the REPAIR that supplies the missing suite
+    (L2, #1269) — not the emission retry, which under FIRST_ATTEMPT emitted a good suite,
+    succeeded, and never let the task reach correction (`cyc_e38566bb7b5d`: "correction
+    rounds: 0"). The diagnostic bit and proved nothing about the seam it names.
+    """
+
+    #: The task's first attempt only. Right for a fault whose recovery is a repair or a
+    #: re-take of that same task — the retry that follows must run clean.
+    FIRST_ATTEMPT = "first_attempt"
+    #: Every emission attempt of the target task — first and each emission retry (#566) —
+    #: so the task exhausts its retries and fails into correction. Never the repair task
+    #: (a different capability) and never a correction re-dispatch of the target, which
+    #: carries ``prior_attempts`` without an emission-retry marker: that IS the recovery.
+    ALL_EMISSION_ATTEMPTS = "all_emission_attempts"
+
+
 @dataclass(frozen=True)
 class Fault:
-    """One named emission shape, and the task whose first attempt takes it."""
+    """One named emission shape, and the attempts of the task that take it."""
 
     #: Suffix of the task id the fault applies to — the capability, as the executor names
     #: it (``task-run_x-m006-qa.test`` ends with ``qa.test``).
@@ -155,6 +177,8 @@ class Fault:
     found_in: str
     #: The prediction the fault exists to exercise.
     exercises: str
+    #: The scope of "once" (#1310).
+    scope: FaultScope = FaultScope.FIRST_ATTEMPT
 
 
 #: Every declared fault. Adding one is a declaration, not a policy change: the transform
@@ -166,6 +190,9 @@ FAULTS: dict[str, Fault] = {
         found_in="#1268 — 14 attempts across the 1.7.1 counted rolls",
         exercises="L2 (#1269): a repair that supplies the suite an emission failure lacked "
         "is retested",
+        # #1310: the recovery under test is the repair, so the emission retries must not
+        # be the thing standing between the fault and the seam.
+        scope=FaultScope.ALL_EMISSION_ATTEMPTS,
     ),
     "qa_suite_at_path_prefix": Fault(
         task="qa.test",
@@ -276,6 +303,24 @@ def _is_first_attempt(task_id: str, inputs: Mapping[str, Any] | None) -> bool:
     return attempt is None or attempt.group(1) == "00"
 
 
+def _is_emission_retry(inputs: Mapping[str, Any] | None) -> bool:
+    """A re-dispatch after an emission failure (#566) — the executor's own marker."""
+    return bool((inputs or {}).get("emission_retry_feedback"))
+
+
+def _applies(fault: Fault, task_id: str, inputs: Mapping[str, Any] | None) -> bool:
+    """Whether this attempt is inside the fault's scope (#1310) — a table, not a branch."""
+    return _SCOPE_RULES[fault.scope](task_id, inputs)
+
+
+_SCOPE_RULES: dict[FaultScope, Callable[[str, Mapping[str, Any] | None], bool]] = {
+    FaultScope.FIRST_ATTEMPT: _is_first_attempt,
+    FaultScope.ALL_EMISSION_ATTEMPTS: lambda task_id, inputs: (
+        _is_first_attempt(task_id, inputs) or _is_emission_retry(inputs)
+    ),
+}
+
+
 def inject(
     content: object,
     *,
@@ -299,12 +344,13 @@ def inject(
         fault = FAULTS.get(name)
         if fault is None or not task_id.endswith(fault.task):
             continue
-        if not _is_first_attempt(task_id, inputs):
+        if not _applies(fault, task_id, inputs):
             logger.info(
-                "fault_injection: %s declared for %s but this is not the first attempt — "
-                "not applied (the recovery path is what the diagnostic observes)",
+                "fault_injection: %s declared for %s but this attempt is outside its scope "
+                "(%s) — not applied (the recovery path is what the diagnostic observes)",
                 name,
                 task_id,
+                fault.scope.value,
             )
             continue
         faulted = fault.transform(content)
@@ -324,13 +370,14 @@ def inject(
             )
             return content
         logger.warning(
-            "fault_injection: APPLIED %s to task=%s handler=%s chars %d -> %d "
+            "fault_injection: APPLIED %s to task=%s handler=%s chars %d -> %d scope=%s "
             "(found_in=%s exercises=%s) — this cycle is a DIAGNOSTIC and must not be counted",
             name,
             task_id,
             handler_name,
             len(content),
             len(faulted),
+            fault.scope.value,
             fault.found_in,
             fault.exercises,
         )

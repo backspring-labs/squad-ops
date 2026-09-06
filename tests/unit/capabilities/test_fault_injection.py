@@ -18,6 +18,7 @@ from squadops.capabilities.handlers.fault_injection import (
     DECLARATION_KEY,
     FAULTS,
     INJECTED_TASKS,
+    FaultScope,
     UnknownFault,
     UnreachableFault,
     declared_faults,
@@ -78,10 +79,13 @@ class TestAppliedOnceWithoutState:
         assert "```" not in out
 
     def test_the_retry_after_an_emission_failure_runs_clean(self):
+        """For a FIRST_ATTEMPT fault. (This used ``qa_suite_absent`` until #1310 widened
+        that fault's scope to every emission attempt — its retry case is in
+        ``TestTheScopeOfOnce``.)"""
         out = _inject(
             _SUITE,
             "task-run_x-m006-qa.test",
-            ["qa_suite_absent"],
+            ["qa_suite_at_path_prefix"],
             inputs={"emission_retry_feedback": {"reason": "no_fenced_blocks"}},
         )
         assert out == _SUITE
@@ -532,3 +536,56 @@ class TestAReDispatchIsNotAFirstAttempt:
             inputs={"emission_retry_feedback": {"reason": "no_fenced_blocks"}},
         )
         assert out == _SUITE
+
+
+class TestTheScopeOfOnce:
+    """#1310: which recovery a fault exists to watch differs per fault. Under one global
+    first-attempt rule the absent-suite fault bit on attempt 1, the emission retry emitted
+    a good suite, the task succeeded, and correction — the seam L2 names — was never
+    entered (`cyc_e38566bb7b5d`, "correction rounds: 0"). The diagnostic fired and proved
+    nothing about what it names."""
+
+    _RETRY = {"emission_retry_feedback": {"signature": "unextractable"}, "prior_attempts": 1}
+    _CORRECTION_REDISPATCH = {"prior_attempts": 1}
+
+    def test_the_absent_suite_fault_also_takes_the_emission_retry(self):
+        """Bug caught: the retry recovering before correction — the fault must ride every
+        emission attempt so the task exhausts its retries and fails into the loop."""
+        out = _inject(_SUITE, "task-run_x-m006-qa.test", ["qa_suite_absent"], inputs=self._RETRY)
+        assert "```" not in out
+
+    def test_a_correction_re_dispatch_of_the_target_runs_clean_under_either_scope(self):
+        """The re-take after correction IS the recovery, whatever the scope — a fault that
+        re-broke it would manufacture a red the loop could never be seen recovering from
+        (#1304's shape, one level up)."""
+        for name in ("qa_suite_absent", "qa_suite_at_path_prefix"):
+            out = _inject(
+                _SUITE, "task-run_x-m006-qa.test", [name], inputs=self._CORRECTION_REDISPATCH
+            )
+            assert out == _SUITE, name
+
+    def test_first_attempt_faults_still_run_clean_on_the_emission_retry(self):
+        """The two faults whose recovery is a repair or a re-take keep today's rule."""
+        for name in ("qa_suite_at_path_prefix", "qa_suite_own_frame_failure"):
+            out = _inject(_SUITE, "task-run_x-m006-qa.test", [name], inputs=self._RETRY)
+            assert out == _SUITE, name
+
+    def test_the_repair_task_is_never_in_scope_for_a_qa_test_fault(self):
+        """Never the repair: the capability suffix differs, so the absent-suite fault cannot
+        strip the very repair that supplies the suite."""
+        out = _inject(
+            _SUITE, "repair-run_x-00-qa.test_repair", ["qa_suite_absent"], inputs=self._RETRY
+        )
+        assert out == _SUITE
+
+    def test_every_fault_declares_its_scope_and_only_the_absent_suite_widens_it(self):
+        """Scope is a declaration read from the fault, so a record can say which attempts
+        a diagnostic faulted; widening is deliberate and named."""
+        widened = {n for n, f in FAULTS.items() if f.scope is FaultScope.ALL_EMISSION_ATTEMPTS}
+        assert widened == {"qa_suite_absent"}
+
+    def test_the_application_log_names_the_scope(self, caplog):
+        with caplog.at_level("WARNING"):
+            _inject(_SUITE, "task-run_x-m006-qa.test", ["qa_suite_absent"], inputs=self._RETRY)
+        record = next(r for r in caplog.records if "fault_injection: APPLIED" in r.message)
+        assert "scope=all_emission_attempts" in record.getMessage()
