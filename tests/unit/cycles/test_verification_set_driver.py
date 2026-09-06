@@ -35,6 +35,7 @@ _COUNTING_SETS: dict[str, dict[str, int]] = {
     "1-6-6": {"nextjs": 2, "fastapi-react": 6},
     "1-7-1": {"nextjs": 2, "fastapi-react": 6},
     "1-7-2": {"nextjs": 3, "fastapi-react": 6},
+    "1-7-3": {"nextjs": 3, "fastapi-react": 6},
 }
 _ARM_STACK = {"nextjs": "nextjs_ts", "fastapi-react": "fullstack_fastapi_react"}
 _COUNTING_SET_FILES = [
@@ -425,6 +426,8 @@ class TestSquadSnapshotIsAnIdentity:
     def test_both_sets_share_the_deploy_and_snapshot_but_not_the_config_hash(self, driver, line):
         a = driver.load_set_config(_SETS / f"{line}-nextjs.yaml")
         b = driver.load_set_config(_SETS / f"{line}-fastapi-react.yaml")
+        if not (a.frozen_image_ids or b.frozen_image_ids or a.frozen_deploy_commit):
+            return  # pre-registration: neither arm is pinned yet (same rule as the pin guard)
         assert a.frozen_image_ids == b.frozen_image_ids
         assert a.frozen_deploy_commit == b.frozen_deploy_commit
         assert a.expected_squad_snapshot_prefix == b.expected_squad_snapshot_prefix
