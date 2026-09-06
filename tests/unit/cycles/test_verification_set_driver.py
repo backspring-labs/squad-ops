@@ -1309,3 +1309,55 @@ class TestADiagnosticIsReadByTheSeamItReached:
         out = driver.texture_from_logs([line])
         assert out["retests"] == [line[len("PFX ") :]]
         assert out["applied_patches"] == 1
+
+
+class TestEmissionTokensAreProducedNotOnlyDeclared:
+    """#1285 / 1.7.2 record §8: the pre-registration listed "qa primary tokens" as texture
+    and no roll record carried it — the driver parsed every emission's tokens and kept
+    only the contentless ones. A declared field with no producer reads as measured and is
+    not (the #1312 shape). These are the lines the agents actually log."""
+
+    _QA = (
+        "2026-09-06 19:52:35,205 - squadops.capabilities.handlers.emission_log - INFO - "
+        "qa_define_test_strategy_handler emission shape: chars=15964 completion_tokens=4677 "
+        "reasoning_chars=2018 fences={'fill': 0, 'path': 0, 'plain': 1} head='# QA Test"
+    )
+    _QA_SUITE = (
+        "x qa_test_handler emission shape: chars=9117 completion_tokens=5793 "
+        "reasoning_tokens=1200 reasoning_chars=4000 fences={'python': 1}"
+    )
+    _DEV_UNREPORTED = (
+        "x development_develop_handler emission shape: chars=100 completion_tokens=None "
+        "reasoning_tokens=None fences={'python': 1}"
+    )
+
+    def test_every_emission_contributes_its_tokens_by_handler(self, driver):
+        out = driver.texture_from_emission_shapes([self._QA, self._QA_SUITE, self._QA_SUITE])
+        by = out["emission_tokens_by_handler"]
+        assert by["qa_define_test_strategy_handler"] == {
+            "emissions": 1,
+            "completion_tokens": 4677,
+            "reasoning_tokens": 0,
+            "reasoning_chars": 2018,
+            "unreported_completion": 0,
+            "unreported_reasoning": 1,
+        }
+        assert by["qa_test_handler"]["completion_tokens"] == 5793 * 2
+        assert by["qa_test_handler"]["reasoning_tokens"] == 2400
+        assert by["qa_test_handler"]["emissions"] == 2
+
+    def test_an_unreported_token_field_is_counted_as_absent_not_zero(self, driver):
+        """Bug caught: ``None`` summed as 0 — a record would read "no reasoning spend"
+        for an adapter that never reported it."""
+        by = driver.emission_tokens_by_handler(driver.emission_shapes([self._DEV_UNREPORTED]))
+        row = by["development_develop_handler"]
+        assert row["completion_tokens"] == 0 and row["unreported_completion"] == 1
+        assert row["reasoning_tokens"] == 0 and row["unreported_reasoning"] == 1
+
+    def test_the_record_row_reads_the_qa_handlers_only(self, driver):
+        by = driver.texture_from_emission_shapes([self._QA, self._DEV_UNREPORTED])[
+            "emission_tokens_by_handler"
+        ]
+        text = driver._qa_tokens(by)
+        assert "qa_define_test_strategy_handler: 4677 / 0 (1 em)" == text
+        assert driver._qa_tokens({}) == "—"

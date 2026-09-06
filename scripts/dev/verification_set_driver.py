@@ -1146,7 +1146,52 @@ def texture_from_emission_shapes(lines: list[str]) -> dict:
         "contentless_emissions": contentless,
         "contentless_by_handler": _count_by(shape["handler"] for shape in contentless),
         "empty_repair_emissions": [shape for shape in contentless if "repair" in shape["handler"]],
+        # #1285 (1.7.2 record §8): "qa primary tokens" was declared as texture and no roll
+        # record carried it — the driver parsed each emission's tokens and kept only the
+        # contentless ones. Every emission's tokens by handler, so the qa authoring pair's
+        # completion and reasoning spend is readable from the record, by mode.
+        "emission_tokens_by_handler": emission_tokens_by_handler(shapes),
     }
+
+
+def _int_or_none(value) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def emission_tokens_by_handler(shapes: list[dict]) -> dict[str, dict]:
+    """Per handler: emissions, and the summed completion / reasoning tokens and reasoning
+    chars where the shape line carried them — pure. A token field the adapter did not
+    report (``None``) is counted as absent, not as zero, so a record can tell "no spend"
+    from "unreported" (the #1285 shape: a declared field with no producer)."""
+    out: dict[str, dict] = {}
+    for shape in shapes:
+        row = out.setdefault(
+            shape["handler"],
+            {
+                "emissions": 0,
+                "completion_tokens": 0,
+                "reasoning_tokens": 0,
+                "reasoning_chars": 0,
+                "unreported_completion": 0,
+                "unreported_reasoning": 0,
+            },
+        )
+        row["emissions"] += 1
+        for field_name, key in (
+            ("completion_tokens", "completion_tokens"),
+            ("reasoning_tokens", "reasoning_tokens"),
+            ("reasoning_chars", "reasoning_chars"),
+        ):
+            value = _int_or_none(shape.get(key))
+            if value is None:
+                if field_name != "reasoning_chars":
+                    row["unreported_" + field_name.split("_")[0]] += 1
+                continue
+            row[field_name] += value
+    return dict(sorted(out.items()))
 
 
 def texture_from_logs(logs: list[str]) -> dict:
@@ -1491,6 +1536,17 @@ def _render_deploy(cfg: SetConfig, rec: dict) -> list[str]:
     return lines
 
 
+def _qa_tokens(by_handler: Mapping[str, Mapping[str, Any]]) -> str:
+    """The qa handlers' spend, one figure per handler — the record's texture row (#1285)."""
+    rows = [
+        f"{name}: {row.get('completion_tokens', 0)} / {row.get('reasoning_tokens', 0)}"
+        f" ({row.get('emissions', 0)} em)"
+        for name, row in sorted(by_handler.items())
+        if name.startswith("qa_")
+    ]
+    return "; ".join(rows) if rows else "—"
+
+
 def render(cfg: SetConfig, title: str, rec: dict) -> str:
     audit = rec.get("boot_audit", {})
     functional = rec.get("verdict") == "accepted" and audit.get("passed") is True
@@ -1565,6 +1621,8 @@ def render(cfg: SetConfig, title: str, rec: dict) -> str:
         f"{_render_by_reason((rec.get('loop_texture') or {}).get('unverifiable_by_reason', {}))} |",
         "| non-execution by skip reason | "
         f"{_render_by_reason((rec.get('loop_texture') or {}).get('no_execution_by_skip_reason', {}))} |",
+        "| qa emission tokens (completion / reasoning, handlers starting `qa_`) | "
+        f"{_qa_tokens((rec.get('loop_texture') or {}).get('emission_tokens_by_handler', {}))} |",
         "| L8a extractor strips of `path/` (model emitted under it) / L8b stored under `path/` | "
         f"{len((rec.get('loop_texture') or {}).get('placeholder_strips', []))} / "
         f"{(rec.get('loop_texture') or {}).get('stored_under_placeholder', []) or '—'} |",
