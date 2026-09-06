@@ -39,7 +39,7 @@ from squadops.ports.capabilities.executor import CapabilityExecutor
 from squadops.ports.capabilities.repository import CapabilityRepository
 
 # Import ACI models from core domain (SIP-0.8.8 migration)
-from squadops.tasks.models import TaskEnvelope
+from squadops.tasks.models import TaskEnvelope, TaskResultStatus
 
 logger = logging.getLogger(__name__)
 
@@ -306,7 +306,7 @@ class WorkloadRunner:
             result = await executor.execute(envelope, timeout_seconds=contract.timeout_seconds)
             task_completed_at = datetime.now(UTC).isoformat()
 
-            if result.status == "SUCCEEDED":
+            if result.status == TaskResultStatus.SUCCEEDED:
                 task_outputs[task.task_id] = result.outputs or {}
                 context = AcceptanceContext(
                     run_root=str(self.run_root),

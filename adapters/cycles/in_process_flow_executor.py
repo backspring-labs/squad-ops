@@ -19,9 +19,10 @@ from uuid import uuid4
 
 from adapters.cycles.execution_errors import _CancellationError, _ExecutionError
 from adapters.cycles.run_completion import failure_reason_text
-from squadops.cycles.models import ArtifactRef, Cycle, RunStatus
+from squadops.cycles.models import ArtifactRef, Cycle, FlowMode, GateDecisionValue, RunStatus
 from squadops.cycles.task_plan import generate_task_plan
 from squadops.ports.cycles.flow_execution import FlowExecutionPort
+from squadops.tasks.models import TaskResultStatus
 
 if TYPE_CHECKING:
     from squadops.orchestration.orchestrator import AgentOrchestrator
@@ -94,11 +95,11 @@ class InProcessFlowExecutor(FlowExecutionPort):
 
             # Dispatch based on policy mode
             mode = cycle.task_flow_policy.mode
-            if mode == "sequential":
+            if mode == FlowMode.SEQUENTIAL:
                 await self._execute_sequential(plan, run_id, cycle)
-            elif mode == "fan_out_fan_in":
+            elif mode == FlowMode.FAN_OUT_FAN_IN:
                 await self._execute_fan_out(plan, run_id, cycle)
-            elif mode == "fan_out_soft_gates":
+            elif mode == FlowMode.FAN_OUT_SOFT_GATES:
                 await self._execute_sequential(plan, run_id, cycle)
             else:
                 await self._execute_sequential(plan, run_id, cycle)
@@ -168,7 +169,7 @@ class InProcessFlowExecutor(FlowExecutionPort):
             result = await self._orchestrator.submit_task(enriched)
 
             # Fail-fast: first failure → run failed (§5.8)
-            if result.status != "SUCCEEDED":
+            if result.status != TaskResultStatus.SUCCEEDED:
                 raise _ExecutionError(
                     f"Task {envelope.task_id} ({envelope.task_type}) failed: {result.error}"
                 )
@@ -220,7 +221,7 @@ class InProcessFlowExecutor(FlowExecutionPort):
         for i, result in enumerate(results):
             if isinstance(result, Exception):
                 raise _ExecutionError(f"Task {plan[i].task_id} raised exception: {result}")
-            if result.status != "SUCCEEDED":
+            if result.status != TaskResultStatus.SUCCEEDED:
                 raise _ExecutionError(f"Task {plan[i].task_id} failed: {result.error}")
             # Collect artifacts
             for art in (result.outputs or {}).get("artifacts", []):
@@ -259,11 +260,11 @@ class InProcessFlowExecutor(FlowExecutionPort):
             for gate_name in gate_names:
                 for decision in run.gate_decisions:
                     if decision.gate_name == gate_name:
-                        if decision.decision == "approved":
+                        if decision.decision == GateDecisionValue.APPROVED:
                             await self._cycle_registry.update_run_status(run_id, RunStatus.RUNNING)
                             logger.info("Gate %r approved, resuming run %s", gate_name, run_id)
                             return  # Resume
-                        elif decision.decision == "rejected":
+                        elif decision.decision == GateDecisionValue.REJECTED:
                             raise _ExecutionError(f"Gate {gate_name!r} rejected: {decision.notes}")
 
             await asyncio.sleep(poll_interval)

@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 from adapters.tasks.prefect import PrefectTaskAdapter
 from adapters.tasks.sql import SQLTaskAdapter
+from squadops.config.schema import TasksBackend
 from squadops.ports.tasks.registry import TaskRegistryPort
 
 if TYPE_CHECKING:
@@ -45,12 +46,12 @@ def create_task_registry_provider(
     if secret_manager and connection_string.startswith("secret://"):
         connection_string = secret_manager.resolve(connection_string[9:])
 
-    if provider == "sql":
+    if provider == TasksBackend.SQL:
         if not connection_string:
             raise ValueError("connection_string is required for SQL provider")
         return SQLTaskAdapter(connection_string=connection_string, **config)
 
-    if provider == "prefect":
+    if provider == TasksBackend.PREFECT:
         if not connection_string:
             raise ValueError("connection_string is required for Prefect provider")
         return PrefectTaskAdapter(

@@ -112,7 +112,7 @@ class TaskResult:
     """
 
     task_id: str
-    status: str  # TaskResultStatus member (wire values SUCCEEDED/FAILED/CANCELED, #381)
+    status: TaskResultStatus  # the A2A wire values SUCCEEDED/FAILED/CANCELED (#381)
     outputs: dict[str, Any] | None = None
     error: str | None = None
     execution_evidence: dict[str, Any] | None = None  # SIP-0.8.8
@@ -132,4 +132,16 @@ class TaskResult:
         reply payload would raise inside the reply router's ``_handle_reply``.
         """
         known = {f.name for f in dataclasses.fields(cls)}
-        return cls(**{k: v for k, v in data.items() if k in known})
+        fields = {k: v for k, v in data.items() if k in known}
+        # #381: the wire carries the status as a string; it becomes the member here, at
+        # the one boundary, and an unknown value is refused rather than carried — a status
+        # nothing downstream compares equal to is a protocol violation, not a new state.
+        if "status" in fields:
+            try:
+                fields["status"] = TaskResultStatus(fields["status"])
+            except ValueError as exc:
+                raise ValueError(
+                    f"TaskResult.status {fields['status']!r} is not a wire value "
+                    f"({', '.join(m.value for m in TaskResultStatus)})"
+                ) from exc
+        return cls(**fields)
