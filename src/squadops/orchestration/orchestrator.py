@@ -102,9 +102,9 @@ class AgentOrchestrator:
         self._ports = ports
         self._state = OrchestratorState()
 
-        # SIP-0061: Always inject NoOp when None
+        # SIP-0061: always inject the NoOp when None — the domain's null object (#154).
         if llm_observability is None:
-            from adapters.telemetry.noop_llm_observability import NoOpLLMObservabilityAdapter
+            from squadops.telemetry.noop import NoOpLLMObservabilityAdapter
 
             llm_observability = NoOpLLMObservabilityAdapter()
         self._llm_observability = llm_observability

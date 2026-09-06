@@ -19,6 +19,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from squadops import __version__ as SQUADOPS_VERSION
+from squadops.bootstrap.secrets import secret_provider_for
 from squadops.config import config_fingerprint, load_config, redact_config
 
 from .deps import (
@@ -46,7 +47,7 @@ app = FastAPI(
 
 # Load configuration with profile selection and validation
 strict_mode = os.getenv("SQUADOPS_STRICT_CONFIG", "false").lower() == "true"
-config = load_config(strict=strict_mode)
+config = load_config(strict=strict_mode, secret_provider_factory=secret_provider_for)
 
 # Extract configuration values
 POSTGRES_URL = config.db.url

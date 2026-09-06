@@ -13,6 +13,10 @@ Rules currently encoded (D26):
 3. `src/squadops/capabilities/handlers/` does not import runtime persistence
    adapters directly.
 4. `src/squadops/cli/` does not import Postgres runtime adapters directly.
+5. (#154) Every `src/squadops` package: `adapters.*` is imported ONLY from a declared
+   composition root — the runtime API's wiring, the agent entrypoint, the sandbox
+   service's main, and the bootstrap package. Two-sided: a root that no longer wires
+   adapters is stale and fails too.
 """
 
 from __future__ import annotations
@@ -143,3 +147,73 @@ def test_cli_does_not_import_runtime_persistence():
     assert not violations, (
         f"squadops.cli must not import adapters.persistence.runtime.*: {violations}"
     )
+
+
+#: The composition roots — the only modules under src/squadops that may import
+#: ``adapters.*`` — each with the reason it wires infrastructure (#154). A new root is a
+#: deliberate decision recorded here, never a default; a domain module reaching for an
+#: adapter ("just get the pool") fails the test below.
+COMPOSITION_ROOTS: dict[str, str] = {
+    "squadops.api.runtime": "the runtime API's wiring — deps, main, scheduler_bootstrap",
+    "squadops.agents.entrypoint": "the agent container's wiring: queue, LLM, memory, prompts, telemetry",
+    "squadops.sandbox.main": "the sandbox service's wiring",
+    "squadops.bootstrap": "the bootstrap package: system composition, the doctor's checks, the secrets provider",
+}
+
+
+def _module_name(py: Path) -> str:
+    rel = py.relative_to(SRC.parent).with_suffix("")
+    parts = list(rel.parts)
+    if parts[-1] == "__init__":
+        parts = parts[:-1]
+    return ".".join(parts)
+
+
+def _is_under(module: str, root: str) -> bool:
+    return module == root or module.startswith(root + ".")
+
+
+def test_only_composition_roots_import_adapters():
+    """#154: the hexagonal boundary, whole. Before this the guard covered four directories
+    and the orchestrator lazily imported the NoOp observability adapter, the config loader
+    imported the secrets factory — deliberate patterns with the import pointing the wrong
+    way. Bug class: a domain module that imports an adapter cannot be tested without that
+    infrastructure and cannot have the adapter swapped from the composition root."""
+    violations: list[tuple[str, str]] = []
+    for py in _iter_py(SRC):
+        module = _module_name(py)
+        if any(_is_under(module, root) for root in COMPOSITION_ROOTS):
+            continue
+        for imp in _collect_imports(py):
+            if imp == "adapters" or imp.startswith("adapters."):
+                violations.append((py.relative_to(REPO_ROOT).as_posix(), imp))
+    assert not violations, (
+        "only the composition roots import adapters.* (#154) — inject the port from a "
+        f"root in COMPOSITION_ROOTS instead. Violations: {violations}"
+    )
+
+
+def test_every_declared_composition_root_still_wires_adapters():
+    """The other side: a root listed here that imports no adapter is a stale entry that
+    would quietly license the next domain module placed under it."""
+    stale = []
+    for root, _reason in COMPOSITION_ROOTS.items():
+        wires = any(
+            imp == "adapters" or imp.startswith("adapters.")
+            for py in _iter_py(SRC)
+            if _is_under(_module_name(py), root)
+            for imp in _collect_imports(py)
+        )
+        if not wires:
+            stale.append(root)
+    assert not stale, f"composition roots that import no adapters (stale allowlist): {stale}"
+
+
+@pytest.mark.parametrize(
+    "module", ["squadops.orchestration.orchestrator", "squadops.config.loader"]
+)
+def test_the_two_named_leaks_are_closed(module):
+    """The sites #154 named: the orchestrator's NoOp fallback and the loader's secrets
+    factory. Kept by name so the fix cannot regress under the general rule's allowlist."""
+    py = SRC.parent / Path(*module.split(".")).with_suffix(".py")
+    assert not [imp for imp in _collect_imports(py) if imp.startswith("adapters")]

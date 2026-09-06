@@ -11,11 +11,11 @@ from adapters.telemetry.factory import (
     create_metrics_provider,
     create_telemetry_provider,
 )
-from adapters.telemetry.noop_llm_observability import NoOpLLMObservabilityAdapter
 from adapters.telemetry.null import NullAdapter
 from adapters.telemetry.otel import OTelAdapter
 from squadops.config.schema import LangFuseConfig
 from squadops.ports.telemetry.llm_observability import LLMObservabilityPort
+from squadops.telemetry.noop import NoOpLLMObservabilityAdapter
 
 
 class TestCreateMetricsProvider:
