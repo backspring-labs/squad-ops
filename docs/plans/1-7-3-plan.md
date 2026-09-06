@@ -366,6 +366,13 @@ line-close sweep does not find them unplaced.
 
 ## 9. Revision history
 
+- **Rev 3 (2026-09-06)** — at the line's opening, under the owner's delegation of the whole
+  line: the decisions that diverged from or filled in rev 2, recorded in §9 so the plan and
+  the tree do not disagree — the checkpoint pair between the two blocks, instrument rounds
+  counted apart from shakeout rounds (round 1 found #1347), #1323's wider mechanism, #999's
+  artifact, #1087's rebuild by cherry-pick, #154's null object in the domain, #225's compose
+  OK, the post-#922 set configs. Each is the owner's to overrule.
+
 - **Rev 2 (2026-09-06)** — closed against the finished 1.7.2 record and cut. **#1323 added as a
   fourth precondition** (§3.1) with the reason the block exists — it degrades what a red means —
   and #1310/#1311/#1323 separated by whether they need a rebuild (§3.1, §7). §1's shakeout row
@@ -389,3 +396,47 @@ line-close sweep does not find them unplaced.
   1.7.5; #1316 and the #1310/#1311 instrument fixes are preconditions. §3.3 carries the
   scheduling count, corrected for #154. Rev 2 is owed at the 1.7.2 cut (§1's last row, #1285,
   #1273).
+
+## 9. Rev 3 — at the line's opening (2026-09-06), decisions taken under the owner's delegation
+
+The owner delegated the whole line on 2026-09-06 ("do it all and merge once CI completes")
+after merging rev 2. What follows diverged from, or filled in, the plan above; each is
+recorded here so the plan and the tree do not disagree, and each is the owner's to overrule.
+
+- **A checkpoint pair between the structural block and the behavioural block** (deploy B),
+  added to §7 step 5/6. §4's attribution claim — a red is the refactor's — names the list,
+  not the item; with thirteen items on one deploy the loop cannot narrow a red. One pair
+  after the eight structural items costs a round and buys the split: a red on the final
+  pair belongs to the five behavioural items, a red on the checkpoint to the eight whose
+  guards do the bisecting. Recorded in the pre-registration §2.
+- **Instrument rounds are counted apart from shakeout rounds.** Phase 1's three diagnostics
+  ran on deploy A, built from the last precondition commit (`2b75c3e5`) — a pre-list deploy —
+  while the list's PRs merged on main. The plan's intent (§3.1: "the instrument is proven on
+  its own") holds; the sequencing in §7 step 4 ("before the list's first PR") was not kept
+  literally, and the record says so. Instrument round 1 found **#1347** (the emission-retry
+  marker rode every later dispatch; the absent-suite fault re-applied to the correction
+  re-takes); fixed in #1348; round 2 pending.
+- **#1323's mechanism was wider than §3.1's "one wiring call."** The repair overlay is built
+  from the *held* failed result, not from the vault, so authorization at the bank alone would
+  not have kept the unauthorized path out of the verifier's tree. Enforced at both points the
+  executor admits producer bytes — the held result and the repair before verification — with
+  the evidence record naming the stage. §3.1's verification statement was met as written.
+- **#999 persisted as an artifact** (`fill_merge_evidence.json` beside `test_report.md`), not
+  as a keyed section of `run_verification_summaries.summary`: the summary is references-only
+  by contract (SIP-0096 §6.2), and the driver already reads qa artifacts by filename.
+- **#1087/#1112 rebuilt by cherry-picking the stale branch's commit onto main** and
+  re-verifying, rather than re-authoring: its "ten regression failures" had shrunk to three
+  reference pins, all of one kind; contract v12 is classified `reference_defect` with the
+  retrospective obligation met by statement.
+- **#154 kept the orchestrator's always-inject fallback** and moved the null object into the
+  domain (`squadops.telemetry.noop`), which is what makes the import direction legal; the
+  issue's "receive it from the composition root, never import it" is satisfied in substance.
+- **#225's compose edit merged on the owner's explicit OK**, recorded on the PR as §3.2
+  step 10 requires.
+- **The set configs use the post-#922 key `development_profile`.** The 1.7.2 configs' loaded
+  checks use `dev_capability` and cannot run on a post-#922 deploy; the five 1.7.3 configs
+  are written for it, pins blank until the last shakeout.
+
+The scheduling count (§3.3) does not change: every item landed in the plan that scheduled
+it for the last time.
+
