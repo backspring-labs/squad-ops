@@ -914,3 +914,21 @@ holds the retired spellings out of live code and config.
 "capability" keeps one meaning — bindable agent competence, the word in the distribution
 format.
 
+### 16b. 2026-09-06 — the ACI executor adapter is deleted (#1241)
+
+**What changed.** `adapters/capabilities/aci_executor.py` (`ACICapabilityExecutor`) and
+`create_capability_executor` in the adapters factory are removed. The package keeps
+`FileSystemCapabilityRepository` and `create_capability_repository`.
+
+**Evidence.** The executor imported `agents.tasks.models`, a package that has never existed
+in the tree (the models live at `squadops.tasks.models`), which made `adapters.capabilities`
+unimportable as a whole — and nothing noticed, because nothing constructs the executor:
+the only reference was the factory entry, which nothing calls. Queue-backed task dispatch is
+`adapters.cycles.task_dispatcher.TaskDispatcher` (SIP-0066), which is what every live cycle
+uses. The mirror rule on removal (CLAUDE.md "Ownership before extension"): it produced no
+evidence and had no consumer.
+
+**Ruled by.** Issue #1241 and the 1.7.3 plan §3.2 step 5 ("or the dead executor and its
+factory entry are deleted — decided in the PR from whether anything is still meant to
+construct it"). Nothing is.
+
