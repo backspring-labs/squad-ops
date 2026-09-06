@@ -898,8 +898,19 @@ def runtime_log_window(since: str) -> list[str]:
     return [line for line in lines if any(k in line for k in keys)]
 
 
+#: The lines the driver keeps from the producing agents' windows. ``emission shape:`` is
+#: every emission's shape (#1276); ``fence path placeholder:`` is the extractor saying it
+#: repaired a ``path/``-prefixed fence (#1272) — the only place the model's own behaviour
+#: behind L8 is observable, since the stored name is post-repair (#1311).
+_AGENT_LINE_KEYS = ("emission shape:", "fence path placeholder:")
+
+
+def _agent_lines_of_interest(lines: list[str]) -> list[str]:
+    return [line for line in lines if any(key in line for key in _AGENT_LINE_KEYS)]
+
+
 def agent_log_window(since: str) -> list[str]:
-    """The producing agents' ``emission shape:`` lines (#1276).
+    """The producing agents' emission lines (#1276, #1311).
 
     The loop's emission facts are logged where the emission happens — in the role's own
     container — and the driver had only ever read the runtime-api's window. So
@@ -909,18 +920,78 @@ def agent_log_window(since: str) -> list[str]:
     """
     lines: list[str] = []
     for service in AGENT_SERVICES:
-        lines += [
-            line for line in docker_logs(f"squadops-{service}", since) if "emission shape:" in line
-        ]
+        lines += _agent_lines_of_interest(docker_logs(f"squadops-{service}", since))
     return lines
+
+
+#: The literal segment the fence example once carried and the extractor strips; the same
+#: string as ``fenced_parser._PLACEHOLDER_PREFIX``, held here rather than imported because
+#: the driver reads the deployed container's log, not this tree's module — the test guards
+#: the two against drifting apart.
+_PLACEHOLDER_PREFIX = "path/"
+_PLACEHOLDER_STRIP = re.compile(
+    r"fence path placeholder: '(?P<emitted>[^']+)' emitted under .*?; "
+    r"stripped to '(?P<stripped>[^']+)'"
+)
+
+
+def placeholder_strips(lines: list[str]) -> list[dict]:
+    """Every fence the extractor repaired out from under ``path/`` (#1311) — pure.
+
+    L8 was read from stored artifact names, which are what the extractor *left*, so a
+    model that emitted under the placeholder on every roll read as "held" as long as the
+    repair worked. This is the model's behaviour; ``stored_under_placeholder`` is the
+    extractor's. The two halves of #1272 fail independently and are read apart.
+    """
+    return [
+        {"emitted": m.group("emitted"), "stripped_to": m.group("stripped")}
+        for m in (_PLACEHOLDER_STRIP.search(line) for line in lines)
+        if m
+    ]
+
+
+def stored_under_placeholder(names) -> list[str]:
+    """Stored artifact names that still carry the placeholder — the extractor half of L8."""
+    return sorted(name for name in names if str(name).startswith(_PLACEHOLDER_PREFIX))
+
+
+def _stored_artifact_names(cfg: SetConfig, cycle_id: str, run_id: str) -> list[str]:
+    names = []
+    for art in artifact_dirs(cfg, cycle_id, run_id):
+        m = _metadata(art)
+        if m and m.get("filename"):
+            names.append(str(m["filename"]))
+    return names
 
 
 def loop_texture(cfg: SetConfig, cycle_id: str, impl_run: str | None, since: str) -> dict:
     logs = runtime_log_window(since)
     out = texture_from_logs(logs)
-    out.update(texture_from_emission_shapes(agent_log_window(since)))
+    agent_lines = agent_log_window(since)
+    out.update(texture_from_emission_shapes(agent_lines))
     out["fill_rejections"] = _fill_rejections(cfg, cycle_id, impl_run) if impl_run else []
+    # #1311: L8 as two claims. L8a — the model emitted under the placeholder and the
+    # extractor repaired it (read from the agent's log, the only place it is visible).
+    # L8b — a stored name still carries it (read from the tree, the old readout).
+    out["placeholder_strips"] = placeholder_strips(agent_lines)
+    out["stored_under_placeholder"] = (
+        stored_under_placeholder(_stored_artifact_names(cfg, cycle_id, impl_run))
+        if impl_run
+        else []
+    )
     return out
+
+
+def _fact(line: str, marker: str) -> str:
+    """The log line from ``marker`` to its end — the fact, with the timestamp and logger
+    prefix dropped and no width cap (#1330).
+
+    ``line[-200:]`` recorded the 1.7.2 Next.js roll 2 refusals as ``'tion task=…'`` and
+    ``'pe=qa.test …'`` — the second with its task id gone — because a qa refusal's fact is
+    longer than 200 characters. A window of a line is not the line.
+    """
+    at = line.find(marker)
+    return line[at:].rstrip() if at >= 0 else line.strip()
 
 
 def _field(line: str, key: str) -> str | None:
@@ -1043,9 +1114,9 @@ def texture_from_logs(logs: list[str]) -> dict:
             if "status=passed" in line:
                 applied += 1
             elif "status=failed" in line:
-                refused.append(line[-200:])
+                refused.append(_fact(line, "patch_verification task="))
             elif "status=unverifiable" in line:
-                pending[task] = line[-200:]
+                pending[task] = _fact(line, "patch_verification task=")
         elif "patch_retest task=" in line:
             task = line.split("patch_retest task=", 1)[1].split()[0]
             pending.pop(task, None)
@@ -1055,40 +1126,46 @@ def texture_from_logs(logs: list[str]) -> dict:
             if task in pending:
                 refused.append(pending.pop(task))
     refused.extend(pending.values())
-    terminations = [line[-200:] for line in logs if "correction_terminated_plan_defect" in line]
+    terminations = [
+        _fact(line, "correction_terminated_plan_defect")
+        for line in logs
+        if "correction_terminated_plan_defect" in line
+    ]
     return {
         "narrowed_targets": [
-            line.split("correction_repair_target:")[-1][:160]
+            _fact(line, "correction_repair_target:")
             for line in logs
             if "narrowed to the slot" in line
         ],
         "language_fallbacks": sum("falling back to same-language" in line for line in logs),
         "fill_targets": [
-            line.split("correction_repair_locus:")[-1][:160]
-            for line in logs
-            if "re-fills slot" in line
+            _fact(line, "correction_repair_locus:") for line in logs if "re-fills slot" in line
         ],
-        "self_eval_fill_merges": [line[-160:] for line in logs if "self_eval fills" in line],
+        "self_eval_fill_merges": [
+            _fact(line, "self_eval fills") for line in logs if "self_eval fills" in line
+        ],
         "refused_patches": refused,
         "applied_patches": applied,
         "plan_defect_terminations": terminations,
         "plan_defect_after_zero_applied": bool(terminations) and applied == 0,
         "refused_rounds_not_counted": [
-            line[-200:] for line in logs if "not counted as a repeat (#1129)" in line
+            _fact(line, "plan_defect terminal")
+            for line in logs
+            if "not counted as a repeat (#1129)" in line
         ],
-        "evidence_superseded": [line[-200:] for line in logs if "evidence superseded" in line],
+        "evidence_superseded": [
+            _fact(line, "patch_retest task=") for line in logs if "evidence superseded" in line
+        ],
         # 1.7.1 (plan §4). R2: a qa-owned own-frame failure routed to the qa repair
         # (#1130). R4: the qa repair brief's case count (#1123) and an undeclared-anchor
         # routing. R7: patch verifications decided by the producing agent's own executed
         # rows (#1229, rule B) versus those that came back unverifiable because nothing
         # executed where verification ran.
         "qa_owned_routed": [
-            line.split("correction_repair_locus:")[-1][:200]
-            for line in logs
-            if "qa_owned_routed" in line
+            _fact(line, "correction_repair_locus:") for line in logs if "qa_owned_routed" in line
         ],
         "absent_anchor_routed": [
-            line.split("correction_repair_locus:")[-1][:200]
+            _fact(line, "correction_repair_locus:")
             for line in logs
             if "absent_anchor_routed" in line
         ],
@@ -1273,7 +1350,7 @@ def _fill_rejections(cfg: SetConfig, cycle_id: str, impl_run: str) -> list[str]:
         except (OSError, KeyError):
             continue
         found.update(
-            line.strip()[:160]
+            line.strip()  # whole, not a window of it (#1330)
             for line in text.splitlines()
             if "fill layer:" in line and "rejected" in line
         )
@@ -1420,6 +1497,9 @@ def render(cfg: SetConfig, title: str, rec: dict) -> str:
         f"{_render_by_reason((rec.get('loop_texture') or {}).get('unverifiable_by_reason', {}))} |",
         "| non-execution by skip reason | "
         f"{_render_by_reason((rec.get('loop_texture') or {}).get('no_execution_by_skip_reason', {}))} |",
+        "| L8a extractor strips of `path/` (model emitted under it) / L8b stored under `path/` | "
+        f"{len((rec.get('loop_texture') or {}).get('placeholder_strips', []))} / "
+        f"{(rec.get('loop_texture') or {}).get('stored_under_placeholder', []) or '—'} |",
         "| checks by environment | "
         f"{(rec.get('typed_checks') or {}).get('checks_by_environment', {})} |",
         "| container_packaging rows (reporting-only) | "
