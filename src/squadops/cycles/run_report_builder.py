@@ -19,20 +19,19 @@ if TYPE_CHECKING:
     from squadops.cycles.verification_integrity import RunVerificationSummary
     from squadops.tasks.models import TaskEnvelope
 
-# terminal_status flows through the report pipeline as an UPPERCASE bare string
-# (an untyped shadow of RunStatus — full unification tracked in #377). Source the
-# compared values from the enum so it stays the single source of truth, and
-# compare case-insensitively so a lowercase RunStatus value can't silently miss.
-_COMPLETED = RunStatus.COMPLETED.value.upper()
-_FAILED = RunStatus.FAILED.value.upper()
-_CANCELLED = RunStatus.CANCELLED.value.upper()
+
+def _display_status(run_status: RunStatus) -> str:
+    """The report's human rendering of a run status — the member's name, uppercase, which
+    is what the report has always shown; a presentation of ``RunStatus``, not a second
+    vocabulary (#377)."""
+    return RunStatus(run_status).name
 
 
 def _build_report_metadata_lines(
     cycle_id: str,
     run_id: str,
     run: Any,
-    terminal_status: str,
+    run_status: RunStatus,
     cycle: Any,
 ) -> list[str]:
     """Build the metadata section lines for the run report."""
@@ -43,7 +42,7 @@ def _build_report_metadata_lines(
         f"- **Cycle ID:** {cycle_id}",
         f"- **Run ID:** {run_id}",
         f"- **Run Number:** {run.run_number}",
-        f"- **Status:** {terminal_status}",
+        f"- **Status:** {_display_status(run_status)}",
     ]
     # #427: the terminal exception, read off the run row finalize just wrote.
     # Without it a pre-dispatch failure points readers at task artifacts that
@@ -62,7 +61,7 @@ def _build_report_metadata_lines(
 
 
 def _build_report_quality_lines(
-    terminal_status: str, verification_summary: RunVerificationSummary | None = None
+    run_status: RunStatus, verification_summary: RunVerificationSummary | None = None
 ) -> list[str]:
     """Build the quality notes section for the run report.
 
@@ -73,26 +72,26 @@ def _build_report_quality_lines(
     it does, this note reflects the verdict instead of asserting all-clear.
     """
     lines = ["", "## Quality Notes"]
-    status = (terminal_status or "").upper()
+    status = RunStatus(run_status)
     verdict = verification_summary.verdict if verification_summary else None
-    if status == _COMPLETED and verdict == RunVerdict.REJECTED:
+    if status is RunStatus.COMPLETED and verdict == RunVerdict.REJECTED:
         lines.append(
             "Tasks completed, but verification **REJECTED** — one or more executed "
             "checks failed. See Verification Integrity."
         )
-    elif status == _COMPLETED and verdict == RunVerdict.BLOCKED_UNVERIFIED:
+    elif status is RunStatus.COMPLETED and verdict == RunVerdict.BLOCKED_UNVERIFIED:
         lines.append(
             "Tasks completed, but verification **BLOCKED_UNVERIFIED** — a required "
             "check did not execute. See Verification Integrity."
         )
-    elif status == _COMPLETED:
+    elif status is RunStatus.COMPLETED:
         lines.append("All tasks completed successfully.")
-    elif status == _FAILED:
+    elif status is RunStatus.FAILED:
         lines.append("One or more tasks failed. Check task artifacts for details.")
-    elif status == _CANCELLED:
+    elif status is RunStatus.CANCELLED:
         lines.append("Run was cancelled before completion.")
     else:
-        lines.append(f"Terminal status: {terminal_status}")
+        lines.append(f"Terminal status: {_display_status(status)}")
     lines.append("")
     return lines
 
@@ -207,7 +206,7 @@ def build_run_report(
     cycle_id: str,
     run_id: str,
     run: Any,
-    terminal_status: str,
+    run_status: RunStatus,
     cycle: Any = None,
     plan: list[TaskEnvelope] | None = None,
     pulse_report_entries: list[dict[str, Any]] | None = None,
@@ -215,7 +214,7 @@ def build_run_report(
     replay: ReplayProvenance | None = None,
 ) -> str:
     """Assemble the full run_report.md markdown content (D10)."""
-    lines = _build_report_metadata_lines(cycle_id, run_id, run, terminal_status, cycle)
+    lines = _build_report_metadata_lines(cycle_id, run_id, run, run_status, cycle)
 
     # SIP-0101 §4.1: a replayed run's report leads with the disclosure — the
     # marker must be impossible to miss before any inherited evidence is read.
@@ -259,6 +258,6 @@ def build_run_report(
         lines.extend(_build_verification_lines(verification_summary))
 
     # Quality notes
-    lines.extend(_build_report_quality_lines(terminal_status, verification_summary))
+    lines.extend(_build_report_quality_lines(run_status, verification_summary))
 
     return "\n".join(lines)

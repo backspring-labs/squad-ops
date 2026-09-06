@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from squadops.cycles.models import RunStatus
 from squadops.events.bridges.workflow_tracker import WorkflowTrackerBridge
 from squadops.events.models import CycleEvent
 from squadops.events.types import EventType
@@ -56,23 +57,23 @@ def bridge(mock_reporter):
 class TestWorkflowTrackerBridgeRunStates:
     def test_run_started_sets_flow_running(self, bridge, mock_reporter):
         bridge.on_event(_make_event(event_type=EventType.RUN_STARTED))
-        mock_reporter.set_flow_run_state.assert_called_once_with("fr_abc", "RUNNING", "Running")
+        mock_reporter.set_flow_run_state.assert_called_once_with("fr_abc", RunStatus.RUNNING)
 
     def test_run_completed_sets_flow_completed(self, bridge, mock_reporter):
         bridge.on_event(_make_event(event_type=EventType.RUN_COMPLETED))
-        mock_reporter.set_flow_run_state.assert_called_once_with("fr_abc", "COMPLETED", "Completed")
+        mock_reporter.set_flow_run_state.assert_called_once_with("fr_abc", RunStatus.COMPLETED)
 
     def test_run_failed_sets_flow_failed(self, bridge, mock_reporter):
         bridge.on_event(_make_event(event_type=EventType.RUN_FAILED))
-        mock_reporter.set_flow_run_state.assert_called_once_with("fr_abc", "FAILED", "Failed")
+        mock_reporter.set_flow_run_state.assert_called_once_with("fr_abc", RunStatus.FAILED)
 
     def test_run_cancelled_sets_flow_cancelled(self, bridge, mock_reporter):
         bridge.on_event(_make_event(event_type=EventType.RUN_CANCELLED))
-        mock_reporter.set_flow_run_state.assert_called_once_with("fr_abc", "CANCELLED", "Cancelled")
+        mock_reporter.set_flow_run_state.assert_called_once_with("fr_abc", RunStatus.CANCELLED)
 
     def test_run_paused_sets_flow_paused(self, bridge, mock_reporter):
         bridge.on_event(_make_event(event_type=EventType.RUN_PAUSED))
-        mock_reporter.set_flow_run_state.assert_called_once_with("fr_abc", "PAUSED", "Paused")
+        mock_reporter.set_flow_run_state.assert_called_once_with("fr_abc", RunStatus.PAUSED)
 
     def test_no_flow_run_id_skips_run_state(self, bridge, mock_reporter):
         event = _make_event(

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import pytest
 
+from squadops.cycles.models import RunStatus
 from squadops.cycles.run_report_builder import _build_report_quality_lines
 from squadops.cycles.verification_integrity import (
     CheckResult,
@@ -24,19 +25,19 @@ def _notes(terminal_status, results=(), required=()):
 
 
 def test_completed_and_accepted_still_says_success():
-    text = _notes("COMPLETED", [CheckResult(check_id="a", status=ResultStatus.PASSED)])
+    text = _notes(RunStatus.COMPLETED, [CheckResult(check_id="a", status=ResultStatus.PASSED)])
     assert "All tasks completed successfully." in text
 
 
 def test_completed_but_rejected_does_not_claim_success():
-    text = _notes("COMPLETED", [CheckResult(check_id="a", status=ResultStatus.FAILED)])
+    text = _notes(RunStatus.COMPLETED, [CheckResult(check_id="a", status=ResultStatus.FAILED)])
     assert "All tasks completed successfully." not in text
     assert "REJECTED" in text
 
 
 def test_completed_but_blocked_unverified_does_not_claim_success():
     text = _notes(
-        "COMPLETED",
+        RunStatus.COMPLETED,
         [CheckResult(check_id="a", status=ResultStatus.SKIPPED, reason="missing_tooling")],
         required=["a"],
     )
@@ -47,7 +48,7 @@ def test_completed_but_blocked_unverified_does_not_claim_success():
 def test_completed_with_no_summary_uses_default_narrative():
     """Back-compat: without a verification summary (pre-wire callers), the old
     narrative stands."""
-    assert "All tasks completed successfully." in _notes("COMPLETED")
+    assert "All tasks completed successfully." in _notes(RunStatus.COMPLETED)
 
 
 def test_status_compare_is_case_robust():
@@ -61,8 +62,8 @@ def test_status_compare_is_case_robust():
 @pytest.mark.parametrize(
     ("status", "expected"),
     [
-        ("FAILED", "One or more tasks failed"),
-        ("CANCELLED", "Run was cancelled"),
+        (RunStatus.FAILED, "One or more tasks failed"),
+        (RunStatus.CANCELLED, "Run was cancelled"),
     ],
 )
 def test_non_completed_statuses_unchanged(status, expected):
@@ -130,14 +131,17 @@ class TestFailureReasonLine:
         from squadops.cycles.run_report_builder import build_run_report
 
         report = build_run_report(
-            "cyc_001", "run_001", self._run("CycleError: build_profile is required"), "FAILED"
+            "cyc_001",
+            "run_001",
+            self._run("CycleError: build_profile is required"),
+            RunStatus.FAILED,
         )
         assert "- **Failure Reason:** CycleError: build_profile is required" in report
 
     def test_no_reason_line_when_absent(self):
         from squadops.cycles.run_report_builder import build_run_report
 
-        report = build_run_report("cyc_001", "run_001", self._run(None), "FAILED")
+        report = build_run_report("cyc_001", "run_001", self._run(None), RunStatus.FAILED)
         assert "Failure Reason" not in report
 
 

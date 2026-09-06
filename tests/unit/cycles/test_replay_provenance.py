@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from squadops.cycles.models import Run
+from squadops.cycles.models import Run, RunStatus
 from squadops.cycles.replay import ReplayProvenance, replay_marker_lines
 from squadops.cycles.run_report_builder import build_run_report
 
@@ -59,7 +59,7 @@ class TestReportMarker:
             "cyc_001",
             "run_001",
             _run(),
-            "COMPLETED",
+            RunStatus.COMPLETED,
             replay=ReplayProvenance(source_run_id="run_src", boundary_index=2),
         )
         first_line = report.splitlines()[0]
@@ -70,7 +70,7 @@ class TestReportMarker:
 
     def test_normal_report_carries_no_replay_marker(self):
         # the symmetric half of §4: a normal run must never render as a replay
-        report = build_run_report("cyc_001", "run_001", _run(), "COMPLETED")
+        report = build_run_report("cyc_001", "run_001", _run(), RunStatus.COMPLETED)
         assert "REPLAYED" not in report
 
     def test_marker_wording_is_single_sourced(self):
@@ -78,6 +78,6 @@ class TestReportMarker:
         # re-words the disclosure this fails at the source
         p = ReplayProvenance(source_run_id="run_src", boundary_index=2)
         marker, caveat = replay_marker_lines(p)
-        report = build_run_report("cyc_001", "run_001", _run(), "COMPLETED", replay=p)
+        report = build_run_report("cyc_001", "run_001", _run(), RunStatus.COMPLETED, replay=p)
         assert marker in report
         assert caveat in report

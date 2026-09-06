@@ -31,6 +31,7 @@ from squadops.api.runtime.deps import (
     get_runtime_coordinator,
     get_workflow_tracker,
 )
+from squadops.cycles.models import RunStatus
 from squadops.cycles.naming import flow_run_name
 
 logger = logging.getLogger(__name__)
@@ -46,7 +47,7 @@ async def cancel_orphaned_flow_runs(project_id: str, cycle_id: str, run_ids: lis
         names = [flow_run_name(project_id, cycle_id, rid) for rid in run_ids]
         flow_run_ids = await tracker.find_active_flow_run_ids(names)
         for flow_run_id in flow_run_ids:
-            await tracker.set_flow_run_state(flow_run_id, "CANCELLED", "Cancelled")
+            await tracker.set_flow_run_state(flow_run_id, RunStatus.CANCELLED)
         if flow_run_ids:
             logger.info(
                 "#77: cancelled %d orphaned Prefect flow run(s) for cycle %s (runs=%s)",

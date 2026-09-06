@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from squadops.cycles.models import RunStatus
 from squadops.events.bridges.llm_observability import LLMObservabilityBridge
 from squadops.events.bridges.metrics import MetricsBridge
 from squadops.events.bridges.workflow_tracker import WorkflowTrackerBridge
@@ -139,14 +140,15 @@ class TestPrefectParity:
                 context={"cycle_id": "cyc_1", "run_id": "run_1", "flow_run_id": "fr_1"},
             )
         )
-        reporter.set_flow_run_state.assert_called_with("fr_1", "RUNNING", "Running")
+        reporter.set_flow_run_state.assert_called_with("fr_1", RunStatus.RUNNING)
 
     def test_run_terminal_states_match(self):
-        """Executor: set_flow_run_state(frid, terminal_status, terminal_status.title())"""
+        """Executor: set_flow_run_state(frid, run_status) — the domain member; the Prefect
+        pair is the adapter's translation (#377)."""
         for event_type, expected_state in [
-            (EventType.RUN_COMPLETED, "COMPLETED"),
-            (EventType.RUN_FAILED, "FAILED"),
-            (EventType.RUN_CANCELLED, "CANCELLED"),
+            (EventType.RUN_COMPLETED, RunStatus.COMPLETED),
+            (EventType.RUN_FAILED, RunStatus.FAILED),
+            (EventType.RUN_CANCELLED, RunStatus.CANCELLED),
         ]:
             reporter = MagicMock()
             reporter.set_flow_run_state = AsyncMock()
@@ -160,9 +162,7 @@ class TestPrefectParity:
                     context={"cycle_id": "cyc_1", "run_id": "run_1", "flow_run_id": "fr_1"},
                 )
             )
-            reporter.set_flow_run_state.assert_called_with(
-                "fr_1", expected_state, expected_state.title()
-            )
+            reporter.set_flow_run_state.assert_called_with("fr_1", expected_state)
 
     def test_task_dispatch_is_noop(self):
         """SIP-0087: task_run creation moved to executor. Bridge ignores TASK_DISPATCHED."""
@@ -303,4 +303,4 @@ class TestPrefectResumedParity:
                 context={"cycle_id": "cyc_1", "run_id": "run_1", "flow_run_id": "fr_1"},
             )
         )
-        reporter.set_flow_run_state.assert_called_with("fr_1", "RUNNING", "Running")
+        reporter.set_flow_run_state.assert_called_with("fr_1", RunStatus.RUNNING)

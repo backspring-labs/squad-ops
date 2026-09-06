@@ -62,7 +62,6 @@ class TerminalOutcome:
     emits the event, and logs — this mapping decides what.
     """
 
-    terminal_status: str
     run_status: RunStatus
     event_type: str
     event_payload: dict[str, Any] | None
@@ -83,7 +82,6 @@ def resolve_terminal_outcome(exc: BaseException, run_id: str) -> TerminalOutcome
     """
     if isinstance(exc, _CancellationError):
         return TerminalOutcome(
-            terminal_status="CANCELLED",
             run_status=RunStatus.CANCELLED,
             event_type=EventType.RUN_CANCELLED,
             event_payload=None,
@@ -96,7 +94,6 @@ def resolve_terminal_outcome(exc: BaseException, run_id: str) -> TerminalOutcome
         # rides in the payload so operators can distinguish a duty deferral
         # from a BLOCKED-outcome pause.
         return TerminalOutcome(
-            terminal_status="PAUSED",
             run_status=RunStatus.PAUSED,
             event_type=EventType.RUN_PAUSED,
             event_payload={"reason": exc.reason, "deferred_for_agent": exc.agent_id},
@@ -108,7 +105,6 @@ def resolve_terminal_outcome(exc: BaseException, run_id: str) -> TerminalOutcome
         )
     if isinstance(exc, _PausedError):
         return TerminalOutcome(
-            terminal_status="PAUSED",
             run_status=RunStatus.PAUSED,
             event_type=EventType.RUN_PAUSED,
             event_payload=None,
@@ -117,7 +113,6 @@ def resolve_terminal_outcome(exc: BaseException, run_id: str) -> TerminalOutcome
         )
     if isinstance(exc, _ExecutionError):
         return TerminalOutcome(
-            terminal_status="FAILED",
             run_status=RunStatus.FAILED,
             event_type=EventType.RUN_FAILED,
             event_payload={"error": str(exc)},
@@ -126,7 +121,6 @@ def resolve_terminal_outcome(exc: BaseException, run_id: str) -> TerminalOutcome
             failure_reason=failure_reason_text(exc, include_type=False),
         )
     return TerminalOutcome(
-        terminal_status="FAILED",
         run_status=RunStatus.FAILED,
         event_type=EventType.RUN_FAILED,
         event_payload={"error": str(exc)},
@@ -210,7 +204,7 @@ class RunCompletion:
         self,
         cycle_id: str,
         run_id: str,
-        terminal_status: str,
+        run_status: RunStatus,
         obs_ctx: Any,
         flow_run_id: str | None,
         cycle: Cycle | None = None,
@@ -232,7 +226,7 @@ class RunCompletion:
                 obs_ctx,
                 StructuredEvent(
                     name="cycle.completed",
-                    message=f"Cycle {cycle_id} reached {terminal_status}",
+                    message=f"Cycle {cycle_id} reached {run_status.value}",
                 ),
             )
             self._llm_observability.end_cycle_trace(obs_ctx)
@@ -241,9 +235,7 @@ class RunCompletion:
         # Prefect: set terminal state
         if self._workflow_tracker and flow_run_id:
             try:
-                await self._workflow_tracker.set_flow_run_state(
-                    flow_run_id, terminal_status, terminal_status.title()
-                )
+                await self._workflow_tracker.set_flow_run_state(flow_run_id, run_status)
             except Exception:
                 logger.warning("Prefect terminal state update failed", exc_info=True)
 
@@ -254,7 +246,7 @@ class RunCompletion:
         # and no shipped profile declares required_checks — so this computes
         # `accepted` with zero recorded evidence and discloses it in the report.
         # Phase 2 wires the producers and per-profile required lists (the throttle).
-        summary = self._aggregate_verification(cycle, ledger, terminal_status, contract)
+        summary = self._aggregate_verification(cycle, ledger, run_status, contract)
 
         # SIP-0096 Phase 3 (§10): persist the run's verdict as durable structured
         # evidence so the CycleOutcome roll-up can read it back — until now the
@@ -273,7 +265,7 @@ class RunCompletion:
                 await self.generate_run_report(
                     cycle_id,
                     run_id,
-                    terminal_status,
+                    run_status,
                     cycle=cycle,
                     plan=plan,
                     ledger=ledger,
@@ -296,7 +288,7 @@ class RunCompletion:
     def _aggregate_verification(
         cycle: Cycle | None,
         ledger: RunLedger | None,
-        terminal_status: str,
+        run_status: RunStatus,
         contract: Any | None = None,
     ) -> RunVerificationSummary:
         """Run the SIP-0096 aggregation over the ledger against the cycle's required set.
@@ -309,7 +301,7 @@ class RunCompletion:
         default to empty, so a pre-SIP-0096 cycle or a Phase-1 (throttle-off)
         cycle that *completes* aggregates to an honest `accepted`.
 
-        ``terminal_status`` supplies the run-level context the pure verdict cannot
+        ``run_status`` supplies the run-level context the pure verdict cannot
         see: only a ``COMPLETED`` run is eligible for `accepted` (#388). A run that
         FAILED/cancelled/paused with no failed check would otherwise fall through to
         `accepted` on zero evidence — the `Status: FAILED` / `Verdict: accepted`
@@ -322,7 +314,7 @@ class RunCompletion:
             if declared:
                 required_check_ids = tuple(declared)
         results = ledger.check_results if ledger else ()
-        run_succeeded = (terminal_status or "").upper() == RunStatus.COMPLETED.value.upper()
+        run_succeeded = run_status is RunStatus.COMPLETED
         # SIP-0098 #508: a bound contract supplies the coverage denominator — every
         # criterion it declares, not just the ones whose checks got dispatched.
         contract_criteria: tuple[str, ...] = ()
@@ -381,7 +373,7 @@ class RunCompletion:
         self,
         cycle_id: str,
         run_id: str,
-        terminal_status: str,
+        run_status: RunStatus,
         cycle: Cycle | None = None,
         plan: list[TaskEnvelope] | None = None,
         ledger: RunLedger | None = None,
@@ -399,7 +391,7 @@ class RunCompletion:
             cycle_id,
             run_id,
             run,
-            terminal_status,
+            run_status,
             cycle=cycle,
             plan=plan,
             pulse_report_entries=list(ledger.pulse_entries) if ledger else None,
