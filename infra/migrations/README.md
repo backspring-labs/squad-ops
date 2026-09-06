@@ -12,7 +12,7 @@ Numeric ranges are reserved to keep parallel work streams from colliding. SIP-00
 |---|---|---|
 | `001–006` | Pre-range-scheme (cycle registry, pulse, squad profiles, workload canon, run checkpoints, chat tables) | In place |
 | `1000–1099` | 1.0.x hardening (Spark) | Reserved |
-| `1100–1199` | SIP-0089 Agent Runtime State (v1.1) | In use — see `1100_agent_runtime_state.sql` |
+| `1100–1199` | SIP-0089 Agent Runtime State (v1.1) and its #231 consolidation | In use — see `1100_agent_runtime_state.sql`; `1150` drops `agent_status.network_status` (#305) |
 | `1200–1299` | SIP-0090 Agent Embodiment Substrate (v1.2) | Reserved (tentative) |
 | `1300–1399` | SIP-0091 Duty Durability via Temporal (v1.3) | Reserved (tentative) |
 | `1400–1499` | SIP-0096 Verification Evidence Integrity (v1.4) | In use — see `1400_run_verification_summaries.sql` |

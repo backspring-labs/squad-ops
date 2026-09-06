@@ -66,12 +66,10 @@ CREATE TABLE IF NOT EXISTS agent_task_log (
 
 -- Agent Status Table
 -- SIP-Agent-Lifecycle: agent_id is the identifier used for all key references
--- network_status is derived by Health Check from heartbeat timing (online/offline)
 -- lifecycle_state is reported by agent FSM (STARTING, READY, WORKING, BLOCKED, CRASHED, STOPPING, or UNKNOWN when offline)
 CREATE TABLE IF NOT EXISTS agent_status (
     agent_id TEXT PRIMARY KEY,  -- Renamed from agent_name for consistency with task system
-    network_status TEXT NOT NULL,  -- Renamed from status, derived by Health Check from heartbeat timing
-    lifecycle_state TEXT,  -- Agent FSM state (nullable, set to UNKNOWN when network_status=offline)
+    lifecycle_state TEXT,  -- Agent FSM telemetry (nullable, UNKNOWN once the heartbeat ages out; health is runtime_status, #305)
     last_heartbeat TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     current_task_id TEXT,
     version TEXT,
@@ -97,13 +95,13 @@ ON CONFLICT (project_id) DO NOTHING;
 -- Insert initial agent status entries
 -- 6-agent squad: max (lead), neo (dev), nat (strategy), eve (qa), data (analytics), bob (builder)
 -- Agents self-register via heartbeat; seeds here ensure rows exist before first heartbeat.
-INSERT INTO agent_status (agent_id, network_status, lifecycle_state, version) VALUES
-('max', 'offline', 'UNKNOWN', '1.0.0'),
-('neo', 'offline', 'UNKNOWN', '1.0.0'),
-('nat', 'offline', 'UNKNOWN', '1.0.0'),
-('eve', 'offline', 'UNKNOWN', '1.0.0'),
-('data', 'offline', 'UNKNOWN', '1.0.0'),
-('bob', 'offline', 'UNKNOWN', '1.0.0')
+INSERT INTO agent_status (agent_id, lifecycle_state, version) VALUES
+('max', 'UNKNOWN', '1.0.0'),
+('neo', 'UNKNOWN', '1.0.0'),
+('nat', 'UNKNOWN', '1.0.0'),
+('eve', 'UNKNOWN', '1.0.0'),
+('data', 'UNKNOWN', '1.0.0'),
+('bob', 'UNKNOWN', '1.0.0')
 ON CONFLICT (agent_id) DO NOTHING;
 
 -- Squad Memory Pool (SIP-042)
