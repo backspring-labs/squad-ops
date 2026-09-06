@@ -36,6 +36,13 @@ shakeout_notes: >-
 # is a live CALL with its paired control, not a symbol import — a symbol can be present and
 # unreachable, which is the shape #1289 had for the whole of 1.7.1.
 loaded_checks:
+  # #1318: the spine row the accepted-patch path re-derives, and its paired control —
+  # supplied passes, withheld fails. A row that can only pass is not evidence.
+  bob: >-
+    from squadops.cycles.check_registry import required_files_row;
+    req = ["Dockerfile", "qa_handoff.md"];
+    print(required_files_row(req, ["a/Dockerfile", "b/qa_handoff.md"])["passed"],
+    required_files_row(req, ["a/Dockerfile"])["missing"])
   # #1269 read on THIS stack's declared test-file patterns (*.test.ts[x], *.spec.ts[x]): a
   # repaired suite is recognised, an API route in the same patch is not. #1273's skip
   # reasons read by reason, not by count.
@@ -46,7 +53,9 @@ loaded_checks:
     print(_repaired_suite_files([{"name": "__tests__/runs.test.tsx", "type": "code"}], cfg),
     _repaired_suite_files([{"name": "app/api/runs/route.ts", "type": "code"}], cfg),
     skip_reasons([PatchCheckRecord(check="acceptance:x", severity="blocking",
-    status="skipped", reason="file_not_found")]))
+    status="skipped", reason="file_not_found")]),
+    PatchCheckRecord(check="sections_present", severity="error", status="passed",
+    criterion_id="handoff-sections:qa_handoff.md").to_check_row()["criterion_id"])
   # #1292: the qa namespace is the co-located convention and nothing else — the root
   # harness and a co-located suite are qa's, an API route is not. Before the fix the third
   # value was True and the namespace was ("__tests__/", "app/", "lib/"). #1251: the faults.
@@ -71,12 +80,12 @@ loaded_checks:
 # Pins: filled from the last shakeout before roll 1; empty means "no counting roll may launch".
 expected_config_hash_prefix: "d4d4f66217d8"
 expected_squad_snapshot_prefix: "575707c58536cf3b"
-frozen_deploy_commit: "af08d162"
+frozen_deploy_commit: "d95af712"
 frozen_image_ids:
-  runtime-api: "5be2ad7777b3"
-  max: "7f9d47748495"
-  neo: "ef1024e0fd62"
-  nat: "1ff7ab88eee2"
-  bob: "d085d0ef176e"
-  eve: "1acb1d3b4834"
-  data: "ec7fdcda43c5"
+  runtime-api: "95ca86ab163f"
+  max: "52a338f0486d"
+  neo: "95b25edb3455"
+  nat: "8ad726dd78b2"
+  bob: "aeaeaeb07d2e"
+  eve: "d67086f6dc1a"
+  data: "107519970b99"
