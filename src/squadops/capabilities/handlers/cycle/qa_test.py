@@ -5,6 +5,7 @@ Split from cycle_tasks.py (#152).
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import tempfile
 import time
@@ -680,6 +681,38 @@ class QATestHandler(_CycleTaskHandler):
         return await render_self_eval_fill_section(
             getattr(context.ports, "request_renderer", None), fill_merge_evidence
         )
+
+    #: The fill-merge evidence's home beside ``test_report.md`` (#999).
+    FILL_MERGE_EVIDENCE_FILENAME = "fill_merge_evidence.json"
+
+    @classmethod
+    def _fill_merge_evidence_artifact(cls, evidence_extra: dict[str, Any]) -> dict | None:
+        """The fill-merge evidence as a stored artifact, or None when the task ran in no
+        fill mode (#999).
+
+        #982 measures assertion strength at the merge seam and placed it in
+        ``execution_evidence`` — which nothing persists: not the verification summary, not
+        the checkpoint, not an artifact. So the instrument added *because* a 7x drop had
+        been visible in data nobody read measured correctly at runtime and then
+        evaporated, and the 1.6 window had to recompute it from the stored shells. This
+        artifact is what the closing-claim reader — the verification-set driver's texture —
+        reaches without container logs. Typed ``evidence`` so the suite runner
+        (``_suite_files``, ``type == "test"``) never treats it as a suite.
+        """
+        fill_merge = evidence_extra.get("fill_merge")
+        if not fill_merge:
+            return None
+        payload = {
+            "fill_merge": fill_merge,
+            "self_eval_fills": evidence_extra.get("self_eval_fills", []),
+            "self_eval_passes": evidence_extra.get("self_eval_passes"),
+        }
+        return {
+            "name": cls.FILL_MERGE_EVIDENCE_FILENAME,
+            "content": json.dumps(payload, indent=2, sort_keys=True, default=str),
+            "media_type": "application/json",
+            "type": "evidence",
+        }
 
     @staticmethod
     def _suite_files(artifacts: list[dict]) -> list[dict]:
@@ -1495,6 +1528,9 @@ class QATestHandler(_CycleTaskHandler):
             capability, sources, extracted
         )
         artifacts.append(test_report_artifact)
+        evidence_artifact = self._fill_merge_evidence_artifact(evidence_extra)
+        if evidence_artifact is not None:
+            artifacts.append(evidence_artifact)
 
         # Fold test-execution outcome into validation. The qa.test handler's
         # objective is "produce tests that pass against the dev artifacts";

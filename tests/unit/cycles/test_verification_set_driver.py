@@ -1361,3 +1361,70 @@ class TestEmissionTokensAreProducedNotOnlyDeclared:
         text = driver._qa_tokens(by)
         assert "qa_define_test_strategy_handler: 4677 / 0 (1 em)" == text
         assert driver._qa_tokens({}) == "—"
+
+
+class TestFillMergeEvidenceIsReadFromTheTree:
+    """#999: the qa task's fill-merge evidence (#982's assertion strength, the dispositions,
+    the additive-containment findings) is a stored artifact beside test_report.md, and
+    the record reads it from there — never recomputed from the shells, never from a log."""
+
+    @staticmethod
+    def _tree(tmp_path, payloads):
+        import json as _json
+
+        for i, (task_id, payload) in enumerate(payloads):
+            art = tmp_path / f"art_{i}"
+            art.mkdir()
+            (art / "fill_merge_evidence.json").write_text(_json.dumps(payload))
+            (art / "metadata.json").write_text(
+                _json.dumps(
+                    {
+                        "filename": "fill_merge_evidence.json",
+                        "vault_uri": str((art / "fill_merge_evidence.json").relative_to(tmp_path)),
+                        "metadata": {"task_id": task_id, "role": "qa"},
+                    }
+                )
+            )
+        noise = tmp_path / "art_noise"
+        noise.mkdir()
+        (noise / "metadata.json").write_text(
+            _json.dumps({"filename": "test_report.md", "vault_uri": "x", "metadata": {}})
+        )
+        return tmp_path
+
+    def test_each_qa_tasks_evidence_is_read_by_task(self, driver, monkeypatch, tmp_path):
+        tree = self._tree(
+            tmp_path,
+            [
+                (
+                    "task-m006-qa.test",
+                    {
+                        "fill_merge": {
+                            "counts": {"merged": 5},
+                            "assertion_strength": {"store_touching": 2, "expect_lines": 16},
+                            "additive_containment": ["x.test.ts: names an undeclared table"],
+                        },
+                        "self_eval_fills": [{"a": 1}, {"b": 2}],
+                    },
+                ),
+                ("task-m007-qa.test", {"fill_merge": {"counts": {"merged": 1}}}),
+            ],
+        )
+        monkeypatch.setattr(driver, "artifact_dirs", lambda *a, **k: sorted(tree.glob("art_*")))
+        monkeypatch.setattr(driver, "REPO", tree)
+        out = driver.fill_merge_evidence(None, "cyc", "run")
+        assert [e["task_id"] for e in out] == ["task-m006-qa.test", "task-m007-qa.test"]
+        assert out[0]["assertion_strength"] == {"store_touching": 2, "expect_lines": 16}
+        assert out[0]["additive_containment"] == ["x.test.ts: names an undeclared table"]
+        assert out[0]["self_eval_fills"] == 2
+        assert out[1]["assertion_strength"] is None and out[1]["self_eval_fills"] == 0
+
+    def test_a_run_without_the_artifact_reads_as_absent_not_as_zero(
+        self, driver, monkeypatch, tmp_path
+    ):
+        """Bug caught: the #999 shape itself — a field that reads as measured when nothing
+        produced it. No artifact → an empty list, so the record shows the gap."""
+        tree = self._tree(tmp_path, [])
+        monkeypatch.setattr(driver, "artifact_dirs", lambda *a, **k: sorted(tree.glob("art_*")))
+        monkeypatch.setattr(driver, "REPO", tree)
+        assert driver.fill_merge_evidence(None, "cyc", "run") == []

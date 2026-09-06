@@ -970,6 +970,8 @@ def loop_texture(cfg: SetConfig, cycle_id: str, impl_run: str | None, since: str
     agent_lines = agent_log_window(since)
     out.update(texture_from_emission_shapes(agent_lines))
     out["fill_rejections"] = _fill_rejections(cfg, cycle_id, impl_run) if impl_run else []
+    # #999: the qa task's fill-merge evidence, persisted as an artifact and read from it.
+    out["fill_merge_evidence"] = fill_merge_evidence(cfg, cycle_id, impl_run) if impl_run else []
     # #1311: L8 as two claims. L8a — the model emitted under the placeholder and the
     # extractor repaired it (read from the agent's log, the only place it is visible).
     # L8b — a stored name still carries it (read from the tree, the old readout).
@@ -1445,6 +1447,32 @@ def _stale_evaluations(cfg: SetConfig, cycle_id: str, impl_run: str) -> list[dic
     return stale
 
 
+def fill_merge_evidence(cfg: SetConfig, cycle_id: str, impl_run: str) -> list[dict]:
+    """Every qa task's stored ``fill_merge_evidence.json`` (#999) — the fill-merge
+    dispositions, counts, assertion strength and additive-containment findings, read from
+    the tree and never from a log. Each entry names the task the artifact came from."""
+    out: list[dict] = []
+    for art in artifact_dirs(cfg, cycle_id, impl_run):
+        m = _metadata(art)
+        if not m or m.get("filename") != "fill_merge_evidence.json":
+            continue
+        try:
+            payload = json.loads((REPO / m["vault_uri"]).read_text())
+        except (OSError, KeyError, ValueError):
+            continue
+        fill = payload.get("fill_merge") or {}
+        out.append(
+            {
+                "task_id": (m.get("metadata") or {}).get("task_id"),
+                "counts": fill.get("counts"),
+                "assertion_strength": fill.get("assertion_strength"),
+                "additive_containment": fill.get("additive_containment", []),
+                "self_eval_fills": len(payload.get("self_eval_fills") or []),
+            }
+        )
+    return out
+
+
 def _fill_rejections(cfg: SetConfig, cycle_id: str, impl_run: str) -> list[str]:
     found = set()
     for art in artifact_dirs(cfg, cycle_id, impl_run):
@@ -1621,6 +1649,8 @@ def render(cfg: SetConfig, title: str, rec: dict) -> str:
         f"{_render_by_reason((rec.get('loop_texture') or {}).get('unverifiable_by_reason', {}))} |",
         "| non-execution by skip reason | "
         f"{_render_by_reason((rec.get('loop_texture') or {}).get('no_execution_by_skip_reason', {}))} |",
+        "| fill-merge assertion strength per qa task (#999) | "
+        f"{[(e.get('task_id'), e.get('assertion_strength')) for e in (rec.get('loop_texture') or {}).get('fill_merge_evidence', [])] or '—'} |",
         "| qa emission tokens (completion / reasoning, handlers starting `qa_`) | "
         f"{_qa_tokens((rec.get('loop_texture') or {}).get('emission_tokens_by_handler', {}))} |",
         "| L8a extractor strips of `path/` (model emitted under it) / L8b stored under `path/` | "
