@@ -573,3 +573,14 @@ dependency set the images install — is unaffected and met. Reasoning recorded 
   as is and the item leads 1.7.2, where its prediction is re-registered verbatim with the shape
   that falsified it and exercised by fault injection (`docs/plans/1-7-2-plan.md` §5). The
   rule's purpose is kept; the separate patch release is not, for the reason stated there.
+- **Amendment (2026-09-05, with the 1.7.3 plan)** — §3.1's rows for 1.7.3 and 1.7.4 are
+  re-placed by `docs/plans/1-7-3-plan.md` §6, on the owner's 2026-09-04 ruling (1.7.2 plan §3)
+  that the CI-verified Boundaries list — never staffed across three lines, #559 now scheduled
+  a sixth time — must be a release's *subject* rather than a rider beside a pack. **1.7.3 =
+  Boundaries** (the list, with #1316 and the #1310/#1311 instrument fixes as preconditions,
+  measured by the 1.7.2 set re-registered with no new pack); **1.7.4 = Loop Honesty, second
+  half** (#1312 with #1254 leading) with the Hardening (infra) rider; **1.7.5 = what this
+  table called 1.7.4** (Deferrals, Composition Root after its design note, the extractions
+  and test items) plus #929/#1206. The per-line capacity rule is unchanged; the line count
+  grows by one because the Boundaries rider was never absorbed by 1.7.2 as the table assumed.
+  §6.2's close criteria hold as written.
