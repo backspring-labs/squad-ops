@@ -77,9 +77,7 @@ RUNTIME_ONLY: dict[str, str] = {
 
 #: Imports of modules that exist nowhere — a defect on record, keyed to its issue. The
 #: entry must go when the import is fixed (the stale check below).
-KNOWN_DEAD_IMPORTS: dict[str, str] = {
-    "agents": "#1241 — adapters/capabilities/aci_executor.py imports agents.tasks.models",
-}
+KNOWN_DEAD_IMPORTS: dict[str, str] = {}
 
 #: The console script's own imports, core because `[project.scripts]` installs it
 #: unconditionally; they are not in base.txt because the images never run the CLI.

@@ -7,11 +7,8 @@ enabling config-driven provider selection.
 
 from pathlib import Path
 
-from adapters.capabilities.aci_executor import ACICapabilityExecutor
 from adapters.capabilities.filesystem import FileSystemCapabilityRepository
-from squadops.ports.capabilities.executor import CapabilityExecutor
 from squadops.ports.capabilities.repository import CapabilityRepository
-from squadops.ports.comms.queue import QueuePort
 
 # Default path for capability manifests
 DEFAULT_MANIFESTS_PATH = (
@@ -49,30 +46,3 @@ def create_capability_repository(
         )
 
     raise ValueError(f"Unknown capability repository provider: {provider}")
-
-
-def create_capability_executor(
-    provider: str = "aci",
-    queue: QueuePort | None = None,
-    **kwargs,
-) -> CapabilityExecutor:
-    """
-    Create a capability executor instance based on provider type.
-
-    Args:
-        provider: Executor provider type ("aci")
-        queue: QueuePort implementation (required for ACI)
-        **kwargs: Additional provider-specific arguments
-
-    Returns:
-        CapabilityExecutor implementation
-
-    Raises:
-        ValueError: If provider type is unknown or required args missing
-    """
-    if provider == "aci":
-        if queue is None:
-            raise ValueError("ACI executor requires a QueuePort instance")
-        return ACICapabilityExecutor(queue=queue, **kwargs)
-
-    raise ValueError(f"Unknown capability executor provider: {provider}")

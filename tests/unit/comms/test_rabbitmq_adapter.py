@@ -328,8 +328,9 @@ class TestDelayCapabilityHonesty:
 
     @pytest.mark.parametrize("delay", [None, 0])
     async def test_immediate_publish_is_unaffected(self, delay) -> None:
-        """The only live caller (`aci_executor` retry) passes 0, so the immediate
-        path must keep working exactly as before."""
+        """A caller passing 0 (or nothing) takes the immediate path, which must keep
+        working exactly as before. (Its one caller, the ACI executor's retry, was deleted
+        in #1241; the parameter's contract stands on its own.)"""
         adapter, ch, _ = TestPublishRetry._publish_adapter([None])
 
         await adapter.publish("work", "{}", delay_seconds=delay)
