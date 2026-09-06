@@ -1221,3 +1221,91 @@ class TestL8ReadsTheExtractorNotTheStoredName:
         assert "fence path placeholder: %r emitted under the example's literal %r segment; " in (
             Path(fenced_parser.__file__).read_text(encoding="utf-8")
         )
+
+
+class TestADiagnosticIsReadByTheSeamItReached:
+    """#1310: "the fault fired" is not "the prediction was exercised". The round-4
+    absent-suite diagnostic bit, the emission retry recovered, correction was never
+    entered, and a record reading L2 off the fault's application would have said
+    exercised-and-held. Each fault's readout is what the record must show for the seam
+    the prediction names to have been reached."""
+
+    @staticmethod
+    def _rec(**texture):
+        base = {"correction_rounds": 0, "loop_texture": {}}
+        base["loop_texture"].update(texture)
+        if "correction_rounds" in texture:
+            base["correction_rounds"] = texture.pop("correction_rounds")
+            base["loop_texture"].pop("correction_rounds", None)
+        return base
+
+    def test_the_round_4_absent_suite_shape_reads_as_not_reached(self, driver):
+        """Correction rounds 0, no retest: the fault fired and L2's seam was never touched."""
+        out = driver.seam_readouts(("qa_suite_absent",), self._rec(retests=[]))
+        assert out["qa_suite_absent"]["reached"] is False
+        assert out["qa_suite_absent"]["evidence"]["correction_rounds"] == 0
+
+    def test_a_qa_repair_retested_after_correction_reads_as_reached(self, driver):
+        rec = {
+            "correction_rounds": 1,
+            "loop_texture": {
+                "retests": [
+                    "patch_retest task=task-run_x-m006-qa.test status=SUCCEEDED passed=True"
+                ]
+            },
+        }
+        assert driver.seam_readouts(("qa_suite_absent",), rec)["qa_suite_absent"]["reached"] is True
+
+    def test_a_dev_retest_is_not_l2s_seam(self, driver):
+        """A retest of a dev task after the qa task recovered on its own is a different
+        seam — L2 is the qa repair that supplied the suite."""
+        rec = {
+            "correction_rounds": 1,
+            "loop_texture": {
+                "retests": ["patch_retest task=task-run_x-m004-development.develop status=x"]
+            },
+        }
+        assert (
+            driver.seam_readouts(("qa_suite_absent",), rec)["qa_suite_absent"]["reached"] is False
+        )
+
+    @pytest.mark.parametrize(
+        ("fault", "field", "value"),
+        [
+            (
+                "qa_suite_at_path_prefix",
+                "placeholder_strips",
+                [{"emitted": "path/x", "stripped_to": "x"}],
+            ),
+            ("qa_suite_own_frame_failure", "qa_owned_routed", ["qa_owned_routed task=t"]),
+            ("repair_prose_only", "refused_rounds_not_counted", ["plan_defect terminal: refunded"]),
+        ],
+    )
+    def test_each_other_fault_is_read_from_the_field_its_seam_writes(
+        self, driver, fault, field, value
+    ):
+        assert driver.seam_readouts((fault,), self._rec(**{field: value}))[fault]["reached"] is True
+        assert driver.seam_readouts((fault,), self._rec(**{field: []}))[fault]["reached"] is False
+
+    def test_a_fault_with_no_readout_is_named_not_skipped(self, driver):
+        out = driver.seam_readouts(("some_new_fault",), self._rec())
+        assert out["some_new_fault"] == {
+            "seam": None,
+            "reached": None,
+            "evidence": "no readout for this fault",
+        }
+
+    def test_every_framework_fault_has_a_seam_readout(self, driver):
+        """The list that would drift: a fault added to the framework without a readout here
+        runs as a diagnostic nothing can read (#1300, #1310)."""
+        from squadops.capabilities.handlers.fault_injection import FAULTS
+
+        assert set(driver.SEAM_READOUTS) == set(FAULTS)
+
+    def test_the_texture_carries_the_retests_as_facts(self, driver):
+        line = (
+            "PFX patch_retest task=task-run_x-m006-qa.test status=SUCCEEDED passed=True reason=ok"
+        )
+        out = driver.texture_from_logs([line])
+        assert out["retests"] == [line[len("PFX ") :]]
+        assert out["applied_patches"] == 1

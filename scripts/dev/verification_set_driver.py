@@ -982,6 +982,64 @@ def loop_texture(cfg: SetConfig, cycle_id: str, impl_run: str | None, since: str
     return out
 
 
+#: What each fault's diagnostic must show to have REACHED the seam its prediction names —
+#: read from the record, never from "the fault fired" (#1310, #1300). A fault can bite and
+#: exercise a neighbouring seam: the absent-suite fault under first-attempt scope fired,
+#: the emission retry recovered, and correction was never entered — and the record would
+#: have read as L2 exercised. Keyed by the fault name (the declaration is the boundary
+#: between the framework and this instrument; the test holds the two lists together).
+SEAM_READOUTS: dict[str, tuple[str, Callable[[dict], tuple[bool, Any]]]] = {
+    "qa_suite_absent": (
+        "L2: the qa task entered correction and its repair was retested",
+        lambda rec: (
+            (rec.get("correction_rounds") or 0) >= 1
+            and any("qa.test" in r for r in (rec.get("loop_texture") or {}).get("retests", [])),
+            {
+                "correction_rounds": rec.get("correction_rounds"),
+                "retests": (rec.get("loop_texture") or {}).get("retests", []),
+            },
+        ),
+    ),
+    "qa_suite_at_path_prefix": (
+        "L8b: the extractor repaired a fence emitted under the placeholder",
+        lambda rec: (
+            len((rec.get("loop_texture") or {}).get("placeholder_strips", [])) >= 1,
+            (rec.get("loop_texture") or {}).get("placeholder_strips", []),
+        ),
+    ),
+    "qa_suite_own_frame_failure": (
+        "L7: the own-frame failure routed to the qa repair",
+        lambda rec: (
+            len((rec.get("loop_texture") or {}).get("qa_owned_routed", [])) >= 1,
+            (rec.get("loop_texture") or {}).get("qa_owned_routed", []),
+        ),
+    ),
+    "repair_prose_only": (
+        "L4: the prose-only repair was refunded rather than verified",
+        lambda rec: (
+            len((rec.get("loop_texture") or {}).get("refused_rounds_not_counted", [])) >= 1,
+            (rec.get("loop_texture") or {}).get("refused_rounds_not_counted", []),
+        ),
+    ),
+}
+
+
+def seam_readouts(faults, rec: dict) -> dict[str, dict]:
+    """Per declared fault: the seam it names, whether the record shows it reached, and the
+    evidence read. A fault with no readout is named as such rather than skipped — a
+    diagnostic nothing can read proves nothing (#1300)."""
+    out: dict[str, dict] = {}
+    for name in faults:
+        entry = SEAM_READOUTS.get(name)
+        if entry is None:
+            out[name] = {"seam": None, "reached": None, "evidence": "no readout for this fault"}
+            continue
+        seam, read = entry
+        reached, evidence = read(rec)
+        out[name] = {"seam": seam, "reached": bool(reached), "evidence": evidence}
+    return out
+
+
 def _fact(line: str, marker: str) -> str:
     """The log line from ``marker`` to its end — the fact, with the timestamp and logger
     prefix dropped and no width cap (#1330).
@@ -1146,6 +1204,11 @@ def texture_from_logs(logs: list[str]) -> dict:
         ],
         "refused_patches": refused,
         "applied_patches": applied,
+        # #1310: the retests themselves, so a diagnostic can say WHICH task's repair was
+        # retested (L2 is "the repair that supplied the suite is retested" — for a qa task).
+        "retests": [
+            _fact(line, "patch_retest task=") for line in logs if "patch_retest task=" in line
+        ],
         "plan_defect_terminations": terminations,
         "plan_defect_after_zero_applied": bool(terminations) and applied == 0,
         "refused_rounds_not_counted": [
@@ -1447,6 +1510,11 @@ def render(cfg: SetConfig, title: str, rec: dict) -> str:
                 f"{', '.join(sorted(declared_fault_names(cfg.overrides)))}"
                 "**. This cycle carried a deliberate emission defect (#1251): its verdict is "
                 "not a verdict about the squad, and it must not be counted.",
+                *(
+                    f"- seam reached — `{name}`: **{'YES' if r.get('reached') else 'NO'}** — "
+                    f"{r.get('seam') or 'no readout for this fault'} (#1310)"
+                    for name, r in sorted((rec.get("seam_reached") or {}).items())
+                ),
                 "",
             ]
             if declared_fault_names(cfg.overrides)
@@ -1607,6 +1675,9 @@ def _run_cycle(
     rec["typed_checks"] = (
         typed_checks_by_check(cfg, cyc, rec["impl_run_id"]) if rec["impl_run_id"] else {}
     )
+    # #1310: a diagnostic is read by the seam it reached, not by whether its fault fired.
+    faults = declared_fault_names(cfg.overrides)
+    rec["seam_reached"] = seam_readouts(faults, rec) if faults else {}
     rec["boot_audit"] = (
         boot_audit(cfg, cyc, rec["impl_run_id"])
         if rec["impl_run_id"]
