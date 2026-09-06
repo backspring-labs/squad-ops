@@ -598,7 +598,7 @@ services:
       - keycloak_admin_password
       - keycloak_db_dsn
     environment:
-      SQUADOPS__AGENT__ID: comms-agent
+      SQUADOPS__AGENT__ID: joi
       SQUADOPS_AGENT_ROLE: comms
       SQUADOPS_PROFILE: "${SQUADOPS_PROFILE:?Run bootstrap first}"
       SQUADOPS__SECRETS__PROVIDER: docker_secret
