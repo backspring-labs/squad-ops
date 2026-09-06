@@ -269,6 +269,51 @@ class TestBlankInputProbe:
         contract = VerificationContract.from_dict(emit_contract_dict(manifest))
         assert not [p for p in contract.behavioral.probes if p.id.endswith("-rejects-blank")]
 
+    def test_the_expectation_derives_from_the_declared_status(self):
+        """#874's other half, on the stack it was never applied to.
+
+        The pack hardcoded 422 here on the premise that "pydantic 422s a blank required
+        field before any app code runs, so the declared mapping cannot change what the
+        framework emits". This stack's own frozen `backend/errors.py` falsifies it: it
+        installs a `RequestValidationError` handler returning
+        `_ERROR_STATUS["validation_error"]`, so pydantic's 422 never reaches the client.
+        A manifest declaring 400 produced an app that correctly returned 400 and a probe
+        that demanded 422 — unwinnable by construction, and it rejected two real cycles
+        (`cyc_d0392c0a9c3d`, `cyc_9a1acc7623b4`) while `nextjs_ts` manifests declaring the
+        identical 400 passed, because that pack already derived.
+        """
+        raw = _raw()
+        raw["api"]["error_contract"]["codes"]["validation_error"] = {"http": 400}
+        contract = VerificationContract.from_dict(
+            emit_contract_dict(InterfaceManifest.from_dict(raw))
+        )
+        (probe,) = [p for p in contract.behavioral.probes if p.id.endswith("-rejects-blank")]
+        assert probe.expect == {"status": 400, "error_code": "validation_error"}
+
+    def test_the_probe_and_the_frozen_error_seam_cannot_disagree(self):
+        """The tie the hardcoded literal broke: one declared fact, two readers.
+
+        The probe asserts a status and the seeded `backend/errors.py` returns one. They are
+        derived from the same manifest field, so they must agree for every declared value —
+        which is the property that makes the probe winnable at all.
+        """
+        import re
+
+        for declared in (400, 422, 409):
+            raw = _raw()
+            raw["api"]["error_contract"]["codes"]["validation_error"] = {"http": declared}
+            manifest = InterfaceManifest.from_dict(raw)
+            contract = VerificationContract.from_dict(emit_contract_dict(manifest))
+            (probe,) = [p for p in contract.behavioral.probes if p.id.endswith("-rejects-blank")]
+
+            errors_py = {f["name"]: f["content"] for f in expand(manifest)}["backend/errors.py"]
+            seam = re.search(r'"validation_error":\s*(\d+)', errors_py)
+            assert seam, errors_py
+            assert probe.expect["status"] == int(seam.group(1)) == declared, (
+                f"declared {declared}: probe expects {probe.expect['status']}, "
+                f"the frozen seam returns {seam.group(1)}"
+            )
+
     def test_emitted_model_constrains_required_request_fields(self):
         from squadops.capabilities.scaffold import expand
 

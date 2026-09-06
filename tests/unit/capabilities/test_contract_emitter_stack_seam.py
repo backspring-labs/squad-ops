@@ -380,11 +380,31 @@ def test_a_seam_owned_stack_derives_the_rejection_status_from_the_authored_mappi
     assert expects and all(e["status"] == 400 for e in expects)
 
 
-def test_a_framework_fixed_stack_keeps_422_whatever_the_author_declares():
-    """The inverse trap: pydantic rejects a blank required field with its native 422
-    before any app code runs, so on stack #1 deriving from a 400 mapping would emit a
-    probe no correct app can pass — the same defect, mirrored."""
+def test_stack_1_derives_the_rejection_status_too_because_its_seam_owns_it():
+    """This test used to assert the opposite, and the premise it rested on was already
+    false when it was written.
+
+    It read: "pydantic rejects a blank required field with its native 422 before any app
+    code runs, so on stack #1 deriving from a 400 mapping would emit a probe no correct
+    app can pass". Stack #1's own frozen ``backend/errors.py`` installs
+    ``app.add_exception_handler(RequestValidationError, _validation_error_handler)``,
+    which returns ``_ERROR_STATUS["validation_error"]`` — pydantic's 422 never reaches the
+    client. That handler landed 2026-07-14 (fd222bf0); #874 landed 2026-08-12 (84dbd29d),
+    reasoning from FastAPI's default rather than from the scaffold's own seeded file, and
+    enshrined the stale premise in a comment and in this test.
+
+    Observed, not argued: `cyc_9a1acc7623b4` declared 400, its delivered app returned
+    **400**, and the probe demanded 422 — a rejection no app could have avoided. Two
+    `nextjs_ts` manifests declaring the identical 400 passed, because that pack derived.
+    """
     manifest = _remap_validation(_manifest(), 400)
+    expects = _rejection_expects(emit_contract_dict(manifest))
+    assert expects and all(e["status"] == 400 for e in expects)
+
+
+def test_stack_1_still_expects_422_when_that_is_what_the_author_declared():
+    """The control: deriving must not move the 53 stored stack-1 manifests that map 422."""
+    manifest = _remap_validation(_manifest(), 422)
     expects = _rejection_expects(emit_contract_dict(manifest))
     assert expects and all(e["status"] == 422 for e in expects)
 
