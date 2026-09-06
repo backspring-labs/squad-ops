@@ -13,6 +13,7 @@ from squadops.capabilities.handlers.base import (
     HandlerEvidence,
     HandlerResult,
 )
+from squadops.tasks.task_types import TaskType
 
 if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
@@ -47,7 +48,7 @@ class GovernanceIncorporateFeedbackHandler(_PlanningTaskHandler):
     """
 
     _handler_name = "governance_incorporate_feedback_handler"
-    _task_type = "governance.incorporate_feedback"
+    _task_type = TaskType.GOVERNANCE_INCORPORATE_FEEDBACK
     _role = "lead"
     _artifact_name = "planning_artifact_revised.md"
     _request_template_id = "request.governance_incorporate_feedback"
@@ -220,6 +221,6 @@ class QAValidateRefinementHandler(_PlanningTaskHandler):
     """Refinement handler: verify acceptance criteria still hold after refinement."""
 
     _handler_name = "qa_validate_refinement_handler"
-    _task_type = "qa.validate_refinement"
+    _task_type = TaskType.QA_VALIDATE_REFINEMENT
     _role = "qa"
     _artifact_name = "refinement_validation.md"

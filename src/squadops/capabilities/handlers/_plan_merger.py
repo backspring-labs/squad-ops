@@ -45,6 +45,7 @@ from squadops.cycles.proposed_role_tasks import (
     canonicalize_dep_ref,
     focus_key,
 )
+from squadops.tasks.task_types import TaskType
 
 logger = logging.getLogger(__name__)
 
@@ -52,8 +53,8 @@ logger = logging.getLogger(__name__)
 # Per SIP-0093 §5.8 rule 2 — only the domain owner's task_type lands in
 # canonical tasks. Dev tasks proposed by qa are dropped (qa stays in its
 # lane); qa tasks proposed by dev are likewise dropped.
-_DEV_TASK_TYPES = frozenset({"development.develop", "builder.assemble"})
-_QA_TASK_TYPES = frozenset({"qa.test"})
+_DEV_TASK_TYPES = frozenset({TaskType.DEVELOPMENT_DEVELOP, TaskType.BUILDER_ASSEMBLE})
+_QA_TASK_TYPES = frozenset({TaskType.QA_TEST})
 
 
 def _resolve_dependency_edges(

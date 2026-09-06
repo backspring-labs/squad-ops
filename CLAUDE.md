@@ -327,6 +327,12 @@ executing checks onto qa suites; a dev repair of a qa failure evaluated them on 
 the suite, `file_not_found` counted as an executed failure in both environments, and a correct
 fix was refused (#1259). The table goes in the PR's Evidence section.
 
+**Task-type identifiers** (#559, enforced by `tests/unit/architecture/test_task_type_literals_live_at_the_boundary.py`):
+1. **Strings at the boundary.** `task_type` is a plain string on the wire — envelopes, rows, Prefect names, YAML profiles and manifests. No serialization change, ever.
+2. **Constants at the core.** `squadops.tasks.task_types.TaskType` (a `StrEnum`) single-sources every dispatched task type; core-side comparisons, table keys and handler declarations use the member. A task-type literal anywhere else in `src/` or `adapters/` fails CI.
+3. **Properties over identity.** When orchestration treats some steps differently, declare the property on `TaskType` (`authors_qa_suite`, `authors_source`, `fails_without_correction`) and consult it — `if task_type == TaskType.X` in orchestration code is the review smell; an identity check names one instance, a property names the kind.
+4. **Tables over chains.** Type-keyed dispatch goes through one declarative mapping (`task_plan.repair_steps_for`, `correction_runner._CORRECTION_STEP_OUTPUT_BUCKET`), never an `if`/`elif` on type names.
+
 **Structure**:
 - Permanent utilities: `scripts/dev/`
 - Maintainer-only: `scripts/maintainer/`

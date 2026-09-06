@@ -7,6 +7,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from squadops.tasks.task_types import TaskType
+
 if TYPE_CHECKING:
     pass
 
@@ -19,7 +21,7 @@ class StrategyAnalyzeHandler(_CycleTaskHandler):
     """Cycle task handler for strategy analysis (strat role)."""
 
     _handler_name = "strategy_analyze_handler"
-    _task_type = "strategy.analyze_prd"
+    _task_type = TaskType.STRATEGY_ANALYZE_PRD
     _role = "strat"
     _artifact_name = "strategy_analysis.md"
 
@@ -28,7 +30,7 @@ class DevelopmentDesignHandler(_CycleTaskHandler):
     """Cycle task handler for development design (dev role)."""
 
     _handler_name = "development_design_handler"
-    _task_type = "development.design"
+    _task_type = TaskType.DEVELOPMENT_DESIGN
     _role = "dev"
     _artifact_name = "implementation_plan.md"
 
@@ -37,7 +39,7 @@ class QAValidateHandler(_CycleTaskHandler):
     """Cycle task handler for QA validation (qa role)."""
 
     _handler_name = "qa_validate_handler"
-    _task_type = "qa.validate"
+    _task_type = TaskType.QA_VALIDATE
     _role = "qa"
     _artifact_name = "validation_plan.md"
 
@@ -46,6 +48,6 @@ class DataReportHandler(_CycleTaskHandler):
     """Cycle task handler for data reporting (data role)."""
 
     _handler_name = "data_report_handler"
-    _task_type = "data.report"
+    _task_type = TaskType.DATA_REPORT
     _role = "data"
     _artifact_name = "data_report.md"

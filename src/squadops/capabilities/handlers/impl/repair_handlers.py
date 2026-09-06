@@ -22,6 +22,7 @@ from squadops.capabilities.handlers.cycle_tasks import _classify_file, _CycleTas
 from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
 from squadops.cycles.failure_evidence import failing_case_lines, failing_cases_from_evidence
 from squadops.cycles.verification_integrity import ResultStatus
+from squadops.tasks.task_types import TaskType
 
 logger = logging.getLogger(__name__)
 
@@ -843,7 +844,7 @@ class DevelopmentCorrectionRepairHandler(_RepairPromptMixin, _CycleTaskHandler):
     """
 
     _handler_name = "development_correction_repair_handler"
-    _task_type = "development.correction_repair"
+    _task_type = TaskType.DEVELOPMENT_CORRECTION_REPAIR
     _role = "dev"
     _artifact_name = "repair_output.md"
 
@@ -864,7 +865,7 @@ class BuilderAssembleRepairHandler(_RepairPromptMixin, _CycleTaskHandler):
     """
 
     _handler_name = "builder_assemble_repair_handler"
-    _task_type = "builder.assemble_repair"
+    _task_type = TaskType.BUILDER_ASSEMBLE_REPAIR
     _role = "builder"
     _artifact_name = "repair_output.md"
 
@@ -888,7 +889,7 @@ class QATestRepairHandler(_RepairPromptMixin, _CycleTaskHandler):
     """
 
     _handler_name = "qa_test_repair_handler"
-    _task_type = "qa.test_repair"
+    _task_type = TaskType.QA_TEST_REPAIR
     _role = "qa"
     _artifact_name = "repair_output.md"
 

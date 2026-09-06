@@ -104,6 +104,7 @@ from squadops.runtime.admission import admit_participants, release_participants
 from squadops.runtime.focus_reaper import release_owner_leases
 from squadops.runtime.recruitment import reserve_buffer_decision
 from squadops.tasks.models import TaskEnvelope, TaskResult, TaskResultStatus
+from squadops.tasks.task_types import fails_without_correction
 from squadops.telemetry.context import use_correlation_context
 from squadops.telemetry.models import CorrelationContext
 
@@ -2990,7 +2991,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # SEMANTIC_FAILURE / NEEDS_REPAIR / NEEDS_REPLAN → correction
 
         # D9: definition-of-done task failure → immediate abort, no correction
-        if envelope.task_type == "governance.define_done":
+        if fails_without_correction(envelope.task_type):
             raise _ExecutionError(
                 f"Definition-of-done task {envelope.task_id} failed (no correction): {result.error}"
             )

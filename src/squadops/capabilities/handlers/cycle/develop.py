@@ -19,6 +19,7 @@ from squadops.capabilities.handlers.base import (
 from squadops.capabilities.handlers.prompt_guard import _guard_prompt_size
 from squadops.llm.exceptions import LLMError
 from squadops.llm.models import ChatMessage
+from squadops.tasks.task_types import TaskType
 
 if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
@@ -53,7 +54,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
     """
 
     _handler_name = "development_develop_handler"
-    _task_type = "development.develop"
+    _task_type = TaskType.DEVELOPMENT_DEVELOP
     _role = "dev"
     _artifact_name = "build_output"  # overridden by multi-file output
 

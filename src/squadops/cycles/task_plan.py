@@ -71,6 +71,7 @@ from squadops.cycles.models import (
 from squadops.cycles.profile_utils import validate_reasoning_override
 from squadops.cycles.proposed_role_tasks import role_to_id
 from squadops.tasks.models import TaskEnvelope
+from squadops.tasks.task_types import TaskType, authors_qa_suite, authors_source
 
 logger = logging.getLogger(__name__)
 
@@ -79,24 +80,24 @@ if TYPE_CHECKING:
 
 # Pinned task_type → role mapping (SIP-0066 §5.4)
 CYCLE_TASK_STEPS: list[tuple[str, str]] = [
-    ("strategy.analyze_prd", "strat"),
-    ("development.design", "dev"),
-    ("qa.validate", "qa"),
-    ("data.report", "data"),
-    ("governance.review", "lead"),
+    (TaskType.STRATEGY_ANALYZE_PRD, "strat"),
+    (TaskType.DEVELOPMENT_DESIGN, "dev"),
+    (TaskType.QA_VALIDATE, "qa"),
+    (TaskType.DATA_REPORT, "data"),
+    (TaskType.GOVERNANCE_REVIEW, "lead"),
 ]
 
 # Build task steps (SIP-Enhanced-Agent-Build-Capabilities)
 BUILD_TASK_STEPS: list[tuple[str, str]] = [
-    ("development.develop", "dev"),
-    ("qa.test", "qa"),
+    (TaskType.DEVELOPMENT_DEVELOP, "dev"),
+    (TaskType.QA_TEST, "qa"),
 ]
 
 # Builder-aware build steps (SIP-0071)
 BUILDER_ASSEMBLY_TASK_STEPS: list[tuple[str, str]] = [
-    ("development.develop", "dev"),
-    ("builder.assemble", "builder"),
-    ("qa.test", "qa"),
+    (TaskType.DEVELOPMENT_DEVELOP, "dev"),
+    (TaskType.BUILDER_ASSEMBLE, "builder"),
+    (TaskType.QA_TEST, "qa"),
 ]
 
 # Framing task steps — pre-SIP-0093 backbone. The four upstream framing
@@ -105,13 +106,13 @@ BUILDER_ASSEMBLY_TASK_STEPS: list[tuple[str, str]] = [
 # review_plan. The full sequence is built by ``build_planning_steps``
 # below, which threads in the proposer steps per ``plan_authoring_contributors``.
 PLANNING_TASK_STEPS: list[tuple[str, str]] = [
-    ("data.research_context", "data"),
-    ("strategy.frame_objective", "strat"),
-    ("development.design_plan", "dev"),
-    ("qa.define_test_strategy", "qa"),
-    ("governance.prepare_plan_authoring_brief", "lead"),
-    ("governance.merge_plan", "lead"),
-    ("governance.review_plan", "lead"),
+    (TaskType.DATA_RESEARCH_CONTEXT, "data"),
+    (TaskType.STRATEGY_FRAME_OBJECTIVE, "strat"),
+    (TaskType.DEVELOPMENT_DESIGN_PLAN, "dev"),
+    (TaskType.QA_DEFINE_TEST_STRATEGY, "qa"),
+    (TaskType.GOVERNANCE_PREPARE_PLAN_AUTHORING_BRIEF, "lead"),
+    (TaskType.GOVERNANCE_MERGE_PLAN, "lead"),
+    (TaskType.GOVERNANCE_REVIEW_PLAN, "lead"),
 ]
 
 
@@ -121,9 +122,9 @@ PLANNING_TASK_STEPS: list[tuple[str, str]] = [
 # from ``proposed_role_tasks.role_to_id`` so it can't drift from the merger's
 # dependency-key normalization (issue #189).
 _PLAN_AUTHORING_PROPOSER_STEPS: dict[str, tuple[str, str]] = {
-    "development": ("development.propose_plan_tasks", role_to_id("development")),
-    "qa": ("qa.propose_plan_tasks", role_to_id("qa")),
-    "strategy": ("strategy.propose_plan_guidance", role_to_id("strategy")),
+    "development": (TaskType.DEVELOPMENT_PROPOSE_PLAN_TASKS, role_to_id("development")),
+    "qa": (TaskType.QA_PROPOSE_PLAN_TASKS, role_to_id("qa")),
+    "strategy": (TaskType.STRATEGY_PROPOSE_PLAN_GUIDANCE, role_to_id("strategy")),
 }
 
 
@@ -171,16 +172,16 @@ def build_planning_steps(
         )
 
     steps: list[tuple[str, str]] = [
-        ("data.research_context", "data"),
-        ("strategy.frame_objective", "strat"),
-        ("development.design_plan", "dev"),
+        (TaskType.DATA_RESEARCH_CONTEXT, "data"),
+        (TaskType.STRATEGY_FRAME_OBJECTIVE, "strat"),
+        (TaskType.DEVELOPMENT_DESIGN_PLAN, "dev"),
     ]
     if authors_manifest:
         steps.append((AUTHOR_MANIFEST_TASK_TYPE, AUTHOR_MANIFEST_ROLE))
     steps.extend(
         [
-            ("qa.define_test_strategy", "qa"),
-            ("governance.prepare_plan_authoring_brief", "lead"),
+            (TaskType.QA_DEFINE_TEST_STRATEGY, "qa"),
+            (TaskType.GOVERNANCE_PREPARE_PLAN_AUTHORING_BRIEF, "lead"),
         ]
     )
     # Canonical order: development first (largest contribution surface),
@@ -190,8 +191,8 @@ def build_planning_steps(
             steps.append(_PLAN_AUTHORING_PROPOSER_STEPS[role])
     steps.extend(
         [
-            ("governance.merge_plan", "lead"),
-            ("governance.review_plan", "lead"),
+            (TaskType.GOVERNANCE_MERGE_PLAN, "lead"),
+            (TaskType.GOVERNANCE_REVIEW_PLAN, "lead"),
         ]
     )
     return steps
@@ -199,21 +200,21 @@ def build_planning_steps(
 
 # Refinement task steps (SIP-0078 §5.10)
 REFINEMENT_TASK_STEPS: list[tuple[str, str]] = [
-    ("governance.incorporate_feedback", "lead"),
-    ("qa.validate_refinement", "qa"),
+    (TaskType.GOVERNANCE_INCORPORATE_FEEDBACK, "lead"),
+    (TaskType.QA_VALIDATE_REFINEMENT, "qa"),
 ]
 
 # Implementation task steps (SIP-0079 §7.2): contract + build steps
 IMPLEMENTATION_TASK_STEPS: list[tuple[str, str]] = [
-    ("governance.define_done", "lead"),
-    ("development.develop", "dev"),
-    ("qa.test", "qa"),
+    (TaskType.GOVERNANCE_DEFINE_DONE, "lead"),
+    (TaskType.DEVELOPMENT_DEVELOP, "dev"),
+    (TaskType.QA_TEST, "qa"),
 ]
 
 # Correction protocol task steps (SIP-0079 §7.7)
 CORRECTION_TASK_STEPS: list[tuple[str, str]] = [
-    ("data.analyze_failure", "data"),
-    ("governance.correction_decision", "lead"),
+    (TaskType.DATA_ANALYZE_FAILURE, "data"),
+    (TaskType.GOVERNANCE_CORRECTION_DECISION, "lead"),
 ]
 
 # Repair task steps (SIP-0079 §7.7).
@@ -230,7 +231,7 @@ CORRECTION_TASK_STEPS: list[tuple[str, str]] = [
 # behavioral retest (#456). Any future LLM judgment on repairs belongs
 # AFTER the retest, on the governance role, fail-closed (#557).
 REPAIR_TASK_STEPS: list[tuple[str, str]] = [
-    ("development.correction_repair", "dev"),
+    (TaskType.DEVELOPMENT_CORRECTION_REPAIR, "dev"),
 ]
 
 # Specialized repair sequences keyed by the failed task's task_type. The
@@ -240,9 +241,9 @@ REPAIR_TASK_STEPS: list[tuple[str, str]] = [
 # packaging output) and the builder role is silently bypassed even though
 # the failed work is the builder's.
 _REPAIR_STEPS_BY_FAILED_TASK_TYPE: dict[str, list[tuple[str, str]]] = {
-    "development.develop": REPAIR_TASK_STEPS,
-    "builder.assemble": [
-        ("builder.assemble_repair", "builder"),
+    TaskType.DEVELOPMENT_DEVELOP: REPAIR_TASK_STEPS,
+    TaskType.BUILDER_ASSEMBLE: [
+        (TaskType.BUILDER_ASSEMBLE_REPAIR, "builder"),
     ],
 }
 
@@ -255,10 +256,10 @@ _REPAIR_STEPS_BY_FAILED_TASK_TYPE: dict[str, list[tuple[str, str]]] = {
 # deterministically (failure_evidence.classify_failure_locus); ambiguity falls
 # through to the default table.
 QA_TEST_REPAIR_STEPS: list[tuple[str, str]] = [
-    ("qa.test_repair", "qa"),
+    (TaskType.QA_TEST_REPAIR, "qa"),
 ]
 _REPAIR_STEPS_BY_FAILED_TASK_TYPE_OWN_ARTIFACT: dict[str, list[tuple[str, str]]] = {
-    "qa.test": QA_TEST_REPAIR_STEPS,
+    TaskType.QA_TEST: QA_TEST_REPAIR_STEPS,
 }
 
 
@@ -323,11 +324,11 @@ def repair_steps_for(
 
 # Wrap-up task steps (SIP-0080 §7.1)
 WRAPUP_TASK_STEPS: list[tuple[str, str]] = [
-    ("data.gather_evidence", "data"),
-    ("qa.assess_outcomes", "qa"),
-    ("data.classify_unresolved", "data"),
-    ("governance.closeout_decision", "lead"),
-    ("governance.publish_handoff", "lead"),
+    (TaskType.DATA_GATHER_EVIDENCE, "data"),
+    (TaskType.QA_ASSESS_OUTCOMES, "qa"),
+    (TaskType.DATA_CLASSIFY_UNRESOLVED, "data"),
+    (TaskType.GOVERNANCE_CLOSEOUT_DECISION, "lead"),
+    (TaskType.GOVERNANCE_PUBLISH_HANDOFF, "lead"),
 ]
 
 # Well-known workload types that have dedicated step selection.
@@ -350,7 +351,7 @@ _BUILDER_TASK_TYPES = {task for task, role in BUILDER_ASSEMBLY_TASK_STEPS if rol
 # (every required check `subject_missing` → blocked_unverified).
 # Canonical execution order of the workload-invariant tail: assembly, then
 # verification. Verification must be the last word on the deliverable (#458).
-_WORKLOAD_INVARIANT_TAIL_ORDER = ("builder.assemble", "qa.test")
+_WORKLOAD_INVARIANT_TAIL_ORDER = (TaskType.BUILDER_ASSEMBLE, TaskType.QA_TEST)
 _WORKLOAD_INVARIANT_TASK_TYPES = frozenset(_WORKLOAD_INVARIANT_TAIL_ORDER)
 
 # Builder-role (SIP-0071) capability namespace. A run is a *builder deliverable*
@@ -686,7 +687,7 @@ def _contract_assertion_criteria(
     access. pf-54: five authored suite versions asserted 200 where the probe pinned 201 —
     the authoring injection (layer 1) states the pins; this check enforces them. Empty in
     author mode, non-qa tasks, and probe-less contracts (byte-identical plans there)."""
-    if task_type != "qa.test" or contract is None:
+    if not authors_qa_suite(task_type) or contract is None:
         return []
     pinned = contract.pinned_endpoint_statuses()
     if not pinned:
@@ -730,7 +731,7 @@ def _assertion_kind_criteria(
     boolean equal to a name and a correct repair was rejected three rounds running; the
     #1094 fill gate already refuses this for fills, this is its free-authored counterpart.
     Empty in author mode, non-qa tasks, and manifests declaring no checkable kind."""
-    if task_type != "qa.test" or contract is None or interface_manifest is None:
+    if not authors_qa_suite(task_type) or contract is None or interface_manifest is None:
         return []
     kinds = declared_field_kinds(interface_manifest)
     if not kinds:
@@ -774,7 +775,7 @@ def _dom_anchor_criteria(
     fay-14's suite made zero anchor queries in every version while the views carried the
     anchors from first fill; the appendix that says "query only these" is guidance, this is
     the guarantee. Empty in author mode, non-qa tasks, and manifests declaring no anchors."""
-    if task_type != "qa.test" or contract is None or interface_manifest is None:
+    if not authors_qa_suite(task_type) or contract is None or interface_manifest is None:
         return []
     inventory = {r.view: list(r.testids) for r in interface_manifest.frontend.routes if r.testids}
     if not inventory:
@@ -801,7 +802,7 @@ def _harness_boundary_criteria(
     guidance; this is the guarantee). Empty in author mode, non-qa tasks, or a stack with no
     declared boundary. Scoped to ``.py`` — ``harness_boundary`` is a Python-AST check; frontend
     ``.jsx`` tests carry their own boundary check (future)."""
-    if task_type != "qa.test" or contract is None:
+    if not authors_qa_suite(task_type) or contract is None:
         return []
     stack = contract.skeleton.expander
     entry = list(harness_entry_modules(stack))
@@ -853,7 +854,7 @@ def _fill_slot_signature_criteria(
     non-scaffoldable stacks, non-dev tasks, and tasks that claim no ``.py`` fill slot
     (the ``.jsx`` slots are #668/D3's territory). status_code and the router
     assignment stay restore-owned (SIP-0100), deliberately outside this check."""
-    if task_type != "development.develop" or interface_manifest is None:
+    if not authors_source(task_type) or interface_manifest is None:
         return []
     from squadops.capabilities.scaffold import expand, fill_slot_paths, is_scaffoldable_stack
     from squadops.cycles.bound_scaffold_record import _normalize
@@ -1041,7 +1042,7 @@ def generate_task_plan(
     implementation_artifacts = [
         artifact
         for s in steps
-        if not isinstance(s, tuple) and getattr(s, "task_type", None) == "development.develop"
+        if not isinstance(s, tuple) and authors_source(getattr(s, "task_type", None))
         for artifact in (getattr(s, "expected_artifacts", None) or [])
     ]
 
@@ -1108,7 +1109,7 @@ def generate_task_plan(
             # own artifacts are the test files, so a no-drift correction must reach
             # past them to the dev source. Dev tasks already own their source
             # artifact, so omitting the key keeps their corrections byte-identical.
-            if task_type == "qa.test":
+            if authors_qa_suite(task_type):
                 inputs["implementation_artifacts"] = implementation_artifacts
             acceptance = _applicable_acceptance(plan_task)
             # SIP-0098 98.3: in bind mode, resolve the task's criteria_refs into
@@ -1208,7 +1209,7 @@ def _attach_unbound_contract_criteria(
     residue = [rid for rid in contract.criterion_index() if rid not in bound]
     if not residue:
         return
-    tail_qa = next((e for e in reversed(envelopes) if e.task_type == "qa.test"), None)
+    tail_qa = next((e for e in reversed(envelopes) if authors_qa_suite(e.task_type)), None)
     if tail_qa is None:
         return
     existing = list(tail_qa.inputs.get("acceptance_criteria") or [])

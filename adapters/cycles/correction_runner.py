@@ -61,6 +61,7 @@ from squadops.cycles.plan_delta import PlanDelta
 from squadops.cycles.task_outcome import CorrectionTermination, CorrectionTerminationReason
 from squadops.events.types import EventType
 from squadops.tasks.models import TaskEnvelope
+from squadops.tasks.task_types import TaskType
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -73,6 +74,13 @@ if TYPE_CHECKING:
     from squadops.tasks.models import TaskResult
 
 logger = logging.getLogger(__name__)
+
+#: Which named bucket each correction step's outputs land in, so PlanDelta reads each
+#: field from the handler that owns it (#95) — a table, not an if/elif on type names (#559).
+_CORRECTION_STEP_OUTPUT_BUCKET: dict[str, str] = {
+    TaskType.DATA_ANALYZE_FAILURE: "analysis",
+    TaskType.GOVERNANCE_CORRECTION_DECISION: "decision",
+}
 
 
 def _top_level_package(path: str) -> str:
@@ -1515,9 +1523,10 @@ class CorrectionRunner:
             step_outputs = {
                 k: v for k, v in (corr_result.outputs or {}).items() if k != "artifacts"
             }
-            if task_type == "data.analyze_failure":
+            bucket = _CORRECTION_STEP_OUTPUT_BUCKET.get(task_type)
+            if bucket == "analysis":
                 analysis_outputs = step_outputs
-            elif task_type == "governance.correction_decision":
+            elif bucket == "decision":
                 decision_outputs = step_outputs
 
         # 4. Read correction_path — bounded by the deterministic policy guard

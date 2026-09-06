@@ -15,6 +15,7 @@ from squadops.capabilities.handlers.base import (
     HandlerResult,
 )
 from squadops.capabilities.handlers.cycle import _CycleTaskHandler
+from squadops.tasks.task_types import TaskType
 
 if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
@@ -62,7 +63,7 @@ class GovernanceMergePlanHandler(_CycleTaskHandler):
     """
 
     _handler_name = "governance_merge_plan_handler"
-    _task_type = "governance.merge_plan"
+    _task_type = TaskType.GOVERNANCE_MERGE_PLAN
     _role = "lead"
 
     async def handle(

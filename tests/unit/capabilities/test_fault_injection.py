@@ -192,12 +192,18 @@ def test_every_declared_fault_is_reachable_from_a_wired_seam():
     ]
     assert wired, "no handler calls the injector — every fault declaration is a no-op"
 
+    from squadops.tasks.task_types import TaskType
+
     capabilities: set[str] = set()
     for path in wired:
         for line in path.read_text(encoding="utf-8").splitlines():
             stripped = line.strip()
             if stripped.startswith("_task_type = "):
-                capabilities.add(stripped.split("=", 1)[1].strip().strip("\"'"))
+                declared = stripped.split("=", 1)[1].strip().strip("\"'")
+                # #559: handlers declare the member, not the string.
+                if declared.startswith("TaskType."):
+                    declared = TaskType[declared.removeprefix("TaskType.")].value
+                capabilities.add(declared)
     # cycle/base.py is the shared seam for every _CycleTaskHandler subclass, so a
     # capability declared in a module that inherits it is wired too.
     from squadops.capabilities.handlers.impl import repair_handlers

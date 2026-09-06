@@ -15,6 +15,7 @@ from squadops.capabilities.handlers.base import (
 from squadops.capabilities.handoff_sections import missing_sections
 from squadops.llm.exceptions import LLMError
 from squadops.llm.models import ChatMessage
+from squadops.tasks.task_types import TaskType
 
 if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
@@ -43,7 +44,7 @@ class BuilderAssembleHandler(_CycleTaskHandler):
     """
 
     _handler_name = "builder_assemble_handler"
-    _task_type = "builder.assemble"
+    _task_type = TaskType.BUILDER_ASSEMBLE
     _role = "builder"
     _artifact_name = "build_output"
     _prompt_layer_kind = "assemble"

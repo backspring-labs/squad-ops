@@ -27,11 +27,12 @@ from collections.abc import Mapping
 from typing import Any
 
 from squadops.capabilities.scaffold import is_scaffoldable_stack
+from squadops.tasks.task_types import TaskType
 
 #: The framing stage that authors the manifest (SIP-0103 §3.1). Dev owns it: the manifest
 #: is an architecture artifact, and §5a places it at the best-informed moment — after the
 #: technical design, rather than riding the lead's plan authoring at the least-informed one.
-AUTHOR_MANIFEST_TASK_TYPE = "development.author_manifest"
+AUTHOR_MANIFEST_TASK_TYPE = TaskType.DEVELOPMENT_AUTHOR_MANIFEST
 AUTHOR_MANIFEST_ROLE = "dev"
 
 #: The ``provenance.mode`` a squad-authored manifest carries (#803). Presence of the block
@@ -82,7 +83,7 @@ INPUT_CONTRACT_EXTENSION_POINTS: tuple[str, ...] = ("cross_cycle_recall",)
 #:
 #: Everything before this point is restored from the superseded run's checkpoint: research and
 #: the objective frame are upstream of the design and unaffected by a note about it.
-REVISION_RESTART_TASK_TYPE = "development.design_plan"
+REVISION_RESTART_TASK_TYPE = TaskType.DEVELOPMENT_DESIGN_PLAN
 
 #: Recorded as ``GateDecision.decided_by`` when the design asked nothing and the gate passed
 #: itself. Distinct from a human's approval on purpose: the argument for question-gating is

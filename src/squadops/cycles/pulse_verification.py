@@ -22,6 +22,7 @@ from squadops.cycles.pulse_models import (
     SuiteOutcome,
 )
 from squadops.tasks.models import TaskEnvelope
+from squadops.tasks.task_types import TaskType
 
 if TYPE_CHECKING:
     from squadops.capabilities.acceptance import AcceptanceCheckEngine
@@ -93,10 +94,10 @@ def collect_cadence_bound_suites(
 # =============================================================================
 
 REPAIR_TASK_STEPS: list[tuple[str, str]] = [
-    ("data.analyze_verification", "data"),
-    ("governance.root_cause_analysis", "lead"),
-    ("strategy.corrective_plan", "strat"),
-    ("development.repair", "dev"),
+    (TaskType.DATA_ANALYZE_VERIFICATION, "data"),
+    (TaskType.GOVERNANCE_ROOT_CAUSE_ANALYSIS, "lead"),
+    (TaskType.STRATEGY_CORRECTIVE_PLAN, "strat"),
+    (TaskType.DEVELOPMENT_REPAIR, "dev"),
 ]
 
 

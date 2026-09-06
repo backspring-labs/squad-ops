@@ -31,6 +31,7 @@ from squadops.cycles.wrapup_models import (
     NextCycleRecommendation,
     confidence_ceiling,
 )
+from squadops.tasks.task_types import TaskType
 
 if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
@@ -75,7 +76,7 @@ class DataGatherEvidenceHandler(_PlanningTaskHandler):
     """
 
     _handler_name = "data_gather_evidence_handler"
-    _task_type = "data.gather_evidence"
+    _task_type = TaskType.DATA_GATHER_EVIDENCE
     _role = "data"
     _artifact_name = "evidence_inventory.md"
 
@@ -91,7 +92,7 @@ class QAAssessOutcomesHandler(_PlanningTaskHandler):
     """Planned-vs-actual comparison, acceptance criteria evaluation."""
 
     _handler_name = "qa_assess_outcomes_handler"
-    _task_type = "qa.assess_outcomes"
+    _task_type = TaskType.QA_ASSESS_OUTCOMES
     _role = "qa"
     _artifact_name = "outcome_assessment.md"
 
@@ -104,7 +105,7 @@ class DataClassifyUnresolvedHandler(_PlanningTaskHandler):
     """
 
     _handler_name = "data_classify_unresolved_handler"
-    _task_type = "data.classify_unresolved"
+    _task_type = TaskType.DATA_CLASSIFY_UNRESOLVED
     _role = "data"
     _artifact_name = "unresolved_items.md"
 
@@ -162,7 +163,7 @@ class GovernanceCloseoutDecisionHandler(_PlanningTaskHandler):
     """
 
     _handler_name = "governance_closeout_decision_handler"
-    _task_type = "governance.closeout_decision"
+    _task_type = TaskType.GOVERNANCE_CLOSEOUT_DECISION
     _role = "lead"
     _artifact_name = "closeout_artifact.md"
 
@@ -283,7 +284,7 @@ class GovernancePublishHandoffHandler(_PlanningTaskHandler):
     """
 
     _handler_name = "governance_publish_handoff_handler"
-    _task_type = "governance.publish_handoff"
+    _task_type = TaskType.GOVERNANCE_PUBLISH_HANDOFF
     _role = "lead"
     _artifact_name = "handoff_artifact.md"
 

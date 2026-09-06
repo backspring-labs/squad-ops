@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 from squadops.capabilities.handlers.planning.base import _PlanningTaskHandler
+from squadops.tasks.task_types import TaskType
 
 # ---------------------------------------------------------------------------
 # 5 Planning handlers (SIP-0078 §5.3)
@@ -19,7 +20,7 @@ class DataResearchContextHandler(_PlanningTaskHandler):
     """Planning handler: gather constraints, prior patterns, risk areas."""
 
     _handler_name = "data_research_context_handler"
-    _task_type = "data.research_context"
+    _task_type = TaskType.DATA_RESEARCH_CONTEXT
     _role = "data"
     _artifact_name = "context_research.md"
 
@@ -28,7 +29,7 @@ class StrategyFrameObjectiveHandler(_PlanningTaskHandler):
     """Planning handler: frame objective, scope, non-goals, acceptance criteria."""
 
     _handler_name = "strategy_frame_objective_handler"
-    _task_type = "strategy.frame_objective"
+    _task_type = TaskType.STRATEGY_FRAME_OBJECTIVE
     _role = "strat"
     _artifact_name = "objective_frame.md"
 
@@ -37,7 +38,7 @@ class DevelopmentDesignPlanHandler(_PlanningTaskHandler):
     """Planning handler: technical design, interfaces, sequencing, proto validation."""
 
     _handler_name = "development_design_plan_handler"
-    _task_type = "development.design_plan"
+    _task_type = TaskType.DEVELOPMENT_DESIGN_PLAN
     _role = "dev"
     _artifact_name = "technical_design.md"
 
@@ -64,6 +65,6 @@ class QADefineTestStrategyHandler(_PlanningTaskHandler):
     """Planning handler: acceptance checklist, test strategy, defect severity rubric."""
 
     _handler_name = "qa_define_test_strategy_handler"
-    _task_type = "qa.define_test_strategy"
+    _task_type = TaskType.QA_DEFINE_TEST_STRATEGY
     _role = "qa"
     _artifact_name = "test_strategy.md"

@@ -13,6 +13,7 @@ from squadops.capabilities.handlers.base import (
     HandlerEvidence,
     HandlerResult,
 )
+from squadops.tasks.task_types import TaskType
 
 if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
@@ -36,7 +37,7 @@ class GovernancePreparePlanAuthoringBriefHandler(_PlanningTaskHandler):
     """
 
     _handler_name = "governance_prepare_plan_authoring_brief_handler"
-    _task_type = "governance.prepare_plan_authoring_brief"
+    _task_type = TaskType.GOVERNANCE_PREPARE_PLAN_AUTHORING_BRIEF
     _role = "lead"
     _artifact_name = "plan_authoring_brief.yaml"
 

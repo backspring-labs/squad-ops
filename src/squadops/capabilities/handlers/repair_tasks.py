@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import Any
 
 from squadops.capabilities.handlers.cycle_tasks import _CycleTaskHandler
+from squadops.tasks.task_types import TaskType
 
 
 class _RepairTaskHandler(_CycleTaskHandler):
@@ -69,7 +70,7 @@ class DataAnalyzeVerificationHandler(_RepairTaskHandler):
     """Analyze verification failures and extract actionable data patterns."""
 
     _handler_name = "data_analyze_verification_handler"
-    _task_type = "data.analyze_verification"
+    _task_type = TaskType.DATA_ANALYZE_VERIFICATION
     _role = "data"
     _artifact_name = "verification_analysis.md"
 
@@ -78,7 +79,7 @@ class GovernanceRootCauseHandler(_RepairTaskHandler):
     """Perform root cause analysis on verification failures."""
 
     _handler_name = "governance_root_cause_handler"
-    _task_type = "governance.root_cause_analysis"
+    _task_type = TaskType.GOVERNANCE_ROOT_CAUSE_ANALYSIS
     _role = "lead"
     _artifact_name = "root_cause_analysis.md"
 
@@ -87,7 +88,7 @@ class StrategyCorrectivePlanHandler(_RepairTaskHandler):
     """Produce a corrective action plan from root cause analysis."""
 
     _handler_name = "strategy_corrective_plan_handler"
-    _task_type = "strategy.corrective_plan"
+    _task_type = TaskType.STRATEGY_CORRECTIVE_PLAN
     _role = "strat"
     _artifact_name = "corrective_plan.md"
 
@@ -96,6 +97,6 @@ class DevelopmentRepairHandler(_RepairTaskHandler):
     """Execute corrective repairs based on the corrective plan."""
 
     _handler_name = "development_repair_handler"
-    _task_type = "development.repair"
+    _task_type = TaskType.DEVELOPMENT_REPAIR
     _role = "dev"
     _artifact_name = "repair_output.md"

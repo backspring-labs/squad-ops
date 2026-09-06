@@ -30,6 +30,7 @@ from squadops.capabilities.handlers.impl._json_extraction import (
 from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
 from squadops.llm.exceptions import LLMError
 from squadops.llm.models import ChatMessage
+from squadops.tasks.task_types import TaskType
 
 if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
@@ -102,7 +103,7 @@ class DataAnalyzeFailureHandler(_CycleTaskHandler):
     """Analyze a task failure and classify its root cause."""
 
     _handler_name = "data_analyze_failure_handler"
-    _task_type = "data.analyze_failure"
+    _task_type = TaskType.DATA_ANALYZE_FAILURE
     _role = "data"
     _artifact_name = "failure_analysis.md"
 
