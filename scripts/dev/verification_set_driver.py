@@ -725,10 +725,22 @@ def _p0_fullstack_fastapi_react(manifest: Any, seeded: Reader) -> dict:
                 expected.append(want)
                 if want not in models:
                     mismatches.append(want)
-            elif (not f.required) or (f.has_default and f.default is None):
+            elif ((not f.required) or (f.has_default and f.default is None)) and not (
+                f.has_default and f.default is not None
+            ):
                 # #1125 (1.6.6 A, prediction R1): an optional field — declared
                 # ``required: false`` or ``default: null`` — freezes nullable. The
                 # ``str = None`` form pydantic rejects sat under five of six 1.6.5 rolls.
+                #
+                # A declared NON-NULL default is the exception, and it is the rule's
+                # boundary rather than a weakening of it: ``{required: false, default: 0}``
+                # renders ``int = 0``, which is what the manifest asked for, and demanding
+                # ``int | None = None`` would discard the default. #1125 was about an
+                # optional field with NO default; no manifest had produced the other shape
+                # until the 1.7.2 shakeout on `e2dff444` (`cyc_9a1acc7623b4`), where
+                # ``participant_count: {type: int, required: false, default: 0}`` FALSIFIED
+                # P0 against a scaffold that was right. P0 is a carried prediction, so on a
+                # counted roll that false positive would have stopped the set.
                 want = f"{f.name}: {_py_type(f.type)} | None = None"
                 nullable_expected.append(want)
                 if want not in models:
