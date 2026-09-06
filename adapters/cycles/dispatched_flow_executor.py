@@ -2932,6 +2932,19 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         if enriched_envelope is not None:
             enriched_envelope.inputs["prior_attempts"] = _prior
 
+        # The emission-retry marker (#566) rides exactly ONE dispatch — the retry it aims.
+        # It was set on the envelope and never cleared, so every later dispatch of the same
+        # envelope from the correction loop still carried it: the handler appended stale
+        # format feedback to a repair-driven re-take, and the fault injector, which reads
+        # the marker as "this is an emission retry", re-applied an all-emission-attempts
+        # fault to the recovery the diagnostic exists to observe (deploy-A absent-suite
+        # diagnostic cyc_1b3b225e593e: the fault bit on all three correction re-dispatches
+        # and the run exhausted its budget). Cleared here; the RETRYABLE branch below sets
+        # it again for a genuine emission retry.
+        envelope.inputs.pop("emission_retry_feedback", None)
+        if enriched_envelope is not None:
+            enriched_envelope.inputs.pop("emission_retry_feedback", None)
+
         retained = failing_cases_from_evidence(result.outputs or {})
         if retained:
             envelope.inputs["prior_failing_cases"] = retained
