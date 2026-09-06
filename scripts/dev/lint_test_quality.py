@@ -297,15 +297,28 @@ def lint_file(filepath: str) -> list[str]:
     return diagnostics
 
 
-def _collect_test_files(paths: list[str]) -> list[Path]:
-    """Expand a mix of files and directories into a sorted list of test_*.py files."""
+def _is_under(path: Path, dirs: list[Path]) -> bool:
+    resolved = path.resolve()
+    return any(resolved == d or d in resolved.parents for d in dirs)
+
+
+def _collect_test_files(paths: list[str], exclude: list[str] | None = None) -> list[Path]:
+    """Expand a mix of files and directories into a sorted list of test_*.py files.
+
+    `exclude` names directories whose files are left out of a directory expansion
+    (#1316: the regression gate runs `tests/unit` whole and passes the same
+    exclusions here that it passes to pytest, so the lint and the suite never
+    cover different sets). A file named explicitly is linted even if it sits
+    under an excluded directory — the caller asked for that file.
+    """
+    excluded = [Path(d).resolve() for d in (exclude or [])]
     result: list[Path] = []
     for p in paths:
         path = Path(p)
         if path.is_file() and path.name.startswith("test_") and path.suffix == ".py":
             result.append(path)
         elif path.is_dir():
-            result.extend(sorted(path.rglob("test_*.py")))
+            result.extend(f for f in sorted(path.rglob("test_*.py")) if not _is_under(f, excluded))
         elif path.is_file():
             # Non-test file — skip silently (allows glob expansions)
             pass
@@ -314,15 +327,35 @@ def _collect_test_files(paths: list[str]) -> list[Path]:
     return result
 
 
+def _parse_args(argv: list[str]) -> tuple[list[str], list[str]]:
+    """Split argv into (paths, excluded dirs). `--exclude DIR` may repeat."""
+    paths: list[str] = []
+    exclude: list[str] = []
+    it = iter(argv)
+    for arg in it:
+        if arg == "--exclude":
+            try:
+                exclude.append(next(it))
+            except StopIteration:
+                print("--exclude needs a directory", file=sys.stderr)
+                sys.exit(2)
+        elif arg.startswith("--exclude="):
+            exclude.append(arg.split("=", 1)[1])
+        else:
+            paths.append(arg)
+    return paths, exclude
+
+
 def main() -> int:
-    if len(sys.argv) < 2:
+    paths, exclude = _parse_args(sys.argv[1:])
+    if not paths:
         print(
-            f"Usage: {sys.argv[0]} <test_file.py|directory> [...]",
+            f"Usage: {sys.argv[0]} [--exclude DIR ...] <test_file.py|directory> [...]",
             file=sys.stderr,
         )
         return 2
 
-    test_files = _collect_test_files(sys.argv[1:])
+    test_files = _collect_test_files(paths, exclude)
     if not test_files:
         print("No test files found.", file=sys.stderr)
         return 2
