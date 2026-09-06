@@ -1,6 +1,6 @@
 """Capability handlers.
 
-Handlers fulfill capability contracts by executing against ports.
+Handlers fulfill task contracts by executing against ports.
 Part of SIP-0.8.8 Phase 5.
 """
 

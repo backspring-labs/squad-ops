@@ -47,7 +47,7 @@ class GovernanceIncorporateFeedbackHandler(_PlanningTaskHandler):
     """
 
     _handler_name = "governance_incorporate_feedback_handler"
-    _capability_id = "governance.incorporate_feedback"
+    _task_type = "governance.incorporate_feedback"
     _role = "lead"
     _artifact_name = "planning_artifact_revised.md"
     _request_template_id = "request.governance_incorporate_feedback"
@@ -160,7 +160,7 @@ class GovernanceIncorporateFeedbackHandler(_PlanningTaskHandler):
             duration_ms = 0.0
             evidence = HandlerEvidence.create(
                 handler_name=self._handler_name,
-                capability_id=self._capability_id,
+                task_type=self._task_type,
                 duration_ms=duration_ms,
                 inputs_hash=self._hash_dict(inputs),
             )
@@ -220,6 +220,6 @@ class QAValidateRefinementHandler(_PlanningTaskHandler):
     """Refinement handler: verify acceptance criteria still hold after refinement."""
 
     _handler_name = "qa_validate_refinement_handler"
-    _capability_id = "qa.validate_refinement"
+    _task_type = "qa.validate_refinement"
     _role = "qa"
     _artifact_name = "refinement_validation.md"

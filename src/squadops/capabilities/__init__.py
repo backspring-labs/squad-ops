@@ -1,7 +1,7 @@
 """
 Capability Contracts domain layer.
 
-This module implements SIP-0.8.6: Declarative capability contracts enabling
+This module implements SIP-0.8.6: Declarative task contracts enabling
 machine-readable delivery expectations, reference workloads composing
 capabilities into DAGs, and deterministic acceptance checks.
 """
@@ -26,7 +26,6 @@ from squadops.capabilities.models import (
     AcceptanceContext,
     AcceptanceResult,
     ArtifactSpec,
-    CapabilityContract,
     # Enums
     CheckType,
     FailureRecord,
@@ -35,6 +34,7 @@ from squadops.capabilities.models import (
     InputSpec,
     LifecycleScope,
     OutputSpec,
+    TaskContract,
     TaskRecord,
     TaskStatus,
     Trigger,
@@ -58,7 +58,7 @@ __all__ = [
     "OutputSpec",
     "ArtifactSpec",
     "AcceptanceCheck",
-    "CapabilityContract",
+    "TaskContract",
     # Workload models
     "WorkloadTask",
     "Workload",

@@ -24,11 +24,11 @@ from squadops.capabilities.exceptions import (
 from squadops.capabilities.models import (
     AcceptanceCheck,
     ArtifactSpec,
-    CapabilityContract,
     CheckType,
     InputSpec,
     LifecycleScope,
     OutputSpec,
+    TaskContract,
     Trigger,
     Workload,
     WorkloadTask,
@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 class FileSystemCapabilityRepository(CapabilityRepository):
     """
-    Filesystem-based storage for capability contracts and workloads.
+    Filesystem-based storage for task contracts and workloads.
 
     Directory structure:
     {base_path}/
@@ -69,7 +69,7 @@ class FileSystemCapabilityRepository(CapabilityRepository):
         """
         self.base_path = Path(base_path)
         self.validate_schemas = validate_schemas
-        self._contract_cache: dict[str, CapabilityContract] = {}
+        self._contract_cache: dict[str, TaskContract] = {}
         self._workload_cache: dict[str, Workload] = {}
         self._contract_schema: dict | None = None
         self._workload_schema: dict | None = None
@@ -119,8 +119,8 @@ class FileSystemCapabilityRepository(CapabilityRepository):
             description=data.get("description", ""),
         )
 
-    def _parse_contract(self, data: dict) -> CapabilityContract:
-        """Parse a capability contract from YAML data."""
+    def _parse_contract(self, data: dict) -> TaskContract:
+        """Parse a task contract from YAML data."""
         inputs = tuple(
             InputSpec(
                 name=i["name"],
@@ -153,8 +153,8 @@ class FileSystemCapabilityRepository(CapabilityRepository):
             self._parse_acceptance_check(c) for c in data.get("acceptance_checks", [])
         )
 
-        return CapabilityContract(
-            capability_id=data["capability_id"],
+        return TaskContract(
+            task_type=data["task_type"],
             version=data["version"],
             description=data["description"],
             owner_roles=tuple(data["owner_roles"]),
@@ -182,7 +182,7 @@ class FileSystemCapabilityRepository(CapabilityRepository):
             tasks.append(
                 WorkloadTask(
                     task_id=t["task_id"],
-                    capability_id=t["capability_id"],
+                    task_type=t["task_type"],
                     inputs=inputs_tuple,
                     depends_on=tuple(t.get("depends_on", [])),
                     executor_override=t.get("executor_override"),
@@ -202,14 +202,14 @@ class FileSystemCapabilityRepository(CapabilityRepository):
             acceptance_checks=acceptance_checks,
         )
 
-    def _resolve_contract_path(self, capability_id: str) -> Path | None:
+    def _resolve_contract_path(self, task_type: str) -> Path | None:
         """
-        Resolve filesystem path for a capability contract.
+        Resolve filesystem path for a task contract.
 
         Capability ID format: domain.capability_name
         Path: contracts/{domain}/{capability_name}.yaml
         """
-        parts = capability_id.split(".", 1)
+        parts = task_type.split(".", 1)
         if len(parts) != 2:
             return None
 
@@ -226,16 +226,16 @@ class FileSystemCapabilityRepository(CapabilityRepository):
         path = self.base_path / "workloads" / f"{workload_id}.yaml"
         return path if path.exists() else None
 
-    def get_contract(self, capability_id: str) -> CapabilityContract:
-        """Get a capability contract by ID."""
+    def get_contract(self, task_type: str) -> TaskContract:
+        """Get a task contract by ID."""
         # Check cache
-        if capability_id in self._contract_cache:
-            return self._contract_cache[capability_id]
+        if task_type in self._contract_cache:
+            return self._contract_cache[task_type]
 
         # Resolve path
-        path = self._resolve_contract_path(capability_id)
+        path = self._resolve_contract_path(task_type)
         if path is None:
-            raise ContractNotFoundError(capability_id)
+            raise ContractNotFoundError(task_type)
 
         # Load and parse
         try:
@@ -252,7 +252,7 @@ class FileSystemCapabilityRepository(CapabilityRepository):
 
         # Parse and cache
         contract = self._parse_contract(data)
-        self._contract_cache[capability_id] = contract
+        self._contract_cache[task_type] = contract
 
         return contract
 
@@ -286,8 +286,8 @@ class FileSystemCapabilityRepository(CapabilityRepository):
 
         return workload
 
-    def list_contracts(self, domain: str | None = None) -> list[CapabilityContract]:
-        """List available capability contracts, optionally filtered by domain."""
+    def list_contracts(self, domain: str | None = None) -> list[TaskContract]:
+        """List available task contracts, optionally filtered by domain."""
         contracts = []
         contracts_dir = self.base_path / "contracts"
 
@@ -305,12 +305,12 @@ class FileSystemCapabilityRepository(CapabilityRepository):
 
             # Load contracts in this domain
             for contract_file in domain_dir.glob("*.yaml"):
-                capability_id = f"{domain_dir.name}.{contract_file.stem}"
+                task_type = f"{domain_dir.name}.{contract_file.stem}"
                 try:
-                    contract = self.get_contract(capability_id)
+                    contract = self.get_contract(task_type)
                     contracts.append(contract)
                 except (ContractNotFoundError, ContractValidationError) as e:
-                    logger.warning(f"Failed to load contract {capability_id}: {e}")
+                    logger.warning(f"Failed to load contract {task_type}: {e}")
 
         return contracts
 
@@ -332,9 +332,9 @@ class FileSystemCapabilityRepository(CapabilityRepository):
 
         return workloads
 
-    def contract_exists(self, capability_id: str) -> bool:
-        """Check if a capability contract exists without loading it."""
-        return self._resolve_contract_path(capability_id) is not None
+    def contract_exists(self, task_type: str) -> bool:
+        """Check if a task contract exists without loading it."""
+        return self._resolve_contract_path(task_type) is not None
 
     def workload_exists(self, workload_id: str) -> bool:
         """Check if a workload definition exists without loading it."""

@@ -1,5 +1,5 @@
 """
-Domain exceptions for the capability contracts system.
+Domain exceptions for the task contracts system.
 
 These exceptions represent domain-level violations that occur during
 contract validation, workload execution, or acceptance checking.
@@ -13,7 +13,7 @@ class CapabilityDomainError(Exception):
 
 
 class ContractValidationError(CapabilityDomainError):
-    """Raised when a capability contract fails validation."""
+    """Raised when a task contract fails validation."""
 
     def __init__(self, message: str, details: dict | None = None):
         self.details = details or {}
@@ -21,11 +21,11 @@ class ContractValidationError(CapabilityDomainError):
 
 
 class ContractNotFoundError(CapabilityDomainError):
-    """Raised when a capability contract cannot be found."""
+    """Raised when a task contract cannot be found."""
 
-    def __init__(self, capability_id: str):
-        self.capability_id = capability_id
-        super().__init__(f"Contract not found: {capability_id}")
+    def __init__(self, task_type: str):
+        self.task_type = task_type
+        super().__init__(f"Contract not found: {task_type}")
 
 
 class WorkloadNotFoundError(CapabilityDomainError):

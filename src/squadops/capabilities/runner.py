@@ -25,9 +25,9 @@ from squadops.capabilities.exceptions import (
 from squadops.capabilities.models import (
     AcceptanceContext,
     AcceptanceResult,
-    CapabilityContract,
     FailureRecord,
     HeadlineMetrics,
+    TaskContract,
     TaskRecord,
     TaskStatus,
     Workload,
@@ -181,9 +181,7 @@ class WorkloadRunner:
 
         return result
 
-    def _resolve_executor(
-        self, task: WorkloadTask, contract: CapabilityContract
-    ) -> CapabilityExecutor:
+    def _resolve_executor(self, task: WorkloadTask, contract: TaskContract) -> CapabilityExecutor:
         """
         Resolve the executor to use for a task.
 
@@ -209,7 +207,7 @@ class WorkloadRunner:
 
         raise ContractValidationError(
             f"No executor available for task '{task.task_id}'",
-            {"task_id": task.task_id, "capability_id": task.capability_id},
+            {"task_id": task.task_id, "task_type": task.task_type},
         )
 
     def _resolve_task_inputs(
@@ -240,7 +238,7 @@ class WorkloadRunner:
     def _build_envelope(
         self,
         task: WorkloadTask,
-        contract: CapabilityContract,
+        contract: TaskContract,
         inputs: dict[str, Any],
         cycle_id: str,
         project_id: str,
@@ -256,7 +254,7 @@ class WorkloadRunner:
             cycle_id=cycle_id,
             pulse_id=pulse_id,
             project_id=project_id,
-            task_type=contract.capability_id,
+            task_type=contract.task_type,
             inputs=inputs,
             correlation_id=cycle_id,
             causation_id=task.task_id,
@@ -269,7 +267,7 @@ class WorkloadRunner:
     async def _execute_single_task(
         self,
         task: Any,
-        contract: CapabilityContract,
+        contract: TaskContract,
         cycle_id: str,
         workload_id: str,
         project_id: str,
@@ -293,7 +291,7 @@ class WorkloadRunner:
             logger.error(f"Failed to resolve inputs for task {task.task_id}: {e}")
             return TaskRecord(
                 task_id=task.task_id,
-                capability_id=task.capability_id,
+                task_type=task.task_type,
                 status=TaskStatus.FAILED,
                 failure=self._create_failure_record("template_resolution_error", str(e)),
             ), True
@@ -320,7 +318,7 @@ class WorkloadRunner:
                 validation = engine.evaluate_all(contract.acceptance_checks, context)
                 record = TaskRecord(
                     task_id=task.task_id,
-                    capability_id=task.capability_id,
+                    task_type=task.task_type,
                     status=TaskStatus.SUCCEEDED,
                     started_at=task_started_at,
                     completed_at=task_completed_at,
@@ -332,7 +330,7 @@ class WorkloadRunner:
             else:
                 return TaskRecord(
                     task_id=task.task_id,
-                    capability_id=task.capability_id,
+                    task_type=task.task_type,
                     status=TaskStatus.FAILED,
                     started_at=task_started_at,
                     completed_at=task_completed_at,
@@ -345,7 +343,7 @@ class WorkloadRunner:
             task_completed_at = datetime.now(UTC).isoformat()
             return TaskRecord(
                 task_id=task.task_id,
-                capability_id=task.capability_id,
+                task_type=task.task_type,
                 status=TaskStatus.TIMED_OUT,
                 started_at=task_started_at,
                 completed_at=task_completed_at,
@@ -356,7 +354,7 @@ class WorkloadRunner:
             task_completed_at = datetime.now(UTC).isoformat()
             return TaskRecord(
                 task_id=task.task_id,
-                capability_id=task.capability_id,
+                task_type=task.task_type,
                 status=TaskStatus.FAILED,
                 started_at=task_started_at,
                 completed_at=task_completed_at,
@@ -416,7 +414,7 @@ class WorkloadRunner:
             "task_records": [
                 {
                     "task_id": tr.task_id,
-                    "capability_id": tr.capability_id,
+                    "task_type": tr.task_type,
                     "status": tr.status.value,
                     "started_at": tr.started_at,
                     "completed_at": tr.completed_at,
@@ -470,7 +468,7 @@ class WorkloadRunner:
 
     def _load_and_validate(
         self, workload_id: str, cycle_id: str, started_at: str
-    ) -> tuple[Workload, dict[str, CapabilityContract]] | None:
+    ) -> tuple[Workload, dict[str, TaskContract]] | None:
         """Load workload, validate DAG, and load contracts.
 
         Returns (workload, contracts) on success, or None on failure.
@@ -496,10 +494,10 @@ class WorkloadRunner:
             )
             return None
 
-        contracts: dict[str, CapabilityContract] = {}
+        contracts: dict[str, TaskContract] = {}
         for task in workload.tasks:
             try:
-                contracts[task.capability_id] = self.repository.get_contract(task.capability_id)
+                contracts[task.task_type] = self.repository.get_contract(task.task_type)
             except ContractNotFoundError as e:
                 logger.error(f"Contract not found: {e}")
                 failure = self._create_failure_record("contract_not_found", str(e))
@@ -564,7 +562,7 @@ class WorkloadRunner:
                 task_records.append(
                     TaskRecord(
                         task_id=task.task_id,
-                        capability_id=task.capability_id,
+                        task_type=task.task_type,
                         status=TaskStatus.SKIPPED,
                     )
                 )
@@ -572,7 +570,7 @@ class WorkloadRunner:
 
             record, should_halt = await self._execute_single_task(
                 task,
-                contracts[task.capability_id],
+                contracts[task.task_type],
                 cycle_id,
                 workload_id,
                 project_id,

@@ -16,14 +16,14 @@ vars:
 
 tasks:
   - task_id: collect_snapshot
-    capability_id: data.collect_cycle_snapshot
+    task_type: data.collect_cycle_snapshot
     inputs:
       cycle_id: "{cycle_id}"
       include_artifacts: "{vars.default_include_artifacts}"
     depends_on: []
 
   - task_id: profile_metrics
-    capability_id: data.profile_cycle_metrics
+    task_type: data.profile_cycle_metrics
     inputs:
       cycle_id: "{cycle_id}"
       snapshot_path: "{collect_snapshot.snapshot_path}"
@@ -31,7 +31,7 @@ tasks:
       - collect_snapshot
 
   - task_id: compose_summary
-    capability_id: data.compose_cycle_summary
+    task_type: data.compose_cycle_summary
     inputs:
       cycle_id: "{cycle_id}"
       snapshot_path: "{collect_snapshot.snapshot_path}"

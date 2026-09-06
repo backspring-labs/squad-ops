@@ -4,7 +4,7 @@
 # Collects a snapshot of all cycle artifacts and task results
 # for downstream analysis and reporting.
 
-capability_id: data.collect_cycle_snapshot
+task_type: data.collect_cycle_snapshot
 version: 1.0.0
 description: >
   Collect and aggregate all artifacts produced during a cycle into a

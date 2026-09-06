@@ -9,7 +9,7 @@ Tests the 5 cycle task handlers in
 - DataReportHandler       (data.report / data)
 - GovernanceReviewHandler (governance.review / lead)
 
-Covers: capability_id pinning, name/description properties,
+Covers: task_type pinning, name/description properties,
 validate_inputs, handle() outputs/evidence, LLM call verification,
 prior_outputs prompt building, LLM error handling, artifact names,
 and bootstrap registration.
@@ -30,7 +30,7 @@ from squadops.capabilities.handlers.cycle_tasks import (
     QAValidateHandler,
     StrategyAnalyzeHandler,
 )
-from squadops.capabilities.reasoning_policy import REASONING_BY_CAPABILITY
+from squadops.capabilities.reasoning_policy import REASONING_BY_TASK_TYPE
 from squadops.llm.exceptions import LLMConnectionError, LLMModelNotFoundError, LLMTimeoutError
 from squadops.llm.models import ChatMessage
 
@@ -88,7 +88,7 @@ def mock_context():
 
 
 # ---------------------------------------------------------------------------
-# 1. capability_id matches the pinned value
+# 1. task_type matches the pinned value
 # ---------------------------------------------------------------------------
 class TestCapabilityId:
     @pytest.mark.parametrize(
@@ -98,7 +98,7 @@ class TestCapabilityId:
     )
     def test_capability_id_matches(self, cls, expected_id, _role):
         handler = cls()
-        assert handler.capability_id == expected_id
+        assert handler.task_type == expected_id
 
 
 # ---------------------------------------------------------------------------
@@ -215,7 +215,7 @@ class TestHandleEvidence:
 
         assert result._evidence is not None
         assert isinstance(result._evidence, HandlerEvidence)
-        assert result.evidence.capability_id == handler.capability_id
+        assert result.evidence.task_type == handler.task_type
         assert result.evidence.handler_name == handler.name
         assert result.evidence.duration_ms >= 0
 
@@ -560,7 +560,7 @@ class TestConfigOverridesFlow:
         await handler.handle(mock_context, inputs)
 
         call_kwargs = mock_context.ports.llm.chat_stream_with_usage.call_args[1]
-        assert call_kwargs["reasoning"] == REASONING_BY_CAPABILITY[handler.capability_id]
+        assert call_kwargs["reasoning"] == REASONING_BY_TASK_TYPE[handler.task_type]
 
     @pytest.mark.parametrize(
         "cls",

@@ -1,8 +1,8 @@
 """Base classes for capability handlers.
 
-CapabilityHandler is the bridge between capability contracts
+CapabilityHandler is the bridge between task contracts
 and execution. Handlers execute against ports to fulfill a
-capability contract.
+task contract.
 
 Part of SIP-0.8.8 Phase 5.
 """
@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
-    from squadops.capabilities.models import CapabilityContract
+    from squadops.capabilities.models import TaskContract
 
 
 @dataclass(frozen=True)
@@ -29,7 +29,7 @@ class HandlerEvidence:
 
     Attributes:
         handler_name: Name of the handler
-        capability_id: ID of the capability contract fulfilled
+        task_type: ID of the task contract fulfilled
         executed_at: When execution started
         duration_ms: Total execution duration
         inputs_hash: Hash of handler inputs
@@ -38,7 +38,7 @@ class HandlerEvidence:
     """
 
     handler_name: str
-    capability_id: str
+    task_type: str
     executed_at: datetime
     duration_ms: float
     inputs_hash: str = ""
@@ -49,7 +49,7 @@ class HandlerEvidence:
     def create(
         cls,
         handler_name: str,
-        capability_id: str,
+        task_type: str,
         duration_ms: float,
         inputs_hash: str = "",
         outputs_hash: str = "",
@@ -59,7 +59,7 @@ class HandlerEvidence:
 
         Args:
             handler_name: Name of the handler
-            capability_id: Capability ID being fulfilled
+            task_type: Capability ID being fulfilled
             duration_ms: Execution duration in milliseconds
             inputs_hash: Hash of inputs (for verification)
             outputs_hash: Hash of outputs (for verification)
@@ -70,7 +70,7 @@ class HandlerEvidence:
         """
         return cls(
             handler_name=handler_name,
-            capability_id=capability_id,
+            task_type=task_type,
             executed_at=datetime.now(UTC),
             duration_ms=duration_ms,
             inputs_hash=inputs_hash,
@@ -83,7 +83,7 @@ class HandlerEvidence:
 class HandlerResult:
     """Result of handler execution.
 
-    Contains outputs satisfying the capability contract
+    Contains outputs satisfying the task contract
     and evidence of execution for verification.
 
     Attributes:
@@ -109,15 +109,15 @@ class HandlerResult:
 class CapabilityHandler(ABC):
     """Abstract base for capability handlers.
 
-    Handlers execute against ports to fulfill capability contracts.
+    Handlers execute against ports to fulfill task contracts.
     Each handler:
-    - Is associated with a specific capability contract
+    - Is associated with a specific task contract
     - Produces outputs/artifacts per contract spec
     - Generates execution evidence for verification
 
     Subclasses must implement:
     - name: Handler identifier
-    - capability_id: Matching contract ID
+    - task_type: Matching contract ID
     - handle(): Execution logic
     """
 
@@ -129,19 +129,19 @@ class CapabilityHandler(ABC):
 
     @property
     @abstractmethod
-    def capability_id(self) -> str:
+    def task_type(self) -> str:
         """Capability ID this handler fulfills."""
         ...
 
     @property
     def description(self) -> str:
         """Human-readable description."""
-        return f"Handler for {self.capability_id}"
+        return f"Handler for {self.task_type}"
 
     def validate_inputs(
         self,
         inputs: dict[str, Any],
-        contract: CapabilityContract | None = None,
+        contract: TaskContract | None = None,
     ) -> list[str]:
         """Validate handler inputs against contract.
 

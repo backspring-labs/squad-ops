@@ -31,7 +31,7 @@ from squadops.capabilities.scaffold import is_scaffoldable_stack
 #: The framing stage that authors the manifest (SIP-0103 §3.1). Dev owns it: the manifest
 #: is an architecture artifact, and §5a places it at the best-informed moment — after the
 #: technical design, rather than riding the lead's plan authoring at the least-informed one.
-AUTHOR_MANIFEST_CAPABILITY = "development.author_manifest"
+AUTHOR_MANIFEST_TASK_TYPE = "development.author_manifest"
 AUTHOR_MANIFEST_ROLE = "dev"
 
 #: The ``provenance.mode`` a squad-authored manifest carries (#803). Presence of the block

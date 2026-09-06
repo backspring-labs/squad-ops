@@ -12,7 +12,7 @@ import pytest
 
 from squadops.bootstrap.handlers import HANDLER_CONFIGS
 from squadops.capabilities.reasoning_policy import (
-    REASONING_BY_CAPABILITY,
+    REASONING_BY_TASK_TYPE,
     UndeclaredReasoningLevel,
     default_reasoning_level,
     reasoning_kwargs,
@@ -32,13 +32,13 @@ class TestDeclarations:
         with the model's own posture — reasoning on, unread, unrecorded — which
         is exactly what #924 found on qa.test. This is the CI guard the policy
         module promises."""
-        assert handler_cls().capability_id in REASONING_BY_CAPABILITY
+        assert handler_cls().task_type in REASONING_BY_TASK_TYPE
 
     def test_every_declared_level_is_a_known_level(self):
         """A misspelt level ("hgih") would reach Ollama as ``think: true`` and
         vLLM as an invalid effort — neither side rejects it."""
-        for capability_id, level in REASONING_BY_CAPABILITY.items():
-            assert level in REASONING_LEVELS, capability_id
+        for task_type, level in REASONING_BY_TASK_TYPE.items():
+            assert level in REASONING_LEVELS, task_type
 
     def test_undeclared_capability_raises_rather_than_defaults(self):
         with pytest.raises(UndeclaredReasoningLevel, match="no.such.capability"):
@@ -70,10 +70,10 @@ class TestDeclarations:
         capability. Splitting the level by emission mode is the follow-up (#1285); this is
         the one change the plan's §8 allows, and prediction L1 is what reads it.
         """
-        assert REASONING_BY_CAPABILITY["qa.test"] == ReasoningLevel.MEDIUM
-        assert REASONING_BY_CAPABILITY["qa.test_repair"] == ReasoningLevel.MEDIUM
-        assert REASONING_BY_CAPABILITY["builder.assemble"] == ReasoningLevel.NONE
-        assert REASONING_BY_CAPABILITY["development.author_manifest"] == ReasoningLevel.HIGH
+        assert REASONING_BY_TASK_TYPE["qa.test"] == ReasoningLevel.MEDIUM
+        assert REASONING_BY_TASK_TYPE["qa.test_repair"] == ReasoningLevel.MEDIUM
+        assert REASONING_BY_TASK_TYPE["builder.assemble"] == ReasoningLevel.NONE
+        assert REASONING_BY_TASK_TYPE["development.author_manifest"] == ReasoningLevel.HIGH
 
 
 class TestResolution:

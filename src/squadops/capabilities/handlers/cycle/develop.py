@@ -53,7 +53,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
     """
 
     _handler_name = "development_develop_handler"
-    _capability_id = "development.develop"
+    _task_type = "development.develop"
     _role = "dev"
     _artifact_name = "build_output"  # overridden by multi-file output
 
@@ -505,7 +505,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         if "temperature" in agent_overrides:
             chat_kwargs["temperature"] = agent_overrides["temperature"]
         reasoning = resolve_reasoning_level(
-            self._capability_id, agent_overrides=agent_overrides, model_name=model_name
+            self._task_type, agent_overrides=agent_overrides, model_name=model_name
         )
         chat_kwargs.update(reasoning_kwargs(reasoning))
 
@@ -675,7 +675,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
             tce_artifact = self._build_typed_check_evaluation_artifact(
                 validation.checks,
                 inputs.get("subtask_index"),
-                self._capability_id,
+                self._task_type,
                 inputs.get("workspace_revision_id"),
             )
             if tce_artifact is not None:
@@ -744,7 +744,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         duration_ms = (time.perf_counter() - start_time) * 1000
         evidence = HandlerEvidence.create(
             handler_name=self._handler_name,
-            capability_id=self._capability_id,
+            task_type=self._task_type,
             duration_ms=duration_ms,
             inputs_hash=self._hash_dict(inputs),
             outputs_hash=self._hash_dict(outputs),

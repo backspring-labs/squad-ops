@@ -74,7 +74,7 @@ class CapabilityExecutor(ABC):
         pass
 
     @abstractmethod
-    def can_execute(self, capability_id: str, agent_role: str) -> bool:
+    def can_execute(self, task_type: str, agent_role: str) -> bool:
         """
         Check if this executor can execute a given capability for a role.
 
@@ -82,7 +82,7 @@ class CapabilityExecutor(ABC):
         is suitable for a specific task.
 
         Args:
-            capability_id: Capability contract identifier
+            task_type: Task contract identifier
             agent_role: Target agent role
 
         Returns:

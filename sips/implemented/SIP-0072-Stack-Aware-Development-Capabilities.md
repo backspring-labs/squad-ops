@@ -546,3 +546,33 @@ The CLI `runs assemble` command filters on `_BUILD_ARTIFACT_TYPES = {"source", "
 8. Existing `python_cli` behavior is unchanged — all existing tests pass without modification.
 9. `squadops cycles create group_run --profile fullstack-fastapi-react` produces a run whose development source artifacts include both `backend/main.py` and `frontend/src/App.jsx`, and whose builder packaging artifacts include a multi-stage Dockerfile and `qa_handoff.md`.
 10. The combined development source artifacts and builder-produced packaging artifacts support local startup and QA execution following the `qa_handoff.md` instructions.
+
+## 10. Post-acceptance amendments
+
+### 10a. 2026-09-06 — a development capability is a development profile (#922)
+
+**What changed.** The registry this SIP introduced is renamed for what it is — a named
+settings bundle for a stack, selected per cycle by id, which is this repo's "profile"
+(squad profile, request profile, build profile, probe profile): `dev_capabilities.py` →
+`development_profiles.py`, `DevelopmentCapability` → `DevelopmentProfile`,
+`DEV_CAPABILITIES` → `DEVELOPMENT_PROFILES`, `get_capability` → `get_development_profile`,
+`effective_capability_name` → `effective_development_profile`, `resolve_dev_capability` →
+`resolve_development_profile`, `ScaffoldStack.dev_capability` → `.development_profile`, the
+preflight decision `stack_development_profile_decision` with code
+`stack_development_profile_mismatch`, and the CRP defaults key `dev_capability` →
+`development_profile` (schema, the two profiles that set it, the example PCRs). The CRP
+refuses unknown default keys, so `--set dev_capability=…` fails at cycle create naming the
+key rather than silently selecting a default.
+
+**Not taken: collapse.** #922's better end state — the stack owning its profile and the
+key leaving the CRP surface — is a config migration and a deliberate one; the two
+declarations of one fact stay, held together by #832's preflight. Recorded here so the
+rename is not read as the collapse.
+
+**Evidence.** Three meanings of one word (#922's table); the 1.7.2 line's set configs and
+pre-registrations carry the old key as history and are not rewritten;
+`tests/unit/architecture/test_retired_capability_spellings.py` holds the retired
+spellings out of live code and config.
+
+**Ruled by.** Issue #922 and the 1.7.3 plan §3.2 step 1 (merged 2026-09-06).
+

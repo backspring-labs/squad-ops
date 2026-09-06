@@ -19,7 +19,7 @@ class DataResearchContextHandler(_PlanningTaskHandler):
     """Planning handler: gather constraints, prior patterns, risk areas."""
 
     _handler_name = "data_research_context_handler"
-    _capability_id = "data.research_context"
+    _task_type = "data.research_context"
     _role = "data"
     _artifact_name = "context_research.md"
 
@@ -28,7 +28,7 @@ class StrategyFrameObjectiveHandler(_PlanningTaskHandler):
     """Planning handler: frame objective, scope, non-goals, acceptance criteria."""
 
     _handler_name = "strategy_frame_objective_handler"
-    _capability_id = "strategy.frame_objective"
+    _task_type = "strategy.frame_objective"
     _role = "strat"
     _artifact_name = "objective_frame.md"
 
@@ -37,7 +37,7 @@ class DevelopmentDesignPlanHandler(_PlanningTaskHandler):
     """Planning handler: technical design, interfaces, sequencing, proto validation."""
 
     _handler_name = "development_design_plan_handler"
-    _capability_id = "development.design_plan"
+    _task_type = "development.design_plan"
     _role = "dev"
     _artifact_name = "technical_design.md"
 
@@ -64,6 +64,6 @@ class QADefineTestStrategyHandler(_PlanningTaskHandler):
     """Planning handler: acceptance checklist, test strategy, defect severity rubric."""
 
     _handler_name = "qa_define_test_strategy_handler"
-    _capability_id = "qa.define_test_strategy"
+    _task_type = "qa.define_test_strategy"
     _role = "qa"
     _artifact_name = "test_strategy.md"

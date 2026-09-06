@@ -3,7 +3,7 @@
 #
 # Computes metrics and statistics from a cycle snapshot.
 
-capability_id: data.profile_cycle_metrics
+task_type: data.profile_cycle_metrics
 version: 1.0.0
 description: >
   Analyze a cycle snapshot to compute key metrics including task counts,

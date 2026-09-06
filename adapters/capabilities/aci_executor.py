@@ -183,7 +183,7 @@ class ACICapabilityExecutor(CapabilityExecutor):
             "queue_status": queue_health,
         }
 
-    def can_execute(self, capability_id: str, agent_role: str) -> bool:
+    def can_execute(self, task_type: str, agent_role: str) -> bool:
         """
         Check if this executor can execute a given capability.
 

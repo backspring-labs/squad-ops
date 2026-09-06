@@ -102,7 +102,7 @@ class DataAnalyzeFailureHandler(_CycleTaskHandler):
     """Analyze a task failure and classify its root cause."""
 
     _handler_name = "data_analyze_failure_handler"
-    _capability_id = "data.analyze_failure"
+    _task_type = "data.analyze_failure"
     _role = "data"
     _artifact_name = "failure_analysis.md"
 
@@ -143,7 +143,7 @@ class DataAnalyzeFailureHandler(_CycleTaskHandler):
         # JSON-emitting handler.
         assembled = context.ports.prompt_service.assemble_task_only(
             role=self._role,
-            task_type=self._capability_id,
+            task_type=self._task_type,
         )
         messages = [
             ChatMessage(role="system", content=assembled.content),
@@ -159,7 +159,7 @@ class DataAnalyzeFailureHandler(_CycleTaskHandler):
             duration_ms = (time.perf_counter() - start_time) * 1000
             evidence = HandlerEvidence.create(
                 handler_name=self._handler_name,
-                capability_id=self._capability_id,
+                task_type=self._task_type,
                 duration_ms=duration_ms,
                 inputs_hash=self._hash_dict(inputs),
             )
@@ -216,7 +216,7 @@ class DataAnalyzeFailureHandler(_CycleTaskHandler):
             )
             evidence = HandlerEvidence.create(
                 handler_name=self._handler_name,
-                capability_id=self._capability_id,
+                task_type=self._task_type,
                 duration_ms=duration_ms,
                 inputs_hash=self._hash_dict(inputs),
             )
@@ -258,7 +258,7 @@ class DataAnalyzeFailureHandler(_CycleTaskHandler):
 
         evidence = HandlerEvidence.create(
             handler_name=self._handler_name,
-            capability_id=self._capability_id,
+            task_type=self._task_type,
             duration_ms=duration_ms,
             inputs_hash=self._hash_dict(inputs),
             outputs_hash=self._hash_dict(outputs),

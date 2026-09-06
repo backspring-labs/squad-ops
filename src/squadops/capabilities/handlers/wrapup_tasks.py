@@ -1,6 +1,6 @@
 """Wrap-up task handlers — LLM-powered handlers for wrap-up workload pipeline.
 
-5 handlers whose capability_ids match the pinned task_type values from
+5 handlers whose task types match the pinned task_type values from
 WRAPUP_TASK_STEPS (SIP-0080 §7.1). All extend ``_PlanningTaskHandler``
 to activate the task_type prompt layer for role-specific wrap-up behavior.
 
@@ -75,7 +75,7 @@ class DataGatherEvidenceHandler(_PlanningTaskHandler):
     """
 
     _handler_name = "data_gather_evidence_handler"
-    _capability_id = "data.gather_evidence"
+    _task_type = "data.gather_evidence"
     _role = "data"
     _artifact_name = "evidence_inventory.md"
 
@@ -91,7 +91,7 @@ class QAAssessOutcomesHandler(_PlanningTaskHandler):
     """Planned-vs-actual comparison, acceptance criteria evaluation."""
 
     _handler_name = "qa_assess_outcomes_handler"
-    _capability_id = "qa.assess_outcomes"
+    _task_type = "qa.assess_outcomes"
     _role = "qa"
     _artifact_name = "outcome_assessment.md"
 
@@ -104,7 +104,7 @@ class DataClassifyUnresolvedHandler(_PlanningTaskHandler):
     """
 
     _handler_name = "data_classify_unresolved_handler"
-    _capability_id = "data.classify_unresolved"
+    _task_type = "data.classify_unresolved"
     _role = "data"
     _artifact_name = "unresolved_items.md"
 
@@ -162,7 +162,7 @@ class GovernanceCloseoutDecisionHandler(_PlanningTaskHandler):
     """
 
     _handler_name = "governance_closeout_decision_handler"
-    _capability_id = "governance.closeout_decision"
+    _task_type = "governance.closeout_decision"
     _role = "lead"
     _artifact_name = "closeout_artifact.md"
 
@@ -283,7 +283,7 @@ class GovernancePublishHandoffHandler(_PlanningTaskHandler):
     """
 
     _handler_name = "governance_publish_handoff_handler"
-    _capability_id = "governance.publish_handoff"
+    _task_type = "governance.publish_handoff"
     _role = "lead"
     _artifact_name = "handoff_artifact.md"
 

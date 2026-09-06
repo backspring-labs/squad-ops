@@ -24,7 +24,7 @@ class TestHandlerEvidence:
         """Should create evidence with all fields."""
         evidence = HandlerEvidence.create(
             handler_name="test_handler",
-            capability_id="test.capability",
+            task_type="test.capability",
             duration_ms=100.5,
             inputs_hash="abc123",
             outputs_hash="def456",
@@ -32,7 +32,7 @@ class TestHandlerEvidence:
         )
 
         assert evidence.handler_name == "test_handler"
-        assert evidence.capability_id == "test.capability"
+        assert evidence.task_type == "test.capability"
         assert evidence.duration_ms == 100.5
         assert evidence.inputs_hash == "abc123"
         assert evidence.outputs_hash == "def456"
@@ -43,7 +43,7 @@ class TestHandlerEvidence:
         """Evidence should be immutable."""
         evidence = HandlerEvidence.create(
             handler_name="test",
-            capability_id="test",
+            task_type="test",
             duration_ms=0,
         )
 
@@ -58,7 +58,7 @@ class TestHandlerResult:
         """Should create successful result."""
         evidence = HandlerEvidence.create(
             handler_name="test",
-            capability_id="test",
+            task_type="test",
             duration_ms=0,
         )
         result = HandlerResult(
@@ -76,7 +76,7 @@ class TestHandlerResult:
         """Should create failed result with error."""
         evidence = HandlerEvidence.create(
             handler_name="test",
-            capability_id="test",
+            task_type="test",
             duration_ms=0,
         )
         result = HandlerResult(
@@ -94,7 +94,7 @@ class TestHandlerResult:
         """Should include artifacts in result."""
         evidence = HandlerEvidence.create(
             handler_name="test",
-            capability_id="test",
+            task_type="test",
             duration_ms=0,
         )
         result = HandlerResult(
@@ -110,7 +110,7 @@ class TestHandlerResult:
         """evidence property should return _evidence."""
         evidence = HandlerEvidence.create(
             handler_name="test",
-            capability_id="test",
+            task_type="test",
             duration_ms=0,
         )
         result = HandlerResult(

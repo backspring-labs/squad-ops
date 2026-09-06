@@ -62,7 +62,7 @@ class GovernanceMergePlanHandler(_CycleTaskHandler):
     """
 
     _handler_name = "governance_merge_plan_handler"
-    _capability_id = "governance.merge_plan"
+    _task_type = "governance.merge_plan"
     _role = "lead"
 
     async def handle(
@@ -357,7 +357,7 @@ class GovernanceMergePlanHandler(_CycleTaskHandler):
         duration_ms = (time.perf_counter() - start_time) * 1000
         evidence = HandlerEvidence.create(
             handler_name=self._handler_name,
-            capability_id=self._capability_id,
+            task_type=self._task_type,
             duration_ms=duration_ms,
             inputs_hash=self._hash_dict(inputs),
             outputs_hash=self._hash_dict(outputs),
@@ -373,7 +373,7 @@ class GovernanceMergePlanHandler(_CycleTaskHandler):
         duration_ms = (time.perf_counter() - start_time) * 1000
         evidence = HandlerEvidence.create(
             handler_name=self._handler_name,
-            capability_id=self._capability_id,
+            task_type=self._task_type,
             duration_ms=duration_ms,
             inputs_hash=self._hash_dict(inputs),
         )

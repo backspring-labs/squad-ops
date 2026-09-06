@@ -732,7 +732,7 @@ class TestArtifactEmissionEndToEnd:
         assert len(typed) == 1
         # And the helper builds an artifact from them.
         artifact = h._build_typed_check_evaluation_artifact(
-            result.checks, inputs["subtask_index"], h._capability_id
+            result.checks, inputs["subtask_index"], h._task_type
         )
         assert artifact is not None
         assert artifact["name"] == "typed_check_evaluation_task_1.json"

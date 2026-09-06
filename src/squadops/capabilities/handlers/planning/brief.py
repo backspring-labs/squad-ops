@@ -36,7 +36,7 @@ class GovernancePreparePlanAuthoringBriefHandler(_PlanningTaskHandler):
     """
 
     _handler_name = "governance_prepare_plan_authoring_brief_handler"
-    _capability_id = "governance.prepare_plan_authoring_brief"
+    _task_type = "governance.prepare_plan_authoring_brief"
     _role = "lead"
     _artifact_name = "plan_authoring_brief.yaml"
 
@@ -75,7 +75,7 @@ class GovernancePreparePlanAuthoringBriefHandler(_PlanningTaskHandler):
         assembled = context.ports.prompt_service.assemble(
             role=self._role,
             hook="agent_start",
-            task_type=self._capability_id,
+            task_type=self._task_type,
         )
         system_prompt = assembled.content
 
@@ -111,7 +111,7 @@ class GovernancePreparePlanAuthoringBriefHandler(_PlanningTaskHandler):
         if parsed is None:
             evidence = HandlerEvidence.create(
                 handler_name=self._handler_name,
-                capability_id=self._capability_id,
+                task_type=self._task_type,
                 duration_ms=duration_ms,
                 inputs_hash=self._hash_dict(inputs),
             )
@@ -151,7 +151,7 @@ class GovernancePreparePlanAuthoringBriefHandler(_PlanningTaskHandler):
         }
         evidence = HandlerEvidence.create(
             handler_name=self._handler_name,
-            capability_id=self._capability_id,
+            task_type=self._task_type,
             duration_ms=duration_ms,
             inputs_hash=self._hash_dict(inputs),
             outputs_hash=self._hash_dict(outputs),
@@ -174,7 +174,7 @@ class GovernancePreparePlanAuthoringBriefHandler(_PlanningTaskHandler):
 #   2. Renders its user prompt from a registered template that surfaces the
 #      brief content, planning_content, proposal_id, source_brief_id.
 #   3. Assembles its system prompt via prompt_service.assemble(..., task_type=
-#      self._capability_id) — task-type fragments live in
+#      self._task_type) — task-type fragments live in
 #      src/squadops/prompts/fragments/shared/task_type/.
 #   4. Runs retry_yaml_call (SIP-0093 _plan_authoring helper) for up to
 #      manifest_max_attempts attempts with corrective feedback on each

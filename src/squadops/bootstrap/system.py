@@ -82,7 +82,7 @@ class SquadOpsSystem:
 
         return {
             "status": orchestrator_health["status"],
-            "handlers": len(self.handler_registry.list_capabilities()),
+            "handlers": len(self.handler_registry.list_task_types()),
             "orchestrator": orchestrator_health,
         }
 
@@ -118,7 +118,7 @@ def create_orchestrator(
     logger.info(
         "Created orchestrator",
         extra={
-            "handlers": len(handler_registry.list_capabilities()),
+            "handlers": len(handler_registry.list_task_types()),
         },
     )
 
@@ -204,7 +204,7 @@ def create_system(
     logger.info(
         "Created SquadOps system",
         extra={
-            "handlers": len(handler_registry.list_capabilities()),
+            "handlers": len(handler_registry.list_task_types()),
             "roles": config.roles,
         },
     )

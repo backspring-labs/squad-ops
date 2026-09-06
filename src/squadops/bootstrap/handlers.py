@@ -169,10 +169,10 @@ def create_handler_registry(
         try:
             handler = handler_class()
             registry.register(handler, roles=handler_roles)
-            logger.debug(f"Registered handler: {handler.capability_id} for roles {handler_roles}")
+            logger.debug(f"Registered handler: {handler.task_type} for roles {handler_roles}")
         except Exception as e:
             logger.warning(f"Failed to register handler {handler_class}: {e}")
 
-    logger.info(f"Created handler registry with {len(registry.list_capabilities())} handlers")
+    logger.info(f"Created handler registry with {len(registry.list_task_types())} handlers")
 
     return registry

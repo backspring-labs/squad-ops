@@ -227,15 +227,15 @@ class TestHandlerRegistryE2E:
 
     def test_builder_assemble_in_full_registry(self):
         registry = create_handler_registry()
-        assert "builder.assemble" in registry.list_capabilities()
+        assert "builder.assemble" in registry.list_task_types()
 
     def test_development_build_in_full_registry(self):
         registry = create_handler_registry()
-        assert "development.develop" in registry.list_capabilities()
+        assert "development.develop" in registry.list_task_types()
 
     def test_qa_test_in_full_registry(self):
         registry = create_handler_registry()
-        assert "qa.test" in registry.list_capabilities()
+        assert "qa.test" in registry.list_task_types()
 
     def test_builder_handler_config_exists(self):
         handler_classes = [cls for cls, _roles in HANDLER_CONFIGS]
@@ -246,7 +246,7 @@ class TestHandlerRegistryE2E:
     def test_builder_and_dev_build_coexist(self):
         """Both builder.assemble and development.develop registered without conflict."""
         registry = create_handler_registry()
-        capabilities = registry.list_capabilities()
+        capabilities = registry.list_task_types()
         assert "builder.assemble" in capabilities
         assert "development.develop" in capabilities
 

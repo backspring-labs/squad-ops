@@ -296,7 +296,7 @@ class TestDevBuildEvidence:
         result = await handler.handle(mock_context, build_inputs)
 
         assert isinstance(result._evidence, HandlerEvidence)
-        assert result.evidence.capability_id == "development.develop"
+        assert result.evidence.task_type == "development.develop"
         assert result.evidence.handler_name == "development_develop_handler"
         assert result.evidence.duration_ms >= 0
 
@@ -446,13 +446,13 @@ class TestBuildHandlerBootstrap:
 class TestBuildHandlerProperties:
     def test_dev_build_capability_id(self):
         handler = DevelopmentDevelopHandler()
-        assert handler.capability_id == "development.develop"
+        assert handler.task_type == "development.develop"
         assert handler.name == "development_develop_handler"
         assert "dev" in handler.description
 
     def test_qa_build_capability_id(self):
         handler = QATestHandler()
-        assert handler.capability_id == "qa.test"
+        assert handler.task_type == "qa.test"
         assert handler.name == "qa_test_handler"
         assert "qa" in handler.description
 

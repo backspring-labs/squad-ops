@@ -80,11 +80,11 @@ class _PlanningTaskHandler(_CycleTaskHandler):
     """Base class for planning and refinement task handlers.
 
     Overrides ``handle()`` to use ``prompt_service.assemble()`` with
-    ``task_type=self._capability_id``, activating the task_type prompt
+    ``task_type=self._task_type``, activating the task_type prompt
     fragment layer (SIP-0057). Standard ``_CycleTaskHandler`` calls
     ``get_system_prompt(role)`` which omits the task_type layer.
 
-    Subclasses set ``_handler_name``, ``_capability_id``, ``_role``,
+    Subclasses set ``_handler_name``, ``_task_type``, ``_role``,
     and ``_artifact_name``.
     """
 
@@ -237,7 +237,7 @@ class _PlanningTaskHandler(_CycleTaskHandler):
         assembled = context.ports.prompt_service.assemble(
             role=self._role,
             hook="agent_start",
-            task_type=self._capability_id,
+            task_type=self._task_type,
         )
         system_prompt = assembled.content
 
@@ -259,7 +259,7 @@ class _PlanningTaskHandler(_CycleTaskHandler):
             duration_ms = (time.perf_counter() - start_time) * 1000
             evidence = HandlerEvidence.create(
                 handler_name=self._handler_name,
-                capability_id=self._capability_id,
+                task_type=self._task_type,
                 duration_ms=duration_ms,
                 inputs_hash=self._hash_dict(inputs),
             )
@@ -313,7 +313,7 @@ class _PlanningTaskHandler(_CycleTaskHandler):
                     ),
                     PromptLayer(
                         layer_type="user",
-                        layer_id=f"planning-{self._capability_id}",
+                        layer_id=f"planning-{self._task_type}",
                     ),
                 ),
             )
@@ -349,7 +349,7 @@ class _PlanningTaskHandler(_CycleTaskHandler):
 
         evidence = HandlerEvidence.create(
             handler_name=self._handler_name,
-            capability_id=self._capability_id,
+            task_type=self._task_type,
             duration_ms=duration_ms,
             inputs_hash=self._hash_dict(inputs),
             outputs_hash=self._hash_dict(outputs),

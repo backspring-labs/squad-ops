@@ -30,8 +30,8 @@ from squadops.capabilities.handlers.planning.base import _PlanningTaskHandler
 from squadops.cycles.authoring_failure import AuthoringOutcome, assess_authoring_outcome
 from squadops.cycles.contract_derivation import SEEDED_MANIFEST_FILENAME
 from squadops.cycles.manifest_authoring import (
-    AUTHOR_MANIFEST_CAPABILITY,
     AUTHOR_MANIFEST_ROLE,
+    AUTHOR_MANIFEST_TASK_TYPE,
     AUTHORED_MODE,
     MANIFEST_ARTIFACT_TYPE,
 )
@@ -50,7 +50,7 @@ class DevelopmentAuthorManifestHandler(_PlanningTaskHandler):
     """Framing handler: author ``interface_manifest.yaml``, revising against the gates."""
 
     _handler_name = "development_author_manifest_handler"
-    _capability_id = AUTHOR_MANIFEST_CAPABILITY
+    _task_type = AUTHOR_MANIFEST_TASK_TYPE
     _role = AUTHOR_MANIFEST_ROLE
     _artifact_name = SEEDED_MANIFEST_FILENAME
     _request_template_id = "request.development_author_manifest"
@@ -89,7 +89,7 @@ class DevelopmentAuthorManifestHandler(_PlanningTaskHandler):
 
         rendered = await renderer.render(self._request_template_id, variables)
         assembled = context.ports.prompt_service.assemble(
-            role=self._role, hook="agent_start", task_type=self._capability_id
+            role=self._role, hook="agent_start", task_type=self._task_type
         )
 
         outcomes: list[AuthoringOutcome] = []
@@ -218,7 +218,7 @@ class DevelopmentAuthorManifestHandler(_PlanningTaskHandler):
             outputs=outputs,
             _evidence=HandlerEvidence.create(
                 handler_name=self._handler_name,
-                capability_id=self._capability_id,
+                task_type=self._task_type,
                 duration_ms=duration_ms,
                 inputs_hash=self._hash_dict(inputs),
                 outputs_hash=self._hash_dict(outputs),
@@ -233,7 +233,7 @@ class DevelopmentAuthorManifestHandler(_PlanningTaskHandler):
             outputs={},
             _evidence=HandlerEvidence.create(
                 handler_name=self._handler_name,
-                capability_id=self._capability_id,
+                task_type=self._task_type,
                 duration_ms=duration_ms,
                 inputs_hash=self._hash_dict(inputs),
             ),

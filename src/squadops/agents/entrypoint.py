@@ -182,7 +182,7 @@ class AgentRunner:
             logger.info(
                 "System bootstrapped",
                 extra={
-                    "handlers": len(self.system.handler_registry.list_capabilities()),
+                    "handlers": len(self.system.handler_registry.list_task_types()),
                 },
             )
 

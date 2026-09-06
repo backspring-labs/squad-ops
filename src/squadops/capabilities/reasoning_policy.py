@@ -37,7 +37,7 @@ from squadops.llm.model_registry import ReasoningControl, get_model_spec
 from squadops.llm.models import ReasoningLevel
 
 #: Per capability: the level its output wants. Grouped by the judgment behind it.
-REASONING_BY_CAPABILITY: dict[str, str] = {
+REASONING_BY_TASK_TYPE: dict[str, str] = {
     # --- transcription: the prompt determines the output; the model restates it ---
     "builder.assemble": ReasoningLevel.NONE,
     "builder.assemble_repair": ReasoningLevel.NONE,
@@ -98,19 +98,19 @@ class UndeclaredReasoningLevel(LookupError):
     """A capability generates without declaring how much reasoning it wants."""
 
 
-def default_reasoning_level(capability_id: str) -> str:
-    """The level ``capability_id`` declares. Raises for a capability that declares none."""
+def default_reasoning_level(task_type: str) -> str:
+    """The level ``task_type`` declares. Raises for a capability that declares none."""
     try:
-        return REASONING_BY_CAPABILITY[capability_id]
+        return REASONING_BY_TASK_TYPE[task_type]
     except KeyError:
         raise UndeclaredReasoningLevel(
-            f"capability {capability_id!r} declares no reasoning level; "
-            "add it to REASONING_BY_CAPABILITY (squadops.capabilities.reasoning_policy)"
+            f"capability {task_type!r} declares no reasoning level; "
+            "add it to REASONING_BY_TASK_TYPE (squadops.capabilities.reasoning_policy)"
         ) from None
 
 
 def resolve_reasoning_level(
-    capability_id: str,
+    task_type: str,
     *,
     agent_overrides: Mapping[str, Any],
     model_name: str | None,
@@ -123,7 +123,7 @@ def resolve_reasoning_level(
     override's value is validated where profiles are (``validate_agent_entries``),
     not re-checked here.
     """
-    level = agent_overrides.get(REASONING_OVERRIDE_KEY, default_reasoning_level(capability_id))
+    level = agent_overrides.get(REASONING_OVERRIDE_KEY, default_reasoning_level(task_type))
     spec = get_model_spec(model_name) if model_name else None
     if spec is None or spec.reasoning_control == ReasoningControl.NONE:
         return None

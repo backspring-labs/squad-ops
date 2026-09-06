@@ -78,7 +78,7 @@ def _format_planning_content(prior_outputs: dict[str, Any] | None) -> str:
 class _ProposeBaseHandler(_PlanningTaskHandler):
     """Shared shape for the three SIP-0093 proposer handlers.
 
-    Subclasses pin ``_capability_id``, ``_role``, ``_request_template_id``,
+    Subclasses pin ``_task_type``, ``_role``, ``_request_template_id``,
     ``_proposer_role`` (the value that appears in ``proposing_role`` of the
     parsed artifact), and implement ``_parse_and_validate``. The base
     drives the retry loop, surfaces the parsed artifact on success, and
@@ -90,9 +90,9 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
     _proposer_role: str = ""  # subclasses override — appears as proposing_role in YAML
 
     def _failure_artifact_name(self) -> str:
-        # capability_id with dots → underscores, plus _failure.yaml — a
+        # task_type with dots → underscores, plus _failure.yaml — a
         # filename the merger can pattern-match without parsing.
-        return self._capability_id.replace(".", "_") + "_failure.yaml"
+        return self._task_type.replace(".", "_") + "_failure.yaml"
 
     def _parse_and_validate(
         self,
@@ -257,7 +257,7 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
         assembled = context.ports.prompt_service.assemble(
             role=self._role,
             hook="agent_start",
-            task_type=self._capability_id,
+            task_type=self._task_type,
         )
         system_prompt = assembled.content
 
@@ -320,7 +320,7 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
             "artifact_name": self._success_artifact_name,
         }
         outputs = {
-            "summary": f"[{self._role}] proposal produced for {self._capability_id}",
+            "summary": f"[{self._role}] proposal produced for {self._task_type}",
             "role": self._role,
             "artifacts": [
                 {
@@ -335,7 +335,7 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
         duration_ms = (time.perf_counter() - start_time) * 1000
         evidence = HandlerEvidence.create(
             handler_name=self._handler_name,
-            capability_id=self._capability_id,
+            task_type=self._task_type,
             duration_ms=duration_ms,
             inputs_hash=self._hash_dict(inputs),
             outputs_hash=self._hash_dict(outputs),
@@ -390,7 +390,7 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
         duration_ms = (time.perf_counter() - start_time) * 1000
         evidence = HandlerEvidence.create(
             handler_name=self._handler_name,
-            capability_id=self._capability_id,
+            task_type=self._task_type,
             duration_ms=duration_ms,
             inputs_hash=self._hash_dict(inputs),
             outputs_hash=self._hash_dict(outputs),
@@ -402,7 +402,7 @@ class DevelopmentProposePlanTasksHandler(_ProposeBaseHandler):
     """SIP-0093 PR 93.2: development-domain plan-task proposer."""
 
     _handler_name = "development_propose_plan_tasks_handler"
-    _capability_id = "development.propose_plan_tasks"
+    _task_type = "development.propose_plan_tasks"
     _role = "dev"
     _request_template_id = "request.development_propose_plan_tasks"
     _success_artifact_name = "proposed_plan_tasks.yaml"
@@ -442,7 +442,7 @@ class QaProposePlanTasksHandler(_ProposeBaseHandler):
     """SIP-0093 PR 93.2: qa-domain plan-task proposer."""
 
     _handler_name = "qa_propose_plan_tasks_handler"
-    _capability_id = "qa.propose_plan_tasks"
+    _task_type = "qa.propose_plan_tasks"
     _role = "qa"
     _request_template_id = "request.qa_propose_plan_tasks"
     _success_artifact_name = "proposed_plan_tasks.yaml"
@@ -481,7 +481,7 @@ class StrategyProposePlanGuidanceHandler(_ProposeBaseHandler):
     """SIP-0093 PR 93.2: strategy plan-authoring guidance proposer."""
 
     _handler_name = "strategy_propose_plan_guidance_handler"
-    _capability_id = "strategy.propose_plan_guidance"
+    _task_type = "strategy.propose_plan_guidance"
     _role = "strat"
     _request_template_id = "request.strategy_propose_plan_guidance"
     _success_artifact_name = "plan_guidance.yaml"

@@ -78,16 +78,16 @@ class TestBuilderHandlerRegistration:
         assert BuilderAssembleHandler in handler_classes
         assert DevelopmentDevelopHandler in handler_classes
 
-    def test_builder_assemble_handler_capability_id(self):
-        """BuilderAssembleHandler in registry should have correct capability_id."""
+    def test_builder_assemble_handler_task_type(self):
+        """BuilderAssembleHandler in registry should have correct task_type."""
         registry = create_handler_registry()
-        capabilities = registry.list_capabilities()
+        capabilities = registry.list_task_types()
         assert "builder.assemble" in capabilities
 
     def test_builder_role_filter_includes_builder_handler(self):
         """Filtering by builder role should include builder.assemble."""
         registry = create_handler_registry(roles=["builder"])
-        capabilities = registry.list_capabilities()
+        capabilities = registry.list_task_types()
         assert "builder.assemble" in capabilities
         # Should NOT include dev-only handlers
         assert "development.develop" not in capabilities
@@ -105,14 +105,14 @@ class TestHandlerBootstrap:
 
         # Each entry should be (handler_class, roles)
         for handler_class, roles in handlers:
-            assert hasattr(handler_class, "capability_id")
+            assert hasattr(handler_class, "task_type")
             assert isinstance(roles, tuple)
 
     def test_create_handler_registry_all(self):
         """Should create registry with all handlers."""
         registry = create_handler_registry()
 
-        capabilities = registry.list_capabilities()
+        capabilities = registry.list_task_types()
 
         # Should have all capabilities
         assert len(capabilities) >= 8
@@ -126,7 +126,7 @@ class TestHandlerBootstrap:
         """Should create registry with filtered handlers."""
         registry = create_handler_registry(roles=["lead"])
 
-        capabilities = registry.list_capabilities()
+        capabilities = registry.list_task_types()
 
         # Should have lead capabilities
         assert "governance.review" in capabilities
@@ -161,7 +161,7 @@ class TestHandlerBootstrap:
         )
 
         registry = create_handler_registry()
-        capabilities = set(registry.list_capabilities())
+        capabilities = set(registry.list_task_types())
 
         all_dispatched: list[tuple[str, str]] = (
             CORRECTION_TASK_STEPS + REPAIR_TASK_STEPS + WRAPUP_TASK_STEPS
@@ -180,7 +180,7 @@ class TestHandlerBootstrap:
         verdict nothing consumes.
         """
         registry = create_handler_registry()
-        assert "qa.validate_repair" not in set(registry.list_capabilities())
+        assert "qa.validate_repair" not in set(registry.list_task_types())
 
 
 class TestSystemBootstrap:

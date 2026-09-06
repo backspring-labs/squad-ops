@@ -181,7 +181,7 @@ class TestDispatchTaskPrefectLifecycle:
             causation_id="cause",
             trace_id="trace",
             span_id="span",
-            metadata={"role": "dev", "capability_id": "dev.design"},
+            metadata={"role": "dev", "task_type": "dev.design"},
         )
 
     @pytest.fixture
@@ -446,7 +446,7 @@ class TestDispatchTaskPrefectLifecycle:
         messages = [r.getMessage() for r in caplog.records if "task_heartbeat" in r.getMessage()]
         assert messages, "expected at least one task_heartbeat log line"
         first = messages[0]
-        assert "capability_id=dev.design" in first
+        assert "task_type=dev.design" in first
         assert "task_id=task_abc" in first
         # Heartbeat coroutine saw the active flow/task run IDs via contextvar
         # inheritance at create_task time.

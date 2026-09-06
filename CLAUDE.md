@@ -98,7 +98,7 @@ squadops artifacts list --project <project> --cycle <cycle-id> --run <run-id>  #
   - `ports/` - Abstract interfaces (SecretProvider, QueuePort, CycleRegistryPort, AuthPort, AuditPort, LLMObservabilityPort)
   - `agents/` - BaseAgent with DI, entrypoint for RabbitMQ message handling
   - `tasks/` - TaskEnvelope, TaskResult models (A2A message format with lineage per SIP-031)
-  - `capabilities/` - Capability contracts, workload runner, cycle task handlers, build handlers (SIP-0058, SIP-0068)
+  - `capabilities/` - Task contracts (`TaskContract`, keyed by `task_type` — "capability" means bindable agent competence, #922), workload runner, cycle task handlers, build handlers, development profiles (SIP-0058, SIP-0068, SIP-0072)
   - `orchestration/` - AgentOrchestrator, HandlerExecutor
   - `cycles/` - Cycle/Run/Gate domain models, lifecycle state machine, task planning (SIP-0064)
   - `auth/` - Auth models, JWT validation helpers, middleware (SIP-0062)

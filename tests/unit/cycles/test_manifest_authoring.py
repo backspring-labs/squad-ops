@@ -23,8 +23,8 @@ import pytest
 
 from squadops.bootstrap.handlers import get_all_handlers
 from squadops.cycles.manifest_authoring import (
-    AUTHOR_MANIFEST_CAPABILITY,
     AUTHOR_MANIFEST_ROLE,
+    AUTHOR_MANIFEST_TASK_TYPE,
     authors_interface_manifest,
 )
 from squadops.cycles.models import (
@@ -136,8 +136,8 @@ def test_the_authoring_stage_sits_between_the_technical_design_and_qas_strategy(
     writes its strategy against a fixed interface rather than a guess."""
     steps = [t for t, _ in build_planning_steps(None, authors_manifest=True)]
 
-    assert steps.index("development.design_plan") < steps.index(AUTHOR_MANIFEST_CAPABILITY)
-    assert steps.index(AUTHOR_MANIFEST_CAPABILITY) < steps.index("qa.define_test_strategy")
+    assert steps.index("development.design_plan") < steps.index(AUTHOR_MANIFEST_TASK_TYPE)
+    assert steps.index(AUTHOR_MANIFEST_TASK_TYPE) < steps.index("qa.define_test_strategy")
 
 
 def test_seeded_mode_keeps_the_framing_sequence_it_had():
@@ -146,7 +146,7 @@ def test_seeded_mode_keeps_the_framing_sequence_it_had():
     1.4/1.5 numbers describe."""
     seeded = build_planning_steps(None, authors_manifest=False)
 
-    assert AUTHOR_MANIFEST_CAPABILITY not in [t for t, _ in seeded]
+    assert AUTHOR_MANIFEST_TASK_TYPE not in [t for t, _ in seeded]
     assert seeded == [
         ("data.research_context", "data"),
         ("strategy.frame_objective", "strat"),
@@ -164,7 +164,7 @@ def test_the_stage_composes_with_the_proposer_fan_out():
     at once without either dropping the other."""
     steps = [t for t, _ in build_planning_steps(["development", "qa"], authors_manifest=True)]
 
-    assert steps.index(AUTHOR_MANIFEST_CAPABILITY) < steps.index(
+    assert steps.index(AUTHOR_MANIFEST_TASK_TYPE) < steps.index(
         "governance.prepare_plan_authoring_brief"
     )
     assert "development.propose_plan_tasks" in steps
@@ -181,7 +181,7 @@ def test_a_framing_run_on_a_scaffoldable_stack_dispatches_the_author(full_profil
     whether anything authors a manifest at all."""
     envelopes = generate_task_plan(_cycle(build_profile=_SCAFFOLDABLE), _run(), full_profile)
 
-    authoring = [e for e in envelopes if e.task_type == AUTHOR_MANIFEST_CAPABILITY]
+    authoring = [e for e in envelopes if e.task_type == AUTHOR_MANIFEST_TASK_TYPE]
     assert len(authoring) == 1
     assert authoring[0].metadata["role"] == AUTHOR_MANIFEST_ROLE
     assert authoring[0].agent_id == "neo"
@@ -193,17 +193,17 @@ def test_a_bind_mode_framing_run_dispatches_no_author(full_profile):
 
     envelopes = generate_task_plan(cycle, _run(), full_profile)
 
-    assert AUTHOR_MANIFEST_CAPABILITY not in [e.task_type for e in envelopes]
+    assert AUTHOR_MANIFEST_TASK_TYPE not in [e.task_type for e in envelopes]
 
 
 def test_the_authoring_capability_has_a_handler_registered_for_its_step_role():
     """A step whose (capability, role) pair no handler serves aborts dispatch mid-run with
     "No handler for capability" — after the cycle has already spent its framing tail."""
-    registered = {(handler_cls._capability_id, roles) for handler_cls, roles in get_all_handlers()}
-    matches = [roles for cap, roles in registered if cap == AUTHOR_MANIFEST_CAPABILITY]
+    registered = {(handler_cls._task_type, roles) for handler_cls, roles in get_all_handlers()}
+    matches = [roles for cap, roles in registered if cap == AUTHOR_MANIFEST_TASK_TYPE]
 
-    assert matches, f"{AUTHOR_MANIFEST_CAPABILITY} has no registered handler"
+    assert matches, f"{AUTHOR_MANIFEST_TASK_TYPE} has no registered handler"
     assert AUTHOR_MANIFEST_ROLE in matches[0], (
-        f"the framing step dispatches {AUTHOR_MANIFEST_CAPABILITY} to "
+        f"the framing step dispatches {AUTHOR_MANIFEST_TASK_TYPE} to "
         f"{AUTHOR_MANIFEST_ROLE!r}, but the handler is registered for {matches[0]}"
     )

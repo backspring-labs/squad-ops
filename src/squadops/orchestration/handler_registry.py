@@ -21,17 +21,17 @@ logger = logging.getLogger(__name__)
 class HandlerNotFoundError(Exception):
     """Raised when a handler is not found."""
 
-    def __init__(self, capability_id: str):
-        self.capability_id = capability_id
-        super().__init__(f"No handler registered for capability: {capability_id}")
+    def __init__(self, task_type: str):
+        self.task_type = task_type
+        super().__init__(f"No handler registered for capability: {task_type}")
 
 
 class DuplicateHandlerError(Exception):
     """Raised when attempting to register a duplicate handler."""
 
-    def __init__(self, capability_id: str):
-        self.capability_id = capability_id
-        super().__init__(f"Handler already registered for capability: {capability_id}")
+    def __init__(self, task_type: str):
+        self.task_type = task_type
+        super().__init__(f"Handler already registered for capability: {task_type}")
 
 
 @dataclass
@@ -84,14 +84,14 @@ class HandlerRegistry:
         Raises:
             DuplicateHandlerError: If handler already registered and not allow_override
         """
-        capability_id = handler.capability_id
+        task_type = handler.task_type
 
-        if capability_id in self._handlers and not allow_override:
-            raise DuplicateHandlerError(capability_id)
+        if task_type in self._handlers and not allow_override:
+            raise DuplicateHandlerError(task_type)
 
         roles_tuple = tuple(roles) if isinstance(roles, list) else roles
 
-        self._handlers[capability_id] = HandlerRegistration(
+        self._handlers[task_type] = HandlerRegistration(
             handler=handler,
             roles=roles_tuple,
             priority=priority,
@@ -101,44 +101,44 @@ class HandlerRegistry:
         for role in roles_tuple:
             if role not in self._by_role:
                 self._by_role[role] = []
-            if capability_id not in self._by_role[role]:
-                self._by_role[role].append(capability_id)
+            if task_type not in self._by_role[role]:
+                self._by_role[role].append(task_type)
 
         logger.debug(
             "handler_registered",
             extra={
-                "capability_id": capability_id,
+                "task_type": task_type,
                 "handler_name": handler.name,
                 "roles": roles_tuple,
             },
         )
 
-    def unregister(self, capability_id: str) -> bool:
+    def unregister(self, task_type: str) -> bool:
         """Unregister a handler.
 
         Args:
-            capability_id: Capability ID to unregister
+            task_type: Capability ID to unregister
 
         Returns:
             True if handler was removed, False if not found
         """
-        if capability_id not in self._handlers:
+        if task_type not in self._handlers:
             return False
 
-        registration = self._handlers.pop(capability_id)
+        registration = self._handlers.pop(task_type)
 
         # Remove from role index
         for role in registration.roles:
             if role in self._by_role:
-                self._by_role[role] = [cid for cid in self._by_role[role] if cid != capability_id]
+                self._by_role[role] = [cid for cid in self._by_role[role] if cid != task_type]
 
         return True
 
-    def get(self, capability_id: str) -> CapabilityHandler:
+    def get(self, task_type: str) -> CapabilityHandler:
         """Get handler by capability ID.
 
         Args:
-            capability_id: Capability ID to look up
+            task_type: Capability ID to look up
 
         Returns:
             Registered handler
@@ -146,10 +146,10 @@ class HandlerRegistry:
         Raises:
             HandlerNotFoundError: If no handler registered
         """
-        if capability_id not in self._handlers:
-            raise HandlerNotFoundError(capability_id)
+        if task_type not in self._handlers:
+            raise HandlerNotFoundError(task_type)
 
-        return self._handlers[capability_id].handler
+        return self._handlers[task_type].handler
 
     def get_for_role(self, role: str) -> list[CapabilityHandler]:
         """Get all handlers available to a role.
@@ -160,21 +160,21 @@ class HandlerRegistry:
         Returns:
             List of handlers available to the role
         """
-        capability_ids = self._by_role.get(role, [])
-        return [self._handlers[cid].handler for cid in capability_ids]
+        task_types = self._by_role.get(role, [])
+        return [self._handlers[cid].handler for cid in task_types]
 
-    def has(self, capability_id: str) -> bool:
+    def has(self, task_type: str) -> bool:
         """Check if handler is registered.
 
         Args:
-            capability_id: Capability ID to check
+            task_type: Capability ID to check
 
         Returns:
             True if handler is registered
         """
-        return capability_id in self._handlers
+        return task_type in self._handlers
 
-    def list_capabilities(self) -> list[str]:
+    def list_task_types(self) -> list[str]:
         """List all registered capability IDs.
 
         Returns:

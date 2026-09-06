@@ -46,7 +46,7 @@ class GovernanceCorrectionDecisionHandler(_CycleTaskHandler):
     """Decide the correction path after a failure analysis."""
 
     _handler_name = "governance_correction_decision_handler"
-    _capability_id = "governance.correction_decision"
+    _task_type = "governance.correction_decision"
     _role = "lead"
     _artifact_name = "correction_decision.md"
 
@@ -94,7 +94,7 @@ class GovernanceCorrectionDecisionHandler(_CycleTaskHandler):
         # source of truth.
         assembled = context.ports.prompt_service.assemble_task_only(
             role=self._role,
-            task_type=self._capability_id,
+            task_type=self._task_type,
         )
         messages = [
             ChatMessage(role="system", content=assembled.content),
@@ -110,7 +110,7 @@ class GovernanceCorrectionDecisionHandler(_CycleTaskHandler):
             duration_ms = (time.perf_counter() - start_time) * 1000
             evidence = HandlerEvidence.create(
                 handler_name=self._handler_name,
-                capability_id=self._capability_id,
+                task_type=self._task_type,
                 duration_ms=duration_ms,
                 inputs_hash=self._hash_dict(inputs),
             )
@@ -217,7 +217,7 @@ class GovernanceCorrectionDecisionHandler(_CycleTaskHandler):
 
         evidence = HandlerEvidence.create(
             handler_name=self._handler_name,
-            capability_id=self._capability_id,
+            task_type=self._task_type,
             duration_ms=duration_ms,
             inputs_hash=self._hash_dict(inputs),
             outputs_hash=self._hash_dict(outputs),

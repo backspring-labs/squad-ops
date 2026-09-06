@@ -66,7 +66,7 @@ class HandlerExecutor(CapabilityExecutor):
         """Execute a task using the appropriate handler.
 
         Args:
-            envelope: Task envelope with capability_id as task_type
+            envelope: Task envelope whose task_type names the contract
             timeout_seconds: Maximum execution time
 
         Returns:
@@ -75,14 +75,14 @@ class HandlerExecutor(CapabilityExecutor):
         Raises:
             TimeoutError: If execution exceeds timeout
         """
-        capability_id = envelope.task_type
+        task_type = envelope.task_type
         task_id = envelope.task_id
 
         logger.info(
-            "executing_capability",
+            "executing_task",
             extra={
                 "task_id": task_id,
-                "capability_id": capability_id,
+                "task_type": task_type,
                 "agent_id": envelope.agent_id,
             },
         )
@@ -90,13 +90,13 @@ class HandlerExecutor(CapabilityExecutor):
         try:
             # Get handler
             try:
-                handler = self._handler_registry.get(capability_id)
+                handler = self._handler_registry.get(task_type)
             except HandlerNotFoundError:
                 return TaskResult(
                     task_id=task_id,
                     status="FAILED",
                     outputs=None,
-                    error=f"No handler for capability: {capability_id}",
+                    error=f"No handler for task type: {task_type}",
                     execution_evidence={"error": "handler_not_found"},
                 )
 
@@ -145,7 +145,7 @@ class HandlerExecutor(CapabilityExecutor):
                     "handler_succeeded",
                     extra={
                         "task_id": task_id,
-                        "capability_id": capability_id,
+                        "task_type": task_type,
                     },
                 )
                 return TaskResult(
@@ -160,7 +160,7 @@ class HandlerExecutor(CapabilityExecutor):
                     "handler_failed",
                     extra={
                         "task_id": task_id,
-                        "capability_id": capability_id,
+                        "task_type": task_type,
                         "error": result.error,
                     },
                 )
@@ -197,25 +197,25 @@ class HandlerExecutor(CapabilityExecutor):
         return {
             "status": "healthy",
             "executor_id": self._executor_id,
-            "handlers_registered": len(self._handler_registry.list_capabilities()),
+            "handlers_registered": len(self._handler_registry.list_task_types()),
         }
 
-    def can_execute(self, capability_id: str, agent_role: str) -> bool:
-        """Check if this executor can handle a capability.
+    def can_execute(self, task_type: str, agent_role: str) -> bool:
+        """Check if this executor can handle a task type.
 
         Args:
-            capability_id: Capability contract ID
+            task_type: Task contract ID
             agent_role: Agent role
 
         Returns:
-            True if executor can handle the capability
+            True if executor can handle the task type
         """
-        if not self._handler_registry.has(capability_id):
+        if not self._handler_registry.has(task_type):
             return False
 
         # Check if role has access
         available = self._handler_registry.list_by_role(agent_role)
-        return capability_id in available or not available  # Empty = all roles
+        return task_type in available or not available  # Empty = all roles
 
     def _evidence_to_dict(self, evidence) -> dict[str, Any]:
         """Convert handler evidence to dictionary.
@@ -228,7 +228,7 @@ class HandlerExecutor(CapabilityExecutor):
         """
         return {
             "handler_name": evidence.handler_name,
-            "capability_id": evidence.capability_id,
+            "task_type": evidence.task_type,
             "executed_at": evidence.executed_at.isoformat(),
             "duration_ms": evidence.duration_ms,
             "inputs_hash": evidence.inputs_hash,
