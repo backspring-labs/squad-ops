@@ -67,7 +67,7 @@ instances:
     description: "Finance & Ops - Rule-based reasoning"
 
   # Communications Role (SIP-0085: A2A messaging enabled)
-  - id: comms-agent
+  - id: joi
     display_name: Joi
     role: comms
     model: llama3.1:8b
