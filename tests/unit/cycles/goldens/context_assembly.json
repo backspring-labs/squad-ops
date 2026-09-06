@@ -66,7 +66,7 @@
    "- `backend/__init__.py` \u2014 import as `backend`",
    "- `backend/main.py` \u2014 import as `backend.main`; functions health(); its own imports `.errors`, `.routes`, `fastapi`, `fastapi.middleware.cors`, `os`",
    "- `backend/models.py` \u2014 import as `backend.models`; defines Participant(id, name), RunEvent(id, title, datetime, location, distance, pace_target, route_notes, participants), RunEventCreate(title, datetime, location, distance, pace_target, route_notes), ParticipantName(name); its own imports `pydantic`, `typing`",
-   "- `backend/store.py` \u2014 import as `backend.store`; module state participant_store: dict[str, Participant], run_event_store: dict[str, RunEvent]; functions reset(); its own imports `.models`",
+   "- `backend/store.py` \u2014 import as `backend.store`; module state run_event_store: dict[str, RunEvent]; functions reset(); its own imports `.models`",
    "- `backend/errors.py` \u2014 import as `backend.errors`; defines ApiError; functions register_error_handlers(app); its own imports `fastapi`, `fastapi.exceptions`, `fastapi.responses`",
    "- `backend/requirements.txt`",
    "- `conftest.py` \u2014 functions client(); its own imports `backend.main`, `fastapi.testclient`, `os`, `pytest`, `sys`",
@@ -84,7 +84,7 @@
    "field names are exact \u2014 construct and read models with the fields shown above; a near-miss (`pace` for `pace_target`, `meeting_location` for `location`) raises at request time and every affected endpoint returns HTTP 500",
    "do NOT invent model names or aliases (`Run`, `RunCreate`, `RunResponse`, `RunJoin` and similar do not exist); an import of a name absent from the list above fails at load, the app never starts, and the patch is rejected",
    "`models.py` is frozen \u2014 if a name you want is missing, use the declared names and shape the response in the fill slot; do not edit or re-emit the model module",
-   "`backend/store.py` is scaffold-frozen and already defines the in-memory stores: `participant_store`, `run_event_store` (plus `reset()` for test isolation). Import them (`from .store import ...`); do NOT declare your own store dicts \u2014 a shadow store is invisible to `reset()`, so state leaks between tests and the suite fails on isolation"
+   "`backend/store.py` is scaffold-frozen and already defines the in-memory stores: `run_event_store` (plus `reset()` for test isolation). Import them (`from .store import ...`); do NOT declare your own store dicts \u2014 a shadow store is invisible to `reset()`, so state leaks between tests and the suite fails on isolation. `Participant` have no store \u2014 they are shapes embedded in or projected from those rows; build them from a stored entity, never keep a parallel store."
   ],
   "prd": "PRD",
   "prior_outputs": {
@@ -129,7 +129,7 @@
    "- `backend/__init__.py` \u2014 import as `backend`",
    "- `backend/main.py` \u2014 import as `backend.main`; functions health(); its own imports `.errors`, `.routes`, `fastapi`, `fastapi.middleware.cors`, `os`",
    "- `backend/models.py` \u2014 import as `backend.models`; defines Participant(id, name), RunEvent(id, title, datetime, location, distance, pace_target, route_notes, participants), RunEventCreate(title, datetime, location, distance, pace_target, route_notes), ParticipantName(name); its own imports `pydantic`, `typing`",
-   "- `backend/store.py` \u2014 import as `backend.store`; module state participant_store: dict[str, Participant], run_event_store: dict[str, RunEvent]; functions reset(); its own imports `.models`",
+   "- `backend/store.py` \u2014 import as `backend.store`; module state run_event_store: dict[str, RunEvent]; functions reset(); its own imports `.models`",
    "- `backend/errors.py` \u2014 import as `backend.errors`; defines ApiError; functions register_error_handlers(app); its own imports `fastapi`, `fastapi.exceptions`, `fastapi.responses`",
    "- `backend/requirements.txt`",
    "- `conftest.py` \u2014 functions client(); its own imports `backend.main`, `fastapi.testclient`, `os`, `pytest`, `sys`",
@@ -147,7 +147,7 @@
    "field names are exact \u2014 construct and read models with the fields shown above; a near-miss (`pace` for `pace_target`, `meeting_location` for `location`) raises at request time and every affected endpoint returns HTTP 500",
    "do NOT invent model names or aliases (`Run`, `RunCreate`, `RunResponse`, `RunJoin` and similar do not exist); an import of a name absent from the list above fails at load, the app never starts, and the patch is rejected",
    "`models.py` is frozen \u2014 if a name you want is missing, use the declared names and shape the response in the fill slot; do not edit or re-emit the model module",
-   "`backend/store.py` is scaffold-frozen and already defines the in-memory stores: `participant_store`, `run_event_store` (plus `reset()` for test isolation). Import them (`from .store import ...`); do NOT declare your own store dicts \u2014 a shadow store is invisible to `reset()`, so state leaks between tests and the suite fails on isolation"
+   "`backend/store.py` is scaffold-frozen and already defines the in-memory stores: `run_event_store` (plus `reset()` for test isolation). Import them (`from .store import ...`); do NOT declare your own store dicts \u2014 a shadow store is invisible to `reset()`, so state leaks between tests and the suite fails on isolation. `Participant` have no store \u2014 they are shapes embedded in or projected from those rows; build them from a stored entity, never keep a parallel store."
   ],
   "prior_outputs": {
    "dev": {
@@ -247,7 +247,7 @@
    "- `backend/__init__.py` \u2014 import as `backend`",
    "- `backend/main.py` \u2014 import as `backend.main`; functions health(); its own imports `.errors`, `.routes`, `fastapi`, `fastapi.middleware.cors`, `os`",
    "- `backend/models.py` \u2014 import as `backend.models`; defines Participant(id, name), RunEvent(id, title, datetime, location, distance, pace_target, route_notes, participants), RunEventCreate(title, datetime, location, distance, pace_target, route_notes), ParticipantName(name); its own imports `pydantic`, `typing`",
-   "- `backend/store.py` \u2014 import as `backend.store`; module state participant_store: dict[str, Participant], run_event_store: dict[str, RunEvent]; functions reset(); its own imports `.models`",
+   "- `backend/store.py` \u2014 import as `backend.store`; module state run_event_store: dict[str, RunEvent]; functions reset(); its own imports `.models`",
    "- `backend/errors.py` \u2014 import as `backend.errors`; defines ApiError; functions register_error_handlers(app); its own imports `fastapi`, `fastapi.exceptions`, `fastapi.responses`",
    "- `backend/requirements.txt`",
    "- `conftest.py` \u2014 functions client(); its own imports `backend.main`, `fastapi.testclient`, `os`, `pytest`, `sys`",

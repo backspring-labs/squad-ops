@@ -1,0 +1,110 @@
+version: 1
+kind: interface_manifest
+project_id: group-run
+source_prd: "group_run PRD v0.5 (1-Hour Cycle MVP+, SIP-0098 §6.7)"
+stack: fullstack_fastapi_react
+scope: "Five-endpoint in-memory API for creating, listing, and viewing group run events with participant join/leave by name; deliberately excludes authentication, persistent storage, real-time updates, filtering, and all expansion items"
+entities:
+  - name: Run
+    fields:
+      - { name: id, type: string, required: true, generated: true }
+      - { name: title, type: string, required: true }
+      - { name: datetime, type: string, required: true }
+      - { name: meeting_location, type: string, required: true }
+      - { name: distance, type: string, required: false }
+      - { name: pace_target, type: string, required: false }
+      - { name: route_notes, type: string, required: false }
+      - { name: participant_count, type: integer, required: true }
+  - name: RunDetail
+    fields:
+      - { name: id, type: string, required: true, generated: true }
+      - { name: title, type: string, required: true }
+      - { name: datetime, type: string, required: true }
+      - { name: meeting_location, type: string, required: true }
+      - { name: distance, type: string, required: false }
+      - { name: pace_target, type: string, required: false }
+      - { name: route_notes, type: string, required: false }
+      - { name: participants, type: "list[Participant]", required: true }
+      - { name: participant_count, type: integer, required: true }
+  - name: Participant
+    fields:
+      - { name: name, type: string, required: true }
+      - { name: joined_at, type: string, required: true }
+api:
+  base_path: ""
+  request_shapes:
+    RunCreate:
+      required: [title, datetime, meeting_location]
+      optional: [distance, pace_target, route_notes]
+    JoinRequest:
+      required: [name]
+    LeaveRequest:
+      required: [name]
+  endpoints:
+    - method: POST
+      path: /runs
+      summary: create a run event
+      request: RunCreate
+      response: Run
+      success_status: 201
+      errors: [validation_error]
+    - method: GET
+      path: /runs
+      summary: list all run events
+      response: "list[Run]"
+    - method: GET
+      path: "/runs/{run_id}"
+      summary: fetch a run with its participant list
+      response: RunDetail
+      errors: [run_not_found]
+    - method: POST
+      path: "/runs/{run_id}/join"
+      summary: add a participant to a run by name
+      request: JoinRequest
+      response: RunDetail
+      errors: [run_not_found, duplicate_name, validation_error]
+    - method: POST
+      path: "/runs/{run_id}/leave"
+      summary: remove a participant from a run by name
+      request: LeaveRequest
+      response: RunDetail
+      errors: [run_not_found, participant_not_found, validation_error]
+  error_contract:
+    shape: '{"error": {"code": "...", "message": "..."}}'
+    codes:
+      validation_error: { http: 422 }
+      run_not_found: { http: 404 }
+      duplicate_name: { http: 409 }
+      participant_not_found: { http: 404 }
+frontend:
+  framework: react_vite
+  routes:
+    - path: /
+      view: RunsList
+      purpose: "list all run events and provide a form to create a new one"
+      testids: [runs-list-view, run-list, run-row, create-run-form, create-run-submit]
+    - path: /runs/:run_id
+      view: RunDetail
+      purpose: "display run details, participant names, and forms to join or leave by name"
+      testids: [run-detail-view, run-title, run-participants, participant-row, join-form, join-name-input, join-submit, leave-form, leave-name-input, leave-submit]
+persistence: in_memory
+decisions:
+  - id: name-uniqueness
+    choice: "Participant name uniqueness within a run is case-insensitive; comparison normalises via trim and lowercase, while display preserves the original casing the user typed"
+    warrant: "PRD §5.4 — 'case sensitivity behavior should be defined in implementation; default recommendation: case-insensitive uniqueness'"
+  - id: leave-unknown-participant
+    choice: "Leaving a run with a name not present on that run returns HTTP 404 with error code participant_not_found"
+    warrant: "PRD §5.5 — 'If participant name does not exist on the run, backend returns clear error (or no-op with clear response; choose one and document in QA handoff)'; 404 chosen for API honesty"
+  - id: duplicate-join-status
+    choice: "A duplicate-name join returns HTTP 409 with error code duplicate_name"
+    warrant: "PRD §5.4 — 'Duplicate participant names on the same run are rejected'; 409 Conflict is the conventional status for a request that conflicts with current resource state"
+  - id: list-ordering
+    unresolved: true
+    question: "PRD §5.2 refers to 'upcoming runs' but does not define a sort order or whether filtering by future date applies; expansion item #2 (PRD §4.1 Tier 1) defers datetime sorting. What is the default ordering of GET /runs when no expansion is implemented?"
+
+provenance:
+  mode: authored
+  cycle_id: cyc_ac15b6c6209f
+  task_id: task-run_c9d77390-003-development.author_manifest
+  attempts: 1
+  revisions: []
