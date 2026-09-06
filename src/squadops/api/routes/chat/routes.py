@@ -32,8 +32,8 @@ from squadops.comms.models import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/chat", tags=["chat"])
-agents_router = APIRouter(prefix="/api/agents", tags=["chat"])
+router = APIRouter(prefix="/api/v1/chat", tags=["chat"])
+agents_router = APIRouter(prefix="/api/v1/agents", tags=["chat"])
 
 
 # =============================================================================

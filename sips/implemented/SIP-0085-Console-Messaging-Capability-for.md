@@ -475,3 +475,23 @@ This SIP delivers point-to-point messaging. The intended evolution is toward squ
 - Agent-to-agent messaging without human intermediary
 - Automatic memory extraction from conversations
 - Push notifications for async updates
+
+## Post-acceptance amendments
+
+### 2026-09-06 — the messaging routes are on `/api/v1` (#219)
+
+**What changed.** `POST /api/chat/{agent_id}`, `GET /api/chat/sessions/{session_id}/messages`,
+`GET /api/chat/{agent_id}/sessions` and `GET /api/agents/messaging` are now
+`/api/v1/chat/…` and `/api/v1/agents/messaging` — the runtime-api router prefixes, the
+console BFF's proxy handlers, the Caddy rules and the `ChatDrawer` plugin moved in lockstep.
+The surface still rides the console BFF for auth and SSE streaming.
+
+**Evidence.** This SIP introduced the routes unversioned in one commit (`57f6305`) with no
+recorded rationale — the one cheaply-fixable deviation in the four-convention surface #218
+audited. They are authenticated managed resources, sessions and messages, and SSE is a
+response shape, not a prefix. `tests/unit/api/test_route_lanes.py` holds every registered
+route to the standard in `docs/architecture/api-route-lanes.md`.
+
+**Ruled by.** #218's standard and #219 (decision: move, not exempt); the 1.7.3 plan §3.2
+steps 7–8.
+

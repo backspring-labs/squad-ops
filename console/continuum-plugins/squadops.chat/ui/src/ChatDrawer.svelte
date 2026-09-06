@@ -35,7 +35,7 @@
 
   async function discoverAgents() {
     try {
-      const resp = await apiFetch(`${apiBase}/api/agents/messaging`);
+      const resp = await apiFetch(`${apiBase}/api/v1/agents/messaging`);
       if (!resp.ok) {
         error = 'Failed to load messaging agents';
         return;
@@ -56,7 +56,7 @@
   async function loadSessions() {
     if (!agentId) return;
     try {
-      const resp = await apiFetch(`${apiBase}/api/chat/${agentId}/sessions`);
+      const resp = await apiFetch(`${apiBase}/api/v1/chat/${agentId}/sessions`);
       if (resp.ok) {
         sessions = await resp.json();
       }
@@ -67,7 +67,7 @@
 
   async function loadSessionMessages(sid) {
     try {
-      const resp = await apiFetch(`${apiBase}/api/chat/sessions/${sid}/messages`);
+      const resp = await apiFetch(`${apiBase}/api/v1/chat/sessions/${sid}/messages`);
       if (resp.ok) {
         messages = await resp.json();
         sessionId = sid;
@@ -125,7 +125,7 @@
       const body = { message: text };
       if (sessionId) body.session_id = sessionId;
 
-      const resp = await apiFetch(`${apiBase}/api/chat/${agentId}`, {
+      const resp = await apiFetch(`${apiBase}/api/v1/chat/${agentId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
