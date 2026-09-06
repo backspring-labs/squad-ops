@@ -887,3 +887,30 @@ acceptance_checks:
   }
 }
 ```
+
+## 16. Post-acceptance amendments
+
+### 16a. 2026-09-06 — `CapabilityContract.capability_id` is the task type, and is named so (#922)
+
+**What changed.** The contract model and its identifier are renamed for what they are:
+`CapabilityContract` → `TaskContract`, `capability_id` → `task_type` (on the contract, on
+`WorkloadTask`, on `TaskRecord`, and as the on-disk manifest key), handler `_capability_id`
+→ `_task_type`, `HandlerRegistry.get(capability_id)` → `get(task_type)`,
+`list_capabilities()` → `list_task_types()`, `REASONING_BY_CAPABILITY` →
+`REASONING_BY_TASK_TYPE`. The package (`squadops.capabilities`), the ports
+(`CapabilityExecutor`, `CapabilityRepository`, `CapabilityHandler`) and the API service's
+agent-facing `list_capabilities` keep their names: they name the subsystem and what an agent
+can do, not the identifier this section retires.
+
+**Evidence.** The concept had already collapsed — `runner.py` set
+`task_type=contract.capability_id` and the registry was keyed on it — and only the name lagged.
+`HandlerRegistry.get(capability_id)` looked like the competence-binding seam
+`SIP-Capability-Backed-Agents` §8 wants while being the task-type registry: the collision a
+pack would have frozen into a distribution format. `capability_id` was on no external
+surface (API, persistence, console). `tests/unit/architecture/test_retired_capability_spellings.py`
+holds the retired spellings out of live code and config.
+
+**Ruled by.** Issue #922 (2026-08-12) and the 1.7.3 plan §3.2 step 1 (merged 2026-09-06):
+"capability" keeps one meaning — bindable agent competence, the word in the distribution
+format.
+

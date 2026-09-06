@@ -8,9 +8,9 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any
 
-from squadops.capabilities.dev_capabilities import (
-    effective_capability_name,
-    get_capability,
+from squadops.capabilities.development_profiles import (
+    effective_development_profile,
+    get_development_profile,
 )
 from squadops.capabilities.handlers.base import (
     HandlerEvidence,
@@ -53,7 +53,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
     """
 
     _handler_name = "development_develop_handler"
-    _capability_id = "development.develop"
+    _task_type = "development.develop"
     _role = "dev"
     _artifact_name = "build_output"  # overridden by multi-file output
 
@@ -275,7 +275,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         strategy: str | None = None,
     ) -> str:
         """Build prompt with PRD + plan artifacts for code generation."""
-        capability = get_capability(effective_capability_name(self._resolved_config))
+        capability = get_development_profile(effective_development_profile(self._resolved_config))
 
         parts = [f"## Product Requirements Document\n\n{prd}"]
 
@@ -428,15 +428,19 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
             )
             rendered = None
             try:
-                capability = get_capability(effective_capability_name(self._resolved_config))
+                capability = get_development_profile(
+                    effective_development_profile(self._resolved_config)
+                )
             except ValueError as exc:
                 return self._fail_result(start_time, inputs, str(exc))
         else:
             # Legacy monolithic prompt path (unchanged)
 
-            # Resolve capability (fail fast on unknown dev_capability)
+            # Resolve capability (fail fast on unknown development_profile)
             try:
-                capability = get_capability(effective_capability_name(self._resolved_config))
+                capability = get_development_profile(
+                    effective_development_profile(self._resolved_config)
+                )
             except ValueError as exc:
                 return self._fail_result(start_time, inputs, str(exc))
 
@@ -501,7 +505,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         if "temperature" in agent_overrides:
             chat_kwargs["temperature"] = agent_overrides["temperature"]
         reasoning = resolve_reasoning_level(
-            self._capability_id, agent_overrides=agent_overrides, model_name=model_name
+            self._task_type, agent_overrides=agent_overrides, model_name=model_name
         )
         chat_kwargs.update(reasoning_kwargs(reasoning))
 
@@ -671,7 +675,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
             tce_artifact = self._build_typed_check_evaluation_artifact(
                 validation.checks,
                 inputs.get("subtask_index"),
-                self._capability_id,
+                self._task_type,
                 inputs.get("workspace_revision_id"),
             )
             if tce_artifact is not None:
@@ -740,7 +744,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         duration_ms = (time.perf_counter() - start_time) * 1000
         evidence = HandlerEvidence.create(
             handler_name=self._handler_name,
-            capability_id=self._capability_id,
+            task_type=self._task_type,
             duration_ms=duration_ms,
             inputs_hash=self._hash_dict(inputs),
             outputs_hash=self._hash_dict(outputs),
@@ -813,16 +817,16 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         ``ApiError(code, message)`` — and paid a correction to undo it. Same data, same
         transport, one step earlier.
         """
-        from squadops.capabilities.dev_capabilities import (
-            effective_capability_name,
-            get_capability,
+        from squadops.capabilities.development_profiles import (
+            effective_development_profile,
+            get_development_profile,
         )
         from squadops.capabilities.scaffold import is_scaffoldable_stack
 
         stack = str(self._resolved_config.get("build_profile") or "")
         if not is_scaffoldable_stack(stack):
             return ""
-        # The asset is the STACK's, resolved through its dev capability. One shared asset
+        # The asset is the STACK's, resolved through its development profile. One shared asset
         # is what broke SIP-0104 roll 1: a nextjs_ts author was told to fill
         # `backend/routes.py` and that `apiFetch` "prefixes /api" — stack #1's layout and
         # stack #1's seam semantics — so it wrote `api('/runs')` against a helper that
@@ -830,7 +834,9 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         # A stack with no declared asset gets NO fill-only appendix: wrong guidance is
         # worse than none (#818).
         try:
-            capability = get_capability(effective_capability_name(self._resolved_config))
+            capability = get_development_profile(
+                effective_development_profile(self._resolved_config)
+            )
         except ValueError:
             return ""
         if not capability.fill_only_template:

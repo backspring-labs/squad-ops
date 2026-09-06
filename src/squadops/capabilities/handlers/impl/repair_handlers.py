@@ -5,10 +5,10 @@ cycles/task_plan.py: development.correction_repair (dev) and
 builder.assemble_repair (builder).
 
 Issue #100: this file used to define a `DevelopmentRepairHandler` with
-`_capability_id = "development.repair"`. That collided with the SIP-0070
+`_task_type = "development.repair"`. That collided with the SIP-0070
 pulse-check `DevelopmentRepairHandler` in handlers/repair_tasks.py. The
 correction-loop variant is now `DevelopmentCorrectionRepairHandler` with
-`_capability_id = "development.correction_repair"` so the pulse-check and
+`_task_type = "development.correction_repair"` so the pulse-check and
 correction-loop flows have distinct, non-overlapping capability ids.
 """
 
@@ -477,9 +477,9 @@ class _RepairPromptMixin:
         renderer = getattr(context.ports, "request_renderer", None)
         if renderer is None:
             return ""
-        from squadops.capabilities.dev_capabilities import (
-            effective_capability_name,
-            get_capability,
+        from squadops.capabilities.development_profiles import (
+            effective_development_profile,
+            get_development_profile,
         )
         from squadops.capabilities.scaffold import is_scaffoldable_stack
 
@@ -496,7 +496,7 @@ class _RepairPromptMixin:
         # Resolved exactly as develop resolves it; an unset template means NO appendix,
         # because wrong guidance is worse than none (#818).
         try:
-            capability = get_capability(effective_capability_name(resolved_config))
+            capability = get_development_profile(effective_development_profile(resolved_config))
         except ValueError:
             return ""
         if not capability.fill_only_template:
@@ -843,7 +843,7 @@ class DevelopmentCorrectionRepairHandler(_RepairPromptMixin, _CycleTaskHandler):
     """
 
     _handler_name = "development_correction_repair_handler"
-    _capability_id = "development.correction_repair"
+    _task_type = "development.correction_repair"
     _role = "dev"
     _artifact_name = "repair_output.md"
 
@@ -864,7 +864,7 @@ class BuilderAssembleRepairHandler(_RepairPromptMixin, _CycleTaskHandler):
     """
 
     _handler_name = "builder_assemble_repair_handler"
-    _capability_id = "builder.assemble_repair"
+    _task_type = "builder.assemble_repair"
     _role = "builder"
     _artifact_name = "repair_output.md"
 
@@ -888,7 +888,7 @@ class QATestRepairHandler(_RepairPromptMixin, _CycleTaskHandler):
     """
 
     _handler_name = "qa_test_repair_handler"
-    _capability_id = "qa.test_repair"
+    _task_type = "qa.test_repair"
     _role = "qa"
     _artifact_name = "repair_output.md"
 

@@ -4,7 +4,7 @@ Pins the contract that gives the SIP its value: when the agent receives a
 TaskEnvelope carrying flow_run_id / task_run_id, log records emitted *while
 submit_task is running* reach the Prefect forwarder tagged with those IDs.
 
-Without this contract, handler events (executing_capability,
+Without this contract, handler events (executing_task,
 handler_succeeded, t/s=… throughput lines) never appear in the Prefect
 task pane — which is the entire point of the SIP.
 """

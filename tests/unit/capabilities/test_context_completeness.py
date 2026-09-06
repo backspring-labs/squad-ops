@@ -578,7 +578,7 @@ async def test_every_threaded_repair_surface_has_a_renderer():
         context,
         {
             **surfaces,
-            "resolved_config": {"build_profile": "nextjs_ts", "dev_capability": "nextjs_ts"},
+            "resolved_config": {"build_profile": "nextjs_ts", "development_profile": "nextjs_ts"},
         },
     )
     fill_call = next(

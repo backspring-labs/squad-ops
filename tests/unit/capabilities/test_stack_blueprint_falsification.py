@@ -77,7 +77,7 @@ from contextlib import contextmanager
 
 import pytest
 
-from squadops.capabilities import dev_capabilities, scaffold, scaffold_contract
+from squadops.capabilities import development_profiles, scaffold, scaffold_contract
 from squadops.capabilities import verification_scaffold_emission as vse
 from squadops.capabilities.handlers import build_profiles, probe_runner
 from squadops.sandbox import environment
@@ -91,7 +91,10 @@ _STACKS = ("fullstack_fastapi_react", "nextjs_ts")
 #: declaration rather than the loop variable is what makes a `name` field load-bearing.
 _REGISTRIES = {
     "ScaffoldStack": (scaffold._STACKS, lambda s: s.name),
-    "DevelopmentCapability": (dev_capabilities.DEV_CAPABILITIES, lambda s: s.dev_capability),
+    "DevelopmentProfile": (
+        development_profiles.DEVELOPMENT_PROFILES,
+        lambda s: s.development_profile,
+    ),
     "EnvironmentContract": (environment._CONTRACTS, lambda s: s.name),
     "BuildProfile": (build_profiles.BUILD_PROFILES, lambda s: s.name),
     "probe profile": (probe_runner._PROFILES, lambda s: s.probe_profile),
@@ -151,7 +154,7 @@ _DECORATIVE_FOUND = {
         "populated with real content on every profile, zero reads. The schema draft lists it "
         "in Tier 1 as packaging.validation_rules, 'demonstrated'"
     ),
-    ("DevelopmentCapability", "expected_extensions"): (
+    ("DevelopmentProfile", "expected_extensions"): (
         "populated per stack, zero reads — and TWO docstrings assert it is 'what a dev agent "
         "is given' (scaffold.py:1899, preflight.py:216). Documented as read, read by nothing. "
         "The schema draft lists it in Tier 1 as authored_extensions, 'demonstrated'"
@@ -230,10 +233,10 @@ def _observe(stack_name: str) -> dict[str, str]:
     # anything reads it. The negative control below exists because that got past me once.
     from squadops.capabilities.handlers.cycle.builder import BuilderAssembleHandler
 
-    capability = dev_capabilities.get_capability(stack.dev_capability)
+    capability = development_profiles.get_development_profile(stack.development_profile)
     out["capability_test_matching"] = json.dumps(
         {
-            name: dev_capabilities.matches_test_file_patterns(name, capability.name)
+            name: development_profiles.matches_test_file_patterns(name, capability.name)
             for name in ("a.test.ts", "test_a.py", "a.spec.tsx", "a_test.py", "a.ts", "a.py")
         },
         sort_keys=True,

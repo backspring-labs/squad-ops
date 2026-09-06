@@ -124,7 +124,7 @@ class _CycleTaskHandler(CapabilityHandler):
     """
 
     _handler_name: str = ""
-    _capability_id: str = ""
+    _task_type: str = ""
     _role: str = ""
     _artifact_name: str = ""
     _request_template_id: str = "request.cycle_task_base"
@@ -134,12 +134,12 @@ class _CycleTaskHandler(CapabilityHandler):
         return self._handler_name
 
     @property
-    def capability_id(self) -> str:
-        return self._capability_id
+    def task_type(self) -> str:
+        return self._task_type
 
     @property
     def description(self) -> str:
-        return f"Cycle task handler for {self._role} role ({self._capability_id})"
+        return f"Cycle task handler for {self._role} role ({self._task_type})"
 
     # Issue #114: thin instance binding so subclass handlers can call
     # `self._build_typed_check_evaluation_artifact(...)` without importing
@@ -268,7 +268,7 @@ class _CycleTaskHandler(CapabilityHandler):
         duration_ms = (time.perf_counter() - start_time) * 1000
         evidence = HandlerEvidence.create(
             handler_name=self._handler_name,
-            capability_id=self._capability_id,
+            task_type=self._task_type,
             duration_ms=duration_ms,
             inputs_hash=self._hash_dict(inputs),
         )
@@ -386,7 +386,7 @@ class _CycleTaskHandler(CapabilityHandler):
         # capability declared, so declaring HIGH does not silently shrink the answer.
         max_tokens += thinking_headroom(
             resolve_reasoning_level(
-                self._capability_id, agent_overrides=agent_overrides, model_name=agent_model
+                self._task_type, agent_overrides=agent_overrides, model_name=agent_model
             ),
             model_spec,
         )
@@ -405,9 +405,9 @@ class _CycleTaskHandler(CapabilityHandler):
         instead of inventing a number.
         """
         try:
-            from squadops.capabilities.dev_capabilities import get_capability
+            from squadops.capabilities.development_profiles import get_development_profile
 
-            return get_capability(self._capability_id).max_completion_tokens
+            return get_development_profile(self._task_type).max_completion_tokens
         except Exception:
             return None
 
@@ -435,7 +435,7 @@ class _CycleTaskHandler(CapabilityHandler):
         # #927: keyed on the agent's model exactly as the completion clamp is — a
         # task dispatched without one sends no level, as it gets no clamp.
         reasoning = resolve_reasoning_level(
-            self._capability_id, agent_overrides=overrides, model_name=agent_model
+            self._task_type, agent_overrides=overrides, model_name=agent_model
         )
         if "max_completion_tokens" in overrides:
             kwargs["max_tokens"] = overrides["max_completion_tokens"]
@@ -770,7 +770,7 @@ class _CycleTaskHandler(CapabilityHandler):
             duration_ms = (time.perf_counter() - start_time) * 1000
             evidence = HandlerEvidence.create(
                 handler_name=self._handler_name,
-                capability_id=self._capability_id,
+                task_type=self._task_type,
                 duration_ms=duration_ms,
                 inputs_hash=self._hash_dict(inputs),
             )
@@ -842,7 +842,7 @@ class _CycleTaskHandler(CapabilityHandler):
                 prompt_layer_set_id=f"{self._role}-cycle",
                 layers=(
                     PromptLayer(layer_type="system", layer_id=f"{self._role}-system"),
-                    PromptLayer(layer_type="user", layer_id=f"cycle-{self._capability_id}"),
+                    PromptLayer(layer_type="user", layer_id=f"cycle-{self._task_type}"),
                 ),
             )
             llm_obs.record_generation(context.correlation_context, gen_record, layers)
@@ -890,7 +890,7 @@ class _CycleTaskHandler(CapabilityHandler):
 
         evidence = HandlerEvidence.create(
             handler_name=self._handler_name,
-            capability_id=self._capability_id,
+            task_type=self._task_type,
             duration_ms=duration_ms,
             inputs_hash=self._hash_dict(inputs),
             outputs_hash=self._hash_dict(outputs),
@@ -1009,7 +1009,7 @@ class _CycleTaskHandler(CapabilityHandler):
                     ),
                     PromptLayer(
                         layer_type="user",
-                        layer_id=f"{self._prompt_layer_kind}-{self._capability_id}",
+                        layer_id=f"{self._prompt_layer_kind}-{self._task_type}",
                     ),
                 ),
             )

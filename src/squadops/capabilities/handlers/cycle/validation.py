@@ -325,7 +325,7 @@ def _classify_file(filename: str) -> tuple[str, str]:
 def _is_test_file(path: str, patterns: tuple[str, ...]) -> bool:
     """Check if *path* matches any test file pattern or resides in __tests__/.
 
-    The basename match is ``dev_capabilities.matches_test_file_patterns`` — shared with
+    The basename match is ``development_profiles.matches_test_file_patterns`` — shared with
     plan validation (#846) so both read the stack's declared conventions rather than
     each carrying its own idea of what a test file looks like.
 
@@ -334,6 +334,6 @@ def _is_test_file(path: str, patterns: tuple[str, ...]) -> bool:
     validation asks the stricter question "will the runner discover this?", and a
     ``__tests__/helpers.py`` pytest never collects must not count there.
     """
-    from squadops.capabilities.dev_capabilities import matches_test_file_patterns
+    from squadops.capabilities.development_profiles import matches_test_file_patterns
 
     return matches_test_file_patterns(path, patterns) or "/__tests__/" in path

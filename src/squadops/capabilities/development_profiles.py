@@ -1,6 +1,6 @@
-"""Development capability registry (SIP-0072).
+"""Development profile registry (SIP-0072).
 
-Typed development capabilities that control handler behavior: prompt
+Typed development profiles that control handler behavior: prompt
 supplements, file structure guidance, source filtering, and test framework
 selection.  V1 capabilities are code-defined frozen dataclass instances.
 
@@ -23,15 +23,15 @@ TEST_FRAMEWORK_BOTH = "both"
 
 
 # ---------------------------------------------------------------------------
-# DevelopmentCapability dataclass (D1)
+# DevelopmentProfile dataclass (D1)
 # ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
-class DevelopmentCapability:
-    """Typed development capability definition (SIP-0072 §5.1).
+class DevelopmentProfile:
+    """Typed development profile definition (SIP-0072 §5.1).
 
-    Handlers must not mutate capability fields; treat get_capability() return
+    Handlers must not mutate capability fields; treat get_development_profile() return
     as read-only.
     """
 
@@ -68,10 +68,10 @@ class DevelopmentCapability:
 # V1 capability registry
 # ---------------------------------------------------------------------------
 
-DEV_CAPABILITIES: dict[str, DevelopmentCapability] = {
+DEVELOPMENT_PROFILES: dict[str, DevelopmentProfile] = {
     # ── python_cli ────────────────────────────────────────────────────────
     # Reproduces current hardcoded behavior exactly (D2).
-    "python_cli": DevelopmentCapability(
+    "python_cli": DevelopmentProfile(
         name="python_cli",
         system_prompt_supplement=(
             "You are generating source code as a Python package. "
@@ -132,7 +132,7 @@ DEV_CAPABILITIES: dict[str, DevelopmentCapability] = {
     ),
     # ── python_api ────────────────────────────────────────────────────────
     # FastAPI-specific guidance replacing CLI packaging conventions.
-    "python_api": DevelopmentCapability(
+    "python_api": DevelopmentProfile(
         name="python_api",
         system_prompt_supplement=(
             "You are generating source code for a FastAPI web application. "
@@ -176,7 +176,7 @@ DEV_CAPABILITIES: dict[str, DevelopmentCapability] = {
         max_completion_tokens=6000,
     ),
     # ── react_app ─────────────────────────────────────────────────────────
-    "react_app": DevelopmentCapability(
+    "react_app": DevelopmentProfile(
         name="react_app",
         system_prompt_supplement=(
             "You are generating source code for a React application using Vite. "
@@ -231,7 +231,7 @@ DEV_CAPABILITIES: dict[str, DevelopmentCapability] = {
         test_timeout_seconds=120,
     ),
     # ── fullstack_fastapi_react ───────────────────────────────────────────
-    "fullstack_fastapi_react": DevelopmentCapability(
+    "fullstack_fastapi_react": DevelopmentProfile(
         name="fullstack_fastapi_react",
         system_prompt_supplement=(
             "You are generating source code for a fullstack application with a "
@@ -349,9 +349,9 @@ DEV_CAPABILITIES: dict[str, DevelopmentCapability] = {
         fill_only_template="request.development_develop_fill_only_appendix",
     ),
     # #822 stack #2. Bound to the scaffold stack of the same name by
-    # ``ScaffoldStack.dev_capability`` (#832), so the two registries can no longer disagree
+    # ``ScaffoldStack.development_profile`` (#832), so the two registries can no longer disagree
     # about which stack a cycle is building.
-    "nextjs_ts": DevelopmentCapability(
+    "nextjs_ts": DevelopmentProfile(
         name="nextjs_ts",
         system_prompt_supplement=(
             "You are generating source code for a Next.js (App Router) application in "
@@ -451,37 +451,37 @@ DEV_CAPABILITIES: dict[str, DevelopmentCapability] = {
 }
 
 
-def get_capability(name: str) -> DevelopmentCapability:
-    """Resolve development capability by name.
+def get_development_profile(name: str) -> DevelopmentProfile:
+    """Resolve development profile by name.
 
     Args:
         name: Capability name to look up.
 
     Returns:
-        The matching DevelopmentCapability.
+        The matching DevelopmentProfile.
 
     Raises:
         ValueError: If name is not a registered capability.
     """
-    capability = DEV_CAPABILITIES.get(name)
+    capability = DEVELOPMENT_PROFILES.get(name)
     if capability is None:
-        available = sorted(DEV_CAPABILITIES.keys())
+        available = sorted(DEVELOPMENT_PROFILES.keys())
         raise ValueError(
-            f"Unknown development capability {name!r}. Available capabilities: {available}"
+            f"Unknown development profile {name!r}. Available capabilities: {available}"
         )
     return capability
 
 
 #: What a cycle that names no capability gets: free-form Python generation, the
 #: pre-SIP-0072 behavior. Named because the literal was written out at six call sites
-#: as ``resolve_dev_capability(cfg) or "python_cli"`` (#846).
-DEFAULT_DEV_CAPABILITY = "python_cli"
+#: as ``resolve_development_profile(cfg) or "python_cli"`` (#846).
+DEFAULT_DEVELOPMENT_PROFILE = "python_cli"
 
 
-def effective_capability_name(resolved_config: Mapping[str, Any] | None) -> str:
+def effective_development_profile(resolved_config: Mapping[str, Any] | None) -> str:
     """The capability a cycle actually runs under, defaulted.
 
-    ``scaffold.resolve_dev_capability`` answers "what does this config *declare*", and
+    ``scaffold.resolve_development_profile`` answers "what does this config *declare*", and
     returns ``None`` for a contradiction so preflight can reject rather than silently pick
     a side. This wraps it with the fallback every consumer applied by hand, so "which
     capability is in force" has one answer instead of six copies of one expression.
@@ -490,9 +490,9 @@ def effective_capability_name(resolved_config: Mapping[str, Any] | None) -> str:
     validators and prompt builders that must not crash on a config preflight already
     refuses, and picking the conservative Python capability is what they did before.
     """
-    from squadops.capabilities.scaffold import resolve_dev_capability
+    from squadops.capabilities.scaffold import resolve_development_profile
 
-    return resolve_dev_capability(resolved_config) or DEFAULT_DEV_CAPABILITY
+    return resolve_development_profile(resolved_config) or DEFAULT_DEVELOPMENT_PROFILE
 
 
 def matches_test_file_patterns(path: str, patterns: tuple[str, ...]) -> bool:
@@ -520,4 +520,6 @@ def test_file_patterns_for(resolved_config: Mapping[str, Any] | None) -> tuple[s
     pytest-discoverable file — and the remedy the error suggested, "include a test_*.py",
     would have been wrong. The stack has always declared this; nothing asked it.
     """
-    return get_capability(effective_capability_name(resolved_config)).test_file_patterns
+    return get_development_profile(
+        effective_development_profile(resolved_config)
+    ).test_file_patterns

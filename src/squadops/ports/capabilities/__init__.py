@@ -1,5 +1,5 @@
 """
-Port interfaces for the capability contracts system.
+Port interfaces for the task contracts system.
 
 Defines contracts for:
 - CapabilityRepository (driven port): Storage abstraction for contracts and workloads

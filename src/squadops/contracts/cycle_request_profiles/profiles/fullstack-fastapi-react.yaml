@@ -5,7 +5,7 @@ description: >
   packaging artifacts, Eve generates tests for both stacks.
 defaults:
   build_strategy: fresh
-  dev_capability: fullstack_fastapi_react
+  development_profile: fullstack_fastapi_react
   build_profile: fullstack_fastapi_react
   task_flow_policy:
     mode: sequential
@@ -24,4 +24,4 @@ defaults:
     - development.develop
     - builder.assemble
     - qa.test
-  notes: "Fullstack FastAPI + React (Vite) — stack-aware development capabilities"
+  notes: "Fullstack FastAPI + React (Vite) — stack-aware development profiles"

@@ -1,7 +1,7 @@
 """Tests for planning and refinement task handlers (SIP-0078).
 
 Covers:
-- 5 planning handlers + 2 refinement handlers: class attributes, capability_id, role
+- 5 planning handlers + 2 refinement handlers: class attributes, task_type, role
 - _PlanningTaskHandler base: assemble() called with task_type (not get_system_prompt)
 - validate_inputs: prd required, plan_artifact_refs for refinement
 - handle(): LLM success/failure, artifact names, prior_outputs chaining
@@ -154,29 +154,29 @@ def mock_context():
 
 class TestPlanningHandlerAttributes:
     @pytest.mark.parametrize(
-        "cls, expected_cap_id, expected_role, expected_artifact",
+        "cls, expected_task_type, expected_role, expected_artifact",
         ALL_HANDLER_SPECS,
         ids=[c.__name__ for c, _, _, _ in ALL_HANDLER_SPECS],
     )
-    def test_capability_id(self, cls, expected_cap_id, expected_role, expected_artifact):
+    def test_task_type(self, cls, expected_task_type, expected_role, expected_artifact):
         h = cls()
-        assert h.capability_id == expected_cap_id
+        assert h.task_type == expected_task_type
 
     @pytest.mark.parametrize(
-        "cls, expected_cap_id, expected_role, expected_artifact",
+        "cls, expected_task_type, expected_role, expected_artifact",
         ALL_HANDLER_SPECS,
         ids=[c.__name__ for c, _, _, _ in ALL_HANDLER_SPECS],
     )
-    def test_role(self, cls, expected_cap_id, expected_role, expected_artifact):
+    def test_role(self, cls, expected_task_type, expected_role, expected_artifact):
         h = cls()
         assert h._role == expected_role
 
     @pytest.mark.parametrize(
-        "cls, expected_cap_id, expected_role, expected_artifact",
+        "cls, expected_task_type, expected_role, expected_artifact",
         ALL_HANDLER_SPECS,
         ids=[c.__name__ for c, _, _, _ in ALL_HANDLER_SPECS],
     )
-    def test_artifact_name(self, cls, expected_cap_id, expected_role, expected_artifact):
+    def test_artifact_name(self, cls, expected_task_type, expected_role, expected_artifact):
         h = cls()
         assert h._artifact_name == expected_artifact
 
@@ -268,15 +268,15 @@ class TestRefinementValidation:
 
 
 class TestHandleUsesAssemble:
-    """Planning handlers must call assemble(role, hook, task_type=capability_id)."""
+    """Planning handlers must call assemble(role, hook, task_type=task_type)."""
 
     @pytest.mark.parametrize(
-        "cls, expected_cap_id, expected_role, _artifact",
+        "cls, expected_task_type, expected_role, _artifact",
         LLM_SINGLE_CALL_SPECS,
         ids=[c.__name__ for c, _, _, _ in LLM_SINGLE_CALL_SPECS],
     )
     async def test_assemble_called_with_task_type(
-        self, cls, expected_cap_id, expected_role, _artifact, mock_context
+        self, cls, expected_task_type, expected_role, _artifact, mock_context
     ):
         h = cls()
         await h.handle(mock_context, {"prd": "Build a widget"})
@@ -284,7 +284,7 @@ class TestHandleUsesAssemble:
         mock_context.ports.prompt_service.assemble.assert_called_once_with(
             role=expected_role,
             hook="agent_start",
-            task_type=expected_cap_id,
+            task_type=expected_task_type,
         )
 
     @pytest.mark.parametrize(
@@ -351,7 +351,7 @@ class TestHandleSuccess:
 
         assert result._evidence is not None
         assert isinstance(result._evidence, HandlerEvidence)
-        assert result.evidence.capability_id == h.capability_id
+        assert result.evidence.task_type == h.task_type
 
 
 # ---------------------------------------------------------------------------
@@ -837,7 +837,7 @@ class TestGovernanceAssessReadinessValidation:
 
         assert result.success is False
         assert result._evidence is not None
-        assert result._evidence.capability_id == "governance.review_plan"
+        assert result._evidence.task_type == "governance.review_plan"
 
 
 # ---------------------------------------------------------------------------
@@ -1241,7 +1241,7 @@ class TestD17ArtifactContentValidation:
 
         assert result.success is False
         assert result._evidence is not None
-        assert result._evidence.capability_id == "governance.incorporate_feedback"
+        assert result._evidence.task_type == "governance.incorporate_feedback"
 
     async def test_llm_not_called_on_d17_failure(self):
         ctx = _make_context()

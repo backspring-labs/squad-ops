@@ -3,7 +3,7 @@
 #
 # Generates a human-readable summary of cycle results.
 
-capability_id: data.compose_cycle_summary
+task_type: data.compose_cycle_summary
 version: 1.0.0
 description: >
   Compose a human-readable summary of cycle execution results using

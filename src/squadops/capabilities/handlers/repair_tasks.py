@@ -69,7 +69,7 @@ class DataAnalyzeVerificationHandler(_RepairTaskHandler):
     """Analyze verification failures and extract actionable data patterns."""
 
     _handler_name = "data_analyze_verification_handler"
-    _capability_id = "data.analyze_verification"
+    _task_type = "data.analyze_verification"
     _role = "data"
     _artifact_name = "verification_analysis.md"
 
@@ -78,7 +78,7 @@ class GovernanceRootCauseHandler(_RepairTaskHandler):
     """Perform root cause analysis on verification failures."""
 
     _handler_name = "governance_root_cause_handler"
-    _capability_id = "governance.root_cause_analysis"
+    _task_type = "governance.root_cause_analysis"
     _role = "lead"
     _artifact_name = "root_cause_analysis.md"
 
@@ -87,7 +87,7 @@ class StrategyCorrectivePlanHandler(_RepairTaskHandler):
     """Produce a corrective action plan from root cause analysis."""
 
     _handler_name = "strategy_corrective_plan_handler"
-    _capability_id = "strategy.corrective_plan"
+    _task_type = "strategy.corrective_plan"
     _role = "strat"
     _artifact_name = "corrective_plan.md"
 
@@ -96,6 +96,6 @@ class DevelopmentRepairHandler(_RepairTaskHandler):
     """Execute corrective repairs based on the corrective plan."""
 
     _handler_name = "development_repair_handler"
-    _capability_id = "development.repair"
+    _task_type = "development.repair"
     _role = "dev"
     _artifact_name = "repair_output.md"

@@ -10,11 +10,11 @@ from __future__ import annotations
 
 import pytest
 
-from squadops.capabilities.dev_capabilities import (
-    DEV_CAPABILITIES,
+from squadops.capabilities.development_profiles import (
+    DEVELOPMENT_PROFILES,
     TEST_FRAMEWORK_BOTH,
     TEST_FRAMEWORK_VITEST,
-    get_capability,
+    get_development_profile,
 )
 from squadops.capabilities.handlers.cycle_tasks import QATestHandler
 
@@ -33,9 +33,9 @@ _CONTENTS = {
 }
 
 
-def _inputs(dev_capability: str) -> dict:
+def _inputs(development_profile: str) -> dict:
     return {
-        "resolved_config": {"dev_capability": dev_capability},
+        "resolved_config": {"development_profile": development_profile},
         "artifact_contents": dict(_CONTENTS),
     }
 
@@ -74,7 +74,7 @@ def test_frontend_capabilities_declare_build_support():
     else #290/vitest silently skip on "no package.json"."""
     frontend_caps = [
         c
-        for c in DEV_CAPABILITIES.values()
+        for c in DEVELOPMENT_PROFILES.values()
         if c.test_framework in (TEST_FRAMEWORK_VITEST, TEST_FRAMEWORK_BOTH)
     ]
     assert frontend_caps, "expected at least one vitest/both capability"
@@ -90,4 +90,4 @@ def test_frontend_capabilities_declare_build_support():
 
 def test_get_capability_default_build_support_empty():
     """Non-frontend capabilities default to no build-support files."""
-    assert get_capability("python_cli").build_support_files == ()
+    assert get_development_profile("python_cli").build_support_files == ()

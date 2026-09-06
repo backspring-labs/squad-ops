@@ -32,13 +32,13 @@ class TestBuilderHandlerBootstrap:
     def test_builder_role_produces_handler_registry(self):
         """Builder role should produce a valid handler registry."""
         registry = create_handler_registry(roles=["builder"])
-        capabilities = registry.list_capabilities()
+        capabilities = registry.list_task_types()
         assert "builder.assemble" in capabilities
 
     def test_builder_plus_all_roles_no_errors(self):
         """Full registry with builder included should create without errors."""
         registry = create_handler_registry()
-        capabilities = registry.list_capabilities()
+        capabilities = registry.list_task_types()
         assert "builder.assemble" in capabilities
         assert "development.develop" in capabilities
         assert "qa.test" in capabilities

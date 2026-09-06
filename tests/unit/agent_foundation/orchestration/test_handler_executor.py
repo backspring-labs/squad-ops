@@ -21,13 +21,13 @@ class MockHandler(CapabilityHandler):
     def __init__(
         self,
         name: str = "mock_handler",
-        capability_id: str = "mock.capability",
+        task_type: str = "mock.capability",
         success: bool = True,
         outputs: dict = None,
         error: str = None,
     ):
         self._name = name
-        self._capability_id = capability_id
+        self._task_type = task_type
         self._success = success
         self._outputs = outputs or {}
         self._error = error
@@ -37,18 +37,18 @@ class MockHandler(CapabilityHandler):
         return self._name
 
     @property
-    def capability_id(self) -> str:
-        return self._capability_id
+    def task_type(self) -> str:
+        return self._task_type
 
     def validate_inputs(self, inputs, contract=None):
-        if self._capability_id == "mock.requires_input" and "required" not in inputs:
+        if self._task_type == "mock.requires_input" and "required" not in inputs:
             return ["'required' is required"]
         return []
 
     async def handle(self, context, inputs):
         evidence = HandlerEvidence.create(
             handler_name=self.name,
-            capability_id=self.capability_id,
+            task_type=self.task_type,
             duration_ms=10.0,
         )
         return HandlerResult(
@@ -137,13 +137,13 @@ class TestHandlerExecutor:
         result = await executor.execute(envelope)
 
         assert result.status == "FAILED"
-        assert "No handler for capability" in result.error
+        assert "No handler for task type" in result.error
 
     @pytest.mark.asyncio
     async def test_execute_validation_failure(self, handler_registry, mock_ports):
         """Should fail on validation error."""
         handler_registry.register(
-            MockHandler(capability_id="mock.requires_input"),
+            MockHandler(task_type="mock.requires_input"),
             allow_override=True,
         )
         executor = HandlerExecutor(
@@ -163,7 +163,7 @@ class TestHandlerExecutor:
         """Should handle handler failure."""
         handler_registry.register(
             MockHandler(
-                capability_id="mock.failing",
+                task_type="mock.failing",
                 success=False,
                 error="Handler failed",
             ),
@@ -223,14 +223,14 @@ class TestHandlerExecutorTimeout:
                 return "slow"
 
             @property
-            def capability_id(self):
+            def task_type(self):
                 return "mock.slow"
 
             async def handle(self, context, inputs):
                 await asyncio.sleep(10)  # Slow operation
                 evidence = HandlerEvidence.create(
                     handler_name=self.name,
-                    capability_id=self.capability_id,
+                    task_type=self.task_type,
                     duration_ms=10000,
                 )
                 return HandlerResult(success=True, outputs={}, _evidence=evidence)

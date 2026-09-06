@@ -17,22 +17,22 @@ from squadops.orchestration.handler_registry import (
 class MockHandler(CapabilityHandler):
     """Mock handler for testing."""
 
-    def __init__(self, name: str, capability_id: str):
+    def __init__(self, name: str, task_type: str):
         self._name = name
-        self._capability_id = capability_id
+        self._task_type = task_type
 
     @property
     def name(self) -> str:
         return self._name
 
     @property
-    def capability_id(self) -> str:
-        return self._capability_id
+    def task_type(self) -> str:
+        return self._task_type
 
     async def handle(self, context, inputs):
         evidence = HandlerEvidence.create(
             handler_name=self.name,
-            capability_id=self.capability_id,
+            task_type=self.task_type,
             duration_ms=0,
         )
         return HandlerResult(success=True, outputs={}, _evidence=evidence)
@@ -137,7 +137,7 @@ class TestHandlerRegistry:
         registry.register(MockHandler("h2", "cap.two"))
         registry.register(MockHandler("h3", "cap.three"))
 
-        caps = registry.list_capabilities()
+        caps = registry.list_task_types()
 
         assert len(caps) == 3
         assert "cap.one" in caps
@@ -181,5 +181,5 @@ class TestHandlerRegistry:
 
         registry.clear()
 
-        assert registry.list_capabilities() == []
+        assert registry.list_task_types() == []
         assert registry.list_by_role("lead") == []

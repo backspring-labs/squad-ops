@@ -18,22 +18,22 @@ from squadops.tasks.models import TaskEnvelope
 class MockHandler(CapabilityHandler):
     """Mock handler for testing."""
 
-    def __init__(self, capability_id: str, outputs: dict = None):
-        self._capability_id = capability_id
+    def __init__(self, task_type: str, outputs: dict = None):
+        self._task_type = task_type
         self._outputs = outputs or {}
 
     @property
     def name(self) -> str:
-        return f"handler_{self._capability_id}"
+        return f"handler_{self._task_type}"
 
     @property
-    def capability_id(self) -> str:
-        return self._capability_id
+    def task_type(self) -> str:
+        return self._task_type
 
     async def handle(self, context, inputs):
         evidence = HandlerEvidence.create(
             handler_name=self.name,
-            capability_id=self.capability_id,
+            task_type=self.task_type,
             duration_ms=5.0,
         )
         return HandlerResult(
@@ -116,7 +116,7 @@ class TestTaskRouting:
         routing = orchestrator.route_task(envelope)
 
         assert routing.target_role == "lead"
-        assert routing.capability_id == "governance.review"
+        assert routing.task_type == "governance.review"
 
     def test_route_development_task(self, orchestrator):
         """Should route development tasks to dev."""

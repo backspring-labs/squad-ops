@@ -19,7 +19,7 @@ from __future__ import annotations
 import pytest
 
 import squadops.capabilities.handlers.test_runner as tr
-from squadops.capabilities.dev_capabilities import TEST_FRAMEWORK_PYTEST
+from squadops.capabilities.development_profiles import TEST_FRAMEWORK_PYTEST
 from squadops.capabilities.handlers.test_runner import (
     RunTestsResult,
     run_backend_import_check,

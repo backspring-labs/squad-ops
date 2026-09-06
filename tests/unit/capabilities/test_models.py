@@ -9,11 +9,11 @@ import pytest
 from squadops.capabilities.models import (
     AcceptanceCheck,
     ArtifactSpec,
-    CapabilityContract,
     CheckType,
     InputSpec,
     LifecycleScope,
     OutputSpec,
+    TaskContract,
     TaskRecord,
     TaskStatus,
     Trigger,
@@ -148,12 +148,12 @@ class TestAcceptanceCheck:
 
 
 class TestCapabilityContract:
-    """Tests for CapabilityContract model."""
+    """Tests for TaskContract model."""
 
     def test_get_input_spec(self):
         """Contract provides input spec lookup."""
-        contract = CapabilityContract(
-            capability_id="data.test",
+        contract = TaskContract(
+            task_type="data.test",
             version="1.0.0",
             description="Test",
             owner_roles=("data",),
@@ -171,8 +171,8 @@ class TestCapabilityContract:
 
     def test_immutability(self):
         """Contract is immutable (frozen)."""
-        contract = CapabilityContract(
-            capability_id="data.test",
+        contract = TaskContract(
+            task_type="data.test",
             version="1.0.0",
             description="Test",
             owner_roles=("data",),
@@ -190,7 +190,7 @@ class TestWorkloadTask:
         """WorkloadTask can be created."""
         task = WorkloadTask(
             task_id="collect",
-            capability_id="data.collect",
+            task_type="data.collect",
             inputs=(("cycle_id", "{cycle_id}"),),
             depends_on=(),
         )
@@ -199,12 +199,12 @@ class TestWorkloadTask:
 
     def test_get_input_missing(self):
         """get_input returns None for missing inputs."""
-        task = WorkloadTask(task_id="t", capability_id="c")
+        task = WorkloadTask(task_id="t", task_type="c")
         assert task.get_input("missing") is None
 
     def test_immutability(self):
         """WorkloadTask is immutable (frozen)."""
-        task = WorkloadTask(task_id="t", capability_id="c")
+        task = WorkloadTask(task_id="t", task_type="c")
         with pytest.raises(AttributeError):
             task.task_id = "new"  # type: ignore
 
@@ -219,8 +219,8 @@ class TestWorkload:
             version="1.0.0",
             description="Test workload",
             tasks=(
-                WorkloadTask(task_id="t1", capability_id="d.c1"),
-                WorkloadTask(task_id="t2", capability_id="d.c2", depends_on=("t1",)),
+                WorkloadTask(task_id="t1", task_type="d.c1"),
+                WorkloadTask(task_id="t2", task_type="d.c2", depends_on=("t1",)),
             ),
             vars=(("key", "value"),),
         )
@@ -234,7 +234,7 @@ class TestWorkload:
             workload_id="test",
             version="1.0.0",
             description="Test",
-            tasks=(WorkloadTask(task_id="t1", capability_id="d.c"),),
+            tasks=(WorkloadTask(task_id="t1", task_type="d.c"),),
         )
         assert workload.get_task("t1") is not None
         assert workload.get_task("missing") is None
@@ -285,7 +285,7 @@ class TestTaskRecord:
         """TaskRecord can be created."""
         record = TaskRecord(
             task_id="t1",
-            capability_id="d.c",
+            task_type="d.c",
             status=TaskStatus.SUCCEEDED,
             started_at="2024-01-01T00:00:00Z",
             completed_at="2024-01-01T00:01:00Z",
@@ -295,7 +295,7 @@ class TestTaskRecord:
 
     def test_immutability(self):
         """TaskRecord is immutable (frozen)."""
-        record = TaskRecord(task_id="t", capability_id="c", status=TaskStatus.PENDING)
+        record = TaskRecord(task_id="t", task_type="c", status=TaskStatus.PENDING)
         with pytest.raises(AttributeError):
             record.status = TaskStatus.RUNNING  # type: ignore
 

@@ -46,7 +46,7 @@ import re
 import pytest
 
 from squadops.capabilities import (
-    dev_capabilities,
+    development_profiles,
     scaffold,
     scaffold_contract,
     verification_scaffold_emission,
@@ -84,7 +84,7 @@ _STACK_NAMES = sorted(scaffold._STACKS)
 _REGISTRIES: dict[str, tuple[dict, str | None]] = {
     "criteria_pack (emitter)": (scaffold_contract._CRITERIA_PACKS, "criteria_pack"),
     "probe_profile (boot)": (probe_runner._PROFILES, "probe_profile"),
-    "dev_capability": (dev_capabilities.DEV_CAPABILITIES, "dev_capability"),
+    "development_profile": (development_profiles.DEVELOPMENT_PROFILES, "development_profile"),
     "sandbox contract": (environment._CONTRACTS, None),
     "build profile": (build_profiles.BUILD_PROFILES, None),
     "verification_scaffold (test-scaffold emitter)": (

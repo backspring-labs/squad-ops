@@ -116,7 +116,7 @@ def test_the_repair_renders_the_stacks_own_appendix_not_a_hardcoded_one():
     """
     asked = _rendered_template_ids(
         _dev_repair_handler(),
-        {"build_profile": "nextjs_ts", "dev_capability": "nextjs_ts"},
+        {"build_profile": "nextjs_ts", "development_profile": "nextjs_ts"},
     )
 
     assert asked, "the repair rendered no fill-only appendix at all"
@@ -140,7 +140,7 @@ def test_the_repair_receives_the_error_contract_and_model_surface():
     """
     asked = _rendered_template_ids(
         _dev_repair_handler(),
-        {"build_profile": "nextjs_ts", "dev_capability": "nextjs_ts"},
+        {"build_profile": "nextjs_ts", "development_profile": "nextjs_ts"},
     )
 
     assert "request.development_develop_error_contract_appendix" in asked
@@ -168,14 +168,14 @@ def test_a_capability_with_no_template_gets_no_appendix():
 def test_no_handler_names_the_fill_only_asset_directly():
     """Bug caught: the next hardcoded template id.
 
-    The asset belongs to a `DevelopmentCapability`; any module naming it by string has
+    The asset belongs to a `DevelopmentProfile`; any module naming it by string has
     pinned one stack's guidance into a path that serves all of them. Structural, because
     the failure is silent — the wrong appendix renders perfectly.
     """
     #: The capability registry is where the asset is DECLARED — stack #1 names its own
     #: template there, which is the whole mechanism. Every other mention is a stack
     #: pinned into shared code.
-    declaration_site = "src/squadops/capabilities/dev_capabilities.py"
+    declaration_site = "src/squadops/capabilities/development_profiles.py"
 
     offenders = []
     for path in sorted((_REPO / "src").rglob("*.py")):
@@ -198,9 +198,9 @@ def test_no_handler_names_the_fill_only_asset_directly():
 def test_the_declaration_site_still_declares_it():
     """The tripwire for the exemption above. If stack #1 stopped declaring its template,
     the sweep would pass vacuously while the mechanism it protects had been removed."""
-    from squadops.capabilities.dev_capabilities import get_capability
+    from squadops.capabilities.development_profiles import get_development_profile
 
-    assert get_capability("fullstack_fastapi_react").fill_only_template == _HARDCODED
+    assert get_development_profile("fullstack_fastapi_react").fill_only_template == _HARDCODED
 
 
 def test_both_paths_resolve_the_template_the_same_way():
@@ -212,7 +212,7 @@ def test_both_paths_resolve_the_template_the_same_way():
     """
     for path in (_REPAIR, _DEVELOP):
         source = path.read_text(encoding="utf-8")
-        assert "effective_capability_name" in source, (
+        assert "effective_development_profile" in source, (
             f"{path.name} no longer resolves the capability the shared way"
         )
         assert "capability.fill_only_template" in source, (

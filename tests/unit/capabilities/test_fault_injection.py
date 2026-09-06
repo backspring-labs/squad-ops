@@ -196,16 +196,16 @@ def test_every_declared_fault_is_reachable_from_a_wired_seam():
     for path in wired:
         for line in path.read_text(encoding="utf-8").splitlines():
             stripped = line.strip()
-            if stripped.startswith("_capability_id = "):
+            if stripped.startswith("_task_type = "):
                 capabilities.add(stripped.split("=", 1)[1].strip().strip("\"'"))
     # cycle/base.py is the shared seam for every _CycleTaskHandler subclass, so a
     # capability declared in a module that inherits it is wired too.
     from squadops.capabilities.handlers.impl import repair_handlers
 
     capabilities |= {
-        getattr(obj, "_capability_id")
+        getattr(obj, "_task_type")
         for obj in vars(repair_handlers).values()
-        if isinstance(obj, type) and getattr(obj, "_capability_id", None)
+        if isinstance(obj, type) and getattr(obj, "_task_type", None)
     }
     missing = sorted(INJECTED_TASKS - capabilities)
     assert not missing, (

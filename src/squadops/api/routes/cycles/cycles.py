@@ -42,7 +42,7 @@ from squadops.cycles.preflight import (
     model_registration_decision,
     required_check_tooling_decision,
     required_roles_decision,
-    stack_dev_capability_decision,
+    stack_development_profile_decision,
 )
 
 logger = logging.getLogger(__name__)
@@ -136,11 +136,11 @@ async def _run_create_preflight(profile: SquadProfile, config: dict) -> tuple[Fi
         # construction — the sole-author path never receives the criteria index,
         # so every framing attempt is rejected. Fail in seconds, not per re-roll.
         bind_mode_authoring_decision(config),
-        # #832: build_profile and dev_capability both name the stack. Disagreement expands
+        # #832: build_profile and development_profile both name the stack. Disagreement expands
         # one stack's skeleton while prompting the dev agent for another's files — every
         # emission outside the fill slots, surfacing as "the plan claims nothing" a full
         # framing workload later.
-        stack_dev_capability_decision(config),
+        stack_development_profile_decision(config),
         model_availability_decision(profile, await _pulled_model_names()),
         # #1145: pulled is not the same as registered. A model the backend serves but
         # MODEL_SPECS does not know runs with the overflow guard disabled and a

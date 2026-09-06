@@ -5,7 +5,7 @@ description: >
   Uses the build profile for plan-then-build execution.
 defaults:
   build_strategy: fresh
-  dev_capability: fullstack_fastapi_react
+  development_profile: fullstack_fastapi_react
   build_profile: fullstack_fastapi_react
   task_flow_policy:
     mode: sequential

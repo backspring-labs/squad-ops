@@ -27,9 +27,9 @@ class TestFullstackProfileLoads:
 
 
 class TestFullstackProfileDefaults:
-    def test_dev_capability(self):
+    def test_development_profile(self):
         profile = load_profile("fullstack-fastapi-react")
-        assert profile.defaults["dev_capability"] == "fullstack_fastapi_react"
+        assert profile.defaults["development_profile"] == "fullstack_fastapi_react"
 
     def test_build_profile(self):
         profile = load_profile("fullstack-fastapi-react")

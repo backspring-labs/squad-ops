@@ -1,5 +1,5 @@
 """
-Domain models for the capability contracts system.
+Domain models for the task contracts system.
 
 All models are immutable (frozen dataclasses) to ensure deterministic
 behavior and prevent accidental mutation during execution.
@@ -34,7 +34,7 @@ class CheckType(StrEnum):
 
 
 class LifecycleScope(StrEnum):
-    """Capability lifecycle scope."""
+    """Task-type lifecycle scope."""
 
     CYCLE = "cycle"
     PULSE = "pulse"
@@ -42,7 +42,7 @@ class LifecycleScope(StrEnum):
 
 
 class Trigger(StrEnum):
-    """When the capability is expected to be invoked."""
+    """When the task type is expected to be invoked."""
 
     ON_DEMAND = "on_demand"
     SCHEDULED = "scheduled"
@@ -109,7 +109,7 @@ def _validate_primitive_value(value: Any, expected_type: str) -> bool:
 @dataclass(frozen=True)
 class InputSpec:
     """
-    Specification for a capability input parameter.
+    Specification for a task-type input parameter.
 
     Attributes:
         name: Parameter name (must be unique within contract)
@@ -131,7 +131,7 @@ class InputSpec:
 @dataclass(frozen=True)
 class OutputSpec:
     """
-    Specification for a capability output value.
+    Specification for a task-type output value.
 
     Attributes:
         name: Output name (must be unique within contract)
@@ -151,7 +151,7 @@ class OutputSpec:
 @dataclass(frozen=True)
 class ArtifactSpec:
     """
-    Specification for a capability artifact (file output).
+    Specification for a task-type artifact (file output).
 
     Attributes:
         name: Artifact name (used in acceptance checks and references)
@@ -264,21 +264,21 @@ _CHECK_VALIDATORS = {
 
 
 @dataclass(frozen=True)
-class CapabilityContract:
+class TaskContract:
     """
-    Capability contract defining delivery expectations.
+    Task contract defining delivery expectations.
 
-    The contract specifies what a capability accepts as input, what it
+    The contract specifies what a task type accepts as input, what it
     produces as output and artifacts, and how to validate successful
     delivery through acceptance checks.
 
     Attributes:
-        capability_id: Unique identifier (e.g., "data.collect_cycle_snapshot")
+        task_type: Unique identifier (e.g., "data.collect_cycle_snapshot")
         version: Semantic version of the contract
         description: Human-readable description
-        owner_roles: Agent roles that can fulfill this capability
-        lifecycle_scope: Scope of the capability (cycle, pulse, project)
-        trigger: When the capability is invoked
+        owner_roles: Agent roles that can fulfill this task type
+        lifecycle_scope: Scope of the task type (cycle, pulse, project)
+        trigger: When the task type is invoked
         inputs: Input parameter specifications
         outputs: Output value specifications
         artifacts: Artifact (file) specifications
@@ -286,7 +286,7 @@ class CapabilityContract:
         timeout_seconds: Maximum execution time
     """
 
-    capability_id: str
+    task_type: str
     version: str
     description: str
     owner_roles: tuple[str, ...]
@@ -328,18 +328,18 @@ class CapabilityContract:
 @dataclass(frozen=True)
 class WorkloadTask:
     """
-    A task within a workload, referencing a capability contract.
+    A task within a workload, referencing a task contract.
 
     Attributes:
         task_id: Unique identifier within the workload
-        capability_id: Reference to a capability contract
+        task_type: Reference to a task contract
         inputs: Input values (may contain {variable} templates)
         depends_on: Task IDs this task depends on (for DAG ordering)
         executor_override: Optional executor to use instead of default
     """
 
     task_id: str
-    capability_id: str
+    task_type: str
     inputs: tuple[tuple[str, Any], ...] = field(default_factory=tuple)
     depends_on: tuple[str, ...] = field(default_factory=tuple)
     executor_override: str | None = None
@@ -355,7 +355,7 @@ class WorkloadTask:
 @dataclass(frozen=True)
 class Workload:
     """
-    A workload composing multiple capabilities into a DAG.
+    A workload composing multiple task types into a DAG.
 
     Attributes:
         workload_id: Unique identifier
@@ -491,7 +491,7 @@ class TaskRecord:
 
     Attributes:
         task_id: Task identifier
-        capability_id: Capability contract that was invoked
+        task_type: Task contract that was invoked
         status: Final task status
         started_at: When execution started (ISO timestamp)
         completed_at: When execution completed (ISO timestamp)
@@ -502,7 +502,7 @@ class TaskRecord:
     """
 
     task_id: str
-    capability_id: str
+    task_type: str
     status: TaskStatus
     started_at: str | None = None
     completed_at: str | None = None

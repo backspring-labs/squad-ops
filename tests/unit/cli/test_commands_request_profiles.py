@@ -24,7 +24,7 @@ _SAMPLE_PROFILES = [
         "prompts": {
             "build_strategy": {"label": "Build Strategy", "choices": ["fresh", "incremental"]}
         },
-        "defaults": {"build_strategy": "fresh", "dev_capability": "fullstack_fastapi_react"},
+        "defaults": {"build_strategy": "fresh", "development_profile": "fullstack_fastapi_react"},
     },
 ]
 

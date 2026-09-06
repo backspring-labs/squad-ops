@@ -13,10 +13,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from squadops.capabilities.app_invocation import AppInvocation
-from squadops.capabilities.dev_capabilities import (
-    DEFAULT_DEV_CAPABILITY,
-    effective_capability_name,
-    get_capability,
+from squadops.capabilities.development_profiles import (
+    DEFAULT_DEVELOPMENT_PROFILE,
+    effective_development_profile,
+    get_development_profile,
 )
 from squadops.capabilities.handlers.base import (
     HandlerEvidence,
@@ -123,7 +123,7 @@ class QATestHandler(_CycleTaskHandler):
     """
 
     _handler_name = "qa_test_handler"
-    _capability_id = "qa.test"
+    _task_type = "qa.test"
     _role = "qa"
     _artifact_name = "test_output"  # overridden by multi-file output
 
@@ -247,7 +247,9 @@ class QATestHandler(_CycleTaskHandler):
         support files the QA build/test workspace can't build the deliverable and
         the frontend build check (#290) + vitest skip on "no package.json" (#296).
         """
-        capability = get_capability(effective_capability_name(inputs.get("resolved_config")))
+        capability = get_development_profile(
+            effective_development_profile(inputs.get("resolved_config"))
+        )
         contents = inputs.get("artifact_contents", {})
         support = set(getattr(capability, "build_support_files", ()))
         sources = {}
@@ -275,10 +277,10 @@ class QATestHandler(_CycleTaskHandler):
         prior_outputs: dict[str, Any] | None,
         val_plan: str | None = None,
         sources: dict[str, str] | None = None,
-        capability_name: str = DEFAULT_DEV_CAPABILITY,
+        capability_name: str = DEFAULT_DEVELOPMENT_PROFILE,
     ) -> str:
         """Build prompt with validation plan + source code for test generation."""
-        capability = get_capability(capability_name)
+        capability = get_development_profile(capability_name)
         parts = [f"## Product Requirements Document\n\n{prd}"]
 
         if val_plan:
@@ -1088,7 +1090,7 @@ class QATestHandler(_CycleTaskHandler):
         duration_ms = (time.perf_counter() - start_time) * 1000
         evidence = HandlerEvidence.create(
             handler_name=self._handler_name,
-            capability_id=self._capability_id,
+            task_type=self._task_type,
             duration_ms=duration_ms,
             inputs_hash=self._hash_dict(inputs),
             outputs_hash=self._hash_dict(outputs),
@@ -1113,11 +1115,11 @@ class QATestHandler(_CycleTaskHandler):
         prd = inputs.get("prd", "")
         prior_outputs = inputs.get("prior_outputs")
         resolved_config = inputs.get("resolved_config", {})
-        capability_name = effective_capability_name(resolved_config)
+        capability_name = effective_development_profile(resolved_config)
 
-        # Resolve capability (fail fast on unknown dev_capability)
+        # Resolve capability (fail fast on unknown development_profile)
         try:
-            capability = get_capability(capability_name)
+            capability = get_development_profile(capability_name)
         except ValueError as exc:
             return self._fail_result(start_time, inputs, str(exc))
 
@@ -1219,7 +1221,7 @@ class QATestHandler(_CycleTaskHandler):
         if "temperature" in agent_overrides:
             chat_kwargs["temperature"] = agent_overrides["temperature"]
         reasoning = resolve_reasoning_level(
-            self._capability_id, agent_overrides=agent_overrides, model_name=model_name
+            self._task_type, agent_overrides=agent_overrides, model_name=model_name
         )
         chat_kwargs.update(reasoning_kwargs(reasoning))
 
@@ -1606,7 +1608,7 @@ class QATestHandler(_CycleTaskHandler):
             tce_artifact = self._build_typed_check_evaluation_artifact(
                 validation.checks,
                 inputs.get("subtask_index"),
-                self._capability_id,
+                self._task_type,
                 inputs.get("workspace_revision_id"),
             )
             if tce_artifact is not None:
@@ -1717,7 +1719,7 @@ class QATestHandler(_CycleTaskHandler):
         duration_ms = (time.perf_counter() - start_time) * 1000
         evidence = HandlerEvidence.create(
             handler_name=self._handler_name,
-            capability_id=self._capability_id,
+            task_type=self._task_type,
             duration_ms=duration_ms,
             inputs_hash=self._hash_dict(inputs),
             outputs_hash=self._hash_dict(outputs),

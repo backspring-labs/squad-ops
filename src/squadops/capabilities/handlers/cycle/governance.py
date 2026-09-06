@@ -38,7 +38,7 @@ class GovernanceReviewHandler(_CycleTaskHandler):
     """
 
     _handler_name = "governance_review_handler"
-    _capability_id = "governance.review"
+    _task_type = "governance.review"
     _role = "lead"
     _artifact_name = "governance_review.md"
     #: Preserves the observability identity this handler already had. It carried a
@@ -225,7 +225,7 @@ class GovernanceReviewHandler(_CycleTaskHandler):
         duration_ms = (time.perf_counter() - start_time) * 1000
         evidence = HandlerEvidence.create(
             handler_name=self._handler_name,
-            capability_id=self._capability_id,
+            task_type=self._task_type,
             duration_ms=duration_ms,
             inputs_hash=self._hash_dict(inputs),
             outputs_hash=self._hash_dict(outputs),

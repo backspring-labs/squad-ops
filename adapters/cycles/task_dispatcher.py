@@ -139,8 +139,8 @@ class TaskDispatcher:
         flow_run_id + task_run_id and land in the right Prefect pane.
         """
         start = time.monotonic()
-        capability_id = (
-            envelope.metadata.get("capability_id", envelope.task_type)
+        task_type = (
+            envelope.metadata.get("task_type", envelope.task_type)
             if envelope.metadata
             else envelope.task_type
         )
@@ -148,9 +148,9 @@ class TaskDispatcher:
             await asyncio.sleep(interval)
             elapsed = time.monotonic() - start
             logger.info(
-                "task_heartbeat elapsed=%.1fs capability_id=%s task_id=%s",
+                "task_heartbeat elapsed=%.1fs task_type=%s task_id=%s",
                 elapsed,
-                capability_id,
+                task_type,
                 envelope.task_id,
             )
 

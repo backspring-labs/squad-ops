@@ -493,7 +493,7 @@ class TestImplHandlerSystemPromptExternalization:
     no longer triggers role-play."""
 
     @pytest.mark.parametrize(
-        "handler_cls,role,capability_id",
+        "handler_cls,role,task_type",
         [
             (
                 DataAnalyzeFailureHandler,
@@ -514,7 +514,7 @@ class TestImplHandlerSystemPromptExternalization:
         ids=lambda x: x.__name__ if isinstance(x, type) else x,
     )
     async def test_handler_uses_task_only_assembly(
-        self, mock_context, handler_cls, role, capability_id
+        self, mock_context, handler_cls, role, task_type
     ):
         # Drive the handler with a minimal-shaped LLM response so the
         # success path runs and reaches the assemble_task_only() call
@@ -555,7 +555,7 @@ class TestImplHandlerSystemPromptExternalization:
         # prepend that primes role-play responses on small models.
         mock_context.ports.prompt_service.assemble_task_only.assert_called_once_with(
             role=role,
-            task_type=capability_id,
+            task_type=task_type,
         )
         # And the legacy full-assembly path must NOT be called for
         # these JSON-emitting handlers.
@@ -766,7 +766,7 @@ class TestRepairHandlers:
 
         assert result.success is True
         assert result.outputs["role"] == "dev"
-        assert h.capability_id == "development.correction_repair"
+        assert h.task_type == "development.correction_repair"
 
     async def test_an_empty_repair_emission_carries_the_cap_exhausted_signature(self, mock_context):
         """#998: the generic path every repair rides emitted NO marker for an empty
@@ -869,7 +869,7 @@ class TestRepairHandlers:
 
         assert result.success is True
         assert result.outputs["role"] == "builder"
-        assert h.capability_id == "builder.assemble_repair"
+        assert h.task_type == "builder.assemble_repair"
         names = [a["name"] for a in result.outputs["artifacts"]]
         assert names == ["qa_handoff.md", "backend/requirements.txt"]
 

@@ -204,7 +204,7 @@ def _repaired_suite_files(
     ``backend/tests/test_runs.py`` arrives as ``code`` and a ``type``-keyed rule would
     miss exactly the case this exists for.
     """
-    from squadops.capabilities.dev_capabilities import (
+    from squadops.capabilities.development_profiles import (
         matches_test_file_patterns,
         test_file_patterns_for,
     )

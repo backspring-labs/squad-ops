@@ -37,7 +37,7 @@ class GovernanceDefineDoneHandler(_CycleTaskHandler):
     """Define the run's definition of done before implementation begins."""
 
     _handler_name = "governance_define_done_handler"
-    _capability_id = "governance.define_done"
+    _task_type = "governance.define_done"
     _role = "lead"
     _artifact_name = "definition_of_done.json"
 
@@ -69,7 +69,7 @@ class GovernanceDefineDoneHandler(_CycleTaskHandler):
         # it for this JSON-emitting handler.
         assembled = context.ports.prompt_service.assemble_task_only(
             role=self._role,
-            task_type=self._capability_id,
+            task_type=self._task_type,
         )
         messages = [
             ChatMessage(role="system", content=assembled.content),
@@ -85,7 +85,7 @@ class GovernanceDefineDoneHandler(_CycleTaskHandler):
             duration_ms = (time.perf_counter() - start_time) * 1000
             evidence = HandlerEvidence.create(
                 handler_name=self._handler_name,
-                capability_id=self._capability_id,
+                task_type=self._task_type,
                 duration_ms=duration_ms,
                 inputs_hash=self._hash_dict(inputs),
             )
@@ -142,7 +142,7 @@ class GovernanceDefineDoneHandler(_CycleTaskHandler):
             duration_ms = (time.perf_counter() - start_time) * 1000
             evidence = HandlerEvidence.create(
                 handler_name=self._handler_name,
-                capability_id=self._capability_id,
+                task_type=self._task_type,
                 duration_ms=duration_ms,
                 inputs_hash=self._hash_dict(inputs),
             )
@@ -182,7 +182,7 @@ class GovernanceDefineDoneHandler(_CycleTaskHandler):
 
         evidence = HandlerEvidence.create(
             handler_name=self._handler_name,
-            capability_id=self._capability_id,
+            task_type=self._task_type,
             duration_ms=duration_ms,
             inputs_hash=self._hash_dict(inputs),
             outputs_hash=self._hash_dict(outputs),

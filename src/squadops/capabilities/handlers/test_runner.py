@@ -1581,7 +1581,7 @@ async def run_build_validation(
     a missing third-party dep the runner lacks — never turns a passing suite red.
     Returns a ``RunTestsResult`` — never raises.
     """
-    from squadops.capabilities.dev_capabilities import (
+    from squadops.capabilities.development_profiles import (
         TEST_FRAMEWORK_BOTH,
         TEST_FRAMEWORK_VITEST,
     )

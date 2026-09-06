@@ -54,8 +54,8 @@ from squadops.cycles.implementation_plan import (
     resolve_contract_refs,
 )
 from squadops.cycles.manifest_authoring import (
-    AUTHOR_MANIFEST_CAPABILITY,
     AUTHOR_MANIFEST_ROLE,
+    AUTHOR_MANIFEST_TASK_TYPE,
     authors_interface_manifest,
 )
 from squadops.cycles.models import (
@@ -176,7 +176,7 @@ def build_planning_steps(
         ("development.design_plan", "dev"),
     ]
     if authors_manifest:
-        steps.append((AUTHOR_MANIFEST_CAPABILITY, AUTHOR_MANIFEST_ROLE))
+        steps.append((AUTHOR_MANIFEST_TASK_TYPE, AUTHOR_MANIFEST_ROLE))
     steps.extend(
         [
             ("qa.define_test_strategy", "qa"),

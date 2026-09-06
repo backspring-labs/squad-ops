@@ -2577,7 +2577,7 @@ class TestReexecuteRepairedSuite:
             trace_id="t",
             span_id="s",
             inputs={
-                "resolved_config": {"dev_capability": "fullstack_fastapi_react"},
+                "resolved_config": {"development_profile": "fullstack_fastapi_react"},
                 "artifact_contents": {"backend/main.py": "app = None\n"},
                 "subtask_focus": "Backend API Tests",
                 "expected_artifacts": ["tests/test_api.py"],
@@ -2684,7 +2684,7 @@ class TestReexecuteRepairedSuite:
         assert env.inputs["retest_files"][0]["content"] == "repaired"
         # Original workspace travels with the retest.
         assert env.inputs["artifact_contents"] == {"backend/main.py": "app = None\n"}
-        assert env.inputs["resolved_config"]["dev_capability"] == "fullstack_fastapi_react"
+        assert env.inputs["resolved_config"]["development_profile"] == "fullstack_fastapi_react"
 
     async def test_no_usable_suite_returns_none_without_dispatch(self):
         """Bug caught: dispatching a retest with zero files — it would 'pass'
@@ -3258,7 +3258,7 @@ class TestOwnArtifactLocusRouting(TestCorrectionRunnerStandalone):
                 "subtask_focus": "Backend runs API pytest suite",
                 "subtask_description": "Comprehensive pytest test file.",
                 "acceptance_criteria": ["suite covers all endpoints"],
-                "resolved_config": {"dev_capability": "python_fastapi"},
+                "resolved_config": {"development_profile": "python_fastapi"},
             },
             metadata={"role": "qa"},
         )
@@ -4292,7 +4292,7 @@ class TestOwnershipVetoWiring(TestCorrectionRunnerStandalone):
             inputs={
                 "expected_artifacts": ["__tests__/api_runs.test.ts"],
                 "implementation_artifacts": ["app/api/runs/[run_id]/join/route.ts"],
-                "resolved_config": {"dev_capability": "nextjs_ts"},
+                "resolved_config": {"development_profile": "nextjs_ts"},
             },
         )
 
@@ -5016,7 +5016,7 @@ class TestQaOwnedDefectRouting:
         ],
         "subtask_focus": "Backend and frontend suites",
         "subtask_description": "Free-authored suites for the React stack.",
-        "resolved_config": {"dev_capability": "fullstack_fastapi_react"},
+        "resolved_config": {"development_profile": "fullstack_fastapi_react"},
     }
 
     def test_roll_3_routes_to_the_qa_repair_targeting_only_the_defective_suite(self, caplog):
@@ -5159,7 +5159,10 @@ class TestRepairCarriesTheDispatchedWorkspace(TestCorrectionRunnerStandalone):
                 "subtask_focus": "runs route",
                 "subtask_description": "the runs route fill",
                 "acceptance_criteria": [],
-                "resolved_config": {"dev_capability": "nextjs_ts", "build_profile": "nextjs_ts"},
+                "resolved_config": {
+                    "development_profile": "nextjs_ts",
+                    "build_profile": "nextjs_ts",
+                },
                 "acceptance_workspace_files": workspace,
                 "workspace_revision_id": "rev-diag",
             },
@@ -5296,7 +5299,10 @@ class TestTheProtocolResultCarriesTheRepairsRows(TestCorrectionRunnerStandalone)
                 "subtask_focus": "runs route",
                 "subtask_description": "the runs route fill",
                 "acceptance_criteria": [],
-                "resolved_config": {"dev_capability": "nextjs_ts", "build_profile": "nextjs_ts"},
+                "resolved_config": {
+                    "development_profile": "nextjs_ts",
+                    "build_profile": "nextjs_ts",
+                },
             },
             metadata={"role": "dev"},
         )
@@ -5527,7 +5533,7 @@ class TestRepairBriefReadout(TestCorrectionRunnerStandalone):
                 "expected_artifacts": ["backend/tests/test_runs.py"],
                 "subtask_focus": "Backend runs API pytest suite",
                 "subtask_description": "Comprehensive pytest test file.",
-                "resolved_config": {"dev_capability": "fullstack_fastapi_react"},
+                "resolved_config": {"development_profile": "fullstack_fastapi_react"},
             },
             metadata={"role": "qa"},
         )
@@ -5708,7 +5714,7 @@ class TestVitestOwnFrameRoutesToTheQaRepair(TestCorrectionRunnerStandalone):
                 "expected_artifacts": [self._SUITE],
                 "subtask_focus": "Frontend RTL suite",
                 "subtask_description": "React Testing Library suite for the three views.",
-                "resolved_config": {"dev_capability": "fullstack_fastapi_react"},
+                "resolved_config": {"development_profile": "fullstack_fastapi_react"},
             },
             metadata={"role": "qa"},
         )
@@ -5813,7 +5819,7 @@ class TestProseOnlyRepairIsRefunded(TestCorrectionRunnerStandalone):
             inputs={
                 "expected_artifacts": ["__tests__/runs.test.ts"],
                 "subtask_focus": "the runs suite",
-                "resolved_config": {"dev_capability": "nextjs_ts"},
+                "resolved_config": {"development_profile": "nextjs_ts"},
             },
             metadata={"role": "qa"},
         )

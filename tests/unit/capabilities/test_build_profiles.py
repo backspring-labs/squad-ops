@@ -178,7 +178,7 @@ class TestFullstackFastapiReactProfile:
 class TestBuildProfilesRegistry:
     # #838: `assert len(BUILD_PROFILES) == 4` removed rather than bumped to 5 — a count
     # names no bug class, breaks on every legitimate registration, and is the shape
-    # docs/TEST_QUALITY_STANDARD.md rules out. Same removal as the DEV_CAPABILITIES
+    # docs/TEST_QUALITY_STANDARD.md rules out. Same removal as the DEVELOPMENT_PROFILES
     # count in #836. What matters is the BINDING, pinned in
     # tests/unit/cycles/test_build_profile_registration.py: every scaffoldable stack
     # has a profile, and its absence raises instead of being swallowed.

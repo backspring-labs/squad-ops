@@ -49,7 +49,7 @@ class GovernanceReviewPlanHandler(_PlanningTaskHandler):
     """
 
     _handler_name = "governance_assess_readiness_handler"
-    _capability_id = "governance.review_plan"
+    _task_type = "governance.review_plan"
     _role = "lead"
     _artifact_name = "planning_artifact.md"
 
@@ -83,7 +83,7 @@ class GovernanceReviewPlanHandler(_PlanningTaskHandler):
         assembled = context.ports.prompt_service.assemble(
             role=self._role,
             hook="agent_start",
-            task_type=self._capability_id,
+            task_type=self._task_type,
         )
 
         messages = [

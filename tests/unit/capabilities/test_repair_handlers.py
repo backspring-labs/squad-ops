@@ -1,7 +1,7 @@
 """Tests for repair task handlers (SIP-0070 Phase 3).
 
 Covers:
-- 4 repair handlers: construction, capability_id, role, artifact_name
+- 4 repair handlers: construction, task_type, role, artifact_name
 - _build_user_prompt(): verification context injection, upstream output filtering
 - handle(): LLM success + failure paths (inherited from _CycleTaskHandler)
 """
@@ -20,7 +20,7 @@ from squadops.capabilities.handlers.repair_tasks import (
     GovernanceRootCauseHandler,
     StrategyCorrectivePlanHandler,
 )
-from squadops.capabilities.reasoning_policy import REASONING_BY_CAPABILITY
+from squadops.capabilities.reasoning_policy import REASONING_BY_TASK_TYPE
 
 pytestmark = [pytest.mark.domain_pulse_checks]
 
@@ -362,7 +362,7 @@ class TestRepairReasoningLevel:
         kwargs = DevelopmentRepairHandler()._build_chat_kwargs(
             {"agent_model": "qwen3.8:27b", "agent_config_overrides": {}}
         )
-        assert kwargs["reasoning"] == REASONING_BY_CAPABILITY["development.correction_repair"]
+        assert kwargs["reasoning"] == REASONING_BY_TASK_TYPE["development.correction_repair"]
 
     def test_qa_repair_sends_its_declared_level_too(self):
         """Same invariant as the dev repair above: this file tests the WIRING, and the
@@ -377,7 +377,7 @@ class TestRepairReasoningLevel:
         kwargs = QATestRepairHandler()._build_chat_kwargs(
             {"agent_model": "qwen3.8:27b", "agent_config_overrides": {}}
         )
-        assert kwargs["reasoning"] == REASONING_BY_CAPABILITY["qa.test_repair"]
+        assert kwargs["reasoning"] == REASONING_BY_TASK_TYPE["qa.test_repair"]
 
     def test_profile_override_wins(self):
         kwargs = DevelopmentRepairHandler()._build_chat_kwargs(

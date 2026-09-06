@@ -19,7 +19,7 @@ class StrategyAnalyzeHandler(_CycleTaskHandler):
     """Cycle task handler for strategy analysis (strat role)."""
 
     _handler_name = "strategy_analyze_handler"
-    _capability_id = "strategy.analyze_prd"
+    _task_type = "strategy.analyze_prd"
     _role = "strat"
     _artifact_name = "strategy_analysis.md"
 
@@ -28,7 +28,7 @@ class DevelopmentDesignHandler(_CycleTaskHandler):
     """Cycle task handler for development design (dev role)."""
 
     _handler_name = "development_design_handler"
-    _capability_id = "development.design"
+    _task_type = "development.design"
     _role = "dev"
     _artifact_name = "implementation_plan.md"
 
@@ -37,7 +37,7 @@ class QAValidateHandler(_CycleTaskHandler):
     """Cycle task handler for QA validation (qa role)."""
 
     _handler_name = "qa_validate_handler"
-    _capability_id = "qa.validate"
+    _task_type = "qa.validate"
     _role = "qa"
     _artifact_name = "validation_plan.md"
 
@@ -46,6 +46,6 @@ class DataReportHandler(_CycleTaskHandler):
     """Cycle task handler for data reporting (data role)."""
 
     _handler_name = "data_report_handler"
-    _capability_id = "data.report"
+    _task_type = "data.report"
     _role = "data"
     _artifact_name = "data_report.md"

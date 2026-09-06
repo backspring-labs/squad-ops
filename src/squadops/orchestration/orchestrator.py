@@ -32,13 +32,13 @@ class TaskRouting:
     Attributes:
         target_role: Role to handle the task
         target_agent_id: Specific agent ID (if known)
-        capability_id: Capability to invoke
+        task_type: Capability to invoke
         priority: Task priority
         reason: Routing decision reason
     """
 
     target_role: str
-    capability_id: str
+    task_type: str
     target_agent_id: str | None = None
     priority: int = 5
     reason: str = ""
@@ -132,14 +132,14 @@ class AgentOrchestrator:
             if task_type.startswith(prefix):
                 return TaskRouting(
                     target_role=role,
-                    capability_id=task_type,
+                    task_type=task_type,
                     reason=f"prefix_match:{prefix}",
                 )
 
         # Default to lead for unknown tasks
         return TaskRouting(
             target_role="lead",
-            capability_id=task_type,
+            task_type=task_type,
             reason="default_to_lead",
         )
 
@@ -180,7 +180,7 @@ class AgentOrchestrator:
                 extra={
                     "task_id": task_id,
                     "target_role": routing.target_role,
-                    "capability_id": routing.capability_id,
+                    "task_type": routing.task_type,
                     "reason": routing.reason,
                 },
             )
@@ -314,7 +314,7 @@ class AgentOrchestrator:
         """
         if role:
             return self._handler_registry.list_by_role(role)
-        return self._handler_registry.list_capabilities()
+        return self._handler_registry.list_task_types()
 
     async def health_check(self) -> dict[str, Any]:
         """Perform orchestrator health check.
@@ -328,7 +328,7 @@ class AgentOrchestrator:
             "status": "healthy",
             "executor": executor_health,
             "active_tasks": len(self._state.active_tasks),
-            "capabilities": len(self._handler_registry.list_capabilities()),
+            "capabilities": len(self._handler_registry.list_task_types()),
         }
 
     def create_envelope(
