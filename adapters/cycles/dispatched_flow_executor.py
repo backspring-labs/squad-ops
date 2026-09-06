@@ -390,7 +390,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         """
         obs_ctx = None
         flow_run_id = None
-        terminal_status = "COMPLETED"
+        run_status = RunStatus.COMPLETED
         ledger = RunLedger()
         cycle = None
         plan = None
@@ -645,7 +645,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             # what the mapping decides (behavior-preserving collapse of the
             # former per-class handlers).
             outcome = resolve_terminal_outcome(exc, run_id)
-            terminal_status = outcome.terminal_status
+            run_status = outcome.run_status
             await self._safe_transition(
                 run_id, outcome.run_status, failure_reason=outcome.failure_reason
             )
@@ -690,7 +690,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             await self._run_completion.finalize(
                 cycle_id,
                 run_id,
-                terminal_status,
+                run_status,
                 obs_ctx,
                 flow_run_id,
                 cycle=cycle,
@@ -3846,7 +3846,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                         "project_id": cycle.project_id,
                     },
                 )
-                await self._workflow_tracker.set_flow_run_state(flow_run_id, "RUNNING", "Running")
+                await self._workflow_tracker.set_flow_run_state(flow_run_id, RunStatus.RUNNING)
             except Exception:
                 logger.warning("Prefect flow run creation failed", exc_info=True)
 

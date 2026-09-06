@@ -17,6 +17,7 @@ from squadops.cycles.models import (
     GateDecision,
     Run,
     RunNotFoundError,
+    RunStatus,
     RunTerminalError,
     TaskFlowPolicy,
 )
@@ -163,9 +164,7 @@ class TestCancelRun:
         fake_tracker.find_active_flow_run_ids.assert_awaited_once_with(
             ["hello_squad/cyc_001/run_001"]
         )
-        fake_tracker.set_flow_run_state.assert_awaited_once_with(
-            "flowrun-abc", "CANCELLED", "Cancelled"
-        )
+        fake_tracker.set_flow_run_state.assert_awaited_once_with("flowrun-abc", RunStatus.CANCELLED)
 
     def test_cancel_releases_the_runs_focus_leases(self, client, monkeypatch):
         """#529: cancellation bypasses the executor's finalize path, so without

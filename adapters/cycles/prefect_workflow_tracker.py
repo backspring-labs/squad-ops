@@ -17,9 +17,31 @@ from uuid import uuid4
 
 import httpx
 
+from squadops.cycles.models import RunStatus
 from squadops.ports.cycles import WorkflowTrackerPort
 
 logger = logging.getLogger(__name__)
+
+#: ``RunStatus`` → Prefect ``State`` (type, name) — the one translation point (#377).
+#: Total over ``RunStatus`` and held so by ``test_every_run_status_has_a_prefect_state``:
+#: ``.upper()`` coincided for the terminal subset and would have sent Prefect an invalid
+#: ``QUEUED`` the first time a non-terminal status reached it (Prefect says SCHEDULED).
+_PREFECT_FLOW_STATE: dict[RunStatus, tuple[str, str]] = {
+    RunStatus.QUEUED: ("SCHEDULED", "Scheduled"),
+    RunStatus.RUNNING: ("RUNNING", "Running"),
+    RunStatus.PAUSED: ("PAUSED", "Paused"),
+    RunStatus.COMPLETED: ("COMPLETED", "Completed"),
+    RunStatus.FAILED: ("FAILED", "Failed"),
+    RunStatus.CANCELLED: ("CANCELLED", "Cancelled"),
+}
+
+
+def prefect_flow_state(run_status: RunStatus) -> tuple[str, str]:
+    """Prefect's (state type, state name) for a run status; loud for one with no mapping."""
+    try:
+        return _PREFECT_FLOW_STATE[RunStatus(run_status)]
+    except (KeyError, ValueError) as exc:
+        raise ValueError(f"no Prefect flow state for run status {run_status!r}") from exc
 
 
 class PrefectWorkflowTracker(WorkflowTrackerPort):
@@ -148,8 +170,9 @@ class PrefectWorkflowTracker(WorkflowTrackerPort):
             logger.warning("Prefect find_active_flow_run_ids failed", exc_info=True)
             return []
 
-    async def set_flow_run_state(self, flow_run_id: str, state_type: str, state_name: str) -> None:
-        """Update flow run state (RUNNING, COMPLETED, FAILED, CANCELLED)."""
+    async def set_flow_run_state(self, flow_run_id: str, run_status: RunStatus) -> None:
+        """Translate the run's ``RunStatus`` to Prefect's flow-run state and set it."""
+        state_type, state_name = prefect_flow_state(run_status)
         try:
             resp = await self._client.post(
                 f"{self._api_url}/flow_runs/{flow_run_id}/set_state",

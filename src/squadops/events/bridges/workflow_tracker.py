@@ -19,6 +19,7 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING
 
+from squadops.cycles.models import RunStatus
 from squadops.events.types import EventType
 
 if TYPE_CHECKING:
@@ -28,13 +29,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Run events → Prefect flow run state (state_type, state_name)
-_RUN_STATE_MAP: dict[str, tuple[str, str]] = {
-    EventType.RUN_STARTED: ("RUNNING", "Running"),
-    EventType.RUN_COMPLETED: ("COMPLETED", "Completed"),
-    EventType.RUN_FAILED: ("FAILED", "Failed"),
-    EventType.RUN_CANCELLED: ("CANCELLED", "Cancelled"),
-    EventType.RUN_PAUSED: ("PAUSED", "Paused"),
-    EventType.RUN_RESUMED: ("RUNNING", "Running"),
+_RUN_STATE_MAP: dict[str, RunStatus] = {
+    EventType.RUN_STARTED: RunStatus.RUNNING,
+    EventType.RUN_COMPLETED: RunStatus.COMPLETED,
+    EventType.RUN_FAILED: RunStatus.FAILED,
+    EventType.RUN_CANCELLED: RunStatus.CANCELLED,
+    EventType.RUN_PAUSED: RunStatus.PAUSED,
+    EventType.RUN_RESUMED: RunStatus.RUNNING,
 }
 
 
@@ -52,8 +53,8 @@ class WorkflowTrackerBridge:
         flow_run_id = event.context.get("flow_run_id", "")
 
         if event.event_type in _RUN_STATE_MAP and flow_run_id:
-            state_type, state_name = _RUN_STATE_MAP[event.event_type]
-            self._schedule(self._tracker.set_flow_run_state(flow_run_id, state_type, state_name))
+            run_status = _RUN_STATE_MAP[event.event_type]
+            self._schedule(self._tracker.set_flow_run_state(flow_run_id, run_status))
 
     @staticmethod
     def _schedule(coro) -> None:  # noqa: ANN001

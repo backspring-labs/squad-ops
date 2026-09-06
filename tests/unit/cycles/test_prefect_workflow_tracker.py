@@ -14,6 +14,7 @@ import httpx
 import pytest
 
 from adapters.cycles.prefect_workflow_tracker import PrefectWorkflowTracker
+from squadops.cycles.models import RunStatus
 
 pytestmark = [pytest.mark.domain_orchestration]
 
@@ -138,7 +139,7 @@ class TestSetStateMethods:
         reporter._client = AsyncMock(spec=httpx.AsyncClient)
         reporter._client.post = AsyncMock(return_value=_mock_response(200, {"status": "ok"}))
 
-        await reporter.set_flow_run_state("run-abc", "RUNNING", "Running")
+        await reporter.set_flow_run_state("run-abc", RunStatus.RUNNING)
 
         call_args = reporter._client.post.call_args
         assert "/flow_runs/run-abc/set_state" in call_args.args[0]
@@ -193,7 +194,7 @@ class TestGracefulDegradation:
         reporter._client.post = AsyncMock(side_effect=httpx.ConnectError("Connection refused"))
 
         # Should not raise
-        await reporter.set_flow_run_state("run-1", "RUNNING", "Running")
+        await reporter.set_flow_run_state("run-1", RunStatus.RUNNING)
 
     async def test_set_task_run_state_handles_error(self):
         reporter = PrefectWorkflowTracker(api_url=PREFECT_URL)
@@ -213,3 +214,41 @@ class TestGracefulDegradation:
         # Should not raise — raise_for_status will throw but it's caught
         flow_id = await reporter.ensure_flow()
         assert flow_id  # Returns a placeholder
+
+
+class TestTheAdapterOwnsThePrefectVocabulary:
+    """#377: ``RunStatus`` is the only status vocabulary inward of this adapter. The
+    ``.upper()`` coincidence held for the terminal subset and would have sent Prefect an
+    invalid ``QUEUED`` the first time a non-terminal status reached the tracker."""
+
+    def test_every_run_status_has_a_prefect_state(self):
+        from adapters.cycles.prefect_workflow_tracker import prefect_flow_state
+        from squadops.cycles.models import RunStatus
+
+        for status in RunStatus:
+            state_type, state_name = prefect_flow_state(status)
+            assert state_type.isupper() and state_name.istitle(), (status, state_type, state_name)
+        # The one that .upper() got wrong: Prefect has no QUEUED state.
+        assert prefect_flow_state(RunStatus.QUEUED) == ("SCHEDULED", "Scheduled")
+
+    def test_a_status_with_no_prefect_state_is_refused_loudly(self):
+        from adapters.cycles.prefect_workflow_tracker import prefect_flow_state
+
+        with pytest.raises(ValueError, match="no Prefect flow state"):
+            prefect_flow_state("archived")  # type: ignore[arg-type]
+
+    async def test_set_flow_run_state_posts_the_translated_pair(self):
+        """Wiring: the domain member in, Prefect's type and name on the wire."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from adapters.cycles.prefect_workflow_tracker import PrefectWorkflowTracker
+        from squadops.cycles.models import RunStatus
+
+        tracker = PrefectWorkflowTracker(api_url="http://prefect:4200/api")
+        resp = MagicMock()
+        resp.raise_for_status = MagicMock()
+        tracker._client = MagicMock(post=AsyncMock(return_value=resp))
+        await tracker.set_flow_run_state("fr_1", RunStatus.CANCELLED)
+        body = tracker._client.post.await_args.kwargs["json"]
+        assert body["state"]["type"] == "CANCELLED"
+        assert body["state"]["name"] == "Cancelled"

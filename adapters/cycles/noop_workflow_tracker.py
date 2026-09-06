@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import Any
 from uuid import uuid4
 
+from squadops.cycles.models import RunStatus
 from squadops.ports.cycles import WorkflowTrackerPort
 
 
@@ -43,12 +44,7 @@ class NoOpWorkflowTracker(WorkflowTrackerPort):
     async def find_active_flow_run_ids(self, run_names: list[str]) -> list[str]:
         return []
 
-    async def set_flow_run_state(
-        self,
-        flow_run_id: str,
-        state_type: str,
-        state_name: str,
-    ) -> None:
+    async def set_flow_run_state(self, flow_run_id: str, run_status: RunStatus) -> None:
         return None
 
     async def set_task_run_state(

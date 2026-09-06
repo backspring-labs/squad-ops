@@ -20,6 +20,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any
 
+from squadops.cycles.models import RunStatus
+
 
 class WorkflowTrackerPort(ABC):
     """Records cycle execution structure (flow runs / task runs) on an external UI.
@@ -59,13 +61,15 @@ class WorkflowTrackerPort(ABC):
         returns ``[]`` on transport failure or when nothing matches (#77)."""
 
     @abstractmethod
-    async def set_flow_run_state(
-        self,
-        flow_run_id: str,
-        state_type: str,
-        state_name: str,
-    ) -> None:
-        """Update the flow run's state (RUNNING, COMPLETED, FAILED, ...)."""
+    async def set_flow_run_state(self, flow_run_id: str, run_status: RunStatus) -> None:
+        """Record the run's lifecycle status on its flow run.
+
+        Takes the domain's ``RunStatus`` (#377): which tracker vocabulary that becomes —
+        Prefect's ``State`` type and name, or nothing — is the adapter's translation, made
+        at this boundary and nowhere inward. Before this the port took Prefect's
+        ``state_type`` string and ``terminal_status`` carried it into domain objects,
+        coinciding with ``RunStatus.value.upper()`` only for the terminal subset.
+        """
 
     @abstractmethod
     async def set_task_run_state(

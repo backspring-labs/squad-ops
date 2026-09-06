@@ -16,6 +16,7 @@ from adapters.cycles.noop_workflow_tracker import NoOpWorkflowTracker
 from adapters.cycles.prefect_workflow_tracker import PrefectWorkflowTracker
 from adapters.cycles.workflow_tracker_factory import create_workflow_tracker
 from squadops.config.schema import PrefectConfig
+from squadops.cycles.models import RunStatus
 from squadops.ports.cycles import WorkflowTrackerPort
 
 pytestmark = [pytest.mark.domain_cycles]
@@ -71,7 +72,7 @@ async def test_noop_create_methods_return_nonempty_placeholders():
 async def test_noop_state_setters_and_close_are_no_ops():
     """Idempotent and never raise — pure no-ops."""
     tracker = NoOpWorkflowTracker()
-    await tracker.set_flow_run_state("fr-1", "RUNNING", "Running")
+    await tracker.set_flow_run_state("fr-1", RunStatus.RUNNING)
     await tracker.set_task_run_state("tr-1", "COMPLETED", "Completed")
     await tracker.close()
     await tracker.close()  # idempotent

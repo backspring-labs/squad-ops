@@ -17,6 +17,7 @@ from squadops.cycles.models import (
     Cycle,
     GateDecision,
     Run,
+    RunStatus,
     TaskFlowPolicy,
 )
 from squadops.tasks.models import TaskEnvelope
@@ -116,7 +117,7 @@ class TestReportContainsMetadata:
         await completion.generate_run_report(
             "cyc_001",
             "run_001",
-            "COMPLETED",
+            RunStatus.COMPLETED,
             cycle=cycle,
             plan=_make_plan(),
         )
@@ -144,7 +145,7 @@ class TestReportContainsMetadata:
         await completion.generate_run_report(
             "cyc_001",
             "run_001",
-            "COMPLETED",
+            RunStatus.COMPLETED,
             cycle=cycle,
             plan=None,
         )
@@ -162,7 +163,7 @@ class TestReportContainsMetadata:
         await completion.generate_run_report(
             "cyc_001",
             "run_001",
-            "FAILED",
+            RunStatus.FAILED,
             cycle=cycle,
             plan=None,
         )
@@ -181,7 +182,7 @@ class TestReportContainsMetadata:
         await completion.generate_run_report(
             "cyc_001",
             "run_001",
-            "COMPLETED",
+            RunStatus.COMPLETED,
             cycle=cycle,
             plan=plan,
         )
@@ -212,7 +213,7 @@ class TestReportContainsMetadata:
         await completion.generate_run_report(
             "cyc_001",
             "run_001",
-            "COMPLETED",
+            RunStatus.COMPLETED,
             cycle=cycle,
             plan=None,
         )
@@ -232,7 +233,7 @@ class TestReportContainsMetadata:
         await completion.generate_run_report(
             "cyc_001",
             "run_001",
-            "COMPLETED",
+            RunStatus.COMPLETED,
             cycle=cycle,
             plan=None,
         )
@@ -253,7 +254,7 @@ class TestReportFailureNoStatusChange:
             await completion.generate_run_report(
                 "cyc_001",
                 "run_001",
-                "COMPLETED",
+                RunStatus.COMPLETED,
             )
 
         # The run status was NOT updated (no update_run_status calls)
@@ -269,7 +270,7 @@ class TestReportWithoutCycleOrPlan:
         await completion.generate_run_report(
             "cyc_001",
             "run_001",
-            "FAILED",
+            RunStatus.FAILED,
             cycle=None,
             plan=None,
         )
@@ -297,7 +298,7 @@ class TestResolveTerminalOutcome:
         from squadops.events.types import EventType
 
         outcome = resolve_terminal_outcome(_CancellationError("run_1"), "run_1")
-        assert outcome.terminal_status == "CANCELLED"
+        assert outcome.run_status is RunStatus.CANCELLED
         assert outcome.run_status == RunStatus.CANCELLED
         assert outcome.event_type == EventType.RUN_CANCELLED
         assert outcome.event_payload is None
@@ -315,7 +316,7 @@ class TestResolveTerminalOutcome:
 
         exc = _RecruitmentRejectedError("max", "hard_duty_window")
         outcome = resolve_terminal_outcome(exc, "run_1")
-        assert outcome.terminal_status == "PAUSED"
+        assert outcome.run_status is RunStatus.PAUSED
         assert outcome.run_status == RunStatus.PAUSED
         assert outcome.event_type == EventType.RUN_PAUSED
         assert outcome.event_payload == {
@@ -332,7 +333,7 @@ class TestResolveTerminalOutcome:
         from squadops.events.types import EventType
 
         outcome = resolve_terminal_outcome(_PausedError("blocked"), "run_1")
-        assert outcome.terminal_status == "PAUSED"
+        assert outcome.run_status is RunStatus.PAUSED
         assert outcome.run_status == RunStatus.PAUSED
         assert outcome.event_type == EventType.RUN_PAUSED
         assert outcome.event_payload is None
@@ -345,7 +346,7 @@ class TestResolveTerminalOutcome:
         from squadops.events.types import EventType
 
         outcome = resolve_terminal_outcome(_ExecutionError("task t-1 failed"), "run_1")
-        assert outcome.terminal_status == "FAILED"
+        assert outcome.run_status is RunStatus.FAILED
         assert outcome.run_status == RunStatus.FAILED
         assert outcome.event_type == EventType.RUN_FAILED
         assert outcome.event_payload == {"error": "task t-1 failed"}
@@ -359,7 +360,7 @@ class TestResolveTerminalOutcome:
         from squadops.events.types import EventType
 
         outcome = resolve_terminal_outcome(ValueError("boom"), "run_1")
-        assert outcome.terminal_status == "FAILED"
+        assert outcome.run_status is RunStatus.FAILED
         assert outcome.run_status == RunStatus.FAILED
         assert outcome.event_type == EventType.RUN_FAILED
         assert outcome.event_payload == {"error": "boom"}
@@ -434,7 +435,7 @@ class TestRunLedger:
         )
 
         await completion.generate_run_report(
-            "cyc_001", "run_001", "COMPLETED", cycle=_make_cycle(), ledger=ledger
+            "cyc_001", "run_001", RunStatus.COMPLETED, cycle=_make_cycle(), ledger=ledger
         )
 
         content = vault.store.call_args[0][1].decode()
@@ -489,7 +490,13 @@ class TestVerificationIntegrityWiring:
         from squadops.cycles.run_ledger import RunLedger
 
         await completion.finalize(
-            "cyc_001", "run_001", "COMPLETED", None, None, cycle=_make_cycle(), ledger=RunLedger()
+            "cyc_001",
+            "run_001",
+            RunStatus.COMPLETED,
+            None,
+            None,
+            cycle=_make_cycle(),
+            ledger=RunLedger(),
         )
         content = vault.store.call_args[0][1].decode()
         assert "Verification Integrity" in content
@@ -506,7 +513,7 @@ class TestVerificationIntegrityWiring:
         cycle = replace(_make_cycle(), applied_defaults={"required_checks": ["required_files"]})
 
         await completion.finalize(
-            "cyc_001", "run_001", "COMPLETED", None, None, cycle=cycle, ledger=RunLedger()
+            "cyc_001", "run_001", RunStatus.COMPLETED, None, None, cycle=cycle, ledger=RunLedger()
         )
         content = vault.store.call_args[0][1].decode()
         assert "blocked_unverified" in content
@@ -523,7 +530,13 @@ class TestVerificationIntegrityWiring:
         completion, vault = self._completion()
 
         await completion.finalize(
-            "cyc_001", "run_001", "FAILED", None, None, cycle=_make_cycle(), ledger=RunLedger()
+            "cyc_001",
+            "run_001",
+            RunStatus.FAILED,
+            None,
+            None,
+            cycle=_make_cycle(),
+            ledger=RunLedger(),
         )
         content = vault.store.call_args[0][1].decode()
         assert "Verdict: **blocked_unverified**" in content
@@ -542,7 +555,13 @@ class TestVerificationIntegrityWiring:
         ledger.record_check_result(CheckResult(check_id="tests_pass", status="failed"))
 
         await completion.finalize(
-            "cyc_001", "run_001", "COMPLETED", None, None, cycle=_make_cycle(), ledger=ledger
+            "cyc_001",
+            "run_001",
+            RunStatus.COMPLETED,
+            None,
+            None,
+            cycle=_make_cycle(),
+            ledger=ledger,
         )
         content = vault.store.call_args[0][1].decode()
         assert "rejected" in content
@@ -551,8 +570,8 @@ class TestVerificationIntegrityWiring:
     @pytest.mark.parametrize(
         ("terminal_status", "expected_verdict"),
         [
-            ("COMPLETED", "accepted"),
-            ("FAILED", "blocked_unverified"),  # #388 verdict carried into the persisted row
+            (RunStatus.COMPLETED, "accepted"),
+            (RunStatus.FAILED, "blocked_unverified"),  # #388 verdict carried into the persisted row
         ],
     )
     async def test_finalize_persists_run_verification_summary(
@@ -592,7 +611,13 @@ class TestVerificationIntegrityWiring:
         )
 
         await completion.finalize(
-            "cyc_001", "run_001", "COMPLETED", None, None, cycle=_make_cycle(), ledger=RunLedger()
+            "cyc_001",
+            "run_001",
+            RunStatus.COMPLETED,
+            None,
+            None,
+            cycle=_make_cycle(),
+            ledger=RunLedger(),
         )
         # report still generated despite the persistence failure
         assert vault.store.call_args is not None
@@ -637,7 +662,9 @@ class TestAggregateVerificationContractDenominator:
 
     def test_bound_contract_denominator_is_full_contract(self):
         ledger = self._ledger_with_partial_evidence()
-        summary = RunCompletion._aggregate_verification(None, ledger, "COMPLETED", _REAL_CONTRACT)
+        summary = RunCompletion._aggregate_verification(
+            None, ledger, RunStatus.COMPLETED, _REAL_CONTRACT
+        )
         assert summary.criteria_total == tuple(sorted(_REAL_CONTRACT.criterion_ids()))
         n, m = summary.criteria_coverage
         assert n == 1
@@ -646,7 +673,7 @@ class TestAggregateVerificationContractDenominator:
 
     def test_author_mode_denominator_unchanged(self):
         ledger = self._ledger_with_partial_evidence()
-        summary = RunCompletion._aggregate_verification(None, ledger, "COMPLETED", None)
+        summary = RunCompletion._aggregate_verification(None, ledger, RunStatus.COMPLETED, None)
         assert summary.criteria_total == (_REAL_CONTRACT.criterion_ids()[0],)
 
 
@@ -667,7 +694,9 @@ class TestBehavioralCriterionStamping:
             CheckResult(check_id="frontend_build", status=ResultStatus.PASSED)
         )
         ledger.record_check_result(CheckResult(check_id="tests_pass", status=ResultStatus.FAILED))
-        summary = RunCompletion._aggregate_verification(None, ledger, "COMPLETED", _REAL_CONTRACT)
+        summary = RunCompletion._aggregate_verification(
+            None, ledger, RunStatus.COMPLETED, _REAL_CONTRACT
+        )
         assert cmap["frontend_build"] in summary.criteria_verified
         # a failed suite goes adverse: present in the denominator, never credited
         assert cmap["tests_pass"] in summary.criteria_total
@@ -678,7 +707,9 @@ class TestBehavioralCriterionStamping:
         ledger.record_check_result(
             CheckResult(check_id="tests_pass", status=ResultStatus.PASSED, criterion_id="vc-custom")
         )
-        summary = RunCompletion._aggregate_verification(None, ledger, "COMPLETED", _REAL_CONTRACT)
+        summary = RunCompletion._aggregate_verification(
+            None, ledger, RunStatus.COMPLETED, _REAL_CONTRACT
+        )
         assert "vc-custom" in summary.criteria_verified
 
     def test_author_mode_rows_stay_unstamped(self):
@@ -686,7 +717,7 @@ class TestBehavioralCriterionStamping:
         ledger.record_check_result(
             CheckResult(check_id="frontend_build", status=ResultStatus.PASSED)
         )
-        summary = RunCompletion._aggregate_verification(None, ledger, "COMPLETED", None)
+        summary = RunCompletion._aggregate_verification(None, ledger, RunStatus.COMPLETED, None)
         assert summary.criteria_verified == ()
 
 
@@ -720,7 +751,7 @@ class TestStrandedActivitySweep:
         activity_port.list_active_activities.return_value = (stranded,)
 
         completion = self._completion_with_activity_port(activity_port)
-        await completion.finalize("cyc_001", "run_001", "FAILED", None, None)
+        await completion.finalize("cyc_001", "run_001", RunStatus.FAILED, None, None)
 
         activity_port.list_active_activities.assert_awaited_once_with(cycle_id="cyc_001")
         args = activity_port.abort_activity.await_args.args
@@ -735,14 +766,14 @@ class TestStrandedActivitySweep:
         activity_port.list_active_activities.side_effect = RuntimeError("db down")
 
         completion = self._completion_with_activity_port(activity_port)
-        await completion.finalize("cyc_001", "run_001", "COMPLETED", None, None)
+        await completion.finalize("cyc_001", "run_001", RunStatus.COMPLETED, None, None)
 
         completion._cycle_registry.record_run_verification_summary.assert_awaited_once()
 
     async def test_finalize_without_activity_port_skips_the_sweep(self, completion):
         """Boundary: the memory-registry / pool-less composition wires no
         activity port — finalize must complete without touching activities."""
-        await completion.finalize("cyc_001", "run_001", "COMPLETED", None, None)
+        await completion.finalize("cyc_001", "run_001", RunStatus.COMPLETED, None, None)
 
         completion._cycle_registry.record_run_verification_summary.assert_awaited_once()
 

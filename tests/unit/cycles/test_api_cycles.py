@@ -16,6 +16,7 @@ from squadops.cycles.models import (
     Cycle,
     CycleNotFoundError,
     ProjectNotFoundError,
+    RunStatus,
     SquadProfile,
     TaskFlowPolicy,
 )
@@ -251,9 +252,7 @@ class TestCancelCycle:
         fake_tracker.find_active_flow_run_ids.assert_awaited_once_with(
             ["hello_squad/cyc_001/run_001"]
         )
-        fake_tracker.set_flow_run_state.assert_awaited_once_with(
-            "flowrun-xyz", "CANCELLED", "Cancelled"
-        )
+        fake_tracker.set_flow_run_state.assert_awaited_once_with("flowrun-xyz", RunStatus.CANCELLED)
 
     def test_cancel_survives_prefect_failure(self, client, mock_cycle_registry, monkeypatch):
         """Registry cancellation is the source of truth: if Prefect propagation

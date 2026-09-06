@@ -294,7 +294,7 @@ class TestPrefectFlowRun:
         mock_prefect.set_flow_run_state.assert_awaited()
         # Last call should be terminal
         terminal_call = mock_prefect.set_flow_run_state.call_args_list[-1]
-        assert terminal_call.args[1] == "COMPLETED"
+        assert terminal_call.args[1] == RunStatus.COMPLETED
 
 
 class TestPrefectTaskRuns:
