@@ -46,7 +46,7 @@ from adapters.cycles.execution_errors import _CancellationError
 from adapters.cycles.task_naming import build_task_name
 from squadops.events.types import EventType
 from squadops.runtime import reasons
-from squadops.tasks.models import TaskResult
+from squadops.tasks.models import TaskResult, TaskResultStatus
 from squadops.telemetry.context import use_correlation_context, use_run_ids
 from squadops.telemetry.models import CorrelationContext
 
@@ -252,7 +252,7 @@ class TaskDispatcher:
                 raise
             else:
                 await self._finish_task_activity(activity_id, result)
-                if result is not None and result.status == "SUCCEEDED":
+                if result is not None and result.status == TaskResultStatus.SUCCEEDED:
                     await self._set_task_run_state(task_run_id, "COMPLETED", "Completed")
                 else:
                     await self._set_task_run_state(task_run_id, "FAILED", "Failed")
@@ -306,7 +306,7 @@ class TaskDispatcher:
         if self._activity_port is None or activity_id is None:
             return
         try:
-            if result is not None and result.status == "SUCCEEDED":
+            if result is not None and result.status == TaskResultStatus.SUCCEEDED:
                 await self._activity_port.complete_activity(activity_id)
             else:
                 reason = (result.error if result is not None else None) or reasons.ACTIVITY_FAILED
@@ -380,7 +380,7 @@ class TaskDispatcher:
             self._reply_router.cancel(envelope.task_id)
             return TaskResult(
                 task_id=envelope.task_id,
-                status="FAILED",
+                status=TaskResultStatus.FAILED,
                 error=f"Timed out waiting for agent {envelope.agent_id} after {self._task_timeout}s",
             )
         except Exception as exc:
@@ -390,7 +390,7 @@ class TaskDispatcher:
             self._reply_router.cancel(envelope.task_id)
             return TaskResult(
                 task_id=envelope.task_id,
-                status="FAILED",
+                status=TaskResultStatus.FAILED,
                 error=f"Reply wait for agent {envelope.agent_id} failed: {exc}",
             )
 
@@ -432,7 +432,7 @@ class TaskDispatcher:
                 "run_id": run_id,
                 "task_run_id": task_run_id or "",
             }
-            if result.status == "SUCCEEDED":
+            if result.status == TaskResultStatus.SUCCEEDED:
                 self._event_bus.emit(
                     EventType.TASK_SUCCEEDED,
                     entity_type="task",
@@ -452,7 +452,7 @@ class TaskDispatcher:
                     },
                 )
 
-            if result.status != "SUCCEEDED":
+            if result.status != TaskResultStatus.SUCCEEDED:
                 action = await handle_task_outcome(result)
 
                 if action == "continue":

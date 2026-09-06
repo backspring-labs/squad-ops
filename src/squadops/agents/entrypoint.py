@@ -25,6 +25,8 @@ import signal
 import sys
 from typing import TYPE_CHECKING
 
+from squadops.tasks.models import TaskResultStatus
+
 # Configure logging early.
 # LOG_LEVEL (and MEMORY_DB_PATH / HEARTBEAT_INTERVAL below) are bare-env
 # *operational* knobs with sensible defaults — deliberately distinct from the
@@ -810,7 +812,7 @@ class AgentRunner:
             logger.error(f"Task execution failed: {e}", extra={"task_id": envelope.task_id})
             result = TaskResult(
                 task_id=envelope.task_id,
-                status="FAILED",
+                status=TaskResultStatus.FAILED,
                 error=str(e),
             )
         finally:

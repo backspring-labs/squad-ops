@@ -67,6 +67,7 @@ from squadops.cycles.manifest_authoring import (
 from squadops.cycles.models import (
     ArtifactRef,
     Cycle,
+    FlowMode,
     GateDecision,
     GateDecisionValue,
     Run,
@@ -584,7 +585,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
 
                 # Dispatch based on policy mode
                 mode = cycle.task_flow_policy.mode
-                if mode == "sequential":
+                if mode == FlowMode.SEQUENTIAL:
                     await self._execute_sequential(
                         plan,
                         run_id,
@@ -597,9 +598,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                         ledger=ledger,
                         interface_manifest=interface_manifest,
                     )
-                elif mode == "fan_out_fan_in":
+                elif mode == FlowMode.FAN_OUT_FAN_IN:
                     await self._execute_fan_out(plan, run_id, cycle, flow_run_id, ledger=ledger)
-                elif mode == "fan_out_soft_gates":
+                elif mode == FlowMode.FAN_OUT_SOFT_GATES:
                     await self._execute_sequential(
                         plan,
                         run_id,
@@ -3429,7 +3430,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             fresh_test_result = retest_outputs.get("test_result")
             retest_passed = (
                 retest_result is not None
-                and retest_result.status == "SUCCEEDED"
+                and retest_result.status == TaskResultStatus.SUCCEEDED
                 and isinstance(fresh_test_result, dict)
                 and fresh_test_result.get("tests_passed") is True
             )
@@ -3938,7 +3939,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             # same point.
             if ledger is not None:
                 record_task_evidence(ledger, result, plan[i].task_id)
-            if result.status == "SUCCEEDED":
+            if result.status == TaskResultStatus.SUCCEEDED:
                 self._cycle_event_bus.emit(
                     EventType.TASK_SUCCEEDED,
                     entity_type="task",
@@ -3954,7 +3955,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     context=task_context,
                     payload={"task_type": plan[i].task_type, "error": result.error or ""},
                 )
-            if result.status != "SUCCEEDED":
+            if result.status != TaskResultStatus.SUCCEEDED:
                 raise _ExecutionError(f"Task {plan[i].task_id} failed: {result.error}")
             for art in (result.outputs or {}).get("artifacts", []):
                 ref = await self._store_artifact(art, cycle, run_id, plan[i])
@@ -4594,7 +4595,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         if (
             bound_record is not None
             and artifacts
-            and getattr(result, "status", None) != "SUCCEEDED"
+            and getattr(result, "status", None) != TaskResultStatus.SUCCEEDED
         ):
             enforced, dropped = self._enforce_frozen_ownership(
                 artifacts, bound_record, envelope, stage=STAGE_FAILED_EMISSION
@@ -4648,7 +4649,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         flow of the failure it is recording. #1017 made the same call for the failed
         retest's ``test_report``.
         """
-        if getattr(result, "status", None) == "SUCCEEDED":
+        if getattr(result, "status", None) == TaskResultStatus.SUCCEEDED:
             return
         artifacts = (getattr(result, "outputs", None) or {}).get("artifacts") or []
         if not artifacts:

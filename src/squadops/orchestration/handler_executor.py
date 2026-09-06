@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 from squadops.capabilities.handlers.context import ExecutionContext
 from squadops.orchestration.handler_registry import HandlerNotFoundError, HandlerRegistry
 from squadops.ports.capabilities.executor import CapabilityExecutor
-from squadops.tasks.models import TaskEnvelope, TaskResult
+from squadops.tasks.models import TaskEnvelope, TaskResult, TaskResultStatus
 
 if TYPE_CHECKING:
     from squadops.agents.base import PortsBundle
@@ -94,7 +94,7 @@ class HandlerExecutor(CapabilityExecutor):
             except HandlerNotFoundError:
                 return TaskResult(
                     task_id=task_id,
-                    status="FAILED",
+                    status=TaskResultStatus.FAILED,
                     outputs=None,
                     error=f"No handler for task type: {task_type}",
                     execution_evidence={"error": "handler_not_found"},
@@ -122,7 +122,7 @@ class HandlerExecutor(CapabilityExecutor):
             if errors:
                 return TaskResult(
                     task_id=task_id,
-                    status="FAILED",
+                    status=TaskResultStatus.FAILED,
                     outputs=None,
                     error=f"Validation failed: {'; '.join(errors)}",
                     execution_evidence={"validation_errors": errors},
@@ -150,7 +150,7 @@ class HandlerExecutor(CapabilityExecutor):
                 )
                 return TaskResult(
                     task_id=task_id,
-                    status="SUCCEEDED",
+                    status=TaskResultStatus.SUCCEEDED,
                     outputs=result.outputs,
                     error=None,
                     execution_evidence=self._evidence_to_dict(result.evidence),
@@ -166,7 +166,7 @@ class HandlerExecutor(CapabilityExecutor):
                 )
                 return TaskResult(
                     task_id=task_id,
-                    status="FAILED",
+                    status=TaskResultStatus.FAILED,
                     outputs=result.outputs,
                     error=result.error,
                     execution_evidence=self._evidence_to_dict(result.evidence),
@@ -182,7 +182,7 @@ class HandlerExecutor(CapabilityExecutor):
             )
             return TaskResult(
                 task_id=task_id,
-                status="FAILED",
+                status=TaskResultStatus.FAILED,
                 outputs=None,
                 error=str(e),
                 execution_evidence={"exception": type(e).__name__},

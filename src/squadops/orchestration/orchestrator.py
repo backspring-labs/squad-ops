@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 from squadops.orchestration.handler_executor import HandlerExecutor
 from squadops.orchestration.handler_registry import HandlerRegistry
-from squadops.tasks.models import TaskEnvelope, TaskResult
+from squadops.tasks.models import TaskEnvelope, TaskResult, TaskResultStatus
 from squadops.telemetry.models import CorrelationContext, StructuredEvent
 
 if TYPE_CHECKING:
@@ -259,7 +259,7 @@ class AgentOrchestrator:
                 self._llm_observability.end_pulse_span(ctx_pulse)
 
                 # Stop on failure if desired (fail-fast)
-                if result.status != "SUCCEEDED":
+                if result.status != TaskResultStatus.SUCCEEDED:
                     # Mark remaining as skipped
                     for remaining in envelopes[len(results) :]:
                         results.append(

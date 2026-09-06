@@ -119,7 +119,7 @@ class SQLTaskAdapter(TaskRegistryPort):
 
             # Validate state transition (basic validation)
             current_status = existing["status"]
-            if current_status in ("completed", "failed") and status not in (
+            if current_status in (TaskState.COMPLETED, TaskState.FAILED) and status not in (
                 TaskState.COMPLETED,
                 TaskState.FAILED,
             ):

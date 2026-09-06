@@ -60,7 +60,7 @@ from squadops.cycles.models import ArtifactRef
 from squadops.cycles.plan_delta import PlanDelta
 from squadops.cycles.task_outcome import CorrectionTermination, CorrectionTerminationReason
 from squadops.events.types import EventType
-from squadops.tasks.models import TaskEnvelope
+from squadops.tasks.models import TaskEnvelope, TaskResultStatus
 from squadops.tasks.task_types import TaskType
 
 if TYPE_CHECKING:
@@ -1196,7 +1196,7 @@ class CorrectionRunner:
             task_run_id=task_run_id,
         )
 
-        if result.status == "SUCCEEDED":
+        if result.status == TaskResultStatus.SUCCEEDED:
             self._event_bus.emit(
                 EventType.TASK_SUCCEEDED,
                 entity_type="task",

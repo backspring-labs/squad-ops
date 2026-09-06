@@ -417,7 +417,7 @@ class PrefectTaskAdapter(TaskRegistryPort):
 
                 # Validate state transition
                 current_status = existing["status"]
-                if current_status in ("completed", "failed") and status not in (
+                if current_status in (TaskState.COMPLETED, TaskState.FAILED) and status not in (
                     TaskState.COMPLETED,
                     TaskState.FAILED,
                 ):

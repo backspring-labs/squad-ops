@@ -25,6 +25,9 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SRC = REPO_ROOT / "src" / "squadops"
+#: #381: the adapters are scanned too — the eleven ``result.status == "SUCCEEDED"`` sites
+#: that motivated the reconciliation lived there, outside the guard's original root.
+ADAPTERS = REPO_ROOT / "adapters"
 
 # Reviewed, justified exceptions: {(repo_relative_path, literal_lower)}.
 # Each entry MUST carry a comment explaining why the raw literal is correct here
@@ -33,11 +36,6 @@ SRC = REPO_ROOT / "src" / "squadops"
 # is defined by several enums AND by non-enum vocabularies, so value-matching
 # flags coincidences — those are triaged here, not silently swept.
 _ALLOWLIST: set[tuple[str, str]] = {
-    # TaskResult.status is an UPPERCASE bare-str vocabulary ("SUCCEEDED"/...), NOT
-    # the lowercase TaskStatus enum — case-mismatched, so the naive enum fix would
-    # break it. Reconciliation tracked in #381 (twin of #377).
-    ("src/squadops/capabilities/runner.py", "succeeded"),
-    ("src/squadops/orchestration/orchestrator.py", "succeeded"),
     # CheckOutcome.status vocabulary (passed/failed/skipped/error) — CheckOutcome
     # is a dataclass, not a StrEnum (SIP-0092); "failed" coincides with
     # RunStatus/TaskStatus but is a different concept. The evaluation loop was
@@ -52,6 +50,19 @@ _ALLOWLIST: set[tuple[str, str]] = {
     # Same CheckOutcome.status vocabulary again, evaluated at plan-authoring time to
     # prove a frozen-file check can pass before the run is dispatched (pf-42).
     ("src/squadops/cycles/frozen_check_validation.py", "failed"),
+    # ActivityState is a Literal vocabulary (runtime/models.py — pending/running/paused/
+    # completed/aborted/failed), not an enum; "paused"/"running" are its own values,
+    # coincidental with RunStatus — the same class as coordinator.py's RuntimeMode above.
+    ("adapters/persistence/runtime/activity_postgres.py", "paused"),
+    ("adapters/persistence/runtime/activity_postgres.py", "running"),
+    # #971's emission_status marker on artifact metadata ("failed" = a banked failed
+    # attempt) — a string field's own vocabulary, not a status enum.
+    ("adapters/cycles/dispatched_flow_executor.py", "failed"),
+    # CheckOutcome / PatchCheckRecord status vocabulary (passed/failed/skipped/error)
+    # evaluated executor-side and by the correction runner — same coincidence as the
+    # src/ patch_verification entries above.
+    ("adapters/cycles/dispatched_flow_executor.py", "error"),
+    ("adapters/cycles/correction_runner.py", "failed"),
     # External Ollama model-pull job status — a vendor vocabulary, not a domain enum.
     ("src/squadops/cli/commands/models.py", "failed"),
     # window_state() returns a duty-window lifecycle token ("active"/
@@ -138,7 +149,7 @@ def _find_violations(root: Path, enum_values: dict[str, set[str]]) -> list[str]:
 def test_no_enum_shadow_string_comparisons() -> None:
     enum_values = _discover_enum_values(SRC)
     assert enum_values, "no StrEnum vocabularies discovered — discovery is broken"
-    violations = _find_violations(SRC, enum_values)
+    violations = _find_violations(SRC, enum_values) + _find_violations(ADAPTERS, enum_values)
     assert not violations, (
         f"{len(violations)} enum-shadow string comparison(s) — compare against the enum "
         f"member (or .value), not a raw literal (#380):\n" + "\n".join(violations)

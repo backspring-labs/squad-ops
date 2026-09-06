@@ -47,6 +47,7 @@ from squadops.cycles.pulse_verification import (
     run_pulse_verification,
 )
 from squadops.events.types import EventType
+from squadops.tasks.models import TaskResultStatus
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -339,7 +340,7 @@ class PulseBoundaryRunner:
         for record in records:
             await self._cycle_registry.record_pulse_verification(run_id, record)
 
-            if record.suite_outcome.value == "pass":
+            if record.suite_outcome == SuiteOutcome.PASS:
                 self._emit_pulse_event(
                     obs_ctx,
                     "pulse_check.suite_passed",
@@ -620,7 +621,7 @@ class PulseBoundaryRunner:
                 )
 
                 # SIP-0077: task.succeeded or task.failed
-                if result.status == "SUCCEEDED":
+                if result.status == TaskResultStatus.SUCCEEDED:
                     self._event_bus.emit(
                         EventType.TASK_SUCCEEDED,
                         entity_type="task",
