@@ -14,7 +14,8 @@ install-time copy and is used only when no source tree is present — #1089)
 
 ### Testing
 ```bash
-# Run regression test suite (recommended, 2900+ tests always pass)
+# Run regression test suite (recommended; runs ALL of tests/unit — 9,300+ tests — minus
+# the EXCLUDED_DIRS the script names with reasons, #1316)
 ./scripts/dev/run_regression_tests.sh -v
 
 # Run tests affected by your changes
