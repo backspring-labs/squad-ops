@@ -20,7 +20,7 @@ class TestLangFuseResilience:
 
     def test_cycle_completes_without_langfuse(self):
         """NoOp adapter allows cycle to complete normally."""
-        from adapters.telemetry.noop_llm_observability import NoOpLLMObservabilityAdapter
+        from squadops.telemetry.noop import NoOpLLMObservabilityAdapter
 
         adapter = NoOpLLMObservabilityAdapter()
         ctx = CorrelationContext.for_cycle(cycle_id="resilience-001")

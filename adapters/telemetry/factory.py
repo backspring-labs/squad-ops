@@ -9,7 +9,6 @@ import logging
 from typing import TextIO
 
 from adapters.telemetry.console import ConsoleAdapter
-from adapters.telemetry.noop_llm_observability import NoOpLLMObservabilityAdapter
 from adapters.telemetry.null import NullAdapter
 from adapters.telemetry.otel import OTelAdapter
 from squadops.config.schema import LangFuseConfig
@@ -17,6 +16,7 @@ from squadops.core.secrets import SecretManager
 from squadops.ports.telemetry.events import EventPort
 from squadops.ports.telemetry.llm_observability import LLMObservabilityPort
 from squadops.ports.telemetry.metrics import MetricsPort
+from squadops.telemetry.noop import NoOpLLMObservabilityAdapter
 
 logger = logging.getLogger(__name__)
 

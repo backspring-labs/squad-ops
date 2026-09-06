@@ -165,10 +165,11 @@ class AgentRunner:
 
         Bootstraps the system, connects to queue, and starts consuming tasks.
         """
+        from squadops.bootstrap.secrets import secret_provider_for
         from squadops.config import load_config
 
         # Single config load — reused by log-forwarder install and _create_system.
-        self._config = load_config()
+        self._config = load_config(secret_provider_factory=secret_provider_for)
 
         try:
             # Install the log forwarder before bootstrap so handler/system logs

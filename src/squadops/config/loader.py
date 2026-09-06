@@ -5,6 +5,7 @@ Configuration loader with layered precedence, profile support, and validation.
 import argparse
 import logging
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -18,6 +19,7 @@ from squadops.config.fingerprint import config_fingerprint
 from squadops.config.path_resolver import PathResolver
 from squadops.config.redaction import redact_config
 from squadops.config.schema import AppConfig, SecretsConfig
+from squadops.ports.secrets import SecretProvider
 
 logger = logging.getLogger(__name__)
 
@@ -452,6 +454,7 @@ def load_config(
     *,
     strict: bool = False,
     cli_overrides: dict[str, Any] | None = None,
+    secret_provider_factory: Callable[[SecretsConfig], SecretProvider] | None = None,
 ) -> AppConfig:
     """
     Load configuration with layered precedence.
@@ -555,18 +558,20 @@ def load_config(
             expected="secrets.provider configuration",
         )
 
-    # Resolve all secret:// references (excluding secrets section)
-    if secrets_config:
-        from adapters.secrets.factory import create_provider
-
+    # Resolve all secret:// references (excluding secrets section). Which provider does
+    # the resolving is the composition root's choice, handed in as a factory (#154):
+    # the loader is domain code and does not reach into adapters for it.
+    if secrets_config and has_references:
+        if secret_provider_factory is None:
+            raise ConfigValidationError(
+                "secret:// references need a secret provider, and load_config was given no "
+                "secret_provider_factory — the composition root passes "
+                "squadops.bootstrap.secrets.secret_provider_for",
+                field="secrets",
+                expected="secret_provider_factory",
+            )
         name_map = secrets_config.name_map if secrets_config.name_map is not None else {}
-
-        provider = create_provider(
-            provider=secrets_config.provider,
-            env_prefix=secrets_config.env_prefix,
-            file_dir=secrets_config.file_dir,
-        )
-
+        provider = secret_provider_factory(secrets_config)
         manager = SecretManager(provider=provider, name_map=name_map)
         merged = manager.resolve_all_references(merged)
 

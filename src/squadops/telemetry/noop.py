@@ -1,7 +1,10 @@
-"""No-op LLM observability adapter.
+"""The no-op LLM observability port — a domain null object (SIP-0061).
 
-Implements LLMObservabilityPort with silent no-ops (SIP-0061).
-Separate from null.py which implements MetricsPort + EventPort.
+Implements ``LLMObservabilityPort`` with silent no-ops. It lives in the domain, not under
+``adapters/``, because it binds to no infrastructure: it is the value the composition root
+injects when observability is off, and the value ``AgentOrchestrator`` falls back to
+("always-inject NoOp") — which used to be a domain → adapters import (#154). Separate from
+``adapters/telemetry/null.py``, which implements ``MetricsPort`` + ``EventPort``.
 """
 
 from squadops.ports.telemetry.llm_observability import LLMObservabilityPort
