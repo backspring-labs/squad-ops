@@ -56,16 +56,17 @@ Every router registered in `src/squadops/api/runtime/main.py`:
 | agent status writes (`POST /status`, `PUT /status/{id}`) | `/api/v1/agents` | resource | yes (#326) |
 | platform health: `/infra`, `/agents`, `/agents/status/{id}`, `/agents/{id}/runtime-state`, `/agents/{id}/activity` | `/health` | probe | yes — all GET |
 | auth (`/userinfo`) | `/auth` | identity | yes |
-| **chat** (`POST /api/chat/{agent_id}`, `GET /api/chat/sessions/{sid}/messages`, `GET /api/chat/{agent_id}/sessions`) and **`GET /api/agents/messaging`** | `/api/chat`, `/api/agents` | **none — unversioned** | **no** |
+| chat (`POST /chat/{agent_id}`, `GET /chat/sessions/{sid}/messages`, `GET /chat/{agent_id}/sessions`) and `GET /agents/messaging` — SIP-0085 | `/api/v1/chat`, `/api/v1/agents` | resource | yes — since #219 (they were unversioned `/api/chat`, `/api/agents`) |
 
 **Decisions the audit forced:**
 
-- **The chat routes move to `/api/v1`** (#219): `/api/v1/chat/*` and
+- **The chat routes moved to `/api/v1`** (#219): `/api/v1/chat/*` and
   `/api/v1/agents/messaging`. They are authenticated managed resources — sessions and
   messages — and the streaming transport (SSE) is a response shape, not a reason for a
-  separate prefix. The blast radius is one browser consumer (browser → Caddy → console BFF →
-  runtime-api), moved in lockstep. Until #219 lands, the lane test carries them as a named
-  deviation that fails the moment anything else joins it.
+  separate prefix. The blast radius was one browser consumer (browser → Caddy → console BFF →
+  runtime-api), moved in lockstep; the chat surface still rides the console BFF for auth and
+  SSE, and Caddy's longer `/api/v1/chat/*` matcher wins over `/api/v1/*` by its own ordering
+  rule. The lane test's recorded-deviation list is empty.
 - **`runtime-state` stays under `/health`** — a read-only projection, the probe lane's
   purpose; the writes it reflects are on `/api/v1/agents`.
 - **An OpenAPI snapshot contract test is not added now.** The lane test pins the prefix

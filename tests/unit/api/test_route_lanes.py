@@ -30,10 +30,7 @@ IDENTITY = "/auth"
 #: Routes off every lane, each keyed to the issue that moves it. An entry here is a
 #: deviation on record, not a permission: the test fails a route off-lane that is NOT
 #: listed, and fails a listed prefix that no longer has any route (the entry is stale).
-KNOWN_DEVIATIONS: dict[str, str] = {
-    "/api/chat": "#219 — SIP-0085's unversioned chat routes, moving to /api/v1/chat",
-    "/api/agents/": "#219 — SIP-0085's agent discovery, moving to /api/v1/agents/messaging",
-}
+KNOWN_DEVIATIONS: dict[str, str] = {}
 
 
 def _registered_routers() -> list[tuple[str, APIRouter]]:
@@ -131,8 +128,8 @@ def test_the_middleware_allowlists_exactly_the_probe_lane():
 
 def test_recorded_deviations_still_exist():
     """The other side: an entry that outlives its routes would quietly license the next
-    one under that prefix — when #219 moves the chat routes, this fails until the entries
-    are removed."""
+    one under that prefix. Empty since #219 moved the chat routes onto /api/v1 — the last
+    deviation the standard recorded."""
     paths = [p for _, p, _ in _routes()]
     stale = [prefix for prefix in KNOWN_DEVIATIONS if not any(p.startswith(prefix) for p in paths)]
     assert not stale, f"deviations recorded for routes that no longer exist: {stale}"

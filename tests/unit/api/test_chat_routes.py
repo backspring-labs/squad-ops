@@ -125,7 +125,7 @@ def _make_cache():
 
 
 class TestSendChatMessage:
-    """POST /api/chat/{agent_id} route."""
+    """POST /api/v1/chat/{agent_id} route."""
 
     def test_returns_streaming_response(self):
         """Successful POST returns SSE stream with text chunks."""
@@ -133,7 +133,7 @@ class TestSendChatMessage:
         try:
             client = TestClient(app)
             response = client.post(
-                "/api/chat/comms-agent",
+                "/api/v1/chat/comms-agent",
                 json={"message": "hello"},
             )
             assert response.status_code == 200
@@ -154,7 +154,7 @@ class TestSendChatMessage:
         try:
             client = TestClient(app)
             response = client.post(
-                "/api/chat/nonexistent-agent",
+                "/api/v1/chat/nonexistent-agent",
                 json={"message": "hello"},
             )
             assert response.status_code == 404
@@ -181,7 +181,7 @@ class TestSendChatMessage:
         try:
             client = TestClient(app)
             response = client.post(
-                "/api/chat/neo",
+                "/api/v1/chat/neo",
                 json={"message": "hello"},
             )
             assert response.status_code == 400
@@ -197,7 +197,7 @@ class TestSendChatMessage:
         try:
             client = TestClient(app)
             client.post(
-                "/api/chat/comms-agent",
+                "/api/v1/chat/comms-agent",
                 json={"message": "test message"},
             )
 
@@ -217,7 +217,7 @@ class TestSendChatMessage:
         try:
             client = TestClient(app)
             client.post(
-                "/api/chat/comms-agent",
+                "/api/v1/chat/comms-agent",
                 json={"message": "hello"},
             )
 
@@ -234,7 +234,7 @@ class TestSendChatMessage:
         try:
             client = TestClient(app)
             client.post(
-                "/api/chat/comms-agent",
+                "/api/v1/chat/comms-agent",
                 json={"message": "follow-up", "session_id": "s1"},
             )
 
@@ -251,7 +251,7 @@ class TestSendChatMessage:
         try:
             client = TestClient(app)
             response = client.post(
-                "/api/chat/comms-agent",
+                "/api/v1/chat/comms-agent",
                 json={"message": "hello", "session_id": "bad-session"},
             )
             assert response.status_code == 404
@@ -278,7 +278,7 @@ class TestSendChatMessage:
         try:
             client = TestClient(app)
             response = client.post(
-                "/api/chat/comms-agent",
+                "/api/v1/chat/comms-agent",
                 json={"message": "hello"},
             )
             # Stream completes despite persistence failure
@@ -299,7 +299,7 @@ class TestSendChatMessage:
         try:
             client = TestClient(app)
             client.post(
-                "/api/chat/comms-agent",
+                "/api/v1/chat/comms-agent",
                 json={"message": "hello"},
             )
 
@@ -313,7 +313,7 @@ class TestSendChatMessage:
 
 
 class TestGetSessionMessages:
-    """GET /api/chat/sessions/{session_id}/messages route."""
+    """GET /api/v1/chat/sessions/{session_id}/messages route."""
 
     def test_returns_ordered_messages(self):
         """Messages returned in chronological order."""
@@ -340,7 +340,7 @@ class TestGetSessionMessages:
         app, originals = _setup_app(chat_repo=repo)
         try:
             client = TestClient(app)
-            response = client.get("/api/chat/sessions/s1/messages")
+            response = client.get("/api/v1/chat/sessions/s1/messages")
 
             assert response.status_code == 200
             messages = response.json()
@@ -358,7 +358,7 @@ class TestGetSessionMessages:
         app, originals = _setup_app(chat_repo=repo)
         try:
             client = TestClient(app)
-            response = client.get("/api/chat/sessions/bad-session/messages")
+            response = client.get("/api/v1/chat/sessions/bad-session/messages")
             assert response.status_code == 404
             body = response.json()
             assert body["detail"]["error"]["code"] == "SESSION_NOT_FOUND"
@@ -372,7 +372,7 @@ class TestGetSessionMessages:
         app, originals = _setup_app(chat_repo=repo)
         try:
             client = TestClient(app, raise_server_exceptions=False)
-            response = client.get("/api/chat/sessions/s1/messages")
+            response = client.get("/api/v1/chat/sessions/s1/messages")
             # Must NOT be 404 — DB errors are not session-not-found
             assert response.status_code == 500
         finally:
@@ -380,14 +380,14 @@ class TestGetSessionMessages:
 
 
 class TestListMessagingAgents:
-    """GET /api/agents/messaging route."""
+    """GET /api/v1/agents/messaging route."""
 
     def test_returns_messaging_agents(self):
         """Returns only messaging-enabled agents."""
         app, originals = _setup_app()
         try:
             client = TestClient(app)
-            response = client.get("/api/agents/messaging")
+            response = client.get("/api/v1/agents/messaging")
 
             assert response.status_code == 200
             agents = response.json()
@@ -403,7 +403,7 @@ class TestListMessagingAgents:
         app, originals = _setup_app(messaging_agents={})
         try:
             client = TestClient(app)
-            response = client.get("/api/agents/messaging")
+            response = client.get("/api/v1/agents/messaging")
 
             assert response.status_code == 200
             assert response.json() == []
@@ -412,7 +412,7 @@ class TestListMessagingAgents:
 
 
 class TestListAgentSessions:
-    """GET /api/chat/{agent_id}/sessions route."""
+    """GET /api/v1/chat/{agent_id}/sessions route."""
 
     def test_returns_sessions_for_agent(self):
         """Returns sessions for the agent+user pair."""
@@ -430,7 +430,7 @@ class TestListAgentSessions:
         app, originals = _setup_app(chat_repo=repo)
         try:
             client = TestClient(app)
-            response = client.get("/api/chat/comms-agent/sessions")
+            response = client.get("/api/v1/chat/comms-agent/sessions")
 
             assert response.status_code == 200
             sessions = response.json()
@@ -444,7 +444,7 @@ class TestListAgentSessions:
         app, originals = _setup_app()
         try:
             client = TestClient(app)
-            response = client.get("/api/chat/nonexistent-agent/sessions")
+            response = client.get("/api/v1/chat/nonexistent-agent/sessions")
             assert response.status_code == 404
         finally:
             _teardown(originals)
@@ -465,7 +465,7 @@ class TestListAgentSessions:
         )
         try:
             client = TestClient(app)
-            response = client.get("/api/chat/neo/sessions")
+            response = client.get("/api/v1/chat/neo/sessions")
             assert response.status_code == 400
             body = response.json()
             assert body["detail"]["error"]["code"] == "MESSAGING_NOT_ENABLED"

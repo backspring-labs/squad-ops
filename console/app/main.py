@@ -432,7 +432,7 @@ async def proxy_health_agents():
 # ── Chat proxy routes (SSE streaming — SIP-0085 Phase 4) ──────────────────
 
 
-@app.post("/api/chat/{path:path}")
+@app.post("/api/v1/chat/{path:path}")
 async def proxy_chat_stream(path: str, request: Request):
     """Streaming proxy for chat POST — SSE via fetch+ReadableStream (P4-RC2).
 
@@ -462,7 +462,7 @@ async def proxy_chat_stream(path: str, request: Request):
     upstream = await _api_client.send(
         _api_client.build_request(
             "POST",
-            f"/api/chat/{path}",
+            f"/api/v1/chat/{path}",
             content=body if body else None,
             headers=headers,
         ),
@@ -501,7 +501,7 @@ async def proxy_chat_stream(path: str, request: Request):
     )
 
 
-@app.get("/api/chat/{path:path}")
+@app.get("/api/v1/chat/{path:path}")
 async def proxy_chat_get(path: str, request: Request):
     """Buffered proxy for chat GET — session history, message list."""
     from fastapi.responses import Response as FastAPIResponse
@@ -516,7 +516,7 @@ async def proxy_chat_get(path: str, request: Request):
         headers["Authorization"] = auth_header
 
     assert _api_client is not None
-    resp = await _api_client.get(f"/api/chat/{path}", headers=headers)
+    resp = await _api_client.get(f"/api/v1/chat/{path}", headers=headers)
 
     return FastAPIResponse(
         content=resp.content,
@@ -525,7 +525,7 @@ async def proxy_chat_get(path: str, request: Request):
     )
 
 
-@app.get("/api/agents/messaging")
+@app.get("/api/v1/agents/messaging")
 async def proxy_agents_messaging(request: Request):
     """Passthrough for agent discovery — dedicated route to avoid wildcard conflicts."""
     from fastapi.responses import Response as FastAPIResponse
@@ -540,7 +540,7 @@ async def proxy_agents_messaging(request: Request):
         headers["Authorization"] = auth_header
 
     assert _api_client is not None
-    resp = await _api_client.get("/api/agents/messaging", headers=headers)
+    resp = await _api_client.get("/api/v1/agents/messaging", headers=headers)
 
     return FastAPIResponse(
         content=resp.content,
