@@ -1,6 +1,8 @@
 # 1.7.3 — plan
 
-**Revision 1, 2026-09-05.** Written while the 1.7.2 counted rolls run on the Spark, from the
+**Revision 2, 2026-09-06.** Rev 1 was written while the 1.7.2 counted rolls were still running;
+this revision closes it against the finished record (`docs/plans/1-7-2-verification-set-record.md`)
+and the cut. What changed is listed in §9. Written from the
 1.7.2 plan (`docs/plans/1-7-2-plan.md` §3, §2.6, §6, §7), its pre-registration's shakeout log
 and diagnostic results (`docs/plans/1-7-2-verification-set-preregistration.md` §2–§3), the
 1.7.0 plan's Boundaries pack, line breakdown and close criteria (§2.4, §3.1, §6.2), the
@@ -18,8 +20,9 @@ them (§2.6, §6, §7 step 8), which still promise 1.7.3 to Loop Honesty's secon
 infrastructure rider: both are re-placed to 1.7.4 by name (§6), and the 1.7.0 plan §3.1's line
 table is amended in the same PR.
 
-**Rev 2 is owed the moment the 1.7.2 record exists**: §1's last row (the counted-roll
-reading), #1285's decision (§8), and #1273's disposition at the cut.
+**Rev 2 is this revision.** §1's last row now carries the counted-roll reading; #1273 is closed
+with its trail; and #1285 turns out to be **undecidable from that set** — the texture field it
+needed was declared and never produced, which is itself a finding this line acts on (§4).
 
 ---
 
@@ -29,13 +32,14 @@ reading), #1285's decision (§8), and #1273's disposition at the cut.
 |---|---|---|
 | the 1.7.2 plan promises 1.7.3 three things in three sections — the CI list as its subject (§3), Loop Honesty's second half (§2.6, §7 step 8), the infrastructure rider (§6) — and the pre-registration adds #1312 with #1254 (§4) | 13 CI items + 7 roll-verified + 15 CI rider + 1 roll-verified, against §3.1's capacity of 6–8 roll-verified and 10–15 CI-verified per line | that is three lines, not one; §3 is the owner's ruling and the latest, so the other two yield to it |
 | the line's own claim is unstarted: the ROADMAP's 1.7 identity is "every port is actually a port", and after three cuts every Boundaries and Composition Root issue is open | #154, #377, #381, #305, #559, #922, #218, #219, #225, #301, #286 — all open 2026-09-05 | 1.7.3 is the first line that works the claim; without it the line closes with its claim unmet |
-| the shakeout budget went to the instrument, not the pack: four rounds against a budget of three, **zero attributable to the eight items**, six defects in diagnostic machinery that had never been run end to end | pre-registration §2 — #1292, #1296, #1298, #1300, #1304, #1305 | the instrument is fixed and exercised *before* the pack opens, on its own deploy, so this line's rounds go to the refactors |
+| the shakeout budget went to the instrument, not the pack: **five rounds against a budget of three, zero attributable to the eight items**, and **twelve** instrument defects in machinery that had never been run end to end | 1.7.2 record §0 — #1292, #1296, #1298, #1300, #1304, #1305, #1310, #1311, #1318, the P0 nullable false positive, #1321, and the driver's `refused_patches` truncation | the instrument is fixed and exercised *before* the pack opens, on its own deploy, so this line's rounds go to the refactors |
 | two of eight predictions were never exercisable as registered: the absent-suite fault stops at the emission retry and never reaches the repair-retest seam; L8 reads post-repair artifact names, so the extractor's half hides the prompt half | #1310, #1311; pre-registration §3 | L2 and L8 enter this line unexercised; their fixes are this line's preconditions, in the slot #1276/#1251 held in 1.7.2 |
 | nine unit-test directories are outside the regression gate — 437 tests, `auth`, `memory`, `config`, `ports`, `core` among them — for the fourth time, each prior fix an append to the list | #1316 | a vocabulary or port refactor regresses in exactly those directories; #1316 lands before any refactor, inverting the default so a new directory is gated on creation |
-| two of the eleven are not CI-verified in §3.1's sense: #1254 is now one change with #1312 by the ruling recorded there (the handoff becomes optional assembly notes, both check surfaces go, a presence-keyed appendix delivers it to `qa.test`), which changes what a cycle does; #1087/#1112 changes what the qa author is handed | #1312 (2026-09-05 comments); 1.7.1 plan §3 | #1254 leaves the list for 1.7.4 with #1312, where it has a prediction; #1087/#1112 stays and gets a readout (B1, §4) |
-| #1285 is decided from the 1.7.2 record: read the fill-mode token cost from the emission-shape readout; if it is not material at the roll level, close it as a paper problem | #1285 | rev 2 carries the decision |
-| #1273 is open after its seam shipped: PR #1288 landed two of its three parts and named the re-brief as #1260's, PR #1290 landed #1260, and L4/L5 held on the chained diagnostic (`cyc_9e217c266f5f`); the retry-with-fact backstop 1.7.2 §8a calls "a separate item" has no issue | #1273; 1.7.2 plan §8a | closed at the 1.7.2 cut with that trail, or its remainder named there; the backstop is filed and placed in 1.7.4 |
-| **the counted-roll reading** — L1, verdict rate on each arm, contentless emissions, qa primary tokens by mode, whether #1312's signature was hit | *the 1.7.2 record, not yet written* | **rev 2** |
+| two of the eleven are not CI-verified in §3.1's sense: #1254 is now one change with #1312 by the ruling recorded there (the handoff becomes optional assembly notes, both check surfaces go, a presence-keyed appendix delivers it to `qa.test`), which changes what a cycle does; #1087/#1112 changes what the qa author is handed | #1312 (2026-09-05 comments); 1.7.1 plan §3 | #1254 leaves the list for 1.7.4 with #1312, where it has a prediction; #1087/#1112 stays and gets a readout (B1, §4). **This reverses a merged placement** — the 1.7.2 pre-registration §4 (PR #1313) says of #1312 and #1254 "and both are 1.7.3" — and §8 records the reversal rather than leaving two merged documents disagreeing |
+| #1285 was to be decided from the 1.7.2 record; it cannot be — the texture field it needs was declared and never produced (row below) | #1285; 1.7.2 record §8 | the readout is built in this line's instrument slot, or #1285 is closed as undecidable on the evidence available |
+| #1273 is open after its seam shipped: PR #1288 landed two of its three parts and named the re-brief as #1260's, PR #1290 landed #1260, and L4/L5 held on the chained diagnostic (`cyc_9e217c266f5f`); the retry-with-fact backstop 1.7.2 §8a calls "a separate item" has no issue | #1273; 1.7.2 plan §8a | **closed at the 1.7.2 cut with that trail** (record §8): L4 held in the counted set — two 0-case briefs, both with `tests_pass_rows: 0`, so no row carried cases — and L4/L5 held on the chained diagnostic. The remainder is the retry-with-fact backstop, which has no issue; it is filed before 1.7.4's plan |
+| **the counted-roll reading**: nine counted rolls, React 5 of 6 and Next.js 3 of 3 functional; **L1 held at 0 contentless of 172 emissions**; **five of eight predictions never fired**; #1312's signature not hit once; `npm_ci_without_lockfile` on 8 of 9 rolls | `docs/plans/1-7-2-verification-set-record.md` §1–§2, §5 | the pack's condition holds, so this line may re-register it; but five predictions are carried on diagnostics alone, and the set says so rather than letting nine greens imply coverage (§4) |
+| **qa primary tokens has no producer** — the 1.7.2 pre-registration declared it as texture and no roll record carries a token field | 1.7.2 record §8 | **#1285 cannot be decided from that set**; the readout is added before this line's set or the field leaves the texture list (§8) |
 
 ---
 
@@ -72,8 +76,23 @@ the last five plans rolled forward.
 | **#1316** | the regression gate runs `tests/unit` with an explicit `EXCLUDED_DIRS` (each entry carrying a reason) instead of a hand-written include list, and a guard asserts every `tests/unit/*` directory is either run or named excluded | the guard; the pass count moves from ~8,867 to ~9,300 and the PR states both numbers, since the count is quoted as evidence in release records |
 | **#1310** | a fault declares the *scope* of "once": `first_attempt` (today's rule) or `all_emission_attempts` (every emission of the target task, never the repair), so `qa_suite_absent` exhausts the emission retries and fails into correction; the diagnostic asserts the **seam reached**, not that the fault fired | unit + a wiring test entering at the executor; then the diagnostic itself on a dev deploy |
 | **#1311** | the driver counts the extractor's `fence path placeholder` strips per roll beside the stored-name check; L8 becomes two claims (§4) | driver test; the path-prefix diagnostic re-run and read from the new count |
+| **#1323** | the failed-attempt storage route authorizes what it banks. `_store_failed_emission` performs no write authorization while `_collect_artifacts_and_checkpoint` does, so a builder that fails *because of* a file it was not allowed to author banks that file unguarded — and the repair that fixes it is then dropped for touching it | a wiring test entering at the failure-storage caller: a builder task failing while emitting a net-new `.py` outside the fill slots has that emission dropped with evidence, and no unauthorized path reaches the repair overlay |
 
-The three diagnostics run on a dev deploy after #1310/#1311 merge and before the list's first
+**#1323 is here for the reason this block exists — it degrades what a red means.** §4's whole
+argument is that the predictions are re-registered verbatim and nothing else changes, so *a red
+is the refactor's*. A live #1323 can admit an unauthorized file into the workspace, drop a repair
+that fixes a real defect, and supersede a failing check so it vanishes from the report. Any of
+those on a counted roll makes a red ambiguous between the refactor and the defect. Cost checked
+rather than assumed: `bound_record` is already built at `dispatched_flow_executor.py:1512`, in
+the same scope as the loop that calls `_store_failed_emission`, and is already passed to the
+success path — the failed path simply does not use it.
+
+**#1310 and #1311 differ in kind, and §7 must sequence them apart.** #1311 is driver-only: no
+rebuild, and by the 1.7.2 pre-registration §2 an instrument fix does not supersede a deploy.
+#1310 changes `fault_injection.py`, which is baked into the agent images, so its diagnostic
+cannot run until a rebuild. #1323 is deployed code and rebuilds with it.
+
+The three diagnostics run on a dev deploy after #1310/#1311/#1323 merge and before the list's first
 PR, recorded as diagnostics with the entry point each used. That is the 1.7.2 lesson applied:
 the instrument is proven on its own, so a shakeout round on this line's deploy is about the
 list.
@@ -99,8 +118,12 @@ rename first — and keeps each regression attributable in CI.
 | 11 | **#999** | the qa task's `fill_merge` assertion-strength evidence persisted somewhere queryable per run | a persistence round-trip test; the record's texture reads it (§4) |
 | 12 | **#1087/#1112** | the frozen store exports handles for root persisted entities only — embedded shapes and single-object response projections (`RunDetail`, `RunWithParticipants`) get none — rebuilt from main, not from the stale branch (`fix/1087-root-tables-react-store`: one commit, 120 behind, ten regression failures by its own message) | the generator's reference fixtures; **prediction B1** (§4) |
 
-Twelve PRs carrying thirteen items, plus three preconditions: sixteen CI-verified changes, at
-§3.1's ceiling.
+Twelve PRs carrying thirteen items, plus four preconditions: **seventeen CI-verified changes,
+two above §3.1's ceiling of 10–15** — stated rather than described as "at" it, because this
+plan's own thesis is that capacity claims have been soft for five lines. The two over are the
+preconditions added after rev 1 (#1316 was always one; #1323 is new), and preconditions protect
+the measurement rather than consuming the list's budget. If the ceiling is to be held literally,
+the drop comes from §3.2 by the §3.4 rule — a revision in the open, not a silent re-place.
 
 **Deliberately not in the list:** #1254 (to 1.7.4 with #1312, §6); the identity-permutation
 test the 1.7.0 plan §2.4 named with no issue behind it — filed and placed in 1.7.4's rider
@@ -152,6 +175,14 @@ adds a loop prediction, and that is the point: a red on this deploy is attributa
 refactors because nothing else changed — the argument the 1.7.2 plan §3 used to quarantine
 them.
 
+**The claim holds in one direction only, and this plan does not assert the other.** A red is the
+refactor's. A **green is not evidence about the list**: the re-registered predictions measure the
+correction loop, and twelve of the thirteen items have no roll-level readout at all (only
+#1087/#1112 does, via B1). **The set is a regression check on the loop; the list's proof is CI and
+the structural test named on each row of §3.2.** The 1.7.2 record is the reason to be exact about
+this — nine greens there sat beside five predictions that never fired, and the record had to say
+so in its headline rather than let the greens imply coverage.
+
 **Three changes from 1.7.2, each from its diagnostics:**
 
 - **L8 is two claims** (#1311): **L8a** — the model does not emit under the placeholder; read
@@ -171,10 +202,16 @@ from 1.7.2 as repaired — absent-suite (L2), own-frame-then-prose chain (L7, L4
 path-prefix (L8b; L8a is read as the count on every counted roll). A diagnostic is never a
 roll.
 
-**Size.** FastAPI+React **N = 4**, Next.js+TS **N = 2** — down from 6 and 3, with the reason
-stated: this set exercises carried predictions rather than reading a new one; L1, L3, B1 and
-L8a are reached by every roll, and the rest by the diagnostics. 1.6.6 §1.3 holds: exercise,
-not a rate. *(§8 — the owner overrules.)*
+**Size — revised at rev 2 to 6 + 3, the 1.7.2 sizes held.** Rev 1 proposed 4 + 2 on the
+grounds that this set exercises carried predictions rather than reading a new one. The 1.7.2
+record argues the other way, and against rev 1's own paragraph below: this section expects the
+rounds-attributable-to-the-list number to be **non-zero for the first time**, because a refactor
+of this width has regressions the structural tests do not reach. If those are expected, fewer
+counted rolls is the wrong direction — and the shakeout pair is not the counted set. The 1.7.2
+set is the concrete case: **five of its eight predictions never fired in nine rolls**, so cutting
+to six would have left even less exercised. 1.6.6 §1.3 still holds — exercise, not a rate — which
+is precisely why the exercise should not shrink. *(§8 — the owner overrules; 4 + 2 stands if
+wall-clock is the binding constraint, and the record then says the set was sized for time.)*
 
 **Bar.** L1 remains the one bar, for the reason 1.7.2 §4 gives: a contentless first attempt
 is the condition every other prediction is measured through. A falsified L1 on this deploy
@@ -187,9 +224,18 @@ failing, boot audit passing — as the 1.7.2 pre-registration §4 states it. Exp
 order of one roll in six; cited when it occurs; not evidence about any prediction.
 
 **Texture, no prediction attached:** verdict rate against 1.7.2's (no bar); correction
-rounds; contentless emissions per roll; qa primary tokens by mode (the #1285 reading);
-`checks_by_environment`; fill assertion strength per run (#999 — the first record that can
-read it); tables declared per suite (B1's denominator); packaging findings.
+rounds; contentless emissions per roll; `checks_by_environment`; fill assertion strength per
+run (#999 — the first record that can read it); tables declared per suite (B1's denominator);
+packaging findings — **which 1.7.2 recorded on 8 of 9 rolls** (`npm_ci_without_lockfile`), a
+frequency at which it is a standing defect in what the squad builds rather than noise.
+
+**Every texture field named here has a producer, and that is a new requirement.** The 1.7.2
+pre-registration listed "qa primary tokens" and no roll record carried a token field, so #1285
+could not be decided from a set that appeared to measure it (1.7.2 record §8). A declared
+readout with no producer is the #1312 shape — it reads as measured and is not. **The
+fill-mode/token readout is built in this line's instrument slot alongside #1310/#1311, or the
+field does not appear in this list.** Before the set opens, each texture field is checked against
+a real record, not against the driver's source.
 
 **Shakeout loop** (`docs/plans/verification-sets/README.md`): exit on a pair on one deploy
 with no new seam finding; **budget three pairs**; the cut record reports **two numbers —
@@ -237,6 +283,18 @@ items #198, #157, #176, #580, with #1180/#1182 (integration tests and the deploy
 #1197 (the sandbox image tag that names one stack and serves both); **plus #929 with #1206**,
 which the 1.7.1 plan §2.4 said must be designed together and which do not fit 1.7.4's rider.
 
+**Placed at rev 2, filed after rev 1 was written** (the 1.7.2 line's last three): **#1323** is a
+precondition of this line (§3.1) — it degrades what a red means. **#1324** (the boot audit
+discards the response it judged, so a failed probe cannot be root-caused from the record) is
+**1.7.4's rider** — it costs triage time but does not make a red ambiguous. **The Slot-Scoped
+Emission draft** (PR #1325, unmerged at this revision — emit the slot body, not the file; the
+path is deliberately not cited until it lands, since a plan must not reference a file that is
+not in the tree) is feature-shaped by its own §6 and goes to **the 1.8 lane** with #1213/#1176,
+where it subsumes #1323's class rather than patching it: with emission scoped to
+`{path, slot_id, body}` an unauthorized path has no slot id to emit against. **#1318** shipped in
+1.7.2 and is closed; it is named here only because it voided a counted roll and the record
+carries it. The driver's `refused_patches` truncation is filed before this line's set opens.
+
 **Placed by this plan for the first time** (open, named in no 1.7 plan): #1213 (anchored
 repair edits) and #1176 (carrying the reasoning trace across repairs) are enhancements — the
 1.8 lane, with #1122; #1158 (Atlas on the Spark) goes with the Atlas SIP's
@@ -256,7 +314,9 @@ line-close sweep does not find them unplaced.
 2. **The 1.7.2 cut** by the seven steps in `CLAUDE.md`; its record fills §1's last row —
    **rev 2** here (the counted-roll reading, #1285's decision, #1273's disposition).
 3. **#1316** — the first merge on the new line.
-4. **#1310, #1311**; the three diagnostics on a dev deploy, recorded.
+4. **#1311** (driver-only — no rebuild), then **#1310 and #1323** (both deployed code) with a
+   rebuild and the loaded-module check before their diagnostics; the three diagnostics on a dev
+   deploy, recorded with the entry point each used.
 5. **The list, in §3.2's order**, one PR each.
 6. Rebuild; verify the loaded modules in-container as live calls with their controls;
    shakeouts to the exit rule; pre-register (set configs `1-7-3-<arm>.yaml`); roll — **no
@@ -269,9 +329,22 @@ line-close sweep does not find them unplaced.
 
 - **1.7.3 carries the list and nothing beside it.** No roll-verified pack; B1 is a readout on
   a list item, not a headline.
+- **#1254 and #1312 leave the list for 1.7.4 — and this reverses a merged placement.** The
+  1.7.2 pre-registration §4 (merged as PR #1313) says of them "and both are 1.7.3". The reason to
+  diverge is that they are one change that alters what a cycle does, so they are not CI-verified
+  in §3.1's sense and belong beside a prediction — but the divergence is recorded here rather
+  than left as two merged documents disagreeing, per CLAUDE.md's amendment discipline. **The
+  owner overrules.**
 - **#1254 leaves the list for 1.7.4 with #1312** — one change by the ruling on #1312, and a
   change to what a cycle does.
-- **N = 4 + 2** (§4), with the reason stated; 6 + 3 stands if the reason is not accepted.
+- **N = 6 + 3** (§4), revised at rev 2 from rev 1's 4 + 2: this section expects list-attributable
+  regressions for the first time, and fewer counted rolls is the wrong instrument for that. 4 + 2
+  stands if wall-clock is the binding constraint, and the record then says the set was sized for
+  time rather than for exercise.
+- **#1323 is a precondition, not a list item and not 1.7.4's** (§3.1) — it is in the block that
+  exists for things that would otherwise confound the measurement.
+- **Every texture field must have a producer before the set opens** (§4), checked against a real
+  record rather than the driver's source — the #1285 lesson.
 - **L1 stays the bar.**
 - **The cut criterion is the list, with no re-place-by-name escape** (§3.4); a drop revises
   this plan in the open.
@@ -292,6 +365,21 @@ line-close sweep does not find them unplaced.
 ---
 
 ## 9. Revision history
+
+- **Rev 2 (2026-09-06)** — closed against the finished 1.7.2 record and cut. **#1323 added as a
+  fourth precondition** (§3.1) with the reason the block exists — it degrades what a red means —
+  and #1310/#1311/#1323 separated by whether they need a rebuild (§3.1, §7). §1's shakeout row
+  corrected from four rounds and six defects to **five and twelve**; §1's last row filled with the
+  counted-roll reading, and a new row records that **"qa primary tokens" had no producer**, so
+  #1285 cannot be decided from that set. **N revised from 4 + 2 back to 6 + 3** (§4), because this
+  plan expects list-attributable regressions for the first time and fewer rolls is the wrong
+  instrument for that. §4 now states that **the attribution claim holds in one direction only** —
+  a red is the refactor's; a green is not evidence about the list — and that **every texture field
+  must have a producer**, checked against a real record. §3.2's count corrected to **seventeen,
+  two above the ceiling**, rather than "at" it. The #1312/#1254 move to 1.7.4 is recorded in §8 as
+  **a reversal of the merged pre-registration §4 placement**. #1324 placed in 1.7.4 and the
+  Slot-Scoped Emission draft (PR #1325) in the 1.8 lane (§6). Review by the session that ran the
+  1.7.2 set (PR #1317 comments).
 
 - **Rev 1 (2026-09-05)** — written while the 1.7.2 counted rolls run, on the owner's ask, from
   the 1.7.2 plan and pre-registration, the 1.7.0 plan §2.4/§3.1/§6.2, the ROADMAP's 1.7
