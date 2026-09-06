@@ -1049,6 +1049,47 @@ class TestEmissionRetryFeedbackThreading:
             "backend/tests/test_runs.py"
         ]
 
+    async def test_the_marker_rides_one_dispatch_and_not_the_next(
+        self, executor, mock_queue, mock_registry, cycle
+    ):
+        """The emission-retry marker aims exactly one retry. Set on the envelope and never
+        cleared, it rode every later dispatch of the same envelope: the handler appended
+        stale format feedback to a correction re-take, and the fault injector — which reads
+        the marker as "this is an emission retry" — re-applied an all-emission-attempts
+        fault to the recovery the diagnostic exists to observe. Deploy-A absent-suite
+        diagnostic `cyc_1b3b225e593e`: the fault bit on all three correction re-dispatches
+        and the run exhausted its budget on a manufactured red.
+
+        Entered at execute_run: an emission failure (marker set on the retry), then a plain
+        failure — the third dispatch of the same task carries no marker and knows it is the
+        third attempt."""
+        import dataclasses
+
+        mock_registry.get_cycle.return_value = dataclasses.replace(
+            cycle, execution_overrides={"max_task_retries": 3}
+        )
+        marker = {"reason": "no_fenced_blocks", "response_chars": 48, "expected_artifacts": []}
+        responses = {
+            0: ("FAILED", {"emission_failure": marker}, "No valid fenced code blocks found"),
+            1: ("FAILED", None, "transient"),
+        }
+        mock_queue.reply_router.responder = _scripted_responder(responses)
+
+        with patch(
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        published = [json.loads(c.args[1]) for c in mock_queue.publish.call_args_list]
+        task_id = published[0]["payload"]["task_id"]
+        attempts = [p["payload"]["inputs"] for p in published if p["payload"]["task_id"] == task_id]
+        assert len(attempts) >= 3, "the task must have been dispatched three times"
+        assert "emission_retry_feedback" not in attempts[0]
+        assert attempts[1]["emission_retry_feedback"]["reason"] == "no_fenced_blocks"
+        assert "emission_retry_feedback" not in attempts[2]
+        assert attempts[1]["prior_attempts"] == 1 and attempts[2]["prior_attempts"] == 2
+
     async def test_plain_retryable_failure_adds_no_marker(
         self, executor, mock_queue, mock_registry
     ):
