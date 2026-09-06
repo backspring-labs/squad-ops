@@ -32,6 +32,7 @@ from squadops.cycles.emission_integrity import emission_stats as _emission_stats
 from squadops.cycles.verification_integrity import NotExecutedReason, ResultStatus
 from squadops.llm.exceptions import LLMError
 from squadops.llm.models import ChatMessage
+from squadops.tasks.task_types import TaskType
 
 if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
@@ -123,7 +124,7 @@ class QATestHandler(_CycleTaskHandler):
     """
 
     _handler_name = "qa_test_handler"
-    _task_type = "qa.test"
+    _task_type = TaskType.QA_TEST
     _role = "qa"
     _artifact_name = "test_output"  # overridden by multi-file output
 
@@ -1183,7 +1184,7 @@ class QATestHandler(_CycleTaskHandler):
         # scope discipline) in the assembled system prompt. The fragment is the
         # externalized owner of task-content guidance — not inline literals.
         assembled = context.ports.prompt_service.assemble(
-            self._role, "agent_start", task_type="qa.test"
+            self._role, "agent_start", task_type=TaskType.QA_TEST
         )
         system_prompt = assembled.content
 

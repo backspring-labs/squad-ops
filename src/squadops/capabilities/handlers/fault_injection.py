@@ -38,6 +38,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
+from squadops.tasks.task_types import TaskType
+
 logger = logging.getLogger(__name__)
 
 #: The ``execution_overrides`` key a cycle declares faults under. One key, so a cycle that
@@ -185,7 +187,7 @@ class Fault:
 #: reproduces a shape a real roll produced, and ``found_in`` says which.
 FAULTS: dict[str, Fault] = {
     "qa_suite_absent": Fault(
-        task="qa.test",
+        task=TaskType.QA_TEST,
         transform=_strip_fences,
         found_in="#1268 — 14 attempts across the 1.7.1 counted rolls",
         exercises="L2 (#1269): a repair that supplies the suite an emission failure lacked "
@@ -195,7 +197,7 @@ FAULTS: dict[str, Fault] = {
         scope=FaultScope.ALL_EMISSION_ATTEMPTS,
     ),
     "qa_suite_at_path_prefix": Fault(
-        task="qa.test",
+        task=TaskType.QA_TEST,
         transform=_prefix_paths_with_path_segment,
         found_in="#1272 — React roll 5 (cyc_ca02bed7fbb4)",
         exercises="L8 (#1272): no emission lands under a literal `path/` prefix",
@@ -203,13 +205,13 @@ FAULTS: dict[str, Fault] = {
     # Renamed from `qa_suite_vitest_own_frame_type_error` (#1304): the shape is no longer
     # vitest-only, and a name that says otherwise would misdescribe what a diagnostic ran.
     "qa_suite_own_frame_failure": Fault(
-        task="qa.test",
+        task=TaskType.QA_TEST,
         transform=_qa_suite_own_frame_failure,
         found_in="#1270 — React roll 4 (cyc_de4b2dea73a0), R2 falsified",
         exercises="L7 (#1270): an own-frame failure in a qa-owned file routes to `qa.test_repair`",
     ),
     "repair_prose_only": Fault(
-        task="qa.test_repair",
+        task=TaskType.QA_TEST_REPAIR,
         transform=_strip_fences,
         found_in="#1273 — Next.js roll 1 (cyc_9be98128f0e9)",
         exercises="L4 (#1273): a prose-only repair is refunded rather than verified",
@@ -271,7 +273,9 @@ def validate_declaration(resolved_config: Mapping[str, Any] | None) -> tuple[str
 #: The capabilities whose emission seam calls ``inject``. Held to the call sites by
 #: ``test_every_declared_fault_is_reachable_from_a_wired_seam`` — the list is what makes
 #: an unreachable declaration a refusal instead of a silent no-op.
-INJECTED_TASKS: frozenset[str] = frozenset({"qa.test", "qa.test_repair", "development.develop"})
+INJECTED_TASKS: frozenset[str] = frozenset(
+    {TaskType.QA_TEST, TaskType.QA_TEST_REPAIR, TaskType.DEVELOPMENT_DEVELOP}
+)
 
 
 #: Set by the executor every time a task's outcome is handled, so the attempt that follows

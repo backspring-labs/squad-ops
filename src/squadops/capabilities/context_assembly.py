@@ -28,6 +28,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from squadops.tasks.task_types import TaskType
+
 # ---------------------------------------------------------------------------
 # Fragment vocabulary
 # ---------------------------------------------------------------------------
@@ -135,7 +137,11 @@ _EMPTY_CONTRACT = ContextAssemblyContract()
 #: accepted tree (scaffold siblings included), single-sourced with qa.test's
 #: prompt context (qa evaluates the same tree it reads).
 ACCEPTANCE_WORKSPACE_FILTER = ArtifactFilter(
-    by_producing_task=("qa.validate", "builder.assemble", "development.develop"),
+    by_producing_task=(
+        TaskType.QA_VALIDATE,
+        TaskType.BUILDER_ASSEMBLE,
+        TaskType.DEVELOPMENT_DEVELOP,
+    ),
     by_type=("source", "config"),
     by_type_fallback=("document",),
 )
@@ -150,12 +156,12 @@ _DEV_SURFACES = (
 
 CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
     # --- build tasks (D3): curated prompt context + acceptance workspace ----
-    "development.develop": ContextAssemblyContract(
+    TaskType.DEVELOPMENT_DEVELOP: ContextAssemblyContract(
         artifact_filter=ArtifactFilter(
             by_producing_task=(
-                "strategy.analyze_prd",
-                "development.design",
-                "development.develop",
+                TaskType.STRATEGY_ANALYZE_PRD,
+                TaskType.DEVELOPMENT_DESIGN,
+                TaskType.DEVELOPMENT_DEVELOP,
             ),
             by_type_fallback=("document",),
         ),
@@ -165,9 +171,9 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
         # on the same transport repairs have always used.
         manifest_surfaces=_DEV_SURFACES,
     ),
-    "builder.assemble": ContextAssemblyContract(
+    TaskType.BUILDER_ASSEMBLE: ContextAssemblyContract(
         artifact_filter=ArtifactFilter(
-            by_producing_task=("development.develop",),
+            by_producing_task=(TaskType.DEVELOPMENT_DEVELOP,),
             by_type=("source", "config"),
             by_type_fallback=("document",),
         ),
@@ -184,7 +190,7 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
     # against a module reachable only as `backend.store`. Same transport dev has
     # had since #861; the index's per-file lines carry the import-as form and the
     # dependency surface for precisely these two failures.
-    "qa.test": ContextAssemblyContract(
+    TaskType.QA_TEST: ContextAssemblyContract(
         artifact_filter=ACCEPTANCE_WORKSPACE_FILTER,
         acceptance_workspace=True,
         bind_behavioral_surface=True,
@@ -212,14 +218,14 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
     # author that actually reaches implementation as the only one never given the
     # contract. Measured on cyc_0edb55919384: 0 criteria_refs, 3 frozen files claimed,
     # 8 invented paths. So it is present now, for the index alone.
-    "governance.merge_plan": ContextAssemblyContract(bind_criteria_index=True),
-    "governance.prepare_plan_authoring_brief": ContextAssemblyContract(
+    TaskType.GOVERNANCE_MERGE_PLAN: ContextAssemblyContract(bind_criteria_index=True),
+    TaskType.GOVERNANCE_PREPARE_PLAN_AUTHORING_BRIEF: ContextAssemblyContract(
         artifact_filter=ArtifactFilter(
             by_producing_task=(
-                "data.research_context",
-                "strategy.frame_objective",
-                "development.design_plan",
-                "qa.define_test_strategy",
+                TaskType.DATA_RESEARCH_CONTEXT,
+                TaskType.STRATEGY_FRAME_OBJECTIVE,
+                TaskType.DEVELOPMENT_DESIGN_PLAN,
+                TaskType.QA_DEFINE_TEST_STRATEGY,
             ),
         ),
         artifact_landing=LANDING_PRIOR_OUTPUTS,
@@ -228,7 +234,7 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
     # #811: the technical design answers an operator's revision request too. A note about
     # the interface is a note about the design, and a revision that changed only the manifest
     # would leave `technical_design.md` describing an interface that no longer exists.
-    "development.design_plan": ContextAssemblyContract(plan_rejection_context=True),
+    TaskType.DEVELOPMENT_DESIGN_PLAN: ContextAssemblyContract(plan_rejection_context=True),
     # SIP-0103 §5c.1 (#791): the manifest author's input contract, as data. The PRD and
     # the blueprint's vocabulary arrive on the envelope; what lands here is the cycle's
     # OWN framing — strategy's frame (which §5a has constraining scope from above) and
@@ -236,45 +242,45 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
     # alone are 240 characters and would make the author re-derive a design it just wrote.
     # Nothing from outside the cycle: the reference manifest is excluded by §4, and
     # cross-cycle recall is a declared future extension, not an omission.
-    "development.author_manifest": ContextAssemblyContract(
+    TaskType.DEVELOPMENT_AUTHOR_MANIFEST: ContextAssemblyContract(
         artifact_filter=ArtifactFilter(
             by_producing_task=(
-                "strategy.frame_objective",
-                "development.design_plan",
+                TaskType.STRATEGY_FRAME_OBJECTIVE,
+                TaskType.DEVELOPMENT_DESIGN_PLAN,
             ),
         ),
         artifact_landing=LANDING_PRIOR_OUTPUTS,
         plan_rejection_context=True,
     ),
-    "development.propose_plan_tasks": ContextAssemblyContract(
+    TaskType.DEVELOPMENT_PROPOSE_PLAN_TASKS: ContextAssemblyContract(
         artifact_filter=ArtifactFilter(
             by_producing_task=(
-                "governance.prepare_plan_authoring_brief",
-                "development.design_plan",
-            ),
-        ),
-        artifact_landing=LANDING_PRIOR_OUTPUTS,
-        plan_rejection_context=True,
-        bind_criteria_index=True,
-    ),
-    "qa.propose_plan_tasks": ContextAssemblyContract(
-        artifact_filter=ArtifactFilter(
-            by_producing_task=(
-                "governance.prepare_plan_authoring_brief",
-                "development.design_plan",
-                "qa.define_test_strategy",
-                "development.propose_plan_tasks",
+                TaskType.GOVERNANCE_PREPARE_PLAN_AUTHORING_BRIEF,
+                TaskType.DEVELOPMENT_DESIGN_PLAN,
             ),
         ),
         artifact_landing=LANDING_PRIOR_OUTPUTS,
         plan_rejection_context=True,
         bind_criteria_index=True,
     ),
-    "strategy.propose_plan_guidance": ContextAssemblyContract(
+    TaskType.QA_PROPOSE_PLAN_TASKS: ContextAssemblyContract(
         artifact_filter=ArtifactFilter(
             by_producing_task=(
-                "governance.prepare_plan_authoring_brief",
-                "strategy.frame_objective",
+                TaskType.GOVERNANCE_PREPARE_PLAN_AUTHORING_BRIEF,
+                TaskType.DEVELOPMENT_DESIGN_PLAN,
+                TaskType.QA_DEFINE_TEST_STRATEGY,
+                TaskType.DEVELOPMENT_PROPOSE_PLAN_TASKS,
+            ),
+        ),
+        artifact_landing=LANDING_PRIOR_OUTPUTS,
+        plan_rejection_context=True,
+        bind_criteria_index=True,
+    ),
+    TaskType.STRATEGY_PROPOSE_PLAN_GUIDANCE: ContextAssemblyContract(
+        artifact_filter=ArtifactFilter(
+            by_producing_task=(
+                TaskType.GOVERNANCE_PREPARE_PLAN_AUTHORING_BRIEF,
+                TaskType.STRATEGY_FRAME_OBJECTIVE,
             ),
         ),
         artifact_landing=LANDING_PRIOR_OUTPUTS,
@@ -282,11 +288,11 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
     ),
     # --- wrap-up pipeline (#683): the run-level verification_evidence
     # injection fires when any planned task carries the flag.
-    "data.gather_evidence": ContextAssemblyContract(wrapup_evidence=True),
-    "qa.assess_outcomes": ContextAssemblyContract(wrapup_evidence=True),
-    "data.classify_unresolved": ContextAssemblyContract(wrapup_evidence=True),
-    "governance.closeout_decision": ContextAssemblyContract(wrapup_evidence=True),
-    "governance.publish_handoff": ContextAssemblyContract(wrapup_evidence=True),
+    TaskType.DATA_GATHER_EVIDENCE: ContextAssemblyContract(wrapup_evidence=True),
+    TaskType.QA_ASSESS_OUTCOMES: ContextAssemblyContract(wrapup_evidence=True),
+    TaskType.DATA_CLASSIFY_UNRESOLVED: ContextAssemblyContract(wrapup_evidence=True),
+    TaskType.GOVERNANCE_CLOSEOUT_DECISION: ContextAssemblyContract(wrapup_evidence=True),
+    TaskType.GOVERNANCE_PUBLISH_HANDOFF: ContextAssemblyContract(wrapup_evidence=True),
 }
 
 
@@ -307,30 +313,30 @@ DECLARED_NO_CONTEXT: frozenset[str] = frozenset(
     {
         # Basic-cycle document chain (SIP-0066 §5.4): prompts build from the PRD and
         # prior_outputs on the envelope; no typed acceptance judges these outputs.
-        "strategy.analyze_prd",
-        "development.design",
-        "qa.validate",
-        "data.report",
-        "governance.review",
+        TaskType.STRATEGY_ANALYZE_PRD,
+        TaskType.DEVELOPMENT_DESIGN,
+        TaskType.QA_VALIDATE,
+        TaskType.DATA_REPORT,
+        TaskType.GOVERNANCE_REVIEW,
         # Framing backbone upstream of the planning chain: these AUTHOR the documents
         # the planning filters above select; their own inputs are envelope-native.
-        "data.research_context",
-        "strategy.frame_objective",
-        "qa.define_test_strategy",
+        TaskType.DATA_RESEARCH_CONTEXT,
+        TaskType.STRATEGY_FRAME_OBJECTIVE,
+        TaskType.QA_DEFINE_TEST_STRATEGY,
         # Sign-off only (SIP-0093): the gate package rides prior_outputs, and plan
         # validation is deterministic and upstream of this task.
-        "governance.review_plan",
+        TaskType.GOVERNANCE_REVIEW_PLAN,
         # Implementation-workload framing head: emits the done-definition from the
         # PRD and plan already on the envelope.
-        "governance.define_done",
+        TaskType.GOVERNANCE_DEFINE_DONE,
         # Refinement pair (SIP-0078 §5.10): feedback and validation both arrive as
         # explicit envelope inputs from the refinement request.
-        "governance.incorporate_feedback",
-        "qa.validate_refinement",
+        TaskType.GOVERNANCE_INCORPORATE_FEEDBACK,
+        TaskType.QA_VALIDATE_REFINEMENT,
         # Correction protocol (SIP-0079 §7.7): the correction runner composes their
         # evidence inputs (failure_evidence, correction context) explicitly per failure.
-        "data.analyze_failure",
-        "governance.correction_decision",
+        TaskType.DATA_ANALYZE_FAILURE,
+        TaskType.GOVERNANCE_CORRECTION_DECISION,
     }
 )
 

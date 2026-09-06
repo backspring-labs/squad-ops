@@ -18,6 +18,7 @@ from squadops.capabilities.handlers.base import (
 )
 from squadops.llm.exceptions import LLMError
 from squadops.llm.models import ChatMessage
+from squadops.tasks.task_types import TaskType
 
 if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
@@ -49,7 +50,7 @@ class GovernanceReviewPlanHandler(_PlanningTaskHandler):
     """
 
     _handler_name = "governance_assess_readiness_handler"
-    _task_type = "governance.review_plan"
+    _task_type = TaskType.GOVERNANCE_REVIEW_PLAN
     _role = "lead"
     _artifact_name = "planning_artifact.md"
 

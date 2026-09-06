@@ -15,6 +15,7 @@ from squadops.capabilities.handlers.base import (
     HandlerResult,
 )
 from squadops.cycles.acceptance_check_spec import render_typed_acceptance_vocabulary
+from squadops.tasks.task_types import TaskType
 
 if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
@@ -402,7 +403,7 @@ class DevelopmentProposePlanTasksHandler(_ProposeBaseHandler):
     """SIP-0093 PR 93.2: development-domain plan-task proposer."""
 
     _handler_name = "development_propose_plan_tasks_handler"
-    _task_type = "development.propose_plan_tasks"
+    _task_type = TaskType.DEVELOPMENT_PROPOSE_PLAN_TASKS
     _role = "dev"
     _request_template_id = "request.development_propose_plan_tasks"
     _success_artifact_name = "proposed_plan_tasks.yaml"
@@ -442,7 +443,7 @@ class QaProposePlanTasksHandler(_ProposeBaseHandler):
     """SIP-0093 PR 93.2: qa-domain plan-task proposer."""
 
     _handler_name = "qa_propose_plan_tasks_handler"
-    _task_type = "qa.propose_plan_tasks"
+    _task_type = TaskType.QA_PROPOSE_PLAN_TASKS
     _role = "qa"
     _request_template_id = "request.qa_propose_plan_tasks"
     _success_artifact_name = "proposed_plan_tasks.yaml"
@@ -481,7 +482,7 @@ class StrategyProposePlanGuidanceHandler(_ProposeBaseHandler):
     """SIP-0093 PR 93.2: strategy plan-authoring guidance proposer."""
 
     _handler_name = "strategy_propose_plan_guidance_handler"
-    _task_type = "strategy.propose_plan_guidance"
+    _task_type = TaskType.STRATEGY_PROPOSE_PLAN_GUIDANCE
     _role = "strat"
     _request_template_id = "request.strategy_propose_plan_guidance"
     _success_artifact_name = "plan_guidance.yaml"

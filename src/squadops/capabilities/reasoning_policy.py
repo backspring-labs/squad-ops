@@ -35,23 +35,24 @@ from typing import Any
 
 from squadops.llm.model_registry import ReasoningControl, get_model_spec
 from squadops.llm.models import ReasoningLevel
+from squadops.tasks.task_types import TaskType
 
 #: Per capability: the level its output wants. Grouped by the judgment behind it.
 REASONING_BY_TASK_TYPE: dict[str, str] = {
     # --- transcription: the prompt determines the output; the model restates it ---
-    "builder.assemble": ReasoningLevel.NONE,
-    "builder.assemble_repair": ReasoningLevel.NONE,
-    "governance.correction_decision": ReasoningLevel.NONE,  # a verdict from evidence
-    "qa.validate": ReasoningLevel.NONE,
-    "qa.assess_outcomes": ReasoningLevel.NONE,
-    "data.report": ReasoningLevel.NONE,
-    "data.gather_evidence": ReasoningLevel.NONE,
-    "data.analyze_verification": ReasoningLevel.NONE,
-    "data.classify_unresolved": ReasoningLevel.NONE,
-    "data.collect_cycle_snapshot": ReasoningLevel.NONE,
-    "data.compose_cycle_summary": ReasoningLevel.NONE,
-    "data.profile_cycle_metrics": ReasoningLevel.NONE,
-    "governance.publish_handoff": ReasoningLevel.NONE,  # a stored report
+    TaskType.BUILDER_ASSEMBLE: ReasoningLevel.NONE,
+    TaskType.BUILDER_ASSEMBLE_REPAIR: ReasoningLevel.NONE,
+    TaskType.GOVERNANCE_CORRECTION_DECISION: ReasoningLevel.NONE,  # a verdict from evidence
+    TaskType.QA_VALIDATE: ReasoningLevel.NONE,
+    TaskType.QA_ASSESS_OUTCOMES: ReasoningLevel.NONE,
+    TaskType.DATA_REPORT: ReasoningLevel.NONE,
+    TaskType.DATA_GATHER_EVIDENCE: ReasoningLevel.NONE,
+    TaskType.DATA_ANALYZE_VERIFICATION: ReasoningLevel.NONE,
+    TaskType.DATA_CLASSIFY_UNRESOLVED: ReasoningLevel.NONE,
+    TaskType.DATA_COLLECT_CYCLE_SNAPSHOT: ReasoningLevel.NONE,
+    TaskType.DATA_COMPOSE_CYCLE_SUMMARY: ReasoningLevel.NONE,
+    TaskType.DATA_PROFILE_CYCLE_METRICS: ReasoningLevel.NONE,
+    TaskType.GOVERNANCE_PUBLISH_HANDOFF: ReasoningLevel.NONE,  # a stored report
     # --- implementation and revision: derivation with real choices inside it ---
     # #1268: qa's authoring pair moved here from transcription. #924 measured the qa FILL
     # BRIEF — 5,727 completion tokens with the channel on, 413 with it off, the same eight
@@ -61,33 +62,33 @@ REASONING_BY_TASK_TYPE: dict[str, str] = {
     # the model returned a sentence of intent and stopped — five of seven 1.7.1 counted
     # rolls were shaped by it, fourteen attempts, zero in 1.6.6 (plan 1.7.2 §8a, measured
     # live: think:false 1 of 6 usable emissions, think:true 6 of 6, same prompt).
-    "qa.test": ReasoningLevel.MEDIUM,
-    "qa.test_repair": ReasoningLevel.MEDIUM,
-    "development.develop": ReasoningLevel.MEDIUM,
-    "development.repair": ReasoningLevel.MEDIUM,
-    "development.correction_repair": ReasoningLevel.MEDIUM,
-    "governance.incorporate_feedback": ReasoningLevel.MEDIUM,
-    "qa.validate_refinement": ReasoningLevel.MEDIUM,
-    "data.research_context": ReasoningLevel.MEDIUM,
+    TaskType.QA_TEST: ReasoningLevel.MEDIUM,
+    TaskType.QA_TEST_REPAIR: ReasoningLevel.MEDIUM,
+    TaskType.DEVELOPMENT_DEVELOP: ReasoningLevel.MEDIUM,
+    TaskType.DEVELOPMENT_REPAIR: ReasoningLevel.MEDIUM,
+    TaskType.DEVELOPMENT_CORRECTION_REPAIR: ReasoningLevel.MEDIUM,
+    TaskType.GOVERNANCE_INCORPORATE_FEEDBACK: ReasoningLevel.MEDIUM,
+    TaskType.QA_VALIDATE_REFINEMENT: ReasoningLevel.MEDIUM,
+    TaskType.DATA_RESEARCH_CONTEXT: ReasoningLevel.MEDIUM,
     # --- argument: the output chooses; the design, the analysis, the plan ---
-    "development.author_manifest": ReasoningLevel.HIGH,
-    "strategy.analyze_prd": ReasoningLevel.HIGH,
-    "strategy.frame_objective": ReasoningLevel.HIGH,
-    "development.design": ReasoningLevel.HIGH,
-    "development.design_plan": ReasoningLevel.HIGH,
-    "qa.define_test_strategy": ReasoningLevel.HIGH,
-    "governance.prepare_plan_authoring_brief": ReasoningLevel.HIGH,
-    "development.propose_plan_tasks": ReasoningLevel.HIGH,
-    "qa.propose_plan_tasks": ReasoningLevel.HIGH,
-    "strategy.propose_plan_guidance": ReasoningLevel.HIGH,
-    "governance.merge_plan": ReasoningLevel.HIGH,
-    "governance.review_plan": ReasoningLevel.HIGH,
-    "governance.review": ReasoningLevel.HIGH,
-    "governance.define_done": ReasoningLevel.HIGH,
-    "data.analyze_failure": ReasoningLevel.HIGH,
-    "governance.root_cause_analysis": ReasoningLevel.HIGH,
-    "strategy.corrective_plan": ReasoningLevel.HIGH,
-    "governance.closeout_decision": ReasoningLevel.HIGH,
+    TaskType.DEVELOPMENT_AUTHOR_MANIFEST: ReasoningLevel.HIGH,
+    TaskType.STRATEGY_ANALYZE_PRD: ReasoningLevel.HIGH,
+    TaskType.STRATEGY_FRAME_OBJECTIVE: ReasoningLevel.HIGH,
+    TaskType.DEVELOPMENT_DESIGN: ReasoningLevel.HIGH,
+    TaskType.DEVELOPMENT_DESIGN_PLAN: ReasoningLevel.HIGH,
+    TaskType.QA_DEFINE_TEST_STRATEGY: ReasoningLevel.HIGH,
+    TaskType.GOVERNANCE_PREPARE_PLAN_AUTHORING_BRIEF: ReasoningLevel.HIGH,
+    TaskType.DEVELOPMENT_PROPOSE_PLAN_TASKS: ReasoningLevel.HIGH,
+    TaskType.QA_PROPOSE_PLAN_TASKS: ReasoningLevel.HIGH,
+    TaskType.STRATEGY_PROPOSE_PLAN_GUIDANCE: ReasoningLevel.HIGH,
+    TaskType.GOVERNANCE_MERGE_PLAN: ReasoningLevel.HIGH,
+    TaskType.GOVERNANCE_REVIEW_PLAN: ReasoningLevel.HIGH,
+    TaskType.GOVERNANCE_REVIEW: ReasoningLevel.HIGH,
+    TaskType.GOVERNANCE_DEFINE_DONE: ReasoningLevel.HIGH,
+    TaskType.DATA_ANALYZE_FAILURE: ReasoningLevel.HIGH,
+    TaskType.GOVERNANCE_ROOT_CAUSE_ANALYSIS: ReasoningLevel.HIGH,
+    TaskType.STRATEGY_CORRECTIVE_PLAN: ReasoningLevel.HIGH,
+    TaskType.GOVERNANCE_CLOSEOUT_DECISION: ReasoningLevel.HIGH,
 }
 
 #: The ``config_overrides`` key an agent profile uses to override the declaration.

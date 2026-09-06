@@ -24,6 +24,7 @@ from squadops.capabilities.handlers.impl._json_extraction import (
 from squadops.cycles.task_outcome import TaskOutcome
 from squadops.llm.exceptions import LLMError
 from squadops.llm.models import ChatMessage
+from squadops.tasks.task_types import TaskType
 
 if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
@@ -37,7 +38,7 @@ class GovernanceDefineDoneHandler(_CycleTaskHandler):
     """Define the run's definition of done before implementation begins."""
 
     _handler_name = "governance_define_done_handler"
-    _task_type = "governance.define_done"
+    _task_type = TaskType.GOVERNANCE_DEFINE_DONE
     _role = "lead"
     _artifact_name = "definition_of_done.json"
 

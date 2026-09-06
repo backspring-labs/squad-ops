@@ -22,6 +22,7 @@ from squadops.capabilities.handlers.impl._json_extraction import (
 )
 from squadops.llm.exceptions import LLMError
 from squadops.llm.models import ChatMessage
+from squadops.tasks.task_types import TaskType
 
 if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
@@ -46,7 +47,7 @@ class GovernanceCorrectionDecisionHandler(_CycleTaskHandler):
     """Decide the correction path after a failure analysis."""
 
     _handler_name = "governance_correction_decision_handler"
-    _task_type = "governance.correction_decision"
+    _task_type = TaskType.GOVERNANCE_CORRECTION_DECISION
     _role = "lead"
     _artifact_name = "correction_decision.md"
 

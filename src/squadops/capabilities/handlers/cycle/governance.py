@@ -14,6 +14,7 @@ from squadops.capabilities.handlers.base import (
 )
 from squadops.llm.exceptions import LLMError
 from squadops.llm.models import ChatMessage
+from squadops.tasks.task_types import TaskType
 
 if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
@@ -38,7 +39,7 @@ class GovernanceReviewHandler(_CycleTaskHandler):
     """
 
     _handler_name = "governance_review_handler"
-    _task_type = "governance.review"
+    _task_type = TaskType.GOVERNANCE_REVIEW
     _role = "lead"
     _artifact_name = "governance_review.md"
     #: Preserves the observability identity this handler already had. It carried a

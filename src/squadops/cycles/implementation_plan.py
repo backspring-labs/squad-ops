@@ -34,15 +34,16 @@ from squadops.cycles.acceptance_check_spec import (
     normalize_route,
     reserved_keys_for,
 )
+from squadops.tasks.task_types import TaskType, authors_qa_suite
 
 if TYPE_CHECKING:
     from squadops.cycles.verification_contract import VerificationContract
 
 # Known task types that may appear in plan tasks.
 _KNOWN_BUILD_TASK_TYPES = {
-    "development.develop",
-    "qa.test",
-    "builder.assemble",
+    TaskType.DEVELOPMENT_DEVELOP,
+    TaskType.QA_TEST,
+    TaskType.BUILDER_ASSEMBLE,
 }
 
 # Build task types only the builder role (bob) can execute. The plan author
@@ -50,7 +51,7 @@ _KNOWN_BUILD_TASK_TYPES = {
 # task that aborts at dispatch with "No handler for capability: builder.assemble".
 # The plan *validator* still accepts the full set above — it validates plans
 # regardless of the authoring squad.
-_BUILDER_ROLE_BUILD_TASK_TYPES = {"builder.assemble"}
+_BUILDER_ROLE_BUILD_TASK_TYPES = {TaskType.BUILDER_ASSEMBLE}
 
 # #645 lived here as `_CHECK_ENV_EXECUTABLES`, a second opinion about what a command
 # check may ask for. #707 deleted it rather than resynchronising it: the safelist in
@@ -401,7 +402,7 @@ class ImplementationPlan:
         patterns = test_file_patterns_for(resolved_config)
         errors: list[str] = []
         for task in self.tasks:
-            if task.task_type != "qa.test" or not task.expected_artifacts:
+            if not authors_qa_suite(task.task_type) or not task.expected_artifacts:
                 continue
             if any(matches_test_file_patterns(p, patterns) for p in task.expected_artifacts):
                 continue
@@ -881,7 +882,7 @@ class ImplementationPlan:
             f"emission, and a repair scoped to this task would target the wrong files. "
             f"QA tasks own their test files only"
             for task in self.tasks
-            if task.task_type == "qa.test"
+            if authors_qa_suite(task.task_type)
             for artifact in task.expected_artifacts
             if artifact in owned
         ]
@@ -915,7 +916,7 @@ class ImplementationPlan:
             f"at emission, so the task cannot satisfy its expected artifacts and a repair "
             f"scoped to it would target the wrong files"
             for task in self.tasks
-            if task.task_type != "qa.test"
+            if not authors_qa_suite(task.task_type)
             for artifact in task.expected_artifacts
             if artifact in frozen
         ]
