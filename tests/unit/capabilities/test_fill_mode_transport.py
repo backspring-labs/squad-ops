@@ -9,6 +9,7 @@ otherwise eat every correct fill-mode output).
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -666,3 +667,55 @@ async def test_the_self_eval_addendum_renders_from_the_real_asset(scaffold_input
     assert "slot-vc-probe-api-runs` — filled" not in out
     assert "fill block is the only way to change a slot" in out
     assert "```fill:slot-<id>" in out
+
+
+async def test_the_fill_merge_evidence_is_banked_as_an_artifact(scaffold_input, monkeypatch):
+    """#999 wiring, entered at ``handle()``: the fill-merge evidence #982 measured and left in
+    ``execution_evidence`` — which nothing persists — is now a stored artifact beside
+    ``test_report.md``, typed so the suite runner never treats it as a suite, and its
+    payload agrees with the banked summary."""
+    from squadops.capabilities.handlers.cycle import qa_test as qa_test_module
+    from squadops.capabilities.handlers.test_runner import RunTestsResult
+
+    fill_text = "```fill:slot-vc-probe-api-runs\n    expect(body.id).toBeTruthy()\n```\n"
+
+    async def _canned_suite(capability, sources, extracted):
+        assert all(f["filename"].endswith((".ts", ".tsx", ".py", ".js", ".jsx")) for f in extracted)
+        return RunTestsResult(executed=True, exit_code=0, runner="vitest"), {
+            "name": "test_report.md",
+            "content": "r",
+            "media_type": "text/markdown",
+            "type": "document",
+        }
+
+    monkeypatch.setattr(
+        qa_test_module.QATestHandler, "_run_test_suite", staticmethod(_canned_suite)
+    )
+    context = MagicMock()
+    context.ports.llm.chat_stream_with_usage = AsyncMock(return_value=MagicMock(content=fill_text))
+    context.ports.llm.default_model = "m"
+    assembled = MagicMock()
+    assembled.content = "system"
+    context.ports.prompt_service.assemble = MagicMock(return_value=assembled)
+    context.ports.request_renderer = None
+
+    result = await QATestHandler().handle(
+        context,
+        {
+            "prd": "group_run",
+            "artifact_contents": {},
+            "resolved_config": {"development_profile": "nextjs_ts"},
+            "subtask_focus": "fill the scaffold",
+            "expected_artifacts": [],
+            "verification_scaffold": scaffold_input,
+        },
+    )
+
+    artifacts = {a["name"]: a for a in result.outputs["artifacts"]}
+    assert "fill_merge_evidence.json" in artifacts, sorted(artifacts)
+    art = artifacts["fill_merge_evidence.json"]
+    assert art["type"] == "evidence"
+    payload = json.loads(art["content"])
+    counts = payload["fill_merge"]["counts"]
+    assert counts["filled"] == result.outputs["scaffold_evidence"]["fill_dispositions"]["filled"]
+    assert "assertion_strength" in payload["fill_merge"]
