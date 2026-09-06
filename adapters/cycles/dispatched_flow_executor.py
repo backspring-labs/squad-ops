@@ -90,6 +90,10 @@ from squadops.cycles.rejection_baseline import (
     RejectionClassifier,
 )
 from squadops.cycles.run_ledger import RunLedger
+from squadops.cycles.scaffold_integrity_evidence import (
+    STAGE_FAILED_EMISSION,
+    STAGE_PATCH_VERIFICATION,
+)
 from squadops.cycles.task_outcome import TaskOutcome
 from squadops.cycles.task_plan import generate_task_plan, inject_contract_inputs
 from squadops.cycles.verification_normalize import normalize_task_checks
@@ -1696,15 +1700,21 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 _consecutive_failures=consecutive_failures,
                 _holder=_last_failed_result,
             ):
-                _holder["result"] = result
-                # #971: bank THIS attempt's emission before the correction loop
-                # decides anything. The callback fires on every failed attempt, so
-                # what lands is the pair the issue asks for — what failed and what
-                # replaced it — rather than only the last failure. Stored marked and
-                # excluded everywhere; see _store_failed_emission.
-                await self._store_failed_emission(
-                    result, _envelope, cycle, run_id, all_artifact_refs
+                # #1323: authorize BEFORE holding. The held result is the base the repair
+                # overlay is built from (``_try_accept_patch``) and the source the triage
+                # bank stores (#971) — both must see the same authorized set, or a path
+                # the producer may not write is admitted here and the repair that fixes
+                # it is refused at storage for touching it.
+                result = await self._admit_failed_emission(
+                    result,
+                    _envelope,
+                    cycle,
+                    run_id,
+                    all_artifact_refs,
+                    bound_record=bound_record,
+                    compliance_counter=compliance_counter,
                 )
+                _holder["result"] = result
                 action = await self._handle_task_outcome(
                     result=result,
                     envelope=_envelope,
@@ -1727,6 +1737,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     interface_manifest=interface_manifest,
                     budget_guard=_budget_guard,
                     repair_rejection_carry=repair_rejection_carry,
+                    bound_record=bound_record,
+                    compliance_counter=compliance_counter,
                 )
                 if action in ("continue", "accept_patch"):
                     # #379: this attempt failed — re-dispatched ("continue") or
@@ -2864,6 +2876,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         interface_manifest: Any = None,
         budget_guard: Callable[[], None] | None = None,
         repair_rejection_carry: dict[str, list[str]] | None = None,
+        bound_record: Any = None,
+        compliance_counter: dict[str, int] | None = None,
     ) -> str:
         """Route a failed task outcome. Returns an action string.
 
@@ -3107,6 +3121,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 interface_manifest=interface_manifest,
                 repair_rejection_carry=repair_rejection_carry,
                 repair_typed_checks=protocol.repair_typed_checks,
+                bound_record=bound_record,
+                compliance_counter=compliance_counter,
             )
             return action
         elif correction_path == "continue":
@@ -3137,6 +3153,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         interface_manifest: Any = None,
         repair_rejection_carry: dict[str, list[str]] | None = None,
         repair_typed_checks: Sequence[dict[str, Any]] = (),
+        bound_record: Any = None,
+        compliance_counter: dict[str, int] | None = None,
     ) -> str:
         """Behaviorally verify a patch (#389); return "accept_patch" or "continue".
 
@@ -3158,6 +3176,37 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         """
         if not repair_artifacts or patched_result_holder is None:
             return "continue"
+
+        # #1323: the verified set must be the set that will be stored. Storage enforces the
+        # producer's grants (``_collect_artifacts_and_checkpoint``); verification did not,
+        # so a repair that rewrote a path the producer may not write was verified on the
+        # overlay WITH the file, reported passed, and had the file dropped at storage —
+        # the failing row superseded, the defect still in the tree (1.7.2 React roll 1,
+        # ``docker/serve.py``). Enforce here with the same grants, before the overlay.
+        if bound_record is not None:
+            repair_artifacts, dropped = self._enforce_frozen_ownership(
+                repair_artifacts, bound_record, envelope, stage=STAGE_PATCH_VERIFICATION
+            )
+            for record in dropped:
+                self._emit_scaffold_integrity_evidence(record, envelope)
+            if dropped:
+                logger.warning(
+                    "patch authorization task=%s: %d repaired path(s) dropped before "
+                    "verification, %d retained — %s (#1323)",
+                    envelope.task_id,
+                    len(dropped),
+                    len(repair_artifacts),
+                    ", ".join(str(r.normalized_path) for r in dropped),
+                )
+                if compliance_counter is not None and cycle is not None:
+                    self._enforce_compliance_budget(dropped, cycle, envelope, compliance_counter)
+            if not repair_artifacts:
+                logger.warning(
+                    "patch_verification task=%s refused: every repaired path was one the "
+                    "producer may not write — nothing to verify (#1323)",
+                    envelope.task_id,
+                )
+                return "continue"
 
         resolved_config = (envelope.inputs or {}).get("resolved_config") or {}
         criteria = (envelope.inputs or {}).get("acceptance_criteria") or []
@@ -3518,7 +3567,12 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         return bound_record_or_none(interface_manifest, run_id)
 
     def _enforce_frozen_ownership(
-        self, artifacts: list[dict], bound_record: Any, envelope: TaskEnvelope
+        self,
+        artifacts: list[dict],
+        bound_record: Any,
+        envelope: TaskEnvelope,
+        *,
+        stage: str | None = None,
     ) -> tuple[list[dict], list[Any]]:
         """SIP-0100 2.4: a producer must not overwrite a scaffold-frozen file. Any emitted artifact
         whose normalized path is frozen has its content RESTORED to the bound record's bytes (D2
@@ -3542,8 +3596,11 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         QA emissions in its namespace, and undeclared paths (deliverables like ``test_report.md``),
         pass through. Non-QA producers are unaffected here (frozen-restore only)."""
         from squadops.cycles.scaffold_enforcement import enforce_frozen_ownership
+        from squadops.cycles.scaffold_integrity_evidence import STAGE_ARTIFACT_STORAGE
 
-        return enforce_frozen_ownership(artifacts, bound_record, envelope)
+        return enforce_frozen_ownership(
+            artifacts, bound_record, envelope, stage=stage or STAGE_ARTIFACT_STORAGE
+        )
 
     def _emit_scaffold_integrity_evidence(self, record: Any, envelope: TaskEnvelope) -> None:
         """SIP-0100 3.3: surface one enforcement event as a structured event + log (best-effort —
@@ -4504,6 +4561,62 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             metadata=metadata,
         )
         return await self._artifact_vault.store(ref, content)
+
+    async def _admit_failed_emission(
+        self,
+        result: Any,
+        envelope: TaskEnvelope,
+        cycle: Cycle,
+        run_id: str,
+        all_artifact_refs: list[str],
+        *,
+        bound_record: Any = None,
+        compliance_counter: dict[str, int] | None = None,
+    ) -> Any:
+        """Authorize a failed attempt's emission, bank what survives, return it (#1323).
+
+        The failed result is used twice downstream: ``_try_accept_patch`` overlays the
+        repair on ITS artifacts to build the tree the verifier sees, and
+        ``_store_failed_emission`` banks them for triage. Neither applied the producer's
+        write grants, while the success path (``_collect_artifacts_and_checkpoint``) does.
+        So a builder that failed *because of* a net-new source file it may not author had
+        that file admitted into the overlay, the repair that fixed it verified against
+        that overlay and passed, and the fix was then dropped at storage as unauthorized —
+        1.7.2 React roll 1, ``docker/serve.py`` (#1323). Enforcement at the point of
+        creation, with the same grants and the same evidence record, ``stage`` named.
+
+        Returns the result the caller must hold: the same object when nothing was
+        dropped, otherwise a copy whose artifacts are the authorized set.
+        """
+        artifacts = (getattr(result, "outputs", None) or {}).get("artifacts") or []
+        dropped: list[Any] = []
+        if (
+            bound_record is not None
+            and artifacts
+            and getattr(result, "status", None) != "SUCCEEDED"
+        ):
+            enforced, dropped = self._enforce_frozen_ownership(
+                artifacts, bound_record, envelope, stage=STAGE_FAILED_EMISSION
+            )
+            for record in dropped:
+                self._emit_scaffold_integrity_evidence(record, envelope)
+            if dropped:
+                logger.warning(
+                    "failed-emission authorization task=%s: %d path(s) dropped, %d retained "
+                    "— %s (#1323)",
+                    envelope.task_id,
+                    len(dropped),
+                    len(enforced),
+                    ", ".join(str(r.normalized_path) for r in dropped),
+                )
+                result = dataclasses.replace(
+                    result, outputs={**(result.outputs or {}), "artifacts": enforced}
+                )
+        await self._store_failed_emission(result, envelope, cycle, run_id, all_artifact_refs)
+        if dropped and compliance_counter is not None:
+            # After the bank, so the budget's terminal failure never costs the evidence.
+            self._enforce_compliance_budget(dropped, cycle, envelope, compliance_counter)
+        return result
 
     async def _store_failed_emission(
         self,

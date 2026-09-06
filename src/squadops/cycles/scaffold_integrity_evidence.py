@@ -43,6 +43,15 @@ DISPOSITION_STOPPED = "stopped"
 DISPOSITION_ALLOWED = "allowed"
 
 
+#: Where enforcement ran (#1323). The executor admits producer bytes into a tree it evaluates
+#: at three points, and each is enforced with the same grants: the success path's storage,
+#: the failed attempt (whose artifacts are the repair overlay's base AND the triage bank),
+#: and the repair before it is verified (so the verified set is the set that will be stored).
+STAGE_ARTIFACT_STORAGE = "artifact_storage"
+STAGE_FAILED_EMISSION = "failed_emission"
+STAGE_PATCH_VERIFICATION = "patch_verification"
+
+
 def sha256_of(content: Any) -> str | None:
     """SHA-256 hex of artifact content (``str``/``bytes``), or ``None`` if not hashable.
 
@@ -122,7 +131,7 @@ def frozen_path_evidence(
     attempted_content: Any,
     siblings_retained: int,
     disposition: str = DISPOSITION_DROPPED,
-    stage: str = "artifact_storage",
+    stage: str = STAGE_ARTIFACT_STORAGE,
 ) -> ScaffoldIntegrityEvidence:
     """Build the evidence for the 2.4 case: a producer emitted a scaffold-frozen path.
 
@@ -166,7 +175,7 @@ def unauthorized_slot_evidence(
     normalized_path: str,
     attempted_content: Any,
     siblings_retained: int,
-    stage: str = "artifact_storage",
+    stage: str = STAGE_ARTIFACT_STORAGE,
 ) -> ScaffoldIntegrityEvidence:
     """Build the evidence for the 3.1 case: a producer emitted a path that is writable *in
     principle* but belongs to a **different** producer's slot (e.g. a QA task writing dev's
@@ -205,7 +214,7 @@ def shell_region_evidence(
     siblings_retained: int,
     violation_kind: str,
     detail: str,
-    stage: str = "artifact_storage",
+    stage: str = STAGE_ARTIFACT_STORAGE,
 ) -> ScaffoldIntegrityEvidence:
     """Build the SIP-0104 P4 case: an emission to a verification-scaffold shell violated
     region rules. ``violation_kind`` maps to the reason code: ``region`` (spine/slot

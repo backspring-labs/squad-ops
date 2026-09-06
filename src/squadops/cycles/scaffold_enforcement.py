@@ -13,6 +13,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from squadops.cycles.scaffold_integrity_evidence import STAGE_ARTIFACT_STORAGE
+
 logger = logging.getLogger(__name__)
 
 # Per-artifact enforcement dispositions (internal protocol; named so comparison
@@ -190,7 +192,11 @@ def frozen_emission_instruction(record: Any) -> str:
 
 
 def enforce_frozen_ownership(
-    artifacts: list[dict], bound_record: Any, envelope: Any
+    artifacts: list[dict],
+    bound_record: Any,
+    envelope: Any,
+    *,
+    stage: str = STAGE_ARTIFACT_STORAGE,
 ) -> tuple[list[dict], list[Any]]:
     """SIP-0100 2.4: a producer must not overwrite a scaffold-frozen file. Any emitted artifact
     whose normalized path is frozen is DROPPED, so the producer cannot clobber the scaffold
@@ -265,6 +271,7 @@ def enforce_frozen_ownership(
             shells=shells,
             shell_verdicts=shell_verdicts,
             siblings_retained=siblings_retained,
+            stage=stage,
         )
         if record_evidence is not None:
             evidence.append(record_evidence)
@@ -322,6 +329,7 @@ def _drop_evidence(
     shells: dict[str, Any],
     shell_verdicts: dict[int, tuple[str, str]],
     siblings_retained: int,
+    stage: str,
 ) -> Any:
     """The evidence record for a dropped emission (None = pass-through).
 
@@ -342,6 +350,7 @@ def _drop_evidence(
         "normalized_path": norm,
         "attempted_content": art.get("content"),
         "siblings_retained": siblings_retained,
+        "stage": stage,
     }
     if disposition == _DISP_DROP_SHELL:
         kind, detail = shell_verdicts[index]
