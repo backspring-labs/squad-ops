@@ -484,6 +484,146 @@ class TestAcceptPatch:
             metadata={"role": "builder"},
         )
 
+    def _failed_builder_result_1318(self):
+        """The 1.7.2 roll-1 shape: the builder omitted its handoff, so BOTH the framework
+        spine row and the typed criterion failed on the pre-patch tree."""
+        return TaskResult(
+            task_id="task_5",
+            status="FAILED",
+            outputs={
+                "artifacts": [
+                    {"name": "Dockerfile", "content": "FROM python:3.12\n"},
+                    {
+                        "name": "typed_check_evaluation_task_4.json",
+                        "type": "typed_check_evaluation",
+                        "content": '{"evaluated_at": "pre-patch"}',
+                    },
+                ],
+                "validation_result": {
+                    "checks": [
+                        {"check": "required_files", "passed": False, "missing": ["qa_handoff.md"]},
+                        {
+                            "check": "acceptance:sections_present",
+                            "severity": "error",
+                            "status": "failed",
+                            "reason": "file_not_found",
+                            "criterion_id": "handoff-sections:qa_handoff.md",
+                            "params": {"file": "qa_handoff.md", "sections": ["## How to Test"]},
+                            "passed": False,
+                        },
+                    ]
+                },
+                "outcome_class": TaskOutcome.SEMANTIC_FAILURE,
+            },
+            error="acceptance failed",
+        )
+
+    def _builder_envelope_1318(self):
+        import dataclasses as _dc
+
+        from squadops.cycles.implementation_plan import TypedCheck
+
+        return _dc.replace(
+            self._builder_envelope(),
+            inputs={
+                "resolved_config": {},
+                "expected_artifacts": ["Dockerfile", "qa_handoff.md"],
+                "acceptance_criteria": [
+                    TypedCheck(
+                        check="sections_present",
+                        params={"file": "qa_handoff.md", "sections": ["## How to Test"]},
+                        severity="error",
+                        description="handoff sections",
+                        id="handoff-sections:qa_handoff.md",
+                    )
+                ],
+            },
+        )
+
+    async def test_an_accepted_patch_supersedes_the_failed_attempts_rows(self, executor):
+        """#1318, through the executor's own accept-patch caller.
+
+        1.7.2 counted roll 1 (`cyc_e33939eda950`): the patch wrote a `qa_handoff.md` that
+        satisfies the criterion, `patch_verification` logged `status=passed failed=-`, and
+        the run was still `rejected`. The ledger supersedes on
+        ``(check_id, subject, criterion_id)`` (#1021) and the patch row carried no
+        criterion id, while nothing on the patch path re-emitted `required_files` at all —
+        so both pre-patch failures stayed the final state.
+
+        This enters at ``_try_accept_patch`` — the caller ``_handle_task_outcome`` uses on
+        a live cycle — and asserts the verdict over the ledger sequence the executor
+        actually records: the failed result, then the corrected one.
+        """
+        from squadops.cycles.verification_integrity import aggregate_verification
+        from squadops.cycles.verification_normalize import normalize_task_checks
+
+        failed = self._failed_builder_result_1318()
+        holder: dict = {}
+        action = await executor._try_accept_patch(
+            self._builder_envelope_1318(),
+            failed,
+            [
+                {
+                    "name": "qa_handoff.md",
+                    "content": "# QA Handoff\n## How to Test\nrun pytest\n",
+                }
+            ],
+            holder,
+        )
+        assert action == "accept_patch"
+        corrected = holder["patched_result"]
+        rows = corrected.outputs["validation_result"]["checks"]
+
+        # The spine row is re-derived from the PATCHED set, and it passes.
+        spine = [r for r in rows if r.get("check") == "required_files"]
+        assert spine and spine[0]["passed"] is True, rows
+        assert spine[0]["missing"] == []
+
+        # The typed row carries the criterion id the failed row carried.
+        typed = [r for r in rows if r.get("check") == "acceptance:sections_present"]
+        assert typed, rows
+        assert typed[0]["criterion_id"] == "handoff-sections:qa_handoff.md"
+        assert typed[0]["status"] == "passed"
+
+        # The failed attempt's evidence artifact is not re-stored (no retest ran).
+        names = {a.get("name") for a in corrected.outputs["artifacts"]}
+        assert "typed_check_evaluation_task_4.json" not in names
+        assert "qa_handoff.md" in names
+
+        # The verdict over the sequence the executor records (failed, then corrected).
+        ledger = [
+            *normalize_task_checks(failed.outputs, subject="task_5"),
+            *normalize_task_checks(corrected.outputs, subject="task_5"),
+        ]
+        summary = aggregate_verification(ledger)
+        assert summary.verdict.value == "accepted", (
+            f"{summary.verdict.value}: failed={summary.failed} unverified={summary.unverified}"
+        )
+
+    async def test_a_patch_that_does_not_supply_the_required_file_still_fails(self, executor):
+        """The floor: superseding must not launder a deliverable the patch never wrote.
+
+        Same shape, but the patch touches only the Dockerfile — the re-derived spine row
+        must report the handoff still missing rather than crediting the task.
+        """
+        holder: dict = {}
+        await executor._try_accept_patch(
+            self._builder_envelope_1318(),
+            self._failed_builder_result_1318(),
+            [{"name": "Dockerfile", "content": "FROM python:3.12\nRUN true\n"}],
+            holder,
+        )
+        corrected = holder.get("patched_result")
+        if corrected is None:
+            return  # patch rejected outright — also a correct outcome, never a false accept
+        spine = [
+            r
+            for r in corrected.outputs["validation_result"]["checks"]
+            if r.get("check") == "required_files"
+        ]
+        assert spine and spine[0]["passed"] is False
+        assert spine[0]["missing"] == ["qa_handoff.md"]
+
     async def test_verified_patch_accepted_with_corrected_result(self, executor):
         """Bug caught: verified repairs re-dispatched into a re-roll — the
         cyc_6841d75f167c oscillation that starved the correction budget."""

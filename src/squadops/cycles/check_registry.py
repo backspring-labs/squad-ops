@@ -23,7 +23,9 @@ Out of scope by design (§6.3):
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
+from typing import Any
 
 # External tooling identifiers a deployment must provision for a check to
 # execute. This is the cross-process axis the later SIP-0095 preflight parity
@@ -55,6 +57,26 @@ CHECK_NO_STUB_FALLBACK_TESTS = "no_stub_fallback_tests"
 CHECK_NO_SELF_MOCKING_TESTS = "no_self_mocking_tests"
 CHECK_REQUIRED_FILES = "required_files"
 CHECK_FRONTEND_BUILD = "frontend_build"
+
+
+def required_files_row(required: Iterable[str], emitted: Iterable[str]) -> dict[str, Any]:
+    """The framework's ``required_files`` evidence row — one rule, both seams that emit it.
+
+    The builder handler emits it from its own emission (#399). The accepted-patch path
+    must re-emit it from the **patched** set, or the failed attempt's row is the only one
+    bearing the ``(required_files, task)`` identity the ledger supersedes on, and the run
+    is rejected for a deliverable the accepted patch supplied — #1318, seen on 1.7.2
+    FastAPI+React roll 1 (`cyc_e33939eda950`), where the patch wrote ``qa_handoff.md``,
+    ``patch_verification`` passed, and the verdict was still ``rejected``.
+
+    Basenames, matching the #107 rule the handler has always applied.
+    """
+    from pathlib import PurePosixPath
+
+    have = {PurePosixPath(str(name)).name for name in emitted if name}
+    missing = [str(item) for item in required if str(item) not in have]
+    return {"check": CHECK_REQUIRED_FILES, "passed": not missing, "missing": missing}
+
 
 FRAMEWORK_CHECKS: dict[str, FrameworkCheck] = {
     CHECK_TESTS_PASS: FrameworkCheck(

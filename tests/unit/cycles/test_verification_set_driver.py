@@ -407,6 +407,80 @@ class TestSquadSnapshotIsAnIdentity:
         assert a.expected_config_hash_prefix != b.expected_config_hash_prefix
 
 
+class TestStaleEvaluationsAreNamed:
+    """#1318: a later STORE carrying an earlier EVALUATION is a run judged on a tree that
+    no longer exists — and L3's declared read ("the last stored evaluation") cannot see it.
+    """
+
+    @staticmethod
+    def _tree(tmp_path, versions):
+        """versions: [(art_id, stored_at, evaluated_at, ws, [failed checks])]"""
+        import json as _json
+
+        for art_id, stored, evaluated, ws, failed in versions:
+            art = tmp_path / art_id
+            art.mkdir(parents=True)
+            (art / "metadata.json").write_text(_json.dumps({"created_at": stored}))
+            (art / "typed_check_evaluation_task_4.json").write_text(
+                _json.dumps(
+                    {
+                        "evaluated_at": evaluated,
+                        "workspace_revision_id": ws,
+                        "evaluations": [
+                            {"check": c, "status": "failed", "reason": "file_not_found"}
+                            for c in failed
+                        ],
+                    }
+                )
+            )
+        return tmp_path
+
+    def _run(self, driver, monkeypatch, tmp_path, versions):
+        tree = self._tree(tmp_path, versions)
+        monkeypatch.setattr(driver, "artifact_dirs", lambda *a, **k: sorted(tree.glob("art_*")))
+        return driver._stale_evaluations(object(), "cyc", "run")
+
+    def test_a_re_store_with_an_unchanged_evaluation_is_named(self, driver, monkeypatch, tmp_path):
+        """The roll-1 shape: stored twice, same evaluated_at, same workspace revision."""
+        rows = self._run(
+            driver,
+            monkeypatch,
+            tmp_path,
+            [
+                ("art_aaa", "2026-09-05 17:08:19", "17:08:18.97", "6b15b9aab690", ["acceptance:x"]),
+                ("art_bbb", "2026-09-05 17:10:15", "17:08:18.97", "6b15b9aab690", ["acceptance:x"]),
+            ],
+        )
+        assert len(rows) == 1
+        assert rows[0]["stored_versions"] == 2
+        assert rows[0]["failed_rows_carried"] == ["acceptance:x"]
+        assert rows[0]["last_stored"].endswith("17:10:15")
+
+    def test_a_genuine_re_evaluation_is_not_named(self, driver, monkeypatch, tmp_path):
+        """The fix's shape: stored twice because it was RE-RUN — a new workspace revision
+        and a new evaluated_at. Reporting this would make the readout cry wolf on exactly
+        the behaviour #1318 asks for."""
+        rows = self._run(
+            driver,
+            monkeypatch,
+            tmp_path,
+            [
+                ("art_aaa", "2026-09-05 17:08:19", "17:08:18.97", "6b15b9aab690", ["acceptance:x"]),
+                ("art_bbb", "2026-09-05 17:10:15", "17:10:15.40", "d4a09957dfc7", []),
+            ],
+        )
+        assert rows == []
+
+    def test_a_single_stored_evaluation_is_not_named(self, driver, monkeypatch, tmp_path):
+        rows = self._run(
+            driver,
+            monkeypatch,
+            tmp_path,
+            [("art_aaa", "2026-09-05 17:08:19", "17:08:18.97", "6b15b9aab690", ["acceptance:x"])],
+        )
+        assert rows == []
+
+
 def _fake_psql(*, impl_runs: int, active: int, terminal_row: str = ""):
     """Script the three queries `ended_without_implementation` asks, by their subject.
 
