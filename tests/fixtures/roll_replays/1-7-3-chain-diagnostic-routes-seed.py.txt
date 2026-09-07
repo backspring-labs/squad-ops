@@ -1,0 +1,45 @@
+"""API route stubs — scaffold-owned signatures, fill-only bodies.
+
+Every endpoint the interface manifest declares is wired here with its
+correct path, method, and response model. Bodies raise 501 until filled;
+the app imports and boots regardless.
+
+The router takes NO prefix. The frontend calls /api/... and the proxy strips
+that prefix before the request reaches this app, so these paths are already
+the full backend paths. Adding prefix= to APIRouter puts every route behind a
+second /api and the app answers 404 to its own contract (pf-41).
+
+On failure raise ApiError(code, message) from .errors — codes: validation_error, run_not_found, participant_not_found, duplicate_participant.
+"""
+
+from fastapi import APIRouter, HTTPException
+from .models import ParticipantAction, Run, RunCreate, RunSummary
+from .errors import ApiError
+from .store import run_store, run_summary_store
+
+router = APIRouter()
+
+@router.post("/runs", response_model=Run, status_code=201)
+def post_runs(payload: RunCreate):
+    """create a run event — TODO: implement (scaffold stub)."""
+    raise HTTPException(status_code=501, detail="not implemented")
+
+@router.get("/runs", response_model=list[RunSummary])
+def get_runs():
+    """list upcoming runs — TODO: implement (scaffold stub)."""
+    raise HTTPException(status_code=501, detail="not implemented")
+
+@router.get("/runs/{run_id}", response_model=Run)
+def get_runs_run_id(run_id: str):
+    """view run details and participant list — TODO: implement (scaffold stub)."""
+    raise HTTPException(status_code=501, detail="not implemented")
+
+@router.post("/runs/{run_id}/join", response_model=Run, status_code=200)
+def post_runs_run_id_join(run_id: str, payload: ParticipantAction):
+    """join a run with a participant name — TODO: implement (scaffold stub)."""
+    raise HTTPException(status_code=501, detail="not implemented")
+
+@router.post("/runs/{run_id}/leave", response_model=Run, status_code=200)
+def post_runs_run_id_leave(run_id: str, payload: ParticipantAction):
+    """leave a run by participant name — TODO: implement (scaffold stub)."""
+    raise HTTPException(status_code=501, detail="not implemented")

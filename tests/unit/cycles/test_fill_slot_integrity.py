@@ -366,6 +366,135 @@ class TestRouterPrefixRestoration:
         assert "status_code=201" in corrected  # the #602 restoration still holds
 
 
+class TestRouterPrefixRestorationKeepsTheRegisteredRoutes:
+    """#1351: the prefix and the decorated paths are one statement of where the routes
+    live. ``cyc_375bdea6e140``'s dev emitted ``APIRouter(prefix="/runs")`` with
+    ``post("")`` and ``post("/{run_id}/join")`` — a coherent encoding of the scaffold's
+    own routes. Putting back the router line alone produced ``APIRouter()`` +
+    ``post("")``, which FastAPI refuses at ``include_router`` (``Prefix and path cannot
+    be both empty``): the app could not import, the qa suite failed at collection, the
+    boot audit failed, and the repair — the same idiom — was restored the same way. A
+    restore must never hand back a file that does not boot; the claim here is checked by
+    booting the file."""
+
+    SEED = (
+        '"""stub."""\n\nfrom fastapi import APIRouter\n\nrouter = APIRouter()\n\n\n'
+        '@router.post("/runs", status_code=201)\ndef create_run(payload: dict):\n    return {}\n\n\n'
+        '@router.post("/runs/{run_id}/join")\ndef join_run(run_id: str, payload: dict):\n'
+        "    return {}\n"
+    )
+    EMITTED = (
+        '"""impl."""\n\nfrom fastapi import APIRouter\n\n'
+        'router = APIRouter(prefix="/runs", tags=["runs"])\n\n\n'
+        '@router.post("", status_code=201)\ndef create_run(payload: dict):\n'
+        '    return {"id": 1}\n\n\n'
+        '@router.post("/{run_id}/join")\ndef join_run(run_id: str, payload: dict):\n'
+        '    return {"id": run_id}\n'
+    )
+
+    @staticmethod
+    def _registered_paths(source: str, stubs: dict | None = None) -> set[str]:
+        """What FastAPI registers when the file is imported — the boot itself."""
+        from fastapi import FastAPI
+
+        namespace: dict = dict(stubs or {})
+        exec(compile(source, "<routes>", "exec"), namespace)  # noqa: S102
+        app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+        app.include_router(namespace["router"])
+        return {r.path for r in app.routes if getattr(r, "methods", None)}
+
+    def test_the_prefixed_paths_are_re_homed_and_the_file_boots_with_the_same_routes(self):
+        corrected, divergences = restore_declared_status_codes(self.SEED, self.EMITTED)
+
+        assert "router = APIRouter()" in corrected
+        assert '@router.post("/runs", status_code=201)' in corrected
+        assert '@router.post("/runs/{run_id}/join")' in corrected
+        assert 'return {"id": 1}' in corrected  # bodies untouched
+        assert (
+            self._registered_paths(corrected)
+            == self._registered_paths(self.EMITTED)
+            == {"/runs", "/runs/{run_id}/join"}
+        )
+        (router_div,) = [d for d in divergences if d.path == "(router)"]
+        assert router_div.restored
+        assert "2 route path(s) re-homed" in router_div.detail
+
+    def test_the_amputated_shape_is_what_fastapi_refuses(self):
+        """The paired control: the file the old restore produced does not boot."""
+        from fastapi.exceptions import FastAPIError
+
+        amputated = self.EMITTED.replace('APIRouter(prefix="/runs", tags=["runs"])', "APIRouter()")
+        with pytest.raises(FastAPIError, match="Prefix and path cannot be both empty"):
+            self._registered_paths(amputated)
+
+    def test_full_paths_under_a_spurious_prefix_are_still_stripped_not_doubled(self):
+        """pf-41's shape is unchanged: the bare paths already match the scaffold, so the
+        prefix alone is the mistake and goes; nothing is re-homed."""
+        emitted = self.SEED.replace("APIRouter()", 'APIRouter(prefix="/api")')
+
+        corrected, divergences = restore_declared_status_codes(self.SEED, emitted)
+
+        assert "/api/runs" not in corrected
+        assert self._registered_paths(corrected) == {"/runs", "/runs/{run_id}/join"}
+        (router_div,) = [d for d in divergences if d.path == "(router)"]
+        assert router_div.restored
+        assert "re-homed" not in router_div.detail
+
+    def test_an_empty_path_under_a_prefix_that_matches_nothing_abandons_the_restore(self):
+        """Neither reading matches the scaffold and stripping would leave ``post("")`` on
+        a bare router: the producer's bytes boot, ours would not, so nothing is rewritten
+        and the record says why (the wrong routes are ``endpoint_defined``'s finding)."""
+        emitted = self.EMITTED.replace('prefix="/runs"', 'prefix="/api/v9"')
+
+        corrected, divergences = restore_declared_status_codes(self.SEED, emitted)
+
+        assert corrected == emitted
+        (router_div,) = [d for d in divergences if d.path == "(router)"]
+        assert not router_div.restored
+        assert "restore abandoned" in router_div.detail
+        assert self._registered_paths(corrected) == {"/api/v9", "/api/v9/{run_id}/join"}
+
+    def test_replays_the_real_1351_emission(self):
+        """The load-bearing case: the dev's actual repair emission from
+        ``cyc_375bdea6e140`` against the seeded ``routes.py``, pinned as fixtures. The
+        app's own modules are stubbed so the file can be booted here."""
+        import re
+        from pathlib import Path
+
+        from pydantic import BaseModel
+
+        fixtures = Path(__file__).resolve().parents[2] / "fixtures" / "roll_replays"
+        seed = (fixtures / "1-7-3-chain-diagnostic-routes-seed.py.txt").read_text()
+        emitted = (fixtures / "1-7-3-chain-diagnostic-routes-prefixed.py.txt").read_text()
+
+        corrected, divergences = restore_declared_status_codes(seed, emitted)
+
+        assert "router = APIRouter()" in corrected
+        assert '("")' not in corrected
+        assert "status_code=201" in corrected
+
+        class _Model(BaseModel):
+            pass
+
+        stubs = {name: _Model for name in ("Run", "RunSummary", "RunCreate", "ParticipantAction")}
+        stubs.update({"ApiError": Exception, "run_store": {}, "run_summary_store": {}})
+        without_app_imports = re.compile(r"^from \.\w+ import .*\n", re.M)
+        booted = self._registered_paths(without_app_imports.sub("", corrected), stubs)
+        declared = self._registered_paths(without_app_imports.sub("", seed), stubs)
+        assert (
+            booted
+            == declared
+            == {
+                "/runs",
+                "/runs/{run_id}",
+                "/runs/{run_id}/join",
+                "/runs/{run_id}/leave",
+            }
+        )
+        (router_div,) = [d for d in divergences if d.path == "(router)"]
+        assert "5 route path(s) re-homed" in router_div.detail
+
+
 class TestStatusCodeKeywordAlreadyPresent:
     """pf-44: the restorer must never append a keyword the decorator already carries.
 

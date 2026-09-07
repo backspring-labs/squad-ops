@@ -26,7 +26,10 @@ Scope — deliberately narrow, because the safe surface is smaller than the owne
 
 * **Restored:** ``status_code``. It is body-independent. Injecting it cannot break the
   producer's implementation, because nothing in a function body depends on the success
-  code its decorator declares.
+  code its decorator declares. And the router line (pf-41) — together with the decorated
+  paths when the producer encoded the resource prefix on the router (#1351), because the
+  two are one statement of where the routes live and restoring half of it produced a file
+  FastAPI refuses to load.
 * **Reported, not rewritten:** everything else — path, method, ``response_model``,
   function name, parameter names. Restoring those is *not* safe from here. The producer
   renamed ``payload`` to ``data`` and used it throughout its body; restoring the scaffold
@@ -316,6 +319,39 @@ def _router_assignment(source: str) -> tuple[str, int, int] | None:
     return None
 
 
+def _router_prefix(assignment_text: str) -> str | None:
+    """The literal ``prefix=`` of a ``router = APIRouter(...)`` statement, or None."""
+    try:
+        value = ast.parse(assignment_text).body[0].value  # type: ignore[attr-defined]
+    except (SyntaxError, IndexError, AttributeError):
+        return None
+    if not isinstance(value, ast.Call):
+        return None
+    for kw in value.keywords:
+        if kw.arg == "prefix" and isinstance(kw.value, ast.Constant):
+            return kw.value.value if isinstance(kw.value.value, str) else None
+    return None
+
+
+def _literal_route_paths(source: str) -> list[tuple[str, str, ast.Constant]]:
+    """``(method, path, the path's constant node)`` for every ``@router.<method>("…")``."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return []
+    out: list[tuple[str, str, ast.Constant]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+            continue
+        for dec in node.decorator_list:
+            path = _route_decorator_path(dec)
+            if path is None:
+                continue
+            assert isinstance(dec, ast.Call)  # guaranteed by _route_decorator_path
+            out.append((dec.func.attr, path, dec.args[0]))  # type: ignore[union-attr, arg-type]
+    return out
+
+
 def _restore_router_assignment(
     seed_source: str, emitted_source: str
 ) -> tuple[str, list[DecoratorDivergence]]:
@@ -332,8 +368,19 @@ def _restore_router_assignment(
     the agent never reads. So the fact is knowable, authoritative, and was simply never
     in front of it.
 
-    Restoring is safe for the same reason ``status_code`` is: the router's prefix decides
-    where routes register, never what a handler body references.
+    Restoring the router line is body-independent, like ``status_code``. It is **not**
+    route-independent (#1351): the prefix and the decorated paths are one statement of
+    where the routes live. ``cyc_375bdea6e140``'s dev emitted ``APIRouter(prefix="/runs")``
+    with ``@router.post("")`` and ``@router.post("/{run_id}/join")`` — a coherent encoding
+    of the scaffold's own routes — and putting back the router line alone produced
+    ``APIRouter()`` + ``post("")``, which FastAPI refuses at ``include_router``
+    (``Prefix and path cannot be both empty``): the app could not import, on the first
+    emission and on the repair. So the scaffold's routes decide which reading the producer
+    meant: when the prefixed paths match more of the scaffold's routes than the bare paths
+    do, every literal path is re-homed under the removed prefix and the registered routes
+    are unchanged; when the bare paths already match (pf-41), the prefix alone was the
+    mistake and goes. A restore that would leave an empty path on a bare router is
+    abandoned — the producer's bytes boot, ours would not — and the record says why.
     """
     want = _router_assignment(seed_source)
     got = _router_assignment(emitted_source)
@@ -344,18 +391,63 @@ def _restore_router_assignment(
     start, end = got[1] - 1, got[2]
     if start < 0 or end > len(lines):
         return emitted_source, []
+
+    declared = f"scaffold declares `{want[0].strip()}`, emitted as `{got[0].strip()}`"
+    prefix = _router_prefix(got[0])
+    rehomed: list[tuple[str, str]] = []
+    if prefix:
+        seed_keys = {_route_key(r.method, r.path) for r in _routes(seed_source)}
+        routes = _literal_route_paths(emitted_source)
+        bare = sum(1 for m, p, _ in routes if _route_key(m, p) in seed_keys)
+        prefixed = sum(1 for m, p, _ in routes if _route_key(m, prefix + p) in seed_keys)
+        if prefixed > bare:
+            splices: list[tuple[int, int, int, int, str]] = []
+            for _method, path, const in routes:
+                if const.end_lineno is None or const.end_col_offset is None:
+                    continue
+                splices.append(
+                    (
+                        const.lineno,
+                        const.col_offset,
+                        const.end_lineno,
+                        const.end_col_offset,
+                        f'"{prefix + path}"',
+                    )
+                )
+                rehomed.append((path, prefix + path))
+            emitted_source = _apply_splices(emitted_source, splices)
+            lines = emitted_source.splitlines(keepends=True)
+        elif any(path == "" for _method, path, _ in routes):
+            return emitted_source, [
+                DecoratorDivergence(
+                    method="-",
+                    path="(router)",
+                    detail=(
+                        f"{declared} — restore abandoned: a route path would be empty "
+                        "without the prefix, and the prefixed paths match no scaffold "
+                        "route; the producer's file boots, the restored one would not"
+                    ),
+                    restored=False,
+                )
+            ]
+
     newline = "\n" if not lines[end - 1].endswith("\n") else ""
     lines[start:end] = [want[0] + newline]
-    return "".join(lines), [
-        DecoratorDivergence(
-            method="-",
-            path="(router)",
-            detail=(
-                f"scaffold declares `{want[0].strip()}`, emitted as `{got[0].strip()}` — "
-                "a router prefix re-homes every route and the app 404s its own contract"
-            ),
-            restored=True,
+    if rehomed:
+        shown = ", ".join(f'"{was}" → "{now}"' for was, now in rehomed[:3])
+        if len(rehomed) > 3:
+            shown += ", …"
+        detail = (
+            f"{declared} — the producer encoded the resource prefix on the router; "
+            f"{len(rehomed)} route path(s) re-homed under it so the registered routes are "
+            f"unchanged ({shown})"
         )
+    else:
+        detail = (
+            f"{declared} — a router prefix re-homes every route and the app 404s its own contract"
+        )
+    return "".join(lines), [
+        DecoratorDivergence(method="-", path="(router)", detail=detail, restored=True)
     ]
 
 
