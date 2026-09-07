@@ -366,6 +366,13 @@ line-close sweep does not find them unplaced.
 
 ## 9. Revision history
 
+- **Rev 4 (2026-09-07, overnight)** — under the same delegation, extended by the owner to
+  "proceed all the way to running the cut roll set": **#1351 added as a fourteenth item** by
+  default decision (the owner may veto; a veto is one revert), instrument round 2's findings
+  (#1350, #1352 — fixed; #1351 — this item), the migration-1150 regression the integration
+  job caught (#1343's, fixed), and a mis-titled docs merge disclosed. Each is in the rev 4
+  section below.
+
 - **Rev 3 (2026-09-06)** — at the line's opening, under the owner's delegation of the whole
   line: the decisions that diverged from or filled in rev 2, recorded in §9 so the plan and
   the tree do not disagree — the checkpoint pair between the two blocks, instrument rounds
@@ -440,3 +447,42 @@ recorded here so the plan and the tree do not disagree, and each is the owner's 
 The scheduling count (§3.3) does not change: every item landed in the plan that scheduled
 it for the last time.
 
+## 9. Rev 4 — overnight (2026-09-07), under the delegation extended to the counted set
+
+The owner, going to bed, asked to "proceed all the way to running the cut roll set tonight"
+and to report in ET. What follows was decided or found overnight; each is recorded here so
+the plan and the tree do not disagree, and each is the owner's to overrule in the morning.
+
+- **#1351 is the fourteenth item, by default decision.** The chain diagnostic on deploy A″
+  (`cyc_375bdea6e140`) showed the fill-slot restore putting back the scaffold's router line
+  alone: the dev had encoded the resource prefix on the router (`APIRouter(prefix="/runs")`
+  + `@router.post("")`), and the restored file — `APIRouter()` + `post("")` — is one FastAPI
+  refuses to load. The app could not import, on the first emission and on the repair; the
+  restore was silent to the producer. Off the list of thirteen (behavioural, not a
+  boundary), but a known defect that produces a non-bootable app in the counted set's own
+  stack, one that would cost a §5.1 reset if it bit a counted roll, confined to one pure
+  module with tests, and landing before deploy C so the C shakeout pair covers it with no
+  extra deploy. The owner was told the default before bed and may veto it; the fix's PR
+  names this section. §3.3's count moves to fourteen.
+- **Instrument round 2 found two more instrument defects, both fixed before deploy B.**
+  #1352: the Python own-frame fault was a `NameError`, which the emission seam's
+  `undefined_names` check refused and the handler's self-eval removed before the suite ran
+  — L7 on a pytest suite had never been exercised (1.7.2's chain held L7 on its vitest
+  task). #1350: `_try_accept_patch` (#1323) enforced a repair's grants with the failed
+  task's envelope, so a dev repair of a qa failure was refused as a QA write to a dev slot;
+  the grants now follow the producer named on every repair artifact, and an unnamed repair
+  artifact is refused loudly. The pre-registration §2 carries both.
+- **Deploy B is `4a2cf724` plus #1347, #1350 and #1352 cherry-picked** — the structural
+  block with the instrument fixes and nothing behavioural — so the checkpoint still
+  isolates the two blocks. The React half of the checkpoint pair: accepted, boot PASS,
+  functional, zero correction rounds, no seam finding.
+- **The integration job on main was red from #1343's merge (21:22Z on 2026-09-06) and six
+  PRs merged past it.** Migration 1150 dropped a column from `agent_status`, a table only
+  `init.sql` creates; a database carrying just the migrations (CI) has no such table. Fixed
+  with `ALTER TABLE IF EXISTS` and a guard that a migration may only alter a table a
+  migration creates. The job is not a required check, and the merge rule read only the
+  required three — from here every merge is followed by a read of the whole run. The owner
+  noticed first.
+- **PR #1353 merged the pre-registration draft and set configs under the #1352 fix's
+  title** — opened from the wrong working directory. Retitled to what it merged; #1352
+  reopened and closed by its real PR (#1355). Nothing the deploy runs was affected.
