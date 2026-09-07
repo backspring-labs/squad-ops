@@ -1,0 +1,466 @@
+version: 1.7.3
+tag: v1.7.3
+previous_tag: v1.7.2
+date: '2026-09-07'
+commit: c5f67ba255bf7124099aece97d30b6d1ef69ca26
+narrative: '**Boundaries — the third patch line of 1.7.** Plan: `docs/plans/1-7-3-plan.md`
+  (rev 4). Record:
+
+  `docs/plans/1-7-3-verification-set-record.md`.
+
+
+  Validated by a pre-registered two-set verification run on frozen deploy `933aed95`
+  (HEAD pinned
+
+  at `dcf69d3e`), **zero code drift between the deploy and the tag** — `933aed95..dcf69d3e`
+  is the
+
+  pinned pre-registration under `docs/`, and the tag adds only the record and the
+  release commit.
+
+  FastAPI+React **5 of 6** functional (roll 1 rejected for the builder''s own omission
+  of the
+
+  handoff, #1312''s shape, declared before roll 1); Next.js+TS **3 of 3**. **The line''s
+  bar
+
+  held: 0 contentless qa first attempts across 163 emissions.** One counted roll was
+  void before
+
+  the set restarted (#1364, §0 of the record). Every diagnostic seam was reached on
+  the pinned
+
+  deploy''s predecessor (deploy C = D minus #1364), and the record says which.
+
+
+  ### The list — sixteen items, every one CI-verified
+
+
+  **Preconditions (4).** #1316 the regression gate runs all of `tests/unit` with a
+  reasoned
+
+  exclusion list and a coverage guard. #1311/#1330 L8 read as two claims and every
+  banked log line
+
+  the whole fact. #1310 fault scope — the absent-suite fault applies to every emission
+  attempt and
+
+  a diagnostic is read by the seam it reached. #1323 write grants enforced where the
+  executor admits
+
+  producer bytes into a tree it evaluates.
+
+
+  **The structural block (8).** #922 `capability_id` → `task_type`, `dev_capability`
+  →
+
+  `development_profile`, with a retired-spellings guard. #559 `TaskType` — strings
+  at the boundary,
+
+  constants at the core, properties over identity, tables over chains; a task-type
+  literal outside
+
+  the enum fails CI. #377 `RunStatus` is the run''s only status vocabulary inward
+  of the Prefect
+
+  adapter. #381 `TaskResult.status` is the enum, normalised at the wire; the enum-shadow
+  guard scans
+
+  `adapters/`. #1241 the dead ACI executor deleted. #154 the boundary guard covers
+  every package with
+
+  declared composition roots; the NoOp observability port is a domain null object;
+  the secrets
+
+  factory leaves the config loader. #218 `docs/architecture/api-route-lanes.md` —
+  three lanes, no
+
+  v2, enforced by a test that enumerates every registered router. #219 the chat routes
+  on `/api/v1`.
+
+
+  **The behavioural block (5).** #305 `network_status` retired — the heartbeat verdict
+  is computed,
+
+  never stored (migration 1150). #225 the comms agent is `joi`. #999 `fill_merge_evidence.json`
+
+  beside `test_report.md`. #1087/#1112 the store hands the qa author root tables only,
+  on both
+
+  stacks; projections by field containment.
+
+
+  **Added under the line''s delegation (3, plan rev 4 §9).** #1351 the router restore
+  re-homes the
+
+  route paths it strips a prefix from — half a statement was a file FastAPI refuses.
+  #1359
+
+  `assertion_kinds_match` reads a `typeof` assertion by its literal''s value — a correct
+  Next.js
+
+  suite had been refused every round. #1364 the accepted patch of a contentless builder
+  attempt
+
+  still gets its `required_files` row — the roll-up had read a booting app as `blocked_unverified`.
+
+
+  ### What the line found
+
+
+  Nothing attributable to the sixteen items. Seven defects in the harness and its
+  instrument, each
+
+  fixed on the line: #1347 the emission-retry marker rode every later dispatch; #1350
+  a repair''s
+
+  grants were the failed task''s, not the repairing step''s; #1352 the Python own-frame
+  fault was a
+
+  `NameError` the emission seam''s own check refused — L7 on a pytest suite had never
+  been exercised;
+
+  the driver''s L4 readout was wired to the #1129 exclusion, not the refund (#1362);
+  migration 1150
+
+  altered a table only `init.sql` creates, and main''s integration job was red for
+  six merges before
+
+  it was read (#1357, with a guard that a migration may only alter a table a migration
+  creates).
+
+
+  ### Instrument
+
+
+  The driver reads a diagnostic by the seam it reached (`seam_reached`), carries `refunded_rounds`,
+
+  `placeholder_strips`, `stored_under_placeholder`, `emission_tokens_by_handler` and
+
+  `fill_merge_evidence`; a driver-only fix re-renders a kept record from its stored
+  identity.'
+pull_requests:
+- number: 1368
+  title: 'chore(release): 1.7.3 — Boundaries'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-07'
+- number: 1367
+  title: 'docs(1.7.3): the verification set record — nine counted, eight functional,
+    L1 held, nothing attributable to the list'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-07'
+- number: 1366
+  title: 'docs(1.7.3): the pins move to deploy D (933aed95) after the void roll 1;
+    D''s pair clean on the exit rule'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-07'
+- number: 1365
+  title: 'fix(executor): the accepted patch of a contentless builder attempt still
+    gets its required_files row (#1364)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1364
+  merged_at: '2026-09-07'
+- number: 1363
+  title: 'docs(1.7.3): pre-registration §3 — the three diagnostics on the pinned deploy,
+    every seam reached; the L4 readout corrected and re-rendered'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-07'
+- number: 1362
+  title: 'fix(driver): L4 is read from the executor''s refund, not from the #1129
+    exclusion'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-07'
+- number: 1361
+  title: 'docs(1.7.3): the pre-registration, pinned — deploy C (23c6a0ae) is the frozen
+    deploy; the shakeout loop exited on its first pair'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-07'
+- number: 1360
+  title: 'fix(checks): assertion_kinds_match reads a typeof assertion by its literal''s
+    value — a correct Next.js suite was refused every round (#1359)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1359
+  merged_at: '2026-09-07'
+- number: 1358
+  title: 'fix(scaffold): the router restore re-homes the route paths it strips a prefix
+    from — half a statement is a file FastAPI refuses (#1351)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1351
+  merged_at: '2026-09-07'
+- number: 1357
+  title: 'fix(migrations): 1150 tolerates an absent agent_status — the table is init.sql''s,
+    not a migration''s'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-07'
+- number: 1356
+  title: 'docs(1.7.3): the #1087 loaded check runs on the runtime-api, not the builder
+    image; deploy B''s images recorded'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-07'
+- number: 1355
+  title: 'fix(fault-injection): the Python own-frame fault is an argument-binding
+    TypeError that passes the emission seam (#1352)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1352
+  merged_at: '2026-09-07'
+- number: 1354
+  title: 'fix(correction): a repair''s write grants are the repairing step''s, named
+    on every repair artifact (#1350)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1350
+  merged_at: '2026-09-07'
+- number: 1353
+  title: 'docs(1.7.3): the set configs and the pre-registration draft — pins blank
+    until the last shakeout (merged under the wrong title; see body)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-07'
+- number: 1349
+  title: 'docs(1.7.3): plan rev 3 — the decisions taken at the line''s opening under
+    delegation, recorded'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-06'
+- number: 1348
+  title: 'fix(executor): the emission-retry marker rides one dispatch — a correction
+    re-take is not an emission retry'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1347
+  merged_at: '2026-09-06'
+- number: 1346
+  title: 'fix(scaffold): the frozen store hands the qa author root tables only — shapes
+    and projections get none, on both stacks'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1087
+  - 1112
+  merged_at: '2026-09-06'
+- number: 1344
+  title: 'fix(config): the comms agent''s id is joi — the one agent whose id diverged
+    from its persona and service'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 225
+  merged_at: '2026-09-06'
+- number: 1345
+  title: 'fix(qa): the fill-merge evidence is persisted — an artifact beside test_report.md,
+    read by the record'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 999
+  merged_at: '2026-09-06'
+- number: 1343
+  title: 'refactor(health): network_status is retired — the heartbeat verdict is computed,
+    never stored; runtime_status is the only health source'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 305
+  merged_at: '2026-09-06'
+- number: 1342
+  title: 'refactor(api): the console messaging routes are on /api/v1 — moved in lockstep
+    through Caddy, the BFF and the plugin'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 219
+  merged_at: '2026-09-06'
+- number: 1341
+  title: 'docs(api): the runtime-api URL surface has an owning standard — lanes, no
+    v2, and a test that holds every route to it'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 218
+  merged_at: '2026-09-06'
+- number: 1340
+  title: 'refactor(boundary): adapters are imported only from the composition roots
+    — the guard covers every package'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 154
+  merged_at: '2026-09-06'
+- number: 1339
+  title: 'fix(adapters): delete the dead ACI executor — the capabilities adapter package
+    imports again'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1241
+  merged_at: '2026-09-06'
+- number: 1338
+  title: 'refactor: TaskResult.status is TaskResultStatus — one typed vocabulary,
+    normalized at the wire'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 381
+  merged_at: '2026-09-06'
+- number: 1337
+  title: 'refactor: RunStatus is the run''s only status vocabulary — Prefect''s state
+    is the adapter''s translation'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 377
+  merged_at: '2026-09-06'
+- number: 1336
+  title: 'refactor: task-type identifiers — strings at the boundary, constants at
+    the core, properties over identity'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 559
+  merged_at: '2026-09-06'
+- number: 1335
+  title: 'refactor: "capability" means bindable agent competence — the task type and
+    the development profile renamed for what they are'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 922
+  merged_at: '2026-09-06'
+- number: 1334
+  title: 'fix(driver): every emission''s tokens by handler — the qa-token texture
+    gets a producer'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-06'
+- number: 1333
+  title: 'fix(faults): a fault declares the scope of "once", and a diagnostic is read
+    by the seam it reached'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1310
+  merged_at: '2026-09-06'
+- number: 1332
+  title: 'fix(executor): a producer''s write grants are enforced where its bytes enter
+    a tree the loop evaluates'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1323
+  merged_at: '2026-09-06'
+- number: 1331
+  title: 'fix(driver): L8 read from the extractor''s strips, and every banked log
+    line is the fact, not a window'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1311
+  - 1330
+  merged_at: '2026-09-06'
+- number: 1329
+  title: 'fix(gate): the regression gate runs tests/unit whole — exclusions are named
+    with reasons'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1316
+  merged_at: '2026-09-06'
+- number: 1317
+  title: 'docs(1.7.3): the Boundaries release — the CI-verified list as the line''s
+    subject'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-06'
+- number: 1328
+  title: 'docs(release): capture the v1.7.2 release package'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-06'
+- number: 1328
+  title: 'docs(release): capture the v1.7.2 release package'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-06'
+sip_moves:
+- sip: SIP-0058-Capability-Contracts-Reference-Workloads
+  from: null
+  to: implemented
+- sip: SIP-0072-Stack-Aware-Development-Capabilities
+  from: null
+  to: implemented
+- sip: SIP-0085-Console-Messaging-Capability-for
+  from: null
+  to: implemented
+cycles:
+- cycle_id: cyc_4acd6ce64ca1
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:command_exit_zero
+  - acceptance:container_packaging
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:sections_present
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+screenshots: []
