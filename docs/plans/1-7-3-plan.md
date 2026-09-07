@@ -370,7 +370,7 @@ line-close sweep does not find them unplaced.
   "proceed all the way to running the cut roll set": **#1351 added as a fourteenth item** by
   default decision (the owner may veto; a veto is one revert), instrument round 2's findings
   (#1350, #1352 — fixed; #1351 — this item), **#1359 as a fifteenth item** from the deploy B
-  checkpoint pair, the migration-1150 regression the integration job caught (#1343's, fixed),
+  checkpoint pair, **#1364 as a sixteenth** from the void counted roll 1, the migration-1150 regression the integration job caught (#1343's, fixed),
   and a mis-titled docs merge disclosed. Each is in the rev 4
   section below.
 
@@ -493,6 +493,14 @@ the plan and the tree do not disagree, and each is the owner's to overrule in th
   correct. Not a list seam finding — the React half was clean and this is a typed check's
   reading — but a harness defect that fails the counted set's own stack, so it is fixed
   before deploy C. §3.3's count moves to fifteen.
+- **Counted roll 1 was void, and #1364 is the sixteenth item.** `cyc_af7dd4ad95b0` on the
+  pinned deploy C: the app booted and answered every probe, 18/18 criteria, zero failed
+  checks, verdict `blocked_unverified` — the builder's first emission was contentless, the
+  accepted repair supplied the files, and #1318's spine-row re-derivation ran only when the
+  failed attempt had carried a `required_files` row; an attempt that wrote nothing carried
+  nothing. The 1.7.2 precedent (record §0) applies: the roll is void, the fix lands, the
+  deploy is rebuilt, one shakeout pair runs to the exit rule, the pins move, and the set
+  restarts from roll 1. Not a list seam finding; the loop's own roll-up.
 - **PR #1353 merged the pre-registration draft and set configs under the #1352 fix's
   title** — opened from the wrong working directory. Retitled to what it merged; #1352
   reopened and closed by its real PR (#1355). Nothing the deploy runs was affected.

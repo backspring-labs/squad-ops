@@ -107,6 +107,15 @@ class TaskType(StrEnum):
         """The dotted prefix — the role family that owns the step."""
         return self.value.split(".", 1)[0]
 
+    @property
+    def emits_required_files(self) -> bool:
+        """The steps whose emission carries the framework's ``required_files`` spine row —
+        the builder's assembly and its repair (#291, #399). The row is theirs by contract,
+        not by whether a given attempt got far enough to write it: a contentless attempt
+        writes no rows, and the accepted patch still owes the row on the patched set
+        (#1364)."""
+        return self.domain == "builder"
+
 
 def _member_or_none(value: object) -> TaskType | None:
     try:
@@ -133,6 +142,12 @@ def fails_without_correction(task_type: object) -> bool:
     """``TaskType.fails_without_correction`` for a value that may be a raw string."""
     member = _member_or_none(task_type)
     return bool(member and member.fails_without_correction)
+
+
+def emits_required_files(task_type: object) -> bool:
+    """``TaskType.emits_required_files`` for a value that may be a raw string."""
+    member = _member_or_none(task_type)
+    return bool(member and member.emits_required_files)
 
 
 def task_type_of(value: str) -> TaskType:
