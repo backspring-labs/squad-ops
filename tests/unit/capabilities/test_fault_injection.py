@@ -314,6 +314,64 @@ class TestTheDeclarationSurvivesTheWireItArrivesOn:
         assert declared_faults({DECLARATION_KEY: "qa_suite_absent"}) == ("qa_suite_absent",)
 
 
+class TestThePythonFaultSurvivesTheEmissionSeamAndDiesAtItsOwnFrame:
+    """#1352: the pytest shape must pass the emission seam's static checks — a name the
+    module never binds is exactly what ``undefined_names`` (#689) refuses, and the handler's
+    self-eval then removed the fault before the suite ever ran (``cyc_375bdea6e140``) — and
+    it must still fail at the suite's own frame with a shape ``_OWN_FRAME_SHAPES["pytest"]``
+    declares. Both halves, or the fault reaches no seam and the record says so."""
+
+    _SUITE = "```python:tests/test_runs.py\ndef test_creates_a_run():\n    assert True\n```\n"
+
+    def _injected_module(self) -> str:
+        out = _inject(self._SUITE, "task-run_x-m004-qa.test", ["qa_suite_own_frame_failure"])
+        assert out != self._SUITE, "the fault did not bite the pytest suite"
+        return out.split("```python:tests/test_runs.py\n", 1)[1].split("```", 1)[0]
+
+    async def test_the_injected_suite_passes_the_undefined_names_check_the_seam_runs(
+        self, tmp_path
+    ):
+        """Bug caught: the NameError shape. The framework's own check, on the injected file."""
+        from squadops.cycles.acceptance_checks import UndefinedNamesCheck
+
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_runs.py").write_text(self._injected_module())
+        outcome = await UndefinedNamesCheck().evaluate({"file": "tests/test_runs.py"}, tmp_path)
+        assert outcome.status == "passed", outcome
+        # The paired control — the shape this replaced — is exactly what the check refuses.
+        (tmp_path / "tests" / "test_runs.py").write_text(
+            "def test_creates_a_run():\n    __squadops_injected_fault__()\n"
+        )
+        refused = await UndefinedNamesCheck().evaluate({"file": "tests/test_runs.py"}, tmp_path)
+        assert refused.status == "failed"
+        assert "__squadops_injected_fault__" in refused.reason
+
+    def test_the_injected_case_raises_the_declared_own_frame_shape_at_its_own_frame(self, tmp_path):
+        """Bug caught: a static-clean fault that dies in a callee's frame, or in a shape the
+        runner does not declare — routed to the dev chain, L7 unexercised again."""
+        import traceback
+
+        from squadops.capabilities.handlers.test_runner import suite_defects
+
+        path = tmp_path / "test_runs.py"
+        path.write_text(self._injected_module())
+        namespace: dict = {}
+        exec(compile(path.read_text(), str(path), "exec"), namespace)  # noqa: S102
+        with pytest.raises(TypeError) as excinfo:
+            namespace["test_creates_a_run"]()
+        innermost = traceback.extract_tb(excinfo.value.__traceback__)[-1]
+        assert innermost.filename == str(path)
+        assert "__squadops_injected_fault__" in str(excinfo.value)
+        row = {
+            "file": str(path),
+            "title": "creates a run",
+            "exception": "TypeError",
+            "messages": [str(excinfo.value)],
+            "frames": [{"file": str(path), "line": innermost.lineno}],
+        }
+        assert len(suite_defects([row], [], "pytest")) == 1
+
+
 def test_the_drivers_fault_normaliser_agrees_with_the_frameworks():
     """The driver keeps its own copy on purpose — it must refuse a counting roll even
     against a deploy whose framework predates this module (`driver:76-78`) — so the two are
@@ -458,33 +516,20 @@ class TestTheOwnFrameFaultReadsTheEmissionsLanguage:
     prediction is exercised must not depend on what the planner scheduled.
     """
 
-    def test_a_python_suite_takes_a_name_error_in_its_own_first_case(self):
+    def test_a_python_suite_takes_an_argument_binding_error_in_its_own_first_case(self):
+        """#1352: a keyword the callee does not take — not a name the module never binds,
+        which the emission seam's ``undefined_names`` check refuses before the suite runs
+        (``TestThePythonFaultSurvivesTheEmissionSeamAndDiesAtItsOwnFrame`` executes it)."""
         out = _inject(
             _EMISSIONS["a pytest suite"], "task-run_x-m005-qa.test", ["qa_suite_own_frame_failure"]
         )
-        assert "__squadops_injected_fault__()" in out
+        assert "textwrap.dedent(__squadops_injected_fault__=True)" in out
         assert "def test_leave_run_happy_path(client):" in out, "the signature is untouched"
-        # inside the body, not at module level — a module-level NameError is a collection
+        # inside the body, not at module level — a module-level error is a collection
         # error, which is a different shape and routes differently
         body = out.split("def test_leave_run_happy_path(client):", 1)[1]
-        injected = body.index("__squadops_injected_fault__()")
+        injected = body.index("textwrap.dedent(")
         assert body[:injected].rsplit("\n", 1)[-1] == "    "
-
-    def test_the_python_injection_is_the_pytest_own_frame_shape(self):
-        """It must be a shape `_OWN_FRAME_SHAPES['pytest']` declares, or the diagnostic
-        exercises the dev chain instead of the routing it claims to."""
-        from squadops.capabilities.handlers.test_runner import suite_defects
-
-        rows = [
-            {
-                "file": "backend/tests/test_runs.py",
-                "title": "test_leave_run_happy_path",
-                "exception": "NameError",
-                "messages": ["NameError: name '__squadops_injected_fault__' is not defined"],
-                "frames": [{"file": "backend/tests/test_runs.py", "line": 8}],
-            }
-        ]
-        assert len(suite_defects(rows, [], "pytest")) == 1
 
     def test_a_javascript_suite_still_takes_the_javascript_shape(self):
         out = _inject(
