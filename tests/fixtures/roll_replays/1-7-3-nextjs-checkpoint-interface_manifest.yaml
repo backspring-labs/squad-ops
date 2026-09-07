@@ -1,0 +1,159 @@
+version: 1
+kind: interface_manifest
+project_id: group-run
+source_prd: "PRD: group_run (1-Hour Cycle MVP+) v0.5"
+stack: nextjs_ts
+scope: "Full-stack MVP for group run coordination: create, list, detail runs; join and leave by participant name with duplicate prevention. Excludes authentication, persistent storage, realtime updates, and all external integrations."
+entities:
+  - name: Run
+    fields:
+      - { name: id, type: string, required: true, generated: true }
+      - { name: title, type: string, required: true }
+      - { name: datetime, type: string, required: true }
+      - { name: meeting_location, type: string, required: true }
+      - { name: distance, type: string, required: false }
+      - { name: pace_target, type: string, required: false }
+      - { name: route_notes, type: string, required: false }
+      - { name: participants, type: "list[Participant]", required: true, default: [] }
+      - { name: created_at, type: string, required: true, generated: true }
+  - name: Participant
+    fields:
+      - { name: name, type: string, required: true }
+      - { name: joined_at, type: string, required: true, generated: true }
+  - name: RunSummary
+    fields:
+      - { name: id, type: string, required: true }
+      - { name: title, type: string, required: true }
+      - { name: datetime, type: string, required: true }
+      - { name: meeting_location, type: string, required: true }
+      - { name: participant_count, type: integer, required: true }
+api:
+  base_path: ""
+  request_shapes:
+    CreateRunInput:
+      required: [title, datetime, meeting_location]
+      optional: [distance, pace_target, route_notes]
+    JoinInput:
+      required: [name]
+    LeaveInput:
+      required: [name]
+  endpoints:
+    - method: POST
+      path: /api/runs
+      summary: "Create a new run event"
+      request: CreateRunInput
+      response: Run
+      success_status: 201
+      errors: [validation_error]
+    - method: GET
+      path: /api/runs
+      summary: "List all runs with participant counts"
+      response: "list[RunSummary]"
+    - method: GET
+      path: "/api/runs/{run_id}"
+      summary: "Get full run detail including participant list"
+      response: Run
+      errors: [run_not_found]
+    - method: POST
+      path: "/api/runs/{run_id}/participants"
+      summary: "Join a run with a participant name"
+      request: JoinInput
+      response: Participant
+      success_status: 201
+      errors: [validation_error, run_not_found, participant_already_exists]
+    - method: POST
+      path: "/api/runs/{run_id}/participants/leave"
+      summary: "Remove a participant from a run by name"
+      request: LeaveInput
+      success_status: 200
+      errors: [validation_error, run_not_found, participant_not_found]
+  error_contract:
+    shape: '{"error": {"code": "...", "message": "..."}}'
+    codes:
+      validation_error: { http: 400 }
+      run_not_found: { http: 404 }
+      participant_already_exists: { http: 409 }
+      participant_not_found: { http: 404 }
+frontend:
+  framework: nextjs_app_router
+  routes:
+    - path: /
+      view: RunsListView
+      purpose: "List upcoming runs with title, datetime, location, and participant count; provide CTA to create a new run"
+      testids:
+        - runs-list-view
+        - run-list
+        - run-row
+        - run-row-title
+        - run-row-datetime
+        - run-row-location
+        - run-row-participant-count
+        - create-run-link
+    - path: /runs/new
+      view: CreateRunView
+      purpose: "Form to create a run event with required fields (title, datetime, meeting location) and optional fields (distance, pace target, route notes)"
+      testids:
+        - create-run-view
+        - create-run-form
+        - field-title
+        - field-datetime
+        - field-meeting-location
+        - field-distance
+        - field-pace-target
+        - field-route-notes
+        - create-run-submit
+        - form-error
+    - path: "/runs/{run_id}"
+      view: RunDetailView
+      purpose: "Display run details, participant list, and inline join/leave forms with error feedback"
+      testids:
+        - run-detail-view
+        - run-title
+        - run-datetime
+        - run-meeting-location
+        - run-distance
+        - run-pace-target
+        - run-route-notes
+        - participant-list
+        - participant-name
+        - join-form
+        - join-name-input
+        - join-submit
+        - join-error
+        - leave-form
+        - leave-name-input
+        - leave-submit
+        - leave-error
+persistence: in_memory
+decisions:
+  - id: join-returns-201
+    choice: "POST /api/runs/{run_id}/participants returns 201 — the join creates a new participant resource"
+    warrant: "PRD §5.4 treats the joined participant as a created resource ('Joined participant appears in participant list immediately'); objective frame D4 and technical design §2.2 both specify 201 for participant creation"
+  - id: case-insensitive-participant-uniqueness
+    choice: "Duplicate detection on join compares names case-insensitively; the original submitted casing is preserved for display"
+    warrant: "PRD §5.4 — 'default recommendation: case-insensitive uniqueness'"
+  - id: leave-404-for-unknown-participant
+    choice: "POST /api/runs/{run_id}/participants/leave returns 404 (code participant_not_found) when the name is not on the run, rather than a silent 200 no-op"
+    warrant: "PRD §5.5 permits either behavior; chose 404 to give the UI a distinct error path (objective frame D3; technical design U6)"
+  - id: leave-endpoint-uses-post
+    choice: "Leave is POST /api/runs/{run_id}/participants/leave with a JSON body, not DELETE with a body"
+    warrant: "Objective frame D3 — DELETE with a body is non-standard and stripped by some proxies; POST-leave is unambiguous and testable via fetch"
+  - id: list-ordering
+    unresolved: true
+    question: "PRD §4.1 Tier-1 item 2 lists 'basic datetime sorting' as an optional expansion, but the core spec does not mandate an ordering for GET /api/runs. Should the default be insertion order (FIFO) or datetime ascending?"
+
+provenance:
+  mode: authored
+  cycle_id: cyc_c75e87867783
+  task_id: task-run_89fa7c51-003-development.author_manifest
+  attempts: 2
+  revisions:
+  - attempt: 1
+    classes:
+      authoring_defect: 2
+      derivation_defect: 1
+      prd_insufficiency: 1
+    proofs:
+    - contract_derives
+    - expands
+    - status_warranted

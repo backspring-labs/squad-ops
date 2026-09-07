@@ -369,8 +369,9 @@ line-close sweep does not find them unplaced.
 - **Rev 4 (2026-09-07, overnight)** — under the same delegation, extended by the owner to
   "proceed all the way to running the cut roll set": **#1351 added as a fourteenth item** by
   default decision (the owner may veto; a veto is one revert), instrument round 2's findings
-  (#1350, #1352 — fixed; #1351 — this item), the migration-1150 regression the integration
-  job caught (#1343's, fixed), and a mis-titled docs merge disclosed. Each is in the rev 4
+  (#1350, #1352 — fixed; #1351 — this item), **#1359 as a fifteenth item** from the deploy B
+  checkpoint pair, the migration-1150 regression the integration job caught (#1343's, fixed),
+  and a mis-titled docs merge disclosed. Each is in the rev 4
   section below.
 
 - **Rev 3 (2026-09-06)** — at the line's opening, under the owner's delegation of the whole
@@ -483,6 +484,15 @@ the plan and the tree do not disagree, and each is the owner's to overrule in th
   migration creates. The job is not a required check, and the merge rule read only the
   required three — from here every merge is followed by a read of the whole run. The owner
   noticed first.
+- **#1359 is the fifteenth item, by the same default decision as #1351.** The Next.js half of
+  the checkpoint pair on deploy B (`cyc_c75e87867783`) was rejected with the app booting and
+  answering every probe: three qa repairs refused on `assertion_kinds_match`, which read
+  `expect(typeof body[0].participant_count).toBe('number')` as "asserted as string" — the
+  literal's own kind, the `typeof` never looked at. Pre-existing (#1153's code, untouched by
+  the list); 1.7.2 Next.js roll 2 took the same refusal twice and its record called it
+  correct. Not a list seam finding — the React half was clean and this is a typed check's
+  reading — but a harness defect that fails the counted set's own stack, so it is fixed
+  before deploy C. §3.3's count moves to fifteen.
 - **PR #1353 merged the pre-registration draft and set configs under the #1352 fix's
   title** — opened from the wrong working directory. Retitled to what it merged; #1352
   reopened and closed by its real PR (#1355). Nothing the deploy runs was affected.

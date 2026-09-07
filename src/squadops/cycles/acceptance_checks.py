@@ -1090,9 +1090,30 @@ def _js_literal_kind(literal: str) -> str | None:
     return None
 
 
+#: What a ``typeof`` assertion's literal says about the field. ``'object'`` covers arrays,
+#: objects and ``null`` alike and ``'undefined'`` says nothing about a kind — neither is
+#: decidable against a declaration, so neither is read.
+_JS_TYPEOF_KINDS = {"number": _KIND_NUMBER, "string": _KIND_STRING, "boolean": _KIND_BOOLEAN}
+_JS_TYPEOF = re.compile(r"^typeof\s*\(?\s*(?P<operand>.+?)\s*\)?$", re.S)
+
+
+def _js_typeof_kind(literal: str) -> str | None:
+    """The kind ``expect(typeof x).toBe(<literal>)`` asserts — the literal's VALUE in the
+    ``typeof`` vocabulary, never the literal's own kind. Read as a plain literal, ``'number'``
+    is a string, and the 1.7.3 Next.js checkpoint (``cyc_c75e87867783``) refused a correct
+    suite's ``expect(typeof body[0].participant_count).toBe('number')`` thirteen times as
+    "participant_count asserted as string"; 1.7.2 Next.js roll 2 had taken the same refusal
+    twice and the record called it correct."""
+    if len(literal) >= 2 and literal[0] in "'\"`" and literal[-1] == literal[0]:
+        return _JS_TYPEOF_KINDS.get(literal[1:-1])
+    return None
+
+
 def assertion_literal_kinds_js(source: str) -> list[tuple[str, str, int]]:
     """Every ``expect(<...>.field).toBe(<literal>)`` / ``toEqual`` / ``toStrictEqual``, as
-    ``(field, literal kind, line)``. A ``.not.`` before the matcher is skipped."""
+    ``(field, literal kind, line)``. A ``.not.`` before the matcher is skipped. An
+    ``expect(typeof <...>.field)`` asserts the literal's value as the kind
+    (``_js_typeof_kind``), not the literal's own kind."""
     out: list[tuple[str, str, int]] = []
     for m in _JS_MATCHER.finditer(source):
         head = source[: m.start()].rstrip()
@@ -1109,14 +1130,19 @@ def assertion_literal_kinds_js(source: str) -> list[tuple[str, str, int]]:
             i -= 1
         if i < 0 or not head[:i].rstrip().endswith("expect"):
             continue
-        tail = _JS_FIELD_TAIL.search(head[i + 1 : -1].strip())
+        subject = head[i + 1 : -1].strip()
+        typeof = _JS_TYPEOF.match(subject)
+        if typeof:
+            subject = typeof.group("operand")
+        tail = _JS_FIELD_TAIL.search(subject)
         if not tail:
             continue
         depth, j = 1, m.end()
         while j < len(source) and depth:
             depth += {"(": 1, ")": -1}.get(source[j], 0)
             j += 1
-        kind = _js_literal_kind(source[m.end() : j - 1].strip())
+        literal = source[m.end() : j - 1].strip()
+        kind = _js_typeof_kind(literal) if typeof else _js_literal_kind(literal)
         if kind:
             out.append((tail.group(1) or tail.group(2), kind, source.count("\n", 0, m.start()) + 1))
     return out

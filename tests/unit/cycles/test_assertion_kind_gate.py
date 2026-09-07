@@ -106,6 +106,27 @@ class TestTheJsExtractor:
             ("ok", "boolean", 6),
         ]
 
+    def test_a_typeof_assertion_asserts_the_literals_value_not_its_own_kind(self):
+        """Bug caught (#1359): ``expect(typeof body[0].participant_count).toBe('number')``
+        read as "participant_count asserted as string" — the literal is a string, the
+        ``typeof`` in front was never looked at. The 1.7.3 Next.js checkpoint refused a
+        correct suite thirteen times on it; 1.7.2 roll 2 had taken two of the same."""
+        source = (
+            "expect(typeof body[0].participant_count).toBe('number')\n"
+            "expect(typeof body.id).toBe('string')\n"
+            'expect(typeof data["ok"]).toBe("boolean")\n'
+            "expect(typeof(body.title)).toBe('string')\n"
+            "expect(typeof body.participants).toBe('object')\n"
+            "expect(typeof body.distance).toBe('undefined')\n"
+            "expect(typeof body.id).not.toBe('number')\n"
+        )
+        assert assertion_literal_kinds_js(source) == [
+            ("participant_count", "number", 1),
+            ("id", "string", 2),
+            ("ok", "boolean", 3),
+            ("title", "string", 4),
+        ]
+
     def test_negation_names_and_null_are_out_of_scope(self):
         source = (
             "expect(body.removed).not.toBe('Carol')\n"
@@ -271,6 +292,38 @@ class TestReplays:
         )
         assert outcome.status == "passed"
         assert outcome.actual["assertions_read"] > 0
+
+
+class TestTheNextjsCheckpointReplay:
+    """#1359: the suite the 1.7.3 Next.js checkpoint (``cyc_c75e87867783``) refused three
+    rounds running, under the kinds its own manifest declares — it passes. The control: the
+    same suite with one ``typeof … toBe('string')`` on the numeric field fails naming the
+    field, the line and the kind, so the gate still catches what it exists for."""
+
+    SUITE = "1-7-3-nextjs-checkpoint-runs.test.ts"
+    RIGHT = "expect(typeof body[0].participant_count).toBe('number')"
+
+    async def test_the_refused_suite_passes_under_its_own_manifest(self, tmp_path):
+        outcome = await _evaluate(
+            tmp_path,
+            "__tests__/runs.test.ts",
+            (_REPLAYS / self.SUITE).read_text(),
+            _kinds("1-7-3-nextjs-checkpoint"),
+        )
+        assert outcome.status == "passed", outcome
+        assert outcome.actual["assertions_read"] >= 10
+
+    async def test_a_typeof_string_on_the_numeric_field_still_fails_naming_it(self, tmp_path):
+        source = (_REPLAYS / self.SUITE).read_text()
+        wrong = source.replace(self.RIGHT, self.RIGHT.replace("'number'", "'string'"), 1)
+        assert wrong != source
+        outcome = await _evaluate(
+            tmp_path, "__tests__/runs.test.ts", wrong, _kinds("1-7-3-nextjs-checkpoint")
+        )
+        assert outcome.status == "failed"
+        assert outcome.actual["contradictions"] == [
+            {"line": 97, "field": "participant_count", "asserted": "string", "declared": "number"}
+        ]
 
 
 class TestDomAnchorInjection:
