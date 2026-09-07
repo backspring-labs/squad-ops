@@ -108,8 +108,10 @@ diagnostic is never a roll**, and since #1310 **a diagnostic is read by the seam
 | **L6** (#788) | unlikely | no honest fault; read from a stored repair brief if a roll produces one, else recorded unexercised | — |
 | **L7** (#1270) | unlikely | the chained diagnostic; read from `qa_owned_routed` | **EXERCISED, HELD on the pinned deploy — on a pytest suite for the first time** — `cyc_6258b632e198` (deploy C, 2026-09-07 07:52Z): the #1352 fault (an argument-binding `TypeError` at `test_create_run:23`) reached execution, `correction_repair_locus: own_artifact — qa_owned_routed`, the repair went to `qa.test_repair`; `seam_reached.qa_suite_own_frame_failure: true`. On A″ the fault had never reached execution (#1352). |
 | **L8a** (#1272, the model) | yes — every counted roll | `placeholder_strips` on every roll: the model emitted under the placeholder if the count is non-zero | — |
-| **L8b** (#1272, the extractor) | unlikely | `1-7-3-diagnostic-path-prefix`; read from `stored_under_placeholder` (must be empty) beside `placeholder_strips` (must be non-zero — the fault bit) | — |
+| **L8b** (#1272, the extractor) | unlikely | `1-7-3-diagnostic-path-prefix`; read from `stored_under_placeholder` (must be empty) beside `placeholder_strips` (must be non-zero — the fault bit) | **EXERCISED, HELD** — `cyc_82e1bd587051` (deploy C, 2026-09-07 08:48Z): the fault bit twice (`placeholder_strips`: `path/backend/tests/test_runs.py` → `backend/tests/test_runs.py`, `path/frontend/src/__tests__/runs.test.jsx` → `frontend/src/__tests__/runs.test.jsx`) and `stored_under_placeholder` is **empty**; accepted, boot PASS, functional, zero correction rounds. |
 | **B1** (#1087/#1112) | yes — every counted roll with a qa fill | read from the stored qa suites against the manifest's root-persisted entities: no fixture table for a non-root entity | — |
+
+**All three diagnostics ran on the pinned deploy C before roll 1 and every seam they name was reached:** L2 (`cyc_508def6d810f`), L7 → L4 → L5 (`cyc_6258b632e198`, L4 on the re-rendered record), L8b (`cyc_82e1bd587051`). L1, L3, L6, L8a and B1 are read on the counted rolls.
 
 **The chained diagnostic — one cycle, three predictions** (L7 → L4 → L5), as in 1.7.2 §3,
 declared `fault_injection: [qa_suite_own_frame_failure, repair_prose_only]`. If the refund
