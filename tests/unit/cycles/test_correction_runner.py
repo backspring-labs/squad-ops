@@ -1879,7 +1879,16 @@ class TestCorrectionRunnerStandalone:
         )
 
         assert protocol_result.correction_path == "patch"
-        assert protocol_result.repair_artifacts == [repaired]
+        # #1350: the artifact names the step that emitted it — the verifier and the re-store
+        # judge it by THAT step's grants, never the failed task's (a dev repair of a qa
+        # failure was refused as a QA write to a dev slot, `cyc_375bdea6e140`).
+        assert protocol_result.repair_artifacts == [
+            {
+                **repaired,
+                "producer_task_id": "repair-run_001-00-builder.assemble_repair",
+                "producer_task_type": "builder.assemble_repair",
+            }
+        ]
 
     async def test_repair_envelope_threads_resolved_config_from_failed_task(self, cycle):
         """pf-30 regression: the repair handler's scaffold fill-only appendix

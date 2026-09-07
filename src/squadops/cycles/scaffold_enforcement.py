@@ -11,11 +11,53 @@ and decide what to do with the enforced artifact list.
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 from typing import Any
 
 from squadops.cycles.scaffold_integrity_evidence import STAGE_ARTIFACT_STORAGE
 
 logger = logging.getLogger(__name__)
+
+#: The keys a repair artifact carries to name the step that emitted it (#1350) — the same
+#: names the pf-31 emission-integrity payload and every evidence record use for a producer.
+PRODUCER_TASK_ID_KEY = "producer_task_id"
+PRODUCER_TASK_TYPE_KEY = "producer_task_type"
+
+
+@dataclass(frozen=True)
+class NamedProducer:
+    """The producer an artifact names for itself — the identity its write grants derive from,
+    in place of the envelope it happens to ride (#1350)."""
+
+    task_id: str
+    task_type: str
+
+
+def named_producer(art: Mapping[str, Any]) -> NamedProducer | None:
+    """The producer ``art`` names, or None when it is judged as the envelope's own emission.
+
+    A repair step's artifacts reach the verifier and the re-store on the FAILED task's
+    envelope, and the repairing role can differ from the failed one (``repair_steps_for``
+    routes a qa failure at the app to dev). Judged under the failed task's grants, a dev
+    repair of a dev slot read as a QA write to another producer's slot and was dropped
+    before verification (``cyc_375bdea6e140``, #1350). So the grants follow the producer
+    that emitted the bytes: an artifact naming its producer is judged as that producer's.
+    """
+    task_id = art.get(PRODUCER_TASK_ID_KEY)
+    task_type = art.get(PRODUCER_TASK_TYPE_KEY)
+    if isinstance(task_id, str) and task_id and isinstance(task_type, str) and task_type:
+        return NamedProducer(task_id=task_id, task_type=task_type)
+    return None
+
+
+def name_producer(artifacts: Iterable[Mapping[str, Any]], envelope: Any) -> list[dict[str, Any]]:
+    """Copies of ``artifacts`` naming ``envelope``'s task as their producer (#1350)."""
+    return [
+        {**art, PRODUCER_TASK_ID_KEY: envelope.task_id, PRODUCER_TASK_TYPE_KEY: envelope.task_type}
+        for art in artifacts
+    ]
+
 
 # Per-artifact enforcement dispositions (internal protocol; named so comparison
 # sites never carry raw literals that shadow unrelated enums — #380/#559).
@@ -231,7 +273,14 @@ def enforce_frozen_ownership(
     frozen = {n for fa in bound_record.frozen if (n := normalize_ws_path(fa.path)) is not None}
     shells = _shell_map(bound_record)
     shell_verdicts: dict[int, tuple[str, str]] = {}
-    qa_authz, builder_authz = _producer_grants(envelope, bound_record)
+    # #1350: the grants follow the producer that emitted the bytes — an artifact naming its
+    # producer (a repair step's emission riding the failed task's envelope) is judged as that
+    # producer's; every other artifact is the envelope's own. Frozen paths bind everyone.
+    producers = [named_producer(art) or envelope for art in artifacts]
+    grants_by_task_type: dict[str, tuple[Any, Any]] = {}
+    for producer in producers:
+        if producer.task_type not in grants_by_task_type:
+            grants_by_task_type[producer.task_type] = _producer_grants(producer, bound_record)
 
     # Classify first so each evidence record can report how many sibling artifacts in the SAME
     # response were left untouched (per-artifact disposition — restore/drop keep the rest; a
@@ -249,24 +298,24 @@ def enforce_frozen_ownership(
             frozen=frozen,
             shells=shells,
             shell_verdicts=shell_verdicts,
-            qa_authz=qa_authz,
-            builder_authz=builder_authz,
+            qa_authz=grants_by_task_type[producer.task_type][0],
+            builder_authz=grants_by_task_type[producer.task_type][1],
         )
-        for index, (art, norm) in enumerate(zip(artifacts, norms, strict=True))
+        for index, (art, norm, producer) in enumerate(zip(artifacts, norms, producers, strict=True))
     ]
     siblings_retained = sum(1 for d in dispositions if d == _DISP_PASS)
 
     enforced: list[dict] = []
     evidence: list[Any] = []
-    for index, (art, norm, disposition) in enumerate(
-        zip(artifacts, norms, dispositions, strict=True)
+    for index, (art, norm, disposition, producer) in enumerate(
+        zip(artifacts, norms, dispositions, producers, strict=True)
     ):
         record_evidence = _drop_evidence(
             index,
             art,
             norm,
             disposition,
-            envelope=envelope,
+            envelope=producer,
             bound_record=bound_record,
             shells=shells,
             shell_verdicts=shell_verdicts,
@@ -276,7 +325,7 @@ def enforce_frozen_ownership(
         if record_evidence is not None:
             evidence.append(record_evidence)
         else:
-            enforced.append(_restore_fill_slot_ownership(art, norm, bound_record, envelope))
+            enforced.append(_restore_fill_slot_ownership(art, norm, bound_record, producer))
     return enforced, evidence
 
 
