@@ -82,7 +82,16 @@ def _prefix_paths_with_path_segment(content: str) -> str:
 #: Inserted into the first case when the import swap has nothing to swap. Named so a reader
 #: of a failing suite finds this module rather than hunting a real defect.
 _INJECTED_CALL_JS = "  expect.__squadops_injected_fault__();  // #1251 injected fault"
-_INJECTED_CALL_PY = "__squadops_injected_fault__()  # #1251 injected fault"
+#: The Python shape is an argument-binding ``TypeError`` (the 1.6.5 roll 3 case), NOT a
+#: ``NameError``: a name the module never binds is exactly what the emission seam's
+#: ``undefined_names`` check (#689) refuses before the suite ever runs, so the earlier bare
+#: call was removed by the handler's self-eval and reached no seam at all (#1352). A keyword
+#: no Python-defined callee takes is static-clean, raises at the CALL SITE (no callee frame
+#: exists yet), names a callee no application defines, and still carries the marker.
+_INJECTED_CALL_PY = (
+    "import textwrap  # #1251 injected fault",
+    "textwrap.dedent(__squadops_injected_fault__=True)  # #1251 injected fault",
+)
 
 _FIRST_CASE_BODY_JS = re.compile(
     r"^(?P<indent>[ \t]*)(?:it|test)\s*\(\s*(?P<quote>['\"`]).*?(?P=quote)\s*,"
@@ -109,17 +118,19 @@ def _inject_js_own_frame_call(content: str) -> str:
 
 
 def _inject_py_own_frame_call(content: str) -> str:
-    """A call to a name the module never binds, inside the first ``test_`` function.
+    """A call with a keyword its callee does not take, inside the first ``test_`` function.
 
-    Raises ``NameError`` at the suite's own frame — the pytest own-frame shape
-    ``_OWN_FRAME_SHAPES`` declares, and one the application cannot have caused.
+    Raises the argument-binding ``TypeError`` at the suite's own frame — the pytest
+    own-frame shape ``_OWN_FRAME_SHAPES`` declares, and one the application cannot have
+    caused — and passes the emission seam's static checks on the way there (#1352).
     """
     match = _FIRST_CASE_BODY_PY.search(content)
     if match is None:
         return content
     at = match.end()
     body_indent = match.group("indent") + "    "
-    return f"{content[:at]}\n{body_indent}{_INJECTED_CALL_PY}{content[at:]}"
+    injected = "".join(f"\n{body_indent}{line}" for line in _INJECTED_CALL_PY)
+    return f"{content[:at]}{injected}{content[at:]}"
 
 
 def _qa_suite_own_frame_failure(content: str) -> str:
