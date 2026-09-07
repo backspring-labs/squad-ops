@@ -39,27 +39,26 @@ shakeout_notes: >-
 # unreachable, which is the shape #1289 had for the whole of 1.7.1.
 loaded_checks:
   # #1318: the spine row the accepted-patch path re-derives, and its paired control —
-  # supplied passes, withheld fails. #1087: the reference's frozen store exports the roots
-  # only (run_event_store) and names the embedded shape — the control is that the phantom
-  # participant_store is absent.
+  # supplied passes, withheld fails. A row that can only pass is not evidence.
   bob: >-
-    from pathlib import Path;
     from squadops.cycles.check_registry import required_files_row;
-    from squadops.capabilities.scaffold import InterfaceManifest, expand, root_persisted_entities;
     req = ["Dockerfile", "qa_handoff.md"];
-    m = InterfaceManifest.from_yaml(Path("examples/03_group_run/interface_manifest.yaml").read_text());
-    store = next(f["content"] for f in expand(m) if f["name"] == "backend/store.py");
     print(required_files_row(req, ["a/Dockerfile", "b/qa_handoff.md"])["passed"],
-    required_files_row(req, ["a/Dockerfile"])["missing"],
-    root_persisted_entities(m), "run_event_store" in store, "participant_store" in store)
+    required_files_row(req, ["a/Dockerfile"])["missing"])
   # #1269: a repaired suite file is recognised through the stack's test-file patterns; an
   # app file in the same patch is not. Empty second list = the retest gate is keyed on the
   # patch's contents. #1273's skip reasons read by reason, not by count.
   # Plus the list's own live calls: #377 the Prefect state is the adapter's translation
   # (QUEUED → SCHEDULED, the pair .upper() got wrong); #1323 enforcement at the failed-
   # emission stage (control: the default stage); #559 the task type is the member and its
-  # wire string; #922 the retired spelling is not importable.
+  # wire string; #922 the retired spelling is not importable. #1087: the reference's frozen
+  # store exports the roots only (run_event_store) and names the embedded shape — the
+  # control is that the phantom participant_store is absent. It runs HERE because the
+  # runtime-api seeds the skeleton and ships examples/; the builder image does neither
+  # (deploy B's first identity read an ERROR from bob for exactly that).
   runtime-api: >-
+    from pathlib import Path;
+    from squadops.capabilities.scaffold import InterfaceManifest, expand, root_persisted_entities;
     from adapters.cycles.dispatched_flow_executor import _repaired_suite_files;
     from squadops.cycles.patch_verification import PatchCheckRecord, skip_reasons;
     from adapters.cycles.prefect_workflow_tracker import prefect_flow_state;
@@ -68,6 +67,8 @@ loaded_checks:
     from squadops.tasks.task_types import TaskType, authors_qa_suite;
     import importlib;
     cfg = {"build_profile": "fullstack_fastapi_react", "development_profile": "fullstack_fastapi_react"};
+    m = InterfaceManifest.from_yaml(Path("examples/03_group_run/interface_manifest.yaml").read_text());
+    store = next(f["content"] for f in expand(m) if f["name"] == "backend/store.py");
     print(_repaired_suite_files([{"name": "backend/tests/test_runs.py", "type": "code"}], cfg),
     _repaired_suite_files([{"name": "backend/app/main.py", "type": "code"}], cfg),
     skip_reasons([PatchCheckRecord(check="acceptance:x", severity="blocking",
@@ -77,7 +78,8 @@ loaded_checks:
     prefect_flow_state(RunStatus.QUEUED), prefect_flow_state(RunStatus.COMPLETED),
     STAGE_FAILED_EMISSION, TaskType.QA_TEST == "qa.test", authors_qa_suite("qa.test"),
     authors_qa_suite("development.develop"),
-    importlib.util.find_spec("squadops.capabilities.dev_capabilities") is None)
+    importlib.util.find_spec("squadops.capabilities.dev_capabilities") is None,
+    root_persisted_entities(m), "run_event_store" in store, "participant_store" in store)
   # #1270 on roll 4's own row (vitest `is not a function` at the suite's own frame) with
   # pytest as the paired control — 1 0 is the whole finding. #1280: the React qa namespace
   # names the directory the stack actually seeds. #1251: the four declared faults.
