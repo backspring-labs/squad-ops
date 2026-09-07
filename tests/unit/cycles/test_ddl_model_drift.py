@@ -110,3 +110,37 @@ def test_allowlists_are_not_stale(table_columns):
         assert model_only <= fields, (
             f"{table}: model_only allowlist names a non-field: {model_only - fields}"
         )
+
+
+# --- a migration may not depend on a table no migration creates ------------------------
+
+_ALTER_ANY_RE = re.compile(
+    r"ALTER TABLE(?P<if_exists>\s+IF EXISTS)?\s+(?P<table>\w+)", re.IGNORECASE
+)
+
+
+def test_a_migration_alters_only_tables_the_migrations_create_or_tolerates_their_absence():
+    """Bug caught: 1150 dropped a column from ``agent_status``, a table only ``infra/init.sql``
+    (the compose bootstrap) creates. A database carrying just the migrations — CI's
+    integration job, the migration-runner idempotency test — has no such table, the ALTER
+    raised, and every DB-backed integration test errored at setup (main, 2026-09-06 21:22Z
+    onward). The runner's contract is a fresh database plus the migrations; a migration that
+    assumes another mechanism's table breaks it silently until CI's integration job runs,
+    which is not a required check. Either the table is a migration's, or the statement is
+    written to tolerate its absence (``ALTER TABLE IF EXISTS``)."""
+    created: set[str] = set()
+    offenders: list[str] = []
+    for path in sorted(MIGRATIONS_DIR.glob("*.sql")):
+        # Statements only: a migration's comment may name the statement it explains.
+        sql = re.sub(r"--[^\n]*", "", path.read_text(encoding="utf-8"))
+        for match in _CREATE_RE.finditer(sql):
+            created.add(match.group(1).lower())
+        for match in _ALTER_ANY_RE.finditer(sql):
+            table = match.group("table").lower()
+            if table not in created and not match.group("if_exists"):
+                offenders.append(f"{path.name}: ALTER TABLE {table}")
+    assert created, "no CREATE TABLE parsed — the guard is not reading the migrations"
+    assert not offenders, (
+        "migrations altering a table no earlier migration creates, without IF EXISTS:\n  "
+        + "\n  ".join(offenders)
+    )
