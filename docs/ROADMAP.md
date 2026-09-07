@@ -22,7 +22,33 @@ Each even-minor consumer sits strictly behind the release that earns its trust: 
 
 ## Release Timeline
 
-### v1.7.2 (2026-09-06) — Current — Loop Honesty
+### v1.7.3 (2026-09-07) — Current — Boundaries
+
+**The third patch line of 1.7, and the one that staffs the list.** Sixteen boundary items every 1.7
+plan had scheduled and no line had taken: the identifier renamed for what it is (#922, #559 —
+strings at the boundary, constants at the core, properties over identity, tables over chains),
+one status vocabulary inward of the Prefect adapter (#377, #381), the dead executor gone (#1241),
+the hexagonal boundary guarded for every package with declared composition roots (#154), the
+runtime-api URL surface owned by one standard and enforced by one test (#218, #219), the heartbeat
+verdict computed rather than stored (#305), the comms agent named (#225), the qa fill's evidence
+persisted (#999), the qa author handed root tables only (#1087/#1112) — plus three added under
+the line's delegation because each was a known way for a counted roll to fail on the harness
+rather than the squad: the router restore re-homes the paths it strips (#1351), the kind gate
+reads `typeof` by its value (#1359), and a contentless builder attempt's accepted patch gets its
+spine row (#1364).
+
+**Validated by the 1.7.2 set re-registered with no new pack** (`docs/plans/1-7-3-verification-set-record.md`):
+frozen deploy `933aed95`, HEAD `dcf69d3e`, zero code drift to the tag. FastAPI+React **5 of 6**
+functional, Next.js+TS **3 of 3**; the line's bar held — 0 contentless qa first attempts
+across 163 emissions. **Nothing the set found traces to the list.** Seven harness and
+instrument defects were found and fixed on the line (#1347, #1350, #1352, #1351, #1359, #1364,
+#1362's readout), two of which the previous line had misread; one counted roll was void on #1364
+before the set restarted, by the 1.7.2 precedent. Every diagnostic seam was reached on the pinned
+deploy's predecessor — L7 on a pytest suite for the first time. Next: 1.7.4, Loop Honesty's
+second half (#1312 with #1254 leading; the builder's short first emission on two of six counted
+React rolls is its evidence), then 1.7.5 closes the 1.7 line with Composition Root.
+
+### v1.7.2 (2026-09-06) — Loop Honesty
 
 **The second patch line of 1.7.** The pack is the recovery path: what the loop does *after* a
 failure, and whether its own record of that is true. The line opens with **#1268** — on the 1.7.0
@@ -613,10 +639,10 @@ The following areas are identified for future work but do not block 1.0 readines
 
 ## Stats
 
-*As of 2026-09-03 (v1.7.1):*
+*As of 2026-09-07 (v1.7.3):*
 
-- **Framework version**: 1.7.2
+- **Framework version**: 1.7.3
 - **SIPs**: 65 implemented, 9 accepted (SIP-0088, 0090–0093, 0101, 0102, 0104, 0105), 20 deprecated (registry)
-- **Tests**: 8,600+ passing in the regression suite
+- **Tests**: 9,500+ passing in the regression suite (all of `tests/unit`, #1316)
 - **Python source**: ~61,000 lines (src + adapters; ~88,000 test lines, ~119,000 doc lines)
 - **~6 months** from initial repo (2025-09-20) to 1.0.0 release (2026-03-10)
