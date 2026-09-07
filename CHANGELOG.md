@@ -5,6 +5,65 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.7.3] — 2026-09-07
+
+**Boundaries — the third patch line of 1.7.** Plan: `docs/plans/1-7-3-plan.md` (rev 4). Record:
+`docs/plans/1-7-3-verification-set-record.md`.
+
+Validated by a pre-registered two-set verification run on frozen deploy `933aed95` (HEAD pinned
+at `dcf69d3e`), **zero code drift between the deploy and the tag** — `933aed95..dcf69d3e` is the
+pinned pre-registration under `docs/`, and the tag adds only the record and the release commit.
+FastAPI+React **5 of 6** functional (roll 1 rejected for the builder's own omission of the
+handoff, #1312's shape, declared before roll 1); Next.js+TS **3 of 3**. **The line's bar
+held: 0 contentless qa first attempts across 163 emissions.** One counted roll was void before
+the set restarted (#1364, §0 of the record). Every diagnostic seam was reached on the pinned
+deploy's predecessor (deploy C = D minus #1364), and the record says which.
+
+### The list — sixteen items, every one CI-verified
+
+**Preconditions (4).** #1316 the regression gate runs all of `tests/unit` with a reasoned
+exclusion list and a coverage guard. #1311/#1330 L8 read as two claims and every banked log line
+the whole fact. #1310 fault scope — the absent-suite fault applies to every emission attempt and
+a diagnostic is read by the seam it reached. #1323 write grants enforced where the executor admits
+producer bytes into a tree it evaluates.
+
+**The structural block (8).** #922 `capability_id` → `task_type`, `dev_capability` →
+`development_profile`, with a retired-spellings guard. #559 `TaskType` — strings at the boundary,
+constants at the core, properties over identity, tables over chains; a task-type literal outside
+the enum fails CI. #377 `RunStatus` is the run's only status vocabulary inward of the Prefect
+adapter. #381 `TaskResult.status` is the enum, normalised at the wire; the enum-shadow guard scans
+`adapters/`. #1241 the dead ACI executor deleted. #154 the boundary guard covers every package with
+declared composition roots; the NoOp observability port is a domain null object; the secrets
+factory leaves the config loader. #218 `docs/architecture/api-route-lanes.md` — three lanes, no
+v2, enforced by a test that enumerates every registered router. #219 the chat routes on `/api/v1`.
+
+**The behavioural block (5).** #305 `network_status` retired — the heartbeat verdict is computed,
+never stored (migration 1150). #225 the comms agent is `joi`. #999 `fill_merge_evidence.json`
+beside `test_report.md`. #1087/#1112 the store hands the qa author root tables only, on both
+stacks; projections by field containment.
+
+**Added under the line's delegation (3, plan rev 4 §9).** #1351 the router restore re-homes the
+route paths it strips a prefix from — half a statement was a file FastAPI refuses. #1359
+`assertion_kinds_match` reads a `typeof` assertion by its literal's value — a correct Next.js
+suite had been refused every round. #1364 the accepted patch of a contentless builder attempt
+still gets its `required_files` row — the roll-up had read a booting app as `blocked_unverified`.
+
+### What the line found
+
+Nothing attributable to the sixteen items. Seven defects in the harness and its instrument, each
+fixed on the line: #1347 the emission-retry marker rode every later dispatch; #1350 a repair's
+grants were the failed task's, not the repairing step's; #1352 the Python own-frame fault was a
+`NameError` the emission seam's own check refused — L7 on a pytest suite had never been exercised;
+the driver's L4 readout was wired to the #1129 exclusion, not the refund (#1362); migration 1150
+altered a table only `init.sql` creates, and main's integration job was red for six merges before
+it was read (#1357, with a guard that a migration may only alter a table a migration creates).
+
+### Instrument
+
+The driver reads a diagnostic by the seam it reached (`seam_reached`), carries `refunded_rounds`,
+`placeholder_strips`, `stored_under_placeholder`, `emission_tokens_by_handler` and
+`fill_merge_evidence`; a driver-only fix re-renders a kept record from its stored identity.
+
 ## [1.7.2] — 2026-09-06
 
 **Loop Honesty — the second patch line of 1.7.** Plan: `docs/plans/1-7-2-plan.md`. Record:
