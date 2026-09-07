@@ -105,7 +105,7 @@ from squadops.runtime.admission import admit_participants, release_participants
 from squadops.runtime.focus_reaper import release_owner_leases
 from squadops.runtime.recruitment import reserve_buffer_decision
 from squadops.tasks.models import TaskEnvelope, TaskResult, TaskResultStatus
-from squadops.tasks.task_types import fails_without_correction
+from squadops.tasks.task_types import emits_required_files, fails_without_correction
 from squadops.telemetry.context import use_correlation_context
 from squadops.telemetry.models import CorrelationContext
 
@@ -3541,9 +3541,13 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # attempt's value as the run's final state. Nothing but the builder handler writes
         # ``required_files``, so on 1.7.2 roll 1 the patch supplied ``qa_handoff.md``,
         # ``patch_verification`` passed, and the run was still rejected on the pre-patch row.
-        # Re-derive it from the PATCHED set through the handler's own rule — and only when
-        # the failed attempt actually emitted it: supersede what exists, never invent
-        # evidence for a task that never carried the check.
+        # Re-derive it from the PATCHED set through the handler's own rule — for the task
+        # types whose emission carries the row by contract (``emits_required_files``: the
+        # builder's), or when the failed attempt actually emitted it. Never invent evidence
+        # for a task type that never carries the check. #1364: a CONTENTLESS builder attempt
+        # carries no rows at all, so "only when it carried one" left the required check with
+        # no executed row anywhere — the accepted patch supplied the files, the app booted,
+        # and the roll-up read ``subject_missing`` → ``blocked_unverified`` (1.7.3 roll 1).
         spine_rows: list[dict[str, Any]] = []
         failed_rows = ((result.outputs or {}).get("validation_result") or {}).get("checks") or []
         expected_artifacts = (envelope.inputs or {}).get("expected_artifacts") or []
@@ -3551,7 +3555,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             isinstance(row, Mapping) and row.get("check") == CHECK_REQUIRED_FILES
             for row in failed_rows
         )
-        if expected_artifacts and carried_required_files:
+        owes_required_files = carried_required_files or emits_required_files(envelope.task_type)
+        if expected_artifacts and owes_required_files:
             spine_rows.append(
                 required_files_row(
                     [PurePosixPath(str(name)).name for name in expected_artifacts if name],
@@ -3559,11 +3564,13 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 )
             )
             logger.info(
-                "patch task=%s re-derived %s on the patched set: passed=%s missing=%s (#1318)",
+                "patch task=%s re-derived %s on the patched set: passed=%s missing=%s "
+                "(the failed attempt carried %s; #1318, #1364)",
                 envelope.task_id,
                 CHECK_REQUIRED_FILES,
                 spine_rows[-1]["passed"],
                 ",".join(spine_rows[-1]["missing"]) or "-",
+                "the row" if carried_required_files else "no rows",
             )
         elif carried_required_files:
             logger.warning(

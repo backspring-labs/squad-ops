@@ -540,6 +540,76 @@ class TestAcceptPatch:
             },
         )
 
+    async def test_a_contentless_builder_attempt_still_gets_its_spine_row_from_the_patch(
+        self, executor
+    ):
+        """#1364: 1.7.3 counted roll 1 (`cyc_af7dd4ad95b0`). The builder's first emission was
+        contentless — no artifacts, no rows — the repair supplied both files, the patch
+        verified, the app booted, and the run was `blocked_unverified`: #1318 re-derived
+        `required_files` only when the failed attempt had CARRIED the row, and an attempt
+        that wrote nothing carried nothing. The row is the builder's by contract."""
+        from squadops.cycles.verification_integrity import aggregate_verification
+        from squadops.cycles.verification_normalize import normalize_task_checks
+
+        contentless = TaskResult(
+            task_id="task_5",
+            status="FAILED",
+            outputs={"artifacts": [], "validation_result": {"checks": []}},
+            error="no fenced blocks",
+        )
+        holder: dict = {}
+        action = await executor._try_accept_patch(
+            self._builder_envelope_1318(),
+            contentless,
+            [
+                {"name": "Dockerfile", "content": "FROM python:3.12\n"},
+                {"name": "qa_handoff.md", "content": "# QA Handoff\n## How to Test\nrun pytest\n"},
+            ],
+            holder,
+        )
+        assert action == "accept_patch"
+        rows = holder["patched_result"].outputs["validation_result"]["checks"]
+        spine = [r for r in rows if r.get("check") == "required_files"]
+        assert spine and spine[0]["passed"] is True and spine[0]["missing"] == [], rows
+        ledger = [
+            *normalize_task_checks(contentless.outputs, subject="task_5"),
+            *normalize_task_checks(holder["patched_result"].outputs, subject="task_5"),
+        ]
+        summary = aggregate_verification(ledger)
+        assert summary.verdict.value == "accepted", (
+            f"{summary.verdict.value}: failed={summary.failed} unverified={summary.unverified}"
+        )
+
+    async def test_a_task_type_that_never_carries_the_row_gets_none_invented(self, executor):
+        """The other half of #1318's rule stands: a dev task declaring expected artifacts and
+        carrying no rows is not handed a `required_files` row it never emits."""
+        import dataclasses as _dc
+
+        dev = _dc.replace(
+            self._builder_envelope_1318(),
+            task_type="development.develop",
+            metadata={"role": "dev"},
+        )
+        contentless = TaskResult(
+            task_id="task_5",
+            status="FAILED",
+            outputs={"artifacts": [], "validation_result": {"checks": []}},
+            error="no fenced blocks",
+        )
+        holder: dict = {}
+        action = await executor._try_accept_patch(
+            dev,
+            contentless,
+            [
+                {"name": "Dockerfile", "content": "FROM python:3.12\n"},
+                {"name": "qa_handoff.md", "content": "# QA Handoff\n## How to Test\nrun pytest\n"},
+            ],
+            holder,
+        )
+        assert action == "accept_patch"
+        rows = holder["patched_result"].outputs["validation_result"]["checks"]
+        assert [r for r in rows if r.get("check") == "required_files"] == []
+
     async def test_an_accepted_patch_supersedes_the_failed_attempts_rows(self, executor):
         """#1318, through the executor's own accept-patch caller.
 
