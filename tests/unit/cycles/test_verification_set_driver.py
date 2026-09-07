@@ -1159,6 +1159,13 @@ class TestRefusalLinesAreTheFactNotAWindow:
                 "plan_defect terminal: round 0",
             ),
             (
+                "refunded_rounds",
+                "PFX correction attempt 0 refunded: the repair emitted no content (signature "
+                "unreported), so the round is re-taken rather than spent (refund 1 of 3, "
+                "#1053/#998) " + "q" * 220,
+                "correction attempt 0 refunded",
+            ),
+            (
                 "self_eval_fill_merges",
                 "PFX self_eval fills merged: " + "v" * 220,
                 "self_eval fills merged:",
@@ -1305,7 +1312,11 @@ class TestADiagnosticIsReadByTheSeamItReached:
                 [{"emitted": "path/x", "stripped_to": "x"}],
             ),
             ("qa_suite_own_frame_failure", "qa_owned_routed", ["qa_owned_routed task=t"]),
-            ("repair_prose_only", "refused_rounds_not_counted", ["plan_defect terminal: refunded"]),
+            (
+                "repair_prose_only",
+                "refunded_rounds",
+                ["correction attempt 0 refunded: the repair emitted no content"],
+            ),
         ],
     )
     def test_each_other_fault_is_read_from_the_field_its_seam_writes(
@@ -1313,6 +1324,27 @@ class TestADiagnosticIsReadByTheSeamItReached:
     ):
         assert driver.seam_readouts((fault,), self._rec(**{field: value}))[fault]["reached"] is True
         assert driver.seam_readouts((fault,), self._rec(**{field: []}))[fault]["reached"] is False
+
+    def test_l4_is_the_refund_not_the_1129_exclusion(self, driver):
+        """Bug caught: the 1.7.3 chain diagnostic on the pinned deploy (`cyc_6258b632e198`)
+        — the prose-only fault applied, the executor refunded round 0 ("the repair emitted
+        no content … re-taken rather than spent"), and the readout, wired to
+        ``refused_rounds_not_counted`` (#1129: a REFUSED patch's signature not counted as a
+        repeat — a different mechanism), read L4 as not reached."""
+        refund = (
+            "correction attempt 0 refunded: the repair emitted no content (signature "
+            "unreported), so the round is re-taken rather than spent (refund 1 of 3, #1053/#998)"
+        )
+        rec = self._rec(refunded_rounds=[refund], refused_rounds_not_counted=[])
+        out = driver.seam_readouts(("repair_prose_only",), rec)["repair_prose_only"]
+        assert out["reached"] is True
+        assert out["evidence"] == [refund]
+        # The #1129 exclusion alone is not the refund.
+        rec = self._rec(refunded_rounds=[], refused_rounds_not_counted=["plan_defect terminal: x"])
+        assert (
+            driver.seam_readouts(("repair_prose_only",), rec)["repair_prose_only"]["reached"]
+            is False
+        )
 
     def test_a_fault_with_no_readout_is_named_not_skipped(self, driver):
         out = driver.seam_readouts(("some_new_fault",), self._rec())

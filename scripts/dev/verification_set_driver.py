@@ -1020,8 +1020,8 @@ SEAM_READOUTS: dict[str, tuple[str, Callable[[dict], tuple[bool, Any]]]] = {
     "repair_prose_only": (
         "L4: the prose-only repair was refunded rather than verified",
         lambda rec: (
-            len((rec.get("loop_texture") or {}).get("refused_rounds_not_counted", [])) >= 1,
-            (rec.get("loop_texture") or {}).get("refused_rounds_not_counted", []),
+            len((rec.get("loop_texture") or {}).get("refunded_rounds", [])) >= 1,
+            (rec.get("loop_texture") or {}).get("refunded_rounds", []),
         ),
     ),
 }
@@ -1263,6 +1263,17 @@ def texture_from_logs(logs: list[str]) -> dict:
             _fact(line, "plan_defect terminal")
             for line in logs
             if "not counted as a repeat (#1129)" in line
+        ],
+        # L4 (#1273): the executor REFUNDS a round whose repair emitted no content — the
+        # round is re-taken rather than spent (#1053/#998). This is the seam L4 names, and it
+        # is a different mechanism from the #1129 exclusion above (a refused patch's
+        # signature not counted as a repeat): the 1.7.3 chain diagnostic on the pinned deploy
+        # refunded round 0 exactly as predicted and the readout, wired to the wrong field,
+        # read L4 as not reached.
+        "refunded_rounds": [
+            _fact(line, "correction attempt")
+            for line in logs
+            if "refunded: the repair emitted no content" in line
         ],
         "evidence_superseded": [
             _fact(line, "patch_retest task=") for line in logs if "evidence superseded" in line
