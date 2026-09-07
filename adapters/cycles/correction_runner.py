@@ -58,6 +58,7 @@ from squadops.cycles.correction_signature import (
 from squadops.cycles.failure_evidence import build_failure_evidence, compose_failure_trigger
 from squadops.cycles.models import ArtifactRef
 from squadops.cycles.plan_delta import PlanDelta
+from squadops.cycles.scaffold_enforcement import name_producer
 from squadops.cycles.task_outcome import CorrectionTermination, CorrectionTerminationReason
 from squadops.events.types import EventType
 from squadops.tasks.models import TaskEnvelope, TaskResultStatus
@@ -1818,13 +1819,20 @@ class CorrectionRunner:
                 except Exception as exc:
                     logger.warning("emission ownership veto: pattern surface unavailable: %s", exc)
                     patterns = ()
+                # #1350: the step's emission names the step. The verifier and the re-store
+                # receive these on the FAILED task's envelope, and the repairing role can
+                # differ from the failed one — the grants must be this step's, not the
+                # failed task's, or a dev repair of a dev slot reads as a QA write to it.
                 repair_artifacts.extend(
-                    _apply_emission_ownership_veto(
-                        rebased,
-                        envelope.task_type,
-                        role,
-                        [str(e) for e in (failed_inputs.get("expected_artifacts") or [])],
-                        patterns,
+                    name_producer(
+                        _apply_emission_ownership_veto(
+                            rebased,
+                            envelope.task_type,
+                            role,
+                            [str(e) for e in (failed_inputs.get("expected_artifacts") or [])],
+                            patterns,
+                        ),
+                        repair_envelope,
                     )
                 )
 

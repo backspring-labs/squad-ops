@@ -3198,7 +3198,27 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # overlay WITH the file, reported passed, and had the file dropped at storage —
         # the failing row superseded, the defect still in the tree (1.7.2 React roll 1,
         # ``docker/serve.py``). Enforce here with the same grants, before the overlay.
+        #
+        # #1350: "the same grants" are the REPAIRING step's, which every repair artifact
+        # names for itself (``name_producer`` in the correction runner) — the failed task's
+        # grants judged a dev repair of a dev slot as a QA write to it and refused the
+        # patch (``cyc_375bdea6e140``). An artifact naming no producer is refused loudly:
+        # judged under the failed task's grants it would be that defect again, silently.
         if bound_record is not None:
+            from squadops.cycles.scaffold_enforcement import named_producer
+
+            unnamed = [
+                str(a.get("name") or a.get("path") or "(unnamed)")
+                for a in repair_artifacts
+                if named_producer(a) is None
+            ]
+            if unnamed:
+                raise _ExecutionError(
+                    f"patch authorization task={envelope.task_id}: {len(unnamed)} repaired "
+                    f"path(s) name no producer ({', '.join(unnamed)}) — a repair's grants are "
+                    "the repairing step's, and the correction runner names that step on every "
+                    "repair emission (#1350)"
+                )
             repair_artifacts, dropped = self._enforce_frozen_ownership(
                 repair_artifacts, bound_record, envelope, stage=STAGE_PATCH_VERIFICATION
             )

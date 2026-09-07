@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -27,7 +28,7 @@ from squadops.capabilities.scaffold import InterfaceManifest
 from squadops.cycles.bound_scaffold_record import build_bound_record
 from squadops.cycles.implementation_plan import TypedCheck
 from squadops.cycles.models import ArtifactRef, Cycle, TaskFlowPolicy
-from squadops.cycles.scaffold_enforcement import enforce_frozen_ownership
+from squadops.cycles.scaffold_enforcement import enforce_frozen_ownership, name_producer
 from squadops.cycles.scaffold_integrity_evidence import (
     STAGE_ARTIFACT_STORAGE,
     STAGE_FAILED_EMISSION,
@@ -50,6 +51,13 @@ AUTHORIZED = {"name": "qa_handoff.md", "content": "# QA Handoff\n## How to Test\
 def _record():
     manifest = InterfaceManifest.from_yaml(_MANIFEST.read_text())
     return build_bound_record(manifest, run_id="run_1", attempt_id="run_1", created_at="t")
+
+
+def _repair_by(task_type: str, *artifacts: dict) -> list[dict]:
+    """Repair artifacts as the correction runner hands them over (#1350): naming the step
+    that emitted them, whose grants — not the failed task's — are the ones that apply."""
+    step = SimpleNamespace(task_id=f"repair-run_1-00-{task_type}", task_type=task_type)
+    return name_producer(artifacts, step)
 
 
 def _builder_envelope() -> TaskEnvelope:
@@ -249,7 +257,7 @@ class TestTheRepairIsAuthorizedBeforeItIsVerified:
         action = await executor._try_accept_patch(
             _builder_envelope(),
             _failed([{"name": "Dockerfile", "content": "FROM python:3.12\n"}]),
-            [UNAUTHORIZED, AUTHORIZED],
+            _repair_by("builder.assemble_repair", UNAUTHORIZED, AUTHORIZED),
             holder,
             bound_record=_record(),
             compliance_counter={"n": 0},
@@ -261,6 +269,48 @@ class TestTheRepairIsAuthorizedBeforeItIsVerified:
         (record,) = _evidence(executor)
         assert record.normalized_path == "start.py"
         assert record.stage == STAGE_PATCH_VERIFICATION
+        # #1350: the record names the step that overstepped, not the task it repaired.
+        assert record.producer_task_type == "builder.assemble_repair"
+
+    async def test_a_repair_is_judged_by_the_grants_of_the_step_that_made_it(self, executor):
+        """Bug caught: ``cyc_375bdea6e140`` (#1350). The same two files, emitted by a DEV
+        repair step of this builder failure: ``start.py`` is outside the builder's fill
+        surface, but a dev step may author source — so nothing is dropped, the real
+        verifier accepts the handoff fix, and the corrected result carries both."""
+        holder: dict = {}
+        action = await executor._try_accept_patch(
+            _builder_envelope(),
+            _failed([]),
+            _repair_by("development.correction_repair", UNAUTHORIZED, AUTHORIZED),
+            holder,
+            bound_record=_record(),
+            compliance_counter={"n": 0},
+        )
+        assert action == "accept_patch"
+        names = [a["name"] for a in holder["patched_result"].outputs["artifacts"]]
+        assert {"start.py", "qa_handoff.md"} <= set(names)
+        assert _evidence(executor) == []
+
+    async def test_a_repair_artifact_naming_no_producer_is_refused_before_any_grant_is_derived(
+        self, executor, monkeypatch
+    ):
+        """Bug caught: the silent fallback. Judged under the failed task's grants, an unnamed
+        dev repair is #1350 again — so an artifact that names no step fails the run naming
+        the seam, before a grant is derived or a verifier runs."""
+        import adapters.cycles.dispatched_flow_executor as mod
+
+        verifier = AsyncMock()
+        monkeypatch.setattr(mod, "verify_patched_artifacts", verifier)
+        with pytest.raises(_ExecutionError, match=r"name no producer \(start\.py\).*#1350"):
+            await executor._try_accept_patch(
+                _builder_envelope(),
+                _failed([]),
+                [UNAUTHORIZED, *_repair_by("builder.assemble_repair", AUTHORIZED)],
+                {},
+                bound_record=_record(),
+            )
+        verifier.assert_not_awaited()
+        assert _evidence(executor) == []
 
     async def test_a_repair_that_is_entirely_unauthorized_is_refused_not_verified(
         self, executor, monkeypatch
@@ -273,7 +323,11 @@ class TestTheRepairIsAuthorizedBeforeItIsVerified:
         monkeypatch.setattr(mod, "verify_patched_artifacts", verifier)
         holder: dict = {}
         action = await executor._try_accept_patch(
-            _builder_envelope(), _failed([]), [UNAUTHORIZED], holder, bound_record=_record()
+            _builder_envelope(),
+            _failed([]),
+            _repair_by("builder.assemble_repair", UNAUTHORIZED),
+            holder,
+            bound_record=_record(),
         )
         assert action == "continue"
         assert "patched_result" not in holder
@@ -290,6 +344,75 @@ class TestTheRepairIsAuthorizedBeforeItIsVerified:
         names = [a["name"] for a in holder["patched_result"].outputs["artifacts"]]
         assert {"start.py", "qa_handoff.md"} <= set(names)
         assert _evidence(executor) == []
+
+
+# --- the re-store: the same producer the verifier read ----------------------------------
+
+
+class TestTheReStoreReadsTheSameProducerTheVerifierDid:
+    """Entry point: ``_collect_artifacts_and_checkpoint`` — where an accepted patch's corrected
+    result is stored under the FAILED task's envelope. #1323's rule (the verified set is the
+    stored set) holds only if storage judges each artifact by the producer the verifier did."""
+
+    async def test_the_dev_repair_in_a_corrected_result_is_stored_under_the_devs_grants(
+        self, executor
+    ):
+        """Bug caught: verification (fixed) accepts the dev's ``start.py``, storage (unfixed)
+        drops it as the builder's write and counts a violation — the roll-1 shape moved one
+        seam later."""
+        refs: list[str] = []
+        counter = {"n": 0}
+        corrected = TaskResult(
+            task_id="task-run_1-m004-builder.assemble",
+            status="SUCCEEDED",
+            outputs={
+                "artifacts": _repair_by("development.correction_repair", UNAUTHORIZED, AUTHORIZED)
+            },
+        )
+        await executor._collect_artifacts_and_checkpoint(
+            corrected,
+            _builder_envelope(),
+            _cycle(),
+            "run_1",
+            {},
+            refs,
+            [],
+            [],
+            [],
+            bound_record=_record(),
+            compliance_counter=counter,
+        )
+        assert _stored_names(executor) == ["start.py", "qa_handoff.md"]
+        assert _evidence(executor) == []
+        assert counter["n"] == 0
+
+    async def test_the_producers_own_unnamed_emission_is_judged_as_before(self, executor):
+        """The paired control: the same files as the builder's OWN emission (no step named)
+        are judged under the builder's grants — ``start.py`` dropped and counted."""
+        counter = {"n": 0}
+        own = TaskResult(
+            task_id="task-run_1-m004-builder.assemble",
+            status="SUCCEEDED",
+            outputs={"artifacts": [UNAUTHORIZED, AUTHORIZED]},
+        )
+        await executor._collect_artifacts_and_checkpoint(
+            own,
+            _builder_envelope(),
+            _cycle(),
+            "run_1",
+            {},
+            [],
+            [],
+            [],
+            [],
+            bound_record=_record(),
+            compliance_counter=counter,
+        )
+        assert _stored_names(executor) == ["qa_handoff.md"]
+        (record,) = _evidence(executor)
+        assert record.normalized_path == "start.py"
+        assert record.stage == STAGE_ARTIFACT_STORAGE
+        assert counter["n"] == 1
 
 
 # --- the stage rides the evidence record -------------------------------------------------

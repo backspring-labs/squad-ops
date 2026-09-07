@@ -106,6 +106,70 @@ def test_qa_write_to_dev_fill_slot_is_dropped():
     assert ev.siblings_retained == 1  # the test file passed through
 
 
+# --- #1350: the grants follow the producer that emitted the bytes ------------------------
+
+
+def _by(task_type: str, art: dict) -> dict:
+    """An artifact as the correction runner hands a repair step's emission over: naming the
+    step (``name_producer``), so the grants applied are that step's."""
+    return {
+        **art,
+        "producer_task_id": f"repair-run_x-00-{task_type}",
+        "producer_task_type": task_type,
+    }
+
+
+def test_a_repair_artifact_is_judged_by_the_producer_it_names_not_the_envelope_it_rides():
+    """Bug caught: ``cyc_375bdea6e140`` (#1350) — a dev repair of ``backend/routes.py``
+    reached the verifier on the failed qa.test envelope and was dropped as a QA write to
+    dev's slot. Named as the dev step's, the same bytes pass and nothing is recorded."""
+    enforced, evidence = DispatchedFlowExecutor._enforce_frozen_ownership(
+        object(),
+        [
+            _by(
+                "development.correction_repair",
+                {"name": "backend/routes.py", "content": "def fixed(): return 1\n"},
+            ),
+            {"name": "backend/tests/test_api.py", "content": "T = 1\n"},
+        ],
+        _record(),
+        _env("qa.test"),
+    )
+    assert [a["name"] for a in enforced] == ["backend/routes.py", "backend/tests/test_api.py"]
+    assert evidence == []
+
+
+def test_a_qa_repair_naming_itself_is_still_scoped_to_its_lane_and_the_record_names_it():
+    """The other direction: a qa.test_repair emission of dev's routes.py riding a DEV
+    envelope is still QA's write and still dropped — and the evidence names the repair
+    step, not the envelope, so a record can say which step overstepped."""
+    enforced, evidence = DispatchedFlowExecutor._enforce_frozen_ownership(
+        object(),
+        [_by("qa.test_repair", {"name": "backend/routes.py", "content": "def sneaky(): pass\n"})],
+        _record(),
+        _env("development.develop"),
+    )
+    assert enforced == []
+    (ev,) = evidence
+    assert ev.violation_code == "unauthorized_slot_emission"
+    assert ev.producer_task_id == "repair-run_x-00-qa.test_repair"
+    assert ev.producer_task_type == "qa.test_repair"
+
+
+def test_a_frozen_path_binds_every_named_producer():
+    """Naming a producer buys its grants, never a way past the freeze (SIP-0100 2.4)."""
+    enforced, evidence = DispatchedFlowExecutor._enforce_frozen_ownership(
+        object(),
+        [_by("development.correction_repair", {"name": "backend/main.py", "content": "T = 1\n"})],
+        _record(),
+        _env("qa.test"),
+    )
+    assert enforced == []
+    (ev,) = evidence
+    assert ev.violation_code == "frozen_path_emission"
+    assert ev.producer_task_type == "development.correction_repair"
+
+
 def test_qa_write_in_its_namespace_passes():
     """A QA task writing its own tests is authorized — no evidence, content untouched."""
     enforced, evidence = DispatchedFlowExecutor._enforce_frozen_ownership(
