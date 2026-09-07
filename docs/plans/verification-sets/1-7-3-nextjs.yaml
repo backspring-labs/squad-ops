@@ -48,16 +48,26 @@ loaded_checks:
   # #1269 read on THIS stack's declared test-file patterns (*.test.ts[x], *.spec.ts[x]): a
   # repaired suite is recognised, an API route in the same patch is not. #1273's skip
   # reasons read by reason, not by count.
+  # #1351: the router restore re-homes the paths it strips a prefix from (control: no empty
+  # path is left). #1359: a typeof assertion is read by its literal's VALUE — number — and a
+  # plain quoted literal is still a string.
   runtime-api: >-
+    from squadops.cycles.fill_slot_integrity import restore_declared_status_codes;
+    from squadops.cycles.acceptance_checks import assertion_literal_kinds_js;
     from adapters.cycles.dispatched_flow_executor import _repaired_suite_files;
     from squadops.cycles.patch_verification import PatchCheckRecord, skip_reasons;
     cfg = {"build_profile": "nextjs_ts", "development_profile": "nextjs_ts"};
+    seed = "from fastapi import APIRouter\nrouter = APIRouter()\n@router.post(\"/runs\", status_code=201)\ndef c(p: dict):\n    return {}\n";
+    emitted = seed.replace("APIRouter()", "APIRouter(prefix=\"/runs\")").replace("(\"/runs\", status_code=201)", "(\"\", status_code=201)");
+    rehomed = restore_declared_status_codes(seed, emitted)[0];
     print(_repaired_suite_files([{"name": "__tests__/runs.test.tsx", "type": "code"}], cfg),
     _repaired_suite_files([{"name": "app/api/runs/route.ts", "type": "code"}], cfg),
     skip_reasons([PatchCheckRecord(check="acceptance:x", severity="blocking",
     status="skipped", reason="file_not_found")]),
     PatchCheckRecord(check="sections_present", severity="error", status="passed",
-    criterion_id="handoff-sections:qa_handoff.md").to_check_row()["criterion_id"])
+    criterion_id="handoff-sections:qa_handoff.md").to_check_row()["criterion_id"],
+    "@router.post(\"/runs\", status_code=201)" in rehomed, "(\"\"" not in rehomed,
+    assertion_literal_kinds_js("expect(typeof b.participant_count).toBe('number')\nexpect(b.n).toBe('x')\n"))
   # #1292: the qa namespace is the co-located convention and nothing else — the root
   # harness and a co-located suite are qa's, an API route is not. Before the fix the third
   # value was True and the namespace was ("__tests__/", "app/", "lib/"). #1251: the faults.

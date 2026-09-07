@@ -56,7 +56,12 @@ loaded_checks:
   # control is that the phantom participant_store is absent. It runs HERE because the
   # runtime-api seeds the skeleton and ships examples/; the builder image does neither
   # (deploy B's first identity read an ERROR from bob for exactly that).
+  # #1351: the router restore re-homes the paths it strips a prefix from (control: no empty
+  # path is left). #1359: a typeof assertion is read by its literal's VALUE — number — and a
+  # plain quoted literal is still a string.
   runtime-api: >-
+    from squadops.cycles.fill_slot_integrity import restore_declared_status_codes;
+    from squadops.cycles.acceptance_checks import assertion_literal_kinds_js;
     from pathlib import Path;
     from squadops.capabilities.scaffold import InterfaceManifest, expand, root_persisted_entities;
     from adapters.cycles.dispatched_flow_executor import _repaired_suite_files;
@@ -67,6 +72,9 @@ loaded_checks:
     from squadops.tasks.task_types import TaskType, authors_qa_suite;
     import importlib;
     cfg = {"build_profile": "fullstack_fastapi_react", "development_profile": "fullstack_fastapi_react"};
+    seed = "from fastapi import APIRouter\nrouter = APIRouter()\n@router.post(\"/runs\", status_code=201)\ndef c(p: dict):\n    return {}\n";
+    emitted = seed.replace("APIRouter()", "APIRouter(prefix=\"/runs\")").replace("(\"/runs\", status_code=201)", "(\"\", status_code=201)");
+    rehomed = restore_declared_status_codes(seed, emitted)[0];
     m = InterfaceManifest.from_yaml(Path("examples/03_group_run/interface_manifest.yaml").read_text());
     store = next(f["content"] for f in expand(m) if f["name"] == "backend/store.py");
     print(_repaired_suite_files([{"name": "backend/tests/test_runs.py", "type": "code"}], cfg),
@@ -79,7 +87,9 @@ loaded_checks:
     STAGE_FAILED_EMISSION, TaskType.QA_TEST == "qa.test", authors_qa_suite("qa.test"),
     authors_qa_suite("development.develop"),
     importlib.util.find_spec("squadops.capabilities.dev_capabilities") is None,
-    root_persisted_entities(m), "run_event_store" in store, "participant_store" in store)
+    root_persisted_entities(m), "run_event_store" in store, "participant_store" in store,
+    "@router.post(\"/runs\", status_code=201)" in rehomed, "(\"\"" not in rehomed,
+    assertion_literal_kinds_js("expect(typeof b.participant_count).toBe('number')\nexpect(b.n).toBe('x')\n"))
   # #1270 on roll 4's own row (vitest `is not a function` at the suite's own frame) with
   # pytest as the paired control — 1 0 is the whole finding. #1280: the React qa namespace
   # names the directory the stack actually seeds. #1251: the four declared faults.
