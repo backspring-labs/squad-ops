@@ -116,7 +116,14 @@ loaded_checks:
     "app_traceback_section": "TB"});
     print(v["failing_cases_section"], v["client_surface_section"], v["app_traceback_section"])
 # Pins: filled from the last shakeout before roll 1; empty means "no counting roll may launch".
-expected_config_hash_prefix: ""
-expected_squad_snapshot_prefix: ""
-frozen_deploy_commit: ""
-frozen_image_ids: {}
+expected_config_hash_prefix: "3921c5a62106"
+expected_squad_snapshot_prefix: "575707c58536cf3b"
+frozen_deploy_commit: "23c6a0ae"
+frozen_image_ids:
+  runtime-api: "5f15f72afe90"
+  max: "6a7da897af12"
+  neo: "d724af079669"
+  nat: "cebde1d7de8d"
+  bob: "122855cc3c31"
+  eve: "5e45cfbdf09c"
+  data: "5af11019fb09"
