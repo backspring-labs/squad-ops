@@ -6,5 +6,9 @@
 -- made runtime_status always-populated and removed every read of network_status; this
 -- drops the column so it cannot be read back. The heartbeat-age verdict still drives the
 -- lifecycle telemetry (UNKNOWN) and the offline mirror into agent_runtime_state; it is
--- computed, never stored. Idempotent.
-ALTER TABLE agent_status DROP COLUMN IF EXISTS network_status;
+-- computed, never stored. Idempotent — and tolerant of the table's absence: agent_status is
+-- created by infra/init.sql (the compose bootstrap), not by any migration, so a database
+-- that carries only the migrations (CI's integration job, the migration-runner idempotency
+-- test) has nothing to drop. A plain ALTER TABLE failed there and took every DB-backed
+-- integration test with it (main, 2026-09-06 21:22Z → 2026-09-07).
+ALTER TABLE IF EXISTS agent_status DROP COLUMN IF EXISTS network_status;
