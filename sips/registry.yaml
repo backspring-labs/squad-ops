@@ -1167,8 +1167,8 @@ sips:
   updated_at: null
 - sip_uid: '17883224960412001'
   sip_number: null
-  title: Slot-Scoped Emission
-  path: sips/proposed/SIP-Slot-Scoped-Emission.md
+  title: Scoped Code Revision
+  path: sips/proposed/SIP-Scoped-Code-Revision.md
   status: proposed
   author: SquadOps Architecture
   approver: null
