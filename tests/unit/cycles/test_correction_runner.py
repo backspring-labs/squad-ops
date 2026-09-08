@@ -1378,6 +1378,72 @@ class TestCorrectionModelResolution:
         assert decide["agent_id"] == "lead-a"
         assert decide["inputs"]["agent_model"] == "model-lead"
 
+    async def test_correction_envelopes_carry_the_cycles_resolved_config(
+        self,
+        executor,
+        mock_queue,
+        mock_registry,
+        mock_squad_profile,
+        model_diverse_profile,
+        cycle,
+    ):
+        """1.7.4 plan §3.1: a fault declared on the cycle reaches the analyzer's emission
+        seam only if the analysis envelope carries the cycle's resolved config — every
+        other cycle task's does, and the correction steps' did not (the injector reads the
+        declaration from ``inputs["resolved_config"]`` and is silent without it).
+        Entered at ``execute_run``, the call the live cycle makes."""
+        from dataclasses import replace
+
+        declared = replace(
+            cycle, execution_overrides={"fault_injection": ["analyzer_false_source_claim"]}
+        )
+        mock_registry.get_cycle.return_value = declared
+        mock_squad_profile.resolve_snapshot.return_value = (
+            model_diverse_profile,
+            "sha256:diverse",
+        )
+        semantic_outputs = {
+            "outcome_class": TaskOutcome.SEMANTIC_FAILURE,
+            "role": "strat",
+        }
+        decision = {
+            "summary": "abort",
+            "role": "lead",
+            "correction_path": "abort",
+            "decision_rationale": "halt",
+            "affected_task_types": [],
+            "classification": "execution",
+            "analysis_summary": "halt",
+        }
+        script = [
+            ("FAILED", semantic_outputs, "bad"),
+            (
+                "SUCCEEDED",
+                {"classification": "execution", "analysis_summary": "x", "role": "data"},
+                None,
+            ),
+            ("SUCCEEDED", decision, None),
+        ]
+        _script_replies(mock_queue.reply_router, script)
+
+        with patch(
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        publishes = [_published_envelope(c) for c in mock_queue.publish.call_args_list]
+        analyze = next(p for p in publishes if p["task_type"] == "data.analyze_failure")
+        decide = next(p for p in publishes if p["task_type"] == "governance.correction_decision")
+        assert analyze["inputs"]["resolved_config"] == declared.resolved_config()
+        assert analyze["inputs"]["resolved_config"]["fault_injection"] == [
+            "analyzer_false_source_claim"
+        ]
+        assert decide["inputs"]["resolved_config"] == declared.resolved_config()
+        # The model and overrides still arrive on their own keys (#110) — the config is
+        # additive, not a second source for them.
+        assert analyze["inputs"]["agent_model"] == "model-data"
+
     async def test_repair_envelopes_carry_profile_model_and_overrides(
         self,
         executor,

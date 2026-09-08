@@ -1484,6 +1484,12 @@ class CorrectionRunner:
                 "artifact_refs": list(all_artifact_refs),
                 "agent_model": agent_model,
                 "agent_config_overrides": agent_overrides,
+                # 1.7.4 plan §3.1: the cycle's resolved config rides the analysis and
+                # decision envelopes as it does every other cycle task's, so a fault
+                # declared on the cycle reaches the analyzer's emission seam (#968's
+                # diagnostic). Neither handler reads anything else from it — model and
+                # overrides arrive on their own keys above (#110).
+                "resolved_config": cycle.resolved_config(),
             }
             if analysis_outputs:
                 corr_inputs["failure_analysis"] = analysis_outputs

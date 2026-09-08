@@ -1652,3 +1652,134 @@ class TestB1IsAFieldNotAGrep:
             ("tests/runs.test.ts", "ts"),
             ("frontend/src/__tests__/runs.test.jsx", "jsx"),
         ]
+
+
+class TestTheNewFaultsAreReadBySeams:
+    """1.7.4 plan §3.1: the contentless-builder and analyzer faults, each read by the seam
+    its claim names, never by "the fault fired" (#1310)."""
+
+    @staticmethod
+    def _rec(*, correction_rounds=0, typed_checks=None, **texture):
+        return {
+            "correction_rounds": correction_rounds,
+            "loop_texture": texture,
+            "typed_checks": typed_checks or {},
+        }
+
+    _BUILDER_PASSED = (
+        "patch_verification task=task-run_x-m005-builder.assemble status=passed reason= checks=3"
+    )
+    _BUILDER_REFUSED = "patch_verification task=task-run_x-m005-builder.assemble status=failed reason=required_files checks=3"
+
+    def test_the_builder_seam_is_the_builders_own_verified_repair(self, driver):
+        """A correction round on some OTHER task, or a refused builder repair, is not the
+        loop recovering the contentless attempt."""
+        out = driver.seam_readouts(
+            ("builder_emission_contentless",),
+            self._rec(correction_rounds=1, patch_verifications=[self._BUILDER_PASSED]),
+        )["builder_emission_contentless"]
+        assert out["reached"] is True
+        assert out["evidence"]["builder_patch_verifications"] == [self._BUILDER_PASSED]
+        qa_only = "patch_verification task=task-run_x-m006-qa.test status=passed reason= checks=2"
+        for texture in (
+            dict(correction_rounds=1, patch_verifications=[qa_only]),
+            dict(correction_rounds=1, patch_verifications=[self._BUILDER_REFUSED]),
+            dict(correction_rounds=0, patch_verifications=[self._BUILDER_PASSED]),
+        ):
+            rec = self._rec(**texture)
+            assert (
+                driver.seam_readouts(("builder_emission_contentless",), rec)[
+                    "builder_emission_contentless"
+                ]["reached"]
+                is False
+            )
+
+    def test_the_builder_evidence_carries_the_rows_and_the_retry_facts(self, driver):
+        rec = self._rec(
+            correction_rounds=1,
+            patch_verifications=[self._BUILDER_PASSED],
+            emission_retries=["Retryable failure for task-run_x-m005-builder.assemble (attempt 1)"],
+            retried_with_fact=[],
+            typed_checks={"by_check": {"required_files": {"passed": {"executed": 1}}}},
+        )
+        ev = driver.seam_readouts(("builder_emission_contentless",), rec)[
+            "builder_emission_contentless"
+        ]["evidence"]
+        assert ev["required_files_rows"] == {"passed": {"executed": 1}}
+        assert len(ev["emission_retries"]) == 1 and ev["retried_with_fact"] == []
+
+    def test_the_analyzer_seam_is_the_decision_and_an_inherited_claim_is_named(self, driver):
+        held = self._rec(
+            decision_inherited_claims=[{"artifact": "art_9", "inherited": False}],
+            analyzer_claims_dropped=["correction_repair_target: analyzer implicated x — dropped"],
+        )
+        out = driver.seam_readouts(("analyzer_false_source_claim",), held)[
+            "analyzer_false_source_claim"
+        ]
+        assert out["reached"] is True
+        assert out["evidence"]["refuted_by_workspace_check"] == [
+            "correction_repair_target: analyzer implicated x — dropped"
+        ]
+        inherited = self._rec(
+            decision_inherited_claims=[
+                {"artifact": "art_9", "inherited": True},
+                {"artifact": "art_12", "inherited": False},
+            ]
+        )
+        out = driver.seam_readouts(("analyzer_false_source_claim",), inherited)[
+            "analyzer_false_source_claim"
+        ]
+        assert out["reached"] is False
+        assert [d["artifact"] for d in out["evidence"]["decisions"] if d["inherited"]] == ["art_9"]
+        # No decision stored at all: the seam was never reached, whatever the fault did.
+        assert (
+            driver.seam_readouts(("analyzer_false_source_claim",), self._rec())[
+                "analyzer_false_source_claim"
+            ]["reached"]
+            is False
+        )
+
+    def test_the_runtime_window_banks_verifications_and_dropped_claims_as_facts(self, driver):
+        dropped = (
+            "PFX correction_repair_target: analyzer implicated backend/__squadops_injected_fault__.py "
+            "but the workspace has no such file — dropped, not aimed at (#968)"
+        )
+        out = driver.texture_from_logs([f"PFX {self._BUILDER_PASSED}", dropped])
+        assert out["patch_verifications"] == [self._BUILDER_PASSED]
+        assert out["analyzer_claims_dropped"] == [dropped[len("PFX ") :]]
+
+    def test_decisions_are_read_from_the_vault_by_the_marker(self, driver, tmp_path, monkeypatch):
+        import json
+        import types
+
+        root = tmp_path / "data" / "artifacts" / "p" / "cyc_1" / "run_1"
+        for art, filename, body in (
+            (
+                "art_1",
+                "correction_decision.md",
+                '{"decision_rationale": "repair __squadops_injected_fault__.py"}',
+            ),
+            ("art_2", "correction_decision.md", '{"decision_rationale": "repair routes.py"}'),
+            ("art_3", "failure_analysis.md", '{"analysis_summary": "__squadops_injected_fault__"}'),
+        ):
+            d = root / art
+            d.mkdir(parents=True)
+            (d / "body").write_text(body)
+            (d / "metadata.json").write_text(
+                json.dumps(
+                    {"filename": filename, "vault_uri": str((d / "body").relative_to(tmp_path))}
+                )
+            )
+        monkeypatch.setattr(driver, "REPO", tmp_path)
+        out = driver._decision_inherited_claims(
+            types.SimpleNamespace(project="p"), "cyc_1", "run_1"
+        )
+        assert out == [
+            {"artifact": "art_1", "inherited": True},
+            {"artifact": "art_2", "inherited": False},
+        ]
+
+    def test_the_marker_the_driver_reads_is_the_one_the_framework_writes(self, driver):
+        from squadops.capabilities.handlers.fault_injection import INJECTED_CLAIM_MARKER
+
+        assert driver._INJECTED_CLAIM_MARKER == INJECTED_CLAIM_MARKER

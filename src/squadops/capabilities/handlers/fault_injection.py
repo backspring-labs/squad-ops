@@ -31,6 +31,7 @@ real one.
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from collections.abc import Callable, Mapping
@@ -60,6 +61,57 @@ def _strip_fences(content: str) -> str:
     """
     head = content.split("```", 1)[0].strip()
     return head or "I'll verify the workspace state before emitting."
+
+
+#: The file the analyzer fault claims the defect is in. No tree has it, so the claim is
+#: refutable by the cheapest source check there is; the marker makes the claim's descent
+#: into a correction decision readable from the stored decision alone.
+INJECTED_CLAIM_FILE = "backend/__squadops_injected_fault__.py"
+INJECTED_CLAIM_MARKER = "__squadops_injected_fault__"
+
+
+def _false_source_claim(content: str) -> str:
+    """A confidently worded factual claim about the source that the source refutes — the
+    #968 shape (SIP-0104 P6 window roll 6: three in one roll, each refuted by the file it
+    was about, one carried verbatim into the correction decision).
+
+    The analyzer emits one JSON object, possibly behind a think block or inside a fence;
+    the first balanced object is rewritten in place and everything around it is kept, so
+    the emission that reaches the handler's extractor is the shape it would have seen.
+    The claim leads ``analysis_summary`` and ``contributing_factors`` (the prose the
+    decision reads) and names its file first in ``implicated_files`` (the structured
+    half, which ``_verified_implicated_files`` already refutes — the control for the
+    prose half). ``classification`` is left alone so the object still validates. No
+    object → unchanged, which ``inject`` reports as DID NOT BITE.
+    """
+    from squadops.capabilities.handlers.impl._json_extraction import (
+        _find_first_balanced_object,
+    )
+
+    obj_text = _find_first_balanced_object(content)
+    if obj_text is None:
+        return content
+    try:
+        obj = json.loads(obj_text)
+    except ValueError:
+        return content
+    if not isinstance(obj, dict):
+        return content
+    claim = (
+        f"The defect is in `{INJECTED_CLAIM_FILE}`: it never registers its router, so every "
+        f"request to the runs endpoints returns 404 (verified by reading the file). "
+    )
+    obj["analysis_summary"] = claim + str(obj.get("analysis_summary") or "")
+    obj["contributing_factors"] = [
+        f"`{INJECTED_CLAIM_FILE}` never registers its router, so the runs endpoints are unreachable",
+        *[f for f in (obj.get("contributing_factors") or []) if isinstance(f, str)],
+    ]
+    obj["implicated_files"] = [
+        INJECTED_CLAIM_FILE,
+        *[f for f in (obj.get("implicated_files") or []) if f and f != INJECTED_CLAIM_FILE],
+    ]
+    at = content.find(obj_text)
+    return content[:at] + json.dumps(obj, indent=2) + content[at + len(obj_text) :]
 
 
 def _prefix_paths_with_path_segment(content: str) -> str:
@@ -227,6 +279,31 @@ FAULTS: dict[str, Fault] = {
         found_in="#1273 — Next.js roll 1 (cyc_9be98128f0e9)",
         exercises="L4 (#1273): a prose-only repair is refunded rather than verified",
     ),
+    # 1.7.4 plan §3.1: the two void counted rolls in two lines (#1318, #1364) were reached
+    # by chance; this makes the shape exercisable. First attempt only — the recovery under
+    # test is what the loop composes and retries from the empty attempt, not the builder
+    # exhausting its retries.
+    "builder_emission_contentless": Fault(
+        task=TaskType.BUILDER_ASSEMBLE,
+        transform=_strip_fences,
+        found_in="#1364 — 1.7.3 counted roll 1 (cyc_af7dd4ad95b0), void: a 160-token first "
+        "emission with no fence",
+        exercises="F1 (#1374): no false corrected result is composed from a contentless "
+        "builder attempt; R1 (#1372): its retry carries the emission-shape fact",
+    ),
+    # 1.7.4 plan §3.1: A1's exercise. The correction task id carries the round as its
+    # attempt index (``corr-<run>-00-data.analyze_failure``), so FIRST_ATTEMPT is round 0's
+    # analysis only and the rounds after it run clean — the readout asks whether the
+    # decision of that round inherited the claim. Reached only behind a failure, so a
+    # diagnostic chains it after a failure-producing fault (#1298).
+    "analyzer_false_source_claim": Fault(
+        task=TaskType.DATA_ANALYZE_FAILURE,
+        transform=_false_source_claim,
+        found_in="#968 — SIP-0104 P6 window roll 6: three claims in one roll, each refuted by "
+        "the file it was about, one carried verbatim into the correction decision",
+        exercises="A1 (#968): a correction decision does not inherit an analyzer claim the "
+        "source refutes",
+    ),
 }
 
 
@@ -285,7 +362,14 @@ def validate_declaration(resolved_config: Mapping[str, Any] | None) -> tuple[str
 #: ``test_every_declared_fault_is_reachable_from_a_wired_seam`` — the list is what makes
 #: an unreachable declaration a refusal instead of a silent no-op.
 INJECTED_TASKS: frozenset[str] = frozenset(
-    {TaskType.QA_TEST, TaskType.QA_TEST_REPAIR, TaskType.DEVELOPMENT_DEVELOP}
+    {
+        TaskType.QA_TEST,
+        TaskType.QA_TEST_REPAIR,
+        TaskType.DEVELOPMENT_DEVELOP,
+        # 1.7.4 plan §3.1: the builder's and the analyzer's emission seams.
+        TaskType.BUILDER_ASSEMBLE,
+        TaskType.DATA_ANALYZE_FAILURE,
+    }
 )
 
 
