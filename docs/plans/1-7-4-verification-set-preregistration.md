@@ -226,6 +226,17 @@ the only breach is one of the two; both `medium` React rolls are clean. #924's f
 (413 vs 5,727 completion tokens) measured **token cost**, not **usability at rate** — that is the
 gap row 10 landed in. Whether to revert the declaration or let the counted set read it is Q1's
 question, which this set was registered to answer.
+
+**Owner's decision, before round 3: leave the declaration in place and let the counted set read
+it.** Reverting now would pre-empt the measurement the set was registered to make, and would make
+Q1 read null *by construction* rather than by measurement; n=2 is too thin to discard a pack row.
+The accepted cost is wall-clock — each occurrence buys a retry and a correction round — not
+validity, since the ruling above makes occurrences non-blocking and the roll's verdict is
+unaffected. Q1's reading therefore answers a real question: whether the fill shape's token saving
+(#924: 413 vs 5,727 completion tokens) is worth its emission-usability cost (#1268: `think:false`
+at 1 usable in 6, measured on the authoring shape). A third wire neither option covers — omitting
+the `think` key, which #1268 measured at 6 in 6 — stays available if the set reads against the
+declaration.
 ---
 
 ## 3. The exercise plan — stated before roll 1
