@@ -1004,6 +1004,9 @@ def runtime_log_window(since: str) -> list[str]:
         # 1.7.4 (#1372, R1): the executor's aimed emission retry, with the signature and
         # token facts the appendix is built from (#1110).
         "Retryable failure for",
+        # 1.7.4 (#1374, F1): the accepted-patch path re-deriving a framework row on the
+        # patched set (#1318/#1364 today; every contract row after #1374).
+        "re-derived required_files",
     )
     return [line for line in lines if any(k in line for k in keys)]
 
@@ -1224,6 +1227,9 @@ SEAM_READOUTS: dict[str, tuple[str, Callable[[dict], tuple[bool, Any]]]] = {
                 ],
                 "required_files_rows": ((rec.get("typed_checks") or {}).get("by_check") or {}).get(
                     "required_files", {}
+                ),
+                "framework_rows_rederived": (rec.get("loop_texture") or {}).get(
+                    "framework_rows_rederived", []
                 ),
                 "emission_retries": (rec.get("loop_texture") or {}).get("emission_retries", []),
                 "retried_with_fact": (rec.get("loop_texture") or {}).get("retried_with_fact", []),
@@ -1532,6 +1538,15 @@ def texture_from_logs(logs: list[str]) -> dict:
         # 1.7.4 (#968, A1): the structured half of an analyzer claim refuted by the
         # workspace (`_verified_implicated_files`) — the control beside the prose half,
         # which nothing checks yet and which the decision reads.
+        # 1.7.4 (#1374, F1): the framework rows the accepted-patch path re-derived on the
+        # patched set — the corrected result's own row, read from the executor's line
+        # ("patch task=… re-derived required_files on the patched set: passed=… missing=…").
+        # The contentless-builder diagnostic showed `typed_checks.by_check` carries no such
+        # row: the re-derivation is composed into the result, not stored as an evaluation
+        # artifact, so this line is the only place the fact is visible from outside.
+        "framework_rows_rederived": [
+            _fact(line, "patch task=") for line in logs if "re-derived required_files" in line
+        ],
         "analyzer_claims_dropped": [
             _fact(line, "correction_repair_target:")
             for line in logs
@@ -1916,6 +1931,8 @@ def render(cfg: SetConfig, title: str, rec: dict) -> str:
         "| contentless emissions (L1) | "
         f"{_render_by_reason((rec.get('loop_texture') or {}).get('contentless_by_handler', {}))}"
         f" of {(rec.get('loop_texture') or {}).get('emissions_logged', 0)} logged |",
+        "| 1.7.4 F1 framework rows re-derived on the patched set (#1374) | "
+        f"{(rec.get('loop_texture') or {}).get('framework_rows_rederived', []) or '—'} |",
         "| 1.7.4 R1 emission retries aimed / with fact / blind (#1372) | "
         f"{len((rec.get('loop_texture') or {}).get('emission_retries', []))} / "
         f"{len((rec.get('loop_texture') or {}).get('retried_with_fact', []))} / "

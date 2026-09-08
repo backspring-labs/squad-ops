@@ -1810,3 +1810,41 @@ class TestPrefectLoopOverrunsAreRead:
     def test_the_window_keeps_only_overrun_lines(self, driver, monkeypatch):
         monkeypatch.setattr(driver, "docker_logs", lambda c, s: [self._LINE, "INFO healthy"])
         assert driver.prefect_log_window("2026-09-08T00:00:00Z") == [self._LINE]
+
+
+class TestF1HasAProducerBeforeRollOne:
+    """1.7.4 plan preamble: every registered readout maps to a typed field before the set
+    opens. The contentless-builder diagnostic on deploy A showed `typed_checks.by_check`
+    carries no `required_files` row for the re-derived patch row — the executor composes
+    it into the corrected result and stores no evaluation artifact — so F1's field is the
+    executor's own line, kept by the runtime window and banked as a fact."""
+
+    _LINE = (
+        "2026-09-08 06:16:33,216 INFO adapters.cycles.dispatched_flow_executor: patch "
+        "task=task-run_fed2c9cc-m004-builder.assemble re-derived required_files on the "
+        "patched set: passed=True missing=- (no rows; #1318, #1364)"
+    )
+
+    def test_the_rederived_row_is_banked_as_a_fact(self, driver):
+        out = driver.texture_from_logs([self._LINE, "INFO noise"])
+        assert out["framework_rows_rederived"] == [self._LINE[self._LINE.index("patch task=") :]]
+
+    def test_the_runtime_window_keeps_the_line(self, driver, monkeypatch):
+        monkeypatch.setattr(driver, "docker_logs", lambda c, s: [self._LINE, "INFO noise"])
+        assert driver.runtime_log_window("2026-09-08T00:00:00Z") == [self._LINE]
+
+    def test_the_builder_readout_carries_it(self, driver):
+        rec = {
+            "correction_rounds": 1,
+            "typed_checks": {},
+            "loop_texture": {
+                "patch_verifications": [
+                    "patch_verification task=task-run_x-m005-builder.assemble status=passed reason= checks=3"
+                ],
+                "framework_rows_rederived": [self._LINE[self._LINE.index("patch task=") :]],
+            },
+        }
+        ev = driver.seam_readouts(("builder_emission_contentless",), rec)[
+            "builder_emission_contentless"
+        ]["evidence"]
+        assert ev["framework_rows_rederived"] == [self._LINE[self._LINE.index("patch task=") :]]
