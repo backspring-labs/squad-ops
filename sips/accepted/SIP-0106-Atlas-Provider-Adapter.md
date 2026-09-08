@@ -216,6 +216,9 @@ drops … **Verify before scheduling it, not after.**" A feasibility probe there
 new pre-registration. If it fails, this SIP's provider work still stands on Ollama alone and the
 A/B question closes for want of a second engine.
 
+**Superseded in part by §1.2e (2026-08-30):** the feasibility probe ran, the platform question
+is answered, and the arm is parked on measurement. Read §1.2e before acting on this section.
+
 ### 1.2c A trap this SIP names cost the box 95 minutes (2026-08-29)
 
 Appendix C.5 trap 1 — both engines resident at once — is not only a measurement hazard on the
@@ -255,6 +258,108 @@ every-LLM-seam-captures check on the grounds that it was off the production path
 that would otherwise have outlived the file it named.
 
 **Who ruled it.** Owner, 2026-08-31, authorising #944 in the pre-shakeout batch.
+
+### 1.2e P6's arm was built, measured, and is parked (owner ruling, 2026-08-30)
+
+**What changed.** §1.2b called the hedge and made P6 non-optional, and it still reads as though
+that arm is live. It is not. §3.5a's gating unknown — "vLLM's maturity on DGX Spark's GB10 Grace
+Blackwell / ARM64 platform is **unverified here**" — is now answered, and the answer separates
+two things the deferral bundled: the *platform* is fine, and the *engine* is not competitive on
+this workload. The arm is parked on measurement, not on a blocker.
+
+**The platform question is answered: vLLM runs on GB10.** Upstream `vllm/vllm-openai:latest`
+(vLLM 0.28.0, transformers 5.15.1) serves `Qwen/Qwen3.8-27B-FP8`: 28.51 GiB weights, 55.58 GiB
+KV cache, 792,576 tokens, 24× concurrency at 32K, ~7 min load. The GPU reports capability
+(12,1) = sm_121; the build ships sm_120 cubins, which run on it. **Live port conformance 14/14**
+— §3.6's actual gate, not the fixture-based unit tier. The deploy switches cleanly:
+`docker-compose.vllm.yml`, 8/8 healthy, `provider=vllm` verified in-container, `arm.sh V` and
+`arm.sh A` both exercised.
+
+**An earlier conclusion is retracted here.** "vLLM does not support Qwen3.8" came from testing
+only `nvcr.io/nvidia/vllm:25.09-py3` (vLLM 0.10.1.1, transformers 4.55.2), eighteen minor
+versions behind, and generalising from one image to the project.
+
+**Why it is parked — two measurements, both against it.**
+
+Decode rate on the real framing workload, each engine's own reporting:
+
+| arm | quantization | decode |
+|---|---|---:|
+| Ollama (production) | Q4_K_M (4-bit) | 23.6–36.8 t/s |
+| vLLM | FP8 (8-bit) | 7.8 t/s |
+| vLLM | NVFP4 (4-bit) | 10.8 t/s |
+
+The obvious explanation — FP8 is twice the weight bytes of Q4_K_M on a bandwidth-bound box —
+**does not survive the test**: at equal 4-bit precision vLLM is still ~2.5× slower. Halving the
+bytes bought ~1.4×, not the ~2× predicted. Two likelier limiters, both from the startup log:
+DeepGemm auto-disabled on Blackwell for `model_type=qwen3_5_text` (falling back to CUTLASS), and
+FlashAttention 2. There is also a workload-shape mismatch — vLLM reported `Running: 1 reqs` with
+24× concurrency headroom idle, because SquadOps dispatches one task at a time.
+
+Plan authoring, replaying the stored `merge_plan` prompt through `ImplementationPlan.from_yaml`
+— the handler's own gate, same harness as the Ollama controls:
+
+| replay | completion | reasoning | finish | verdict |
+|---|---:|---:|---|---|
+| 1 | 14,336 | **14,336** | `length` | rejected — no plan emitted |
+| 2 | 13,643 | 10,380 | `stop` | rejected — malformed YAML |
+| 3 | 14,336 | **14,336** | `length` | rejected — no plan emitted |
+
+**0/3**, against Ollama's **5/5** on the identical prompt and budget. Two of three spent the
+*entire* budget on thinking and emitted nothing. The reasoning parser is working correctly and
+attributes those tokens cleanly; the model simply does not stop thinking. **This is the blocking
+measurement.** Throughput is the smaller half, and a reader who takes only the table above will
+draw the wrong conclusion about what a faster engine would buy.
+
+**What is unchanged.** Everything §1.2b lists as already in place stays in the tree and stays
+inert under §4: `adapters/llm/vllm.py`, the factory's `provider == "vllm"` branch, the schema
+value, `docker-compose.vllm.yml` and the conformance coverage. Parked is not deleted; the arm is
+re-armed by a measurement, not a rebuild. §1.2b's outstanding list is closed except for the
+verification sets and pre-registration, which were never reached.
+
+**What would reopen it.** A serving recipe that moves the throughput number **and** a replay
+that clears the plan-authoring gate. **#1408** is that gate for the Qwen3.8-Flash-Next NVFP4
+recipe, which reports 48.7 t/s single-stream and therefore addresses only the first half; the
+replay is pre-registered there and runs before any re-arm. §1.2c's trap binds that work too —
+the recipe budgets 94.87 GiB GPU allocation plus a 26 GiB host reserve on a 121 GiB box, so the
+arms cannot coexist.
+
+**Who ruled it.** Owner, 2026-08-30. Recorded until now only in `docs/plans/1-7-0-cut-record.md`
+§5a — superseded at its cut — and on #1184.
+
+### 1.2f The `local-spark` bootstrap never installs Atlas, and will not (2026-09-08)
+
+**What changed.** Nothing was built; that is the amendment. #1158 was filed as the P4/P5
+prerequisite and carried four deliverables. Three landed:
+
+- **container-reachable** — verified live (`squadops-max → host.docker.internal:8888 → 200`);
+- **the live-verification facts** — measured 2026-08-28 and recorded in Appendix B and §10.2's
+  table, including the new fact 6 (per-request reasoning control) that #927's adapter mapping
+  needed;
+- **the AGPLv3-vs-commercial deployment decision** — recorded in §1.1's owner rulings rather
+  than left for a profile to make silently.
+
+The fourth — an `atlas` entry in the `local-spark` bootstrap profile with a service unit and a
+`squadops doctor local-spark --check llm` that knows about it — was never built. `atlas` appears
+nowhere in `scripts/bootstrap/`, `config/profiles/bootstrap/local-spark.yaml`, or the doctor.
+
+**Why it stays unbuilt.** §1.2a rules Atlas not adopted. A one-click install for an engine this
+SIP rejects has no consumer, and the item's own framing — "the prerequisite of P4's opening and
+P5's run" — describes a gate that has already opened, run, and returned a negative.
+
+**The dependency runs the other way from how a reader might take it.** The 1.7.4 plan says the
+line "does not adopt Atlas (SIP-0106 stays accepted and not adopted until #301)". #301
+(Composition Root) is a **precondition** of any adoption, not a trigger for one: P4/P5's
+negative stands on its own measurements and would not be overturned by the composition root
+landing. #301 removes an obstacle to switching providers in general; it says nothing about
+whether this provider is worth switching to.
+
+**What this costs, stated plainly.** Standing Atlas up again is a manual serve script on the
+box, as it was throughout the A/B. That is the correct cost for a rejected engine, and it is why
+the item is closed rather than carried forward through further lines.
+
+**What would change it.** An adoption decision, which needs P4/P5 re-run and their negative
+overturned. Not a bootstrap entry.
 
 ## 2. Problem Statement
 
