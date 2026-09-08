@@ -1,0 +1,148 @@
+# 1.7.4 — Verification Sets: Pre-registration (DRAFT — pins blank until the last shakeout)
+
+**In force from roll 1, by the commit hash of this document on its branch, and unchanged
+thereafter.** Merging it is the owner's act and does not change what it pre-registers; the
+branch commit is the record. Revised while the instrument rounds, the checkpoint pair and the
+shakeout loop run — each finding becomes a merged fix and, where the fix is in deployed
+code, a new deploy (§2) — and frozen before the first counted launch.
+
+This is the 1.7.4 plan's §4 (`docs/plans/1-7-4-plan.md`, rev 3) as data: **two bars, L1 and
+H1; three live hypotheses, F1, B1 and Q1; the seam invariants R1, H2, W1, A1 and D1 and the
+1.7.3 diagnostics' L2/L4/L7/L8, proven on the pinned deploy and reported as texture on the
+counted rolls; the 1.7.3 set's own claims re-registered under a `1.7.3/` prefix.** Six
+counting rolls on FastAPI+React, three on Next.js+TS, on one frozen deploy. Everything not
+restated here is inherited **verbatim** from the 1.7.3 pre-registration and, through it,
+1.7.2/1.7.1/1.6.6/1.6.5/1.6.4/1.6.3: §5 (scoring), §5.1 (roll validity — void / reset /
+counted), §6 and §6.1 (the gate constant and the two approval paths), §7 (prohibited while
+open).
+
+**The rules this document carries from the plan's preamble, applied before roll 1:**
+
+- **Every registered readout maps to a typed evidence field before the set opens, checked
+  against a real record.** §3 names the field beside every claim. Two of them did not exist
+  when the line opened and were built on it: B1's (`static_checks.non_root_fixture_tables`,
+  #1378 — 43 suites, 0 mentions on the 1.7.3 records) and R1's (`retried_with_fact` beside
+  `emission_retries`, #1378). One was found missing by the first diagnostic and built after
+  it: F1's (`framework_rows_rederived`, #1398 — the executor composes the re-derived row into
+  the corrected result and stores no evaluation artifact, so `typed_checks.by_check` was
+  blind to it).
+- **No fault, no prediction.** W1's honest fault does not exist (§3): #994's mechanism is the
+  "continue" fallback after an applied-but-unverified repair, not the correction path's
+  `rewind`, and rule B (#1229) and #1221 have since changed what that fallback does. **W1 is
+  CI-only on this line**, declared here before roll 1, unless pack row 4's design finds a
+  fault.
+- **Rolls measure emergent behaviour; faults prove reachable seams; CI proves deterministic
+  mappings.** A diagnostic is read by the seam it reached (`seam_reached`), never by "the
+  fault fired" (#1310, #1300), with the **two-run budget** of plan §3.1 for a seam that sits
+  behind a live emission or repair.
+
+---
+
+## 1. Fixed parameters
+
+| Parameter | Value |
+|---|---|
+| N (rolls) | **6 counted** on FastAPI+React (§4) and **3 counted** on Next.js+TS (§5) — the 1.7.3 sizes held, for comparability and observation across one frozen deploy (plan §4); faults provide the guaranteed seam exercise. |
+| Bars | **two: L1 and H1** (§3). L1 — the loop remains able to produce a valid running result; H1 — this line's rejection class is gone. |
+| Project / PRD / squad / request profile | `group_run`, `full-38`, `validated-fullstack` — identical to 1.6.6 → 1.7.3 |
+| Overrides | FastAPI+React: none. Next.js+TS: `build_profile=nextjs_ts`, `development_profile=nextjs_ts` |
+| `resolved_config_hash` | FastAPI+React **`<blank>`**, Next.js+TS **`<blank>`** — observed on the last shakeout pair of each arm on the frozen deploy; asserted on every counting roll. Expected to hold at 1.7.3's `3921c5a62106` / `33cadf53688e` unless a pack row changes the resolved configuration; a move is recorded, not explained away. |
+| `squad_profile_snapshot_ref` | `575707c58536cf3b…` expected unchanged from 1.6.6 → 1.7.3 |
+| Deploy — commit | **`<blank>`** — main after the shakeout loop's last fix. A label, not an assertion (#1296): the image ids are the assertion. |
+| Deploy — 7 image ids | **`<blank>`** — from the frozen deploy's identity; asserted at every counting launch. |
+| Loaded, not built | Verified per container as a live call with its paired control. Each set config's `loaded_checks` carries the 1.7.3 calls and the 1.7.4 surfaces: the builder and analyzer faults wired at their seams, the correction envelopes' `resolved_config`, the pool's JSON codecs, `DispatchConfig`, the domain-error handlers, the migration lock (`docs/plans/verification-sets/1-7-4-<arm>.yaml`, #1399). |
+| Gate policy | 1.6.3 §6 constant, verbatim in each set config's `gate_notes`; `--as-agent`; the decider recorded per roll |
+| Audit instrument | `scripts/dev/audit_delivered_app.py` at the deploy commit — since #1384 a failed probe's line carries the status and a bounded excerpt of the response it judged, and the record keeps every FAIL line |
+| Driver | `verification_set_driver.py roll --set docs/plans/verification-sets/1-7-4-<arm>.yaml --roll N` — one roll per invocation |
+| Order | FastAPI+React rolls 1–6 first, then Next.js+TS rolls 1–3 |
+
+---
+
+## 2. Preconditions and the shakeout log
+
+- **Counted launches run from `main`**, which requires this document and the set configs to
+  be merged before roll 1.
+- **The control-plane precondition is met**: `integration` is a required status check on
+  `main` since 2026-09-08 (branch protection lists it beside `closing reference present`,
+  `lint + regression` and `scaffold skeleton gate`); the controlled negative check (PR
+  #1376, one deliberately failing integration test) was observed **BLOCKED** and closed
+  unmerged; PR #1377 records both.
+- **The instrument was proven on its own deploy (A) before the pack's first PR**: the driver
+  fields (#1378), the two faults with their readouts (#1379), F1's field (#1398).
+- **The shakeout loop with its exit rule**: exit on a pair on one deploy with no new seam
+  finding; budget three pairs; the record reports rounds taken and rounds attributable to
+  the pack. A finding is a defect in a seam the pack touched, or a readout that cannot see
+  its own miss; a defect in the application a cycle built is the cycle's.
+- **The rider landed before the pack behind a checkpoint pair** (plan rev 3): every
+  subsequent roll exercises it; the tag matches the frozen deploy. **#560 landed last** and
+  every driver field is re-checked on the checkpoint pair's records.
+- **A fix to the instrument does not supersede the deploy** (1.7.2 §2 rule).
+
+### Deploys and what each found
+
+| deploy | built from | images | purpose | found |
+|---|---|---|---|---|
+| A | main at `4ce18165` (the 1.7.3 tree + #1377 #1378 #1379 #1380) | runtime-api `6b57d5a7b85a` · max `99f2944fc87b` · neo `b90268bfaf21` · nat `b059cfafb84b` · bob `19ba155dd9c3` · eve `0a0587a8d6f0` · data `6f8f9c9239c6` | instrument round — the diagnostics on a pre-rider, pre-pack deploy | **contentless-builder `cyc_ceef5581bfd1`: seam reached — the fault applied to the builder's first attempt (48 chars, 2,281 completion tokens, no fence), the attempt failed as a semantic failure with no retry marker (the #1372 gap), correction round 0 entered, the builder's own repair verified `passed`, the executor re-derived `required_files` on the patched set (`passed=True`, #1364's rule); accepted, boot PASS, functional, one correction round, 3,307 s.** Instrument finding: the record's `required_files_rows` read `{}` — the re-derivation is composed into the result, not stored as an evaluation artifact — so F1's field now reads the executor's line (#1398). **absent-suite-then-false-claim `cyc_1063c4dca548`: running.** The 1.7.3 three (absent-suite, own-frame-then-prose-repair, path-prefix): queued on A. |
+| B | — | — | the rider's rebuild; the checkpoint pair; every driver field re-checked | — |
+| C | — | — | the pack; the shakeout loop to the exit rule; the pinned deploy is the last one | — |
+
+---
+
+## 3. The exercise plan — stated before roll 1
+
+| claim | category | reached by an ordinary roll? | exercise plan and field | result |
+|---|---|---|---|---|
+| **L1** (#1268) | bar | yes — every roll | `contentless_emissions`, qa first attempts | — |
+| **H1** (#1312) | bar | yes — every roll | the roll-up's `required_unmet` and the typed rows by check: no `qa_handoff.md` required, no `sections_present` row for it; the readout lists every required file, not the handoff's | — |
+| **F1** (#1374) | live hypothesis | on every roll whose accepted patch supplies a framework row's subject | `framework_rows_rederived` (#1398) for the concrete case; the per-row comparison against a re-derivation over the stored accepted tree lands with #1374; the contentless-builder diagnostic is the deterministic exercise (steps 2 and 6) | diagnostic on A: **the seam reached** (`cyc_ceef5581bfd1`) |
+| **B1** (#1087/#1112) | live hypothesis | yes — every roll with a qa fill | `static_checks.non_root_fixture_tables` (#1378) | — |
+| **Q1** (#1285) | live hypothesis | yes — every Next.js roll | `emission_tokens_by_handler` by shape, under the second reasoning declaration | — |
+| **R1** (#1372) | seam invariant | no — L1 keeps qa at zero, the builder's contentless emission is rare | the contentless-builder diagnostic (steps 3 and 4 after #1372); `retried_with_fact` / `retried_blind` beside `emission_retries` (#1378); live contentless retries are texture | pre-#1372 on A: **0 retries aimed** — the builder's contentless attempt is a semantic failure with no marker, as the wiring test asserts |
+| **H2** (#1312) | seam invariant | CI | the appendix renderer under present / absent / superseded notes; live: appendix presence per task with the producing artifact id | — |
+| **W1** (#994) | seam invariant, **CI-only on this line** | no | no honest fault exists (preamble); CI on the repair-then-continue path; live: rewind occurrences against `applied_patches` | declared before roll 1 |
+| **A1** (#968) | seam invariant | no | `1-7-4-diagnostic-absent-suite-then-false-claim` (the analyzer runs only behind a failure, #1298's chain); read from `decision_inherited_claims` beside `analyzer_claims_dropped` (#1379). **Pre-#968 the expected reading is NO with the decision named as inherited** | `cyc_1063c4dca548`: running |
+| **D1** (#1054) | seam invariant | CI | the locus classifier under decisions naming each task-type family; live: `affected_task_types → correction_repair_locus` pairs | — |
+| **L2, L4, L7, L8** (1.7.3) | seam invariants | unlikely | the three 1.7.3 diagnostics re-run on A and on the pinned deploy | queued on A |
+| **T1** (#995) and the texture | texture | when it occurs | the fields in plan §4's texture table, plus `prefect_loop_overruns` (#330, #1396) | — |
+
+**Diagnostics on A, in order:** contentless-builder (done), absent-suite-then-false-claim
+(running), absent-suite, own-frame-then-prose-repair, path-prefix. All are re-run on the
+pinned deploy before roll 1 with the two-run budget.
+
+---
+
+## 4. FastAPI+React (`fullstack_fastapi_react`) — the measurement, six rolls
+
+The 1.7.3 §4 held verbatim — scoring, validity, the texture list — with §3's table as the
+claims. **Known non-pack rejection cause, declared before roll 1: none** — #1312 was that
+cause and is the pack. Packaging findings stay reporting-only.
+
+## 5. Next.js+TS (`nextjs_ts`) — three rolls
+
+The 1.7.3 §5 held verbatim; Q1 is exercised on every roll of this arm.
+
+## 6. Delegation
+
+As 1.7.3 §6: the owner delegated the line; the driver approves the gate with §7's constant;
+every decision the plan author made is in plan §8 for the owner to overrule.
+
+## 7. Gate constant
+
+The 1.6.3 §6 text, verbatim in each set config's `gate_notes`.
+
+## 8. Prohibited while open
+
+As 1.7.3 §8: no merge to `main`, no rebuild, no config or profile change while a set is open;
+a driver-only fix re-renders from stored identity and is named in §2.
+
+---
+
+## 9. Plan revisions recorded on this line
+
+- **#353 is not landed on this line** (plan §3.5's rule: a row that does not land revises
+  the plan in the open with the reason). It is a SIP-0084 governance change — the fragment
+  manifest's hashes stamped at build rather than hand-maintained — that warrants its own
+  small SIP or amendment; the #351 CI guard contains the debt (a stale hash cannot merge).
+  Carried to 1.7.5 by name.
+- **W1 is CI-only** (above).
+- **R1 is a seam invariant** (plan rev 3), not a live hypothesis.
