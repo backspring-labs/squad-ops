@@ -2284,3 +2284,104 @@ class TestALoadedCheckIsAskedWhereItSaysAndAnsweredBeforeLaunch:
         looked at the rest."""
         cfg = driver.load_set_config(_SETS / filename)
         assert all(c.service in driver.DEPLOY_SERVICES for c in cfg.loaded_checks)
+
+
+class TestAFailedEmissionIsCountedOnceNotOncePerArtifact:
+    """#1431: the record's "failed emissions banked" counted artifacts.
+
+    #971 banks every artifact of a failed emission — a `qa.test` failure banks its suite,
+    its `test_report.md` and its `typed_check_evaluation_*.json` — so one failed emission
+    reported as 3. Round 1's halves recorded 0 and round 2's React half recorded 3, which
+    reads as "three emissions failed versus none" when one did, and the true figure was
+    recoverable only by opening the vault and grouping on `task_id`.
+    """
+
+    def _cycle(self, driver, tmp_path, monkeypatch, artifacts):
+        """Stub the two seams `collect` reads: the run rows and the artifact dirs."""
+        dirs = []
+        for i, (task_id, filename) in enumerate(artifacts):
+            art = tmp_path / f"art_{i:012x}"
+            art.mkdir()
+            (art / "metadata.json").write_text(
+                json.dumps(
+                    {
+                        "filename": filename,
+                        "metadata": {"task_id": task_id, "emission_status": "failed"},
+                    }
+                )
+            )
+            dirs.append(art)
+
+        def fake_psql(query: str) -> str:
+            if "from cycle_runs where cycle_id" in query:
+                return "1|implementation|completed||run_abc|1800"
+            return ""
+
+        monkeypatch.setattr(driver, "psql", fake_psql)
+        monkeypatch.setattr(driver, "artifact_dirs", lambda cfg, c, r: dirs)
+        import yaml
+
+        p = tmp_path / "set.yaml"
+        p.write_text(
+            yaml.safe_dump(
+                {
+                    "name": "t",
+                    "project": "group_run",
+                    "squad_profile": "full-38",
+                    "request_profile": "validated-fullstack",
+                    "gate_name": "g",
+                    "gate_notes": "g",
+                    "launch_notes": "r {roll}/{n}",
+                    "shakeout_notes": "s",
+                    "n_rolls": 2,
+                }
+            )
+        )
+        return driver.collect(driver.load_set_config(p), "cyc_test")
+
+    def test_one_failed_task_banking_three_artifacts_counts_as_one_emission(
+        self, driver, tmp_path, monkeypatch
+    ):
+        """The exact shape of `cyc_69d34bc41c20`: one qa.test failure, three artifacts."""
+        rec = self._cycle(
+            driver,
+            tmp_path,
+            monkeypatch,
+            [
+                ("task-m005-qa.test", "backend/tests/test_runs.py"),
+                ("task-m005-qa.test", "test_report.md"),
+                ("task-m005-qa.test", "typed_check_evaluation_task_5.json"),
+            ],
+        )
+        assert rec["failed_emissions_banked"] == 1
+        assert rec["failed_emission_artifacts_banked"] == 3
+
+    def test_two_failed_tasks_are_two_emissions(self, driver, tmp_path, monkeypatch):
+        """The counting must still separate genuinely distinct failures — a fix that
+        collapsed everything to 1 would pass the test above and lose the signal."""
+        rec = self._cycle(
+            driver,
+            tmp_path,
+            monkeypatch,
+            [
+                ("task-m005-qa.test", "backend/tests/test_runs.py"),
+                ("task-m005-qa.test", "test_report.md"),
+                ("task-m008-builder.assemble", "Dockerfile"),
+            ],
+        )
+        assert rec["failed_emissions_banked"] == 2
+        assert rec["failed_emission_artifacts_banked"] == 3
+
+    def test_a_clean_roll_reports_zero_on_both_counts(self, driver, tmp_path, monkeypatch):
+        rec = self._cycle(driver, tmp_path, monkeypatch, [])
+        assert rec["failed_emissions_banked"] == 0
+        assert rec["failed_emission_artifacts_banked"] == 0
+
+    def test_an_artifact_with_no_task_id_is_not_folded_into_one_bucket(
+        self, driver, tmp_path, monkeypatch
+    ):
+        """Older banked artifacts predate the `task_id` stamp. Grouping them all under a
+        missing key would report N such failures as one; each falls back to its own id."""
+        rec = self._cycle(driver, tmp_path, monkeypatch, [("", "a.py"), ("", "b.py")])
+        assert rec["failed_emissions_banked"] == 2
+        assert rec["failed_emission_artifacts_banked"] == 2
