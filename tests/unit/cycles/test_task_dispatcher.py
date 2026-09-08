@@ -418,14 +418,18 @@ class TestDispatchTaskPrefectLifecycle:
         seen_ids: list[tuple[str | None, str | None]] = []
         real_sleep = asyncio.sleep
 
+        clock = {"now": 0.0}
+
         async def capturing_sleep(_interval: float) -> None:
             ctx = get_correlation_context()
             seen_ids.append((ctx.flow_run_id if ctx else None, ctx.task_run_id if ctx else None))
+            clock["now"] += 60.0  # #560: the stdout line is milestone-paced, first at 60 s
             # Let the event loop advance; real sleep avoids tight-looping.
             await real_sleep(0)
 
         with (
             patch.object(dfe.asyncio, "sleep", capturing_sleep),
+            patch.object(dfe.time, "monotonic", lambda: clock["now"]),
             caplog.at_level(stdlog.INFO, logger=dfe.__name__),
         ):
             base = CorrelationContext(cycle_id="cyc_001")
@@ -824,3 +828,65 @@ class TestCancellationProbe:
 
         # One dispatch happened (the in-flight task); the retry never published.
         assert mock_queue.publish.await_count == 1
+
+
+class TestHeartbeatMilestones:
+    """#560: the stdout heartbeat logs at 60, 300, 600 s and then every 600 s — a
+    three-hour task emits ~21 lines instead of ~360."""
+
+    def test_the_cadence(self):
+        from adapters.cycles.task_dispatcher import heartbeat_milestones
+
+        gen = heartbeat_milestones(30.0)
+        assert [next(gen) for _ in range(6)] == [60.0, 300.0, 600.0, 1200.0, 1800.0, 2400.0]
+
+    def test_a_slow_poll_still_gets_its_first_line(self):
+        from adapters.cycles.task_dispatcher import heartbeat_milestones
+
+        gen = heartbeat_milestones(120.0)
+        assert [next(gen) for _ in range(3)] == [120.0, 1200.0, 1800.0]
+
+    async def test_the_loop_logs_only_at_milestones(self, caplog):
+        import logging as stdlog
+
+        import adapters.cycles.task_dispatcher as dfe
+        from adapters.cycles.task_dispatcher import TaskDispatcher
+
+        envelope = TaskEnvelope(
+            task_id="task_abc",
+            agent_id="neo",
+            cycle_id="cyc_001",
+            pulse_id="p1",
+            project_id="proj_001",
+            task_type="development.design",
+            correlation_id="corr",
+            causation_id="cause",
+            trace_id="trace",
+            span_id="span",
+            metadata={"role": "dev", "task_type": "dev.design"},
+        )
+        dispatcher = TaskDispatcher.__new__(TaskDispatcher)
+        clock = {"now": 0.0}
+        real_sleep = asyncio.sleep
+
+        async def fake_sleep(_interval):
+            clock["now"] += 30.0
+            await real_sleep(0)
+
+        with (
+            patch.object(dfe.asyncio, "sleep", fake_sleep),
+            patch.object(dfe.time, "monotonic", lambda: clock["now"]),
+            caplog.at_level(stdlog.INFO, logger=dfe.__name__),
+        ):
+            hb = asyncio.create_task(dispatcher._task_heartbeat(envelope, interval=30.0))
+            for _ in range(25):  # 25 polls × 30 s = 750 s of task time
+                await real_sleep(0)
+            hb.cancel()
+            try:
+                await hb
+            except asyncio.CancelledError:
+                pass
+        lines = [r.getMessage() for r in caplog.records if "task_heartbeat" in r.getMessage()]
+        elapsed = [float(ln.split("elapsed=")[1].split("s")[0]) for ln in lines]
+        assert elapsed[:3] == [60.0, 300.0, 600.0], lines
+        assert len(elapsed) <= 4

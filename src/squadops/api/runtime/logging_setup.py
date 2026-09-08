@@ -24,6 +24,22 @@ _HANDLER_NAME = "squadops-stdout"
 _DEFAULT_LEVEL = "INFO"
 _ENV_LEVEL = "SQUADOPS_LOG_LEVEL"
 
+#: #560: the audit records (SIP-0062, a compliance surface — nothing here reduces what is
+#: recorded) leave the application stream. ``squadops.audit`` gets its own handler and
+#: stops propagating to the root stdout handler; with the path set (the compose mounts
+#: ``./data/audit`` and sets it), records land in a rotating JSONL file; unset, they keep
+#: going to stdout as before and boot says so once — a deploy pipeline that forgot the
+#: sink loses nothing, it just keeps the noise.
+AUDIT_LOGGER_NAME = "squadops.audit"
+_AUDIT_HANDLER_NAME = "squadops-audit-sink"
+_ENV_AUDIT_PATH = "SQUADOPS_AUDIT_LOG_PATH"
+_AUDIT_ROTATE_BYTES = 50 * 1024 * 1024
+_AUDIT_ROTATE_COUNT = 5
+
+#: #560: third-party chatter demoted below INFO — httpx logs a line per Prefect POST
+#: (``/api/logs/``, ``/api/task_runs/``, ``set_state``), three per task-state transition.
+_QUIET_LOGGERS = {"httpx": logging.WARNING, "httpcore": logging.WARNING}
+
 
 def _resolve_level(level: str | None) -> int:
     """Resolve a level name (arg → ``SQUADOPS_LOG_LEVEL`` → INFO) to a logging int.
@@ -59,3 +75,45 @@ def configure_logging(level: str | None = None) -> None:
     handler.setLevel(resolved)
     handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
     root.addHandler(handler)
+    for name, quiet_level in _QUIET_LOGGERS.items():
+        logging.getLogger(name).setLevel(quiet_level)
+    configure_audit_sink(os.getenv(_ENV_AUDIT_PATH))
+
+
+def configure_audit_sink(path: str | None) -> logging.Handler | None:
+    """Route ``squadops.audit`` to its own sink (#560). Returns the handler installed, or
+    None when no path is configured (records keep propagating to stdout, unchanged).
+
+    Idempotent like ``configure_logging``: a second call with the same path re-uses the
+    named handler; with a different path it replaces it.
+    """
+    audit = logging.getLogger(AUDIT_LOGGER_NAME)
+    existing = next(
+        (h for h in audit.handlers if getattr(h, "name", None) == _AUDIT_HANDLER_NAME), None
+    )
+    if not path:
+        if existing is None:
+            logging.getLogger(__name__).warning(
+                "audit records share the application stream — set %s to give them their "
+                "own sink (#560)",
+                _ENV_AUDIT_PATH,
+            )
+        return existing
+    if existing is not None and getattr(existing, "baseFilename", None) == os.path.abspath(path):
+        return existing
+    if existing is not None:
+        audit.removeHandler(existing)
+        existing.close()
+    from logging.handlers import RotatingFileHandler
+
+    os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
+    handler = RotatingFileHandler(
+        path, maxBytes=_AUDIT_ROTATE_BYTES, backupCount=_AUDIT_ROTATE_COUNT, encoding="utf-8"
+    )
+    handler.set_name(_AUDIT_HANDLER_NAME)
+    handler.setLevel(logging.INFO)
+    handler.setFormatter(logging.Formatter("%(message)s"))  # the record IS the JSON line
+    audit.addHandler(handler)
+    audit.setLevel(logging.INFO)
+    audit.propagate = False
+    return handler

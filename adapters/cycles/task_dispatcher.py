@@ -64,6 +64,25 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+#: The stdout heartbeat's milestones (#560): the first three say "still running" early,
+#: then one line per ten minutes. The polling ``interval`` bounds how late a milestone
+#: line can be.
+_HEARTBEAT_MILESTONES = (60.0, 300.0, 600.0)
+_HEARTBEAT_PERIOD = 600.0
+
+
+def heartbeat_milestones(interval: float):
+    """Elapsed seconds at which the stdout heartbeat logs: 60, 300, 600, 1200, 1800, …
+    An interval longer than the first milestone starts at the interval instead, so a
+    test or an operator that polls slowly still sees the first line."""
+    first = _HEARTBEAT_MILESTONES if interval <= _HEARTBEAT_MILESTONES[0] else (interval,)
+    yield from first
+    at = max(first[-1], _HEARTBEAT_PERIOD)
+    while True:
+        at += _HEARTBEAT_PERIOD
+        yield at
+
+
 class TaskDispatcher:
     """Publishes tasks to agent queues and awaits replies (SIP-0094 pattern).
 
@@ -144,15 +163,24 @@ class TaskDispatcher:
             if envelope.metadata
             else envelope.task_type
         )
+        # #560: milestone cadence on the stdout line — 60 s, 300 s, 600 s, then every
+        # 600 s — instead of one line per ``interval``: a three-hour task used to emit ~360.
+        # The Prefect-side heartbeat (SIP-0087) is a separate coroutine and is untouched.
+        milestones = iter(heartbeat_milestones(interval))
+        next_at = next(milestones)
         while True:
             await asyncio.sleep(interval)
             elapsed = time.monotonic() - start
+            if elapsed < next_at:
+                continue
             logger.info(
                 "task_heartbeat elapsed=%.1fs task_type=%s task_id=%s",
                 elapsed,
                 task_type,
                 envelope.task_id,
             )
+            while next_at <= elapsed:
+                next_at = next(milestones)
 
     async def _raise_if_cancelled(self, run_id: str) -> None:
         """Raise ``_CancellationError`` when the run has been cancelled (#586).
