@@ -82,7 +82,7 @@ apart from the shakeout rounds.
 | 7 | **#1054** | a correction decision naming dev task types dispatches a dev repair — the locus classifier's conservative default is read against the decision's own `affected_task_types` | **D1** |
 | 8 | **#1070** | the plan's restatement of `success_status` collapsed; the manifest's field is the one copy | CI (goldens); no prediction |
 | 9 | **#936 / #933** | verify-then-close against the tree — both were fill-mode window blockers whose fixes may already have landed with SIP-0104's later phases | CI; no prediction |
-| 10 | **#1285** | *if §8 rules the fill-mode cost material*: the qa task's two output shapes get two reasoning declarations | **Q1** |
+| 10 | **#1285** | the qa task's two output shapes get two reasoning declarations — the fill-mode cost is material (§8, ruled 2026-09-07) | **Q1** |
 
 Items 1–3 are the line's subject: the emission shape the builder produces, the rows the loop
 composes from it, and what the loop does when the emission is empty. Items 4–7 are the
@@ -121,7 +121,7 @@ Every rider item is on its fourth plan. That is the number this section exists t
 
 ### 3.5 The cut criterion
 
-The pack's ten rows landed (item 10 conditional on §8), the rider at the quota, both sets closed
+The pack's ten rows landed, the rider at the quota, both sets closed
 with no falsified prediction and **two bars held: L1 and H1**. A row that does not land revises
 this plan in the open with the reason, never a re-place-by-name at the cut.
 
@@ -152,7 +152,7 @@ of.
 | **A1** (#968) | no correction decision inherits an analyzer claim the source refutes | one refuted claim in a decision | the analyzer's claims table against the checked-source rows the fix adds |
 | **D1** (#1054) | a decision naming dev task types dispatches a dev repair | one qa repair dispatched under a dev-typed decision | `correction_repair_locus` against the decision's `affected_task_types` |
 | **T1** (#995) | texture: a timed-out attempt banks its real history | — (no bar; read when it occurs) | the banked failure analysis against the emission-shape lines |
-| **Q1** (#1285, conditional) | each qa output shape is measured under its own declaration | one fill-mode emission reported under the free-authored declaration | `emission_tokens_by_handler` by shape |
+| **Q1** (#1285) | each qa output shape is measured under its own declaration | one fill-mode emission reported under the free-authored declaration | `emission_tokens_by_handler` by shape |
 
 **Bars: L1 and H1.** L1 because it is the condition every other prediction is measured through
 (1.7.2 §4). H1 because it is this line's subject: a counted roll rejected on the handoff after
@@ -216,7 +216,7 @@ review starts during this line (§7 step 2) with the 1.7.3 findings as evidence 
    (deploy A) and the instrument rounds: the four diagnostics on A, read by the seam reached.
 4. **The rider's CI-verified items**, one PR each, in §3.3's order; rebuild (deploy B); **one
    checkpoint pair** — a red here is the rider's.
-5. **The pack, in §3.2's order**, one PR each; item 10 only if §8 rules it in. Rebuild (deploy
+5. **The pack, in §3.2's order**, one PR each. Rebuild (deploy
    C); shakeouts to the exit rule — a pair on one deploy with no new seam finding; budget three
    pairs; the record reports rounds taken and rounds attributable to the pack.
 6. **Pre-register** (`1-7-4-<arm>.yaml`, pins from the last shakeout); the diagnostics on the
@@ -230,6 +230,10 @@ review starts during this line (§7 step 2) with the 1.7.3 findings as evidence 
 ---
 
 ## 8. Decisions made by recommendation — the owner overrules, not fills in
+
+**Ruled by the owner at the review, 2026-09-07:** #1285 is material and its half is built in
+this line; two bars, L1 and H1; the rider lands first, before the pack, behind a checkpoint
+pair; `integration` becomes a required check. The four bullets below stand as ruled.
 
 - **#1312 with #1254 leads, as one change** (the 2026-09-05 ruling): the handoff becomes
   optional assembly notes defined by exclusion; both check surfaces go; the qa appendix is
@@ -268,4 +272,5 @@ review starts during this line (§7 step 2) with the 1.7.3 findings as evidence 
   plan so nothing is carried as plan text). Placement against the 1.7.3 plan §6's re-placements
   by name, with the pack reordered to put the two void-roll mechanisms second and third. Owed
   at the review: the owner's ruling on #1285 (§8), on the two bars, and on the rider's
-  position.
+  position — **all four ruled the same evening, as recommended** (§8), and item 10 made
+  unconditional.
