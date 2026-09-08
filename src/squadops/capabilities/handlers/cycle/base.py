@@ -749,6 +749,13 @@ class _CycleTaskHandler(CapabilityHandler):
         else:
             user_prompt = self._build_user_prompt(prd, prior_outputs, inputs)
 
+        # #1372: one path, every subclass. `develop` and `qa.test` applied the aimed
+        # retry feedback in their own overrides; every handler riding this generic path —
+        # each repair handler among them — re-rolled blind on the same prior, because the
+        # executor threaded a marker nobody rendered. Presence-keyed, so a first attempt
+        # is byte-for-byte what it was.
+        user_prompt = await self._apply_emission_retry_feedback(context, inputs, user_prompt)
+
         assembled = context.ports.prompt_service.get_system_prompt(self._role)
         system_prompt = assembled.content
 
@@ -870,13 +877,21 @@ class _CycleTaskHandler(CapabilityHandler):
             "emission_stats": emission_stats(len(content), artifacts),
             "prompt_provenance": provenance,
         }
-        if not content.strip():
+        if not content.strip() or not artifacts:
             # #998: an EMPTY emission on the generic path — which every repair handler
             # rides — carried no marker at all, so the correction loop could refund the
             # round (#1053) but never say what kind of nothing it was. Three of the
-            # eleven repair rounds in the 1.6.3 set's reds were exactly this. Only
-            # emptiness is flagged here: a document-producing handler legitimately
-            # emits no fences, and that is not a failure of anything.
+            # eleven repair rounds in the 1.6.3 set's reds were exactly this.
+            #
+            # #1372 widens it from empty to CONTENTLESS. `not artifacts` is the precise
+            # discriminator and not a guess: the default `_build_artifacts_from_content`
+            # wraps any prose into one document artifact, so an empty list can only come
+            # from a handler that overrides it to extract fences — and for those,
+            # extracting nothing IS the failure. The old comment's carve-out ("a
+            # document-producing handler legitimately emits no fences") is preserved by
+            # construction rather than by the `content.strip()` proxy, which flagged a
+            # paragraph of intent as a success and sent it to the correction loop with no
+            # marker and therefore no retry.
             from squadops.cycles.emission_integrity import no_fenced_blocks_failure
 
             outputs["emission_failure"] = no_fenced_blocks_failure(
@@ -884,6 +899,7 @@ class _CycleTaskHandler(CapabilityHandler):
                 inputs.get("expected_artifacts"),
                 completion_tokens=response.completion_tokens,
                 completion_cap=chat_kwargs.get("max_tokens"),
+                content=content,
             )
 
         duration_ms = (time.perf_counter() - start_time) * 1000

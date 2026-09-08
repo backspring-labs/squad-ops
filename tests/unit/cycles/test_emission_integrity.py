@@ -439,3 +439,70 @@ class TestTheRetryPathSaysWhetherTheRemedyReachedThePrompt:
             out = await self._handler_with(self._renderer(), None)
         assert out == "PROMPT"
         assert not [r for r in caplog.records if "emission retry feedback" in r.getMessage()]
+
+
+class TestTheRetryIsToldWhatItWrote:
+    """#1372: the retry feedback said how many characters came back and nothing about
+    what they were, so a model that wrote a paragraph of intent was re-prompted with the
+    same prior and told only that extraction failed.
+
+    The 1.7.2 plan §8 named this backstop and §8a deferred it; the 1.7.3 set's one
+    contentless emission was the builder's (roll 1, void on #1364) — 160 tokens, no
+    fences, straight to a correction round.
+    """
+
+    def _marker(self, content: str, **kw):
+        from squadops.cycles.emission_integrity import no_fenced_blocks_failure
+
+        return no_fenced_blocks_failure(len(content), ["Dockerfile"], content=content, **kw)
+
+    def test_prose_with_no_fence_is_named_as_such(self):
+        from squadops.cycles.emission_integrity import emission_retry_reason_line
+
+        line = emission_retry_reason_line(
+            self._marker("I'll start by verifying the source layout.")
+        )
+        assert "no fenced block at all" in line
+        assert "I'll start by verifying the source layout." in line
+
+    def test_an_unaddressed_fence_is_distinguished_from_no_fence(self):
+        """The two have different corrections: one has to open a fence, the other has to
+        put the path in the header it already opened. A reason line that says only
+        'extraction failed' aims neither."""
+        from squadops.cycles.emission_integrity import emission_retry_reason_line
+
+        line = emission_retry_reason_line(self._marker("here it is:\n```\nFROM python\n```\n"))
+        assert "0 fence(s) carrying a path and 1 without one" in line
+
+    def test_an_addressed_fence_is_counted_as_addressed(self):
+        from squadops.cycles.emission_integrity import emission_retry_reason_line
+
+        line = emission_retry_reason_line(
+            self._marker("```dockerfile:Dockerfile\nFROM python\n```\n")
+        )
+        assert "1 fence(s) carrying a path and 0 without one" in line
+
+    def test_a_marker_without_the_content_still_reads(self):
+        """A producer that has only a length must still emit a truthful marker — the
+        shape is additive, never a precondition."""
+        from squadops.cycles.emission_integrity import (
+            emission_retry_reason_line,
+            no_fenced_blocks_failure,
+        )
+
+        marker = no_fenced_blocks_failure(120, ["Dockerfile"])
+        assert "fences" not in marker
+        line = emission_retry_reason_line(marker)
+        assert "120-character response" in line
+        assert "It began" not in line
+
+    def test_the_budget_exhaustion_line_is_unchanged_by_the_shape(self):
+        """#998's cap signature has its own remedy — emit the file first — and the shape
+        would only dilute it."""
+        from squadops.cycles.emission_integrity import emission_retry_reason_line
+
+        line = emission_retry_reason_line(
+            self._marker("", completion_tokens=8000, completion_cap=8000)
+        )
+        assert "full 8000-token completion budget" in line
+        assert "It began" not in line

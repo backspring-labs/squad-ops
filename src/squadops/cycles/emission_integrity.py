@@ -127,14 +127,26 @@ def no_fenced_blocks_failure(
     *,
     completion_tokens: int | None = None,
     completion_cap: int | None = None,
+    content: str | None = None,
 ) -> dict[str, Any]:
     """Build the ``emission_failure`` marker for a zero-extraction failure.
 
     Carries the token facts and the #998 signature so the evidence says *which* nothing
     this was; a producer that cannot report tokens still emits a truthful marker with
     the signature the character count alone supports.
+
+    **``content`` carries the emission's SHAPE into the retry (#1372).** The retry
+    feedback could say how many characters came back and nothing about what they were,
+    so a model that wrote a paragraph of intent was re-prompted with the same prior and
+    told only that extraction failed. The shape — fence counts by kind and the first
+    words it actually wrote — is what makes the retry aimed rather than a re-roll: it
+    separates "you wrote prose and no fence", "you opened a fence with no path" and "you
+    thought the budget away", which have different corrections. It is already logged at
+    the emission seam (`log_emission_shape`); this is the same fact reaching the one
+    place that can act on it. Optional, so a producer that has only a length still emits
+    a truthful marker.
     """
-    return {
+    marker: dict[str, Any] = {
         "reason": EMISSION_FAILURE_NO_FENCED_BLOCKS,
         "response_chars": response_chars,
         "expected_artifacts": [str(e) for e in (expected_artifacts or [])],
@@ -142,6 +154,12 @@ def no_fenced_blocks_failure(
         "completion_cap": completion_cap,
         "signature": classify_empty_emission(response_chars, completion_tokens, completion_cap),
     }
+    if content is not None:
+        from squadops.capabilities.handlers.emission_log import classify_fences
+
+        marker["fences"] = classify_fences(content)
+        marker["head"] = " ".join(str(content)[:160].split())
+    return marker
 
 
 EMISSION_STATS_KEY = "emission_stats"
@@ -210,9 +228,26 @@ def emission_retry_reason_line(marker: dict[str, Any]) -> str:
             )
         if signature == SIGNATURE_EMPTY:
             return "the response was empty — no content was returned at all."
+        # #1372: the shape, when the producer carried it. "0 addressed fences, 2
+        # unaddressed" and "0 fences at all" are different mistakes with different
+        # corrections, and the head is the model's own first words — the cheapest
+        # possible way to tell it what it did instead of asking again.
+        fences = marker.get("fences") or {}
+        head = str(marker.get("head") or "").strip()
+        shape = ""
+        if fences:
+            addressed = int(fences.get("path", 0)) + int(fences.get("fill", 0))
+            plain = int(fences.get("plain", 0))
+            shape = (
+                f" It opened {addressed} fence(s) carrying a path and {plain} without one."
+                if (addressed or plain)
+                else " It contained no fenced block at all."
+            )
+        if head:
+            shape += f' It began: "{head}".'
         return (
             f"no fenced code block carrying a file path could be extracted "
-            f"from the {chars}-character response."
+            f"from the {chars}-character response.{shape}"
         )
     return f"the response failed emission extraction ({reason})."
 
