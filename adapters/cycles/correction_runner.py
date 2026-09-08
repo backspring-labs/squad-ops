@@ -723,6 +723,7 @@ def _locus_and_repair_target(
     failure_evidence: Any,
     failed_inputs: dict[str, Any],
     failure_analysis: dict[str, Any] | None = None,
+    decision_outputs: dict[str, Any] | None = None,
 ) -> tuple[str, list[str], str | None, str | None]:
     """#568: classify the failure locus and choose the repair target for it.
 
@@ -734,9 +735,12 @@ def _locus_and_repair_target(
     existing target resolution unchanged.
     """
     from squadops.cycles.failure_evidence import (
+        OWN_ARTIFACT_FROM_TESTS_PASS_ROW,
         FailureLocus,
         absent_anchor_cases,
         classify_failure_locus,
+        decision_disputes_own_artifact,
+        own_artifact_signal,
         qa_owned_suite_defects,
     )
 
@@ -809,17 +813,51 @@ def _locus_and_repair_target(
             failed_inputs.get("subtask_description"),
         )
     if failure_locus == FailureLocus.OWN_ARTIFACT and own_expected:
-        logger.info(
-            "correction_repair_locus: own_artifact — %s re-produces %s",
-            failed_task_type,
-            ", ".join(own_expected),
-        )
-        return (
-            failure_locus,
-            own_expected,
-            failed_inputs.get("subtask_focus"),
-            failed_inputs.get("subtask_description"),
-        )
+        # #1054: the GENERIC own-artifact route — no fill sites, no qa-owned frame, no
+        # absent anchor. Every branch above carries specific machine evidence naming the
+        # suite as the defect site; this one has only "the failing check belongs to the
+        # task that emitted it", which is exactly the #531 shape the docstring above warns
+        # about: `tests_pass` lives on the qa task, so anchoring here regenerates the
+        # symptom while the cause is never rewritten.
+        #
+        # Arm A of the 2026-08-23 pair is the case. Its decision named route handlers and
+        # a store module; all three repairs re-authored the same suite file; the shadow
+        # store survived. When the decision mentions the suite NOWHERE, that unanimity is
+        # the one signal available here that the generic read is wrong, and the target
+        # falls through to the dev chain below.
+        #
+        # The evidence-backed branches above are deliberately NOT overridable this way:
+        # `affected_task_types` is model-authored (#968/#788), and the test-gaming guard
+        # must keep every seam where a machine signal actually named the suite.
+        if own_artifact_signal(failure_evidence) == OWN_ARTIFACT_FROM_TESTS_PASS_ROW and (
+            decision_disputes_own_artifact(decision_outputs)
+        ):
+            # The LOCUS is what routes — `repair_steps_for` reads it to choose the role,
+            # and the target follows from that. Returning the same locus with a different
+            # target would still dispatch `qa.test_repair`, which is arm A's defect
+            # exactly. Disputed, the read falls back to the classifier's own documented
+            # ambiguity default: UNKNOWN, which routes to the dev chain.
+            logger.warning(
+                "correction_repair_locus: own_artifact DISPUTED — the decision names %s "
+                "and mentions the suite nowhere, so %s does not re-author its own %s; the "
+                "read falls back to the dev chain (#1054)",
+                ", ".join(str(t) for t in (decision_outputs or {}).get("affected_task_types", [])),
+                failed_task_type,
+                ", ".join(own_expected),
+            )
+            failure_locus = FailureLocus.UNKNOWN
+        else:
+            logger.info(
+                "correction_repair_locus: own_artifact — %s re-produces %s",
+                failed_task_type,
+                ", ".join(own_expected),
+            )
+            return (
+                failure_locus,
+                own_expected,
+                failed_inputs.get("subtask_focus"),
+                failed_inputs.get("subtask_description"),
+            )
     expected, focus, description = _resolve_repair_target(
         failure_evidence, failed_inputs, failure_analysis
     )
@@ -1772,7 +1810,14 @@ class CorrectionRunner:
                 repair_focus,
                 repair_description,
             ) = _locus_and_repair_target(
-                envelope.task_type, failure_evidence, failed_inputs, analysis_outputs
+                envelope.task_type,
+                failure_evidence,
+                failed_inputs,
+                analysis_outputs,
+                # #1054: the decision's own account of what is affected. Read AGAINST the
+                # conservative locus default, never as authority — see
+                # `decision_disputes_own_artifact`.
+                decision_outputs,
             )
 
             for step_idx, (task_type, role) in enumerate(

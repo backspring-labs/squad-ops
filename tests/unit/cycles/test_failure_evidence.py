@@ -1056,3 +1056,51 @@ class TestThePriorEmissionsAreRead:
         from squadops.cycles.failure_evidence import prior_emission_history
 
         assert prior_emission_history("task_2", []) == []
+
+
+class TestTheDecisionCanDisputeASuiteSideRead:
+    """#1054: arm A of the 2026-08-23 paired validation (`cyc_181c9572bef2`) exhausted its
+    budget without the application ever being repaired.
+
+    Round 0's decision was unambiguous — *"route handlers instantiating a local shadow
+    store instead of importing the scaffold-provided global"*, with
+    `affected_task_types: ["backend_route_implementation", "store_module_integration"]` —
+    and all three repairs dispatched `qa.test_repair` against the same suite file. The
+    route handlers were never emitted, the suite was rewritten three times, and the real,
+    correctly diagnosed defect survived the whole arc. Arm B on the identical deploy
+    dispatched a dev repair on round 0 and emitted seven route/page files.
+
+    The field is model-authored, which is why #1015 part A was deferred on the #968/#788
+    caveat. Unanimity is the whole safety argument: a decision that mentions the suite
+    NOWHERE is the only shape that disputes a suite-side read.
+    """
+
+    def _dispute(self, labels):
+        from squadops.cycles.failure_evidence import decision_disputes_own_artifact
+
+        return decision_disputes_own_artifact({"affected_task_types": labels})
+
+    def test_arm_as_own_labels_dispute_the_read(self):
+        assert self._dispute(["backend_route_implementation", "store_module_integration"])
+
+    def test_one_suite_side_label_is_enough_to_abstain(self):
+        """The 1.7.4 React checkpoint's decision wrote exactly this for a genuine
+        test-mock defect. A rule firing on "any non-suite label" would have misrouted it,
+        which is the test-gaming hole the locus guard exists to keep shut."""
+        assert not self._dispute(["frontend", "testing"])
+
+    def test_the_tokens_match_the_vocabulary_the_lead_actually_writes(self):
+        """`TaskType` values never appear in this field — the lead writes prose-ish
+        labels — so the match is on substrings of what it does write."""
+        for label in ("qa_test_authoring", "test_suite_isolation", "assertion_fixes", "mock_setup"):
+            assert not self._dispute([label]), label
+
+    def test_an_empty_or_absent_field_disputes_nothing(self):
+        """Absence is not disagreement. A decision that named nothing must leave the
+        conservative default exactly where it was."""
+        from squadops.cycles.failure_evidence import decision_disputes_own_artifact
+
+        assert not self._dispute([])
+        assert not decision_disputes_own_artifact({})
+        assert not decision_disputes_own_artifact(None)
+        assert not decision_disputes_own_artifact("patch")
