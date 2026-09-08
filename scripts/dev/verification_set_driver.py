@@ -109,6 +109,21 @@ MAX_WAIT_S = 4 * 60 * 60
 
 
 @dataclass(frozen=True)
+class LoadedCheck:
+    """One "loaded, not built" probe: a named question asked inside one container.
+
+    ``name`` says what the probe ASKS and is what the recorded identity keys on; ``service``
+    says where to ask it. A YAML entry whose value is a plain string keeps the older shape,
+    where the name is itself the service — every set through 1.7.3 is written that way and
+    records byte-identical keys under this class.
+    """
+
+    name: str
+    service: str
+    source: str
+
+
+@dataclass(frozen=True)
 class SetConfig:
     name: str
     project: str
@@ -133,7 +148,7 @@ class SetConfig:
     frozen_image_ids: dict[str, str] = field(default_factory=dict)
     #: ``{service: python_source}`` — "loaded, not built": run inside the container and
     #: recorded with the deploy identity (the pre-registration's own list, as data).
-    loaded_checks: dict[str, str] = field(default_factory=dict)
+    loaded_checks: tuple[LoadedCheck, ...] = ()
     records_dir: str = ""
     pre_registration: str = ""
 
@@ -181,6 +196,23 @@ def load_set_config(path: Path) -> SetConfig:
     unknown = sorted(set(image_ids) - set(DEPLOY_SERVICES))
     if unknown:
         raise SystemExit(f"{path}: frozen_image_ids names unknown services {unknown}")
+    checks: list[LoadedCheck] = []
+    for key, value in (raw.get("loaded_checks") or {}).items():
+        name = str(key)
+        if isinstance(value, dict):
+            absent = [k for k in ("service", "source") if k not in value]
+            if absent:
+                raise SystemExit(f"{path}: loaded_checks[{name}] is missing {', '.join(absent)}")
+            checks.append(LoadedCheck(name, str(value["service"]), str(value["source"])))
+        else:
+            checks.append(LoadedCheck(name, name, str(value)))
+    unknown_services = sorted({c.service for c in checks} - set(DEPLOY_SERVICES))
+    if unknown_services:
+        raise SystemExit(
+            f"{path}: loaded_checks names unknown services {unknown_services} — a probe whose "
+            "container does not exist can only ever record an error, and in the deploy identity "
+            "that reads exactly like a probe that ran and reported"
+        )
     return SetConfig(
         name=str(raw["name"]),
         project=str(raw["project"]),
@@ -196,7 +228,7 @@ def load_set_config(path: Path) -> SetConfig:
         expected_squad_snapshot_prefix=str(raw.get("expected_squad_snapshot_prefix") or ""),
         frozen_deploy_commit=str(raw.get("frozen_deploy_commit") or ""),
         frozen_image_ids=image_ids,
-        loaded_checks={str(k): str(v) for k, v in (raw.get("loaded_checks") or {}).items()},
+        loaded_checks=tuple(checks),
         records_dir=str(raw.get("records_dir") or ""),
         pre_registration=str(raw.get("pre_registration") or ""),
     )
@@ -320,16 +352,17 @@ def image_id(service: str) -> str:
 def deploy_identity(cfg: SetConfig) -> dict[str, str]:
     ids = {s: image_id(s) for s in DEPLOY_SERVICES}
     ids["head"] = sh(f"git -C {REPO} rev-parse --short HEAD")
-    for service, source in cfg.loaded_checks.items():
+    for check in cfg.loaded_checks:
         # A failed check must say WHY: an ImportError here is the "rebuild exited 0 with
-        # stale images" signal, and an empty string reads as "nothing to report".
+        # stale images" signal, and an empty string reads as "nothing to report". Preflight
+        # is what makes anyone act on it — see its unrunnable-probe guard.
         proc = subprocess.run(
-            ["docker", "exec", f"squadops-{service}", "python", "-c", source],
+            ["docker", "exec", f"squadops-{check.service}", "python", "-c", check.source],
             capture_output=True,
             text=True,
         )
         err = (proc.stderr or "").strip().splitlines()
-        ids[f"{service}:loaded"] = (
+        ids[f"{check.name}:loaded"] = (
             proc.stdout.strip()
             if proc.returncode == 0
             else (f"ERROR: {err[-1] if err else f'exit {proc.returncode}'}")
@@ -342,8 +375,31 @@ def deploy_identity(cfg: SetConfig) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 
-def preflight(cfg: SetConfig, *, counting: bool) -> list[str]:
+def loaded_check_problems(identity: dict[str, str]) -> list[str]:
+    """Preflight problems for the probes in a deploy identity that could not RUN.
+
+    A probe that errored is an unasked question, not a failed one, and in the recorded
+    identity the two are indistinguishable — both are a string beside the service.
+    """
+    unrun = sorted(
+        k for k, v in identity.items() if k.endswith(":loaded") and v.startswith("ERROR:")
+    )
+    if not unrun:
+        return []
+    detail = "; ".join(f"{k} -> {identity[k]}" for k in unrun)
+    return [
+        f"§7 LOADED CHECK DID NOT RUN ({len(unrun)}): {detail} — the surface it asks about "
+        "is unverified on this deploy"
+    ]
+
+
+def preflight(cfg: SetConfig, *, counting: bool, identity: dict[str, str]) -> list[str]:
     problems: list[str] = []
+    # #1425: three 1.7.4 probes named containers that do not exist and recorded "No such
+    # container" through a whole checkpoint pair that was then read as clean. "Loaded, not
+    # built" is the only evidence that the deploy carries the code the set claims, so an
+    # error here stops the launch rather than riding into the record for someone to notice.
+    problems.extend(loaded_check_problems(identity))
     leases = psql("select count(*) from focus_leases where released_at is null;")
     if leases != "0":
         problems.append(f"§2.6: {leases} unreleased focus leases (must be 0) — #529 deadlock risk")
@@ -2241,8 +2297,8 @@ def _run_cycle(
     return 5 if ended_early else 0
 
 
-def cmd_preflight(cfg: SetConfig, counting: bool) -> int:
-    problems = preflight(cfg, counting=counting)
+def cmd_preflight(cfg: SetConfig, counting: bool, identity: dict[str, str]) -> int:
+    problems = preflight(cfg, counting=counting, identity=identity)
     if problems:
         print("PREFLIGHT FAILED — nothing launched:")
         for p in problems:
@@ -2253,11 +2309,13 @@ def cmd_preflight(cfg: SetConfig, counting: bool) -> int:
 
 
 def cmd_shakeout(cfg: SetConfig, dry_run: bool) -> int:
-    rc = cmd_preflight(cfg, counting=False)
+    # The identity is taken BEFORE preflight and handed to it: preflight judges the very
+    # readout that lands in the record, rather than a second one taken moments later.
+    ident = deploy_identity(cfg)
+    rc = cmd_preflight(cfg, counting=False, identity=ident)
     if rc:
         return rc
     stack = stack_for(cfg)
-    ident = deploy_identity(cfg)
     log(f"stack {stack}; deploy identity: {json.dumps(ident)}")
     if dry_run:
         return 0
@@ -2275,7 +2333,8 @@ def cmd_shakeout(cfg: SetConfig, dry_run: bool) -> int:
 
 
 def cmd_roll(cfg: SetConfig, roll: int, dry_run: bool) -> int:
-    rc = cmd_preflight(cfg, counting=True)
+    ident = deploy_identity(cfg)
+    rc = cmd_preflight(cfg, counting=True, identity=ident)
     if rc:
         return rc
     stack = stack_for(cfg)
@@ -2283,11 +2342,9 @@ def cmd_roll(cfg: SetConfig, roll: int, dry_run: bool) -> int:
     # already refuses a changed deploy; this puts the identity that passed that check —
     # and the loaded-module checks — into the roll's own record, so "loaded, not built" is
     # re-verified per roll instead of once per shakeout and inherited by assertion.
-    if dry_run:
-        log(f"stack {stack}; deploy identity: {json.dumps(deploy_identity(cfg))}")
-        return 0
-    ident = deploy_identity(cfg)
     log(f"stack {stack}; deploy identity: {json.dumps(ident)}")
+    if dry_run:
+        return 0
     cfg.records_path.mkdir(parents=True, exist_ok=True)
     if not cfg.head_pin.exists():
         cfg.head_pin.write_text(sh(f"git -C {REPO} rev-parse --short HEAD"))
@@ -2329,7 +2386,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = ap.parse_args(argv)
     cfg = load_set_config(args.set)
     if args.command == "preflight":
-        return cmd_preflight(cfg, counting=args.counting)
+        return cmd_preflight(cfg, counting=args.counting, identity=deploy_identity(cfg))
     if args.command == "shakeout":
         return cmd_shakeout(cfg, args.dry_run)
     return cmd_roll(cfg, args.roll, args.dry_run)

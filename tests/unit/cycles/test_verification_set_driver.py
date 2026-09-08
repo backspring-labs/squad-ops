@@ -1079,7 +1079,7 @@ class TestAFaultDeclarationSurvivesTheSetConfig:
         cfg = self._cfg(driver, tmp_path, ["qa_suite_absent"])
         monkeypatch.setattr(driver, "psql", lambda *a, **k: "0")
         monkeypatch.setattr(driver, "sh", lambda *a, **k: "")
-        problems = driver.preflight(cfg, counting=True)
+        problems = driver.preflight(cfg, counting=True, identity={})
         refusals = [p for p in problems if "fault injection" in p]
         assert refusals, "a counting roll declaring a fault must be refused"
         assert "(qa_suite_absent)" in refusals[0]
@@ -2137,3 +2137,150 @@ class TestH1ReadsEveryRequiredFileNotTheHandoffs:
             "missing=qa_handoff.md (the failed attempt carried the row; #1318, #1364)"
         )
         assert driver.texture_from_logs([old])["required_files_declared"] == []
+
+
+class TestALoadedCheckIsAskedWhereItSaysAndAnsweredBeforeLaunch:
+    """#1425: three 1.7.4 probes named containers that do not exist.
+
+    `loaded_checks` keyed on the container, so a second probe for one service needed a
+    distinct key; the suffix invented for that (`bob-1-7-4`) was then docker-exec'd as
+    `squadops-bob-1-7-4`. Every launch recorded `ERROR: No such container` beside the
+    probes that did run, and a whole checkpoint pair was read as clean with three of its
+    surfaces never verified. Two halves: the probe names its service explicitly and an
+    unknown one is refused at load, and preflight refuses to launch on a probe that could
+    not run — an unasked question, which in the record is indistinguishable from an
+    answered one.
+    """
+
+    def _cfg(self, driver, tmp_path, checks):
+        import yaml
+
+        p = tmp_path / "set.yaml"
+        p.write_text(
+            yaml.safe_dump(
+                {
+                    "name": "t",
+                    "project": "group_run",
+                    "squad_profile": "full-38",
+                    "request_profile": "validated-fullstack",
+                    "gate_name": "g",
+                    "gate_notes": "g",
+                    "launch_notes": "r {roll}/{n}",
+                    "shakeout_notes": "s",
+                    "n_rolls": 2,
+                    "loaded_checks": checks,
+                }
+            )
+        )
+        return driver.load_set_config(p)
+
+    def _execs(self, driver, monkeypatch, cfg):
+        """Run deploy_identity against a stubbed docker, returning (argv seen, identity)."""
+        seen = []
+
+        class _Proc:
+            returncode = 0
+            stdout = "answered"
+            stderr = ""
+
+        def fake_run(argv, **kwargs):
+            seen.append(argv)
+            return _Proc()
+
+        monkeypatch.setattr(driver.subprocess, "run", fake_run)
+        monkeypatch.setattr(driver, "sh", lambda *a, **k: "")
+        return seen, driver.deploy_identity(cfg)
+
+    def test_a_probe_naming_a_container_that_does_not_exist_is_refused_at_load(
+        self, driver, tmp_path
+    ):
+        with pytest.raises(SystemExit, match=r"unknown services \['bob-1-7-4'\]"):
+            self._cfg(driver, tmp_path, {"bob-1-7-4": "print(1)"})
+
+    def test_a_mapping_probe_naming_a_container_that_does_not_exist_is_refused_too(
+        self, driver, tmp_path
+    ):
+        """The explicit shape must not become the way to smuggle a bad service back in."""
+        with pytest.raises(SystemExit, match=r"unknown services \['nope'\]"):
+            self._cfg(driver, tmp_path, {"faults": {"service": "nope", "source": "print(1)"}})
+
+    def test_a_named_probe_is_asked_in_its_service_and_recorded_under_its_name(
+        self, driver, tmp_path, monkeypatch
+    ):
+        """Two probes for one container: the record must distinguish them, and both must
+        reach `bob` rather than a container named after the question."""
+        cfg = self._cfg(
+            driver,
+            tmp_path,
+            {
+                "builder-fault-seam": {"service": "bob", "source": "print('a')"},
+                "builder-pack": {"service": "bob", "source": "print('b')"},
+            },
+        )
+        seen, ids = self._execs(driver, monkeypatch, cfg)
+        assert [a[2] for a in seen] == ["squadops-bob", "squadops-bob"]
+        assert [a[-1] for a in seen] == ["print('a')", "print('b')"]
+        assert ids["builder-fault-seam:loaded"] == "answered"
+        assert ids["builder-pack:loaded"] == "answered"
+
+    def test_the_bare_shape_still_reads_its_key_as_the_service(self, driver, tmp_path, monkeypatch):
+        """Every set through 1.7.3 is written this way; their records must stay reproducible."""
+        cfg = self._cfg(driver, tmp_path, {"eve": "print('x')"})
+        seen, ids = self._execs(driver, monkeypatch, cfg)
+        assert [a[2] for a in seen] == ["squadops-eve"]
+        assert ids["eve:loaded"] == "answered"
+
+    def test_a_mapping_probe_missing_its_source_is_named(self, driver, tmp_path):
+        with pytest.raises(SystemExit, match="loaded_checks\\[faults\\] is missing source"):
+            self._cfg(driver, tmp_path, {"faults": {"service": "bob"}})
+
+    def _clean_environment(self, driver, monkeypatch):
+        monkeypatch.setattr(driver, "psql", lambda *a, **k: "0")
+        monkeypatch.setattr(driver, "sh", lambda *a, **k: "")
+
+    def test_a_probe_that_could_not_run_stops_the_launch(self, driver, tmp_path, monkeypatch):
+        self._clean_environment(driver, monkeypatch)
+        cfg = self._cfg(driver, tmp_path, {"eve": "print(1)"})
+        problems = driver.preflight(
+            cfg,
+            counting=False,
+            identity={
+                "eve:loaded": "ERROR: Error response from daemon: No such container: squadops-eve",
+                "bob:loaded": "True True",
+            },
+        )
+        assert len(problems) == 1
+        assert "LOADED CHECK DID NOT RUN (1)" in problems[0]
+        assert "eve:loaded" in problems[0] and "No such container" in problems[0]
+        assert "bob:loaded" not in problems[0]
+
+    def test_a_deploy_whose_probes_all_answered_launches(self, driver, tmp_path, monkeypatch):
+        """The control: the guard must key on the failure to run, not on probe output —
+        a probe printing `False` is a reading, and a reading is not a blocker."""
+        self._clean_environment(driver, monkeypatch)
+        cfg = self._cfg(driver, tmp_path, {"eve": "print(1)"})
+        problems = driver.preflight(
+            cfg, counting=False, identity={"eve:loaded": "False False", "head": "abc1234"}
+        )
+        assert problems == []
+
+    def test_the_shakeout_judges_the_identity_it_records(self, driver, tmp_path, monkeypatch):
+        """Wiring, entered where the driver is actually launched (#1250/#1256): preflight
+        ran BEFORE the identity was taken, so nothing could have refused on it. Asserts the
+        launch is stopped and no cycle is created."""
+        self._clean_environment(driver, monkeypatch)
+        cfg = self._cfg(driver, tmp_path, {"eve": "print(1)"})
+        judged = {"eve:loaded": "ERROR: exit 1", "head": "abc1234"}
+        monkeypatch.setattr(driver, "deploy_identity", lambda c: judged)
+        monkeypatch.setattr(
+            driver, "_run_cycle", lambda *a, **k: pytest.fail("launched on an unverified deploy")
+        )
+        assert driver.cmd_shakeout(cfg, dry_run=False) == 2
+
+    @pytest.mark.parametrize("filename", sorted(p.name for p in _SETS.glob("*.yaml")))
+    def test_every_committed_probe_names_a_deployed_service(self, driver, filename):
+        """Broader than the change that prompted it: every set on disk, counting arms,
+        A/B arms and diagnostics alike — the defect reached two files because nothing
+        looked at the rest."""
+        cfg = driver.load_set_config(_SETS / filename)
+        assert all(c.service in driver.DEPLOY_SERVICES for c in cfg.loaded_checks)
