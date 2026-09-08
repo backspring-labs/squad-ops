@@ -114,6 +114,55 @@ FRAMEWORK_CHECKS: dict[str, FrameworkCheck] = {
 }
 
 
+#: Which framework spine rows a task type owes BY CONTRACT, and which stage's rule
+#: produces each. #1374: the accepted-patch path composed a corrected result from the
+#: failed attempt's rows plus whatever the verifier produced, so a framework row was
+#: present only if some earlier stage happened to write one — and each miss was patched
+#: with a narrower gate. #1318 (1.7.2 roll 1) re-derived `required_files` only when the
+#: failed attempt had CARRIED it; #1364 (1.7.3 roll 1) found the next shape, a contentless
+#: attempt that carried no rows at all, and both void counted rolls were booting apps.
+#:
+#: A table, so the next shape is a row here rather than a third gate: what a task owes is
+#: its contract's statement, never its attempt's history.
+#:
+#: `frontend_build` is deliberately absent. It is stack-conditional — the criteria pack
+#: emits `vc-frontend-builds` only where a frontend exists — so declaring it owed would
+#: manufacture a gap on every backend-only cycle, which is the same false-negative class
+#: in the other direction.
+_FRAMEWORK_ROWS_OWED: tuple[tuple[str, str, str], ...] = (
+    (CHECK_REQUIRED_FILES, "emits_required_files", "derived from the patched set"),
+    (CHECK_TESTS_PASS, "authors_qa_suite", "the retest"),
+    (CHECK_NO_STUB_FALLBACK_TESTS, "authors_qa_suite", "the retest"),
+    (CHECK_NO_SELF_MOCKING_TESTS, "authors_qa_suite", "the retest"),
+)
+
+
+def framework_rows_owed(task_type: object) -> tuple[str, ...]:
+    """The framework spine rows this task type owes, by contract (#1374).
+
+    Read at the accepted-patch seam: every owed row must be present in the corrected
+    result — derived there when the rule can derive it, taken from the retest when the
+    retest is the producing stage — or the patch is not accepted. "Absent" is the state
+    SIP-0096 reads as `subject_missing`, and it blocked two counted rolls whose apps
+    booted.
+    """
+    from squadops.tasks import task_types as _tt
+
+    return tuple(
+        check
+        for check, predicate, _stage in _FRAMEWORK_ROWS_OWED
+        if getattr(_tt, predicate)(task_type)
+    )
+
+
+def framework_row_producer(check_id: str) -> str:
+    """Which stage's rule writes ``check_id`` — for the log line and the seam table."""
+    for check, _predicate, stage in _FRAMEWORK_ROWS_OWED:
+        if check == check_id:
+            return stage
+    return "unknown"
+
+
 def is_framework_check(check_id: str) -> bool:
     """True iff ``check_id`` is a stable, required-addressable framework check."""
     return check_id in FRAMEWORK_CHECKS

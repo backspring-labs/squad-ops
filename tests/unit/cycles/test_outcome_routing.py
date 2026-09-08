@@ -2213,3 +2213,99 @@ class TestTheExecutorStampsTheReAttemptMarker:
         await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
 
         assert all(not s.get("prior_attempts") for s in seen)
+
+
+class TestTheContractSaysWhichFrameworkRowsAreOwed:
+    """#1374: two void counted rolls on two lines were one mechanism patched twice.
+
+    The accepted-patch seam composed a corrected result from the failed attempt's rows
+    plus whatever the verifier produced, so a framework row survived only if some earlier
+    stage happened to write one. #1318 re-derived `required_files` when the attempt had
+    CARRIED it — 1.7.2 roll 1, a booting app rejected on the pre-patch row. #1364 found
+    the next shape, a contentless attempt carrying no rows at all — 1.7.3 roll 1, a
+    booting app read `blocked_unverified`. What a task owes is its contract's statement;
+    its attempt's history is not evidence about it.
+    """
+
+    def test_the_builder_owes_the_deliverable_row_and_the_qa_author_the_test_spine(self):
+        from squadops.cycles.check_registry import framework_rows_owed
+
+        assert framework_rows_owed("builder.assemble") == ("required_files",)
+        assert framework_rows_owed("builder.assemble_repair") == ("required_files",)
+        assert framework_rows_owed("qa.test") == (
+            "tests_pass",
+            "no_stub_fallback_tests",
+            "no_self_mocking_tests",
+        )
+
+    def test_a_task_type_that_owes_nothing_is_handed_nothing(self):
+        """The other half of #1318's rule stands: a dev task is never handed a spine row
+        it does not emit. Inventing one would credit a check the task never ran."""
+        from squadops.cycles.check_registry import framework_rows_owed
+
+        assert framework_rows_owed("development.develop") == ()
+        assert framework_rows_owed("not.a.task.type") == ()
+
+    def test_the_producing_stage_is_named_for_every_owed_row(self):
+        """The log line and the seam table read this. A row whose producer is 'unknown'
+        is a row nobody can be held to."""
+        from squadops.cycles.check_registry import framework_row_producer, framework_rows_owed
+
+        owed = set(framework_rows_owed("builder.assemble")) | set(framework_rows_owed("qa.test"))
+        assert owed
+        assert all(framework_row_producer(check) != "unknown" for check in owed)
+
+    def test_frontend_build_is_not_owed_by_anyone(self):
+        """Deliberate: it is stack-conditional — the criteria pack emits
+        `vc-frontend-builds` only where a frontend exists — so declaring it owed would
+        manufacture a gap on every backend-only cycle, the same false-negative class in
+        the other direction."""
+        from squadops.cycles.check_registry import framework_rows_owed
+
+        assert "frontend_build" not in framework_rows_owed("qa.test")
+
+
+class TestAnOwedRowIsDerivedOnceAndAGapIsNamed:
+    """The seam's two remaining behaviours, entered at `_try_accept_patch`."""
+
+    def _builder_envelope(self):
+        from squadops.tasks.models import TaskEnvelope
+
+        return TaskEnvelope(
+            task_id="task_7",
+            agent_id="bob",
+            cycle_id="cyc_001",
+            pulse_id="p",
+            project_id="hello_squad",
+            task_type="builder.assemble",
+            correlation_id="corr",
+            causation_id=None,
+            trace_id="t",
+            span_id="s",
+            inputs={"resolved_config": {}, "expected_artifacts": ["Dockerfile"]},
+            metadata={"role": "builder"},
+        )
+
+    def _contentless(self):
+        return TaskResult(
+            task_id="task_7",
+            status="FAILED",
+            outputs={"artifacts": [], "validation_result": {"checks": []}},
+            error="no fenced blocks",
+        )
+
+    async def test_the_row_appears_exactly_once(self, executor):
+        """Deriving beside a row the verifier already produced would put two
+        `required_files` rows on one subject, and the ledger supersedes on
+        `(check_id, subject, criterion_id)` — a duplicate is a coin flip about which
+        value is final."""
+        holder: dict = {}
+        action = await executor._try_accept_patch(
+            self._builder_envelope(),
+            self._contentless(),
+            [{"name": "Dockerfile", "content": "FROM python:3.12\n"}],
+            holder,
+        )
+        assert action == "accept_patch"
+        rows = holder["patched_result"].outputs["validation_result"]["checks"]
+        assert len([r for r in rows if r.get("check") == "required_files"]) == 1
