@@ -1487,3 +1487,168 @@ class TestFillMergeEvidenceIsReadFromTheTree:
         monkeypatch.setattr(driver, "artifact_dirs", lambda *a, **k: sorted(tree.glob("art_*")))
         monkeypatch.setattr(driver, "REPO", tree)
         assert driver.fill_merge_evidence(None, "cyc", "run") == []
+
+
+class TestRetryFeedbackIsReadFromBothWindows:
+    """1.7.4 plan §3.1 (#1372, R1): the field exists before the fix, so the pre-registration
+    has a producer to check. The executor aims a retry in the runtime-api window; whether
+    the handler rendered the fact into the prompt is logged only in the agent's window —
+    the #1276 shape again, where a readout keyed on the wrong container read nothing."""
+
+    _AIMED = (
+        "2026-09-08 01:02:03,004 - adapters.cycles.dispatched_flow_executor - INFO - "
+        "Retryable failure for task-run_x-m004-qa.test (attempt 1), retrying — "
+        "signature=unextractable response_chars=148 completion_tokens=114 completion_cap=6000"
+    )
+    _APPENDED = (
+        "2026-09-08 01:02:05,006 - squadops.capabilities.handlers.cycle.base - INFO - "
+        "emission retry feedback appended for development_develop_handler: "
+        "signature=unextractable appendix_chars=412 expected_files=2"
+    )
+    _BLIND = (
+        "2026-09-08 01:02:05,006 - squadops.capabilities.handlers.cycle.base - WARNING - "
+        "emission retry feedback NOT appended for qa_test_handler (no request_renderer) — "
+        "this retry re-rolls blind on the same prior; signature=empty"
+    )
+    _SHAPE = (
+        "2026-09-08 01:02:04,000 - squadops.capabilities.handlers.emission_log - INFO - "
+        "qa_test_handler emission shape: chars=148 completion_tokens=114 "
+        "fences={'fill': 0, 'path': 0, 'plain': 0} head=\"I'll examine\""
+    )
+
+    def test_the_aimed_retry_is_banked_from_the_executor_window_as_the_whole_fact(self, driver):
+        out = driver.texture_from_logs([self._AIMED, "INFO - Dispatched task task-a (x) to y"])
+        assert out["emission_retries"] == [self._AIMED[self._AIMED.find("Retryable failure") :]]
+
+    def test_appended_and_blind_are_told_apart_and_a_shape_line_is_neither(self, driver):
+        out = driver.texture_from_retry_feedback([self._APPENDED, self._BLIND, self._SHAPE])
+        assert out["retried_with_fact"] == [
+            "emission retry feedback appended for development_develop_handler: "
+            "signature=unextractable appendix_chars=412 expected_files=2"
+        ]
+        assert out["retried_blind"] == [
+            "emission retry feedback NOT appended for qa_test_handler (no request_renderer) — "
+            "this retry re-rolls blind on the same prior; signature=empty"
+        ]
+
+    def test_both_windows_keep_the_lines_the_field_reads(self, driver, monkeypatch):
+        """Bug caught: a producer whose lines the window filter drops reads as zero forever
+        — `empty_repair_emissions` did exactly that for two 1.7.1 rolls (#1276)."""
+        assert driver._agent_lines_of_interest([self._APPENDED, self._BLIND, "noise"]) == [
+            self._APPENDED,
+            self._BLIND,
+        ]
+        monkeypatch.setattr(driver, "docker_logs", lambda container, since: [self._AIMED, "noise"])
+        assert driver.runtime_log_window("2026-09-08T00:00:00Z") == [self._AIMED]
+
+    def test_no_lines_is_neither_with_fact_nor_blind(self, driver):
+        assert driver.texture_from_retry_feedback([]) == {
+            "retried_with_fact": [],
+            "retried_blind": [],
+        }
+
+
+class TestB1IsAFieldNotAGrep:
+    """1.7.3 record §2: B1 ("no stored qa suite names a fixture table for a non-root entity")
+    was read by a grep over 43 stored suites because the driver produced no field for it —
+    the #1285 shape, a declared readout with no producer. The reference manifest declares
+    `RunEvent` (root — returned as a single object) and `Participant` (a shape)."""
+
+    @staticmethod
+    def _manifest(stack: str) -> str:
+        import yaml
+
+        return yaml.safe_dump(manifest_dict_for_stack(stack))
+
+    def test_a_suite_on_the_root_table_holds_and_one_on_a_shape_is_named(self, driver):
+        react = self._manifest("fullstack_fastapi_react")
+        held = driver.non_root_fixture_tables(
+            react, [("backend/tests/test_runs.py", "from backend.store import run_event_store\n")]
+        )
+        assert held["root_entities"] == ["RunEvent"]
+        assert held["non_root_entities"] == ["Participant"]
+        assert held["mentions"] == [] and held["suites_read"] == 1
+        broken = driver.non_root_fixture_tables(
+            react, [("backend/tests/test_runs.py", "participant_store.clear()\n")]
+        )
+        assert broken["mentions"] == [
+            {
+                "suite": "backend/tests/test_runs.py",
+                "entity": "Participant",
+                "form": "participant_store",
+            }
+        ]
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "expect(all(TABLES.Participant)).toHaveLength(1)",
+            "insert(TABLES['Participant'], { id: 'p' })",
+            'reset(); all(TABLES["Participant"])',
+        ],
+    )
+    def test_every_nextjs_form_of_a_shape_table_is_a_mention(self, driver, text):
+        out = driver.non_root_fixture_tables(self._manifest("nextjs_ts"), [("t.test.ts", text)])
+        assert [(m["entity"], m["form"]) for m in out["mentions"]] == [
+            ("Participant", "TABLES.Participant")
+        ]
+
+    def test_a_longer_identifier_that_starts_with_the_shapes_name_is_not_a_mention(self, driver):
+        """`TABLES.Participants` and `participant_stores` are other identifiers; a substring
+        read would name a suite that never touched the shape's table."""
+        out = driver.non_root_fixture_tables(
+            self._manifest("nextjs_ts"),
+            [("t.test.ts", "all(TABLES.Participants); all(TABLES.RunEvent); participant_stores")],
+        )
+        assert out["mentions"] == []
+
+    def test_no_manifest_is_a_refusal_not_a_hold(self, driver):
+        out = driver.non_root_fixture_tables(None, [("t.test.ts", "all(TABLES.Participant)")])
+        assert out["mentions"] is None and out["suites_read"] == 1
+        assert "refused" in out
+        assert driver._b1_words(out).startswith("REFUSED")
+        assert driver._b1_words({"suites_read": 4, "mentions": []}) == "4 / none"
+        assert driver._b1_words(None) == "—"
+
+    def test_the_vault_reader_takes_every_stored_version_of_the_qa_authored_suites_only(
+        self, driver, tmp_path, monkeypatch
+    ):
+        """The denominator is the qa author's suites (first emission and repairs, every
+        stored version); a scaffold-owned conftest or a qa-authored non-suite file is not."""
+        import json
+        import types
+
+        root = tmp_path / "data" / "artifacts" / "p" / "cyc_1" / "run_1"
+        rows = [
+            ("art_1", "backend/tests/test_runs.py", "qa.test", "v1"),
+            ("art_2", "backend/tests/test_runs.py", "qa.test_repair", "v2"),
+            ("art_3", "conftest.py", "scaffold.expand", "scaffold"),
+            ("art_4", "qa_handoff_notes.md", "qa.test", "notes"),
+            ("art_5", "tests/runs.test.ts", "qa.test", "ts"),
+            # The React frontend suites are .jsx — the first rule missed them and read 39
+            # of the 1.7.3 record's 43 suites.
+            ("art_6", "frontend/src/__tests__/runs.test.jsx", "qa.test", "jsx"),
+            # A qa repair that patched a dev file (#1350's shape) is not a suite.
+            ("art_7", "backend/routes.py", "qa.test_repair", "routes"),
+        ]
+        for art, filename, producer, body in rows:
+            d = root / art
+            d.mkdir(parents=True)
+            (d / "body").write_text(body)
+            (d / "metadata.json").write_text(
+                json.dumps(
+                    {
+                        "filename": filename,
+                        "metadata": {"producing_task_type": producer},
+                        "vault_uri": str((d / "body").relative_to(tmp_path)),
+                    }
+                )
+            )
+        monkeypatch.setattr(driver, "REPO", tmp_path)
+        cfg = types.SimpleNamespace(project="p")
+        assert driver._stored_qa_suites(cfg, "cyc_1", "run_1") == [
+            ("backend/tests/test_runs.py", "v1"),
+            ("backend/tests/test_runs.py", "v2"),
+            ("tests/runs.test.ts", "ts"),
+            ("frontend/src/__tests__/runs.test.jsx", "jsx"),
+        ]
