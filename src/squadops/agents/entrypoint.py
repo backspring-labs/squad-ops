@@ -422,6 +422,17 @@ class AgentRunner:
                 extra={"agent_id": self.agent_id},
             )
 
+        # #352: when the asset source is the registry, boot refuses a registry that lacks
+        # an asset this image ships — outside the try above, because a stale registry is
+        # not a degraded renderer to fall back from (that fallback is the #1110 blindness),
+        # it is the wrong deploy, and the agent must say so before it takes a task.
+        if request_renderer is not None and config.prompts.asset_source_provider == "langfuse":
+            from squadops.prompts.registry_check import verify_registry_serves_shipped_assets
+
+            await verify_registry_serves_shipped_assets(
+                asset_source, role=self.role, provider="langfuse"
+            )
+
         # Create telemetry (metrics + events)
         telemetry_backend = config.telemetry.backend if config.telemetry.backend else "otel"
         metrics, events = create_telemetry_provider(telemetry_backend)
