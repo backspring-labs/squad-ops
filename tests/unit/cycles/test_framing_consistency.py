@@ -299,3 +299,80 @@ class TestPlanShouldNotRestateStatuses:
         plan = _plan(["POST /api/runs/{run_id}/join adds the participant."])
         errors = validate_manifest_plan_consistency(manifest, plan)
         assert any("omission on POST /api/runs/{run_id}/join:" in e for e in errors)
+
+
+class TestTheOmissionHalfIsUnreachableByConstruction:
+    """#1070 part 2: the completeness half of #1013 fires only where plan prose is the
+    SOLE channel carrying a declared success status to the implementer.
+
+    Two deterministic channels now exist — the skeleton's frozen decorator (#pf-39) and
+    the developer's brief (#1042/#1063) — and the plan-authoring rule tells authors not to
+    state statuses at all. So for every registered stack the condition is permanently
+    false, and a check that can only lie dormant is one nobody can reason about. This
+    asserts the unreachability instead of commenting it.
+
+    `cyc_79eebcb82205` is why it matters: rejected twice at the plan gate, both times as a
+    manifest↔plan contradiction over an integer neither document needed to decide, burning
+    two framing cycles and both re-rolls.
+    """
+
+    def _stacks(self):
+        from squadops.capabilities.scaffold import _STACKS
+
+        return sorted(_STACKS)
+
+    def test_every_registered_stack_carries_the_status_without_the_plan(self):
+        from squadops.capabilities.scaffold import (
+            brief_carries_success_status_for,
+            skeleton_pins_success_status_for,
+        )
+
+        for stack in self._stacks():
+            assert skeleton_pins_success_status_for(stack) or brief_carries_success_status_for(
+                stack
+            ), (
+                f"{stack} carries a declared success status through neither its skeleton "
+                "nor its dev brief, so plan prose is its only channel and the #1013 "
+                "omission check becomes live again for it. That is a deliberate decision "
+                "about a new stack, not a thing to discover from a rejected framing."
+            )
+
+    def test_a_stack_with_no_channel_still_gets_the_omission_finding(self, monkeypatch):
+        """The branch is kept, not deleted. If a third stack ever lacks both channels the
+        omission is real — plan prose is then the only carrier — and the finding must name
+        the remedy. Proven by removing both channels and running the real validator."""
+        from squadops.cycles.framing_consistency import validate_manifest_plan_consistency
+
+        monkeypatch.setattr(
+            "squadops.capabilities.scaffold.skeleton_pins_success_status_for", lambda _s: False
+        )
+        monkeypatch.setattr(
+            "squadops.capabilities.scaffold.brief_carries_success_status_for", lambda _s: False
+        )
+        manifest = _manifest(
+            "    - method: POST\n      path: /api/runs\n      success_status: 201\n"
+        )
+        errors = validate_manifest_plan_consistency(
+            manifest, _plan(["the endpoint creates a run and returns it"])
+        )
+        assert any("omission on POST /api/runs" in e for e in errors), errors
+        assert any("State the status in the owning task's description" in e for e in errors)
+
+    def test_with_a_channel_the_same_silent_plan_passes(self, monkeypatch):
+        """The control, and the whole point: the same plan that would be rejected without
+        a channel is correct with one — `cyc_79eebcb82205` lost two framing cycles to
+        exactly this distinction."""
+        from squadops.cycles.framing_consistency import validate_manifest_plan_consistency
+
+        monkeypatch.setattr(
+            "squadops.capabilities.scaffold.skeleton_pins_success_status_for", lambda _s: True
+        )
+        manifest = _manifest(
+            "    - method: POST\n      path: /api/runs\n      success_status: 201\n"
+        )
+        assert (
+            validate_manifest_plan_consistency(
+                manifest, _plan(["the endpoint creates a run and returns it"])
+            )
+            == []
+        )
