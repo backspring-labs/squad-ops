@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from hashlib import sha256
@@ -384,6 +385,86 @@ def _narrowed_or_scoped(
         return []
     return _scoped_implementation_surface(
         failed_inputs.get("implementation_artifacts", []) or [], failed_artifacts
+    )
+
+
+#: A repository-relative path as it appears inside prose: at least one slash, a file
+#: extension, no whitespace. Deliberately narrow — the point is to find the file names a
+#: claim is ABOUT, not to parse English.
+_PROSE_PATH = re.compile(r"[\w.\-/@]*[\w\-]+/[\w.\-/@]*[\w\-]+\.[A-Za-z0-9]{1,6}")
+
+
+def refuted_source_claims(
+    failure_analysis: dict[str, Any] | None, failed_inputs: dict[str, Any]
+) -> list[dict[str, str]]:
+    """Claims in the analyzer's PROSE that name a file the workspace does not have (#968).
+
+    ``_verified_implicated_files`` already refutes the structured half — the file list —
+    and drops what the workspace cannot confirm. The prose half travelled unchecked, and
+    the prose is what the correction decision inherits: SIP-0104 P6 roll 6 carried round
+    1's diagnosis word for word into a decision that instructed the squad to "correct the
+    store imports" that line 3 of the named file already had right. Three false factual
+    claims in one roll, and the subject oscillated app → tests → app on identical evidence.
+
+    The cheap mechanical question is the one #968 asks for: a claim about source has to be
+    about source that exists. A sentence naming a path the failed task's envelope does not
+    know is not a defect site the loop can act on, and the decision is told so instead of
+    inheriting it.
+
+    Returns one entry per refuted path — the path, and the sentence that named it — so the
+    decision prompt can quote what was refuted rather than merely counting it. Deliberately
+    NOT a rewrite of the analysis: the analyzer's text stands as it was written, and the
+    contradiction rides beside it.
+    """
+    if not isinstance(failure_analysis, dict):
+        return []
+    known: set[str] = set()
+    for key in ("implementation_artifacts", "expected_artifacts"):
+        known.update(str(x) for x in (failed_inputs.get(key) or []) if x)
+    known.update(str(x) for x in (failed_inputs.get("contract_endpoint_owners") or {}).values())
+    if not known:
+        # Nothing to check against. Refuting every path here would indict a whole analysis
+        # on missing inputs, which is the opposite of the failure this guards.
+        return []
+    known_basenames = {p.rsplit("/", 1)[-1] for p in known}
+
+    prose: list[str] = []
+    summary = failure_analysis.get("analysis_summary")
+    if isinstance(summary, str):
+        prose.append(summary)
+    for factor in failure_analysis.get("contributing_factors") or []:
+        if isinstance(factor, str):
+            prose.append(factor)
+
+    refuted: dict[str, str] = {}
+    for text in prose:
+        for sentence in re.split(r"(?<=[.!?])\s+", text):
+            for match in _PROSE_PATH.finditer(sentence):
+                path = match.group(0)
+                if path in known or path.rsplit("/", 1)[-1] in known_basenames:
+                    continue
+                refuted.setdefault(path, sentence.strip())
+    return [{"path": path, "claim": claim} for path, claim in refuted.items()]
+
+
+def _attach_refuted_claims(
+    corr_inputs: dict[str, Any], analysis_outputs: dict[str, Any], envelope: Any
+) -> None:
+    """Ride the refutation beside the analysis the decision inherits (#968).
+
+    The analyzer's text is NOT rewritten: an analysis silently edited is a second
+    unverifiable claim, and the point is that the decision can see both what was asserted
+    and what the workspace says about it.
+    """
+    refuted = refuted_source_claims(analysis_outputs, getattr(envelope, "inputs", None) or {})
+    if not refuted:
+        return
+    corr_inputs["refuted_source_claims"] = refuted
+    logger.warning(
+        "analyzer_claim_refuted task=%s paths=%s — the workspace has no such file; the "
+        "decision is told rather than inheriting it (#968)",
+        getattr(envelope, "task_id", "?"),
+        ", ".join(entry["path"] for entry in refuted),
     )
 
 
@@ -1509,6 +1590,7 @@ class CorrectionRunner:
             }
             if analysis_outputs:
                 corr_inputs["failure_analysis"] = analysis_outputs
+                _attach_refuted_claims(corr_inputs, analysis_outputs, envelope)
 
             corr_envelope = TaskEnvelope(
                 task_id=corr_task_id,

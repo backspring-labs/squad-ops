@@ -43,6 +43,37 @@ _VALID_CORRECTION_PATHS = ("continue", "patch", "rewind", "abort")
 _VALID_PLAN_CHANGE_CANDIDATES = ("none", "add_task", "tighten_acceptance", "other")
 
 
+def _refuted_block(inputs: dict[str, Any]) -> str:
+    """The analysis's refuted file claims, as a block the decision cannot miss (#968).
+
+    SIP-0104 P6 roll 6 carried round 1's diagnosis into the decision word for word, and
+    the decision instructed the squad to "correct the store imports" that line 3 of the
+    named file already had right. Three false factual claims in one roll, and the subject
+    oscillated app → tests → app on identical evidence with no convergence.
+
+    The analysis is printed unedited — a silently rewritten analysis is a second
+    unverifiable claim — and this contradicts it in place, naming the sentence and the
+    file the workspace does not have. Empty string when nothing was refuted, so a sound
+    analysis renders exactly as it did.
+    """
+    refuted = inputs.get("refuted_source_claims") or []
+    entries = [e for e in refuted if isinstance(e, dict) and e.get("path")]
+    if not entries:
+        return ""
+    lines = "\n".join(
+        f"- `{e['path']}` — no such file in this workspace. The analysis says: "
+        f'"{str(e.get("claim") or "").strip()}"'
+        for e in entries
+    )
+    return (
+        "\n\n## Refuted by the workspace (authoritative — the analysis above is NOT)\n\n"
+        f"{lines}\n\n"
+        "These files do not exist in the tree this failure came from, so any reasoning "
+        "that rests on them is unsound. Do not carry those statements into your decision "
+        "or your rationale, and do not aim a repair at these paths."
+    )
+
+
 class GovernanceCorrectionDecisionHandler(_CycleTaskHandler):
     """Decide the correction path after a failure analysis."""
 
@@ -70,6 +101,7 @@ class GovernanceCorrectionDecisionHandler(_CycleTaskHandler):
                 variables["failure_analysis"] = (
                     f"\n\n## Failure Analysis\n\n{json.dumps(failure_analysis, indent=2)}"
                 )
+            variables["refuted_source_claims"] = _refuted_block(inputs)
             rendered = await renderer.render(
                 "request.governance_correction_decision",
                 variables,
@@ -81,6 +113,9 @@ class GovernanceCorrectionDecisionHandler(_CycleTaskHandler):
                 user_parts.append(
                     f"\n\n## Failure Analysis\n\n{json.dumps(failure_analysis, indent=2)}"
                 )
+            refuted = _refuted_block(inputs)
+            if refuted:
+                user_parts.append(refuted)
             user_prompt = "\n".join(user_parts)
 
         # System prompt is the task_type fragment ALONE — no role

@@ -5981,3 +5981,81 @@ class TestProseOnlyRepairIsRefunded(TestCorrectionRunnerStandalone):
         """#1053's original case must keep working: a zero-byte file is still nothing."""
         empty = [{"name": "__tests__/runs.test.ts", "content": "", "type": "test"}]
         assert await self._emission_empty(cycle, {"artifacts": empty}) is True
+
+
+class TestTheAnalyzersProseIsCheckedBeforeTheDecisionInheritsIt:
+    """#968: nothing checked the analyzer's factual claims about source, and the
+    correction decision inherited them verbatim.
+
+    SIP-0104 P6 roll 6 produced three false claims in one roll. Round 1's — that the
+    handlers "declare a local shadow store array instead of importing the scaffold-frozen
+    store module" — was carried into the decision word for word, which then instructed the
+    squad to "correct the store imports" that line 3 of the named file already had right.
+    The subject then oscillated app → tests → app on identical evidence and the roll
+    exhausted its budget rejecting an application that works.
+
+    `_verified_implicated_files` already refutes the structured half. The prose half — the
+    half the decision inherits — travelled unchecked. The cheap mechanical question is the
+    one the issue asks for: a claim about source has to be about source that exists.
+    """
+
+    _INPUTS = {"implementation_artifacts": ["backend/routes.py", "backend/tests/test_runs.py"]}
+
+    def _refute(self, analysis, inputs=None):
+        from adapters.cycles.correction_runner import refuted_source_claims
+
+        return refuted_source_claims(analysis, self._INPUTS if inputs is None else inputs)
+
+    def test_a_claim_about_a_file_the_workspace_lacks_is_refuted_with_its_sentence(self):
+        """The sentence rides along so the decision can be told what was refuted, not
+        merely how many claims were."""
+        refuted = self._refute(
+            {
+                "analysis_summary": (
+                    "The handlers in backend/__squadops_injected_fault__.py declare a local "
+                    "shadow store array. The suite in backend/tests/test_runs.py then fails."
+                )
+            }
+        )
+        assert [e["path"] for e in refuted] == ["backend/__squadops_injected_fault__.py"]
+        assert "shadow store array" in refuted[0]["claim"]
+        assert "test_runs.py" not in refuted[0]["claim"]
+
+    def test_contributing_factors_are_checked_too(self):
+        """The decision reads the whole analysis, so half a check is a check that can be
+        walked around by putting the claim in the other field."""
+        refuted = self._refute(
+            {
+                "analysis_summary": "Something failed.",
+                "contributing_factors": ["backend/ghost.py was never wired into the router."],
+            }
+        )
+        assert [e["path"] for e in refuted] == ["backend/ghost.py"]
+
+    def test_a_sound_analysis_refutes_nothing(self):
+        """The control. Refuting a true claim would teach the decision to distrust
+        accurate analysis, which is worse than the defect."""
+        assert (
+            self._refute(
+                {
+                    "analysis_summary": "backend/routes.py returns 200 where the contract "
+                    "says 404.",
+                    "contributing_factors": ["backend/tests/test_runs.py asserts the code."],
+                }
+            )
+            == []
+        )
+
+    def test_a_file_named_by_basename_alone_is_not_refuted(self):
+        """Analyses legitimately write `routes.py` for `backend/routes.py`. Refuting that
+        would flood a correct analysis with contradictions."""
+        assert self._refute({"analysis_summary": "See backend/sub/routes.py for the cause."}) == []
+
+    def test_without_known_files_nothing_is_refuted(self):
+        """A missing input must not indict a whole analysis — that is the opposite of the
+        failure this guards."""
+        analysis = {"analysis_summary": "backend/ghost.py is the cause."}
+        assert self._refute(analysis, inputs={}) == []
+
+    def test_prose_without_any_path_is_left_alone(self):
+        assert self._refute({"analysis_summary": "The route handler returns the wrong code."}) == []
