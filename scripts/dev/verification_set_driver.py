@@ -757,13 +757,15 @@ def collect(cfg: SetConfig, cycle_id: str) -> dict:
     ).splitlines()
     summary: dict = {}
     corrections = 0
-    # #1431: keyed on the TASK, not the artifact. #971 banks every artifact of a failed
-    # emission — a qa.test failure banks its suite, its test_report and its evaluation row —
-    # so counting artifacts reported 3 for one failed emission, and a reader comparing rolls
-    # could not recover the true figure without opening the vault. Both numbers are kept:
-    # the task count is the behavioural fact, the artifact count is the evidence-preservation
-    # fact #971 exists to guarantee.
-    failed_emission_tasks: set[str] = set()
+    # #1431 was a LABEL defect and is fixed as one: this counts the artifacts #971 banks,
+    # and the readout now says so. Grouping them into an emission count was tried and
+    # reverted (#1436) — `task_id` is the only key the banked metadata carries, and two
+    # failed ATTEMPTS of one task share it. Round 2's Next.js half is the counter-example:
+    # two attempts 6.3 s apart, each banking one `build_warnings.md`, collapsed to 1, while
+    # the React half's three artifacts 42 ms apart were correctly one. Clustering on
+    # timestamps would separate today's data and fail silently on a slow emission. The
+    # emission count is not derivable from what is stored; stamping the attempt at the
+    # banking seam is #1436.
     failed_emission_artifacts = 0
     if impl:
         raw = psql(
@@ -781,10 +783,8 @@ def collect(cfg: SetConfig, cycle_id: str) -> dict:
                 continue
             if m.get("filename") == "correction_decision.md":
                 corrections += 1
-            meta = m.get("metadata") or {}
-            if meta.get("emission_status") == "failed":
+            if (m.get("metadata") or {}).get("emission_status") == "failed":
                 failed_emission_artifacts += 1
-                failed_emission_tasks.add(str(meta.get("task_id") or f"?{art.name}"))
     snapshot = psql(
         f"select coalesce(squad_profile_snapshot_ref,'') from cycle_registry where cycle_id='{cycle_id}';"
     )
@@ -798,7 +798,6 @@ def collect(cfg: SetConfig, cycle_id: str) -> dict:
         "framing_runs": len(framings),
         "framing_rerolls": max(0, len(framings) - 1),
         "correction_rounds": corrections,
-        "failed_emissions_banked": len(failed_emission_tasks),
         "failed_emission_artifacts_banked": failed_emission_artifacts,
         "verdict": summary.get("verdict"),
         "failed_checks": summary.get("failed", []),
@@ -2123,9 +2122,8 @@ def render(cfg: SetConfig, title: str, rec: dict) -> str:
         f"{', '.join(rec.get('criteria_adverse') or []) or '—'} |",
         "| criteria unevidenced — no row in either direction | "
         f"{', '.join(rec['criteria_unevidenced']) or '—'} |",
-        "| failed emissions banked (#971) | "
-        f"{rec['failed_emissions_banked']} emission(s) · "
-        f"{rec.get('failed_emission_artifacts_banked', rec['failed_emissions_banked'])} artifact(s) |",
+        "| failed emission ARTIFACTS banked (#971; not the emission count — #1436) | "
+        f"{rec['failed_emission_artifacts_banked']} |",
         "| contentless emissions (L1) | "
         f"{_render_by_reason((rec.get('loop_texture') or {}).get('contentless_by_handler', {}))}"
         f" of {(rec.get('loop_texture') or {}).get('emissions_logged', 0)} logged |",
