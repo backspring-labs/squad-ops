@@ -58,7 +58,6 @@ A reviewer can:
 - leave the run
 - confirm duplicate-name join is rejected
 - run basic tests for core API behavior (and optional UI test if completed)
-- review a clear `qa_handoff` artifact
 
 ---
 
@@ -95,7 +94,7 @@ If all core acceptance criteria are met or clearly on track within the cycle, th
 ### Rules for using expansion scope
 - Expansion work is allowed only after core scope is stable and integration is working (API + UI happy path).
 - Expansion items must not introduce new external dependencies or major architectural changes.
-- Expansion items must not break or delay completion of core tests and `qa_handoff`.
+- Expansion items must not break or delay completion of core tests.
 - If time becomes constrained, expansion work should be cut immediately without affecting core scope.
 
 ---
@@ -110,7 +109,6 @@ These add meaningful UX and product completeness with low implementation risk.
 
 2. **Basic Datetime Sorting**
    - Sort runs in list by `datetime` string (best-effort lexical sort acceptable for MVP)
-   - Document sort assumptions in `qa_handoff`
 
 3. **Seed Sample Run Action**
    - Add a simple dev-only button or endpoint to create sample run data
@@ -317,22 +315,17 @@ verification contract's criteria and behavioral probes, not restated here.
 Test-suite expectations (happy paths, error cases, isolation) are owned by the
 verification contract's `behavioral.suite.coverage_expectations`.
 
-### Handoff / QA Friendliness
-- [ ] Build includes a clear `qa_handoff` artifact (or equivalent) with:
-  - how to run backend
-  - how to run frontend
-  - how to test
-  - expected behavior
-  - implemented scope
-  - known limitations
+### Handoff / QA Friendliness — *removed* (#1427)
+How to run the backend, the frontend and the tests is supplied by the stack's
+environment contract; restating it in the build is the duplication §0 forbids.
+What a build additionally learned is a note for the build to make at its own
+discretion, not a deliverable this PRD names.
 
 ---
 
-## 10.1 Expansion Acceptance Notes (If Implemented)
-If any expansion items are completed, `qa_handoff` should include:
-- which expansion items were implemented
-- any behavioral assumptions (e.g., datetime sort behavior, name normalization)
-- any known limitations introduced by time-permitting scope
+## 10.1 Expansion Acceptance Notes — *removed* (#1427)
+What a build implemented and assumed is the build's own note to make, not a
+document this PRD names. Tombstone kept so existing §-references resolve.
 
 ---
 
@@ -362,7 +355,6 @@ lock).
 - Use minimal styling
 - Prioritize end-to-end happy path before refinements
 - Use only pre-approved expansion items (§4.1) and only after core stability
-- Require `qa_handoff` completion before cycle close
 
 ---
 
@@ -396,8 +388,7 @@ If implementation risk increases, the team should preserve the following in orde
 6. Duplicate-name prevention
 7. Validation
 8. Backend tests
-9. `qa_handoff`
-10. Optional frontend tests / polish / expansion items
+9. Optional frontend tests / polish / expansion items
 
 If core scope is completed early, only pre-approved expansion items from **§4.1** may be added.
 

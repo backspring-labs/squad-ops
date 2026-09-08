@@ -506,8 +506,9 @@ def _applicable_acceptance(plan_task: Any) -> list:
                 # a mechanical answer, not only a quieter prompt.
                 #
                 # Scoped to tasks that do NOT declare it, deliberately. A PRD may still
-                # ask for a document by this name — `examples/03_group_run/prd.md` does,
-                # and it is the corpus every verification set runs on. Where the planner
+                # ask for a document by this name — the group_run corpus every verification
+                # set runs on did, until #1427 finished SIP-0098 §6.7 and stopped it; a
+                # caller's own PRD still can. Where the planner
                 # routes it to a task's `expected_artifacts`, the file IS produced and the
                 # criterion is satisfiable, so stripping it there would delete a real
                 # check on a real deliverable. What is retired is the FRAMEWORK's
