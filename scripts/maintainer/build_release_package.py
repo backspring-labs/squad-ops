@@ -59,11 +59,24 @@ def previous_tag(tag: str) -> str | None:
     return tags[index + 1] if index + 1 < len(tags) else None
 
 
+#: The subject GitHub writes for a merged pull request. Only these name a PR: a "merge
+#: main" commit whose subject mentions a PR number is not that PR merging again (#1369 —
+#: the v1.7.3 package listed #1328 twice).
+_MERGE_SUBJECT = re.compile(r"^Merge pull request #(\d+)\b")
+
+
+def merged_pr_numbers(subjects: list[str]) -> list[str]:
+    """The PR numbers a list of merge-commit subjects names, each once, newest first."""
+    return list(
+        dict.fromkeys(m.group(1) for s in subjects if (m := _MERGE_SUBJECT.match(s.strip())))
+    )
+
+
 def merged_prs(previous: str | None, tag: str) -> list[dict]:
     """PRs merged in the range, newest first, with their linked issues."""
     span = f"{previous}..{tag}" if previous else tag
     subjects = run("git", "log", "--merges", "--format=%s", span).splitlines()
-    numbers = [m.group(1) for s in subjects if (m := re.search(r"#(\d+)", s))]
+    numbers = merged_pr_numbers(subjects)
     prs: list[dict] = []
     for number in numbers:
         raw = run(
@@ -101,32 +114,89 @@ def merged_prs(previous: str | None, tag: str) -> list[dict]:
     return prs
 
 
-def sip_moves(previous: str | None, tag: str) -> list[dict]:
-    """Proposals that changed lifecycle status in the range.
+_FRONTMATTER_FIELD = re.compile(r"^(sip_uid|status):\s*'?\"?([^'\"\n]*)", re.M)
 
-    A promotion is a delete from one status directory and an add to another, so
-    the same stem appearing on both sides is a transition rather than two edits.
+
+def _sip_frontmatter(ref: str, path: str) -> dict[str, str] | None:
+    """The proposal's ``status`` and ``sip_uid`` at ``ref`` — the lifecycle fact itself,
+    which lives in the frontmatter ``update_sip_status.py`` stamps — or None when the
+    file is absent at that ref."""
+    text = run("git", "show", f"{ref}:{path}", check=False)
+    if not text:
+        return None
+    head = text[3:].split("\n---", 1)[0] if text.startswith("---") else ""
+    return {key: value.strip() for key, value in _FRONTMATTER_FIELD.findall(head)}
+
+
+def _sip_transitions(previous: str | None, tag: str) -> list[dict]:
+    """Every proposal touched in the range with its status before and after.
+
+    #1369: the v1.7.3 package reported three SIPs as ``new → implemented`` because they
+    were *modified* under ``sips/implemented/`` — amended in place on that line — and the
+    old reading took a modified file under a status directory as an arrival there. The
+    transition is the frontmatter's ``status`` at each end of the range, never the path's
+    presence in the diff; a promotion renames the file (it gains its number), so the two
+    sides are paired by ``sip_uid``, the identity ``update_sip_status.py`` keeps.
     """
     if not previous:
         return []
     lines = run("git", "diff", "--name-status", f"{previous}..{tag}", "--", "sips/").splitlines()
-    removed: dict[str, str] = {}
-    added: dict[str, str] = {}
+    before: dict[str, tuple[str, str]] = {}  # sip_uid -> (stem, status) at previous
+    after: dict[str, tuple[str, str]] = {}  # sip_uid -> (stem, status) at tag
     for line in lines:
         parts = line.split("\t")
         if len(parts) < 2:
             continue
-        code, path = parts[0], parts[-1]
-        bits = Path(path).parts
-        # Proposals only — a .gitkeep or a registry edit is not a lifecycle move.
-        if len(bits) < 3 or not path.endswith(".md"):
-            continue
-        status, stem = bits[1], Path(path).stem
-        (removed if code.startswith("D") else added)[stem] = status
-    moves = []
-    for stem, to_status in sorted(added.items()):
-        moves.append({"sip": stem, "from": removed.get(stem), "to": to_status})
-    return moves
+        code = parts[0]
+        # A rename is a delete of the old path and an add of the new one.
+        paths = parts[1:] if code.startswith("R") else [parts[-1]] * 2
+        old_path, new_path = paths[0], paths[-1]
+        for ref, path, side in ((previous, old_path, before), (tag, new_path, after)):
+            bits = Path(path).parts
+            # Proposals only — a .gitkeep or a registry edit is not a lifecycle move.
+            if len(bits) < 3 or not path.endswith(".md"):
+                continue
+            if (code.startswith("A") and side is before) or (
+                code.startswith("D") and side is after
+            ):
+                continue
+            fm = _sip_frontmatter(ref, path)
+            if fm is None:
+                continue
+            uid = fm.get("sip_uid") or f"path:{Path(path).stem}"
+            side[uid] = (Path(path).stem, fm.get("status") or bits[1])
+    transitions = []
+    for uid in sorted(set(before) | set(after), key=lambda u: (after.get(u) or before[u])[0]):
+        stem_before, status_before = before.get(uid, (None, None))
+        stem_after, status_after = after.get(uid, (None, None))
+        transitions.append(
+            {
+                "sip": stem_after or stem_before,
+                "from": status_before,
+                "to": status_after,
+                "in_place": status_before == status_after and status_after is not None,
+            }
+        )
+    return transitions
+
+
+def sip_moves(previous: str | None, tag: str) -> list[dict]:
+    """Proposals whose lifecycle status changed in the range (frontmatter, not path)."""
+    return [
+        {"sip": t["sip"], "from": t["from"], "to": t["to"]}
+        for t in _sip_transitions(previous, tag)
+        if not t["in_place"]
+    ]
+
+
+def sip_amendments(previous: str | None, tag: str) -> list[dict]:
+    """Proposals edited in the range whose status did not change — amended in place,
+    listed apart so an amendment of an implemented SIP never reads as a promotion."""
+    return [
+        {"sip": t["sip"], "status": t["to"]}
+        for t in _sip_transitions(previous, tag)
+        if t["in_place"]
+    ]
 
 
 def changelog_section(version: str) -> str:
@@ -279,6 +349,44 @@ def cycle_count_line(cycles: list[dict]) -> str:
     return line
 
 
+def _sip_link(stem: str, current: set[str]) -> str:
+    # A proposal is renamed when it is promoted (it gains its number), so a historical
+    # move often names a file that no longer exists. The move is the fact and stays
+    # recorded either way; the link is a convenience and is emitted only when the page
+    # is actually there.
+    return f"[{stem}](../../design/sips/{stem}.md)" if stem in current else stem
+
+
+def _sip_sections(package: dict) -> list[str]:
+    """The lifecycle moves and, apart from them, the in-place amendments (#1369)."""
+    out: list[str] = []
+    current = {path.stem for path in (REPO_ROOT / "sips").glob("*/*.md")}
+    moves = package["sip_moves"]
+    if moves:
+        out += ["## Improvement proposals", "", "| Proposal | From | To |", "|---|---|---|"]
+        for move in moves:
+            out.append(
+                f"| {_sip_link(move['sip'], current)} | {move['from'] or 'new'} | "
+                f"{move['to'] or 'removed'} |"
+            )
+        out.append("")
+    amendments = package.get("sip_amendments") or []
+    if amendments:
+        out += [
+            "## Improvement proposals amended in place",
+            "",
+            "No lifecycle change — each was edited under the status it already had "
+            "(a post-acceptance amendment, CLAUDE.md step 5a).",
+            "",
+            "| Proposal | Status |",
+            "|---|---|",
+        ]
+        for amendment in amendments:
+            out.append(f"| {_sip_link(amendment['sip'], current)} | {amendment['status']} |")
+        out.append("")
+    return out
+
+
 def render(version: str, tag: str, package: dict) -> str:
     """The release page. Prose comes from CHANGELOG; the rest is enumerated."""
     date = package["date"]
@@ -310,22 +418,7 @@ def render(version: str, tag: str, package: dict) -> str:
             out.append(f"| {link} | {pr['title']} | {closes or '—'} |")
         out.append("")
 
-    moves = package["sip_moves"]
-    if moves:
-        out += ["## Improvement proposals", "", "| Proposal | From | To |", "|---|---|---|"]
-        # A proposal is renamed when it is promoted (it gains its number), so a
-        # historical move often names a file that no longer exists. The move is
-        # the fact and stays recorded either way; the link is a convenience and
-        # is emitted only when the page is actually there.
-        current = {path.stem for path in (REPO_ROOT / "sips").glob("*/*.md")}
-        for move in moves:
-            label = (
-                f"[{move['sip']}](../../design/sips/{move['sip']}.md)"
-                if move["sip"] in current
-                else move["sip"]
-            )
-            out.append(f"| {label} | {move['from'] or 'new'} | {move['to']} |")
-        out.append("")
+    out += _sip_sections(package)
 
     cycles = package["cycles"]
     if cycles:
@@ -412,6 +505,7 @@ def main() -> int:
         "narrative": changelog_section(version),
         "pull_requests": merged_prs(previous, tag),
         "sip_moves": sip_moves(previous, tag),
+        "sip_amendments": sip_amendments(previous, tag),
         "cycles": (
             cycle_evidence(cycle_ids, args.api, args.project, cycle_roles) if cycle_ids else []
         ),
@@ -425,6 +519,7 @@ def main() -> int:
         print(page)
         print(
             f"\n--- {len(package['pull_requests'])} PRs, {len(package['sip_moves'])} SIP moves, "
+            f"{len(package['sip_amendments'])} SIP amendments in place, "
             f"{cycle_count_line(package['cycles'])}, {len(screenshots)} screenshots ---"
         )
         # An empty Closes cell has two causes — the PR closed nothing, or it only quoted
