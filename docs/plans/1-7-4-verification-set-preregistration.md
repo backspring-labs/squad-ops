@@ -84,7 +84,7 @@ open).
 |---|---|---|---|---|
 | A | main at `4ce18165` (the 1.7.3 tree + #1377 #1378 #1379 #1380) | runtime-api `6b57d5a7b85a` · max `99f2944fc87b` · neo `b90268bfaf21` · nat `b059cfafb84b` · bob `19ba155dd9c3` · eve `0a0587a8d6f0` · data `6f8f9c9239c6` | instrument round — the diagnostics on a pre-rider, pre-pack deploy | **contentless-builder `cyc_ceef5581bfd1`: seam reached — the fault applied to the builder's first attempt (48 chars, 2,281 completion tokens, no fence), the attempt failed as a semantic failure with no retry marker (the #1372 gap), correction round 0 entered, the builder's own repair verified `passed`, the executor re-derived `required_files` on the patched set (`passed=True`, #1364's rule); accepted, boot PASS, functional, one correction round, 3,307 s.** Instrument finding: the record's `required_files_rows` read `{}` — the re-derivation is composed into the result, not stored as an evaluation artifact — so F1's field now reads the executor's line (#1398). **absent-suite-then-false-claim `cyc_1063c4dca548` (06:27–07:39Z): both seams reached; A1 falsified in substance, as expected before #968, and the readout was blind to it.** The absent-suite fault took every qa emission attempt (two qa tasks, two correction rounds, both repairs retested and passed — L2 twice); the analyzer fault applied to round 0's analysis (1,361 chars in, the claim leading the summary and `implicated_files`). The lead's round-0 decision then said *"the root cause is also an injected backend fault preventing endpoint verification … address the missing router registration"* and put `backend` in `affected_task_types` — the refuted claim absorbed in full — **without the marker string**, so the marker-keyed readout wrote `A1: YES` into the live record. Fixed before pre-registration: the reading now carries the marker, the claim's substance (`echoes`) and non-task-type entries (#1401), and the record re-rendered from its stored identity reads **A1: NO** on `art_bd2bec36ef94` (echoes `injected`, `router registration`; foreign `backend`) and clean on round 1's decision (`art_02495ecbb4bf`, the analysis unfaulted). The qa own-artifact routing was right (`qa.test re-produces backend/tests/test_runs.py`) and consults no source check — `_verified_implicated_files` is the dev repair-target path's alone — which is #968's row. Accepted, boot PASS, functional. Second instrument finding from the re-renders: the log window had no end, so a record re-rendered after a later cycle carried that cycle's lines (the builder record showed the analyzer diagnostic's qa retries as its own); the window now ends at the cycle's last run plus a grace and the record states it (#1402). Both records are re-rendered (`shakeout-rerender-*`) with #1398, #1401 and #1402. **Texture from A**: qa emission retries DO carry the fact today (`retried_with_fact` two of two, `appendix_chars` 888/909, `expected_files=1`) — #1372's gap is the builder's missing retry path, not the qa side; the lead writes non-task-type names into `affected_task_types` on an unfaulted decision too (`builder`, `assembler`, `data`, `qa_handoff` on the builder diagnostic) — D1's live field. **The 1.7.3 three on A** — absent-suite `cyc_1b54b29e2a99` (07:40–08:44Z): L2 reached across two rounds (the round-1 retest FAILED, round 2 recovered), accepted, boot PASS, functional; the dev repair-target check dropped an unfaulted analyzer claim (`backend/store.py`, "the workspace has no such file") — the structured half of #968 firing on a real analysis. own-frame-then-prose-repair `cyc_a26c6828482c` (08:44–09:37Z): L7 reached (the own-frame `TypeError` at `test_create_run_returns_id_and_submitted_fields:51` routed to `qa.test_repair`), L4 reached (round 0 refunded), L5 reached (the re-take briefed with the one failing case), accepted, boot PASS, one round; its decision said "injected" of the fault call it could see in the suite, which narrowed A1's echo list to the claim's own phrases (#1403). path-prefix `cyc_b80f0ea3ca64` (09:37–10:26Z): **L8 held** — the fault bit once (`path/backend/tests/test_runs.py` → `backend/tests/test_runs.py`), `stored_under_placeholder` empty; boot PASS, the app answering all five probes — and **rejected on #1312's shape**: the builder omitted `qa_handoff.md` (`required_files`, `sections_present: file_not_found`), its repair was unverifiable (`no_executed_blocking_checks`, `file_not_in_patch:2`), the loop terminated honestly and the run failed "Build deliverable incomplete". The pack's first row, on a pre-pack deploy, as on 1.7.3's deploy D; the cycle's, not a seam finding. **Every diagnostic on A reached its seam: L2 (twice, plus the analyzer chain), L4, L5, L7, L8, the contentless-builder sequence's steps 1, 2, 5 and 6, and A1 falsified in substance as expected.** All five records re-rendered with the driver at main `0fe8aa9b`. |
 | B | main at `d571da60` — deploy A **plus the whole rider** (#1373 #1205 #575 #1324 #574 #300 #1147 #581 #578 #1204 #577 #576 #352 #372 #330 #560), the F1 field, the A1 readout and the bounded window; the refreshed pins | runtime-api `3e013f437c98` · max `8b3773184dec` · neo `4fcc71b6a902` · nat `c88844430183` · bob `11d0d1e5628d` · eve `42dd35d53374` · data `d9b2abb29a33` | the rider's rebuild; the checkpoint pair; every driver field re-checked | **The rebuild itself is the rider's first live reading**: `up -d --wait` returned on every service, 251 s end to end against the old fixed sleeps (#581); `cryptography 50.0.1` / `pyasn1 0.6.4` loaded (#1204); the pool codec, `DispatchConfig` (unset → follows `llm.timeout`), the domain-error handlers and the migration lock loaded (#577 #1147 #576 #300); **#560 live**: zero `squadops.audit` and zero `httpx` lines on the runtime-api's stdout since the deploy, 53 records in `data/audit/runtime-api.jsonl` after the first minute; **#372 live**: the realm sync reported `squadops-dev` **added 2, skipped 9** — two resources the export carried and the running realm lacked, the issue's claim in numbers — and `squadops-local` added 0, skipped 11; **#352**: this deploy's asset provider is `filesystem`, so the registry boot check is loaded but not exercised here (the negative case is not run). **Checkpoint pair — CLEAN, and the rider is confirmed.** React `cyc_dd3068d22f2c` (10:32–11:33Z, config hash `3921c5a62106`, 1.7.3's as expected): accepted, boot PASS, 60 min, 1 correction round, 0 contentless emissions of 20. Next.js `cyc_bd6d424ba2fb` (11:47–12:43Z, config `33cadf53688e`): accepted, boot PASS, 55 min, **0 correction rounds**, 19/19 criteria, 0 contentless of 17. Neither half is attributable to any rider item. **The React half found one thing, and it is not the rider's:** its qa repair's patch verification returned `status=passed` carrying `skips=missing_tooling:3`, and those three skips DEMOTED three `vc-view-compiles-*` criteria that had already passed at emission — 21 of 24 on an accepted roll, the first non-N-of-N accepted roll in 30 records. npm exists only in the dev and qa images, so a criterion re-asked at the runtime-api can only skip; no rider commit touches `acceptance_checks`, `verification_integrity` or `verification_normalize`. Filed as **#1406**. The instrument was blind to both halves of it and was fixed before the pack opened (**PR #1407**): skips are counted on every patch verification, not only unverifiable ones, and the criteria shortfall is named and split by whether a row was produced — replayed on the real record, which now reads `3 missing_tooling` on a PASSED verification and names all three lost criteria. |
-| C | — | — | the pack; the shakeout loop to the exit rule; the pinned deploy is the last one | — |
+| C | main at `bbe0df8e` — deploy B **plus the whole pack** (#1312+#1254, #1374, #1372, #994, #995, #968, #1054, #1070, #936/#933, #1285) and the probes that read it. Also carries another lane's docs merged during the pack (SIP-0106 §1.2e/§1.2f, plan §6a) — documents only, no behavioural drift, named so the deploy is not read as the pack alone | runtime-api `9dbecefbe6db` · max `9c393544c60e` · neo `516a26fce184` · nat `7c106d404c51` · bob `95373605543d` · eve `558d26db1c63` · data `3d79c1ca2607` | the pack; the shakeout loop to the exit rule; the pinned deploy is the last one | Rebuilt rc=0 in **91 s**. **The pack is LOADED, verified in-container with each row's paired control** — runtime-api: `('required_files',) ()` (#1374 a builder owes, a dev task owes nothing), `{'fill':0,'path':0,'plain':0}` (#1372's shape), `patch` / `rewind` (#994 with and without an accepted repair), `True` / `False` (#1054 a decision that disputes and one that abstains), `emission_failure` (#1054's non-disputable signal), `['backend/ghost.py']` / `[]` (#968 a refuted path and a sound claim refuting nothing), `none` / `medium` (#1285's two levels); bob: the handoff is **not required**, the notes are optional, seven exclusion lines derived from the stack, and the legacy profile renders `()`; eve: `none` / `medium`. |
 
 ---
 
@@ -109,6 +109,56 @@ open).
 absent-suite, own-frame-then-prose-repair, path-prefix — every seam reached; A1 falsified in
 substance as expected before #968. All are re-run on the
 pinned deploy before roll 1 with the two-run budget.
+
+### 3a. Five rulings recorded BEFORE the diagnostics run (2026-09-08, owner-approved)
+
+The pack merged between deploy A and deploy C, and three of §3's expected readings were
+written against a tree that no longer exists. A reading corrected after the run is not a
+prediction. These are recorded before the pinned deploy's diagnostics, and before roll 1.
+
+**1. A1's expected reading FLIPS to *holds*.** §3's row says *"pre-#968 the expected reading
+is NO with the decision named"*, and deploy A confirmed it — round 0's decision carried the
+refuted claim in substance. #968 landed (PR #1418): the analyzer's prose is now checked for
+paths the workspace lacks, and the decision is handed the refutation beside the unedited
+analysis. **On the pinned deploy the expected reading is YES** — the decision reaches its
+verdict carrying neither the marker nor the claim's substance — read from
+`decision_inherited_claims` beside `analyzer_claims_dropped`. A NO now falsifies the
+invariant rather than confirming the gap.
+
+**2. R1's expected reading FLIPS to *retried with its fact*.** §3's row says *"pre-#1372 on
+A: 0 retries aimed — the builder's contentless attempt is a semantic failure with no
+marker"*. #1372 landed (PR #1414): the builder banks the marker and lets D5 classify, so its
+first contentless attempt is retryable, and the retry carries fence counts and the model's
+own opening words. **On the pinned deploy the contentless-builder diagnostic is expected to
+show one retry in `retried_with_fact`, none in `retried_blind`.**
+
+**3. H1 holds by construction, and the record says so rather than claiming a test.** No
+counted roll can be rejected on a handoff no build profile requires — #1312 removed the
+requirement, the criterion and the document. The bar is not evidence that survived a trial;
+it is a rejection class that no longer exists. Its live content is the readout naming **every
+required file the roll's own rows declared**, which is what would catch H1's own blind spot:
+a NEW required file the profile derives, failing identically under a different name.
+
+**4. #1406 does not gate this set; a roll it touches is disclosed by name.** The defect
+under-reports criteria on ACCEPTED rolls — a criterion re-asked where its toolchain is absent
+skips, and the skip erases an earlier executed-and-passed row. It can only ever REMOVE
+credit, so it can make a good roll look worse and can never make a bad roll look better, and
+neither bar is exposed to it: L1 counts contentless emissions, H1 counts handoff rejections.
+Pulling the framework fix into this line would mean editing the verifier immediately before
+the measurement it produces, forcing a new deploy and a fresh shakeout loop — the riskiest
+available change, for accuracy in the one direction that cannot flatter the result. It stays
+in 1.7.5 (plan §6a). **The condition, registered here:** any counted roll accepted with
+demoted criteria is named in the record with the criteria it lost, and its criteria-coverage
+figure is never quoted as whole. PR #1407's readout prints exactly that — the adverse
+criteria by name, and the skips that caused them, including on a verification that passed.
+
+**5. Q1 is read, never a gate.** The second reasoning declaration (#1285, PR #1422) landed
+hours before this deploy and this set is its first measurement. If the fill-mode saving does
+not show at roll level, that is a finding for the record, not a reason to hold the cut.
+
+**And the attribution rule for deploy C's shakeout pair:** a red here is **the pack's**, as a
+red on deploy B's pair was the rider's. Nothing in the pack has been exercised by a live
+cycle; this pair is the first thing that does.
 
 ---
 
