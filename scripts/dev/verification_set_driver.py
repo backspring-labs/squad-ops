@@ -1642,6 +1642,20 @@ def texture_from_logs(logs: list[str]) -> dict:
         # The contentless-builder diagnostic showed `typed_checks.by_check` carries no such
         # row: the re-derivation is composed into the result, not stored as an evaluation
         # artifact, so this line is the only place the fact is visible from outside.
+        # H1 (1.7.4) reads "no counted roll is rejected or blocked on the handoff", and
+        # its own blind spot is that a NEW required file the profile derives fails
+        # identically under a different name. So the readout is every required file the
+        # roll's own evidence names, never the one the bar is about (#1312 added
+        # `required=` to the row and to this line).
+        "required_files_declared": sorted(
+            {
+                name
+                for line in logs
+                if "re-derived required_files" in line
+                for name in (_field(line, "required") or "").split(",")
+                if name and name != "-"
+            }
+        ),
         "framework_rows_rederived": [
             _fact(line, "patch task=") for line in logs if "re-derived required_files" in line
         ],
@@ -2046,6 +2060,8 @@ def render(cfg: SetConfig, title: str, rec: dict) -> str:
         "| contentless emissions (L1) | "
         f"{_render_by_reason((rec.get('loop_texture') or {}).get('contentless_by_handler', {}))}"
         f" of {(rec.get('loop_texture') or {}).get('emissions_logged', 0)} logged |",
+        "| 1.7.4 H1 required files the roll's rows named (#1312) | "
+        f"{', '.join((rec.get('loop_texture') or {}).get('required_files_declared', [])) or '—'} |",
         "| 1.7.4 F1 framework rows re-derived on the patched set (#1374) | "
         f"{(rec.get('loop_texture') or {}).get('framework_rows_rederived', []) or '—'} |",
         "| 1.7.4 R1 emission retries aimed / with fact / blind (#1372) | "

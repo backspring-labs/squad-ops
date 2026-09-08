@@ -366,9 +366,11 @@ def test_builder_template_declares_the_new_blocks():
     text = (_TEMPLATES / "request.builder_assemble.build_assemble.md").read_text(encoding="utf-8")
     assert "{{task_section}}" in text
     assert "{{contract_expectations}}" in text
-    # #1252: the handoff's sections are the profile's, checked by name in any order — the
-    # template no longer promises to apply a plan-authored regex to the handoff.
-    assert "checked by section name in any order" in text
+    # #1312: the handoff is retired; the template teaches the optional notes and their
+    # narrowness instead, and promises nothing about a document the framework owns.
+    assert "qa_handoff" not in text
+    assert "assembly_notes.md" in text
+    assert "Omitting the file is a complete answer" in text
     assert "required for THIS task" not in text
 
 

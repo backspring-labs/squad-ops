@@ -107,7 +107,7 @@ async def produce_plan(
             floor = list(get_profile(resolved_config["build_profile"]).required_files)
         except (KeyError, ValueError):
             floor = []
-        example_artifacts = floor or ["qa_handoff.md"]
+        example_artifacts = floor or ["Dockerfile"]
         floor_guideline = (
             (
                 f"- The build profile requires these files; EVERY one must appear in "
@@ -118,32 +118,35 @@ async def produce_plan(
             else ""
         )
         builder_guideline = (
-            "- Route packaging, entrypoints, requirements.txt/package.json, "
-            "Dockerfile/startup scripts, and qa_handoff.md to `builder.assemble` "
-            "tasks (role: builder). Place AFTER all `development.develop` tasks "
-            "and BEFORE any `qa.test` tasks.\n" + floor_guideline
+            "- Route packaging, entrypoints, requirements.txt/package.json and "
+            "Dockerfile/startup scripts to `builder.assemble` tasks (role: builder). "
+            "Place AFTER all `development.develop` tasks and BEFORE any `qa.test` "
+            "tasks.\n" + floor_guideline
         )
-        qa_handoff_guideline = ""
         builder_example = (
             "  - task_index: 1\n"
             "    task_type: builder.assemble\n"
             "    role: builder\n"
-            '    focus: "Package build output and produce qa_handoff.md"\n'
+            '    focus: "Package the build output for deployment"\n'
             "    description: |\n"
             "      Assemble packaging (entrypoints, requirements/manifest, "
-            "Dockerfile if applicable) and write qa_handoff.md summarizing "
-            "how to run and test the build.\n"
+            "Dockerfile if applicable) for the code the developer wrote.\n"
             "    expected_artifacts:\n"
             + "".join(f'      - "{name}"\n' for name in example_artifacts)
+            # #1254: prose, and only prose. Every typed check a builder emission earns is
+            # the framework's or the profile's — the packaging checks are injected onto
+            # the recipe, the required-files floor is the profile's. 213 of 213 authored
+            # builder criteria in the last 40 stored plans were `regex_match` restating a
+            # fact the profile already held; an example with a typed row is where that
+            # started.
             + "    acceptance_criteria:\n"
-            '      - "..."\n'
+            '      - "The package builds and starts the application as delivered"\n'
             "    depends_on: [0]\n"
         )
         summary_builder_line = "  total_builder_tasks: P\n"
         total_tasks_expr = "N+M+P"
     else:
         builder_guideline = ""
-        qa_handoff_guideline = "- Put QA handoff last\n"
         builder_example = ""
         summary_builder_line = ""
         total_tasks_expr = "N+M"
@@ -206,7 +209,6 @@ async def produce_plan(
         "roles_section": roles_section,
         "task_types_section": task_types_section,
         "builder_guideline": builder_guideline,
-        "qa_handoff_guideline": qa_handoff_guideline,
         "builder_example": builder_example,
         "summary_builder_line": summary_builder_line,
     }
@@ -435,7 +437,6 @@ def _build_manifest_user_prompt_inline(v: dict[str, str]) -> str:
         "- Put integration config (CORS, proxy, requirements) in its own task\n"
         "- Put tests after the code they test\n"
         f"{v['builder_guideline']}"
-        f"{v['qa_handoff_guideline']}"
         f"{v['typed_acceptance_section']}"
         "\n"
         f"{v['prd_coverage_discipline']}"

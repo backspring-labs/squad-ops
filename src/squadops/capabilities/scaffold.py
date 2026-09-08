@@ -1446,6 +1446,17 @@ def harness_entry_modules(stack: str) -> tuple[str, ...]:
     return known.harness_entry_modules if known else ()
 
 
+def qa_test_namespace_for_stack(stack: str) -> tuple[str, ...]:
+    """The directory prefixes that own qa test files on ``stack`` (SIP-0100 D1).
+
+    The stack-name twin of :func:`qa_test_namespace`, which takes a manifest. Empty for
+    an unregistered stack, so a caller rendering the declaration gets nothing rather
+    than a refusal — the same shape as :func:`harness_entry_modules` above.
+    """
+    known = _STACKS.get(stack)
+    return known.qa_test_namespace if known else ()
+
+
 def is_scaffoldable_stack(stack: str) -> bool:
     """True when ``stack`` has a registered walking-skeleton expander — i.e. a cycle on
     this stack can be scaffolded. Half of the authored-mode predicate

@@ -856,8 +856,8 @@ class BuilderAssembleRepairHandler(_RepairPromptMixin, _CycleTaskHandler):
     """Correction-loop repair handler for failed builder.assemble tasks.
 
     Mirrors `DevelopmentCorrectionRepairHandler` but routed to the builder
-    role so packaging/handoff failures (e.g. qa_handoff.md missing
-    required sections, missing requirements.txt or package.json) get
+    role so packaging failures (e.g. a missing Dockerfile, requirements.txt
+    or package.json) get
     repaired by the builder role with the build-profile system prompt
     rather than by the dev role with the dev system prompt — the dev
     role has no useful context for builder.assemble outputs and simply

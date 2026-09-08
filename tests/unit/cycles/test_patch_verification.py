@@ -1052,3 +1052,63 @@ class TestSkipReasons:
 
     def test_no_rows_at_all_renders_empty_not_a_reason(self):
         assert skip_reasons(()) == ""
+
+
+class TestTheDeliverableIsTheBuilderRepairsBlockingCriterion:
+    """#1312: the handoff's `sections_present` row was a builder task's only blocking
+    typed criterion, and retiring the handoff would have left a builder repair with none —
+    `no_typed_criteria`, discarded unheard, which is exactly the #1255 defect the section
+    criterion was introduced to fix. The deliverable set replaces it: derived from the
+    profile, evaluated by the one `required_files_row` rule the emission seam and the
+    accepted-patch path already share.
+    """
+
+    async def test_a_repair_that_supplies_the_missing_file_can_now_be_verified(self):
+        """Without this the verdict is `unverifiable / no_typed_criteria` and a correct
+        repair is thrown away — the shape the path-prefix diagnostic showed live."""
+        result = await verify_patched_artifacts(
+            [],
+            [{"name": "Dockerfile", "content": "FROM python:3.12\n"}],
+            required_files=["Dockerfile"],
+        )
+        assert result.status == PATCH_PASSED
+        rows = [r for r in result.checks if r.check == "required_files"]
+        assert rows and rows[0].status == "passed"
+
+    async def test_a_repair_that_does_not_supply_it_is_rejected(self):
+        """The floor: the criterion must be able to REJECT, or it is a row that can only
+        pass and proves nothing (§6.2)."""
+        result = await verify_patched_artifacts(
+            [],
+            [{"name": "README.md", "content": "# app\n"}],
+            required_files=["Dockerfile"],
+        )
+        assert result.status == PATCH_FAILED
+        rows = [r for r in result.checks if r.check == "required_files"]
+        assert rows and rows[0].status == "failed"
+        assert "Dockerfile" in (rows[0].reason or "")
+
+    async def test_a_task_declaring_no_required_files_is_unchanged(self):
+        """A dev or qa repair is judged by its contract criteria. Handing it a file list
+        would charge it for files another role owns — the #1259 class, where a dev repair
+        of a qa failure was refused for a suite it never wrote."""
+        result = await verify_patched_artifacts(
+            [], [{"name": "backend/routes.py", "content": "x = 1\n"}], required_files=[]
+        )
+        assert result.status == PATCH_UNVERIFIABLE
+        assert result.reason == "no_typed_criteria"
+
+    async def test_the_row_reads_the_whole_patched_tree_not_only_the_repairs_own_files(self):
+        """A builder task with two deliverables whose repair fixes one must not be
+        rejected for the file its first attempt already supplied — deliverable
+        completeness is a fact about the tree the patch lands in."""
+        result = await verify_patched_artifacts(
+            [],
+            overlay_artifacts(
+                [{"name": "Dockerfile", "content": "FROM python:3.12\n"}],
+                [{"name": "start.sh", "content": "#!/bin/sh\n"}],
+            ),
+            required_files=["Dockerfile", "start.sh"],
+            repaired=["start.sh"],
+        )
+        assert result.status == PATCH_PASSED

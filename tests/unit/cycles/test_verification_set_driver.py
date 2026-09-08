@@ -2105,3 +2105,35 @@ class TestTheCriteriaShortfallIsNamed:
         out = driver.render(cfg, "shakeout (non-counting)", rec)
         assert "vc-view-compiles-runs-list-view" in out
         assert "criteria NOT verified" in out
+
+
+class TestH1ReadsEveryRequiredFileNotTheHandoffs:
+    """H1 (1.7.4) is "no counted roll is rejected or blocked on the handoff", and its own
+    blind spot is that a NEW required file the profile derives fails identically under a
+    different name — a record listing only the handoff would read as the bar holding while
+    a different deliverable rejected every roll. #1312 put `required=` on the row and on
+    the executor's line so the readout can name the whole declared set.
+    """
+
+    _LINE = (
+        "patch task=task-run_1-m004-builder.assemble re-derived required_files on the "
+        "patched set: passed=True required=Dockerfile,start.sh missing=- (the failed "
+        "attempt carried the row; #1318, #1364)"
+    )
+
+    def test_every_declared_file_is_named(self, driver):
+        out = driver.texture_from_logs([self._LINE])
+        assert out["required_files_declared"] == ["Dockerfile", "start.sh"]
+
+    def test_a_roll_with_no_such_row_reads_empty_not_absent(self, driver):
+        out = driver.texture_from_logs(["something else entirely"])
+        assert out["required_files_declared"] == []
+
+    def test_a_line_without_the_field_contributes_nothing(self, driver):
+        """Pre-#1312 lines carry `missing=` and no `required=`; the readout must not
+        invent a set from them."""
+        old = (
+            "patch task=t re-derived required_files on the patched set: passed=False "
+            "missing=qa_handoff.md (the failed attempt carried the row; #1318, #1364)"
+        )
+        assert driver.texture_from_logs([old])["required_files_declared"] == []

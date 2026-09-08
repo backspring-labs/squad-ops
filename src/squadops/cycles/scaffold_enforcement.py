@@ -124,7 +124,7 @@ def _producer_grants(envelope: Any, bound_record: Any) -> tuple[Any, Any]:
     whether a non-frozen emission is inside its lane (allow), another producer's slot
     (drop), or undeclared (allow — could be a deliverable; §4.6 undeclared-reject stays
     gated on 3.4). #649: a builder producer gets a fill-surface grant — net-new SOURCE
-    and QA-namespace writes drop with evidence; undeclared non-source paths (handoff
+    and QA-namespace writes drop with evidence; undeclared non-source paths (assembly notes
     docs, reports) remain deliverables and pass.
     """
     from squadops.cycles.write_authorization import (

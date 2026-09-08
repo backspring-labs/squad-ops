@@ -1803,10 +1803,15 @@ def test_undefined_names_is_framework_injected_and_out_of_the_authoring_vocabula
     would also be absent from bind-mode cycles, whose contract is pinned."""
     from squadops.cycles.acceptance_check_spec import render_typed_acceptance_vocabulary
 
+    rendered = render_typed_acceptance_vocabulary()
+    entries = rendered.split("### Already checked for you")[0]
     assert CHECK_SPECS["undefined_names"].framework_injected is True
-    assert "undefined_names" not in render_typed_acceptance_vocabulary()
+    assert "undefined_names" not in entries
+    # #1254: withheld from the entries, and NAMED as already covered — an omission the
+    # author cannot see is one it learns to undo from any stored plan.
+    assert "`undefined_names`" in rendered
     # Every other check stays advertised — the flag must not hide the vocabulary.
-    assert "endpoint_defined" in render_typed_acceptance_vocabulary()
+    assert "endpoint_defined" in entries
 
 
 # ---------------------------------------------------------------------------

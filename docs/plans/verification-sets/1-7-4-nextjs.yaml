@@ -53,12 +53,21 @@ loaded_checks:
     print('"resolved_config": cycle.resolved_config()' in inspect.getsource(correction_runner),
     DispatchConfig().task_timeout, MIGRATIONS_ADVISORY_LOCK_KEY > 0)
   # #1318: the spine row the accepted-patch path re-derives, and its paired control —
-  # supplied passes, withheld fails. A row that can only pass is not evidence.
+  # supplied passes, withheld fails. A row that can only pass is not evidence. The row now
+  # carries `required` too (H1 reads every required file, not the handoff's). #1312: the
+  # profile no longer requires the handoff, the notes are optional, and the exclusion list
+  # is DERIVED — a stack that declares nothing renders nothing, which is the control.
   bob: >-
     from squadops.cycles.check_registry import required_files_row;
-    req = ["Dockerfile", "qa_handoff.md"];
-    print(required_files_row(req, ["a/Dockerfile", "b/qa_handoff.md"])["passed"],
-    required_files_row(req, ["a/Dockerfile"])["missing"])
+    from squadops.capabilities.handlers.build_profiles import get_profile;
+    from squadops.capabilities.assembly_notes import ASSEMBLY_NOTES_DOCUMENT, already_supplied_lines;
+    req = ["Dockerfile"];
+    p = get_profile("nextjs_ts");
+    print(required_files_row(req, ["a/Dockerfile", "b/README.md"])["passed"],
+    required_files_row(req, ["b/README.md"])["missing"],
+    required_files_row(req, ["a/Dockerfile"])["required"],
+    "qa_handoff.md" in p.required_files, ASSEMBLY_NOTES_DOCUMENT in p.optional_files,
+    len(already_supplied_lines("nextjs_ts")), already_supplied_lines("python_cli_builder"))
   # #1269 read on THIS stack's declared test-file patterns (*.test.ts[x], *.spec.ts[x]): a
   # repaired suite is recognised, an API route in the same patch is not. #1273's skip
   # reasons read by reason, not by count.
@@ -70,6 +79,8 @@ loaded_checks:
     from squadops.cycles.acceptance_checks import assertion_literal_kinds_js;
     from adapters.cycles.dispatched_flow_executor import _repaired_suite_files;
     from squadops.cycles.patch_verification import PatchCheckRecord, skip_reasons;
+    from squadops.cycles.acceptance_check_spec import CHECK_SPECS, derived_check_names;
+    from adapters.cycles.dispatched_flow_executor import _ASSEMBLY_NOTES_READERS;
     cfg = {"build_profile": "nextjs_ts", "development_profile": "nextjs_ts"};
     seed = "from fastapi import APIRouter\nrouter = APIRouter()\n@router.post(\"/runs\", status_code=201)\ndef c(p: dict):\n    return {}\n";
     emitted = seed.replace("APIRouter()", "APIRouter(prefix=\"/runs\")").replace("(\"/runs\", status_code=201)", "(\"\", status_code=201)");
@@ -78,8 +89,10 @@ loaded_checks:
     _repaired_suite_files([{"name": "app/api/runs/route.ts", "type": "code"}], cfg),
     skip_reasons([PatchCheckRecord(check="acceptance:x", severity="blocking",
     status="skipped", reason="file_not_found")]),
-    PatchCheckRecord(check="sections_present", severity="error", status="passed",
-    criterion_id="handoff-sections:qa_handoff.md").to_check_row()["criterion_id"],
+    PatchCheckRecord(check="harness_boundary", severity="error", status="passed",
+    criterion_id="scaffold-harness:t.py").to_check_row()["criterion_id"],
+    "harness_boundary" in derived_check_names(), "sections_present" in CHECK_SPECS,
+    sorted(_ASSEMBLY_NOTES_READERS),
     "@router.post(\"/runs\", status_code=201)" in rehomed, "(\"\"" not in rehomed,
     assertion_literal_kinds_js("expect(typeof b.participant_count).toBe('number')\nexpect(b.n).toBe('x')\n"))
   # #1292: the qa namespace is the co-located convention and nothing else — the root

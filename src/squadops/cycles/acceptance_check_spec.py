@@ -473,15 +473,6 @@ CHECK_FRONTEND_COMPILES = "frontend_compiles"
 # unbuilt below), are the owner's separate calls (1.7.1 plan §6).
 CHECK_CONTAINER_PACKAGING = "container_packaging"
 
-# #1255: the handoff document carries the build profile's required sections. Bound at plan
-# time onto the builder task that owns the document (``task_plan._handoff_section_criteria``)
-# with the profile's sections as self-contained params, the way the contract-assertion, kind
-# and anchor gates are — never authored. The rule is ``capabilities.handoff_sections``, the
-# same one the builder handler's validation applies, so the emission seam, the repair's own
-# evaluation and runtime-api's verifier all read one fact. Before this, a builder task had no
-# typed criterion over its handoff at all once #1252 stripped the plan's regexes, and the
-# repair of a missing section was ``unverifiable / no_typed_criteria`` — discarded unheard.
-CHECK_SECTIONS_PRESENT = "sections_present"
 #: The recipe an emission is recognised by: a file named ``Dockerfile`` at any depth, or
 #: ``Dockerfile.<variant>``. Container vocabulary, not a stack's — both stacks package with
 #: one, and the builder emits it under this name on every profile.
@@ -618,6 +609,24 @@ def framework_file_scoped_checks() -> dict[str, frozenset[str]]:
         and spec.required_params == frozenset({"file"})
         and spec.applicable_extensions
     }
+
+
+def derived_check_names() -> frozenset[str]:
+    """Every check the framework injects or a profile derives — none of them authorable.
+
+    #1254: the planner authored `harness_boundary` on 25 qa tasks and `regex_match` over
+    the builder's handoff on 213 of 213 builder criteria across the last 40 stored plans,
+    each restating a fact the framework already held exactly. The rendered vocabulary
+    withholds these (`render_typed_acceptance_vocabulary`), the planning brief now names
+    them as already covered, and dispatch strips any that arrive anyway — three surfaces,
+    one source, which is this.
+
+    Wider than :func:`framework_injected_checks`, deliberately: that answers "what does the
+    emission seam inject for this scope", and so is filtered to single-`file` checks of one
+    scope. This answers "what may an author not write", which is every flagged check
+    regardless of scope or parameter shape.
+    """
+    return frozenset(name for name, spec in CHECK_SPECS.items() if spec.framework_injected)
 
 
 def framework_injected_checks(scope: str) -> tuple[str, ...]:
@@ -799,6 +808,13 @@ CHECK_SPECS: dict[str, CheckSpec] = {
         param_types={"file": str, "entry_modules": list, "client_ctor": str},
         requires_stack_context=True,
         path_params=frozenset({"file"}),
+        # #1254: the planner authored this on 25 of the last 40 stored plans' qa tasks,
+        # and dispatch injects it on every bound qa suite anyway — both 1.7.1 React
+        # shakeouts carried the row TWICE on `backend/tests/test_runs.py`. The boundary is
+        # the scaffold's fact (which entry modules exist is `ScaffoldStack`'s declaration),
+        # so it is derived, never authored; flagging it here withholds it from the rendered
+        # vocabulary and makes the strip below self-enforcing.
+        framework_injected=True,
         example={
             "file": "backend/tests/test_runs.py",
             "entry_modules": ["backend.main", "app.main"],
@@ -1089,32 +1105,6 @@ CHECK_SPECS: dict[str, CheckSpec] = {
         replayable=True,
         blocking_default="error",
     ),
-    CHECK_SECTIONS_PRESENT: CheckSpec(
-        name=CHECK_SECTIONS_PRESENT,
-        applicable_extensions=frozenset({".md"}),
-        required_params=frozenset({"file", "sections"}),
-        param_types={"file": str, "sections": list},
-        path_params=frozenset({"file"}),
-        framework_injected=True,
-        example={
-            "file": "qa_handoff.md",
-            "sections": ["## How to Run", "## How to Test", "## Expected Behavior"],
-        },
-        notes=(
-            "Bound by the framework onto the builder task that owns the handoff document, "
-            "with the build profile's required sections as params; never authored. A section "
-            "is present when any of its phrasings appears anywhere in the document, in any "
-            "order (`capabilities.handoff_sections` — the builder handler's own rule, so the "
-            "emission seam and the repair verifier cannot disagree). Each failure names the "
-            "sections missing. Runs anywhere: pure text, no toolchain."
-        ),
-        failure_ownership=OWNERSHIP_PRODUCT,
-        qa_available=True,
-        signature_participation=True,
-        outcome_contribution=True,
-        replayable=True,
-        blocking_default="error",
-    ),
     CHECK_ADDITIVE_CONTAINMENT: CheckSpec(
         name=CHECK_ADDITIVE_CONTAINMENT,
         applicable_extensions=frozenset({".ts", ".tsx", ".js", ".jsx"}),
@@ -1396,6 +1386,29 @@ def render_typed_acceptance_vocabulary() -> str:
             out.append(f"    {key}: {_format_example_value(value)}")
         out.append("    severity: error")
         out.append("  ```")
+        out.append("")
+    # #1254: the loop above WITHHOLDS the derived checks (#689) and, until now, said
+    # nothing about them — so an author who had seen `harness_boundary` in a stored plan
+    # had no way to learn it was not theirs to write. It was authored on 25 of the last 40
+    # plans' qa tasks while dispatch injected it on every one, and both 1.7.1 React
+    # shakeouts carried the row twice on the same file. Named here, in the one place the
+    # vocabulary is rendered, so all three consumers (both proposers and the sole author)
+    # get the omission as a statement rather than a silence.
+    derived = sorted(derived_check_names())
+    if derived:
+        out.append("### Already checked for you — do not author these")
+        out.append("")
+        out.append(
+            "The framework binds "
+            + ", ".join(f"`{name}`" for name in derived)
+            + " itself, on every artifact they apply to, from declarations you never "
+            "see: the scaffold's own entry modules, the bound contract's assertions, the "
+            "stack's anchor and containment rules, the build profile's deliverables. That "
+            "is why they are absent above. Authoring one adds a second row over the same "
+            "file whose parameters are a guess at a fact the framework holds exactly — it "
+            "is dropped at dispatch with the rule named, and the evidence would otherwise "
+            "double-count."
+        )
         out.append("")
     return "\n".join(out).rstrip() + "\n"
 

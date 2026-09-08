@@ -40,17 +40,12 @@ LLM_GOOD_RESPONSE = (
     "```text:requirements.txt\n"
     "# no external dependencies\n"
     "```\n\n"
-    "```markdown:qa_handoff.md\n"
-    "## How to Run\n"
-    "python -m my_app\n\n"
-    "## How to Test\n"
-    "pytest tests/\n\n"
-    "## Expected Behavior\n"
-    "Prints 'Hello from builder!'\n"
+    "```markdown:assembly_notes.md\n"
+    "The image runs as UID 1000; /data must be writable by it.\n"
     "```\n"
 )
 
-LLM_MISSING_QA_HANDOFF = (
+LLM_NO_ASSEMBLY_NOTES = (
     "```python:my_app/__main__.py\n"
     "pass\n"
     "```\n\n"
@@ -59,24 +54,6 @@ LLM_MISSING_QA_HANDOFF = (
     "```\n\n"
     "```text:requirements.txt\n"
     "# none\n"
-    "```\n"
-)
-
-LLM_QA_HANDOFF_MISSING_SECTION = (
-    "```python:my_app/__main__.py\n"
-    "pass\n"
-    "```\n\n"
-    "```dockerfile:Dockerfile\n"
-    "FROM python:3.11-slim\n"
-    "```\n\n"
-    "```text:requirements.txt\n"
-    "# none\n"
-    "```\n\n"
-    "```markdown:qa_handoff.md\n"
-    "## How to Run\n"
-    "python -m my_app\n\n"
-    "## How to Test\n"
-    "pytest tests/\n"
     "```\n"
 )
 
@@ -87,13 +64,8 @@ LLM_MISSING_REQUIRED_FILE = (
     "```text:requirements.txt\n"
     "# none\n"
     "```\n\n"
-    "```markdown:qa_handoff.md\n"
-    "## How to Run\n"
-    "python -m my_app\n\n"
-    "## How to Test\n"
-    "pytest\n\n"
-    "## Expected Behavior\n"
-    "Works\n"
+    "```markdown:assembly_notes.md\n"
+    "The image runs as UID 1000.\n"
     "```\n"
 )
 
@@ -112,10 +84,8 @@ LLM_DUPLICATE_BASENAMES_DIFFERENT_PATHS = (
     "```dockerfile:deploy/Dockerfile\n"
     "# different path, same basename\n"
     "```\n\n"
-    "```markdown:qa_handoff.md\n"
-    "## How to Run\nrun it\n\n"
-    "## How to Test\ntest it\n\n"
-    "## Expected Behavior\nworks\n"
+    "```markdown:assembly_notes.md\n"
+    "The image runs as UID 1000.\n"
     "```\n"
 )
 
@@ -132,10 +102,8 @@ LLM_DUPLICATE_EXACT_PATHS = (
     "```dockerfile:Dockerfile\n"
     "FROM python:3.11-slim\nCOPY . .\n"
     "```\n\n"
-    "```markdown:qa_handoff.md\n"
-    "## How to Run\nrun it\n\n"
-    "## How to Test\ntest it\n\n"
-    "## Expected Behavior\nworks\n"
+    "```markdown:assembly_notes.md\n"
+    "The image runs as UID 1000.\n"
     "```\n"
 )
 
@@ -197,18 +165,23 @@ class TestBuilderAssembleSuccess:
 
         assert result.success is True
         artifacts = result.outputs["artifacts"]
-        # __main__.py, Dockerfile, requirements.txt, qa_handoff, plus the #114 typed-check
+        # __main__.py, Dockerfile, requirements.txt, assembly_notes, plus the #114 typed-check
         # evaluation record — #689 injects `undefined_names` on the emitted __main__.py,
         # so there is now always a typed check to record.
         assert len(artifacts) == 5
 
-    async def test_qa_handoff_artifact_present(self, mock_context, builder_inputs):
+    async def test_the_notes_are_classified_as_their_own_artifact_type(
+        self, mock_context, builder_inputs
+    ):
+        """#1312: the notes are typed so the executor can find them for the qa appendix
+        without re-parsing every markdown file the builder emitted."""
         handler = BuilderAssembleHandler()
         result = await handler.handle(mock_context, builder_inputs)
 
-        qa_artifacts = [a for a in result.outputs["artifacts"] if a["type"] == "qa_handoff"]
-        assert len(qa_artifacts) == 1
-        assert "## How to Run" in qa_artifacts[0]["content"]
+        notes = [a for a in result.outputs["artifacts"] if a["type"] == "assembly_notes"]
+        assert len(notes) == 1
+        assert notes[0]["name"] == "assembly_notes.md"
+        assert "UID 1000" in notes[0]["content"]
 
     async def test_summary_contains_builder(self, mock_context, builder_inputs):
         handler = BuilderAssembleHandler()
@@ -225,7 +198,7 @@ class TestBuilderAssembleSuccess:
         assert diag["resolved_handler"] == "builder_assemble_handler"
         assert diag["build_profile"] == "python_cli_builder"
         assert diag["source_files_count"] == 2
-        assert diag["qa_handoff_present"] is True
+        assert diag["assembly_notes_present"] is True
         assert diag["qa_validation_errors"] == []
         assert diag["missing_required_files"] == []
 
@@ -315,38 +288,39 @@ class TestProfileSelection:
 # ---------------------------------------------------------------------------
 
 
-class TestQAHandoffValidation:
-    async def test_missing_qa_handoff_reports_error(self, mock_context, builder_inputs):
+class TestTheNotesAreOptional:
+    """#1312: the handoff was required, so an emission without it FAILED — on ~9% of
+    cycles the builder produced the packaging archetype instead and the task was rejected
+    for a document nothing read. These are what would catch its return: a required notes
+    file, or a validation error naming it.
+    """
+
+    async def test_an_emission_without_notes_succeeds(self, mock_context, builder_inputs):
         mock_context.ports.llm.chat = AsyncMock(
-            return_value=ChatMessage(role="assistant", content=LLM_MISSING_QA_HANDOFF),
+            return_value=ChatMessage(role="assistant", content=LLM_NO_ASSEMBLY_NOTES),
         )
         mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
-            return_value=ChatMessage(role="assistant", content=LLM_MISSING_QA_HANDOFF),
+            return_value=ChatMessage(role="assistant", content=LLM_NO_ASSEMBLY_NOTES),
+        )
+        handler = BuilderAssembleHandler()
+        result = await handler.handle(mock_context, builder_inputs)
+
+        assert result.success is True, result.error
+        assert result.outputs["diagnostics"]["assembly_notes_present"] is False
+
+    async def test_a_missing_required_file_still_fails(self, mock_context, builder_inputs):
+        """The floor: dropping the handoff must not soften deliverable completeness."""
+        mock_context.ports.llm.chat = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=LLM_MISSING_REQUIRED_FILE),
+        )
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=LLM_MISSING_REQUIRED_FILE),
         )
         handler = BuilderAssembleHandler()
         result = await handler.handle(mock_context, builder_inputs)
 
         assert result.success is False
-        assert "qa_handoff.md not found" in result.error
-
-    async def test_missing_section_reports_error(self, mock_context, builder_inputs):
-        mock_context.ports.llm.chat = AsyncMock(
-            return_value=ChatMessage(
-                role="assistant",
-                content=LLM_QA_HANDOFF_MISSING_SECTION,
-            ),
-        )
-        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
-            return_value=ChatMessage(
-                role="assistant",
-                content=LLM_QA_HANDOFF_MISSING_SECTION,
-            ),
-        )
-        handler = BuilderAssembleHandler()
-        result = await handler.handle(mock_context, builder_inputs)
-
-        assert result.success is False
-        assert "Expected Behavior" in result.error
+        assert "Dockerfile" in result.error
 
 
 # ---------------------------------------------------------------------------
@@ -401,8 +375,8 @@ class TestTaskScopedRequiredFiles:
     must be emitted; the profile's blanket ``required_files`` becomes the
     fallback for tasks framing didn't decompose. Without this scoping,
     every builder task in a decomposed plan was forced to redundantly
-    emit qa_handoff (cycle 3 cyc_d1c1a259c983 task 8 hit the 8K cap
-    trying to emit manifests + a full qa_handoff).
+    emit the whole profile set (cycle 3 cyc_d1c1a259c983 task 8 hit the 8K
+    cap trying to emit manifests plus a full document).
     """
 
     LLM_MANIFESTS_ONLY = (
@@ -411,10 +385,9 @@ class TestTaskScopedRequiredFiles:
         '```json:package.json\n{"name":"frontend"}\n```\n'
     )
 
-    async def test_manifest_task_passes_without_qa_handoff(self, mock_context, builder_inputs):
-        # Task 8 in cycle 3's plan: manifests only, qa_handoff routed to task 9.
-        # Bob emits manifests, no qa_handoff — must succeed because the task
-        # scope doesn't include qa_handoff.
+    async def test_manifest_task_passes_with_only_its_own_files(self, mock_context, builder_inputs):
+        # Task 8 in cycle 3's plan: manifests only. The builder emits them and nothing
+        # else, which must succeed — the task's scope is the source of truth.
         mock_context.ports.llm.chat = AsyncMock(
             return_value=ChatMessage(role="assistant", content=self.LLM_MANIFESTS_ONLY),
         )
@@ -432,25 +405,7 @@ class TestTaskScopedRequiredFiles:
 
         assert result.success is True, f"task-scoped validation should pass: {result.error}"
         artifact_names = {a["name"] for a in result.outputs["artifacts"]}
-        assert "qa_handoff.md" not in artifact_names
-
-    async def test_qa_handoff_task_still_required_when_in_scope(self, mock_context, builder_inputs):
-        # Task 9 in cycle 3's plan: qa_handoff is the scope. The validator
-        # MUST still reject if Bob produces it without the required sections.
-        mock_context.ports.llm.chat = AsyncMock(
-            return_value=ChatMessage(role="assistant", content=LLM_QA_HANDOFF_MISSING_SECTION),
-        )
-        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
-            return_value=ChatMessage(role="assistant", content=LLM_QA_HANDOFF_MISSING_SECTION),
-        )
-        scoped_inputs = dict(builder_inputs)
-        scoped_inputs["expected_artifacts"] = ["qa_handoff.md"]
-        handler = BuilderAssembleHandler()
-        result = await handler.handle(mock_context, scoped_inputs)
-
-        assert result.success is False
-        # The section regex must still bite when qa_handoff is in scope.
-        assert "Expected Behavior" in result.error
+        assert "assembly_notes.md" not in artifact_names
 
     async def test_empty_expected_artifacts_falls_back_to_profile(
         self, mock_context, builder_inputs
@@ -469,9 +424,10 @@ class TestTaskScopedRequiredFiles:
         handler = BuilderAssembleHandler()
         result = await handler.handle(mock_context, scoped_inputs)
 
-        # python_cli_builder profile requires qa_handoff.md — still missing.
+        # Falls back to the profile's own required set, which this scoped emission does
+        # not satisfy — the fallback is what rejects it.
         assert result.success is False
-        assert "qa_handoff.md not found" in result.error
+        assert "__main__.py" in result.error
 
 
 # ---------------------------------------------------------------------------
@@ -633,7 +589,6 @@ class TestTagInterpolation:
             optional_files=original.optional_files,
             validation_rules=original.validation_rules,
             artifact_output_mode=original.artifact_output_mode,
-            qa_handoff_expectations=original.qa_handoff_expectations,
             default_task_tags={"target_python": "3.11"},
         )
         BUILD_PROFILES["python_cli_builder"] = patched
@@ -661,7 +616,6 @@ class TestTagInterpolation:
             optional_files=original.optional_files,
             validation_rules=original.validation_rules,
             artifact_output_mode=original.artifact_output_mode,
-            qa_handoff_expectations=original.qa_handoff_expectations,
             default_task_tags={"target_python": "3.11"},
         )
         BUILD_PROFILES["python_cli_builder"] = patched
@@ -809,20 +763,6 @@ class TestAssemblyInputsExpandedExtensions:
 
 
 class TestBuilderFailureOutcomeClass:
-    async def test_missing_qa_handoff_emits_semantic_failure(self, mock_context, builder_inputs):
-        from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
-
-        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
-            return_value=ChatMessage(role="assistant", content=LLM_MISSING_QA_HANDOFF),
-        )
-        handler = BuilderAssembleHandler()
-        result = await handler.handle(mock_context, builder_inputs)
-
-        assert result.success is False
-        assert result.outputs["outcome_class"] == TaskOutcome.SEMANTIC_FAILURE
-        assert result.outputs["failure_classification"] == FailureClassification.WORK_PRODUCT
-        assert "qa_handoff.md not found" in result.error
-
     async def test_missing_required_file_emits_semantic_failure(self, mock_context, builder_inputs):
         from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
 
@@ -903,10 +843,8 @@ LLM_BARE_PATH_FRONTEND = (
     "```text:requirements.txt\n"
     "# none\n"
     "```\n\n"
-    "```markdown:qa_handoff.md\n"
-    "## How to Run\nrun it\n\n"
-    "## How to Test\ntest it\n\n"
-    "## Expected Behavior\nworks\n"
+    "```markdown:assembly_notes.md\n"
+    "The image runs as UID 1000.\n"
     "```\n"
 )
 
