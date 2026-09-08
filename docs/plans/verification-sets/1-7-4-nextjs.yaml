@@ -1,0 +1,110 @@
+# 1.7.4 verification set — Next.js (nextjs_ts), 3 counting rolls (plan §4). The same bars,
+# hypotheses and invariants as the React arm (see 1-7-4-fastapi-react.yaml); Q1 (#1285) is
+# exercised on every roll of THIS arm, the qa task's fill-mode shape. Pins are filled at
+# pre-registration from the last shakeout on the frozen deploy and asserted on every counting
+# roll; empty means no counting roll may launch (a shakeout may).
+name: 1-7-4-nextjs
+pre_registration: docs/plans/1-7-4-verification-set-preregistration.md
+project: group_run
+squad_profile: full-38
+request_profile: validated-fullstack
+overrides:
+  build_profile: nextjs_ts
+  development_profile: nextjs_ts
+gate_name: progress_plan_review
+n_rolls: 3
+# Copied verbatim onto every gate approval — the driver substitutes NOTHING in this text.
+gate_notes: >-
+  1.7.4 verification set. Approved under the pre-registered gate policy
+  (pre-registration §6) — identical text applied to every roll of this set.
+  System plan validation passed; no additional judgment applied.
+# {roll} and {n} are the only substitutions the driver makes.
+launch_notes: >-
+  1.7.4 Next.js+TS (nextjs_ts) verification set — COUNTED roll {roll} of {n}. Frozen deploy
+  per the pre-registration; the 1.7.2 predictions L1–L8 re-registered verbatim with L8a/L8b
+  and B1, Q0/Q3/Q5/P0 and R6/R7 carried; scoring per 1.6.3 §5; validity per §5.1; a
+  falsified prediction stops the set.
+shakeout_notes: >-
+  1.7.4 Next.js+TS (nextjs_ts) SHAKEOUT — NON-COUNTING by declaration before launch. Cycle on
+  a deploy built from main carrying the Boundaries list (#922 #559 #377 #381 #1241 #154 #218
+  #219 #305 #225 #999 #1087/#1112) on the repaired instrument (#1316 #1311 #1330 #1310 #1323
+  #1347). Diagnostic only, not a measurement; the last shakeout's identity becomes the set's
+  pins.
+# "Loaded, not built": run inside the container and recorded with the deploy identity. Each
+# is a live CALL with its paired control, not a symbol import — a symbol can be present and
+# unreachable, which is the shape #1289 had for the whole of 1.7.1.
+loaded_checks:
+  # 1.7.4 instrument and rider surfaces, verified LOADED in the containers that carry them.
+  bob-1-7-4: >-
+    from squadops.capabilities.handlers.fault_injection import FAULTS, INJECTED_TASKS;
+    import inspect; from squadops.capabilities.handlers.cycle import builder;
+    print('builder_emission_contentless' in FAULTS, 'builder.assemble' in INJECTED_TASKS,
+    'inject_fault(' in inspect.getsource(builder))
+  data-1-7-4: >-
+    from squadops.capabilities.handlers.fault_injection import FAULTS, INJECTED_TASKS;
+    from squadops.prompts.registry_check import verify_registry_serves_shipped_assets;
+    print('analyzer_false_source_claim' in FAULTS, 'data.analyze_failure' in INJECTED_TASKS)
+  runtime-api-1-7-4: >-
+    import inspect; from adapters.cycles import correction_runner;
+    from adapters.persistence.pool import register_json_codecs;
+    from squadops.config.schema import DispatchConfig;
+    from squadops.api.error_handlers import register_domain_error_handlers;
+    from squadops.api.runtime.migrations import MIGRATIONS_ADVISORY_LOCK_KEY;
+    print('"resolved_config": cycle.resolved_config()' in inspect.getsource(correction_runner),
+    DispatchConfig().task_timeout, MIGRATIONS_ADVISORY_LOCK_KEY > 0)
+  # #1318: the spine row the accepted-patch path re-derives, and its paired control —
+  # supplied passes, withheld fails. A row that can only pass is not evidence.
+  bob: >-
+    from squadops.cycles.check_registry import required_files_row;
+    req = ["Dockerfile", "qa_handoff.md"];
+    print(required_files_row(req, ["a/Dockerfile", "b/qa_handoff.md"])["passed"],
+    required_files_row(req, ["a/Dockerfile"])["missing"])
+  # #1269 read on THIS stack's declared test-file patterns (*.test.ts[x], *.spec.ts[x]): a
+  # repaired suite is recognised, an API route in the same patch is not. #1273's skip
+  # reasons read by reason, not by count.
+  # #1351: the router restore re-homes the paths it strips a prefix from (control: no empty
+  # path is left). #1359: a typeof assertion is read by its literal's VALUE — number — and a
+  # plain quoted literal is still a string.
+  runtime-api: >-
+    from squadops.cycles.fill_slot_integrity import restore_declared_status_codes;
+    from squadops.cycles.acceptance_checks import assertion_literal_kinds_js;
+    from adapters.cycles.dispatched_flow_executor import _repaired_suite_files;
+    from squadops.cycles.patch_verification import PatchCheckRecord, skip_reasons;
+    cfg = {"build_profile": "nextjs_ts", "development_profile": "nextjs_ts"};
+    seed = "from fastapi import APIRouter\nrouter = APIRouter()\n@router.post(\"/runs\", status_code=201)\ndef c(p: dict):\n    return {}\n";
+    emitted = seed.replace("APIRouter()", "APIRouter(prefix=\"/runs\")").replace("(\"/runs\", status_code=201)", "(\"\", status_code=201)");
+    rehomed = restore_declared_status_codes(seed, emitted)[0];
+    print(_repaired_suite_files([{"name": "__tests__/runs.test.tsx", "type": "code"}], cfg),
+    _repaired_suite_files([{"name": "app/api/runs/route.ts", "type": "code"}], cfg),
+    skip_reasons([PatchCheckRecord(check="acceptance:x", severity="blocking",
+    status="skipped", reason="file_not_found")]),
+    PatchCheckRecord(check="sections_present", severity="error", status="passed",
+    criterion_id="handoff-sections:qa_handoff.md").to_check_row()["criterion_id"],
+    "@router.post(\"/runs\", status_code=201)" in rehomed, "(\"\"" not in rehomed,
+    assertion_literal_kinds_js("expect(typeof b.participant_count).toBe('number')\nexpect(b.n).toBe('x')\n"))
+  # #1292: the qa namespace is the co-located convention and nothing else — the root
+  # harness and a co-located suite are qa's, an API route is not. Before the fix the third
+  # value was True and the namespace was ("__tests__/", "app/", "lib/"). #1251: the faults.
+  eve: >-
+    from types import SimpleNamespace;
+    from squadops.capabilities.scaffold import qa_test_namespace, is_qa_test_path_for_stack;
+    from squadops.capabilities.handlers.fault_injection import FAULTS;
+    print(qa_test_namespace(SimpleNamespace(stack="nextjs_ts")),
+    is_qa_test_path_for_stack("__tests__/harness.test.ts", "nextjs_ts"),
+    is_qa_test_path_for_stack("app/runs/__tests__/page.test.tsx", "nextjs_ts"),
+    is_qa_test_path_for_stack("app/api/runs/route.ts", "nextjs_ts"), sorted(FAULTS))
+  # #1289 and #788: the three blocks reach the renderer. Echoing the sentinels back is the
+  # only evidence that distinguishes this build from every build before it, where the
+  # variables were computed and dropped.
+  neo: >-
+    from squadops.capabilities.handlers.impl.repair_handlers import
+    DevelopmentCorrectionRepairHandler;
+    v = DevelopmentCorrectionRepairHandler()._build_render_variables("prd", None,
+    {"failing_cases_section": "CASES", "client_surface_section": "SURFACE",
+    "app_traceback_section": "TB"});
+    print(v["failing_cases_section"], v["client_surface_section"], v["app_traceback_section"])
+# Pins: filled from the last shakeout before roll 1; empty means "no counting roll may launch".
+expected_config_hash_prefix: ""
+expected_squad_snapshot_prefix: ""
+frozen_deploy_commit: ""
+frozen_image_ids: {}
