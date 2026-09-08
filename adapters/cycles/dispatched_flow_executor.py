@@ -105,7 +105,11 @@ from squadops.runtime.admission import admit_participants, release_participants
 from squadops.runtime.focus_reaper import release_owner_leases
 from squadops.runtime.recruitment import reserve_buffer_decision
 from squadops.tasks.models import TaskEnvelope, TaskResult, TaskResultStatus
-from squadops.tasks.task_types import emits_required_files, fails_without_correction
+from squadops.tasks.task_types import (
+    TaskType,
+    emits_required_files,
+    fails_without_correction,
+)
 from squadops.telemetry.context import use_correlation_context
 from squadops.telemetry.models import CorrelationContext
 
@@ -246,6 +250,14 @@ def record_task_evidence(ledger: RunLedger, task_result, task_id: str) -> None:
             ledger.record_check_result(check_result)
     except Exception:
         logger.warning("Verification-evidence recording failed", exc_info=True)
+
+
+#: #1312: who is given the builder's assembly notes. The test author, and only the test
+#: author — the qa repair renders no such appendix, and threading an input no handler
+#: reads is how the old handoff got its shape (required, produced, consumed by nothing).
+#: A set rather than a branch, so adding the repair later is a row here plus its renderer
+#: (CLAUDE.md: tables over chains).
+_ASSEMBLY_NOTES_READERS: frozenset[str] = frozenset({TaskType.QA_TEST})
 
 
 class DispatchedFlowExecutor(FlowExecutionPort):
@@ -1488,6 +1500,65 @@ class DispatchedFlowExecutor(FlowExecutionPort):
 
         return contents
 
+    async def _resolve_assembly_notes(
+        self, stored_artifacts: list[tuple[str, Any]]
+    ) -> dict[str, str] | None:
+        """The builder's `assembly_notes.md`, with the id of the artifact it came from.
+
+        #1312 replaced a required document nobody read with an optional one the test
+        author is given. H2 is what makes that safe to rely on, and it is a correctness
+        invariant rather than something counted rolls assure: **the notes the qa prompt
+        carries are the current builder's, or there are none.**
+
+        Three rules, all of them the reason this does not simply read
+        ``artifact_contents``:
+
+        * A **failed** emission is never notes (#971) — the same unconditional rule the
+          workspace composer applies. A builder attempt that failed its checks may still
+          have written a notes file; rendering it would hand the test author a fact from
+          an emission the framework rejected.
+        * A **repair candidate** is not notes either: it is unaccepted by construction.
+        * **The latest accepted emission wins**, so a re-take supersedes what it replaced.
+          A stale notes file from an earlier attempt is the one shape that would be worse
+          than no notes at all — the test author cannot tell that it is stale, and the
+          appendix names an artifact id precisely so a reader of the record can.
+
+        Returns ``None`` when the builder emitted none, which is the expected case: the
+        file is optional and silence is a complete answer.
+        """
+        from squadops.capabilities.assembly_notes import ASSEMBLY_NOTES_DOCUMENT
+        from squadops.cycles.task_plan import REPAIR_TASK_TYPES
+
+        latest: tuple[str, Any] | None = None
+        for art_id, ref in stored_artifacts:
+            if PurePosixPath(str(ref.filename)).name != ASSEMBLY_NOTES_DOCUMENT:
+                continue
+            if ref.metadata.get("emission_status") == "failed":
+                continue
+            if ref.metadata.get("producing_task_type", "") in REPAIR_TASK_TYPES:
+                continue
+            latest = (art_id, ref)
+        if latest is None:
+            return None
+        art_id, ref = latest
+        try:
+            _ref, content_bytes = await self._artifact_vault.retrieve(art_id)
+        except Exception:
+            logger.warning("assembly notes %s could not be retrieved", art_id, exc_info=True)
+            return None
+        text = content_bytes.decode(errors="replace").strip()
+        if not text:
+            # An empty file is not context. Rendering the heading over nothing would tell
+            # the test author a fact exists and then show none.
+            return None
+        logger.info(
+            "assembly_notes threaded artifact=%s filename=%s chars=%d",
+            art_id,
+            ref.filename,
+            len(text),
+        )
+        return {"content": text, "artifact_id": art_id}
+
     async def _execute_sequential(
         self,
         plan: list[TaskEnvelope],
@@ -2629,6 +2700,14 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 if artifact_contents:
                     extra_inputs["artifact_contents"] = artifact_contents
 
+        # #1312 / H2: the builder's optional notes reach the test author here, paired with
+        # the producing artifact's id, and only through the presence-keyed appendix — the
+        # curated `artifact_contents` above never carried the old handoff to qa either.
+        if envelope.task_type in _ASSEMBLY_NOTES_READERS:
+            notes = await self._resolve_assembly_notes(stored_artifacts)
+            if notes:
+                extra_inputs["assembly_notes"] = notes
+
         if contract.acceptance_workspace:
             # #643: the typed-acceptance workspace rides separately from the
             # curated prompt context — evaluation needs the full accepted tree
@@ -3296,6 +3375,16 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             # #1264: the repair's own files, not the overlay's (which carries the failed
             # task's artifacts too) — what #1259's absent-file rule is keyed on.
             repaired=[a.get("name") for a in repair_artifacts if isinstance(a, dict)],
+            # #1312: the deliverable set is the BUILDER repair's blocking criterion, now
+            # that the handoff's `sections_present` row is gone. Guarded by the same
+            # predicate the spine row uses — a dev or qa repair is judged by its contract
+            # criteria, and handing it a file list would charge it for files another role
+            # owns (the #1259 class).
+            required_files=(
+                (envelope.inputs or {}).get("expected_artifacts") or []
+                if emits_required_files(envelope.task_type)
+                else []
+            ),
         )
         # pf-33: name the failed checks — "status=failed reason= checks=7" forced
         # a by-hand artifact replay to learn WHICH check rejected the patch.
@@ -3564,11 +3653,12 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 )
             )
             logger.info(
-                "patch task=%s re-derived %s on the patched set: passed=%s missing=%s "
-                "(the failed attempt carried %s; #1318, #1364)",
+                "patch task=%s re-derived %s on the patched set: passed=%s required=%s "
+                "missing=%s (the failed attempt carried %s; #1318, #1364)",
                 envelope.task_id,
                 CHECK_REQUIRED_FILES,
                 spine_rows[-1]["passed"],
+                ",".join(spine_rows[-1]["required"]) or "-",
                 ",".join(spine_rows[-1]["missing"]) or "-",
                 "the row" if carried_required_files else "no rows",
             )
@@ -4226,16 +4316,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                             parsed_plan.validate_builder_floor(cycle.resolved_config()),
                         )
                     )
-                    # #1252: a regex over the handoff's headings restates the profile's
-                    # own section check in a brittle form; the 1.7.1 React shakeout spent
-                    # two of three correction rounds on heading word order. Rejected here
-                    # with the rule named, for a free framing re-roll.
-                    errors.extend(
-                        classifier.collect(
-                            "validate_handoff_criteria",
-                            parsed_plan.validate_handoff_criteria(),
-                        )
-                    )
             elif (
                 ref.filename == SEEDED_MANIFEST_FILENAME or artifact_type == MANIFEST_ARTIFACT_TYPE
             ):
@@ -4384,7 +4464,12 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # rejected — but logged so the pass is never silent (a warning check can't
         # block a build per RC-9, so it must not kill the cycle at plan validation).
         if parsed_plan is not None:
-            soft = parsed_plan.soft_criteria_violations(contract)
+            # #1254: reported beside the tolerated criteria, never fatal — the rule is
+            # taught in the vocabulary and enforced by the dispatch strip; a framing
+            # re-roll for a row dispatch drops would cost half an hour for nothing.
+            soft = parsed_plan.soft_criteria_violations(contract) + [
+                f"tolerated (derived): {note}" for note in parsed_plan.validate_derived_criteria()
+            ]
             if soft:
                 logger.warning(
                     "Plan for gate %r on run %s: tolerated %d soft criteria "
@@ -4526,8 +4611,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # style-lottery regex costs seconds at the gate, not an hour of
         # correction budget mid-implementation.
         errors += plan.validate_criteria_scope()
-        # #1252: same seam again — a regex over the handoff's headings.
-        errors += plan.validate_handoff_criteria()
         # #426: same seam again — a builder task without a build_profile is
         # refused by generate_task_plan anyway, but only after the gate
         # approved the plan and the implementation run was admitted.

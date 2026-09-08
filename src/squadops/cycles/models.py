@@ -76,7 +76,14 @@ class ArtifactType:
     TEST_REPORT = "test_report"
     BUILD_PLAN = "build_plan"
     CONFIG_SNAPSHOT = "config_snapshot"
+    #: Historical. The builder's required handoff document, retired by #1312 — no code
+    #: produces it any more, and the constant stays so rows banked before 1.7.4 keep the
+    #: label they were written with rather than being rewritten to a type that did not
+    #: exist when they were stored.
     QA_HANDOFF = "qa_handoff"
+    #: #1312: the builder's OPTIONAL notes to the test author — assembly facts the stack's
+    #: deterministic contracts do not already supply.
+    ASSEMBLY_NOTES = "assembly_notes"
     CONTROL_IMPLEMENTATION_PLAN = "control_implementation_plan"
 
 

@@ -143,7 +143,14 @@ def test_framework_injected_checks_are_withheld_from_the_authoring_vocabulary():
     rendered = render_typed_acceptance_vocabulary()
     injected = {n for n, s in CHECK_SPECS.items() if s.framework_injected}
     assert injected, "the flag must be exercised by at least one real spec"
+    # #1254: withheld means no ENTRY — the vocabulary now also NAMES them, in one
+    # "already checked for you" paragraph, because silent omission is how the planner
+    # learned to author `harness_boundary` from stored plans. Asserting on the entry
+    # heading rather than on the name anywhere is what keeps both facts testable.
+    entries = rendered.split("### Already checked for you")[0]
     for name in injected:
-        assert f"`{name}`" not in rendered
+        assert f"### `{name}`" not in entries
+        assert f"`{name}`" not in entries
+        assert f"`{name}`" in rendered, "the withheld check must still be named as covered"
     for name in _AUTHORABLE:
-        assert f"`{name}`" in rendered
+        assert f"### `{name}`" in entries

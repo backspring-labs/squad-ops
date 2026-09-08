@@ -485,8 +485,8 @@ class TestAcceptPatch:
         )
 
     def _failed_builder_result_1318(self):
-        """The 1.7.2 roll-1 shape: the builder omitted its handoff, so BOTH the framework
-        spine row and the typed criterion failed on the pre-patch tree."""
+        """The 1.7.2 roll-1 shape, on the post-#1312 contract: the builder omitted a
+        declared deliverable, so the framework spine row failed on the pre-patch tree."""
         return TaskResult(
             task_id="task_5",
             status="FAILED",
@@ -501,16 +501,7 @@ class TestAcceptPatch:
                 ],
                 "validation_result": {
                     "checks": [
-                        {"check": "required_files", "passed": False, "missing": ["qa_handoff.md"]},
-                        {
-                            "check": "acceptance:sections_present",
-                            "severity": "error",
-                            "status": "failed",
-                            "reason": "file_not_found",
-                            "criterion_id": "handoff-sections:qa_handoff.md",
-                            "params": {"file": "qa_handoff.md", "sections": ["## How to Test"]},
-                            "passed": False,
-                        },
+                        {"check": "required_files", "passed": False, "missing": ["start.sh"]},
                     ]
                 },
                 "outcome_class": TaskOutcome.SEMANTIC_FAILURE,
@@ -527,14 +518,18 @@ class TestAcceptPatch:
             self._builder_envelope(),
             inputs={
                 "resolved_config": {},
-                "expected_artifacts": ["Dockerfile", "qa_handoff.md"],
+                # #1312: the deliverable set IS the builder repair's blocking criterion
+                # now that the handoff's `sections_present` row is retired. `start.sh`
+                # stands where `qa_handoff.md` stood in the 1.7.2 roll-1 shape: declared,
+                # not emitted, supplied by the patch.
+                "expected_artifacts": ["Dockerfile", "start.sh"],
                 "acceptance_criteria": [
                     TypedCheck(
-                        check="sections_present",
-                        params={"file": "qa_handoff.md", "sections": ["## How to Test"]},
-                        severity="error",
-                        description="handoff sections",
-                        id="handoff-sections:qa_handoff.md",
+                        check="container_packaging",
+                        params={"file": "Dockerfile"},
+                        severity="warning",
+                        description="packaging findings",
+                        id="packaging:Dockerfile",
                     )
                 ],
             },
@@ -563,7 +558,7 @@ class TestAcceptPatch:
             contentless,
             [
                 {"name": "Dockerfile", "content": "FROM python:3.12\n"},
-                {"name": "qa_handoff.md", "content": "# QA Handoff\n## How to Test\nrun pytest\n"},
+                {"name": "start.sh", "content": "#!/bin/sh\nexec uvicorn backend.main:app\n"},
             ],
             holder,
         )
@@ -585,10 +580,28 @@ class TestAcceptPatch:
         carrying no rows is not handed a `required_files` row it never emits."""
         import dataclasses as _dc
 
+        from squadops.cycles.implementation_plan import TypedCheck
+
+        # Its own blocking criterion, because #1312's deliverable row is guarded by
+        # `emits_required_files` and a dev task therefore has none — without a criterion
+        # of its own the repair would be `no_executed_blocking_checks`, which is a
+        # different verdict and would not test what this test names.
         dev = _dc.replace(
             self._builder_envelope_1318(),
             task_type="development.develop",
             metadata={"role": "dev"},
+            inputs={
+                "resolved_config": {},
+                "expected_artifacts": ["README.md"],
+                "acceptance_criteria": [
+                    TypedCheck(
+                        check="regex_match",
+                        params={"file": "README.md", "pattern": "## Configuration"},
+                        severity="error",
+                        description="documents its configuration",
+                    )
+                ],
+            },
         )
         contentless = TaskResult(
             task_id="task_5",
@@ -600,10 +613,7 @@ class TestAcceptPatch:
         action = await executor._try_accept_patch(
             dev,
             contentless,
-            [
-                {"name": "Dockerfile", "content": "FROM python:3.12\n"},
-                {"name": "qa_handoff.md", "content": "# QA Handoff\n## How to Test\nrun pytest\n"},
-            ],
+            [{"name": "README.md", "content": "# App\n\n## Configuration\nSet PORT.\n"}],
             holder,
         )
         assert action == "accept_patch"
@@ -632,12 +642,7 @@ class TestAcceptPatch:
         action = await executor._try_accept_patch(
             self._builder_envelope_1318(),
             failed,
-            [
-                {
-                    "name": "qa_handoff.md",
-                    "content": "# QA Handoff\n## How to Test\nrun pytest\n",
-                }
-            ],
+            [{"name": "start.sh", "content": "#!/bin/sh\nexec uvicorn backend.main:app\n"}],
             holder,
         )
         assert action == "accept_patch"
@@ -648,17 +653,12 @@ class TestAcceptPatch:
         spine = [r for r in rows if r.get("check") == "required_files"]
         assert spine and spine[0]["passed"] is True, rows
         assert spine[0]["missing"] == []
-
-        # The typed row carries the criterion id the failed row carried.
-        typed = [r for r in rows if r.get("check") == "acceptance:sections_present"]
-        assert typed, rows
-        assert typed[0]["criterion_id"] == "handoff-sections:qa_handoff.md"
-        assert typed[0]["status"] == "passed"
+        assert spine[0]["required"] == ["Dockerfile", "start.sh"]
 
         # The failed attempt's evidence artifact is not re-stored (no retest ran).
         names = {a.get("name") for a in corrected.outputs["artifacts"]}
         assert "typed_check_evaluation_task_4.json" not in names
-        assert "qa_handoff.md" in names
+        assert "start.sh" in names
 
         # The verdict over the sequence the executor records (failed, then corrected).
         ledger = [
@@ -674,7 +674,9 @@ class TestAcceptPatch:
         """The floor: superseding must not launder a deliverable the patch never wrote.
 
         Same shape, but the patch touches only the Dockerfile — the re-derived spine row
-        must report the handoff still missing rather than crediting the task.
+        must report the startup script still missing rather than crediting the task, and
+        since #1312 the deliverable row is also the repair's own blocking criterion, so
+        the patch is rejected rather than accepted with a failing row.
         """
         holder: dict = {}
         await executor._try_accept_patch(
@@ -692,7 +694,7 @@ class TestAcceptPatch:
             if r.get("check") == "required_files"
         ]
         assert spine and spine[0]["passed"] is False
-        assert spine[0]["missing"] == ["qa_handoff.md"]
+        assert spine[0]["missing"] == ["start.sh"]
 
     async def test_verified_patch_accepted_with_corrected_result(self, executor):
         """Bug caught: verified repairs re-dispatched into a re-roll — the

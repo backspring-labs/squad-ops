@@ -623,6 +623,37 @@ def _gate_failed_by_agent(gate: list[TypedCheck], agent: list[PatchCheckRecord])
     return any(_criterion_key(c.check, c.params) in failed for c in gate if c.severity == "error")
 
 
+def _required_files_record(
+    required_files: Sequence[str] | None, patched: frozenset[str]
+) -> PatchCheckRecord | None:
+    """The deliverable-completeness row for a repair whose task declares required files.
+
+    #1312: with the handoff retired, a builder repair reaches verification with no
+    blocking typed criterion of its own — the shape #1255 fixed and this removal would
+    otherwise re-open. The task's own declared deliverable is the honest criterion: it is
+    derived from the build profile rather than authored, and it is evaluated by
+    ``required_files_row`` — the one rule the emission seam and the accepted-patch path
+    already share, so three seams cannot disagree about whether a file was supplied.
+
+    ``None`` when the task declares no required files, which is every non-builder task:
+    a qa or dev repair is judged by its contract criteria, not by a file list.
+    """
+    from pathlib import PurePosixPath
+
+    from squadops.cycles.check_registry import CHECK_REQUIRED_FILES, required_files_row
+
+    names = [str(name) for name in (required_files or []) if str(name)]
+    if not names:
+        return None
+    row = required_files_row(names, [PurePosixPath(n).name for n in patched])
+    return PatchCheckRecord(
+        check=CHECK_REQUIRED_FILES,
+        severity="error",
+        status=ResultStatus.PASSED if row["passed"] else ResultStatus.FAILED,
+        reason="ok" if row["passed"] else f"missing: {', '.join(row['missing'])}",
+    )
+
+
 async def verify_patched_artifacts(
     criteria: list[Any],
     artifacts: list[dict[str, Any]],
@@ -634,6 +665,7 @@ async def verify_patched_artifacts(
     file_owned_criteria: list[TypedCheck] | None = None,
     agent_checks: Any = None,
     repaired: Sequence[str] | None = None,
+    required_files: Sequence[str] | None = None,
 ) -> PatchVerification:
     """Re-run the failed task's typed acceptance criteria against *artifacts*.
 
@@ -655,6 +687,17 @@ async def verify_patched_artifacts(
     verification substrate only — never part of what an accepted patch stores.
     Runtime-level checks (module_imports, the #591 import pre-gate) are
     meaningless without the scaffold siblings the patched file imports.
+
+    ``required_files`` (#1312) is the failed task's declared deliverable set, and it is
+    the BUILDER repair's blocking criterion. A builder task's typed criteria used to be
+    the handoff's `sections_present` row; with the handoff retired, a builder repair would
+    otherwise arrive here with no blocking criterion at all and be discarded as
+    ``no_typed_criteria`` — precisely the #1255 defect, re-opened by the removal. The
+    deliverable's own completeness is the right criterion for a task whose job is to
+    produce files: it is derived from the profile (never authored), evaluated on the
+    patched tree by the same ``required_files_row`` rule the emission seam and the
+    accepted-patch path use, and it fails only when the repair did not supply what the
+    task was asked for.
 
     ``file_owned_criteria`` (#870) are the contract criteria owned by the files
     the repair rewrote (``resolve_criteria_for_files``) — a repair for a
@@ -682,7 +725,14 @@ async def verify_patched_artifacts(
         _absent_file_is_not_evidence(record, patched)
         for record in agent_check_records(agent_checks)
     ]
-    if not typed and not gate:
+    # #1312: derived first, so it counts toward "is there anything blocking here at all".
+    # Evaluated on the OVERLAY, never on ``patched`` — the repair's own files are what
+    # #1259's absent-file rule is keyed on, but deliverable completeness is a fact about
+    # the whole tree the patch lands in. A repair that fixes one of two required files
+    # would otherwise be rejected for the file its own attempt already supplied, which is
+    # the same shape as charging a dev repair for a qa suite it never wrote.
+    deliverable = _required_files_record(required_files, _patched_names(artifacts))
+    if not typed and not gate and deliverable is None:
         # #1255: carry the rows the repair executed so the verdict — and the executor's
         # ``agent_rows=`` log line — say what the agent did. The builder repair in
         # cyc_c6db3ffc1f4e reported one executed row and this returned none.
@@ -745,7 +795,7 @@ async def verify_patched_artifacts(
                 reason="file_owned_criteria",
                 workspace_revision_id=revision_id,
             )
-        if not typed:
+        if not typed and deliverable is None:
             # The gate could not reject and the failed task itself has no typed
             # criteria — same structurally-unevaluable verdict as before the gate
             # existed, so the behavioral retest still decides (pf-47/pf-49).
@@ -768,6 +818,15 @@ async def verify_patched_artifacts(
         blocking_failure, blocking_passed, evaluator_error, decided_by_agent = _task_verdict(
             local, agent_records
         )
+        # #1312: the deliverable row is executed evidence like any other — it can reject
+        # a repair that did not supply the file, and it can be the only blocking row that
+        # ran, which is the builder case this exists for.
+        if deliverable is not None:
+            records.append(deliverable)
+            if deliverable.status == ResultStatus.FAILED:
+                blocking_failure = True
+            else:
+                blocking_passed += 1
         if evaluator_error is not None:
             # Evaluator couldn't run in this environment and the repair did not run it
             # either — the whole verification is untrustworthy, not just this row.

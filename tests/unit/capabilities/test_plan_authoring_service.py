@@ -774,33 +774,37 @@ async def test_the_rules_precede_the_cycle_specific_surfaces(seeded_inputs):
 
 
 async def test_builder_guideline_and_example_carry_the_profile_floor():
-    """#890: rolls 15/16 both reproduced the builder example's
-    expected_artifacts verbatim — qa_handoff.md only, no Dockerfile — so the
-    example must SHOW the profile's required-files floor (the same list
-    validate_builder_floor rejects on), not hedge it in description prose."""
+    """#890: rolls 15/16 both reproduced the builder example's expected_artifacts
+    verbatim, so the example must SHOW the profile's required-files floor (the same list
+    validate_builder_floor rejects on), not hedge it in description prose.
+
+    #1312 shrank that floor to `Dockerfile` on both stacks — the handoff left it — which
+    makes the reproduce-verbatim habit harmless where it used to demand a document."""
     variables = await _render_vars_for(
         ["lead", "dev", "qa", "builder"],
         {"implementation_plan": True, "build_profile": "nextjs_ts"},
     )
 
-    assert "Dockerfile, qa_handoff.md" in variables["builder_guideline"]
+    assert "Dockerfile" in variables["builder_guideline"]
+    assert "qa_handoff" not in variables["builder_guideline"]
     assert "floor" in variables["builder_guideline"]
     assert '- "Dockerfile"' in variables["builder_example"]
-    assert '- "qa_handoff.md"' in variables["builder_example"]
+    # #1254: the example's acceptance_criteria are PROSE — every typed check a builder
+    # emission earns is the framework's or the profile's.
+    assert "check:" not in variables["builder_example"]
 
 
 async def test_unknown_profile_keeps_generic_example():
-    """A profile the registry cannot resolve renders no floor line and the
-    example falls back to the pre-#890 qa_handoff.md shape — the offer gate
-    and #426's nets own the misconfiguration, not this surface."""
+    """A profile the registry cannot resolve renders no floor line and the example falls
+    back to a generic single-artifact shape — the offer gate and #426's nets own the
+    misconfiguration, not this surface."""
     variables = await _render_vars_for(
         ["lead", "dev", "qa", "builder"],
         {"implementation_plan": True, "build_profile": "no_such_profile"},
     )
 
     assert "floor" not in variables["builder_guideline"]
-    assert '- "qa_handoff.md"' in variables["builder_example"]
-    assert '- "Dockerfile"' not in variables["builder_example"]
+    assert '- "Dockerfile"' in variables["builder_example"]
 
 
 # ---------------------------------------------------------------------------

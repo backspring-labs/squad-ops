@@ -72,7 +72,7 @@ class GovernanceReviewHandler(_CycleTaskHandler):
         "- Separate UI shell/routing from individual view components\n"
         "- Put integration config (CORS, proxy, requirements) in its own task\n"
         "- Put tests after the code they test\n"
-        "- Put QA handoff last\n\n" + _PRD_COVERAGE_DISCIPLINE_SECTION + "\n"
+        "\n" + _PRD_COVERAGE_DISCIPLINE_SECTION + "\n"
         "Output the manifest as a YAML code block with filename: "
         "implementation_plan.yaml\n\n"
         "Use this exact schema. The first three fields are pre-filled with "

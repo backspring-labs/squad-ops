@@ -20,9 +20,9 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
+from squadops.capabilities.assembly_notes import RETIRED_HANDOFF_DOCUMENT
 from squadops.capabilities.context_assembly import get_context_contract
 from squadops.capabilities.handlers.build_profiles import (
-    QA_HANDOFF_REQUIRED_SECTIONS,
     ROUTING_BUILDER_PRESENT,
     ROUTING_FALLBACK_NO_BUILDER,
 )
@@ -42,13 +42,12 @@ from squadops.cycles.acceptance_check_spec import (
     CHECK_DOM_ANCHOR_QUERIES,
     CHECK_FILL_SLOT_SIGNATURE,
     CHECK_HARNESS_BOUNDARY,
-    CHECK_SECTIONS_PRESENT,
+    derived_check_names,
     is_check_applicable,
 )
 from squadops.cycles.agent_config import resolve_agent_config
 from squadops.cycles.failure_evidence import FailureLocus
 from squadops.cycles.implementation_plan import (
-    HANDOFF_DOCUMENT,
     ImplementationPlan,
     TypedCheck,
     resolve_contract_refs,
@@ -476,16 +475,9 @@ def _resolve_legacy_steps(
 CHECK_REGEX_MATCH = "regex_match"
 
 
-def _is_handoff_regex(criterion: TypedCheck) -> bool:
-    return (
-        criterion.check == CHECK_REGEX_MATCH
-        and str(criterion.params.get("file", "")).split("/")[-1] == HANDOFF_DOCUMENT
-    )
-
-
 def _applicable_acceptance(plan_task: Any) -> list:
-    """The task's authored acceptance criteria, minus checks that can never evaluate, and
-    minus regexes over the handoff document (#1252).
+    """The task's authored acceptance criteria, minus the rows that are not the author's
+    to write: checks the framework derives (#1254) and checks that can never evaluate.
 
     pf-47/pf-49: the author dresses non-Python files in Python-AST checks (pytest
     idioms on ``.jsx`` test files) because the vocabulary never told it which checks
@@ -496,22 +488,44 @@ def _applicable_acceptance(plan_task: Any) -> list:
     teaches applicability so authored plans converge, and this is the deterministic
     backstop.
     """
+    derived = derived_check_names()
     acceptance: list = []
     for criterion in plan_task.acceptance_criteria:
         if isinstance(criterion, TypedCheck):
-            if _is_handoff_regex(criterion):
-                # #1252: the 1.7.1 React shakeout (cyc_8118588858a6) spent two of three
-                # correction rounds on the WORD ORDER of two handoff headings — the plan
-                # authored `## .*(Backend|Server|API).*(Run|Start|Setup|Launch)` and the
-                # builder wrote `## How to Run the Backend`, its template's own convention.
-                # The handoff's sections are the profile's, checked by name in any order
-                # (builder.py `_validate_builder_output`); a regex the planner phrases
-                # fresh each cycle polices how the author restated a fact it never saw.
+            if str(criterion.params.get("file", "")).split("/")[-1] == RETIRED_HANDOFF_DOCUMENT:
+                # #1312: the handoff is retired — no profile requires it, no prompt asks
+                # for it, and nothing produces it. A criterion over it cannot be satisfied
+                # by any emission, so it would evaluate `file_not_found` and reject a
+                # correct roll. The planner is a language model with a strong prior about
+                # this filename (213 of 213 builder criteria in the last 40 stored plans
+                # named it), so the transition needs a mechanical answer, not only a
+                # quieter prompt.
                 logger.warning(
-                    "handoff_regex_stripped task=%s pattern=%r — the handoff's sections are "
-                    "the build profile's, checked by name (#1252)",
+                    "retired_artifact_criterion_stripped task=%s check=%s file=%s — "
+                    "%s is retired; nothing produces it (#1312)",
                     plan_task.task_index,
-                    criterion.params.get("pattern"),
+                    criterion.check,
+                    criterion.params.get("file", "-"),
+                    RETIRED_HANDOFF_DOCUMENT,
+                )
+                continue
+            if criterion.check in derived:
+                # #1254: the framework binds this check itself, from declarations the
+                # author never sees — the scaffold's entry modules, the bound contract's
+                # assertions, the stack's anchor rules, the profile's own deliverables.
+                # An authored row does not add coverage; it adds a SECOND row with the
+                # same name over the same file, and the evidence double-counts. Both
+                # 1.7.1 React shakeouts carried `harness_boundary` twice on
+                # `backend/tests/test_runs.py` for exactly this reason. The rendered
+                # vocabulary withholds these and the brief names them as already covered;
+                # this is the deterministic backstop, and it logs what it drops.
+                logger.warning(
+                    "derived_check_stripped task=%s check=%s file=%s — the framework "
+                    "binds this check from its own declarations; an authored row "
+                    "duplicates the evidence (#1254)",
+                    plan_task.task_index,
+                    criterion.check,
+                    criterion.params.get("file", "-"),
                 )
                 continue
             target = str(criterion.params.get("file", ""))
@@ -820,27 +834,6 @@ def _harness_boundary_criteria(
     ]
 
 
-def _handoff_section_criteria(task_type: str, plan_task: Any) -> list[TypedCheck]:
-    """#1255: the build profile's required handoff sections, bound onto the builder task that
-    owns the handoff document — one ``sections_present`` check with the profile's sections as
-    self-contained params, so the builder seam evaluates it at emission, the repair evaluates
-    it on its patch, and runtime-api's verifier evaluates the same row and can decide. The
-    planner never authors it (#1254's direction: derived surfaces are not authorable); it
-    is the typed form of the handler's own validation, not a second rule. Empty for every
-    other task type and for a builder task that does not own the document."""
-    if task_type not in _BUILDER_TASK_TYPES:
-        return []
-    return [
-        TypedCheck(
-            check=CHECK_SECTIONS_PRESENT,
-            params={"file": art, "sections": list(QA_HANDOFF_REQUIRED_SECTIONS)},
-            id=f"handoff-sections:{art}",
-        )
-        for art in plan_task.expected_artifacts
-        if str(art).split("/")[-1] == HANDOFF_DOCUMENT
-    ]
-
-
 def _fill_slot_signature_criteria(
     task_type: str,
     plan_task: Any,
@@ -1139,9 +1132,6 @@ def generate_task_plan(
             acceptance.extend(
                 _fill_slot_signature_criteria(task_type, plan_task, interface_manifest)
             )
-            # #1255: the build profile's handoff sections, bound onto the builder task that
-            # owns the document — the handler's validation as a criterion every seam reads.
-            acceptance.extend(_handoff_section_criteria(task_type, plan_task))
             inputs["acceptance_criteria"] = acceptance
 
         inject_contract_inputs(inputs, contract, task_type, interface_manifest)

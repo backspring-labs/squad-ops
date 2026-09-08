@@ -74,8 +74,19 @@ def required_files_row(required: Iterable[str], emitted: Iterable[str]) -> dict[
     from pathlib import PurePosixPath
 
     have = {PurePosixPath(str(name)).name for name in emitted if name}
-    missing = [str(item) for item in required if str(item) not in have]
-    return {"check": CHECK_REQUIRED_FILES, "passed": not missing, "missing": missing}
+    required_names = [str(item) for item in required]
+    missing = [item for item in required_names if item not in have]
+    # `required` rides the row so the evidence says what was asked for, not only what was
+    # absent. H1 (1.7.4) is "no counted roll is rejected on the handoff", and a readout
+    # built from `missing` alone cannot tell that bar from its own blind spot: a NEW
+    # required file the profile derives fails identically under a different name, and a
+    # record listing only misses would read as the bar holding.
+    return {
+        "check": CHECK_REQUIRED_FILES,
+        "passed": not missing,
+        "missing": missing,
+        "required": required_names,
+    }
 
 
 FRAMEWORK_CHECKS: dict[str, FrameworkCheck] = {

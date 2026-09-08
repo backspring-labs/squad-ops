@@ -8,10 +8,13 @@ from __future__ import annotations
 
 import pytest
 
+from squadops.capabilities.assembly_notes import (
+    ASSEMBLY_NOTES_DOCUMENT,
+    already_supplied_lines,
+)
 from squadops.capabilities.handlers.build_profiles import (
     ARTIFACT_MODE_MULTI_FILE,
     BUILD_PROFILES,
-    QA_HANDOFF_REQUIRED_SECTIONS,
     ROUTING_BUILDER_PRESENT,
     ROUTING_FALLBACK_NO_BUILDER,
     BuildProfile,
@@ -69,18 +72,31 @@ class TestPythonCliBuilderProfile:
         assert len(profile.system_prompt_template) > 0
 
 
-class TestQAHandoffConstants:
-    def test_required_sections_has_how_to_run(self):
-        assert "## How to Run" in QA_HANDOFF_REQUIRED_SECTIONS
+class TestTheHandoffIsGoneAndTheNotesAreOptional:
+    """#1312: `qa_handoff.md` was required of every builder task, checked by four
+    surfaces, and read by nothing — and the builder intermittently completed the
+    packaging archetype instead, emitting `.env.example` and `docker-compose.yaml`
+    and dropping the report on ~9% of cycles. These would catch its return: a profile
+    that requires it again asks for a document no consumer reads, and a profile that
+    lists the notes as REQUIRED rebuilds the same generator under a new name.
+    """
 
-    def test_required_sections_has_how_to_test(self):
-        assert "## How to Test" in QA_HANDOFF_REQUIRED_SECTIONS
+    @pytest.mark.parametrize("name,profile", list(BUILD_PROFILES.items()))
+    def test_no_profile_requires_the_handoff(self, name, profile):
+        assert "qa_handoff.md" not in profile.required_files, (
+            f"{name}: the handoff is required again — nothing reads it (#1312)"
+        )
+        assert "qa_handoff.md" not in profile.optional_files
 
-    def test_required_sections_has_expected_behavior(self):
-        assert "## Expected Behavior" in QA_HANDOFF_REQUIRED_SECTIONS
-
-    def test_required_sections_count(self):
-        assert len(QA_HANDOFF_REQUIRED_SECTIONS) == 3
+    @pytest.mark.parametrize("name,profile", list(BUILD_PROFILES.items()))
+    def test_the_notes_are_offered_and_never_required(self, name, profile):
+        assert ASSEMBLY_NOTES_DOCUMENT in profile.optional_files, (
+            f"{name}: the builder is never told it may write notes"
+        )
+        assert ASSEMBLY_NOTES_DOCUMENT not in profile.required_files, (
+            f"{name}: optional-by-construction is the whole point — a required "
+            "notes file is the handoff again"
+        )
 
 
 class TestRoutingConstants:
@@ -154,10 +170,6 @@ class TestFullstackFastapiReactProfile:
         profile = get_profile("fullstack_fastapi_react")
         assert "docker-compose.yaml" in profile.optional_files
 
-    def test_required_files_include_qa_handoff(self):
-        profile = get_profile("fullstack_fastapi_react")
-        assert "qa_handoff.md" in profile.required_files
-
     def test_optional_files_include_start_sh(self):
         profile = get_profile("fullstack_fastapi_react")
         assert "start.sh" in profile.optional_files
@@ -186,12 +198,6 @@ class TestBuildProfilesRegistry:
         for name, profile in BUILD_PROFILES.items():
             assert isinstance(profile, BuildProfile), f"{name} is not a BuildProfile"
 
-    def test_all_profiles_have_qa_handoff_expectations(self):
-        for name, profile in BUILD_PROFILES.items():
-            assert len(profile.qa_handoff_expectations) > 0, (
-                f"{name} has no qa_handoff_expectations"
-            )
-
 
 class TestProfileSourceOfTruthInvariants:
     """Issue #92: required_files/optional_files are the single source of truth.
@@ -202,16 +208,6 @@ class TestProfileSourceOfTruthInvariants:
     re-introduced drift between the prompt the LLM sees and the validator
     that grades its output.
     """
-
-    @pytest.mark.parametrize("name,profile", list(BUILD_PROFILES.items()))
-    def test_qa_handoff_md_in_required_files(self, name, profile):
-        """The validator unconditionally rejects builder output without
-        qa_handoff.md (cycle_tasks.py:_validate_builder_output). Every
-        profile must list it in required_files so the prompt asks for it.
-        """
-        assert "qa_handoff.md" in profile.required_files, (
-            f"{name}: validator demands qa_handoff.md but profile doesn't list it"
-        )
 
     @pytest.mark.parametrize("name,profile", list(BUILD_PROFILES.items()))
     def test_required_and_optional_disjoint(self, name, profile):
@@ -290,48 +286,45 @@ class TestProfileSourceOfTruthInvariants:
             f"prompt and validator share one source of truth (issue #92)."
         )
 
-    @pytest.mark.parametrize("name,profile", list(BUILD_PROFILES.items()))
-    def test_full_system_prompt_lists_qa_handoff_sections(self, name, profile):
-        """The composed prompt must surface every required QA handoff
-        section. Otherwise the LLM doesn't know what shape qa_handoff.md
-        must take.
-        """
-        prompt = profile.full_system_prompt
-        for section in profile.qa_handoff_expectations:
-            assert section in prompt, (
-                f"{name}: qa_handoff section {section!r} missing from full_system_prompt"
-            )
+    @pytest.mark.parametrize("stack", ["fullstack_fastapi_react", "nextjs_ts"])
+    def test_the_notes_block_names_the_stacks_own_commands(self, stack):
+        """#1312: the exclusion list is DERIVED from the stack's declarations, so it
+        cannot tell the builder to omit a fact the test author never received.
 
-    @pytest.mark.parametrize("name,profile", list(BUILD_PROFILES.items()))
-    def test_qa_handoff_sections_marked_non_negotiable(self, name, profile):
-        """Cycle-1 evidence (cyc_11367982fd06): when the plan task description
-        names different qa_handoff sections than the validator requires, Bob
-        follows the more specific user-prompt task and the validator rejects
-        on a missing canonical section.
-
-        The system prompt MUST frame the validator's required sections as
-        non-negotiable so the user prompt's task description cannot quietly
-        override them. We assert on the explicit framing language and on
-        the worked-skeleton example.
+        The bug this catches is a hand-written list: a stack changes its start command
+        or its test namespace, the prompt keeps saying the old one, and the builder
+        omits the fact that actually mattered. Asserted against the declarations
+        themselves — the environment contract's argv and the scaffold's namespace —
+        so the test moves with them.
         """
-        prompt = profile.full_system_prompt
-        # Headline framing: the section list is mandatory, not advisory.
-        assert "NON-NEGOTIABLE" in prompt, (
-            f"{name}: qa_handoff section header lost the NON-NEGOTIABLE marker"
-        )
-        assert "mandatory" in prompt.lower(), (
-            f"{name}: missing 'mandatory' framing for qa_handoff sections"
-        )
-        # Tells Bob extra task-requested sections are welcome ON TOP of required.
-        assert "additional sections" in prompt.lower(), (
-            f"{name}: prompt should explicitly allow additional sections "
-            "beyond the required set, otherwise Bob may drop task-specific "
-            "sections in favor of the required ones"
-        )
-        # Worked skeleton showing exact heading text in a fenced qa_handoff block.
-        assert "```markdown:qa_handoff.md" in prompt, (
-            f"{name}: prompt missing the worked qa_handoff.md skeleton example"
-        )
+        from squadops.capabilities.scaffold import qa_test_namespace_for_stack
+        from squadops.sandbox.environment import get_environment_contract
+
+        prompt = get_profile(stack).full_system_prompt
+        contract = get_environment_contract(stack)
+        for _operation, argv in contract.commands().items():
+            rendered = " ".join(argv)
+            assert rendered in prompt, f"{stack}: the prompt omits {rendered!r}"
+        assert f"port `{contract.app_port}`" in prompt
+        for namespace in qa_test_namespace_for_stack(stack):
+            assert f"`{namespace}`" in prompt
+
+    def test_a_stack_that_declares_nothing_renders_no_exclusion_list(self):
+        """The control, and the reason the list is derived rather than written: a
+        profile with no environment contract has nothing to claim as already supplied.
+        Inventing a list there would be exactly the drift this design prevents."""
+        assert already_supplied_lines("python_cli_builder") == ()
+        prompt = get_profile("python_cli_builder").full_system_prompt
+        assert "Already supplied to the test author" not in prompt
+
+    @pytest.mark.parametrize("stack", ["fullstack_fastapi_react", "nextjs_ts"])
+    def test_the_notes_are_framed_as_omittable(self, stack):
+        """A builder that reads "optional" as "produce something" writes a summary of
+        its own work — the restatement the exclusion list exists to stop. The prompt
+        has to say that writing nothing is a complete answer."""
+        prompt = get_profile(stack).full_system_prompt
+        assert "omit the file" in prompt
+        assert "do not restate" in prompt.lower()
 
 
 class TestSystemPromptForFiles:
@@ -353,31 +346,30 @@ class TestSystemPromptForFiles:
         prompt = profile.full_system_prompt
         for required in profile.required_files:
             assert f"`{required}`" in prompt
-        assert "qa_handoff.md required sections (NON-NEGOTIABLE)" in prompt
 
     def test_scoped_prompt_lists_only_task_required_files(self):
-        # Cycle 3 task 8 scope: manifests + scripts, NO qa_handoff.
+        # A decomposed build: this task owns the manifests and the recipe, nothing else.
         profile = self._profile()
         scope = ("package.json", "vite.config.js", "Dockerfile")
         prompt = profile.system_prompt_for_files(scope)
 
         for name in scope:
             assert f"`{name}`" in prompt
-        # Profile-required qa_handoff is intentionally absent — task 9 owns it.
-        assert "`qa_handoff.md`" not in prompt
-        assert "qa_handoff.md required sections" not in prompt
-        assert "```markdown:qa_handoff.md" not in prompt
+        assert "`nginx.conf`" not in prompt.split("## Optional artifacts")[0]
 
-    def test_scoped_prompt_includes_qa_handoff_block_when_in_scope(self):
-        # Cycle 3 task 9 scope: qa_handoff documentation only.
+    def test_every_scoped_builder_task_may_still_write_notes(self):
+        """#1312: the notes block rides the profile's optional files, not the task's
+        scoped required set.
+
+        Scoping it the way the handoff was scoped would mean a decomposed build had
+        exactly one task allowed to say something and the rest silently forbidden —
+        and the task that learned something while writing the Dockerfile is usually
+        not the one framing routed the documentation to.
+        """
         profile = self._profile()
-        prompt = profile.system_prompt_for_files(("qa_handoff.md",))
-
-        assert "`qa_handoff.md`" in prompt
-        assert "qa_handoff.md required sections (NON-NEGOTIABLE)" in prompt
-        assert "```markdown:qa_handoff.md" in prompt
-        # And the OTHER profile-required files are NOT listed when not in scope.
-        assert "`Dockerfile`" not in prompt
+        prompt = profile.system_prompt_for_files(("Dockerfile",))
+        assert f"`{ASSEMBLY_NOTES_DOCUMENT}`" in prompt
+        assert "Already supplied to the test author" in prompt
 
     def test_none_scope_falls_back_to_profile_required(self):
         # Tasks framing didn't decompose pass through with no scope.

@@ -57,12 +57,21 @@ loaded_checks:
     print('"resolved_config": cycle.resolved_config()' in inspect.getsource(correction_runner),
     DispatchConfig().task_timeout, MIGRATIONS_ADVISORY_LOCK_KEY > 0)
   # #1318: the spine row the accepted-patch path re-derives, and its paired control —
-  # supplied passes, withheld fails. A row that can only pass is not evidence.
+  # supplied passes, withheld fails. A row that can only pass is not evidence. The row now
+  # carries `required` too (H1 reads every required file, not the handoff's). #1312: the
+  # profile no longer requires the handoff, the notes are optional, and the exclusion list
+  # is DERIVED — a stack that declares nothing renders nothing, which is the control.
   bob: >-
     from squadops.cycles.check_registry import required_files_row;
-    req = ["Dockerfile", "qa_handoff.md"];
-    print(required_files_row(req, ["a/Dockerfile", "b/qa_handoff.md"])["passed"],
-    required_files_row(req, ["a/Dockerfile"])["missing"])
+    from squadops.capabilities.handlers.build_profiles import get_profile;
+    from squadops.capabilities.assembly_notes import ASSEMBLY_NOTES_DOCUMENT, already_supplied_lines;
+    req = ["Dockerfile"];
+    p = get_profile("fullstack_fastapi_react");
+    print(required_files_row(req, ["a/Dockerfile", "b/README.md"])["passed"],
+    required_files_row(req, ["b/README.md"])["missing"],
+    required_files_row(req, ["a/Dockerfile"])["required"],
+    "qa_handoff.md" in p.required_files, ASSEMBLY_NOTES_DOCUMENT in p.optional_files,
+    len(already_supplied_lines("fullstack_fastapi_react")), already_supplied_lines("python_cli_builder"))
   # #1269: a repaired suite file is recognised through the stack's test-file patterns; an
   # app file in the same patch is not. Empty second list = the retest gate is keyed on the
   # patch's contents. #1273's skip reasons read by reason, not by count.
@@ -84,6 +93,8 @@ loaded_checks:
     from squadops.capabilities.scaffold import InterfaceManifest, expand, root_persisted_entities;
     from adapters.cycles.dispatched_flow_executor import _repaired_suite_files;
     from squadops.cycles.patch_verification import PatchCheckRecord, skip_reasons;
+    from squadops.cycles.acceptance_check_spec import CHECK_SPECS, derived_check_names;
+    from adapters.cycles.dispatched_flow_executor import _ASSEMBLY_NOTES_READERS;
     from adapters.cycles.prefect_workflow_tracker import prefect_flow_state;
     from squadops.cycles.models import RunStatus;
     from squadops.cycles.scaffold_integrity_evidence import STAGE_FAILED_EMISSION;
@@ -99,8 +110,10 @@ loaded_checks:
     _repaired_suite_files([{"name": "backend/app/main.py", "type": "code"}], cfg),
     skip_reasons([PatchCheckRecord(check="acceptance:x", severity="blocking",
     status="skipped", reason="file_not_found")]),
-    PatchCheckRecord(check="sections_present", severity="error", status="passed",
-    criterion_id="handoff-sections:qa_handoff.md").to_check_row()["criterion_id"],
+    PatchCheckRecord(check="harness_boundary", severity="error", status="passed",
+    criterion_id="scaffold-harness:t.py").to_check_row()["criterion_id"],
+    "harness_boundary" in derived_check_names(), "sections_present" in CHECK_SPECS,
+    sorted(_ASSEMBLY_NOTES_READERS),
     prefect_flow_state(RunStatus.QUEUED), prefect_flow_state(RunStatus.COMPLETED),
     STAGE_FAILED_EMISSION, TaskType.QA_TEST == "qa.test", authors_qa_suite("qa.test"),
     authors_qa_suite("development.develop"),

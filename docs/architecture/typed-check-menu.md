@@ -22,11 +22,10 @@ Regenerate: `UPDATE_CHECK_MENU=1 pytest tests/unit/cycles/test_check_governance.
 | `fill_slot_signature` | injected | product | no | yes | yes | yes | error |
 | `frontend_compiles` | authored | product | no | no | yes | no | error |
 | `function_defined` | authored | product | yes | yes | yes | yes | error |
-| `harness_boundary` | authored | suite | yes | yes | yes | yes | error |
+| `harness_boundary` | injected | suite | yes | yes | yes | yes | error |
 | `import_present` | authored | product | yes | yes | yes | yes | error |
 | `module_imports` | authored | product | yes | yes | yes | yes | error |
 | `regex_match` | authored | product | yes | yes | yes | yes | error |
-| `sections_present` | injected | product | yes | yes | yes | yes | error |
 | `undefined_names` | injected | product | yes | yes | yes | yes | error |
 | `unterminated_source` | injected | product | yes | yes | yes | yes | error |
 

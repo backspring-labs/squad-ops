@@ -27,6 +27,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import squadops.prompts as _prompts_pkg
+from squadops.capabilities.assembly_notes import (
+    ASSEMBLY_NOTES_DOCUMENT,
+    assembly_notes_block,
+)
 
 _NARRATIVES_DIR = Path(_prompts_pkg.__file__).parent / "profile_narratives"
 
@@ -42,23 +46,6 @@ def _narrative(profile_name: str) -> str:
     text = (_NARRATIVES_DIR / f"{profile_name}.md").read_text(encoding="utf-8")
     return text[:-1] if text.endswith("\n") else text
 
-
-# ---------------------------------------------------------------------------
-# QA handoff section name constants (D12 — single source of truth)
-# ---------------------------------------------------------------------------
-
-QA_HANDOFF_REQUIRED_SECTIONS = (
-    "## How to Run",
-    "## How to Test",
-    "## Expected Behavior",
-)
-
-QA_HANDOFF_OPTIONAL_SECTIONS = (
-    "## Files Created",
-    "## Implemented Scope",
-    "## Known Limitations",
-    "## Build Results",
-)
 
 # ---------------------------------------------------------------------------
 # Routing reason constants (D14)
@@ -90,9 +77,9 @@ class BuildProfile:
 
     `system_prompt_template` holds only the *narrative* portion (stack
     description and stack-specific guidance). The concrete file list seen
-    by the builder LLM is generated from `required_files`/`optional_files`/
-    `qa_handoff_expectations` via `full_system_prompt`. Do not list specific
-    filenames inside `system_prompt_template`.
+    by the builder LLM is generated from `required_files`/`optional_files`
+    via `full_system_prompt`. Do not list specific filenames inside
+    `system_prompt_template`.
     """
 
     name: str
@@ -101,12 +88,11 @@ class BuildProfile:
     optional_files: tuple[str, ...] = ()
     validation_rules: tuple[str, ...] = ()
     artifact_output_mode: str = ARTIFACT_MODE_MULTI_FILE
-    qa_handoff_expectations: tuple[str, ...] = QA_HANDOFF_REQUIRED_SECTIONS
     default_task_tags: dict[str, str] = field(default_factory=dict)
 
     @property
     def full_system_prompt(self) -> str:
-        """Profile-level prompt — every file the profile requires, qa_handoff section block always present.
+        """Profile-level prompt — every file the profile requires.
 
         Used when the executing task has no `expected_artifacts` to scope
         the requirements down (legacy single-task builder flows). Prefer
@@ -121,27 +107,24 @@ class BuildProfile:
     ) -> str:
         """Compose the system prompt scoped to the active task's required files.
 
-        Cycle-1 evidence (cyc_11367982fd06, 2026-05-03): the build profile
-        validator and the plan author can disagree about which qa_handoff
-        sections are required. The plan task description named different
-        sections (e.g. "Implemented Scope", "Known Limitations") than the
-        validator's hard-coded set. The builder role followed the more
-        specific task description and the validator rejected on a missing
-        canonical section. We surface the validator's section list as
-        "non-negotiable" with a worked skeleton so the user prompt's task
-        description cannot quietly override it. Additional sections
-        requested by the task are welcome on top of the required ones.
-
         Issue #107 (cyc_d1c1a259c983, 2026-05-03): when framing decomposes
-        builder work into multiple tasks (one for manifests, one for
-        qa_handoff documentation), the profile-level required_files
-        forced every builder task to redundantly emit the full set —
-        which exceeded the per-call token budget and produced incomplete
-        outputs that failed the validator. When `task_required_files` is
-        provided and non-empty, the prompt scopes the required-files
-        list to only those files, and includes the qa_handoff skeleton
-        block only when `qa_handoff.md` is one of them. This makes the
-        framing decomposition load-bearing instead of overridden.
+        builder work into multiple tasks (one for manifests, one for the
+        packaging recipe), the profile-level required_files forced every
+        builder task to redundantly emit the full set — which exceeded the
+        per-call token budget and produced incomplete outputs that failed
+        the validator. When `task_required_files` is provided and non-empty,
+        the prompt scopes the required-files list to only those files. This
+        makes the framing decomposition load-bearing instead of overridden.
+
+        #1312: the notes block rides the profile's OPTIONAL files rather than
+        the task's scoped required set, because the notes are optional on
+        every builder task — scoping them the way `qa_handoff.md` was scoped
+        would mean a decomposed build had one task allowed to say something
+        and the rest silently forbidden. What the block may not restate is
+        derived from the stack's declarations (`capabilities.assembly_notes`),
+        never written here: a hand list drifts the moment a stack changes a
+        command, and the builder is then told to omit a fact the test author
+        never received.
         """
         scoped = tuple(task_required_files) if task_required_files else self.required_files
         required_lines = "\n".join(f"- `{name}`" for name in scoped)
@@ -150,35 +133,16 @@ class BuildProfile:
             optional_lines = "\n".join(f"- `{name}`" for name in self.optional_files)
             optional_block = f"\n\n## Optional artifacts (emit only if needed)\n\n{optional_lines}"
 
-        qa_block = ""
-        if "qa_handoff.md" in scoped:
-            qa_lines = "\n".join(f"- `{name}`" for name in self.qa_handoff_expectations)
-            skeleton_sections = "\n\n".join(
-                f"{heading}\n\n<content>" for heading in self.qa_handoff_expectations
-            )
-            qa_block = (
-                "\n\n## qa_handoff.md required sections (NON-NEGOTIABLE)\n\n"
-                f"{qa_lines}\n\n"
-                "These section headings are **mandatory** and must appear in "
-                "`qa_handoff.md` **exactly as written above**, including the "
-                "leading `## ` and the exact casing. The validator does literal "
-                "substring matching with a small set of fallbacks; paraphrased "
-                "or reworded headings will be rejected. The user prompt's task "
-                "description may ask for additional sections — include those "
-                "after the required ones, but the required headings above must "
-                "always be present.\n\n"
-                "Skeleton (copy these headings exactly, then fill in content):\n\n"
-                "```markdown:qa_handoff.md\n"
-                f"{skeleton_sections}\n"
-                "```"
-            )
+        notes_block = ""
+        if ASSEMBLY_NOTES_DOCUMENT in tuple(scoped) + self.optional_files:
+            notes_block = assembly_notes_block(self.name)
 
         return (
             f"{self.system_prompt_template}\n\n"
             "## Required artifacts (you MUST emit every file in this list)\n\n"
             f"{required_lines}"
             f"{optional_block}"
-            f"{qa_block}"
+            f"{notes_block}"
         )
 
     def expand(self, manifest: object) -> list[dict[str, str]]:
@@ -203,51 +167,57 @@ BUILD_PROFILES: dict[str, BuildProfile] = {
     "python_cli_builder": BuildProfile(
         name="python_cli_builder",
         system_prompt_template=_narrative("python_cli_builder"),
-        required_files=("Dockerfile", "__main__.py", "requirements.txt", "qa_handoff.md"),
-        optional_files=(),
+        required_files=("Dockerfile", "__main__.py", "requirements.txt"),
+        optional_files=(ASSEMBLY_NOTES_DOCUMENT,),
         validation_rules=(
             "Dockerfile must be valid",
             "__main__.py must wire to developer's entry point",
         ),
         artifact_output_mode=ARTIFACT_MODE_MULTI_FILE,
-        qa_handoff_expectations=QA_HANDOFF_REQUIRED_SECTIONS,
     ),
     "static_web_builder": BuildProfile(
         name="static_web_builder",
         system_prompt_template=_narrative("static_web_builder"),
-        required_files=("index.html", "styles.css", "main.js", "qa_handoff.md"),
-        optional_files=("favicon.ico", "manifest.json"),
+        required_files=("index.html", "styles.css", "main.js"),
+        optional_files=("favicon.ico", "manifest.json", ASSEMBLY_NOTES_DOCUMENT),
         validation_rules=(
             "index.html must be valid HTML5",
             "All asset references must use relative paths",
         ),
         artifact_output_mode=ARTIFACT_MODE_MULTI_FILE,
-        qa_handoff_expectations=QA_HANDOFF_REQUIRED_SECTIONS,
     ),
     "web_app_builder": BuildProfile(
         name="web_app_builder",
         system_prompt_template=_narrative("web_app_builder"),
-        required_files=("app.py", "index.html", "requirements.txt", "qa_handoff.md"),
-        optional_files=("static/styles.css", "static/main.js", "templates/"),
+        required_files=("app.py", "index.html", "requirements.txt"),
+        optional_files=(
+            "static/styles.css",
+            "static/main.js",
+            "templates/",
+            ASSEMBLY_NOTES_DOCUMENT,
+        ),
         validation_rules=(
             "app.py must be valid Python",
             "requirements.txt must list all dependencies",
         ),
         artifact_output_mode=ARTIFACT_MODE_MULTI_FILE,
-        qa_handoff_expectations=QA_HANDOFF_REQUIRED_SECTIONS,
     ),
     "fullstack_fastapi_react": BuildProfile(
         name="fullstack_fastapi_react",
         system_prompt_template=_narrative("fullstack_fastapi_react"),
-        required_files=("Dockerfile", "qa_handoff.md"),
-        optional_files=("docker-compose.yaml", "start.sh", ".env.example", "nginx.conf"),
+        required_files=("Dockerfile",),
+        optional_files=(
+            "docker-compose.yaml",
+            "start.sh",
+            ".env.example",
+            "nginx.conf",
+            ASSEMBLY_NOTES_DOCUMENT,
+        ),
         validation_rules=(
             "Dockerfile must use multi-stage build",
             "docker-compose.yaml must define backend and frontend services",
-            "qa_handoff.md must include startup and test instructions for both stacks",
         ),
         artifact_output_mode=ARTIFACT_MODE_MULTI_FILE,
-        qa_handoff_expectations=QA_HANDOFF_REQUIRED_SECTIONS,
     ),
     # #838 stack #2. The SIXTH per-stack registry, and the one VS found by its absence:
     # `_seed_skeleton_artifacts` resolves `get_profile(manifest.stack)`, which raises for an
@@ -259,14 +229,10 @@ BUILD_PROFILES: dict[str, BuildProfile] = {
         system_prompt_template=_narrative("nextjs_ts"),
         # One project at the root: no docker-compose pairing two services, and the packaging
         # story is a single container serving `next start`.
-        required_files=("Dockerfile", "qa_handoff.md"),
-        optional_files=(".dockerignore", ".env.example", "start.sh"),
-        validation_rules=(
-            "Dockerfile must build the Next.js app and run `next start`",
-            "qa_handoff.md must include startup and test instructions",
-        ),
+        required_files=("Dockerfile",),
+        optional_files=(".dockerignore", ".env.example", "start.sh", ASSEMBLY_NOTES_DOCUMENT),
+        validation_rules=("Dockerfile must build the Next.js app and run `next start`",),
         artifact_output_mode=ARTIFACT_MODE_MULTI_FILE,
-        qa_handoff_expectations=QA_HANDOFF_REQUIRED_SECTIONS,
     ),
 }
 

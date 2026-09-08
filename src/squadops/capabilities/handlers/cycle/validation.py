@@ -185,7 +185,8 @@ _PRD_COVERAGE_DISCIPLINE_SECTION = (
     "1. List every deliverable file the PRD requires.\n"
     "2. For each deliverable, scan the PRD for structural sub-requirements stated "
     "about it. Common shapes:\n"
-    "   - Markdown documents (`qa_handoff.md`, `README.md`): required section headers, "
+    "   - Markdown documents the PRD asks for (`README.md`, a runbook): required "
+    "section headers, "
     'e.g. "must contain ## How to Test and ## Expected Behavior sections".\n'
     "   - Data models / schemas: required fields, required field types.\n"
     "   - APIs / route maps: required endpoints (method + path), required status codes.\n"
@@ -206,27 +207,25 @@ _PRD_COVERAGE_DISCIPLINE_SECTION = (
     "comment block at the top of the manifest YAML). This is the audit trail for "
     "the gate evaluator.\n\n"
     "Concrete worked example. PRD says:\n"
-    "  > §10. The qa_handoff.md document must contain `## How to Test`, "
-    "`## Expected Behavior`, and `## Known Limitations` sections.\n\n"
-    "The manifest task producing `qa_handoff.md` must include three typed checks:\n"
+    "  > §10. The README must document `## Configuration` and `## Deployment`.\n\n"
+    "The manifest task producing `README.md` must include two typed checks:\n"
     "```yaml\n"
     "acceptance_criteria:\n"
     "  - check: regex_match\n"
-    '    description: "Contains How to Test section"\n'
-    "    file: qa_handoff.md\n"
-    '    pattern: "## How to Test"\n'
+    '    description: "Contains Configuration section"\n'
+    "    file: README.md\n"
+    '    pattern: "## Configuration"\n'
     "    count_min: 1\n"
     "  - check: regex_match\n"
-    '    description: "Contains Expected Behavior section"\n'
-    "    file: qa_handoff.md\n"
-    '    pattern: "## Expected Behavior"\n'
-    "    count_min: 1\n"
-    "  - check: regex_match\n"
-    '    description: "Contains Known Limitations section"\n'
-    "    file: qa_handoff.md\n"
-    '    pattern: "## Known Limitations"\n'
+    '    description: "Contains Deployment section"\n'
+    "    file: README.md\n"
+    '    pattern: "## Deployment"\n'
     "    count_min: 1\n"
     "```\n\n"
+    "The example targets a document the PRD asked for, deliberately. A document the "
+    "FRAMEWORK owns is not yours to cover this way — the build profile's own "
+    "deliverables carry the checks their profile derives, and a criterion you author "
+    "over one restates a fact you never saw (#1254).\n\n"
     'A pattern-only check like `pattern: "how to test|how to run"` is NOT '
     "sufficient — it can match running prose and lets the deliverable ship without "
     "the actual section header.\n"

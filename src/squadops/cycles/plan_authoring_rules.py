@@ -30,9 +30,13 @@ AUTHOR_FACING: dict[str, str] = {
     "validate_qa_artifact_ownership": "qa-owns-only-tests",
     "validate_module_existence": "imports-must-exist",
     "validate_criteria_scope": "regex-only-on-documents",
-    # #1252: the handoff's sections are the profile's, checked by name; a regex over
-    # its headings polices word order the builder's template never promised.
-    "validate_handoff_criteria": "no-regex-on-the-handoff",
+    # #1254: the framework binds these from declarations the author never sees, so an
+    # authored row is a guess at a fact the system holds exactly — and a second row over
+    # the same file. Reported, not fatal: the slip is on most plans and a framing re-roll
+    # costs half an hour, so the vocabulary names them, the appendix states the rule, and
+    # dispatch strips what arrives. Succeeds #1252's `no-regex-on-the-handoff`, whose
+    # document #1312 retired.
+    "validate_derived_criteria": "do-not-author-derived-checks",
     "validate_command_checks": "commands-must-run-here",
     "validate_against_profile": "roles-must-exist",
     # Renamed from "qa-tests-pytest-discoverable" by #846: the rule reads the stack's

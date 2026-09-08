@@ -630,6 +630,42 @@ class QATestHandler(_CycleTaskHandler):
         )
         return rendered.content
 
+    async def _assembly_notes_section(
+        self, context: ExecutionContext, inputs: dict[str, Any]
+    ) -> str:
+        """Render the builder's assembly notes, or "" (#1312).
+
+        The consumer half of the contract that replaced `qa_handoff.md`. The handoff was
+        required of the builder, checked by four surfaces, and read by nothing — so the
+        builder was asked every cycle for a document whose only effect was to fail. Its
+        replacement is optional and is READ: what the builder alone knows about assembling
+        the application reaches the author of its tests.
+
+        Presence-keyed, like every appendix here: absent notes render nothing, and nothing
+        is the expected case. The executor decides WHICH notes (`_resolve_assembly_notes`
+        — never a failed emission, never a repair candidate, latest accepted wins); this
+        renders what it was handed and names the artifact it came from, so a reader of the
+        record can tell which emission the suite was written against.
+        """
+        notes = inputs.get("assembly_notes")
+        if not isinstance(notes, dict):
+            return ""
+        content = str(notes.get("content") or "").strip()
+        artifact_id = str(notes.get("artifact_id") or "").strip()
+        if not content or not artifact_id:
+            # Both halves or neither: notes with no provenance are exactly the stale-file
+            # risk H2 exists to exclude, and an id with no content is a heading over
+            # nothing.
+            return ""
+        renderer = getattr(context.ports, "request_renderer", None)
+        if renderer is None:
+            return ""
+        rendered = await renderer.render(
+            "request.qa_test_assembly_notes_appendix",
+            {"notes": content, "artifact_id": artifact_id},
+        )
+        return rendered.content
+
     async def _frozen_surface_section(
         self, context: ExecutionContext, inputs: dict[str, Any]
     ) -> str:
@@ -1182,6 +1218,9 @@ class QATestHandler(_CycleTaskHandler):
             frozen_section = await self._frozen_surface_section(context, inputs)
             if frozen_section:
                 user_prompt = f"{user_prompt}\n{frozen_section}"
+            assembly_notes_section = await self._assembly_notes_section(context, inputs)
+            if assembly_notes_section:
+                user_prompt = f"{user_prompt}\n{assembly_notes_section}"
             rendered = None
             sources = self._get_source_artifacts(inputs)
         else:

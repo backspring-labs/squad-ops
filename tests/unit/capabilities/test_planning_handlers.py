@@ -1162,11 +1162,11 @@ class TestProduceManifestRetry:
         # Summary template includes total_builder_tasks
         assert "total_builder_tasks: P" in user_prompt
         assert "total_tasks: N+M+P" in user_prompt
-        # "Put QA handoff last" is removed since builder owns handoff now
         assert "Put QA handoff last" not in user_prompt
 
     async def test_builder_guidance_absent_when_builder_role_missing(self):
-        """Squads without a builder role get the legacy QA-handoff-last guideline."""
+        """A squad without a builder gets no builder row, no builder total, and — since
+        #1312 retired the handoff — no ordering guideline about it either."""
         ctx = _make_context(_VALID_MANIFEST_YAML)
         await self._call_produce(ctx, profile_roles=["dev", "qa", "lead"])
 
@@ -1174,7 +1174,7 @@ class TestProduceManifestRetry:
         assert "task_type: builder.assemble" not in user_prompt
         assert "total_builder_tasks" not in user_prompt
         assert "total_tasks: N+M" in user_prompt
-        assert "Put QA handoff last" in user_prompt
+        assert "QA handoff" not in user_prompt
 
 
 # ---------------------------------------------------------------------------

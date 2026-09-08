@@ -136,7 +136,7 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
                 "## Builder role present\n\n"
                 "This squad includes a dedicated builder role. Do NOT propose "
                 "packaging, requirements files, Dockerfile, startup scripts, "
-                "or qa_handoff.md tasks — those are the builder's domain. "
+                "or packaging-notes tasks — those are the builder's domain. "
                 "Reference builder tasks via ``depends_on_focus`` if your "
                 "tasks need their outputs.\n\n"
             )
