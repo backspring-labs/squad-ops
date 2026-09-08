@@ -2021,3 +2021,87 @@ class TestTheLogWindowIsBoundedAtBothEnds:
             "since": "2026-09-08T05:30:00Z",
             "until": "2026-09-08T06:27:00Z",
         }
+
+
+class TestNonExecutionIsCountedWhereverItHappens:
+    """The React checkpoint on deploy B (`cyc_dd3068d22f2c`) is the launch-time bug.
+
+    Its qa repair verification came back `status=passed` carrying
+    `skips=missing_tooling:3` — three `frontend_compiles` rows that never ran, which
+    demoted three already-passed `vc-view-compiles-*` criteria to unverified. The record
+    read `non-execution by skip reason: 0`, because the readout only looked at
+    verifications that came back `unverifiable`. A skip that rides a PASSING verification
+    is the one a reader most needs, and it was the one the instrument could not see.
+    """
+
+    _PASSED_WITH_SKIPS = (
+        "patch_verification task=task-run_737ff76b-m006-qa.test task_type=qa.test "
+        "status=passed reason= checks=16 failed=- decided_by_agent=0 agent_rows=11 "
+        "agent_executed=11 skips=missing_tooling:3"
+    )
+    _UNVERIFIABLE = (
+        "patch_verification task=task-b task_type=development.develop status=unverifiable "
+        "reason=no_executed_blocking_checks checks=3 failed=- decided_by_agent=0 "
+        "agent_rows=0 agent_executed=0 skips=file_not_found:2"
+    )
+
+    def test_a_skip_on_a_passing_verification_is_counted(self, driver):
+        out = driver.texture_from_logs([self._PASSED_WITH_SKIPS, self._UNVERIFIABLE])
+        assert out["no_execution_by_skip_reason"] == {"missing_tooling": 3, "file_not_found": 2}
+        assert out["no_execution_on_passed_verifications"] == {"missing_tooling": 3}
+
+    def test_the_passing_half_is_reported_apart_so_the_unverifiable_reading_survives(self, driver):
+        """#1261's reading is the unverifiable one; widening the first field must not
+        erase the distinction, or a toolchain gap on a passing verification and a repair
+        that earned no verdict become the same number."""
+        out = driver.texture_from_logs([self._UNVERIFIABLE])
+        assert out["no_execution_by_skip_reason"] == {"file_not_found": 2}
+        assert out["no_execution_on_passed_verifications"] == {}
+
+    def test_a_verification_with_no_skips_reads_as_zero_not_absent(self, driver):
+        clean = (
+            "patch_verification task=task-c task_type=qa.test status=passed reason= "
+            "checks=4 failed=- decided_by_agent=0 agent_rows=4 agent_executed=4 skips=-"
+        )
+        out = driver.texture_from_logs([clean])
+        assert out["no_execution_by_skip_reason"] == {}
+        assert out["no_execution_on_passed_verifications"] == {}
+
+
+class TestTheCriteriaShortfallIsNamed:
+    """`21 / 24` beside an empty unevidenced list, and the record could not say which
+    three criteria were lost or why (the React checkpoint on deploy B again: three
+    `vc-view-compiles-*` criteria carried a row and were not credited). The framework
+    derives `criteria_unverified`/`criteria_adverse` on its own summary (#945, #1021);
+    the driver reads the stored JSON and has to derive the same subtraction.
+    """
+
+    _SUMMARY = {
+        "criteria_total": ["vc-a", "vc-b", "vc-view-compiles-runs-list-view", "vc-d"],
+        "criteria_verified": ["vc-a", "vc-b"],
+        "criteria_unevidenced": ["vc-d"],
+    }
+
+    def test_the_shortfall_is_named_and_split_by_whether_a_row_was_produced(self, driver):
+        assert driver._criteria_unverified(self._SUMMARY) == [
+            "vc-view-compiles-runs-list-view",
+            "vc-d",
+        ]
+
+    def test_an_empty_contract_yields_no_shortfall_rather_than_raising(self, driver):
+        assert driver._criteria_unverified({}) == []
+
+    def test_the_record_names_the_adverse_criteria_instead_of_leaving_a_subtraction(
+        self, driver, tmp_path
+    ):
+        holder = TestTheRecordNamesTheDeployItObserved()
+        cfg = holder._cfg(driver, tmp_path)
+        rec = holder._rec(
+            criteria_verified=21,
+            criteria_total=24,
+            criteria_unevidenced=[],
+            criteria_adverse=["vc-view-compiles-runs-list-view"],
+        )
+        out = driver.render(cfg, "shakeout (non-counting)", rec)
+        assert "vc-view-compiles-runs-list-view" in out
+        assert "criteria NOT verified" in out
