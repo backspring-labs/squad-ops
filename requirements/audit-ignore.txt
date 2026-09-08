@@ -3,16 +3,9 @@
 # the build on any advisory NOT listed, so a new one blocks until it is fixed or
 # accepted here in writing. Format: one advisory id per line; `#` comments.
 #
-# Every id below is against the pins the images install today (requirements/*.lock,
-# compiled from ci-constraints.txt, #1203) and is retired by the refresh #1204 lands in
-# the same rider — remove the entry when the pin moves past the fix version.
+# The 2026-09-08 refresh (#1204) moved cryptography to 50.0.1 and pyasn1 to 0.6.4, which
+# retired PYSEC-2026-3552 and PYSEC-2026-3455/3456/3457. What remains:
 
-# cryptography 49.0.0 → fixed in 50.0.0 (via python-jose[cryptography], the auth boundary)
-PYSEC-2026-3552
-# pyasn1 0.6.3 → fixed in 0.6.4 (via python-jose / rsa)
-PYSEC-2026-3455
-PYSEC-2026-3456
-PYSEC-2026-3457
-# ecdsa 0.19.2 — NO fix version published (via python-jose). Stays listed until
-# python-jose is retired or ecdsa ships a fix; revisit at every refresh (#1204).
+# ecdsa 0.19.2 — NO fix version published (via python-jose on the auth boundary). Stays
+# listed until python-jose is retired or ecdsa ships a fix; revisited at every refresh.
 PYSEC-2026-1325
