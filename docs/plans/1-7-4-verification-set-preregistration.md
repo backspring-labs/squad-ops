@@ -86,6 +86,34 @@ open).
 | B | main at `d571da60` — deploy A **plus the whole rider** (#1373 #1205 #575 #1324 #574 #300 #1147 #581 #578 #1204 #577 #576 #352 #372 #330 #560), the F1 field, the A1 readout and the bounded window; the refreshed pins | runtime-api `3e013f437c98` · max `8b3773184dec` · neo `4fcc71b6a902` · nat `c88844430183` · bob `11d0d1e5628d` · eve `42dd35d53374` · data `d9b2abb29a33` | the rider's rebuild; the checkpoint pair; every driver field re-checked | **The rebuild itself is the rider's first live reading**: `up -d --wait` returned on every service, 251 s end to end against the old fixed sleeps (#581); `cryptography 50.0.1` / `pyasn1 0.6.4` loaded (#1204); the pool codec, `DispatchConfig` (unset → follows `llm.timeout`), the domain-error handlers and the migration lock loaded (#577 #1147 #576 #300); **#560 live**: zero `squadops.audit` and zero `httpx` lines on the runtime-api's stdout since the deploy, 53 records in `data/audit/runtime-api.jsonl` after the first minute; **#372 live**: the realm sync reported `squadops-dev` **added 2, skipped 9** — two resources the export carried and the running realm lacked, the issue's claim in numbers — and `squadops-local` added 0, skipped 11; **#352**: this deploy's asset provider is `filesystem`, so the registry boot check is loaded but not exercised here (the negative case is not run). **Checkpoint pair — CLEAN, and the rider is confirmed.** React `cyc_dd3068d22f2c` (10:32–11:33Z, config hash `3921c5a62106`, 1.7.3's as expected): accepted, boot PASS, 60 min, 1 correction round, 0 contentless emissions of 20. Next.js `cyc_bd6d424ba2fb` (11:47–12:43Z, config `33cadf53688e`): accepted, boot PASS, 55 min, **0 correction rounds**, 19/19 criteria, 0 contentless of 17. Neither half is attributable to any rider item. **The React half found one thing, and it is not the rider's:** its qa repair's patch verification returned `status=passed` carrying `skips=missing_tooling:3`, and those three skips DEMOTED three `vc-view-compiles-*` criteria that had already passed at emission — 21 of 24 on an accepted roll, the first non-N-of-N accepted roll in 30 records. npm exists only in the dev and qa images, so a criterion re-asked at the runtime-api can only skip; no rider commit touches `acceptance_checks`, `verification_integrity` or `verification_normalize`. Filed as **#1406**. The instrument was blind to both halves of it and was fixed before the pack opened (**PR #1407**): skips are counted on every patch verification, not only unverifiable ones, and the criteria shortfall is named and split by whether a row was produced — replayed on the real record, which now reads `3 missing_tooling` on a PASSED verification and names all three lost criteria. |
 | C | main at `bbe0df8e` — deploy B **plus the whole pack** (#1312+#1254, #1374, #1372, #994, #995, #968, #1054, #1070, #936/#933, #1285) and the probes that read it. Also carries another lane's docs merged during the pack (SIP-0106 §1.2e/§1.2f, plan §6a) — documents only, no behavioural drift, named so the deploy is not read as the pack alone | runtime-api `9dbecefbe6db` · max `9c393544c60e` · neo `516a26fce184` · nat `7c106d404c51` · bob `95373605543d` · eve `558d26db1c63` · data `3d79c1ca2607` | the pack; the shakeout loop to the exit rule; the pinned deploy is the last one | Rebuilt rc=0 in **91 s**. **The pack is LOADED, verified in-container with each row's paired control** — runtime-api: `('required_files',) ()` (#1374 a builder owes, a dev task owes nothing), `{'fill':0,'path':0,'plain':0}` (#1372's shape), `patch` / `rewind` (#994 with and without an accepted repair), `True` / `False` (#1054 a decision that disputes and one that abstains), `emission_failure` (#1054's non-disputable signal), `['backend/ghost.py']` / `[]` (#968 a refuted path and a sound claim refuting nothing), `none` / `medium` (#1285's two levels); bob: the handoff is **not required**, the notes are optional, seven exclusion lines derived from the stack, and the legacy profile renders `()`; eve: `none` / `medium`. |
 
+### Correction — three loaded checks that never ran (#1425)
+
+`loaded_checks` was keyed on the container name, so a second probe for one service needed a
+distinct key; the suffix invented for that (`bob-1-7-4`) was docker-exec'd as
+`squadops-bob-1-7-4`. **Three of the seven probes therefore errored at every 1.7.4 launch,
+including deploy B's checkpoint pair, which was read as clean.** A probe that could not run
+is an unasked question, not a failed one, and in the recorded identity the two are
+indistinguishable — which is why four answering probes read as a clean deploy.
+
+What this does and does not cost, stated exactly:
+
+- **The pair's behavioural evidence stands.** It is cycle outcomes, not probe readings, and a
+  checkpoint pair injects no faults, so nothing it concluded rested on the three.
+- **Deploy B's row above is not wrong.** Its runtime-api claims (pool codec, domain-error
+  handlers, migration lock, `cryptography`/`pyasn1`) came from `deploy_B.sh`'s own readout,
+  not from the driver probe.
+- **One half of that row was weaker than it read.** Both the manual readout and the probe took
+  `DispatchConfig().task_timeout` off a freshly constructed model — the schema default whatever
+  the deploy carried, a row that can only pass. Read from the loaded config on deploy C, the
+  deploy leaves `dispatch.task_timeout` unset and the orchestrator's hung-agent wait is joined
+  to `llm.timeout` at **1800 s**; the control confirms a set value moves the two apart. #1147's
+  documented default, now measured rather than assumed.
+- **The two fault seams were never probed on B by any path.** They were proven behaviourally on
+  deploy A instead, where every diagnostic reached its seam.
+
+All three answer on deploy C — `builder-fault-seam` `True True True`, `analyzer-fault-seam`
+`True True`, `rider-surfaces` `True 1800.0 None 1800.0 True True` — and preflight now refuses
+to launch on any probe that could not run, so this cannot recur silently on the pinned deploy.
 ---
 
 ## 3. The exercise plan — stated before roll 1

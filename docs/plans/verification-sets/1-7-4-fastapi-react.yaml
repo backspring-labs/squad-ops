@@ -39,23 +39,39 @@ shakeout_notes: >-
 # unreachable, which is the shape #1289 had for the whole of 1.7.1.
 loaded_checks:
   # 1.7.4 instrument and rider surfaces, verified LOADED in the containers that carry them.
-  bob-1-7-4: >-
-    from squadops.capabilities.handlers.fault_injection import FAULTS, INJECTED_TASKS;
-    import inspect; from squadops.capabilities.handlers.cycle import builder;
-    print('builder_emission_contentless' in FAULTS, 'builder.assemble' in INJECTED_TASKS,
-    'inject_fault(' in inspect.getsource(builder))
-  data-1-7-4: >-
-    from squadops.capabilities.handlers.fault_injection import FAULTS, INJECTED_TASKS;
-    from squadops.prompts.registry_check import verify_registry_serves_shipped_assets;
-    print('analyzer_false_source_claim' in FAULTS, 'data.analyze_failure' in INJECTED_TASKS)
-  runtime-api-1-7-4: >-
-    import inspect; from adapters.cycles import correction_runner;
-    from adapters.persistence.pool import register_json_codecs;
-    from squadops.config.schema import DispatchConfig;
-    from squadops.api.error_handlers import register_domain_error_handlers;
-    from squadops.api.runtime.migrations import MIGRATIONS_ADVISORY_LOCK_KEY;
-    print('"resolved_config": cycle.resolved_config()' in inspect.getsource(correction_runner),
-    DispatchConfig().task_timeout, MIGRATIONS_ADVISORY_LOCK_KEY > 0)
+  builder-fault-seam:
+    service: bob
+    source: >-
+      from squadops.capabilities.handlers.fault_injection import FAULTS, INJECTED_TASKS;
+      import inspect; from squadops.capabilities.handlers.cycle import builder;
+      print('builder_emission_contentless' in FAULTS, 'builder.assemble' in INJECTED_TASKS,
+      'inject_fault(' in inspect.getsource(builder))
+  analyzer-fault-seam:
+    service: data
+    source: >-
+      from squadops.capabilities.handlers.fault_injection import FAULTS, INJECTED_TASKS; from
+      squadops.prompts.registry_check import verify_registry_serves_shipped_assets;
+      print('analyzer_false_source_claim' in FAULTS, 'data.analyze_failure' in INJECTED_TASKS)
+  # #1147's rider surface read on the DEPLOY, not off the class: a bare
+  # DispatchConfig() prints the schema default whatever the deploy is configured with,
+  # which is a row that can only pass. Effective seconds, the raw dispatch value (None =
+  # joined to llm.timeout by design), llm.timeout beside it, and the control that a set
+  # value moves the two apart.
+  rider-surfaces:
+    service: runtime-api
+    source: >-
+      import inspect; from adapters.cycles import correction_runner; from
+      adapters.persistence.pool import register_json_codecs; from squadops.config.loader
+      import load_config; from squadops.bootstrap.secrets import secret_provider_for; from
+      squadops.config.schema import DispatchConfig; from squadops.api.error_handlers import
+      register_domain_error_handlers; from squadops.api.runtime.migrations import
+      MIGRATIONS_ADVISORY_LOCK_KEY; c =
+      load_config(secret_provider_factory=secret_provider_for); apart =
+      c.model_copy(update={'dispatch': DispatchConfig(task_timeout=1234)});
+      print('"resolved_config": cycle.resolved_config()' in
+      inspect.getsource(correction_runner), c.task_timeout_seconds(), c.dispatch.task_timeout,
+      float(c.llm.timeout), apart.task_timeout_seconds() == 1234.0,
+      MIGRATIONS_ADVISORY_LOCK_KEY > 0)
   # #1318: the spine row the accepted-patch path re-derives, and its paired control —
   # supplied passes, withheld fails. A row that can only pass is not evidence. The row now
   # carries `required` too (H1 reads every required file, not the handoff's). #1312: the
