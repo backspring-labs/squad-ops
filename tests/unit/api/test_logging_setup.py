@@ -93,3 +93,40 @@ def test_below_level_message_is_suppressed(monkeypatch):
     out = buf.getvalue()
     assert "chatty" not in out
     assert "important" in out
+
+
+class TestTheAuditSinkIsSeparate:
+    """#560: audit records are a compliance surface and leave the application stream —
+    to their own rotating file when a path is configured, unchanged (stdout) when not."""
+
+    def test_with_a_path_audit_records_land_in_the_file_and_not_on_stdout(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        from squadops.api.runtime.logging_setup import AUDIT_LOGGER_NAME, configure_audit_sink
+
+        path = tmp_path / "audit" / "runtime-api.jsonl"
+        handler = configure_audit_sink(str(path))
+        audit = logging.getLogger(AUDIT_LOGGER_NAME)
+        audit.info('{"event": "login", "user": "ada"}')
+        handler.flush()
+        assert path.read_text().strip() == '{"event": "login", "user": "ada"}'
+        assert audit.propagate is False
+        assert configure_audit_sink(str(path)) is handler, "idempotent on the same path"
+
+    def test_without_a_path_nothing_changes_and_boot_says_so_once(self, caplog):
+        from squadops.api.runtime.logging_setup import AUDIT_LOGGER_NAME, configure_audit_sink
+
+        audit = logging.getLogger(AUDIT_LOGGER_NAME)
+        for h in list(audit.handlers):
+            audit.removeHandler(h)
+        audit.propagate = True
+        with caplog.at_level(logging.WARNING):
+            assert configure_audit_sink(None) is None
+        assert "SQUADOPS_AUDIT_LOG_PATH" in caplog.text
+        assert audit.propagate is True
+
+    def test_third_party_chatter_is_demoted(self, monkeypatch):
+        monkeypatch.delenv("SQUADOPS_AUDIT_LOG_PATH", raising=False)
+        configure_logging()
+        assert logging.getLogger("httpx").level == logging.WARNING
+        assert logging.getLogger("httpcore").level == logging.WARNING

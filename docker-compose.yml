@@ -203,6 +203,9 @@ services:
       # LLM (SIP-0066: cycle task handlers)
       SQUADOPS__LLM__MODEL: "llama3.1:8b"
       SQUADOPS__LLM__TIMEOUT: ${SQUADOPS__LLM__TIMEOUT:-180}
+      # #560: audit records (SIP-0062) leave the application stream for their own rotating
+      # JSONL sink on the mounted ./data/audit; unset, they share stdout as before.
+      SQUADOPS_AUDIT_LOG_PATH: /app/data/audit/runtime-api.jsonl
       # #1147: the orchestrator's per-task wait, apart from the request timeout above;
       # unset (empty) follows SQUADOPS__LLM__TIMEOUT.
       SQUADOPS__DISPATCH__TASK_TIMEOUT: ${SQUADOPS__DISPATCH__TASK_TIMEOUT:-}
@@ -214,6 +217,7 @@ services:
       SQUADOPS__RUNTIME__SCHEDULER__POLL_INTERVAL_SECONDS: "10"
     volumes:
       - ./data/artifacts:/app/data/artifacts
+      - ./data/audit:/app/data/audit  # #560: the audit sink
     networks:
     - squadnet
     extra_hosts:
