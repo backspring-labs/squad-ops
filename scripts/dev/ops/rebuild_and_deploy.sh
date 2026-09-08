@@ -174,6 +174,16 @@ echo "Starting infrastructure services (rabbitmq, postgres, redis, prefect)..."
 # pg_isready / rabbitmq-diagnostics / redis-cli polling below them are gone.
 docker compose up -d --wait rabbitmq postgres redis prefect-server
 
+# #372: Keycloak imports a realm only when it does not exist, so a change to the realm
+# exports never reaches an environment whose realm is already there. Re-sync the mounted
+# exports into existing realms (partialImport, ifResourceExists=SKIP — idempotent,
+# non-destructive); a realm that does not exist yet is left to --import-realm.
+if docker compose config --services | grep -q '^squadops-keycloak$'; then
+    docker compose up -d --wait squadops-keycloak && \
+    python3 scripts/dev/ops/keycloak_realm_sync.py infra/auth/squadops-realm.json infra/auth/squadops-realm-local.json \
+        || echo -e "${YELLOW}⚠️  Keycloak realm sync failed — existing realms may lack new clients/roles (#372)${NC}"
+fi
+
 # Back up the database before anything else touches it (#1181). Cheap insurance at the
 # moment the risk is highest: this script rebuilds images and restarts services, and
 # migrations are applied at runtime-api startup. Non-fatal — a backup problem must not
