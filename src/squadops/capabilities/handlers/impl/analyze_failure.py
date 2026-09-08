@@ -36,6 +36,7 @@ if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
 
 from squadops.capabilities.handlers.emission_log import log_emission_shape
+from squadops.capabilities.handlers.fault_injection import inject as inject_fault
 
 logger = logging.getLogger(__name__)
 
@@ -167,6 +168,16 @@ class DataAnalyzeFailureHandler(_CycleTaskHandler):
             return HandlerResult(success=False, outputs={}, _evidence=evidence, error=str(exc))
 
         content = response.content
+        # #1251: the fault applies before the shape is logged — see cycle/base.py. Wired
+        # for 1.7.4's analyzer diagnostic (#968's shape on demand); the declaration reaches
+        # this seam on the correction envelope's ``resolved_config``.
+        content = inject_fault(
+            content,
+            handler_name=self._handler_name,
+            task_id=context.task_id,
+            resolved_config=inputs.get("resolved_config"),
+            inputs=inputs,
+        )
         log_emission_shape(
             self._handler_name,
             content,

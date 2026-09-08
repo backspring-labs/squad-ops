@@ -1037,6 +1037,29 @@ def agent_log_window(since: str) -> list[str]:
 #: the driver reads the deployed container's log, not this tree's module — the test guards
 #: the two against drifting apart.
 _PLACEHOLDER_PREFIX = "path/"
+#: The analyzer fault's marker (``fault_injection.INJECTED_CLAIM_MARKER``), held here for
+#: the same reason as the placeholder prefix: the driver reads a deployed container's
+#: artifacts, not this tree's module. The test guards the two against drifting apart.
+_INJECTED_CLAIM_MARKER = "__squadops_injected_fault__"
+
+
+def _decision_inherited_claims(cfg: SetConfig, cycle_id: str, run_id: str) -> list[dict]:
+    """Each stored correction decision of the run, and whether the analyzer fault's claim
+    reached it (A1, #968). A decision is the lead's own JSON; the marker is in it only if
+    the lead repeated the analyzer's refuted claim."""
+    out: list[dict] = []
+    for art in artifact_dirs(cfg, cycle_id, run_id):
+        m = _metadata(art)
+        if not m or m.get("filename") != "correction_decision.md":
+            continue
+        try:
+            text = (REPO / m["vault_uri"]).read_text()
+        except (OSError, KeyError):
+            continue
+        out.append({"artifact": art.name, "inherited": _INJECTED_CLAIM_MARKER in text})
+    return out
+
+
 _PLACEHOLDER_STRIP = re.compile(
     r"fence path placeholder: '(?P<emitted>[^']+)' emitted under .*?; "
     r"stripped to '(?P<stripped>[^']+)'"
@@ -1078,6 +1101,11 @@ def loop_texture(cfg: SetConfig, cycle_id: str, impl_run: str | None, since: str
     agent_lines = agent_log_window(since)
     out.update(texture_from_emission_shapes(agent_lines))
     out.update(texture_from_retry_feedback(agent_lines))
+    # 1.7.4 (#968, A1): whether a stored correction decision carries the analyzer fault's
+    # marker — read from the decision itself, the artifact the repair brief is built from.
+    out["decision_inherited_claims"] = (
+        _decision_inherited_claims(cfg, cycle_id, impl_run) if impl_run else []
+    )
     out["fill_rejections"] = _fill_rejections(cfg, cycle_id, impl_run) if impl_run else []
     # #999: the qa task's fill-merge evidence, persisted as an artifact and read from it.
     out["fill_merge_evidence"] = fill_merge_evidence(cfg, cycle_id, impl_run) if impl_run else []
@@ -1130,6 +1158,55 @@ SEAM_READOUTS: dict[str, tuple[str, Callable[[dict], tuple[bool, Any]]]] = {
         lambda rec: (
             len((rec.get("loop_texture") or {}).get("refunded_rounds", [])) >= 1,
             (rec.get("loop_texture") or {}).get("refunded_rounds", []),
+        ),
+    ),
+    # 1.7.4 plan §3.1: the contentless-builder sequence. YES = the contentless attempt
+    # entered correction and the builder's own repair was verified (steps 1, 2, 5); the
+    # evidence carries the rows and the retry facts for steps 3, 4 and 6, which are read
+    # by F1's and R1's own fields (pre-#1372 the builder has no retry, and the evidence
+    # says so rather than the readout hiding it).
+    "builder_emission_contentless": (
+        "F1/R1: the contentless builder attempt entered correction and the builder's repair "
+        "was verified",
+        lambda rec: (
+            (rec.get("correction_rounds") or 0) >= 1
+            and any(
+                "builder.assemble" in v and "status=passed" in v
+                for v in (rec.get("loop_texture") or {}).get("patch_verifications", [])
+            ),
+            {
+                "correction_rounds": rec.get("correction_rounds"),
+                "builder_patch_verifications": [
+                    v
+                    for v in (rec.get("loop_texture") or {}).get("patch_verifications", [])
+                    if "builder.assemble" in v
+                ],
+                "required_files_rows": ((rec.get("typed_checks") or {}).get("by_check") or {}).get(
+                    "required_files", {}
+                ),
+                "emission_retries": (rec.get("loop_texture") or {}).get("emission_retries", []),
+                "retried_with_fact": (rec.get("loop_texture") or {}).get("retried_with_fact", []),
+            },
+        ),
+    ),
+    # 1.7.4 plan §3.1: A1. YES = a decision was stored for the faulted round and none
+    # carries the refuted claim; a decision that inherited it is the seam reached and the
+    # invariant false, which the evidence names by artifact (pre-#968 that is the expected
+    # reading — the diagnostic proves the fault reaches the decision).
+    "analyzer_false_source_claim": (
+        "A1: the correction decision was reached and did not inherit the refuted claim",
+        lambda rec: (
+            len((rec.get("loop_texture") or {}).get("decision_inherited_claims", [])) >= 1
+            and not any(
+                d.get("inherited")
+                for d in (rec.get("loop_texture") or {}).get("decision_inherited_claims", [])
+            ),
+            {
+                "decisions": (rec.get("loop_texture") or {}).get("decision_inherited_claims", []),
+                "refuted_by_workspace_check": (rec.get("loop_texture") or {}).get(
+                    "analyzer_claims_dropped", []
+                ),
+            },
         ),
     ),
 }
@@ -1345,10 +1422,12 @@ def texture_from_logs(logs: list[str]) -> dict:
     # shakeout's shape, which the first reading of this readout missed). Read sequentially
     # per task so an unverifiable-then-retest pair counts once, as applied.
     refused: list[str] = []
+    verifications: list[str] = []
     applied = 0
     pending: dict[str, str] = {}  # task -> the unverifiable line awaiting its fate
     for line in logs:
         if "patch_verification task=" in line:
+            verifications.append(_fact(line, "patch_verification task="))
             task = line.split("patch_verification task=", 1)[1].split()[0]
             if "status=passed" in line:
                 applied += 1
@@ -1384,6 +1463,10 @@ def texture_from_logs(logs: list[str]) -> dict:
             _fact(line, "self_eval fills") for line in logs if "self_eval fills" in line
         ],
         "refused_patches": refused,
+        # 1.7.4: every verification as a fact, so a readout can find the one for a named
+        # task (the contentless-builder diagnostic asks whether the BUILDER's repair was
+        # verified, which the aggregate above cannot say).
+        "patch_verifications": verifications,
         "applied_patches": applied,
         # #1310: the retests themselves, so a diagnostic can say WHICH task's repair was
         # retested (L2 is "the repair that supplied the suite is retested" — for a qa task).
@@ -1404,6 +1487,14 @@ def texture_from_logs(logs: list[str]) -> dict:
         # its own, which is the #1372 shape (qa and the builder today; develop renders it).
         "emission_retries": [
             _fact(line, "Retryable failure for") for line in logs if "Retryable failure for" in line
+        ],
+        # 1.7.4 (#968, A1): the structured half of an analyzer claim refuted by the
+        # workspace (`_verified_implicated_files`) — the control beside the prose half,
+        # which nothing checks yet and which the decision reads.
+        "analyzer_claims_dropped": [
+            _fact(line, "correction_repair_target:")
+            for line in logs
+            if "dropped, not aimed at (#968)" in line
         ],
         # L4 (#1273): the executor REFUNDS a round whose repair emitted no content — the
         # round is re-taken rather than spent (#1053/#998). This is the seam L4 names, and it

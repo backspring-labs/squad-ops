@@ -1,0 +1,50 @@
+# 1.7.4 DIAGNOSTIC (1.7.4 plan §3.1) — an absent qa suite, then a failure analysis carrying a claim the source refutes (L2 #1269, then A1 #968)
+#
+# Not a roll and not a shakeout: a non-counting cycle that runs the roll's own path with a
+# deliberate fault injected at the producing agent's emission seam (#1251). The driver
+# REFUSES to count a cycle whose config declares a fault, and names the fault beside every
+# readout it produces; each fault is read by the seam it reached (#1310), with a two-run
+# budget for a seam that sits behind a live emission or repair (plan §3.1).
+#
+# Shape's provenance: #1268 (the absent suite) and #968 — SIP-0104 P6 window roll 6, three refuted claims in one roll
+name: 1-7-4-diagnostic-absent-suite-then-false-claim
+records_dir: var/verification_sets/1-7-4-diagnostics/absent-suite-then-false-claim
+pre_registration: docs/plans/1-7-4-verification-set-preregistration.md
+project: group_run
+squad_profile: full-38
+request_profile: validated-fullstack
+overrides:
+  fault_injection: [qa_suite_absent, analyzer_false_source_claim]
+gate_name: progress_plan_review
+n_rolls: 1
+gate_notes: >-
+  1.7.4 verification set. Approved under the pre-registered gate policy
+  (pre-registration §7) — identical text applied to every roll of this set.
+  System plan validation passed; no additional judgment applied.
+launch_notes: >-
+  UNUSED — a diagnostic is never counted; the driver refuses a counting roll that declares
+  a fault.
+shakeout_notes: >-
+  1.7.4 DIAGNOSTIC — the qa suite that was never emitted. NON-COUNTING by declaration before launch: this cycle injects a
+  deliberate fault at the qa emission seam (#1251) to exercise L2 (#1269) — a repair that supplies the suite an emission failure lacked is retested, which no roll of the last
+  three sets happened to reach. Its red is manufactured and must never be read as the squad
+  failing.
+loaded_checks:
+  data: >-
+    from squadops.capabilities.handlers.fault_injection import FAULTS, INJECTED_TASKS,
+    INJECTED_CLAIM_FILE; import inspect;
+    from squadops.capabilities.handlers.impl import analyze_failure;
+    print('analyzer_false_source_claim' in FAULTS, 'data.analyze_failure' in INJECTED_TASKS,
+    'inject_fault(' in inspect.getsource(analyze_failure), INJECTED_CLAIM_FILE)
+  runtime-api: >-
+    import inspect; from adapters.cycles import correction_runner;
+    print('"resolved_config": cycle.resolved_config()' in inspect.getsource(correction_runner))
+  eve: >-
+    from squadops.capabilities.handlers.fault_injection import FAULTS, INJECTED_TASKS;
+    print(sorted(FAULTS), sorted(INJECTED_TASKS))
+# A diagnostic asserts no pins: it is run on the deploy the shakeout loop settled on, and
+# its record states the identity it observed (#1296).
+expected_config_hash_prefix: ""
+expected_squad_snapshot_prefix: ""
+frozen_deploy_commit: ""
+frozen_image_ids: {}
