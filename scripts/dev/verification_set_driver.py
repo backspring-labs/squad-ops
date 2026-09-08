@@ -674,6 +674,17 @@ def completed_framing_run(cycle_id: str) -> str | None:
     )
 
 
+def _criteria_unverified(summary: dict) -> list[str]:
+    """The contract criteria the run did not verify, by name.
+
+    The framework derives this on its own summary (`criteria_unverified`, #945); the
+    driver reads the stored JSON, so it derives the same subtraction here rather than
+    reporting a count a reader cannot resolve to names.
+    """
+    verified = set(summary.get("criteria_verified") or [])
+    return [c for c in (summary.get("criteria_total") or []) if c not in verified]
+
+
 def collect(cfg: SetConfig, cycle_id: str) -> dict:
     runs = parse_run_rows(
         psql(
@@ -727,6 +738,17 @@ def collect(cfg: SetConfig, cycle_id: str) -> dict:
         "criteria_total": len(summary.get("criteria_total", []) or []),
         "criteria_verified": len(summary.get("criteria_verified", []) or []),
         "criteria_unevidenced": summary.get("criteria_unevidenced", []) or [],
+        # Named, never left to a subtraction the reader has to do (#945/#1021, applied
+        # to the record). The React checkpoint on deploy B rendered "21 / 24" beside an
+        # empty unevidenced list: the three `vc-view-compiles-*` criteria had produced
+        # evidence and were not credited, and the record could not say which three or
+        # why. `unverified` is the shortfall; `adverse` is the half that produced a row.
+        "criteria_unverified": _criteria_unverified(summary),
+        "criteria_adverse": [
+            c
+            for c in _criteria_unverified(summary)
+            if c not in set(summary.get("criteria_unevidenced") or [])
+        ],
         "wall_clock_seconds": sum(r["seconds"] for r in runs),
         "impl_run_id": impl["run_id"] if impl else None,
     }
@@ -1690,10 +1712,24 @@ def texture_from_logs(logs: list[str]) -> dict:
             for line in logs
             if "patch_verification task=" in line and "status=unverifiable" in line
         ),
+        # The whole fact, not the unverifiable half. This counted skips only on
+        # verifications that came back `unverifiable`, and read 0 for the React
+        # checkpoint on deploy B — whose qa repair PASSED verification while three
+        # `frontend_compiles` rows never ran (`skips=missing_tooling:3`), demoting
+        # three already-passed view criteria. A skip on a passing verification is the
+        # one this readout exists to surface (#1261, CLAUDE.md: count non-execution
+        # beside failure).
         "no_execution_by_skip_reason": _sum_pairs(
             entry
             for line in logs
-            if "patch_verification task=" in line and "status=unverifiable" in line
+            if "patch_verification task=" in line
+            for entry in (_field(line, "skips") or "").split(",")
+            if entry and entry != "-"
+        ),
+        "no_execution_on_passed_verifications": _sum_pairs(
+            entry
+            for line in logs
+            if "patch_verification task=" in line and "status=passed" in line
             for entry in (_field(line, "skips") or "").split(",")
             if entry and entry != "-"
         ),
@@ -2002,7 +2038,10 @@ def render(cfg: SetConfig, title: str, rec: dict) -> str:
         f"| correction rounds | {rec['correction_rounds']} |",
         f"| failed checks | {', '.join(rec['failed_checks']) or '—'} |",
         f"| criteria verified / total | {rec['criteria_verified']} / {rec['criteria_total']} |",
-        f"| criteria unevidenced | {', '.join(rec['criteria_unevidenced']) or '—'} |",
+        "| criteria NOT verified — a row was produced, not credited | "
+        f"{', '.join(rec.get('criteria_adverse') or []) or '—'} |",
+        "| criteria unevidenced — no row in either direction | "
+        f"{', '.join(rec['criteria_unevidenced']) or '—'} |",
         f"| failed emissions banked (#971) | {rec['failed_emissions_banked']} |",
         "| contentless emissions (L1) | "
         f"{_render_by_reason((rec.get('loop_texture') or {}).get('contentless_by_handler', {}))}"
@@ -2034,8 +2073,10 @@ def render(cfg: SetConfig, title: str, rec: dict) -> str:
         "| R7 decided by agent / unverifiable by reason | "
         f"{(rec.get('loop_texture') or {}).get('decided_by_agent', 0)} / "
         f"{_render_by_reason((rec.get('loop_texture') or {}).get('unverifiable_by_reason', {}))} |",
-        "| non-execution by skip reason | "
+        "| non-execution by skip reason (all patch verifications) | "
         f"{_render_by_reason((rec.get('loop_texture') or {}).get('no_execution_by_skip_reason', {}))} |",
+        "| ...of which on a verification that PASSED | "
+        f"{_render_by_reason((rec.get('loop_texture') or {}).get('no_execution_on_passed_verifications', {}))} |",
         "| fill-merge assertion strength per qa task (#999) | "
         f"{[(e.get('task_id'), e.get('assertion_strength')) for e in (rec.get('loop_texture') or {}).get('fill_merge_evidence', [])] or '—'} |",
         "| qa emission tokens (completion / reasoning, handlers starting `qa_`) | "
