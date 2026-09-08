@@ -159,6 +159,34 @@ alone, and was accepted under the pack's.** That is H1's bar with live content �
 field, and not an assertion that a bar survived a test it cannot fail. It also sharpens #1427:
 the request still names a document whose exact casing decided acceptance, which is the fragility
 row 1 removed.
+### Round 2's prediction, registered before the round is launched
+
+Deploy D is deploy C plus #1430 — the request no longer names the retired handoff — and
+nothing else behavioural. `task_plan.py` still carries the compensation that strips a
+retired-artifact criterion from tasks that do not declare the file, and its comment records
+the prior it was built against: *213 of 213 builder criteria in the last 40 stored plans
+named it*, the planner being "a language model with a strong prior about this filename".
+
+**The claim.** That prior was fed by the request. If it was, removing the name from the PRD
+removes it from the plans; if the prior is the model's own, it will persist and the
+compensation is load-bearing for reasons the request never controlled.
+
+**The baseline, counted from stored artifacts** (which survive a rebuild; the runtime-api
+logs do not) — occurrences of the retired name per cycle, across deploys B and C:
+
+| cycle | deploy | files mentioning it | occurrences |
+|---|---|---|---|
+| `cyc_dd3068d22f2c` | B, React | 10 | 65 |
+| `cyc_bd6d424ba2fb` | B, Next.js | 10 | 62 |
+| `cyc_00872b888f80` | C, React | 10 | 72 |
+| `cyc_cb132e22956c` | C, Next.js | 7 | 51 |
+
+**Expected on round 2:** a sharp fall in both columns. A residue is not a falsification —
+the planner may still reach for the name unprompted — but a count in the 50–70 band would
+say the request was never the source, and that is worth knowing before the counted set,
+because it changes what #1430 bought.
+
+Read, not a gate. Registered here before launch; the result lands in deploy D's row.
 ---
 
 ## 3. The exercise plan — stated before roll 1
