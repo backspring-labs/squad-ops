@@ -343,9 +343,28 @@ The fourth — an `atlas` entry in the `local-spark` bootstrap profile with a se
 `squadops doctor local-spark --check llm` that knows about it — was never built. `atlas` appears
 nowhere in `scripts/bootstrap/`, `config/profiles/bootstrap/local-spark.yaml`, or the doctor.
 
-**Why it stays unbuilt.** §1.2a rules Atlas not adopted. A one-click install for an engine this
-SIP rejects has no consumer, and the item's own framing — "the prerequisite of P4's opening and
-P5's run" — describes a gate that has already opened, run, and returned a negative.
+**Why it stays unbuilt.** §1.2a rules Atlas **not adopted**, and the item's own framing — "the
+prerequisite of P4's opening and P5's run" — describes a gate that has already opened, run and
+returned a negative. A bootstrap entry serves a provider a deploy points at; nothing points at
+Atlas.
+
+**Not adopted is not rejected, and the distinction is load-bearing.** What SquadOps owns
+landed and works: the adapter is merged and conformance-passing, the engine was stood up on the
+Spark, served 44 emissions across 14 serve configurations, and the integration was exercised end
+to end. **The blocker is a defect in the vendor's engine, not a limit of the integration or a
+judgement that Atlas is unsuitable** — a content-loop guard fires on legitimately repetitive
+YAML, four documented controls to disarm it are inert, and its rollback rewinds mid-token so the
+severed output *becomes* the validator's "malformed YAML" (§1.2a). A second detector,
+`simhash_semantic_loop`, has no flag or env var at all. Model support is the second gap:
+`Qwen/Qwen3.8-27B-FP8` is absent from the vendor's supported-model table.
+
+**So the unblock path is a vendor fix, and it has an owner outside this repo.** The A/B record's
+own disposition (§8) said a vendor report on `simhash_semantic_loop` "is worth filing regardless
+of adoption: a guard with no flag and no env var, firing on correct output, whose rollback
+corrupts the stream mid-token." **That report was never filed** — tracked now as **#1411**. If
+the guard becomes disarmable and the model reaches the supported table, adoption is a
+measurement again, not a redesign: the seam, the adapter and the conformance suite are already
+in the tree and inert per §4.
 
 **The dependency runs the other way from how a reader might take it.** The 1.7.4 plan says the
 line "does not adopt Atlas (SIP-0106 stays accepted and not adopted until #301)". #301
@@ -355,10 +374,12 @@ landing. #301 removes an obstacle to switching providers in general; it says not
 whether this provider is worth switching to.
 
 **What this costs, stated plainly.** Standing Atlas up again is a manual serve script on the
-box, as it was throughout the A/B. That is the correct cost for a rejected engine, and it is why
-the item is closed rather than carried forward through further lines.
+box, as it was throughout the A/B. That is the right cost for an engine no deploy points at
+today, and it is why the item is closed rather than carried forward through further lines. It is
+a small cost precisely because the integration landed — what a retry needs is the box and a
+serve script, not new code.
 
-**What would change it.** An adoption decision, which needs P4/P5 re-run and their negative
+**What would change it.** A vendor fix (#1411) that lets P4/P5 be re-run and their negative
 overturned. Not a bootstrap entry.
 
 ## 2. Problem Statement
