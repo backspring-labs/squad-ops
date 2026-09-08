@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
@@ -43,24 +42,23 @@ def _make_row(
     is_active: bool = False,
     version: int = 1,
 ) -> MagicMock:
-    agents_json = json.dumps(
-        [
-            {
-                "agent_id": "neo",
-                "role": "dev",
-                "model": "qwen2.5:7b",
-                "enabled": True,
-                "config_overrides": {},
-            },
-            {
-                "agent_id": "eve",
-                "role": "qa",
-                "model": "qwen2.5:7b",
-                "enabled": True,
-                "config_overrides": {},
-            },
-        ]
-    )
+    agents_json = [
+        {
+            "agent_id": "neo",
+            "role": "dev",
+            "model": "qwen2.5:7b",
+            "enabled": True,
+            "config_overrides": {},
+        },
+        {
+            "agent_id": "eve",
+            "role": "qa",
+            "model": "qwen2.5:7b",
+            "enabled": True,
+            "config_overrides": {},
+        },
+    ]
+
     row = MagicMock()
     row.__getitem__ = lambda self, key: {
         "profile_id": profile_id,

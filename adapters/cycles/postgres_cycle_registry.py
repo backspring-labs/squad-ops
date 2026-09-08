@@ -7,12 +7,10 @@ Replaces MemoryCycleRegistry for production use.
 from __future__ import annotations
 
 import dataclasses
-import json
 import logging
 
 import asyncpg
 
-from adapters.jsonb import parse_jsonb
 from squadops.cycles.checkpoint import RunCheckpoint
 from squadops.cycles.lifecycle import (
     GATE_REJECTED_STATES,
@@ -73,12 +71,12 @@ class PostgresCycleRegistry(CycleRegistryPort):
                     cycle.prd_ref,
                     cycle.squad_profile_id,
                     cycle.squad_profile_snapshot_ref,
-                    json.dumps(_policy_to_dict(cycle.task_flow_policy)),
+                    _policy_to_dict(cycle.task_flow_policy),
                     cycle.build_strategy,
-                    json.dumps(cycle.applied_defaults),
-                    json.dumps(cycle.execution_overrides),
+                    cycle.applied_defaults,
+                    cycle.execution_overrides,
                     list(cycle.expected_artifact_types),
-                    json.dumps(cycle.experiment_context),
+                    cycle.experiment_context,
                     cycle.notes,
                     cycle.request_profile,
                 )
@@ -322,7 +320,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
                 )
                 if cycle_row is None:
                     raise CycleNotFoundError(f"Cycle not found: {run_row['cycle_id']}")
-                policy = parse_jsonb(cycle_row["task_flow_policy"])
+                policy = cycle_row["task_flow_policy"]
                 gate_names = {g["name"] for g in policy.get("gates", ())}
                 if decision.gate_name not in gate_names:
                     raise ValidationError(
@@ -360,9 +358,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
                         decision.decided_at,
                         decision.notes,
                         # NULL (no waiver) stays distinguishable from a recorded one
-                        json.dumps(list(decision.waived_checks))
-                        if decision.waived_checks
-                        else None,
+                        list(decision.waived_checks) if decision.waived_checks else None,
                         decision.waiver_reason,
                     )
                 except asyncpg.UniqueViolationError as err:
@@ -399,7 +395,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
                 record.cadence_interval_id,
                 record.suite_outcome.value,
                 record.repair_attempt_number,
-                json.dumps(list(record.check_results)),
+                list(record.check_results),
                 list(record.repair_task_refs),
                 record.notes,
                 record.recorded_at,
@@ -425,7 +421,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
                 "verdict = EXCLUDED.verdict, summary = EXCLUDED.summary, recorded_at = now()",
                 run_id,
                 summary.verdict.value,
-                json.dumps(_verification_summary_to_dict(summary)),
+                _verification_summary_to_dict(summary),
             )
 
     async def get_run_verification_summary(self, run_id: str) -> RunVerificationSummary | None:
@@ -436,7 +432,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
             )
         if row is None:
             return None
-        return _verification_summary_from_dict(parse_jsonb(row["summary"]))
+        return _verification_summary_from_dict(row["summary"])
 
     async def list_run_verification_summaries(self, cycle_id: str) -> list[RunVerificationSummary]:
         """Return a cycle's persisted per-run verification summaries (SIP-0096 §10)."""
@@ -447,7 +443,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
                 "WHERE r.cycle_id = $1 ORDER BY r.run_number",
                 cycle_id,
             )
-        return [_verification_summary_from_dict(parse_jsonb(row["summary"])) for row in rows]
+        return [_verification_summary_from_dict(row["summary"]) for row in rows]
 
     # --- Checkpoint (SIP-0079) ---
 
@@ -464,10 +460,10 @@ class PostgresCycleRegistry(CycleRegistryPort):
                     "VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
                     checkpoint.run_id,
                     checkpoint.checkpoint_index,
-                    json.dumps(list(checkpoint.completed_task_ids)),
-                    json.dumps(checkpoint.prior_outputs),
-                    json.dumps(list(checkpoint.artifact_refs)),
-                    json.dumps(list(checkpoint.plan_delta_refs)),
+                    list(checkpoint.completed_task_ids),
+                    checkpoint.prior_outputs,
+                    list(checkpoint.artifact_refs),
+                    list(checkpoint.plan_delta_refs),
                     checkpoint.created_at,
                     retain,
                 )
@@ -511,7 +507,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
 
     def _row_to_cycle(self, row: asyncpg.Record) -> Cycle:
         """Reconstruct frozen Cycle from asyncpg Record."""
-        tfp = parse_jsonb(row["task_flow_policy"])
+        tfp = row["task_flow_policy"]
         gates = tuple(
             Gate(
                 name=g["name"],
@@ -520,9 +516,9 @@ class PostgresCycleRegistry(CycleRegistryPort):
             )
             for g in tfp.get("gates", ())
         )
-        applied = parse_jsonb(row["applied_defaults"]) or {}
-        overrides = parse_jsonb(row["execution_overrides"]) or {}
-        experiment = parse_jsonb(row["experiment_context"]) or {}
+        applied = row["applied_defaults"] or {}
+        overrides = row["execution_overrides"] or {}
+        experiment = row["experiment_context"] or {}
         return Cycle(
             cycle_id=row["cycle_id"],
             project_id=row["project_id"],
@@ -553,7 +549,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
                 notes=g.get("notes"),
                 # #682: absent column (pre-migration reads) and NULL both mean
                 # "no waiver" — the model's empty defaults
-                waived_checks=tuple(parse_jsonb(g.get("waived_checks")) or ()),
+                waived_checks=tuple(g.get("waived_checks") or ()),
                 waiver_reason=g.get("waiver_reason"),
             )
             for g in gate_rows
@@ -579,10 +575,10 @@ class PostgresCycleRegistry(CycleRegistryPort):
         return RunCheckpoint(
             run_id=row["run_id"],
             checkpoint_index=row["checkpoint_index"],
-            completed_task_ids=tuple(parse_jsonb(row["completed_task_ids"])),
-            prior_outputs=parse_jsonb(row["prior_outputs"]),
-            artifact_refs=tuple(parse_jsonb(row["artifact_refs"])),
-            plan_delta_refs=tuple(parse_jsonb(row["plan_delta_refs"])),
+            completed_task_ids=tuple(row["completed_task_ids"]),
+            prior_outputs=row["prior_outputs"],
+            artifact_refs=tuple(row["artifact_refs"]),
+            plan_delta_refs=tuple(row["plan_delta_refs"]),
             created_at=row["created_at"],
         )
 

@@ -5,7 +5,6 @@ Uses mock asyncpg pool — no real database needed for unit tests.
 
 from __future__ import annotations
 
-import json
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
@@ -113,10 +112,11 @@ class TestChatRepositoryCreateSession:
 
         await repo.create_session(session)
 
-        # Last positional arg to execute is the serialized metadata
+        # Last positional arg to execute is the metadata dict — the pool's codec
+        # encodes it (#577)
         call_args = conn.execute.call_args[0]
         metadata_arg = call_args[-1]  # last param
-        assert json.loads(metadata_arg) == {"source": "console"}
+        assert metadata_arg == {"source": "console"}
 
 
 class TestChatRepositoryGetSession:
@@ -235,10 +235,9 @@ class TestChatRepositoryListSessions:
 
 
 class TestChatRepositoryMetadataDecoding:
-    """ChatRepository decodes JSONB metadata via the shared ``parse_jsonb``
-    helper, and (preserved from the old ``_parse_jsonb``) coerces a NULL
-    metadata column to an empty dict at the call site so consumers always get a
-    dict (#156)."""
+    """JSONB metadata arrives decoded from the pool's codec (#577); the repository
+    coerces a NULL metadata column to an empty dict at the call site so consumers
+    always get a dict (#156)."""
 
     @staticmethod
     def _session_row(metadata):
@@ -262,10 +261,10 @@ class TestChatRepositoryMetadataDecoding:
             "metadata": metadata,
         }
 
-    def test_session_decodes_string_metadata(self):
-        """asyncpg returns JSONB as a string — it is decoded into a dict."""
+    def test_session_metadata_arrives_as_a_dict(self):
+        """The pool's codec hands JSONB back decoded (#577)."""
         repo = ChatRepository(pool=_make_pool()[0])
-        session = repo._assemble_session(self._session_row('{"k": "v"}'))
+        session = repo._assemble_session(self._session_row({"k": "v"}))
         assert session.metadata == {"k": "v"}
 
     def test_session_null_metadata_becomes_empty_dict(self):

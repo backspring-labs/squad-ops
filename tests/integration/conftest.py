@@ -12,6 +12,8 @@ import pytest
 import pytest_asyncio
 import requests
 
+from adapters.persistence.pool import create_pool
+
 # ---------------------------------------------------------------------------
 # SIP-0061: LangFuse env-var gating for contract/integration/resilience tests
 # ---------------------------------------------------------------------------
@@ -635,7 +637,6 @@ async def clean_database(postgres_container):
     Clean database state before and after each test.
     Ensures proper test isolation by resetting all tables used in integration tests.
     """
-    import asyncpg
 
     # Get connection URL
     postgres_url = postgres_container.get_connection_url()
@@ -643,7 +644,7 @@ async def clean_database(postgres_container):
         postgres_url = postgres_url.replace("postgresql+psycopg2://", "postgresql://")
 
     # Create connection pool for cleanup
-    db_pool = await asyncpg.create_pool(postgres_url, min_size=1, max_size=3)
+    db_pool = await create_pool(postgres_url, min_size=1, max_size=3)
 
     try:
         async with db_pool.acquire() as conn:
