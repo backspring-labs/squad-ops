@@ -88,8 +88,8 @@ class TestApplyMigrations:
 
         await apply_migrations(pool, migrations_dir)
 
-        # First execute call creates the tracking table
-        first_call_sql = conn.execute.call_args_list[0][0][0]
+        # The first execute takes the migrations lock (#300); the next creates the table
+        first_call_sql = conn.execute.call_args_list[1][0][0]
         assert "_schema_migrations" in first_call_sql
         assert "CREATE TABLE IF NOT EXISTS" in first_call_sql
 
@@ -124,10 +124,11 @@ class TestApplyMigrations:
         # Call 0: tracking table creation
         # Call 1: migration SQL
         # Call 2: INSERT into _schema_migrations
-        assert len(execute_calls) == 3
-        assert "CREATE TABLE t1();" in execute_calls[1][0][0]
-        assert "_schema_migrations" in execute_calls[2][0][0]
-        assert execute_calls[2][0][1] == "001_init.sql"
+        # lock, tracking DDL, migration SQL, tracking row, unlock (#300)
+        assert len(execute_calls) == 5
+        assert "CREATE TABLE t1();" in execute_calls[2][0][0]
+        assert "_schema_migrations" in execute_calls[3][0][0]
+        assert execute_calls[3][0][1] == "001_init.sql"
 
     async def test_returns_count(self, tmp_path):
         """Return value equals number of newly applied migrations."""
@@ -173,13 +174,13 @@ class TestApplyMigrations:
         conn = _make_conn()
         pool = _make_pool(conn)
 
-        # Make execute raise on the migration SQL (second call)
+        # Make execute raise on the migration SQL itself
         call_count = 0
 
         async def _execute_side_effect(*args, **kwargs):
             nonlocal call_count
             call_count += 1
-            if call_count == 2:  # The migration SQL execution
+            if args[0] == "INVALID SQL;":
                 raise Exception("syntax error")
 
         conn.execute = AsyncMock(side_effect=_execute_side_effect)
@@ -187,9 +188,9 @@ class TestApplyMigrations:
         with pytest.raises(Exception, match="syntax error"):
             await apply_migrations(pool, migrations_dir)
 
-        # The INSERT into tracking should never have been called
-        # (exception happened before it)
-        assert call_count == 2  # tracking DDL + failed SQL
+        # The INSERT into tracking should never have been called (exception happened
+        # before it): lock, tracking DDL, failed SQL, unlock (#300)
+        assert call_count == 4
 
     async def test_applies_in_sorted_order(self, tmp_path):
         """Migrations are applied in filename-sorted order."""
@@ -273,3 +274,45 @@ class TestTheNetworkStatusDropRunsUnderTheApplier:
     def test_fresh_installs_never_create_the_column(self):
         init_sql = (self._REPO / "infra" / "init.sql").read_text(encoding="utf-8")
         assert "network_status" not in init_sql
+
+
+class TestTheApplierHoldsTheAdvisoryLock:
+    """#300: two runtime-api instances starting together must not race the per-file
+    transactions. The lock is taken on the connection before the tracking table is
+    touched and released after the last file — and after a failed migration too, so the
+    connection goes back to the pool unlocked."""
+
+    @staticmethod
+    def _sql_calls(conn):
+        return [c[0][0] for c in conn.execute.call_args_list]
+
+    async def test_the_lock_brackets_the_whole_apply(self, tmp_path):
+        from squadops.api.runtime.migrations import MIGRATIONS_ADVISORY_LOCK_KEY
+
+        migrations_dir = _write_sql(tmp_path, "001_init.sql", "CREATE TABLE t1();")
+        conn = _make_conn()
+        await apply_migrations(_make_pool(conn), migrations_dir)
+        calls = self._sql_calls(conn)
+        assert calls[0] == "SELECT pg_advisory_lock($1)"
+        assert conn.execute.call_args_list[0][0][1] == MIGRATIONS_ADVISORY_LOCK_KEY
+        assert "CREATE TABLE IF NOT EXISTS" in calls[1]
+        assert calls[-1] == "SELECT pg_advisory_unlock($1)"
+        assert calls.index("CREATE TABLE t1();") < calls.index("SELECT pg_advisory_unlock($1)")
+
+    async def test_a_failed_migration_still_releases_the_lock(self, tmp_path):
+        migrations_dir = _write_sql(tmp_path, "001_bad.sql", "CREATE TABLE broken(;")
+        conn = _make_conn()
+
+        async def _execute(sql, *args):
+            if sql == "CREATE TABLE broken(;":
+                raise RuntimeError("syntax error")
+
+        conn.execute = AsyncMock(side_effect=_execute)
+        with pytest.raises(RuntimeError):
+            await apply_migrations(_make_pool(conn), migrations_dir)
+        assert self._sql_calls(conn)[-1] == "SELECT pg_advisory_unlock($1)"
+
+    def test_the_key_is_a_fixed_positive_bigint(self):
+        from squadops.api.runtime.migrations import MIGRATIONS_ADVISORY_LOCK_KEY
+
+        assert 0 < MIGRATIONS_ADVISORY_LOCK_KEY < 2**63
