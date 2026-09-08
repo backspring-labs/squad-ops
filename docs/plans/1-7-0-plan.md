@@ -579,7 +579,7 @@ dependency set the images install — is unaffected and met. Reasoning recorded 
   a sixth time — must be a release's *subject* rather than a rider beside a pack. **1.7.3 =
   Boundaries** (the list, with #1316 and the #1310/#1311 instrument fixes as preconditions,
   measured by the 1.7.2 set re-registered with no new pack); **1.7.4 = Loop Honesty, second
-  half** (#1312 with #1254 leading) with the Hardening (infra) rider; **1.7.5 = what this
+  half** (#1312 with #1254 leading) with the Hardening (infra) rider; its plan is `docs/plans/1-7-4-plan.md` (rev 1, 2026-09-07); **1.7.5 = what this
   table called 1.7.4** (Deferrals, Composition Root after its design note, the extractions
   and test items) plus #929/#1206. The per-line capacity rule is unchanged; the line count
   grows by one because the Boundaries rider was never absorbed by 1.7.2 as the table assumed.
