@@ -19,6 +19,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from squadops import __version__ as SQUADOPS_VERSION
+from squadops.api.error_handlers import register_domain_error_handlers
 from squadops.bootstrap.secrets import secret_provider_for
 from squadops.config import config_fingerprint, load_config, redact_config
 
@@ -44,6 +45,11 @@ app = FastAPI(
     version=SQUADOPS_VERSION,
     description="SIP-0048: Runtime API for task management and execution cycles",
 )
+
+
+# #576: domain errors become the standard envelope in one place — see api/error_handlers.py.
+register_domain_error_handlers(app)
+
 
 # Load configuration with profile selection and validation
 strict_mode = os.getenv("SQUADOPS_STRICT_CONFIG", "false").lower() == "true"

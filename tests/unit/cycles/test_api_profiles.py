@@ -9,6 +9,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from squadops.api.error_handlers import register_domain_error_handlers
 from squadops.api.routes.cycles.profiles import router
 from squadops.cycles.models import (
     ActiveProfileDeletionError,
@@ -58,6 +59,7 @@ def mock_llm_port():
 def client(mock_squad_profile, mock_llm_port, monkeypatch):
     app = FastAPI()
     app.include_router(router)
+    register_domain_error_handlers(app)  # as the runtime does (#576)
     import squadops.api.runtime.deps as deps_mod
 
     monkeypatch.setattr(deps_mod, "_squad_profile", mock_squad_profile)

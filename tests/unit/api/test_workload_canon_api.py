@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 from squadops.api.cycle_schemas import (
     GateDecisionRequest,
 )
+from squadops.api.error_handlers import register_domain_error_handlers
 from squadops.api.routes.cycles.mapping import artifact_to_response, run_to_response
 from squadops.api.routes.cycles.runs import router as runs_router
 from squadops.cycles.models import (
@@ -148,6 +149,7 @@ def mock_cycle_registry():
 def client(mock_cycle_registry, monkeypatch):
     app = FastAPI()
     app.include_router(runs_router)
+    register_domain_error_handlers(app)  # as the runtime does (#576)
     import squadops.api.runtime.deps as deps_mod
 
     monkeypatch.setattr(deps_mod, "_cycle_registry", mock_cycle_registry)

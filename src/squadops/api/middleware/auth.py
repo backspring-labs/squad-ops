@@ -12,6 +12,7 @@ from collections.abc import Callable
 
 from fastapi import HTTPException, Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.responses import JSONResponse
 
 from squadops.auth.models import Identity
 from squadops.ports.auth.authentication import AuthPort
@@ -153,8 +154,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 result="error",
                 denial_reason="provider_disabled",
             )
-            return Response(
-                content='{"detail":"Authentication service unavailable"}',
+            return JSONResponse(
+                content={"detail": "Authentication service unavailable"},
                 status_code=503,
                 media_type="application/json",
                 headers={"X-Request-ID": request_id},
@@ -169,8 +170,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 result="denied",
                 denial_reason="missing_bearer_token",
             )
-            return Response(
-                content='{"detail":"Missing or invalid Authorization header"}',
+            return JSONResponse(
+                content={"detail": "Missing or invalid Authorization header"},
                 status_code=401,
                 media_type="application/json",
                 headers={"X-Request-ID": request_id},
@@ -192,8 +193,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 result="error",
                 denial_reason="auth_service_unavailable",
             )
-            return Response(
-                content='{"detail":"Authentication service unavailable"}',
+            return JSONResponse(
+                content={"detail": "Authentication service unavailable"},
                 status_code=503,
                 media_type="application/json",
                 headers={"X-Request-ID": request_id},
@@ -216,8 +217,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 result="denied",
                 denial_reason=str(e),
             )
-            return Response(
-                content='{"detail":"Invalid or expired token"}',
+            return JSONResponse(
+                content={"detail": "Invalid or expired token"},
                 status_code=401,
                 media_type="application/json",
                 headers={"X-Request-ID": request_id},
