@@ -194,6 +194,13 @@ def validate_manifest_plan_consistency(
         # correctly overrides the general rule. No REGISTERED stack reaches it today
         # (fastapi pins structurally, nextjs carries the appendix); it is here for the
         # third stack, and its message states what to do.
+        # #1070: with the plan author told NOT to state statuses, the condition here is
+        # permanently false for every REGISTERED stack, and a check that can only lie
+        # dormant is one nobody can reason about. `test_every_registered_stack_carries_the_
+        # status_without_the_plan` asserts that unreachability as a fact rather than a
+        # comment: a third stack that pins nothing and renders no appendix fails that test
+        # and has to confront the gap deliberately — at which point this branch is the
+        # remedy, and its message says what to do.
         if enforced != 200 and not stated_anywhere and not status_reaches_implementer:
             already_contradicted = any(f"on {ep.method} {ep.path}:" in e for e in errors)
             if not already_contradicted:
