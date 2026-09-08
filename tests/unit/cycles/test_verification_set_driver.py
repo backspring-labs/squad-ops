@@ -1230,7 +1230,7 @@ class TestL8ReadsTheExtractorNotTheStoredName:
         the line and the readout would be blind again, with every unit test above green."""
         seen: list[str] = []
 
-        def fake_docker_logs(container: str, since: str) -> list[str]:
+        def fake_docker_logs(container: str, since: str, until: str | None = None) -> list[str]:
             seen.append(container)
             return [
                 "noise line",
@@ -1539,7 +1539,9 @@ class TestRetryFeedbackIsReadFromBothWindows:
             self._APPENDED,
             self._BLIND,
         ]
-        monkeypatch.setattr(driver, "docker_logs", lambda container, since: [self._AIMED, "noise"])
+        monkeypatch.setattr(
+            driver, "docker_logs", lambda container, since, until=None: [self._AIMED, "noise"]
+        )
         assert driver.runtime_log_window("2026-09-08T00:00:00Z") == [self._AIMED]
 
     def test_no_lines_is_neither_with_fact_nor_blind(self, driver):
@@ -1819,7 +1821,9 @@ class TestPrefectLoopOverrunsAreRead:
         assert driver.prefect_loop_overruns([]) == {"overruns": 0, "by_service": {}}
 
     def test_the_window_keeps_only_overrun_lines(self, driver, monkeypatch):
-        monkeypatch.setattr(driver, "docker_logs", lambda c, s: [self._LINE, "INFO healthy"])
+        monkeypatch.setattr(
+            driver, "docker_logs", lambda c, s, until=None: [self._LINE, "INFO healthy"]
+        )
         assert driver.prefect_log_window("2026-09-08T00:00:00Z") == [self._LINE]
 
 
@@ -1841,7 +1845,9 @@ class TestF1HasAProducerBeforeRollOne:
         assert out["framework_rows_rederived"] == [self._LINE[self._LINE.index("patch task=") :]]
 
     def test_the_runtime_window_keeps_the_line(self, driver, monkeypatch):
-        monkeypatch.setattr(driver, "docker_logs", lambda c, s: [self._LINE, "INFO noise"])
+        monkeypatch.setattr(
+            driver, "docker_logs", lambda c, s, until=None: [self._LINE, "INFO noise"]
+        )
         assert driver.runtime_log_window("2026-09-08T00:00:00Z") == [self._LINE]
 
     def test_the_builder_readout_carries_it(self, driver):
@@ -1899,6 +1905,28 @@ class TestTheA1ReadoutSeesTheClaimsSubstance:
         marked = json.dumps({"decision_rationale": "fix backend/__squadops_injected_fault__.py"})
         assert driver._decision_reading(marked)["inherited"] is True
 
+    def test_foreign_task_types_alone_do_not_falsify_a1(self, driver):
+        """The contentless-builder diagnostic's decision — no analyzer fault declared —
+        carried `builder`, `assembler`, `data`, `qa_handoff` in affected_task_types: the
+        lead's habit (D1's texture), not the injected claim's leak."""
+        rec = {
+            "correction_rounds": 1,
+            "loop_texture": {
+                "decision_inherited_claims": [
+                    {
+                        "artifact": "a",
+                        "inherited": False,
+                        "echoes": [],
+                        "foreign_affected_task_types": ["builder", "assembler"],
+                    }
+                ]
+            },
+        }
+        out = driver.seam_readouts(("analyzer_false_source_claim",), rec)[
+            "analyzer_false_source_claim"
+        ]
+        assert out["reached"] is True
+
     def test_the_readout_is_false_on_substance_alone(self, driver):
         rec = {
             "correction_rounds": 1,
@@ -1936,3 +1964,56 @@ class TestTheA1ReadoutSeesTheClaimsSubstance:
             ]["reached"]
             is True
         )
+
+
+class TestTheLogWindowIsBoundedAtBothEnds:
+    """The deploy A re-render of the contentless-builder record (cyc_ceef5581bfd1) carried
+    the analyzer diagnostic's qa retries as its own: `docker logs --since` with no end
+    reads every later cycle. The window ends at the cycle's last run plus a grace."""
+
+    def test_docker_logs_passes_the_end_bound_only_when_given(self, driver, monkeypatch):
+        calls = []
+
+        class _P:
+            stdout = "a\n"
+            stderr = ""
+
+        monkeypatch.setattr(driver.subprocess, "run", lambda args, **kw: calls.append(args) or _P())
+        driver.docker_logs("c", "2026-09-08T05:30:00Z")
+        driver.docker_logs("c", "2026-09-08T05:30:00Z", "2026-09-08T06:27:00Z")
+        assert calls[0] == ["docker", "logs", "--since", "2026-09-08T05:30:00Z", "c"]
+        assert calls[1] == [
+            "docker",
+            "logs",
+            "--since",
+            "2026-09-08T05:30:00Z",
+            "--until",
+            "2026-09-08T06:27:00Z",
+            "c",
+        ]
+
+    def test_the_end_is_the_last_runs_finish_plus_grace_or_none_while_a_run_is_open(
+        self, driver, monkeypatch
+    ):
+        monkeypatch.setattr(driver, "psql", lambda q: "2026-09-08T06:25:49Z|0")
+        assert driver.cycle_log_until("cyc_x") == driver.log_since(
+            driver.datetime(2026, 9, 8, 6, 26, 49, tzinfo=driver.UTC)
+        )
+        monkeypatch.setattr(driver, "psql", lambda q: "2026-09-08T06:25:49Z|1")
+        assert driver.cycle_log_until("cyc_x") is None
+        monkeypatch.setattr(driver, "psql", lambda q: "")
+        assert driver.cycle_log_until("cyc_x") is None
+
+    def test_the_texture_records_its_window(self, driver, monkeypatch):
+        monkeypatch.setattr(driver, "docker_logs", lambda c, s, u=None: [])
+        monkeypatch.setattr(driver, "_fill_rejections", lambda *a: [])
+        monkeypatch.setattr(driver, "fill_merge_evidence", lambda *a: [])
+        monkeypatch.setattr(driver, "_stored_artifact_names", lambda *a: [])
+        monkeypatch.setattr(driver, "_decision_inherited_claims", lambda *a: [])
+        out = driver.loop_texture(
+            None, "cyc_x", None, "2026-09-08T05:30:00Z", until="2026-09-08T06:27:00Z"
+        )
+        assert out["log_window"] == {
+            "since": "2026-09-08T05:30:00Z",
+            "until": "2026-09-08T06:27:00Z",
+        }
