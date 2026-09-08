@@ -87,6 +87,7 @@ def resolve_correction_path(
     resolved_config: dict[str, Any],
     *,
     classification: str = "",
+    has_accepted_repair: bool = False,
 ) -> CorrectionPathResolution:
     """Apply the deterministic guard to the LLM-chosen correction path.
 
@@ -98,6 +99,8 @@ def resolve_correction_path(
             merge (``Cycle.resolved_config()``, #724) — ``required_checks``.
         classification: the analyzer's failure classification. Only consulted for
             the rewind anchor; "" (older callers, missing analysis) never fires it.
+        has_accepted_repair: whether an earlier round of THIS task already had a repair
+            accepted and stored. A rewind then destroys known-good state (#994).
 
     Returns:
         The path to act on, with override provenance when the guard fired.
@@ -106,6 +109,25 @@ def resolve_correction_path(
         return CorrectionPathResolution(path=decision_path)
 
     if decision_path == "rewind":
+        # #994: V7 roll 1 (`cyc_8b569ce34074`) had a correct fix in hand and spent the
+        # next hour destroying its claim to it. `development.correction_repair` completed
+        # at 01:38 with the right one-line change, accepted and stored; the rewind at
+        # 01:48 re-dispatched `development.develop` for the same subtask, and the
+        # re-authored emissions failed the same check twice until the task hit its 1800s
+        # timeout and the run failed. Auditing the stored tree afterwards: PASS, on the
+        # accepted repair.
+        #
+        # A rewind re-authors from the checkpoint, so it cannot preserve a repair that
+        # landed after it — the state is not merged, it is discarded. Checked BEFORE the
+        # classification anchor, because it does not depend on why the round failed: no
+        # classification makes throwing away an accepted fix the right move, and the
+        # repair budget is the cheaper instrument in every one of them.
+        if has_accepted_repair:
+            return CorrectionPathResolution(
+                path="patch",
+                overridden_from="rewind",
+                override_reason="rewind_would_discard_accepted_repair",
+            )
         if classification == _WORK_PRODUCT_CLASSIFICATION:
             return CorrectionPathResolution(
                 path="patch",

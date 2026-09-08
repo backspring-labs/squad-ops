@@ -1625,6 +1625,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # rejected (roll 12: a non-compiling repair, and nothing downstream was ever
         # told it didn't compile). Same transport as scaffold_enforcement_carry.
         repair_rejection_carry: dict[str, list[str]] = {}
+        # #994: task ids whose repair was accepted this run — a rewind after one
+        # discards known-good state, so the correction policy is told.
+        accepted_repair_task_ids: set[str] = set()
         # SIP-0100 3.4a: run-level contract-compliance counter, SEPARATE from the convergence
         # counter (D6) — cross-lane (unauthorized-slot) emissions don't fail a task on their own,
         # so this bounded budget is the only thing that stops a producer chronically writing
@@ -1815,7 +1818,14 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     repair_rejection_carry=repair_rejection_carry,
                     bound_record=bound_record,
                     compliance_counter=compliance_counter,
+                    accepted_repair_task_ids=accepted_repair_task_ids,
                 )
+                if action == "accept_patch":
+                    # #994: remember that THIS task now has accepted, stored repaired
+                    # state. A later round's rewind re-authors from the checkpoint and
+                    # cannot preserve it, so the guard needs the fact and this loop is
+                    # the only place that holds it.
+                    accepted_repair_task_ids.add(_envelope.task_id)
                 if action in ("continue", "accept_patch"):
                     # #379: this attempt failed — re-dispatched ("continue") or
                     # superseded by a verified patch ("accept_patch", #389). Record
@@ -2962,6 +2972,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         repair_rejection_carry: dict[str, list[str]] | None = None,
         bound_record: Any = None,
         compliance_counter: dict[str, int] | None = None,
+        accepted_repair_task_ids: set[str] | None = None,
     ) -> str:
         """Route a failed task outcome. Returns an action string.
 
@@ -3133,6 +3144,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             # #870: what happened to this task's PREVIOUS repair, so analysis and the
             # next repair are told instead of re-deriving the failure blind.
             repair_rejections=(repair_rejection_carry or {}).get(envelope.task_id),
+            # #994: whether an earlier round of this task already had a repair accepted
+            # and stored — the fact the rewind guard needs and only this loop holds.
+            has_accepted_repair=envelope.task_id in (accepted_repair_task_ids or set()),
             # RC3 (pf-23): re-resolve the workspace from the LIVE stored_artifacts
             # instead of the enriched envelope's copy captured once at the original
             # dispatch. stored_artifacts accumulates each attempt's repair outputs

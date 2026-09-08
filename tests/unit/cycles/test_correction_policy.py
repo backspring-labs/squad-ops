@@ -130,3 +130,51 @@ class TestRewindAnchor:
         assert resolution.path == "patch"
         assert resolution.override_reason == "executed_failed_required_checks"
         assert resolution.failed_required_checks == ("tests_pass",)
+
+
+class TestARewindNeverDiscardsAnAcceptedRepair:
+    """#994, V7 roll 1 (`cyc_8b569ce34074`): the cycle had a correct fix in hand and spent
+    the next hour destroying its claim to it.
+
+    `development.correction_repair` completed at 01:38 with the right one-line change
+    (`export const dynamic = 'force-dynamic'`), accepted and stored. The rewind at 01:48
+    re-dispatched `development.develop` for the same subtask; both re-authored emissions
+    failed the same check, the self-eval loop burned the budget, and the task died at the
+    1800s timeout with the run failing "Rewinding to checkpoint after
+    development.develop failure". Auditing the stored tree afterwards: **PASS** — the
+    accepted repair installs, builds, boots and answers every probe.
+    """
+
+    def _resolve(self, **kw):
+        from squadops.cycles.correction_policy import resolve_correction_path
+
+        return resolve_correction_path("rewind", {}, {}, **kw)
+
+    def test_the_rewind_becomes_a_patch_and_says_why(self):
+        resolution = self._resolve(has_accepted_repair=True)
+        assert resolution.path == "patch"
+        assert resolution.overridden_from == "rewind"
+        assert resolution.override_reason == "rewind_would_discard_accepted_repair"
+
+    def test_it_does_not_depend_on_why_the_round_failed(self):
+        """Checked before the classification anchor, deliberately: no classification
+        makes throwing away an accepted fix the right move, and V7's round was already
+        classified when the rewind fired."""
+        for classification in ("", "environment", "harness", "work_product", "unknown"):
+            assert (
+                self._resolve(has_accepted_repair=True, classification=classification).path
+                == "patch"
+            )
+
+    def test_without_an_accepted_repair_the_rewind_stands(self):
+        """The control. A rewind is the right instrument when there is no repaired state
+        to lose — overriding every one of them would remove the path entirely."""
+        assert self._resolve(has_accepted_repair=False, classification="environment").path == (
+            "rewind"
+        )
+
+    def test_the_work_product_anchor_still_fires_on_its_own(self):
+        """pf-45's guard is independent and must not have been absorbed."""
+        resolution = self._resolve(classification="work_product")
+        assert resolution.path == "patch"
+        assert resolution.override_reason == "work_product_rewind_with_unspent_repair"

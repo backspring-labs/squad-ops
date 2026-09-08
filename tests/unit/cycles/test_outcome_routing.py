@@ -2309,3 +2309,78 @@ class TestAnOwedRowIsDerivedOnceAndAGapIsNamed:
         assert action == "accept_patch"
         rows = holder["patched_result"].outputs["validation_result"]["checks"]
         assert len([r for r in rows if r.get("check") == "required_files"]) == 1
+
+
+class TestTheAcceptedRepairFactReachesTheCorrectionPolicy:
+    """#994's wiring half. The guard is only as good as the fact it is handed, and the
+    executor's loop is the only place that knows a prior round of this task was accepted —
+    a guard that always reads `False` would be the #1289 shape: computed, threaded, inert.
+    """
+
+    def _envelope(self):
+        from squadops.tasks.models import TaskEnvelope
+
+        return TaskEnvelope(
+            task_id="task_dev_2",
+            agent_id="neo",
+            cycle_id="cyc_001",
+            pulse_id="p",
+            project_id="hello_squad",
+            task_type="development.develop",
+            correlation_id="corr",
+            causation_id=None,
+            trace_id="t",
+            span_id="s",
+            inputs={"resolved_config": {}},
+            metadata={"role": "dev"},
+        )
+
+    async def _capture(self, executor, cycle, accepted: set[str]) -> dict:
+        import contextlib
+
+        from adapters.cycles.execution_errors import _ExecutionError
+
+        seen: dict = {}
+
+        async def _fake(*_a, **kw):
+            seen.update(kw)
+            raise _ExecutionError("stop here — the flag is what this asserts")
+
+        executor._correction_runner.run_correction_protocol = _fake
+        with contextlib.suppress(_ExecutionError, AttributeError, KeyError, TypeError):
+            await executor._handle_task_outcome(
+                result=TaskResult(
+                    task_id="task_dev_2",
+                    status="FAILED",
+                    outputs={"outcome_class": TaskOutcome.SEMANTIC_FAILURE},
+                    error="failed",
+                ),
+                envelope=self._envelope(),
+                enriched_envelope=None,
+                cycle=cycle,
+                run_id="run_1",
+                task_attempt_counts={},
+                consecutive_failures=0,
+                correction_counter={"n": 0},
+                correction_signature_state={},
+                scaffold_enforcement_carry=[],
+                prior_outputs={},
+                all_artifact_refs=[],
+                stored_artifacts=[],
+                completed_task_ids=[],
+                plan_delta_refs=[],
+                profile=None,
+                flow_run_id=None,
+                patched_result_holder={},
+                interface_manifest=None,
+                accepted_repair_task_ids=accepted,
+            )
+        return seen
+
+    async def test_a_task_with_an_accepted_repair_is_reported_as_such(self, executor, cycle):
+        seen = await self._capture(executor, cycle, {"task_dev_2"})
+        assert seen.get("has_accepted_repair") is True
+
+    async def test_a_task_without_one_is_not(self, executor, cycle):
+        seen = await self._capture(executor, cycle, {"some_other_task"})
+        assert seen.get("has_accepted_repair") is False

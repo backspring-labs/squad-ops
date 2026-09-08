@@ -1389,6 +1389,7 @@ class CorrectionRunner:
         budget_guard: Callable[[], None] | None = None,
         signature_state: dict[str, Any] | None = None,
         repair_rejections: list[str] | None = None,
+        has_accepted_repair: bool = False,
     ) -> CorrectionProtocolResult:
         """Run the correction protocol: analyze → decide → act.
 
@@ -1551,6 +1552,10 @@ class CorrectionRunner:
             # work_product rewind dies as a run failure with the repair budget unspent,
             # so the guard substitutes the patch the classification says is possible.
             classification=str(analysis_outputs.get("classification", "")),
+            # #994: a rewind re-authors from the checkpoint, so it cannot preserve a
+            # repair that landed after it. Threaded from the executor, which is the only
+            # place that knows a prior round of THIS task was accepted.
+            has_accepted_repair=has_accepted_repair,
         )
         correction_path = resolution.path
         if resolution.overridden_from:
