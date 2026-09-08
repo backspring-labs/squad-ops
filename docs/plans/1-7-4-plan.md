@@ -217,7 +217,7 @@ dedicated roll readout; the checkpoint pair is what attributes a red to them.
 | timeouts | #1147 (one setting bounds two things) | changes the timeout the cycle path runs under | CI + the rebuild |
 | persistence and API shape | #577 (shared asyncpg pool + JSONB codec), #576 (domain-error handlers, the per-route envelope blocks deleted), #578 (graphlib for the plan DAG; decide `depends_on`) | the registry the run writes through; the error shapes the driver reads; the plan DAG the cycle executes | CI + the rebuild |
 | ops | #581 (compose healthchecks, `up --wait`), #560 (log hygiene), #574 (AMQP URL parsing), #300 (migration advisory lock), #330 (Prefect loop starvation) | startup timing; **the log lines the driver's readouts grep**; the broker connection; runtime-api startup; the orchestrator's loop | #581/#560/#574 CI + the rebuild; **#300 and #330 read live** on the dev deploy after the set closes — the counted set is #330's heavy-cycle exercise |
-| prompt registry | #352 (runtime staleness guard), #353 (manifest hashes stamped at build) | a runtime guard on the prompts every producer renders; the build that stamps them | CI + the rebuild |
+| prompt registry | #352 (runtime staleness guard); **#353 (manifest hashes stamped at build) — not landed, rev 4: a SIP-0084 governance change, carried to 1.7.5 by name (pre-registration §9)** | a runtime guard on the prompts every producer renders; the build that stamps them | CI + the rebuild |
 | realm and deps | #372 (Keycloak realm export reaches existing realms), #1204 (refresh `ci-constraints.txt`) | the realm the CLI logs into; **#1204 is not CI-only** — since #1203 that file is the pin set every image installs | #372 read live after the set; #1204 CI + the rebuild |
 | evidence | #1324 (the boot audit keeps the response it judged) | on the boot-audit path of every cycle | CI + the rebuild |
 
@@ -497,6 +497,12 @@ review starts now so that 1.8.0's headline is not designed in 1.8.0.
   `integration` precondition given a deterministic exit criterion; the §3.4 count named as
   governance evidence that does not override isolation; the thesis sharpened to the three-part
   contract. The sequencing is the owner's fourteen steps.
+- **Rev 4 (2026-09-08)** — recorded on the line, in the open: #353 not landed (a SIP-0084
+  governance change; the #351 guard contains the debt; 1.7.5 by name); W1 CI-only on this
+  line — no honest rewind fault exists (#994's mechanism is the continue-fallback after an
+  applied-but-unverified repair, changed since by #1221 and rule B); F1's producer built after
+  the first diagnostic showed `typed_checks` blind to the re-derived row (#1398). The
+  pre-registration draft carries the deploy A identity and the diagnostics' results.
 - **Rev 3 (2026-09-07)** — three rulings on the plan author's recommendations after rev 2:
   the whole rider back before the pack (rev 2's placement of its runtime-affecting half after
   the set reversed; the classification kept, #560 last with the fields re-checked on the
