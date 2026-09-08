@@ -120,3 +120,118 @@ class TestResolution:
     def test_reasoning_kwargs_is_empty_for_nothing_and_one_key_otherwise(self):
         assert reasoning_kwargs(None) == {}
         assert reasoning_kwargs(ReasoningLevel.LOW) == {"reasoning": "low"}
+
+
+class TestACapabilityWithTwoOutputsDeclaresOneLevelPerOutput:
+    """#1285: `qa.test` is two output shapes under one capability id.
+
+    In **fill mode** the shells, the contract and the envelope are all in the prompt and
+    the answer is a fixed format — transcription. #924 measured it: 5,727 completion
+    tokens with the channel on against 413 with it off, for the same eight fill fences.
+    In **authoring mode** the suite is written from a PRD and a workspace, choosing what
+    to assert and against which surface — an argument, and with the channel off the model
+    returned a sentence of intent and stopped (fourteen attempts across the 1.7.1 counted
+    rolls; live, 1 usable emission of 6 with `think: false` against 6 of 6 with it on).
+
+    #1268 moved the capability to MEDIUM for the shape that was failing. That was right,
+    and it also made fill mode pay for a channel it does not use.
+    """
+
+    def test_fill_mode_declares_no_reasoning(self):
+        from squadops.capabilities.reasoning_policy import default_reasoning_level
+
+        assert default_reasoning_level("qa.test", output_shape="fill") == "none"
+        assert default_reasoning_level("qa.test_repair", output_shape="fill") == "none"
+
+    def test_authoring_mode_is_unchanged(self):
+        """#1268's fix is the reason the authoring level is not touched — the shape that
+        was failing keeps exactly what it was given."""
+        from squadops.capabilities.reasoning_policy import default_reasoning_level
+
+        assert default_reasoning_level("qa.test") == "medium"
+        assert default_reasoning_level("qa.test", output_shape=None) == "medium"
+
+    def test_a_shape_the_capability_does_not_declare_falls_back_to_its_one_level(self):
+        """An unknown shape is not an error: the capability has one declaration and it
+        applies. A capability that grows a second output adds a row, not a branch."""
+        from squadops.capabilities.reasoning_policy import default_reasoning_level
+
+        assert default_reasoning_level("qa.test", output_shape="something_else") == "medium"
+        assert default_reasoning_level("development.develop", output_shape="fill") == "medium"
+
+    def test_every_shaped_row_names_a_capability_that_declares_a_single_level_too(self):
+        """The per-shape table refines a declaration; it never replaces one. A row for a
+        capability absent from the main table would make the fallback raise for its other
+        shape, which is the undeclared-level condition this module exists to end."""
+        from squadops.capabilities.reasoning_policy import (
+            REASONING_BY_OUTPUT_SHAPE,
+            REASONING_BY_TASK_TYPE,
+        )
+
+        for task_type, _shape in REASONING_BY_OUTPUT_SHAPE:
+            assert task_type in REASONING_BY_TASK_TYPE, task_type
+
+    def test_an_agent_override_still_wins_over_the_shaped_declaration(self):
+        """The resolution chain is unchanged: declaration → override → the model's dial."""
+        from squadops.capabilities.reasoning_policy import resolve_reasoning_level
+
+        assert (
+            resolve_reasoning_level(
+                "qa.test",
+                agent_overrides={"reasoning": "high"},
+                model_name="qwen3.6:27b",
+                output_shape="fill",
+            )
+            == "high"
+        )
+
+
+class TestTheHandlerDeclaresItsOwnShape:
+    """#1285's wiring. A per-shape declaration the handler never passes is a declaration
+    that does nothing — and the shape is the CAPABILITY's fact, not shared code's: reading
+    `verification_scaffold` in `_build_chat_kwargs` for everyone broke the manifest
+    author's input contract, correctly, and `test_the_author_reads_nothing_outside_its_
+    declared_input_contract` is what caught it.
+    """
+
+    def _repair_handler(self):
+        from squadops.capabilities.handlers.impl.repair_handlers import QATestRepairHandler
+
+        return QATestRepairHandler()
+
+    def test_the_qa_repair_calls_itself_a_fill_when_it_carries_a_scaffold(self):
+        assert self._repair_handler()._output_shape({"verification_scaffold": {"files": []}}) == (
+            "fill"
+        )
+
+    def test_the_qa_repair_without_a_scaffold_declares_no_shape(self):
+        assert self._repair_handler()._output_shape({}) is None
+
+    def test_a_single_shape_capability_declares_none(self):
+        """Every other handler answers None, so its resolution is byte-for-byte what it
+        was — the property that makes this safe to land mid-line."""
+        from squadops.capabilities.handlers.cycle.develop import DevelopmentDevelopHandler
+
+        assert DevelopmentDevelopHandler()._output_shape({"verification_scaffold": {}}) is None
+
+    def test_the_shaped_kwargs_carry_no_reasoning_for_a_fill_repair(self, monkeypatch):
+        """The end of the wire: what `_build_chat_kwargs` actually puts on the call."""
+        from types import SimpleNamespace
+
+        monkeypatch.setattr(
+            "squadops.capabilities.reasoning_policy.get_model_spec",
+            lambda _n: SimpleNamespace(reasoning_control="level", max_completion_tokens=None),
+        )
+        handler = self._repair_handler()
+        fill = handler._build_chat_kwargs(
+            {
+                "agent_model": "qwen3.6:27b",
+                "agent_config_overrides": {},
+                "verification_scaffold": {"files": []},
+            }
+        )
+        authoring = handler._build_chat_kwargs(
+            {"agent_model": "qwen3.6:27b", "agent_config_overrides": {}}
+        )
+        assert fill.get("reasoning") in (None, "none"), fill
+        assert authoring.get("reasoning") == "medium", authoring
