@@ -348,23 +348,61 @@ prerequisite of P4's opening and P5's run" — describes a gate that has already
 returned a negative. A bootstrap entry serves a provider a deploy points at; nothing points at
 Atlas.
 
-**Not adopted is not rejected, and the distinction is load-bearing.** What SquadOps owns
-landed and works: the adapter is merged and conformance-passing, the engine was stood up on the
-Spark, served 44 emissions across 14 serve configurations, and the integration was exercised end
-to end. **The blocker is a defect in the vendor's engine, not a limit of the integration or a
-judgement that Atlas is unsuitable** — a content-loop guard fires on legitimately repetitive
-YAML, four documented controls to disarm it are inert, and its rollback rewinds mid-token so the
-severed output *becomes* the validator's "malformed YAML" (§1.2a). A second detector,
-`simhash_semantic_loop`, has no flag or env var at all. Model support is the second gap:
-`Qwen/Qwen3.8-27B-FP8` is absent from the vendor's supported-model table.
+**Not adopted is not rejected, and the distinction is load-bearing.** What SquadOps owns landed
+and works: the adapter is merged and conformance-passing, the engine was stood up on the Spark,
+served 44 emissions across 14 serve configurations, and the integration was exercised end to
+end. The failure is not a limit of the integration and not a judgement that Atlas is unsuitable.
 
-**So the unblock path is a vendor fix, and it has an owner outside this repo.** The A/B record's
-own disposition (§8) said a vendor report on `simhash_semantic_loop` "is worth filing regardless
-of adoption: a guard with no flag and no env var, firing on correct output, whose rollback
-corrupts the stream mid-token." **That report was never filed** — tracked now as **#1412**. If
-the guard becomes disarmable and the model reaches the supported table, adoption is a
-measurement again, not a redesign: the seam, the adapter and the conformance suite are already
-in the tree and inert per §4.
+**Corrected 2026-09-08, same day, before this text had stood a day.** As first written this
+section said "the blocker is a defect in the vendor's engine." That was an inference, not a
+finding, and it does not hold uniformly. The record supports a narrower claim, and the
+difference decides what can honestly be sent to a vendor. What follows replaces it.
+
+**Established, and model-independent.** These are facts about the engine's control surface and
+hold whatever model is loaded:
+
+- **Four documented controls do not take effect.** `--content-loop-watchdog false` is accepted
+  with correct syntax per `--help` and leaves the startup line unchanged; `ATLAS_CONTENT_LOOP_WATCHDOG`
+  was confirmed set on the container with no behavioural change; the per-request
+  `repetition_detection` object the help says "still outranks this" had none at `min_count: 64`
+  against a default of 3; and `--content-loop-min-repeats 64`, the vendor's own documented remedy
+  for "short-period repetitive (code, tables)" output, had none either.
+- **`simhash_semantic_loop` has no control surface at all** — no CLI flag, no env var, absent
+  from `--help`.
+
+**Observed, but not established as defects.** Each was seen under one model on one build:
+
+- **The guard fires on legitimately repetitive YAML.** This may be a guard calibrated for a
+  content shape unlike ours — working as designed and badly tuned — rather than broken.
+- **The rollback rewinds mid-token**, so `depends_on: []` emerges as `depend0]` and the severed
+  output *becomes* the validator's "malformed YAML". This is the most defect-shaped observation
+  and still rests on a single configuration family.
+
+**Two confounds that remain open, named because closing them is cheap and nobody has.**
+
+- **No supported model was ever served.** `Qwen/Qwen3.8-27B-FP8` is absent from the
+  supported-model table of the shipped image's README, the GitHub README and the GB10 Deployment
+  Guide. §1.2a's R11 reproduced the outcome on the NVFP4 checkpoint and concluded unsupported
+  status "is not an available explanation" — but R11 closes the **kernel-path** question (the
+  audit covered NVFP4, the A/B served FP8), not the model-support one, because the NVFP4 build of
+  that same model is equally unlisted. Both configurations are one unlisted model in two
+  quantizations.
+- **The build was never matched to the recipe's.** The A/B ran `avarok/atlas-gb10:latest` built
+  2026-08-15; the recipe annotates itself "tested on binary main 680b3a568". Nobody verified
+  those are the same build, so a version mismatch sits under all fourteen configurations.
+
+**What would settle it, in one session.** Serve one model from the supported table and send the
+same repetitive-YAML prompt. Misbehaviour there makes it an engine defect and the report is
+strong; correct behaviour makes it an unsupported-model interaction and the ask becomes a
+support question, which is both different and likelier to be answered. **The control-surface
+half stands either way** and is reportable on its own.
+
+**So the unblock path runs through a diagnosis, not straight to a bug report.** The A/B record's
+disposition (§8) said a report on `simhash_semantic_loop` was "worth filing regardless of
+adoption"; it was never filed. **#1412** now carries the diagnosis first and the report behind
+it. If the guard becomes controllable and the model reaches the supported table, adoption is a
+measurement again rather than a redesign: the seam, the adapter and the conformance suite are
+already in the tree and inert per §4.
 
 **The dependency runs the other way from how a reader might take it.** The 1.7.4 plan says the
 line "does not adopt Atlas (SIP-0106 stays accepted and not adopted until #301)". #301
@@ -379,8 +417,8 @@ today, and it is why the item is closed rather than carried forward through furt
 a small cost precisely because the integration landed — what a retry needs is the box and a
 serve script, not new code.
 
-**What would change it.** A vendor fix (#1412) that lets P4/P5 be re-run and their negative
-overturned. Not a bootstrap entry.
+**What would change it.** A diagnosis and, if it lands there, a vendor fix (#1412) that lets
+P4/P5 be re-run and their negative overturned. Not a bootstrap entry.
 
 ## 2. Problem Statement
 
