@@ -963,7 +963,7 @@ class TestTheRecordNamesTheDeployItObserved:
             "correction_rounds": 0,
             "framing_runs": 1,
             "framing_rerolls": 0,
-            "failed_emissions_banked": 0,
+            "failed_emission_artifacts_banked": 0,
             "ended_without_implementation": False,
         }
         rec.update(extra)
@@ -2286,18 +2286,20 @@ class TestALoadedCheckIsAskedWhereItSaysAndAnsweredBeforeLaunch:
         assert all(c.service in driver.DEPLOY_SERVICES for c in cfg.loaded_checks)
 
 
-class TestAFailedEmissionIsCountedOnceNotOncePerArtifact:
-    """#1431: the record's "failed emissions banked" counted artifacts.
+class TestFailedEmissionBankingIsReportedAsArtifactsNotEmissions:
+    """#1431 was a label defect; #1436 is why it is fixed as one.
 
-    #971 banks every artifact of a failed emission — a `qa.test` failure banks its suite,
-    its `test_report.md` and its `typed_check_evaluation_*.json` — so one failed emission
-    reported as 3. Round 1's halves recorded 0 and round 2's React half recorded 3, which
-    reads as "three emissions failed versus none" when one did, and the true figure was
-    recoverable only by opening the vault and grouping on `task_id`.
+    #971 banks every artifact of a failed emission and the readout called the total
+    "failed emissions banked" — one failed `qa.test` banking its suite, its test_report
+    and its evaluation row read as 3. The first fix grouped on `task_id` to derive an
+    emission count, and round 2's Next.js half falsified it: two failed ATTEMPTS of one
+    task, 6.3 s apart, each banking one `build_warnings.md`, collapsed to 1 — an
+    under-count on exactly the contentless-emission behaviour L1 tracks. The banked
+    metadata carries no attempt marker, so the emission count is not derivable from what
+    is stored. The readout now reports the artifacts it actually counts and says so.
     """
 
     def _cycle(self, driver, tmp_path, monkeypatch, artifacts):
-        """Stub the two seams `collect` reads: the run rows and the artifact dirs."""
         dirs = []
         for i, (task_id, filename) in enumerate(artifacts):
             art = tmp_path / f"art_{i:012x}"
@@ -2339,10 +2341,8 @@ class TestAFailedEmissionIsCountedOnceNotOncePerArtifact:
         )
         return driver.collect(driver.load_set_config(p), "cyc_test")
 
-    def test_one_failed_task_banking_three_artifacts_counts_as_one_emission(
-        self, driver, tmp_path, monkeypatch
-    ):
-        """The exact shape of `cyc_69d34bc41c20`: one qa.test failure, three artifacts."""
+    def test_one_emissions_three_artifacts_are_three_artifacts(self, driver, tmp_path, monkeypatch):
+        """`cyc_69d34bc41c20`: one qa.test failure banking suite + report + evaluation."""
         rec = self._cycle(
             driver,
             tmp_path,
@@ -2353,35 +2353,40 @@ class TestAFailedEmissionIsCountedOnceNotOncePerArtifact:
                 ("task-m005-qa.test", "typed_check_evaluation_task_5.json"),
             ],
         )
-        assert rec["failed_emissions_banked"] == 1
         assert rec["failed_emission_artifacts_banked"] == 3
+        # The old key is gone rather than left as an alias: a record carrying both would
+        # let a reader pick the one that flatters the roll.
+        assert "failed_emissions_banked" not in rec
 
-    def test_two_failed_tasks_are_two_emissions(self, driver, tmp_path, monkeypatch):
-        """The counting must still separate genuinely distinct failures — a fix that
-        collapsed everything to 1 would pass the test above and lose the signal."""
+    def test_two_attempts_of_one_task_are_not_collapsed(self, driver, tmp_path, monkeypatch):
+        """The counter-example that reverted the grouping (`cyc_c45d60c9eb16`): two failed
+        attempts of ONE task, each banking one file. A task-keyed count reports 1 and
+        under-states the failures; the artifact count reports both."""
         rec = self._cycle(
             driver,
             tmp_path,
             monkeypatch,
             [
-                ("task-m005-qa.test", "backend/tests/test_runs.py"),
-                ("task-m005-qa.test", "test_report.md"),
-                ("task-m008-builder.assemble", "Dockerfile"),
+                ("task-m009-qa.test", "build_warnings.md"),
+                ("task-m009-qa.test", "build_warnings.md"),
             ],
         )
-        assert rec["failed_emissions_banked"] == 2
-        assert rec["failed_emission_artifacts_banked"] == 3
+        assert rec["failed_emission_artifacts_banked"] == 2
 
-    def test_a_clean_roll_reports_zero_on_both_counts(self, driver, tmp_path, monkeypatch):
+    def test_a_clean_roll_reports_zero(self, driver, tmp_path, monkeypatch):
         rec = self._cycle(driver, tmp_path, monkeypatch, [])
-        assert rec["failed_emissions_banked"] == 0
         assert rec["failed_emission_artifacts_banked"] == 0
 
-    def test_an_artifact_with_no_task_id_is_not_folded_into_one_bucket(
-        self, driver, tmp_path, monkeypatch
-    ):
-        """Older banked artifacts predate the `task_id` stamp. Grouping them all under a
-        missing key would report N such failures as one; each falls back to its own id."""
-        rec = self._cycle(driver, tmp_path, monkeypatch, [("", "a.py"), ("", "b.py")])
-        assert rec["failed_emissions_banked"] == 2
-        assert rec["failed_emission_artifacts_banked"] == 2
+    def test_the_readout_does_not_claim_an_emission_count(self, driver, tmp_path, monkeypatch):
+        """The label is the defect #1431 filed. A readout saying "emissions" over a number
+        that counts artifacts is what made 3 unreadable against another roll's 0."""
+        rec = self._cycle(driver, tmp_path, monkeypatch, [("task-m005-qa.test", "test_report.md")])
+        cfg_path = tmp_path / "set.yaml"
+        cfg = driver.load_set_config(cfg_path)
+        line = next(
+            ln
+            for ln in driver.render(cfg, "shakeout (non-counting)", rec).splitlines()
+            if "banked (#971" in ln
+        )
+        assert "ARTIFACTS" in line
+        assert "#1436" in line
