@@ -74,6 +74,13 @@ loaded_checks:
   # #1351: the router restore re-homes the paths it strips a prefix from (control: no empty
   # path is left). #1359: a typeof assertion is read by its literal's VALUE — number — and a
   # plain quoted literal is still a string.
+  #
+  # THE PACK'S OWN SURFACES, each with its paired control, so deploy C's identity proves
+  # the 1.7.4 rows are LOADED rather than merely merged: #1374 what a builder owes vs what
+  # a dev task owes; #1372 the emission shape on the marker; #994 a rewind with and without
+  # an accepted repair; #1054 a decision that disputes and one that abstains, and the signal
+  # that is not disputable at all; #995 the history reader; #968 a refuted path and a sound
+  # claim refuting nothing; #1285 the two reasoning levels of one capability.
   runtime-api: >-
     from squadops.cycles.fill_slot_integrity import restore_declared_status_codes;
     from squadops.cycles.acceptance_checks import assertion_literal_kinds_js;
@@ -81,6 +88,12 @@ loaded_checks:
     from squadops.cycles.patch_verification import PatchCheckRecord, skip_reasons;
     from squadops.cycles.acceptance_check_spec import CHECK_SPECS, derived_check_names;
     from adapters.cycles.dispatched_flow_executor import _ASSEMBLY_NOTES_READERS;
+    from squadops.cycles.check_registry import framework_rows_owed;
+    from squadops.cycles.emission_integrity import no_fenced_blocks_failure;
+    from squadops.cycles.correction_policy import resolve_correction_path;
+    from squadops.cycles.failure_evidence import decision_disputes_own_artifact, own_artifact_signal, prior_emission_history;
+    from adapters.cycles.correction_runner import refuted_source_claims;
+    from squadops.capabilities.reasoning_policy import default_reasoning_level;
     cfg = {"build_profile": "nextjs_ts", "development_profile": "nextjs_ts"};
     seed = "from fastapi import APIRouter\nrouter = APIRouter()\n@router.post(\"/runs\", status_code=201)\ndef c(p: dict):\n    return {}\n";
     emitted = seed.replace("APIRouter()", "APIRouter(prefix=\"/runs\")").replace("(\"/runs\", status_code=201)", "(\"\", status_code=201)");
@@ -94,6 +107,20 @@ loaded_checks:
     "harness_boundary" in derived_check_names(), "sections_present" in CHECK_SPECS,
     sorted(_ASSEMBLY_NOTES_READERS),
     "@router.post(\"/runs\", status_code=201)" in rehomed, "(\"\"" not in rehomed,
+    framework_rows_owed("builder.assemble"), framework_rows_owed("development.develop"),
+    no_fenced_blocks_failure(9, ["Dockerfile"], content="I will start.")["fences"],
+    resolve_correction_path("rewind", {}, {}, has_accepted_repair=True).path,
+    resolve_correction_path("rewind", {}, {}, has_accepted_repair=False).path,
+    decision_disputes_own_artifact({"affected_task_types": ["backend_route_implementation"]}),
+    decision_disputes_own_artifact({"affected_task_types": ["frontend", "testing"]}),
+    own_artifact_signal({"emission_failure": {"reason": "no_fenced_blocks"}}),
+    len(prior_emission_history("t", [])),
+    [e["path"] for e in refuted_source_claims(
+        {"analysis_summary": "backend/ghost.py is the cause."},
+        {"implementation_artifacts": ["backend/routes.py"]})],
+    refuted_source_claims({"analysis_summary": "backend/routes.py is the cause."},
+        {"implementation_artifacts": ["backend/routes.py"]}),
+    default_reasoning_level("qa.test", output_shape="fill"), default_reasoning_level("qa.test"),
     assertion_literal_kinds_js("expect(typeof b.participant_count).toBe('number')\nexpect(b.n).toBe('x')\n"))
   # #1292: the qa namespace is the co-located convention and nothing else — the root
   # harness and a co-located suite are qa's, an API route is not. Before the fix the third
