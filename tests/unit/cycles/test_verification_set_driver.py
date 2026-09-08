@@ -2390,3 +2390,95 @@ class TestFailedEmissionBankingIsReportedAsArtifactsNotEmissions:
         )
         assert "ARTIFACTS" in line
         assert "#1436" in line
+
+
+class TestTheInstrumentMayNotJudgeWithCodeTheDeployNeverRan:
+    """The driver imports `squadops` to compute P0 and B1, so a framework change landing
+    after the deploy would judge a roll against logic the system never ran.
+
+    Docs and driver changes are free — that is what lets an instrument fix land mid-line
+    without a rebuild, and 1.7.4 used it four times. `src/` and `adapters/` are not, and
+    nothing checked it: `frozen_deploy_commit` was typed and never read.
+    """
+
+    def _cfg(self, driver, tmp_path, **overrides):
+        import yaml
+
+        base = {
+            "name": "t",
+            "project": "group_run",
+            "squad_profile": "full-38",
+            "request_profile": "validated-fullstack",
+            "gate_name": "g",
+            "gate_notes": "g",
+            "launch_notes": "r {roll}/{n}",
+            "shakeout_notes": "s",
+            "n_rolls": 2,
+        }
+        base.update(overrides)
+        p = tmp_path / "set.yaml"
+        p.write_text(yaml.safe_dump(base))
+        return driver.load_set_config(p)
+
+    def test_an_unpinned_deploy_commit_is_refused_rather_than_skipped(self, driver, tmp_path):
+        """The check must not quietly not-run when the pin is absent — that is the state
+        every record before this carried, printed as 'typed, not measured'."""
+        problems = driver.framework_drift_problems(self._cfg(driver, tmp_path))
+        assert len(problems) == 1
+        assert "no frozen_deploy_commit" in problems[0]
+
+    def test_an_unresolvable_pin_is_not_read_as_no_drift(self, driver, tmp_path, monkeypatch):
+        """Bug caught: `sh(check=False)` returns empty stdout when git fails, which is
+        byte-identical to a clean diff. A typo'd or unfetched pin would have passed."""
+        monkeypatch.setattr(driver, "sh", lambda cmd, check=True: "")
+        problems = driver.framework_drift_problems(
+            self._cfg(driver, tmp_path, frozen_deploy_commit="deadbeef")
+        )
+        assert len(problems) == 1
+        assert "does not resolve" in problems[0]
+        assert "not the same as passing" in problems[0]
+
+    def test_framework_files_changed_since_the_deploy_stop_the_launch(
+        self, driver, tmp_path, monkeypatch
+    ):
+        def fake_sh(cmd: str, check: bool = True) -> str:
+            if "rev-parse" in cmd:
+                return "abc123"
+            return "src/squadops/capabilities/scaffold.py\nadapters/cycles/correction_runner.py"
+
+        monkeypatch.setattr(driver, "sh", fake_sh)
+        problems = driver.framework_drift_problems(
+            self._cfg(driver, tmp_path, frozen_deploy_commit="abc123")
+        )
+        assert len(problems) == 1
+        assert "FRAMEWORK DRIFT: 2 file(s)" in problems[0]
+        assert "scaffold.py" in problems[0]
+
+    def test_docs_and_driver_changes_are_not_drift(self, driver, tmp_path, monkeypatch):
+        """The control, and the reason the guard is scoped to src/ and adapters/: every
+        1.7.4 instrument fix landed mid-line without a rebuild and must keep doing so."""
+
+        def fake_sh(cmd: str, check: bool = True) -> str:
+            if "rev-parse" in cmd:
+                return "abc123"
+            assert "-- src/ adapters/" in cmd, cmd
+            return ""
+
+        monkeypatch.setattr(driver, "sh", fake_sh)
+        assert (
+            driver.framework_drift_problems(
+                self._cfg(driver, tmp_path, frozen_deploy_commit="abc123")
+            )
+            == []
+        )
+
+    def test_a_shakeout_is_not_subject_to_the_pin(self, driver, tmp_path, monkeypatch):
+        """Shakeouts run on a deploy that is unpinned by definition — the guard belongs to
+        the counted set, and firing it on a shakeout would block the loop that finds the
+        drift in the first place."""
+        monkeypatch.setattr(driver, "psql", lambda *a, **k: "0")
+        monkeypatch.setattr(driver, "sh", lambda *a, **k: "")
+        problems = driver.preflight(
+            self._cfg(driver, tmp_path), counting=False, identity={"eve:loaded": "ok"}
+        )
+        assert problems == []

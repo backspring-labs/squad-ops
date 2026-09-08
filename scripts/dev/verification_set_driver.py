@@ -393,6 +393,47 @@ def loaded_check_problems(identity: dict[str, str]) -> list[str]:
     ]
 
 
+def framework_drift_problems(cfg: SetConfig) -> list[str]:
+    """Problems when the DEPLOY's framework code and the INSTRUMENT's have diverged.
+
+    The driver does not only report: it imports `squadops` modules to compute P0 and B1,
+    reconstructing what the framework should have produced and comparing. Those imports
+    resolve against the driver's own tree, never the deployed images — so a framework
+    change landing on main after the deploy would have the instrument judge a roll against
+    logic the system never ran, and nothing in the record would look wrong.
+
+    `frozen_deploy_commit` exists to make that checkable instead of assumed; before this it
+    was typed and never read. Docs and driver changes are free, which is what lets an
+    instrument fix land mid-set without a rebuild — `src/` and `adapters/` are not.
+    """
+    if not cfg.frozen_deploy_commit:
+        return [
+            "counting roll with no frozen_deploy_commit — the framework-drift check cannot "
+            "run, and the driver imports squadops modules to judge P0 and B1"
+        ]
+    # An unresolvable ref must not read as "no drift": `sh(check=False)` returns empty
+    # stdout on failure, which is exactly the shape of a clean diff.
+    if not sh(
+        f"git -C {REPO} rev-parse --verify --quiet {cfg.frozen_deploy_commit}^{{commit}}",
+        check=False,
+    ):
+        return [
+            f"frozen_deploy_commit {cfg.frozen_deploy_commit} does not resolve in the driver's "
+            "tree — the framework-drift check could not run, which is not the same as passing"
+        ]
+    changed = sh(
+        f"git -C {REPO} diff --name-only {cfg.frozen_deploy_commit}..HEAD -- src/ adapters/"
+    ).splitlines()
+    if not changed:
+        return []
+    shown = ", ".join(changed[:5]) + (f" (+{len(changed) - 5} more)" if len(changed) > 5 else "")
+    return [
+        f"§7 FRAMEWORK DRIFT: {len(changed)} file(s) under src/ or adapters/ differ between the "
+        f"frozen deploy {cfg.frozen_deploy_commit} and the driver at HEAD — {shown}. The driver "
+        "imports these to judge P0 and B1; the images do not have them."
+    ]
+
+
 def preflight(cfg: SetConfig, *, counting: bool, identity: dict[str, str]) -> list[str]:
     problems: list[str] = []
     # #1425: three 1.7.4 probes named containers that do not exist and recorded "No such
@@ -429,6 +470,7 @@ def preflight(cfg: SetConfig, *, counting: bool, identity: dict[str, str]) -> li
         problems.append(
             "counting roll with no frozen_image_ids in the set config — pre-register the deploy first"
         )
+    problems.extend(framework_drift_problems(cfg))
     for service, expected in cfg.frozen_image_ids.items():
         actual = image_id(service)
         if actual != expected:
