@@ -190,7 +190,20 @@ loaded_checks:
     "app_traceback_section": "TB"});
     print(v["failing_cases_section"], v["client_surface_section"], v["app_traceback_section"])
 # Pins: filled from the last shakeout before roll 1; empty means "no counting roll may launch".
-expected_config_hash_prefix: ""
-expected_squad_snapshot_prefix: ""
-frozen_deploy_commit: ""
-frozen_image_ids: {}
+# PINNED after the round-3 shakeout pair, on the owner's approval. The last shakeout's
+# identity becomes the set's pins; nothing is rebuilt from here.
+expected_config_hash_prefix: 3921c5a62106
+expected_squad_snapshot_prefix: 575707c58536
+# The commit deploy D's IMAGES were built from — NOT the driver's HEAD, which runs ahead
+# of it on instrument-only fixes. #1438 makes this load-bearing: a counting roll refuses
+# to launch when src/ or adapters/ differ between this commit and the driver, because the
+# driver imports squadops modules to judge P0 and B1.
+frozen_deploy_commit: dfe9a6f2
+frozen_image_ids:
+  runtime-api: afa3d44bf0d7
+  max: 79f4cd50888e
+  neo: f0a8763936ab
+  nat: 1463d82507ca
+  bob: 3538b8cd506a
+  eve: b366dfdc9a22
+  data: 612264db115f
