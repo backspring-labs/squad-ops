@@ -57,7 +57,7 @@ import sys
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -244,7 +244,7 @@ def sh(cmd: str, check: bool = True) -> str:
     return proc.stdout.strip()
 
 
-def docker_logs(container: str, since: str) -> list[str]:
+def docker_logs(container: str, since: str, until: str | None = None) -> list[str]:
     """One container's log window, BOTH streams (#1276).
 
     ``docker logs`` replays the container's stdout and stderr on the reader's own stdout
@@ -254,8 +254,12 @@ def docker_logs(container: str, since: str) -> list[str]:
     an instrument that only ever looked at one stream. Which stream a container happens to
     use is not a fact any readout should depend on.
     """
+    # 1.7.4: bounded at both ends. A window with no end reads every later cycle's lines
+    # into a record re-rendered after them — the deploy A re-render of the contentless-builder
+    # diagnostic carried the analyzer diagnostic's qa retries as its own (#1372's field).
+    bound = f" --until {until}" if until else ""
     proc = subprocess.run(
-        shlex.split(f"docker logs --since {since} {container}"),
+        shlex.split(f"docker logs --since {since}{bound} {container}"),
         capture_output=True,
         text=True,
     )
@@ -270,6 +274,23 @@ def psql(query: str) -> str:
 
 def log(msg: str) -> None:
     print(f"[{datetime.now(UTC).strftime('%H:%M:%S')}Z] {msg}", flush=True)
+
+
+def cycle_log_until(cycle_id: str, grace_seconds: int = 60) -> str | None:
+    """The end of a cycle's log window: its last run's ``finished_at`` plus a grace for the
+    lines the executor writes at the very end — or None while a run is still open, in
+    which case the window has no end and the record says so."""
+    raw = psql(
+        "select to_char(max(finished_at) at time zone 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"'), "
+        f"count(*) filter (where finished_at is null) from cycle_runs where cycle_id='{cycle_id}';"
+    )
+    if not raw or "|" not in raw:
+        return None
+    finished, open_runs = raw.split("|", 1)
+    if not finished.strip() or open_runs.strip() != "0":
+        return None
+    moment = datetime.strptime(finished.strip(), "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+    return log_since(moment + timedelta(seconds=grace_seconds))
 
 
 def log_since(moment: datetime) -> str:
@@ -983,8 +1004,8 @@ def ledger_checks(rec: dict) -> dict:
     }
 
 
-def runtime_log_window(since: str) -> list[str]:
-    lines = docker_logs(RUNTIME_API_CONTAINER, since)
+def runtime_log_window(since: str, until: str | None = None) -> list[str]:
+    lines = docker_logs(RUNTIME_API_CONTAINER, since, until)
     keys = (
         "correction_repair_target",
         "correction_repair_locus",
@@ -1053,13 +1074,15 @@ def prefect_loop_overruns(lines: list[str]) -> dict:
     }
 
 
-def prefect_log_window(since: str) -> list[str]:
+def prefect_log_window(since: str, until: str | None = None) -> list[str]:
     return [
-        line for line in docker_logs(PREFECT_SERVER_CONTAINER, since) if "loop interval" in line
+        line
+        for line in docker_logs(PREFECT_SERVER_CONTAINER, since, until)
+        if "loop interval" in line
     ]
 
 
-def agent_log_window(since: str) -> list[str]:
+def agent_log_window(since: str, until: str | None = None) -> list[str]:
     """The producing agents' emission lines (#1276, #1311).
 
     The loop's emission facts are logged where the emission happens — in the role's own
@@ -1070,7 +1093,7 @@ def agent_log_window(since: str) -> list[str]:
     """
     lines: list[str] = []
     for service in AGENT_SERVICES:
-        lines += _agent_lines_of_interest(docker_logs(f"squadops-{service}", since))
+        lines += _agent_lines_of_interest(docker_logs(f"squadops-{service}", since, until))
     return lines
 
 
@@ -1179,14 +1202,17 @@ def _stored_artifact_names(cfg: SetConfig, cycle_id: str, run_id: str) -> list[s
     return names
 
 
-def loop_texture(cfg: SetConfig, cycle_id: str, impl_run: str | None, since: str) -> dict:
-    logs = runtime_log_window(since)
+def loop_texture(
+    cfg: SetConfig, cycle_id: str, impl_run: str | None, since: str, until: str | None = None
+) -> dict:
+    logs = runtime_log_window(since, until)
     out = texture_from_logs(logs)
-    agent_lines = agent_log_window(since)
+    agent_lines = agent_log_window(since, until)
     out.update(texture_from_emission_shapes(agent_lines))
     out.update(texture_from_retry_feedback(agent_lines))
     # #330: the Prefect server's loop-service overruns in this cycle's window.
-    out["prefect_loop_overruns"] = prefect_loop_overruns(prefect_log_window(since))
+    out["prefect_loop_overruns"] = prefect_loop_overruns(prefect_log_window(since, until))
+    out["log_window"] = {"since": since, "until": until}
     # 1.7.4 (#968, A1): whether a stored correction decision carries the analyzer fault's
     # marker — read from the decision itself, the artifact the repair brief is built from.
     out["decision_inherited_claims"] = (
@@ -1284,11 +1310,15 @@ SEAM_READOUTS: dict[str, tuple[str, Callable[[dict], tuple[bool, Any]]]] = {
     # reading — the diagnostic proves the fault reaches the decision).
     "analyzer_false_source_claim": (
         "A1: the correction decision was reached and carried nothing of the refuted claim — "
-        "not the marker, not its substance, no foreign affected_task_types",
+        "not the marker, not its substance",
         lambda rec: (
             len((rec.get("loop_texture") or {}).get("decision_inherited_claims", [])) >= 1
+            # The marker or the claim's substance decides; ``foreign_affected_task_types``
+            # stays in the reading as D1's texture — the contentless-builder diagnostic's
+            # decision (no analyzer fault) already carried `builder`, `assembler`, `data`,
+            # `qa_handoff` there, so the field is the lead's habit, not the claim's leak.
             and not any(
-                d.get("inherited") or d.get("echoes") or d.get("foreign_affected_task_types")
+                d.get("inherited") or d.get("echoes")
                 for d in (rec.get("loop_texture") or {}).get("decision_inherited_claims", [])
             ),
             {
@@ -2122,7 +2152,9 @@ def _run_cycle(
     framing = completed_framing_run(cyc)
     rec["static_checks"] = static_checks(cfg, stack, cyc, rec["impl_run_id"], framing)
     rec["ledger_checks"] = ledger_checks(rec)
-    rec["loop_texture"] = loop_texture(cfg, cyc, rec["impl_run_id"], launched_at)
+    rec["loop_texture"] = loop_texture(
+        cfg, cyc, rec["impl_run_id"], launched_at, until=cycle_log_until(cyc)
+    )
     rec["typed_checks"] = (
         typed_checks_by_check(cfg, cyc, rec["impl_run_id"]) if rec["impl_run_id"] else {}
     )
