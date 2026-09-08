@@ -1114,8 +1114,11 @@ _INJECTED_CLAIM_MARKER = "__squadops_injected_fault__"
 #: `affected_task_types` — the refuted claim absorbed in full — while carrying no marker
 #: string. A readout keyed on the marker alone read it as not inherited (the 1.7.2 §7
 #: failure: a readout that cannot see its own miss).
+# "injected" alone is not the claim's: the own-frame chain diagnostic's decision (no analyzer
+# fault declared) said "injected" of the fault call it could see in the suite. The echoes are
+# the claim's own phrases.
 _INJECTED_CLAIM_ECHOES = (
-    "injected",
+    "injected backend fault",
     "registers its router",
     "router registration",
     "runs endpoints return 404",

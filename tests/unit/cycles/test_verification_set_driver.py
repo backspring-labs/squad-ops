@@ -1781,7 +1781,7 @@ class TestTheNewFaultsAreReadBySeams:
             {
                 "artifact": "art_1",
                 "inherited": True,
-                "echoes": ["injected"],
+                "echoes": [],
                 "foreign_affected_task_types": [],
             },
             {
@@ -1890,7 +1890,7 @@ class TestTheA1ReadoutSeesTheClaimsSubstance:
     def test_the_real_decision_reads_as_absorbed_without_the_marker(self, driver):
         r = driver._decision_reading(self._REAL_DECISION)
         assert r["inherited"] is False
-        assert r["echoes"] == ["injected", "router registration"]
+        assert r["echoes"] == ["injected backend fault", "router registration"]
         assert r["foreign_affected_task_types"] == ["backend"]
 
     def test_a_clean_decision_reads_clean_and_the_marker_still_counts(self, driver):
@@ -1904,6 +1904,10 @@ class TestTheA1ReadoutSeesTheClaimsSubstance:
         }
         marked = json.dumps({"decision_rationale": "fix backend/__squadops_injected_fault__.py"})
         assert driver._decision_reading(marked)["inherited"] is True
+        # The own-frame chain's decision (cyc_a26c6828482c) said "injected" of the fault call
+        # it could see in the suite — not the analyzer's claim.
+        own_frame = json.dumps({"decision_rationale": "the suite carries an injected fault call"})
+        assert driver._decision_reading(own_frame)["echoes"] == []
 
     def test_foreign_task_types_alone_do_not_falsify_a1(self, driver):
         """The contentless-builder diagnostic's decision — no analyzer fault declared —
