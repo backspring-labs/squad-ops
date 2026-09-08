@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 import pytest
 import pytest_asyncio
 
+from adapters.persistence.pool import create_pool
 from squadops.cycles.models import (
     Cycle,
     FlowMode,
@@ -74,7 +75,7 @@ _NOW = datetime.now(UTC)
 @pytest_asyncio.fixture
 async def pool():
     """Create an asyncpg pool connected to the test database."""
-    p = await asyncpg.create_pool(POSTGRES_URL, min_size=1, max_size=10)
+    p = await create_pool(POSTGRES_URL, min_size=1, max_size=10)
     yield p
     await p.close()
 

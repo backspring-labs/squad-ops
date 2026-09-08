@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 
+from adapters.persistence.pool import create_pool
 from squadops.runtime.embodiment import Embodiment
 from tests.integration.conftest import integration_postgres_dsn
 
@@ -53,7 +54,7 @@ async def adapter():
     from adapters.persistence.runtime.embodiment_postgres import PostgresEmbodimentState
     from squadops.api.runtime.migrations import apply_migrations
 
-    pool = await asyncpg.create_pool(POSTGRES_URL, min_size=1, max_size=5)
+    pool = await create_pool(POSTGRES_URL, min_size=1, max_size=5)
     await apply_migrations(pool, Path(__file__).parents[3] / "infra" / "migrations")
     yield PostgresEmbodimentState(pool)
     await pool.close()

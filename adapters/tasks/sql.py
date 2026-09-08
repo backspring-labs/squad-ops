@@ -40,9 +40,9 @@ class SQLTaskAdapter(TaskRegistryPort):
     async def _ensure_pool(self) -> Any:
         """Ensure connection pool is established."""
         if self._pool is None:
-            import asyncpg
+            from adapters.persistence.pool import create_pool
 
-            self._pool = await asyncpg.create_pool(self._connection_string)
+            self._pool = await create_pool(self._connection_string)
         return self._pool
 
     async def create(self, task: Task) -> str:
@@ -103,7 +103,6 @@ class SQLTaskAdapter(TaskRegistryPort):
         result: dict[str, Any] | None = None,
     ) -> None:
         """Update task status."""
-        import json
 
         pool = await self._ensure_pool()
 
@@ -126,7 +125,7 @@ class SQLTaskAdapter(TaskRegistryPort):
                 raise TaskStateError(f"Cannot transition from {current_status} to {status.value}")
 
             # Update
-            result_json = json.dumps(result) if result else None
+            result_json = result if result else None
             await conn.execute(
                 f"""
                 UPDATE {self._table_name}

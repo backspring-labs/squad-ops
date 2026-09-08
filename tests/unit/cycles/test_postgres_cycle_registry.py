@@ -196,8 +196,8 @@ class TestPostgresCycleRegistry:
         assert args[4] is None  # prd_ref
         assert args[5] == "full"  # squad_profile_id
         assert args[6] == "sha256:abc"  # squad_profile_snapshot_ref
-        # task_flow_policy is JSON-serialized
-        policy_dict = json.loads(args[7])
+        # task_flow_policy travels as a dict — the pool's codec encodes it (#577)
+        policy_dict = args[7]
         assert policy_dict["mode"] == "sequential"
         assert policy_dict["gates"][0]["name"] == "qa_gate"
         assert args[8] == "fresh"  # build_strategy
@@ -698,7 +698,7 @@ class TestRecordRunVerificationSummary:
         assert "ON CONFLICT (run_id) DO UPDATE" in sql  # upsert, not a plain insert
         assert run_id == "run_001"
         assert verdict == "blocked_unverified"  # required_files unmet drives the verdict
-        stored = json.loads(payload)
+        stored = payload  # a dict: the codec encodes on the way out (#577)
         assert stored["verdict"] == "blocked_unverified"
         assert stored["failed"] == ["frontend_build"]
         assert stored["required_unmet"] == ["required_files"]
@@ -755,10 +755,10 @@ class TestListRunVerificationSummaries:
 
         s1 = aggregate_verification([CheckResult(check_id="a", status="passed")])
         s2 = aggregate_verification([CheckResult(check_id="b", status="failed")])
-        # asyncpg hands JSONB back as a JSON string → parse_jsonb decodes it
+        # JSONB arrives decoded — the pool's codec, not a per-adapter parse (#577)
         conn.fetch.return_value = [
-            {"summary": json.dumps(_verification_summary_to_dict(s1))},
-            {"summary": json.dumps(_verification_summary_to_dict(s2))},
+            {"summary": _verification_summary_to_dict(s1)},
+            {"summary": _verification_summary_to_dict(s2)},
         ]
 
         result = await registry.list_run_verification_summaries("cyc_001")
@@ -923,7 +923,7 @@ class TestGateWaiverSQL:
         conn.fetchrow = AsyncMock(
             side_effect=[
                 {"status": "paused", "cycle_id": "cyc_1"},  # run row
-                {"task_flow_policy": '{"gates": [{"name": "g1"}]}'},  # policy
+                {"task_flow_policy": {"gates": [{"name": "g1"}]}},  # policy
                 None,  # no existing decision
             ]
         )
@@ -944,7 +944,7 @@ class TestGateWaiverSQL:
         insert_sql = conn.execute.call_args_list[0].args[0]
         assert "waived_checks" in insert_sql and "waiver_reason" in insert_sql
         args = conn.execute.call_args_list[0].args
-        assert '"tests_pass"' in args[7]  # JSON-encoded list
+        assert args[7] == ["tests_pass"]  # a list — the pool's codec encodes it (#577)
         assert args[8] == "node absent"
 
     async def test_no_waiver_persists_null_not_empty_list(self, registry, conn):
@@ -955,7 +955,7 @@ class TestGateWaiverSQL:
         conn.fetchrow = AsyncMock(
             side_effect=[
                 {"status": "paused", "cycle_id": "cyc_1"},
-                {"task_flow_policy": '{"gates": [{"name": "g1"}]}'},
+                {"task_flow_policy": {"gates": [{"name": "g1"}]}},
                 None,
             ]
         )
@@ -992,7 +992,7 @@ class TestGateWaiverSQL:
             "decided_by": "op",
             "decided_at": datetime.now(UTC),
             "notes": None,
-            "waived_checks": '["tests_pass"]',
+            "waived_checks": ["tests_pass"],
             "waiver_reason": "node absent",
         }
         old_gate = {  # pre-migration read: columns absent entirely

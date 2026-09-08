@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 
+from adapters.persistence.pool import create_pool
 from squadops.runtime import reasons
 from squadops.runtime.coordinator import RuntimeCoordinator
 from tests.integration.conftest import integration_postgres_dsn
@@ -52,7 +53,7 @@ if not _pg_available():
 async def pool():
     from squadops.api.runtime.migrations import apply_migrations
 
-    p = await asyncpg.create_pool(POSTGRES_URL, min_size=1, max_size=5)
+    p = await create_pool(POSTGRES_URL, min_size=1, max_size=5)
     await apply_migrations(p, Path(__file__).parents[3] / "infra" / "migrations")
     yield p
     await p.close()

@@ -18,6 +18,7 @@ import asyncpg
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from adapters.persistence.pool import create_pool
 from squadops import __version__ as SQUADOPS_VERSION
 from squadops.bootstrap.secrets import secret_provider_for
 from squadops.config import config_fingerprint, load_config, redact_config
@@ -554,7 +555,7 @@ async def startup_event():
     global pool, rabbitmq_connection, rabbitmq_channel
 
     # Initialize PostgreSQL pool
-    pool = await asyncpg.create_pool(POSTGRES_URL, min_size=1, max_size=10)
+    pool = await create_pool(POSTGRES_URL, min_size=1, max_size=10)  # #577: the one factory
 
     # Initialize RabbitMQ connection (persistent, like agents do)
     try:
