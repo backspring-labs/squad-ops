@@ -212,3 +212,54 @@ class TestCycleEvidenceCapture:
         got = brp.cycle_evidence(["cyc_1"], "http://api", "proj")[0]
         assert got["captured"] is False
         assert "squadops login" in got["reason"]
+
+
+class TestCycleRoles:
+    """A captured cycle says what it WAS to the release. The v1.7.3 package first shipped one
+    counted roll and would have listed a fault-injected diagnostic's ``rejected`` beside the
+    counted rolls with nothing to tell them apart; a reader of the site would have read a
+    diagnostic that did its job as a failed roll."""
+
+    def test_a_role_is_parsed_from_the_cycle_argument_and_a_bare_id_carries_none(self):
+        brp = build_release_package
+        assert brp.parse_cycle_arg("cyc_1:diagnostic") == ("cyc_1", "diagnostic")
+        assert brp.parse_cycle_arg("cyc_1") == ("cyc_1", None)
+
+    def test_an_unknown_role_is_refused_naming_the_vocabulary(self):
+        with pytest.raises(SystemExit, match="unknown role 'bogus'; one of counted, shakeout"):
+            build_release_package.parse_cycle_arg("cyc_1:bogus")
+
+    def test_the_role_rides_the_evidence_and_the_page_says_what_a_diagnostic_is(self, monkeypatch):
+        brp = build_release_package
+        body = (
+            '{"status": "completed", "runs": [1, 2], "cycle_outcome": {"verdict": "rejected", '
+            '"verified": [], "failed": ["tests_pass"], "required_unmet": [], "unverified": []}}'
+        )
+        monkeypatch.setattr(brp, "run", lambda *a, **k: body)
+        monkeypatch.setattr(brp, "_bearer_token", lambda: "tok")
+        cycles = brp.cycle_evidence(
+            ["cyc_d", "cyc_c"], "http://api", "proj", {"cyc_d": "diagnostic"}
+        )
+        assert cycles[0]["role"] == "diagnostic"
+        assert "role" not in cycles[1]
+        page = brp.render(
+            "1.7.3",
+            "v1.7.3",
+            {
+                "date": "2026-09-07",
+                "narrative": "",
+                "pull_requests": [],
+                "sip_moves": [],
+                "cycles": cycles,
+                "screenshots": [],
+            },
+        )
+        assert "**Role:** diagnostic — fault-injected, non-counting" in page
+        assert brp.cycle_count_line(cycles) == "2 cycles (1 diagnostic)"
+
+    def test_an_absent_cycle_keeps_its_role(self, monkeypatch):
+        brp = build_release_package
+        monkeypatch.setattr(brp, "run", lambda *a, **k: '{"detail": "Not Found"}')
+        monkeypatch.setattr(brp, "_bearer_token", lambda: "tok")
+        got = brp.cycle_evidence(["cyc_v"], "http://api", "proj", {"cyc_v": "void"})[0]
+        assert got["captured"] is False and got["role"] == "void"

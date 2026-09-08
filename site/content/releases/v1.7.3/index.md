@@ -116,7 +116,7 @@ The driver reads a diagnostic by the seam it reached (`seam_reached`), carries `
 
 ### `cyc_597f5cb76fb2`
 
-**Verdict:** `rejected` · **Runs:** 2
+**Verdict:** `rejected` · **Runs:** 2 · **Role:** counted
 
 | | Checks |
 |---|---|
@@ -127,7 +127,7 @@ The driver reads a diagnostic by the seam it reached (`seam_reached`), carries `
 
 ### `cyc_4acd6ce64ca1`
 
-**Verdict:** `accepted` · **Runs:** 2
+**Verdict:** `accepted` · **Runs:** 2 · **Role:** counted
 
 | | Checks |
 |---|---|
@@ -138,7 +138,7 @@ The driver reads a diagnostic by the seam it reached (`seam_reached`), carries `
 
 ### `cyc_ce33e6a1da5f`
 
-**Verdict:** `accepted` · **Runs:** 2
+**Verdict:** `accepted` · **Runs:** 2 · **Role:** counted
 
 | | Checks |
 |---|---|
@@ -149,7 +149,7 @@ The driver reads a diagnostic by the seam it reached (`seam_reached`), carries `
 
 ### `cyc_b9961579f33b`
 
-**Verdict:** `accepted` · **Runs:** 2
+**Verdict:** `accepted` · **Runs:** 2 · **Role:** counted
 
 | | Checks |
 |---|---|
@@ -160,7 +160,7 @@ The driver reads a diagnostic by the seam it reached (`seam_reached`), carries `
 
 ### `cyc_52a2c7438d12`
 
-**Verdict:** `accepted` · **Runs:** 2
+**Verdict:** `accepted` · **Runs:** 2 · **Role:** counted
 
 | | Checks |
 |---|---|
@@ -171,7 +171,7 @@ The driver reads a diagnostic by the seam it reached (`seam_reached`), carries `
 
 ### `cyc_3270c790620e`
 
-**Verdict:** `accepted` · **Runs:** 2
+**Verdict:** `accepted` · **Runs:** 2 · **Role:** counted
 
 | | Checks |
 |---|---|
@@ -182,7 +182,7 @@ The driver reads a diagnostic by the seam it reached (`seam_reached`), carries `
 
 ### `cyc_2dfbb0f1af81`
 
-**Verdict:** `accepted` · **Runs:** 2
+**Verdict:** `accepted` · **Runs:** 2 · **Role:** counted
 
 | | Checks |
 |---|---|
@@ -193,7 +193,7 @@ The driver reads a diagnostic by the seam it reached (`seam_reached`), carries `
 
 ### `cyc_5cb087956ba9`
 
-**Verdict:** `accepted` · **Runs:** 2
+**Verdict:** `accepted` · **Runs:** 2 · **Role:** counted
 
 | | Checks |
 |---|---|
@@ -204,11 +204,165 @@ The driver reads a diagnostic by the seam it reached (`seam_reached`), carries `
 
 ### `cyc_57cdbad02f67`
 
-**Verdict:** `accepted` · **Runs:** 2
+**Verdict:** `accepted` · **Runs:** 2 · **Role:** counted
 
 | | Checks |
 |---|---|
 | Verified | acceptance:additive_containment, acceptance:assertion_kinds_match, acceptance:declared_imports, acceptance:dom_anchor_queries, acceptance:frontend_compiles, acceptance:sections_present, acceptance:undefined_names, acceptance:unterminated_source, acceptance_criteria_prose, expected_artifacts, frontend_build, no_self_mocking_tests, no_stub_fallback_tests, non_stub_files, required_files, tests_pass, vc-probe-api-runs, vc-probe-api-runs-join, vc-probe-api-runs-join-duplicate, vc-probe-api-runs-leave, vc-probe-api-runs-rejects-blank |
+| Failed | — |
+| Required unmet | — |
+| Never executed | — |
+
+### `cyc_af7dd4ad95b0`
+
+**Verdict:** `blocked_unverified` · **Runs:** 2 · **Role:** void — void: the roll was stopped and the set restarted (the record's §0)
+
+| | Checks |
+|---|---|
+| Verified | acceptance:additive_containment, acceptance:assertion_kinds_match, acceptance:command_exit_zero, acceptance:container_packaging, acceptance:declared_imports, acceptance:dom_anchor_queries, acceptance:endpoint_defined, acceptance:fill_slot_signature, acceptance:frontend_compiles, acceptance:function_defined, acceptance:harness_boundary, acceptance:import_present, acceptance:module_imports, acceptance:sections_present, acceptance:undefined_names, acceptance:unterminated_source, acceptance_criteria_prose, expected_artifacts, frontend_build, no_self_mocking_tests, no_stub_fallback_tests, non_stub_files, tests_pass, vc-probe-runs, vc-probe-runs-join, vc-probe-runs-join-duplicate, vc-probe-runs-leave, vc-probe-runs-rejects-blank |
+| Failed | — |
+| Required unmet | required_files |
+| Never executed | required_files |
+
+### `cyc_afa090a173a3`
+
+**Verdict:** `accepted` · **Runs:** 2 · **Role:** shakeout — non-counting: the deploy's shakeout, read for seam findings
+
+| | Checks |
+|---|---|
+| Verified | acceptance:command_exit_zero, acceptance:declared_imports, acceptance:endpoint_defined, acceptance:fill_slot_signature, acceptance:frontend_compiles, acceptance:function_defined, acceptance:harness_boundary, acceptance:import_present, acceptance:module_imports, acceptance:sections_present, acceptance:undefined_names, acceptance:unterminated_source, acceptance_criteria_prose, expected_artifacts, frontend_build, no_self_mocking_tests, no_stub_fallback_tests, non_stub_files, required_files, tests_pass, vc-probe-runs, vc-probe-runs-join, vc-probe-runs-join-duplicate, vc-probe-runs-leave, vc-probe-runs-rejects-blank |
+| Failed | — |
+| Required unmet | — |
+| Never executed | — |
+
+### `cyc_c75e87867783`
+
+**Verdict:** `rejected` · **Runs:** 2 · **Role:** shakeout — non-counting: the deploy's shakeout, read for seam findings
+
+| | Checks |
+|---|---|
+| Verified | acceptance:additive_containment, acceptance:declared_imports, acceptance:dom_anchor_queries, acceptance:frontend_compiles, acceptance:sections_present, acceptance:undefined_names, acceptance:unterminated_source, acceptance_criteria_prose, expected_artifacts, frontend_build, no_self_mocking_tests, no_stub_fallback_tests, non_stub_files, required_files, tests_pass, vc-probe-api-runs, vc-probe-api-runs-participants, vc-probe-api-runs-participants-duplicate, vc-probe-api-runs-rejects-blank |
+| Failed | acceptance:assertion_kinds_match |
+| Required unmet | — |
+| Never executed | — |
+
+### `cyc_67b1a60dd32a`
+
+**Verdict:** `accepted` · **Runs:** 2 · **Role:** shakeout — non-counting: the deploy's shakeout, read for seam findings
+
+| | Checks |
+|---|---|
+| Verified | acceptance:additive_containment, acceptance:assertion_kinds_match, acceptance:command_exit_zero, acceptance:contract_assertions_match, acceptance:declared_imports, acceptance:dom_anchor_queries, acceptance:endpoint_defined, acceptance:fill_slot_signature, acceptance:frontend_compiles, acceptance:function_defined, acceptance:harness_boundary, acceptance:import_present, acceptance:module_imports, acceptance:sections_present, acceptance:undefined_names, acceptance:unterminated_source, acceptance_criteria_prose, expected_artifacts, frontend_build, no_self_mocking_tests, no_stub_fallback_tests, non_stub_files, required_files, tests_pass, vc-probe-runs, vc-probe-runs-join, vc-probe-runs-join-duplicate, vc-probe-runs-leave, vc-probe-runs-rejects-blank |
+| Failed | — |
+| Required unmet | — |
+| Never executed | — |
+
+### `cyc_e8f402fef0f8`
+
+**Verdict:** `accepted` · **Runs:** 2 · **Role:** shakeout — non-counting: the deploy's shakeout, read for seam findings
+
+| | Checks |
+|---|---|
+| Verified | acceptance:additive_containment, acceptance:assertion_kinds_match, acceptance:declared_imports, acceptance:dom_anchor_queries, acceptance:frontend_compiles, acceptance:sections_present, acceptance:undefined_names, acceptance:unterminated_source, acceptance_criteria_prose, expected_artifacts, frontend_build, no_self_mocking_tests, no_stub_fallback_tests, non_stub_files, required_files, tests_pass, vc-probe-api-runs, vc-probe-api-runs-join, vc-probe-api-runs-join-duplicate, vc-probe-api-runs-leave, vc-probe-api-runs-rejects-blank |
+| Failed | — |
+| Required unmet | — |
+| Never executed | — |
+
+### `cyc_c682b35d6422`
+
+**Verdict:** `rejected` · **Runs:** 2 · **Role:** shakeout — non-counting: the deploy's shakeout, read for seam findings
+
+| | Checks |
+|---|---|
+| Verified | acceptance:additive_containment, acceptance:assertion_kinds_match, acceptance:command_exit_zero, acceptance:contract_assertions_match, acceptance:declared_imports, acceptance:dom_anchor_queries, acceptance:endpoint_defined, acceptance:fill_slot_signature, acceptance:frontend_compiles, acceptance:function_defined, acceptance:harness_boundary, acceptance:import_present, acceptance:module_imports, acceptance:undefined_names, acceptance:unterminated_source, acceptance_criteria_prose, expected_artifacts, frontend_build, no_self_mocking_tests, no_stub_fallback_tests, non_stub_files, tests_pass, vc-probe-runs, vc-probe-runs-join, vc-probe-runs-join-duplicate, vc-probe-runs-rejects-blank |
+| Failed | required_files, acceptance:sections_present |
+| Required unmet | — |
+| Never executed | — |
+
+### `cyc_d988c11c71f5`
+
+**Verdict:** `accepted` · **Runs:** 2 · **Role:** shakeout — non-counting: the deploy's shakeout, read for seam findings
+
+| | Checks |
+|---|---|
+| Verified | acceptance:additive_containment, acceptance:assertion_kinds_match, acceptance:container_packaging, acceptance:count_at_least, acceptance:declared_imports, acceptance:dom_anchor_queries, acceptance:frontend_compiles, acceptance:sections_present, acceptance:undefined_names, acceptance:unterminated_source, acceptance_criteria_prose, expected_artifacts, frontend_build, no_self_mocking_tests, no_stub_fallback_tests, non_stub_files, required_files, tests_pass, vc-probe-api-runs, vc-probe-api-runs-join, vc-probe-api-runs-join-duplicate, vc-probe-api-runs-leave, vc-probe-api-runs-rejects-blank |
+| Failed | — |
+| Required unmet | — |
+| Never executed | — |
+
+### `cyc_508def6d810f`
+
+**Verdict:** `accepted` · **Runs:** 2 · **Role:** diagnostic — fault-injected, non-counting: its verdict is not a verdict about the squad (#1251)
+
+| | Checks |
+|---|---|
+| Verified | acceptance:additive_containment, acceptance:assertion_kinds_match, acceptance:command_exit_zero, acceptance:container_packaging, acceptance:declared_imports, acceptance:dom_anchor_queries, acceptance:endpoint_defined, acceptance:fill_slot_signature, acceptance:frontend_compiles, acceptance:function_defined, acceptance:harness_boundary, acceptance:import_present, acceptance:module_imports, acceptance:sections_present, acceptance:undefined_names, acceptance:unterminated_source, acceptance_criteria_prose, expected_artifacts, frontend_build, no_self_mocking_tests, no_stub_fallback_tests, non_stub_files, required_files, tests_pass, vc-probe-runs, vc-probe-runs-join, vc-probe-runs-join-duplicate, vc-probe-runs-leave, vc-probe-runs-rejects-blank |
+| Failed | — |
+| Required unmet | — |
+| Never executed | — |
+
+### `cyc_6258b632e198`
+
+**Verdict:** `accepted` · **Runs:** 2 · **Role:** diagnostic — fault-injected, non-counting: its verdict is not a verdict about the squad (#1251)
+
+| | Checks |
+|---|---|
+| Verified | acceptance:assertion_kinds_match, acceptance:command_exit_zero, acceptance:contract_assertions_match, acceptance:declared_imports, acceptance:endpoint_defined, acceptance:fill_slot_signature, acceptance:frontend_compiles, acceptance:function_defined, acceptance:harness_boundary, acceptance:import_present, acceptance:module_imports, acceptance:sections_present, acceptance:undefined_names, acceptance:unterminated_source, acceptance_criteria_prose, expected_artifacts, frontend_build, no_self_mocking_tests, no_stub_fallback_tests, non_stub_files, required_files, tests_pass, vc-probe-runs, vc-probe-runs-join, vc-probe-runs-join-duplicate, vc-probe-runs-leave, vc-probe-runs-rejects-blank |
+| Failed | — |
+| Required unmet | — |
+| Never executed | — |
+
+### `cyc_82e1bd587051`
+
+**Verdict:** `accepted` · **Runs:** 2 · **Role:** diagnostic — fault-injected, non-counting: its verdict is not a verdict about the squad (#1251)
+
+| | Checks |
+|---|---|
+| Verified | acceptance:additive_containment, acceptance:assertion_kinds_match, acceptance:command_exit_zero, acceptance:container_packaging, acceptance:contract_assertions_match, acceptance:declared_imports, acceptance:dom_anchor_queries, acceptance:endpoint_defined, acceptance:fill_slot_signature, acceptance:frontend_compiles, acceptance:function_defined, acceptance:harness_boundary, acceptance:import_present, acceptance:module_imports, acceptance:sections_present, acceptance:undefined_names, acceptance:unterminated_source, acceptance_criteria_prose, expected_artifacts, frontend_build, no_self_mocking_tests, no_stub_fallback_tests, non_stub_files, required_files, tests_pass, vc-probe-runs, vc-probe-runs-join, vc-probe-runs-join-duplicate, vc-probe-runs-leave, vc-probe-runs-rejects-blank |
+| Failed | — |
+| Required unmet | — |
+| Never executed | — |
+
+### `cyc_1b3b225e593e`
+
+**Verdict:** `blocked_unverified` · **Runs:** 2 · **Role:** diagnostic — fault-injected, non-counting: its verdict is not a verdict about the squad (#1251)
+
+| | Checks |
+|---|---|
+| Verified | acceptance:command_exit_zero, acceptance:container_packaging, acceptance:declared_imports, acceptance:endpoint_defined, acceptance:fill_slot_signature, acceptance:frontend_compiles, acceptance:import_present, acceptance:module_imports, acceptance:sections_present, acceptance:undefined_names, acceptance:unterminated_source, acceptance_criteria_prose, expected_artifacts, non_stub_files, required_files |
+| Failed | — |
+| Required unmet | frontend_build, tests_pass |
+| Never executed | frontend_build, tests_pass |
+
+### `cyc_075b459f6aef`
+
+**Verdict:** `accepted` · **Runs:** 2 · **Role:** diagnostic — fault-injected, non-counting: its verdict is not a verdict about the squad (#1251)
+
+| | Checks |
+|---|---|
+| Verified | acceptance:assertion_kinds_match, acceptance:command_exit_zero, acceptance:contract_assertions_match, acceptance:declared_imports, acceptance:endpoint_defined, acceptance:fill_slot_signature, acceptance:frontend_compiles, acceptance:function_defined, acceptance:harness_boundary, acceptance:import_present, acceptance:module_imports, acceptance:sections_present, acceptance:undefined_names, acceptance:unterminated_source, acceptance_criteria_prose, expected_artifacts, frontend_build, no_self_mocking_tests, no_stub_fallback_tests, non_stub_files, required_files, tests_pass, vc-probe-runs, vc-probe-runs-join, vc-probe-runs-join-duplicate, vc-probe-runs-leave, vc-probe-runs-rejects-blank, vc-probe-runs-seed |
+| Failed | — |
+| Required unmet | — |
+| Never executed | — |
+
+### `cyc_375bdea6e140`
+
+**Verdict:** `rejected` · **Runs:** 2 · **Role:** diagnostic — fault-injected, non-counting: its verdict is not a verdict about the squad (#1251)
+
+| | Checks |
+|---|---|
+| Verified | acceptance:command_exit_zero, acceptance:container_packaging, acceptance:declared_imports, acceptance:endpoint_defined, acceptance:fill_slot_signature, acceptance:frontend_compiles, acceptance:function_defined, acceptance:harness_boundary, acceptance:import_present, acceptance:module_imports, acceptance:sections_present, acceptance:undefined_names, acceptance:unterminated_source, acceptance_criteria_prose, expected_artifacts, frontend_build, no_self_mocking_tests, no_stub_fallback_tests, non_stub_files, required_files |
+| Failed | tests_pass |
+| Required unmet | — |
+| Never executed | vc-probe-runs, vc-probe-runs-rejects-blank, vc-probe-runs-join, vc-probe-runs-join-duplicate, vc-probe-runs-leave |
+
+### `cyc_fa3b503d9d60`
+
+**Verdict:** `accepted` · **Runs:** 2 · **Role:** diagnostic — fault-injected, non-counting: its verdict is not a verdict about the squad (#1251)
+
+| | Checks |
+|---|---|
+| Verified | acceptance:additive_containment, acceptance:assertion_kinds_match, acceptance:command_exit_zero, acceptance:contract_assertions_match, acceptance:declared_imports, acceptance:dom_anchor_queries, acceptance:endpoint_defined, acceptance:fill_slot_signature, acceptance:frontend_compiles, acceptance:function_defined, acceptance:harness_boundary, acceptance:import_present, acceptance:module_imports, acceptance:sections_present, acceptance:undefined_names, acceptance:unterminated_source, acceptance_criteria_prose, expected_artifacts, frontend_build, no_self_mocking_tests, no_stub_fallback_tests, non_stub_files, required_files, tests_pass, vc-probe-runs, vc-probe-runs-join, vc-probe-runs-join-duplicate, vc-probe-runs-leave, vc-probe-runs-rejects-blank |
 | Failed | — |
 | Required unmet | — |
 | Never executed | — |

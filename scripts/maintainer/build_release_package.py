@@ -139,9 +139,12 @@ def changelog_section(version: str) -> str:
     return match.group(1).strip() if match else ""
 
 
-def _absent(cycle_id: str, reason: str) -> dict:
+def _absent(cycle_id: str, reason: str, role: str | None = None) -> dict:
     """A cycle whose evidence could not be captured, WITH why — never a silent gap."""
-    return {"cycle_id": cycle_id, "captured": False, "reason": reason}
+    entry = {"cycle_id": cycle_id, "captured": False, "reason": reason}
+    if role:
+        entry["role"] = role
+    return entry
 
 
 def _bearer_token() -> str:
@@ -159,7 +162,35 @@ def _bearer_token() -> str:
         return ""
 
 
-def cycle_evidence(cycle_ids: list[str], api: str, project: str) -> list[dict]:
+#: What a captured cycle WAS to the release — the page must say it, or a fault-injected
+#: diagnostic's `rejected` reads as a failed roll. Named on the command line as
+#: ``--cycle <id>:<role>``; a bare id is allowed for older captures and carries no role.
+CYCLE_ROLES = ("counted", "shakeout", "diagnostic", "void")
+_ROLE_NOTES = {
+    "counted": "",
+    "shakeout": " — non-counting: the deploy's shakeout, read for seam findings",
+    "diagnostic": (
+        " — fault-injected, non-counting: its verdict is not a verdict about the squad (#1251)"
+    ),
+    "void": " — void: the roll was stopped and the set restarted (the record's §0)",
+}
+
+
+def parse_cycle_arg(arg: str) -> tuple[str, str | None]:
+    """``cyc_x`` → (``cyc_x``, None); ``cyc_x:diagnostic`` → (``cyc_x``, ``diagnostic``).
+    An unknown role is refused naming the vocabulary — a typo would otherwise ship a page
+    that labels a diagnostic as nothing at all."""
+    cycle_id, sep, role = arg.partition(":")
+    if not sep:
+        return cycle_id, None
+    if role not in CYCLE_ROLES:
+        raise SystemExit(f"--cycle {arg}: unknown role {role!r}; one of {', '.join(CYCLE_ROLES)}")
+    return cycle_id, role
+
+
+def cycle_evidence(
+    cycle_ids: list[str], api: str, project: str, roles: dict[str, str] | None = None
+) -> list[dict]:
     """Verification roll-up per named cycle, or a recorded reason it is absent.
 
         Absence is disclosed, never silently omitted — an unreachable API and a cycle that
@@ -182,7 +213,9 @@ def cycle_evidence(cycle_ids: list[str], api: str, project: str) -> list[dict]:
     """
     evidence = []
     token = _bearer_token()
+    roles = roles or {}
     for cycle_id in cycle_ids:
+        role = roles.get(cycle_id)
         url = f"{api}/api/v1/projects/{project}/cycles/{cycle_id}"
         args = ["curl", "-s", "--max-time", "10"]
         if token:
@@ -193,7 +226,7 @@ def cycle_evidence(cycle_ids: list[str], api: str, project: str) -> list[dict]:
             data = json.loads(raw)
         except (json.JSONDecodeError, TypeError):
             evidence.append(
-                _absent(cycle_id, f"runtime API at {api} did not answer at capture time")
+                _absent(cycle_id, f"runtime API at {api} did not answer at capture time", role)
             )
             continue
         if not isinstance(data, dict) or "cycle_outcome" not in data:
@@ -204,16 +237,20 @@ def cycle_evidence(cycle_ids: list[str], api: str, project: str) -> list[dict]:
                     f"runtime API at {api} returned no cycle roll-up"
                     + (f" ({detail})" if detail else "")
                     + (" — no cached CLI token; run `squadops login`" if not token else ""),
+                    role,
                 )
             )
             continue
         outcome = data.get("cycle_outcome") or {}
         if outcome.get("verdict") is None:
-            evidence.append(_absent(cycle_id, f"cycle {cycle_id} carries no verification roll-up"))
+            evidence.append(
+                _absent(cycle_id, f"cycle {cycle_id} carries no verification roll-up", role)
+            )
             continue
         evidence.append(
             {
                 "cycle_id": cycle_id,
+                **({"role": role} if role else {}),
                 "captured": True,
                 "status": data.get("status"),
                 "verdict": outcome.get("verdict"),
@@ -227,6 +264,19 @@ def cycle_evidence(cycle_ids: list[str], api: str, project: str) -> list[dict]:
             }
         )
     return evidence
+
+
+def cycle_count_line(cycles: list[dict]) -> str:
+    """``9 cycles`` — and, when any carries a role, ``22 cycles (9 counted, 6 shakeout, …)``."""
+    by_role: dict[str, int] = {}
+    for cycle in cycles:
+        if cycle.get("role"):
+            by_role[cycle["role"]] = by_role.get(cycle["role"], 0) + 1
+    line = f"{len(cycles)} cycles"
+    if by_role:
+        parts = [f"{by_role[r]} {r}" for r in CYCLE_ROLES if r in by_role]
+        line += f" ({', '.join(parts)})"
+    return line
 
 
 def render(version: str, tag: str, package: dict) -> str:
@@ -292,7 +342,12 @@ def render(version: str, tag: str, package: dict) -> str:
                 ]
                 continue
             out += [
-                f"**Verdict:** `{cycle.get('verdict')}` · **Runs:** {cycle.get('run_count')}",
+                f"**Verdict:** `{cycle.get('verdict')}` · **Runs:** {cycle.get('run_count')}"
+                + (
+                    f" · **Role:** {cycle['role']}{_ROLE_NOTES.get(cycle['role'], '')}"
+                    if cycle.get("role")
+                    else ""
+                ),
                 "",
                 "| | Checks |",
                 "|---|---|",
@@ -336,6 +391,9 @@ def main() -> int:
     args = parser.parse_args()
 
     version = args.version.lstrip("v")
+    parsed = [parse_cycle_arg(a) for a in args.cycle]
+    cycle_ids = [c for c, _ in parsed]
+    cycle_roles = {c: r for c, r in parsed if r}
     tag = f"v{version}"
     previous = args.previous or previous_tag(tag)
     target = RELEASES / tag
@@ -354,7 +412,9 @@ def main() -> int:
         "narrative": changelog_section(version),
         "pull_requests": merged_prs(previous, tag),
         "sip_moves": sip_moves(previous, tag),
-        "cycles": cycle_evidence(args.cycle, args.api, args.project) if args.cycle else [],
+        "cycles": (
+            cycle_evidence(cycle_ids, args.api, args.project, cycle_roles) if cycle_ids else []
+        ),
         "screenshots": screenshots,
     }
 
@@ -365,7 +425,7 @@ def main() -> int:
         print(page)
         print(
             f"\n--- {len(package['pull_requests'])} PRs, {len(package['sip_moves'])} SIP moves, "
-            f"{len(package['cycles'])} cycles, {len(screenshots)} screenshots ---"
+            f"{cycle_count_line(package['cycles'])}, {len(screenshots)} screenshots ---"
         )
         # An empty Closes cell has two causes — the PR closed nothing, or it only quoted
         # the syntax. Naming the quoted ones makes the difference readable here, which is
