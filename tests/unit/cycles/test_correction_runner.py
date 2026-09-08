@@ -6059,3 +6059,90 @@ class TestTheAnalyzersProseIsCheckedBeforeTheDecisionInheritsIt:
 
     def test_prose_without_any_path_is_left_alone(self):
         assert self._refute({"analysis_summary": "The route handler returns the wrong code."}) == []
+
+
+class TestADisputedGenericOwnArtifactRouteFallsThroughToTheDevChain:
+    """#1054's routing half, at `_locus_and_repair_target`.
+
+    Only the GENERIC own-artifact branch is disputable. Every branch above it carries
+    specific machine evidence naming the suite as the defect site — a fill observation, a
+    qa-owned exception frame, an undeclared anchor — and those stay exactly where the
+    test-gaming guard put them, because `affected_task_types` is model-authored (#968).
+    """
+
+    _EVIDENCE = {
+        "validation_result": {
+            "checks": [
+                {
+                    "check": "tests_pass",
+                    "passed": False,
+                    "executed": True,
+                    "suite_broken": True,
+                }
+            ]
+        }
+    }
+    _INPUTS = {"expected_artifacts": ["__tests__/api_runs.test.ts"]}
+
+    def _resolve(self, decision):
+        from adapters.cycles.correction_runner import _locus_and_repair_target
+
+        return _locus_and_repair_target(
+            "qa.test", self._EVIDENCE, dict(self._INPUTS), None, decision
+        )
+
+    def _steps(self, locus):
+        from squadops.cycles.task_plan import repair_steps_for
+
+        return [task_type for task_type, _role in repair_steps_for("qa.test", locus)]
+
+    def test_arm_as_decision_sends_the_repair_to_the_dev_chain(self):
+        """The three `qa.test_repair` dispatches against `__tests__/api_runs.test.ts` are
+        what this prevents. The LOCUS is what routes — `repair_steps_for` reads it to
+        choose the role — so the assertion is on the dispatched step, not on the target:
+        with no drift evidence there is nothing better to aim at, and aiming is not the
+        defect. Dispatching the suite's own author to fix a route handler is."""
+        locus, _expected, _focus, _desc = self._resolve(
+            {"affected_task_types": ["backend_route_implementation", "store_module_integration"]}
+        )
+        assert locus == "unknown"
+        assert "qa.test_repair" not in self._steps(locus)
+
+    def test_a_decision_that_names_the_suite_leaves_the_route_alone(self):
+        locus, expected, _focus, _desc = self._resolve(
+            {"affected_task_types": ["frontend", "testing"]}
+        )
+        assert locus == "own_artifact"
+        assert expected == ["__tests__/api_runs.test.ts"]
+        assert "qa.test_repair" in self._steps(locus)
+
+    def test_no_decision_leaves_the_route_alone(self):
+        """The conservative default is the behaviour when nothing disputes it — including
+        every caller that has no decision to offer."""
+        locus, expected, _focus, _desc = self._resolve(None)
+        assert locus == "own_artifact"
+        assert expected == ["__tests__/api_runs.test.ts"]
+
+    def test_a_task_that_emitted_nothing_is_not_disputable(self):
+        """Caught by the pre-S2 correction-context golden, which is why it exists.
+
+        A zero-extraction failure is an own-artifact read on a HARD machine signal: the
+        task produced no artifact at all, and no decision naming route handlers makes that
+        less true. Disputing it sent a `qa.test` re-emission to the dev chain, where the
+        ownership veto emptied the target and logged "the locus classifier missed an
+        own-artifact case". Only the `tests_pass`-row signal is disputable."""
+        from adapters.cycles.correction_runner import _locus_and_repair_target
+
+        evidence = {
+            "emission_failure": {"reason": "no_fenced_blocks", "response_chars": 0},
+            "validation_result": {"checks": []},
+        }
+        locus, expected, _focus, _desc = _locus_and_repair_target(
+            "qa.test",
+            evidence,
+            dict(self._INPUTS),
+            None,
+            {"affected_task_types": ["backend_route_implementation"]},
+        )
+        assert locus == "own_artifact"
+        assert expected == ["__tests__/api_runs.test.ts"]

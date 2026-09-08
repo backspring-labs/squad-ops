@@ -274,6 +274,82 @@ class FailureLocus:
 _SUITE_DEFECT_EXIT_CODES = frozenset({2, 5})
 
 
+#: Tokens that mark a label as naming the SUITE's side of the work. Matched as substrings
+#: on a lowercased label, because the field is model-authored prose-ish data: the lead
+#: writes `testing`, `qa_test_authoring`, `test_suite_isolation` — never a `TaskType`
+#: value. #1054's own arm A wrote `backend_route_implementation` and
+#: `store_module_integration`, and the 1.7.4 React checkpoint wrote `frontend`, `testing`.
+_SUITE_SIDE_TOKENS = ("test", "spec", "qa", "suite", "assertion", "fixture", "mock")
+
+
+def decision_disputes_own_artifact(decision_outputs: Any) -> bool:
+    """True when the correction decision names work that is UNANIMOUSLY not the suite's.
+
+    #1054: arm A of the 2026-08-23 paired validation exhausted its budget without the
+    application ever being repaired. Round 0's decision was unambiguous — *"route handlers
+    instantiating a local shadow store instead of importing the scaffold-provided global"*,
+    `affected_task_types: ["backend_route_implementation", "store_module_integration"]` —
+    and all three repairs dispatched `qa.test_repair` against the same suite file. The
+    route handlers were never emitted; the suite was rewritten three times; the real,
+    correctly diagnosed application defect survived the whole arc.
+
+    **Unanimity is the whole safety argument.** `affected_task_types` is model-authored,
+    which is why #1015 part A was deferred on the #968/#788 caveat, and the locus
+    classifier is conservative BY DESIGN so a qa repair can never "fix" an app bug by
+    rewriting the tests. A single suite-side token is enough to abstain: the 1.7.4 React
+    checkpoint's decision wrote `["frontend", "testing"]` for a genuine test-mock defect,
+    and a rule that fired on "any non-suite label" would have misrouted it. Only a decision
+    that mentions the suite NOWHERE disputes a suite-side read.
+
+    Empty or unparseable input disputes nothing — absence is not disagreement.
+    """
+    if not isinstance(decision_outputs, dict):
+        return False
+    labels = [str(t).strip().lower() for t in (decision_outputs.get("affected_task_types") or [])]
+    labels = [label for label in labels if label]
+    if not labels:
+        return False
+    return not any(token in label for label in labels for token in _SUITE_SIDE_TOKENS)
+
+
+#: The own-artifact signal that came from the failed ``tests_pass`` row's exit code or
+#: suite verdict, as opposed to a signal that named the suite outright. #1054's dispute
+#: rule is allowed to question ONLY this one: every other own-artifact signal is a machine
+#: fact about the suite itself (it produced nothing, it lost bytes in extraction, it
+#: contradicted the contract, it raised in its own frame, it asserted an anchor nothing
+#: declares), and none of them becomes less true because a decision named something else.
+OWN_ARTIFACT_FROM_TESTS_PASS_ROW = "tests_pass_row"
+
+
+def own_artifact_signal(failure_evidence: Any) -> str | None:
+    """WHICH signal produced an ``OWN_ARTIFACT`` read, or ``None`` (#1054).
+
+    The classifier below answers "where is the defect"; this answers "on what evidence",
+    which is what a caller needs before it may weigh that read against anything else.
+    Same order, one source — a second copy of the order would drift from the answer it
+    is meant to explain.
+    """
+    if classify_failure_locus(failure_evidence) != FailureLocus.OWN_ARTIFACT:
+        return None
+    evidence = failure_evidence if isinstance(failure_evidence, dict) else {}
+    if isinstance(evidence.get("emission_failure"), dict):
+        return "emission_failure"
+    if evidence.get("extraction_loss") is True:
+        return "extraction_loss"
+    checks = [
+        row
+        for row in (evidence.get("validation_result") or {}).get("checks") or []
+        if isinstance(row, dict)
+    ]
+    if any(_own_artifact_row(row) for row in checks):
+        return "contract_contradicted"
+    if absent_anchor_cases(evidence):
+        return "absent_anchor"
+    if _locus_from_scaffold_classification(evidence) is not None:
+        return "scaffold_classification"
+    return OWN_ARTIFACT_FROM_TESTS_PASS_ROW
+
+
 def classify_failure_locus(failure_evidence: Any) -> str:
     """Deterministic failure-locus classification from evidence alone (#568).
 
