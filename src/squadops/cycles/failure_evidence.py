@@ -8,6 +8,7 @@ have no adapter dependencies.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any
 
 from squadops.cycles.acceptance_check_spec import (
@@ -38,6 +39,36 @@ _DECLARATION_OWNED_SUITE_CHECKS: frozenset[str] = frozenset(
 
 if TYPE_CHECKING:
     from squadops.tasks.models import TaskEnvelope, TaskResult
+
+
+def prior_emission_history(
+    task_id: str, stored_artifacts: Iterable[tuple[str, Any]]
+) -> list[dict[str, Any]]:
+    """What this task had already emitted before the round being analysed (#995).
+
+    A task that dies on the clock has a history, and the result the executor holds is
+    only its last read. V7 roll 1 banked two emissions of 7,516 and 5,322 completion
+    tokens, three path fences each, both rejected by `frontend_compiles` for the same
+    real defect — and the analysis handed to the correction chain described none of it.
+
+    Read from the banked artifacts (#971 banks failed emissions precisely so this is
+    possible), newest last, one entry per stored emission: its name, size, and whether
+    the emission was marked failed. The analyzer is then told "N rounds happened and here
+    is what they were", instead of inferring a mechanism from an absence.
+    """
+    history: list[dict[str, Any]] = []
+    for _art_id, ref in stored_artifacts or ():
+        meta = getattr(ref, "metadata", None) or {}
+        if str(meta.get("producing_task_id") or "") != task_id:
+            continue
+        history.append(
+            {
+                "filename": getattr(ref, "filename", ""),
+                "size_bytes": getattr(ref, "size_bytes", 0),
+                "emission_status": str(meta.get("emission_status") or "stored"),
+            }
+        )
+    return history
 
 
 def build_failure_evidence(
@@ -93,6 +124,16 @@ def build_failure_evidence(
         "rejected_artifacts": rejected_artifacts,
         "prior_plan_deltas_count": prior_plan_deltas_count,
     }
+    # #995: a task killed by the wall clock says so, as a fact, at the top of its own
+    # evidence. Without it the analyzer reads an empty result and describes the empty
+    # FINAL read as the task's behaviour — V7 roll 1's two substantive emissions, each
+    # with a real rejection, were erased and replaced by "a complete generation drop".
+    # The timeout says what actually ended the task; `prior_emissions` below says what it
+    # had done before the clock ran out.
+    task_timeout = result_outputs.get("task_timeout")
+    if isinstance(task_timeout, dict):
+        evidence["task_timeout"] = task_timeout
+
     # #566/#568: the zero-extraction marker travels into evidence so the locus
     # classifier (and the analyzer) see "no artifact was ever produced" as a
     # machine fact instead of inferring a work-product story from its absence.

@@ -550,6 +550,7 @@ def _inject_deterministic_evidence(
     scaffold_enforcement_carry: list[str] | None,
     bound_record: Any = None,
     repair_rejections: list[str] | None = None,
+    stored_artifacts: list[tuple[str, Any]] | None = None,
 ) -> None:
     """Deterministic authoritative-evidence injection for the correction chain.
 
@@ -609,6 +610,19 @@ def _inject_deterministic_evidence(
     # rejected (and by which named evidence) rather than silently re-deriving.
     if repair_rejections:
         failure_evidence["prior_repair_rejections"] = list(repair_rejections)
+
+    # #995: what this task had already emitted before the round being analysed. A task
+    # killed by the wall clock has a history, and the result the executor holds is only
+    # its last read — V7 roll 1's two substantive emissions were erased and the analysis
+    # named a mechanism the logs disprove. Same transport as the two above, same reason:
+    # the loop must be TOLD rather than left to infer from an absence.
+    from squadops.cycles.failure_evidence import prior_emission_history
+
+    history = prior_emission_history(
+        str(getattr(envelope, "task_id", "") or ""), stored_artifacts or ()
+    )
+    if history:
+        failure_evidence["prior_emissions"] = history
 
     expectations = expectation_lines((envelope.inputs or {}).get("acceptance_criteria"))
     if expectations:
@@ -1456,6 +1470,7 @@ class CorrectionRunner:
             scaffold_enforcement_carry=scaffold_enforcement_carry,
             bound_record=bound_record,
             repair_rejections=repair_rejections,
+            stored_artifacts=stored_artifacts,
         )
 
         # Issue #95: capture each correction step's outputs in its own variable
