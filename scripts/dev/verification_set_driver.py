@@ -756,7 +756,15 @@ def collect(cfg: SetConfig, cycle_id: str) -> dict:
         f"join cycle_runs r on r.run_id=g.run_id where r.cycle_id='{cycle_id}' order by g.decided_at;"
     ).splitlines()
     summary: dict = {}
-    corrections = failed_emissions = 0
+    corrections = 0
+    # #1431: keyed on the TASK, not the artifact. #971 banks every artifact of a failed
+    # emission — a qa.test failure banks its suite, its test_report and its evaluation row —
+    # so counting artifacts reported 3 for one failed emission, and a reader comparing rolls
+    # could not recover the true figure without opening the vault. Both numbers are kept:
+    # the task count is the behavioural fact, the artifact count is the evidence-preservation
+    # fact #971 exists to guarantee.
+    failed_emission_tasks: set[str] = set()
+    failed_emission_artifacts = 0
     if impl:
         raw = psql(
             "select summary from run_verification_summaries where run_id='{}';".format(
@@ -773,8 +781,10 @@ def collect(cfg: SetConfig, cycle_id: str) -> dict:
                 continue
             if m.get("filename") == "correction_decision.md":
                 corrections += 1
-            if (m.get("metadata") or {}).get("emission_status") == "failed":
-                failed_emissions += 1
+            meta = m.get("metadata") or {}
+            if meta.get("emission_status") == "failed":
+                failed_emission_artifacts += 1
+                failed_emission_tasks.add(str(meta.get("task_id") or f"?{art.name}"))
     snapshot = psql(
         f"select coalesce(squad_profile_snapshot_ref,'') from cycle_registry where cycle_id='{cycle_id}';"
     )
@@ -788,7 +798,8 @@ def collect(cfg: SetConfig, cycle_id: str) -> dict:
         "framing_runs": len(framings),
         "framing_rerolls": max(0, len(framings) - 1),
         "correction_rounds": corrections,
-        "failed_emissions_banked": failed_emissions,
+        "failed_emissions_banked": len(failed_emission_tasks),
+        "failed_emission_artifacts_banked": failed_emission_artifacts,
         "verdict": summary.get("verdict"),
         "failed_checks": summary.get("failed", []),
         "criteria_total": len(summary.get("criteria_total", []) or []),
@@ -2112,7 +2123,9 @@ def render(cfg: SetConfig, title: str, rec: dict) -> str:
         f"{', '.join(rec.get('criteria_adverse') or []) or '—'} |",
         "| criteria unevidenced — no row in either direction | "
         f"{', '.join(rec['criteria_unevidenced']) or '—'} |",
-        f"| failed emissions banked (#971) | {rec['failed_emissions_banked']} |",
+        "| failed emissions banked (#971) | "
+        f"{rec['failed_emissions_banked']} emission(s) · "
+        f"{rec.get('failed_emission_artifacts_banked', rec['failed_emissions_banked'])} artifact(s) |",
         "| contentless emissions (L1) | "
         f"{_render_by_reason((rec.get('loop_texture') or {}).get('contentless_by_handler', {}))}"
         f" of {(rec.get('loop_texture') or {}).get('emissions_logged', 0)} logged |",
