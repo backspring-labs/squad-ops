@@ -24,7 +24,6 @@ from squadops.api.routes.chat.errors import handle_chat_error
 from squadops.comms.models import (
     AgentNotFoundError,
     AgentNotMessagingEnabledError,
-    ChatError,
     ChatMessage,
     ChatSession,
     SessionNotFoundError,
@@ -110,10 +109,7 @@ async def send_chat_message(
     5. Returns StreamingResponse relaying agent chunks
     6. On stream completion, persists agent response
     """
-    try:
-        agent_config = _resolve_agent(agent_id)
-    except ChatError as e:
-        raise handle_chat_error(e) from e
+    agent_config = _resolve_agent(agent_id)
 
     user_id = _get_user_id(request)
     chat_repo = _get_chat_repo()
@@ -242,10 +238,7 @@ async def get_session_messages(session_id: str):
 @router.get("/{agent_id}/sessions")
 async def list_agent_sessions(agent_id: str, request: Request):
     """List chat sessions for an agent+user pair."""
-    try:
-        _resolve_agent(agent_id)
-    except ChatError as e:
-        raise handle_chat_error(e) from e
+    _resolve_agent(agent_id)
 
     user_id = _get_user_id(request)
     chat_repo = _get_chat_repo()

@@ -22,15 +22,16 @@ _ERROR_MAP: list[tuple[type, int, str]] = [
 ]
 
 
-def handle_chat_error(e: ChatError) -> HTTPException:
-    """Map a ChatError to an HTTPException with standard error shape."""
+def chat_error_envelope(e: ChatError) -> tuple[int, dict]:
+    """The (status, detail) envelope for a domain error — one table, read by the
+    app-level exception handler (#576) and by the HTTPException helper below."""
     for exc_type, status, code in _ERROR_MAP:
         if isinstance(e, exc_type):
-            return HTTPException(
-                status_code=status,
-                detail={"error": {"code": code, "message": str(e), "details": None}},
-            )
-    return HTTPException(
-        status_code=500,
-        detail={"error": {"code": "INTERNAL_ERROR", "message": str(e), "details": None}},
-    )
+            return status, {"error": {"code": code, "message": str(e), "details": None}}
+    return 500, {"error": {"code": "INTERNAL_ERROR", "message": str(e), "details": None}}
+
+
+def handle_chat_error(e: ChatError) -> HTTPException:
+    """Map a domain error to an HTTPException with the standard error shape."""
+    status, detail = chat_error_envelope(e)
+    return HTTPException(status_code=status, detail=detail)
