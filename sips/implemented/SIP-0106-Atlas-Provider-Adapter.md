@@ -361,7 +361,7 @@ severed output *becomes* the validator's "malformed YAML" (§1.2a). A second det
 **So the unblock path is a vendor fix, and it has an owner outside this repo.** The A/B record's
 own disposition (§8) said a vendor report on `simhash_semantic_loop` "is worth filing regardless
 of adoption: a guard with no flag and no env var, firing on correct output, whose rollback
-corrupts the stream mid-token." **That report was never filed** — tracked now as **#1411**. If
+corrupts the stream mid-token." **That report was never filed** — tracked now as **#1412**. If
 the guard becomes disarmable and the model reaches the supported table, adoption is a
 measurement again, not a redesign: the seam, the adapter and the conformance suite are already
 in the tree and inert per §4.
@@ -379,7 +379,7 @@ today, and it is why the item is closed rather than carried forward through furt
 a small cost precisely because the integration landed — what a retry needs is the box and a
 serve script, not new code.
 
-**What would change it.** A vendor fix (#1411) that lets P4/P5 be re-run and their negative
+**What would change it.** A vendor fix (#1412) that lets P4/P5 be re-run and their negative
 overturned. Not a bootstrap entry.
 
 ## 2. Problem Statement
