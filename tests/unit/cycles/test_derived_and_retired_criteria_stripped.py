@@ -70,25 +70,56 @@ def test_the_authored_harness_boundary_is_dropped_and_the_rest_survives(plan_nam
 
 
 @pytest.mark.parametrize("plan_name", _PLANS)
-def test_every_criterion_over_the_retired_handoff_is_dropped(plan_name, caplog):
-    """#1312: these 5 and 6 rows are the ones #1252 was filed from. The document they
-    name is gone, so each would now evaluate `file_not_found` — an authored row rejecting
-    a roll for a file the framework stopped asking anyone to write."""
+def test_a_declared_handoff_keeps_its_criteria(plan_name, caplog):
+    """#1312 retired the framework's REQUIREMENT, not the word.
+
+    Both stored plans declare `qa_handoff.md` in the builder task's expected_artifacts,
+    so the builder produces it and those 5 and 6 criteria are satisfiable. Stripping them
+    here would delete real checks on a real deliverable — and the corpus every
+    verification set runs on (`examples/03_group_run/prd.md`) still asks for a document
+    by that name.
+    """
     plan = _plan(plan_name)
     task = next(t for t in plan.tasks if t.task_type == "builder.assemble")
-    handoff = [c for c in _typed(task) if c.params.get("file") == "qa_handoff.md"]
-    assert len(handoff) >= 5
+    assert "qa_handoff.md" in {str(a).split("/")[-1] for a in task.expected_artifacts}
 
     with caplog.at_level(logging.WARNING, logger="squadops.cycles.task_plan"):
         kept = _applicable_acceptance(task)
 
+    handoff = [c for c in _typed(task) if c.params.get("file") == "qa_handoff.md"]
+    assert len(handoff) >= 5
     assert [
         c for c in kept if isinstance(c, TypedCheck) and c.params.get("file") == "qa_handoff.md"
-    ] == []
-    stripped = [
-        r.message for r in caplog.records if "retired_artifact_criterion_stripped" in r.message
-    ]
-    assert len(stripped) == len(handoff)
+    ] == handoff
+    assert not [r for r in caplog.records if "retired_artifact_criterion_stripped" in r.message]
+
+
+def test_a_criterion_over_an_undeclared_handoff_is_dropped(caplog):
+    """The transition case: nothing produces the file, so the check evaluates
+    `file_not_found` and rejects a correct roll. The planner has a strong prior about this
+    filename — 213 of 213 builder criteria in the last 40 stored plans named it — so a
+    quieter prompt alone would not have been an answer."""
+    task = SimpleNamespace(
+        task_index=3,
+        expected_artifacts=["Dockerfile", "README.md"],
+        acceptance_criteria=[
+            TypedCheck(
+                check="regex_match",
+                params={"file": "qa_handoff.md", "pattern": "## How to Test"},
+                severity="error",
+            ),
+            TypedCheck(
+                check="regex_match",
+                params={"file": "README.md", "pattern": "## Configuration"},
+                severity="error",
+            ),
+        ],
+    )
+    with caplog.at_level(logging.WARNING, logger="squadops.cycles.task_plan"):
+        kept = _applicable_acceptance(task)
+
+    assert [c.params["file"] for c in kept if isinstance(c, TypedCheck)] == ["README.md"]
+    assert any("retired_artifact_criterion_stripped" in r.message for r in caplog.records)
 
 
 def test_a_criterion_over_another_document_is_kept():
@@ -96,6 +127,7 @@ def test_a_criterion_over_another_document_is_kept():
     rather than on `regex_match`: a README or runbook check is still the author's."""
     task = SimpleNamespace(
         task_index=4,
+        expected_artifacts=["README.md"],
         acceptance_criteria=[
             TypedCheck(
                 check="regex_match",
@@ -117,6 +149,7 @@ def test_a_derived_check_over_a_file_the_framework_would_not_inject_it_on_is_sti
     better."""
     task = SimpleNamespace(
         task_index=7,
+        expected_artifacts=["backend/helpers.py"],
         acceptance_criteria=[
             TypedCheck(
                 check="harness_boundary",

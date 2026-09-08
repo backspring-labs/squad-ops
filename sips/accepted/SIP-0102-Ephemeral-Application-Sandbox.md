@@ -367,8 +367,10 @@ On-demand re-provisioning is deliberately preferred over keeping runtimes
 alive: a fresh boot from the persisted revision re-proves reproducibility on
 every inspection, whereas a lingering container is stale evidence and a
 resource leak. The bare-metal escape hatch remains free — the assembled
-workspace is an ordinary host directory, and `qa_handoff.md` still documents
-how to run it directly.
+workspace is an ordinary host directory, and the stack's environment contract
+declares how to run it directly (this said `qa_handoff.md` until #1312 retired
+that document; the run commands were always the contract's, and are now
+threaded to the test author from it).
 
 ## 5. v1.4 scope split
 

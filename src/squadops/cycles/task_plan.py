@@ -492,14 +492,26 @@ def _applicable_acceptance(plan_task: Any) -> list:
     acceptance: list = []
     for criterion in plan_task.acceptance_criteria:
         if isinstance(criterion, TypedCheck):
-            if str(criterion.params.get("file", "")).split("/")[-1] == RETIRED_HANDOFF_DOCUMENT:
-                # #1312: the handoff is retired — no profile requires it, no prompt asks
-                # for it, and nothing produces it. A criterion over it cannot be satisfied
-                # by any emission, so it would evaluate `file_not_found` and reject a
-                # correct roll. The planner is a language model with a strong prior about
-                # this filename (213 of 213 builder criteria in the last 40 stored plans
-                # named it), so the transition needs a mechanical answer, not only a
-                # quieter prompt.
+            if str(criterion.params.get("file", "")).split("/")[
+                -1
+            ] == RETIRED_HANDOFF_DOCUMENT and RETIRED_HANDOFF_DOCUMENT not in {
+                str(a).split("/")[-1] for a in plan_task.expected_artifacts
+            }:
+                # #1312: the handoff is retired — no profile requires it and no prompt
+                # asks for it — so a criterion over a file THIS TASK does not declare
+                # cannot be satisfied by any emission, and would evaluate
+                # `file_not_found` and reject a correct roll. The planner is a language
+                # model with a strong prior about this filename (213 of 213 builder
+                # criteria in the last 40 stored plans named it), so the transition needs
+                # a mechanical answer, not only a quieter prompt.
+                #
+                # Scoped to tasks that do NOT declare it, deliberately. A PRD may still
+                # ask for a document by this name — `examples/03_group_run/prd.md` does,
+                # and it is the corpus every verification set runs on. Where the planner
+                # routes it to a task's `expected_artifacts`, the file IS produced and the
+                # criterion is satisfiable, so stripping it there would delete a real
+                # check on a real deliverable. What is retired is the FRAMEWORK's
+                # requirement, not the word.
                 logger.warning(
                     "retired_artifact_criterion_stripped task=%s check=%s file=%s — "
                     "%s is retired; nothing produces it (#1312)",
