@@ -29,7 +29,6 @@ A reviewer can:
 - start the backend and confirm the health endpoint responds
 - start the frontend and see rendered content from the backend
 - run the backend test and see it pass
-- do all of the above following only the `qa_handoff` artifact
 
 ---
 
@@ -110,7 +109,6 @@ frontend/
 - [ ] Frontend on `:5173` can fetch from backend on `:8000` without CORS errors
 - [ ] Frontend renders health check data from backend
 - [ ] `cd backend && pytest` passes
-- [ ] `qa_handoff` artifact includes startup commands for both services
 
 ---
 
