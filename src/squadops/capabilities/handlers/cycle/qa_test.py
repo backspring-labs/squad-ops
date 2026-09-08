@@ -1293,8 +1293,15 @@ class QATestHandler(_CycleTaskHandler):
             chat_kwargs["model"] = agent_model
         if "temperature" in agent_overrides:
             chat_kwargs["temperature"] = agent_overrides["temperature"]
+        # #1285: which of this capability's two outputs this generation produces. The
+        # handler already knows — `verification_scaffold` is what puts it in fill mode —
+        # and the declaration is about the output, so it is told rather than inferring
+        # from the id alone.
         reasoning = resolve_reasoning_level(
-            self._task_type, agent_overrides=agent_overrides, model_name=model_name
+            self._task_type,
+            agent_overrides=agent_overrides,
+            model_name=model_name,
+            output_shape="fill" if inputs.get("verification_scaffold") else None,
         )
         chat_kwargs.update(reasoning_kwargs(reasoning))
 

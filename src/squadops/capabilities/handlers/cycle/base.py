@@ -411,6 +411,19 @@ class _CycleTaskHandler(CapabilityHandler):
         except Exception:
             return None
 
+    def _output_shape(self, inputs: dict[str, Any]) -> str | None:
+        """Which of this capability's outputs this generation produces, or ``None`` (#1285).
+
+        ``None`` for every capability with one output shape, which is all but one — and
+        the reasoning declaration then resolves exactly as it did. A capability that has
+        two answers this itself rather than letting shared code sniff its inputs: the
+        manifest-authoring stage's input contract is enforced
+        (``test_the_author_reads_nothing_outside_its_declared_input_contract``), and
+        reading `verification_scaffold` here for everyone broke it — correctly, because
+        which output a capability produces is the capability's own fact.
+        """
+        return None
+
     def _build_chat_kwargs(self, inputs: dict[str, Any]) -> dict[str, Any]:
         """Build chat() kwargs from agent config overrides (SIP-0075 §3.2).
 
@@ -435,7 +448,10 @@ class _CycleTaskHandler(CapabilityHandler):
         # #927: keyed on the agent's model exactly as the completion clamp is — a
         # task dispatched without one sends no level, as it gets no clamp.
         reasoning = resolve_reasoning_level(
-            self._task_type, agent_overrides=overrides, model_name=agent_model
+            self._task_type,
+            agent_overrides=overrides,
+            model_name=agent_model,
+            output_shape=self._output_shape(inputs),
         )
         if "max_completion_tokens" in overrides:
             kwargs["max_tokens"] = overrides["max_completion_tokens"]
