@@ -20,6 +20,7 @@ import hashlib
 import json
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from graphlib import CycleError, TopologicalSorter
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
@@ -1165,29 +1166,38 @@ def resolve_criteria_for_files(
 
 
 def _check_dependency_dag(tasks: list[PlanTask]) -> None:
-    """Validate that task dependencies form a DAG (no cycles).
+    """Validate that task dependencies form a DAG and that the authored order honours it.
+
+    #578: ``graphlib.TopologicalSorter`` owns cycle detection (``prepare()`` raises
+    ``CycleError``; iterative, so a deep chain cannot hit the recursion limit the old
+    hand-rolled DFS could). The second check is the decision the same issue asked for:
+    ``depends_on`` was validated and never used to order execution — the plan's tasks
+    are materialised in authored list order. The framework does not reorder; it refuses a
+    plan whose order contradicts its own declared dependencies, so a task never runs
+    before something it says it needs. A proposer that wants an order writes that order.
 
     Raises:
-        ValueError: If a dependency cycle is detected.
+        ValueError: If a dependency cycle is detected, or a task depends on a task that
+            is listed after it.
     """
-    # Build adjacency list
-    adj: dict[int, list[int]] = {t.task_index: list(t.depends_on) for t in tasks}
-    visited: set[int] = set()
-    in_stack: set[int] = set()
+    graph = {t.task_index: set(t.depends_on) for t in tasks}
+    try:
+        TopologicalSorter(graph).prepare()
+    except CycleError as exc:
+        # graphlib names the cycle's nodes in exc.args[1]; the last one closes the loop.
+        nodes = exc.args[1] if len(exc.args) > 1 else ()
+        involved = nodes[-1] if nodes else "?"
+        raise ValueError(f"Dependency cycle detected involving task_index {involved}") from exc
 
-    def _visit(node: int) -> None:
-        if node in in_stack:
-            raise ValueError(f"Dependency cycle detected involving task_index {node}")
-        if node in visited:
-            return
-        in_stack.add(node)
-        for dep in adj.get(node, []):
-            _visit(dep)
-        in_stack.remove(node)
-        visited.add(node)
-
+    position = {t.task_index: pos for pos, t in enumerate(tasks)}
     for task in tasks:
-        _visit(task.task_index)
+        for dep in task.depends_on:
+            if position[dep] > position[task.task_index]:
+                raise ValueError(
+                    f"Task {task.task_index} depends on task_index {dep}, which is listed "
+                    f"after it: tasks run in authored order, so the order must honour "
+                    f"depends_on (#578)"
+                )
 
 
 def _serialize_acceptance_criterion(c: str | TypedCheck) -> str | dict:
