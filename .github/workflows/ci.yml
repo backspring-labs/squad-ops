@@ -155,11 +155,15 @@ jobs:
     # POSTGRES_URL names squadops_test, never the deployment database (#1099).
     name: integration
     needs: changes
-    # Safe to skip as a whole: `integration` is NOT a required status check (required
-    # are `closing reference present`, `lint + regression`, `scaffold skeleton gate`),
-    # so a skipped run cannot block a merge. The required lanes stay unconditional —
-    # `lint + regression` in particular, which is what catches doc-adjacent breakage
-    # like the generated typed-check menu drifting from the registry.
+    # REQUIRED since 2026-09-07 (1.7.4 plan §3.1): `integration` joins `closing reference
+    # present`, `lint + regression` and `scaffold skeleton gate` as a required status
+    # check on main, after this job sat red for six merges on the 1.7.3 line with nothing
+    # to block them (1.7.3 record §4.6). A red run blocks the merge — proved by the
+    # controlled negative check, PR #1376, closed unmerged. On docs-only changes the job
+    # is skipped by the `if:` below; GitHub reports a job skipped by its conditional as
+    # satisfied for required checks, so a docs-only PR still merges. The required lanes
+    # stay unconditional — `lint + regression` in particular, which is what catches
+    # doc-adjacent breakage like the generated typed-check menu drifting from the registry.
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     services:
