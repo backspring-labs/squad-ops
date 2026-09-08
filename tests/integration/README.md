@@ -230,13 +230,13 @@ manager = AgentManager()
 container_info = manager.get_agent_container_info()
 
 # Ensure agents are running
-await manager.ensure_agents_running(['max', 'neo'])
+await manager.ensure_agents_running(["max", "neo"])
 
 # Rebuild agents if needed
-await manager.rebuild_agents(['max', 'neo'])
+await manager.rebuild_agents(["max", "neo"])
 
 # Verify agent health
-await manager.verify_agent_health('max')
+await manager.verify_agent_health("max")
 ```
 
 ### Container Health Checks
