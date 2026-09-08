@@ -412,11 +412,23 @@ superseded plans: #1184's parking in `docs/plans/1-7-0-cut-record.md` §5a, #115
 nowhere but the issue. SIP-0106 §1.2b still read as though the vLLM arm were active. §1.2e and
 §1.2f fix that, and §1.2b now carries a forward pointer so its stale text cannot be read alone.
 
-**Filed since this plan's rev 3, and placed here so they are not the next §6a:** **#1406** (a
-repair's verification demotes criteria it cannot execute — three passed view-compile criteria
-lost to `missing_tooling` on an accepted roll) is **unplaced pending triage**; **#1408** (gate
-Qwen3.8-Flash-Next on the plan-authoring replay before any vLLM re-arm) places itself
-**after this line's counted set closes**, because it needs the box to itself.
+**Filed since this plan's rev 3, and placed here so they are not the next §6a:**
+
+- **#1406** — a repair's verification demotes criteria it cannot execute; three view-compile
+  criteria that **passed at emission time** were lost to `missing_tooling:3` on an *accepted*
+  roll (`cyc_dd3068d22f2c`, the deploy-B React checkpoint). **Its instrument half landed on this
+  line** — PR #1407 makes a skip count wherever it happens and names the criteria shortfall,
+  and its body says what is left: *"the framework-side defect (a criterion re-asked where its
+  toolchain is absent, demoting an executed-and-passed row) is #1406's own; this PR is the
+  instrument that could not see it."* **That sentence is the §6a shape exactly**, one day old,
+  so it is placed rather than left: **1.7.5**, as a bug in the 1.7 line, not pulled into this
+  pack — §3.2 is sequenced and in flight, and the rider closed 2026-09-08.
+  **One question for the owner, not answered here:** the defect under-reports criteria on
+  accepted rolls, so whether it bears on *this line's counted set* is a measurement-integrity
+  call. PR #1407 makes it visible; it does not stop it happening.
+- **#1408** — gate Qwen3.8-Flash-Next on the plan-authoring replay before any vLLM re-arm.
+  Places itself **after this line's counted set closes**, because it needs the box to itself
+  (SIP-0106 §1.2c's trap: 94.87 GiB + a 26 GiB host reserve on a 121 GiB box).
 
 **The 1.8 lane — Scoped Code Revision** (PR #1325; formerly Slot-Scoped Emission; subsumes
 #1213; #1176 beside it). Its design review starts during this line (§7 step 2). The evidence
@@ -536,8 +548,11 @@ review starts now so that 1.8.0's headline is not designed in 1.8.0.
   forward pointer so its stale "arm is active" text cannot be read alone. #598's second half
   (the in-cycle image build) split to the 1.8 lane as feature-shaped. #157 removed from the
   1.7.5 list as closed-by-accretion rather than carried. #1406 and #1408, filed since rev 3,
-  named rather than left to become the next §6a. No change to §3's content, §4's set, or the
-  sequencing — this revision moves nothing into or out of 1.7.4.
+  named rather than left to become the next §6a — #1406's framework half placed in 1.7.5 after
+  PR #1407 landed its instrument half on this line, with the counted-set question raised for the
+  owner. SIP-0106 promoted to `implemented` in the same PR, atomic with its amendments. No
+  change to §3's content, §4's set, or the sequencing — this revision moves nothing into or out
+  of 1.7.4.
 
 - **Rev 1 (2026-09-07)** — written the evening the 1.7.3 line closed, on the owner's ask,
   from the 1.7.3 plan and record, the 1.7.2 plan §8/§8a, the 1.7.0 plan §3.1 and §6.2, and the
