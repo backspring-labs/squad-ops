@@ -49,6 +49,9 @@ from squadops.cycles.agent_config import build_agent_resolver
 from squadops.cycles.build_completeness import compute_missing_required_files
 from squadops.cycles.check_registry import (
     CHECK_REQUIRED_FILES,
+    CHECK_TESTS_PASS,
+    framework_row_producer,
+    framework_rows_owed,
     required_files_row,
 )
 from squadops.cycles.checkpoint import RunCheckpoint
@@ -3637,37 +3640,84 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # carries no rows at all, so "only when it carried one" left the required check with
         # no executed row anywhere — the accepted patch supplied the files, the app booted,
         # and the roll-up read ``subject_missing`` → ``blocked_unverified`` (1.7.3 roll 1).
+        # #1374: every framework row this task type owes BY CONTRACT is present in the
+        # corrected result, or the patch is not accepted. Two void counted rolls on two
+        # lines were one mechanism patched twice: this seam composed the corrected result
+        # from the failed attempt's rows plus whatever the verifier produced, so a
+        # framework row survived only if some earlier stage happened to write one. #1318
+        # re-derived `required_files` when the attempt HAD carried it (1.7.2 roll 1: a
+        # booting app rejected on the pre-patch row); #1364 found the next shape, a
+        # contentless attempt carrying no rows at all (1.7.3 roll 1: a booting app read
+        # `blocked_unverified`). The contract says what a task owes; its attempt's history
+        # does not.
         spine_rows: list[dict[str, Any]] = []
-        failed_rows = ((result.outputs or {}).get("validation_result") or {}).get("checks") or []
         expected_artifacts = (envelope.inputs or {}).get("expected_artifacts") or []
-        carried_required_files = any(
-            isinstance(row, Mapping) and row.get("check") == CHECK_REQUIRED_FILES
-            for row in failed_rows
-        )
-        owes_required_files = carried_required_files or emits_required_files(envelope.task_type)
-        if expected_artifacts and owes_required_files:
-            spine_rows.append(
-                required_files_row(
-                    [PurePosixPath(str(name)).name for name in expected_artifacts if name],
-                    [a.get("name") for a in patched_artifacts if isinstance(a, dict)],
+        patched_names = [a.get("name") for a in patched_artifacts if isinstance(a, dict)]
+        produced = {
+            str(row.get("check"))
+            for row in ([r.to_check_row() for r in verification.checks] + retest_rows)
+            if isinstance(row, Mapping) and row.get("check")
+        }
+        # `tests_pass` is the one owed row that is never a check ROW on a passing result:
+        # `verification_normalize` skips the failure-only row and synthesizes the check
+        # from `test_result`, which is richer and present on a green run. Presence here
+        # means "the evidence the roll-up reads exists", not "a dict with this key" — a
+        # readout keyed on the key alone would refuse every retested qa patch.
+        if corrected_outputs.get("test_result"):
+            produced.add(CHECK_TESTS_PASS)
+        for check_id in framework_rows_owed(envelope.task_type):
+            if check_id in produced:
+                logger.info(
+                    "patch task=%s owes %s and %s produced it (#1374)",
+                    envelope.task_id,
+                    check_id,
+                    framework_row_producer(check_id),
                 )
-            )
-            logger.info(
-                "patch task=%s re-derived %s on the patched set: passed=%s required=%s "
-                "missing=%s (the failed attempt carried %s; #1318, #1364)",
-                envelope.task_id,
-                CHECK_REQUIRED_FILES,
-                spine_rows[-1]["passed"],
-                ",".join(spine_rows[-1]["required"]) or "-",
-                ",".join(spine_rows[-1]["missing"]) or "-",
-                "the row" if carried_required_files else "no rows",
-            )
-        elif carried_required_files:
+                continue
+            if check_id == CHECK_REQUIRED_FILES:
+                if not expected_artifacts:
+                    # Nothing declared: there is no set to check the patched tree against,
+                    # and inventing a passing row would credit a deliverable nobody named.
+                    logger.warning(
+                        "patch task=%s owes %s but declares no expected_artifacts — the "
+                        "row cannot be derived and the pre-patch state decides (#1318)",
+                        envelope.task_id,
+                        CHECK_REQUIRED_FILES,
+                    )
+                    continue
+                spine_rows.append(
+                    required_files_row(
+                        [PurePosixPath(str(name)).name for name in expected_artifacts if name],
+                        patched_names,
+                    )
+                )
+                logger.info(
+                    "patch task=%s re-derived %s on the patched set: passed=%s required=%s "
+                    "missing=%s (#1318, #1364, #1374)",
+                    envelope.task_id,
+                    CHECK_REQUIRED_FILES,
+                    spine_rows[-1]["passed"],
+                    ",".join(spine_rows[-1]["required"]) or "-",
+                    ",".join(spine_rows[-1]["missing"]) or "-",
+                )
+                continue
+            # Owed, not produced by its stage, and not derivable at this seam. That is
+            # the state SIP-0096 reads as `subject_missing`, and it is what put #1364's
+            # booting app at `blocked_unverified`.
+            #
+            # **Reported, not refused.** Every measured instance of this defect is a
+            # `required_files` row, which the branch above now derives unconditionally;
+            # refusing on the unmeasured half would change what a verdict MEANS in the
+            # middle of a measurement window, on a class no roll has yet exhibited. The
+            # gap is named on the line so a record can count it, and promoting it to a
+            # refusal is a separate, deliberate call with evidence behind it.
             logger.warning(
-                "patch task=%s carried a %s failure but the task declares no "
-                "expected_artifacts — the pre-patch row will decide (#1318)",
+                "patch task=%s owes %s and has none: %s produced no row and it cannot be "
+                "derived here — the roll-up will read subject_missing (#1374, "
+                "reporting-only)",
                 envelope.task_id,
-                CHECK_REQUIRED_FILES,
+                check_id,
+                framework_row_producer(check_id),
             )
         prior_validation = corrected_outputs.get("validation_result")
         corrected_outputs["validation_result"] = {
