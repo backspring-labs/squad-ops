@@ -739,13 +739,21 @@ def boot_audit(cfg: SetConfig, cycle_id: str, impl_run: str) -> dict:
         text=True,
         cwd=REPO,
     )
-    tail = (proc.stdout or proc.stderr).strip().splitlines()
+    return audit_outcome(proc.returncode, proc.stdout or proc.stderr, framing)
+
+
+def audit_outcome(returncode: int, output: str, framing: str) -> dict:
+    """The boot audit as the record keeps it — pure. ``detail`` is the verdict line;
+    ``failures`` is every FAIL line the audit printed, each carrying the response it
+    judged (#1324), so a rejected roll can be root-caused after the app is gone."""
+    tail = (output or "").strip().splitlines()
     return {
         "ran": True,
-        "passed": proc.returncode == 0,
-        "exit_code": proc.returncode,
+        "passed": returncode == 0,
+        "exit_code": returncode,
         "contract_from": framing,
         "detail": tail[-1] if tail else "",
+        "failures": [line for line in tail if line.startswith("FAIL")],
     }
 
 
