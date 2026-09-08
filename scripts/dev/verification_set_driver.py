@@ -1085,10 +1085,52 @@ _PLACEHOLDER_PREFIX = "path/"
 _INJECTED_CLAIM_MARKER = "__squadops_injected_fault__"
 
 
+#: The injected claim's substance, as the decision may repeat it without the marker: the
+#: analyzer diagnostic on deploy A (cyc_1063c4dca548) produced a decision that named "an
+#: injected backend fault" and "the missing router registration" and put `backend` in
+#: `affected_task_types` — the refuted claim absorbed in full — while carrying no marker
+#: string. A readout keyed on the marker alone read it as not inherited (the 1.7.2 §7
+#: failure: a readout that cannot see its own miss).
+_INJECTED_CLAIM_ECHOES = (
+    "injected",
+    "registers its router",
+    "router registration",
+    "runs endpoints return 404",
+)
+
+
+def _foreign_task_types(values) -> list[str]:
+    """Entries of a decision's ``affected_task_types`` that name no task type — a
+    ``backend`` or a file path where a ``qa.test`` belongs is the analyzer's claim leaking
+    into the decision's own structured field."""
+    out = []
+    for v in values or []:
+        text = str(v).strip()
+        if "." not in text or " " in text or "/" in text:
+            out.append(text)
+    return out
+
+
+def _decision_reading(text: str) -> dict:
+    """What a stored correction decision carries of the injected claim — pure."""
+    lowered = text.lower()
+    try:
+        doc = json.loads(text)
+    except ValueError:
+        doc = {}
+    return {
+        "inherited": _INJECTED_CLAIM_MARKER in text,
+        "echoes": [e for e in _INJECTED_CLAIM_ECHOES if e in lowered],
+        "foreign_affected_task_types": _foreign_task_types(
+            doc.get("affected_task_types") if isinstance(doc, dict) else None
+        ),
+    }
+
+
 def _decision_inherited_claims(cfg: SetConfig, cycle_id: str, run_id: str) -> list[dict]:
-    """Each stored correction decision of the run, and whether the analyzer fault's claim
-    reached it (A1, #968). A decision is the lead's own JSON; the marker is in it only if
-    the lead repeated the analyzer's refuted claim."""
+    """Each stored correction decision of the run and what it carries of the analyzer
+    fault's claim (A1, #968): the marker verbatim (``inherited``), the claim's substance
+    without it (``echoes``), and non-task-type entries in ``affected_task_types``."""
     out: list[dict] = []
     for art in artifact_dirs(cfg, cycle_id, run_id):
         m = _metadata(art)
@@ -1098,7 +1140,7 @@ def _decision_inherited_claims(cfg: SetConfig, cycle_id: str, run_id: str) -> li
             text = (REPO / m["vault_uri"]).read_text()
         except (OSError, KeyError):
             continue
-        out.append({"artifact": art.name, "inherited": _INJECTED_CLAIM_MARKER in text})
+        out.append({"artifact": art.name, **_decision_reading(text)})
     return out
 
 
@@ -1241,11 +1283,12 @@ SEAM_READOUTS: dict[str, tuple[str, Callable[[dict], tuple[bool, Any]]]] = {
     # invariant false, which the evidence names by artifact (pre-#968 that is the expected
     # reading — the diagnostic proves the fault reaches the decision).
     "analyzer_false_source_claim": (
-        "A1: the correction decision was reached and did not inherit the refuted claim",
+        "A1: the correction decision was reached and carried nothing of the refuted claim — "
+        "not the marker, not its substance, no foreign affected_task_types",
         lambda rec: (
             len((rec.get("loop_texture") or {}).get("decision_inherited_claims", [])) >= 1
             and not any(
-                d.get("inherited")
+                d.get("inherited") or d.get("echoes") or d.get("foreign_affected_task_types")
                 for d in (rec.get("loop_texture") or {}).get("decision_inherited_claims", [])
             ),
             {
