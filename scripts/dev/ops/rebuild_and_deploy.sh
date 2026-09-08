@@ -149,23 +149,6 @@ check_ollama() {
 }
 
 # Function to check database connectivity
-check_database() {
-    echo -e "${BLUE}🔍 Checking PostgreSQL connection...${NC}"
-    
-    # Try to connect via docker exec if postgres container is running
-    if docker ps --format '{{.Names}}' | grep -q '^squadops-postgres$'; then
-        if docker exec squadops-postgres pg_isready -U squadops -d squadops > /dev/null 2>&1; then
-            echo -e "${GREEN}✅ PostgreSQL is healthy${NC}"
-            return 0
-        else
-            echo -e "${RED}❌ PostgreSQL container exists but is not ready${NC}"
-            return 1
-        fi
-    else
-        echo -e "${RED}❌ PostgreSQL container is not running${NC}"
-        return 1
-    fi
-}
 
 # Step 1: Check Ollama (external service)
 echo ""
@@ -186,7 +169,10 @@ echo -e "${BLUE}📊 Step 2: Ensuring Docker Compose infrastructure is running..
 
 # Always start infrastructure services (they're dependencies)
 echo "Starting infrastructure services (rabbitmq, postgres, redis, prefect)..."
-docker compose up -d rabbitmq postgres redis prefect-server
+# #581: `--wait` blocks until every started service reports healthy (compose
+# healthchecks on the infra services), so the fixed sleeps and the hand-rolled
+# pg_isready / rabbitmq-diagnostics / redis-cli polling below them are gone.
+docker compose up -d --wait rabbitmq postgres redis prefect-server
 
 # Back up the database before anything else touches it (#1181). Cheap insurance at the
 # moment the risk is highest: this script rebuilds images and restarts services, and
@@ -200,48 +186,17 @@ fi
 # Conditionally start runtime-api and console if they're being rebuilt
 if [ "$REBUILD_RUNTIME_API" = true ] || [ "$REBUILD_ALL" = true ]; then
     echo "Starting runtime-api..."
-    docker compose up -d runtime-api || true
+    docker compose up -d --wait runtime-api || RUNTIME_API_FAILED=1
 fi
 
 if [ "$REBUILD_CONSOLE" = true ] || [ "$REBUILD_ALL" = true ]; then
     echo "Starting console..."
-    docker compose up -d squadops-console || true
+    docker compose up -d --wait squadops-console || CONSOLE_FAILED=1
 fi
 
-echo "⏳ Waiting for infrastructure to be healthy (30 seconds)..."
-sleep 30
-
-# Verify infrastructure health
 echo ""
-echo -e "${BLUE}🔍 Verifying infrastructure health...${NC}"
-
-if ! check_database; then
-    echo -e "${YELLOW}⚠️  Waiting additional time for PostgreSQL...${NC}"
-    sleep 15
-    check_database || echo -e "${YELLOW}⚠️  PostgreSQL may still be initializing${NC}"
-fi
-
-# Check RabbitMQ
-if docker exec squadops-rabbitmq rabbitmq-diagnostics ping > /dev/null 2>&1; then
-    echo -e "${GREEN}✅ RabbitMQ is healthy${NC}"
-else
-    echo -e "${YELLOW}⚠️  RabbitMQ may still be starting${NC}"
-fi
-
-# Check Redis
-if docker exec squadops-redis redis-cli ping > /dev/null 2>&1; then
-    echo -e "${GREEN}✅ Redis is healthy${NC}"
-else
-    echo -e "${YELLOW}⚠️  Redis may still be starting${NC}"
-fi
-
-# Check Runtime API
-if curl -s --connect-timeout 5 http://localhost:8001/health > /dev/null 2>&1 || \
-   docker ps --format '{{.Names}}\t{{.Status}}' | grep squadops-runtime-api | grep -q "Up"; then
-    echo -e "${GREEN}✅ Runtime API container is running${NC}"
-else
-    echo -e "${YELLOW}⚠️  Runtime API may still be starting${NC}"
-fi
+echo -e "${BLUE}🔍 Infrastructure is healthy (compose --wait, #581):${NC}"
+docker compose ps rabbitmq postgres redis prefect-server --format '  {{.Name}}\t{{.Status}}'
 
 # Step 3: Rebuild services that changed
 echo ""
@@ -417,7 +372,7 @@ if [ "$REBUILD_AGENTS" = true ] || [ "$REBUILD_ALL" = true ]; then
     for agent in $AGENTS; do
         if docker compose config --services | grep -q "^${agent}$"; then
             echo -e "  🔄 Restarting ${agent}..."
-            if ! docker compose up -d $agent; then
+            if ! docker compose up -d --wait $agent; then
                 echo -e "${RED}  ⚠️  Restart failed for ${agent}${NC}"
                 AGENTS_RESTART_FAILED=1
                 FAILED_AGENTS="${FAILED_AGENTS} ${agent}"
@@ -466,11 +421,7 @@ if [ "$REBUILD_AGENTS" = true ] || [ "$REBUILD_ALL" = true ]; then
 
     # Step 5: Wait for agents to be healthy
     echo ""
-    echo -e "${BLUE}⏳ Step 5: Waiting for agents to be healthy (30 seconds)...${NC}"
-    sleep 30
-else
-    echo -e "${BLUE}⏳ Step 4: Waiting for services to be healthy (10 seconds)...${NC}"
-    sleep 10
+    echo -e "${BLUE}✅ Step 5: Agents reported healthy (compose --wait, #581)${NC}"
 fi
 
 # Step 6: Verify deployment
