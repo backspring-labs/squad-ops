@@ -1025,6 +1025,37 @@ def _agent_lines_of_interest(lines: list[str]) -> list[str]:
     return [line for line in lines if any(key in line for key in _AGENT_LINE_KEYS)]
 
 
+PREFECT_SERVER_CONTAINER = "squadops-prefect-server"
+_LOOP_OVERRUN = re.compile(
+    r"prefect\.server\.services\.(?P<service>\w+) - (?:\w+) took (?P<seconds>[\d.]+) seconds to run, "
+    r"which is longer than its loop interval of (?P<interval>[\d.]+) seconds"
+)
+
+
+def prefect_loop_overruns(lines: list[str]) -> dict:
+    """#330 (1.7.4 plan §3.3, read live): the Prefect server's loop services that took
+    longer than their interval during the window — per service, the count and the worst
+    overrun in seconds. Pure; the window comes from ``prefect_log_window``."""
+    by_service: dict[str, dict] = {}
+    for line in lines:
+        m = _LOOP_OVERRUN.search(line)
+        if not m:
+            continue
+        row = by_service.setdefault(m.group("service"), {"count": 0, "worst_seconds": 0.0})
+        row["count"] += 1
+        row["worst_seconds"] = max(row["worst_seconds"], float(m.group("seconds")))
+    return {
+        "overruns": sum(r["count"] for r in by_service.values()),
+        "by_service": dict(sorted(by_service.items())),
+    }
+
+
+def prefect_log_window(since: str) -> list[str]:
+    return [
+        line for line in docker_logs(PREFECT_SERVER_CONTAINER, since) if "loop interval" in line
+    ]
+
+
 def agent_log_window(since: str) -> list[str]:
     """The producing agents' emission lines (#1276, #1311).
 
@@ -1109,6 +1140,8 @@ def loop_texture(cfg: SetConfig, cycle_id: str, impl_run: str | None, since: str
     agent_lines = agent_log_window(since)
     out.update(texture_from_emission_shapes(agent_lines))
     out.update(texture_from_retry_feedback(agent_lines))
+    # #330: the Prefect server's loop-service overruns in this cycle's window.
+    out["prefect_loop_overruns"] = prefect_loop_overruns(prefect_log_window(since))
     # 1.7.4 (#968, A1): whether a stored correction decision carries the analyzer fault's
     # marker — read from the decision itself, the artifact the repair brief is built from.
     out["decision_inherited_claims"] = (
@@ -1887,6 +1920,9 @@ def render(cfg: SetConfig, title: str, rec: dict) -> str:
         f"{len((rec.get('loop_texture') or {}).get('emission_retries', []))} / "
         f"{len((rec.get('loop_texture') or {}).get('retried_with_fact', []))} / "
         f"{len((rec.get('loop_texture') or {}).get('retried_blind', []))} |",
+        "| 1.7.4 Prefect loop overruns in the window (#330) | "
+        f"{(rec.get('loop_texture') or {}).get('prefect_loop_overruns', {}).get('overruns', '—')} "
+        f"{(rec.get('loop_texture') or {}).get('prefect_loop_overruns', {}).get('by_service', {}) or ''} |",
         "| 1.7.4 B1 non-root fixture tables: suites read / mentions (#1087) | "
         f"{_b1_words((rec.get('static_checks') or {}).get('non_root_fixture_tables'))} |",
         "| R1 assertion_kinds_match rows | "

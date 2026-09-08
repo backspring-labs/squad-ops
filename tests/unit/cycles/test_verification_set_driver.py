@@ -1783,3 +1783,30 @@ class TestTheNewFaultsAreReadBySeams:
         from squadops.capabilities.handlers.fault_injection import INJECTED_CLAIM_MARKER
 
         assert driver._INJECTED_CLAIM_MARKER == INJECTED_CLAIM_MARKER
+
+
+class TestPrefectLoopOverrunsAreRead:
+    """#330: the loop-starvation failure mode is read per cycle rather than known about."""
+
+    _LINE = (
+        "07:05:11.718 | WARNING | prefect.server.services.scheduler - Scheduler took "
+        "4021.211806 seconds to run, which is longer than its loop interval of 60.0 seconds."
+    )
+
+    def test_overruns_are_counted_per_service_with_the_worst(self, driver):
+        late = self._LINE.replace("scheduler - Scheduler", "late_runs - MarkLateRuns").replace(
+            "4021.211806", "12613.0"
+        )
+        out = driver.prefect_loop_overruns([self._LINE, self._LINE, late, "INFO other"])
+        assert out["overruns"] == 3
+        assert out["by_service"] == {
+            "late_runs": {"count": 1, "worst_seconds": 12613.0},
+            "scheduler": {"count": 2, "worst_seconds": 4021.211806},
+        }
+
+    def test_a_quiet_window_reads_as_zero_not_absent(self, driver):
+        assert driver.prefect_loop_overruns([]) == {"overruns": 0, "by_service": {}}
+
+    def test_the_window_keeps_only_overrun_lines(self, driver, monkeypatch):
+        monkeypatch.setattr(driver, "docker_logs", lambda c, s: [self._LINE, "INFO healthy"])
+        assert driver.prefect_log_window("2026-09-08T00:00:00Z") == [self._LINE]
