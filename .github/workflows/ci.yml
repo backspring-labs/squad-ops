@@ -139,6 +139,27 @@ jobs:
           print(f"{len(profiles)} request profiles, prompt fragment manifest present")
           EOF
 
+  dependency-audit:
+    # #1205: nothing scanned the pins for advisories, and since #1203 every image installs
+    # the same set — a CVE in any pinned package lands in the runtime API and all six
+    # agents at once. The audit runs against requirements/*.lock (what the images install),
+    # never the dev venv or ci-constraints.txt (the #1041 lesson), through the same script
+    # a developer runs. It FAILS on any advisory not accepted in
+    # requirements/audit-ignore.txt, where each accepted id carries its reason and the
+    # issue that retires it — a decision on the record, not a report nobody reads.
+    name: dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pip-audit
+        run: pip install "pip-audit>=2.7.0"
+      - name: Audit the lock files the images install
+        run: ./scripts/dev/audit_dependencies.sh
+
   integration:
     # #242: nothing ran tests/integration/ on PRs, so four independent breakages sat in
     # test_pulse_check_e2e.py unnoticed (#211) and sixteen tests failed on every run of

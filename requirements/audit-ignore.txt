@@ -1,0 +1,18 @@
+# Advisories the dependency audit (#1205) is told to ignore — each with the reason and
+# the issue that retires it. An entry here is a decision, not a default: pip-audit fails
+# the build on any advisory NOT listed, so a new one blocks until it is fixed or
+# accepted here in writing. Format: one advisory id per line; `#` comments.
+#
+# Every id below is against the pins the images install today (requirements/*.lock,
+# compiled from ci-constraints.txt, #1203) and is retired by the refresh #1204 lands in
+# the same rider — remove the entry when the pin moves past the fix version.
+
+# cryptography 49.0.0 → fixed in 50.0.0 (via python-jose[cryptography], the auth boundary)
+PYSEC-2026-3552
+# pyasn1 0.6.3 → fixed in 0.6.4 (via python-jose / rsa)
+PYSEC-2026-3455
+PYSEC-2026-3456
+PYSEC-2026-3457
+# ecdsa 0.19.2 — NO fix version published (via python-jose). Stays listed until
+# python-jose is retired or ecdsa ships a fix; revisit at every refresh (#1204).
+PYSEC-2026-1325
