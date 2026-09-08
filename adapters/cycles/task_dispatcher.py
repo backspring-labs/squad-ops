@@ -406,10 +406,29 @@ class TaskDispatcher:
             raise
         except TimeoutError:
             self._reply_router.cancel(envelope.task_id)
+            # #995: the timeout is a MACHINE FACT on the result, not only a sentence in
+            # `error`. V7 roll 1's final `development.develop` attempt produced two
+            # substantive emissions — 7,516 and 5,322 completion tokens, three path
+            # fences each, each with a real rejection — and was then killed by the 1800s
+            # timeout mid self-eval. The banked analysis said "the model produced zero
+            # response characters … a complete generation drop … no output was emitted"
+            # and classified it `execution`: the empty final read was described as the
+            # task's whole behaviour, and the logs disprove the mechanism it named.
+            # Anything downstream — correction governance, the record, a human at 3am —
+            # was pointed at the wrong layer.
             return TaskResult(
                 task_id=envelope.task_id,
                 status=TaskResultStatus.FAILED,
-                error=f"Timed out waiting for agent {envelope.agent_id} after {self._task_timeout}s",
+                error=(
+                    f"Timed out waiting for agent {envelope.agent_id} after {self._task_timeout}s"
+                ),
+                outputs={
+                    "task_timeout": {
+                        "seconds": self._task_timeout,
+                        "agent_id": envelope.agent_id,
+                        "task_type": str(envelope.task_type),
+                    }
+                },
             )
         except Exception as exc:
             # Router-side failure surfaced via the future (e.g. a malformed

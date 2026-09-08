@@ -149,6 +149,13 @@ class TestDispatchTask:
 
         assert result.status == "FAILED"
         assert "Timed out" in result.error
+        # #995: and as a MACHINE fact, not only an English sentence. Everything
+        # downstream read an empty result and described the empty final read as the
+        # task's behaviour — V7 roll 1's analysis called it "a complete generation drop"
+        # for a task that had just emitted 12,838 completion tokens across two rounds.
+        assert result.outputs["task_timeout"]["agent_id"] == "neo"
+        assert result.outputs["task_timeout"]["task_type"] == "development.design"
+        assert result.outputs["task_timeout"]["seconds"] > 0
 
     # SIP-0094 removed the executor-side reply polling loop (consume_blocking +
     # invalidate_queue recovery). Two tests that asserted that mechanism —
