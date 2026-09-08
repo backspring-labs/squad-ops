@@ -801,16 +801,24 @@ class TestTheNewSeamsReachTheHandlersTheLiveCycleCalls:
         assert "Dockerfile" in [a["name"] for a in result.outputs["artifacts"]]
 
     async def test_with_the_declaration_the_same_emission_reaches_the_builder_contentless(self):
-        """#1364 on demand: the attempt fails at the emission seam as a semantic failure —
-        today with NO ``emission_failure`` marker, which is why the executor never aims a
-        retry for the builder and the attempt goes straight to correction. That absence is
-        the #1372 gap this fault exists to exercise; the develop handler's same path banks
-        the marker (test_build_handlers), and pack row 3 gives the builder one."""
+        """#1364 on demand, now with #1372 landed (pack row 3).
+
+        The attempt still fails at the emission seam, but it is no longer declared a
+        semantic failure outright: the marker is banked and the outcome is left to the
+        executor's D5 fallback, which makes the first attempt a retry re-prompted with
+        the shape fact. This test previously asserted the ABSENCE of the marker and
+        carried the note "#1372 has landed — update this test"; this is that update, and
+        the assertions are inverted rather than deleted so the diagnostic still proves
+        which path the fault takes.
+        """
         result = await self._builder({DECLARATION_KEY: ["builder_emission_contentless"]})
         assert result.success is False
         assert result.error == "No valid fenced code blocks found"
-        assert result.outputs.get("outcome_class") == "semantic_failure"
-        assert "emission_failure" not in result.outputs, "#1372 has landed — update this test"
+        assert "outcome_class" not in result.outputs
+        marker = result.outputs["emission_failure"]
+        assert marker["reason"] == "no_fenced_blocks"
+        assert marker["fences"] == {"fill": 0, "path": 0, "plain": 0}
+        assert marker["head"]
 
     async def _analyzer(self, declaration, task_id="corr-run_x-00-data.analyze_failure"):
         from squadops.capabilities.handlers.impl.analyze_failure import DataAnalyzeFailureHandler

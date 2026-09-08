@@ -580,6 +580,9 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
                         inputs.get("expected_artifacts"),
                         completion_tokens=response.completion_tokens,
                         completion_cap=chat_kwargs.get("max_tokens"),
+                        # #1372: the shape rides the marker, so the retry is told what it
+                        # wrote rather than asked again.
+                        content=content,
                     ),
                 },
             )

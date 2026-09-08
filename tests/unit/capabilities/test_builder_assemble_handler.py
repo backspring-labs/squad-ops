@@ -776,10 +776,19 @@ class TestBuilderFailureOutcomeClass:
         assert result.outputs["outcome_class"] == TaskOutcome.SEMANTIC_FAILURE
         assert result.outputs["failure_classification"] == FailureClassification.WORK_PRODUCT
 
-    async def test_no_fenced_blocks_emits_semantic_failure(self, mock_context, builder_inputs):
-        """LLM responds with prose only — no fenced code blocks extractable."""
-        from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
+    async def test_a_contentless_emission_is_retryable_and_carries_its_own_shape(
+        self, mock_context, builder_inputs
+    ):
+        """#1372: the builder had no emission-retry path.
 
+        Every other producer that extracts fences banks the `emission_failure` marker
+        and leaves the outcome to the executor's D5 fallback, which makes the first
+        attempt a retry re-prompted with the shape fact. The builder declared
+        SEMANTIC_FAILURE outright and went straight to a correction round — 1.7.3
+        counted roll 1 spent one on a 160-token emission nobody had told the model was
+        empty. Asserting the ABSENCE of the outcome class is the point: with it set,
+        the executor never reaches the retry branch.
+        """
         mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
             return_value=ChatMessage(
                 role="assistant",
@@ -790,8 +799,11 @@ class TestBuilderFailureOutcomeClass:
         result = await handler.handle(mock_context, builder_inputs)
 
         assert result.success is False
-        assert result.outputs["outcome_class"] == TaskOutcome.SEMANTIC_FAILURE
-        assert result.outputs["failure_classification"] == FailureClassification.WORK_PRODUCT
+        assert "outcome_class" not in result.outputs
+        marker = result.outputs["emission_failure"]
+        assert marker["reason"] == "no_fenced_blocks"
+        assert marker["fences"] == {"fill": 0, "path": 0, "plain": 0}
+        assert marker["head"].startswith("I would build the package")
         assert "No valid fenced code blocks" in result.error
 
     async def test_no_source_artifacts_emits_semantic_failure(self, mock_context):
@@ -982,3 +994,64 @@ class TestTypedAcceptance:
         assert packaging["params"]["file"] == "Dockerfile"
         assert packaging["severity"] == "warning"
         assert packaging["passed"] is True
+
+
+class TestEveryProducerRendersTheAimedRetry:
+    """#1372: the executor threaded a retry marker that only two handlers rendered.
+
+    `develop` and `qa.test` called `_apply_emission_retry_feedback` in their own
+    overrides; the builder and every handler on the generic path — each repair handler
+    among them — re-rolled blind on the same prior. A marker computed, threaded and never
+    rendered is the #1289 shape, and that one went five weeks unnoticed because its only
+    trace was an absence.
+    """
+
+    _MARKER = {
+        "reason": "no_fenced_blocks",
+        "response_chars": 160,
+        "expected_artifacts": ["Dockerfile"],
+        "completion_tokens": 160,
+        "completion_cap": 8000,
+        "signature": "unextractable",
+        "fences": {"fill": 0, "path": 0, "plain": 0},
+        "head": "I'll start by verifying the source layout.",
+    }
+
+    def _renderer(self):
+        from adapters.prompts.factory import create_prompt_asset_source
+        from squadops.prompts.renderer import RequestTemplateRenderer
+
+        return RequestTemplateRenderer(create_prompt_asset_source(provider="filesystem"))
+
+    async def test_the_builders_retry_carries_the_shape_it_emitted(
+        self, mock_context, builder_inputs
+    ):
+        mock_context.ports.request_renderer = self._renderer()
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
+            return_value=ChatMessage(
+                role="assistant", content="```dockerfile:Dockerfile\nFROM python:3.12\n```\n"
+            ),
+        )
+        await BuilderAssembleHandler().handle(
+            mock_context, {**builder_inputs, "emission_retry_feedback": self._MARKER}
+        )
+
+        sent = mock_context.ports.llm.chat_stream_with_usage.await_args.args[0]
+        prompt = "\n".join(str(m.content) for m in sent)
+        assert "Prior Attempt Failed" in prompt
+        assert "no fenced block at all" in prompt
+        assert "I'll start by verifying the source layout." in prompt
+
+    async def test_a_first_attempt_carries_no_such_block(self, mock_context, builder_inputs):
+        """The control: presence-keyed, so a first attempt is byte-for-byte what it was."""
+        mock_context.ports.request_renderer = self._renderer()
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
+            return_value=ChatMessage(
+                role="assistant", content="```dockerfile:Dockerfile\nFROM python:3.12\n```\n"
+            ),
+        )
+        await BuilderAssembleHandler().handle(mock_context, builder_inputs)
+
+        sent = mock_context.ports.llm.chat_stream_with_usage.await_args.args[0]
+        prompt = "\n".join(str(m.content) for m in sent)
+        assert "Prior Attempt Failed" not in prompt

@@ -387,6 +387,10 @@ class BuilderAssembleHandler(_CycleTaskHandler):
         rendered, user_prompt = await self._build_assembly_prompt(
             context, prd, prior_outputs, sources, task_tags, inputs
         )
+        # #1372: the builder now has a retry path (see the zero-extraction branch below),
+        # so it must also render what that retry carries — a marker threaded to a handler
+        # that never renders it is the #1289 shape, computed and silently dropped.
+        user_prompt = await self._apply_emission_retry_feedback(context, inputs, user_prompt)
 
         assembled = context.ports.prompt_service.get_system_prompt(self._role)
         # Issue #107: scope the profile prompt to this task's required
@@ -456,15 +460,43 @@ class BuilderAssembleHandler(_CycleTaskHandler):
         extracted = extract_fenced_files(content)
 
         if not extracted:
-            from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
+            from squadops.cycles.emission_integrity import no_fenced_blocks_failure
 
             self._log_no_fenced_blocks(content)
+            # #1372: the builder had NO emission-retry path. Every other producer that
+            # extracts fences banks the `emission_failure` marker here and leaves the
+            # outcome to the executor's D5 fallback, which makes the first attempt a
+            # RETRYABLE_FAILURE re-prompted with its own emission-shape fact; the builder
+            # instead declared SEMANTIC_FAILURE outright and went straight to a correction
+            # round. 1.7.3 counted roll 1 is the case: 160 tokens, no fences, and a
+            # correction round spent on an emission nobody had told the model was empty.
+            # A retry is cheaper than a repair and better aimed, and #998's signatures
+            # already exist for exactly this class.
+            #
+            # The classification is not lost, only deferred: D5 escalates to
+            # SEMANTIC_FAILURE once the retries are spent, so a builder that cannot emit
+            # still reaches correction — with one retry's evidence in front of it.
             return self._fail_result(
                 start_time,
                 inputs,
                 "No valid fenced code blocks found",
-                outcome_class=TaskOutcome.SEMANTIC_FAILURE,
-                failure_classification=FailureClassification.WORK_PRODUCT,
+                outputs={
+                    "artifacts": [
+                        {
+                            "name": "build_warnings.md",
+                            "content": content,
+                            "media_type": "text/markdown",
+                            "type": "document",
+                        },
+                    ],
+                    "emission_failure": no_fenced_blocks_failure(
+                        len(content),
+                        inputs.get("expected_artifacts"),
+                        completion_tokens=response.completion_tokens,
+                        completion_cap=builder_kwargs.get("max_tokens"),
+                        content=content,
+                    ),
+                },
             )
 
         # Step 6: Deduplicate and classify. Runs before validation (#419) so
