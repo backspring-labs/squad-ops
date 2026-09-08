@@ -1,10 +1,10 @@
 # 1.7.4 — plan
 
-**Revision 2, 2026-09-07.** Written the evening the 1.7.3 line closed, from the 1.7.3 plan (rev 4
+**Revision 3, 2026-09-07.** Written the evening the 1.7.3 line closed, from the 1.7.3 plan (rev 4
 §6, §8, §9), the 1.7.3 record (`docs/plans/1-7-3-verification-set-record.md` §0, §5, §8), the
 1.7.2 plan §8/§8a and record §8, the 1.7.0 plan §3.1 (as amended by the 1.7.3 plan) and §6.2,
 the ROADMAP's 1.7 identity, and the issues the 1.7.3 line filed and placed here (#1369, #1372,
-#1373, #1374); revised the same evening on the owner's review (§9).
+#1373, #1374); revised twice the same evening on the owner's review (§9).
 
 **1.7.4 closes the recovery half of Loop Honesty.** A failed attempt must produce an accurate
 fact, a correction must be composed only from accepted state, and accepted repaired state must
@@ -13,8 +13,9 @@ has become the dominant live rejection cause, makes contentless emissions retry 
 actual failure fact, and closes the remaining recovery seams carried from 1.7.2. **The contract
 is three-part — truthful failure → truthful correction → durable repaired state** — and every
 row of the core pack is tested against that sentence. It is the last behavioural line of 1.7;
-1.7.5 closes the line with Composition Root and the deferrals. The infrastructure rider rides
-beside it, split by whether it can touch the environment a cycle runs in (§3.3).
+1.7.5 closes the line with Composition Root and the deferrals. The infrastructure rider lands
+before it behind a checkpoint pair, classified by whether it can touch the environment a cycle
+runs in so the record knows what moved (§3.3).
 
 Rules carried from 1.7.3 without discount, and three added at this review:
 
@@ -89,7 +90,7 @@ instrument rounds are counted apart from the shakeout rounds.
 | item | what | proven by |
 |---|---|---|
 | **B1 field** | the driver reads the stored qa suites against the manifest's root-persisted entities into a `non_root_fixture_tables` texture field, so B1 is a record field rather than a grep | driver test on the 1.7.3 roll records (43 suites, zero mentions) |
-| **`retried_with_fact` field** | the driver reads the emission-retry feedback lines for the fact (R1's readout), so the hypothesis has a field before the fix exists | driver test on a synthetic line and on the 1.7.3 void roll's stored lines |
+| **`retried_with_fact` field** | the driver reads the emission-retry feedback lines for the fact (R1's readout), so the invariant's live texture has a field before the fix exists | driver test on a synthetic line and on the 1.7.3 void roll's stored lines |
 | **the contentless-builder fault** | `builder_emission_contentless` in `FAULTS` (scope `first_attempt`, target the builder's assemble task) reproducing 1.7.3 roll 1's shape (160 tokens, no fences); its `seam_readouts` entry reads the six steps below | fault tests; the guard that every fault has a readout |
 | **the rewind fault** (W1) | a develop first-attempt fault reproducing #994's own sequence — an emitted defect the acceptance check catches, so the task fails into correction, the repair fixes it, and the seam under test is what the rewind protocol then does with the accepted repair; scope `first_attempt` | fault tests; the readout pairs the rewind lines with `applied_patches` |
 | **the analyzer fault** (A1) | a `data.analyze_failure` emission fault reproducing #968's shape — a factual claim about the source that the source refutes — so the correction decision is seen refusing to inherit it; the analyzer's emission seam is made to call the injector if it does not (an `UnreachableFault` today is a finding, not a blocker) | fault tests; the readout reads the checked-source rows #968 adds against the decision |
@@ -113,6 +114,16 @@ Steps 2 and 6 are F1's exercise; 3 and 4 are R1's; 5 is the identity claim the 1
 becomes a CI-only invariant and is declared so in the pre-registration before roll 1 — it does
 not become a live hypothesis (preamble, third rule).
 
+**A fault guarantees the attempt, not the arrival.** Some seams sit behind a live emission or
+repair the model has to land first: the rewind seam (an accepted repair precedes it), the
+absent-suite seam (the repair that supplies the suite), the contentless-builder sequence's
+steps 5 and 6 (a successful retry), and the analyzer seam, which runs only after a failure and
+is therefore chained behind a failure-producing fault (the #1298 chain mechanism). **Each
+diagnostic has a budget of two runs.** A seam not reached after two is declared before roll 1,
+the invariant it serves stays CI-only for the line, and the set opens — it does not block on
+model luck. The steps the fault itself makes deterministic — the fault applied, the seam
+entered — not reached on the first run are a finding, not a budget item.
+
 ### 3.2 The pack, in merge order — what this line is trying to prove
 
 **The recovery transaction, stated once.** A recovery is one transaction:
@@ -133,8 +144,8 @@ cycle). Those four are the recovery contract. The next three are decisions the l
 | # | item | what | claim (§4) |
 |---|---|---|---|
 | 1 | **#1312 with #1254** | `qa_handoff.md` stops being required. The builder's deliverable becomes **`assembly_notes.md`: optional builder-to-qa context containing only assembly facts not already represented by the stack's deterministic contracts** — the environment contract's operation commands, the app invocation, the qa test namespace and the manifest. The exclusion list rendered from those declarations ("already supplied, do not restate") *enforces* that definition; it does not carry it. Both check surfaces go (`required_files` on the handoff, the planner's `regex_match`/`sections_present` family, #1254's doubled `harness_boundary`); `qa_test.py` gains a seventh, presence-keyed appendix that carries the notes when they exist; a derived guard over the registered stacks asserts the rendered exclusion list equals each stack's declarations. **Why one PR — the atomic invariant:** *there must never be an intermediate main state in which the old required handoff is gone but the replacement consumer contract is incomplete, or vice versa.* A main with the requirement removed and no appendix has a builder emitting notes nothing reads (the #1312 generator shape again); a main with the appendix and the requirement still on asks the builder for two deliverables while the handoff's assertors still live — the weaker half of the invariant, since that state lies to nobody; the first half is the reason the PR is one. The changes stay together for that reason and no other; the PR's Evidence states it. **The mirror rule on removal:** the 1.7.3 record says what consumed the handoff — nothing — and the PR's Evidence names every check row that disappears and who read it | **H1** (bar); **H2** (seam invariant, CI) |
-| 2 | **#1374** | the accepted-patch path derives every framework row the task's contract declares (`required_files`, `tests_pass` via the retest, `frontend_build`, the two suite-integrity rows) from the accepted candidate tree, through the same rule the producing handler uses, and supersedes the failed attempt's rows with them — regardless of what the failed attempt carried; the seam table in the PR names which stage's rule derives each row and on which tree | **F1** |
-| 3 | **#1372** | a contentless emission's retry carries its own emission-shape fact and the task's expected artifacts, at the shared emission seam, for every producer — the classes it covers are named below | **R1** |
+| 2 | **#1374** | the accepted-patch path derives every framework row the task's contract declares (`required_files`, `tests_pass` via the retest, `frontend_build`, the two suite-integrity rows) from the accepted candidate tree, through the same rule the producing handler uses, and supersedes the failed attempt's rows with them — regardless of what the failed attempt carried; the seam table in the PR names which stage's rule derives each row and on which tree | **F1** (live hypothesis) |
+| 3 | **#1372** | a contentless emission's retry carries its own emission-shape fact and the task's expected artifacts, at the shared emission seam, for every producer — the classes it covers are named below | **R1** (seam invariant, fault) |
 | 4 | **#994** | a rewind after an accepted correction repair does not re-dispatch the task and discard the repaired state | **W1** (seam invariant, fault) |
 
 **Recovery decision fidelity — the record's second question: did the remaining
@@ -174,43 +185,49 @@ incomplete classes are what the builder's Dockerfile-only emissions were, and th
 F1 and the texture, not by R1. This distinction is kept deliberately because Scoped Code
 Revision changes the response contract in 1.8 and will need it.
 
-### 3.3 The rider — never roll-verified, split by whether it can move the environment
+### 3.3 The rider — never roll-verified, before the pack, classified by what it can move
 
 The 1.7.3 plan §5 kept all of these out of that line so a shakeout regression would be
-attributable. A checkpoint pair gives attribution of a gross regression; it does not guarantee
-a rider has not altered latency, retries, startup timing or failure frequency in ways that
-change the experiment. So the rider is two riders:
+attributable. Here **every rider item lands before the pack, behind a checkpoint pair** (§7);
+the three ops items whose verification is live are read on the dev deploy after the set
+closes, their code having landed with the rest. Ruled at the third review (§8), reversing the
+second review's placement of the runtime-affecting half after the counted set, for three
+reasons: landing the rider first means every subsequent roll — the checkpoint pair, the
+shakeouts, the nine counted — exercises it, the strongest live evidence it can get; the tagged
+tree then matches the frozen deploy with zero drift, as 1.7.3's did; and the pack's registered
+claims (§4) are row and retry claims, not timing claims, so environmental drift under the
+measurement would surface in texture, not in a hypothesis. The classification below stays, so
+the record knows which items could have moved the environment the pack was measured in.
 
-**Behaviour-orthogonal — lands before the pack, behind a checkpoint pair.** Nothing here runs
-on the cycle path, changes what a container installs, or changes a line the driver reads.
+**Behaviour-orthogonal** — nothing here runs on the cycle path, changes what a container
+installs, or changes a line the driver reads.
 
 | item | what | verified by |
 |---|---|---|
 | #575 | placeholder trace/span ids and truncated uuid4 ids in lineage | CI |
 | #1373 | the identity-permutation test over the roster | CI (a test) |
-| #1205 | dependency vulnerability scanning | CI (a scan; a finding it makes is a refresh, which is the other rider) |
+| #1205 | dependency vulnerability scanning | CI (a scan; a finding it makes is a refresh, #1204's row) |
 | #1369 | the package script (§3.1) | CI |
 
-**Runtime-affecting — lands after the counted set closes, before the cut.** Each of these can
-change the environment a cycle executes in, even with no dedicated roll readout.
+**Runtime-affecting** — each can change the environment a cycle executes in, even with no
+dedicated roll readout; the checkpoint pair is what attributes a red to them.
 
 | group | items | why it is runtime-affecting | verified by |
 |---|---|---|---|
-| timeouts | #1147 (one setting bounds two things) | changes the timeout the cycle path runs under | CI + one rebuild |
-| persistence and API shape | #577 (shared asyncpg pool + JSONB codec), #576 (domain-error handlers, the per-route envelope blocks deleted), #578 (graphlib for the plan DAG; decide `depends_on`) | the registry the run writes through; the error shapes the driver reads; the plan DAG the cycle executes | CI + one rebuild |
-| ops | #581 (compose healthchecks, `up --wait`), #560 (log hygiene), #574 (AMQP URL parsing), #300 (migration advisory lock), #330 (Prefect loop starvation) | startup timing; **the log lines the driver's readouts grep**; the broker connection; runtime-api startup; the orchestrator's loop | #581/#560/#574 CI + one rebuild; #300 and #330 **live** on the dev deploy |
-| prompt registry | #352 (runtime staleness guard), #353 (manifest hashes stamped at build) | a runtime guard on the prompts every producer renders; the build that stamps them | CI + one rebuild |
-| realm and deps | #372 (Keycloak realm export reaches existing realms), #1204 (refresh `ci-constraints.txt`) | the realm the CLI logs into; **#1204 is not CI-only** — since #1203 that file is the pin set every image installs | #372 live; #1204 CI + one rebuild |
-| evidence | #1324 (the boot audit keeps the response it judged) | on the boot-audit path of every cycle | CI + one rebuild |
+| timeouts | #1147 (one setting bounds two things) | changes the timeout the cycle path runs under | CI + the rebuild |
+| persistence and API shape | #577 (shared asyncpg pool + JSONB codec), #576 (domain-error handlers, the per-route envelope blocks deleted), #578 (graphlib for the plan DAG; decide `depends_on`) | the registry the run writes through; the error shapes the driver reads; the plan DAG the cycle executes | CI + the rebuild |
+| ops | #581 (compose healthchecks, `up --wait`), #560 (log hygiene), #574 (AMQP URL parsing), #300 (migration advisory lock), #330 (Prefect loop starvation) | startup timing; **the log lines the driver's readouts grep**; the broker connection; runtime-api startup; the orchestrator's loop | #581/#560/#574 CI + the rebuild; **#300 and #330 read live** on the dev deploy after the set closes — the counted set is #330's heavy-cycle exercise |
+| prompt registry | #352 (runtime staleness guard), #353 (manifest hashes stamped at build) | a runtime guard on the prompts every producer renders; the build that stamps them | CI + the rebuild |
+| realm and deps | #372 (Keycloak realm export reaches existing realms), #1204 (refresh `ci-constraints.txt`) | the realm the CLI logs into; **#1204 is not CI-only** — since #1203 that file is the pin set every image installs | #372 read live after the set; #1204 CI + the rebuild |
+| evidence | #1324 (the boot audit keeps the response it judged) | on the boot-audit path of every cycle | CI + the rebuild |
 
-Fourteen items. They land in this line, after the measurement window, on one rebuild (deploy
-D) with **one shakeout pair as their live check** — attribution only, no readout, not counted
-— and then the three live-verified ops items. **The cost, stated:** the tagged tree will differ
-from the frozen deploy by exactly this rider, so the record names that drift item by item and
-classifies each as additive or behavioural (CLAUDE.md, "say what the cut evidence does not
-cover"); 1.7.3 could record zero drift and this line cannot.
+**The one hazard, named.** #560 rewrites log lines, and the driver's readouts grep log lines.
+The instrument's fields are proven on deploy A (§7 step 4) before #560 lands; **every field is
+re-checked on deploy B's checkpoint pair** — the preamble's second rule, applied a second time
+— and a field #560 broke is a rider finding, fixed before the pack's first PR. #560 lands last
+among the rider so one re-check covers it.
 
-None of the eighteen has a roll-level readout and none gets one.
+Eighteen items. None has a roll-level readout and none gets one.
 
 ### 3.4 The count this line owes the record
 
@@ -227,8 +244,8 @@ None of the eighteen has a roll-level readout and none gets one.
 Every rider item is on its fourth plan. That is the number this section exists to print — and
 it is governance evidence, not a technical reason. **Repeated deferral increases the
 requirement to dispose of each item by explicit decision; it does not override experiment
-isolation.** The runtime-affecting rider landing after the counted set is not a fifth deferral:
-it closes in this line, after the measurement window.
+isolation** — which is why the rider sits behind a checkpoint pair rather than beside the pack.
+Every one of the eighteen closes in this line.
 
 ### 3.5 The cut criterion — three gates, kept apart
 
@@ -238,7 +255,7 @@ it closes in this line, after the measurement window.
 |---|---|
 | **implementation** | all ten pack rows are merged, or explicitly removed through a plan revision that gives the reason — never a re-place-by-name at the cut; the rider disposed of item by item |
 | **experimental** | **L1 and H1 hold**; no registered live hypothesis is falsified; every registered hypothesis has either a deterministic exercise or a live occurrence according to its pre-registered method, and the record says which; every seam invariant's diagnostic reached its seam on the pinned deploy |
-| **evidence** | every field §4 names is populated on every counted record; the record can reconstruct every counted/void/reset boundary from per-round evidence; the deploy-to-tag drift is named item by item |
+| **evidence** | every field §4 names is populated on every counted record; the record can reconstruct every counted/void/reset boundary from per-round evidence; any deploy-to-tag drift is named item by item, the expectation being zero as in 1.7.3 |
 
 ### 3.6 Merge discipline
 
@@ -288,7 +305,6 @@ both; neither depends on a rare event.
 | hypothesis | claim | falsified by | read from |
 |---|---|---|---|
 | **F1** (#1374) | **derivation consistency, not absence of rejection:** for every accepted patch on a counted roll, each framework-owned row the task's contract declares equals the value derived from the accepted candidate tree, and no superseded failed-attempt value survives into the corrected result | one corrected result carrying a row whose value differs from the candidate-derived one, or a row the failed attempt wrote and the candidate did not — **whether or not the roll rejects on it** | the corrected result's rows against a re-derivation over the stored accepted tree, per row; the contentless-builder diagnostic proves the one concrete case (§3.1 steps 2 and 6); **its own miss**: a row the contract does not declare and the roll-up still requires — the readout lists the contract's rows beside the roll-up's required set |
-| **R1** (#1372) | every **contentless** emission on a counted roll (§3.2's class, not the short or incomplete ones) is retried with its emission-shape fact and the task's expected artifacts | one contentless retry whose feedback carries no fact | `retried_with_fact` beside `contentless_emissions`. **Exercise:** 1.7.3 observed two short builder first emissions in six counted rolls, but #1312 changes the builder's prompt and output contract, so that rate is not treated as a prediction of live occurrence. **The contentless-builder fault is the required exercise; live occurrences are additional evidence.** L1 keeps the qa side at zero, so a counted set with no live contentless emission leaves R1 proven by the fault alone, and the record says so |
 | **B1** (carried) | no stored qa suite names a fixture table for a non-root entity | one such suite | `non_root_fixture_tables` |
 | **Q1** (#1285) | each qa output shape is measured under its own reasoning declaration | one fill-mode emission reported under the free-authored declaration | `emission_tokens_by_handler` by shape; every Next.js roll exercises it |
 
@@ -297,6 +313,7 @@ both; neither depends on a rare event.
 | invariant | claim | proven by | live texture |
 |---|---|---|---|
 | **H2** (#1312) | when the builder emits `assembly_notes.md`, the qa prompt carries it, paired with the producing artifact's id; when it does not, the qa prompt carries nothing in its place; a notes file from an earlier attempt is never rendered — **stale or wrong provenance is a correctness defect and a CI invariant**, not a thing counted rolls assure | CI: the appendix renderer under present / absent / superseded notes | appendix presence per task, with the producing artifact id |
+| **R1** (#1372) | every **contentless** emission (§3.2's class, not the short or incomplete ones) is retried with its emission-shape fact and the task's expected artifacts. Sorted here by the taxonomy's own test: L1 keeps the qa side at zero and the builder's contentless emission is rare, so no counted roll is guaranteed to exercise it. **The 1.7.3 short-emission rate** (two in six counted) is the reason the fault exists, not an expected live occurrence — #1312 changes the contract that rate was measured under | the contentless-builder diagnostic on the pinned deploy (§3.1 steps 3 and 4); CI on the retry feedback | `retried_with_fact` beside `contentless_emissions`: every live contentless retry, with its fact or without |
 | **W1** (#994) | a rewind after an accepted repair never re-dispatches the repaired task | the rewind fault's diagnostic on the pinned deploy (§3.1); CI on the rewind protocol | rewind occurrences against `applied_patches` |
 | **A1** (#968) | no correction decision inherits an analyzer claim the source refutes | the analyzer fault's diagnostic on the pinned deploy (§3.1); CI on the source check | analyzer/source disagreements per correction round |
 | **D1** (#1054) | a decision naming dev task types dispatches a dev repair — a deterministic mapping, a contract test, not a stochastic claim | CI: the locus classifier under decisions naming each task-type family | `affected_task_types → correction_repair_locus` pairs per round |
@@ -317,8 +334,8 @@ both; neither depends on a rare event.
 
 **Diagnostics before roll 1**, on the pinned deploy, each read by the seam it reached: the
 1.7.3 three re-run; the contentless-builder diagnostic (F1, R1); the rewind diagnostic (W1);
-the analyzer diagnostic (A1). A diagnostic that does not reach its seam is a finding, and the
-set does not open on it.
+the analyzer diagnostic (A1). The two-run budget of §3.1 applies: a seam not reached after two
+runs is declared, its invariant stays CI-only for the line, and the set opens.
 
 **Size — 6 + 3, the 1.7.3 sizes held.** Six counted React rolls preserve comparability with
 1.7.3; three Next.js rolls extend observation across the same frozen deploy without changing
@@ -336,9 +353,9 @@ was that cause and is the pack.
 §3.3 is the infrastructure rider the 1.7.2 and 1.7.3 plans deferred, in full, at the quota. The
 1.7.0 plan §3.1 named it 1.7.3's; the 1.7.3 plan §5 gave the reason it moved — no roll reaches
 any of it, and landing it beside a measured pack makes a red unattributable — and this plan
-keeps that reason and adds the finer one: the behaviour-orthogonal four land before the pack
-behind a checkpoint pair, and the runtime-affecting fourteen land after the counted set
-closes, behind one shakeout pair of their own, with the drift named at the cut.
+keeps that reason: the whole rider lands before the pack behind a checkpoint pair, with the
+instrument's fields re-checked on that pair, and the three live-read ops items are read after
+the set closes. §3.3's classification is for the record, not for placement.
 
 ---
 
@@ -383,8 +400,9 @@ it should carry is no longer mainly #1323:
 4. **Deploy A**; every fault and field proven on it: the seven diagnostics (the 1.7.3 three,
    contentless-builder, rewind, analyzer) read by the seam reached, and the fields checked
    against a real record. The instrument rounds, counted apart.
-5. **The behaviour-orthogonal rider only** (§3.3's four), one PR each.
-6. **Deploy B; one checkpoint pair** — a red here is the rider's.
+5. **The rider**, all eighteen, one PR each in §3.3's order, #560 last.
+6. **Deploy B; one checkpoint pair** — a red here is the rider's; every instrument field
+   re-checked on the pair's records (the #560 hazard).
 7. **The pack, in §3.2's order**, one PR each.
 8. **Deploy C**.
 9. **Shakeouts** to the exit rule — a pair on one deploy with no new seam finding; budget three
@@ -395,13 +413,13 @@ it should carry is no longer mainly #1323:
     reading at each boundary.
 12. **Close the set and write the preliminary measurement conclusion** — the three gates of
     §3.5 read against the frozen deploy, before anything else moves.
-13. **The runtime-affecting rider** (§3.3's fourteen), one PR each; deploy D; one shakeout pair
-    as its live check; the live-verified ops items (#330, #300, #372) on the dev deploy.
+13. **The live readings** of #330, #300 and #372 on the dev deploy, whose code landed at
+    step 5 — named in the record as read live, not by a roll.
 14. **Final record; cut 1.7.4 by the seven steps**, step 7's capture named with every cycle the
-    record cites and its role; the deploy-to-tag drift named. Then 1.7.5.
+    record cites and its role; any deploy-to-tag drift named, expected zero. Then 1.7.5.
 
-The key property of this order: nothing that can affect runtime timing, infrastructure
-behaviour or producer execution moves under the counted set.
+The key property of this order: nothing moves under the counted set, and everything that could
+move the environment moved before the checkpoint pair that measures it.
 
 ---
 
@@ -427,17 +445,28 @@ this line; two bars, L1 and H1; `integration` becomes a required check.
 - **No fault, no prediction, applied uniformly:** W1 and A1 get faults and become seam
   invariants; D1 and H2 are CI invariants; all four report live occurrences as texture. A
   fault that cannot be built honestly leaves its claim CI-only and declared so before roll 1.
-- **The rider is split** by whether it can move the cycle's environment: four
-  behaviour-orthogonal items before the pack behind a checkpoint pair; fourteen
-  runtime-affecting items after the counted set closes, behind one shakeout pair, with the
-  deploy-to-tag drift named at the cut. This supersedes the first review's "rider first" in
-  part: the governance count (§3.4) does not override experiment isolation.
+- **The rider is classified** by whether it can move the cycle's environment (§3.3). At this
+  review its runtime-affecting half was placed after the counted set; **reversed at the third
+  review** (below), the classification kept.
 - **6 + 3** is justified by comparability with 1.7.3 and observation across one frozen deploy,
   not by an expected number of short emissions.
 - **The cut is three gates** — implementation, experimental, evidence — so "landed" never
   stands in for "proven".
 - **Scoped Code Revision** is the 1.8 lane's name everywhere, subsuming #1213, and its review
   carries the evidence §6 lists.
+
+**Ruled at the third review, the same evening (rev 3), on the plan author's recommendations:**
+
+- **The whole rider lands before the pack** behind the checkpoint pair, the live ops items
+  read after the set. Every subsequent roll exercises the rider; the tag matches the frozen
+  deploy with zero drift; the pack's claims are not timing claims. The alternative placed
+  fourteen runtime items on one shakeout pair and took the green-roll claim off the tagged
+  tree.
+- **R1 is a seam invariant**, proven by the contentless-builder fault, with live contentless
+  retries as texture — the taxonomy's own test, applied to the one claim rev 2 had exempted.
+- **A two-run budget per diagnostic** for every seam that sits behind a live emission or
+  repair; not reached after two is declared and the set opens. The alternative blocked the set
+  on model luck.
 
 Standing recommendations not overruled: #1374 and #1372 ahead of the 1.7.2 step-8 items (two
 void counted rolls in two lines is the loop's most expensive habit); the Scoped Code Revision
@@ -468,3 +497,11 @@ review starts now so that 1.8.0's headline is not designed in 1.8.0.
   `integration` precondition given a deterministic exit criterion; the §3.4 count named as
   governance evidence that does not override isolation; the thesis sharpened to the three-part
   contract. The sequencing is the owner's fourteen steps.
+- **Rev 3 (2026-09-07)** — three rulings on the plan author's recommendations after rev 2:
+  the whole rider back before the pack (rev 2's placement of its runtime-affecting half after
+  the set reversed; the classification kept, #560 last with the fields re-checked on the
+  checkpoint pair); R1 moved from live hypothesis to seam invariant by the taxonomy's own test;
+  a two-run budget for every diagnostic whose seam sits behind a live emission or repair, with
+  a declared "not reached" instead of a blocked set. Also: the consumer-first transient in the
+  #1312 atomic invariant described accurately (two deliverables, not two consumers of one
+  file).
