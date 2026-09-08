@@ -5,11 +5,11 @@ Map between API DTOs (Pydantic) and internal domain models (frozen dataclasses).
 Part of SIP-0.8.8.
 """
 
-import uuid
 from datetime import UTC, datetime
 from typing import Any
 
 from squadops.api.schemas import TaskRequestDTO, TaskResponseDTO, TaskResultDTO
+from squadops.core.lineage import new_id, new_span_id, new_trace_id
 from squadops.tasks.models import TaskEnvelope, TaskResult
 
 
@@ -36,27 +36,27 @@ def dto_to_envelope(
         project_id: Project ID (generated if not provided)
         correlation_id: Correlation ID (generated if not provided)
         causation_id: Causation ID (generated if not provided)
-        trace_id: Trace ID (generated placeholder if not provided)
-        span_id: Span ID (generated placeholder if not provided)
+        trace_id: Trace ID (a fresh 32-hex trace if not provided, #575)
+        span_id: Span ID (a fresh 16-hex span if not provided)
 
     Returns:
         TaskEnvelope frozen dataclass for internal use
     """
-    # Generate IDs if not provided
-    generated_task_id = task_id or f"task-{uuid.uuid4().hex[:12]}"
-    generated_cycle_id = cycle_id or f"cycle-{uuid.uuid4().hex[:8]}"
+    # Generate IDs if not provided — whole ids and a real trace context (#575)
+    generated_task_id = task_id or new_id("task")
+    generated_cycle_id = cycle_id or new_id("cycle")
 
     return TaskEnvelope(
         task_id=generated_task_id,
         agent_id=agent_id or dto.source_agent,
         cycle_id=generated_cycle_id,
-        pulse_id=pulse_id or f"pulse-{uuid.uuid4().hex[:8]}",
-        project_id=project_id or f"project-{uuid.uuid4().hex[:8]}",
+        pulse_id=pulse_id or new_id("pulse"),
+        project_id=project_id or new_id("project"),
         task_type=dto.task_type,
         correlation_id=correlation_id or f"corr-{generated_cycle_id}",
         causation_id=causation_id or f"cause-{generated_task_id}",
-        trace_id=trace_id or f"trace-placeholder-{generated_task_id}",
-        span_id=span_id or f"span-placeholder-{generated_task_id}",
+        trace_id=trace_id or new_trace_id(),
+        span_id=span_id or new_span_id(),
         inputs=dto.inputs,
         priority=str(dto.priority) if dto.priority else None,
         timeout=dto.timeout,

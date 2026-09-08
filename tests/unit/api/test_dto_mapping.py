@@ -4,6 +4,7 @@ Tests the SIP-0.8.8 API boundary mapping between
 Pydantic DTOs and internal frozen dataclasses.
 """
 
+import re
 from datetime import UTC, datetime
 
 import pytest
@@ -138,8 +139,10 @@ class TestDtoToEnvelope:
         assert envelope.project_id.startswith("project-")
         assert envelope.correlation_id.startswith("corr-")
         assert envelope.causation_id.startswith("cause-")
-        assert "trace-placeholder" in envelope.trace_id
-        assert "span-placeholder" in envelope.span_id
+        # #575: a real trace context and whole ids — never a placeholder or a truncation
+        assert re.fullmatch(r"task-[0-9a-f]{32}", envelope.task_id)
+        assert re.fullmatch(r"[0-9a-f]{32}", envelope.trace_id)
+        assert re.fullmatch(r"[0-9a-f]{16}", envelope.span_id)
 
     def test_explicit_ids(self):
         """Explicit IDs are used when provided."""
