@@ -362,9 +362,73 @@ the set closes. §3.3's classification is for the record, not for placement.
 ## 6. Re-placements by name — nothing silently carried
 
 **1.7.5 — Composition Root and the close of 1.7.** Unchanged from the 1.7.3 plan §6: #820, #376;
-#301, #286, #1152 with #1149 first; #567, #579; #198, #157, #176, #580, #1180/#1182; #1197;
+#301, #286, #1152 with #1149 first; #567, #579; #198, #176, #580, #1180/#1182; #1197;
 #929 with #1206. Plus, from this line: whatever §3.3's live-verified ops items leave unverified
 at the cut, named in the record.
+
+**#157 leaves that list closed, not carried.** The api/comms/integration coverage gaps it names
+were filled by other work: every module under `src/squadops/api/routes/` now has a test file,
+twelve assert 401/403, `test_route_lanes.py` enumerates every registered router, the comms suite
+covers broker failure, transient channel drop, retries exhausted and channel-close resubscribe,
+and CI runs the integration lane (#242). It is an umbrella with no crisp bar, so it closes as
+verified rather than as fixed.
+
+### 6a. Seven issues that lost their placement — re-placed here by name (2026-09-08)
+
+An audit of the 68 open issues, run on 2026-09-08, found seven that **no revision of this plan
+names** — the drift §6 exists to prevent.
+Two routes, both worth recording, because this is the rule not holding across a revision rather
+than a scoping decision anyone took:
+
+- **#598, #637, #668** were placed in the 1.7.1 plan, partially satisfied there, and their
+  *named remainders* were never re-placed. Each of the three shipped a first half — the
+  packaging findings reporting-only, the dependency-drift ratchet, the DOM anchor check — and
+  the PR that shipped it wrote the remainder down as `Refs #N — remaining: …`. That sentence is
+  what went unread at the next plan.
+- **#1158, #1177, #1178, #1184** were parked by the 1.7.3 plan §6 under "outside any line's
+  quota". This plan did not carry the phrase, so the parking became silence — the failure mode
+  §6's own title names.
+
+None carries the `enhancement` label, so the parity rule that kept #1122 out of an odd minor
+(1.7.0 plan §5, criterion 2) bars none of them. Substance is the filter, and it splits them:
+
+| issue | disposition | why |
+|---|---|---|
+| **#637** | **1.7.5** | The lock-install import smoke — install `api.lock` and `agent.lock`, import both composition roots. Pure CI hardening, and the ROADMAP already names it in the 1.7 pool's packaging-fidelity cluster (#198/#582/#637). It should also carry the live exposure the audit found: `console/app/requirements.txt:1` pins `fastapi>=0.104.0,<1.0.0` and `console/Dockerfile:58` installs it with **no** `-c`, so a fresh console build resolves ≥0.136 and boots into #198's double-include. Outside #1041's and #1203's mechanism entirely |
+| **#1178** | **1.7.5** | OOM containment. Its fix targets repo files — `config/profiles/bootstrap/local-spark.yaml`, `scripts/bootstrap/profiles/local-spark.sh`, a `doctor` check — so it is CI-verifiable rather than box-only. Bootstrap and doctor hardening is exactly this line's shape, and it is the containment that was absent when #1177 fired |
+| **#668** | **1.7.5** | The remaining half: a check that a suite's `apiFetch` mock honours the frozen client surface (the owner's 2026-07-31 scope addition; 34 stored `../api`-mocking suites are its replay set). The precedent is this issue's own first half, which landed on this line in 1.7.1 |
+| **#598** | **1.7.5, first half only** | Promoting `container_packaging` from reporting-only to blocking is a severity change on a shipped check. **Land it at the head of the line, not mid-set** — it moves the rejection surface, and `npm_ci_without_lockfile` fired on four of nine 1.7.3 rolls, so the change is measurable and must not land where it confounds a counted set |
+| **#1177** | **1.7.5 ops rider** | Route the replay scripts through `arm.sh` and restore the reserve. Its scripts live in `~/atlas/scripts`, outside the repo, so its evidence is **a live read, not CI** — the shape #300/#330/#372 have on this line. It is a stated precondition of #1408 |
+| **#1158** | **closed** | Three of four deliverables landed (Appendix B's facts, container reachability, the licence ruling). The fourth is a bootstrap installer for an engine SIP-0106 §1.2a rejects. Recorded as **SIP-0106 §1.2f** and closed |
+| **#1184** | **closed** | A parked measurement record, not work. Recorded as **SIP-0106 §1.2e**, with #1408 as the live handle for any re-arm |
+
+**One piece is split out to 1.8, not to 1.7.5.** #598's second half — an in-cycle image build
+(`package_builds`, still declared-unbuilt at `acceptance_check_spec.py:1212`) — is new
+capability and therefore feature-shaped. It goes with the 1.8 lane below.
+
+**Why the two closes are amendments and not just closes.** CLAUDE.md's rule is that a
+disposition deliberately not built is an amendment too, and both dispositions lived only in
+superseded plans: #1184's parking in `docs/plans/1-7-0-cut-record.md` §5a, #1158's unbuilt item
+nowhere but the issue. SIP-0106 §1.2b still read as though the vLLM arm were active. §1.2e and
+§1.2f fix that, and §1.2b now carries a forward pointer so its stale text cannot be read alone.
+
+**Filed since this plan's rev 3, and placed here so they are not the next §6a:**
+
+- **#1406** — a repair's verification demotes criteria it cannot execute; three view-compile
+  criteria that **passed at emission time** were lost to `missing_tooling:3` on an *accepted*
+  roll (`cyc_dd3068d22f2c`, the deploy-B React checkpoint). **Its instrument half landed on this
+  line** — PR #1407 makes a skip count wherever it happens and names the criteria shortfall,
+  and its body says what is left: *"the framework-side defect (a criterion re-asked where its
+  toolchain is absent, demoting an executed-and-passed row) is #1406's own; this PR is the
+  instrument that could not see it."* **That sentence is the §6a shape exactly**, one day old,
+  so it is placed rather than left: **1.7.5**, as a bug in the 1.7 line, not pulled into this
+  pack — §3.2 is sequenced and in flight, and the rider closed 2026-09-08.
+  **One question for the owner, not answered here:** the defect under-reports criteria on
+  accepted rolls, so whether it bears on *this line's counted set* is a measurement-integrity
+  call. PR #1407 makes it visible; it does not stop it happening.
+- **#1408** — gate Qwen3.8-Flash-Next on the plan-authoring replay before any vLLM re-arm.
+  Places itself **after this line's counted set closes**, because it needs the box to itself
+  (SIP-0106 §1.2c's trap: 94.87 GiB + a 26 GiB host reserve on a 121 GiB box).
 
 **The 1.8 lane — Scoped Code Revision** (PR #1325; formerly Slot-Scoped Emission; subsumes
 #1213; #1176 beside it). Its design review starts during this line (§7 step 2). The evidence
@@ -383,7 +447,8 @@ it should carry is no longer mainly #1323:
   is materialised (§3.1 step 5 states it for the contentless case);
 - this line's builder and retry emission evidence as it accrues (§4's texture).
 
-#906 (the Next.js baseline stylesheet) stays post-window. #1122 stays with SIP-0104.
+#906 (the Next.js baseline stylesheet) stays post-window. #1122 stays with SIP-0104. **#598's
+second half** — the in-cycle image build — joins them, per §6a.
 
 **Still at design review, unchanged:** #414, #557, #316; #80, #950, #949, #194, #1039, #1031.
 
@@ -475,6 +540,19 @@ review starts now so that 1.8.0's headline is not designed in 1.8.0.
 ---
 
 ## 9. Revision history
+
+- **Rev 4 (2026-09-08)** — §6 gains **§6a**: seven open issues that no revision of this plan
+  named, re-placed by name after an audit of all 68 open issues. #637, #1178, #668 and #598's
+  first half to 1.7.5; #1177 to its ops rider; #1158 and #1184 closed against two new SIP-0106
+  amendments (§1.2e the vLLM parking, §1.2f the unbuilt Atlas bootstrap), with §1.2b given a
+  forward pointer so its stale "arm is active" text cannot be read alone. #598's second half
+  (the in-cycle image build) split to the 1.8 lane as feature-shaped. #157 removed from the
+  1.7.5 list as closed-by-accretion rather than carried. #1406 and #1408, filed since rev 3,
+  named rather than left to become the next §6a — #1406's framework half placed in 1.7.5 after
+  PR #1407 landed its instrument half on this line, with the counted-set question raised for the
+  owner. SIP-0106 promoted to `implemented` in the same PR, atomic with its amendments. No
+  change to §3's content, §4's set, or the sequencing — this revision moves nothing into or out
+  of 1.7.4.
 
 - **Rev 1 (2026-09-07)** — written the evening the 1.7.3 line closed, on the owner's ask,
   from the 1.7.3 plan and record, the 1.7.2 plan §8/§8a, the 1.7.0 plan §3.1 and §6.2, and the
