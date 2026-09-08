@@ -1776,8 +1776,18 @@ class TestTheNewFaultsAreReadBySeams:
             types.SimpleNamespace(project="p"), "cyc_1", "run_1"
         )
         assert out == [
-            {"artifact": "art_1", "inherited": True},
-            {"artifact": "art_2", "inherited": False},
+            {
+                "artifact": "art_1",
+                "inherited": True,
+                "echoes": ["injected"],
+                "foreign_affected_task_types": [],
+            },
+            {
+                "artifact": "art_2",
+                "inherited": False,
+                "echoes": [],
+                "foreign_affected_task_types": [],
+            },
         ]
 
     def test_the_marker_the_driver_reads_is_the_one_the_framework_writes(self, driver):
@@ -1849,3 +1859,80 @@ class TestF1HasAProducerBeforeRollOne:
             "builder_emission_contentless"
         ]["evidence"]
         assert ev["framework_rows_rederived"] == [self._LINE[self._LINE.index("patch task=") :]]
+
+
+class TestTheA1ReadoutSeesTheClaimsSubstance:
+    """The analyzer diagnostic on deploy A (cyc_1063c4dca548, 2026-09-08 07:16Z): the
+    round-0 decision carried the refuted claim in substance and no marker. A readout keyed
+    on the marker read it as not inherited — its own miss, found by the diagnostic."""
+
+    _REAL_DECISION = json.dumps(
+        {
+            "correction_path": "patch",
+            "decision_rationale": (
+                "The failure is a structural absence where the model entered deliberation "
+                "mode instead of emitting the required test artifact, but the root cause is "
+                "also an injected backend fault preventing endpoint verification. A `patch` "
+                "path is necessary to inject specific repair tasks that force the emission of "
+                "the missing `backend/tests/test_runs.py` file with the required content and "
+                "address the missing router registration to allow the tests to function."
+            ),
+            "affected_task_types": ["qa.test", "backend"],
+        }
+    )
+
+    def test_the_real_decision_reads_as_absorbed_without_the_marker(self, driver):
+        r = driver._decision_reading(self._REAL_DECISION)
+        assert r["inherited"] is False
+        assert r["echoes"] == ["injected", "router registration"]
+        assert r["foreign_affected_task_types"] == ["backend"]
+
+    def test_a_clean_decision_reads_clean_and_the_marker_still_counts(self, driver):
+        clean = json.dumps(
+            {"decision_rationale": "re-emit the suite", "affected_task_types": ["qa.test"]}
+        )
+        assert driver._decision_reading(clean) == {
+            "inherited": False,
+            "echoes": [],
+            "foreign_affected_task_types": [],
+        }
+        marked = json.dumps({"decision_rationale": "fix backend/__squadops_injected_fault__.py"})
+        assert driver._decision_reading(marked)["inherited"] is True
+
+    def test_the_readout_is_false_on_substance_alone(self, driver):
+        rec = {
+            "correction_rounds": 1,
+            "loop_texture": {
+                "decision_inherited_claims": [
+                    {
+                        "artifact": "art_bd2bec36ef94",
+                        "inherited": False,
+                        "echoes": ["injected"],
+                        "foreign_affected_task_types": ["backend"],
+                    }
+                ]
+            },
+        }
+        out = driver.seam_readouts(("analyzer_false_source_claim",), rec)[
+            "analyzer_false_source_claim"
+        ]
+        assert out["reached"] is False
+        held = {
+            "correction_rounds": 1,
+            "loop_texture": {
+                "decision_inherited_claims": [
+                    {
+                        "artifact": "a",
+                        "inherited": False,
+                        "echoes": [],
+                        "foreign_affected_task_types": [],
+                    }
+                ]
+            },
+        }
+        assert (
+            driver.seam_readouts(("analyzer_false_source_claim",), held)[
+                "analyzer_false_source_claim"
+            ]["reached"]
+            is True
+        )
