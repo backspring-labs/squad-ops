@@ -35,6 +35,7 @@ from squadops.capabilities.models import (
     WorkloadStatus,
     WorkloadTask,
 )
+from squadops.core.lineage import new_span_id, new_trace_id
 from squadops.ports.capabilities.executor import CapabilityExecutor
 from squadops.ports.capabilities.repository import CapabilityRepository
 
@@ -249,7 +250,7 @@ class WorkloadRunner:
         agent_id = contract.owner_roles[0] if contract.owner_roles else "unknown"
 
         return TaskEnvelope(
-            task_id=f"{task.task_id}-{uuid.uuid4().hex[:8]}",
+            task_id=f"{task.task_id}-{uuid.uuid4().hex}",
             agent_id=agent_id,
             cycle_id=cycle_id,
             pulse_id=pulse_id,
@@ -258,8 +259,8 @@ class WorkloadRunner:
             inputs=inputs,
             correlation_id=cycle_id,
             causation_id=task.task_id,
-            trace_id=str(uuid.uuid4()),
-            span_id=str(uuid.uuid4()),
+            trace_id=new_trace_id(),
+            span_id=new_span_id(),
             timeout=float(contract.timeout_seconds),
             metadata={"workload_task_id": task.task_id},
         )
