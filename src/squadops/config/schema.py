@@ -509,6 +509,34 @@ class RuntimeConfig(BaseModel):
     )
 
 
+class DispatchConfig(BaseModel):
+    """The orchestrator's side of a dispatched task (#1147).
+
+    ``task_timeout`` is how long a task may run before the orchestrator calls the agent
+    hung — several LLM calls, file I/O, a whole test-suite execution. It is a different
+    quantity from ``llm.timeout``, which bounds one HTTP call to the model, and until
+    #1147 both were read from ``SQUADOPS__LLM__TIMEOUT``: raising the request timeout for
+    a long qa emission raised the hung-agent detector with it. Unset, it follows
+    ``llm.timeout`` so an existing deploy keeps behaving; set, the two move apart.
+    """
+
+    task_timeout: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Seconds the orchestrator waits for a dispatched task before calling the agent "
+            "hung (SQUADOPS__DISPATCH__TASK_TIMEOUT). None = follow llm.timeout."
+        ),
+    )
+
+    @field_validator("task_timeout", mode="before")
+    @classmethod
+    def _empty_means_unset(cls, value: Any) -> Any:
+        # A compose passthrough of an unset variable arrives as "" — that is "unset",
+        # not a value to coerce.
+        return None if isinstance(value, str) and not value.strip() else value
+
+
 class PrefectConfig(BaseModel):
     """Prefect orchestration configuration."""
 
@@ -772,6 +800,15 @@ class AppConfig(BaseModel):
 
     # LLM
     llm: LLMConfig = Field(description="LLM configuration (required: it names the provider)")
+    dispatch: DispatchConfig = Field(
+        default_factory=DispatchConfig,
+        description="Orchestrator-side dispatch bounds (#1147)",
+    )
+
+    def task_timeout_seconds(self) -> float:
+        """The orchestrator's per-task wait: ``dispatch.task_timeout`` when set, else
+        ``llm.timeout`` — the one place the two are joined (#1147)."""
+        return float(self.dispatch.task_timeout or self.llm.timeout)
 
     # Prompts (SIP-0084)
     prompts: PromptsConfig = Field(

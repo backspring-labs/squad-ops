@@ -189,6 +189,9 @@ services:
       # LLM (SIP-0066: cycle task handlers)
       SQUADOPS__LLM__MODEL: "llama3.1:8b"
       SQUADOPS__LLM__TIMEOUT: ${SQUADOPS__LLM__TIMEOUT:-180}
+      # #1147: the orchestrator's per-task wait, apart from the request timeout above;
+      # unset (empty) follows SQUADOPS__LLM__TIMEOUT.
+      SQUADOPS__DISPATCH__TASK_TIMEOUT: ${SQUADOPS__DISPATCH__TASK_TIMEOUT:-}
       SQUADOPS__LLM__PROVIDER: ollama  # required, never defaulted (#1157); the switch PR changes it (SIP-0106 §5)
       # Duty-transition scheduler (SIP-0089 §2.4). runtime-api is the single
       # central writer of agent mode (D16) — keep this enabled on exactly one

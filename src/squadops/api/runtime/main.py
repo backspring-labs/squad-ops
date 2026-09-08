@@ -408,7 +408,7 @@ async def _init_cycle_subsystem(config, pool) -> None:
             squad_profile=squad_profile,
             project_registry=project_registry,
             queue=queue_adapter,
-            task_timeout=float(config.llm.timeout),
+            task_timeout=config.task_timeout_seconds(),  # #1147: not llm.timeout
             llm_observability=llm_obs,
             workflow_tracker=_workflow_tracker,
             event_bus=event_bus,
