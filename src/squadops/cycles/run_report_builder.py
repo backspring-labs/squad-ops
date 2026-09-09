@@ -193,6 +193,15 @@ def _build_verification_lines(summary: RunVerificationSummary) -> list[str]:
             producer = f" (task {i.subject})" if i.subject else ""
             ref = f" — set {i.subject_ref[:12]}" if i.subject_ref else ""
             lines.append(f"- **{i.check_id}**{producer}: inspected {files}{ref}")
+    if summary.criteria_kept_over_environment_skip:
+        # #1406: the rule fired, so the record says on which criteria. A coverage figure
+        # that silently counts differently than the run before it is the class this line
+        # keeps finding — the reader can audit every criterion the rule applied to.
+        lines.append(
+            f"Criteria credited despite an environment skip elsewhere "
+            f"(#1406, executed-and-passed by another producer): "
+            f"{', '.join(summary.criteria_kept_over_environment_skip)}"
+        )
     if summary.required_not_owed:
         # #1428: required by the profile, not owed by THIS run — no planned task of the
         # run produces the subject. Said, not implied: a check the profile requires is
