@@ -193,6 +193,15 @@ if [ -x "$REPO_ROOT/scripts/dev/ops/backup_db.sh" ]; then
     bash "$REPO_ROOT/scripts/dev/ops/backup_db.sh" || echo -e "${YELLOW}⚠️  Backup failed — deploying anyway, but you have no fresh restore point${NC}"
 fi
 
+# #1180: the integration-test role and database, and the grant that keeps the test role
+# out of the deployment database. The compose init script only runs on a fresh volume, so
+# an existing deployment gets it here — idempotent, the #372 realm-sync shape, and the
+# same script bootstrap runs (#371: single-sourced so the two paths cannot drift). It also
+# adds POSTGRES_TEST_PASSWORD to a .env that predates it. Non-fatal but loud.
+echo "Provisioning the integration-test database role (#1180)..."
+bash "$REPO_ROOT/scripts/dev/ops/ensure_test_database.sh" \
+    || echo -e "${YELLOW}⚠️  Test-database provisioning failed — 'squadops doctor <profile> --check database' will say what is missing (#1180)${NC}"
+
 # Conditionally start runtime-api and console if they're being rebuilt
 if [ "$REBUILD_RUNTIME_API" = true ] || [ "$REBUILD_ALL" = true ]; then
     echo "Starting runtime-api..."

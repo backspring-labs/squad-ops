@@ -173,7 +173,9 @@ jobs:
     #   * The run asserts a floor on tests actually executed, so a collection error or a
     #     conftest change that quietly empties the suite fails instead of passing.
     #
-    # POSTGRES_URL names squadops_test, never the deployment database (#1099).
+    # POSTGRES_URL names squadops_test, never the deployment database (#1099), and the
+    # suite connects as the squadops_test role, which the deployment database refuses
+    # at the server (#1180) — provisioned below by the same script the box runs.
     name: integration
     needs: changes
     # REQUIRED since 2026-09-07 (1.7.4 plan §3.1): `integration` joins `closing reference
@@ -190,10 +192,13 @@ jobs:
     services:
       postgres:
         image: postgres:15
+        # The same shape as docker-compose.yml: POSTGRES_DB is the deployment database,
+        # owned by the superuser squadops. The test role and its database are provisioned
+        # by the "Provision the integration-test role" step, not by this image (#1180).
         env:
           POSTGRES_USER: squadops
           POSTGRES_PASSWORD: squadops-dev
-          POSTGRES_DB: squadops_test
+          POSTGRES_DB: squadops
         ports: ["5432:5432"]
         options: >-
           --health-cmd "pg_isready -U squadops"
@@ -225,7 +230,7 @@ jobs:
       # and the job would have gone green having executed nothing — which the floor check
       # below caught on the first run, doing exactly its job.
       SKIP_AGENT_CHECK: "1"
-      POSTGRES_URL: postgresql://squadops:squadops-dev@localhost:5432/squadops_test
+      POSTGRES_URL: postgresql://squadops_test:squadops-test@localhost:5432/squadops_test
       RABBITMQ_USER: squadops
       RABBITMQ_PASSWORD: squadops-dev
     steps:
@@ -245,6 +250,17 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .
           pip install -r tests/requirements.txt -c ci-constraints.txt
+
+      - name: Provision the integration-test role (#1180)
+        # On a box the compose init script provisions squadops_test at initdb; a service
+        # container has no init mount, so the deploy-path helper runs that same script
+        # against it here — infra/00-create-databases.sh, the SQL the deploy applies. The
+        # suite then runs as the test role, and test_deployment_database_unreachable.py
+        # asserts the deployment database refuses it: the grant is proven on every push.
+        env:
+          CONTAINER: ${{ job.services.postgres.id }}
+          POSTGRES_TEST_PASSWORD: squadops-test
+        run: ./scripts/dev/ops/ensure_test_database.sh
 
       - name: Integration suite (real services, serviceless tests included)
         run: |
