@@ -1,0 +1,124 @@
+# 1.7.5 verification set — Next.js+TS (nextjs_ts), 3 counting rolls (plan §4).
+#
+# The line's identity is "every port is actually a port". Deploy A carries the
+# MEASUREMENT-CORRECTION PRELUDE (plan §3.2) and nothing that can move runtime behaviour, so
+# a red on the checkpoint pair belongs to that tranche and is identified per PR by its
+# signature. The closures land on deploy B, where a red belongs to them.
+#
+# THE LINE'S ONE LIVE HYPOTHESIS is the fill declaration (#1434): qa.test and qa.test_repair
+# move from NONE to LOW on the fill shape. It gets its FIRST reading on this pair and its
+# counted reading on deploy B. Everything else in the prelude is an instrument or a seam
+# invariant and is read as texture, not as a verdict.
+#
+# NO PRE-REGISTRATION YET, deliberately. Plan step 10 pre-registers from the LAST shakeout on
+# the frozen deploy; pointing at a file that does not exist would be a dangling reference in
+# the one artifact whose job is to be exact. Pins arrive with it.
+#
+# NO frozen_image_ids, which is what makes this file SHAKEOUT-ONLY: preflight refuses a
+# counting roll with none ("pre-register the deploy first"). A shakeout may run. The
+# config-hash and squad-snapshot prefixes are only WARNINGS in the driver, never the gate —
+# frozen_image_ids is the gate.
+name: 1-7-5-nextjs
+project: group_run
+squad_profile: full-38
+request_profile: validated-fullstack
+# Stack #2 is selected by override; the profile is the same roster on the same model, so the
+# only difference between the arms is the stack under test.
+overrides:
+  build_profile: nextjs_ts
+  development_profile: nextjs_ts
+gate_name: progress_plan_review
+n_rolls: 3
+# Copied verbatim onto every gate approval — the driver substitutes NOTHING in this text.
+gate_notes: >-
+  1.7.5 verification set. Approved under the pre-registered gate policy — identical text
+  applied to every roll of this set. System plan validation passed; no additional judgment
+  applied.
+# {roll} and {n} are the only substitutions the driver makes.
+launch_notes: >-
+  1.7.5 Next.js+TS (nextjs_ts) verification set — COUNTED roll {roll} of {n}.
+  Frozen deploy per the pre-registration; the fill declaration (#1434) is the line's one live
+  hypothesis; #820 and #668 are REPORTING-ONLY and their findings are texture, never a
+  verdict; every coverage figure is computed under the untouched-file rule (#1406) and the
+  record says so. Scoring per 1.6.3 §5; validity per §5.1; a falsified prediction stops the set.
+shakeout_notes: >-
+  1.7.5 Next.js+TS (nextjs_ts) SHAKEOUT — NON-COUNTING by declaration before
+  launch. Deploy A, built from main carrying the measurement-correction prelude (#1445 #1436
+  #1197 #906 #1463 #1428 #820 #668 #1406 #1434) plus #1180, classified. Diagnostic only, not
+  a measurement; the last shakeout's identity becomes the set's pins.
+# "Loaded, not built": run inside the container and recorded with the deploy identity. Each
+# row is a live CALL WITH ITS PAIRED CONTROL, never a symbol import — a symbol can be present
+# and unreachable, which is the shape #1289 had for the whole of 1.7.1. #1425 is why a row
+# that cannot RUN stops the launch: three 1.7.4 probes named containers that do not exist and
+# recorded "No such container" through a whole checkpoint pair that was then read as clean.
+loaded_checks:
+  # The prelude's framework surfaces. These run HERE rather than in an agent container
+  # because runtime-api seeds the skeleton and ships examples/ — the builder image does
+  # neither, and deploy B's first identity read an ERROR from bob for exactly that.
+  runtime-api: |-
+    import hashlib, pathlib
+    from squadops.capabilities.baseline_stylesheet import BASELINE_CSS
+    from squadops.capabilities.reasoning_policy import default_reasoning_level
+    from squadops.capabilities.scaffold import InterfaceManifest, expand, fill_slot_paths
+    from squadops.cycles.check_registry import checks_a_run_can_subject
+    from squadops.cycles.manifest_gates import PROOF_INTERFACE_COHERENT, _interface_coherence_findings
+    from squadops.cycles.scaffold_integrity_evidence import KIND_ATTEMPTED_EMISSION, STAGE_FAILED_EMISSION
+    from squadops.cycles.verification_integrity import CheckResult, ENVIRONMENT_INCAPACITY_REASONS, _credit_contract_criteria
+    from squadops.sandbox.environment import get_environment_contract
+    import yaml
+    # Declaring the API under /api is a REQUIREMENT of stack #2, not decoration (#859): App
+    # Router serves handlers and pages from one `app/` tree, so the reference's bare /runs
+    # would ask Next to serve one path from two files. Only api.endpoints[] is prefixed —
+    # prefixing the frontend routes too collides `[run_id]` with `[id]` and the expander
+    # refuses at framing. This mirrors tests/unit/capabilities/_stack_fixtures.py, which is
+    # not importable in this container.
+    raw = yaml.safe_load(pathlib.Path("examples/03_group_run/interface_manifest.yaml").read_text())
+    raw["stack"] = "nextjs_ts"
+    for ep in raw["api"]["endpoints"]:
+        ep["path"] = "/api" + ep["path"]
+    m = InterfaceManifest.from_yaml(yaml.safe_dump(raw, sort_keys=False))
+    files = {f["name"]: f["content"] for f in expand(m)}
+    # 1197: the image name, read off the deploy's own contract for BOTH stacks. The boot-audit
+    # evidence line carries it, and the contract hash moved HERE rather than mid-set.
+    imgs = {s: get_environment_contract(s).image for s in ("fullstack_fastapi_react", "nextjs_ts")}
+    # 906: emitted, byte-identical to the SHARED constant, imported FIRST by the frozen root
+    # layout, and NOT a fill slot. Byte-identity is the row that matters most here — it is
+    # what proves the two stacks did not drift apart when the sheet became one constant.
+    css = files.get("app/globals.css", "")
+    css_ok = hashlib.sha256(css.encode()).hexdigest() == hashlib.sha256(BASELINE_CSS.encode()).hexdigest()
+    # 1428: a run owes only the checks its task types can subject. Control: a framing-only run
+    # owes strictly fewer rows than one that authors source.
+    subj_dev = checks_a_run_can_subject(("development.develop",))
+    subj_framing = checks_a_run_can_subject(("development.propose_plan_tasks",))
+    # 820: reporting-only. The control is that the REFERENCE manifest is coherent — a finding
+    # here is a false positive on the very manifest every roll of this set uses.
+    coherent = _interface_coherence_findings(m)
+    # 1406: ACROSS SUBJECTS, the only shape the rule bites in — _resolve_final_state already
+    # collapses a same-subject re-verification, so a same-subject pair would pass while
+    # exercising nothing. Control: a real failure on the same shape still withholds credit.
+    env_skip = [CheckResult("c1", "passed", criterion_id="k", subject="backend/routes.py"),
+                CheckResult("c2", "skipped", reason="missing_tooling", criterion_id="k", subject="frontend/src/views/X.jsx")]
+    real_fail = [CheckResult("c1", "passed", criterion_id="k", subject="backend/routes.py"),
+                 CheckResult("c2", "failed", criterion_id="k", subject="frontend/src/views/X.jsx")]
+    p_skip, a_skip, kept = _credit_contract_criteria(env_skip)
+    p_fail, a_fail, _ = _credit_contract_criteria(real_fail)
+    print("1197", imgs["fullstack_fastapi_react"], imgs["fullstack_fastapi_react"] == imgs["nextjs_ts"])
+    print("906", css_ok, files["app/layout.tsx"].startswith("import './globals.css'"), "app/globals.css" not in fill_slot_paths(m))
+    print("1428", len(subj_dev), len(subj_framing), subj_framing < subj_dev)
+    print("820", PROOF_INTERFACE_COHERENT, len(coherent))
+    print("1406", sorted(r.value for r in ENVIRONMENT_INCAPACITY_REASONS), sorted(kept), sorted(a_skip), sorted(a_fail))
+    print("1436", KIND_ATTEMPTED_EMISSION, STAGE_FAILED_EMISSION)
+    print("1434", default_reasoning_level("qa.test", output_shape="fill"), default_reasoning_level("qa.test"))
+  # The live hypothesis, read on the container that actually runs qa.test rather than off the
+  # framework — a policy present in runtime-api and absent in eve's image is #1289's shape.
+  eve: |-
+    from squadops.capabilities.reasoning_policy import default_reasoning_level
+    from squadops.llm.models import ReasoningLevel
+    from squadops.tasks.task_types import TaskType, authors_qa_suite
+    # 1434: BOTH qa shapes move to LOW on the fill shape, and the non-fill control must
+    # DIFFER — without the control the row cannot tell a landed change from a policy that
+    # was always this way, which is the whole failure #1268 and #1285 kept repeating.
+    fill = {t: default_reasoning_level(t, output_shape="fill") for t in ("qa.test", "qa.test_repair")}
+    ctl = {t: default_reasoning_level(t) for t in ("qa.test", "qa.test_repair")}
+    print("1434 fill", sorted(fill.items()), "ctl", sorted(ctl.items()), all(fill[t] != ctl[t] for t in fill), str(ReasoningLevel.LOW))
+    print("559", TaskType.QA_TEST == "qa.test", authors_qa_suite("qa.test"), authors_qa_suite("development.develop"))
