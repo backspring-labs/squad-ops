@@ -333,6 +333,11 @@ class RunVerificationSummary:
     # summaries reconstruct unchanged, and an author-mode run (no bound contract) has
     # no declared denominator and so can have no unevidenced criteria.
     criteria_unevidenced: tuple[str, ...] = ()
+    # #1406: criteria an environment skip did NOT erase, because another producer had
+    # executed-and-passed them. Disclosed rather than silently restored — the rule changes
+    # what a coverage figure counts, so a reader can audit every criterion it applied to.
+    # Default-empty, so pre-#1406 stored summaries reconstruct unchanged.
+    criteria_kept_over_environment_skip: tuple[str, ...] = ()
     # #1428: checks the profile REQUIRES that this run does not OWE, because none of its
     # planned task types produces their subject — every framing run, for the three checks
     # the fullstack profile requires. Disclosed rather than dropped (§6.6.3), and never
@@ -528,6 +533,29 @@ def classify(result: CheckResult) -> EvidenceFamily:
     return EvidenceFamily.NOT_EXECUTED
 
 
+#: Not-executed reasons that say **this environment could not answer** — never anything
+#: about the artifact under test. #1406: `frontend_compiles` skips rather than fails when
+#: npm is absent (#462, by design), and only `neo` (dev) and `eve` (qa) carry npm, so a
+#: criterion re-asked at the runtime-api can *only* skip. `subject_missing` and
+#: `file_not_found` are deliberately NOT here: they say something about the tree.
+ENVIRONMENT_INCAPACITY_REASONS = frozenset(
+    {NotExecutedReason.MISSING_TOOLING, NotExecutedReason.UNSUPPORTED_STACK}
+)
+
+
+def _is_environment_incapacity(result: CheckResult) -> bool:
+    """Whether a not-executed row means the environment could not look, rather than that
+    it looked and found something wrong (#1406).
+
+    A #423 evaluator gap is excluded: an authored criterion the evaluator cannot deliver is
+    contract-bound enforcement that must keep blocking, not an environment that lacks a
+    toolchain.
+    """
+    if result.evidence_gap:
+        return False
+    return _not_executed_reason(result) in ENVIRONMENT_INCAPACITY_REASONS
+
+
 def _not_executed_reason(result: CheckResult) -> str:
     """Resolve the disclosed reason for a not-executed result (§7).
 
@@ -539,6 +567,57 @@ def _not_executed_reason(result: CheckResult) -> str:
     if (result.status or "").strip().lower() == ResultStatus.PASSED and result.is_stub:
         return NotExecutedReason.SUBJECT_MISSING
     return result.reason or UNSPECIFIED_REASON
+
+
+def _credit_contract_criteria(
+    resolved: Sequence[CheckResult],
+) -> tuple[set[str], set[str], set[str]]:
+    """Which contract criteria this run's rows credit, and which an adverse row demotes
+    (SIP-0098 98.4) — returned as ``(passed, adverse, kept_over_environment_skip)``.
+
+    Reads results already collapsed to their final state, so a producer that re-verified
+    its own check is represented once, by its last outcome.
+
+    **The untouched-file rule (#1406).** An environment skip erases an executed-and-passed
+    row only when nobody else proved the criterion. A repair's patch verification re-asks
+    the criteria of every file riding the overlay — including another role's — and answers
+    them where its own toolchain lives, which for the runtime-api is nowhere: the qa repair
+    on ``cyc_dd3068d22f2c`` skipped three ``vc-view-compiles-*`` criteria that three DEV
+    tasks had executed-and-passed at emission, and ``passed - adverse`` dropped all three
+    from an accepted, booting delivery (21 of 24).
+
+    A skip is "we could not look here", not "the earlier look is void". The **subject** is
+    what separates them: a re-verification of the same producer is already collapsed by
+    ``_resolve_final_state``, so a patch that touched the file demotes its own criterion as
+    it must, and what reaches here from a DIFFERENT subject is a re-ask elsewhere carrying
+    no information about the producer that passed. Credit-restoring only, and only where an
+    execution already happened — a criterion no one executed is never in ``passed``, so
+    nothing here can invent one.
+    """
+    passed: set[str] = set()
+    adverse: set[str] = set()
+    passed_by: dict[str, set[str | None]] = {}
+    environment_skips: list[tuple[str, str | None]] = []
+
+    for r in resolved:
+        if not r.criterion_id:
+            continue
+        family = classify(r)
+        if family is EvidenceFamily.EXECUTED_PASSED:
+            passed.add(r.criterion_id)
+            passed_by.setdefault(r.criterion_id, set()).add(r.subject)
+        elif family is EvidenceFamily.NOT_EXECUTED and _is_environment_incapacity(r):
+            environment_skips.append((r.criterion_id, r.subject))
+        else:
+            adverse.add(r.criterion_id)
+
+    kept: set[str] = set()
+    for criterion_id, subject in environment_skips:
+        if passed_by.get(criterion_id, set()) - {subject}:
+            kept.add(criterion_id)
+        else:
+            adverse.add(criterion_id)
+    return passed, adverse, kept
 
 
 def _resolve_final_state(results: Sequence[CheckResult]) -> list[CheckResult]:
@@ -655,12 +734,15 @@ def aggregate_verification(
     seen_ids: set[str] = set()
     # SIP-0098 98.4: contract-criterion coverage, keyed on CheckResult.criterion_id.
     # A criterion is credited only if it executed-and-passed AND never went adverse.
-    criteria_passed: set[str] = set()
-    criteria_adverse: set[str] = set()
+    resolved = _resolve_final_state(results)
+    # SIP-0098 98.4 + #1406, in one place: which contract criteria the rows credit.
+    criteria_passed, criteria_adverse, criteria_kept_over_environment_skip = (
+        _credit_contract_criteria(resolved)
+    )
 
     # Resolve each producer's re-verified check to its final state first (§6.5, #379)
     # so a repaired-and-passed check no longer counts its superseded FAILED attempt.
-    for r in _resolve_final_state(results):
+    for r in resolved:
         seen_ids.add(r.check_id)
         family = classify(r)
         # #1002: carry the bounded inspected-set reference through to the roll-up.
@@ -704,10 +786,6 @@ def aggregate_verification(
                     or (r.evidence_gap and r.criterion_id is not None),
                 )
             )
-        if r.criterion_id:
-            (criteria_passed if family is EvidenceFamily.EXECUTED_PASSED else criteria_adverse).add(
-                r.criterion_id
-            )
 
     # A required check that produced NO result is the strongest not-executed
     # case (#291: declared, enforced nowhere). It must be disclosed and block —
@@ -746,6 +824,7 @@ def aggregate_verification(
         executed_count=executed_count,
         passed_count=passed_count,
         criteria_verified=tuple(sorted(criteria_passed - criteria_adverse)),
+        criteria_kept_over_environment_skip=tuple(sorted(criteria_kept_over_environment_skip)),
         criteria_total=tuple(sorted(set(contract_criteria) | criteria_passed | criteria_adverse)),
         required_not_owed=tuple(sorted(set(required_not_owed))),
         failed_detail=tuple(failed_detail),

@@ -662,6 +662,7 @@ def _verification_summary_to_dict(summary: RunVerificationSummary) -> dict:
             for i in summary.inspections
         ],
         "required_not_owed": list(summary.required_not_owed),
+        "criteria_kept_over_environment_skip": list(summary.criteria_kept_over_environment_skip),
     }
 
 
@@ -691,6 +692,7 @@ def _verification_summary_from_dict(d: dict) -> RunVerificationSummary:
         criteria_total=tuple(d.get("criteria_total", [])),
         criteria_unevidenced=tuple(d.get("criteria_unevidenced", [])),
         required_not_owed=tuple(d.get("required_not_owed", [])),
+        criteria_kept_over_environment_skip=tuple(d.get("criteria_kept_over_environment_skip", [])),
         inspections=tuple(
             CheckInspection(
                 check_id=i["check_id"],

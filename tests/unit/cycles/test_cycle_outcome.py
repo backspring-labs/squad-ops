@@ -113,3 +113,47 @@ class TestRequiredNotOwedRoundTrip:
         stored = _verification_summary_to_dict(self._summary())
         del stored["required_not_owed"]
         assert _verification_summary_from_dict(stored).required_not_owed == ()
+
+
+class TestCriteriaKeptOverEnvironmentSkipRoundTrip:
+    """#1406: the disclosure survives storage, and a pre-#1406 row reads back unchanged."""
+
+    def _summary(self, **kw):
+        from squadops.cycles.verification_integrity import RunVerdict, RunVerificationSummary
+
+        base = dict(
+            verdict=RunVerdict.ACCEPTED,
+            verified=(),
+            failed=(),
+            unverified=(),
+            required_unmet=(),
+            executed_count=0,
+            passed_count=0,
+        )
+        base.update(kw)
+        return RunVerificationSummary(**base)
+
+    def test_round_trip_keeps_the_criteria_the_rule_credited(self):
+        from adapters.cycles.postgres_cycle_registry import (
+            _verification_summary_from_dict,
+            _verification_summary_to_dict,
+        )
+
+        views = ("vc-view-compiles-run-detail-view", "vc-view-compiles-runs-list-view")
+        stored = _verification_summary_to_dict(
+            self._summary(criteria_kept_over_environment_skip=views)
+        )
+        assert stored["criteria_kept_over_environment_skip"] == list(views)
+        assert _verification_summary_from_dict(stored).criteria_kept_over_environment_skip == views
+
+    def test_a_pre_1406_row_reconstructs_with_nothing_credited_by_the_rule(self):
+        """Bug caught: a KeyError on every summary stored before the field existed, which
+        would break the cycle roll-up's read of the 1.7.4 history."""
+        from adapters.cycles.postgres_cycle_registry import (
+            _verification_summary_from_dict,
+            _verification_summary_to_dict,
+        )
+
+        stored = _verification_summary_to_dict(self._summary())
+        del stored["criteria_kept_over_environment_skip"]
+        assert _verification_summary_from_dict(stored).criteria_kept_over_environment_skip == ()
