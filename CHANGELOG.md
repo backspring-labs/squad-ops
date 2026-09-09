@@ -5,6 +5,47 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.7.4] — 2026-09-09
+
+**The recovery half — the fourth patch line of 1.7.** Plan: `docs/plans/1-7-4-plan.md` (rev 3).
+Record: `docs/plans/1-7-4-verification-set-record.md`.
+
+Ten pack rows on the recovery path, and the request that fed it. The retired `qa_handoff.md`
+leaves the framework *and* the request: #1312/#1254 replace it with optional assembly notes and a
+consumer contract, and #1430 finishes SIP-0098 §6.7 by stopping the group_run PRD naming it in
+seven places — a document the framework had dropped and the request kept demanding, so the framing
+role wrote it into every definition of done. Framework rows are owed by contract rather than by
+task (#1374); the builder retries a contentless emission *with its fact* (#1372); a rewind is not
+a repair (#994); the locus classifier answers by task-type property (#1054); an accepted repair is
+not disputed by the classifier that preceded it (#936/#933); and a capability with two output
+shapes declares one reasoning level per shape (#1285).
+
+Validated by a pre-registered two-set verification run on frozen deploy `dfe9a6f2` (HEAD pinned at
+`be2e9dea`), **zero image drift across all nine rolls**. FastAPI+React **4 of 6** functional;
+Next.js+TS **3 of 3**. **Functional App Yield 7 of 9, zero human interventions.** Every accepted
+roll credited all of its criteria; no roll anywhere carried an unevidenced criterion; both
+rejections named the criterion they lost.
+
+**The line's bar was amended before the set opened, not after.** L1 breached in the shakeouts, and
+the owner's ruling — recorded as the pre-registration's sixth §3a entry — split it: blocking on a
+contentless emission that is *not recovered*, tracked otherwise. The set read **7 contentless of
+160 emissions**, all seven on one Next.js roll that recovered fully through five correction rounds
+to accepted, 16/16, functional. No counted roll was lost to one.
+
+Stated at the cut, not implied: **the diagnostics were not re-run on the pinned deploy** (plan step
+10), so L2, L4, L7, L8 and A1 were proven on earlier deploys and not on the one the numbers come
+from — the experimental gate is amended on the owner's ruling, and the record §4 names exactly what
+is and is not covered. R1 and D1, the two invariants the pack could plausibly have regressed, both
+have live readings on the pinned deploy. #1406 recurred on one roll, demoting nothing, and that
+roll's coverage figure is never quoted as whole.
+
+The instrument was fixed five times while the line ran, each time because a readout could not tell
+*did not happen* from *could not be asked*: three loaded-check probes had never run and recorded
+like probes that answered (#1425); a field counted artifacts and called them emissions (#1431, and
+the first fix for it was falsified within the hour and reverted, #1436); and the driver, which
+imports framework modules to judge P0 and B1, could have judged a roll with code the deploy never
+ran (#1438 — `frozen_deploy_commit` had been typed and read by nothing).
+
 ## [1.7.3] — 2026-09-07
 
 **Boundaries — the third patch line of 1.7.** Plan: `docs/plans/1-7-3-plan.md` (rev 4). Record:

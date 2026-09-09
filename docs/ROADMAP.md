@@ -22,7 +22,26 @@ Each even-minor consumer sits strictly behind the release that earns its trust: 
 
 ## Release Timeline
 
-### v1.7.3 (2026-09-07) — Current — Boundaries
+### v1.7.4 (2026-09-09) — Current — the recovery half
+
+**The fourth patch line of 1.7: the recovery path, and the request that feeds it.** Ten pack rows
+land on the loop that runs after something fails — the retired handoff leaves the framework and,
+in #1430, the request as well, finishing SIP-0098 §6.7 seven references at a time; framework rows
+are owed by contract not by task (#1374); the builder retries a contentless emission with its fact
+(#1372); a rewind is not a repair (#994); the locus classifier answers by task-type property
+(#1054); an accepted repair is not disputed by the classifier before it (#936/#933); and a
+capability with two output shapes declares one reasoning level per shape (#1285).
+
+Evidence: a pre-registered two-set run on frozen deploy `dfe9a6f2`, zero image drift across nine
+rolls — **FastAPI+React 4 of 6, Next.js+TS 3 of 3, Functional App Yield 7 of 9 with zero human
+interventions**. The bar was amended *before* the set opened: L1 blocks on an unrecovered
+contentless emission and tracks the rest, and the one roll that breached it (7 of 35) recovered
+through five correction rounds to accepted and functional. Named at the cut rather than implied:
+the diagnostics were **not** re-run on the pinned deploy, so L2/L4/L7/L8 and A1 rest on earlier
+deploys — R1 and D1, the invariants the pack touched, have live pinned-deploy readings. Record:
+`docs/plans/1-7-4-verification-set-record.md`.
+
+### v1.7.3 (2026-09-07) — Boundaries
 
 **The third patch line of 1.7, and the one that staffs the list.** Sixteen boundary items every 1.7
 plan had scheduled and no line had taken: the identifier renamed for what it is (#922, #559 —
@@ -641,7 +660,7 @@ The following areas are identified for future work but do not block 1.0 readines
 
 *As of 2026-09-07 (v1.7.3):*
 
-- **Framework version**: 1.7.3
+- **Framework version**: 1.7.4
 - **SIPs**: 65 implemented, 9 accepted (SIP-0088, 0090–0093, 0101, 0102, 0104, 0105), 20 deprecated (registry)
 - **Tests**: 9,500+ passing in the regression suite (all of `tests/unit`, #1316)
 - **Python source**: ~61,000 lines (src + adapters; ~88,000 test lines, ~119,000 doc lines)
