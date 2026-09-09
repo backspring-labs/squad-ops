@@ -36,9 +36,12 @@ This directory contains integration tests for the SquadOps framework. These test
 Before running integration tests, ensure these services are running:
 
 1. **PostgreSQL** (port 5432)
-   - Database: `squadops`
-   - User: `squadops`
-   - Password: `squadops-dev`
+   - Database: `squadops_test` — never the deployment database `squadops` (#1099)
+   - User: `squadops_test` — a role the deployment database refuses at the server
+     (`REVOKE CONNECT ON DATABASE squadops FROM PUBLIC`, #1180)
+   - Password: `squadops-test` (`POSTGRES_TEST_PASSWORD` in `.env`)
+   - The role and database are provisioned by bootstrap and `rebuild_and_deploy.sh`;
+     `squadops doctor <profile> --check database` verifies the refusal
 
 2. **Redis** (port 6379)
    - Default configuration
@@ -194,7 +197,7 @@ Tests read service configuration with this precedence: **environment variables >
 works). Defaults match the docker-compose stack (root `.env`):
 
 ```env
-POSTGRES_URL=postgresql://squadops:squadops-dev@localhost:5432/squadops_test
+POSTGRES_URL=postgresql://squadops_test:squadops-test@localhost:5432/squadops_test
 RABBITMQ_USER=squadops
 RABBITMQ_PASSWORD=squadops-dev
 RABBITMQ_HOST=localhost
@@ -299,8 +302,11 @@ Integration tests verify the new agent initialization flow:
    # Check PostgreSQL is running
    docker ps --filter "name=squadops-postgres"
    
-   # Check connection
-   psql -h localhost -U squadops -d squadops
+   # Check the test role can connect to its own database
+   psql -h localhost -U squadops_test -d squadops_test
+
+   # The deployment database must refuse it (#1180) — verified by
+   squadops doctor <profile> --check database
    ```
 
 3. **RabbitMQ connection errors**

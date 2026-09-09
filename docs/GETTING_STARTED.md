@@ -38,7 +38,7 @@ squadops doctor <profile>
 
 For example: `squadops doctor dev-mac`
 
-Doctor checks Python version, venv, system tools, Docker services, Ollama models, and auth token. Fix any failures using the guidance it provides.
+Doctor checks Python version, venv, system tools, Docker services, the integration-test database's isolation from the deployment database, Ollama models, and auth token. Fix any failures using the guidance it provides.
 
 ### Targeted checks
 
@@ -47,6 +47,7 @@ squadops doctor dev-mac --check python    # Python + venv only
 squadops doctor dev-mac --check tools     # System dependencies only
 squadops doctor dev-mac --check docker    # Docker services only
 squadops doctor dev-mac --check models    # Ollama models only
+squadops doctor dev-mac --check database  # The integration-test role is refused by the deployment DB
 squadops doctor dev-mac --json            # Machine-readable output
 ```
 

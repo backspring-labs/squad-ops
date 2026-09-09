@@ -8,15 +8,25 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import platform
 import shutil
 import socket
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from squadops.bootstrap.database_isolation import (
+    DEPLOYMENT_DB_NAME,
+    SQLSTATE_INSUFFICIENT_PRIVILEGE,
+    TEST_DB_NAME,
+    TEST_DB_PASSWORD_ENV,
+    TEST_DB_ROLE,
+    test_role_dsn,
+)
 from squadops.bootstrap.setup.profile import (
     BootstrapProfile,
     DockerService,
@@ -36,6 +46,7 @@ VALID_CATEGORIES = frozenset(
         "platform",
         "tools",
         "docker",
+        "database",
         "models",
         "squad",
         "gpu",
@@ -430,6 +441,156 @@ def _check_docker_health(svc: DockerService) -> CheckResult:
             fix_command="docker-compose up -d",
             auto_fixable=True,
         )
+
+
+# ---------------------------------------------------------------------------
+# Database isolation check (#1180)
+# ---------------------------------------------------------------------------
+
+#: What the deploy and bootstrap paths run; offered as the fix, never as the mechanism.
+_PROVISION_TEST_DATABASE = "./scripts/dev/ops/ensure_test_database.sh"
+
+#: SQLSTATEs the server answers a connection attempt with. Strings at the boundary,
+#: named here so the decision below reads as what it is.
+_SQLSTATE_INVALID_PASSWORD = "28P01"
+_SQLSTATE_INVALID_AUTHORIZATION = "28000"
+_SQLSTATE_UNKNOWN_DATABASE = "3D000"
+
+
+@dataclass(frozen=True)
+class ConnectionProbe:
+    """What one connection attempt came back with — the server's answer, not ours."""
+
+    connected: bool
+    sqlstate: str | None = None  # the server refused, with this SQLSTATE
+    error: str | None = None  # text of whatever refused it
+    unreachable: bool = False  # nothing answered at all (socket error, timeout)
+
+
+def _probe_connection(dsn: str) -> ConnectionProbe:
+    """Open a connection and close it at once; report what happened."""
+    import asyncpg
+
+    async def _attempt() -> ConnectionProbe:
+        try:
+            conn = await asyncpg.connect(dsn, timeout=5)
+        except asyncpg.PostgresError as exc:
+            return ConnectionProbe(connected=False, sqlstate=exc.sqlstate, error=str(exc))
+        except (OSError, TimeoutError) as exc:
+            return ConnectionProbe(connected=False, error=str(exc), unreachable=True)
+        await conn.close()
+        return ConnectionProbe(connected=True)
+
+    return asyncio.run(_attempt())
+
+
+def check_test_database_isolation(
+    *,
+    port: int,
+    password: str | None,
+    probe: Callable[[str], ConnectionProbe] | None = None,
+) -> CheckResult:
+    """The integration-test role authenticates on its own database AND is refused by the
+    deployment database with a permission error (#1180).
+
+    The negative is the check. A probe that only proved the test database reachable would
+    have passed throughout the 2026-08-30 incident; a refusal for any reason other than
+    ``42501`` (wrong password, no such database) is not evidence of the grant and fails
+    too. The first probe is the paired control: without it, "refused" could be a role that
+    does not exist. Unverifiable (no password, no server) warns heuristically — the broker
+    pattern; the ``docker`` category already reports a down Postgres in red.
+    """
+    # Resolved at call time, not bound as a default, so the module attribute is the seam
+    # a test patches and the collector never reaches a real server by accident.
+    probe = probe or _probe_connection
+    name = "database:test-role-isolation"
+    if not password:
+        return CheckResult(
+            name=name,
+            category="database",
+            passed=False,
+            heuristic=True,
+            message=f"{TEST_DB_PASSWORD_ENV} is not set — test-role isolation not verified",
+            detail=(
+                "The bootstrap and deploy paths write it to .env (from .env.example) and "
+                "the CLI loads .env; an older .env gets it on the next deploy."
+            ),
+            fix_command=_PROVISION_TEST_DATABASE,
+        )
+
+    own = probe(test_role_dsn(password, port=port, database=TEST_DB_NAME))
+    if own.unreachable:
+        return CheckResult(
+            name=name,
+            category="database",
+            passed=False,
+            heuristic=True,
+            message=f"Postgres unreachable on localhost:{port} — test-role isolation not verified",
+            detail=own.error,
+        )
+    if not own.connected:
+        if own.sqlstate in (_SQLSTATE_INVALID_PASSWORD, _SQLSTATE_INVALID_AUTHORIZATION):
+            message = (
+                f"test role {TEST_DB_ROLE!r} cannot authenticate on {TEST_DB_NAME!r} — "
+                f"the role is missing, or its password is not {TEST_DB_PASSWORD_ENV}"
+            )
+        elif own.sqlstate == _SQLSTATE_UNKNOWN_DATABASE:
+            message = f"test database {TEST_DB_NAME!r} does not exist"
+        else:
+            message = f"test role {TEST_DB_ROLE!r} refused by {TEST_DB_NAME!r} ({own.sqlstate})"
+        return CheckResult(
+            name=name,
+            category="database",
+            passed=False,
+            message=message,
+            detail=own.error,
+            fix_command=_PROVISION_TEST_DATABASE,
+        )
+
+    deployment = probe(test_role_dsn(password, port=port, database=DEPLOYMENT_DB_NAME))
+    if deployment.connected:
+        return CheckResult(
+            name=name,
+            category="database",
+            passed=False,
+            message=(
+                f"{TEST_DB_ROLE!r} CAN connect to the deployment database "
+                f"{DEPLOYMENT_DB_NAME!r} — REVOKE CONNECT ON DATABASE {DEPLOYMENT_DB_NAME} "
+                f"FROM PUBLIC is not applied"
+            ),
+            detail="The integration suite could reach live cycle data (#1180, #1099).",
+            fix_command=_PROVISION_TEST_DATABASE,
+        )
+    if deployment.sqlstate == SQLSTATE_INSUFFICIENT_PRIVILEGE:
+        return CheckResult(
+            name=name,
+            category="database",
+            passed=True,
+            message=(
+                f"{TEST_DB_ROLE!r} authenticates on {TEST_DB_NAME!r} and is refused by "
+                f"{DEPLOYMENT_DB_NAME!r} (permission denied)"
+            ),
+        )
+    if deployment.unreachable:
+        return CheckResult(
+            name=name,
+            category="database",
+            passed=False,
+            heuristic=True,
+            message=f"Postgres stopped answering on localhost:{port} between probes",
+            detail=deployment.error,
+        )
+    return CheckResult(
+        name=name,
+        category="database",
+        passed=False,
+        message=(
+            f"{DEPLOYMENT_DB_NAME!r} refused {TEST_DB_ROLE!r} with {deployment.sqlstate}, "
+            f"not a permission error — a refusal for another reason is not isolation"
+        ),
+        detail=deployment.error,
+        fix_command=_PROVISION_TEST_DATABASE,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -831,6 +992,20 @@ def _collect_tools_checks(profile: BootstrapProfile) -> list[CheckResult]:
 
 def _collect_docker_checks(profile: BootstrapProfile) -> list[CheckResult]:
     return [check_docker_service(svc) for svc in profile.docker_services]
+
+
+def _collect_database_checks(profile: BootstrapProfile) -> list[CheckResult]:
+    """Test-role isolation, only when the profile declares the postgres service — the
+    broker pattern. The port is the profile's; the password is the CLI's ``.env`` load."""
+    pg = next((svc for svc in profile.docker_services if svc.name == "postgres"), None)
+    if pg is None:
+        return []
+    return [
+        check_test_database_isolation(
+            port=pg.port or 5432,  # every profile declares it; 5432 is Postgres's own default
+            password=os.environ.get(TEST_DB_PASSWORD_ENV),
+        )
+    ]
 
 
 def _collect_models_checks(profile: BootstrapProfile) -> list[CheckResult]:
@@ -1241,6 +1416,7 @@ _CHECK_REGISTRY: list[tuple[str, object]] = [
     ("platform", _collect_platform_checks),
     ("tools", _collect_tools_checks),
     ("docker", _collect_docker_checks),
+    ("database", _collect_database_checks),
     ("models", _collect_models_checks),
     ("squad", _collect_squad_checks),
     ("gpu", _collect_gpu_checks),
