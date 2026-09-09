@@ -576,6 +576,11 @@ the deploy the numbers come from.
 
 ## 8. Decisions made by recommendation — the owner overrules, not fills in
 
+**Ruled by the owner, 2026-09-09, at rev 3's review: decisions 1 and 2 approved** — #598's
+promotion is not taken and the packaging becomes a rendering in the 1.8 lane; the fill-mode
+declaration moves to `LOW`. The plan merges on that ruling and the verify-then-close (§7 step
+3) opens the line.
+
 1. **#598's promotion to blocking is not taken in this line; the packaging becomes a
    rendering in the 1.8 lane** (§6). **Fallback if the owner holds the 1.7.4 §6a placement:**
    it lands as step 0 of §3.2 with the finding routed to the builder as a *repair* (a required

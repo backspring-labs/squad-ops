@@ -596,8 +596,7 @@ dependency set the images install — is unaffected and met. Reasoning recorded 
   #353 (rev 3) re-placed to the 1.8 rider**; #1444 (the qa/dev `handle()` split) placed as
   1.8's first extraction; #1445 (the three-state evidence vocabulary, filed with rev 3) first
   in the prelude; #1177 as the ops rider; #330, #372, #352, #157 and #376 verify-then-close. **#598's first half is re-placed to the 1.8 lane by
-  the 1.7.5 plan's recommendation** (its §8, decision 1), pending the owner's ruling on that
-  plan. **Correction to §2.7:** #376 is SIP-0096 Phase 2 field evidence (the repair path
+  the 1.7.5 plan's recommendation** (its §8, decision 1), approved by the owner 2026-09-09. **Correction to §2.7:** #376 is SIP-0096 Phase 2 field evidence (the repair path
   discarding final-state verification), not SIP-0102 migration steps 3–7; those steps are
   feature-shaped and stay with SIP-0102. §6.2's close criteria hold as written and are read
   criterion by criterion in the 1.7.5 plan §3.7.
