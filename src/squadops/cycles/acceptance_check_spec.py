@@ -457,6 +457,15 @@ CHECK_ADDITIVE_CONTAINMENT = "additive_containment"
 # promised. Plan-time injected per suite file with the inventory as self-contained
 # params, the way the contract-assertion and kind gates are (#629, #1153).
 CHECK_DOM_ANCHOR_QUERIES = "dom_anchor_queries"
+# #668, the data-fetch half: a suite's mock of the frozen API client honours the client's
+# declared surface — its imports and mock factory name only what the client exports, an
+# assertion on the call matches its signature, and a stub beneath the client sees the
+# prefix it adds and carries the envelope it unwraps. Plan-time bound per suite file
+# with the stack's declaration (``ScaffoldStack.client_surface``) as self-contained
+# params. REPORTING-ONLY this line (``blocking_default="warning"``, the #598 shape):
+# findings are banked on the evaluation artifact; promotion is a separate call on the
+# counts the rolls produce (1.7.5 plan §3.2 row 7).
+CHECK_CLIENT_MOCK_SURFACE = "client_mock_surface"
 
 # #822: the per-view bundler check. Named here because `VerificationContract.view_slots`
 # filters on it to identify a stack's view files for repair targeting — the same
@@ -574,6 +583,11 @@ DECLARED_COVERAGE_GAPS: dict[str, dict[str, str]] = {
         (".py",),
         "A pytest suite exercises HTTP endpoints through TestClient and renders no DOM; "
         "the anchor contract is a frontend-suite surface.",
+    ),
+    CHECK_CLIENT_MOCK_SURFACE: dict.fromkeys(
+        (".py",),
+        "A pytest suite reaches the backend through TestClient and imports no frontend "
+        "client; the client surface is a frontend-suite concern.",
     ),
     CHECK_ADDITIVE_CONTAINMENT: dict.fromkeys(
         (".py",),
@@ -1104,6 +1118,53 @@ CHECK_SPECS: dict[str, CheckSpec] = {
         outcome_contribution=True,
         replayable=True,
         blocking_default="error",
+    ),
+    CHECK_CLIENT_MOCK_SURFACE: CheckSpec(
+        name=CHECK_CLIENT_MOCK_SURFACE,
+        applicable_extensions=frozenset({".jsx", ".tsx", ".js", ".ts"}),
+        required_params=frozenset({"file", "client"}),
+        param_types={"file": str, "client": dict},
+        path_params=frozenset({"file"}),
+        framework_injected=True,
+        example={
+            "file": "frontend/src/tests/RunDetailView.test.jsx",
+            "client": {
+                "path": "frontend/src/api.js",
+                "module_specifier": "(?:\\.\\./|\\./)+api(?:\\.js)?",
+                "exports": [
+                    {"name": "ApiError", "kind": "class", "params": ["code", "message", "status"]},
+                    {"name": "apiFetch", "kind": "function", "params": ["path", "options = {}"]},
+                ],
+                "path_prefix": "/api",
+                "error_envelope_key": "error",
+                "default_export": None,
+            },
+        },
+        notes=(
+            "Bound by the planner onto every bound qa.test frontend suite file when the "
+            "stack declares a frozen API client (`ScaffoldStack.client_surface`); never "
+            "authored. REPORTING-ONLY: six rules over the suite's own bytes against the "
+            "declaration — an import or a mock factory naming what the client does not "
+            "export (a `default` the client lacks, an invented call), a factory that "
+            "provides none of the client's calls, an assertion on the call with a shape it "
+            "never takes (a method name first, the client's own prefix on the path, too "
+            "many positional arguments), a `fetch` stub beneath the client asserted "
+            "without the prefix the client adds, and a non-2xx stub body without the "
+            "envelope key the client unwraps (#668: fay-14's dev repair mocked a `default` "
+            "export, its qa repair stubbed `{error_code, message}` under a client reading "
+            "`{error: {code, message}}`). Findings are banked with line numbers; the "
+            "warning severity keeps them out of the verdict, the correction signature and "
+            "the repair loop. A stack declaring no client binds nothing; a row without the "
+            "declaration skips."
+        ),
+        failure_ownership=OWNERSHIP_SUITE,
+        qa_available=True,
+        # Reporting-only: it never fails a task, so a chain's identity must not read it.
+        signature_participation=False,
+        # Advisory rows are not ledger inputs (verification_normalize); banked elsewhere.
+        outcome_contribution=False,
+        replayable=True,
+        blocking_default="warning",
     ),
     CHECK_ADDITIVE_CONTAINMENT: CheckSpec(
         name=CHECK_ADDITIVE_CONTAINMENT,
