@@ -793,9 +793,14 @@ class TestMemoryContainment:
         return MemoryContainment(**base)
 
     def _systemctl(self, *, state: str, exec_start: str = ""):
+        """MainPID reads 0 so `_effective_command` falls back to the declared ExecStart —
+        the fallback path, which is what these cases are about."""
+
         def fake(*args: str):
             if args[:1] == ("is-active",):
                 return (0 if state == "active" else 3), state
+            if args[:3] == ("show", "-p", "MainPID"):
+                return 0, "0"
             if args[0] == "show":
                 return 0, exec_start
             return 0, ""
@@ -830,6 +835,42 @@ class TestMemoryContainment:
         assert daemon.passed is False and daemon.heuristic is False
         assert "takes the box" in daemon.message
         assert "apt install earlyoom" in daemon.fix_command
+
+    def test_the_thresholds_are_read_from_the_running_process_not_the_declared_unit(
+        self, monkeypatch, tmp_path
+    ):
+        """The defect this check shipped with, caught the first time it ran on the box.
+
+        Debian's earlyoom unit declares `/usr/bin/earlyoom $EARLYOOM_ARGS` and systemd
+        expands that from an EnvironmentFile at start, so `systemctl show -p ExecStart`
+        NEVER contains the thresholds. Reading it reported "free-swap threshold is unset"
+        against a daemon running with exactly the right ones — a readout that could not see
+        what it was asking about, reporting a real-looking failure. Which is the class this
+        check exists to catch, so it must not be the class this check is.
+        """
+        cmdline = tmp_path / "cmdline"
+        cmdline.write_bytes(b"/usr/bin/earlyoom\x00-m\x0010\x00-s\x00100\x00")
+
+        def fake_systemctl(*args: str):
+            if args[:1] == ("is-active",):
+                return 0, "active"
+            if args[:3] == ("show", "-p", "MainPID"):
+                return 0, "4242"
+            if args[:3] == ("show", "-p", "ExecStart"):
+                # what systemd really returns: the UNEXPANDED declaration
+                return 0, "{ path=/usr/bin/earlyoom ; argv[]=/usr/bin/earlyoom $EARLYOOM_ARGS }"
+            return 0, ""
+
+        monkeypatch.setattr(checks_mod, "_systemctl", fake_systemctl)
+        monkeypatch.setattr(
+            checks_mod, "Path", lambda p: cmdline if p == "/proc/4242/cmdline" else Path(p)
+        )
+        monkeypatch.setattr(checks_mod.subprocess, "run", MagicMock(side_effect=OSError))
+
+        results = checks_mod.check_memory_containment(self._containment())
+
+        swap = next(r for r in results if "swap threshold" in r.name)
+        assert swap.passed is True, swap.message
 
     def test_an_active_daemon_whose_swap_threshold_can_veto_the_kill_fails(self, monkeypatch):
         """THE check, and the reason "installed" is not the property that matters.
