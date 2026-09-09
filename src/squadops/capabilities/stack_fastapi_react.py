@@ -27,6 +27,7 @@ import re
 from typing import TYPE_CHECKING
 
 from squadops.capabilities.app_invocation import NETWORK_SEAM_FETCH_STUB, AppInvocation
+from squadops.capabilities.baseline_stylesheet import BASELINE_CSS
 from squadops.capabilities.client_surface import (
     KIND_CLASS,
     KIND_FUNCTION,
@@ -479,9 +480,13 @@ describe('frontend test harness', () => {
 })
 """
 
+# The baseline stylesheet rides on the frozen entry point (#1463), the same seam stack #2
+# uses for the same reason: the import must be somewhere no fill may edit, or a roll can
+# delete the app's presentation floor by editing one line it was told not to touch.
 _MAIN_JSX = """import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
+import './index.css'
 import App from './App.jsx'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
@@ -788,6 +793,7 @@ def expand_fullstack_fastapi_react(manifest: InterfaceManifest) -> list[dict[str
     files.append({"name": "frontend/src/test-setup.js", "content": _TEST_SETUP_JS})
     files.append({"name": "frontend/src/__tests__/harness.test.jsx", "content": _HARNESS_TEST_JSX})
     files.append({"name": "frontend/src/main.jsx", "content": _MAIN_JSX})
+    files.append({"name": "frontend/src/index.css", "content": BASELINE_CSS})
     files.append({"name": _CLIENT_PATH, "content": _API_JS})
     files.append({"name": "frontend/src/App.jsx", "content": _app_jsx(manifest)})
     for route in manifest.frontend.routes:
