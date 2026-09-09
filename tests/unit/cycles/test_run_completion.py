@@ -520,6 +520,143 @@ class TestVerificationIntegrityWiring:
         assert "required_files" in content
         assert "harness/evidence problem" in content  # framed as harness, not product failure
 
+    @staticmethod
+    def _plan_of(*task_types: str) -> list[TaskEnvelope]:
+        return [
+            TaskEnvelope(
+                task_id=f"task_{i}",
+                agent_id="max",
+                cycle_id="cyc_001",
+                pulse_id="pulse_1",
+                project_id="play_game",
+                task_type=tt,
+                correlation_id="corr_1",
+                causation_id="corr_1",
+                trace_id="trace_1",
+                span_id=f"span_{i}",
+                inputs={},
+                metadata={"role": "lead", "step_index": i},
+            )
+            for i, tt in enumerate(task_types)
+        ]
+
+    FULLSTACK_REQUIRED = ["frontend_build", "required_files", "tests_pass"]
+    FRAMING_PLAN = (
+        "development.author_manifest",
+        "qa.define_test_strategy",
+        "governance.prepare_plan_authoring_brief",
+        "governance.merge_plan",
+        "governance.review_plan",
+    )
+
+    async def test_a_framing_run_owes_none_of_the_profiles_checks_and_says_so(self):
+        """#1428, entered at finalize — the caller the live cycle uses. The real case:
+        `run_b61ed8cfd9c7` (cycle `cyc_dd3068d22f2c`, the 1.7.4 deploy-B React checkpoint)
+        stored `{"verdict": "blocked_unverified", "required_unmet": ["frontend_build",
+        "required_files", "tests_pass"], "unverified": [three subject_missing rows]}` for
+        a framing run whose five tasks emit no source, no suite and no required files.
+        Same inputs — those five task types, the validated-fullstack declared set, zero
+        recorded rows, COMPLETED — must now finalize to a verdict that is NOT blocked, with
+        the three disclosed as required-but-not-owed and the harness warning absent."""
+        from dataclasses import replace
+
+        from squadops.cycles.run_ledger import RunLedger
+
+        completion, vault = self._completion()
+        cycle = replace(
+            _make_cycle(), applied_defaults={"required_checks": self.FULLSTACK_REQUIRED}
+        )
+
+        await completion.finalize(
+            "cyc_001",
+            "run_001",
+            RunStatus.COMPLETED,
+            None,
+            None,
+            cycle=cycle,
+            plan=self._plan_of(*self.FRAMING_PLAN),
+            ledger=RunLedger(),
+        )
+        stored = completion._cycle_registry.record_run_verification_summary.call_args[0][1]
+        assert stored.verdict.value != "blocked_unverified"
+        assert stored.required_unmet == ()
+        assert stored.required_not_owed == ("frontend_build", "required_files", "tests_pass")
+        content = vault.store.call_args[0][1].decode()
+        assert "not owed by this run" in content
+        assert "harness/evidence problem" not in content
+
+    async def test_an_implementation_run_still_owes_every_declared_check(self):
+        """The other direction: a plan with a source author, a suite author and a builder
+        owes all three; with no recorded rows it blocks on all three exactly as before.
+        Bug caught: the narrowing leaking into implementation runs."""
+        from dataclasses import replace
+
+        from squadops.cycles.run_ledger import RunLedger
+
+        completion, vault = self._completion()
+        cycle = replace(
+            _make_cycle(), applied_defaults={"required_checks": self.FULLSTACK_REQUIRED}
+        )
+
+        await completion.finalize(
+            "cyc_001",
+            "run_001",
+            RunStatus.COMPLETED,
+            None,
+            None,
+            cycle=cycle,
+            plan=self._plan_of("development.develop", "qa.test", "builder.assemble"),
+            ledger=RunLedger(),
+        )
+        stored = completion._cycle_registry.record_run_verification_summary.call_args[0][1]
+        assert stored.verdict.value == "blocked_unverified"
+        assert stored.required_unmet == ("frontend_build", "required_files", "tests_pass")
+        assert stored.required_not_owed == ()
+
+    async def test_owed_is_derived_from_the_plan_not_from_what_executed(self):
+        """Bug caught: deriving from executed rows — a run that aborted before its qa task
+        would stop owing tests_pass and read clean. The plan names qa.test; nothing ran;
+        tests_pass is still owed and still blocks."""
+        from dataclasses import replace
+
+        from squadops.cycles.run_ledger import RunLedger
+
+        completion, _ = self._completion()
+        cycle = replace(_make_cycle(), applied_defaults={"required_checks": ["tests_pass"]})
+
+        await completion.finalize(
+            "cyc_001",
+            "run_001",
+            RunStatus.FAILED,
+            None,
+            None,
+            cycle=cycle,
+            plan=self._plan_of("development.develop", "qa.test"),
+            ledger=RunLedger(),
+        )
+        stored = completion._cycle_registry.record_run_verification_summary.call_args[0][1]
+        assert stored.required_unmet == ("tests_pass",)
+        assert stored.verdict.value == "blocked_unverified"
+
+    async def test_without_a_plan_the_declared_set_is_used_as_is(self):
+        """The conservative reading: no plan means no narrowing, so a caller that cannot
+        say what the run planned never gets a smaller required set."""
+        from dataclasses import replace
+
+        from squadops.cycles.run_ledger import RunLedger
+
+        completion, _ = self._completion()
+        cycle = replace(
+            _make_cycle(), applied_defaults={"required_checks": self.FULLSTACK_REQUIRED}
+        )
+
+        await completion.finalize(
+            "cyc_001", "run_001", RunStatus.COMPLETED, None, None, cycle=cycle, ledger=RunLedger()
+        )
+        stored = completion._cycle_registry.record_run_verification_summary.call_args[0][1]
+        assert stored.required_unmet == ("frontend_build", "required_files", "tests_pass")
+        assert stored.required_not_owed == ()
+
     async def test_finalize_failed_run_zero_evidence_blocks_not_accepts(self):
         """#388: a FAILED terminal status threads run_succeeded=False through the real
         finalize→aggregate→report path, so an empty ledger rolls up to

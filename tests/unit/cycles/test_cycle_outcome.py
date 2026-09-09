@@ -67,3 +67,49 @@ async def test_empty_cycle_rolls_up_to_accepted():
 
     assert outcome.verdict is RunVerdict.ACCEPTED  # zero runs = zero adverse evidence
     assert outcome.run_count == 0
+
+
+class TestRequiredNotOwedRoundTrip:
+    """#1428: the disclosure field is stored and read back, and a pre-#1428 row without it
+    reconstructs unchanged."""
+
+    def _summary(self, **kw):
+        from squadops.cycles.verification_integrity import RunVerdict, RunVerificationSummary
+
+        base = dict(
+            verdict=RunVerdict.ACCEPTED,
+            verified=(),
+            failed=(),
+            unverified=(),
+            required_unmet=(),
+            executed_count=0,
+            passed_count=0,
+        )
+        base.update(kw)
+        return RunVerificationSummary(**base)
+
+    def test_round_trip_keeps_the_field(self):
+        from adapters.cycles.postgres_cycle_registry import (
+            _verification_summary_from_dict,
+            _verification_summary_to_dict,
+        )
+
+        original = self._summary(required_not_owed=("frontend_build", "tests_pass"))
+        stored = _verification_summary_to_dict(original)
+        assert stored["required_not_owed"] == ["frontend_build", "tests_pass"]
+        assert _verification_summary_from_dict(stored).required_not_owed == (
+            "frontend_build",
+            "tests_pass",
+        )
+
+    def test_a_pre_1428_row_reconstructs_with_nothing_not_owed(self):
+        """Bug caught: a KeyError on every stored summary from before the field existed,
+        which would break the cycle roll-up's read of history."""
+        from adapters.cycles.postgres_cycle_registry import (
+            _verification_summary_from_dict,
+            _verification_summary_to_dict,
+        )
+
+        stored = _verification_summary_to_dict(self._summary())
+        del stored["required_not_owed"]
+        assert _verification_summary_from_dict(stored).required_not_owed == ()
