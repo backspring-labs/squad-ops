@@ -72,6 +72,8 @@ source "${SCRIPT_DIR}/lib/python_setup.sh"
 source "${SCRIPT_DIR}/lib/brew_install.sh"
 # shellcheck source=lib/apt_install.sh
 source "${SCRIPT_DIR}/lib/apt_install.sh"
+# shellcheck source=lib/memory_containment.sh
+source "${SCRIPT_DIR}/lib/memory_containment.sh"
 # shellcheck source=lib/docker_setup.sh
 source "${SCRIPT_DIR}/lib/docker_setup.sh"
 # shellcheck source=lib/ollama_setup.sh
