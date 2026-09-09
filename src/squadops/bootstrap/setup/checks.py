@@ -1099,13 +1099,38 @@ def _systemctl(*args: str) -> tuple[int, str]:
     return proc.returncode, proc.stdout.strip()
 
 
-def _earlyoom_thresholds(exec_start: str) -> tuple[int | None, int | None]:
-    """The ``-m`` and ``-s`` percentages off the unit's actual ExecStart.
+def _effective_command(daemon: str) -> str:
+    """The daemon's command line **as the kernel has it**, not as the unit declares it.
 
-    Read from what the unit RUNS, not from ``/etc/default/earlyoom``: an override file, a
-    drop-in, or a hand-edited unit all change the former and leave the latter looking
-    right. Values may be written ``-m 10`` or ``-m10``, and a ``PERCENT[,KILL_PERCENT]``
-    pair takes the first number.
+    #1178 follow-up: ``systemctl show -p ExecStart`` returns the unit's *declared* command,
+    and Debian's earlyoom unit declares ``/usr/bin/earlyoom $EARLYOOM_ARGS`` — systemd
+    expands that from an ``EnvironmentFile`` at start, so the declaration never contains
+    the thresholds. Reading it made the check report "free-swap threshold is unset" against
+    a daemon running with exactly the right ones: a readout that could not see what it was
+    asking about, reporting a real-looking failure. That is the class this check exists to
+    catch, so it must not be the class this check is.
+
+    ``/proc/<MainPID>/cmdline`` is what the process actually got, after every expansion,
+    drop-in and override. Falls back to the declared ExecStart when the pid is unreadable,
+    which is honest: it is the only thing left to read.
+    """
+    _, main_pid = _systemctl("show", "-p", "MainPID", "--value", daemon)
+    if main_pid.isdigit() and main_pid != "0":
+        try:
+            raw = Path(f"/proc/{main_pid}/cmdline").read_bytes()
+        except OSError:
+            raw = b""
+        if raw:
+            return " ".join(raw.decode("utf-8", "replace").split("\x00")).strip()
+    _, exec_start = _systemctl("show", "-p", "ExecStart", "--value", daemon)
+    return exec_start
+
+
+def _earlyoom_thresholds(exec_start: str) -> tuple[int | None, int | None]:
+    """The ``-m`` and ``-s`` percentages off the daemon's effective command line.
+
+    Values may be written ``-m 10`` or ``-m10``, and a ``PERCENT[,KILL_PERCENT]`` pair
+    takes the first number.
     """
     memory = swap = None
     tokens = exec_start.replace("=", " ").split()
@@ -1163,7 +1188,7 @@ def check_memory_containment(containment: MemoryContainment) -> list[CheckResult
     )
 
     if active:
-        _, exec_start = _systemctl("show", "-p", "ExecStart", "--value", daemon)
+        exec_start = _effective_command(daemon)
         memory, swap = _earlyoom_thresholds(exec_start)
         # THE check. Swap must not be able to veto the kill on this box.
         swap_ok = swap is not None and swap >= containment.free_swap_percent
