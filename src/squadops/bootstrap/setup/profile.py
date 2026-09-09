@@ -37,6 +37,7 @@ _ALLOWED_TOP_LEVEL_KEYS = frozenset(
         "ollama_models",
         "deployment_profile",
         "squad_profile",
+        "memory_containment",
     }
 )
 
@@ -107,6 +108,31 @@ OllamaModel = OllamaModelExact | OllamaModelAlternative
 
 
 @dataclass(frozen=True)
+class MemoryContainment:
+    """What stops a memory runaway from taking the whole box (#1178).
+
+    The kernel's OOM killer does not fire during thrash, because swap is technically
+    still available — so an oversized allocation does not produce one dead process and a
+    live box, it produces a box that pages in and out indefinitely and answers nothing.
+    On 2026-08-29 that was 95 minutes unreachable, ~800 MB free the entire time, ended by
+    a power cycle.
+
+    ``free_swap_percent`` is the field that incident forced. A userspace OOM daemon
+    normally kills only when available memory AND free swap are both under their
+    thresholds; the livelock ran with **23% of swap still free from the cliff to the
+    power cycle**, so a swap-gated threshold would never have fired. Declaring it at 100
+    makes swap unable to veto the kill, which is what this box needs and what a default
+    install does not do.
+    """
+
+    daemon: str
+    package: str
+    free_memory_percent: int
+    free_swap_percent: int
+    swappiness: int | None = None
+
+
+@dataclass(frozen=True)
 class BootstrapProfile:
     schema_version: int
     name: str
@@ -118,6 +144,7 @@ class BootstrapProfile:
     ollama_models: list[OllamaModel] = field(default_factory=list)
     deployment_profile: str | None = None
     squad_profile: str | None = None
+    memory_containment: MemoryContainment | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -166,6 +193,42 @@ def _validate_system_dep(dep_data: dict, index: int) -> SystemDep:
         cask=cask,
         required=dep_data.get("required", True),
         confirm=dep_data.get("confirm", False),
+    )
+
+
+def _validate_memory_containment(raw: dict | None) -> MemoryContainment | None:
+    """Validate the optional ``memory_containment`` block (#1178).
+
+    Absent means the profile makes no claim, and the doctor asks nothing — a laptop
+    profile has no business declaring an OOM daemon. Present means every field is
+    required: a partial declaration would let a threshold default silently, and the
+    thresholds are the whole point (see :class:`MemoryContainment`).
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise BootstrapProfileError("memory_containment: must be a mapping")
+
+    required = ("daemon", "package", "free_memory_percent", "free_swap_percent")
+    for key in required:
+        if raw.get(key) in (None, ""):
+            raise BootstrapProfileError(f"memory_containment: '{key}' is required")
+
+    for key in ("free_memory_percent", "free_swap_percent", "swappiness"):
+        value = raw.get(key)
+        if value is None:
+            continue
+        if not isinstance(value, int) or isinstance(value, bool) or not 0 <= value <= 100:
+            raise BootstrapProfileError(
+                f"memory_containment: '{key}' must be an integer percentage 0-100, got {value!r}"
+            )
+
+    return MemoryContainment(
+        daemon=str(raw["daemon"]),
+        package=str(raw["package"]),
+        free_memory_percent=int(raw["free_memory_percent"]),
+        free_swap_percent=int(raw["free_swap_percent"]),
+        swappiness=raw.get("swappiness"),
     )
 
 
@@ -372,6 +435,7 @@ def load_bootstrap_profile(name: str, *, profiles_dir: Path | None = None) -> Bo
         ollama_models=ollama_models,
         deployment_profile=raw.get("deployment_profile"),
         squad_profile=raw.get("squad_profile"),
+        memory_containment=_validate_memory_containment(raw.get("memory_containment")),
     )
 
 

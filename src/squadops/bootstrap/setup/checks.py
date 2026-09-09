@@ -20,6 +20,7 @@ from pathlib import Path
 from squadops.bootstrap.setup.profile import (
     BootstrapProfile,
     DockerService,
+    MemoryContainment,
     OllamaModelAlternative,
     OllamaModelExact,
     SystemDep,
@@ -906,6 +907,170 @@ def _collect_gpu_checks(profile: BootstrapProfile) -> list[CheckResult]:
     return list(check_nvidia_gpu()) if has_nvidia else []
 
 
+#: systemd's own unit-state word, named rather than compared as a literal: "active" also
+#: spells a CycleStatus/FlowState value, and the #380 enum-shadow guard is right to refuse
+#: a bare comparison — these are two unrelated vocabularies that happen to share a string.
+_SYSTEMD_ACTIVE = "active"
+
+
+def _systemctl(*args: str) -> tuple[int, str]:
+    """Run systemctl, returning ``(returncode, stdout)``; a missing systemctl is rc 127."""
+    try:
+        proc = subprocess.run(
+            ["systemctl", *args], capture_output=True, text=True, timeout=10, check=False
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return 127, ""
+    return proc.returncode, proc.stdout.strip()
+
+
+def _earlyoom_thresholds(exec_start: str) -> tuple[int | None, int | None]:
+    """The ``-m`` and ``-s`` percentages off the unit's actual ExecStart.
+
+    Read from what the unit RUNS, not from ``/etc/default/earlyoom``: an override file, a
+    drop-in, or a hand-edited unit all change the former and leave the latter looking
+    right. Values may be written ``-m 10`` or ``-m10``, and a ``PERCENT[,KILL_PERCENT]``
+    pair takes the first number.
+    """
+    memory = swap = None
+    tokens = exec_start.replace("=", " ").split()
+    for i, token in enumerate(tokens):
+        for flag, name in (("-m", "memory"), ("-s", "swap")):
+            if not token.startswith(flag):
+                continue
+            raw = token[len(flag) :] or (tokens[i + 1] if i + 1 < len(tokens) else "")
+            head = raw.split(",")[0].strip().rstrip("%")
+            if not head.isdigit():
+                continue
+            if name == "memory":
+                memory = int(head)
+            else:
+                swap = int(head)
+    return memory, swap
+
+
+def check_memory_containment(containment: MemoryContainment) -> list[CheckResult]:
+    """Is a memory runaway bounded to one process, or does it take the box? (#1178)
+
+    Three findings, because "installed" is not the property that matters. The
+    2026-08-29 livelock ran with 23% of swap free the whole time, so an earlyoom at its
+    stock ``-s 10`` would have watched the box die without firing — a check that stopped
+    at "the daemon is active" would have passed throughout the outage it exists to
+    prevent.
+    """
+    results: list[CheckResult] = []
+    daemon = containment.daemon
+
+    rc, state = _systemctl("is-active", daemon)
+    active = rc == 0 and state == _SYSTEMD_ACTIVE
+    if rc == 127:
+        return [
+            CheckResult(
+                name=f"memory:{daemon}",
+                category="memory",
+                passed=False,
+                heuristic=True,
+                message="systemctl unavailable — memory containment cannot be verified here",
+            )
+        ]
+    results.append(
+        CheckResult(
+            name=f"memory:{daemon}",
+            category="memory",
+            passed=active,
+            message=(
+                f"{daemon} is active — a memory runaway is bounded to one process"
+                if active
+                else f"{daemon} is {state or 'not installed'}: a memory runaway takes the box"
+            ),
+            fix_command=None if active else f"sudo apt install {containment.package}",
+        )
+    )
+
+    if active:
+        _, exec_start = _systemctl("show", "-p", "ExecStart", "--value", daemon)
+        memory, swap = _earlyoom_thresholds(exec_start)
+        # THE check. Swap must not be able to veto the kill on this box.
+        swap_ok = swap is not None and swap >= containment.free_swap_percent
+        results.append(
+            CheckResult(
+                name=f"memory:{daemon} swap threshold",
+                category="memory",
+                passed=swap_ok,
+                message=(
+                    f"free-swap threshold {swap}% cannot veto a kill "
+                    f"(declared >= {containment.free_swap_percent}%)"
+                    if swap_ok
+                    else f"free-swap threshold is {swap if swap is not None else 'unset'}%, "
+                    f"below the declared {containment.free_swap_percent}% — swap can veto "
+                    f"the kill, which is why the 2026-08-29 livelock ran to a power cycle "
+                    f"with 23% of swap still free"
+                ),
+                detail=exec_start or None,
+                fix_command=(
+                    None
+                    if swap_ok
+                    else f"set -s {containment.free_swap_percent} in /etc/default/{daemon} "
+                    f"and `sudo systemctl restart {daemon}`"
+                ),
+            )
+        )
+        if memory is not None and memory != containment.free_memory_percent:
+            results.append(
+                CheckResult(
+                    name=f"memory:{daemon} memory threshold",
+                    category="memory",
+                    passed=False,
+                    heuristic=True,
+                    message=(
+                        f"free-memory threshold is {memory}%, profile declares "
+                        f"{containment.free_memory_percent}%"
+                    ),
+                )
+            )
+
+    if containment.swappiness is not None:
+        try:
+            proc = subprocess.run(
+                ["sysctl", "-n", "vm.swappiness"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+            )
+            current = proc.stdout.strip()
+        except (OSError, subprocess.TimeoutExpired):
+            current = ""
+        matches = current.isdigit() and int(current) <= containment.swappiness
+        results.append(
+            CheckResult(
+                name="memory:swappiness",
+                category="memory",
+                passed=matches,
+                heuristic=True,  # mitigation, not containment — never a hard fail
+                message=(
+                    f"vm.swappiness={current} — the box prefers reclaiming to swapping"
+                    if matches
+                    else f"vm.swappiness={current or 'unknown'}, declared "
+                    f"{containment.swappiness} — swapping is preferred longer, which "
+                    f"lengthens a thrash before containment fires"
+                ),
+                fix_command=(
+                    None if matches else f"sudo sysctl -w vm.swappiness={containment.swappiness}"
+                ),
+            )
+        )
+    return results
+
+
+def _collect_memory_checks(profile: BootstrapProfile) -> list[CheckResult]:
+    """Only for a profile that declares containment — mirrors how the GPU checks gate on
+    an nvidia dependency. A laptop profile makes no claim and is asked nothing."""
+    if profile.memory_containment is None:
+        return []
+    return check_memory_containment(profile.memory_containment)
+
+
 def _collect_auth_checks(profile: BootstrapProfile) -> list[CheckResult]:
     return [check_auth_token()]
 
@@ -1079,6 +1244,7 @@ _CHECK_REGISTRY: list[tuple[str, object]] = [
     ("models", _collect_models_checks),
     ("squad", _collect_squad_checks),
     ("gpu", _collect_gpu_checks),
+    ("memory", _collect_memory_checks),
     ("auth", _collect_auth_checks),
     ("broker", _collect_broker_checks),
     ("verification", _collect_verification_checks),

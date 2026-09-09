@@ -11,6 +11,8 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 import squadops.bootstrap.setup.checks as checks_mod
 from squadops.bootstrap.setup.checks import (
     CheckResult,
@@ -757,3 +759,161 @@ class TestVerificationChecks:
             results = run_checks(_profile(), category="verification")
         assert results and all(r.category == "verification" for r in results)
         assert "verification" in checks_mod.VALID_CATEGORIES
+
+
+class TestMemoryContainment:
+    """#1178. The kernel's OOM killer does not fire during thrash — swap is technically
+    still available — so a memory runaway on the Spark does not produce one dead process
+    and a live box, it produces a box that answers nothing. 2026-08-29: 95 minutes
+    unreachable, ~800 MB free throughout, ended by a power cycle.
+    """
+
+    def _containment(self, **kw):
+        from squadops.bootstrap.setup.profile import MemoryContainment
+
+        base = dict(
+            daemon="earlyoom",
+            package="earlyoom",
+            free_memory_percent=10,
+            free_swap_percent=100,
+            swappiness=10,
+        )
+        base.update(kw)
+        return MemoryContainment(**base)
+
+    def _systemctl(self, *, state: str, exec_start: str = ""):
+        def fake(*args: str):
+            if args[:1] == ("is-active",):
+                return (0 if state == "active" else 3), state
+            if args[0] == "show":
+                return 0, exec_start
+            return 0, ""
+
+        return fake
+
+    @pytest.mark.parametrize(
+        ("exec_start", "expected"),
+        [
+            ("/usr/bin/earlyoom -m 10 -s 100", (10, 100)),
+            ("/usr/bin/earlyoom -m10 -s100", (10, 100)),
+            ("/usr/bin/earlyoom -m 5,2 -s 10,5", (5, 10)),
+            ("/usr/bin/earlyoom -m 10%", (10, None)),
+            ("/usr/bin/earlyoom", (None, None)),
+        ],
+        ids=["spaced", "joined", "kill-pair", "percent-suffix", "no-flags"],
+    )
+    def test_thresholds_are_read_off_the_units_actual_command(self, exec_start, expected):
+        """Read from what the unit RUNS, not from /etc/default: a drop-in or a hand-edited
+        unit changes the former and leaves the latter looking right. Bug caught: a parser
+        that only handles one of the spellings and silently reports no threshold."""
+        assert checks_mod._earlyoom_thresholds(exec_start) == expected
+
+    def test_an_inactive_daemon_fails(self, monkeypatch):
+        """The box's state today. Bug caught: a doctor that reports the gap as fine."""
+        monkeypatch.setattr(checks_mod, "_systemctl", self._systemctl(state="inactive"))
+        monkeypatch.setattr(checks_mod.subprocess, "run", MagicMock(side_effect=OSError))
+
+        results = checks_mod.check_memory_containment(self._containment())
+
+        daemon = next(r for r in results if r.name == "memory:earlyoom")
+        assert daemon.passed is False and daemon.heuristic is False
+        assert "takes the box" in daemon.message
+        assert "apt install earlyoom" in daemon.fix_command
+
+    def test_an_active_daemon_whose_swap_threshold_can_veto_the_kill_fails(self, monkeypatch):
+        """THE check, and the reason "installed" is not the property that matters.
+
+        earlyoom kills only when available memory AND free swap are both under threshold.
+        The 2026-08-29 livelock ran with 23% of swap free from the cliff to the power
+        cycle, so a stock `-s 10` would have watched the box die without ever firing. A
+        check that stopped at "the daemon is active" would have passed throughout the
+        outage it exists to prevent.
+        """
+        monkeypatch.setattr(
+            checks_mod,
+            "_systemctl",
+            self._systemctl(state="active", exec_start="/usr/bin/earlyoom -m 10 -s 10"),
+        )
+        monkeypatch.setattr(checks_mod.subprocess, "run", MagicMock(side_effect=OSError))
+
+        results = checks_mod.check_memory_containment(self._containment())
+
+        assert next(r for r in results if r.name == "memory:earlyoom").passed is True
+        swap = next(r for r in results if "swap threshold" in r.name)
+        assert swap.passed is False and swap.heuristic is False
+        assert "23% of swap still free" in swap.message
+        assert "-s 100" in swap.fix_command
+
+    def test_a_correctly_configured_daemon_passes(self, monkeypatch):
+        """The over-rejection control: containment that CAN fire is not reported as a gap."""
+        monkeypatch.setattr(
+            checks_mod,
+            "_systemctl",
+            self._systemctl(state="active", exec_start="/usr/bin/earlyoom -m 10 -s 100"),
+        )
+        monkeypatch.setattr(
+            checks_mod.subprocess,
+            "run",
+            MagicMock(return_value=SimpleNamespace(stdout="10\n", returncode=0)),
+        )
+
+        results = checks_mod.check_memory_containment(self._containment())
+
+        assert all(r.passed for r in results), [r.message for r in results if not r.passed]
+
+    def test_swappiness_is_a_warning_never_a_hard_fail(self, monkeypatch):
+        """Lowering swappiness lengthens the runway before thrash; it bounds nothing. It is
+        mitigation, so it discloses without failing the box. Bug caught: a mitigation
+        promoted to containment, which would make a doctor red for the wrong reason."""
+        monkeypatch.setattr(
+            checks_mod,
+            "_systemctl",
+            self._systemctl(state="active", exec_start="/usr/bin/earlyoom -m 10 -s 100"),
+        )
+        monkeypatch.setattr(
+            checks_mod.subprocess,
+            "run",
+            MagicMock(return_value=SimpleNamespace(stdout="60\n", returncode=0)),
+        )
+
+        results = checks_mod.check_memory_containment(self._containment())
+
+        swappiness = next(r for r in results if r.name == "memory:swappiness")
+        assert swappiness.passed is False
+        assert swappiness.heuristic is True, "a mitigation must not hard-fail the box"
+        assert "60" in swappiness.message
+
+    def test_no_systemctl_is_unverifiable_not_a_failure(self, monkeypatch):
+        """On a box without systemd the question cannot be asked. Reporting it as a
+        containment failure would be the "could not be asked read as an answer" defect."""
+        monkeypatch.setattr(checks_mod, "_systemctl", lambda *a: (127, ""))
+
+        results = checks_mod.check_memory_containment(self._containment())
+
+        assert len(results) == 1
+        assert results[0].heuristic is True and "cannot be verified" in results[0].message
+
+    def test_a_profile_declaring_no_containment_is_asked_nothing(self):
+        """Mirrors how the GPU checks gate on an nvidia dependency: a laptop profile makes
+        no claim, so the doctor makes no complaint. Bug caught: dev-mac going red for a
+        daemon it never wanted."""
+        from squadops.bootstrap.setup.profile import load_bootstrap_profile
+
+        assert checks_mod._collect_memory_checks(load_bootstrap_profile("dev-mac")) == []
+        assert checks_mod._collect_memory_checks(load_bootstrap_profile("dev-pc")) == []
+
+    def test_the_spark_profile_declares_containment_that_swap_cannot_veto(self):
+        """The declaration itself is the fix's contract — the bootstrap writes these
+        thresholds and the doctor verifies them, so a drift between the two is a test
+        failure rather than a live incident."""
+        from squadops.bootstrap.setup.profile import load_bootstrap_profile
+
+        containment = load_bootstrap_profile("local-spark").memory_containment
+
+        assert containment is not None
+        assert containment.daemon == "earlyoom"
+        assert containment.free_swap_percent == 100, (
+            "at anything less, free swap can veto the kill — which is why the 2026-08-29 "
+            "livelock ran to a power cycle"
+        )
+        assert checks_mod._collect_memory_checks(load_bootstrap_profile("local-spark"))
