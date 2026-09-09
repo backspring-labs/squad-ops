@@ -1,18 +1,19 @@
 # 1.7.5 — plan
 
-**Revision 1, 2026-09-09.** Written the morning the 1.7.4 line closed, from the 1.7.4 plan (rev
+**Revision 2, 2026-09-09.** Written the morning the 1.7.4 line closed, from the 1.7.4 plan (rev
 4 §6, §6a, §8), the 1.7.4 record (`docs/plans/1-7-4-verification-set-record.md` §2–§9), the
 1.7.4 pre-registration §3a and §9, the 1.7.3 plan §6 and §8, the 1.7.0 plan §2.5, §3.1 (as
 amended) and §6.2, the ROADMAP's 1.7 identity, and every open issue in the tracker on the
-morning of writing — forty-four, each placed by name in §3 or §6.
+morning of writing — forty-four, each placed by name in §3 or §6; revised the same morning on
+the owner's two rulings (§9 history), with the two issues the review filed (#1443, #1444).
 
 **1.7.5 closes the 1.7 line: every port is actually a port.** The three prior lines made the
 loop honest (1.7.2, 1.7.4) and the boundaries hold (1.7.3). What remains of the identity is
 the place where the framework meets the outside world at start-up — the composition roots —
 and the one port that is still bypassed at more than half its call sites, the observability
 port. This line wires both roots through their factories, makes a bare import of the runtime
-side-effect free, continues the executor strangler on the recovery path the last two lines
-instrumented, and lands the packaging, test-isolation and extraction items every 1.7 plan has
+side-effect free, continues the strangler into the executor **and the correction runner** on the
+recovery path the last two lines instrumented, and lands the packaging, test-isolation and extraction items every 1.7 plan has
 scheduled and none has staffed. It is a **list line with a small verdict-surface stratum in
 front of it**: the 1.7.3 shape, plus the four findings 1.7.4's set handed forward, which
 change what a record reads and so land first, behind a checkpoint pair, before the refactor.
@@ -71,9 +72,12 @@ Rules carried from 1.7.3 and 1.7.4 without discount, and one added from the 1.7.
   makes a fourteenth dark site impossible rather than guarded against.
 - **1.8 grades over the executor's recovery path.** `_try_accept_patch` is now the largest
   method in `adapters/cycles/dispatched_flow_executor.py` — 511 lines at `:3245`, in a file
-  of 4,933 (4,349 when #1152 was filed). The last two lines built the fault diagnostics that
-  exercise exactly that path; this is the line where an extraction under those diagnostics
-  costs least and proves most.
+  of 4,933 (4,349 when #1152 was filed). **The correction runner is the fastest-growing file in
+  the tree** — `adapters/cycles/correction_runner.py` at 2,145 lines (1,461 at v1.6.0, 1,843 at
+  v1.7.0), with `run_correction_protocol` at 536 lines (`:1505`) because every Loop Honesty
+  pack row landed inside it (#1443). The last two lines built the fault diagnostics that
+  exercise exactly these paths; this is the line where an extraction under those diagnostics
+  costs least and proves most, and Scoped Code Revision — a 1.8 feature — lands through both.
 - **The close criteria are the 1.7.0 plan's §6.2, unchanged**, and one of them — CI green
   "against the locked deps the images install" — has a deliverable in this line (#637) that
   no prior line took.
@@ -128,10 +132,12 @@ owner **before** the first stratum-B PR (§3.3). It must answer, with a decision
    imports with no environment; no root imports a class from `adapters.<vendor>`; every
    adapter a root binds to a port came from an `adapters.*.factory` function — proven by
    AST, the way the forbidden-imports guard already works;
-6. **#1152's extraction map**: the methods that move, the modules they move to, the order,
-   and the stop rule — recovery path first (`_try_accept_patch` at `:3245`,
-   `_handle_task_outcome` at `:2950`), `_execute_sequential` (`:1565`) second; `execute_cycle`
-   and `execute_run` are named as *not* in this line's map.
+6. **the extraction map for #1152 and #1443**: the methods that move, the modules they move
+   to, the order, and the stop rule — the executor's recovery path first (`_try_accept_patch`
+   at `:3245`, `_handle_task_outcome` at `:2950`), the correction protocol **by protocol step**
+   (analyze, decide, rewind-or-repair, retest — each already dispatched through
+   `_dispatch_protocol_step` at `correction_runner.py:1268`), `_execute_sequential` (`:1565`)
+   last; `execute_cycle` and `execute_run` are named as *not* in this line's map.
 
 **#1149's harvest, first.** The rationale in the paths the map moves is harvested into
 `docs/architecture/defended-bespoke-decisions.md` — an existing home for exactly this kind of
@@ -193,9 +199,9 @@ smoke needs #286's bare import and the extraction needs the rationale harvested.
 | 1 | **#286** | the app factory; the module-level `load_config` at `main.py:57` gone; the Dockerfile CMD in `--factory` form; the test-side import workaround deleted | `python -c "import squadops.api.runtime.main"` with no environment succeeds, as a test; the composition-roots guard |
 | 2 | **#301** | the queue half at **both** roots (`main.py:310`, `entrypoint.py:453`) through `get_queue_adapter`; the A2A client through a factory of the same shape; `comms.provider` required at both roots; no `adapters.<vendor>` class import left in either root | the composition-roots guard: factories are the only constructors reachable from a root; the #154 allowlist test unchanged |
 | 3 | **#637** | a CI job that installs `requirements/api.lock` and `requirements/agent.lock` into fresh venvs and imports both composition roots — the registration-time DOA class #636 found. It also closes the live exposure the 1.7.4 audit named: `console/app/requirements.txt:1` pins `fastapi>=0.104.0,<1.0.0` and `console/Dockerfile:58` installs it with no `-c`, so a fresh console build resolves past the `<0.136` cap `tests/requirements.txt:37` holds for #198 | the job, red on a root that fails to import under the locks; it is the deliverable for the 1.7.0 plan §6.2 criterion 3 |
-| 4 | **#1152** | the extraction, in the design note's map: the recovery path first (`_try_accept_patch`, `_handle_task_outcome`), `_execute_sequential` second; **extraction only, no behaviour change rides an extraction PR**; each PR cites the #1149 entries it moved | byte-identical on the context-assembly, correction-context and plan-context goldens (`tests/unit/cycles/test_*_golden.py`) and on the `tests/fixtures/roll_replays` corpus before and after; then the six diagnostics on the pinned deploy (§4) — the seams the moved code owns |
+| 4 | **#1152 with #1443** | the extraction, in the design note's map: the executor's recovery path first (`_try_accept_patch`, `_handle_task_outcome`), the correction protocol by step, `_execute_sequential` last; **one extraction class, one proof** — extraction only, no behaviour change rides an extraction PR; each PR cites the #1149 entries it moved | byte-identical on the context-assembly, correction-context and plan-context goldens (`tests/unit/cycles/test_*_golden.py`) and on the `tests/fixtures/roll_replays` corpus before and after; then the six diagnostics on the pinned deploy (§4) — the seams the moved code owns |
 
-**The stop rule for #1152.** The map is the scope. If the shakeout budget (§4) is spent
+**The stop rule for #1152 and #1443.** The map is the scope. If the shakeout budget (§4) is spent
 before the map is complete, what remains is re-placed by name into the 1.8 plan's rider with
 the map attached, and §3.6's count is incremented — never a silent carry, never a partial
 extraction left on main without its guard.
@@ -203,8 +209,8 @@ extraction left on main without its guard.
 ### 3.4 The list — CI-verified, riding beside the refactor
 
 One PR per item; each PR's Evidence names the structural test or guard that proves it. Ordered
-so the close-criterion items land first and the widest-blast item last (§5's drop order is
-this order reversed).
+so the close-criterion items land first and the most droppable last (§5's drop order is this
+order reversed).
 
 | step | item | what lands | how CI proves it |
 |---|---|---|---|
@@ -217,11 +223,13 @@ this order reversed).
 | 7 | **#353** | the fragment manifest's 32 committed `sha256` values move from source to the build: `manifest.yaml` becomes a pure registry, `build_agent.py` stamps the fingerprint into the artifact, the #351 runtime check verifies the *shipped* copy against its *shipped* fingerprint, and the regen tool and CI hash guard retire. **A SIP-0084 post-acceptance amendment first** — it is a governance change to where a prompt's integrity is asserted | the amendment merged before the code; the agent build; the runtime check's test |
 | 8 | **#579** | one `parse_frontmatter()` under `src/squadops/prompts/`. **Premise re-verified for this plan, as the post-1.5 reconciliation asked:** five sites remain — `prompts/renderer.py:53`, `adapters/prompts/filesystem_asset_adapter.py:86, :113`, `adapters/prompts/filesystem.py:209`, and `wrapup_tasks.py:145` behind its own `_parse_frontmatter` at `:134` — four inline, one helper; not "five byte-identical copies". The PR states the count it found | parity tests ported from every site; the #327 hash-integrity paths provably untouched |
 | 9 | **#176** | the framework smoke integration test: the pipeline invariants (create → dispatch → framing → gate → handoff → correction → persistence) asserted over a cycle's artifacts and run state, runnable on the `smoke` squad, **explicitly decoupled from terminal `completed`** on content-gated paths | a `pytest` smoke marker against a small-model squad, in the integration lane; a run that fails a content gate still passes the invariants |
-| 10 | **#567** | the fenced parser's recognition layer on a CommonMark-spec engine under the existing mapping strategies (`fenced_parser.py`, 533 lines); the security guards unchanged at the mapping layer | **every existing parser test and every replay fixture passes unchanged; the refactor may only add recovered files on the stored corpus, never lose or remap one.** Its subject is the emission path every roll runs through, which is why it is last and the first to drop (§5); if it lands, the driver's per-roll fence counts are its texture |
 
-**Sixteen items in twelve PRs, one above the 1.7.0 plan §3.1 ceiling of 10–15 CI-verified
-per line, plus the executor extraction, which is several.** Stated rather than described as
-"at" the ceiling. §5 says what drops and where it goes.
+**Fifteen items in eleven PRs, at the 1.7.0 plan §3.1 ceiling of 10–15 CI-verified per line,
+plus the extraction class (#1152, #1443), which is several PRs.** Rev 1 carried sixteen with
+#567 last; rev 2 re-places #567 to the 1.8 rider (§6) so the correction runner's extraction
+takes its capacity — the emission-path refactor gives way to the recovery-path one, because
+the second is what the six diagnostics and the 1.8 headline both sit on. §5 says what drops
+next and where it goes.
 
 ### 3.5 The ops rider — live reads, not CI
 
@@ -240,7 +248,7 @@ capacity roll, where the post-1.5 reconciliation classified them.
 | item | release plans that scheduled it | times, incl. this plan |
 |---|---|---|
 | #301, #286 | 1.5.0 (capacity roll), 1.7.0 (§2.5, the row then called 1.7.4), 1.7.3 §6, 1.7.4 §6, 1.7.5 | **5** each |
-| #567, #579 | 1.5.0, 1.7.0, 1.7.3, 1.7.4, 1.7.5 | **5** each |
+| #567, #579 | 1.5.0, 1.7.0, 1.7.3, 1.7.4, 1.7.5 | **5** each — #567 re-placed to the 1.8 rider at rev 2 (§6) |
 | #820, #376 | 1.6.0 (deferred by name), 1.7.0, 1.7.3, 1.7.4, 1.7.5 | **5** each — #376 closes as verified, not as built |
 | #929 (+#1206) | 1.7.0 (rider), 1.7.1 §2.4, 1.7.3 §6, 1.7.4 §6, 1.7.5 | **5** |
 | #353 | 1.7.0, 1.7.2, 1.7.3, 1.7.4 (not landed, pre-registration §9), 1.7.5 | **5** |
@@ -250,6 +258,7 @@ capacity roll, where the post-1.5 reconciliation classified them.
 | #1180, #1182, #1197 | 1.7.3 §6, 1.7.4 §6, 1.7.5 | **3** each |
 | #1177, #1178 | 1.7.3 §6 (parked), 1.7.4 §6a, 1.7.5 | **3** each |
 | #1406, #1428, #1434, #1436 | 1.7.4 (§6a or the record), 1.7.5 | **2** each |
+| #1443, #1444 | 1.7.5 (filed with rev 2) | **1** each |
 
 Five items are on their fifth plan. As the 1.7.4 plan said of its rider, that is governance
 evidence and not a technical reason: repeated deferral raises the requirement to dispose of
@@ -326,7 +335,7 @@ before roll 1:** the framing run's verdict (#1428); packaging findings per roll 
 (unchanged rate expected; the #598 decision reads it); emissions versus banked artifacts
 (#1436, now exact); fill-mode qa completion tokens under `LOW` (Q1 re-read); interface-
 coherence findings (#820) and mock-surface findings (#668) per roll; the boot-audit image name
-(#1197); fence counts and placeholder strips per roll (L8a, and #567's texture if it lands);
+(#1197); fence counts and placeholder strips per roll (L8a);
 generation records per LLM call on the shakeout pair (#1206, a LangFuse read); the required
 files the rows declared (H1's content); correction rounds; verdict rate against 1.7.4's.
 
@@ -347,19 +356,19 @@ pre-registration and the record.
 
 ## 5. Capacity — what drops, in what order, to where
 
-The line is one CI item over the ceiling and carries a multi-PR extraction. If capacity
-forces a drop, it comes from §3.4 **in reverse order** — #567 first, then #176, #579, #353,
-#1178 — and the destination is **the 1.8 plan's hardening rider, by name, with §3.6's count
-incremented**, recorded as a revision of this plan in the open. #1152's remainder drops by
-its own stop rule (§3.3). Nothing in §3.2 or the first three rows of §3.3 drops: they are the
+The line is at the CI ceiling and carries a multi-PR extraction class. The first drop was
+taken at rev 2 (#567 → the 1.8 rider, §6). If capacity forces another, it comes from §3.4
+**in reverse order** — #176 first, then #579, #353, #1178 — and the destination is **the 1.8
+plan's hardening rider, by name, with §3.6's count incremented**, recorded as a revision of
+this plan in the open. The extraction class's remainder drops by its own stop rule (§3.3). Nothing in §3.2 or the first three rows of §3.3 drops: they are the
 line's subject and its close criteria.
 
 ---
 
 ## 6. Re-placements by name — nothing silently carried
 
-Forty-four open issues on the morning of writing. Twenty-nine are in this line (§3.1–§3.5).
-The fifteen that are not:
+Forty-six open issues after the two this review filed. Twenty-nine are in this line
+(§3.1–§3.5). The seventeen that are not:
 
 **#598's first half — the 1.8 lane, by recommendation (§8, decision 1).** The 1.7.4 plan §6a
 placed the promotion of `container_packaging` to blocking at the head of this line. Three
@@ -375,11 +384,21 @@ builder authors the Dockerfile today), so feature-shaped, so 1.8, beside #598's 
 (the in-cycle image build). **If the owner holds the 1.7.4 placement**, the fallback shape is
 stated in §8 so it is not designed at the PR.
 
-**The 1.8 lane — Scoped Code Revision** (PR #1325; subsumes #1213; #1176 beside it): the
-design review **opens with this plan's PR** (§7 step 2) — a named reviewer step with a
-written outcome, because "opens beside this line" produced zero reviews across 1.7.4. Its
-evidence list is the 1.7.4 plan §6's, plus this line's extraction of `_try_accept_patch`,
-which is the seam a scoped revision would land through. #1122 stays with SIP-0104.
+**#567 — the 1.8 rider, by name.** The fenced parser's CommonMark recognition engine. Its
+subject is the emission path every roll runs through, its acceptance bar is the stored
+replay corpus unchanged, and it has no roll-level readout; it gave up its capacity in this
+line to the correction runner (§3.4). It goes to the 1.8 plan's hardening rider with its
+count at five (§3.6), and the 1.8 plan names it or revises this placement in the open.
+
+**The 1.8 lane — Scoped Code Revision, a feature, always 1.8's** (the owner's ruling,
+2026-09-09; PR #1325; subsumes #1213; #1176 beside it). Nothing of it is built here. The one
+thing this line does for it is open its design review (§7 step 2) — a named reviewer step
+with a written outcome, because "opens beside this line" produced zero reviews across 1.7.4.
+Its evidence list is the 1.7.4 plan §6's, plus this line's extraction of `_try_accept_patch`
+and the correction protocol, which are the seams a scoped revision lands through. **#1444 —
+the qa and dev handlers' `handle()` split by output shape (645 and 354 lines carrying fill and
+authoring under one function) — is the first extraction the feature requires and precedes
+its first PR**; it is 1.8's and is not a feature. #1122 stays with SIP-0104.
 
 **Still at design review, unchanged:** #414 (severity-aware correction reserve), #557
 (post-retest governance review), #316 (request-profile taxonomy, moves with Campaign); and in
@@ -415,8 +434,8 @@ SIP-0104 (#1122), SIP-0105 (the blueprint rewrite after #1131), SIP-0088/0090/00
 6. **The idle-box slot.** While §3.3 and §3.4 are written and reviewed, the box has no cycle in
    flight: #1408's plan-authoring replay and #1412's diagnosis session run here, on the same
    harness and gate as #1184's measurement. They leave nothing in the deploy.
-7. **Composition Root** (§3.3) in order — #286, #301, #637, then the extraction PRs — and **the
-   list** (§3.4) in order, riding beside it, #567 last.
+7. **Composition Root** (§3.3) in order — #286, #301, #637, then the extraction PRs (#1152,
+   #1443, by the map) — and **the list** (§3.4) in order, riding beside it, #176 last.
 8. **Deploy B; the shakeout loop** to the exit rule, budget three pairs; a red is the
    refactor's.
 9. **The six diagnostics on the pinned deploy**, two-run budget each, recorded with the entry
@@ -465,8 +484,10 @@ that prove the refactor's seams run on the deploy the numbers come from.
    rule that kept #598's first half reporting-only in 1.7.1.
 5. **#1152 is scoped by a map with a stop rule**, recovery path first, `execute_cycle` and
    `execute_run` out of this line's map by name.
-6. **#567 is last in the list and the first to drop**, because its subject is the emission
-   path; its acceptance bar is the corpus, unchanged.
+6. **#567 is re-placed to the 1.8 rider now** (rev 2), not held as a drop candidate: the
+   correction runner's extraction takes its capacity, because the recovery path is where the
+   diagnostics and the 1.8 headline both sit, and the emission-path refactor has neither a
+   readout nor a consumer waiting on it.
 7. **#376 closes as verified**, and the 1.7.0 plan §2.7 mislabel is corrected in this PR's
    amendment rather than left as two documents disagreeing.
 8. **#906 lands in the verdict stratum** or is closed by name; not carried a fourth time.
@@ -479,8 +500,14 @@ that prove the refactor's seams run on the deploy the numbers come from.
 13. **The composition-roots design note answers the six questions in §3.1**, including the
     `--factory` form for #286 and an A2A factory of the same shape as the LLM's, with
     `comms.provider` required at both roots.
-14. **The line carries sixteen CI items and says so**, one over the ceiling, with §5's drop
-    order and destination fixed now so a drop is a revision and never a carry.
+14. **The line carries fifteen CI items, at the ceiling**, with §5's drop order and
+    destination fixed now so a drop is a revision and never a carry.
+15. **The correction runner joins the extraction map** (#1443, filed with this revision): one
+    extraction class with #1152, one proof — the goldens, the replay corpus and the six
+    diagnostics on the pinned deploy — extracted by protocol step, #1149's harvest first.
+16. **The qa and dev handlers' `handle()` split is 1.8's first extraction, not a feature and
+    not this line's** (#1444, filed with this revision): the third output shape Scoped Code
+    Revision adds must not be built into a 645-line function already interleaving two.
 
 ---
 
@@ -501,11 +528,27 @@ Named here so they are not the next §6a. None blocks the plan; each has a home 
   version: the cut's step 4 (the timeline entry) was done and the Stats header was not.
   Cosmetic; fixed with the next ROADMAP edit this line makes, not in this PR.
 - The nightly backup timer is still not installed — §3.1, owner-only.
+- **The god-file measurement (2026-09-09, main `191e8e49`).** By the test "one unit carrying
+  many concerns and still growing", four files fail: the executor (#1152), the correction
+  runner (#1443 — `run_correction_protocol` 536 lines, the file up 47% since v1.6.0), and the
+  qa and dev handlers (#1444 — `handle()` 645 and 354 lines). Large files that are *not* god
+  files, so no action: `acceptance_checks.py` (2,245 lines, 64 units, largest 75 — a registry)
+  and `scaffold.py` (down from 2,312 to 1,806 after the 1.7.1 stack extraction). Two watch
+  items with no dominant unit yet: `patch_verification.py` (up 63% since v1.6.0,
+  `verify_patched_artifacts` 207) and `task_plan.py` (`generate_task_plan` 237, table-driven).
 
 ---
 
 ## 10. Revision history
 
+- **Rev 2 (2026-09-09, the same morning)** — on the owner's two rulings and the god-file
+  measurement (§9): Scoped Code Revision is always 1.8's, as a feature — restated in §6 with
+  nothing of it built here; **#1443** (the correction runner's extraction) filed and placed in
+  the Composition Root extraction map beside #1152 as one class with one proof; **#1444** (the
+  qa/dev `handle()` split) filed and placed as 1.8's first extraction; **#567 re-placed to the
+  1.8 rider** so the correction runner takes its capacity — the CI list is fifteen, at the
+  ceiling; §5's drop order starts at #176. No change to §3.2's stratum, §4's set, or the
+  sequencing beyond step 7 naming both extraction issues.
 - **Rev 1 (2026-09-09)** — written the morning the 1.7.4 line closed, on the owner's ask, from
   the 1.7.4 plan, pre-registration and record, the 1.7.3 plan §6/§8, the 1.7.0 plan §2.5/§3.1/
   §6.2 and the tracker (44 open issues, every one placed by name). Structure: a verdict-surface
