@@ -2295,9 +2295,12 @@ class TestFailedEmissionBankingIsReportedAsArtifactsNotEmissions:
     and its evaluation row read as 3. The first fix grouped on `task_id` to derive an
     emission count, and round 2's Next.js half falsified it: two failed ATTEMPTS of one
     task, 6.3 s apart, each banking one `build_warnings.md`, collapsed to 1 — an
-    under-count on exactly the contentless-emission behaviour L1 tracks. The banked
-    metadata carries no attempt marker, so the emission count is not derivable from what
-    is stored. The readout now reports the artifacts it actually counts and says so.
+    under-count on exactly the contentless-emission behaviour L1 tracks. Through 1.7.4 the
+    banked metadata carried no attempt marker, so the emission count was not derivable
+    from what is stored; the readout reports the artifacts it actually counts and says so.
+    Since #1436 the banking seam stamps the attempt, and the emission count is a SECOND
+    field that is exact when every artifact is stamped and `unaskable` — never a number —
+    when any is not (#1445's vocabulary). These tests build pre-stamp records.
     """
 
     def _cycle(self, driver, tmp_path, monkeypatch, artifacts):
@@ -2355,9 +2358,12 @@ class TestFailedEmissionBankingIsReportedAsArtifactsNotEmissions:
             ],
         )
         assert driver.value_at(rec, "failed_emission_artifacts_banked") == 3
-        # The old key is gone rather than left as an alias: a record carrying both would
-        # let a reader pick the one that flatters the roll.
-        assert "failed_emissions_banked" not in rec
+        # The emission count is a field, but NOT a number on a pre-stamp record: a record
+        # carrying an inferred count beside the artifact count would let a reader pick the
+        # one that flatters the roll; an unaskable field cannot flatter anything.
+        ev = driver.Evidence.read(rec["failed_emissions_banked"])
+        assert ev.state == driver.UNASKABLE
+        assert "no attempt marker" in ev.reason
 
     def test_two_attempts_of_one_task_are_not_collapsed(self, driver, tmp_path, monkeypatch):
         """The counter-example that reverted the grouping (`cyc_c45d60c9eb16`): two failed
@@ -2373,12 +2379,17 @@ class TestFailedEmissionBankingIsReportedAsArtifactsNotEmissions:
             ],
         )
         assert driver.value_at(rec, "failed_emission_artifacts_banked") == 2
+        # Pre-stamp: the two attempts are NOT inferred from timestamps or filenames.
+        assert driver.Evidence.read(rec["failed_emissions_banked"]).state == driver.UNASKABLE
 
     def test_a_clean_roll_reports_zero(self, driver, tmp_path, monkeypatch):
         rec = self._cycle(driver, tmp_path, monkeypatch, [])
-        # Asked (the run's artifacts were read) and none — not an unaskable absence.
+        # Asked (the run's artifacts were read) and none — not an unaskable absence. With no
+        # banked artifacts there is nothing missing a stamp, so the emission count is an
+        # answer too.
         ev = driver.Evidence.read(rec["failed_emission_artifacts_banked"])
         assert (ev.state, ev.value) == (driver.ASKED_NONE, 0)
+        assert driver.Evidence.read(rec["failed_emissions_banked"]).state == driver.ASKED_NONE
 
     def test_the_readout_does_not_claim_an_emission_count(self, driver, tmp_path, monkeypatch):
         """The label is the defect #1431 filed. A readout saying "emissions" over a number
@@ -2386,13 +2397,14 @@ class TestFailedEmissionBankingIsReportedAsArtifactsNotEmissions:
         rec = self._cycle(driver, tmp_path, monkeypatch, [("task-m005-qa.test", "test_report.md")])
         cfg_path = tmp_path / "set.yaml"
         cfg = driver.load_set_config(cfg_path)
-        line = next(
-            ln
-            for ln in driver.render(cfg, "shakeout (non-counting)", rec).splitlines()
-            if "banked (#971" in ln
-        )
-        assert "ARTIFACTS" in line
-        assert "#1436" in line
+        rendered = driver.render(cfg, "shakeout (non-counting)", rec).splitlines()
+        artifacts_line = next(ln for ln in rendered if "banked (#971" in ln)
+        emissions_line = next(ln for ln in rendered if "EMISSIONS banked (#1436" in ln)
+        assert "ARTIFACTS" in artifacts_line
+        # The emissions line of a pre-stamp record is the unaskable state and its reason,
+        # never a number a reader could take for a count.
+        assert "UNASKABLE" in emissions_line and "no attempt marker" in emissions_line
+        assert not emissions_line.split("|")[2].strip().isdigit(), "rendered as a bare count"
 
 
 class TestTheInstrumentMayNotJudgeWithCodeTheDeployNeverRan:
@@ -2665,3 +2677,54 @@ class TestTheThreeStateEvidenceVocabulary:
         for path in driver.EVIDENCE_FIELDS:
             assert f"`{path}`" in table
         assert table.startswith("| field | unaskable when | reads |")
+
+
+class TestTheEmissionCountBehindTheBankedArtifacts:
+    """#1436 with #1445: artifacts and emissions are separate numbers, both true — and the
+    emission count is UNASKABLE, never inferred, on a record whose banked artifacts predate
+    the attempt stamp."""
+
+    _TASK = "task-run_7190a025-m009-qa.test"
+
+    def test_three_artifacts_of_one_attempt_are_one_emission(self, driver):
+        """The 1.7.4 round-2 React shape: one qa.test failure banking its suite, its report
+        and its evaluation row — three files 42 ms apart, ONE emission."""
+        banked = [{"task_id": self._TASK, "attempt": 1} for _ in range(3)]
+        assert driver.emissions_from_stamps(banked) == 1
+
+    def test_two_attempts_one_file_each_are_two_emissions(self, driver):
+        """The counter-example that reverted #1432's grouping (`cyc_c45d60c9eb16`): two
+        `build_warnings.md` 6.3 s apart, two ATTEMPTS. Keyed on task_id alone this read 1 —
+        an under-count on exactly the contentless-emission behaviour the L1 bar tracks."""
+        banked = [{"task_id": self._TASK, "attempt": 1}, {"task_id": self._TASK, "attempt": 2}]
+        assert driver.emissions_from_stamps(banked) == 2
+
+    def test_one_unstamped_artifact_makes_the_whole_count_underivable(self, driver):
+        """Bug caught: a partially-stamped record counted as if every artifact were stamped
+        — a number that is wrong in an unknowable direction. None is the honest answer, and
+        the registry turns it into `unaskable`."""
+        assert driver.emissions_from_stamps([{"task_id": self._TASK}]) is None
+        assert (
+            driver.emissions_from_stamps(
+                [{"task_id": self._TASK}, {"task_id": self._TASK, "attempt": 2}]
+            )
+            is None
+        )
+
+    def test_no_banked_artifacts_is_zero_emissions_not_underivable(self, driver):
+        """Nothing was banked, so nothing is missing a stamp: the question was asked and the
+        answer is none. Bug caught: a clean roll reading `unaskable` and losing the fact that
+        it banked nothing."""
+        assert driver.emissions_from_stamps([]) == 0
+
+    def test_the_field_is_registered_so_it_can_never_read_as_a_bare_zero(self, driver):
+        """The registry is what turns an underivable count into `unaskable` rather than 0
+        (#1445). Bug caught: the field added to the record without its conditions."""
+        assert driver.EVIDENCE_FIELDS["failed_emissions_banked"] == (
+            "no_implementation_run",
+            "no_attempt_stamp",
+        )
+        unaskable = driver.evidence_for("failed_emissions_banked", None, {"no_attempt_stamp": True})
+        assert unaskable.state == driver.UNASKABLE
+        assert "no attempt marker" in unaskable.reason
+        assert "UNASKABLE" in driver._show(unaskable)

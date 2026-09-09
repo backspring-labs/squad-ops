@@ -231,6 +231,11 @@ UNASKABLE_REASONS: dict[str, str] = {
         "never in the runtime-api window this field reads — the stored fact is "
         "loop_texture.fill_merge_evidence[].self_eval_fills (#1445 finding)"
     ),
+    "no_attempt_stamp": (
+        "the banked artifacts carry no attempt marker (a pre-#1436 record), so two failed "
+        "attempts of one task cannot be told from one attempt that banked two files — the "
+        "emission count is not derivable and the ARTIFACT count is reported instead (#1436)"
+    ),
     "probe_could_not_run": (
         "the probe could not run ({detail}) — an unasked question, not an answer (#1425)"
     ),
@@ -250,6 +255,7 @@ EVIDENCE_FIELDS: dict[str, tuple[str, ...]] = {
     # collect(): stored artifacts of the implementation run
     "correction_rounds": ("no_implementation_run",),
     "failed_emission_artifacts_banked": ("no_implementation_run",),
+    "failed_emissions_banked": ("no_implementation_run", "no_attempt_stamp"),
     # loop_texture: the runtime-api window, patch path
     "loop_texture.narrowed_targets": _PATCH_PATH,
     "loop_texture.language_fallbacks": _PATCH_PATH,
@@ -1153,6 +1159,21 @@ def _criteria_unverified(summary: dict) -> list[str]:
     return [c for c in (summary.get("criteria_total") or []) if c not in verified]
 
 
+def emissions_from_stamps(banked: list[dict]) -> int | None:
+    """The EMISSION count behind #971's banked artifacts, or ``None`` when not derivable.
+
+    #1436: a failed emission's artifacts carry ``attempt`` since 1.7.5, so emissions are
+    ``(task_id, attempt)`` groups. Any artifact without the stamp (every record through
+    1.7.4) makes the count underivable — ``None``, which the registry turns into
+    ``unaskable`` rather than a number. Never inferred from timestamps: round 2 of the
+    1.7.4 line banked three artifacts 42 ms apart that were ONE emission and two 6.3 s
+    apart that were TWO attempts, and no clustering rule separates those on a slow write.
+    """
+    if any("attempt" not in m for m in banked):
+        return None
+    return len({(m.get("task_id"), int(m["attempt"])) for m in banked})
+
+
 def collect(cfg: SetConfig, cycle_id: str) -> dict:
     runs = parse_run_rows(
         psql(
@@ -1179,6 +1200,7 @@ def collect(cfg: SetConfig, cycle_id: str) -> dict:
     # emission count is not derivable from what is stored; stamping the attempt at the
     # banking seam is #1436.
     failed_emission_artifacts = 0
+    banked_metadata: list[dict] = []
     if impl:
         raw = psql(
             "select summary from run_verification_summaries where run_id='{}';".format(
@@ -1197,10 +1219,18 @@ def collect(cfg: SetConfig, cycle_id: str) -> dict:
                 corrections += 1
             if (m.get("metadata") or {}).get("emission_status") == "failed":
                 failed_emission_artifacts += 1
+                banked_metadata.append(m.get("metadata") or {})
     snapshot = psql(
         f"select coalesce(squad_profile_snapshot_ref,'') from cycle_registry where cycle_id='{cycle_id}';"
     )
-    context = {"no_implementation_run": impl is None}
+    emissions = emissions_from_stamps(banked_metadata)
+    context = {
+        "no_implementation_run": impl is None,
+        # #1436: without the attempt stamp two failed ATTEMPTS of one task are
+        # indistinguishable from one attempt that banked two files, so the emission count
+        # is not derivable — unaskable, never an inferred number.
+        "no_attempt_stamp": emissions is None,
+    }
     return {
         "cycle_id": cycle_id,
         "squad_profile_snapshot_ref": snapshot,
@@ -1210,12 +1240,17 @@ def collect(cfg: SetConfig, cycle_id: str) -> dict:
         ],
         "framing_runs": len(framings),
         "framing_rerolls": max(0, len(framings) - 1),
-        # #1445: both are read from the implementation run's stored artifacts, so without
-        # one they are unaskable — a record that read "0 correction rounds" for a cycle that
-        # never built anything was reporting an absence as a fact.
+        # #1445: all three are read from the implementation run's stored artifacts, so
+        # without one they are unaskable — a record that read "0 correction rounds" for a
+        # cycle that never built anything was reporting an absence as a fact.
         "correction_rounds": evidence_for("correction_rounds", corrections, context).record(),
         "failed_emission_artifacts_banked": evidence_for(
             "failed_emission_artifacts_banked", failed_emission_artifacts, context
+        ).record(),
+        # #1436: artifacts and emissions are separate numbers, both true. The emission count
+        # is unaskable on every record whose banked artifacts predate the attempt stamp.
+        "failed_emissions_banked": evidence_for(
+            "failed_emissions_banked", emissions, context
         ).record(),
         "verdict": summary.get("verdict"),
         "failed_checks": summary.get("failed", []),
@@ -2720,7 +2755,7 @@ def restate(rec: dict) -> tuple[dict, list[str]]:
             return value
         return evidence_for(path, value, context).record()
 
-    for key in ("correction_rounds", "failed_emission_artifacts_banked"):
+    for key in ("correction_rounds", "failed_emission_artifacts_banked", "failed_emissions_banked"):
         if key in out:
             out[key] = restated(key, out[key])
     if texture:
@@ -2814,8 +2849,10 @@ def render(cfg: SetConfig, title: str, rec: dict) -> str:
         f"{', '.join(rec.get('criteria_adverse') or []) or '—'} |",
         "| criteria unevidenced — no row in either direction | "
         f"{', '.join(rec['criteria_unevidenced']) or '—'} |",
-        "| failed emission ARTIFACTS banked (#971; not the emission count — #1436) | "
+        "| failed emission ARTIFACTS banked (#971) | "
         f"{_show_at(rec, 'failed_emission_artifacts_banked')} |",
+        "| failed EMISSIONS banked (#1436, from the attempt stamp) | "
+        f"{_show_at(rec, 'failed_emissions_banked')} |",
         "| contentless emissions (L1) | "
         f"{_show_at(rec, 'loop_texture.contentless_by_handler', _render_by_reason)}"
         f" of {_show_at(rec, 'loop_texture.emissions_logged')} logged |",

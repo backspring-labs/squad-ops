@@ -1162,6 +1162,48 @@ class TestEmissionRetryFeedbackThreading:
         assert "emission_retry_feedback" not in attempts[2]
         assert attempts[1]["prior_attempts"] == 1 and attempts[2]["prior_attempts"] == 2
 
+    async def test_each_failed_attempt_banks_its_artifacts_under_its_own_attempt(
+        self, executor, mock_queue, mock_registry, mock_vault, cycle
+    ):
+        """#1436, entered at execute_run — the caller the live cycle uses. Two failed
+        attempts of one task each emit a file; the vault must receive attempt 1 for the
+        first bank and attempt 2 for the second, so a record can count EMISSIONS rather than
+        artifacts. Bug caught: the stamp read from the wrong seam (the retry counter, which
+        only counts retryable failures, or a stamp taken after `_handle_task_outcome`
+        incremented it) — either makes the two banks read as the same attempt or skips 1."""
+        import dataclasses
+
+        mock_registry.get_cycle.return_value = dataclasses.replace(
+            cycle, execution_overrides={"max_task_retries": 3}
+        )
+        emitted = [
+            {
+                "name": "build_warnings.md",
+                "content": "I'll analyze the app first.",
+                "type": "document",
+            }
+        ]
+        responses = {
+            0: ("FAILED", {"artifacts": emitted}, "transient"),
+            1: ("FAILED", {"artifacts": emitted}, "transient"),
+        }
+        mock_queue.reply_router.responder = _scripted_responder(responses)
+
+        with patch(
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        banked = [
+            call.args[0]
+            for call in mock_vault.store.await_args_list
+            if call.args[0].metadata.get("emission_status") == "failed"
+        ]
+        assert len(banked) == 2, [r.filename for r in banked]
+        assert {r.metadata["task_id"] for r in banked} == {banked[0].metadata["task_id"]}
+        assert [r.metadata["attempt"] for r in banked] == [1, 2]
+
     async def test_plain_retryable_failure_adds_no_marker(
         self, executor, mock_queue, mock_registry
     ):

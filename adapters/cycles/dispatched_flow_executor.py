@@ -4715,8 +4715,15 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         envelope: TaskEnvelope,
         producing_task_type: str | None = None,
         emission_status: str | None = None,
+        attempt: int | None = None,
     ) -> ArtifactRef:
         """Store a task output artifact in the vault.
+
+        ``attempt`` (#1436) is the 1-based attempt of the task that produced this
+        artifact — stamped by the banking seam so two failed attempts of one task are
+        never read as one attempt that banked two files (the ``task_id`` alone cannot
+        tell them apart, and a timestamp cluster is a heuristic in an evidence
+        instrument).
 
         ``emission_status`` (#971) marks an emission that did NOT pass. It is
         provenance, not a type: ``producing_task_type`` stays truthful, because a
@@ -4736,6 +4743,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             metadata["producing_task_type"] = producing_task_type
         if emission_status:
             metadata["emission_status"] = emission_status
+        if attempt is not None:
+            metadata["attempt"] = attempt
         ref = ArtifactRef(
             artifact_id=f"art_{uuid4().hex[:12]}",
             project_id=cycle.project_id,
@@ -4841,6 +4850,14 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         artifacts = (getattr(result, "outputs", None) or {}).get("artifacts") or []
         if not artifacts:
             return
+        # #1436: the attempt this emission belongs to. ``prior_attempts`` is #1304's stamp —
+        # every handled outcome increments it AFTER the bank runs (``_route_outcome`` admits
+        # and banks, then ``_handle_task_outcome`` stamps) — so at banking time it counts the
+        # attempts already handled and this one is the next. Read off the envelope rather
+        # than re-derived from timestamps or artifact counts: round 2 of the 1.7.4 line had
+        # three artifacts 42 ms apart that were one emission and two artifacts 6.3 s apart
+        # that were two attempts, and no clustering rule tells those apart on a slow write.
+        attempt = int((getattr(envelope, "inputs", None) or {}).get("prior_attempts") or 0) + 1
         new_refs: list[str] = []
         try:
             for art in artifacts:
@@ -4851,6 +4868,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     envelope,
                     producing_task_type=envelope.task_type,
                     emission_status="failed",
+                    attempt=attempt,
                 )
                 new_refs.append(ref.artifact_id)
             if new_refs:

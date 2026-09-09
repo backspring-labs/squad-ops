@@ -142,6 +142,28 @@ class TestFailedEmissionCapture:
         assert refs == ["art_f1"]
         executor._cycle_registry.append_artifact_refs.assert_awaited_once_with("run_1", ("art_f1",))
 
+    @pytest.mark.parametrize(
+        ("prior_attempts", "expected_attempt"),
+        [(None, 1), (0, 1), (1, 2), (2, 3)],
+        ids=["first-attempt-unstamped", "first-attempt-stamped-0", "second", "third"],
+    )
+    async def test_banked_metadata_carries_the_attempt(
+        self, executor, prior_attempts, expected_attempt
+    ):
+        """#1436. Bug caught: two failed attempts of one task banked with identical metadata
+        — `task_id` alone cannot tell "two attempts, one file each" from "one attempt, two
+        files" (1.7.4 round 2: two `build_warnings.md` 6.3 s apart read as ONE emission).
+        The attempt is #1304's `prior_attempts` stamp plus one, read off the envelope the
+        retry loop re-dispatches, never inferred from timestamps."""
+        executor._store_artifact = AsyncMock(return_value=_ref("art_f1", "build_warnings.md"))
+        env = _envelope("qa.test")
+        if prior_attempts is not None:
+            env.inputs["prior_attempts"] = prior_attempts
+
+        await executor._store_failed_emission(_failed(ONE_ARTIFACT), env, _cycle(), "run_1", [])
+
+        assert executor._store_artifact.await_args.kwargs["attempt"] == expected_attempt
+
     async def test_succeeded_result_stores_nothing(self, executor):
         """The normal path owns successful emissions; double-storing would duplicate them."""
         executor._store_artifact = AsyncMock()
