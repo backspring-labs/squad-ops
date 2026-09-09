@@ -291,14 +291,18 @@ changes and this standard does not.
 
 - **The routes' dependency registry is process-global** (`deps.py:30–60`). After #286 it is
   populated by `create_app` and still shared by every app in the process (§6.5). The
-  follow-on is the routes reading their ports through `Depends` from `request.app.state`;
-  filed at this standard's review as its own issue, placed by the 1.8 plan. Until it lands,
+  follow-on is the routes reading their ports through `Depends` from `request.app.state` —
+  **#1448**, filed at this standard's review and placed by the 1.8 plan. Until it lands,
   **"one process, one runtime app" is a stated constraint, not an accident.**
-- **Factory selector defaults.** Nine factories default their selector today: audit
-  (`"logging"`), project registry (`"config"`), cycle registry (`"memory"`), capability
-  repository, embeddings, memory, prompt repository, telemetry, tools (`"local"`). R2 says the
+- **Factory selector defaults.** **Eighteen selector parameters across eleven factory
+  modules** default their provider (the exact table is in **#1449**; this document's first
+  draft counted nine, which is the point — a default is invisible until it is looked for):
+  audit (`"logging"`), project registry (`"config"`), cycle registry (`"memory"`), the flow
+  executor and the event bus (`"in_process"`), capability repository, embeddings, memory,
+  prompt repository and asset source, tasks (`"sql"`), four telemetry seams (`"otel"`,
+  `"langfuse"`), filesystem (`"local"`), container (`"docker"`), vcs (`"git"`). R2 says the
   root passes the selector explicitly regardless; §5 confirms every root does. Removing the
-  defaults themselves is a follow-on issue filed at this standard's review, not #301's scope.
+  defaults themselves is #1449, placed by the 1.8 plan, not #301's scope.
 - **A second ownership path for the runtime-state adapters.** `create_runtime_coordinator`
   (`scheduler_bootstrap`) builds `PostgresFocusLease` and `PostgresRuntimeState` again; the
   root's comment at `main.py:367–373` calls the instances interchangeable because they are
