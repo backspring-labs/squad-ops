@@ -1,0 +1,753 @@
+version: 1.7.4
+tag: v1.7.4
+previous_tag: v1.7.3
+date: '2026-09-09'
+commit: 7d4024ce719b779af466ba5b7851210363ef7f6f
+narrative: '**The recovery half — the fourth patch line of 1.7.** Plan: `docs/plans/1-7-4-plan.md`
+  (rev 3).
+
+  Record: `docs/plans/1-7-4-verification-set-record.md`.
+
+
+  Ten pack rows on the recovery path, and the request that fed it. The retired `qa_handoff.md`
+
+  leaves the framework *and* the request: #1312/#1254 replace it with optional assembly
+  notes and a
+
+  consumer contract, and #1430 finishes SIP-0098 §6.7 by stopping the group_run PRD
+  naming it in
+
+  seven places — a document the framework had dropped and the request kept demanding,
+  so the framing
+
+  role wrote it into every definition of done. Framework rows are owed by contract
+  rather than by
+
+  task (#1374); the builder retries a contentless emission *with its fact* (#1372);
+  a rewind is not
+
+  a repair (#994); the locus classifier answers by task-type property (#1054); an
+  accepted repair is
+
+  not disputed by the classifier that preceded it (#936/#933); and a capability with
+  two output
+
+  shapes declares one reasoning level per shape (#1285).
+
+
+  Validated by a pre-registered two-set verification run on frozen deploy `dfe9a6f2`
+  (HEAD pinned at
+
+  `be2e9dea`), **zero image drift across all nine rolls**. FastAPI+React **4 of 6**
+  functional;
+
+  Next.js+TS **3 of 3**. **Functional App Yield 7 of 9, zero human interventions.**
+  Every accepted
+
+  roll credited all of its criteria; no roll anywhere carried an unevidenced criterion;
+  both
+
+  rejections named the criterion they lost.
+
+
+  **The line''s bar was amended before the set opened, not after.** L1 breached in
+  the shakeouts, and
+
+  the owner''s ruling — recorded as the pre-registration''s sixth §3a entry — split
+  it: blocking on a
+
+  contentless emission that is *not recovered*, tracked otherwise. The set read **7
+  contentless of
+
+  160 emissions**, all seven on one Next.js roll that recovered fully through five
+  correction rounds
+
+  to accepted, 16/16, functional. No counted roll was lost to one.
+
+
+  Stated at the cut, not implied: **the diagnostics were not re-run on the pinned
+  deploy** (plan step
+
+  10), so L2, L4, L7, L8 and A1 were proven on earlier deploys and not on the one
+  the numbers come
+
+  from — the experimental gate is amended on the owner''s ruling, and the record §4
+  names exactly what
+
+  is and is not covered. R1 and D1, the two invariants the pack could plausibly have
+  regressed, both
+
+  have live readings on the pinned deploy. #1406 recurred on one roll, demoting nothing,
+  and that
+
+  roll''s coverage figure is never quoted as whole.
+
+
+  The instrument was fixed five times while the line ran, each time because a readout
+  could not tell
+
+  *did not happen* from *could not be asked*: three loaded-check probes had never
+  run and recorded
+
+  like probes that answered (#1425); a field counted artifacts and called them emissions
+  (#1431, and
+
+  the first fix for it was falsified within the hour and reverted, #1436); and the
+  driver, which
+
+  imports framework modules to judge P0 and B1, could have judged a roll with code
+  the deploy never
+
+  ran (#1438 — `frozen_deploy_commit` had been typed and read by nothing).'
+pull_requests:
+- number: 1416
+  title: 'sip(0106): §1.2f — the diagnosis is not established, and the record does
+    not claim it'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-08'
+- number: 1409
+  title: 'docs(1.7.4): §6a re-places the seven unnamed issues; SIP-0106 gains §1.2e/§1.2f
+    and is promoted to implemented'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-08'
+- number: 1404
+  title: 'docs(1.7.4): pre-registration — the 1.7.3 re-runs on deploy A'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-08'
+- number: 1403
+  title: 'instrument(driver): the A1 echoes are the claim''s own phrases'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-08'
+- number: 1402
+  title: 'instrument(driver): the log window is bounded at both ends; foreign affected_task_types
+    are D1''s texture'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-08'
+- number: 1400
+  title: 'docs(1.7.4): pre-registration draft (pins blank) with deploy A and the first
+    diagnostic; plan rev 4'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-08'
+- number: 1401
+  title: 'instrument(driver): the A1 readout sees the claim''s substance, not only
+    its marker (#968)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-08'
+- number: 1397
+  title: 'ops: runtime-api log hygiene — the audit sink apart, milestone heartbeats,
+    httpx quiet (#560)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 560
+  merged_at: '2026-09-08'
+- number: 1398
+  title: 'instrument(driver): F1''s field — the framework rows the accepted-patch
+    path re-derived (#1374)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-08'
+- number: 1399
+  title: 'docs(1.7.4): the two counting set configs, pins empty until pre-registration'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-08'
+- number: 1393
+  title: 'deps: refresh ci-constraints.txt and the locks (2026-09-08, #1204)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1204
+  merged_at: '2026-09-08'
+- number: 1396
+  title: 'ops: the Prefect notification service off; loop-service overruns read per
+    cycle (#330)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-08'
+- number: 1395
+  title: 'ops: re-sync the realm exports into existing Keycloak realms at deploy (#372)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-08'
+- number: 1394
+  title: 'feat(prompts): an agent refuses to boot against a registry that lacks an
+    asset its image ships (#352)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-08'
+- number: 1392
+  title: 'refactor(api): domain errors become the standard envelope in one place (#576)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 576
+  merged_at: '2026-09-08'
+- number: 1391
+  title: 'fix(persistence): one asyncpg pool factory with the JSON codecs; the parse_jsonb
+    / json.dumps scatter retired (#577)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 577
+  merged_at: '2026-09-08'
+- number: 1390
+  title: 'ci: a scheduled, dispatchable dependency refresh (#1204)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-08'
+- number: 1389
+  title: 'fix(cycles): graphlib for the plan-DAG check; the authored order must honour
+    depends_on (#578)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 578
+  merged_at: '2026-09-08'
+- number: 1388
+  title: 'ops: compose healthchecks and `up -d --wait` replace the deploy script''s
+    sleep-and-poll (#581)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 581
+  merged_at: '2026-09-08'
+- number: 1387
+  title: 'fix(config): the orchestrator''s per-task wait is its own setting (#1147)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1147
+  merged_at: '2026-09-08'
+- number: 1386
+  title: 'fix(migrations): a session advisory lock around the migration loop (#300)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 300
+  merged_at: '2026-09-08'
+- number: 1385
+  title: 'fix(health): parse the AMQP URL with urllib and let httpx own basic auth
+    (#574)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 574
+  merged_at: '2026-09-08'
+- number: 1384
+  title: 'fix(audit): the boot audit keeps the response it judged (#1324)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1324
+  merged_at: '2026-09-08'
+- number: 1383
+  title: 'fix(lineage): real trace context and whole ids, no placeholders or truncated
+    uuids (#575)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 575
+  merged_at: '2026-09-08'
+- number: 1382
+  title: 'ci: dependency vulnerability audit against the lock files the images install
+    (#1205)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1205
+  merged_at: '2026-09-08'
+- number: 1381
+  title: 'test(agents): the identity-permutation test over the roster (#1373)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1373
+  merged_at: '2026-09-08'
+- number: 1380
+  title: 'fix(release-package): SIP moves are frontmatter status transitions; a PR
+    is listed once (#1369)'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 1369
+  merged_at: '2026-09-08'
+- number: 1379
+  title: 'instrument(faults): contentless-builder and false-source-claim faults at
+    the builder''s and analyzer''s seams (1.7.4 plan §3.1)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-08'
+- number: 1378
+  title: 'instrument(driver): B1 and R1 as record fields (1.7.4 plan §3.1)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-08'
+- number: 1377
+  title: 'ci: integration is a required status check (1.7.4 plan §3.1)'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-08'
+- number: 1375
+  title: 'docs(1.7.4): plan rev 3 — the recovery-half line: two strata, three gates,
+    no fault no prediction'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-08'
+- number: 1371
+  title: 'docs(release): the v1.7.3 package carries every cycle the record cites,
+    each with its role'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-08'
+- number: 1370
+  title: 'docs(release): capture the v1.7.3 release package'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-09-07'
+sip_moves:
+- sip: SIP-0106-Atlas-Provider-Adapter
+  from: accepted
+  to: implemented
+sip_amendments:
+- sip: SIP-0071-Builder-Role-Dedicated-Product
+  status: implemented
+- sip: SIP-0072-Stack-Aware-Development-Capabilities
+  status: implemented
+- sip: SIP-0102-Ephemeral-Application-Sandbox
+  status: accepted
+cycles:
+- cycle_id: cyc_a17ee1347743
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:assertion_kinds_match
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_e4e818ee8196
+  captured: true
+  status: completed
+  verdict: rejected
+  verified:
+  - acceptance:command_exit_zero
+  - acceptance:container_packaging
+  - acceptance:declared_imports
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed:
+  - vc-probe-runs-seed
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_ece3e9d2f3c8
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:assertion_kinds_match
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_cdf3c674a49a
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_e60b855d0e7a
+  captured: true
+  status: failed
+  verdict: rejected
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:command_exit_zero
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed:
+  - tests_pass
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_08117e841446
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:command_exit_zero
+  - acceptance:container_packaging
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-leave-duplicate
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_a142ccb92b6a
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:frontend_compiles
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-api-runs
+  - vc-probe-api-runs-join
+  - vc-probe-api-runs-join-duplicate
+  - vc-probe-api-runs-leave
+  - vc-probe-api-runs-leave-duplicate
+  - vc-probe-api-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_153ef2eaace5
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:container_packaging
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:frontend_compiles
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-api-runs
+  - vc-probe-api-runs-join
+  - vc-probe-api-runs-join-duplicate
+  - vc-probe-api-runs-leave
+  - vc-probe-api-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_4f2693c9f281
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:container_packaging
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:frontend_compiles
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-api-runs
+  - vc-probe-api-runs-join
+  - vc-probe-api-runs-join-duplicate
+  - vc-probe-api-runs-leave
+  - vc-probe-api-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_69d34bc41c20
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:command_exit_zero
+  - acceptance:container_packaging
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_c45d60c9eb16
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:frontend_compiles
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-api-runs
+  - vc-probe-api-runs-join
+  - vc-probe-api-runs-join-duplicate
+  - vc-probe-api-runs-leave
+  - vc-probe-api-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_057c598c10de
+  captured: true
+  status: failed
+  verdict: rejected
+  verified:
+  - acceptance:assertion_kinds_match
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - vc-probe-runs-rejects-blank
+  failed:
+  - vc-probe-runs
+  - vc-probe-runs-participants
+  - vc-probe-runs-participants-duplicate
+  - tests_pass
+  required_unmet: []
+  unverified: []
+  run_count: 2
+screenshots: []
