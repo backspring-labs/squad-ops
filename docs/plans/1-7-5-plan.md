@@ -1,11 +1,12 @@
 # 1.7.5 — plan
 
-**Revision 3, 2026-09-09.** Written the morning the 1.7.4 line closed, from the 1.7.4 plan (rev
+**Revision 4, 2026-09-09.** Written the morning the 1.7.4 line closed, from the 1.7.4 plan (rev
 4 §6, §6a, §8), the 1.7.4 record (`docs/plans/1-7-4-verification-set-record.md` §2–§9), the
 1.7.4 pre-registration §3a and §9, the 1.7.3 plan §6 and §8, the 1.7.0 plan §2.5, §3.1 (as
 amended) and §6.2, the ROADMAP's 1.7 identity, and every open issue in the tracker on the
-morning of writing; revised twice the same morning — rev 2 on the owner's two rulings and the
-god-file measurement (#1443, #1444), rev 3 on the owner's written review of rev 2 (§10).
+morning of writing; revised three times the same morning — rev 2 on the owner's two rulings and
+the god-file measurement (#1443, #1444), rev 3 on the owner's written review of rev 2, rev 4 on
+the owner's ruling that a 1.8 feature's design review is the 1.8 plan's step, not this line's (§10).
 
 **1.7.5 closes 1.7 by making the remaining ports real at start-up and through the LLM call
 path, while proving the recovery path still behaves after extraction.** Three prior lines made
@@ -56,7 +57,7 @@ Rules carried from 1.7.3 and 1.7.4 without discount, and one added from the 1.7.
 | `container_packaging` reported a failing row on **five of nine** counted rolls (React 1, 3, 4, 5; Next.js 1 — `npm_ci_without_lockfile` on four, `debian_nginx_default_site_unremoved` on one), after four of nine on 1.7.3 and eight of nine on 1.7.2 | the counted records' `typed_checks.container_packaging_rows` | **promoting the check to blocking is the wrong shape** (§8, decision 1): the finding rate says the packaging is a deliverable the squad does not reliably author, and both accepted sandbox SIPs say it is a rendering, not an emission |
 | three rider items whose PRs merged are still open — #330 (PR #1396), #372 (PR #1395), #352 (PR #1394) — and #157, which the 1.7.4 plan §6 declared closed-by-accretion, is open | the tracker, 2026-09-09 | verify-then-close at the head of the line with the record's own readings (§3.1) |
 | the rider-then-pack structure behind a checkpoint pair attributed every red on the line; zero code drift deploy-to-tag | record §1, the cut | the same structure: one measured tranche per deploy, a checkpoint between (§7) |
-| the Scoped Code Revision design review, which the 1.7.4 plan §7 step 2 said "opens beside this line", never opened — PR #1325 has zero reviews and zero comments | the PR, 2026-09-09 | it opens with this plan's PR as a named step with a written outcome (§7 step 2) |
+| the Scoped Code Revision design review, which the 1.7.4 plan §7 step 2 said "opens beside this line", never opened — PR #1325 has zero reviews and zero comments | the PR, 2026-09-09 | **the review is the 1.8 plan's opening step, not this line's** — a 1.7 line does not carry a 1.8 feature's review (§6); the finding stands so the 1.8 plan names a reviewer instead of repeating "beside" |
 
 ---
 
@@ -298,7 +299,7 @@ list must not do beside the closures. §3.8's count says so.
 
 | item | what | read where |
 |---|---|---|
-| **#1177** | the Atlas A/B replay scripts routed through `arm.sh` so the rig cannot put both arms in the Spark's unified memory; the host reserve restored. Its scripts live in `~/atlas/scripts`, outside the repo | on the box, after the counted set (§7 step 13); a stated precondition of #1408 |
+| **#1177** | the Atlas A/B replay scripts routed through `arm.sh` so the rig cannot put both arms in the Spark's unified memory; the host reserve restored. Its scripts live in `~/atlas/scripts`, outside the repo | on the box, after the counted set (§7 step 12); a stated precondition of #1408 |
 | **#300** (carried reading) | the 1.7.4 record §7 read the advisory-lock key loaded and the acquisition path unexercised (no migration ran) | stays "loaded, not exercised" unless a migration lands in this line; the record says which |
 
 ### 3.8 The count this line owes the record
@@ -337,7 +338,7 @@ plan; the record reads them one at a time:
 | 1. Composition Root fully landed; Hardening's remainder re-placed by name | **Start-up truth (§3.3) and invocation truth (§3.4) fully landed — non-droppable; the recovery extraction's core landed (§3.5), its tail re-placeable by the stop rule.** A stop-rule re-placement satisfies the plan-management rule; it satisfies this criterion only for the tail. §5's and §6's re-placements named |
 | 2. Both counting sets closed with no falsified prediction; the record from per-round evidence | §4 — the fill hypothesis holds; L1 holds; the record cites per-round artifacts |
 | 3. CI green on main including `integration`, on Python 3.12, **against the locked deps the images install** | `integration` is already required (1.7.4 §3.1); #637 is the deliverable that makes the last clause true for the composition roots |
-| 4. Zero drift between the measured deploy and the tag; the package captured on the first try with the `Closes` column correct | §7 step 15; the preview read before `--write` (the 1.7.4 lesson) |
+| 4. Zero drift between the measured deploy and the tag; the package captured on the first try with the `Closes` column correct | §7 step 14; the preview read before `--write` (the 1.7.4 lesson) |
 | 5. SIP promotion sweep | SIP-0104 stays `accepted` (#1122 does not ship); SIP-0102's open steps 3–7 named as staying `accepted`; SIP-0084's #353 amendment moves with #353 to 1.8; nothing else moves |
 
 And the three gates 1.7.4 kept apart, so "landed" never stands in for "proven":
@@ -489,23 +490,25 @@ boot path). Each on its fifth plan (§3.8); each re-placed by decision, with the
 the 1.8 plan names them or revises this placement in the open.
 
 **The 1.8 lane — Scoped Code Revision, a feature, always 1.8's** (the owner's ruling,
-2026-09-09; PR #1325; subsumes #1213; #1176 beside it). Nothing of it is built here. The one
-thing this line does for it is open its design review (§7 step 2) — a named reviewer, a
-written outcome, before the 1.8 plan is written. **The outcome may be accepted, accepted with
-required revision, or rejected and reframed; the gate is a completed design decision, not
-acceptance of PR #1325.** Its evidence list is the 1.7.4 plan §6's, plus this line's
+2026-09-09; PR #1325; subsumes #1213; #1176 beside it). Nothing of it is built here, and
+nothing of it is reviewed here. Its design review — a named reviewer, a written outcome from a
+fixed vocabulary (accepted; accepted with required revision; rejected and reframed), a
+completed design decision rather than acceptance of PR #1325 — **is the 1.8 plan's opening
+step**. It is named in this document only because the 1.7.4 plan's "opens beside this line"
+produced zero reviews across a whole line, and the 1.8 plan must name a reviewer rather than
+repeat the phrasing. Nothing in 1.7.5 depends on its outcome. What this line hands it: the
 extraction of `_try_accept_patch` and the correction protocol, which are the seams a scoped
-revision lands through. **#1444 — the qa and dev handlers' `handle()` split by output shape
-(645 and 354 lines carrying fill and authoring under one function) — is the first extraction
-the feature requires and precedes its first PR**; it is 1.8's and is not a feature, and the
-1.8 plan carries it as an explicit precondition rather than pulling it here. #1122 stays with
-SIP-0104.
+revision lands through, and **#1444 — the qa and dev handlers' `handle()` split by output
+shape (645 and 354 lines carrying fill and authoring under one function) — as the first
+extraction the feature requires**; it precedes the feature's first PR, it is 1.8's and is not
+a feature, and the 1.8 plan carries it as an explicit precondition rather than pulling it
+here. #1122 stays with SIP-0104.
 
 **Still at design review, unchanged:** #414 (severity-aware correction reserve), #557
 (post-retest governance review), #316 (request-profile taxonomy, moves with Campaign); and in
 the 1.8 lane #80, #950, #949, #194, #1039, #1031.
 
-**Spark host and Atlas — after the counted set closes (§7 step 13):** #1408 (the Flash-Next
+**Spark host and Atlas — after the counted set closes (§7 step 12):** #1408 (the Flash-Next
 plan-authoring replay — needs the box to itself, 94.87 GiB against a 121 GiB box) and #1412
 (the content-loop diagnosis session). Both execute substantial model workloads on the
 measured host; neither touches the deploy, and that is not enough for a physical-machine
@@ -524,46 +527,43 @@ SIP-0104 (#1122), SIP-0105 (the blueprint rewrite after #1131), SIP-0088/0090/00
 
 1. **This plan**, on its own PR, with the 1.7.0 plan §7 amendment (the 1.7.5 row placed here;
    #376's label corrected). Merges on the owner's review.
-2. **The Scoped Code Revision design review opens** (PR #1325) as a named step: a reviewer, a
-   written outcome on the PR — accepted, accepted with required revision, or rejected and
-   reframed — before 1.8's plan is written. It gates nothing here.
-3. **Verify-then-close** the five §3.1 issues, evidence cited on each; the #352 test located or
+2. **Verify-then-close** the five §3.1 issues, evidence cited on each; the #352 test located or
    its gap filed.
-4. **The two design artifacts** (§3.1), reviewed by the owner as two independent decisions —
+3. **The two design artifacts** (§3.1), reviewed by the owner as two independent decisions —
    the design gate. **#1149's harvest** for the extraction map's paths. In parallel, the
    prelude PRs are built on branches.
-5. **The host preconditions** (§3.1): the owner installs the backup timer; #1178 merges, is
+4. **The host preconditions** (§3.1): the owner installs the backup timer; #1178 merges, is
    applied to the box, and `doctor local-spark` is green. Both recorded. **Deploy A cannot
    start without both.**
-6. **The prelude** (§3.2), one PR each — #1445 and #1436 first, #1434 last — and **#1180**,
+5. **The prelude** (§3.2), one PR each — #1445 and #1436 first, #1434 last — and **#1180**,
    classified.
-7. **Deploy A; one checkpoint pair** — a red belongs to this tranche and is identified per PR
+6. **Deploy A; one checkpoint pair** — a red belongs to this tranche and is identified per PR
    by its signature; every driver field re-checked on the pair's records in the three-state
    vocabulary (#1445 changes every field's shape; #1436 moves the L1 grouping key; #1197
    moves the contract hash); the fill hypothesis's first reading.
-8. **The three closures**, one PR each in order — start-up truth (#286, #301, #637);
+7. **The three closures**, one PR each in order — start-up truth (#286, #301, #637);
    invocation truth (#929 with #1206); the recovery extraction by the map (#1152, #1443) —
    and **the hardening list** (§3.6: #198, #580, #1182, #176) riding in CI beside them, none
    in the cycle path.
-9. **Deploy B; the shakeout loop** to the exit rule, budget three pairs — **a red belongs to
+8. **Deploy B; the shakeout loop** to the exit rule, budget three pairs — **a red belongs to
    the closures**, because nothing else that can move runtime behaviour is on this deploy.
-10. **The five diagnostics on the pinned deploy**, two-run budget each, recorded with the entry
+9. **The five diagnostics on the pinned deploy**, two-run budget each, recorded with the entry
     point each used; the untouched-file invariant read on the absent-suite diagnostic. A seam
     not reached stops the line here, before the set opens.
-11. **Pre-register** (`1-7-5-<arm>.yaml`, pins from the last shakeout; every field's producer
+10. **Pre-register** (`1-7-5-<arm>.yaml`, pins from the last shakeout; every field's producer
     and unaskable state as schema properties, checked against a real record).
-12. **Counted set 6 + 3** — no merges to main while a set is open; the counted/void/reset
+11. **Counted set 6 + 3** — no merges to main while a set is open; the counted/void/reset
     reading at each boundary.
-13. **Close the set; the live reads** — #1177 on the box, #300's reading carried or exercised
+12. **Close the set; the live reads** — #1177 on the box, #300's reading carried or exercised
     — named in the record as read live. **Then, and only then, the idle-box work**: #1408's
     plan-authoring replay and #1412's diagnosis session, on the same harness and gate as
     #1184's measurement.
-14. **The preliminary measurement conclusion**: §3.9's five close criteria and three gates,
+13. **The preliminary measurement conclusion**: §3.9's five close criteria and three gates,
     read against the frozen deploy before anything else moves.
-15. **Final record; cut 1.7.5 by the seven steps** — the release-package preview read and its
+14. **Final record; cut 1.7.5 by the seven steps** — the release-package preview read and its
     verdicts checked against the records before `--write`; the SIP sweep as §3.9 states it;
-    zero drift named. **The 1.7 line closes.** Then the 1.8 plan, opening with a completed
-    Scoped Code Revision design decision, #1444 as its first extraction, and the re-placed
+    zero drift named. **The 1.7 line closes.** Then the 1.8 plan, whose opening step is the
+    Scoped Code Revision design review, with #1444 as its first extraction and the re-placed
     items §5 and §6 name.
 
 The key property of this order: the two things that can move a verdict — the prelude and the
@@ -579,7 +579,7 @@ the deploy the numbers come from.
 **Ruled by the owner, 2026-09-09, at rev 3's review: decisions 1 and 2 approved** — #598's
 promotion is not taken and the packaging becomes a rendering in the 1.8 lane; the fill-mode
 declaration moves to `LOW`. The plan merges on that ruling and the verify-then-close (§7 step
-3) opens the line.
+2) opens the line.
 
 1. **#598's promotion to blocking is not taken in this line; the packaging becomes a
    rendering in the 1.8 lane** (§6). **Fallback if the owner holds the 1.7.4 §6a placement:**
@@ -615,8 +615,11 @@ declaration moves to `LOW`. The plan merges on that ruling and the verify-then-c
 10. **The set is 6 + 3, L1 the bar, one live hypothesis, five diagnostics on the pinned
     deploy with no amendment**, the rewind invariant CI-only and not counted among them, and
     every field in the three-state vocabulary (#1445, filed with this revision).
-11. **The Scoped Code Revision review is a named step with a written outcome from a fixed
-    vocabulary** (§6, §7 step 2); the gate is a completed decision, not acceptance of the PR.
+11. **The Scoped Code Revision review is the 1.8 plan's opening step, not this line's** (§6);
+    its outcome vocabulary is fixed there — accepted, accepted with required revision,
+    rejected and reframed — and the gate is a completed decision, not acceptance of the PR.
+    Rev 3 carried it as a step of this line's sequencing; rev 4 removes it on the owner's
+    ruling that nothing in 1.7.5 depends on it.
 12. **#1408 and #1412 run after the counted set closes**, not in the gap between deploys: the
     measured host does not carry unrelated heavy work between the checkpoint and the set.
 13. **The composition-root standard states its rule as an architecture invariant** and its
@@ -649,7 +652,7 @@ Named here so they are not the next §6a. None blocks the plan; each has a home 
   count found.
 - The executor grew from 4,349 to 4,933 lines since #1152 was filed; `_try_accept_patch` is
   now its largest method — §2, §3.5.
-- The Scoped Code Revision design review never opened — §7 step 2.
+- The Scoped Code Revision design review never opened — the 1.8 plan's opening step (§6).
 - The ROADMAP's Stats header still reads "As of 2026-09-07 (v1.7.3)" beside a 1.7.4 framework
   version: the cut's step 4 (the timeline entry) was done and the Stats header was not.
   Cosmetic; fixed with the next ROADMAP edit this line makes, not in this PR.
@@ -673,6 +676,13 @@ Named here so they are not the next §6a. None blocks the plan; each has a home 
 
 ## 10. Revision history
 
+- **Rev 4 (2026-09-09, after the merge of rev 3)** — on the owner's ruling that a 1.8
+  feature's design review is the 1.8 plan's step, not this line's: the Scoped Code Revision
+  review removed from §7 (rev 3's step 2; the later steps renumbered and every cross-reference
+  moved), §6 restated so the review is the 1.8 plan's opening step and nothing in 1.7.5
+  depends on it, §8 decision 11 and the §1 and §9 rows aligned. What this line hands the 1.8
+  plan is unchanged: the recovery extraction's seams and #1444 as the feature's first
+  extraction. No change to the content, the set, the gates or the attribution structure.
 - **Rev 3 (2026-09-09, the same morning)** — on the owner's written review of rev 2. The
   structure now matches the thesis: **three closure contracts** (start-up truth §3.3,
   invocation truth §3.4, recovery structural integrity §3.5) with separate proofs, the
