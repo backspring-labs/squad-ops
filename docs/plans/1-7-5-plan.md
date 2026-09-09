@@ -184,8 +184,8 @@ content, so no new register is invented while the Design Decision Register SIP i
 proposed — and each extraction PR cites the entries it moved. A precondition of the first
 extraction PR, not of the line.
 
-**#906 lands in the prelude.** The Next.js baseline stylesheet has been "post-window" through
-three lines. It touches `stack_nextjs_ts.py` and a request template, so the #1438 drift guard
+**#906 and #1463 land in the prelude.** The Next.js baseline stylesheet has been "post-window"
+through three lines, and re-authoring it exposed that stack #1 had no stylesheet either. It touches `stack_nextjs_ts.py` and a request template, so the #1438 drift guard
 refuses a counted roll after it merges until a rebuild — which is why it lands in §3.2 before
 deploy A, where the checkpoint pair reads it. If it is not ready by then it is closed or
 re-placed by name, not carried a fourth time.
@@ -204,7 +204,7 @@ deploys take. That is why the timer is a gate and not a note.
 
 ### 3.2 The measurement-correction prelude — deploy A, behind a checkpoint pair
 
-Nine PRs that change what a record reads, what a roll rejects on, or what an evidence line
+Ten PRs that change what a record reads, what a roll rejects on, or what an evidence line
 says, plus the one non-prelude item that touches the deployed database and is classified here
 so the record knows it moved. They are **not** CI-only in the 1.7.0 plan §3.1 sense, and they
 cannot ride beside the closures: a red on deploy B must have one owner. In merge order:
@@ -215,6 +215,7 @@ cannot ride beside the closures: a red on deploy B must have one owner. In merge
 | 2 | **#1436** | the attempt is stamped where a failed emission's artifacts are banked (the #971 seam), so the record reports emissions and artifacts as separate, both true | instrument — the L1 count's producer; the driver's grouping key moves to it and is re-checked on the pair |
 | 3 | **#1197** | the sandbox environment image retagged for what it is (Python 3.12, Node 20, npm 10, serving both stacks); `environment.py:97, :141` and `build_sandbox_env_image.sh:10` agree; the old tag retired | texture: the boot-audit evidence line carries the new name; the contract hash changes on both stacks **here**, never mid-set |
 | 4 | **#906** | the Next.js baseline stylesheet | read on the pair's Next.js half: boot audit and UI reach unchanged |
+| 4b | **#1463** | the React baseline stylesheet, and the sheet becomes ONE shared constant both expanders reach. Stack #1 emitted no CSS at all — the same defect as #906 on the arm carrying 6 of the last 9 counted rolls. Added to this tranche after the fact: #906's "stack #1 is untouched" line was written for a measurement window that had closed by the time it was re-authored, and rode along unexamined | read on the pair's React half: boot audit and UI reach unchanged. The pair's own loaded check asserts the two stacks emit BYTE-IDENTICAL sheet bytes — the invariant the shared constant exists to hold |
 | 5 | **#1428** | the run-level roll-up owes only the checks its run's task types can subject — `framework_rows_owed()`'s rule (1.7.4 pack row 2) applied at the run level; `frontend_build` stays stack-conditional | texture: no framing run reports `blocked_unverified`; a genuine harness failure on a framing run is visible again |
 | 6 | **#820** | `PROOF_INTERFACE_COHERENT` in `cycles/manifest_gates.py` beside the existing proofs (`:35–48`): path-parameter naming consistent across endpoints, declared testids correspond to what endpoints and views promise — string coherence over the manifest's own declarations, no PRD semantics, no LLM. **Reporting-only** | texture: findings per roll by class; promotion is a later deliberate call |
 | 7 | **#668** (second half) | a check that a suite's `apiFetch` mock honours the frozen client surface — behind the stack seam (the client is stack #1's), validated on the 34 stored `../api`-mocking suites as its replay set and on the fay-14 suite it must flag. **Reporting-only** | texture: findings per roll; the replay set's result in the PR's Evidence |

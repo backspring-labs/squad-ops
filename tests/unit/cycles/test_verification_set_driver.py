@@ -37,6 +37,7 @@ _COUNTING_SETS: dict[str, dict[str, int]] = {
     "1-7-2": {"nextjs": 3, "fastapi-react": 6},
     "1-7-3": {"nextjs": 3, "fastapi-react": 6},
     "1-7-4": {"nextjs": 3, "fastapi-react": 6},
+    "1-7-5": {"nextjs": 3, "fastapi-react": 6},
 }
 _ARM_STACK = {"nextjs": "nextjs_ts", "fastapi-react": "fullstack_fastapi_react"}
 _COUNTING_SET_FILES = [
