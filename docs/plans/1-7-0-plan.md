@@ -584,3 +584,19 @@ dependency set the images install — is unaffected and met. Reasoning recorded 
   and test items) plus #929/#1206. The per-line capacity rule is unchanged; the line count
   grows by one because the Boundaries rider was never absorbed by 1.7.2 as the table assumed.
   §6.2's close criteria hold as written.
+- **Amendment (2026-09-09, with the 1.7.5 plan)** — the 1.7.5 row the 2026-09-05 amendment
+  created is placed by `docs/plans/1-7-5-plan.md` §3 and §6 (rev 1): a verdict-surface stratum
+  of the four 1.7.4 findings (#1406, #1428, #1434, #1436) with #1197, #820, #668's second half
+  and PR #906 behind a checkpoint pair; Composition Root behind its design note (#286, #301,
+  #637); the observability port as its own closure (#929/#1206, non-droppable); the recovery
+  extraction as its own closure with its own design artifact (#1152 with #1443 — the
+  correction runner, filed with that plan's rev 2 — and #1149 first); a four-item CI list in
+  neither deploy's cycle path (#198, #580, #1182, #176); #1180 classified on deploy A; #1178
+  and the backup timer as required host preconditions of deploy A; **#567 (rev 2), #579 and
+  #353 (rev 3) re-placed to the 1.8 rider**; #1444 (the qa/dev `handle()` split) placed as
+  1.8's first extraction; #1445 (the three-state evidence vocabulary, filed with rev 3) first
+  in the prelude; #1177 as the ops rider; #330, #372, #352, #157 and #376 verify-then-close. **#598's first half is re-placed to the 1.8 lane by
+  the 1.7.5 plan's recommendation** (its §8, decision 1), approved by the owner 2026-09-09. **Correction to §2.7:** #376 is SIP-0096 Phase 2 field evidence (the repair path
+  discarding final-state verification), not SIP-0102 migration steps 3–7; those steps are
+  feature-shaped and stay with SIP-0102. §6.2's close criteria hold as written and are read
+  criterion by criterion in the 1.7.5 plan §3.7.
