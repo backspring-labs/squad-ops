@@ -753,7 +753,7 @@ class TestReadoutsByReason:
         )
         monkeypatch.setattr(driver, "artifact_dirs", lambda *a, **k: [art])
         out = driver.typed_checks_by_check(object(), "cyc", "run")
-        assert out["assertion_kinds_match_rows"] == {
+        assert driver.value_at(out, "assertion_kinds_match_rows") == {
             "failed": {"file_not_found": 1},
             "skipped": {},
         }
@@ -781,8 +781,9 @@ class TestReadoutsByReason:
         )
         monkeypatch.setattr(driver, "artifact_dirs", lambda *a, **k: [art])
         out = driver.typed_checks_by_check(object(), "cyc", "run")
-        assert out["undefined_names_rows"]["skipped"] == {"unsupported_stack_or_syntax": 5}
-        assert out["undefined_names_rows"]["failed"] == {}
+        rows = driver.value_at(out, "undefined_names_rows")
+        assert rows["skipped"] == {"unsupported_stack_or_syntax": 5}
+        assert rows["failed"] == {}
 
     def test_a_row_with_no_reason_is_named_unstated_not_dropped(
         self, driver, tmp_path, monkeypatch
@@ -801,7 +802,7 @@ class TestReadoutsByReason:
         )
         monkeypatch.setattr(driver, "artifact_dirs", lambda *a, **k: [art])
         out = driver.typed_checks_by_check(object(), "cyc", "run")
-        assert out["additive_containment_rows"]["failed"] == {"unstated": 1}
+        assert driver.value_at(out, "additive_containment_rows")["failed"] == {"unstated": 1}
 
     def test_an_unverifiable_verdict_is_counted_by_its_own_reason(self, driver):
         """Next.js roll 1's `unverifiable_toolchain_absent: 1` came from an absent FILE (a
@@ -2353,7 +2354,7 @@ class TestFailedEmissionBankingIsReportedAsArtifactsNotEmissions:
                 ("task-m005-qa.test", "typed_check_evaluation_task_5.json"),
             ],
         )
-        assert rec["failed_emission_artifacts_banked"] == 3
+        assert driver.value_at(rec, "failed_emission_artifacts_banked") == 3
         # The old key is gone rather than left as an alias: a record carrying both would
         # let a reader pick the one that flatters the roll.
         assert "failed_emissions_banked" not in rec
@@ -2371,11 +2372,13 @@ class TestFailedEmissionBankingIsReportedAsArtifactsNotEmissions:
                 ("task-m009-qa.test", "build_warnings.md"),
             ],
         )
-        assert rec["failed_emission_artifacts_banked"] == 2
+        assert driver.value_at(rec, "failed_emission_artifacts_banked") == 2
 
     def test_a_clean_roll_reports_zero(self, driver, tmp_path, monkeypatch):
         rec = self._cycle(driver, tmp_path, monkeypatch, [])
-        assert rec["failed_emission_artifacts_banked"] == 0
+        # Asked (the run's artifacts were read) and none — not an unaskable absence.
+        ev = driver.Evidence.read(rec["failed_emission_artifacts_banked"])
+        assert (ev.state, ev.value) == (driver.ASKED_NONE, 0)
 
     def test_the_readout_does_not_claim_an_emission_count(self, driver, tmp_path, monkeypatch):
         """The label is the defect #1431 filed. A readout saying "emissions" over a number
@@ -2482,3 +2485,183 @@ class TestTheInstrumentMayNotJudgeWithCodeTheDeployNeverRan:
             self._cfg(driver, tmp_path), counting=False, identity={"eve:loaded": "ok"}
         )
         assert problems == []
+
+
+class TestTheThreeStateEvidenceVocabulary:
+    """#1445. A readout that cannot distinguish "did not happen" from "could not be asked"
+    is not evidence (1.7.4 record §9). Three findings on that line were the same defect in
+    different clothes: a probe that could not run recorded like one that answered (#1425),
+    a field labelled in units it did not count (#1431), and an H1 readout that read empty
+    because its producer is structurally filtered — read as "nothing found".
+
+    Each test below names the bug it catches; none asserts that a constant equals itself.
+    """
+
+    def test_a_structurally_silent_producer_reads_unaskable_not_zero(self, driver):
+        """THE defect. `loop_texture.refused_patches` is parsed off the runtime-api window's
+        patch path, which a roll with no correction round never writes. Before #1445 the
+        field read `0` and a reader took it for "no patch was refused"."""
+        ev = driver.evidence_for("loop_texture.refused_patches", 0, {"no_correction_round": True})
+        assert ev.state == driver.UNASKABLE
+        assert "no correction round" in ev.reason
+        assert ev.record() == {"state": "unaskable", "reason": ev.reason}
+        assert "value" not in ev.record(), "an unaskable field must carry no value to misread"
+
+    def test_the_same_field_reads_asked_none_when_the_producer_did_run(self, driver):
+        """The other half: with a correction round and a window, zero refusals is an ANSWER.
+        Bug caught: collapsing both into one state, which loses the distinction #1445 exists
+        to make."""
+        ev = driver.evidence_for(
+            "loop_texture.refused_patches",
+            0,
+            {"no_correction_round": False, "runtime_window_empty": False},
+        )
+        assert ev.state == driver.ASKED_NONE and ev.declared
+
+    def test_an_unrunnable_probe_is_unaskable_not_answered(self, driver):
+        """#1425, entered at the producer: three of seven loaded-check probes named
+        containers that do not exist and errored at EVERY 1.7.4 launch, including the
+        checkpoint pair read as CLEAN — in the raw identity an unasked question and an
+        answered one are both just a string beside the service. The error carries into the
+        reason, so preflight can refuse to launch on it."""
+        evidence = driver.loaded_check_evidence(
+            {
+                "bob_handoff:loaded": "ERROR: No such container: squadops-bob-1-7-4",
+                "eve_reasoning:loaded": "none medium",
+                "runtime_api_rows:loaded": "",
+            }
+        )
+        assert evidence["bob_handoff"]["state"] == driver.UNASKABLE
+        assert "No such container" in evidence["bob_handoff"]["reason"]
+        assert "unasked question" in evidence["bob_handoff"]["reason"]
+        # The probe that answered, and the probe that answered EMPTY, are both askable —
+        # and are three visibly different states, which is the whole point.
+        assert evidence["eve_reasoning"]["state"] == driver.OBSERVED
+        assert evidence["runtime_api_rows"]["state"] == driver.ASKED_NONE
+
+    @pytest.mark.parametrize(
+        ("evidence", "must_show", "must_not_show"),
+        [
+            pytest.param(
+                lambda d: d.Evidence.observed(0),
+                "0",
+                ("UNASKABLE", "none (asked)"),
+                id="observed-zero-is-a-zero",
+            ),
+            pytest.param(
+                lambda d: d.Evidence.asked_none(0),
+                "none (asked)",
+                ("UNASKABLE",),
+                id="asked-none-is-words-not-zero",
+            ),
+            pytest.param(
+                lambda d: d.Evidence.unaskable("the probe could not run"),
+                "UNASKABLE",
+                ("0", "none (asked)"),
+                id="unaskable-is-neither",
+            ),
+            pytest.param(lambda d: None, "not in record", ("UNASKABLE", "0"), id="absent"),
+        ],
+    )
+    def test_render_shows_the_three_states_differently(
+        self, driver, evidence, must_show, must_not_show
+    ):
+        """Bug caught: a summary line folding `unaskable` into a zero or a dash — the shape
+        that let 1.7.4's H1 field read as a bar that held."""
+        shown = driver._show(evidence(driver))
+        assert must_show in shown
+        for absent in must_not_show:
+            assert absent not in shown
+
+    def test_a_formatter_never_receives_an_absence(self, driver):
+        """The structural guarantee behind the test above: `_show`'s formatter is handed an
+        OBSERVED value only, so no caller's `lambda v: f"{len(v)}"` can turn an unaskable
+        field into a count. Bug caught: a formatter that stringifies None into "0"."""
+        seen: list = []
+
+        def fmt(value):
+            seen.append(value)
+            return "FORMATTED"
+
+        assert "FORMATTED" not in driver._show(driver.Evidence.unaskable("r"), fmt)
+        assert "FORMATTED" not in driver._show(driver.Evidence.asked_none([]), fmt)
+        assert driver._show(driver.Evidence.observed([1]), fmt) == "FORMATTED"
+        assert seen == [[1]], "the formatter saw an absence"
+
+    def test_value_at_hands_a_consumer_the_default_for_an_unaskable_field(self, driver):
+        """Bug caught: a consumer reading `rec[...]` and getting the unaskable dict, or a
+        zero, and doing arithmetic on it. The answer is absent, so the default is returned."""
+        rec = {
+            "loop_texture": {
+                "refused_patches": driver.Evidence.unaskable("no correction round").record(),
+                "applied_patches": driver.Evidence.observed([{"task": "t"}]).record(),
+                "retests": driver.Evidence.asked_none([]).record(),
+            }
+        }
+        assert driver.value_at(rec, "loop_texture.refused_patches", "absent") == "absent"
+        assert driver.value_at(rec, "loop_texture.applied_patches") == [{"task": "t"}]
+        assert driver.value_at(rec, "loop_texture.never_registered", "absent") == "absent"
+        # `asked_none` DOES hand back its typed empty: the question was asked and the
+        # answer is "none", so a consumer that iterates gets an empty list rather than a
+        # sentinel. Only an absent answer falls back to the default.
+        assert driver.value_at(rec, "loop_texture.retests", "absent") == []
+
+    @pytest.mark.parametrize(
+        "state",
+        [
+            pytest.param(lambda d: d.Evidence.observed({"a": 1}), id="observed"),
+            pytest.param(lambda d: d.Evidence.asked_none([]), id="asked_none"),
+            pytest.param(lambda d: d.Evidence.unaskable("a reason"), id="unaskable"),
+        ],
+    )
+    def test_the_record_shape_round_trips(self, driver, state):
+        """Bug caught: a state that survives `render` but not a re-read of the stored JSON —
+        which is exactly how a re-rendered record loses what it knew (the 1.7.4 hollow
+        re-render, record §5)."""
+        original = state(driver)
+        back = driver.Evidence.read(original.record())
+        assert (back.state, back.value, back.reason) == (
+            original.state,
+            original.value,
+            original.reason,
+        )
+        assert back.declared, "a field written in the vocabulary is declared, never inferred"
+
+    def test_a_pre_1445_bare_value_is_marked_inferred_not_declared(self, driver):
+        """Every stored record through 1.7.4 carries bare values. Reading one must say the
+        state was INFERRED — a bare `0` cannot tell whether it was asked. Bug caught: a
+        re-render of a 1.7.4 record presenting inferred states as declarations."""
+        inferred = driver.Evidence.read(0)
+        assert (inferred.state, inferred.declared) == (driver.ASKED_NONE, False)
+        assert "state inferred" in driver._show(inferred)
+        assert "state inferred" not in driver._show(driver.Evidence.asked_none(0))
+
+    def test_an_unregistered_field_is_refused_not_defaulted(self, driver):
+        """The registry is the schema, not a summary of it. Bug caught: a new readout added
+        without stating when its producer is silent — it would render as always-askable and
+        its empty value would read as an answer, which is the defect this issue fixes."""
+        with pytest.raises(driver.UnregisteredEvidenceField) as excinfo:
+            driver.with_states("loop_texture", {"a_brand_new_readout": []}, {})
+        assert "EVIDENCE_FIELDS" in str(excinfo.value)
+
+        # ...and a registered one is rendered rather than refused.
+        rendered = driver.with_states("loop_texture", {"refused_patches": []}, {})
+        assert rendered["refused_patches"]["state"] in driver.EVIDENCE_STATES
+
+    def test_every_registered_condition_resolves_to_a_reason(self, driver):
+        """Bug caught: a condition registered against a field with no entry in
+        UNASKABLE_REASONS — it raises KeyError at render time, i.e. mid-set, on the one roll
+        where the producer was actually silent."""
+        for path, conditions in driver.EVIDENCE_FIELDS.items():
+            for condition in conditions:
+                reason = driver.unaskable_reason(condition)
+                assert reason and "{detail}" not in reason, (path, condition)
+
+    def test_the_registry_renders_the_table_a_preregistration_cites(self, driver):
+        """The schema property, not prose: every registered field appears with its
+        conditions. Bug caught: a pre-registration that has to describe unaskable states in
+        paragraphs, which is the loose convention #1445 replaces."""
+        table = driver.registry_table()
+        for path in driver.EVIDENCE_FIELDS:
+            assert f"`{path}`" in table
+        assert table.startswith("| field | unaskable when | reads |")
