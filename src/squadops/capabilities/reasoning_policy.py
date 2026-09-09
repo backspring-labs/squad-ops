@@ -103,15 +103,29 @@ REASONING_BY_TASK_TYPE: dict[str, str] = {
 #:
 #: #1268 moved the capability to MEDIUM for the shape that was failing, which was right and
 #: is why the authoring level below is unchanged. It also made fill mode pay for a channel
-#: it does not use.
+#: it does not use — so #1285 declared fill mode NONE.
+#:
+#: #1434 (1.7.5): NONE was a category error on this module's own definition. ``NONE`` is
+#: the level for a transcription — an output the prompt already contains — and a fill is
+#: synthesis under a scaffold: the model reads the shells and writes bodies. The 1.7.4
+#: line measured the cost of the misdeclaration on the fill shape: three of five
+#: fill-mode qa rolls produced a working suite in one emission at ~3,943 tokens, and two
+#: produced a sentence of intent and nothing else (2 of 24 and 7 of 35 contentless
+#: emissions), each recovered through correction rounds (1.7.4 record §3, Q1). ``LOW`` is
+#: the minimum honest declaration for a shaped output; on Ollama's boolean wire it maps to
+#: ``think: true`` — #1268's six-in-six — and on a provider with an effort dial it asks
+#: for the cheapest reasoning rather than none. #924's token saving is given up on this
+#: provider and kept as a declaration another provider can honour. Ruled by the owner
+#: 2026-09-09 (1.7.5 plan §8, decision 2); the line's one live hypothesis reads whether a
+#: contentless fill-mode first attempt recurs under the pinned configuration.
 #:
 #: This is deliberately NOT a second table keyed on a mitigation (the #925 shape this
 #: module's docstring warns about). It is the same declaration the table above already
 #: makes — *the level is about the output* — applied to a capability that has two outputs.
 #: One row per shape, read whole, beside the single-shape rows.
 REASONING_BY_OUTPUT_SHAPE: dict[tuple[str, str], str] = {
-    (TaskType.QA_TEST, "fill"): ReasoningLevel.NONE,
-    (TaskType.QA_TEST_REPAIR, "fill"): ReasoningLevel.NONE,
+    (TaskType.QA_TEST, "fill"): ReasoningLevel.LOW,
+    (TaskType.QA_TEST_REPAIR, "fill"): ReasoningLevel.LOW,
 }
 
 #: The ``config_overrides`` key an agent profile uses to override the declaration.

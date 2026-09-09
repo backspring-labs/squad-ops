@@ -134,14 +134,28 @@ class TestACapabilityWithTwoOutputsDeclaresOneLevelPerOutput:
     rolls; live, 1 usable emission of 6 with `think: false` against 6 of 6 with it on).
 
     #1268 moved the capability to MEDIUM for the shape that was failing. That was right,
-    and it also made fill mode pay for a channel it does not use.
+    and it also made fill mode pay for a channel it does not use — so #1285 declared fill
+    mode NONE.
+
+    #1434 (1.7.5) moved fill mode to LOW: NONE is the level for a transcription and a fill
+    is synthesis under a scaffold; the 1.7.4 line read the misdeclaration's cost as two
+    contentless first attempts in five fill-mode rolls, both recovered through correction
+    rounds. LOW is the minimum honest declaration for a shaped output — `think: true` on
+    Ollama's boolean wire, the cheapest effort on a provider with a dial.
     """
 
-    def test_fill_mode_declares_no_reasoning(self):
+    def test_fill_mode_declares_the_minimum_reasoning_not_none(self):
+        """The bug this catches: a fill declared NONE again — the #1268 shape returning on
+        the fill output (a sentence of intent and nothing else, 1.7.4 record §3) — or a
+        fill declared at the authoring level, which is the cost #1285 removed."""
         from squadops.capabilities.reasoning_policy import default_reasoning_level
 
-        assert default_reasoning_level("qa.test", output_shape="fill") == "none"
-        assert default_reasoning_level("qa.test_repair", output_shape="fill") == "none"
+        assert default_reasoning_level("qa.test", output_shape="fill") == "low"
+        assert default_reasoning_level("qa.test_repair", output_shape="fill") == "low"
+        # Not the authoring level either: the two shapes still declare differently.
+        assert default_reasoning_level("qa.test", output_shape="fill") != default_reasoning_level(
+            "qa.test"
+        )
 
     def test_authoring_mode_is_unchanged(self):
         """#1268's fix is the reason the authoring level is not touched — the shape that
@@ -214,8 +228,10 @@ class TestTheHandlerDeclaresItsOwnShape:
 
         assert DevelopmentDevelopHandler()._output_shape({"verification_scaffold": {}}) is None
 
-    def test_the_shaped_kwargs_carry_no_reasoning_for_a_fill_repair(self, monkeypatch):
-        """The end of the wire: what `_build_chat_kwargs` actually puts on the call."""
+    def test_the_shaped_kwargs_carry_the_fill_level_for_a_fill_repair(self, monkeypatch):
+        """The end of the wire: what `_build_chat_kwargs` actually puts on the call — the
+        fill row's level (LOW since #1434), distinct from the authoring level, and never the
+        NONE that #1268 measured at one usable emission in six on this handler."""
         from types import SimpleNamespace
 
         monkeypatch.setattr(
@@ -233,5 +249,5 @@ class TestTheHandlerDeclaresItsOwnShape:
         authoring = handler._build_chat_kwargs(
             {"agent_model": "qwen3.6:27b", "agent_config_overrides": {}}
         )
-        assert fill.get("reasoning") in (None, "none"), fill
+        assert fill.get("reasoning") == "low", fill
         assert authoring.get("reasoning") == "medium", authoring
