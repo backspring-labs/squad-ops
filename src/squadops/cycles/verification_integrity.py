@@ -333,6 +333,13 @@ class RunVerificationSummary:
     # summaries reconstruct unchanged, and an author-mode run (no bound contract) has
     # no declared denominator and so can have no unevidenced criteria.
     criteria_unevidenced: tuple[str, ...] = ()
+    # #1428: checks the profile REQUIRES that this run does not OWE, because none of its
+    # planned task types produces their subject — every framing run, for the three checks
+    # the fullstack profile requires. Disclosed rather than dropped (§6.6.3), and never
+    # counted in `required_unmet`: a check with no possible subject is not a harness
+    # failure, and reporting it as one on 100% of framing runs is what hid real ones.
+    # Default-empty, so pre-#1428 stored summaries reconstruct unchanged.
+    required_not_owed: tuple[str, ...] = ()
 
     @property
     def pass_rate(self) -> float:
@@ -585,6 +592,7 @@ def aggregate_verification(
     *,
     run_succeeded: bool = True,
     contract_criteria: Collection[str] = (),
+    required_not_owed: Collection[str] = (),
 ) -> RunVerificationSummary:
     """Pure aggregation choke point (SIP-0096 §6.2, §6.4).
 
@@ -631,6 +639,12 @@ def aggregate_verification(
     2-of-the-2-it-happened-to-reach. Criterion ids observed on check rows are
     unioned in so unexpected evidence is never dropped. Empty (author mode /
     unbound cycles) preserves the evidence-derived denominator.
+
+    ``required_not_owed`` (#1428) is disclosure only: the checks the profile requires that
+    the caller has already excluded from ``required_check_ids`` because no planned task
+    of this run can produce their subject. They ride on the summary so the report can say
+    "required by the profile, not owed by this run" instead of either blocking on them
+    (the framing-run baseline this fixes) or losing them (silence read as green).
     """
     required = frozenset(required_check_ids)
     verified: list[str] = []
@@ -733,6 +747,7 @@ def aggregate_verification(
         passed_count=passed_count,
         criteria_verified=tuple(sorted(criteria_passed - criteria_adverse)),
         criteria_total=tuple(sorted(set(contract_criteria) | criteria_passed | criteria_adverse)),
+        required_not_owed=tuple(sorted(set(required_not_owed))),
         failed_detail=tuple(failed_detail),
         inspections=tuple(inspections),
         # #1021: declared by the contract, and no row carried the id in either

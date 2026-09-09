@@ -193,6 +193,16 @@ def _build_verification_lines(summary: RunVerificationSummary) -> list[str]:
             producer = f" (task {i.subject})" if i.subject else ""
             ref = f" — set {i.subject_ref[:12]}" if i.subject_ref else ""
             lines.append(f"- **{i.check_id}**{producer}: inspected {files}{ref}")
+    if summary.required_not_owed:
+        # #1428: required by the profile, not owed by THIS run — no planned task of the
+        # run produces the subject. Said, not implied: a check the profile requires is
+        # named on every run, and a framing run that says nothing about the three would
+        # read as if the profile had never required them.
+        lines.append("")
+        lines.append(
+            f"Required by the profile, not owed by this run (no planned task produces "
+            f"the subject): {', '.join(summary.required_not_owed)}"
+        )
     if summary.required_unmet:
         lines.append("")
         lines.append(

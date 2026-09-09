@@ -66,3 +66,70 @@ def test_only_tooling_backed_checks_can_be_knowably_absent():
     assert get_framework_check(CHECK_FRONTEND_BUILD).required_tooling == (TOOL_NODE,)
     for cid in (CHECK_TESTS_PASS, CHECK_NO_STUB_FALLBACK_TESTS, CHECK_REQUIRED_FILES):
         assert get_framework_check(cid).required_tooling == ()
+
+
+class TestChecksARunCanSubject:
+    """#1428: a run owes only the required checks its PLANNED task types can produce a
+    subject for. The bug each case catches is named in its id."""
+
+    FRAMING = (
+        "development.author_manifest",
+        "qa.define_test_strategy",
+        "governance.prepare_plan_authoring_brief",
+        "governance.merge_plan",
+        "governance.review_plan",
+    )
+
+    @pytest.mark.parametrize(
+        ("task_types", "expected"),
+        [
+            pytest.param(FRAMING, frozenset(), id="framing-run-owes-nothing"),
+            pytest.param(
+                ("development.develop",),
+                frozenset({"frontend_build"}),
+                id="source-author-subjects-the-frontend-build",
+            ),
+            pytest.param(
+                ("qa.test",),
+                frozenset({"tests_pass", "no_stub_fallback_tests", "no_self_mocking_tests"}),
+                id="suite-author-subjects-the-test-spine",
+            ),
+            pytest.param(
+                ("builder.assemble",),
+                frozenset({"required_files"}),
+                id="builder-subjects-required-files",
+            ),
+            pytest.param(
+                ("development.develop", "qa.test", "builder.assemble"),
+                frozenset(
+                    {
+                        "frontend_build",
+                        "tests_pass",
+                        "no_stub_fallback_tests",
+                        "no_self_mocking_tests",
+                        "required_files",
+                    }
+                ),
+                id="implementation-run-subjects-all-five",
+            ),
+            pytest.param(("not.a.task_type",), frozenset(), id="unknown-type-subjects-nothing"),
+            pytest.param((), frozenset(), id="empty-plan-subjects-nothing"),
+        ],
+    )
+    def test_the_subject_set_follows_the_planned_task_types(self, task_types, expected):
+        from squadops.cycles.check_registry import checks_a_run_can_subject
+
+        assert checks_a_run_can_subject(task_types) == expected
+
+    def test_every_registered_check_has_exactly_one_subject_provider(self):
+        """Bug caught: a new framework check registered without a subject provider —
+        it would be owed by no run and vanish from every required set silently, the
+        #291 shape (declared, enforced nowhere) one table over."""
+        from squadops.cycles.check_registry import (
+            _CHECK_SUBJECT_PROVIDER,
+            framework_check_ids,
+        )
+
+        providers = [check for check, _ in _CHECK_SUBJECT_PROVIDER]
+        assert set(providers) == set(framework_check_ids())
+        assert len(providers) == len(set(providers))
