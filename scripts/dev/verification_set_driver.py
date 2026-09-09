@@ -368,15 +368,30 @@ def evidence_for(path: str, value: Any, context: Mapping[str, Any]) -> Evidence:
     return Evidence(ev.state, value=ev.value, declared=not underivable)
 
 
+class UnregisteredEvidenceField(KeyError):
+    """A collector emitted a field the registry does not describe."""
+
+
 def with_states(group: str, fields: dict, context: Mapping[str, Any]) -> dict:
     """Every registered field of ``group`` in ``fields`` rewritten into the record shape;
-    metadata (``_NOT_EVIDENCE``) passes through untouched."""
+    metadata (``_NOT_EVIDENCE``) passes through untouched.
+
+    An UNREGISTERED field is refused, not defaulted: ``EVIDENCE_FIELDS`` is the schema, and
+    a field that quietly reads "always askable" is the #1445 defect wearing the fix's
+    clothes — the reader would take its empty value for an answer. Adding a readout means
+    stating when its producer is silent, in the same PR.
+    """
     out: dict = {}
     for key, value in fields.items():
         path = f"{group}.{key}"
         if path in _NOT_EVIDENCE:
             out[key] = value
             continue
+        if path not in EVIDENCE_FIELDS and f"{group}.*" not in EVIDENCE_FIELDS:
+            raise UnregisteredEvidenceField(
+                f"{path} is not in EVIDENCE_FIELDS — register the conditions under which "
+                "its producer is silent (or add it to _NOT_EVIDENCE if it is metadata)"
+            )
         out[key] = evidence_for(path, value, context).record()
     return out
 
@@ -2696,23 +2711,23 @@ def restate(rec: dict) -> tuple[dict, list[str]]:
         },
     }
     underivable = sorted(k for k, v in context.items() if v is None)
+
+    def restated(path: str, value: Any) -> Any:
+        # A field already declared in the vocabulary is the producer's word: it passes
+        # through, never re-derived from a weaker context (the live roll could state
+        # `runtime_window_empty`; a stored record cannot).
+        if path in _NOT_EVIDENCE or Evidence.read(value).declared:
+            return value
+        return evidence_for(path, value, context).record()
+
     for key in ("correction_rounds", "failed_emission_artifacts_banked"):
         if key in out:
-            out[key] = evidence_for(key, Evidence.read(out[key]).value, context).record()
+            out[key] = restated(key, out[key])
     if texture:
-        out["loop_texture"] = with_states(
-            "loop_texture",
-            {
-                k: Evidence.read(v).value if f"loop_texture.{k}" not in _NOT_EVIDENCE else v
-                for k, v in texture.items()
-            },
-            context,
-        )
+        out["loop_texture"] = {k: restated(f"loop_texture.{k}", v) for k, v in texture.items()}
     if typed:
         typed.setdefault("required_files_rows", by_check.get("required_files", {}))
-        out["typed_checks"] = with_states(
-            "typed_checks", {k: Evidence.read(v).value for k, v in typed.items()}, context
-        )
+        out["typed_checks"] = {k: restated(f"typed_checks.{k}", v) for k, v in typed.items()}
     if out.get("deploy") and not out.get("loaded_checks"):
         out["loaded_checks"] = loaded_check_evidence(out["deploy"])
     return out, underivable
