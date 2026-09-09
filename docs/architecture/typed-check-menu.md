@@ -11,6 +11,7 @@ Regenerate: `UPDATE_CHECK_MENU=1 pytest tests/unit/cycles/test_check_governance.
 |---|---|---|---|---|---|---|---|
 | `additive_containment` | injected | suite | yes | yes | yes | yes | error |
 | `assertion_kinds_match` | injected | suite | yes | yes | yes | yes | error |
+| `client_mock_surface` | injected | suite | yes | no | no | yes | warning |
 | `command_exit_zero` | authored | product | yes | no | yes | no | error |
 | `container_packaging` | injected | product | no | no | no | yes | warning |
 | `contract_assertions_match` | injected | suite | yes | yes | yes | yes | error |

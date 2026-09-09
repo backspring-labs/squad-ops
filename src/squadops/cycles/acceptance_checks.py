@@ -32,6 +32,7 @@ from typing import Any
 from squadops.cycles.acceptance_check_spec import (
     CHECK_ADDITIVE_CONTAINMENT,
     CHECK_ASSERTION_KINDS,
+    CHECK_CLIENT_MOCK_SURFACE,
     CHECK_CONTAINER_PACKAGING,
     CHECK_CONTRACT_ASSERTIONS,
     CHECK_DECLARED_IMPORTS,
@@ -2123,6 +2124,59 @@ class DomAnchorQueriesCheck(BaseCheck):
                 **observations,
             )
         return CheckOutcome.passed(file=rel, findings=[], **observations)
+
+
+@register_check(CHECK_CLIENT_MOCK_SURFACE)
+class ClientMockSurfaceCheck(BaseCheck):
+    """#668: a frontend suite's mock of the frozen API client honours its declared surface.
+
+    ``client`` is the stack's declaration the planner bound (``ClientSurface.as_params``);
+    the rules and the banked observations are ``client_mock_surface``'s (pure over the
+    bytes). Reporting-only: the planner binds it at warning severity, so a failure here
+    is banked, never blocking. A row without a declaration — a stack that freezes no
+    client, or a hand-authored row — skips: it judged nothing. The check reads the suite
+    and the params only; a tree that lacks the client file changes nothing."""
+
+    async def evaluate(
+        self,
+        params: dict[str, Any],
+        workspace_root: Path,
+        *,
+        stack: str | None = None,
+    ) -> CheckOutcome:
+        from squadops.capabilities.client_mock_surface import (
+            mock_surface_findings,
+            mock_surface_observations,
+        )
+        from squadops.capabilities.client_surface import ClientSurface
+
+        rel = str(params["file"])
+        surface = ClientSurface.from_params(params.get("client"))
+        if surface is None:
+            return CheckOutcome.skipped(reason="no_client_surface", file=rel)
+        try:
+            target = _safe_resolve(rel, workspace_root)
+        except _SafetyError as exc:
+            return CheckOutcome.error(reason=exc.reason)
+        if not target.is_file():
+            return CheckOutcome.failed(reason="file_not_found", file=rel)
+        try:
+            content = target.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return CheckOutcome.error(reason="file_unreadable")
+
+        observations = mock_surface_observations(content, surface)
+        findings = mock_surface_findings(content, surface)
+        if findings:
+            rules = sorted({f.rule for f in findings})
+            return CheckOutcome.failed(
+                reason=f"{len(findings)} client mock finding(s): {', '.join(rules)}",
+                file=rel,
+                client=surface.path,
+                findings=[{"rule": f.rule, "line": f.line, "detail": f.detail} for f in findings],
+                **observations,
+            )
+        return CheckOutcome.passed(file=rel, client=surface.path, findings=[], **observations)
 
 
 @register_check(CHECK_ADDITIVE_CONTAINMENT)

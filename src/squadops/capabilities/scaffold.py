@@ -39,8 +39,12 @@ import yaml
 # cycle: the stack modules annotate against ``InterfaceManifest`` under ``TYPE_CHECKING``
 # and import nothing here at runtime.
 from squadops.capabilities.app_invocation import AppInvocation
+from squadops.capabilities.client_surface import ClientSurface
 from squadops.capabilities.stack_fastapi_react import (
     APP_INVOCATION as _APP_INVOCATION_FASTAPI_REACT,
+)
+from squadops.capabilities.stack_fastapi_react import (
+    CLIENT_SURFACE as _CLIENT_SURFACE_FASTAPI_REACT,
 )
 from squadops.capabilities.stack_fastapi_react import STACK_NAME as _FASTAPI_REACT_NAME
 from squadops.capabilities.stack_fastapi_react import (
@@ -1591,6 +1595,12 @@ class ScaffoldStack:
     #: prose is the appendix asset's. Unset means the stack freezes no client the suite
     #: author needs shown (Next.js suites call route handlers directly).
     client_surface_lines: Callable[[InterfaceManifest], list[str]] | None = None
+    #: #668: the same client as a declaration — path, module specifier, exports, the
+    #: prefix it adds and the envelope key it unwraps — for the suite-side
+    #: ``client_mock_surface`` check, bound at plan time as self-contained params. Unset
+    #: means the stack freezes no client a suite could mock, and the planner binds nothing
+    #: (Next.js suites call route handlers directly).
+    client_surface: ClientSurface | None = None
 
 
 _STACKS: dict[str, ScaffoldStack] = {
@@ -1621,6 +1631,7 @@ _STACKS: dict[str, ScaffoldStack] = {
         development_profile=_FASTAPI_REACT_NAME,
         store_brief_lines=_store_brief_lines_fastapi_react,
         client_surface_lines=_client_surface_lines_fastapi_react,
+        client_surface=_CLIENT_SURFACE_FASTAPI_REACT,
     ),
     # #822 stack #2, a module from the start; stack #1 joined it in #1131 (the reference
     # contract's frozen digests are the proof that the move changed no template byte).
@@ -1723,6 +1734,18 @@ def app_invocation_for(stack: str) -> AppInvocation | None:
     """
     known = _STACKS.get(stack)
     return known.app_invocation if known else None
+
+
+def client_surface_for(stack: str) -> ClientSurface | None:
+    """The frozen API client a suite on ``stack`` mocks beneath, or ``None`` (#668).
+
+    Companion to :func:`app_invocation_for`, for the same reason: what a suite's mock of
+    the client must honour has one answer, and it is the stack's. ``None`` for an unknown
+    or undeclaring stack — the planner then binds no ``client_mock_surface`` row, and a
+    hand-authored row without the declaration skips rather than judging.
+    """
+    known = _STACKS.get(stack)
+    return known.client_surface if known else None
 
 
 def criteria_pack_for(stack: str) -> str:

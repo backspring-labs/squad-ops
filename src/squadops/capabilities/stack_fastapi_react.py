@@ -27,6 +27,12 @@ import re
 from typing import TYPE_CHECKING
 
 from squadops.capabilities.app_invocation import NETWORK_SEAM_FETCH_STUB, AppInvocation
+from squadops.capabilities.client_surface import (
+    KIND_CLASS,
+    KIND_FUNCTION,
+    ClientExport,
+    ClientSurface,
+)
 from squadops.capabilities.success_status import derived_success_status
 from squadops.capabilities.type_tokens import base_type_name
 
@@ -526,31 +532,69 @@ _CLIENT_EXPORT_RE = re.compile(
     r"|class\s+(?P<cls>\w+))",
     re.M,
 )
+_CLIENT_CONSTRUCTOR_RE = re.compile(r"constructor\s*\(([^)]*)\)")
+#: The prefix the client puts in front of every path — read off its ``fetch`` call.
+_CLIENT_PREFIX_RE = re.compile(r"fetch\(`(?P<prefix>[^`$]*)\$\{path\}`")
+#: The envelope key the client unwraps a non-2xx body through.
+_CLIENT_ENVELOPE_RE = re.compile(r"body\s*&&\s*body\.(?P<key>\w+)")
+_CLIENT_PATH = "frontend/src/api.js"
+
+
+def _client_surface_from_template(source: str) -> ClientSurface:
+    """The client's surface read off the template the stack freezes (#668), so the
+    declaration the suite-side check judges by cannot drift from the bytes."""
+    exports: list[ClientExport] = []
+    for m in _CLIENT_EXPORT_RE.finditer(source):
+        if m.group("func"):
+            params = tuple(p.strip() for p in m.group("params").split(",") if p.strip())
+            exports.append(ClientExport(m.group("func"), KIND_FUNCTION, params))
+        else:
+            ctor = _CLIENT_CONSTRUCTOR_RE.search(source, m.end())
+            params = tuple(p.strip() for p in ctor.group(1).split(",") if p.strip()) if ctor else ()
+            exports.append(ClientExport(m.group("cls"), KIND_CLASS, params))
+    prefix = _CLIENT_PREFIX_RE.search(source)
+    envelope = _CLIENT_ENVELOPE_RE.search(source)
+    return ClientSurface(
+        path=_CLIENT_PATH,
+        # This stack's suites live one directory below ``frontend/src/`` (its qa namespace),
+        # so the client is ``../api``; ``./api`` covers a suite beside it. ``.js`` optional.
+        module_specifier=r"(?:\.\./|\./)+api(?:\.js)?",
+        exports=tuple(exports),
+        path_prefix=prefix.group("prefix") if prefix else "",
+        error_envelope_key=envelope.group("key") if envelope else "",
+        default_export=None,
+    )
+
+
+#: The frozen ``frontend/src/api.js`` client's call surface, as the registry carries it
+#: and the ``client_mock_surface`` check judges by (#668).
+CLIENT_SURFACE = _client_surface_from_template(_API_JS)
 
 
 def client_surface_lines(manifest: InterfaceManifest) -> list[str]:
     """The frozen ``frontend/src/api.js`` client's call surface, one line per export (#668).
 
     The suite author mocks or stubs beneath this client and never sees it rendered — the
-    fay-14 mismatch class: a mock shaped for a client the author imagined. Derived from
-    the template the stack freezes, so the lines cannot drift from the bytes; the prose
-    around them lives in the appendix asset. The manifest is unused today (the client is
-    manifest-independent) and taken for the seam's signature.
+    fay-14 mismatch class: a mock shaped for a client the author imagined. Rendered from
+    ``CLIENT_SURFACE``, itself read off the template the stack freezes, so the lines
+    cannot drift from the bytes; the prose around them lives in the appendix asset. The
+    manifest is unused today (the client is manifest-independent) and taken for the
+    seam's signature.
     """
     del manifest
+    surface = CLIENT_SURFACE
     lines: list[str] = []
-    for m in _CLIENT_EXPORT_RE.finditer(_API_JS):
-        if m.group("func"):
+    for export in surface.exports:
+        if export.kind == KIND_FUNCTION:
             lines.append(
-                f"`{m.group('func')}({m.group('params').strip()})` exported from "
-                "`frontend/src/api.js` — prefixes `/api`, sends JSON headers, returns the "
-                "parsed JSON body (`null` on 204) and throws `ApiError` on a non-2xx response"
+                f"`{export.signature}` exported from `{surface.path}` — prefixes "
+                f"`{surface.path_prefix}`, sends JSON headers, returns the parsed JSON body "
+                "(`null` on 204) and throws `ApiError` on a non-2xx response"
             )
         else:
             lines.append(
-                f"`{m.group('cls')}(code, message, status)` exported from "
-                "`frontend/src/api.js` — the error a non-2xx "
-                '`{"error": {code, message}}` envelope becomes'
+                f"`{export.signature}` exported from `{surface.path}` — the error a non-2xx "
+                f'`{{"{surface.error_envelope_key}": {{code, message}}}}` envelope becomes'
             )
     return lines
 
@@ -744,7 +788,7 @@ def expand_fullstack_fastapi_react(manifest: InterfaceManifest) -> list[dict[str
     files.append({"name": "frontend/src/test-setup.js", "content": _TEST_SETUP_JS})
     files.append({"name": "frontend/src/__tests__/harness.test.jsx", "content": _HARNESS_TEST_JSX})
     files.append({"name": "frontend/src/main.jsx", "content": _MAIN_JSX})
-    files.append({"name": "frontend/src/api.js", "content": _API_JS})
+    files.append({"name": _CLIENT_PATH, "content": _API_JS})
     files.append({"name": "frontend/src/App.jsx", "content": _app_jsx(manifest)})
     for route in manifest.frontend.routes:
         files.append({"name": f"frontend/src/views/{route.view}.jsx", "content": _view_stub(route)})

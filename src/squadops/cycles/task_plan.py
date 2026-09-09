@@ -38,10 +38,12 @@ from squadops.capabilities.scaffold import (
 )
 from squadops.cycles.acceptance_check_spec import (
     CHECK_ASSERTION_KINDS,
+    CHECK_CLIENT_MOCK_SURFACE,
     CHECK_CONTRACT_ASSERTIONS,
     CHECK_DOM_ANCHOR_QUERIES,
     CHECK_FILL_SLOT_SIGNATURE,
     CHECK_HARNESS_BOUNDARY,
+    CHECK_SPECS,
     derived_check_names,
     is_check_applicable,
 )
@@ -820,6 +822,38 @@ def _dom_anchor_criteria(
     ]
 
 
+def _client_mock_surface_criteria(
+    task_type: str, plan_task: Any, contract: VerificationContract | None
+) -> list[TypedCheck]:
+    """#668, the data-fetch half: stack-owned ``client_mock_surface`` rows for a bound qa.test
+    task — one per expected frontend suite file in the stack's QA namespace, params carrying
+    the stack's declared client surface (``ClientSurface.as_params``) as self-contained
+    data, at the spec's REPORTING-ONLY severity. fay-14's mock was shaped for a client the
+    author imagined; the appendix that shows the real one is guidance, this is the record.
+    Empty in author mode, non-qa tasks, and on a stack that declares no client (Next.js
+    suites call route handlers directly) — never a row that can only skip."""
+    if not authors_qa_suite(task_type) or contract is None:
+        return []
+    from squadops.capabilities.scaffold import client_surface_for
+
+    stack = contract.skeleton.expander
+    surface = client_surface_for(stack)
+    if surface is None:
+        return []
+    severity = CHECK_SPECS[CHECK_CLIENT_MOCK_SURFACE].blocking_default
+    return [
+        TypedCheck(
+            check=CHECK_CLIENT_MOCK_SURFACE,
+            params={"file": art, "client": surface.as_params()},
+            severity=severity,
+            id=f"client-mock:{art}",
+        )
+        for art in plan_task.expected_artifacts
+        if is_check_applicable(CHECK_CLIENT_MOCK_SURFACE, art)
+        and is_qa_test_path_for_stack(art, stack)
+    ]
+
+
 def _harness_boundary_criteria(
     task_type: str, plan_task: Any, contract: VerificationContract | None
 ) -> list[TypedCheck]:
@@ -1140,6 +1174,9 @@ def generate_task_plan(
             acceptance.extend(
                 _dom_anchor_criteria(task_type, plan_task, contract, interface_manifest)
             )
+            # #668, the data-fetch half: the stack's frozen client surface, reported on the
+            # suite's own mock of it — advisory this line, banked beside the verdict.
+            acceptance.extend(_client_mock_surface_criteria(task_type, plan_task, contract))
             # #730 D1 / #504: scaffold-owned signature enforcement on .py fill
             # slots — the pf-40 report, promoted to blocking.
             acceptance.extend(
