@@ -1,6 +1,6 @@
 # 1.7.5 — plan
 
-**Revision 4, 2026-09-09.** Written the morning the 1.7.4 line closed, from the 1.7.4 plan (rev
+**Revision 5, 2026-09-09.** Written the morning the 1.7.4 line closed, from the 1.7.4 plan (rev
 4 §6, §6a, §8), the 1.7.4 record (`docs/plans/1-7-4-verification-set-record.md` §2–§9), the
 1.7.4 pre-registration §3a and §9, the 1.7.3 plan §6 and §8, the 1.7.0 plan §2.5, §3.1 (as
 amended) and §6.2, the ROADMAP's 1.7 identity, and every open issue in the tracker on the
@@ -131,7 +131,9 @@ is missing named:
 **Two design artifacts, two independent decisions, reviewed by the owner before the first
 closure PR.** They may share one review PR; they are not one document, because the reason
 `correction_runner.py` has the shape it will have must never require reading a
-composition-root policy.
+composition-root policy. **Once reviewed, they are the acceptance source: the plan owns
+placement and sequencing; the design artifact owns the architecture and what "done" means.**
+Where a row below and an artifact disagree, the artifact is right and this plan is revised.
 
 *The composition-root standard* — under `docs/architecture/`, in the shape `api-route-lanes.md`
 set for #218: a document plus one enforcing test. It must answer, with a decision for each:
@@ -170,9 +172,10 @@ set for #218: a document plus one enforcing test. It must answer, with a decisio
 2. the destination modules and the order;
 3. the forbidden change: **no behavioural change rides an extraction PR** — a defect found
    while extracting is filed and fixed in its own PR, before or after, never inside;
-4. the proof: byte-identical on the context-assembly, correction-context and plan-context
-   goldens (`tests/unit/cycles/test_*_golden.py`) and on the `tests/fixtures/roll_replays`
-   corpus before and after every PR; then the five diagnostics on the pinned deploy (§4);
+4. the proof: canonical-JSON-identical on the context-assembly, correction-context and
+   plan-context goldens (`tests/unit/cycles/test_*_golden.py`) and the executor and runner
+   unit suites unchanged before and after every PR; then the five diagnostics on the pinned
+   deploy (§4), with reachability and assertion coverage told apart per block;
 5. the stop rule, and which part of the map is the close criterion's core (§3.5).
 
 **#1149's harvest, first.** The rationale in the paths the map moves is harvested into
@@ -238,7 +241,9 @@ here and its counted reading on deploy B.
 ### 3.3 Start-up truth — Composition Roots
 
 After the composition-root standard is reviewed (§3.1). One PR each, in this order, because
-#637's import job needs #286's bare import.
+#637's import job needs #286's bare import. **Acceptance detail — what closes each row — is
+the standard's (`docs/architecture/composition-roots.md` §6, including #301's four bindings);
+this table places and sequences.**
 
 | step | item | what lands | how CI proves it |
 |---|---|---|---|
@@ -260,11 +265,12 @@ violations of the 1.7 identity; a 1.7 that closes without it has a false thesis.
 ### 3.5 Recovery structural integrity — the extraction
 
 After the recovery extraction map is reviewed and #1149's harvest has landed (§3.1). One PR
-per step of the map.
+per step of the map. **Scope, steps, the core/tail split and the proof are the map's
+(`docs/plans/1-7-5-recovery-extraction-map.md`); this table places and sequences.**
 
 | item | what lands | how it is proven |
 |---|---|---|
-| **#1152 with #1443** | the extraction in the map's order: the executor's recovery path (`_try_accept_patch`, `_handle_task_outcome`), the correction protocol by step, `_execute_sequential` last; **one extraction class, one proof**; each PR cites the #1149 entries it moved | byte-identical on the three goldens and the replay corpus before and after every PR; the five diagnostics on the pinned deploy reaching their seams (§4) — the seams the moved code owns |
+| **#1152 with #1443** | the extraction in the map's order: the executor's recovery path (`_try_accept_patch`, `_handle_task_outcome`), the correction protocol by step, `_execute_sequential` last; **one extraction class, one proof**; each PR cites the #1149 entries it moved | canonical-JSON-identical on the three goldens and the nine unit suites unchanged before and after every PR; the five diagnostics on the pinned deploy reaching — and where the map §3.4 says so, asserting — their seams (§4). **The replay corpus is not this proof:** it is replayed through checks, not the executor (map §3.3); rev 3 listed it here in error |
 
 **The core and the tail, for the close criterion.** The map's **recovery-path portion** — the
 executor's accept-patch and outcome handling, and the correction protocol by step — is the
@@ -676,6 +682,12 @@ Named here so they are not the next §6a. None blocks the plan; each has a home 
 
 ## 10. Revision history
 
+- **Rev 5 (2026-09-09, with the design artifacts' PR)** — the two design artifacts are the
+  acceptance source and the plan places and sequences (§3.1, §3.3, §3.5); the extraction's
+  proof corrected — the replay corpus is replayed through checks, not the executor, so it
+  leaves §3.5's proof column; "byte-identical" on the goldens becomes canonical-JSON-identical,
+  which is what the harnesses compare; #301's acceptance points to the standard's four
+  bindings. No change to placement, sequencing, the set or the gates.
 - **Rev 4 (2026-09-09, after the merge of rev 3)** — on the owner's ruling that a 1.8
   feature's design review is the 1.8 plan's step, not this line's: the Scoped Code Revision
   review removed from §7 (rev 3's step 2; the later steps renumbered and every cross-reference
