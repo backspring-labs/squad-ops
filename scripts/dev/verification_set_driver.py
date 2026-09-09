@@ -79,6 +79,339 @@ RUNTIME_API_CONTAINER = "squadops-runtime-api"
 FAULT_DECLARATION_KEY = "fault_injection"
 
 
+# ---------------------------------------------------------------------------
+# The evidence vocabulary — three states for every registered record field (#1445)
+# ---------------------------------------------------------------------------
+#
+# A record field used to be a value or an absence, and the 1.7.4 record §9 says why that is
+# not enough: a readout that cannot tell "did not happen" from "could not be asked" is not
+# evidence. Three findings on that line were the same defect in different clothes — a probe
+# that could not run recorded like one that answered (#1425), a field labelled in units it
+# did not count (#1431), and a handoff readout that read empty on every roll because its
+# producer is structurally silent on a clean roll. So every registered field carries one of:
+#
+#   observed(value)    the condition was asked and answered;
+#   asked_none         the condition was asked and was absent or zero;
+#   unaskable(reason)  the producer could not ask it on this roll, with the structural reason.
+#
+# ``EVIDENCE_FIELDS`` is the schema property the pre-registration cites: per field, the
+# conditions under which its producer is silent, each mapped to its reason. ``render``
+# prints the three states differently and never folds ``unaskable`` into a zero or a count.
+
+#: The three states, as the record spells them.
+OBSERVED = "observed"
+ASKED_NONE = "asked_none"
+UNASKABLE = "unaskable"
+EVIDENCE_STATES = (OBSERVED, ASKED_NONE, UNASKABLE)
+
+
+@dataclass(frozen=True)
+class Evidence:
+    """One record field in the three-state vocabulary.
+
+    ``declared`` is False when the state was INFERRED off a bare pre-#1445 value (a stored
+    1.7.4 record, or a test fixture): a non-empty bare value was necessarily asked and
+    answered, but an empty one cannot say whether it was asked — ``render`` names the
+    inference rather than letting it read as a declaration.
+    """
+
+    state: str
+    value: Any = None
+    reason: str | None = None
+    declared: bool = True
+
+    @classmethod
+    def observed(cls, value: Any) -> Evidence:
+        return cls(OBSERVED, value=value)
+
+    @classmethod
+    def asked_none(cls, value: Any = None) -> Evidence:
+        """``value`` is the field's own empty shape (``[]``, ``{}``, ``0``) so a consumer
+        that needs a typed empty gets one."""
+        return cls(ASKED_NONE, value=value)
+
+    @classmethod
+    def unaskable(cls, reason: str) -> Evidence:
+        return cls(UNASKABLE, reason=reason)
+
+    @classmethod
+    def of(cls, value: Any, unaskable_reason: str | None = None) -> Evidence:
+        """The state a producer's output is in: ``unaskable`` when a structural condition
+        fired, else ``observed`` / ``asked_none`` by whether the value answers anything."""
+        if unaskable_reason:
+            return cls.unaskable(unaskable_reason)
+        return cls.asked_none(value) if is_none_answer(value) else cls.observed(value)
+
+    def record(self) -> dict:
+        """The fixed dict shape the JSON record carries."""
+        if self.state == UNASKABLE:
+            return {"state": UNASKABLE, "reason": self.reason}
+        return {"state": self.state, "value": self.value}
+
+    @classmethod
+    def read(cls, obj: Any) -> Evidence:
+        """A record field back into the vocabulary — legacy-tolerant (see ``declared``)."""
+        if (
+            isinstance(obj, dict)
+            and obj.get("state") in EVIDENCE_STATES
+            and set(obj) <= {"state", "value", "reason"}
+        ):
+            return cls(obj["state"], value=obj.get("value"), reason=obj.get("reason"))
+        return cls(
+            ASKED_NONE if is_none_answer(obj) else OBSERVED,
+            value=obj,
+            declared=False,
+        )
+
+    def value_or(self, default: Any) -> Any:
+        """The answer, or ``default`` when there is none to read (unaskable, or a legacy
+        field that was missing)."""
+        if self.state == UNASKABLE or self.value is None:
+            return default
+        return self.value
+
+
+def is_none_answer(value: Any) -> bool:
+    """Whether a produced value answers nothing: empty, zero, or a mapping whose every
+    value answers nothing (``{"failed": {}, "skipped": {}}``, ``{"overruns": 0, ...}``)."""
+    if value is None or value is False:
+        return True
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return value == 0
+    if isinstance(value, (str, list, tuple, set)):
+        return len(value) == 0
+    if isinstance(value, dict):
+        return all(is_none_answer(v) for v in value.values())
+    return False
+
+
+#: Every structural reason a producer can be silent, keyed by the condition name a field
+#: registers. A condition may carry a ``:<detail>`` suffix (``check_never_evaluated:foo``);
+#: the reason is looked up on the prefix and formatted with the detail.
+UNASKABLE_REASONS: dict[str, str] = {
+    "no_implementation_run": "no implementation run — nothing was built to read",
+    "runtime_window_empty": (
+        "the runtime-api log window read no lines at all — an instrument window defect "
+        "(1.6.4 record §4), not a quiet loop"
+    ),
+    "no_correction_round": (
+        "no correction round — the line is emitted only on the patch path, so a clean roll "
+        "cannot produce it"
+    ),
+    "no_emission_shape_lines": (
+        "the agent log windows carried no `emission shape:` line — the fact is read where the "
+        "emission happens (#1276) and the window read none"
+    ),
+    "no_emission_retry_aimed": (
+        "no emission retry was aimed in the window (#1372) — the appendix question presupposes "
+        "a retry"
+    ),
+    "no_correction_decision_stored": (
+        "no correction_decision.md stored — the claim is read from the decision itself (#968)"
+    ),
+    "no_fill_merge_artifact": "no fill_merge_evidence.json stored for the run (#999)",
+    "no_qa_scaffold_suite": (
+        "no qa-authored suite stored under __tests__/scaffold/ — the fill layer's rejections "
+        "are read from the suite text"
+    ),
+    "no_typed_check_evaluation_stored": (
+        "no typed_check_evaluation_*.json stored for the run (#114)"
+    ),
+    "check_never_evaluated": (
+        "no row of `{detail}` was evaluated on the run — a stack- or content-conditional check "
+        "that had nothing to look at"
+    ),
+    "filtered_at_typed_check_seam": (
+        "filtered at the typed-check seam — the framework's required_files row is not an "
+        "`acceptance:` row and never reaches the artifact "
+        "(handlers/cycle/validation.py:250–254, #114)"
+    ),
+    "logged_in_the_agent_container": (
+        "the line is logged in the qa agent's container (handlers/cycle/qa_test.py:1546), "
+        "never in the runtime-api window this field reads — the stored fact is "
+        "loop_texture.fill_merge_evidence[].self_eval_fills (#1445 finding)"
+    ),
+    "probe_could_not_run": (
+        "the probe could not run ({detail}) — an unasked question, not an answer (#1425)"
+    ),
+}
+
+#: The conditions common to every readout parsed off the runtime-api window's patch path.
+_PATCH_PATH = ("runtime_window_empty", "no_correction_round")
+_AGENT_WINDOW = ("no_emission_shape_lines",)
+_STORED_EVALUATIONS = ("no_implementation_run", "no_typed_check_evaluation_stored")
+
+#: THE REGISTRY: record field (dotted path) → the conditions under which its producer is
+#: structurally silent, in the order they are tested. A field with no conditions is always
+#: askable and reads ``observed`` or ``asked_none``. ``loaded_checks.*`` covers every probe
+#: the set config declares. A field in the record's evidence groups that is not registered
+#: here fails the wiring test — the registry is the schema, not a summary of it.
+EVIDENCE_FIELDS: dict[str, tuple[str, ...]] = {
+    # collect(): stored artifacts of the implementation run
+    "correction_rounds": ("no_implementation_run",),
+    "failed_emission_artifacts_banked": ("no_implementation_run",),
+    # loop_texture: the runtime-api window, patch path
+    "loop_texture.narrowed_targets": _PATCH_PATH,
+    "loop_texture.language_fallbacks": _PATCH_PATH,
+    "loop_texture.fill_targets": _PATCH_PATH,
+    "loop_texture.refused_patches": _PATCH_PATH,
+    "loop_texture.patch_verifications": _PATCH_PATH,
+    "loop_texture.applied_patches": _PATCH_PATH,
+    "loop_texture.retests": _PATCH_PATH,
+    "loop_texture.plan_defect_terminations": _PATCH_PATH,
+    "loop_texture.plan_defect_after_zero_applied": _PATCH_PATH,
+    "loop_texture.refused_rounds_not_counted": _PATCH_PATH,
+    "loop_texture.required_files_declared": _PATCH_PATH,
+    "loop_texture.framework_rows_rederived": _PATCH_PATH,
+    "loop_texture.analyzer_claims_dropped": _PATCH_PATH,
+    "loop_texture.refunded_rounds": _PATCH_PATH,
+    "loop_texture.evidence_superseded": _PATCH_PATH,
+    "loop_texture.qa_owned_routed": _PATCH_PATH,
+    "loop_texture.absent_anchor_routed": _PATCH_PATH,
+    "loop_texture.repair_brief_case_counts": _PATCH_PATH,
+    "loop_texture.decided_by_agent": _PATCH_PATH,
+    "loop_texture.unverifiable_by_reason": _PATCH_PATH,
+    "loop_texture.no_execution_by_skip_reason": _PATCH_PATH,
+    "loop_texture.no_execution_on_passed_verifications": _PATCH_PATH,
+    # loop_texture: the runtime-api window, emission path (any roll)
+    "loop_texture.emission_retries": ("runtime_window_empty",),
+    # A producer that has never been able to answer: the qa handler logs this line in its
+    # own container and the field reads the runtime-api's window. Found by this migration.
+    "loop_texture.self_eval_fill_merges": ("logged_in_the_agent_container",),
+    # loop_texture: the agents' windows
+    "loop_texture.emissions_logged": (),
+    "loop_texture.contentless_emissions": _AGENT_WINDOW,
+    "loop_texture.contentless_by_handler": _AGENT_WINDOW,
+    "loop_texture.empty_repair_emissions": _AGENT_WINDOW,
+    "loop_texture.emission_tokens_by_handler": _AGENT_WINDOW,
+    "loop_texture.placeholder_strips": _AGENT_WINDOW,
+    "loop_texture.retried_with_fact": (*_AGENT_WINDOW, "no_emission_retry_aimed"),
+    "loop_texture.retried_blind": (*_AGENT_WINDOW, "no_emission_retry_aimed"),
+    # loop_texture: the Prefect server's window (its filter keeps only overrun lines, so an
+    # empty window is a quiet one)
+    "loop_texture.prefect_loop_overruns": (),
+    # loop_texture: the artifact vault
+    "loop_texture.decision_inherited_claims": (
+        "no_implementation_run",
+        "no_correction_decision_stored",
+    ),
+    "loop_texture.fill_rejections": ("no_implementation_run", "no_qa_scaffold_suite"),
+    "loop_texture.fill_merge_evidence": ("no_implementation_run", "no_fill_merge_artifact"),
+    "loop_texture.stored_under_placeholder": ("no_implementation_run",),
+    # typed_checks: the stored evaluation artifacts
+    "typed_checks.by_check": _STORED_EVALUATIONS,
+    "typed_checks.checks_by_environment": _STORED_EVALUATIONS,
+    "typed_checks.stale_evaluations": _STORED_EVALUATIONS,
+    "typed_checks.assertion_kinds_match_rows": (
+        *_STORED_EVALUATIONS,
+        "check_never_evaluated:assertion_kinds_match",
+    ),
+    "typed_checks.additive_containment_rows": (
+        *_STORED_EVALUATIONS,
+        "check_never_evaluated:additive_containment",
+    ),
+    "typed_checks.dom_anchor_queries_rows": (
+        *_STORED_EVALUATIONS,
+        "check_never_evaluated:dom_anchor_queries",
+    ),
+    "typed_checks.container_packaging_rows": (
+        *_STORED_EVALUATIONS,
+        "check_never_evaluated:container_packaging",
+    ),
+    "typed_checks.undefined_names_rows": (
+        *_STORED_EVALUATIONS,
+        "check_never_evaluated:undefined_names",
+    ),
+    # H1's first source: the framework row in the typed-check artifact, which the seam
+    # filters out by design — on every roll, not only clean ones.
+    "typed_checks.required_files_rows": ("no_implementation_run", "filtered_at_typed_check_seam"),
+    # deploy identity: one entry per probe the set config declares
+    "loaded_checks.*": ("probe_could_not_run",),
+}
+
+#: The record keys whose members are evidence fields — the wiring test asserts every
+#: member of these is registered and every registered field of these is produced.
+EVIDENCE_GROUPS = ("loop_texture", "typed_checks", "loaded_checks")
+#: Record metadata that lives beside evidence fields without being one.
+_NOT_EVIDENCE = {"loop_texture.log_window"}
+
+
+def unaskable_reason(condition: str) -> str:
+    name, _, detail = condition.partition(":")
+    return UNASKABLE_REASONS[name].format(detail=detail)
+
+
+def registered_conditions(path: str) -> tuple[str, ...]:
+    """The conditions registered for ``path``, honouring the ``group.*`` wildcard."""
+    if path in EVIDENCE_FIELDS:
+        return EVIDENCE_FIELDS[path]
+    group, _, _ = path.rpartition(".")
+    return EVIDENCE_FIELDS.get(f"{group}.*", ())
+
+
+def evidence_for(path: str, value: Any, context: Mapping[str, Any]) -> Evidence:
+    """The state of one registered field from its produced value and the roll's context.
+
+    ``context`` maps a condition name to whether it holds; a condition the context does
+    not carry (``None``) is one the caller could not derive — the field then reads
+    ``observed``/``asked_none`` off its value with ``declared=False``, so a re-render of a
+    stored record says which states it inferred rather than declaring them.
+    """
+    underivable = False
+    for condition in registered_conditions(path):
+        holds = context.get(condition)
+        if holds:
+            return Evidence.unaskable(unaskable_reason(condition))
+        if holds is None:
+            underivable = True
+    ev = Evidence.of(value)
+    return Evidence(ev.state, value=ev.value, declared=not underivable)
+
+
+def with_states(group: str, fields: dict, context: Mapping[str, Any]) -> dict:
+    """Every registered field of ``group`` in ``fields`` rewritten into the record shape;
+    metadata (``_NOT_EVIDENCE``) passes through untouched."""
+    out: dict = {}
+    for key, value in fields.items():
+        path = f"{group}.{key}"
+        if path in _NOT_EVIDENCE:
+            out[key] = value
+            continue
+        out[key] = evidence_for(path, value, context).record()
+    return out
+
+
+def evidence_at(rec: Mapping[str, Any], path: str) -> Evidence | None:
+    """The field at a dotted path, in the vocabulary; ``None`` when the record lacks it."""
+    node: Any = rec
+    for part in path.split("."):
+        if not isinstance(node, Mapping) or part not in node:
+            return None
+        node = node[part]
+    return Evidence.read(node)
+
+
+def value_at(rec: Mapping[str, Any], path: str, default: Any = None) -> Any:
+    """The answer at a dotted path, or ``default`` when there is none to read."""
+    ev = evidence_at(rec, path)
+    return default if ev is None else ev.value_or(default)
+
+
+def registry_table() -> str:
+    """``EVIDENCE_FIELDS`` as the markdown table a pre-registration pastes."""
+    lines = [
+        "| field | unaskable when | reads |",
+        "|---|---|---|",
+    ]
+    for path, conditions in EVIDENCE_FIELDS.items():
+        if not conditions:
+            lines.append(f"| `{path}` | never — always askable | observed / asked_none |")
+            continue
+        for condition in conditions:
+            lines.append(f"| `{path}` | `{condition}` | {unaskable_reason(condition)} |")
+    return "\n".join(lines)
+
+
 def declared_fault_names(overrides: Mapping[str, Any] | None) -> tuple[str, ...]:
     """The faults a set config declares — the same normalisation the framework applies.
 
@@ -375,18 +708,40 @@ def deploy_identity(cfg: SetConfig) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 
-def loaded_check_problems(identity: dict[str, str]) -> list[str]:
-    """Preflight problems for the probes in a deploy identity that could not RUN.
+def loaded_check_evidence(identity: Mapping[str, str]) -> dict[str, dict]:
+    """The deploy identity's probes in the vocabulary, keyed by probe name (#1425, #1445).
 
-    A probe that errored is an unasked question, not a failed one, and in the recorded
-    identity the two are indistinguishable — both are a string beside the service.
+    In the raw identity an errored probe and an answered one are indistinguishable — both
+    are a string beside the service. Here a probe that could not run is ``unaskable`` with
+    the error as its reason, an empty answer with exit 0 is ``asked_none``, and anything
+    else is ``observed``.
     """
+    out: dict[str, dict] = {}
+    for key, answer in sorted(identity.items()):
+        if not key.endswith(":loaded"):
+            continue
+        name = key.removesuffix(":loaded")
+        if answer.startswith("ERROR:"):
+            reason = unaskable_reason(
+                f"probe_could_not_run:{answer.removeprefix('ERROR:').strip()}"
+            )
+            out[name] = Evidence.unaskable(reason).record()
+        else:
+            out[name] = Evidence.of(answer).record()
+    return out
+
+
+def loaded_check_problems(identity: dict[str, str]) -> list[str]:
+    """Preflight problems for the probes in a deploy identity that could not RUN — the
+    ``unaskable`` probes of ``loaded_check_evidence``."""
     unrun = sorted(
-        k for k, v in identity.items() if k.endswith(":loaded") and v.startswith("ERROR:")
+        name
+        for name, ev in loaded_check_evidence(identity).items()
+        if Evidence.read(ev).state == UNASKABLE
     )
     if not unrun:
         return []
-    detail = "; ".join(f"{k} -> {identity[k]}" for k in unrun)
+    detail = "; ".join(f"{k}:loaded -> {identity[f'{k}:loaded']}" for k in unrun)
     return [
         f"§7 LOADED CHECK DID NOT RUN ({len(unrun)}): {detail} — the surface it asks about "
         "is unverified on this deploy"
@@ -830,6 +1185,7 @@ def collect(cfg: SetConfig, cycle_id: str) -> dict:
     snapshot = psql(
         f"select coalesce(squad_profile_snapshot_ref,'') from cycle_registry where cycle_id='{cycle_id}';"
     )
+    context = {"no_implementation_run": impl is None}
     return {
         "cycle_id": cycle_id,
         "squad_profile_snapshot_ref": snapshot,
@@ -839,8 +1195,13 @@ def collect(cfg: SetConfig, cycle_id: str) -> dict:
         ],
         "framing_runs": len(framings),
         "framing_rerolls": max(0, len(framings) - 1),
-        "correction_rounds": corrections,
-        "failed_emission_artifacts_banked": failed_emission_artifacts,
+        # #1445: both are read from the implementation run's stored artifacts, so without
+        # one they are unaskable — a record that read "0 correction rounds" for a cycle that
+        # never built anything was reporting an absence as a fact.
+        "correction_rounds": evidence_for("correction_rounds", corrections, context).record(),
+        "failed_emission_artifacts_banked": evidence_for(
+            "failed_emission_artifacts_banked", failed_emission_artifacts, context
+        ).record(),
         "verdict": summary.get("verdict"),
         "failed_checks": summary.get("failed", []),
         "criteria_total": len(summary.get("criteria_total", []) or []),
@@ -1135,7 +1496,10 @@ def ledger_checks(rec: dict) -> dict:
 
 
 def runtime_log_window(since: str, until: str | None = None) -> list[str]:
-    lines = docker_logs(RUNTIME_API_CONTAINER, since, until)
+    return _runtime_lines_of_interest(docker_logs(RUNTIME_API_CONTAINER, since, until))
+
+
+def _runtime_lines_of_interest(lines: list[str]) -> list[str]:
     keys = (
         "correction_repair_target",
         "correction_repair_locus",
@@ -1335,10 +1699,36 @@ def _stored_artifact_names(cfg: SetConfig, cycle_id: str, run_id: str) -> list[s
     return names
 
 
+#: The runtime-api lines that show the correction path was entered, whatever the stored
+#: decision count says — a refunded round, for one, is re-taken rather than spent.
+_CORRECTION_MARKERS = (
+    "correction_repair",
+    "correction attempt",
+    "correction_terminated",
+    "patch_verification task=",
+    "patch_retest task=",
+)
+
+
+def correction_entered(logs: Sequence[str], correction_rounds: int | None) -> bool:
+    """Whether this roll took the patch path at all — the condition every patch-path
+    readout is unaskable without (#1445)."""
+    if (correction_rounds or 0) >= 1:
+        return True
+    return any(marker in line for line in logs for marker in _CORRECTION_MARKERS)
+
+
 def loop_texture(
-    cfg: SetConfig, cycle_id: str, impl_run: str | None, since: str, until: str | None = None
+    cfg: SetConfig,
+    cycle_id: str,
+    impl_run: str | None,
+    since: str,
+    until: str | None = None,
+    *,
+    correction_rounds: int | None = None,
 ) -> dict:
-    logs = runtime_log_window(since, until)
+    raw = docker_logs(RUNTIME_API_CONTAINER, since, until)
+    logs = _runtime_lines_of_interest(raw)
     out = texture_from_logs(logs)
     agent_lines = agent_log_window(since, until)
     out.update(texture_from_emission_shapes(agent_lines))
@@ -1351,7 +1741,8 @@ def loop_texture(
     out["decision_inherited_claims"] = (
         _decision_inherited_claims(cfg, cycle_id, impl_run) if impl_run else []
     )
-    out["fill_rejections"] = _fill_rejections(cfg, cycle_id, impl_run) if impl_run else []
+    rejections = _fill_rejections(cfg, cycle_id, impl_run) if impl_run else None
+    out["fill_rejections"] = rejections or []
     # #999: the qa task's fill-merge evidence, persisted as an artifact and read from it.
     out["fill_merge_evidence"] = fill_merge_evidence(cfg, cycle_id, impl_run) if impl_run else []
     # #1311: L8 as two claims. L8a — the model emitted under the placeholder and the
@@ -1363,7 +1754,19 @@ def loop_texture(
         if impl_run
         else []
     )
-    return out
+    # #1445: every field into the vocabulary, off the conditions this roll can state.
+    context = {
+        "no_implementation_run": impl_run is None,
+        "runtime_window_empty": len(raw) == 0,
+        "no_correction_round": not correction_entered(logs, correction_rounds),
+        "no_emission_shape_lines": out["emissions_logged"] == 0,
+        "no_emission_retry_aimed": len(out["emission_retries"]) == 0,
+        "no_correction_decision_stored": (correction_rounds or 0) == 0,
+        "no_fill_merge_artifact": len(out["fill_merge_evidence"]) == 0,
+        "no_qa_scaffold_suite": rejections is None,
+        "logged_in_the_agent_container": True,
+    }
+    return with_states("loop_texture", out, context)
 
 
 #: What each fault's diagnostic must show to have REACHED the seam its prediction names —
@@ -1372,37 +1775,44 @@ def loop_texture(
 #: the emission retry recovered, and correction was never entered — and the record would
 #: have read as L2 exercised. Keyed by the fault name (the declaration is the boundary
 #: between the framework and this instrument; the test holds the two lists together).
-SEAM_READOUTS: dict[str, tuple[str, Callable[[dict], tuple[bool, Any]]]] = {
+#: Each entry: the seam, the record fields the readout reads (so ``seam_readouts`` can say
+#: which of them were unaskable on the roll — a NO decided over an unaskable field is not a
+#: NO, #1445), and the reading.
+SEAM_READOUTS: dict[str, tuple[str, tuple[str, ...], Callable[[dict], tuple[bool, Any]]]] = {
     "qa_suite_absent": (
         "L2: the qa task entered correction and its repair was retested",
+        ("correction_rounds", "loop_texture.retests"),
         lambda rec: (
-            (rec.get("correction_rounds") or 0) >= 1
-            and any("qa.test" in r for r in (rec.get("loop_texture") or {}).get("retests", [])),
+            (value_at(rec, "correction_rounds", 0)) >= 1
+            and any("qa.test" in r for r in value_at(rec, "loop_texture.retests", [])),
             {
-                "correction_rounds": rec.get("correction_rounds"),
-                "retests": (rec.get("loop_texture") or {}).get("retests", []),
+                "correction_rounds": value_at(rec, "correction_rounds", 0),
+                "retests": value_at(rec, "loop_texture.retests", []),
             },
         ),
     ),
     "qa_suite_at_path_prefix": (
         "L8b: the extractor repaired a fence emitted under the placeholder",
+        ("loop_texture.placeholder_strips",),
         lambda rec: (
-            len((rec.get("loop_texture") or {}).get("placeholder_strips", [])) >= 1,
-            (rec.get("loop_texture") or {}).get("placeholder_strips", []),
+            len(value_at(rec, "loop_texture.placeholder_strips", [])) >= 1,
+            value_at(rec, "loop_texture.placeholder_strips", []),
         ),
     ),
     "qa_suite_own_frame_failure": (
         "L7: the own-frame failure routed to the qa repair",
+        ("loop_texture.qa_owned_routed",),
         lambda rec: (
-            len((rec.get("loop_texture") or {}).get("qa_owned_routed", [])) >= 1,
-            (rec.get("loop_texture") or {}).get("qa_owned_routed", []),
+            len(value_at(rec, "loop_texture.qa_owned_routed", [])) >= 1,
+            value_at(rec, "loop_texture.qa_owned_routed", []),
         ),
     ),
     "repair_prose_only": (
         "L4: the prose-only repair was refunded rather than verified",
+        ("loop_texture.refunded_rounds",),
         lambda rec: (
-            len((rec.get("loop_texture") or {}).get("refunded_rounds", [])) >= 1,
-            (rec.get("loop_texture") or {}).get("refunded_rounds", []),
+            len(value_at(rec, "loop_texture.refunded_rounds", [])) >= 1,
+            value_at(rec, "loop_texture.refunded_rounds", []),
         ),
     ),
     # 1.7.4 plan §3.1: the contentless-builder sequence. YES = the contentless attempt
@@ -1413,27 +1823,33 @@ SEAM_READOUTS: dict[str, tuple[str, Callable[[dict], tuple[bool, Any]]]] = {
     "builder_emission_contentless": (
         "F1/R1: the contentless builder attempt entered correction and the builder's repair "
         "was verified",
+        (
+            "correction_rounds",
+            "loop_texture.patch_verifications",
+            "typed_checks.required_files_rows",
+            "loop_texture.framework_rows_rederived",
+            "loop_texture.emission_retries",
+            "loop_texture.retried_with_fact",
+        ),
         lambda rec: (
-            (rec.get("correction_rounds") or 0) >= 1
+            (value_at(rec, "correction_rounds", 0)) >= 1
             and any(
                 "builder.assemble" in v and "status=passed" in v
-                for v in (rec.get("loop_texture") or {}).get("patch_verifications", [])
+                for v in value_at(rec, "loop_texture.patch_verifications", [])
             ),
             {
-                "correction_rounds": rec.get("correction_rounds"),
+                "correction_rounds": value_at(rec, "correction_rounds", 0),
                 "builder_patch_verifications": [
                     v
-                    for v in (rec.get("loop_texture") or {}).get("patch_verifications", [])
+                    for v in value_at(rec, "loop_texture.patch_verifications", [])
                     if "builder.assemble" in v
                 ],
-                "required_files_rows": ((rec.get("typed_checks") or {}).get("by_check") or {}).get(
-                    "required_files", {}
+                "required_files_rows": _required_files_rows(rec),
+                "framework_rows_rederived": value_at(
+                    rec, "loop_texture.framework_rows_rederived", []
                 ),
-                "framework_rows_rederived": (rec.get("loop_texture") or {}).get(
-                    "framework_rows_rederived", []
-                ),
-                "emission_retries": (rec.get("loop_texture") or {}).get("emission_retries", []),
-                "retried_with_fact": (rec.get("loop_texture") or {}).get("retried_with_fact", []),
+                "emission_retries": value_at(rec, "loop_texture.emission_retries", []),
+                "retried_with_fact": value_at(rec, "loop_texture.retried_with_fact", []),
             },
         ),
     ),
@@ -1444,20 +1860,21 @@ SEAM_READOUTS: dict[str, tuple[str, Callable[[dict], tuple[bool, Any]]]] = {
     "analyzer_false_source_claim": (
         "A1: the correction decision was reached and carried nothing of the refuted claim — "
         "not the marker, not its substance",
+        ("loop_texture.decision_inherited_claims", "loop_texture.analyzer_claims_dropped"),
         lambda rec: (
-            len((rec.get("loop_texture") or {}).get("decision_inherited_claims", [])) >= 1
+            len(value_at(rec, "loop_texture.decision_inherited_claims", [])) >= 1
             # The marker or the claim's substance decides; ``foreign_affected_task_types``
             # stays in the reading as D1's texture — the contentless-builder diagnostic's
             # decision (no analyzer fault) already carried `builder`, `assembler`, `data`,
             # `qa_handoff` there, so the field is the lead's habit, not the claim's leak.
             and not any(
                 d.get("inherited") or d.get("echoes")
-                for d in (rec.get("loop_texture") or {}).get("decision_inherited_claims", [])
+                for d in value_at(rec, "loop_texture.decision_inherited_claims", [])
             ),
             {
-                "decisions": (rec.get("loop_texture") or {}).get("decision_inherited_claims", []),
-                "refuted_by_workspace_check": (rec.get("loop_texture") or {}).get(
-                    "analyzer_claims_dropped", []
+                "decisions": value_at(rec, "loop_texture.decision_inherited_claims", []),
+                "refuted_by_workspace_check": value_at(
+                    rec, "loop_texture.analyzer_claims_dropped", []
                 ),
             },
         ),
@@ -1475,10 +1892,30 @@ def seam_readouts(faults, rec: dict) -> dict[str, dict]:
         if entry is None:
             out[name] = {"seam": None, "reached": None, "evidence": "no readout for this fault"}
             continue
-        seam, read = entry
+        seam, reads, read = entry
         reached, evidence = read(rec)
-        out[name] = {"seam": seam, "reached": bool(reached), "evidence": evidence}
+        # #1445: a field the reading could not ask is named beside the answer, so a NO
+        # decided over an unaskable field is never read as the seam not reached.
+        unaskable = {
+            path: ev.reason
+            for path in reads
+            if (ev := evidence_at(rec, path)) is not None and ev.state == UNASKABLE
+        }
+        out[name] = {
+            "seam": seam,
+            "reached": bool(reached),
+            "evidence": evidence,
+            "unaskable": unaskable,
+        }
     return out
+
+
+def _required_files_rows(rec: Mapping[str, Any]) -> Any:
+    """H1's first source. The registered field when the record carries it; a pre-#1445
+    record only has ``by_check``, where the row is absent by the seam's design."""
+    if evidence_at(rec, "typed_checks.required_files_rows") is not None:
+        return value_at(rec, "typed_checks.required_files_rows", {})
+    return (value_at(rec, "typed_checks.by_check", {}) or {}).get("required_files", {})
 
 
 def _fact(line: str, marker: str) -> str:
@@ -1879,19 +2316,28 @@ _PREDICTION_CHECKS = {
 _READOUT_STATUSES = ("failed", "skipped")
 
 
-def typed_checks_by_check(cfg: SetConfig, cycle_id: str, impl_run: str) -> dict:
+def typed_checks_by_check(cfg: SetConfig, cycle_id: str, impl_run: str | None) -> dict:
     """Per-check row counts by status over the run's stored typed-check evaluations, the
     prediction readouts derived from them, and ``checks_by_environment`` — which role's
     container each evaluation ran in (the artifact's task type names the producing role;
-    rule B puts every emission-time evaluation there, #1229)."""
+    rule B puts every emission-time evaluation there, #1229).
+
+    Every field is in the vocabulary (#1445): without an implementation run, or without a
+    stored evaluation, they are unaskable; a prediction check no row of which was
+    evaluated is unaskable for that check rather than "0 failed, 0 skipped"; and
+    ``required_files_rows`` — H1's first source — is unaskable on every roll, because the
+    seam filters the framework's row out of the artifact by design.
+    """
     by_check: dict[str, dict[str, dict[str, int]]] = {}
     by_env: dict[str, int] = {}
-    for art in artifact_dirs(cfg, cycle_id, impl_run):
+    evaluations_stored = 0
+    for art in artifact_dirs(cfg, cycle_id, impl_run) if impl_run else []:
         for path in art.glob("typed_check_evaluation_*.json"):
             try:
                 doc = json.loads(path.read_text())
             except (OSError, ValueError):
                 continue
+            evaluations_stored += 1
             task_type = str(doc.get("task_type") or "")
             role = task_type.split(".", 1)[0] if task_type else "?"
             env = f"agent:{role}"
@@ -1914,12 +2360,23 @@ def typed_checks_by_check(cfg: SetConfig, cycle_id: str, impl_run: str) -> dict:
         }
         for key, check in _PREDICTION_CHECKS.items()
     }
-    return {
+    fields = {
         "by_check": by_check,
         "checks_by_environment": by_env,
-        "stale_evaluations": _stale_evaluations(cfg, cycle_id, impl_run),
+        "stale_evaluations": _stale_evaluations(cfg, cycle_id, impl_run) if impl_run else [],
         **readouts,
+        "required_files_rows": by_check.get("required_files", {}),
     }
+    context = {
+        "no_implementation_run": impl_run is None,
+        "no_typed_check_evaluation_stored": evaluations_stored == 0,
+        "filtered_at_typed_check_seam": "required_files" not in by_check,
+        **{
+            f"check_never_evaluated:{check}": check not in by_check
+            for check in _PREDICTION_CHECKS.values()
+        },
+    }
+    return with_states("typed_checks", fields, context)
 
 
 def _stale_evaluations(cfg: SetConfig, cycle_id: str, impl_run: str) -> list[dict]:
@@ -2007,8 +2464,11 @@ def fill_merge_evidence(cfg: SetConfig, cycle_id: str, impl_run: str) -> list[di
     return out
 
 
-def _fill_rejections(cfg: SetConfig, cycle_id: str, impl_run: str) -> list[str]:
+def _fill_rejections(cfg: SetConfig, cycle_id: str, impl_run: str) -> list[str] | None:
+    """The fill layer's rejection lines across the qa-authored scaffold suites, or ``None``
+    when no such suite was stored to read — an unasked question, not an empty answer."""
     found = set()
+    suites_read = 0
     for art in artifact_dirs(cfg, cycle_id, impl_run):
         m = _metadata(art)
         if not m or not str(m.get("filename", "")).startswith("__tests__/scaffold/"):
@@ -2019,17 +2479,50 @@ def _fill_rejections(cfg: SetConfig, cycle_id: str, impl_run: str) -> list[str]:
             text = (REPO / m["vault_uri"]).read_text()
         except (OSError, KeyError):
             continue
+        suites_read += 1
         found.update(
             line.strip()  # whole, not a window of it (#1330)
             for line in text.splitlines()
             if "fill layer:" in line and "rejected" in line
         )
-    return sorted(found)
+    return sorted(found) if suites_read else None
 
 
 # ---------------------------------------------------------------------------
 # Render
 # ---------------------------------------------------------------------------
+
+
+#: How each state prints. ``asked_none`` is words, not ``0``, so a zero that was asked and a
+#: field that could not be asked never share a glyph with each other or with an observed 0.
+_ASKED_NONE_WORD = "none (asked)"
+_UNASKABLE_WORD = "UNASKABLE"
+_INFERRED_NOTE = " (state inferred: pre-#1445 record)"
+_NOT_IN_RECORD = "— (not in record)"
+
+
+def _show(ev: Evidence | None, fmt: Callable[[Any], str] = str) -> str:
+    """One field in one of three visibly different shapes (#1445).
+
+    ``fmt`` renders an OBSERVED value only; it is never handed an absence, so no formatter
+    can turn ``unaskable`` into ``0`` or ``—``.
+    """
+    if ev is None:
+        return _NOT_IN_RECORD
+    note = "" if ev.declared else _INFERRED_NOTE
+    if ev.state == UNASKABLE:
+        return f"{_UNASKABLE_WORD} — {ev.reason}"
+    if ev.state == ASKED_NONE:
+        return _ASKED_NONE_WORD + note
+    return fmt(ev.value) + note
+
+
+def _show_at(rec: Mapping[str, Any], path: str, fmt: Callable[[Any], str] = str) -> str:
+    return _show(evidence_at(rec, path), fmt)
+
+
+def _count(value: Any) -> str:
+    return str(len(value)) if isinstance(value, (list, dict)) else str(value)
 
 
 def _render_by_reason(counts: Mapping[str, int] | None) -> str:
@@ -2074,7 +2567,10 @@ def _render_deploy(cfg: SetConfig, rec: dict) -> list[str]:
     ident = rec.get("deploy") or {}
     if not ident:
         return []
-    loaded = {k: v for k, v in ident.items() if k.endswith(":loaded")}
+    # #1445: the probes in the vocabulary — from the record's own field, or derived from the
+    # raw identity for a record written before the field existed (the derivation is exact:
+    # the identity carries the error string).
+    loaded = rec.get("loaded_checks") or loaded_check_evidence(ident)
     images = {k: v for k, v in ident.items() if k != "head" and not k.endswith(":loaded")}
     lines = [
         "## Deploy — observed at launch, not asserted here",
@@ -2090,9 +2586,13 @@ def _render_deploy(cfg: SetConfig, rec: dict) -> list[str]:
     ]
     if loaded:
         lines += [
-            "**Loaded, not built** — each is a live call with its paired control:",
+            "**Loaded, not built** — each is a live call with its paired control; a probe "
+            "that could not run is an unasked question, never an answer (#1425):",
             "",
-            *(f"- `{k.removesuffix(':loaded')}` → `{v}`" for k, v in sorted(loaded.items())),
+            *(
+                f"- `{name}` → {_show(Evidence.read(ev), lambda v: f'`{v}`')}"
+                for name, ev in sorted(loaded.items())
+            ),
             "",
         ]
     return lines
@@ -2107,6 +2607,130 @@ def _qa_tokens(by_handler: Mapping[str, Mapping[str, Any]]) -> str:
         if name.startswith("qa_")
     ]
     return "; ".join(rows) if rows else "—"
+
+
+def _overruns(value: Mapping[str, Any]) -> str:
+    return f"{value.get('overruns')} {value.get('by_service') or ''}".rstrip()
+
+
+def _fill_strengths(entries: list[dict]) -> str:
+    return str([(e.get("task_id"), e.get("assertion_strength")) for e in entries])
+
+
+def _render_unaskable(rec: Mapping[str, Any]) -> list[str]:
+    """Every registered field that was unaskable on this roll, with its reason, and every
+    field whose state was inferred off a pre-#1445 value — so the table above is never
+    the only place a reader can see what the roll could not ask."""
+    unaskable: list[str] = []
+    inferred: list[str] = []
+    for path in _registered_paths(rec):
+        ev = evidence_at(rec, path)
+        if ev is None:
+            continue
+        if ev.state == UNASKABLE:
+            unaskable.append(f"- `{path}` — {ev.reason}")
+        elif not ev.declared:
+            inferred.append(f"`{path}`")
+    lines = [f"**Unaskable on this roll ({len(unaskable)})** — not zeros, not absences:", ""]
+    lines += unaskable or ["- none: every registered field was asked"]
+    if inferred:
+        lines += [
+            "",
+            f"**State inferred, not declared ({len(inferred)})** — read off a pre-#1445 "
+            "value; an empty one cannot say whether it was asked: " + ", ".join(inferred),
+        ]
+    return lines
+
+
+def _registered_paths(rec: Mapping[str, Any]) -> list[str]:
+    """The registry's paths as they occur in this record — the wildcard groups expanded."""
+    paths: list[str] = []
+    for path in EVIDENCE_FIELDS:
+        group, _, leaf = path.rpartition(".")
+        if leaf == "*":
+            paths += [f"{group}.{name}" for name in sorted(rec.get(group) or {})]
+        else:
+            paths.append(path)
+    return paths
+
+
+def restate(rec: dict) -> tuple[dict, list[str]]:
+    """A stored record's registered fields re-read in the vocabulary (#1445).
+
+    A record written before the vocabulary carries bare values. The conditions that can be
+    derived from the record itself are applied — no implementation run, no correction
+    round, no emission-shape line, no retry aimed, no fill-merge artifact, the seam filter
+    — and the fields those decide are declared. The conditions the record does not carry
+    (whether the runtime-api window was empty, whether a qa scaffold suite was stored,
+    whether an evaluation artifact existed and which checks it evaluated) are returned by
+    name; the fields they govern are left with their state inferred and so marked. A
+    record already in the vocabulary passes through unchanged.
+    """
+    out = json.loads(json.dumps(rec))
+    texture = out.get("loop_texture") or {}
+    typed = out.get("typed_checks") or {}
+    correction = value_at(out, "correction_rounds", 0) or 0
+    by_check = value_at(out, "typed_checks.by_check", {}) or {}
+    context: dict[str, bool | None] = {
+        "no_implementation_run": not out.get("impl_run_id"),
+        "runtime_window_empty": None,
+        "no_correction_round": not correction_entered(
+            [
+                str(v)
+                for key in ("patch_verifications", "retests", "refunded_rounds")
+                for v in (value_at(out, f"loop_texture.{key}", []) or [])
+            ],
+            correction,
+        ),
+        "no_emission_shape_lines": (value_at(out, "loop_texture.emissions_logged", 0) or 0) == 0,
+        "no_emission_retry_aimed": not value_at(out, "loop_texture.emission_retries", []),
+        "no_correction_decision_stored": correction == 0,
+        "no_fill_merge_artifact": not value_at(out, "loop_texture.fill_merge_evidence", []),
+        "no_qa_scaffold_suite": None,
+        "logged_in_the_agent_container": True,
+        "no_typed_check_evaluation_stored": None if not by_check else False,
+        "filtered_at_typed_check_seam": "required_files" not in by_check,
+        **{
+            f"check_never_evaluated:{check}": (check not in by_check) if by_check else None
+            for check in _PREDICTION_CHECKS.values()
+        },
+    }
+    underivable = sorted(k for k, v in context.items() if v is None)
+    for key in ("correction_rounds", "failed_emission_artifacts_banked"):
+        if key in out:
+            out[key] = evidence_for(key, Evidence.read(out[key]).value, context).record()
+    if texture:
+        out["loop_texture"] = with_states(
+            "loop_texture",
+            {
+                k: Evidence.read(v).value if f"loop_texture.{k}" not in _NOT_EVIDENCE else v
+                for k, v in texture.items()
+            },
+            context,
+        )
+    if typed:
+        typed.setdefault("required_files_rows", by_check.get("required_files", {}))
+        out["typed_checks"] = with_states(
+            "typed_checks", {k: Evidence.read(v).value for k, v in typed.items()}, context
+        )
+    if out.get("deploy") and not out.get("loaded_checks"):
+        out["loaded_checks"] = loaded_check_evidence(out["deploy"])
+    return out, underivable
+
+
+def cmd_rerender(cfg: SetConfig, record: Path, out: Path) -> int:
+    rec, underivable = restate(json.loads(record.read_text()))
+    md = render(cfg, f"re-rendered from {record.name} (#1445)", rec)
+    if underivable:
+        md += (
+            "\n## Conditions this stored record cannot state\n\n"
+            "The fields these govern are marked *state inferred* above rather than declared:\n\n"
+            + "\n".join(f"- `{c}` — {unaskable_reason(c)}" for c in underivable)
+            + "\n"
+        )
+    out.write_text(md)
+    print(md)
+    return 0
 
 
 def render(cfg: SetConfig, title: str, rec: dict) -> str:
@@ -2131,6 +2755,12 @@ def render(cfg: SetConfig, title: str, rec: dict) -> str:
                 *(
                     f"- seam reached — `{name}`: **{'YES' if r.get('reached') else 'NO'}** — "
                     f"{r.get('seam') or 'no readout for this fault'} (#1310)"
+                    + (
+                        " — **read over unaskable field(s)**: "
+                        + "; ".join(f"`{p}` — {why}" for p, why in r["unaskable"].items())
+                        if r.get("unaskable")
+                        else ""
+                    )
                     for name, r in sorted((rec.get("seam_reached") or {}).items())
                 ),
                 "",
@@ -2154,10 +2784,15 @@ def render(cfg: SetConfig, title: str, rec: dict) -> str:
         "",
         "## Texture",
         "",
+        f"Every registered field reads one of three states (#1445): a value — **observed**; "
+        f"`{_ASKED_NONE_WORD}` — asked and absent or zero; `{_UNASKABLE_WORD} — reason` — "
+        "the producer could not ask it on this roll. The unaskable fields are listed again "
+        "below the table; no line here folds one into a count.",
+        "",
         "| field | value |",
         "|---|---|",
         f"| framing runs / re-rolls | {rec['framing_runs']} / {rec['framing_rerolls']} |",
-        f"| correction rounds | {rec['correction_rounds']} |",
+        f"| correction rounds | {_show_at(rec, 'correction_rounds')} |",
         f"| failed checks | {', '.join(rec['failed_checks']) or '—'} |",
         f"| criteria verified / total | {rec['criteria_verified']} / {rec['criteria_total']} |",
         "| criteria NOT verified — a row was produced, not credited | "
@@ -2165,56 +2800,59 @@ def render(cfg: SetConfig, title: str, rec: dict) -> str:
         "| criteria unevidenced — no row in either direction | "
         f"{', '.join(rec['criteria_unevidenced']) or '—'} |",
         "| failed emission ARTIFACTS banked (#971; not the emission count — #1436) | "
-        f"{rec['failed_emission_artifacts_banked']} |",
+        f"{_show_at(rec, 'failed_emission_artifacts_banked')} |",
         "| contentless emissions (L1) | "
-        f"{_render_by_reason((rec.get('loop_texture') or {}).get('contentless_by_handler', {}))}"
-        f" of {(rec.get('loop_texture') or {}).get('emissions_logged', 0)} logged |",
+        f"{_show_at(rec, 'loop_texture.contentless_by_handler', _render_by_reason)}"
+        f" of {_show_at(rec, 'loop_texture.emissions_logged')} logged |",
         "| 1.7.4 H1 required files the roll's rows named (#1312) | "
-        f"{', '.join((rec.get('loop_texture') or {}).get('required_files_declared', [])) or '—'} |",
+        f"{_show_at(rec, 'loop_texture.required_files_declared', ', '.join)} |",
+        "| 1.7.4 H1 required_files rows in the typed-check artifact | "
+        f"{_show_at(rec, 'typed_checks.required_files_rows')} |",
         "| 1.7.4 F1 framework rows re-derived on the patched set (#1374) | "
-        f"{(rec.get('loop_texture') or {}).get('framework_rows_rederived', []) or '—'} |",
+        f"{_show_at(rec, 'loop_texture.framework_rows_rederived')} |",
         "| 1.7.4 R1 emission retries aimed / with fact / blind (#1372) | "
-        f"{len((rec.get('loop_texture') or {}).get('emission_retries', []))} / "
-        f"{len((rec.get('loop_texture') or {}).get('retried_with_fact', []))} / "
-        f"{len((rec.get('loop_texture') or {}).get('retried_blind', []))} |",
+        f"{_show_at(rec, 'loop_texture.emission_retries', _count)} / "
+        f"{_show_at(rec, 'loop_texture.retried_with_fact', _count)} / "
+        f"{_show_at(rec, 'loop_texture.retried_blind', _count)} |",
         "| 1.7.4 Prefect loop overruns in the window (#330) | "
-        f"{(rec.get('loop_texture') or {}).get('prefect_loop_overruns', {}).get('overruns', '—')} "
-        f"{(rec.get('loop_texture') or {}).get('prefect_loop_overruns', {}).get('by_service', {}) or ''} |",
+        f"{_show_at(rec, 'loop_texture.prefect_loop_overruns', _overruns)} |",
         "| 1.7.4 B1 non-root fixture tables: suites read / mentions (#1087) | "
         f"{_b1_words((rec.get('static_checks') or {}).get('non_root_fixture_tables'))} |",
         "| R1 assertion_kinds_match rows | "
-        f"{_render_readout((rec.get('typed_checks') or {}).get('assertion_kinds_match_rows'))} |",
-        "| R2 qa-owned routed | "
-        f"{len((rec.get('loop_texture') or {}).get('qa_owned_routed', []))} |",
+        f"{_show_at(rec, 'typed_checks.assertion_kinds_match_rows', _render_readout)} |",
+        f"| R2 qa-owned routed | {_show_at(rec, 'loop_texture.qa_owned_routed', _count)} |",
         "| R3 dom_anchor_queries rows | "
-        f"{_render_readout((rec.get('typed_checks') or {}).get('dom_anchor_queries_rows'))} |",
+        f"{_show_at(rec, 'typed_checks.dom_anchor_queries_rows', _render_readout)} |",
         "| R4 repair briefs (cases, from, tests_pass rows) / absent-anchor routed | "
-        f"{(rec.get('loop_texture') or {}).get('repair_brief_case_counts', [])} / "
-        f"{len((rec.get('loop_texture') or {}).get('absent_anchor_routed', []))} |",
+        f"{_show_at(rec, 'loop_texture.repair_brief_case_counts')} / "
+        f"{_show_at(rec, 'loop_texture.absent_anchor_routed', _count)} |",
         "| R5 additive_containment rows | "
-        f"{_render_readout((rec.get('typed_checks') or {}).get('additive_containment_rows'))} |",
+        f"{_show_at(rec, 'typed_checks.additive_containment_rows', _render_readout)} |",
         "| R6 undefined_names rows | "
-        f"{_render_readout((rec.get('typed_checks') or {}).get('undefined_names_rows'))} |",
+        f"{_show_at(rec, 'typed_checks.undefined_names_rows', _render_readout)} |",
         "| R7 decided by agent / unverifiable by reason | "
-        f"{(rec.get('loop_texture') or {}).get('decided_by_agent', 0)} / "
-        f"{_render_by_reason((rec.get('loop_texture') or {}).get('unverifiable_by_reason', {}))} |",
+        f"{_show_at(rec, 'loop_texture.decided_by_agent')} / "
+        f"{_show_at(rec, 'loop_texture.unverifiable_by_reason', _render_by_reason)} |",
         "| non-execution by skip reason (all patch verifications) | "
-        f"{_render_by_reason((rec.get('loop_texture') or {}).get('no_execution_by_skip_reason', {}))} |",
+        f"{_show_at(rec, 'loop_texture.no_execution_by_skip_reason', _render_by_reason)} |",
         "| ...of which on a verification that PASSED | "
-        f"{_render_by_reason((rec.get('loop_texture') or {}).get('no_execution_on_passed_verifications', {}))} |",
+        f"{_show_at(rec, 'loop_texture.no_execution_on_passed_verifications', _render_by_reason)} |",
         "| fill-merge assertion strength per qa task (#999) | "
-        f"{[(e.get('task_id'), e.get('assertion_strength')) for e in (rec.get('loop_texture') or {}).get('fill_merge_evidence', [])] or '—'} |",
+        f"{_show_at(rec, 'loop_texture.fill_merge_evidence', _fill_strengths)} |",
+        "| fill layer rejections in the stored qa suites | "
+        f"{_show_at(rec, 'loop_texture.fill_rejections')} |",
         "| qa emission tokens (completion / reasoning, handlers starting `qa_`) | "
-        f"{_qa_tokens((rec.get('loop_texture') or {}).get('emission_tokens_by_handler', {}))} |",
+        f"{_show_at(rec, 'loop_texture.emission_tokens_by_handler', _qa_tokens)} |",
         "| L8a extractor strips of `path/` (model emitted under it) / L8b stored under `path/` | "
-        f"{len((rec.get('loop_texture') or {}).get('placeholder_strips', []))} / "
-        f"{(rec.get('loop_texture') or {}).get('stored_under_placeholder', []) or '—'} |",
-        "| checks by environment | "
-        f"{(rec.get('typed_checks') or {}).get('checks_by_environment', {})} |",
+        f"{_show_at(rec, 'loop_texture.placeholder_strips', _count)} / "
+        f"{_show_at(rec, 'loop_texture.stored_under_placeholder')} |",
+        f"| checks by environment | {_show_at(rec, 'typed_checks.checks_by_environment')} |",
         "| container_packaging rows (reporting-only) | "
-        f"{_render_readout((rec.get('typed_checks') or {}).get('container_packaging_rows'))} |",
+        f"{_show_at(rec, 'typed_checks.container_packaging_rows', _render_readout)} |",
         "| L3 stale evaluations (re-stored, not re-run) | "
-        f"{_render_stale((rec.get('typed_checks') or {}).get('stale_evaluations') or [])} |",
+        f"{_show_at(rec, 'typed_checks.stale_evaluations', _render_stale)} |",
+        "",
+        *_render_unaskable(rec),
         "",
         *_render_deploy(cfg, rec),
         "## Gate decisions (decider recorded verbatim, never inferred)",
@@ -2322,11 +2960,17 @@ def _run_cycle(
     rec["static_checks"] = static_checks(cfg, stack, cyc, rec["impl_run_id"], framing)
     rec["ledger_checks"] = ledger_checks(rec)
     rec["loop_texture"] = loop_texture(
-        cfg, cyc, rec["impl_run_id"], launched_at, until=cycle_log_until(cyc)
+        cfg,
+        cyc,
+        rec["impl_run_id"],
+        launched_at,
+        until=cycle_log_until(cyc),
+        correction_rounds=value_at(rec, "correction_rounds", 0),
     )
-    rec["typed_checks"] = (
-        typed_checks_by_check(cfg, cyc, rec["impl_run_id"]) if rec["impl_run_id"] else {}
-    )
+    # #1445: always produced — without an implementation run every field is unaskable,
+    # which is a different record from `{}`.
+    rec["typed_checks"] = typed_checks_by_check(cfg, cyc, rec["impl_run_id"])
+    rec["loaded_checks"] = loaded_check_evidence(identity)
     # #1310: a diagnostic is read by the seam it reached, not by whether its fault fired.
     faults = declared_fault_names(cfg.overrides)
     rec["seam_reached"] = seam_readouts(faults, rec) if faults else {}
@@ -2436,8 +3080,24 @@ def main(argv: Sequence[str] | None = None) -> int:
             p.add_argument(
                 "--counting", action="store_true", help="also assert the frozen deploy and HEAD pin"
             )
+    sub.add_parser(
+        "registry",
+        help="print EVIDENCE_FIELDS — every record field and when it is unaskable (#1445)",
+    )
+    p = sub.add_parser(
+        "rerender",
+        help="re-render a stored record's JSON through the current driver (#1445)",
+    )
+    p.add_argument("--set", required=True, type=Path)
+    p.add_argument("--record", required=True, type=Path, help="a stored roll-*.json")
+    p.add_argument("--out", required=True, type=Path, help="where the markdown goes")
     args = ap.parse_args(argv)
+    if args.command == "registry":
+        print(registry_table())
+        return 0
     cfg = load_set_config(args.set)
+    if args.command == "rerender":
+        return cmd_rerender(cfg, args.record, args.out)
     if args.command == "preflight":
         return cmd_preflight(cfg, counting=args.counting, identity=deploy_identity(cfg))
     if args.command == "shakeout":
