@@ -1165,3 +1165,12 @@ sips:
   approver: null
   created_at: null
   updated_at: null
+- sip_uid: '17883224960412001'
+  sip_number: null
+  title: Scoped Code Revision
+  path: sips/proposed/SIP-Scoped-Code-Revision.md
+  status: proposed
+  author: SquadOps Architecture
+  approver: null
+  created_at: '2026-09-06T00:00:00Z'
+  updated_at: null
