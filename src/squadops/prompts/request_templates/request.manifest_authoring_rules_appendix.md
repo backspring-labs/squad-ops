@@ -91,6 +91,13 @@ test suite is permitted to query, so a view with none is a view nothing can veri
 the suite will otherwise invent selectors from roles and visible text that the
 implementation never promised.
 
+**one-name-per-entity** — A collection's path parameter is named the same way on every
+endpoint that addresses a member of it: `/runs/{run_id}` and `/runs/{run_id}/participants`,
+never `/runs/{id}` beside `/runs/{run_id}`. The name you choose is arbitrary; using two for
+one entity is not. A developer implementing the second endpoint writes whichever name the
+surrounding code suggests, the derived contract enforces the one you declared, and the run
+is lost to a mismatch neither side can see in its own file.
+
 **error-shape-is-the-blueprints** — If you declare `error_contract.shape`, it must be
 the blueprint's frozen envelope: rooted at `"error"`, i.e. `{"error": {"code", "message"}}`.
 The scaffold writes this envelope into frozen code and every probe asserts it — a shape

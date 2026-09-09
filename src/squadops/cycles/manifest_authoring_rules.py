@@ -28,6 +28,7 @@ from squadops.cycles.manifest_gates import (
     PROOF_DECISION_RECORD,
     PROOF_ERROR_SHAPE,
     PROOF_EXPANDS,
+    PROOF_INTERFACE_COHERENT,
     PROOF_LINT,
     PROOF_PARSES,
     PROOF_SCAFFOLD_READY,
@@ -47,6 +48,10 @@ AUTHOR_FACING: dict[str, tuple[str, ...]] = {
     PROOF_LINT: ("nothing-undeclared", "declare-something-to-build"),
     PROOF_EXPANDS: ("paths-under-scaffold-roots",),
     PROOF_TESTID_COVERAGE: ("every-view-declares-anchors",),
+    # #820: AUTHOR_FACING because the fix is entirely the author's and costs them one word.
+    # The proof is advisory in 1.7.5, so an author reads this rule before the gate can ever
+    # reject on it — the teaching lands first, which is the order #686 established.
+    PROOF_INTERFACE_COHERENT: ("one-name-per-entity",),
     PROOF_STATUS_DECLARED: ("declare-the-success-status",),
     # #1067: the sibling of the rule above, and the one that removes the recurrence
     # rather than gating it. The status is authored in three places and derivable in

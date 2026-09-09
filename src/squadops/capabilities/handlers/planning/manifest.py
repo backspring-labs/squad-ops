@@ -318,7 +318,10 @@ def _findings_lines(outcome: AuthoringOutcome) -> str:
     manifest that had three (the same reason ``assess_winnability`` accumulates rather than
     short-circuits).
     """
-    return "\n".join(f"- **{f.proof}** — {f.detail}" for f in outcome.findings)
+    return "\n".join(
+        f"- **{f.proof}**{' (advisory — not a rejection)' if f.advisory else ''} — {f.detail}"
+        for f in outcome.findings
+    )
 
 
 def _summary(outcome: AuthoringOutcome) -> str:

@@ -51,6 +51,13 @@ PROOF_STACK_MATCHES_CONFIG = "stack_matches_config"
 #: validly emitted fails here — a free framing re-roll (#522) — rather than at run setup.
 PROOF_SCAFFOLD_READY = "scaffold_ready"
 
+#: SIP-0103 §3.3's third bullet, deferred to 1.7 by name as #820: the endpoints, params and
+#: testids a manifest promises must be mutually coherent. A closed-surface proof over the
+#: manifest's own declarations — no PRD semantics, no LLM — which is why §5b Q2 admits it
+#: where "semantic PRD coverage" stays deferred. **Advisory** in 1.7.5 (plan §8 decision 4):
+#: it reports, and promotion waits on the findings a measured set produces.
+PROOF_INTERFACE_COHERENT = "interface_coherent"
+
 #: Schema-gate proof classes (M2). ``PROOF_SOURCE_PRD`` was ``PROOF_PROVENANCE`` until #803
 #: gave the manifest an actual ``provenance`` block — one word for "where the design came
 #: from" and "how the document was authored" is two meanings in one module. It now names the
@@ -61,10 +68,18 @@ PROOF_DECISION_RECORD = "decision_record"
 
 @dataclass(frozen=True)
 class WinnabilityFinding:
-    """One reason a manifest could not be won, and what to do about it."""
+    """One reason a manifest could not be won, and what to do about it.
+
+    ``advisory`` (#820) marks a finding that is REPORTED and never rejects: the author sees
+    it as guidance, the record counts it apart, and the manifest proceeds. A new proof
+    lands advisory first and is promoted on the evidence its own findings produce — the
+    same discipline `container_packaging` shipped under (#598, 1.7.1). Promotion is a
+    separate, deliberate call.
+    """
 
     proof: str
     detail: str
+    advisory: bool = False
 
 
 def assess_winnability(
@@ -110,6 +125,7 @@ def assess_winnability(
     findings.extend(_expander_findings(manifest))
     findings.extend(_contract_findings(manifest))
     findings.extend(_testid_findings(manifest))
+    findings.extend(_interface_coherence_findings(manifest))
     findings.extend(_status_findings(manifest))
     findings.extend(_status_override_findings(manifest))
     findings.extend(_error_shape_findings(manifest))
@@ -396,6 +412,72 @@ def _stack_findings(manifest, expected_stack: str) -> list[WinnabilityFinding]:
             f"for the wrong stack. Declare `stack: {expected_stack}`.",
         )
     ]
+
+
+def _path_parameter_pairs(path: str) -> list[tuple[str, str]]:
+    """``(collection, parameter)`` for every path parameter that follows a literal segment.
+
+    ``/runs/{run_id}/participants/{id}`` gives ``[("runs", "run_id"), ("participants",
+    "id")]``. A parameter directly after another parameter has no collection to belong to
+    and is skipped rather than guessed at.
+    """
+    segments = [s for s in path.split("/") if s]
+    pairs: list[tuple[str, str]] = []
+    for index, segment in enumerate(segments):
+        if not (segment.startswith("{") and segment.endswith("}")):
+            continue
+        if index == 0:
+            continue
+        previous = segments[index - 1]
+        if previous.startswith("{"):
+            continue
+        pairs.append((previous, segment[1:-1]))
+    return pairs
+
+
+def _interface_coherence_findings(manifest) -> list[WinnabilityFinding]:
+    """The same collection's path parameter is named the same way on every endpoint (#820).
+
+    **Advisory** — reported, never a rejection (plan §8 decision 4).
+
+    The motivating instance is PR #565, *"rename group_run path param `{id}` → `{run_id}`"*:
+    a hand-authored manifest declared one entity's parameter two ways, the implementation
+    wrote the model's prior rather than the declaration, and the roll was lost to it. The
+    class is narrowed in authored mode — declaration and implementation come from the same
+    prior — but nothing forces an authored manifest to be consistent with ITSELF across
+    endpoints, which is what this reads.
+
+    Closed-surface: it compares the manifest's declared paths to each other and consults
+    nothing else. Keyed on the literal segment a parameter follows, because that segment is
+    the collection the parameter identifies a member of; a parameter following another
+    parameter is skipped rather than guessed at.
+    """
+    by_collection: dict[str, set[str]] = {}
+    for endpoint in manifest.api.endpoints:
+        for collection, parameter in _path_parameter_pairs(endpoint.path):
+            by_collection.setdefault(collection, set()).add(parameter)
+
+    findings: list[WinnabilityFinding] = []
+    for collection, parameters in sorted(by_collection.items()):
+        if len(parameters) < 2:
+            continue
+        names = ", ".join(f"`{{{p}}}`" for p in sorted(parameters))
+        paths = ", ".join(
+            f"`{ep.path}`"
+            for ep in manifest.api.endpoints
+            if any(c == collection for c, _ in _path_parameter_pairs(ep.path))
+        )
+        findings.append(
+            WinnabilityFinding(
+                PROOF_INTERFACE_COHERENT,
+                f"the `{collection}` collection identifies its member {len(parameters)} "
+                f"different ways across endpoints — {names} (in {paths}). One name per "
+                f"entity, or the implementation writes whichever the model expects and the "
+                f"contract enforces the other (PR #565).",
+                advisory=True,
+            )
+        )
+    return findings
 
 
 def _testid_findings(manifest) -> list[WinnabilityFinding]:
