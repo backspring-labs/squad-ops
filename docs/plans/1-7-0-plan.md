@@ -584,3 +584,15 @@ dependency set the images install — is unaffected and met. Reasoning recorded 
   and test items) plus #929/#1206. The per-line capacity rule is unchanged; the line count
   grows by one because the Boundaries rider was never absorbed by 1.7.2 as the table assumed.
   §6.2's close criteria hold as written.
+- **Amendment (2026-09-09, with the 1.7.5 plan)** — the 1.7.5 row the 2026-09-05 amendment
+  created is placed by `docs/plans/1-7-5-plan.md` §3 and §6 (rev 1): a verdict-surface stratum
+  of the four 1.7.4 findings (#1406, #1428, #1434, #1436) with #1197, #820, #668's second half
+  and PR #906 behind a checkpoint pair; Composition Root behind its design note (#286, #301,
+  #637, #1152 with #1149 first); the extractions and test items as a CI list (#929/#1206,
+  #198, #580, #1182, #1180, #1178, #353, #579, #176, #567); #1177 as the ops rider; #330, #372,
+  #352, #157 and #376 verify-then-close. **#598's first half is re-placed to the 1.8 lane by
+  the 1.7.5 plan's recommendation** (its §8, decision 1), pending the owner's ruling on that
+  plan. **Correction to §2.7:** #376 is SIP-0096 Phase 2 field evidence (the repair path
+  discarding final-state verification), not SIP-0102 migration steps 3–7; those steps are
+  feature-shaped and stay with SIP-0102. §6.2's close criteria hold as written and are read
+  criterion by criterion in the 1.7.5 plan §3.7.
