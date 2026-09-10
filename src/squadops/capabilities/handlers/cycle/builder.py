@@ -24,8 +24,6 @@ from squadops.capabilities.handlers.cycle.base import _CycleTaskHandler
 from squadops.capabilities.handlers.cycle.validation import (
     _classify_file,
 )
-from squadops.capabilities.handlers.emission_log import log_emission_shape
-from squadops.capabilities.handlers.fault_injection import inject as inject_fault
 from squadops.capabilities.reasoning_policy import reasoning_kwargs, resolve_reasoning_level
 from squadops.cycles.models import ArtifactType
 
@@ -419,42 +417,21 @@ class BuilderAssembleHandler(_CycleTaskHandler):
         builder_kwargs.update(reasoning_kwargs(reasoning))
 
         try:
-            response = await context.ports.llm.chat_stream_with_usage(messages, **builder_kwargs)
+            # The fault is wired for 1.7.4's contentless-builder diagnostic (#1364's
+            # shape on demand); the declaration reaches here on ``resolved_config``.
+            response, content = await self._llm_call(
+                context,
+                messages,
+                builder_kwargs,
+                inputs=inputs,
+                started=start_time,
+                apply_fault=True,
+                fault_config=resolved_config,
+                rendered=rendered,
+            )
         except LLMError as exc:
             logger.warning("LLM call failed for %s: %s", self._handler_name, exc)
             return self._fail_result(start_time, inputs, str(exc))
-
-        content = response.content
-        # #1251: the fault applies before the shape is logged — see cycle/base.py. Wired
-        # for 1.7.4's contentless-builder diagnostic (#1364's shape on demand).
-        content = inject_fault(
-            content,
-            handler_name=self._handler_name,
-            task_id=context.task_id,
-            resolved_config=resolved_config,
-            inputs=inputs,
-        )
-        log_emission_shape(
-            self._handler_name,
-            content,
-            response.completion_tokens,
-            response.reasoning_tokens,
-            response.reasoning_text,
-        )
-        llm_duration_ms = (time.perf_counter() - start_time) * 1000
-
-        # Record LLM generation for LangFuse tracing
-        resolved_model = agent_model or context.ports.llm.default_model
-        self._record_generation(
-            context,
-            user_prompt,
-            content,
-            llm_duration_ms,
-            resolved_model,
-            rendered=rendered,
-            chat_response=response,
-            reasoning=reasoning,
-        )
 
         # Step 5: Parse fenced code blocks
         extracted = extract_fenced_files(content)

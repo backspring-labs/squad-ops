@@ -7,6 +7,7 @@ the read-only ``plan_authoring_brief.yaml`` the proposers bind to.
 from __future__ import annotations
 
 import time
+from functools import partial
 from typing import TYPE_CHECKING, Any
 
 from squadops.capabilities.handlers.base import (
@@ -98,7 +99,7 @@ class GovernancePreparePlanAuthoringBriefHandler(_PlanningTaskHandler):
             return brief, None
 
         parsed, last_yaml, last_error = await retry_yaml_call(
-            llm=context.ports.llm,
+            call=partial(self._llm_call, context, inputs=inputs, started=start_time),
             chat_kwargs=chat_kwargs,
             system_prompt=system_prompt,
             user_prompt=user_prompt,

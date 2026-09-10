@@ -16,9 +16,11 @@ These tests exist to make that refactor's diff readable. They pin, per seam:
   to still drive its own parsing and failure handling.
 
 The first, second and fourth are invariants: the extraction must not change one
-byte of what reaches the model or one field of what comes back. The third is the
-thing #1206 changes, and the count assertions are written to be read as a diff —
-the ten zeros here are the gap, and the PR that closes it turns them into ones.
+byte of what reaches the model or one field of what comes back — every assertion of
+those three was written against the pre-extraction code and has not moved since. The
+third is the thing #1206 changes, and the count assertions are the diff: they were
+written as ten zeros against the old code, and this commit turns them into ones.
+Read the two commits together; that pair is the evidence, not either alone.
 
 Bug caught: an extraction that quietly re-prompts. Nothing downstream would notice
 a system message dropped from a re-ask, a ``reasoning`` kwarg lost on the self-eval
@@ -30,6 +32,7 @@ nobody thought to re-run.
 from __future__ import annotations
 
 import json
+from functools import partial
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -49,6 +52,7 @@ from squadops.capabilities.handlers.impl.correction_decision import (
 from squadops.capabilities.handlers.impl.define_done import GovernanceDefineDoneHandler
 from squadops.capabilities.handlers.planning_tasks import (
     DataResearchContextHandler,
+    GovernanceMergePlanHandler,
     GovernancePreparePlanAuthoringBriefHandler,
     GovernanceReviewPlanHandler,
 )
@@ -293,12 +297,17 @@ class TestPrimariesThatAlreadyRecord:
 # ---------------------------------------------------------------------------
 
 
-class TestDarkPrimaries:
-    """Three impl handlers make an LLM call and record nothing. Two of the three
-    are declared ``ReasoningLevel.HIGH`` — the most expensive thinking in the
-    cycle, and none of it visible in LangFuse."""
+class TestPrimariesThatWereDark:
+    """Three impl handlers made an LLM call and recorded nothing. Two of the three
+    are declared ``ReasoningLevel.HIGH`` — the most expensive thinking in the cycle,
+    and none of it was visible in LangFuse.
 
-    async def test_define_done_calls_the_model_and_records_nothing(self):
+    Their new records use the layer identity ``_record_generation`` derives from
+    ``_prompt_layer_kind``, which is the base default ``"build"`` for all three. That
+    is a *chosen* value, not a preserved one: these generations had no prompt-layer
+    identity to preserve, because they had no records. Nothing existing re-groups."""
+
+    async def test_define_done_calls_the_model_and_records_what_it_spent(self):
         contract = {
             "objective": "Build CLI tool",
             "acceptance_criteria": ["Passes tests"],
@@ -315,9 +324,14 @@ class TestDarkPrimaries:
         assert result.outputs["contract"]["objective"] == "Build CLI tool"
         assert len(seam.calls) == 1
         assert [r for r, _ in seam.transcripts[0]] == ["system", "user"]
-        assert seam.records == []
+        assert len(seam.records) == 1
+        record, layers = seam.records[0]
+        assert record.completion_tokens == 803
+        assert record.reasoning_text == "deliberating"
+        assert record.attempt is None, "a first attempt does not claim to be a retry"
+        assert layers.prompt_layer_set_id == "lead-build"
 
-    async def test_analyze_failure_calls_the_model_and_records_nothing(self):
+    async def test_analyze_failure_calls_the_model_and_records_what_it_spent(self):
         analysis = {
             "classification": FailureClassification.WORK_PRODUCT,
             "analysis_summary": "Output quality below bar",
@@ -332,9 +346,11 @@ class TestDarkPrimaries:
         assert result.success is True
         assert result.outputs["classification"] == FailureClassification.WORK_PRODUCT
         assert len(seam.calls) == 1
-        assert seam.records == []
+        assert len(seam.records) == 1
+        assert seam.layer_sets == ["data-build"]
+        assert seam.records[0][0].completion_tokens == 803
 
-    async def test_correction_decision_calls_the_model_and_records_nothing(self):
+    async def test_correction_decision_calls_the_model_and_records_what_it_spent(self):
         decision = {
             "correction_path": "patch",
             "decision_rationale": "Local fix suffices",
@@ -348,7 +364,8 @@ class TestDarkPrimaries:
 
         assert result.success is True
         assert len(seam.calls) == 1
-        assert seam.records == []
+        assert len(seam.records) == 1
+        assert seam.layer_sets == ["lead-build"]
 
 
 # ---------------------------------------------------------------------------
@@ -360,7 +377,11 @@ class TestSecondCallsAreDistinctPrompts:
     """A second call is not a copy of the first: it carries the first response as an
     assistant turn plus corrective feedback. #1206 asks for these to be recorded
     "with the attempt/outcome fields the record already carries so a retry is
-    distinguishable from a first attempt" — today they are recorded not at all."""
+    distinguishable from a first attempt", and they were recorded not at all.
+
+    ``attempt=2`` is what makes the pair readable. Without it two generations arrive
+    under the same layer set with no ordering, and the retry is indistinguishable from
+    a handler that happened to run twice."""
 
     async def test_the_json_reask_replays_the_transcript_with_feedback(self):
         """#1008: the model stopped mid-object once and the whole correction chain
@@ -389,7 +410,12 @@ class TestSecondCallsAreDistinctPrompts:
         assert second[:2] == first
         assert second[2][1] == truncated
         assert seam.kwargs[1] == seam.kwargs[0], "the re-ask must use the same model kwargs"
-        assert seam.records == []
+        assert len(seam.records) == 2
+        assert [r.attempt for r, _ in seam.records] == [None, 2]
+        assert seam.records[1][0].prompt_text == second[3][1], (
+            "the retry records the feedback it was sent, not the original prompt"
+        )
+        assert seam.records[1][0].response_text == complete
 
     async def test_define_done_reask_replays_the_transcript_with_feedback(self):
         truncated = '{"objective": "Build CLI", "acceptance_criteria": ["Pas'
@@ -411,7 +437,7 @@ class TestSecondCallsAreDistinctPrompts:
         assert len(seam.calls) == 2
         assert [r for r, _ in seam.transcripts[1]] == ["system", "user", "assistant", "user"]
         assert seam.transcripts[1][2][1] == truncated
-        assert seam.records == []
+        assert [r.attempt for r, _ in seam.records] == [None, 2]
 
     async def test_correction_decision_reask_replays_the_transcript_with_feedback(self):
         truncated = '{"correction_path": "pat'
@@ -431,13 +457,17 @@ class TestSecondCallsAreDistinctPrompts:
         assert result.success is True
         assert len(seam.calls) == 2
         assert [r for r, _ in seam.transcripts[1]] == ["system", "user", "assistant", "user"]
-        assert seam.records == []
+        assert [r.attempt for r, _ in seam.records] == [None, 2]
 
     async def test_the_frontmatter_retry_is_a_second_call_no_test_had_driven(self):
         """#109: a plan review that omits frontmatter is re-prompted once rather
         than having a default ``readiness=revise`` synthesized for it. The retry
-        makes a second LLM call, logs its emission under its own label, and records
-        nothing — and no test drove it before this one."""
+        makes a second LLM call and logs its emission under its own label — and no
+        test drove it at all before this one.
+
+        Its latency is measured from the retry's own clock rather than the primary's:
+        the primary belongs to ``super().handle()`` and is already spent, so a retry
+        billed against it would report a duration it did not take."""
         ctx, seam = _context(
             "no frontmatter here, just prose",
             "---\nreadiness: go\nsufficiency_score: 4\n---\n\nThe plan is sound.",
@@ -452,8 +482,9 @@ class TestSecondCallsAreDistinctPrompts:
         assert [r for r, _ in seam.transcripts[1]] == ["system", "user", "assistant", "user"]
         assert seam.transcripts[1][2][1] == "no frontmatter here, just prose"
         assert "YAML frontmatter" in seam.transcripts[1][3][1]
-        assert len(seam.records) == 1, "only the primary is recorded; the retry is dark"
-        assert seam.layer_sets == ["lead-planning"]
+        assert len(seam.records) == 2
+        assert seam.layer_sets == ["lead-planning", "lead-planning"]
+        assert [r.attempt for r, _ in seam.records] == [None, 2]
 
 
 # ---------------------------------------------------------------------------
@@ -465,9 +496,10 @@ class TestSelfEvalSecondCalls:
     """``develop`` and ``qa_test`` each make a second call whose emission can
     overwrite the first's artifacts. #928's own docstring names them as the
     interesting pair; #1206 found both left out of generation recording, which is
-    why ``gens_per_task`` read exactly 1.00 on every cycle measured."""
+    why ``gens_per_task`` read exactly 1.00 on every cycle measured — an invariant
+    that was the second call being dropped every time. It reads 2.00 here now."""
 
-    async def test_develop_self_eval_sends_a_four_message_transcript_and_records_nothing(self):
+    async def test_develop_self_eval_sends_a_four_message_transcript_and_records_it(self):
         ctx, seam = _context(
             "```python:wrong.py\nx = 1\n```",
             "```python:models.py\nclass RunEvent: pass\n```",
@@ -494,10 +526,12 @@ class TestSelfEvalSecondCalls:
         assert second[:2] == first
         assert second[2][1] == "```python:wrong.py\nx = 1\n```"
         assert seam.kwargs[1] == seam.kwargs[0]
-        assert len(seam.records) == 1, "the primary records; the self-eval pass does not"
+        assert len(seam.records) == 2
+        assert [r.attempt for r, _ in seam.records] == [None, 2]
+        assert seam.records[1][0].response_text == "```python:models.py\nclass RunEvent: pass\n```"
 
     @patch(_RUN_TESTS, return_value=_TESTS_PASSED)
-    async def test_qa_self_eval_sends_a_four_message_transcript_and_records_nothing(self, _run):
+    async def test_qa_self_eval_sends_a_four_message_transcript_and_records_it(self, _run):
         ctx, seam = _context(
             "```python:tests/test_wrong.py\ndef test_a():\n    assert True\n```",
             "```python:tests/test_main.py\ndef test_b():\n    assert True\n```",
@@ -519,7 +553,7 @@ class TestSelfEvalSecondCalls:
         assert len(seam.calls) == 2
         assert [r for r, _ in seam.transcripts[1]] == ["system", "user", "assistant", "user"]
         assert seam.kwargs[1] == seam.kwargs[0]
-        assert len(seam.records) == 1
+        assert [r.attempt for r, _ in seam.records] == [None, 2]
 
 
 # ---------------------------------------------------------------------------
@@ -530,10 +564,11 @@ class TestSelfEvalSecondCalls:
 class TestFunctionOwnedLoops:
     """Two seams live in module-level functions rather than on a handler:
     ``retry_yaml_call`` (the brief and proposer loops) and ``produce_plan`` (the
-    sole-author manifest loop). They are the reason the extraction cannot be a
-    method call and nothing else — one of them must take a bound callable."""
+    sole-author manifest loop). They are why the extraction cannot be a method call
+    and nothing else — each takes the sequence in as a bound callable rather than
+    reaching for the port, which is what left one of them recording nothing."""
 
-    async def test_the_yaml_retry_loop_calls_the_model_and_records_nothing(self):
+    async def test_the_yaml_retry_loop_records_the_attempt_it_is_on(self):
         brief_yaml = (
             "version: 1\n"
             "brief_id: br_seeded_001\n"
@@ -565,13 +600,24 @@ class TestFunctionOwnedLoops:
         assert result.success is True
         assert len(seam.calls) == 1
         assert [r for r, _ in seam.transcripts[0]] == ["system", "user"]
-        assert seam.records == []
+        assert len(seam.records) == 1
+        record, layers = seam.records[0]
+        # This loop numbers from 1 rather than leaving the first attempt None: it *is*
+        # a retry loop, which is what ``attempt`` was added for (#1172). A primary that
+        # never retries stays None so it does not claim to be attempt 1 of something.
+        assert record.attempt == 1
+        assert record.completion_tokens == 803
+        assert layers.prompt_layer_set_id == "lead-planning"
 
     async def test_produce_plan_records_per_attempt_with_the_outcome_the_validator_gave(self):
-        """The one seam that already records something the shared method cannot:
-        ``_record_manifest_attempt`` fires *after* validation, so it carries the
-        attempt number and what the validator said. That ordering is why it stays
-        its own record rather than folding into the call sequence."""
+        """The one seam whose record cannot be written at call time: it fires *after*
+        validation, so it carries what the validator said. That ordering is the whole
+        reason ``_llm_call`` has a ``record=False`` — and it is one opt-out, held to
+        one by ``test_every_llm_call_records_a_generation``.
+
+        It records through the same ``_record_generation`` as everything else now.
+        Until #929 it had a fourth copy of the record-building block, with its own
+        field set — which is the drift the extraction exists to end."""
         manifest = (
             "version: 1\n"
             "project_id: test_proj\n"
@@ -624,6 +670,7 @@ class TestFunctionOwnedLoops:
             ),
         )
 
+        handler = GovernanceMergePlanHandler()
         artifact = await produce_plan(
             ctx,
             {"prd": "Build a simple user-CRUD API", "profile_roles": ["lead", "dev", "qa"]},
@@ -632,16 +679,21 @@ class TestFunctionOwnedLoops:
             role="lead",
             handler_name="test_harness",
             chat_kwargs={},
+            call=partial(handler._llm_call, ctx, inputs={}),
+            record=partial(handler._record_generation, ctx),
         )
 
         assert artifact is not None
         assert artifact["name"] == "implementation_plan.yaml"
         assert len(seam.calls) == 1
         assert len(seam.records) == 1
-        record, _ = seam.records[0]
+        record, layers = seam.records[0]
         assert record.attempt == 1
         assert record.outcome == "accepted"
         assert record.completion_tokens == 803
+        # The identity the deleted fourth copy of the record block spelled out. This
+        # generation belongs to the authoring loop, not to the handler driving it.
+        assert layers.prompt_layer_set_id == "lead-plan-authoring"
 
 
 # ---------------------------------------------------------------------------
@@ -649,18 +701,20 @@ class TestFunctionOwnedLoops:
 # ---------------------------------------------------------------------------
 
 
-async def test_a_correction_chain_records_a_minority_of_what_it_spends():
+async def test_a_correction_chain_records_everything_it_spends():
     """Bug caught: LangFuse reports a spend figure that is low by an unstated margin.
 
-    #1206 measured 26 recorded of 35 called across a shakeout pair; this is the
-    same arithmetic on one correction chain, where it is worst — analyse the
-    failure, decide the correction, define the contract, each with a re-ask.
-    Six calls, no records at all.
+    #1206 measured 26 recorded of 35 called across a shakeout pair; this is the same
+    arithmetic on one correction chain, where it was worst — analyse the failure,
+    decide the correction, define the contract, each with a re-ask. Six calls, and
+    before the extraction, zero records.
 
-    The margin is what makes this dangerous rather than merely incomplete: a
-    partial record that announces itself is a caveat, and one that does not is a
-    wrong number. ``gens_per_task`` read exactly 1.00 across every cycle measured,
-    which looks like an invariant and was the second call being dropped every time.
+    The margin is what made it dangerous rather than merely incomplete: a partial
+    record that announces itself is a caveat, and one that does not is a wrong number.
+
+    Asserted as one arithmetic statement rather than six per-handler counts because
+    the arithmetic is the claim — "every call is accounted for" is what a spend figure
+    read out of LangFuse depends on, and it is false the moment any one seam drops.
     """
     calls = 0
     records = 0
@@ -707,9 +761,10 @@ async def test_a_correction_chain_records_a_minority_of_what_it_spends():
     records += len(seam.records)
 
     assert calls == 6
-    assert records == 0, (
-        f"{records} of {calls} generations recorded — this is #1206's gap at its "
-        f"widest; closing it turns this into {calls} of {calls}"
+    assert records == calls, (
+        f"only {records} of {calls} generations recorded — #1206's gap has reopened "
+        f"somewhere in the correction chain, and any spend figure read from LangFuse "
+        f"for a corrected cycle is low by an unstated margin"
     )
 
 

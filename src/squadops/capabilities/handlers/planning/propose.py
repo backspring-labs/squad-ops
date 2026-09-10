@@ -8,6 +8,7 @@ helpers is propose-side.
 from __future__ import annotations
 
 import time
+from functools import partial
 from typing import TYPE_CHECKING, Any
 
 from squadops.capabilities.handlers.base import (
@@ -271,7 +272,7 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
             return self._parse_and_validate(yaml_or_none, expected_brief_id)
 
         parsed, last_yaml, last_error = await retry_yaml_call(
-            llm=context.ports.llm,
+            call=partial(self._llm_call, context, inputs=inputs, started=start_time),
             chat_kwargs=chat_kwargs,
             system_prompt=system_prompt,
             user_prompt=user_prompt,

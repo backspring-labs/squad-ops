@@ -50,8 +50,6 @@ from squadops.capabilities.handlers.cycle.validation import (
     _detect_stubs,
     _is_test_file,
 )
-from squadops.capabilities.handlers.emission_log import log_emission_shape
-from squadops.capabilities.handlers.fault_injection import inject as inject_fault
 from squadops.capabilities.reasoning_policy import reasoning_kwargs, resolve_reasoning_level
 from squadops.cycles.failure_evidence import failing_case_lines
 
@@ -1354,38 +1352,19 @@ class QATestHandler(_CycleTaskHandler):
         ]
 
         try:
-            response = await context.ports.llm.chat_stream_with_usage(messages, **chat_kwargs)
+            response, content = await self._llm_call(
+                context,
+                messages,
+                chat_kwargs,
+                inputs=inputs,
+                started=start_time,
+                apply_fault=True,
+                fault_config=resolved_config,
+                rendered=rendered,
+            )
         except LLMError as exc:
             logger.warning("LLM call failed for %s: %s", self._handler_name, exc)
             return self._fail_result(start_time, inputs, str(exc))
-
-        content = response.content
-        # #1251: the fault applies before the shape is logged — see cycle/base.py.
-        content = inject_fault(
-            content,
-            handler_name=self._handler_name,
-            task_id=context.task_id,
-            resolved_config=resolved_config,
-            inputs=inputs,
-        )
-        log_emission_shape(
-            self._handler_name,
-            content,
-            response.completion_tokens,
-            response.reasoning_tokens,
-            response.reasoning_text,
-        )
-        llm_duration_ms = (time.perf_counter() - start_time) * 1000
-        self._record_generation(
-            context,
-            user_prompt,
-            content,
-            llm_duration_ms,
-            model_name,
-            rendered=rendered,
-            chat_response=response,
-            reasoning=reasoning,
-        )
 
         scaffold_input = inputs.get("verification_scaffold")
         fill_emission = None
@@ -1523,14 +1502,20 @@ class QATestHandler(_CycleTaskHandler):
                         )
 
                     try:
-                        followup_response = await context.ports.llm.chat_stream_with_usage(
+                        _, followup_content = await self._llm_call(
+                            context,
                             [
                                 ChatMessage(role="system", content=system_prompt),
                                 ChatMessage(role="user", content=user_prompt),
                                 ChatMessage(role="assistant", content=content),
                                 ChatMessage(role="user", content=followup_prompt),
                             ],
-                            **chat_kwargs,
+                            chat_kwargs,
+                            inputs=inputs,
+                            started=start_time,
+                            shape_label=f"{self._handler_name}:self_eval",
+                            rendered=rendered,
+                            attempt=self_eval_count + 1,
                         )
                     except LLMError as exc:
                         logger.warning(
@@ -1540,14 +1525,7 @@ class QATestHandler(_CycleTaskHandler):
                         )
                         break
 
-                    log_emission_shape(
-                        f"{self._handler_name}:self_eval",
-                        followup_response.content,
-                        followup_response.completion_tokens,
-                        followup_response.reasoning_tokens,
-                        followup_response.reasoning_text,
-                    )
-                    followup_source = followup_response.content
+                    followup_source = followup_content
                     if scaffold_input:
                         # 1.6.5 C (#947): the self-eval's fills go through the SAME merge
                         # gate as the primary's — phantom tables (#1087) and element kinds

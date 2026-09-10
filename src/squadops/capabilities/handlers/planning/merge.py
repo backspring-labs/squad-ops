@@ -8,6 +8,7 @@ with the sole-author fallback.
 from __future__ import annotations
 
 import time
+from functools import partial
 from typing import TYPE_CHECKING, Any
 
 from squadops.capabilities.handlers.base import (
@@ -276,6 +277,11 @@ class GovernanceMergePlanHandler(_CycleTaskHandler):
             role=self._role,
             handler_name=self._handler_name,
             chat_kwargs=self._build_chat_kwargs(inputs),
+            # #929: the authoring loop borrows this handler's LLM sequence and its
+            # generation record rather than reaching for the port and rebuilding the
+            # record itself, which is what it did.
+            call=partial(self._llm_call, context, inputs=inputs),
+            record=partial(self._record_generation, context),
         )
 
         if manifest is None:
