@@ -165,7 +165,109 @@ def _from_passed_row(cid: str, row: Mapping[str, Any]) -> CheckResult:
             provenance=provenance,
         )
     status = ResultStatus.PASSED if row.get("passed") else ResultStatus.FAILED
-    return CheckResult(check_id=cid, status=status, provenance=provenance)
+    # #1472: carry the producer's reason on the FAILED path too. Until now this branch
+    # dropped it unconditionally, so a `passed: False` row's cause never reached
+    # `CheckResult.reason` and therefore never reached `failed_detail` — the run's required
+    # failure read `reason: ""` however much the producer had supplied.
+    #
+    # This is #510's fix, generalized. #510 closed exactly this hole for `tests_pass` and
+    # said why in `_tests_pass_from_result`: "failed_detail reads CheckResult.reason, and an
+    # empty reason made the run's only required failure undiagnosable from evidence." That
+    # fix landed on the ONE check with a dedicated normalizer; every framework producer that
+    # reports through a boolean `passed` row kept the hole, and `frontend_build` is the one
+    # the 1.7.5 deploy-A' pair caught with it — twice, on both stacks.
+    #
+    # Note the asymmetry this removes, which is the same shape one layer up (#1468): the
+    # NOT-EXECUTED branch above has always honored `reason`, so a SKIPPED check explained
+    # itself and a FAILED one did not. The useful case was the discarded one.
+    return CheckResult(
+        check_id=cid,
+        status=status,
+        reason=None
+        if status is ResultStatus.PASSED
+        else (_str_or_none(row.get("reason")) or derived_failure_reason(row)),
+        provenance=provenance,
+    )
+
+
+#: Row keys that describe the check rather than its outcome. Everything else on a failing row
+#: is the producer's evidence and is fair game for a derived reason.
+#: ``inspected`` is excluded because ``_inspection_provenance`` already digests it onto
+#: CheckProvenance — rendering it twice would put a file list in the SIGNATURE, and a
+#: traversal-order change would then read as a shifted failure.
+_STRUCTURAL_ROW_KEYS = frozenset(
+    {
+        "check",
+        "passed",
+        "executed",
+        "status",
+        "reason",
+        "severity",
+        "criterion_id",
+        "subject",
+        "file",
+        "inspected",
+        # ALREADY CONSUMED BY correction_signature, and re-rendering them here breaks it.
+        # `failing_tests` is the load-bearing one: failure_signature splits it into ONE
+        # ELEMENT PER FAILING TEST (#878), so putting the list into the shared token too
+        # makes a partial fix stop being a strict subset — PROGRESS silently becomes
+        # SHIFTED and A4 re-arms the termination that suite exists to keep selective.
+        # `test_the_category_is_constant_within_a_round_so_progress_still_reduces` caught
+        # exactly that. `runner`/`exit_code`/`suite_broken` are appended to the token by
+        # `_reason_token` itself (#761, #878); rendering them twice is noise, not evidence.
+        "failing_tests",
+        "runner",
+        "exit_code",
+        "suite_broken",
+    }
+)
+
+#: Bounds on a derived reason. It rides on CheckResult.reason, which feeds BOTH the record a
+#: human reads and ``correction_signature._reason_token``. Unbounded evidence there would put
+#: a whole file list in a signature.
+_DERIVED_REASON_ITEMS = 5
+_DERIVED_REASON_CHARS = 500
+
+
+def derived_failure_reason(row: Mapping[str, Any]) -> str | None:
+    """A reason composed from a failing row's own evidence, when the producer set none.
+
+    #1472 opened the channel — ``_from_passed_row`` now carries ``reason`` to the record —
+    but eight framework producers never set one, so the channel stayed empty for them. Each
+    of those rows already holds the facts that make a good reason (``missing``, ``stubs_found``,
+    ``expected``/``present``, ``test_files_found``, ``required``); none turns them into the
+    field ``failed_detail`` reads. Deriving here fixes every current producer AND every future
+    one, where eight per-producer edits would be a checklist that the ninth check silently
+    fails. The precedent is ``_failed_tests_reason``, which has composed ``tests_pass``'s
+    reason from row fields since #510.
+
+    **Deterministic by construction, because this feeds a signature.** Keys are sorted and
+    list members are sorted, so two rounds reporting the same failure render byte-identically
+    and a genuine repeat still reads as a repeat. Without that, traversal order alone would
+    make every round look SHIFTED, A4 would never terminate, and the run would burn its whole
+    budget — the expensive direction, per ``correction_signature``.
+
+    The flip side is intended: a repair that fixes two of three missing files changes the
+    rendered set, which reads as MOVEMENT_PROGRESS rather than the collapsed repeat that cost
+    the 1.7.5 deploy-A rolls.
+
+    Returns ``None`` when the row carries no evidence at all — an absent reason is honest, and
+    inventing "failed" would only restate the status the record already shows.
+    """
+    parts: list[str] = []
+    for key in sorted(row):
+        if key in _STRUCTURAL_ROW_KEYS:
+            continue
+        value = row[key]
+        if isinstance(value, (list, tuple)):
+            items = sorted(str(v) for v in value)
+            shown = ", ".join(items[:_DERIVED_REASON_ITEMS])
+            if len(items) > _DERIVED_REASON_ITEMS:
+                shown += f", +{len(items) - _DERIVED_REASON_ITEMS} more"
+            parts.append(f"{key}=[{shown}]")
+        elif isinstance(value, (str, int, float, bool)) or value is None:
+            parts.append(f"{key}={value}")
+    return "; ".join(parts)[:_DERIVED_REASON_CHARS] or None
 
 
 def _inspection_provenance(row: Mapping[str, Any]) -> CheckProvenance | None:

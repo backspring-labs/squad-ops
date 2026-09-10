@@ -24,7 +24,7 @@ from typing import Any
 
 from squadops.cycles.failure_evidence import FailureEvidenceCategory, derive_failure_category
 from squadops.cycles.verification_integrity import ResultStatus
-from squadops.cycles.verification_normalize import row_is_blocking_failure
+from squadops.cycles.verification_normalize import derived_failure_reason, row_is_blocking_failure
 
 #: The decision-handler vocabulary value meaning "no structural candidate".
 CANDIDATE_NONE = "none"
@@ -126,7 +126,13 @@ def _reason_token(row: dict[str, Any], category: str) -> str:
     comparison is a shift, so the sequence is fixed and append-only rather than
     conditional on which fields happen to be present.
     """
+    # #1472: the same derivation the record uses. THIS PATH READS THE RAW ROW, never the
+    # normalized CheckResult, so a fallback applied only in verification_normalize would fix
+    # the record and leave the signature collapsing — which is the half that actually cost
+    # the 1.7.5 deploy-A rolls. One helper, both consumers, or they drift.
     reason = row.get("reason")
+    if not (isinstance(reason, str) and reason):
+        reason = derived_failure_reason(row)
     token = (
         str(reason)
         if isinstance(reason, str) and reason
