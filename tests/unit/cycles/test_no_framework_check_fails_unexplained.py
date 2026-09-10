@@ -149,3 +149,50 @@ def test_a_long_evidence_list_is_bounded():
 
     assert len(detail[0].reason) <= 500
     assert "more" in detail[0].reason
+
+
+class TestTheDerivedReasonRespectsThePerFailureSplit:
+    """A row that failure_signature SPLITS must not also get a derived reason (#1472).
+
+    Caught on the deploy-A" React roll, in my own fix. `failing_tests` was excluded from the
+    derivation by name, and `failing_cases` and `suite_defects` — which co-vary with exactly
+    the same failure set — walked straight back in. A repair that fixed two of three failures
+    then read as SHIFTED instead of PROGRESS, which is the precise defect the exclusion was
+    added to prevent.
+
+    Naming co-varying fields one at a time is the wrong shape: the list grows and the next
+    field silently reopens it. The rule is that a row carrying per-failure identities already
+    HAS its discrimination and needs no derived token.
+    """
+
+    @staticmethod
+    def _suite_row(tests, cases):
+        return {
+            "check": "tests_pass",
+            "passed": False,
+            "exit_code": 1,
+            "runner": "pytest",
+            "suite_broken": False,
+            "tests_passed": False,
+            "failing_tests": tests,
+            "failing_cases": cases,
+            "suite_defects": [],
+        }
+
+    def test_a_partial_repair_of_a_split_row_still_reads_as_progress(self):
+        def ev(r):
+            return {"validation_result": {"checks": [r]}}
+
+        both = failure_signature(ev(self._suite_row(("a::x", "a::y", "a::z"), ["x", "y", "z"])))
+        one = failure_signature(ev(self._suite_row(("a::x",), ["x"])))
+
+        assert one < both, (
+            "a partial repair stopped being a strict subset — PROGRESS became SHIFTED"
+        )
+
+    def test_an_unsplit_row_still_gets_its_derived_reason(self):
+        """The control: the fallback must keep working where it was actually needed. Without
+        this, 'skip when split' could be over-applied and silently disable the whole fix."""
+        detail = _detail({"check": "required_files", "passed": False, "missing": ["Dockerfile"]})
+
+        assert detail[0].reason == "missing=[Dockerfile]"

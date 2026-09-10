@@ -254,6 +254,19 @@ def derived_failure_reason(row: Mapping[str, Any]) -> str | None:
     Returns ``None`` when the row carries no evidence at all — an absent reason is honest, and
     inventing "failed" would only restate the status the record already shows.
     """
+    # A row carrying `failing_tests` is SPLIT by failure_signature into one element per
+    # failing test (#878), and every element shares this one token. Anything here that
+    # co-varies with that set therefore breaks the subset relation a partial repair must
+    # produce: PROGRESS silently becomes SHIFTED and A4 re-arms the termination it exists to
+    # keep selective. Naming the co-varying fields one at a time was the first attempt and it
+    # was the wrong shape — `failing_tests` was excluded and `failing_cases` and
+    # `suite_defects` walked straight back in, measured on the deploy-A" React roll.
+    #
+    # The rule instead: a row that already has per-failure identities does not NEED a derived
+    # reason, because the split is the discrimination. Deriving one can only add risk. Rows
+    # without that split keep the fallback, which is where it was needed.
+    if row.get("failing_tests"):
+        return None
     parts: list[str] = []
     for key in sorted(row):
         if key in _STRUCTURAL_ROW_KEYS:
