@@ -12,13 +12,17 @@ from pydantic import ValidationError
 
 from squadops.config.loader import _parse_env_overrides
 from squadops.config.schema import (
+    A2AConfig,
     AppConfig,
     AuthConfig,
     CommsConfig,
     DBConfig,
+    FilesystemToolConfig,
     LLMConfig,
+    QueueConfig,
     RabbitMQConfig,
     RedisConfig,
+    ToolsConfig,
 )
 
 pytestmark = [pytest.mark.domain_contracts]
@@ -28,10 +32,13 @@ def _rest() -> dict:
     return {
         "db": DBConfig(url="postgresql://u@localhost:5432/db"),
         "comms": CommsConfig(
+            queue=QueueConfig(provider="rabbitmq"),
+            a2a=A2AConfig(provider="http"),
             rabbitmq=RabbitMQConfig(url="amqp://u@localhost:5672/"),
             redis=RedisConfig(url="redis://localhost:6379/0"),
         ),
         "auth": AuthConfig(enabled=False),
+        "tools": ToolsConfig(filesystem=FilesystemToolConfig(provider="local")),
     }
 
 

@@ -3,15 +3,15 @@ Unit tests for QueuePort interface and adapters.
 Tests port isolation, factory resolution, and payload integrity.
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
+from pydantic import ValidationError
 
-from adapters.comms.factory import get_queue_adapter, validate_comms_config
+from adapters.comms.factory import create_a2a_client, create_a2a_server, create_queue_adapter
 from squadops.comms.queue_message import QueueMessage
-from squadops.core.secrets import SecretManager
+from squadops.config.schema import A2AConfig, CommsConfig, QueueConfig, RabbitMQConfig, RedisConfig
 from squadops.ports.comms.queue import QueuePort
-from squadops.ports.secrets import SecretProvider
 
 
 class MockQueueProvider(QueuePort):
@@ -48,27 +48,6 @@ class MockQueueProvider(QueuePort):
     def capabilities(self) -> dict[str, bool]:
         """Mock capabilities."""
         return {"delay": True, "fifo": False, "priority": True}
-
-
-class MockSecretProvider(SecretProvider):
-    """Mock secret provider for testing factory resolution."""
-
-    def __init__(self, secrets: dict[str, str]):
-        self._secrets = secrets
-
-    @property
-    def provider_name(self) -> str:
-        return "mock"
-
-    def resolve(self, provider_key: str) -> str:
-        if provider_key not in self._secrets:
-            from squadops.core.secrets import SecretNotFoundError
-
-            raise SecretNotFoundError(provider_key, "mock", "Secret not found")
-        return self._secrets[provider_key]
-
-    def exists(self, provider_key: str) -> bool:
-        return provider_key in self._secrets
 
 
 @pytest.mark.unit
@@ -112,85 +91,64 @@ class TestQueuePortIsolation:
 
 @pytest.mark.unit
 class TestFactoryResolution:
-    """Test factory correctly resolves secret:// references."""
+    """The typed factories (#301) — what each root calls, and what a wrong selector does.
 
-    def test_factory_resolves_secret_references(self):
-        """Test factory resolves secret:// references using SecretManager."""
-        # Create mock secret provider
-        mock_provider = MockSecretProvider({"rabbitmq_password": "secret123"})
-        secret_manager = SecretManager(mock_provider)
+    The profile-dict factory these replace resolved ``secret://`` itself; the loader does that
+    before any factory runs, so that behaviour is gone rather than re-tested. It also forwarded
+    a ``namespace`` the adapter accepts and no root ever set — dropped, named in the PR.
+    """
 
-        # Create profile with secret:// reference
-        profile = {
-            "comms": {
-                "provider": "rabbitmq",
-                "url": "amqp://user:secret://rabbitmq_password@localhost:5672/vhost",
-            }
-        }
+    @staticmethod
+    def _comms(**over) -> CommsConfig:
+        return CommsConfig(
+            queue=QueueConfig(provider="rabbitmq"),
+            a2a=A2AConfig(provider="http", **over),
+            rabbitmq=RabbitMQConfig(url="amqp://user:pass@localhost:5672/vhost"),
+            redis=RedisConfig(url="redis://localhost:6379/0"),
+        )
 
-        # Factory should resolve the secret
-        with patch("adapters.comms.factory.RabbitMQAdapter") as mock_adapter_class:
-            mock_adapter_instance = MagicMock()
-            mock_adapter_class.return_value = mock_adapter_instance
+    def test_queue_adapter_is_built_from_the_vendor_url_verbatim(self):
+        """The runtime root's call: no prefetch kwarg, so the adapter keeps its own default."""
+        with patch("adapters.comms.factory.RabbitMQAdapter") as cls:
+            create_queue_adapter(self._comms())
+        cls.assert_called_once_with(url="amqp://user:pass@localhost:5672/vhost")
 
-            adapter = get_queue_adapter(profile, secret_manager)
+    def test_prefetch_count_passes_through_when_the_root_sets_it(self):
+        """The agent root's call (#323: one unacked message at a time)."""
+        with patch("adapters.comms.factory.RabbitMQAdapter") as cls:
+            create_queue_adapter(self._comms(), prefetch_count=1)
+        assert cls.call_args.kwargs["prefetch_count"] == 1
 
-            # Verify adapter was created
-            assert adapter is not None
-            # Verify factory was called (adapter creation happens)
-            mock_adapter_class.assert_called_once()
+    def test_a_selector_the_factory_does_not_know_fails_loudly_by_name(self):
+        """Unreachable through load_config (the field is a Literal), so built by hand: the
+        factory must not silently pick a vendor — R2, the masking-fallback rule."""
+        comms = self._comms()
+        comms.queue = QueueConfig.model_construct(provider="kafka")
+        with pytest.raises(ValueError, match="comms.queue.provider='kafka'"):
+            create_queue_adapter(comms)
 
-            # Verify the URL passed to adapter has resolved secret
-            call_args = mock_adapter_class.call_args
-            assert call_args is not None
-            # The factory resolves the secret in the URL before passing to adapter
-            resolved_url = call_args.kwargs.get("url")
-            assert resolved_url is not None
-            # The URL should have the secret resolved (not the secret:// reference)
-            assert "secret://" not in resolved_url
-            assert "secret123" in resolved_url
+    def test_the_selector_is_required_not_defaulted(self):
+        """R2 at the schema: a CommsConfig with no queue section does not validate."""
+        with pytest.raises(ValidationError, match="queue"):
+            CommsConfig(
+                a2a=A2AConfig(provider="http"),
+                rabbitmq=RabbitMQConfig(url="amqp://localhost/"),
+                redis=RedisConfig(url="redis://localhost/0"),
+            )
 
-    def test_factory_validates_config(self):
-        """Test factory validates configuration before creating adapter."""
-        # Missing comms config
-        profile = {}
-        SecretManager(MockSecretProvider({}))
+    def test_a2a_client_takes_its_timeouts_from_config(self):
+        """The two constructor defaults became tunables (R5); a value set in config must
+        reach the adapter, or the tunable is decoration."""
+        with patch("adapters.comms.factory.A2AClientAdapter") as cls:
+            create_a2a_client(self._comms(timeout_seconds=7.5, agent_card_timeout_seconds=2.5))
+        cls.assert_called_once_with(timeout_seconds=7.5, agent_card_timeout_seconds=2.5)
 
-        with pytest.raises(ValueError, match="Communication configuration"):
-            validate_comms_config(profile)
-
-        # Missing provider
-        profile = {"comms": {}}
-        with pytest.raises(ValueError, match="Queue provider|Communication configuration"):
-            validate_comms_config(profile)
-
-        # Missing URL for rabbitmq
-        profile = {"comms": {"provider": "rabbitmq"}}
-        with pytest.raises(ValueError, match="RabbitMQ URL"):
-            validate_comms_config(profile)
-
-    def test_factory_handles_namespace(self):
-        """Test factory correctly passes namespace to adapter."""
-        profile = {
-            "comms": {
-                "provider": "rabbitmq",
-                "url": "amqp://user:pass@localhost:5672/vhost",
-                "namespace": "test_namespace",
-            }
-        }
-        secret_manager = SecretManager(MockSecretProvider({}))
-
-        with patch("adapters.comms.factory.RabbitMQAdapter") as mock_adapter_class:
-            mock_adapter_instance = MagicMock()
-            mock_adapter_class.return_value = mock_adapter_instance
-
-            get_queue_adapter(profile, secret_manager)
-
-            # Verify namespace was passed
-            call_args = mock_adapter_class.call_args
-            assert call_args is not None
-            namespace = call_args.kwargs.get("namespace")
-            assert namespace == "test_namespace"
+    def test_a2a_server_binds_card_executor_and_port(self):
+        card, executor = object(), object()
+        with patch("adapters.comms.factory.A2AServerAdapter") as cls:
+            create_a2a_server(self._comms(), agent_card=card, executor=executor, port=8080)
+        kw = cls.call_args.kwargs
+        assert (kw["agent_card"], kw["executor"], kw["port"]) == (card, executor, 8080)
 
 
 @pytest.mark.unit

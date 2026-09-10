@@ -216,6 +216,9 @@ services:
       # unset (empty) follows SQUADOPS__LLM__TIMEOUT.
       SQUADOPS__DISPATCH__TASK_TIMEOUT: ${SQUADOPS__DISPATCH__TASK_TIMEOUT:-}
       SQUADOPS__LLM__PROVIDER: ollama  # required, never defaulted (#1157); the switch PR changes it (SIP-0106 §5)
+      SQUADOPS__COMMS__QUEUE__PROVIDER: rabbitmq  # required, never defaulted (#301)
+      SQUADOPS__COMMS__A2A__PROVIDER: http  # required, never defaulted (#301)
+      SQUADOPS__TOOLS__FILESYSTEM__PROVIDER: local  # required, never defaulted (#301)
       # Duty-transition scheduler (SIP-0089 §2.4). runtime-api is the single
       # central writer of agent mode (D16) — keep this enabled on exactly one
       # runtime-api instance (no leader election yet).
@@ -275,6 +278,9 @@ services:
       SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_SECRET: secret://agent_client_secret
       SQUADOPS__LLM__TIMEOUT: ${SQUADOPS__LLM__TIMEOUT:-180}
       SQUADOPS__LLM__PROVIDER: ollama  # required, never defaulted (#1157); the switch PR changes it (SIP-0106 §5)
+      SQUADOPS__COMMS__QUEUE__PROVIDER: rabbitmq  # required, never defaulted (#301)
+      SQUADOPS__COMMS__A2A__PROVIDER: http  # required, never defaulted (#301)
+      SQUADOPS__TOOLS__FILESYSTEM__PROVIDER: local  # required, never defaulted (#301)
     volumes:
       - max_memory_data:/app/data/memory_db
     depends_on:
@@ -330,6 +336,9 @@ services:
       SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_SECRET: secret://agent_client_secret
       SQUADOPS__LLM__TIMEOUT: ${SQUADOPS__LLM__TIMEOUT:-180}
       SQUADOPS__LLM__PROVIDER: ollama  # required, never defaulted (#1157); the switch PR changes it (SIP-0106 §5)
+      SQUADOPS__COMMS__QUEUE__PROVIDER: rabbitmq  # required, never defaulted (#301)
+      SQUADOPS__COMMS__A2A__PROVIDER: http  # required, never defaulted (#301)
+      SQUADOPS__TOOLS__FILESYSTEM__PROVIDER: local  # required, never defaulted (#301)
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -404,6 +413,9 @@ services:
       SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_SECRET: secret://agent_client_secret
       SQUADOPS__LLM__TIMEOUT: ${SQUADOPS__LLM__TIMEOUT:-180}
       SQUADOPS__LLM__PROVIDER: ollama  # required, never defaulted (#1157); the switch PR changes it (SIP-0106 §5)
+      SQUADOPS__COMMS__QUEUE__PROVIDER: rabbitmq  # required, never defaulted (#301)
+      SQUADOPS__COMMS__A2A__PROVIDER: http  # required, never defaulted (#301)
+      SQUADOPS__TOOLS__FILESYSTEM__PROVIDER: local  # required, never defaulted (#301)
     volumes:
       - ./docker-compose.yml:/app/docker-compose.yml
       - /var/run/docker.sock:/var/run/docker.sock
@@ -461,6 +473,9 @@ services:
       SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_SECRET: secret://agent_client_secret
       SQUADOPS__LLM__TIMEOUT: ${SQUADOPS__LLM__TIMEOUT:-180}
       SQUADOPS__LLM__PROVIDER: ollama  # required, never defaulted (#1157); the switch PR changes it (SIP-0106 §5)
+      SQUADOPS__COMMS__QUEUE__PROVIDER: rabbitmq  # required, never defaulted (#301)
+      SQUADOPS__COMMS__A2A__PROVIDER: http  # required, never defaulted (#301)
+      SQUADOPS__TOOLS__FILESYSTEM__PROVIDER: local  # required, never defaulted (#301)
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -514,6 +529,9 @@ services:
       SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_SECRET: secret://agent_client_secret
       SQUADOPS__LLM__TIMEOUT: ${SQUADOPS__LLM__TIMEOUT:-180}
       SQUADOPS__LLM__PROVIDER: ollama  # required, never defaulted (#1157); the switch PR changes it (SIP-0106 §5)
+      SQUADOPS__COMMS__QUEUE__PROVIDER: rabbitmq  # required, never defaulted (#301)
+      SQUADOPS__COMMS__A2A__PROVIDER: http  # required, never defaulted (#301)
+      SQUADOPS__TOOLS__FILESYSTEM__PROVIDER: local  # required, never defaulted (#301)
     volumes:
       - data_memory_data:/app/data/memory_db
     depends_on:
@@ -571,6 +589,9 @@ services:
       SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_SECRET: secret://agent_client_secret
       SQUADOPS__LLM__TIMEOUT: ${SQUADOPS__LLM__TIMEOUT:-180}
       SQUADOPS__LLM__PROVIDER: ollama  # required, never defaulted (#1157); the switch PR changes it (SIP-0106 §5)
+      SQUADOPS__COMMS__QUEUE__PROVIDER: rabbitmq  # required, never defaulted (#301)
+      SQUADOPS__COMMS__A2A__PROVIDER: http  # required, never defaulted (#301)
+      SQUADOPS__TOOLS__FILESYSTEM__PROVIDER: local  # required, never defaulted (#301)
     volumes:
       - bob_memory_data:/app/data/memory_db
     depends_on:
@@ -630,6 +651,9 @@ services:
       SQUADOPS_PROFILE: "${SQUADOPS_PROFILE:?Run bootstrap first}"
       SQUADOPS__SECRETS__PROVIDER: docker_secret
       SQUADOPS__LLM__PROVIDER: ollama  # required, never defaulted (#1157)
+      SQUADOPS__COMMS__QUEUE__PROVIDER: rabbitmq  # required, never defaulted (#301)
+      SQUADOPS__COMMS__A2A__PROVIDER: http  # required, never defaulted (#301)
+      SQUADOPS__TOOLS__FILESYSTEM__PROVIDER: local  # required, never defaulted (#301)
       SQUADOPS__DB__URL: postgresql://squadops:secret://db_password@postgres:5432/squadops
       SQUADOPS__COMMS__RABBITMQ__URL: amqp://squadops:secret://rabbitmq_password@rabbitmq:5672/
       SQUADOPS__COMMS__REDIS__URL: redis://redis:6379/0
