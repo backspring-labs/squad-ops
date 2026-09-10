@@ -165,7 +165,27 @@ def _from_passed_row(cid: str, row: Mapping[str, Any]) -> CheckResult:
             provenance=provenance,
         )
     status = ResultStatus.PASSED if row.get("passed") else ResultStatus.FAILED
-    return CheckResult(check_id=cid, status=status, provenance=provenance)
+    # #1472: carry the producer's reason on the FAILED path too. Until now this branch
+    # dropped it unconditionally, so a `passed: False` row's cause never reached
+    # `CheckResult.reason` and therefore never reached `failed_detail` — the run's required
+    # failure read `reason: ""` however much the producer had supplied.
+    #
+    # This is #510's fix, generalized. #510 closed exactly this hole for `tests_pass` and
+    # said why in `_tests_pass_from_result`: "failed_detail reads CheckResult.reason, and an
+    # empty reason made the run's only required failure undiagnosable from evidence." That
+    # fix landed on the ONE check with a dedicated normalizer; every framework producer that
+    # reports through a boolean `passed` row kept the hole, and `frontend_build` is the one
+    # the 1.7.5 deploy-A' pair caught with it — twice, on both stacks.
+    #
+    # Note the asymmetry this removes, which is the same shape one layer up (#1468): the
+    # NOT-EXECUTED branch above has always honored `reason`, so a SKIPPED check explained
+    # itself and a FAILED one did not. The useful case was the discarded one.
+    return CheckResult(
+        check_id=cid,
+        status=status,
+        reason=None if status is ResultStatus.PASSED else _str_or_none(row.get("reason")),
+        provenance=provenance,
+    )
 
 
 def _inspection_provenance(row: Mapping[str, Any]) -> CheckProvenance | None:
