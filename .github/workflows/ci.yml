@@ -139,6 +139,53 @@ jobs:
           print(f"{len(profiles)} request profiles, prompt fragment manifest present")
           EOF
 
+  lock-install-import:
+    # #637 (1.7.5 plan §3.3 step 3; the 1.7.0 plan §6.2 criterion 3): each composition root
+    # imports under the EXACT dependency set its image installs, with an empty environment.
+    # Two things this catches that nothing else here does:
+    #   * a root that does work at import — load_config() at module scope was the #286 defect,
+    #     and no job could have caught it because no job imported the root;
+    #   * a lock missing a dependency the metadata happens to declare — the #636 class, a
+    #     container dead at registration. `--no-deps -e .` is what makes that visible: the
+    #     LOCK decides every dependency and the editable install only registers the package,
+    #     so metadata cannot pull in what the lock forgot. (The images run `pip install -e .`
+    #     with resolution after the lock; against a complete lock the two are identical.)
+    # `install-smoke` above is the other half — metadata alone must yield a working package;
+    # this is the locks alone yielding a starting root. Ungated, like it: the DOA class is
+    # worth two minutes on every push. The dev-venv guard (tests/unit/architecture/
+    # test_composition_roots.py) makes the same import under whatever the developer has
+    # installed; this makes it under what ships — #1478 went red on exactly that gap.
+    name: lock-install import
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - lock: api
+            root: squadops.api.runtime.main
+          - lock: agent
+            root: squadops.agents.entrypoint
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install requirements/${{ matrix.lock }}.lock into a fresh venv, the way the image does
+        run: |
+          python -m venv "$RUNNER_TEMP/lock-${{ matrix.lock }}"
+          "$RUNNER_TEMP/lock-${{ matrix.lock }}/bin/pip" install --upgrade pip
+          "$RUNNER_TEMP/lock-${{ matrix.lock }}/bin/pip" install -r "requirements/${{ matrix.lock }}.lock"
+          "$RUNNER_TEMP/lock-${{ matrix.lock }}/bin/pip" install --no-deps -e .
+
+      - name: ${{ matrix.root }} imports with an empty environment
+        # env -i: no SQUADOPS__*, no .env, nothing from the runner. A root that needs any of
+        # it to import is doing composition at import time (composition-roots.md R3).
+        run: |
+          env -i "$RUNNER_TEMP/lock-${{ matrix.lock }}/bin/python" -c "import ${{ matrix.root }}"
+
   dependency-audit:
     # #1205: nothing scanned the pins for advisories, and since #1203 every image installs
     # the same set — a CVE in any pinned package lands in the runtime API and all six
