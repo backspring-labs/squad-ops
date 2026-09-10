@@ -70,6 +70,7 @@ loaded_checks:
     from squadops.cycles.correction_signature import failure_signature
     from squadops.cycles.verification_normalize import normalize_task_checks
     from squadops.cycles.verification_integrity import aggregate_verification
+    from squadops.capabilities.handlers.cycle_tasks import QATestHandler
     import yaml
     # Declaring the API under /api is a REQUIREMENT of stack #2, not decoration (#859): App
     # Router serves handlers and pages from one `app/` tree, so the reference's bare /runs
@@ -135,6 +136,13 @@ loaded_checks:
     _own = aggregate_verification(normalize_task_checks({"validation_result": {"checks": [dict(_row, reason="mine")]}}, subject="t"), required_check_ids=["required_files"]).failed_detail
     _bare = aggregate_verification(normalize_task_checks({"validation_result": {"checks": [{"check": "required_files", "passed": False}]}}, subject="t"), required_check_ids=["required_files"]).failed_detail
     print("1472", repr(_fd[0].reason), repr(_own[0].reason), repr(_bare[0].reason))
+    # 1476: the QA build workspace admits the frozen stylesheet the entry point imports.
+    # Entered at the real _get_source_artifacts with the real profile. Control: an unrelated
+    # stylesheet no frozen file imports is still excluded — the fix is two basenames, not
+    # `.css` in source_filter. Printed DROPPED on every deploy before the fix.
+    _prof = "nextjs_ts"
+    _kept = set(QATestHandler()._get_source_artifacts({"resolved_config": {"development_profile": _prof}, "artifact_contents": {"app/layout.tsx": "x", "app/globals.css": "y", "unrelated/Fancy.css": "z"}}))
+    print("1476", "KEPT" if "app/globals.css" in _kept else "DROPPED", "app/layout.tsx" in _kept, "unrelated/Fancy.css" not in _kept)
     print("1434", default_reasoning_level("qa.test", output_shape="fill"), default_reasoning_level("qa.test"))
   # The live hypothesis, read on the container that actually runs qa.test rather than off the
   # framework — a policy present in runtime-api and absent in eve's image is #1289's shape.
