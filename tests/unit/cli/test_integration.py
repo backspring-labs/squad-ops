@@ -11,8 +11,6 @@ Skipped automatically when those dependencies are unavailable.
 from __future__ import annotations
 
 import json
-import os
-import sys
 from unittest.mock import patch
 
 import pytest
@@ -40,42 +38,26 @@ pytestmark = pytest.mark.skipif(
 
 runner = CliRunner()
 
+
 # Minimal env overrides to make load_config() succeed without Docker services.
-# The local.yaml profile enables auth with a secret:// reference and lacks
-# db/comms sections.  We disable auth, override the secret:// ref with a
-# literal, and provide dummy db/comms values.
-_TEST_ENV = {
-    "SQUADOPS__AUTH__ENABLED": "false",
-    "SQUADOPS__AUTH__KEYCLOAK__ADMIN__PASSWORD": "test",  # override secret:// ref
-    "SQUADOPS__DB__URL": "postgresql://test:test@localhost:5432/test",
-    "SQUADOPS__COMMS__RABBITMQ__URL": "amqp://test:test@localhost:5672/",
-    "SQUADOPS__COMMS__REDIS__URL": "redis://localhost:6379/0",
-    "SQUADOPS__LLM__PROVIDER": "ollama",  # required (#1157): the app loads config at import
-}
+def _test_config():
+    """The app from a config VALUE (#286). This used to be a dict of environment overrides
+    applied around a ``sys.modules``-purged import, because the app loaded configuration at
+    import time. Same nesting the ``SQUADOPS__*`` keys implied — auth disabled, dummy
+    db/comms endpoints, the required provider — with no env and no module surgery."""
+    from squadops.config.schema import AppConfig
 
-
-def _import_fastapi_app():
-    """Import the FastAPI app with test env vars set.
-
-    Must be called inside a fixture/function — never at module level — so
-    that env overrides are active before ``load_config()`` runs.
-    """
-    saved = {}
-    for k, v in _TEST_ENV.items():
-        saved[k] = os.environ.get(k)
-        os.environ[k] = v
-    try:
-        # Clear any cached failed import attempt
-        sys.modules.pop("squadops.api.runtime.main", None)
-        from squadops.api.runtime.main import app as fastapi_app
-
-        return fastapi_app
-    finally:
-        for k, orig in saved.items():
-            if orig is None:
-                os.environ.pop(k, None)
-            else:
-                os.environ[k] = orig
+    return AppConfig.model_validate(
+        {
+            "auth": {"enabled": False},
+            "db": {"url": "postgresql://test:test@localhost:5432/test"},
+            "comms": {
+                "rabbitmq": {"url": "amqp://test:test@localhost:5672/"},
+                "redis": {"url": "redis://localhost:6379/0"},
+            },
+            "llm": {"provider": "ollama"},
+        }
+    )
 
 
 def _wire_cycle_ports():
@@ -112,7 +94,9 @@ def _wire_cycle_ports():
 @pytest.fixture(scope="module")
 def fastapi_app():
     """Lazily import the FastAPI app and wire in-memory adapters."""
-    fa_app = _import_fastapi_app()
+    from squadops.api.runtime.main import create_app
+
+    fa_app = create_app(_test_config())
     _wire_cycle_ports()
     return fa_app
 
