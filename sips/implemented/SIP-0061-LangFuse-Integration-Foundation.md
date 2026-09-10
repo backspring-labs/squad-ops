@@ -458,6 +458,56 @@ Any agent code path that calls `LLMPort.generate()` or `.chat()` MUST have a pai
 
 A follow-on SIP MAY introduce an `ObservableLLMPort` that wraps `LLMPort` + `LLMObservabilityPort` to guarantee every generation is recorded without relying on manual pairing. This is deferred from 0.9.0 to avoid introducing a new architectural pattern before the port is proven.
 
+## 6.9 Post-acceptance amendment — the pairing convention failed, and its guarantee is a handler seam, not a port wrapper
+
+**2026-09-10, ruled during #929/#1206 implementation on the 1.7.5 line.**
+
+**What changed.** §6.7's *"Convention: paired instrumentation"* — "any agent code path that
+calls `LLMPort.generate()` or `.chat()` MUST have a paired `record_generation()` call" — is
+no longer a convention held by review. Every LLM call now passes through one method,
+`_CycleTaskHandler._llm_call`, which owns the pairing; the pairing is structural. §6.8's
+deferred `ObservableLLMPort` is **withdrawn**, not deferred further: the guarantee it was to
+provide is now provided elsewhere, and a wrapper added on top would be a second place the
+same concern lives.
+
+**Evidence that the convention failed.** #1206 counted the pairing by AST rather than by
+reading: **ten of seventeen** `chat_stream_with_usage` call sites had no paired
+`record_generation()`. Measured on the 2026-08-31 shakeout pair (`cyc_b2bbbc234d12`,
+`cyc_c70eeb8f9459`): 35 LLM calls, 35 emission-shape lines, **26** LangFuse generations —
+a 26% shortfall that the data did not disclose. Five files recorded nothing at all
+(`impl/analyze_failure.py`, `impl/correction_decision.py`, `impl/define_done.py`,
+`_plan_authoring.py`, `planning/review.py`); two recorded their first call and not their
+self-eval second (`cycle/develop.py`, `cycle/qa_test.py`). §10's *"at least one
+representative agent (per role)"* test requirement is what let this pass: a per-role
+sample cannot see a per-*call-site* gap, and the dark sites included
+`governance.define_done` and `data.analyze_failure`, both declared `ReasoningLevel.HIGH`
+— the most expensive reasoning in a cycle, none of it visible.
+
+**Why not the port wrapper §6.8 contemplated.** #929 evaluated it and rejected it as the
+weaker of two options. A wrapper at the port sees a request and a response; it does not see
+which handler made the call, which prompt layers to attach, which attempt of a validator
+loop it is, or whether a diagnostic fault was declared for that seam. It would also fix
+recording while leaving intact the ~10-line sequence duplicated around every call — the
+duplication being the actual defect, and the reason #924's emission capture had covered one
+seam of thirteen. The handler-side seam fixes both.
+
+**What replaces the convention as the enforcement.**
+
+- `tests/unit/capabilities/test_emission_log.py::test_no_handler_calls_the_llm_port_directly`
+  — one production module may call the port. This inverts #928's per-file
+  call-versus-capture count, which prevented an eighteenth dark site while blessing
+  seventeen copies.
+- `…::test_every_llm_call_records_a_generation` — the record twin #1206 asked for, holding
+  the count of `record=False` opt-outs at exactly one (the manifest-authoring loop, whose
+  record is written after its validator rules so it can carry the verdict).
+- `tests/unit/capabilities/handlers/test_llm_call_characterization.py` — per-seam
+  characterization of messages, kwargs, records and results.
+
+**Not changed by this amendment.** The port surface (§6.1), `GenerationRecord` and
+`generation_id`'s caller-supplied rule (§6.7), `CorrelationContext` (§6.2), the adapter,
+the factory, and the DI wiring are all as accepted. This amends *how the pairing is
+guaranteed*, not what is recorded.
+
 ---
 
 # 7. Configuration
