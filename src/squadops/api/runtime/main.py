@@ -5,7 +5,12 @@ SIP-0048: Runtime API for task management, execution cycles, and memory operatio
 Part of SIP-0.8.8 migration from _v0_legacy/infra/runtime-api/main.py
 
 Usage:
-    uvicorn squadops.api.runtime.main:app --host 0.0.0.0 --port 8001
+    uvicorn --factory squadops.api.runtime.main:build_app --host 0.0.0.0 --port 8001
+
+Composition root (#286, docs/architecture/composition-roots.md §6.5): ``create_app(config)``
+is pure composition and reads nothing from the environment; ``build_app()`` is the process
+entry that loads configuration and calls it. A bare ``import squadops.api.runtime.main``
+performs no configuration load, no secret resolution and no construction.
 """
 
 import asyncio
@@ -14,15 +19,31 @@ import os
 from urllib.parse import urlparse
 
 import aio_pika
-import asyncpg
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from adapters.persistence.pool import create_pool
 from squadops import __version__ as SQUADOPS_VERSION
 from squadops.api.error_handlers import register_domain_error_handlers
+from squadops.api.middleware.auth import AuthMiddleware, RequestIDMiddleware
+from squadops.api.routes.agent_status import router as agent_status_router
+from squadops.api.routes.assignments import router as assignments_router
+from squadops.api.routes.auth import router as auth_router
+from squadops.api.routes.chat import agents_router as chat_agents_router
+from squadops.api.routes.chat import chat_router
+from squadops.api.routes.cycles import (
+    artifacts_router,
+    cycle_request_profiles_router,
+    cycles_router,
+    models_router,
+    profiles_router,
+    projects_router,
+    runs_router,
+)
+from squadops.api.routes.platform_health import router as platform_health_router
 from squadops.bootstrap.secrets import secret_provider_for
 from squadops.config import config_fingerprint, load_config, redact_config
+from squadops.config.schema import AppConfig
 
 from .deps import (
     set_audit_port,
@@ -41,31 +62,6 @@ configure_logging()
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(
-    title="SquadOps Runtime API",
-    version=SQUADOPS_VERSION,
-    description="SIP-0048: Runtime API for task management and execution cycles",
-)
-
-
-# #576: domain errors become the standard envelope in one place — see api/error_handlers.py.
-register_domain_error_handlers(app)
-
-
-# Load configuration with profile selection and validation
-strict_mode = os.getenv("SQUADOPS_STRICT_CONFIG", "false").lower() == "true"
-config = load_config(strict=strict_mode, secret_provider_factory=secret_provider_for)
-
-# Extract configuration values
-POSTGRES_URL = config.db.url
-RABBITMQ_URL = config.comms.rabbitmq.url
-
-# Log configuration at startup (SIP-051 requirement)
-config_dict = config.model_dump()
-redacted_config_dict = redact_config(config_dict)
-fingerprint = config_fingerprint(redacted_config_dict)
-logger.info(f"Configuration fingerprint: {fingerprint} (strict={strict_mode})")
-
 
 def _extract_origin(uri: str) -> str:
     """Extract scheme://host:port from a URI (no path)."""
@@ -76,111 +72,106 @@ def _extract_origin(uri: str) -> str:
     return origin
 
 
-# SIP-0062 Phase 3a: CORS middleware for browser-based clients
-# Middleware is added in reverse order because Starlette processes them LIFO.
-# CORS must be outermost (added LAST) so it adds headers to ALL responses,
-# including 401s from AuthMiddleware. Order: Auth → RequestID → CORS (outermost).
-auth_config = config.auth
-_cors_origins: set[str] = set()
-if auth_config.console:
-    _cors_origins.add(_extract_origin(auth_config.console.redirect_uri))
-    if auth_config.console.post_logout_redirect_uri:
-        _cors_origins.add(_extract_origin(auth_config.console.post_logout_redirect_uri))
+def _add_middleware(app: FastAPI, auth_config) -> None:
+    """SIP-0062 Phase 3a. Middleware is added in reverse order because Starlette processes
+    them LIFO: CORS must be outermost (added LAST) so it adds headers to ALL responses,
+    including 401s from AuthMiddleware. Order: Auth → RequestID → CORS (outermost)."""
+    cors_origins: set[str] = set()
+    if auth_config.console:
+        cors_origins.add(_extract_origin(auth_config.console.redirect_uri))
+        if auth_config.console.post_logout_redirect_uri:
+            cors_origins.add(_extract_origin(auth_config.console.post_logout_redirect_uri))
+    # Inner middleware first (Auth checks tokens)
+    if auth_config.enabled:
+        app.add_middleware(
+            AuthMiddleware,
+            auth_port=None,  # Port set at startup via deps; middleware uses deps.get_auth_port()
+            provider=auth_config.provider,
+            expose_docs=auth_config.expose_docs,
+        )
+    app.add_middleware(RequestIDMiddleware)
+    # CORS outermost (added last) — ensures CORS headers on 401/403 responses too
+    if cors_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=list(cors_origins),
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
 
-from squadops.api.middleware.auth import AuthMiddleware, RequestIDMiddleware  # noqa: E402
 
-# Inner middleware first (Auth checks tokens)
-if auth_config.enabled:
-    app.add_middleware(
-        AuthMiddleware,
-        auth_port=None,  # Port set at startup via deps; middleware uses deps.get_auth_port()
-        provider=auth_config.provider,
-        expose_docs=auth_config.expose_docs,
-    )
-app.add_middleware(RequestIDMiddleware)
+def _include_routers(app: FastAPI) -> None:
+    app.include_router(auth_router)  # SIP-0062 Phase 3a
+    # SIP-0064: cycle execution routes
+    app.include_router(projects_router)
+    app.include_router(cycles_router)
+    app.include_router(runs_router)
+    app.include_router(profiles_router)
+    app.include_router(artifacts_router)
+    app.include_router(cycle_request_profiles_router)  # SIP-0074
+    app.include_router(models_router)  # SIP-0074
+    app.include_router(assignments_router)  # SIP-0089 §2.7 (/api/v1)
+    app.include_router(platform_health_router)  # replaces the legacy health-check service
+    app.include_router(agent_status_router)  # #326: agent status writes, authed /api/v1 lane
+    app.include_router(chat_router)  # SIP-0085
+    app.include_router(chat_agents_router)
 
-# CORS outermost (added last) — ensures CORS headers on 401/403 responses too
-if _cors_origins:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=list(_cors_origins),
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
 
-# SIP-0062 Phase 3a: Include auth routes
-from squadops.api.routes.auth import router as auth_router  # noqa: E402
-
-app.include_router(auth_router)
-
-# SIP-0064: Include cycle execution routes
-from squadops.api.routes.cycles import (  # noqa: E402
-    artifacts_router,
-    cycle_request_profiles_router,
-    cycles_router,
-    models_router,
-    profiles_router,
-    projects_router,
-    runs_router,
+#: Connection and process objects live on ``app.state`` (FastAPI's per-app holder), so an
+#: app's connections have the app's lifecycle and nothing else's (§6.5). Declared here so
+#: every reader sees the full inventory; ``_startup`` fills them.
+_STATE_SLOTS = (
+    "pool",  # asyncpg pool (memory endpoints; the one factory, #577)
+    "rabbitmq_connection",  # persistent, like agents (task publishing)
+    "rabbitmq_channel",
+    "workflow_tracker",  # closed on shutdown
+    "reply_router",  # SIP-0094 per-agent reply queues; stopped on shutdown (D13)
+    "log_forwarder",  # SIP-0087; closed on shutdown
+    "redis_client",  # platform health routes
+    "health_checker",
+    "reconciliation_task",
+    "duty_scheduler",  # SIP-0089 §2.4, opt-in; stopped on shutdown
+    "runtime_coordinator",  # SIP-0089 §3.5 (#233) single-writer (D16), shared by executor + scheduler
 )
 
-app.include_router(projects_router)
-app.include_router(cycles_router)
-app.include_router(runs_router)
-app.include_router(profiles_router)
-app.include_router(artifacts_router)
-app.include_router(cycle_request_profiles_router)  # SIP-0074
-app.include_router(models_router)  # SIP-0074
 
-# SIP-0089 §2.7: Assignment routes (versioned resource lane, /api/v1)
-from squadops.api.routes.assignments import router as assignments_router  # noqa: E402
+def create_app(config: AppConfig) -> FastAPI:
+    """Pure composition: the app, its handlers, middleware, routers and lifecycle hooks, from a
+    config VALUE. Reads nothing from the environment (#286, §6.5).
 
-app.include_router(assignments_router)
+    What this does not fix, stated so it is not claimed: the routes read their ports from
+    ``deps.py``'s process-wide registry, which ``_startup`` populates — two apps in one
+    process share it and the second overwrites the first. #1448 is the follow-on; until it
+    lands, "one process, one runtime app" is a stated constraint.
+    """
+    app = FastAPI(
+        title="SquadOps Runtime API",
+        version=SQUADOPS_VERSION,
+        description="SIP-0048: Runtime API for task management and execution cycles",
+    )
+    # #576: domain errors become the standard envelope in one place — see api/error_handlers.py.
+    register_domain_error_handlers(app)
+    _add_middleware(app, config.auth)
+    _include_routers(app)
+    app.state.config = config
+    for slot in _STATE_SLOTS:
+        setattr(app.state, slot, None)
+    app.add_event_handler("startup", lambda: _startup(app))
+    app.add_event_handler("shutdown", lambda: _shutdown(app))
+    app.add_api_route("/health", health_check, methods=["GET"])
+    return app
 
-# Platform health routes (replaces legacy health-check service)
-from squadops.api.routes.platform_health import router as platform_health_router  # noqa: E402
 
-app.include_router(platform_health_router)
-
-# Agent status writes — authed /api/v1 lane (#326; moved off /health)
-from squadops.api.routes.agent_status import router as agent_status_router  # noqa: E402
-
-app.include_router(agent_status_router)
-
-# SIP-0085: Chat routes for console messaging
-from squadops.api.routes.chat import agents_router as chat_agents_router  # noqa: E402
-from squadops.api.routes.chat import chat_router  # noqa: E402
-
-app.include_router(chat_router)
-app.include_router(chat_agents_router)
-
-# Global connection pool (for memory endpoints only)
-pool: asyncpg.Pool | None = None
-
-# Global RabbitMQ connection and channel (for task publishing)
-rabbitmq_connection: aio_pika.Connection | None = None
-rabbitmq_channel: aio_pika.Channel | None = None
-
-# Workflow tracker port for shutdown cleanup
-_workflow_tracker = None
-
-# Reply router for per-agent reply queues (SIP-0094); stopped on shutdown (D13)
-_reply_router = None
-
-# Log forwarder port for shutdown cleanup (SIP-0087)
-_log_forwarder = None
-
-# Redis client + health checker for platform health routes
-_redis_client = None
-_health_checker_instance = None
-_reconciliation_task = None
-
-# SIP-0089 §2.4: in-process duty-transition scheduler (opt-in; stopped on shutdown)
-_duty_scheduler = None
-# SIP-0089 §3.5 (#233): the single-writer RuntimeCoordinator (D16), built once in
-# the cycle subsystem and shared by the executor (recruitment) and the scheduler.
-_runtime_coordinator = None
+def build_app() -> FastAPI:
+    """The process entry point: load configuration, then compose. The ONLY place the strict
+    flag is read from the environment."""
+    strict_mode = os.getenv("SQUADOPS_STRICT_CONFIG", "false").lower() == "true"
+    config = load_config(strict=strict_mode, secret_provider_factory=secret_provider_for)
+    # Log configuration at startup (SIP-051 requirement)
+    fingerprint = config_fingerprint(redact_config(config.model_dump()))
+    logger.info(f"Configuration fingerprint: {fingerprint} (strict={strict_mode})")
+    return create_app(config)
 
 
 async def _init_auth_subsystem(config) -> None:
@@ -256,21 +247,19 @@ async def _init_migrations(config, pool) -> None:
         logger.error("Failed to apply migrations during startup: %s", e)
 
 
-async def _init_log_forwarding(config) -> None:
+async def _init_log_forwarding(state, config) -> None:
     """Install the log forwarder via factory (SIP-0087).
 
     Always-inject pattern — a NoOp adapter is returned when no backend is
     configured, so the rest of the runtime never branches on enablement.
     """
-    global _log_forwarder
     from adapters.observability.log_forwarder import create_log_forwarder
 
-    _log_forwarder = await create_log_forwarder(config.prefect)
+    state.log_forwarder = await create_log_forwarder(config.prefect)
 
 
-async def _init_cycle_subsystem(config, pool) -> None:
+async def _init_cycle_subsystem(state, config, pool) -> None:
     """Initialize SIP-0064 cycle ports + SIP-0066 orchestrator."""
-    global _workflow_tracker, _reply_router, _runtime_coordinator
     try:
         from adapters.cycles.factory import (
             create_artifact_vault,
@@ -307,7 +296,7 @@ async def _init_cycle_subsystem(config, pool) -> None:
         from adapters.comms.rabbitmq import RabbitMQAdapter
         from adapters.telemetry.factory import create_llm_observability_provider
 
-        queue_adapter = RabbitMQAdapter(url=RABBITMQ_URL)
+        queue_adapter = RabbitMQAdapter(url=config.comms.rabbitmq.url)
         llm_obs = create_llm_observability_provider(
             config=config.langfuse,
             prompt_asset_provider=config.prompts.asset_source_provider,
@@ -318,14 +307,14 @@ async def _init_cycle_subsystem(config, pool) -> None:
         # task futures. Stopped during shutdown (D13).
         from adapters.cycles.reply_router import ReplyRouter
 
-        _reply_router = ReplyRouter(queue_adapter)
+        state.reply_router = ReplyRouter(queue_adapter)
 
-        _workflow_tracker = create_workflow_tracker(config.prefect)
+        state.workflow_tracker = create_workflow_tracker(config.prefect)
         # #77: expose the tracker to the cancel routes so cancelling a cycle/run
         # propagates to Prefect (stops the orphaned flow run).
         from squadops.api.runtime.deps import set_workflow_tracker
 
-        set_workflow_tracker(_workflow_tracker)
+        set_workflow_tracker(state.workflow_tracker)
 
         from adapters.events.factory import create_cycle_event_bus
         from squadops.api.runtime.deps import set_cycle_event_bus
@@ -338,7 +327,7 @@ async def _init_cycle_subsystem(config, pool) -> None:
             source_service="runtime-api",
             source_version=SQUADOPS_VERSION,
             llm_observability=llm_obs,
-            workflow_tracker=_workflow_tracker,
+            workflow_tracker=state.workflow_tracker,
         )
         set_cycle_event_bus(event_bus)
 
@@ -378,14 +367,14 @@ async def _init_cycle_subsystem(config, pool) -> None:
         # None when pool-less → recruitment falls back to the §2.5 guard only.
         from squadops.api.runtime.scheduler_bootstrap import create_runtime_coordinator
 
-        _runtime_coordinator = create_runtime_coordinator(pool)
+        state.runtime_coordinator = create_runtime_coordinator(pool)
 
         # #373/#529/#561: share the runtime ports with the cancel routes, which
         # bypass the executor's finalize path and so have to release the leases
         # and end the activities the cancelled run leaves behind.
         from squadops.api.runtime.deps import set_cancellation_ports
 
-        set_cancellation_ports(_runtime_coordinator, focus_lease_port, activity_port)
+        set_cancellation_ports(state.runtime_coordinator, focus_lease_port, activity_port)
 
         # Startup hygiene: clear runtime state a dead process left active, before
         # anything recruits against it. Each sweep is best-effort and owns its own
@@ -401,8 +390,8 @@ async def _init_cycle_subsystem(config, pool) -> None:
 
         # Lease first: it returns the agents it clears to ambient, so the mode
         # sweep after it sees only the residue with no lease at all (#710).
-        await reap_stranded_leases(cycle_registry, _runtime_coordinator, focus_lease_port)
-        await reap_stranded_modes(_runtime_coordinator, state_port)
+        await reap_stranded_leases(cycle_registry, state.runtime_coordinator, focus_lease_port)
+        await reap_stranded_modes(state.runtime_coordinator, state_port)
         await reap_stranded_activities(cycle_registry, activity_port)
         # Read-only, last: a post-crash boot immediately names every cycle
         # stranded between workloads and its recovery command (#481).
@@ -417,12 +406,12 @@ async def _init_cycle_subsystem(config, pool) -> None:
             queue=queue_adapter,
             task_timeout=config.task_timeout_seconds(),  # #1147: not llm.timeout
             llm_observability=llm_obs,
-            workflow_tracker=_workflow_tracker,
+            workflow_tracker=state.workflow_tracker,
             event_bus=event_bus,
-            reply_router=_reply_router,
+            reply_router=state.reply_router,
             assignment_port=assignment_port,
             activity_port=activity_port,
-            coordinator=_runtime_coordinator,
+            coordinator=state.runtime_coordinator,
             focus_lease_port=focus_lease_port,
         )
 
@@ -459,9 +448,8 @@ async def _init_cycle_subsystem(config, pool) -> None:
         logger.warning("LLM port not registered (non-fatal): %s", e)
 
 
-async def _init_monitoring(config, pool) -> None:
+async def _init_monitoring(state, config, pool) -> None:
     """Initialize health checker and chat ports."""
-    global _redis_client, _health_checker_instance, _reconciliation_task
     try:
         import redis.asyncio as aioredis
 
@@ -469,18 +457,18 @@ async def _init_monitoring(config, pool) -> None:
         from squadops.api.runtime.health_checker import HealthChecker
 
         redis_url = config.comms.redis.url
-        _redis_client = aioredis.from_url(redis_url)
-        _health_checker_instance = HealthChecker(
+        state.redis_client = aioredis.from_url(redis_url)
+        state.health_checker = HealthChecker(
             pg_pool=pool,
-            redis_client=_redis_client,
+            redis_client=state.redis_client,
             config=config,
             runtime_state=PostgresRuntimeState(pool),
             # SIP-0089 §4.7: backs GET /health/agents/{id}/activity.
             activity=PostgresRuntimeActivity(pool),
         )
-        await _health_checker_instance.init_connections()
-        set_health_checker(_health_checker_instance)
-        _reconciliation_task = asyncio.create_task(_health_checker_instance.reconciliation_loop())
+        await state.health_checker.init_connections()
+        set_health_checker(state.health_checker)
+        state.reconciliation_task = asyncio.create_task(state.health_checker.reconciliation_loop())
         logger.info("Platform health checker initialized")
     except Exception as e:
         logger.error(f"Failed to initialize health checker: {e}")
@@ -512,10 +500,10 @@ async def _init_monitoring(config, pool) -> None:
                     messaging_agents[agent_id] = inst
 
         chat_cache = None
-        if _redis_client:
+        if state.redis_client:
             from adapters.persistence.chat_cache import ChatSessionCache
 
-            chat_cache = ChatSessionCache(redis=_redis_client)
+            chat_cache = ChatSessionCache(redis=state.redis_client)
 
         set_chat_ports(
             chat_repo=chat_repo,
@@ -532,88 +520,83 @@ async def _init_monitoring(config, pool) -> None:
         logger.error(f"Failed to initialize chat ports: {e}")
 
 
-async def _init_duty_scheduler(config, pool) -> None:
+async def _init_duty_scheduler(state, config, pool) -> None:
     """Start the duty-transition scheduler when enabled (SIP-0089 §2.4).
 
     The scheduler is the live driver of ambient↔duty transitions: it polls duty
     assignments and requests window open/close through the coordinator (the sole
     writer of mode, D16). Opt-in via `runtime.scheduler.enabled`; a clean
-    shutdown path is provided in `shutdown_event` (mirrors the reconciliation
+    shutdown path is provided in `_shutdown` (mirrors the reconciliation
     loop). See `scheduler_bootstrap` for the single-writer constraint.
     """
-    global _duty_scheduler
     try:
         from squadops.api.runtime.scheduler_bootstrap import create_duty_scheduler
 
         # Reuse the single-writer coordinator built in _init_cycle_subsystem (D16);
         # the scheduler builds its own only if that wiring was skipped.
-        _duty_scheduler = create_duty_scheduler(config, pool, coordinator=_runtime_coordinator)
-        if _duty_scheduler is not None:
-            await _duty_scheduler.start()
+        state.duty_scheduler = create_duty_scheduler(
+            config, pool, coordinator=state.runtime_coordinator
+        )
+        if state.duty_scheduler is not None:
+            await state.duty_scheduler.start()
             logger.info("Duty scheduler started")
     except Exception as e:
         logger.error("Failed to start duty scheduler: %s", e)
 
 
-@app.on_event("startup")
-async def startup_event():
-    """Initialize database and message queue connections."""
-    global pool, rabbitmq_connection, rabbitmq_channel
-
-    # Initialize PostgreSQL pool
-    pool = await create_pool(POSTGRES_URL, min_size=1, max_size=10)  # #577: the one factory
-
+async def _startup(app: FastAPI) -> None:
+    """Initialize database and message queue connections, then every subsystem, onto
+    ``app.state``."""
+    state, config = app.state, app.state.config
+    state.pool = await create_pool(config.db.url, min_size=1, max_size=10)  # #577: the one factory
     # Initialize RabbitMQ connection (persistent, like agents do)
     try:
         logger.info("Attempting to connect to RabbitMQ...")
-        rabbitmq_connection = await aio_pika.connect_robust(RABBITMQ_URL)
-        rabbitmq_channel = await rabbitmq_connection.channel()
+        state.rabbitmq_connection = await aio_pika.connect_robust(config.comms.rabbitmq.url)
+        state.rabbitmq_channel = await state.rabbitmq_connection.channel()
         logger.info("RabbitMQ connection established during startup")
     except Exception as e:
         # Log error but don't fail startup - connection will be retried on first use
         logger.error(f"Failed to initialize RabbitMQ connection during startup: {e}", exc_info=True)
 
     await _init_auth_subsystem(config)
+    await _init_migrations(config, state.pool)
+    await _init_log_forwarding(state, config)
+    await _init_cycle_subsystem(state, config, state.pool)
+    await _init_monitoring(state, config, state.pool)
+    await _init_duty_scheduler(state, config, state.pool)
 
-    await _init_migrations(config, pool)
-    await _init_log_forwarding(config)
-    await _init_cycle_subsystem(config, pool)
-    await _init_monitoring(config, pool)
-    await _init_duty_scheduler(config, pool)
 
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Clean up connections."""
-    global pool, rabbitmq_connection
+async def _shutdown(app: FastAPI) -> None:
+    """Clean up connections, in the order their dependencies require."""
+    state = app.state
     # SIP-0089 §2.4: stop the duty scheduler before the pool closes so its final
     # tick can't race a closing connection.
-    if _duty_scheduler is not None:
-        await _duty_scheduler.stop()
-    if _health_checker_instance:
-        _health_checker_instance._reconciliation_running = False
-    if _reconciliation_task:
-        _reconciliation_task.cancel()
-    if _health_checker_instance:
-        await _health_checker_instance.close()
-    if _redis_client:
-        await _redis_client.aclose()
-    if pool:
-        await pool.close()
-    if rabbitmq_connection:
-        await rabbitmq_connection.close()
-    if _log_forwarder is not None:
-        await _log_forwarder.aclose()
+    if state.duty_scheduler is not None:
+        await state.duty_scheduler.stop()
+    if state.health_checker:
+        state.health_checker._reconciliation_running = False
+    if state.reconciliation_task:
+        state.reconciliation_task.cancel()
+    if state.health_checker:
+        await state.health_checker.close()
+    if state.redis_client:
+        await state.redis_client.aclose()
+    if state.pool:
+        await state.pool.close()
+    if state.rabbitmq_connection:
+        await state.rabbitmq_connection.close()
+    if state.log_forwarder is not None:
+        await state.log_forwarder.aclose()
     # SIP-0094 D13: stop the reply router — once stopped it rejects new
     # registrations, cancels its subscriptions, and fails any pending reply
     # futures with ReplyRouterStopped (in-flight waits resolve as FAILED).
-    if _reply_router is not None:
-        await _reply_router.stop()
-    if _workflow_tracker is not None:
-        await _workflow_tracker.close()
+    if state.reply_router is not None:
+        await state.reply_router.stop()
+    if state.workflow_tracker is not None:
+        await state.workflow_tracker.close()
 
 
-@app.get("/health")
 async def health_check():
     """Health check endpoint"""
     return {"status": "healthy", "service": "runtime-api", "version": SQUADOPS_VERSION}
@@ -622,4 +605,4 @@ async def health_check():
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    uvicorn.run(build_app(), host="0.0.0.0", port=8001)
