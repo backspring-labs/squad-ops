@@ -16,6 +16,7 @@ performs no configuration load, no secret resolution and no construction.
 import asyncio
 import logging
 import os
+from contextlib import asynccontextmanager
 from urllib.parse import urlparse
 
 import aio_pika
@@ -149,6 +150,11 @@ def create_app(config: AppConfig) -> FastAPI:
         title="SquadOps Runtime API",
         version=SQUADOPS_VERSION,
         description="SIP-0048: Runtime API for task management and execution cycles",
+        # The lifespan context is the one lifecycle seam present on every FastAPI/Starlette
+        # this repository pins. The event-handler registration method is not: the lock's
+        # starlette 1.6.0 lacks it while the dev venv's 0.52.1 has it — the x86_64-CI vs
+        # aarch64-dev drift #637 exists to catch, met live on this PR's first CI run.
+        lifespan=_lifespan,
     )
     # #576: domain errors become the standard envelope in one place — see api/error_handlers.py.
     register_domain_error_handlers(app)
@@ -157,8 +163,6 @@ def create_app(config: AppConfig) -> FastAPI:
     app.state.config = config
     for slot in _STATE_SLOTS:
         setattr(app.state, slot, None)
-    app.add_event_handler("startup", lambda: _startup(app))
-    app.add_event_handler("shutdown", lambda: _shutdown(app))
     app.add_api_route("/health", health_check, methods=["GET"])
     return app
 
@@ -542,6 +546,14 @@ async def _init_duty_scheduler(state, config, pool) -> None:
             logger.info("Duty scheduler started")
     except Exception as e:
         logger.error("Failed to start duty scheduler: %s", e)
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    """Start-up before ``yield``, shutdown after."""
+    await _startup(app)
+    yield
+    await _shutdown(app)
 
 
 async def _startup(app: FastAPI) -> None:
