@@ -338,7 +338,7 @@ class AgentRunner:
         """
         # Import adapter factories
         # Import adapters
-        from adapters.comms.rabbitmq import RabbitMQAdapter
+        from adapters.comms.factory import create_a2a_server, create_queue_adapter
         from adapters.llm.factory import create_llm_provider
         from adapters.memory.factory import create_memory_provider
         from adapters.prompts import create_prompt_repository
@@ -346,7 +346,7 @@ class AgentRunner:
             create_llm_observability_provider,
             create_telemetry_provider,
         )
-        from adapters.tools.local_filesystem import LocalFileSystemAdapter
+        from adapters.tools.factory import create_filesystem_provider
         from squadops.prompts.assembler import PromptAssembler
 
         # Create LLM adapter
@@ -443,14 +443,19 @@ class AgentRunner:
             prompt_asset_provider=config.prompts.asset_source_provider,
         )
 
-        # Create filesystem adapter
-        filesystem = LocalFileSystemAdapter()
+        # #301 (§6.4): through the factory, selector required. allowed_roots=None and
+        # production_mode=False are the constructor defaults this root relied on when it
+        # built the local adapter directly — there is no agent workspace-root
+        # configuration today (schema.py's workspace_root is the sandbox's). Named, not
+        # changed: tightening the roots is its own decision.
+        filesystem = create_filesystem_provider(
+            provider=config.tools.filesystem.provider, allowed_roots=None, production_mode=False
+        )
 
         # Create RabbitMQ queue adapter. prefetch_count=1 (#323): the broker
         # hands this agent one unacked comms message at a time, matching the
         # old poll loop's one-at-a-time pickup.
-        rabbitmq_url = config.comms.rabbitmq.url
-        queue = RabbitMQAdapter(url=rabbitmq_url, prefetch_count=1)
+        queue = create_queue_adapter(config.comms, prefetch_count=1)  # #301 (§6.2)
         self._queue = queue  # Store for use in _consume_tasks
 
         # Conditionally wire A2A messaging (SIP-0085 P2-RC6)
@@ -458,7 +463,6 @@ class AgentRunner:
         if self._instance_config.get("a2a_messaging_enabled", False):
             try:
                 from adapters.comms.a2a_server import (
-                    A2AServerAdapter,
                     AgentCardConfig,
                     build_agent_card,
                 )
@@ -496,10 +500,8 @@ class AgentRunner:
                     port=a2a_port,
                 )
                 agent_card = build_agent_card(card_config)
-                messaging = A2AServerAdapter(
-                    agent_card=agent_card,
-                    executor=chat_executor,
-                    port=a2a_port,
+                messaging = create_a2a_server(  # #301 (§6.3)
+                    config.comms, agent_card=agent_card, executor=chat_executor, port=a2a_port
                 )
 
                 logger.info(

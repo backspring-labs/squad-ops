@@ -1,94 +1,77 @@
+"""Factories for the communication adapters — the composition roots' only way in (#301).
+
+Each takes the typed ``CommsConfig`` and reads its selector; the vendor's own settings stay
+under the vendor's key (``comms.rabbitmq.url``). Selectors are ``Literal`` and required in
+the schema (R2), so an unknown value cannot reach a factory through ``load_config`` — the
+``ValueError`` below is for a caller that builds ``CommsConfig`` by hand, and it names the
+selector so the failure reads as misconfiguration, never as a missing adapter.
+
+The profile-dictionary ``get_queue_adapter(profile, secret_manager)`` this file used to hold
+predated the typed config: the loader resolves ``secret://`` before any factory runs, so its
+``SecretManager`` parameter was dead, and its only caller was its own test. Ported, not kept
+beside (no dual paths).
 """
-Factory for creating queue transport adapter instances.
-This factory maps configuration to concrete adapter instances and resolves secrets.
-"""
+
+from __future__ import annotations
 
 import logging
 from typing import Any
 
+from adapters.comms.a2a_client import A2AClientAdapter
+from adapters.comms.a2a_server import A2AServerAdapter
 from adapters.comms.rabbitmq import RabbitMQAdapter
-from squadops.core.secrets import SecretManager
+from squadops.config.schema import CommsConfig
+from squadops.ports.comms.messaging import MessagingPort
+from squadops.ports.comms.queue import QueuePort
 
 logger = logging.getLogger(__name__)
 
 
-def validate_comms_config(profile: dict[str, Any]) -> None:
+def create_queue_adapter(comms: CommsConfig, *, prefetch_count: int | None = None) -> QueuePort:
+    """The queue transport ``comms.queue.provider`` selects.
+
+    ``prefetch_count`` is a tunable the agent root passes (1: the broker hands an agent one
+    unacked message at a time, #323); the runtime root leaves it at the adapter's default.
     """
-    Validate communication/queue configuration from profile.
-
-    Args:
-        profile: Configuration profile dictionary
-
-    Raises:
-        ValueError: If required configuration keys are missing or invalid
-    """
-    comms_config = profile.get("comms")
-    if not comms_config:
-        raise ValueError("Communication configuration ('comms') not found in profile")
-
-    provider = comms_config.get("provider")
-    if not provider:
-        raise ValueError("Queue provider ('comms.provider') not specified")
-
+    provider = comms.queue.provider
     if provider == "rabbitmq":
-        # RabbitMQ requires URL
-        url = comms_config.get("url")
-        if not url:
-            raise ValueError("RabbitMQ URL ('comms.url') is required when provider=rabbitmq")
+        kwargs: dict[str, Any] = {"url": comms.rabbitmq.url}
+        if prefetch_count is not None:
+            kwargs["prefetch_count"] = prefetch_count
+        return RabbitMQAdapter(**kwargs)
+    raise ValueError(f"comms.queue.provider={provider!r}: no queue adapter for that selector")
 
 
-def get_queue_adapter(
-    profile: dict[str, Any], secret_manager: SecretManager
-) -> Any:  # Returns QueuePort, but using Any to avoid circular import
+def create_a2a_client(comms: CommsConfig) -> A2AClientAdapter:
+    """The A2A client ``comms.a2a.provider`` selects, with its timeouts from config.
+
+    Returns the adapter type: there is no client port in ``squadops.ports`` today — the
+    runtime root hands it to ``deps.set_chat_ports`` typed ``object``. That gap is named in
+    the #301 PR; a port is not invented here.
     """
-    Create a queue transport adapter instance based on profile configuration.
-
-    This factory function:
-    1. Validates the communication configuration
-    2. Resolves secret:// references in URL/credentials via SecretManager
-    3. Creates and returns the appropriate QueuePort implementation
-
-    Args:
-        profile: Configuration profile dictionary containing 'comms' section
-        secret_manager: SecretManager instance for resolving secret:// references
-
-    Returns:
-        QueuePort instance (currently only RabbitMQAdapter is supported)
-
-    Raises:
-        ValueError: If configuration is invalid
-    """
-    # Validate configuration
-    validate_comms_config(profile)
-
-    comms_config = profile["comms"]
-    provider = comms_config["provider"]
-
-    if provider == "rabbitmq":
-        # Extract URL (may contain secret:// references)
-        url = comms_config.get("url")
-        if not url:
-            raise ValueError("RabbitMQ URL ('comms.url') is required")
-
-        # Resolve secret:// references in URL
-        # SecretManager.resolve_all_references handles dicts, but URL is a string
-        # So we resolve it directly
-        if "secret://" in url:
-            # Extract secret reference and resolve
-            resolved_url = secret_manager.resolve(url)
-        else:
-            resolved_url = url
-
-        # Extract namespace (optional)
-        namespace = comms_config.get("namespace")
-
-        # Create RabbitMQAdapter instance
-        adapter = RabbitMQAdapter(url=resolved_url, namespace=namespace)
-
-        logger.info(
-            f"Created RabbitMQAdapter instance (namespace={namespace}, provider={provider})"
+    provider = comms.a2a.provider
+    if provider == "http":
+        return A2AClientAdapter(
+            timeout_seconds=comms.a2a.timeout_seconds,
+            agent_card_timeout_seconds=comms.a2a.agent_card_timeout_seconds,
         )
+    raise ValueError(f"comms.a2a.provider={provider!r}: no A2A client for that selector")
 
-        return adapter
-    else:
-        raise ValueError(f"Unknown queue provider: {provider}")
+
+def create_a2a_server(
+    comms: CommsConfig,
+    *,
+    agent_card: Any,
+    executor: Any,
+    port: int,
+    host: str = "0.0.0.0",
+    log_level: str = "info",
+) -> MessagingPort:
+    """The A2A server ``comms.a2a.provider`` selects. Whether the agent binds one at all is
+    the agent-level ``a2a_messaging_enabled`` switch; the selector decides what it binds."""
+    provider = comms.a2a.provider
+    if provider == "http":
+        return A2AServerAdapter(
+            agent_card=agent_card, executor=executor, host=host, port=port, log_level=log_level
+        )
+    raise ValueError(f"comms.a2a.provider={provider!r}: no A2A server for that selector")

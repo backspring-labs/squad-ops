@@ -52,10 +52,13 @@ def _test_config():
             "auth": {"enabled": False},
             "db": {"url": "postgresql://test:test@localhost:5432/test"},
             "comms": {
+                "queue": {"provider": "rabbitmq"},
+                "a2a": {"provider": "http"},
                 "rabbitmq": {"url": "amqp://test:test@localhost:5672/"},
                 "redis": {"url": "redis://localhost:6379/0"},
             },
             "llm": {"provider": "ollama"},
+            "tools": {"filesystem": {"provider": "local"}},
         }
     )
 

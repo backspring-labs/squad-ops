@@ -297,10 +297,10 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
             squad_profile = create_squad_profile_port("config")
         artifact_vault = create_artifact_vault("filesystem")
 
-        from adapters.comms.rabbitmq import RabbitMQAdapter
+        from adapters.comms.factory import create_queue_adapter
         from adapters.telemetry.factory import create_llm_observability_provider
 
-        queue_adapter = RabbitMQAdapter(url=config.comms.rabbitmq.url)
+        queue_adapter = create_queue_adapter(config.comms)  # #301 (§6.2)
         llm_obs = create_llm_observability_provider(
             config=config.langfuse,
             prompt_asset_provider=config.prompts.asset_source_provider,
@@ -480,12 +480,12 @@ async def _init_monitoring(state, config, pool) -> None:
     try:
         import yaml
 
-        from adapters.comms.a2a_client import A2AClientAdapter
+        from adapters.comms.factory import create_a2a_client
         from adapters.persistence.chat_repository import ChatRepository
         from squadops.api.runtime.deps import set_chat_ports
 
         chat_repo = ChatRepository(pool=pool)
-        a2a_client = A2AClientAdapter()
+        a2a_client = create_a2a_client(config.comms)  # #301 (§6.3)
 
         all_agents: dict = {}
         messaging_agents: dict = {}
