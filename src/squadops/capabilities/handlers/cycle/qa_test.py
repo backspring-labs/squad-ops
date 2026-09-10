@@ -87,6 +87,57 @@ def _frontend_skip_reason(error: str) -> str:
     return NotExecutedReason.SUBJECT_MISSING
 
 
+#: How much of a failed build's stderr rides on the row. Bounded because it is evidence for
+#: a reader, not a signature input — the whole point of keeping it out of ``reason``.
+_BUILD_STDERR_TAIL = 2048
+
+
+def _frontend_build_row(fb: Any) -> dict[str, Any]:
+    """The ``frontend_build`` check row, for both the failure and the accept path (#1468).
+
+    Single-sourced because it existed twice and BOTH copies dropped the same evidence: a
+    build that RAN AND FAILED recorded only ``passed: False`` — no reason, no exit code, no
+    stderr — while a build that was SKIPPED recorded why. The failure's cause was therefore
+    unrecoverable from any store: the row, the agent log and the vault each had only
+    "frontend build failed (exit 1)" or less.
+
+    Two consequences, measured on the 1.7.5 deploy-A React shakeout (cyc_a20d0a02be67):
+
+    * the run was rejected with ``failed_detail[].reason == ""`` on an application the boot
+      audit then installed, built and booted — a required check refusing a roll for a reason
+      nobody can read;
+    * ``correction_signature._reason_token`` falls back to the bare status when ``reason`` is
+      absent, so every frontend_build failure rendered the identical element
+      ``frontend_build||failed``. An element that cannot vary can never show PROGRESS, so it
+      pins the round-over-round movement at REPEAT however much a repair actually fixed —
+      and the run terminated ``plan_defect`` at round 1 on exactly that signature. It is the
+      #878/#761 collapse, on the one check those fixes did not reach.
+
+    ``reason`` carries the deterministic summary and NOT the stderr, matching ``tests_pass``
+    and the module's rule that evidence text never alters a signature; over-discrimination
+    is the expensive direction (a genuine repeat reading as a shift burns the whole budget).
+    ``exit_code`` is a field ``_reason_token`` already consumes. The stderr rides in
+    ``detail``, which no signature reads.
+
+    ``passed`` stays on every ran-row: ``_frontend_build_failed`` and the #650 target
+    widening key on ``passed is False``, and ``row_is_blocking_failure`` judges by it.
+    """
+    if not fb.ran:
+        return {
+            "check": CHECK_FRONTEND_BUILD,
+            "executed": False,
+            "reason": _frontend_skip_reason(fb.error),
+        }
+    row: dict[str, Any] = {"check": CHECK_FRONTEND_BUILD, "passed": fb.ok}
+    if not fb.ok:
+        row["reason"] = fb.error or f"frontend build failed (exit {fb.exit_code})"
+        row["exit_code"] = fb.exit_code
+        if fb.stderr:
+            tail = fb.stderr[-_BUILD_STDERR_TAIL:]
+            row["detail"] = tail if len(fb.stderr) <= _BUILD_STDERR_TAIL else "..." + tail
+    return row
+
+
 def _authenticity_row(check: str, offenders: list[str], inspected: list[str]) -> dict[str, Any]:
     """Build a suite-authenticity check row that is banked pass OR fail (#986).
 
@@ -1141,15 +1192,7 @@ class QATestHandler(_CycleTaskHandler):
         # #407: frontend build is first-class evidence on this path too.
         fb = test_result.frontend_build
         if fb is not None:
-            if fb.ran:
-                fb_row: dict[str, Any] = {"check": CHECK_FRONTEND_BUILD, "passed": fb.ok}
-            else:
-                fb_row = {
-                    "check": CHECK_FRONTEND_BUILD,
-                    "executed": False,
-                    "reason": _frontend_skip_reason(fb.error),
-                }
-            outputs["validation_result"]["checks"].append(fb_row)
+            outputs["validation_result"]["checks"].append(_frontend_build_row(fb))
 
         # SIP-0098 98.5: probe evidence rides the retest path too — a repaired
         # suite's run must not under-count contract-criterion coverage. The
@@ -1772,16 +1815,8 @@ class QATestHandler(_CycleTaskHandler):
         # failure-path validation_result assignment.
         fb = test_result.frontend_build
         if fb is not None:
-            if fb.ran:
-                fb_row: dict[str, Any] = {"check": CHECK_FRONTEND_BUILD, "passed": fb.ok}
-            else:
-                fb_row = {
-                    "check": CHECK_FRONTEND_BUILD,
-                    "executed": False,
-                    "reason": _frontend_skip_reason(fb.error),
-                }
             vr = outputs.setdefault("validation_result", {})
-            vr.setdefault("checks", []).append(fb_row)
+            vr.setdefault("checks", []).append(_frontend_build_row(fb))
 
         # SIP-0098 98.5: execute seeded behavioral probes and append their rows
         # (both verdict paths, like frontend_build above — additive evidence).
