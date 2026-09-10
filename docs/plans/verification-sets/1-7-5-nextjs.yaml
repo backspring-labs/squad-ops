@@ -65,6 +65,9 @@ loaded_checks:
     from squadops.cycles.scaffold_integrity_evidence import KIND_ATTEMPTED_EMISSION, STAGE_FAILED_EMISSION
     from squadops.cycles.verification_integrity import CheckResult, ENVIRONMENT_INCAPACITY_REASONS, _credit_contract_criteria
     from squadops.sandbox.environment import get_environment_contract
+    from squadops.capabilities.handlers.cycle.qa_test import _frontend_build_row
+    from squadops.capabilities.handlers.test_runner import BuildCheckResult
+    from squadops.cycles.correction_signature import failure_signature
     import yaml
     # Declaring the API under /api is a REQUIREMENT of stack #2, not decoration (#859): App
     # Router serves handlers and pages from one `app/` tree, so the reference's bare /runs
@@ -108,6 +111,19 @@ loaded_checks:
     print("820", PROOF_INTERFACE_COHERENT, len(coherent))
     print("1406", sorted(r.value for r in ENVIRONMENT_INCAPACITY_REASONS), sorted(kept), sorted(a_skip), sorted(a_fail))
     print("1436", KIND_ATTEMPTED_EMISSION, STAGE_FAILED_EMISSION)
+    # 1468: a build that RAN AND FAILED states its cause, and two different failures no
+    # longer collapse to one signature element. Controls: a SKIP still reports its
+    # not-executed reason (the #407 path), and a PASSING row carries no failure evidence.
+    # Deploy A's pair FOUND this defect on both stacks; this row is why the rerun can say
+    # it is closed rather than merely merged.
+    _ev = lambda r: {"validation_result": {"checks": [r]}}
+    _fail = _frontend_build_row(BuildCheckResult(ran=True, ok=False, exit_code=1, error="frontend build failed (exit 1)", stderr="Could not resolve './x'"))
+    _a = _frontend_build_row(BuildCheckResult(ran=True, ok=False, exit_code=1, error="frontend build failed (exit 1)"))
+    _b = _frontend_build_row(BuildCheckResult(ran=True, ok=False, exit_code=2, error="frontend build failed (exit 2)"))
+    _skip = _frontend_build_row(BuildCheckResult(ran=False, error="npm not found"))
+    print("1468", bool(_fail.get("reason")), _fail.get("exit_code"), bool(_fail.get("detail")),
+          failure_signature(_ev(_a)) != failure_signature(_ev(_b)),
+          _skip.get("reason"), _frontend_build_row(BuildCheckResult(ran=True, ok=True)))
     print("1434", default_reasoning_level("qa.test", output_shape="fill"), default_reasoning_level("qa.test"))
   # The live hypothesis, read on the container that actually runs qa.test rather than off the
   # framework — a policy present in runtime-api and absent in eve's image is #1289's shape.
