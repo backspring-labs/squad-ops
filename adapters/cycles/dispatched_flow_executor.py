@@ -285,6 +285,37 @@ class _Ownership:
 
 
 @dataclasses.dataclass
+class _Cadence:
+    """SIP-0070 cadence tracking — how far into the current interval the run is.
+
+    Run-lived and mutable, so it belongs in ``RunState``; it is not in the map's list of
+    holders only because it is declared after ``setup_pulse_context`` rather than at the
+    top with the others. The pulse *configuration* beside it (``_PulseContext``) is
+    derived once and never changes, so by the same rule it is NOT here.
+    """
+
+    task_count: int = 0
+    started: float = 0.0
+    interval_id: int = 1
+
+
+@dataclasses.dataclass(frozen=True)
+class _PulseContext:
+    """SIP-0070 pulse configuration, derived once per run from applied_defaults.
+
+    Frozen and outside ``RunState`` deliberately: it is run-*invariant*, and the rule for
+    what goes in the state object is mutable execution state. A reader can tell the two
+    apart by which class it came from, which is the point of keeping them separate.
+    """
+
+    milestone_bindings: Any
+    cadence_suites: Any
+    has_checks: bool
+    cadence: Any
+    engine: Any
+
+
+@dataclasses.dataclass
 class _Budget:
     """SIP-0079 RC-8 / #511: the run's time contract and when it started."""
 
@@ -302,6 +333,7 @@ class RunState:
     routing: _Routing = dataclasses.field(default_factory=_Routing)
     correction: _Correction = dataclasses.field(default_factory=_Correction)
     ownership: _Ownership = dataclasses.field(default_factory=_Ownership)
+    cadence: _Cadence = dataclasses.field(default_factory=_Cadence)
     #: #796: in authored mode the contract comes into being mid-run, the moment the
     #: authoring stage lands a manifest; every task dispatched after that binds to it.
     #: Empty for seeded runs, whose contract was pinned at creation.
@@ -1741,262 +1773,33 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # SIP-0070: Parse pulse checks + cadence policy from applied_defaults
         # ------------------------------------------------------------------
         pulse_ctx = self._pulse_boundary_runner.setup_pulse_context(cycle, plan, obs_ctx)
-        milestone_bindings = pulse_ctx["milestone_bindings"]
-        cadence_suites = pulse_ctx["cadence_suites"]
-        has_pulse_checks = pulse_ctx["has_pulse_checks"]
-        cadence = pulse_ctx["cadence"]
-        engine = pulse_ctx["engine"]
-
-        # Cadence tracking state
-        cadence_task_count = 0
-        cadence_start_time = time.monotonic()
-        cadence_interval_id = 1
+        pulse = _PulseContext(
+            milestone_bindings=pulse_ctx["milestone_bindings"],
+            cadence_suites=pulse_ctx["cadence_suites"],
+            has_checks=pulse_ctx["has_pulse_checks"],
+            cadence=pulse_ctx["cadence"],
+            engine=pulse_ctx["engine"],
+        )
+        state.cadence.started = time.monotonic()
 
         for task_idx, envelope in enumerate(plan):
-            if await self._check_task_preconditions(
-                run_id,
+            await self._execute_task(
+                state,
                 envelope,
-                state.checkpoint.skip_task_ids,
-                state.budget.seconds,
-                state.budget.started,
-                state.checkpoint.completed_task_ids,
-            ):
-                continue
-
-            # Enrich envelope with chain context and dispatch
-            authored_contract, authored_manifest = state.authored
-            enriched = await self._enrich_envelope(
-                envelope,
-                state.produced.prior_outputs,
-                state.produced.all_artifact_refs,
-                state.produced.stored_artifacts,
-                interface_manifest=interface_manifest or authored_manifest,
-                run_derived_contract=authored_contract,
-            )
-
-            # SIP-0087: executor owns Prefect task-run creation so task_run_id
-            # is available for contextvar scoping + heartbeat before the
-            # agent starts emitting logs.
-            task_run_id = await self._task_dispatcher.create_task_run_if_enabled(
-                flow_run_id, envelope
-            )
-
-            # SIP-0077: task.dispatched event (bridge now only reads terminal
-            # state from context; creation already happened above).
-            self._cycle_event_bus.emit(
-                EventType.TASK_DISPATCHED,
-                entity_type="task",
-                entity_id=envelope.task_id,
-                context={
-                    "cycle_id": cycle.cycle_id,
-                    "run_id": run_id,
-                    "flow_run_id": flow_run_id or "",
-                    "task_run_id": task_run_id or "",
-                },
-                payload={
-                    "task_type": envelope.task_type,
-                    "task_name": build_task_name(envelope),
-                },
-            )
-
-            # Dispatch + retry loop for retryable failures (SIP-0079).
-            # Routing stays here (§6.1): the dispatcher receives the outcome
-            # decision as a closure over this loop's orchestration state and
-            # only acts on the returned action token.
-            # Loop-scoped values bind as defaults: fixed at definition time,
-            # exactly like the old per-call parameter passing (and B023-safe).
-            # SIP-0096 §6.4 (Phase 2): holds the latest failed result so the abort
-            # path — where the correction protocol raises from *inside*
-            # dispatch_with_retry before it can return — can still record the
-            # failing task's verification evidence. The #276-class evidence (a
-            # failed/not-executed qa.test that triggers the abort) is exactly what
-            # must survive, or a failed run reads as "0 verified" instead of red.
-            _last_failed_result: dict[str, Any] = {}
-
-            async def _route_outcome(
-                result,
-                _envelope=envelope,
-                _enriched=enriched,
-                _consecutive_failures=state.routing.consecutive_failures,
-                _holder=_last_failed_result,
-            ):
-                # #1323: authorize BEFORE holding. The held result is the base the repair
-                # overlay is built from (``_try_accept_patch``) and the source the triage
-                # bank stores (#971) — both must see the same authorized set, or a path
-                # the producer may not write is admitted here and the repair that fixes
-                # it is refused at storage for touching it.
-                result = await self._admit_failed_emission(
-                    result,
-                    _envelope,
-                    cycle,
-                    run_id,
-                    state.produced.all_artifact_refs,
-                    bound_record=state.ownership.bound_record,
-                    compliance_counter=state.ownership.compliance_counter,
-                )
-                _holder["result"] = result
-                action = await self._handle_task_outcome(
-                    result=result,
-                    envelope=_envelope,
-                    enriched_envelope=_enriched,
-                    cycle=cycle,
-                    run_id=run_id,
-                    task_attempt_counts=state.routing.task_attempt_counts,
-                    consecutive_failures=_consecutive_failures,
-                    correction_counter=state.correction.counter,
-                    correction_signature_state=state.correction.signature_state,
-                    scaffold_enforcement_carry=state.ownership.enforcement_carry,
-                    prior_outputs=state.produced.prior_outputs,
-                    all_artifact_refs=state.produced.all_artifact_refs,
-                    stored_artifacts=state.produced.stored_artifacts,
-                    completed_task_ids=state.checkpoint.completed_task_ids,
-                    plan_delta_refs=state.checkpoint.plan_delta_refs,
-                    profile=profile,
-                    flow_run_id=flow_run_id,
-                    patched_result_holder=_holder,
-                    interface_manifest=interface_manifest,
-                    budget_guard=_budget_guard,
-                    repair_rejection_carry=state.correction.rejection_carry,
-                    bound_record=state.ownership.bound_record,
-                    compliance_counter=state.ownership.compliance_counter,
-                    accepted_repair_task_ids=state.correction.accepted_repair_task_ids,
-                )
-                if action == "accept_patch":
-                    # #994: remember that THIS task now has accepted, stored repaired
-                    # state. A later round's rewind re-authors from the checkpoint and
-                    # cannot preserve it, so the guard needs the fact and this loop is
-                    # the only place that holds it.
-                    state.correction.accepted_repair_task_ids.add(_envelope.task_id)
-                if action in ("continue", "accept_patch"):
-                    # #379: this attempt failed — re-dispatched ("continue") or
-                    # superseded by a verified patch ("accept_patch", #389). Record
-                    # its evidence now so the ledger honestly holds the
-                    # failed→passed history; aggregation supersedes it to the final
-                    # state per (check_id, subject). Self-filtering: a transport retry
-                    # carries no validation_result/test_result → nothing is recorded.
-                    _record_task_evidence(result)
-                return action
-
-            def _record_task_evidence(task_result, _envelope=envelope) -> None:
-                # ``_envelope`` is bound as a default (B023) so it captures THIS
-                # iteration's task, matching _route_outcome. The body is shared with the
-                # fan-out path (#1148) — see ``record_task_evidence``.
-                record_task_evidence(ledger, task_result, _envelope.task_id)
-
-            try:
-                task_succeeded, result = await self._task_dispatcher.dispatch_with_retry(
-                    enriched,
-                    envelope,
-                    cycle,
-                    run_id,
-                    flow_run_id=flow_run_id,
-                    task_run_id=task_run_id,
-                    handle_task_outcome=_route_outcome,
-                )
-            except Exception:
-                # Correction aborted (raised inside dispatch_with_retry). Record the
-                # final failed result before the run unwinds, then re-raise — recording
-                # is additive and never alters the abort's control flow.
-                _record_task_evidence(_last_failed_result.get("result"))
-                raise
-
-            # #389: a verified patch supersedes the failed result — swap before
-            # recording/collection so the ledger and artifact store see the
-            # corrected outputs (repaired artifacts + executed-passed checks).
-            patched = _last_failed_result.pop("patched_result", None)
-            if patched is not None:
-                result = patched
-
-            # Every non-abort completion — success AND corrected-failure
-            # (break_correction) — records its final result here; the abort path
-            # above is the only other producer, so no task is double-recorded.
-            _record_task_evidence(result)
-
-            if not task_succeeded:
-                # #374: reaching here means the correction returned break_correction —
-                # i.e. governance chose "continue" (advance without repair). A `patch`
-                # now returns "continue", re-running the failed check inside
-                # dispatch_with_retry, so it never lands here. The correction count is
-                # bumped on the shared holder inside _handle_task_outcome, not here.
-                state.routing.consecutive_failures = 0
-
-            if not task_succeeded:
-                # Correction "continue"/"patch" handled — skip to next task
-                continue
-
-            # Reset consecutive failures on success
-            state.routing.consecutive_failures = 0
-
-            # Collect artifacts + checkpoint after successful task; a checkpoint
-            # that closes a role phase is a replay boundary and survives pruning
-            # (SIP-0101 Slice 2)
-            await self._collect_artifacts_and_checkpoint(
-                result=result,
-                envelope=envelope,
+                task_idx=task_idx,
+                plan=plan,
                 cycle=cycle,
                 run_id=run_id,
-                prior_outputs=state.produced.prior_outputs,
-                all_artifact_refs=state.produced.all_artifact_refs,
-                stored_artifacts=state.produced.stored_artifacts,
-                completed_task_ids=state.checkpoint.completed_task_ids,
-                plan_delta_refs=state.checkpoint.plan_delta_refs,
-                bound_record=state.ownership.bound_record,
-                compliance_counter=state.ownership.compliance_counter,
-                retain_checkpoint=self._is_phase_boundary(plan, task_idx),
+                flow_run_id=flow_run_id,
+                profile=profile,
+                run_root=run_root,
+                obs_ctx=obs_ctx,
+                ledger=ledger,
+                interface_manifest=interface_manifest,
+                agent_resolver=agent_resolver,
+                pulse=pulse,
+                budget_guard=_budget_guard,
             )
-
-            # #796: the authoring stage may have just stored a manifest. Derive here — after
-            # collection, before the next dispatch — so the very next task binds.
-            state.authored = await self._bind_authored_manifest(
-                cycle, run_id, state.produced.stored_artifacts, state.authored
-            )
-
-            # ----------------------------------------------------------
-            # SIP-0070: Pulse boundary evaluation (after task, before gate)
-            # ----------------------------------------------------------
-            if has_pulse_checks and engine is not None:
-                cadence_task_count += 1
-                cadence_closed = self._pulse_boundary_runner.evaluate_pulse_boundaries(
-                    task_idx=task_idx,
-                    plan=plan,
-                    cadence_task_count=cadence_task_count,
-                    cadence_start_time=cadence_start_time,
-                    cadence=cadence,
-                )
-                await self._pulse_boundary_runner.run_pulse_evaluations(
-                    task_idx=task_idx,
-                    milestone_bindings=milestone_bindings,
-                    cadence_suites=cadence_suites,
-                    cadence_closed=cadence_closed,
-                    cadence_interval_id=cadence_interval_id,
-                    run_id=run_id,
-                    cycle=cycle,
-                    obs_ctx=obs_ctx,
-                    engine=engine,
-                    envelope=envelope,
-                    prior_outputs=state.produced.prior_outputs,
-                    stored_artifacts=state.produced.stored_artifacts,
-                    all_artifact_refs=state.produced.all_artifact_refs,
-                    flow_run_id=flow_run_id,
-                    agent_resolver=agent_resolver,
-                    run_root=run_root,
-                    ledger=ledger,
-                )
-
-                if cadence_closed:
-                    cadence_interval_id += 1
-                    cadence_task_count = 0
-                    cadence_start_time = time.monotonic()
-
-            # Post-task gate check (runs after verification)
-            if self._is_gate_boundary(cycle, envelope.task_type):
-                await self._handle_gate(
-                    run_id,
-                    cycle,
-                    envelope.task_type,
-                    stored_artifacts=state.produced.stored_artifacts,
-                    profile=profile,
-                )
 
         # #291: deliverable-completeness gate. The per-task builder validator
         # (#107) only enforces the *active* task's required files; a required
@@ -2018,6 +1821,280 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             raise _ExecutionError(
                 f"Build deliverable incomplete: build profile {profile_name!r} requires files "
                 f"the run never emitted. Missing required files: {missing}."
+            )
+
+    async def _execute_task(
+        self,
+        state: RunState,
+        envelope: TaskEnvelope,
+        *,
+        task_idx: int,
+        plan: list[TaskEnvelope],
+        cycle: Cycle,
+        run_id: str,
+        flow_run_id: str | None,
+        profile: SquadProfile | None,
+        run_root: str,
+        obs_ctx: Any,
+        ledger: RunLedger,
+        interface_manifest: Any,
+        agent_resolver: Any,
+        pulse: _PulseContext,
+        budget_guard: Callable[[], None],
+    ) -> None:
+        """One task of the plan: preconditions, enrich, dispatch-with-retry, route the
+        outcome, collect, bind, evaluate pulse boundaries, check the gate.
+
+        Everything mutable it touches is on ``state``; everything else is run-invariant
+        and arrives as a parameter. That split is the point of the step — a reader can
+        tell what survives this task from what merely configures it by which side of the
+        signature it came from (1.7.5 recovery extraction map §4 step 6).
+        """
+        if await self._check_task_preconditions(
+            run_id,
+            envelope,
+            state.checkpoint.skip_task_ids,
+            state.budget.seconds,
+            state.budget.started,
+            state.checkpoint.completed_task_ids,
+        ):
+            # A precondition declined this task (skipped on resume, cancelled, or past
+            # the time budget). In the loop this was `continue`; as a method it is the
+            # same statement — this task is done, the run moves on.
+            return
+
+        # Enrich envelope with chain context and dispatch
+        authored_contract, authored_manifest = state.authored
+        enriched = await self._enrich_envelope(
+            envelope,
+            state.produced.prior_outputs,
+            state.produced.all_artifact_refs,
+            state.produced.stored_artifacts,
+            interface_manifest=interface_manifest or authored_manifest,
+            run_derived_contract=authored_contract,
+        )
+
+        # SIP-0087: executor owns Prefect task-run creation so task_run_id
+        # is available for contextvar scoping + heartbeat before the
+        # agent starts emitting logs.
+        task_run_id = await self._task_dispatcher.create_task_run_if_enabled(flow_run_id, envelope)
+
+        # SIP-0077: task.dispatched event (bridge now only reads terminal
+        # state from context; creation already happened above).
+        self._cycle_event_bus.emit(
+            EventType.TASK_DISPATCHED,
+            entity_type="task",
+            entity_id=envelope.task_id,
+            context={
+                "cycle_id": cycle.cycle_id,
+                "run_id": run_id,
+                "flow_run_id": flow_run_id or "",
+                "task_run_id": task_run_id or "",
+            },
+            payload={
+                "task_type": envelope.task_type,
+                "task_name": build_task_name(envelope),
+            },
+        )
+
+        # Dispatch + retry loop for retryable failures (SIP-0079).
+        # Routing stays here (§6.1): the dispatcher receives the outcome
+        # decision as a closure over this loop's orchestration state and
+        # only acts on the returned action token.
+        # Loop-scoped values bind as defaults: fixed at definition time,
+        # exactly like the old per-call parameter passing (and B023-safe).
+        # SIP-0096 §6.4 (Phase 2): holds the latest failed result so the abort
+        # path — where the correction protocol raises from *inside*
+        # dispatch_with_retry before it can return — can still record the
+        # failing task's verification evidence. The #276-class evidence (a
+        # failed/not-executed qa.test that triggers the abort) is exactly what
+        # must survive, or a failed run reads as "0 verified" instead of red.
+        _last_failed_result: dict[str, Any] = {}
+
+        async def _route_outcome(
+            result,
+            _envelope=envelope,
+            _enriched=enriched,
+            _consecutive_failures=state.routing.consecutive_failures,
+            _holder=_last_failed_result,
+        ):
+            # #1323: authorize BEFORE holding. The held result is the base the repair
+            # overlay is built from (``_try_accept_patch``) and the source the triage
+            # bank stores (#971) — both must see the same authorized set, or a path
+            # the producer may not write is admitted here and the repair that fixes
+            # it is refused at storage for touching it.
+            result = await self._admit_failed_emission(
+                result,
+                _envelope,
+                cycle,
+                run_id,
+                state.produced.all_artifact_refs,
+                bound_record=state.ownership.bound_record,
+                compliance_counter=state.ownership.compliance_counter,
+            )
+            _holder["result"] = result
+            action = await self._handle_task_outcome(
+                result=result,
+                envelope=_envelope,
+                enriched_envelope=_enriched,
+                cycle=cycle,
+                run_id=run_id,
+                task_attempt_counts=state.routing.task_attempt_counts,
+                consecutive_failures=_consecutive_failures,
+                correction_counter=state.correction.counter,
+                correction_signature_state=state.correction.signature_state,
+                scaffold_enforcement_carry=state.ownership.enforcement_carry,
+                prior_outputs=state.produced.prior_outputs,
+                all_artifact_refs=state.produced.all_artifact_refs,
+                stored_artifacts=state.produced.stored_artifacts,
+                completed_task_ids=state.checkpoint.completed_task_ids,
+                plan_delta_refs=state.checkpoint.plan_delta_refs,
+                profile=profile,
+                flow_run_id=flow_run_id,
+                patched_result_holder=_holder,
+                interface_manifest=interface_manifest,
+                budget_guard=budget_guard,
+                repair_rejection_carry=state.correction.rejection_carry,
+                bound_record=state.ownership.bound_record,
+                compliance_counter=state.ownership.compliance_counter,
+                accepted_repair_task_ids=state.correction.accepted_repair_task_ids,
+            )
+            if action == "accept_patch":
+                # #994: remember that THIS task now has accepted, stored repaired
+                # state. A later round's rewind re-authors from the checkpoint and
+                # cannot preserve it, so the guard needs the fact and this loop is
+                # the only place that holds it.
+                state.correction.accepted_repair_task_ids.add(_envelope.task_id)
+            if action in ("continue", "accept_patch"):
+                # #379: this attempt failed — re-dispatched ("continue") or
+                # superseded by a verified patch ("accept_patch", #389). Record
+                # its evidence now so the ledger honestly holds the
+                # failed→passed history; aggregation supersedes it to the final
+                # state per (check_id, subject). Self-filtering: a transport retry
+                # carries no validation_result/test_result → nothing is recorded.
+                _record_task_evidence(result)
+            return action
+
+        def _record_task_evidence(task_result, _envelope=envelope) -> None:
+            # ``_envelope`` is bound as a default (B023) so it captures THIS
+            # iteration's task, matching _route_outcome. The body is shared with the
+            # fan-out path (#1148) — see ``record_task_evidence``.
+            record_task_evidence(ledger, task_result, _envelope.task_id)
+
+        try:
+            task_succeeded, result = await self._task_dispatcher.dispatch_with_retry(
+                enriched,
+                envelope,
+                cycle,
+                run_id,
+                flow_run_id=flow_run_id,
+                task_run_id=task_run_id,
+                handle_task_outcome=_route_outcome,
+            )
+        except Exception:
+            # Correction aborted (raised inside dispatch_with_retry). Record the
+            # final failed result before the run unwinds, then re-raise — recording
+            # is additive and never alters the abort's control flow.
+            _record_task_evidence(_last_failed_result.get("result"))
+            raise
+
+        # #389: a verified patch supersedes the failed result — swap before
+        # recording/collection so the ledger and artifact store see the
+        # corrected outputs (repaired artifacts + executed-passed checks).
+        patched = _last_failed_result.pop("patched_result", None)
+        if patched is not None:
+            result = patched
+
+        # Every non-abort completion — success AND corrected-failure
+        # (break_correction) — records its final result here; the abort path
+        # above is the only other producer, so no task is double-recorded.
+        _record_task_evidence(result)
+
+        if not task_succeeded:
+            # #374: reaching here means the correction returned break_correction —
+            # i.e. governance chose "continue" (advance without repair). A `patch`
+            # now returns "continue", re-running the failed check inside
+            # dispatch_with_retry, so it never lands here. The correction count is
+            # bumped on the shared holder inside _handle_task_outcome, not here.
+            state.routing.consecutive_failures = 0
+
+        if not task_succeeded:
+            # Correction "continue"/"patch" handled — this task is done for now, and the
+            # run moves on. (Was `continue` when this was a loop body.)
+            return
+
+        # Reset consecutive failures on success
+        state.routing.consecutive_failures = 0
+
+        # Collect artifacts + checkpoint after successful task; a checkpoint
+        # that closes a role phase is a replay boundary and survives pruning
+        # (SIP-0101 Slice 2)
+        await self._collect_artifacts_and_checkpoint(
+            result=result,
+            envelope=envelope,
+            cycle=cycle,
+            run_id=run_id,
+            prior_outputs=state.produced.prior_outputs,
+            all_artifact_refs=state.produced.all_artifact_refs,
+            stored_artifacts=state.produced.stored_artifacts,
+            completed_task_ids=state.checkpoint.completed_task_ids,
+            plan_delta_refs=state.checkpoint.plan_delta_refs,
+            bound_record=state.ownership.bound_record,
+            compliance_counter=state.ownership.compliance_counter,
+            retain_checkpoint=self._is_phase_boundary(plan, task_idx),
+        )
+
+        # #796: the authoring stage may have just stored a manifest. Derive here — after
+        # collection, before the next dispatch — so the very next task binds.
+        state.authored = await self._bind_authored_manifest(
+            cycle, run_id, state.produced.stored_artifacts, state.authored
+        )
+
+        # ----------------------------------------------------------
+        # SIP-0070: Pulse boundary evaluation (after task, before gate)
+        # ----------------------------------------------------------
+        if pulse.has_checks and pulse.engine is not None:
+            state.cadence.task_count += 1
+            cadence_closed = self._pulse_boundary_runner.evaluate_pulse_boundaries(
+                task_idx=task_idx,
+                plan=plan,
+                cadence_task_count=state.cadence.task_count,
+                cadence_start_time=state.cadence.started,
+                cadence=pulse.cadence,
+            )
+            await self._pulse_boundary_runner.run_pulse_evaluations(
+                task_idx=task_idx,
+                milestone_bindings=pulse.milestone_bindings,
+                cadence_suites=pulse.cadence_suites,
+                cadence_closed=cadence_closed,
+                cadence_interval_id=state.cadence.interval_id,
+                run_id=run_id,
+                cycle=cycle,
+                obs_ctx=obs_ctx,
+                engine=pulse.engine,
+                envelope=envelope,
+                prior_outputs=state.produced.prior_outputs,
+                stored_artifacts=state.produced.stored_artifacts,
+                all_artifact_refs=state.produced.all_artifact_refs,
+                flow_run_id=flow_run_id,
+                agent_resolver=agent_resolver,
+                run_root=run_root,
+                ledger=ledger,
+            )
+
+            if cadence_closed:
+                state.cadence.interval_id += 1
+                state.cadence.task_count = 0
+                state.cadence.started = time.monotonic()
+
+        # Post-task gate check (runs after verification)
+        if self._is_gate_boundary(cycle, envelope.task_type):
+            await self._handle_gate(
+                run_id,
+                cycle,
+                envelope.task_type,
+                stored_artifacts=state.produced.stored_artifacts,
+                profile=profile,
             )
 
     # ------------------------------------------------------------------
