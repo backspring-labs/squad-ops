@@ -201,7 +201,7 @@ say which moved code a run reached rather than that a fault fired.
 | `own-frame-then-prose-repair` | **L7** (the locus routes to `qa.test_repair`), **L4** (#1276 — a prose-only repair is refunded, not verified), **L5** (the re-take is briefed with its cases) | protocol blocks 4–5 → `CorrectionRepair.dispatch`/`.judge_emission`; outcome block 4 → `_route_correction_path` | the locus pair `affected_task_types → correction_repair_locus`; the refund count by reason; the re-take's briefed cases |
 | `path-prefix` | **L8b** (#1311) — no emission lands under a literal `path/` prefix | outcome block 1 → `_carry_facts_to_the_next_attempt` | the extractor's strip count and the stored names (L8a read as the count on every roll) |
 | `contentless-builder` | **R1** (#1372) — retried with its fact, not blind; **F1** (#1374) — no false corrected result composed from it | outcome block 1; accept-patch block 6 → `_settle_patch_evidence` with `compose_owed_framework_rows` | `retried_with_fact` / `retried_blind`; `framework_rows_rederived` |
-| `absent-suite-then-false-claim` | **A1** (#968) — the decision does not inherit an analyzer claim the workspace refutes | protocol blocks 1–2 → `CorrectionRunner._diagnose`/`._resolve_correction_path` | `decision_inherited_claims` beside `analyzer_claims_dropped` (#1401) — a zero is only evidence with a non-zero beside it |
+| `absent-suite-then-false-claim` | **A1** (#968) — the decision does not inherit an analyzer claim the workspace refutes | protocol blocks 1–2 → `CorrectionRunner._diagnose`/`._resolve_correction_path` | `decision_inherited_claims` beside `analyzer_claims_dropped` (#1401) — a zero is only evidence with a non-zero beside it. **Amended after the run:** `analyzer_claims_dropped` greps drops at the *repair-targeting* seam (`correction_repair_target: … dropped, not aimed at (#968)`), and a claim naming a file that does not exist is refuted one step earlier, at the decision — so it reads zero here correctly. The control that does the work is the fault's own APPLIED line with the marker visible in the analyzer's emission |
 
 **A seam not reached after two runs is a closure finding and stops the set.** It is not
 declared and carried, as 1.7.4's two-run rule allowed for seams the pack had not touched:
@@ -216,6 +216,83 @@ shape that demoted three view-compile criteria on `cyc_dd3068d22f2c`. The readou
 invariant's proof: the executed-and-passed view criteria survive the skip. The stored 1.7.4
 case is replayed as a CI fixture beside it. Live occurrences on counted rolls are texture,
 read from #1407's readout in the three-state vocabulary.
+
+**RESULT — all five run on the pinned deploy before roll 1. Six of seven fault-seams
+reached; four of five diagnostics.**
+
+| diagnostic | seam(s) | reached | the evidence, not the verdict |
+|---|---|---|---|
+| `absent-suite` | L2 | **YES** | `patch_retest … status=FAILED passed=False reason=Repaired suite still fails`, after `correction_repair_locus: own_artifact` and `patch_verification … status=passed checks=12` |
+| `own-frame-then-prose-repair` | L7 | **YES** | `qa_owned_routed: …runViews.test.jsx raised TypeError in its own frame (renders run rows …:44); qa.test re-authors …` |
+| | L4 | **YES** | `correction attempt 1 refunded: the repair emitted no content (cap_exhausted) … (refund 1 of 3)`; the emission behind it is 0 chars on 12288 completion tokens and 46137 reasoning chars |
+| `path-prefix` | L8b | **YES** | `placeholder_strips: [{emitted: "path/backend/tests/test_runs.py", stripped_to: "backend/tests/test_runs.py"}]` with `stored_under_placeholder` empty — L8a non-zero is what makes L8b's zero mean something |
+| `contentless-builder` | F1/R1 | **NO** | see below |
+| `absent-suite-then-false-claim` | A1 | **YES** | the fault APPLIED (`chars 1475 → 1828`) and visible in the analyzer's emission head; both decisions carry neither marker nor substance, and one names the refutation outright |
+| | L2 | **YES** | two retests, both `status=SUCCEEDED passed=True reason=Repaired suite passed` |
+
+Every one of the four that reached recovered: verdicts accepted, boot audits PASS, criteria
+18/18, 17/17, 18/18 and 21/21 with zero failed checks — on runs whose red was manufactured.
+
+#### `contentless-builder` did not reach its seam, and why
+
+Its readout is a compound: *the contentless builder attempt entered correction **and** the
+builder's repair was verified.* One half answered.
+
+* **R1 (#1372) — reached.** `Retryable failure for …builder.assemble (attempt 1), retrying —
+  signature=unextractable response_chars=48 completion_tokens=469`, then `emission retry
+  feedback appended for builder_assemble_handler: signature=unextractable appendix_chars=971
+  expected_files=1`. The contentless attempt was retried **with its fact**.
+* **F1 (#1374) — not reached.** `framework_rows_rederived` empty,
+  `builder_patch_verifications` empty. No builder correction happened, so no framework rows
+  were re-derived from a patched set.
+
+The mechanism, from the run's own log rather than inferred: the builder was dispatched at
+08:22:18, emitted contentlessly at 08:23:03, **was retried and recovered on attempt 2**. The
+two correction rounds that follow are `qa.test`'s. The builder never entered correction, so
+the second conjunct could not be produced.
+
+**This is a readout that outlived the framework it was written for, not a closure defect.**
+The same diagnostic read YES on 1.7.4, and the timeline says why:
+
+| commit | when | what |
+|---|---|---|
+| `4ce18165` | 2026-09-08 01:24 ET | the deploy the 1.7.4 diagnostics ran on — `builder.py` carries no `_apply_emission_retry_feedback` and no `emission_failure` |
+| `9240209d` | 2026-09-08 09:10 ET | **#1372/#1414** — "a contentless emission is retried with its own shape, **on every producer**" — the builder gains the aimed retry |
+| `7d4024ce` | 2026-09-09 07:43 ET | v1.7.4 tagged, carrying the fix |
+
+The 1.7.4 diagnostics ran about eight hours BEFORE the builder gained its retry and were
+never re-run on the pinned deploy (named in the 1.7.4 record). **Deploy B is the first deploy
+on which this diagnostic has run with #1372's retry present.** The fault is first-attempt-only
+by design — `fault_injection.py:283`, *"the recovery under test is what the loop composes and
+retries from the empty attempt, not the builder exhausting its retries"* — so attempt 2
+carries no fault, succeeds, and correction is unreachable. #1372 is a 1.7.4 fix, not a 1.7.5
+closure, and the half of the seam that the extraction could have broken was reached.
+
+#### The ruling
+
+The plan stops the set on an unreached seam, and the set was stopped when this was found: the
+diagnostics finished, nothing counted launched, and the finding went to the owner with the
+mechanism named. **The owner ruled to proceed with the counted set** (2026-09-11, ~6 AM ET),
+which is the call to make — re-registering the readout is a design decision, and the
+alternative is holding a nine-roll measurement behind an instrument defect that the evidence
+already explains.
+
+**Run 2 of 2 was started and then discarded.** The two-run budget was armed and launched
+(`cyc_af33eeb931a0`, 10:00:37Z) before the ruling; it was cancelled through the CLI ~9 minutes
+in so the counted set could start, and no record exists for it. The budget therefore stands at
+**one run, not two** — said plainly because a budget reported as spent when it was not is the
+same class of error as a stop rule quietly dropped. What makes that acceptable here is that
+the NO is mechanical rather than stochastic: it was established from the fault's own
+`scope=first_attempt` declaration and the commit timeline above, not from the single run, and
+run 2 could only have changed the answer if an *unfaulted* second attempt had also emitted
+contentlessly. The diagnostic remains re-runnable on this deploy after the set.
+
+Recorded here rather than in the cut record because a pre-registration that quietly drops its
+own stop rule is worth less than no rule. **What the set therefore does not cover:** F1
+(#1374) is unexercised on this deploy — no run has composed framework rows from a patched
+builder set, and the counted rolls are not expected to, since the same retry stands between a
+contentless builder attempt and correction there too. The remedy is a re-registration: split
+R1 from F1, or key F1 on a fault that survives the retry.
 
 ### 3d. CI invariants, read live as texture
 
