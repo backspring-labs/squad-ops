@@ -18,7 +18,6 @@ import logging
 from typing import Any
 
 from adapters.comms.a2a_client import A2AClientAdapter
-from adapters.comms.a2a_server import A2AServerAdapter
 from adapters.comms.rabbitmq import RabbitMQAdapter
 from squadops.config.schema import CommsConfig
 from squadops.ports.comms.messaging import MessagingPort
@@ -69,6 +68,15 @@ def create_a2a_server(
 ) -> MessagingPort:
     """The A2A server ``comms.a2a.provider`` selects. Whether the agent binds one at all is
     the agent-level ``a2a_messaging_enabled`` switch; the selector decides what it binds."""
+    # Imported HERE, not at module scope. `A2AServerAdapter` pulls the `a2a` SDK, which
+    # only the AGENT lock ships — and this module's other two factories are what the
+    # runtime-api needs. At module scope the import made `adapters.comms.factory`
+    # unimportable in the runtime-api image, `_init_cycle_subsystem` swallowed the
+    # ModuleNotFoundError into a log line, and every `cycles create` answered 500 with
+    # "ProjectRegistryPort not configured" on a container reporting healthy (deploy B,
+    # 2026-09-11). The client above is safe: it is httpx, not the SDK.
+    from adapters.comms.a2a_server import A2AServerAdapter
+
     provider = comms.a2a.provider
     if provider == "http":
         return A2AServerAdapter(
