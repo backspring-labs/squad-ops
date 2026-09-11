@@ -263,6 +263,56 @@ def record_task_evidence(ledger: RunLedger, task_result, task_id: str) -> None:
 _ASSEMBLY_NOTES_READERS: frozenset[str] = frozenset({TaskType.QA_TEST})
 
 
+#: The values the accepted-patch path hands from one of its steps to the next (the 1.7.5
+#: recovery extraction map §4 step 1). A 511-line method carried these as locals; naming
+#: them is what makes the step boundaries checkable — each step declares what it consumes
+#: rather than reading whatever the one before happened to leave behind.
+
+
+@dataclasses.dataclass(frozen=True)
+class _PatchSubject:
+    """What the patch verification runs against.
+
+    ``patched_artifacts`` is what an accepted patch RE-STORES; ``workspace_files`` rides
+    as a separate base and is never re-stored under the repaired task's type (#643).
+    """
+
+    resolved_config: dict[str, Any]
+    criteria: list[Any]
+    patched_artifacts: list[dict[str, Any]]
+    workspace_files: dict[str, Any]
+    file_owned: list[Any]
+
+
+@dataclasses.dataclass(frozen=True)
+class _PatchVerdict:
+    """What the verification said, plus the two readings the not-passed path turns on.
+
+    ``retest_decides``: structurally unevaluable checks with behavioural evidence to
+    re-run instead (pf-47/pf-49). ``unrepairable_here``: no further round can produce a
+    verdict at all, which is terminated with a named reason rather than rejected
+    unheard (#1221).
+    """
+
+    verification: Any
+    failed_records: list[Any]
+    retest_decides: bool
+    unrepairable_here: bool
+
+
+@dataclasses.dataclass(frozen=True)
+class _RetestOutcome:
+    """The corrected outputs after the retest, and what it produced.
+
+    ``evidence is None`` means no retest ran — distinct from a retest that produced no
+    artifacts, which ``supersede_evidence_artifacts`` treats the same way (drop).
+    """
+
+    corrected_outputs: dict[str, Any]
+    rows: list[dict[str, Any]]
+    evidence: list[dict[str, Any]] | None
+
+
 class DispatchedFlowExecutor(FlowExecutionPort):
     """Flow executor that dispatches tasks to agent containers via RabbitMQ.
 
@@ -3288,6 +3338,88 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         if not repair_artifacts or patched_result_holder is None:
             return "continue"
 
+        # The seven steps below are the blocks this method's own comment headers already
+        # named; each is now a method taking what it consumes and returning what it
+        # produces (1.7.5 recovery extraction map §4 step 1). No condition is reordered
+        # and no block's decision moved — the only thing that changed is that the data
+        # crossing each boundary is declared rather than left in a shared local.
+        authorized = self._authorize_repair_artifacts(
+            repair_artifacts,
+            envelope,
+            bound_record=bound_record,
+            cycle=cycle,
+            compliance_counter=compliance_counter,
+        )
+        if authorized is None:
+            return "continue"
+        repair_artifacts = authorized
+
+        subject = self._build_patch_subject(
+            envelope,
+            result,
+            repair_artifacts,
+            enriched_envelope=enriched_envelope,
+            interface_manifest=interface_manifest,
+        )
+
+        verdict = await self._verify_patch(
+            envelope, result, repair_artifacts, subject, repair_typed_checks=repair_typed_checks
+        )
+
+        refusal = self._refuse_unpassed_patch(
+            envelope,
+            verdict,
+            correction_attempts=correction_attempts,
+            repair_rejection_carry=repair_rejection_carry,
+        )
+        if refusal is not None:
+            return refusal
+
+        retest = await self._retest_patched_suite(
+            envelope,
+            result,
+            subject,
+            run_id=run_id,
+            cycle=cycle,
+            correction_attempts=correction_attempts,
+            prior_outputs=prior_outputs,
+            all_artifact_refs=all_artifact_refs,
+            stored_artifacts=stored_artifacts,
+            completed_task_ids=completed_task_ids,
+            plan_delta_refs=plan_delta_refs,
+            profile=profile,
+            flow_run_id=flow_run_id,
+            enriched_envelope=enriched_envelope,
+            budget_guard=budget_guard,
+            repair_rejection_carry=repair_rejection_carry,
+        )
+        if retest is None:
+            return "continue"
+
+        patched_artifacts, spine_rows = self._settle_patch_evidence(
+            envelope, subject, verdict, retest
+        )
+
+        return self._accept_patch(
+            result, patched_result_holder, verdict, retest, patched_artifacts, spine_rows
+        )
+
+    def _authorize_repair_artifacts(
+        self,
+        repair_artifacts: list[dict[str, Any]],
+        envelope: TaskEnvelope,
+        *,
+        bound_record: Any,
+        cycle: Cycle | None,
+        compliance_counter: dict[str, int] | None,
+    ) -> list[dict[str, Any]] | None:
+        """Block 1 — the repairing step's grants, before the overlay.
+
+        Returns the artifacts that may be verified, or ``None`` when nothing survives
+        and the caller must fall back to re-dispatch. Raises ``_ExecutionError`` on an
+        artifact naming no producer: judged under the failed task's grants that would be
+        the #1350 defect again, silently.
+        """
         # #1323: the verified set must be the set that will be stored. Storage enforces the
         # producer's grants (``_collect_artifacts_and_checkpoint``); verification did not,
         # so a repair that rewrote a path the producer may not write was verified on the
@@ -3337,8 +3469,21 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     "producer may not write — nothing to verify (#1323)",
                     envelope.task_id,
                 )
-                return "continue"
+                return None
 
+        return repair_artifacts
+
+    def _build_patch_subject(
+        self,
+        envelope: TaskEnvelope,
+        result: TaskResult,
+        repair_artifacts: list[dict[str, Any]],
+        *,
+        enriched_envelope: TaskEnvelope | None,
+        interface_manifest: Any,
+    ) -> _PatchSubject:
+        """Block 2 — what the verification runs against: the overlay, the accepted
+        workspace tree beside it, and the criteria the repaired files own."""
         resolved_config = (envelope.inputs or {}).get("resolved_config") or {}
         criteria = (envelope.inputs or {}).get("acceptance_criteria") or []
         patched_artifacts = overlay_artifacts(
@@ -3377,14 +3522,36 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 len(file_owned),
                 envelope.task_id,
             )
-        verification = await verify_patched_artifacts(
-            criteria,
-            patched_artifacts,
+        return _PatchSubject(
+            resolved_config=resolved_config,
+            criteria=criteria,
+            patched_artifacts=patched_artifacts,
             workspace_files=workspace_files,
-            stack=resolve_check_stack(resolved_config),
-            typed_acceptance_enabled=resolved_config.get("typed_acceptance", True),
-            command_acceptance_enabled=resolved_config.get("command_acceptance_checks", True),
-            file_owned_criteria=file_owned,
+            file_owned=file_owned,
+        )
+
+    async def _verify_patch(
+        self,
+        envelope: TaskEnvelope,
+        result: TaskResult,
+        repair_artifacts: list[dict[str, Any]],
+        subject: _PatchSubject,
+        *,
+        repair_typed_checks: Sequence[dict[str, Any]],
+    ) -> _PatchVerdict:
+        """Block 3 — verify, and say why nothing executed rather than only that nothing
+        did. Carries the two derived readings the not-passed path turns on: whether the
+        retest decides alone, and whether further rounds can produce a verdict at all."""
+        verification = await verify_patched_artifacts(
+            subject.criteria,
+            subject.patched_artifacts,
+            workspace_files=subject.workspace_files,
+            stack=resolve_check_stack(subject.resolved_config),
+            typed_acceptance_enabled=subject.resolved_config.get("typed_acceptance", True),
+            command_acceptance_enabled=subject.resolved_config.get(
+                "command_acceptance_checks", True
+            ),
+            file_owned_criteria=subject.file_owned,
             # #1229: what the repair executed on its own patch, in its own container —
             # carried on the protocol result (#1256). ``result`` here is the FAILED task's;
             # reading the rows off it found none in every live round (cyc_c6db3ffc1f4e).
@@ -3470,6 +3637,31 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         unrepairable_here = correction_is_deadlocked(
             verification.status, verification.reason, retest_decides=retest_decides
         )
+        return _PatchVerdict(
+            verification=verification,
+            failed_records=failed_records,
+            retest_decides=retest_decides,
+            unrepairable_here=unrepairable_here,
+        )
+
+    def _refuse_unpassed_patch(
+        self,
+        envelope: TaskEnvelope,
+        verdict: _PatchVerdict,
+        *,
+        correction_attempts: int,
+        repair_rejection_carry: dict[str, list[str]] | None,
+    ) -> str | None:
+        """Block 4 — a rejected patch is recorded with its reason, never discarded.
+
+        Returns the action the caller must take (``"continue"``, or
+        ``"break_correction"`` when no further round can produce a verdict), or ``None``
+        when the patch passed and acceptance proceeds.
+        """
+        verification = verdict.verification
+        failed_records = verdict.failed_records
+        retest_decides = verdict.retest_decides
+        unrepairable_here = verdict.unrepairable_here
         if verification.status != PATCH_PASSED and not retest_decides:
             # #870: tell the next round WHY this repair was rejected — the named
             # failed checks with reasons, not just a status in the log.
@@ -3514,7 +3706,37 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 )
                 return "break_correction"
             return "continue"
+        return None
 
+    async def _retest_patched_suite(
+        self,
+        envelope: TaskEnvelope,
+        result: TaskResult,
+        subject: _PatchSubject,
+        *,
+        run_id: str,
+        cycle: Cycle | None,
+        correction_attempts: int,
+        prior_outputs: dict[str, Any] | None,
+        all_artifact_refs: list[str] | None,
+        stored_artifacts: list[tuple[str, ArtifactRef]] | None,
+        completed_task_ids: list[str] | None,
+        plan_delta_refs: list[str] | None,
+        profile: Any,
+        flow_run_id: str | None,
+        enriched_envelope: TaskEnvelope | None,
+        budget_guard: Callable[[], None] | None,
+        repair_rejection_carry: dict[str, list[str]] | None,
+    ) -> _RetestOutcome | None:
+        """Block 5 — the retest, keyed on what the patch contains.
+
+        Returns the corrected outputs with the retest's fresh evidence folded in, or
+        ``None`` when the caller must fall back to re-dispatch (no retest context, or a
+        retest that did not pass). ``_RetestOutcome.evidence`` is ``None`` when no retest
+        ran — distinct from a retest that produced no artifacts.
+        """
+        resolved_config = subject.resolved_config
+        patched_artifacts = subject.patched_artifacts
         corrected_outputs = dict(result.outputs or {})
 
         # #456: behavioral-evidence-backed task — re-execute the repaired
@@ -3545,7 +3767,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     "context — falling back to re-dispatch",
                     envelope.task_id,
                 )
-                return "continue"
+                return None
             # The retest needs the dispatch-time workspace: artifact_contents
             # is added by _enrich_envelope and never exists on the base
             # envelope (3.11: the retest instant-failed input validation
@@ -3608,7 +3830,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     f"correction attempt {correction_attempts}: repaired suite retest "
                     f"FAILED — {retest_reason or 'no verdict detail'}",
                 )
-                return "continue"
+                return None
             corrected_outputs["test_result"] = fresh_test_result
             retest_validation = retest_outputs.get("validation_result")
             if isinstance(retest_validation, dict):
@@ -3620,7 +3842,33 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             # under the task id seconds AFTER the retest banked its passing report —
             # and the next analysis read the failure (1.6.5 FastAPI+React roll 1).
             retest_evidence = retest_outputs.get("artifacts")
+        return _RetestOutcome(
+            corrected_outputs=corrected_outputs,
+            rows=retest_rows,
+            evidence=retest_evidence,
+        )
 
+    def _settle_patch_evidence(
+        self,
+        envelope: TaskEnvelope,
+        subject: _PatchSubject,
+        verdict: _PatchVerdict,
+        retest: _RetestOutcome,
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Block 6 — the failed attempt's evidence never survives beside the accepted
+        patch's, and every framework row the task type owes by contract is re-derived
+        from the patched set.
+
+        Returns ``(artifacts, spine_rows)``. Pure with respect to the caller's corrected
+        outputs: the artifacts assignment the old block made in the middle is the
+        caller's, made after this returns — nothing between it and the spine derivation
+        read it.
+        """
+        verification = verdict.verification
+        patched_artifacts = subject.patched_artifacts
+        corrected_outputs = retest.corrected_outputs
+        retest_rows = retest.rows
+        retest_evidence = retest.evidence
         # #1111, generalized by #1318: the failed attempt's own evidence must never be
         # re-stored under the repaired task, whether or not a behavioral retest ran. Gated
         # inside the retest branch it only covered tasks with a suite; a builder task has
@@ -3641,7 +3889,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 "yes" if retest_evidence is not None else "no",
             )
 
-        corrected_outputs["artifacts"] = patched_artifacts
         # #1318: the ledger supersedes on ``(check_id, subject, criterion_id)``, so a
         # framework-spine row the patch verification never reproduces keeps the FAILED
         # attempt's value as the run's final state. Nothing but the builder handler writes
@@ -3733,6 +3980,22 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 check_id,
                 framework_row_producer(check_id),
             )
+        return patched_artifacts, spine_rows
+
+    def _accept_patch(
+        self,
+        result: TaskResult,
+        patched_result_holder: dict[str, Any],
+        verdict: _PatchVerdict,
+        retest: _RetestOutcome,
+        patched_artifacts: list[dict[str, Any]],
+        spine_rows: list[dict[str, Any]],
+    ) -> str:
+        """Block 7 — render the corrected result and accept it."""
+        verification = verdict.verification
+        corrected_outputs = retest.corrected_outputs
+        retest_rows = retest.rows
+        corrected_outputs["artifacts"] = patched_artifacts
         prior_validation = corrected_outputs.get("validation_result")
         corrected_outputs["validation_result"] = {
             **(prior_validation if isinstance(prior_validation, dict) else {}),
