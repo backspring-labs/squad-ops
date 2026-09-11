@@ -144,6 +144,48 @@ loaded_checks:
     _kept = set(QATestHandler()._get_source_artifacts({"resolved_config": {"development_profile": _prof}, "artifact_contents": {"app/layout.tsx": "x", "app/globals.css": "y", "unrelated/Fancy.css": "z"}}))
     print("1476", "KEPT" if "app/globals.css" in _kept else "DROPPED", "app/layout.tsx" in _kept, "unrelated/Fancy.css" not in _kept)
     print("1434", default_reasoning_level("qa.test", output_shape="fill"), default_reasoning_level("qa.test"))
+    # ---- the closures (this deploy's own new surfaces) -------------------------------
+    # A driver that asks only the prelude's questions proves the prelude and nothing about
+    # the three closures deploy B exists to carry. These are live object facts, not file
+    # greps: a marker in a file does not prove the process loaded it (#522).
+    import dataclasses, inspect
+    from squadops.capabilities.handlers.cycle.base import _CycleTaskHandler
+    from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor, RunState
+    from squadops.api.runtime.main import build_app, create_app
+    from squadops.config.schema import CommsConfig
+    # 929/1206: every LLM call crosses ONE seam, and the seam records. The keywords are the
+    # fact — `record`/`apply_fault`/`layers`/`attempt` exist only on the extracted method,
+    # and `_record_generation` gained `layers`/`attempt`/`outcome` with it. Control: the
+    # tree the image baked has exactly one `chat_stream_with_usage` call site, in the seam.
+    _call_kw = inspect.signature(_CycleTaskHandler._llm_call).parameters
+    _rec_kw = inspect.signature(_CycleTaskHandler._record_generation).parameters
+    import ast as _ast, squadops as _sq, adapters as _ad
+    _seams = {}
+    for _root in (pathlib.Path(_sq.__file__).parent, pathlib.Path(_ad.__file__).parent):
+        for _p in _root.rglob("*.py"):
+            _n = sum(1 for _x in _ast.walk(_ast.parse(_p.read_text(encoding="utf-8")))
+                     if isinstance(_x, _ast.Call) and isinstance(_x.func, _ast.Attribute)
+                     and _x.func.attr == "chat_stream_with_usage")
+            if _n:
+                _seams[_p.name] = _seams.get(_p.name, 0) + _n
+    print("929", sorted(k for k in ("record", "apply_fault", "layers", "attempt") if k in _call_kw),
+          sorted(k for k in ("layers", "attempt", "outcome") if k in _rec_kw), sorted(_seams.items()))
+    # 1152: the recovery path's two collaborators are CONSTRUCTED by the executor, and the
+    # runner holds the very instance the executor built. Two instances would both "work"
+    # while an injected override did nothing — the wiring is the fact, not the class name.
+    _ex = DispatchedFlowExecutor()
+    print("1152", type(_ex._patch_acceptance).__name__, type(_ex._correction_repair).__name__,
+          _ex._correction_runner._correction_repair is _ex._correction_repair,
+          sorted(f.name for f in dataclasses.fields(RunState)))
+    # 286/301: the app is composed from a config VALUE, and the comms selectors are required.
+    # The raise is the control — a defaulted selector is the masking fallback #1157 banned,
+    # and it would read identically to a working one on every green cycle.
+    try:
+        CommsConfig()
+        _required = "DEFAULTED"
+    except Exception as _exc:
+        _required = type(_exc).__name__
+    print("286/301", callable(build_app), list(inspect.signature(create_app).parameters), _required)
   # The live hypothesis, read on the container that actually runs qa.test rather than off the
   # framework — a policy present in runtime-api and absent in eve's image is #1289's shape.
   eve: |-
