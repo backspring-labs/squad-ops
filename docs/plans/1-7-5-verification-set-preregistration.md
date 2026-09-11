@@ -1,4 +1,4 @@
-# 1.7.5 — Verification Sets: Pre-registration (DRAFT — pins blank until the last shakeout)
+# 1.7.5 — Verification Sets: Pre-registration
 
 **In force from roll 1, by the commit hash of this document on its branch, and unchanged
 thereafter.** Merging it is the owner's act and does not change what it pre-registers; the
@@ -55,10 +55,10 @@ the set's weight sits on reachability, not on verdicts:
 | Bar | **one: L1** (#1268), as amended before the 1.7.4 set opened — blocking on a counted roll whose contentless emission is *not recovered*; the occurrence count tracked and never quoted as zero |
 | Project / PRD / squad / request profile | `group_run`, `full-38`, `validated-fullstack` — identical to 1.6.6 → 1.7.4 |
 | Overrides | FastAPI+React: none. Next.js+TS: `build_profile=nextjs_ts`, `development_profile=nextjs_ts` |
-| `resolved_config_hash` | FastAPI+React **`<blank>`**, Next.js+TS **`<blank>`** — observed on the last shakeout pair of each arm on the frozen deploy; asserted on every counting roll. Expected to hold at `3921c5a62106` / `33cadf53688e`; a move is recorded, not explained away |
-| `squad_profile_snapshot_ref` | `575707c58536cf3b…` expected unchanged from 1.6.6 → 1.7.4 |
-| Deploy — commit | **`<blank>`** — main after the shakeout loop's last fix. A label, not an assertion (#1296): the image ids are the assertion |
-| Deploy — image ids | **`<blank>`** — from the frozen deploy's identity; asserted at every counting launch |
+| `resolved_config_hash` | FastAPI+React **`3921c5a62106`**, Next.js+TS **`33cadf53688e`** — observed on the shakeout pair that closed the loop, on the frozen deploy, and unchanged from the value each arm carried through deploy A. Asserted on every counting roll; a move is recorded, not explained away |
+| `squad_profile_snapshot_ref` | `575707c58536cf3b…` — observed on both arms of the closing pair, unchanged 1.6.6 → 1.7.5 |
+| Deploy — commit | **`8fd30eb8`** — main after the shakeout loop's last fix. A label, not an assertion (#1296): the image ids are the assertion |
+| Deploy — image ids | `runtime-api` **`93c7dd5fd6f5`**, `max` **`3231fab70330`**, `neo` **`660d09e6a113`**, `nat` **`c341331f4456`**, `bob` **`c4b73e36d416`**, `eve` **`29693f10cdd4`**, `data` **`8d287dbad879`** — from the frozen deploy's identity; asserted at every counting launch |
 | Loaded, not built | Verified per container as a live call with its paired control. Each arm's `loaded_checks` carries the prelude's ten surfaces **and the three closures' own** (#1493): `_llm_call`'s keywords with the deployed tree's single `chat_stream_with_usage` call site beside them; `PatchAcceptance` and `CorrectionRepair` constructed by the executor with the runner holding the same instance; `create_app(config)` with `CommsConfig()` raising |
 | Gate policy | 1.6.3 §6 constant, verbatim in each set config's `gate_notes`; `--as-agent`; the decider recorded per roll |
 | Audit instrument | `scripts/dev/audit_delivered_app.py` at the deploy commit |
@@ -91,7 +91,7 @@ Built from main carrying all three closures and the four hardening items.
 | round | deploy | React | Next.js | what the round found |
 |---|---|---|---|---|
 | 1 | `b71d70ea` | **refused** | **refused** | see below — **not counted against the three-pair budget: no cycle ran** |
-| 1 (re-run) | `8fd30eb8` | `<blank>` | `<blank>` | |
+| 1 (re-run) | `8fd30eb8` | **accepted** | **accepted** | nothing new — **the pair that closed deploy B** |
 
 **Round 1's refusal, recorded in full because it is a closure finding.** Both arms died in
 two seconds on their first `squadops cycles create` with HTTP 500,
@@ -117,6 +117,34 @@ Three things landed from it, and the third is the one that matters most:
 **This refusal does not spend a shakeout round.** A round is spent when a pair completes and
 is read; here no cycle was created, so there is nothing to attribute and nothing to compare.
 The record states it as a deploy-preparation finding, counted separately from the loop.
+
+**What the closing pair showed.** Both arms accepted, both functional, both P0 held, zero
+failed checks and zero adverse, unverified or unevidenced criteria — React 18/18 in 51 min,
+Next.js 16/16 in 56 min, each boot audit answering five contract probes. **Deploy B took one
+round where deploy A took four.**
+
+The React arm is the one that carries evidence about the extraction. It took a correction
+round, which deploy A's last React shakeout never did, so twenty-two `loop_texture` fields
+that read UNASKABLE there were asked here and the arm's unaskable count fell 31 → 6. What
+they answered, on the deploy, in the order a real failure takes:
+
+* `applied_patches: 2`; `patch_verifications` one row, `task_type=qa.test status=passed
+  checks=18 failed=- agent_rows=12 agent_executed=12 skips=missing_tooling:3`
+* `retests`: `patch_retest status=SUCCEEDED passed=True reason=Repaired suite passed` —
+  **L2's seam reached on a real roll**, through `PatchAcceptance._retest_patched_suite`
+* `evidence_superseded` emitted by `adapters.cycles.patch_acceptance` — the moved block
+  naming itself in the deployed logs, which no unit suite can demonstrate
+* `decision_inherited_claims`: `inherited: false`, `echoes: []` — **A1 held**, artifact named
+* `no_execution_on_passed_verifications: {missing_tooling: 3}` — #1406's shape live: three
+  environment skips on a verification that PASSED, with 18/18 saying no credit was withheld
+
+The six fields still unaskable on that arm are the structural ones already registered —
+#114's typed-check filter, #999's absent fill-merge evidence, the qa container's own log
+line, and the two retry fields that presuppose a retry that was not aimed. None is new.
+
+The Next.js arm ran clean with no correction round, so its twenty-two patch-path fields are
+unaskable by the same structural rule, and `fill_merge_evidence` is observed with eight
+filled slots, zero not-applicable, and the store touched.
 
 ### The deploy-identity question this line had to answer
 
@@ -215,9 +243,15 @@ read on every roll of this arm.
 
 ## 6. The shakeout loop and its exit
 
-Deploy A got one checkpoint pair and took four rounds to settle (§2). Deploy B enters the
-loop: **exit on a pair with no new seam finding, budget three pairs.** The record reports
-rounds taken and rounds attributable to the closures.
+Deploy A got one checkpoint pair and took four rounds to settle (§2). Deploy B entered the
+loop under the same rule — **exit on a pair with no new seam finding, budget three pairs** —
+and **exited at round 1**: the pair produced no new seam finding in either arm.
+
+**Rounds taken: one. Rounds attributable to the closures: zero.** The closures did produce
+one finding on this deploy, and it is recorded above rather than folded in here: #301's
+module-scope `a2a` import, which refused both arms before any cycle was created. It cost a
+rebuild and three merged fixes, and it spent no round, because a round is spent when a pair
+completes and is read.
 
 **Early stop, one direction.** A falsified hypothesis or an unreached seam stops the set; a
 good result never stops it early; a stop in one arm does not stop the other.
@@ -237,3 +271,11 @@ the launch checkout's HEAD is pinned at roll 1 and a commit on that branch voids
 **Intended zero** — the tag is the measured deploy plus this pre-registration and the
 record. Where the tagged tree differs from the validated deploy, the difference is named and
 classified additive or behavioural (CLAUDE.md, "Say what the cut evidence does NOT cover").
+
+**One difference exists already and is named here rather than discovered later.** The images
+were built from `8fd30eb8`, and that is what `frozen_deploy_commit` carries. The driver runs
+the set from a checkout at main, which is ahead of `8fd30eb8` by this document and the five
+diagnostic configs — `git diff 8fd30eb8..HEAD -- src/ adapters/` is **empty**, which is the
+condition the driver's own framework-drift check enforces on every counting roll. The
+difference is docs-only and therefore additive: the driver imports `squadops` modules to
+judge P0 and B1, and those modules are byte-identical to the ones the images ran.

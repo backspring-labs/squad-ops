@@ -192,3 +192,18 @@ loaded_checks:
     ctl = {t: default_reasoning_level(t) for t in ("qa.test", "qa.test_repair")}
     print("1434 fill", sorted(fill.items()), "ctl", sorted(ctl.items()), all(fill[t] != ctl[t] for t in fill), str(ReasoningLevel.LOW))
     print("559", TaskType.QA_TEST == "qa.test", authors_qa_suite("qa.test"), authors_qa_suite("development.develop"))
+
+# Frozen at the end of the shakeout loop, from the LAST shakeout record of each arm
+# (#1296: the image ids are the assertion; the commit is a label). The driver asserts
+# every one of these at every counting launch and refuses the roll on a mismatch.
+expected_config_hash_prefix: "3921c5a62106"
+expected_squad_snapshot_prefix: "575707c58536cf3b"
+frozen_deploy_commit: "8fd30eb8"
+frozen_image_ids:
+  runtime-api: "93c7dd5fd6f5"
+  max: "3231fab70330"
+  neo: "660d09e6a113"
+  nat: "c341331f4456"
+  bob: "c4b73e36d416"
+  eve: "29693f10cdd4"
+  data: "8d287dbad879"
