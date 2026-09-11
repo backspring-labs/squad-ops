@@ -11,6 +11,7 @@ Covers:
 
 from __future__ import annotations
 
+from functools import partial
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -21,6 +22,7 @@ from squadops.capabilities.handlers.planning_tasks import (
     DataResearchContextHandler,
     DevelopmentDesignPlanHandler,
     GovernanceIncorporateFeedbackHandler,
+    GovernanceMergePlanHandler,
     GovernanceReviewPlanHandler,
     QADefineTestStrategyHandler,
     QAValidateRefinementHandler,
@@ -33,6 +35,21 @@ from squadops.capabilities.handlers.planning_tasks import (
 from squadops.llm.exceptions import LLMError
 
 pytestmark = [pytest.mark.domain_capabilities]
+
+
+def _borrowed(ctx):
+    """The two halves of the LLM sequence ``produce_plan`` borrows from its caller (#929).
+
+    The service is stateless by design — every dependency is passed in — and after the
+    extraction that includes the call itself and the generation record, so the loop
+    cannot reach for the port or rebuild the record on its own. Bound from the handler
+    that drives it in production.
+    """
+    handler = GovernanceMergePlanHandler()
+    return {
+        "call": partial(handler._llm_call, ctx, inputs={}),
+        "record": partial(handler._record_generation, ctx),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -533,6 +550,7 @@ class TestPRDCoverageDisciplineReachesManifestPrompt:
             role="lead",
             handler_name="test_harness",
             chat_kwargs={},
+            **_borrowed(ctx),
         )
 
         calls = ctx.ports.llm.chat_stream_with_usage.call_args_list
@@ -942,6 +960,7 @@ class TestProduceManifestIdentifierRewrite:
             role="lead",
             handler_name="test_harness",
             chat_kwargs={},
+            **_borrowed(ctx),
         )
 
     async def test_rewrites_fabricated_identifiers(self):
@@ -1015,6 +1034,7 @@ class TestProduceManifestRetry:
             role="lead",
             handler_name="test_harness",
             chat_kwargs={},
+            **_borrowed(ctx),
         )
 
     async def test_valid_manifest_on_first_attempt_no_retry(self):

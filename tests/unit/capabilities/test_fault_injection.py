@@ -170,12 +170,24 @@ class TestTheDeclarationIsRefusedRatherThanIgnored:
         assert validate_declaration({}) == ()
 
 
-def _calls_inject(path: Path) -> bool:
+def _wires_the_fault(path: Path) -> bool:
+    """Does this module ask the shared LLM sequence to apply a declared fault?
+
+    #929 moved the injector call itself into ``_CycleTaskHandler._llm_call``, so
+    "calls ``inject()``" now describes exactly one file and says nothing about which
+    capabilities are reachable. The wiring a handler still owns is the argument:
+    ``apply_fault=True`` at its own call site. Read from the tree rather than as a
+    word, so a comment or docstring mentioning it is not mistaken for a seam.
+    """
     tree = ast.parse(path.read_text(encoding="utf-8"))
     return any(
         isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id in {"inject", "inject_fault"}
+        and any(
+            kw.arg == "apply_fault"
+            and isinstance(kw.value, ast.Constant)
+            and kw.value.value is True
+            for kw in node.keywords
+        )
         for node in ast.walk(tree)
     )
 
@@ -186,11 +198,18 @@ def test_every_declared_fault_is_reachable_from_a_wired_seam():
     `INJECTED_TASKS` is what turns an unwired fault into a create-time refusal, so a stale
     entry in it would restore the silent no-op it exists to prevent — the declaration would
     validate and the fault would never fire.
+
+    After #929 the seam is one shared method and the per-handler wiring is the
+    ``apply_fault=True`` argument. That is a *narrower* thing to get wrong than a
+    forgotten ``inject()`` call — and a quieter one, since the four other steps of the
+    sequence still run, so a handler that lost the flag looks entirely healthy.
     """
     wired = [
-        path for path in (_SRC / "capabilities" / "handlers").rglob("*.py") if _calls_inject(path)
+        path
+        for path in (_SRC / "capabilities" / "handlers").rglob("*.py")
+        if _wires_the_fault(path)
     ]
-    assert wired, "no handler calls the injector — every fault declaration is a no-op"
+    assert wired, "no handler asks for fault injection — every declaration is a no-op"
 
     from squadops.tasks.task_types import TaskType
 
@@ -215,8 +234,9 @@ def test_every_declared_fault_is_reachable_from_a_wired_seam():
     }
     missing = sorted(INJECTED_TASKS - capabilities)
     assert not missing, (
-        f"INJECTED_TASKS claims {missing} are wired, but no handler module that calls the "
-        "injector declares them — a fault for those tasks would validate and never fire"
+        f"INJECTED_TASKS claims {missing} are wired, but no handler module passing "
+        "apply_fault=True declares them — a fault for those tasks would validate and "
+        "never fire"
     )
 
 

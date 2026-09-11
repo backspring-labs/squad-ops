@@ -35,8 +35,6 @@ from squadops.tasks.task_types import TaskType
 if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
 
-from squadops.capabilities.handlers.emission_log import log_emission_shape
-from squadops.capabilities.handlers.fault_injection import inject as inject_fault
 
 logger = logging.getLogger(__name__)
 
@@ -155,7 +153,18 @@ class DataAnalyzeFailureHandler(_CycleTaskHandler):
         chat_kwargs = self._build_chat_kwargs(inputs)
 
         try:
-            response = await context.ports.llm.chat_stream_with_usage(messages, **chat_kwargs)
+            # The fault is wired for 1.7.4's analyzer diagnostic (#968's shape on
+            # demand); the declaration reaches this seam on the correction envelope's
+            # ``resolved_config``.
+            _, content = await self._llm_call(
+                context,
+                messages,
+                chat_kwargs,
+                inputs=inputs,
+                started=start_time,
+                apply_fault=True,
+                fault_config=inputs.get("resolved_config"),
+            )
         except LLMError as exc:
             logger.warning("LLM call failed for %s: %s", self._handler_name, exc)
             duration_ms = (time.perf_counter() - start_time) * 1000
@@ -167,25 +176,6 @@ class DataAnalyzeFailureHandler(_CycleTaskHandler):
             )
             return HandlerResult(success=False, outputs={}, _evidence=evidence, error=str(exc))
 
-        content = response.content
-        # #1251: the fault applies before the shape is logged — see cycle/base.py. Wired
-        # for 1.7.4's analyzer diagnostic (#968's shape on demand); the declaration reaches
-        # this seam on the correction envelope's ``resolved_config``.
-        content = inject_fault(
-            content,
-            handler_name=self._handler_name,
-            task_id=context.task_id,
-            resolved_config=inputs.get("resolved_config"),
-            inputs=inputs,
-        )
-        log_emission_shape(
-            self._handler_name,
-            content,
-            response.completion_tokens,
-            response.reasoning_tokens,
-            response.reasoning_text,
-        )
-
         # #1008: one bounded re-ask when extraction fails (the V38 shakedown's
         # mid-object truncation) — the handler owns the retried call so model,
         # kwargs, and emission logging stay on the normal path.
@@ -195,15 +185,16 @@ class DataAnalyzeFailureHandler(_CycleTaskHandler):
                 ChatMessage(role="assistant", content=content),
                 ChatMessage(role="user", content=feedback),
             ]
-            retry = await context.ports.llm.chat_stream_with_usage(retry_messages, **chat_kwargs)
-            log_emission_shape(
-                f"{self._handler_name}:json_reask",
-                retry.content,
-                retry.completion_tokens,
-                retry.reasoning_tokens,
-                retry.reasoning_text,
+            _, retry_content = await self._llm_call(
+                context,
+                retry_messages,
+                chat_kwargs,
+                inputs=inputs,
+                started=start_time,
+                shape_label=f"{self._handler_name}:json_reask",
+                attempt=2,
             )
-            return retry.content
+            return retry_content
 
         # Parse JSON, then validate against schema (issue #84).
         # Tolerates <think> blocks, code fences, and prose preamble

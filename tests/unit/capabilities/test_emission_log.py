@@ -50,59 +50,122 @@ def _production_files() -> list[Path]:
     return sorted(p for root in _ROOTS for p in root.rglob("*.py"))
 
 
-def test_every_llm_seam_captures_what_it_emitted():
-    """Bug caught: a handler calls the model through its own seam and nothing records
-    the result — the #928 defect, and the reason window roll 6 nearly produced nothing.
+#: The one production module allowed to call the LLM port. Everything else goes through
+#: ``_CycleTaskHandler._llm_call``.
+_THE_SEAM = "src/squadops/capabilities/handlers/cycle/base.py"
 
-    #924 placed the capture in ``handlers/cycle/base.py`` on the assumption that
-    handlers share one LLM seam. They do not. Thirteen production call sites existed
-    across nine files, each with its own ``chat_stream_with_usage`` and its own
-    ``response.content`` read; the instrument covered exactly one, and **not** the qa
-    author's — the single emission the SIP-0104 window was blocked on. Live proof: a
-    completed ``data.research_context`` call (27b, 4,829 completion tokens) produced no
-    shape line at all.
 
-    Counted per file rather than checked as a boolean, because the interesting seams
-    come in pairs: ``develop`` and ``qa_test`` each make a *second* self-eval call
-    whose emission can overwrite the first's artifacts. Instrumenting only the primary
-    call would leave the rewrite path dark while this test read green.
+def test_no_handler_calls_the_llm_port_directly():
+    """Bug caught: a handler grows its own LLM seam, and every cross-cutting concern
+    wrapped around the call goes dark there.
+
+    This test used to say something weaker. #924 placed the emission capture in
+    ``handlers/cycle/base.py`` on the assumption that handlers shared one LLM seam;
+    they did not — seventeen call sites across twelve files, each with its own
+    ``response.content`` read — so #928 made this a per-file *count* of calls against
+    captures. That prevented an eighteenth dark site and blessed the seventeen copies,
+    and it needed updating for every future concern added to the sequence. #1206 is
+    what the next concern cost: generation recording had the same defect and no
+    equivalent test, so ten of the seventeen recorded nothing and LangFuse held 26 of
+    35 calls without saying so.
+
+    #929 collapsed the sequence into one method, which turns the invariant into a much
+    stronger and cheaper one: there is one seam, and a new concern added there covers
+    every handler by construction.
     """
-    gaps = []
+    offenders = []
     for path in _production_files():
         rel = str(path.relative_to(_REPO))
-        if rel in _PASS_THROUGH:
-            continue
-        calls, captures = _seam_counts(path)
-        if calls and captures < calls:
-            gaps.append(f"{rel}: {calls} LLM call(s), {captures} capture(s)")
+        calls, _ = _seam_counts(path)
+        if calls and rel != _THE_SEAM:
+            offenders.append(f"{rel}: {calls} direct LLM call(s)")
 
-    assert gaps == [], (
-        "an LLM emission is unrecorded — its failures can then only be diagnosed by "
-        "guessing, which is what cost this window rolls 3 and 5:\n  " + "\n  ".join(gaps)
+    assert offenders == [], (
+        "an LLM call bypasses `_CycleTaskHandler._llm_call` — the emission capture, "
+        "the fault hook and the generation record are wrapped around that one call, "
+        "and a seam that skips it is dark to all three:\n  " + "\n  ".join(offenders)
     )
 
 
-def test_the_capture_is_reachable_from_every_package_that_needs_it():
-    """Bug caught: the helper is re-homed somewhere only one package can import.
+def test_the_one_seam_calls_the_port_exactly_once():
+    """Bug caught: the shared method grows a second call — a retry, a fallback model —
+    and the sequence around it silently applies to only one of them.
 
-    It began in ``handlers/cycle/base.py``, which ``planning/`` and ``impl/`` cannot
-    import without reaching into a sibling handler's base class — so the natural fix
-    for a missing capture was to write a second copy. Owning the concern in its own
-    module is what makes the coverage test above satisfiable without duplication.
+    The count is the assertion. "base.py contains a call" would stay green if a
+    fallback path were added beside it with none of the five following steps.
+    """
+    calls, captures = _seam_counts(_REPO / _THE_SEAM)
+    assert calls == 1, f"{_THE_SEAM} makes {calls} LLM calls; the sequence wraps one"
+    assert captures == 1, f"{_THE_SEAM} logs {captures} emission shapes; expected one"
+
+
+def test_the_capture_still_owns_its_own_module():
+    """Bug caught: the capture is folded back into the handler base it is called from.
+
+    It began there, and ``planning/`` and ``impl/`` could not import it without
+    reaching into a sibling handler's base class — so the natural fix for a missing
+    capture was a second copy. Only one module calls it today (#929), which makes
+    re-homing it look free; it is not. A concern that has been duplicated once, for
+    exactly this reason, keeps its own module.
     """
     module = _REPO / "src/squadops/capabilities/handlers/emission_log.py"
     assert module.exists(), "the emission-log module was removed or moved"
 
-    importers = {
-        str(p.relative_to(_REPO)).split("/")[4]
+    importers = sorted(
+        str(p.relative_to(_REPO))
         for p in (_REPO / "src/squadops/capabilities/handlers").rglob("*.py")
         if "emission_log import" in p.read_text(encoding="utf-8")
-    }
-    # cycle/, planning/, impl/ and the top-level authoring services all depend on it.
-    assert {"cycle", "planning", "impl"} <= importers, (
-        f"only {sorted(importers)} import the capture — a package that cannot reach it "
-        f"is a package that will grow its own copy"
     )
+    assert importers == [_THE_SEAM], (
+        f"the capture is imported by {importers} — after #929 exactly one module calls "
+        f"it, and a second importer means a second LLM seam appeared"
+    )
+
+
+def test_every_llm_call_records_a_generation():
+    """Bug caught: an LLM call reaches the model and LangFuse never hears about it.
+
+    #1206's structural twin, and the test whose absence is why generation recording
+    repeated #928's defect one instrument over. Measured on the 2026-08-31 shakeout
+    pair: 35 calls, 35 emission-shape lines, **26** LangFuse generations. The nine
+    invisible ones included both self-eval second calls and every impl handler, two of
+    them declared ``ReasoningLevel.HIGH`` — the most expensive thinking in the cycle.
+
+    "A subset that does not announce itself is worse than an absent one":
+    ``gens_per_task`` read exactly 1.00 across every cycle measured, which looks like a
+    clean invariant and was the second call being dropped every time.
+
+    Asserted as *one* opt-out rather than none. The manifest-authoring loop records the
+    same generation through the same method after its validator rules, so the record can
+    carry the verdict (#1172); recording at call time as well would double-count it.
+    A second ``record=False`` anywhere is a seam going dark, which is the whole failure
+    mode — so the count is the assertion, not the presence.
+    """
+    src = (_REPO / _THE_SEAM).read_text(encoding="utf-8")
+    assert "self._record_generation(" in src, "the one seam no longer records"
+
+    # Read as an argument, never as a word: prose about the opt-out is not an opt-out,
+    # and this file and the seam's own docstring both discuss it by name.
+    opt_outs = []
+    for path in _production_files():
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            for kw in node.keywords:
+                if (
+                    kw.arg == "record"
+                    and isinstance(kw.value, ast.Constant)
+                    and kw.value.value is False
+                ):
+                    opt_outs.append(f"{path.relative_to(_REPO)}:{node.lineno}")
+
+    assert len(opt_outs) == 1, (
+        f"{len(opt_outs)} seams opt out of recording their generation ({sorted(opt_outs)}) "
+        f"— exactly one is accounted for (the manifest loop, which records after its "
+        f"validator rules); any other is a generation LangFuse will never see"
+    )
+    assert opt_outs[0].startswith("src/squadops/capabilities/handlers/_plan_authoring_service.py")
 
 
 @pytest.mark.parametrize(
@@ -323,7 +386,7 @@ class TestReasoningSplitSeparatesTheTwoFailures:
 
 
 def test_every_emission_call_site_reports_the_reasoning_split():
-    """All 18 call sites pass BOTH reasoning figures.
+    """The call site passes BOTH reasoning figures.
 
     A seam that logs only ``completion_tokens`` is the one where #924's ambiguity
     survives — and it would be silently absent rather than wrong, which is why this
@@ -333,22 +396,34 @@ def test_every_emission_call_site_reports_the_reasoning_split():
     Ollama, which reports no thinking count, so a call site passing only the count
     would read green here and log nothing on the arm that runs production — exactly
     the failure this test exists to prevent, one field further in.
-    """
-    import re
 
-    handlers = Path(__file__).resolve().parents[3] / "src/squadops/capabilities/handlers"
-    call = re.compile(r"log_emission_shape\((?:[^()]|\([^()]*\))*\)")
+    This scanned eighteen call sites until #929; it scans one now, and the reason the
+    test survives the collapse rather than being deleted with them is that the failure
+    it names is a *field list*, not a count. One site passing one figure is the same
+    defect at 1/1 that it was at 17/18 — and cheaper to reintroduce, since there is no
+    neighbouring call to copy the full argument list from.
+    """
+    handlers = _REPO / "src/squadops/capabilities/handlers"
     missing = []
     total = 0
     for path in handlers.rglob("*.py"):
-        text = path.read_text()
-        for m in call.finditer(text):
-            if "def log_emission" in m.group(0):
+        text = path.read_text(encoding="utf-8")
+        tree = ast.parse(text)
+        for node in ast.walk(tree):
+            # A *call*, read from the tree — the definition's own parameter list is not
+            # a call site, and a regex over the name cannot tell them apart.
+            if not (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "log_emission_shape"
+            ):
                 continue
             total += 1
-            absent = [f for f in ("reasoning_tokens", "reasoning_text") if f not in m.group(0)]
+            source = ast.get_source_segment(text, node) or ""
+            absent = [f for f in ("reasoning_tokens", "reasoning_text") if f not in source]
             if absent:
-                line = text[: m.start()].count(chr(10)) + 1
-                missing.append(f"{path.relative_to(handlers)}:{line} (no {', '.join(absent)})")
-    assert total >= 18, f"expected the known call sites, found {total} — did the scan break?"
+                missing.append(
+                    f"{path.relative_to(handlers)}:{node.lineno} (no {', '.join(absent)})"
+                )
+    assert total == 1, f"expected the one shared call site, found {total} — did the scan break?"
     assert not missing, "call sites not reporting the reasoning split:\n  " + "\n  ".join(missing)

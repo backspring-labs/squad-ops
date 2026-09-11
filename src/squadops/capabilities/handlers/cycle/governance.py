@@ -24,7 +24,6 @@ from squadops.capabilities.handlers.cycle.validation import (
     _PRD_COVERAGE_DISCIPLINE_SECTION,
     _rewrite_manifest_identifiers,
 )
-from squadops.capabilities.handlers.emission_log import log_emission_shape
 
 logger = logging.getLogger(__name__)
 
@@ -160,34 +159,20 @@ class GovernanceReviewHandler(_CycleTaskHandler):
 
         chat_kwargs = self._build_chat_kwargs(inputs)
 
+        # Through the shared sequence (#929). This handler carried its own copy of
+        # the record until 2026-08-16; see the class docstring.
         try:
-            response = await context.ports.llm.chat_stream_with_usage(messages, **chat_kwargs)
+            response, content = await self._llm_call(
+                context,
+                messages,
+                chat_kwargs,
+                inputs=inputs,
+                started=start_time,
+                rendered=rendered,
+            )
         except LLMError as exc:
             logger.warning("LLM call failed for %s: %s", self._handler_name, exc)
             return self._fail_result(start_time, inputs, str(exc))
-
-        content = response.content
-        log_emission_shape(
-            self._handler_name,
-            content,
-            response.completion_tokens,
-            response.reasoning_tokens,
-            response.reasoning_text,
-        )
-        llm_duration_ms = (time.perf_counter() - start_time) * 1000
-
-        # Record LLM generation for tracing, through the shared implementation (#929).
-        # This handler carried its own copy until 2026-08-16; see the class docstring.
-        self._record_generation(
-            context,
-            user_prompt,
-            content,
-            llm_duration_ms,
-            chat_kwargs.get("model") or context.ports.llm.default_model,
-            rendered=rendered,
-            chat_response=response,
-            reasoning=chat_kwargs.get("reasoning"),
-        )
 
         prd_summary = str(prd)[:80] if prd else "(no PRD)"
 
