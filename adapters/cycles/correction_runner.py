@@ -1053,6 +1053,38 @@ class CorrectionProtocolResult:
     empty_emission_signatures: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True)
+class _Diagnosis:
+    """What the diagnosis step produced, for the four steps after it (map §4 step 4).
+
+    ``correlation_id`` rides here rather than being re-derived: every correction and
+    repair envelope of one chain shares it, so a repair that minted its own would break
+    the lineage a trace is read by. It is the clearest instance of the rule the step
+    boundaries enforce — a later step reaching backward into the diagnosis's locals for
+    it would compile and read fine, and the drift would only show in a trace.
+    """
+
+    failure_evidence: dict[str, Any]
+    analysis_outputs: dict[str, Any]
+    decision_outputs: dict[str, Any]
+    correlation_id: str
+
+
+@dataclass(frozen=True)
+class _RepairOutcome:
+    """What the repair step produced.
+
+    ``steps_ran`` is not ``bool(artifacts)``: a rewind or continue path emits nothing
+    legitimately and must never be refunded, which is the distinction #1053's refund
+    turns on.
+    """
+
+    artifacts: list[dict[str, Any]]
+    typed_checks: list[dict[str, Any]]
+    steps_ran: bool
+    empty_signatures: list[str]
+
+
 class CorrectionRunner:
     """Runs the correction protocol for a failed task (SIP-0079 semantics).
 
@@ -1555,14 +1587,136 @@ class CorrectionRunner:
         blind — roll 12's non-compiling repair was rejected honestly and
         nothing downstream was ever told why.
         """
-        from uuid import uuid4
 
         from squadops.cycles.scaffold_enforcement import bound_record_or_none
-        from squadops.cycles.task_plan import CORRECTION_TASK_STEPS, repair_steps_for
 
         # SIP-0100 3.4b: repair emissions are subject to the same frozen-ownership
         # enforcement as regular task storage — None on unbound runs (no-op).
         bound_record = bound_record_or_none(interface_manifest, run_id)
+        # The five protocol steps, each a method consuming the previous step's returned
+        # value (1.7.5 recovery extraction map §4 step 4). The orchestration below reads
+        # as diagnose → resolve → bank-and-terminate → repair → judge, with a typed value
+        # across each arrow — a helper that was shorter only because it read twenty
+        # attributes off ``self`` would not have become structurally better.
+        diagnosis = await self._diagnose(
+            run_id,
+            cycle,
+            envelope,
+            result,
+            correction_attempts,
+            prior_outputs=prior_outputs,
+            all_artifact_refs=all_artifact_refs,
+            stored_artifacts=stored_artifacts,
+            completed_task_ids=completed_task_ids,
+            plan_delta_refs=plan_delta_refs,
+            profile=profile,
+            flow_run_id=flow_run_id,
+            interface_manifest=interface_manifest,
+            artifact_contents=artifact_contents,
+            scaffold_enforcement_carry=scaffold_enforcement_carry,
+            budget_guard=budget_guard,
+            repair_rejections=repair_rejections,
+            bound_record=bound_record,
+        )
+
+        correction_path = self._resolve_correction_path(
+            diagnosis, cycle, run_id, has_accepted_repair=has_accepted_repair
+        )
+
+        await self._bank_delta_and_check_termination(
+            diagnosis,
+            correction_path,
+            envelope,
+            cycle,
+            run_id,
+            correction_attempts,
+            all_artifact_refs=all_artifact_refs,
+            plan_delta_refs=plan_delta_refs,
+            signature_state=signature_state,
+            repair_rejections=repair_rejections,
+        )
+
+        repair = await self._dispatch_repair(
+            correction_path,
+            diagnosis,
+            envelope,
+            result,
+            cycle,
+            run_id,
+            correction_attempts,
+            prior_outputs=prior_outputs,
+            all_artifact_refs=all_artifact_refs,
+            stored_artifacts=stored_artifacts,
+            completed_task_ids=completed_task_ids,
+            plan_delta_refs=plan_delta_refs,
+            profile=profile,
+            flow_run_id=flow_run_id,
+            interface_manifest=interface_manifest,
+            scaffold_enforcement_carry=scaffold_enforcement_carry,
+            budget_guard=budget_guard,
+            bound_record=bound_record,
+        )
+
+        emission_empty = self._judge_repair_emission(repair, correction_attempts)
+
+        # 8. Emit CORRECTION_COMPLETED
+        self._event_bus.emit(
+            EventType.CORRECTION_COMPLETED,
+            entity_type="run",
+            entity_id=run_id,
+            context={"cycle_id": cycle.cycle_id, "run_id": run_id},
+            # Disclosed on the event, not only in a log line: "converged in 3" and
+            # "converged in 3 after two empty emissions" must not read the same.
+            payload={
+                "correction_path": correction_path,
+                "emission_empty": emission_empty,
+                # #998: "converged in 3 after two empty emissions" must also say WHICH
+                # nothing — the two shapes have opposite remedies.
+                "empty_emission_signatures": (
+                    list(repair.empty_signatures) if emission_empty else []
+                ),
+            },
+        )
+
+        return CorrectionProtocolResult(
+            correction_path=correction_path,
+            repair_artifacts=repair.artifacts,
+            repair_typed_checks=tuple(repair.typed_checks),
+            emission_empty=emission_empty,
+            empty_emission_signatures=(tuple(repair.empty_signatures) if emission_empty else ()),
+        )
+
+    async def _diagnose(
+        self,
+        run_id: str,
+        cycle: Cycle,
+        envelope: TaskEnvelope,
+        result: TaskResult,
+        correction_attempts: int,
+        *,
+        prior_outputs: dict[str, Any],
+        all_artifact_refs: list[str],
+        stored_artifacts: list[tuple[str, ArtifactRef]],
+        completed_task_ids: list[str],
+        plan_delta_refs: list[str],
+        profile: Any,
+        flow_run_id: str | None,
+        interface_manifest: Any,
+        artifact_contents: dict[str, str] | None,
+        scaffold_enforcement_carry: list[str] | None,
+        budget_guard: Callable[[], None] | None,
+        repair_rejections: list[str] | None,
+        bound_record: Any,
+    ) -> _Diagnosis:
+        """Step 1 — build the failure evidence and run ``CORRECTION_TASK_STEPS``.
+
+        Each step's outputs are captured in their own bucket (#95): reusing one variable
+        masked the analyzer's classification with defaults at PlanDelta time, because the
+        decision step does not carry those fields forward.
+        """
+        from uuid import uuid4
+
+        from squadops.cycles.task_plan import CORRECTION_TASK_STEPS
 
         # 1. Emit CORRECTION_INITIATED
         self._event_bus.emit(
@@ -1671,7 +1825,31 @@ class CorrectionRunner:
                 analysis_outputs = step_outputs
             elif bucket == "decision":
                 decision_outputs = step_outputs
+        return _Diagnosis(
+            failure_evidence=failure_evidence,
+            analysis_outputs=analysis_outputs,
+            decision_outputs=decision_outputs,
+            correlation_id=corr_correlation_id,
+        )
 
+    def _resolve_correction_path(
+        self,
+        diagnosis: _Diagnosis,
+        cycle: Cycle,
+        run_id: str,
+        *,
+        has_accepted_repair: bool,
+    ) -> str:
+        """Step 2 — the deterministic policy guard, then ``CORRECTION_DECIDED``.
+
+        The model's original rationale stays intact in the decision artifact; an override
+        is disclosed in the event payload rather than silently replacing it (#447).
+        """
+        # What the earlier steps produced, read off the value they returned —
+        # never reached backward into their locals (map §4 step 4).
+        failure_evidence = diagnosis.failure_evidence
+        analysis_outputs = diagnosis.analysis_outputs
+        decision_outputs = diagnosis.decision_outputs
         # 4. Read correction_path — bounded by the deterministic policy guard
         # (#447): `continue` may not discard a required check that executed
         # and failed while this chain's repair slot is unspent. The model's
@@ -1724,7 +1902,35 @@ class CorrectionRunner:
             context={"cycle_id": cycle.cycle_id, "run_id": run_id},
             payload=decided_payload,
         )
+        return correction_path
 
+    async def _bank_delta_and_check_termination(
+        self,
+        diagnosis: _Diagnosis,
+        correction_path: str,
+        envelope: TaskEnvelope,
+        cycle: Cycle,
+        run_id: str,
+        correction_attempts: int,
+        *,
+        all_artifact_refs: list[str],
+        plan_delta_refs: list[str],
+        signature_state: dict[str, Any] | None,
+        repair_rejections: list[str] | None,
+    ) -> None:
+        """Step 3 — store the plan delta, then the progress-aware termination check.
+
+        Order is the contract (#435, 1.5 A4): after the delta is stored, so the decision
+        evidence survives the termination, and before any repair dispatch, so the maximum
+        budget is honoured.
+        """
+        from uuid import uuid4
+
+        # What the earlier steps produced, read off the value they returned —
+        # never reached backward into their locals (map §4 step 4).
+        failure_evidence = diagnosis.failure_evidence
+        analysis_outputs = diagnosis.analysis_outputs
+        decision_outputs = diagnosis.decision_outputs
         # 6. Store plan delta as artifact
         delta = PlanDelta(
             delta_id=uuid4().hex,
@@ -1779,6 +1985,44 @@ class CorrectionRunner:
                 repair_rejections=repair_rejections,
             )
 
+    async def _dispatch_repair(
+        self,
+        correction_path: str,
+        diagnosis: _Diagnosis,
+        envelope: TaskEnvelope,
+        result: TaskResult,
+        cycle: Cycle,
+        run_id: str,
+        correction_attempts: int,
+        *,
+        prior_outputs: dict[str, Any],
+        all_artifact_refs: list[str],
+        stored_artifacts: list[tuple[str, ArtifactRef]],
+        completed_task_ids: list[str],
+        plan_delta_refs: list[str],
+        profile: Any,
+        flow_run_id: str | None,
+        interface_manifest: Any,
+        scaffold_enforcement_carry: list[str] | None,
+        budget_guard: Callable[[], None] | None,
+        bound_record: Any,
+    ) -> _RepairOutcome:
+        """Step 4 — select the repair steps, enforce ownership, dispatch, collect.
+
+        Repair-step selection is keyed on the failed task's ``task_type`` and the
+        deterministic failure locus, never on the LLM-emitted ``affected_task_types``
+        (free text, and it once routed a builder failure to the dev repair handler).
+        """
+        from uuid import uuid4
+
+        from squadops.cycles.task_plan import repair_steps_for
+
+        correlation_id = diagnosis.correlation_id
+        # What the earlier steps produced, read off the value they returned —
+        # never reached backward into their locals (map §4 step 4).
+        failure_evidence = diagnosis.failure_evidence
+        analysis_outputs = diagnosis.analysis_outputs
+        decision_outputs = diagnosis.decision_outputs
         # 7. Handle patch path: dispatch repair tasks
         # Repair-step selection is keyed on the failed task's task_type
         # (authoritative) rather than the LLM-emitted `affected_task_types`
@@ -1903,7 +2147,7 @@ class CorrectionRunner:
                     pulse_id=uuid4().hex,
                     project_id=cycle.project_id,
                     task_type=task_type,
-                    correlation_id=corr_correlation_id,
+                    correlation_id=correlation_id,
                     causation_id=envelope.task_id,
                     trace_id=uuid4().hex,
                     span_id=uuid4().hex,
@@ -1988,7 +2232,23 @@ class CorrectionRunner:
                         repair_envelope,
                     )
                 )
+        return _RepairOutcome(
+            artifacts=repair_artifacts,
+            typed_checks=repair_typed_checks,
+            steps_ran=repair_steps_ran,
+            empty_signatures=empty_signatures,
+        )
 
+    def _judge_repair_emission(self, repair: _RepairOutcome, correction_attempts: int) -> bool:
+        """Step 5 — did the repair emit a *file*?
+
+        The extractor's marker is the answer and prose is not content. A rewind or
+        continue emits nothing legitimately and is never refunded, which is what
+        ``steps_ran`` keeps distinct.
+        """
+        repair_artifacts = repair.artifacts
+        repair_steps_ran = repair.steps_ran
+        empty_signatures = repair.empty_signatures
         # #1053: did the repair steps that ran produce anything at all? Judged on
         # emitted CONTENT, not on the artifact count — a zero-byte file is still a file,
         # and counting it as an attempt is what spent arm B's budget. `repair_steps_ran`
@@ -2013,31 +2273,7 @@ class CorrectionRunner:
                 len(repair_artifacts),
                 ", ".join(empty_signatures) or "unreported",
             )
-
-        # 8. Emit CORRECTION_COMPLETED
-        self._event_bus.emit(
-            EventType.CORRECTION_COMPLETED,
-            entity_type="run",
-            entity_id=run_id,
-            context={"cycle_id": cycle.cycle_id, "run_id": run_id},
-            # Disclosed on the event, not only in a log line: "converged in 3" and
-            # "converged in 3 after two empty emissions" must not read the same.
-            payload={
-                "correction_path": correction_path,
-                "emission_empty": emission_empty,
-                # #998: "converged in 3 after two empty emissions" must also say WHICH
-                # nothing — the two shapes have opposite remedies.
-                "empty_emission_signatures": list(empty_signatures) if emission_empty else [],
-            },
-        )
-
-        return CorrectionProtocolResult(
-            correction_path=correction_path,
-            repair_artifacts=repair_artifacts,
-            repair_typed_checks=tuple(repair_typed_checks),
-            emission_empty=emission_empty,
-            empty_emission_signatures=tuple(empty_signatures) if emission_empty else (),
-        )
+        return emission_empty
 
     # Artifact types a qa.test task emits *about* its run, not *into* its
     # workspace — excluded from re-execution so the repaired suite matches
