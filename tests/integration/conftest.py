@@ -469,15 +469,11 @@ def check_required_services():
     yield
 
 
-@pytest.fixture(scope="session")
-def event_loop():
-    """Create an instance of the default event loop for the test session."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
-
-
-@pytest_asyncio.fixture(scope="session")
+# #580: the second copy of the deprecated ``event_loop`` override lived here, and it is
+# what the session-scoped async fixture below actually ran on. pytest-asyncio's
+# replacement is ``loop_scope`` on the fixture itself — declared where the need is rather
+# than by shadowing a library fixture, which is what made the two copies possible.
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def ensure_agents_running_fixture():
     """Ensure agent containers are running and healthy before integration tests"""
     print("🤖 Ensuring agent containers are running...")
@@ -942,7 +938,6 @@ def retry_on_network_error(max_retries: int = 3, delay: float = 1.0, backoff: fl
     """
 
     def decorator(func):
-        import asyncio
         import functools
 
         @functools.wraps(func)
