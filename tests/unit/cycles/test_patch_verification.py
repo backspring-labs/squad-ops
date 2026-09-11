@@ -627,7 +627,7 @@ class TestTheVerdictComesFromWhereTheCheckRan:
     async def test_without_the_repairs_rows_the_1221_shape_is_still_unverifiable(self, monkeypatch):
         """The control: nothing executed in either environment is still not a verdict, and
         the #1221 backstop still names it a deadlock."""
-        from adapters.cycles.dispatched_flow_executor import correction_is_deadlocked
+        from adapters.cycles.patch_acceptance import correction_is_deadlocked
 
         self._no_npm_here(monkeypatch)
         tree, patch = _nextjs_tree_with_the_1221_patch()

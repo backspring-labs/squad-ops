@@ -458,7 +458,7 @@ class TestTheVerifierIsHandedTheRepairsRows:
     async def test_the_protocol_results_rows_reach_verify_patched_artifacts(
         self, mock_prefect_workflow_tracker, cycle, failed_envelope, reply_router, monkeypatch
     ):
-        from adapters.cycles import dispatched_flow_executor as executor_module
+        from adapters.cycles import patch_acceptance as executor_module
         from adapters.cycles.correction_runner import CorrectionProtocolResult
         from squadops.cycles.patch_verification import (
             PATCH_UNVERIFIABLE,

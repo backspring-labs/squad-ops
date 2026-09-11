@@ -1410,7 +1410,7 @@ class TestAcceptPatchStructurallyUnevaluable:
                 status=PATCH_UNVERIFIABLE, reason="evaluator_error:function_defined"
             )
 
-        import adapters.cycles.dispatched_flow_executor as ex_mod
+        import adapters.cycles.patch_acceptance as ex_mod
 
         monkeypatch.setattr(ex_mod, "verify_patched_artifacts", _broken_evaluator)
         executor._correction_runner.reexecute_repaired_suite = AsyncMock(
@@ -1631,7 +1631,7 @@ class TestRepairRejectionCarry:
 
     def test_the_carry_is_bounded(self):
         """Bug caught: an unbounded carry growing into the prompt budget."""
-        from adapters.cycles.dispatched_flow_executor import _record_repair_rejection
+        from adapters.cycles.patch_acceptance import _record_repair_rejection
 
         carry: dict = {}
         for n in range(5):
@@ -1774,7 +1774,7 @@ class TestRetestIsKeyedOnWhatThePatchContains:
         """Not the artifact's `type`: a repair's files are typed by extension, so the
         repaired `backend/tests/test_runs.py` arrives as `code` and a type-keyed rule
         would miss the very case this fixes."""
-        from adapters.cycles.dispatched_flow_executor import _repaired_suite_files
+        from adapters.cycles.patch_acceptance import _repaired_suite_files
 
         assert _repaired_suite_files([{"name": self._SUITE, "type": "code"}], self._CONFIG) == [
             self._SUITE
@@ -1879,10 +1879,10 @@ class TestTheTerminationNamesWhichAbsence:
         )
         with (
             patch(
-                "adapters.cycles.dispatched_flow_executor.verify_patched_artifacts",
+                "adapters.cycles.patch_acceptance.verify_patched_artifacts",
                 AsyncMock(return_value=verification),
             ),
-            caplog.at_level(logging.WARNING, logger="adapters.cycles.dispatched_flow_executor"),
+            caplog.at_level(logging.WARNING, logger="adapters.cycles.patch_acceptance"),
         ):
             action = await executor._try_accept_patch(
                 self._qa_envelope(),
@@ -1914,10 +1914,10 @@ class TestTheTerminationNamesWhichAbsence:
         )
         with (
             patch(
-                "adapters.cycles.dispatched_flow_executor.verify_patched_artifacts",
+                "adapters.cycles.patch_acceptance.verify_patched_artifacts",
                 AsyncMock(return_value=verification),
             ),
-            caplog.at_level(logging.WARNING, logger="adapters.cycles.dispatched_flow_executor"),
+            caplog.at_level(logging.WARNING, logger="adapters.cycles.patch_acceptance"),
         ):
             await executor._try_accept_patch(
                 self._qa_envelope(),

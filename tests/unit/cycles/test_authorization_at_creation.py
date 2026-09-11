@@ -299,7 +299,7 @@ class TestTheRepairIsAuthorizedBeforeItIsVerified:
         """Bug caught: the silent fallback. Judged under the failed task's grants, an unnamed
         dev repair is #1350 again — so an artifact that names no step fails the run naming
         the seam, before a grant is derived or a verifier runs."""
-        import adapters.cycles.dispatched_flow_executor as mod
+        import adapters.cycles.patch_acceptance as mod
 
         verifier = AsyncMock()
         monkeypatch.setattr(mod, "verify_patched_artifacts", verifier)
@@ -319,7 +319,7 @@ class TestTheRepairIsAuthorizedBeforeItIsVerified:
     ):
         """Bug caught: verifying nothing and reporting the patch passed. With every repaired
         path dropped there is no patch — the loop continues, the failed rows stand."""
-        import adapters.cycles.dispatched_flow_executor as mod
+        import adapters.cycles.patch_acceptance as mod
 
         verifier = AsyncMock()
         monkeypatch.setattr(mod, "verify_patched_artifacts", verifier)
