@@ -146,6 +146,20 @@ The Next.js arm ran clean with no correction round, so its twenty-two patch-path
 unaskable by the same structural rule, and `fill_merge_evidence` is observed with eight
 filled slots, zero not-applicable, and the store touched.
 
+**The #1206 generations reading, taken on this pair (§3e).** **EQUAL on both arms** — React
+20 generation records against 20 LLM calls, Next.js 18 against 18 — where the 2026-08-31
+pair read 26 against 35.
+
+The ratio alone would not have settled it, and §3e says why: `gens_per_task` read exactly
+1.00 on every cycle measured before #929 and was wrong every time, because a call producing
+neither a log line nor a record is invisible to both sides. So the reading joins on a value
+the two sides produce independently — the completion-token count, which LangFuse receives
+over HTTP from the adapter's usage block while `log_emission_shape` writes it into the agent
+container's own log from a different module. **Every count is matched on both sides in both
+arms; none is named by only one.** The LangFuse side is scoped by `metadata.cycle_id` rather
+than by a clock window, and its 19 and 16 distinct task ids against 20 and 18 calls are the
+tasks that made two calls.
+
 ### The deploy-identity question this line had to answer
 
 A driver asking only the prelude's questions proves the prelude and says nothing about the
