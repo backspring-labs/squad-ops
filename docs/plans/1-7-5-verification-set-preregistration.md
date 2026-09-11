@@ -277,6 +277,16 @@ which is the call to make — re-registering the readout is a design decision, a
 alternative is holding a nine-roll measurement behind an instrument defect that the evidence
 already explains.
 
+**Run 2 of 2 was started and then discarded.** The two-run budget was armed and launched
+(`cyc_af33eeb931a0`, 10:00:37Z) before the ruling; it was cancelled through the CLI ~9 minutes
+in so the counted set could start, and no record exists for it. The budget therefore stands at
+**one run, not two** — said plainly because a budget reported as spent when it was not is the
+same class of error as a stop rule quietly dropped. What makes that acceptable here is that
+the NO is mechanical rather than stochastic: it was established from the fault's own
+`scope=first_attempt` declaration and the commit timeline above, not from the single run, and
+run 2 could only have changed the answer if an *unfaulted* second attempt had also emitted
+contentlessly. The diagnostic remains re-runnable on this deploy after the set.
+
 Recorded here rather than in the cut record because a pre-registration that quietly drops its
 own stop rule is worth less than no rule. **What the set therefore does not cover:** F1
 (#1374) is unexercised on this deploy — no run has composed framework rows from a patched
