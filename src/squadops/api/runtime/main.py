@@ -263,172 +263,188 @@ async def _init_log_forwarding(state, config) -> None:
 
 
 async def _init_cycle_subsystem(state, config, pool) -> None:
-    """Initialize SIP-0064 cycle ports + SIP-0066 orchestrator."""
-    try:
-        from adapters.cycles.factory import (
-            create_artifact_vault,
-            create_cycle_registry,
-            create_flow_executor,
-            create_project_registry,
-            create_squad_profile_port,
-        )
-        from adapters.cycles.workflow_tracker_factory import create_workflow_tracker
+    """Initialize SIP-0064 cycle ports + SIP-0066 orchestrator.
 
-        project_registry = create_project_registry("config")
-        cycle_registry = create_cycle_registry(
-            config.cycles.registry_provider,
-            **({"pool": pool} if config.cycles.registry_provider == "postgres" else {}),
-        )
-        squad_profile_provider = config.cycles.squad_profile_provider
-        if squad_profile_provider == "postgres":
-            squad_profile = create_squad_profile_port("postgres", pool=pool)
-            try:
-                from adapters.cycles.config_squad_profile import ConfigSquadProfile
+    Raises on any failure, and ``_startup`` does not catch it — so a runtime-api that
+    cannot bind its cycle ports never becomes healthy.
 
-                yaml_source = ConfigSquadProfile()
-                yaml_profiles = await yaml_source.list_profiles()
-                yaml_active_id = yaml_source._active_profile_id
-                seeded = await squad_profile.seed_profiles(yaml_profiles, yaml_active_id)
-                if seeded:
-                    logger.info("Seeded %d squad profiles from YAML", seeded)
-            except Exception as seed_err:
-                logger.warning("YAML seed failed (non-fatal): %s", seed_err)
-        else:
-            squad_profile = create_squad_profile_port("config")
-        artifact_vault = create_artifact_vault("filesystem")
+    This block caught ``Exception`` and logged until 2026-09-11, when a module-scope
+    import of the A2A SDK — which only the agent lock ships — made
+    ``adapters.comms.factory`` unimportable here. The ModuleNotFoundError became one
+    ERROR line, the container passed its health check, every other route answered, and
+    ``POST /api/v1/cycles`` returned 500 ``ProjectRegistryPort not configured`` for as
+    long as anyone cared to try. Deploy B's first shakeout pair died on its first call.
 
-        from adapters.comms.factory import create_queue_adapter
-        from adapters.telemetry.factory import create_llm_observability_provider
+    The catch guarded nothing that needed guarding. Every optional dependency in here
+    already degrades on its own: ``create_workflow_tracker`` falls back to NoOp, each of
+    the four startup sweeps owns an ``except`` (``startup_reaps``), and neither the
+    queue adapter nor the registries connect at construction. What is left is wiring —
+    and a runtime-api whose whole reason to exist is cycles has no useful degraded mode
+    where it cannot create one. Failing loudly is the honest state; answering health
+    checks while dead is the looks-enforced-but-isn't shape this repo keeps paying for.
+    """
+    from adapters.cycles.factory import (
+        create_artifact_vault,
+        create_cycle_registry,
+        create_flow_executor,
+        create_project_registry,
+        create_squad_profile_port,
+    )
+    from adapters.cycles.workflow_tracker_factory import create_workflow_tracker
 
-        queue_adapter = create_queue_adapter(config.comms)  # #301 (§6.2)
-        llm_obs = create_llm_observability_provider(
-            config=config.langfuse,
-            prompt_asset_provider=config.prompts.asset_source_provider,
-        )
+    project_registry = create_project_registry("config")
+    cycle_registry = create_cycle_registry(
+        config.cycles.registry_provider,
+        **({"pool": pool} if config.cycles.registry_provider == "postgres" else {}),
+    )
+    squad_profile_provider = config.cycles.squad_profile_provider
+    if squad_profile_provider == "postgres":
+        squad_profile = create_squad_profile_port("postgres", pool=pool)
+        try:
+            from adapters.cycles.config_squad_profile import ConfigSquadProfile
 
-        # SIP-0094: per-agent reply-queue router. Holds one long-lived
-        # subscription per agent (opened lazily on first dispatch) and resolves
-        # task futures. Stopped during shutdown (D13).
-        from adapters.cycles.reply_router import ReplyRouter
+            yaml_source = ConfigSquadProfile()
+            yaml_profiles = await yaml_source.list_profiles()
+            yaml_active_id = yaml_source._active_profile_id
+            seeded = await squad_profile.seed_profiles(yaml_profiles, yaml_active_id)
+            if seeded:
+                logger.info("Seeded %d squad profiles from YAML", seeded)
+        except Exception as seed_err:
+            logger.warning("YAML seed failed (non-fatal): %s", seed_err)
+    else:
+        squad_profile = create_squad_profile_port("config")
+    artifact_vault = create_artifact_vault("filesystem")
 
-        state.reply_router = ReplyRouter(queue_adapter)
+    from adapters.comms.factory import create_queue_adapter
+    from adapters.telemetry.factory import create_llm_observability_provider
 
-        state.workflow_tracker = create_workflow_tracker(config.prefect)
-        # #77: expose the tracker to the cancel routes so cancelling a cycle/run
-        # propagates to Prefect (stops the orphaned flow run).
-        from squadops.api.runtime.deps import set_workflow_tracker
+    queue_adapter = create_queue_adapter(config.comms)  # #301 (§6.2)
+    llm_obs = create_llm_observability_provider(
+        config=config.langfuse,
+        prompt_asset_provider=config.prompts.asset_source_provider,
+    )
 
-        set_workflow_tracker(state.workflow_tracker)
+    # SIP-0094: per-agent reply-queue router. Holds one long-lived
+    # subscription per agent (opened lazily on first dispatch) and resolves
+    # task futures. Stopped during shutdown (D13).
+    from adapters.cycles.reply_router import ReplyRouter
 
-        from adapters.events.factory import create_cycle_event_bus
-        from squadops.api.runtime.deps import set_cycle_event_bus
+    state.reply_router = ReplyRouter(queue_adapter)
 
-        # Bridges are subscribed inside the factory so the composition root
-        # never names ``LLMObservabilityBridge`` / ``WorkflowTrackerBridge``
-        # directly — only the ports cross this boundary.
-        event_bus = create_cycle_event_bus(
-            "in_process",
-            source_service="runtime-api",
-            source_version=SQUADOPS_VERSION,
-            llm_observability=llm_obs,
-            workflow_tracker=state.workflow_tracker,
-        )
-        set_cycle_event_bus(event_bus)
+    state.workflow_tracker = create_workflow_tracker(config.prefect)
+    # #77: expose the tracker to the cancel routes so cancelling a cycle/run
+    # propagates to Prefect (stops the orphaned flow run).
+    from squadops.api.runtime.deps import set_workflow_tracker
 
-        # SIP-0089 §2.5: wire the reserve-buffer guard live when a Postgres pool
-        # is available (the agent_assignments table lives there, migration 1110).
-        # Without a pool the guard stays unwired and recruitment is never gated.
-        assignment_port = None
-        activity_port = None
-        focus_lease_port = None
-        state_port = None
-        if pool is not None:
-            from adapters.persistence.runtime.activity_postgres import PostgresRuntimeActivity
-            from adapters.persistence.runtime.assignments_postgres import PostgresAssignment
-            from adapters.persistence.runtime.focus_lease_postgres import PostgresFocusLease
-            from adapters.persistence.runtime.state_postgres import PostgresRuntimeState
-            from squadops.api.runtime.deps import set_assignment_port
+    set_workflow_tracker(state.workflow_tracker)
 
-            assignment_port = PostgresAssignment(pool)
-            # SIP-0089 §2.7: same adapter backs the assignment REST surface.
-            set_assignment_port(assignment_port)
-            # SIP-0089 §4.4: executor-side task-activity instrumentation. The
-            # runtime-api process owns the asyncpg pool, so RuntimeActivity is
-            # written here (not in agents) as each task is dispatched/replied.
-            activity_port = PostgresRuntimeActivity(pool)
-            # #373/#529: the lease port for the stranded-lease sweeps. Stateless
-            # over the pool, so this instance is interchangeable with the one
-            # `create_runtime_coordinator` builds (same precedent as the
-            # assignment/activity adapters, which are also built twice).
-            focus_lease_port = PostgresFocusLease(pool)
-            # #710: the mode half of the same residue. Stateless over the pool,
-            # same as the adapters above.
-            state_port = PostgresRuntimeState(pool)
+    from adapters.events.factory import create_cycle_event_bus
+    from squadops.api.runtime.deps import set_cycle_event_bus
 
-        # SIP-0089 §3.5 (#233): the single-writer coordinator (D16), built once
-        # here and reused by the duty scheduler (see _init_duty_scheduler) so the
-        # executor's recruitment and the scheduler drive the same mode-writer.
-        # None when pool-less → recruitment falls back to the §2.5 guard only.
-        from squadops.api.runtime.scheduler_bootstrap import create_runtime_coordinator
+    # Bridges are subscribed inside the factory so the composition root
+    # never names ``LLMObservabilityBridge`` / ``WorkflowTrackerBridge``
+    # directly — only the ports cross this boundary.
+    event_bus = create_cycle_event_bus(
+        "in_process",
+        source_service="runtime-api",
+        source_version=SQUADOPS_VERSION,
+        llm_observability=llm_obs,
+        workflow_tracker=state.workflow_tracker,
+    )
+    set_cycle_event_bus(event_bus)
 
-        state.runtime_coordinator = create_runtime_coordinator(pool)
+    # SIP-0089 §2.5: wire the reserve-buffer guard live when a Postgres pool
+    # is available (the agent_assignments table lives there, migration 1110).
+    # Without a pool the guard stays unwired and recruitment is never gated.
+    assignment_port = None
+    activity_port = None
+    focus_lease_port = None
+    state_port = None
+    if pool is not None:
+        from adapters.persistence.runtime.activity_postgres import PostgresRuntimeActivity
+        from adapters.persistence.runtime.assignments_postgres import PostgresAssignment
+        from adapters.persistence.runtime.focus_lease_postgres import PostgresFocusLease
+        from adapters.persistence.runtime.state_postgres import PostgresRuntimeState
+        from squadops.api.runtime.deps import set_assignment_port
 
-        # #373/#529/#561: share the runtime ports with the cancel routes, which
-        # bypass the executor's finalize path and so have to release the leases
-        # and end the activities the cancelled run leaves behind.
-        from squadops.api.runtime.deps import set_cancellation_ports
+        assignment_port = PostgresAssignment(pool)
+        # SIP-0089 §2.7: same adapter backs the assignment REST surface.
+        set_assignment_port(assignment_port)
+        # SIP-0089 §4.4: executor-side task-activity instrumentation. The
+        # runtime-api process owns the asyncpg pool, so RuntimeActivity is
+        # written here (not in agents) as each task is dispatched/replied.
+        activity_port = PostgresRuntimeActivity(pool)
+        # #373/#529: the lease port for the stranded-lease sweeps. Stateless
+        # over the pool, so this instance is interchangeable with the one
+        # `create_runtime_coordinator` builds (same precedent as the
+        # assignment/activity adapters, which are also built twice).
+        focus_lease_port = PostgresFocusLease(pool)
+        # #710: the mode half of the same residue. Stateless over the pool,
+        # same as the adapters above.
+        state_port = PostgresRuntimeState(pool)
 
-        set_cancellation_ports(state.runtime_coordinator, focus_lease_port, activity_port)
+    # SIP-0089 §3.5 (#233): the single-writer coordinator (D16), built once
+    # here and reused by the duty scheduler (see _init_duty_scheduler) so the
+    # executor's recruitment and the scheduler drive the same mode-writer.
+    # None when pool-less → recruitment falls back to the §2.5 guard only.
+    from squadops.api.runtime.scheduler_bootstrap import create_runtime_coordinator
 
-        # Startup hygiene: clear runtime state a dead process left active, before
-        # anything recruits against it. Each sweep is best-effort and owns its own
-        # wiring gate + terminal predicate (see `startup_reaps`); a held lease
-        # (#373) blocks recruitment outright, a live activity row (#672) kills
-        # that agent's activity tracking.
-        from squadops.api.runtime.startup_reaps import (
-            detect_stranded_cycles,
-            reap_stranded_activities,
-            reap_stranded_leases,
-            reap_stranded_modes,
-        )
+    state.runtime_coordinator = create_runtime_coordinator(pool)
 
-        # Lease first: it returns the agents it clears to ambient, so the mode
-        # sweep after it sees only the residue with no lease at all (#710).
-        await reap_stranded_leases(cycle_registry, state.runtime_coordinator, focus_lease_port)
-        await reap_stranded_modes(state.runtime_coordinator, state_port)
-        await reap_stranded_activities(cycle_registry, activity_port)
-        # Read-only, last: a post-crash boot immediately names every cycle
-        # stranded between workloads and its recovery command (#481).
-        await detect_stranded_cycles(cycle_registry, project_registry)
+    # #373/#529/#561: share the runtime ports with the cancel routes, which
+    # bypass the executor's finalize path and so have to release the leases
+    # and end the activities the cancelled run leaves behind.
+    from squadops.api.runtime.deps import set_cancellation_ports
 
-        flow_executor = create_flow_executor(
-            "dispatched",
-            cycle_registry=cycle_registry,
-            artifact_vault=artifact_vault,
-            squad_profile=squad_profile,
-            project_registry=project_registry,
-            queue=queue_adapter,
-            task_timeout=config.task_timeout_seconds(),  # #1147: not llm.timeout
-            llm_observability=llm_obs,
-            workflow_tracker=state.workflow_tracker,
-            event_bus=event_bus,
-            reply_router=state.reply_router,
-            assignment_port=assignment_port,
-            activity_port=activity_port,
-            coordinator=state.runtime_coordinator,
-            focus_lease_port=focus_lease_port,
-        )
+    set_cancellation_ports(state.runtime_coordinator, focus_lease_port, activity_port)
 
-        set_cycle_ports(
-            project_registry=project_registry,
-            cycle_registry=cycle_registry,
-            squad_profile=squad_profile,
-            artifact_vault=artifact_vault,
-            flow_executor=flow_executor,
-        )
-        logger.info("SIP-0064 cycle ports + SIP-0066 orchestrator initialized")
-    except Exception as e:
-        logger.error(f"Failed to initialize cycle ports: {e}")
+    # Startup hygiene: clear runtime state a dead process left active, before
+    # anything recruits against it. Each sweep is best-effort and owns its own
+    # wiring gate + terminal predicate (see `startup_reaps`); a held lease
+    # (#373) blocks recruitment outright, a live activity row (#672) kills
+    # that agent's activity tracking.
+    from squadops.api.runtime.startup_reaps import (
+        detect_stranded_cycles,
+        reap_stranded_activities,
+        reap_stranded_leases,
+        reap_stranded_modes,
+    )
+
+    # Lease first: it returns the agents it clears to ambient, so the mode
+    # sweep after it sees only the residue with no lease at all (#710).
+    await reap_stranded_leases(cycle_registry, state.runtime_coordinator, focus_lease_port)
+    await reap_stranded_modes(state.runtime_coordinator, state_port)
+    await reap_stranded_activities(cycle_registry, activity_port)
+    # Read-only, last: a post-crash boot immediately names every cycle
+    # stranded between workloads and its recovery command (#481).
+    await detect_stranded_cycles(cycle_registry, project_registry)
+
+    flow_executor = create_flow_executor(
+        "dispatched",
+        cycle_registry=cycle_registry,
+        artifact_vault=artifact_vault,
+        squad_profile=squad_profile,
+        project_registry=project_registry,
+        queue=queue_adapter,
+        task_timeout=config.task_timeout_seconds(),  # #1147: not llm.timeout
+        llm_observability=llm_obs,
+        workflow_tracker=state.workflow_tracker,
+        event_bus=event_bus,
+        reply_router=state.reply_router,
+        assignment_port=assignment_port,
+        activity_port=activity_port,
+        coordinator=state.runtime_coordinator,
+        focus_lease_port=focus_lease_port,
+    )
+
+    set_cycle_ports(
+        project_registry=project_registry,
+        cycle_registry=cycle_registry,
+        squad_profile=squad_profile,
+        artifact_vault=artifact_vault,
+        flow_executor=flow_executor,
+    )
+    logger.info("SIP-0064 cycle ports + SIP-0066 orchestrator initialized")
 
     # #1157 (the LLM half of #301): the configured provider through the factory, never
     # a directly constructed adapter. Construction is outside the try on purpose — an
