@@ -144,8 +144,13 @@ class TestFactoryResolution:
         cls.assert_called_once_with(timeout_seconds=7.5, agent_card_timeout_seconds=2.5)
 
     def test_a2a_server_binds_card_executor_and_port(self):
+        # Patched at its DEFINING module, not on the factory: `create_a2a_server` imports
+        # `A2AServerAdapter` inside the function, because at module scope the `a2a` SDK it
+        # pulls made the whole factory unimportable in the runtime-api image, whose lock
+        # ships no SDK it never calls (deploy B, 2026-09-11). A local import has no
+        # attribute on the factory to patch.
         card, executor = object(), object()
-        with patch("adapters.comms.factory.A2AServerAdapter") as cls:
+        with patch("adapters.comms.a2a_server.A2AServerAdapter") as cls:
             create_a2a_server(self._comms(), agent_card=card, executor=executor, port=8080)
         kw = cls.call_args.kwargs
         assert (kw["agent_card"], kw["executor"], kw["port"]) == (card, executor, 8080)

@@ -163,8 +163,17 @@ jobs:
         include:
           - lock: api
             root: squadops.api.runtime.main
+            # What this root's STARTUP imports, as opposed to what its module does. The
+            # roots import their adapter factories lazily, inside the init functions, so
+            # `import <root>` never reaches them — which is how #301's module-scope
+            # `a2a` import shipped: main imported fine under api.lock and
+            # `_init_cycle_subsystem` then swallowed the ModuleNotFoundError into a log
+            # line, leaving a healthy container that answered 500 on every cycle create
+            # (deploy B, 2026-09-11). Named per lock because the two images differ.
+            composes: adapters.comms.factory adapters.cycles.factory adapters.llm.factory
           - lock: agent
             root: squadops.agents.entrypoint
+            composes: adapters.comms.factory adapters.llm.factory
     steps:
       - uses: actions/checkout@v4
 
@@ -185,6 +194,18 @@ jobs:
         # it to import is doing composition at import time (composition-roots.md R3).
         run: |
           env -i "$RUNNER_TEMP/lock-${{ matrix.lock }}/bin/python" -c "import ${{ matrix.root }}"
+
+      - name: what ${{ matrix.root }} composes at startup also imports under this lock
+        # The guard's reach, one level in. A root that imports its factories lazily passes
+        # the step above while carrying a module the lock cannot satisfy — the failure
+        # then lands at startup, inside a broad `except`, as a log line under a container
+        # reporting healthy. Same venv, same empty environment; one module at a time so
+        # the failure names which.
+        run: |
+          for module in ${{ matrix.composes }}; do
+            echo "-- $module"
+            env -i "$RUNNER_TEMP/lock-${{ matrix.lock }}/bin/python" -c "import $module"
+          done
 
   console-fastapi-next:
     # #198 (1.7.5 plan §3.6): the console suite on the FIRST fastapi past the cap that was
