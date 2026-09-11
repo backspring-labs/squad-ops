@@ -189,6 +189,125 @@ class _CorrectionRound:
     max_attempts: int
 
 
+#: The run's own mutable execution state, named (1.7.5 recovery extraction map §4 step 6).
+#:
+#: `_execute_sequential` opened with sixteen bare locals, and every collaborator it called
+#: took the six or ten of them it happened to need as positional arguments. The cost was
+#: not length: it was that "what a run is, while it runs" existed only as the intersection
+#: of a dozen parameter lists, so a new holder was another argument on another signature
+#: and nothing said where it belonged.
+#:
+#: Three rules keep this from becoming a bag of everything, and they are the reason it is
+#: substructures rather than one flat namespace:
+#:
+#: * **Only run-lived mutable execution state.** Ports and services are the executor's,
+#:   bound at construction, and are not here. Task-local values are `_execute_task`'s
+#:   parameters and locals, and are not here either.
+#: * **Every field carries its owner and the issue that introduced it.** A field whose
+#:   provenance nobody can state is a field nobody can retire.
+#: * **A method takes the substructure it reads**, never the whole object — so no
+#:   collaborator gains access to all run state merely because the object exists.
+
+
+@dataclasses.dataclass
+class _Produced:
+    """What the run has emitted so far, in the three shapes its consumers read."""
+
+    #: Role-keyed summaries threaded into every later task's prompt context.
+    prior_outputs: dict[str, Any] = dataclasses.field(default_factory=dict)
+    #: Every stored artifact id, in store order.
+    all_artifact_refs: list[str] = dataclasses.field(default_factory=list)
+    #: (id, ref) pairs — the build pre-resolution surface; appended last-wins on filename.
+    stored_artifacts: list[tuple[str, ArtifactRef]] = dataclasses.field(default_factory=list)
+
+
+@dataclasses.dataclass
+class _CheckpointProgress:
+    """SIP-0079 checkpoint/resume state: what is done, and what a resume may skip."""
+
+    completed_task_ids: list[str] = dataclasses.field(default_factory=list)
+    plan_delta_refs: list[str] = dataclasses.field(default_factory=list)
+    skip_task_ids: set[str] = dataclasses.field(default_factory=set)
+
+
+@dataclasses.dataclass
+class _Routing:
+    """SIP-0079 Phase 3 outcome-routing state."""
+
+    #: Reset on every success; the fail-fast counter.
+    consecutive_failures: int = 0
+    #: Per-task attempt count — the D5 fallback table's input.
+    task_attempt_counts: dict[str, int] = dataclasses.field(default_factory=dict)
+
+
+@dataclasses.dataclass
+class _Correction:
+    """The correction chain's run-lived state.
+
+    Grouped because they are read together and by the same collaborators: the counter
+    bounds the chain, the signature state decides whether it is progressing, the carry
+    tells the next round why the last repair was refused, and the accepted ids stop a
+    rewind discarding known-good state.
+    """
+
+    #: #374: run-level correction count, a holder because a `patch` re-runs the failed
+    #: check inside dispatch_with_retry and must bump on each inner-loop correction.
+    counter: dict[str, int] = dataclasses.field(default_factory=lambda: {"n": 0})
+    #: #435 (1.5 A4): chain signature state keyed by failed task id — an exact adjacent
+    #: repeat with structural candidates both times terminates as `plan_defect`.
+    signature_state: dict[str, Any] = dataclasses.field(default_factory=dict)
+    #: #870: what happened to each task's PREVIOUS repair, so the next round is told
+    #: rather than re-deriving the failure blind.
+    rejection_carry: dict[str, list[str]] = dataclasses.field(default_factory=dict)
+    #: #994: task ids whose repair was accepted and stored this run — a rewind after one
+    #: discards known-good state, so the correction policy is told.
+    accepted_repair_task_ids: set[str] = dataclasses.field(default_factory=set)
+
+
+@dataclasses.dataclass
+class _Ownership:
+    """SIP-0100 scaffold-ownership state: what is frozen, what was rejected, what it cost.
+
+    Grouped for the same reason: the bound record decides an enforcement, the carry tells
+    the next attempt its edit was rejected instead of letting it fight the restore
+    silently, and the counter is the only thing bounding a producer that keeps writing
+    another producer's slot.
+    """
+
+    #: SIP-0100 2.4: frozen paths + bytes, bound once per run. None on unbound/legacy runs.
+    bound_record: Any = None
+    #: SIP-0100 3.4b (restore+signal): instructions from prior attempts' frozen-path
+    #: restores, surfaced in the next correction attempt's failure_evidence.
+    enforcement_carry: list[str] = dataclasses.field(default_factory=list)
+    #: SIP-0100 3.4a: contract-compliance circuit breaker, SEPARATE from the convergence
+    #: counter — cross-lane emissions are dropped, so they fail no task on their own.
+    compliance_counter: dict[str, int] = dataclasses.field(default_factory=lambda: {"n": 0})
+
+
+@dataclasses.dataclass
+class _Budget:
+    """SIP-0079 RC-8 / #511: the run's time contract and when it started."""
+
+    seconds: float | None
+    started: float
+
+
+@dataclasses.dataclass
+class RunState:
+    """Everything mutable that belongs to the run rather than to a task."""
+
+    budget: _Budget
+    produced: _Produced = dataclasses.field(default_factory=_Produced)
+    checkpoint: _CheckpointProgress = dataclasses.field(default_factory=_CheckpointProgress)
+    routing: _Routing = dataclasses.field(default_factory=_Routing)
+    correction: _Correction = dataclasses.field(default_factory=_Correction)
+    ownership: _Ownership = dataclasses.field(default_factory=_Ownership)
+    #: #796: in authored mode the contract comes into being mid-run, the moment the
+    #: authoring stage lands a manifest; every task dispatched after that binds to it.
+    #: Empty for seeded runs, whose contract was pinned at creation.
+    authored: tuple[Any, Any] = (None, None)
+
+
 class DispatchedFlowExecutor(FlowExecutionPort):
     """Flow executor that dispatches tasks to agent containers via RabbitMQ.
 
@@ -1539,63 +1658,19 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         SIP-0070: evaluates pulse verification at cadence closes and
         milestone boundaries.  Phase 2: FAIL = run FAILED (no repair).
         """
-        prior_outputs: dict[str, Any] = {}
-        all_artifact_refs: list[str] = []
-        # Track stored artifacts with their refs for build pre-resolution
-        stored_artifacts: list[tuple[str, ArtifactRef]] = []
-
-        # SIP-0100 2.4: bind the run's scaffold ownership once (frozen paths + bytes) so a
-        # producing task cannot clobber a scaffold-frozen file at artifact storage (pf-26).
-        # None for unbound/legacy runs → no enforcement (plan §10).
-        bound_record = self._build_bound_record_for_run(interface_manifest, run_id)
-
-        # #796: in authored mode the contract does not exist when the plan is generated —
-        # the squad has not designed anything yet. It comes into being mid-run, the moment
-        # the authoring stage lands a manifest, and every task dispatched after that point
-        # binds to it. Empty for seeded runs, whose contract was pinned at creation.
-        authored: tuple[Any, Any] = (None, None)
-
-        # SIP-0079: Checkpoint/resume state tracking
-        completed_task_ids: list[str] = []
-        plan_delta_refs: list[str] = []
-        skip_task_ids: set[str] = set()
-
-        # SIP-0079 Phase 3: Outcome routing state
-        consecutive_failures: int = 0
-        # #374: run-level correction count as a mutable holder. A `patch` re-runs the
-        # failed check via dispatch_with_retry's "continue", so the count must bump on
-        # each inner-loop correction (not just once per outer iteration) to bound it
-        # (max_correction_attempts) and keep corr-/plan_delta- ids unique across re-runs.
-        correction_counter: dict[str, int] = {"n": 0}
-        # #435 (1.5 A4): run-lived correction-chain signature state, keyed by
-        # failed task id — the runner compares adjacent rounds and terminates
-        # plan_defect on an exact repeat with structural candidates both times.
-        correction_signature_state: dict[str, Any] = {}
-        # SIP-0100 3.4b (restore+signal): run-lived instruction carry — frozen-path
-        # restores on the repair path append here; the next correction attempt's
-        # failure_evidence surfaces them so the loop is TOLD the edit was rejected
-        # instead of silently fighting the restore.
-        scaffold_enforcement_carry: list[str] = []
-        # #870: run-lived rejected-repair record, keyed by failed task id. A repair
-        # that patch verification or the behavioral retest rejects was previously
-        # discarded with only "patch_retest status=FAILED" in the log — the next
-        # correction round re-analyzed the task blind to WHY the last repair was
-        # rejected (roll 12: a non-compiling repair, and nothing downstream was ever
-        # told it didn't compile). Same transport as scaffold_enforcement_carry.
-        repair_rejection_carry: dict[str, list[str]] = {}
-        # #994: task ids whose repair was accepted this run — a rewind after one
-        # discards known-good state, so the correction policy is told.
-        accepted_repair_task_ids: set[str] = set()
-        # SIP-0100 3.4a: run-level contract-compliance counter, SEPARATE from the convergence
-        # counter (D6) — cross-lane (unauthorized-slot) emissions don't fail a task on their own,
-        # so this bounded budget is the only thing that stops a producer chronically writing
-        # another producer's slot. Frozen re-emission is the tolerated 2.4 baseline (not counted).
-        compliance_counter: dict[str, int] = {"n": 0}
-        task_attempt_counts: dict[str, int] = {}
-
-        # SIP-0079: Time budget enforcement (RC-8)
-        time_budget = cycle.resolved_config().get("time_budget_seconds")
-        run_start_time = time.monotonic()
+        # #1152 step 6: the run's own mutable state, constructed once and passed down.
+        # Sixteen bare locals lived here, and "what a run is, while it runs" existed only
+        # as the intersection of a dozen parameter lists — see ``RunState`` above for the
+        # three rules that keep it from becoming a bag of everything.
+        state = RunState(
+            budget=_Budget(
+                seconds=cycle.resolved_config().get("time_budget_seconds"),
+                started=time.monotonic(),
+            ),
+            ownership=_Ownership(
+                bound_record=self._build_bound_record_for_run(interface_manifest, run_id)
+            ),
+        )
 
         # #511: the budget gates EVERY dispatch lane. The main task loop checks
         # it in _check_task_preconditions, but correction-chain dispatches
@@ -1607,10 +1682,13 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # dispatch choke point. In-flight work still completes — the semantic
         # is "no NEW dispatch past expiry", identical to the main loop's.
         def _budget_guard() -> None:
-            if time_budget is not None and (time.monotonic() - run_start_time) >= time_budget:
+            if (
+                state.budget.seconds is not None
+                and (time.monotonic() - state.budget.started) >= state.budget.seconds
+            ):
                 raise _ExecutionError(
-                    f"Time budget exhausted ({time_budget}s) at correction-chain dispatch "
-                    f"after {len(completed_task_ids)} tasks"
+                    f"Time budget exhausted ({state.budget.seconds}s) at correction-chain dispatch "
+                    f"after {len(state.checkpoint.completed_task_ids)} tasks"
                 )
 
         # SIP-0079: Resume from checkpoint — restore prior state. Self-resume
@@ -1632,28 +1710,28 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 checkpoint,
                 run_id,
                 cycle,
-                skip_task_ids,
-                prior_outputs,
-                completed_task_ids,
-                plan_delta_refs,
-                all_artifact_refs,
-                stored_artifacts,
+                state.checkpoint.skip_task_ids,
+                state.produced.prior_outputs,
+                state.checkpoint.completed_task_ids,
+                state.checkpoint.plan_delta_refs,
+                state.produced.all_artifact_refs,
+                state.produced.stored_artifacts,
             )
 
         # #683 (SIP-0096 §14): wrap-up tasks consume the CycleOutcome — inject
-        # the structured evidence ONCE per wrap-up run into prior_outputs, so
+        # the structured evidence ONCE per wrap-up run into state.produced.prior_outputs, so
         # every wrap-up prompt shows the basis (summary) and the closeout
         # handler enforces the ceiling (raw dict). Data only; best-effort — a
         # failed derivation is disclosed by absence and the handler fails
         # closed to an inconclusive ceiling.
-        await self._inject_wrapup_evidence(plan, cycle, prior_outputs)
+        await self._inject_wrapup_evidence(plan, cycle, state.produced.prior_outputs)
 
         # Seed from prior plan artifacts for build-only runs (§2.3)
         if seed_artifact_refs:
             await self._seed_prior_artifacts(
                 seed_artifact_refs,
-                stored_artifacts,
-                all_artifact_refs,
+                state.produced.stored_artifacts,
+                state.produced.all_artifact_refs,
             )
 
         # Build role → agent_id resolver for repair task dispatch
@@ -1676,17 +1754,22 @@ class DispatchedFlowExecutor(FlowExecutionPort):
 
         for task_idx, envelope in enumerate(plan):
             if await self._check_task_preconditions(
-                run_id, envelope, skip_task_ids, time_budget, run_start_time, completed_task_ids
+                run_id,
+                envelope,
+                state.checkpoint.skip_task_ids,
+                state.budget.seconds,
+                state.budget.started,
+                state.checkpoint.completed_task_ids,
             ):
                 continue
 
             # Enrich envelope with chain context and dispatch
-            authored_contract, authored_manifest = authored
+            authored_contract, authored_manifest = state.authored
             enriched = await self._enrich_envelope(
                 envelope,
-                prior_outputs,
-                all_artifact_refs,
-                stored_artifacts,
+                state.produced.prior_outputs,
+                state.produced.all_artifact_refs,
+                state.produced.stored_artifacts,
                 interface_manifest=interface_manifest or authored_manifest,
                 run_derived_contract=authored_contract,
             )
@@ -1734,7 +1817,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 result,
                 _envelope=envelope,
                 _enriched=enriched,
-                _consecutive_failures=consecutive_failures,
+                _consecutive_failures=state.routing.consecutive_failures,
                 _holder=_last_failed_result,
             ):
                 # #1323: authorize BEFORE holding. The held result is the base the repair
@@ -1747,9 +1830,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     _envelope,
                     cycle,
                     run_id,
-                    all_artifact_refs,
-                    bound_record=bound_record,
-                    compliance_counter=compliance_counter,
+                    state.produced.all_artifact_refs,
+                    bound_record=state.ownership.bound_record,
+                    compliance_counter=state.ownership.compliance_counter,
                 )
                 _holder["result"] = result
                 action = await self._handle_task_outcome(
@@ -1758,32 +1841,32 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     enriched_envelope=_enriched,
                     cycle=cycle,
                     run_id=run_id,
-                    task_attempt_counts=task_attempt_counts,
+                    task_attempt_counts=state.routing.task_attempt_counts,
                     consecutive_failures=_consecutive_failures,
-                    correction_counter=correction_counter,
-                    correction_signature_state=correction_signature_state,
-                    scaffold_enforcement_carry=scaffold_enforcement_carry,
-                    prior_outputs=prior_outputs,
-                    all_artifact_refs=all_artifact_refs,
-                    stored_artifacts=stored_artifacts,
-                    completed_task_ids=completed_task_ids,
-                    plan_delta_refs=plan_delta_refs,
+                    correction_counter=state.correction.counter,
+                    correction_signature_state=state.correction.signature_state,
+                    scaffold_enforcement_carry=state.ownership.enforcement_carry,
+                    prior_outputs=state.produced.prior_outputs,
+                    all_artifact_refs=state.produced.all_artifact_refs,
+                    stored_artifacts=state.produced.stored_artifacts,
+                    completed_task_ids=state.checkpoint.completed_task_ids,
+                    plan_delta_refs=state.checkpoint.plan_delta_refs,
                     profile=profile,
                     flow_run_id=flow_run_id,
                     patched_result_holder=_holder,
                     interface_manifest=interface_manifest,
                     budget_guard=_budget_guard,
-                    repair_rejection_carry=repair_rejection_carry,
-                    bound_record=bound_record,
-                    compliance_counter=compliance_counter,
-                    accepted_repair_task_ids=accepted_repair_task_ids,
+                    repair_rejection_carry=state.correction.rejection_carry,
+                    bound_record=state.ownership.bound_record,
+                    compliance_counter=state.ownership.compliance_counter,
+                    accepted_repair_task_ids=state.correction.accepted_repair_task_ids,
                 )
                 if action == "accept_patch":
                     # #994: remember that THIS task now has accepted, stored repaired
                     # state. A later round's rewind re-authors from the checkpoint and
                     # cannot preserve it, so the guard needs the fact and this loop is
                     # the only place that holds it.
-                    accepted_repair_task_ids.add(_envelope.task_id)
+                    state.correction.accepted_repair_task_ids.add(_envelope.task_id)
                 if action in ("continue", "accept_patch"):
                     # #379: this attempt failed — re-dispatched ("continue") or
                     # superseded by a verified patch ("accept_patch", #389). Record
@@ -1835,14 +1918,14 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 # now returns "continue", re-running the failed check inside
                 # dispatch_with_retry, so it never lands here. The correction count is
                 # bumped on the shared holder inside _handle_task_outcome, not here.
-                consecutive_failures = 0
+                state.routing.consecutive_failures = 0
 
             if not task_succeeded:
                 # Correction "continue"/"patch" handled — skip to next task
                 continue
 
             # Reset consecutive failures on success
-            consecutive_failures = 0
+            state.routing.consecutive_failures = 0
 
             # Collect artifacts + checkpoint after successful task; a checkpoint
             # that closes a role phase is a replay boundary and survives pruning
@@ -1852,19 +1935,21 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 envelope=envelope,
                 cycle=cycle,
                 run_id=run_id,
-                prior_outputs=prior_outputs,
-                all_artifact_refs=all_artifact_refs,
-                stored_artifacts=stored_artifacts,
-                completed_task_ids=completed_task_ids,
-                plan_delta_refs=plan_delta_refs,
-                bound_record=bound_record,
-                compliance_counter=compliance_counter,
+                prior_outputs=state.produced.prior_outputs,
+                all_artifact_refs=state.produced.all_artifact_refs,
+                stored_artifacts=state.produced.stored_artifacts,
+                completed_task_ids=state.checkpoint.completed_task_ids,
+                plan_delta_refs=state.checkpoint.plan_delta_refs,
+                bound_record=state.ownership.bound_record,
+                compliance_counter=state.ownership.compliance_counter,
                 retain_checkpoint=self._is_phase_boundary(plan, task_idx),
             )
 
             # #796: the authoring stage may have just stored a manifest. Derive here — after
             # collection, before the next dispatch — so the very next task binds.
-            authored = await self._bind_authored_manifest(cycle, run_id, stored_artifacts, authored)
+            state.authored = await self._bind_authored_manifest(
+                cycle, run_id, state.produced.stored_artifacts, state.authored
+            )
 
             # ----------------------------------------------------------
             # SIP-0070: Pulse boundary evaluation (after task, before gate)
@@ -1889,9 +1974,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     obs_ctx=obs_ctx,
                     engine=engine,
                     envelope=envelope,
-                    prior_outputs=prior_outputs,
-                    stored_artifacts=stored_artifacts,
-                    all_artifact_refs=all_artifact_refs,
+                    prior_outputs=state.produced.prior_outputs,
+                    stored_artifacts=state.produced.stored_artifacts,
+                    all_artifact_refs=state.produced.all_artifact_refs,
                     flow_run_id=flow_run_id,
                     agent_resolver=agent_resolver,
                     run_root=run_root,
@@ -1909,7 +1994,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     run_id,
                     cycle,
                     envelope.task_type,
-                    stored_artifacts=stored_artifacts,
+                    stored_artifacts=state.produced.stored_artifacts,
                     profile=profile,
                 )
 
@@ -1917,7 +2002,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # (#107) only enforces the *active* task's required files; a required
         # file that framing spread across tasks — or that no single task owns —
         # is never checked, so a run can ship green without the Dockerfile its
-        # own profile mandates (#276). The loop is done, so stored_artifacts now
+        # own profile mandates (#276). The loop is done, so state.produced.stored_artifacts now
         # holds the complete emitted set — the only point where the deliverable
         # is fully known. Missing → fail the run (FAILED, via _ExecutionError →
         # resolve_terminal_outcome). The per-task required_files *evidence* the
@@ -1925,7 +2010,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # in-loop builder failure is disclosed even though this gate is only
         # reached when every task succeeded.
         resolved_config = cycle.resolved_config()
-        deficiency = compute_missing_required_files(plan, stored_artifacts, resolved_config)
+        deficiency = compute_missing_required_files(
+            plan, state.produced.stored_artifacts, resolved_config
+        )
         if deficiency is not None:
             profile_name, missing = deficiency
             raise _ExecutionError(
