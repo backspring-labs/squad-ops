@@ -1,0 +1,62 @@
+[
+  {
+    "method": "POST",
+    "path": "/runs",
+    "body": {
+      "title": "Tuesday Tempo — Riverside Loop",
+      "datetime": "2026-09-15T18:30",
+      "meeting_location": "Riverside Park, east gate",
+      "distance": "8 km",
+      "pace_target": "4:45 /km",
+      "route_notes": "Two loops of the lower path. Lights after the bridge.",
+      "capacity": "12"
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/runs",
+    "body": {
+      "title": "Saturday Long Run",
+      "datetime": "2026-09-19T07:00",
+      "meeting_location": "Old Mill car park",
+      "distance": "21 km",
+      "pace_target": "5:40 /km",
+      "route_notes": "Out to the reservoir and back. One water stop at 12 km.",
+      "capacity": "20"
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/runs",
+    "body": {
+      "title": "Thursday Hill Reps",
+      "datetime": "2026-09-17T18:45",
+      "meeting_location": "Bottom of Chapel Hill",
+      "distance": "6 km",
+      "pace_target": "effort based",
+      "route_notes": "6 x 90s hard uphill, jog down.",
+      "capacity": "8"
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/runs/{id}/join",
+    "body": {
+      "name": "Priya"
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/runs/{id}/join",
+    "body": {
+      "name": "Marcus"
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/runs/{id}/join",
+    "body": {
+      "name": "Dee"
+    }
+  }
+]

@@ -258,6 +258,25 @@ def parse_cycle_arg(arg: str) -> tuple[str, str | None]:
     return cycle_id, role
 
 
+def parse_showcase_arg(arg: str) -> tuple[str, str]:
+    """``--showcase <cycle-id>:<reason>`` — which run the screenshots are of, and why.
+
+    The reason is required and deliberately free text. Choosing the run to show is a
+    judgement that changes per release: the roll worth showing for a recovery release is the
+    one that recovered, and for a feature release it is the one that built the feature. What
+    is NOT left to judgement is saying so — an unexplained screenshot invites the flattering
+    pick, because "the representative run" reliably resolves to a clean one chosen by
+    somebody with an interest in the release looking good.
+    """
+    cycle_id, sep, reason = arg.partition(":")
+    if not sep or not reason.strip():
+        raise SystemExit(
+            f"--showcase {arg}: needs <cycle-id>:<reason> — say why this run is the one on "
+            "screen, or the choice cannot be audited later"
+        )
+    return cycle_id.strip(), reason.strip()
+
+
 def cycle_evidence(
     cycle_ids: list[str], api: str, project: str, roles: dict[str, str] | None = None
 ) -> list[dict]:
@@ -454,6 +473,10 @@ def render(version: str, tag: str, package: dict) -> str:
     shots = package["screenshots"]
     if shots:
         out += ["## Screenshots", ""]
+        show = package.get("showcase") or {}
+        if show.get("cycle_id"):
+            role = f" ({show['role']})" if show.get("role") else ""
+            out += [f"Of cycle `{show['cycle_id']}`{role} — {show['reason']}.", ""]
         for shot in shots:
             caption = Path(shot).stem.replace("-", " ").replace("_", " ")
             out += [f"![{caption}](assets/{Path(shot).name})", f"*{caption}*", ""]
@@ -470,6 +493,11 @@ def main() -> int:
         action="append",
         default=[],
         help="cycle id representing this release; repeatable",
+    )
+    parser.add_argument(
+        "--showcase",
+        metavar="CYCLE:REASON",
+        help="which cycle the screenshots are of, and why it is the one shown",
     )
     parser.add_argument("--api", default="http://localhost:8001", help="runtime API base URL")
     parser.add_argument("--project", default="group_run", help="project the --cycle ids belong to")
@@ -491,6 +519,21 @@ def main() -> int:
     previous = args.previous or previous_tag(tag)
     target = RELEASES / tag
 
+    showcase: dict[str, str] = {}
+    if args.showcase:
+        showcase_id, reason = parse_showcase_arg(args.showcase)
+        # A screenshot of a run the page does not cite is a picture with no evidence behind
+        # it — the reader cannot check the verdict of the thing they are looking at.
+        if showcase_id not in cycle_ids:
+            raise SystemExit(
+                f"--showcase {showcase_id}: not among the --cycle ids "
+                f"({', '.join(cycle_ids) or 'none given'}) — the screenshots would be of a run "
+                "the evidence table does not cite"
+            )
+        showcase = {"cycle_id": showcase_id, "reason": reason}
+        if cycle_roles.get(showcase_id):
+            showcase["role"] = cycle_roles[showcase_id]
+
     assets = target / "assets"
     screenshots = sorted(
         p.name for p in assets.glob("*") if p.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}
@@ -510,6 +553,7 @@ def main() -> int:
             cycle_evidence(cycle_ids, args.api, args.project, cycle_roles) if cycle_ids else []
         ),
         "screenshots": screenshots,
+        "showcase": showcase,
     }
 
     page = render(version, tag, package)
