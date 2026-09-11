@@ -174,6 +174,20 @@ def record_task_evidence(ledger: RunLedger, task_result, task_id: str) -> None:
 _ASSEMBLY_NOTES_READERS: frozenset[str] = frozenset({TaskType.QA_TEST})
 
 
+@dataclasses.dataclass(frozen=True)
+class _CorrectionRound:
+    """What one correction round is, once its protocol has answered (map §4 step 3).
+
+    ``max_attempts`` rides along because the refund in block 4 is bounded against the
+    same number block 3 checked the budget against — reading the config twice would let
+    the two disagree if a resolved value ever became per-round.
+    """
+
+    protocol: Any
+    attempt: int
+    max_attempts: int
+
+
 class DispatchedFlowExecutor(FlowExecutionPort):
     """Flow executor that dispatches tasks to agent containers via RabbitMQ.
 
@@ -2934,6 +2948,87 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         """
         outcome = (result.outputs or {}).get("outcome_class") if result.outputs else None
 
+        # The four steps this router has always run, in order — the blocks its own comment
+        # headers already named, each now a method taking what it consumes and returning
+        # what it produces (1.7.5 recovery extraction map §4 step 3). No condition is
+        # reordered and no block's decision moved.
+        #
+        # The parameter lists stay long on purpose. Most of what blocks 3 and 4 need is
+        # run-lived state — the stored artifacts, the artifact refs, the completed ids,
+        # the plan deltas — and `RunState` (map §4 step 6) is what gives that a shape.
+        # Inventing a second carrier for it here would put the same values in two shapes
+        # and make the tail a merge rather than a move.
+        self._carry_facts_to_the_next_attempt(result, envelope, enriched_envelope)
+
+        action = self._classify_unhandled_outcome(
+            outcome,
+            result,
+            envelope,
+            cycle,
+            task_attempt_counts,
+            enriched_envelope=enriched_envelope,
+        )
+        if action is not None:
+            return action
+
+        round_ = await self._dispatch_correction_protocol(
+            result,
+            envelope,
+            cycle,
+            run_id,
+            correction_counter=correction_counter,
+            correction_signature_state=correction_signature_state,
+            scaffold_enforcement_carry=scaffold_enforcement_carry,
+            prior_outputs=prior_outputs,
+            all_artifact_refs=all_artifact_refs,
+            stored_artifacts=stored_artifacts,
+            completed_task_ids=completed_task_ids,
+            plan_delta_refs=plan_delta_refs,
+            profile=profile,
+            flow_run_id=flow_run_id,
+            enriched_envelope=enriched_envelope,
+            interface_manifest=interface_manifest,
+            budget_guard=budget_guard,
+            repair_rejection_carry=repair_rejection_carry,
+            accepted_repair_task_ids=accepted_repair_task_ids,
+        )
+
+        return await self._route_correction_path(
+            round_,
+            result,
+            envelope,
+            run_id,
+            cycle=cycle,
+            correction_counter=correction_counter,
+            patched_result_holder=patched_result_holder,
+            prior_outputs=prior_outputs,
+            all_artifact_refs=all_artifact_refs,
+            stored_artifacts=stored_artifacts,
+            completed_task_ids=completed_task_ids,
+            plan_delta_refs=plan_delta_refs,
+            profile=profile,
+            flow_run_id=flow_run_id,
+            enriched_envelope=enriched_envelope,
+            budget_guard=budget_guard,
+            interface_manifest=interface_manifest,
+            repair_rejection_carry=repair_rejection_carry,
+            bound_record=bound_record,
+            compliance_counter=compliance_counter,
+        )
+
+    def _carry_facts_to_the_next_attempt(
+        self,
+        result: TaskResult,
+        envelope: TaskEnvelope,
+        enriched_envelope: TaskEnvelope | None,
+    ) -> None:
+        """Block 1 — stamp the attempt and thread what this one exposed onto the next.
+
+        Mutates the envelopes and returns nothing: the carry IS the output. Both are
+        stamped because the retry loop re-dispatches the enriched one and the base one
+        carries the evidence parity.
+        """
+
         # #1260: whatever happens next — a retry, or a re-dispatch after a refused patch —
         # the attempt that follows must still cover the cases this one exposed. A
         # re-dispatched `qa.test` is a fresh emission with no memory: the Next.js shakeout
@@ -2981,6 +3076,23 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 ", ".join(str(c.get("name") or c.get("title") or "?") for c in retained),
             )
 
+    def _classify_unhandled_outcome(
+        self,
+        outcome: Any,
+        result: TaskResult,
+        envelope: TaskEnvelope,
+        cycle: Cycle,
+        task_attempt_counts: dict[str, int],
+        *,
+        enriched_envelope: TaskEnvelope | None,
+    ) -> str | None:
+        """Block 2 — the D5 fallback table, BLOCKED, the aimed retry, and D9.
+
+        Returns ``"continue"`` when the caller must re-dispatch, or ``None`` when the
+        outcome goes on to correction. Raises ``_PausedError`` (BLOCKED is a pause, not
+        an outcome) and ``_ExecutionError`` (D9: correcting the statement of what "done"
+        means is how a cycle talks itself into a lower bar).
+        """
         # D5 fallback table: classify unclassified failures
         if outcome is None:
             task_attempt_counts[envelope.task_id] = task_attempt_counts.get(envelope.task_id, 0) + 1
@@ -3033,7 +3145,36 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             raise _ExecutionError(
                 f"Definition-of-done task {envelope.task_id} failed (no correction): {result.error}"
             )
+        return None
 
+    async def _dispatch_correction_protocol(
+        self,
+        result: TaskResult,
+        envelope: TaskEnvelope,
+        cycle: Cycle,
+        run_id: str,
+        *,
+        correction_counter: dict[str, int],
+        correction_signature_state: dict[str, Any],
+        scaffold_enforcement_carry: list[str],
+        prior_outputs: dict[str, Any],
+        all_artifact_refs: list[str],
+        stored_artifacts: list[tuple[str, ArtifactRef]],
+        completed_task_ids: list[str],
+        plan_delta_refs: list[str],
+        profile: Any,
+        flow_run_id: str | None,
+        enriched_envelope: TaskEnvelope | None,
+        interface_manifest: Any,
+        budget_guard: Callable[[], None] | None,
+        repair_rejection_carry: dict[str, list[str]] | None,
+        accepted_repair_task_ids: set[str] | None,
+    ) -> _CorrectionRound:
+        """Block 3 — the budget, then the protocol.
+
+        Raises ``_ExecutionError`` when the run's correction budget is exhausted, so a
+        repair that never converges fails the run rather than looping.
+        """
         # Trigger correction protocol
         max_corrections = cycle.resolved_config().get("max_correction_attempts", 2)
 
@@ -3094,8 +3235,43 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 )
             ),
         )
-        correction_path = protocol.correction_path
+        return _CorrectionRound(protocol=protocol, attempt=attempt, max_attempts=max_corrections)
 
+    async def _route_correction_path(
+        self,
+        round_: _CorrectionRound,
+        result: TaskResult,
+        envelope: TaskEnvelope,
+        run_id: str,
+        *,
+        cycle: Cycle,
+        correction_counter: dict[str, int],
+        patched_result_holder: dict[str, Any] | None,
+        prior_outputs: dict[str, Any],
+        all_artifact_refs: list[str],
+        stored_artifacts: list[tuple[str, ArtifactRef]],
+        completed_task_ids: list[str],
+        plan_delta_refs: list[str],
+        profile: Any,
+        flow_run_id: str | None,
+        enriched_envelope: TaskEnvelope | None,
+        budget_guard: Callable[[], None] | None,
+        interface_manifest: Any,
+        repair_rejection_carry: dict[str, list[str]] | None,
+        bound_record: Any,
+        compliance_counter: dict[str, int] | None,
+    ) -> str:
+        """Block 4 — refund an empty emission, then act on the protocol's answer.
+
+        The four-way dispatch keeps its ``if``/``elif``: it is keyed on the protocol's
+        *answer*, not on a task type, so "tables over chains" (which is about type-keyed
+        dispatch) does not apply and a table would add a lookup between the decision and
+        the action it names.
+        """
+        protocol = round_.protocol
+        attempt = round_.attempt
+        max_corrections = round_.max_attempts
+        correction_path = protocol.correction_path
         # #1053: an emission containing nothing is not an attempt at the fix. Arm B of
         # the 2026-08-23 pair banked `repair_output.md` at ZERO bytes on two of three
         # rounds while its diagnosis stayed correct and stable, and each was billed as a

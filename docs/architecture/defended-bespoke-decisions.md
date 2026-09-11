@@ -262,3 +262,71 @@ The repair-acceptance verdict carries the identity of the workspace tree
 `verify_patched_artifacts` computed and verified against (#734 Slice A), so a record can say
 which tree a patch was judged on rather than inferring it from timestamps. *Lives in:* block
 7 (accept).
+
+## 27. Every handled outcome stamps an attempt, and the facts that attempt exposed ride the next one
+
+A re-dispatched task is a fresh emission with no memory. The Next.js shakeout
+`cyc_9c379355b5e8` found a real defect (a route dropping a numeric `capacity`), had its
+correct fix refused for an unrelated reason, re-authored the suite **without** the case and
+shipped the defect green — the suite that shipped was not the suite that found it (#1260).
+`#1123` already carried that fact to a qa *repair*; the re-dispatch carried nothing, so the
+failing cases are threaded onto the envelope the retry loop re-dispatches, exactly as #566's
+emission feedback is. The attempt counter itself (`prior_attempts`, #1304) is stamped on
+every handled outcome rather than only on the retry branch: a re-dispatch from the
+*correction* loop carried no marker at all, so an injected fault re-broke every repaired
+emission and the loop could never be observed recovering. *Lives in:* outcome block 1.
+
+## 28. The emission-retry marker rides exactly one dispatch
+
+#566's marker is set for the retry it aims and **cleared** at the top of the next outcome,
+not left on the envelope. Left set, every later dispatch of the same envelope from the
+correction loop still carried it: the handler appended stale format feedback to a
+repair-driven re-take, and the fault injector — which reads the marker as "this is an
+emission retry" — re-applied an all-attempts fault to the recovery the diagnostic exists to
+observe (deploy-A absent-suite diagnostic `cyc_1b3b225e593e`: the fault bit on all three
+correction re-dispatches and the run exhausted its budget). The RETRYABLE branch sets it
+again for a genuine emission retry. *Lives in:* outcome block 1.
+
+## 29. An unclassified failure is classified by attempt count, and two task types never reach correction
+
+D5: a result with no `outcome_class` is not "unknown, so correct it" — it is RETRYABLE until
+this task's attempts reach `max_task_retries`, then SEMANTIC. The alternative rejected is
+treating unclassified as semantic immediately, which sends a transport blip through the
+correction protocol and spends a correction budget on nothing. D9: a definition-of-done task
+failure aborts the run outright (`fails_without_correction`), because correcting the
+statement of what "done" means is how a cycle talks itself into a lower bar. `BLOCKED` raises
+rather than returning an action: it is a pause, not an outcome. *Lives in:* outcome block 2.
+
+## 30. The run-level correction count is bumped before the dispatch it pays for, and the dispatched envelope is what the protocol gets
+
+#374: the shared count is incremented on **this** correction before any repair dispatch, so a
+patch that re-runs the check is bounded and each re-run gets a fresh `corr-`/`plan_delta-` id
+keyed on the pre-increment value. The protocol is handed the *enriched* envelope, not the
+base one: the correction runner forwards the failed task's typed-acceptance workspace to the
+repair from `envelope.inputs` (#1229 rule B) and only the enriched envelope carries
+`acceptance_workspace_files`, cut at dispatch (#643). Handed the base envelope, a repair
+evaluated its patch in a patch-only tree, its frontend build skipped for want of a frontend,
+and the verdict came back `unverifiable / no_executed_blocking_checks` — the 1.7.0 shape, on
+the deploy built to end it (1.7.1 Next.js shakeout `cyc_3ac86805439f`). *Lives in:* outcome
+block 3.
+
+## 31. An emission containing nothing is not an attempt, and the refund that says so is bounded separately
+
+#1053: arm B of the 2026-08-23 pair banked `repair_output.md` at **zero bytes** on two of
+three rounds while its diagnosis stayed correct and stable, and each was billed as a spent
+attempt — so the run reported an exhausted budget after one real try. The round is refunded
+and re-taken. The refund allowance is its own counter, deliberately: taking it from the
+correction pool the empty emission is failing to consume would be unbounded by construction,
+and a producer that emits nothing every time must still terminate. Once spent, an empty round
+is billed like any other. *Lives in:* outcome block 4.
+
+## 32. The correction path is a four-way action, dispatched by `if`/`elif` and not by a table
+
+`abort` / `rewind` / `patch` / `continue` are keyed on the *protocol's answer*, not on a task
+type — so the identifier convention's "tables over chains" rule (which is about type-keyed
+dispatch) does not apply, and a table here would add a lookup between the decision and the
+action it names. `rewind` raises rather than discarding work: #994's guard is that a rewind
+never discards an accepted repair, which is why the loop carries `has_accepted_repair` into
+the protocol. `patch` is the only path that can end without a re-dispatch, because
+re-dispatching a generative task re-rolls its artifacts and clobbers the repair (the
+`cyc_6841d75f167c` oscillation). *Lives in:* outcome block 4.
