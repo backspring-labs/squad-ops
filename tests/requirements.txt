@@ -32,9 +32,14 @@ python-jose[cryptography]>=3.3  # JWT validation used by adapters/auth/keycloak 
 # Upper bound pins the test env to the FastAPI the project actually runs (0.135.x).
 # Starlette >=0.136 newly rejects including a router instance into more than one
 # app, which the console unit tests do via module-level singleton routers +
-# sys.modules re-imports. The production app is unaffected (single import/include);
-# this is a test-harness incompatibility. Lift the cap once #198 reworks those tests.
-fastapi>=0.104.0,<0.136  # API framework (see #198 before raising the cap)
+# #198: the cap is lifted. It was applied on the reading that the console app's router
+# graph was cyclic under Starlette >= 0.136; it was not. Two test-harness facts produced
+# the 26 failures — a `MagicMock` standing in for an `APIRouter` (FastAPI 0.136 added
+# `assert not router._contains_router(self)`, and a MagicMock answers truthy), and two
+# tests that enumerated `app.routes` for an included router's paths, which 0.136 stopped
+# flattening. The console suite is green on 0.135.4 and on 0.141.1; `console-fastapi-next`
+# in CI holds it that way.
+fastapi>=0.104.0  # API framework
 python-multipart>=0.0.6  # Required by FastAPI for form/file uploads
 uvicorn>=0.24.0  # ASGI server
 aiohttp>=3.9.0  # HTTP client

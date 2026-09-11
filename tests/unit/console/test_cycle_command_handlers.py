@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi import APIRouter
 
 # The console main.py imports from continuum and auth_bff which aren't installed
 # in the test environment. We inject stubs so we can import the command handler
@@ -18,7 +19,21 @@ _docker_dir = str(Path(__file__).parents[3] / "console" / "app")
 
 @pytest.fixture(autouse=True)
 def _stub_continuum_and_bff():
-    """Inject stub modules for continuum and auth_bff so main.py can be imported."""
+    """Inject stub modules for continuum and auth_bff so main.py can be imported.
+
+    #198: the two ``router`` attributes are real ``APIRouter`` instances, not
+    ``MagicMock``s. FastAPI 0.136 added ``assert not router._contains_router(self)`` to
+    ``include_router``, and a ``MagicMock`` answers *any* attribute call with a truthy
+    object — so ``include_router(<MagicMock>)`` fails that assertion with "Cannot include
+    an APIRouter instance that already includes this router", which reads like a router
+    cycle and is not one. Twenty-six tests here failed that way on fastapi >= 0.136 while
+    the console app itself imported clean.
+
+    A stub standing in for a type the code under test inspects has to be that type. This
+    is the general shape, not a FastAPI quirk: the next library assertion on a stubbed
+    object fails the same way, and a ``MagicMock`` will satisfy it in whichever direction
+    is wrong.
+    """
     stubs = {}
 
     # Stub continuum hierarchy
@@ -34,9 +49,12 @@ def _stub_continuum_and_bff():
         stubs[mod_name] = stub
         sys.modules[mod_name] = stub
 
-    # Stub auth_bff
+    # A real router, mounted for real: main.py calls app.include_router() on it.
+    stubs["continuum.adapters.web.api"].router = APIRouter(prefix="/api/registry")
+
+    # Stub auth_bff — same rule for its router.
     auth_bff_stub = MagicMock()
-    auth_bff_stub.router = MagicMock()
+    auth_bff_stub.router = APIRouter(prefix="/auth")
     auth_bff_stub.configure = MagicMock()
     stubs["auth_bff"] = auth_bff_stub
     sys.modules["auth_bff"] = auth_bff_stub
