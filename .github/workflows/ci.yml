@@ -186,6 +186,39 @@ jobs:
         run: |
           env -i "$RUNNER_TEMP/lock-${{ matrix.lock }}/bin/python" -c "import ${{ matrix.root }}"
 
+  console-fastapi-next:
+    # #198 (1.7.5 plan §3.6): the console suite on the FIRST fastapi past the cap that was
+    # applied to it. The cap existed because 26 tests failed at >= 0.136 and the reading
+    # was that the console's router graph had become cyclic. It had not — two harness
+    # facts produced every failure, and the app imports and answers clean on 0.141. The
+    # cap is gone, and this is what stops it being needed again: `lint + regression`
+    # already runs these tests on the pinned fastapi, so the pair is "green on what we
+    # run, and green on what we would drift to".
+    #
+    # Unpinned on purpose. A pin here would test a version nobody is about to install and
+    # would go stale silently; floating means the job tells us the day a new release
+    # breaks the console, which is the only useful moment to hear it.
+    name: console on the next fastapi
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the console's test surface on the newest fastapi
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install "fastapi>=0.136" pytest pytest-asyncio httpx itsdangerous python-multipart pyyaml
+
+      - name: The console suite is green on the newest fastapi
+        run: |
+          python -c "import fastapi, starlette; print('fastapi', fastapi.__version__, 'starlette', starlette.__version__)"
+          pytest tests/unit/console -q
+
   dependency-audit:
     # #1205: nothing scanned the pins for advisories, and since #1203 every image installs
     # the same set — a CVE in any pinned package lands in the runtime API and all six

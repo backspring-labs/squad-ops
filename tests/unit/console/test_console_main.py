@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
 from fastapi import APIRouter
 
 # ── Mock continuum dependencies before importing main ──────────────────────
@@ -83,20 +84,35 @@ class TestConsoleMain:
         assert "langfuseBaseUrl" in body
         assert "squadops.apiFetch" in body
 
-    def test_app_includes_auth_router(self):
-        """App has routes with /auth prefix."""
-        auth_paths = [route.path for route in app.routes if hasattr(route, "path")]
-        auth_routes = [p for p in auth_paths if p.startswith("/auth")]
-        assert len(auth_routes) >= 4, (
-            f"Expected at least 4 /auth routes (login, callback, refresh, logout), "
-            f"found: {auth_routes}"
-        )
+    # #198: these two asked whether an included router's paths appear in ``app.routes``.
+    # FastAPI 0.136 stopped flattening them — ``include_router`` now appends one mount
+    # object with no ``.path``, and the endpoints answer exactly as before. So the old
+    # form failed on a version where the app was entirely healthy, which is the worst
+    # kind of test: it reads as "the console lost its auth routes".
+    #
+    # What the app owes its callers is that the paths RESPOND. Asked that way the test
+    # is both truer and version-independent — it cannot be broken by the framework
+    # changing how it represents a mount, only by the mount not happening.
 
-    def test_app_includes_continuum_router(self):
-        """App has routes from the continuum API router."""
-        all_paths = [route.path for route in app.routes if hasattr(route, "path")]
-        # The continuum router was mounted with /api/registry prefix
-        registry_routes = [p for p in all_paths if "/api/registry" in p]
-        assert len(registry_routes) >= 1, (
-            f"Expected at least 1 continuum API route, found paths: {all_paths}"
-        )
+    @pytest.mark.parametrize("path", ["/auth/login", "/auth/callback", "/auth/refresh"])
+    async def test_the_auth_router_answers_at_its_paths(self, path):
+        """Bug caught: the auth BFF router is not mounted, so every console login 404s.
+
+        Any status but 404 proves the route resolved — a 302 to the IdP, a 400 for a
+        missing parameter and a 500 from an unconfigured stub all mean the mount is
+        there, and distinguishing them is the auth BFF suite's job, not this one's.
+        """
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            resp = await client.get(path)
+
+        assert resp.status_code != 404, f"{path} is not mounted — the auth router is absent"
+
+    async def test_the_continuum_router_answers_under_its_prefix(self):
+        """Bug caught: the plugin registry is not mounted, so the console loads no plugins."""
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            resp = await client.get("/api/registry/health")
+
+        assert resp.status_code == 200
+        assert resp.json() == {"status": "ok"}
