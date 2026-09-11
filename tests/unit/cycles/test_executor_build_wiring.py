@@ -1221,3 +1221,93 @@ class TestPlanningContextThreading:
         )
 
         assert "artifact_contents" not in enriched.inputs["prior_outputs"]
+
+
+class TestThePatchAcceptanceCollaboratorIsBuiltWhereItIsCalled:
+    """#1152 step 2: the accepted-patch path left the executor for a collaborator.
+
+    A wiring test rather than a construction assertion (CLAUDE.md "a changed seam needs
+    a wiring test"): these enter at `_try_accept_patch`, which is where the outcome
+    router calls it on a live cycle, and assert what reaches the collaborator. Asserting
+    only that `__init__` assigns an attribute would stay green if the delegation were
+    dropped — the whole 511-line path would simply never run, and every existing
+    executor test would still pass because they all mock the verifier.
+    """
+
+    def _executor(self, reply_router, **kw):
+        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+
+        return DispatchedFlowExecutor(
+            cycle_registry=AsyncMock(),
+            artifact_vault=AsyncMock(),
+            queue=reply_router.bind(AsyncMock()),
+            squad_profile=AsyncMock(),
+            reply_router=reply_router,
+            **kw,
+        )
+
+    async def test_the_override_is_what_the_outcome_router_reaches(self, reply_router):
+        """Bug caught: the executor builds a default and ignores the injected one.
+
+        The override is how a test — and, later, a different acceptance policy — swaps
+        the path. A constructor that assigned the default unconditionally would leave
+        every override silently inert, which is the shape #1157's require-don't-default
+        ruling exists for one seam over.
+        """
+        from adapters.cycles.patch_acceptance import PatchAcceptance
+
+        seen: list[tuple] = []
+
+        class _Recording(PatchAcceptance):
+            def __init__(self):
+                pass
+
+            async def accept(self, envelope, result, repair_artifacts, holder, **kwargs):
+                seen.append((envelope, repair_artifacts, kwargs))
+                return "accept_patch"
+
+        override = _Recording()
+        executor = self._executor(reply_router, patch_acceptance=override)
+        assert executor._patch_acceptance is override
+
+        action = await executor._try_accept_patch(
+            "envelope-sentinel",
+            "result-sentinel",
+            [{"name": "a.py"}],
+            {},
+            run_id="run_1",
+            correction_attempts=2,
+        )
+
+        assert action == "accept_patch"
+        assert len(seen) == 1
+        envelope, artifacts, kwargs = seen[0]
+        assert envelope == "envelope-sentinel"
+        assert artifacts == [{"name": "a.py"}]
+        # Every keyword the router passes reaches the collaborator: the run-lived records
+        # arrive at call time, never on the instance, so one collaborator serves every run.
+        assert kwargs["run_id"] == "run_1"
+        assert kwargs["correction_attempts"] == 2
+
+    async def test_the_default_borrows_the_executors_own_enforcement_and_retest(self, reply_router):
+        """Bug caught: the collaborator grows its own copy of an executor helper.
+
+        `_emit_scaffold_integrity_evidence` is *already* duplicated on CorrectionRunner;
+        a third copy here would be the same defect a third time. The default composition
+        must reach the executor's methods and the correction runner's retest, not
+        reimplement them — so these assert identity of effect, by calling through.
+        """
+        executor = self._executor(reply_router)
+        acceptance = executor._patch_acceptance
+
+        executor._enforce_frozen_ownership = lambda *a, **k: ("enforced", ["dropped"])
+        executor._emit_scaffold_integrity_evidence = lambda *a, **k: calls.append("evidence")
+        executor._enforce_compliance_budget = lambda *a, **k: calls.append("budget")
+        executor._correction_runner.reexecute_repaired_suite = AsyncMock(return_value="retested")
+        calls: list[str] = []
+
+        assert acceptance._enforce_frozen_ownership("x", None, None) == ("enforced", ["dropped"])
+        acceptance._emit_integrity_evidence(None, None)
+        acceptance._enforce_compliance_budget([], None, None, {})
+        assert await acceptance._reexecute_repaired_suite("run_1") == "retested"
+        assert calls == ["evidence", "budget"]
