@@ -330,3 +330,64 @@ never discards an accepted repair, which is why the loop carries `has_accepted_r
 the protocol. `patch` is the only path that can end without a re-dispatch, because
 re-dispatching a generative task re-rolls its artifacts and clobbers the repair (the
 `cyc_6841d75f167c` oscillation). *Lives in:* outcome block 4.
+
+## 33. Each correction step's outputs go in its own bucket, and the chain shares one correlation id
+
+Issue #95: reusing one variable across `CORRECTION_TASK_STEPS` masked the analyzer's
+`classification` and `analysis_summary` with defaults at PlanDelta time, because the
+governance decision step that runs after it does not carry those fields forward. Each step's
+outputs are captured in a named bucket keyed by `_CORRECTION_STEP_OUTPUT_BUCKET` — a table,
+so a new step is a row rather than another `elif`. Every correction and repair envelope of
+one chain carries the **same** `correlation_id`, minted once: a later step that minted its
+own would compile, read fine, and break the lineage a trace is read by — visible in no test
+and only in a trace. *Lives in:* protocol block 1 (diagnosis).
+
+## 34. A deterministic policy guard bounds the model's correction path, and discloses the override
+
+#447: `continue` may not discard a required check that executed and failed while this
+chain's repair slot is unspent. The guard resolves the path, and where it overrides, the
+model's original rationale **stays intact in the decision artifact** while the override is
+disclosed in the `CORRECTION_DECIDED` event payload — a silent substitution would leave the
+record saying the model chose what the guard chose. pf-45 added the rewind anchor: a
+`work_product` rewind dies as a run failure with the repair budget unspent, so the guard
+substitutes the patch the classification says is possible. #994 rides here too: a rewind
+re-authors from the checkpoint and cannot preserve a repair that landed after it, so the
+executor — the only place that knows a prior round of *this* task was accepted — threads
+`has_accepted_repair` in. *Lives in:* protocol block 2 (resolution).
+
+## 35. The plan delta is banked before the termination check, and the check runs before any repair
+
+#435 (1.5 A4): progress-aware termination is placed **after** the delta is stored, so the
+decision evidence survives the termination, and **before** any repair dispatch, so the
+maximum budget is honoured. Either order inverted loses something that cannot be recovered:
+terminate first and the round's reasoning is gone; dispatch first and the budget is spent on
+a chain already known not to be progressing (#687, #431). *Lives in:* protocol block 3.
+
+## 36. Repair-step selection is keyed on the failed task's type and the deterministic locus, never on the LLM's account
+
+The LLM-emitted `affected_task_types` is free text and once routed a builder failure
+(`affected_task_types: ["QA Handoff"]`) silently to the dev repair handler. Selection is
+keyed on the failed task's `task_type` (authoritative) plus the deterministic failure locus
+(#568): a task whose OWN artifact is missing or uncollectable is repaired by its own role
+re-producing that artifact (`qa.test` → `qa.test_repair`), and the repair target is the
+failed task's own contract rather than the subject-implementation surface — aiming a test
+re-author at app source files is what `_resolve_repair_target` would otherwise do. The
+decision's own account of what is affected is read **against** the conservative default,
+never as authority (#1054). Two ownership vetoes ride the dispatch: a step under a foreign
+role must not receive the failed task's own artifacts (#884, pre-dispatch) and must not
+*land* them or anything on its test-collection surface (#1014, post-rebase). Both are
+failure-isolated — an unresolvable pattern surface weakens the veto rather than crashing the
+protocol. *Lives in:* protocol block 4 (repair).
+
+## 37. "Did the repair emit a file" is the question, and the extractor's marker is the answer
+
+#1273: the extraction **fallback** is not an emission. A repair returning prose and no fenced
+block produces one non-empty `repair_output.md`, which counted as content — so the round was
+spent rather than refunded, and the loop then terminated as `unverifiable` for a file that
+was never written (Next.js roll 1, `cyc_9be98128f0e9`). Judged on emitted *content* rather
+than artifact count (a zero-byte file is still a file, #1053) and with the fallback marker
+excluded. `steps_ran` is not `bool(artifacts)`: a rewind or continue emits nothing
+legitimately and must never be refunded. The signatures ride the `CORRECTION_COMPLETED`
+event, not only a log line — "converged in 3" and "converged in 3 after two empty emissions"
+must not read the same, and #998 adds *which* nothing, because the two shapes have opposite
+remedies. *Lives in:* protocol block 5 (the emission judged).
