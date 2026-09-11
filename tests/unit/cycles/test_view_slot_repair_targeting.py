@@ -35,7 +35,7 @@ from pathlib import Path
 
 import pytest
 
-from adapters.cycles.correction_runner import _widen_target_for_frontend_build
+from adapters.cycles.correction_repair import _widen_target_for_frontend_build
 from squadops.capabilities.scaffold import InterfaceManifest
 from squadops.capabilities.scaffold_contract import emit_contract_dict
 from squadops.cycles.verification_contract import VerificationContract

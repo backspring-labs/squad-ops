@@ -25,6 +25,7 @@ from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
+from adapters.cycles.correction_repair import CorrectionRepair
 from adapters.cycles.correction_runner import CorrectionRunner
 from adapters.cycles.execution_errors import (
     _CancellationError,
@@ -219,6 +220,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         pulse_boundary_runner: PulseBoundaryRunner | None = None,
         task_dispatcher: TaskDispatcher | None = None,
         patch_acceptance: PatchAcceptance | None = None,
+        correction_repair: CorrectionRepair | None = None,
     ) -> None:
         self._cycle_registry = cycle_registry
         self._artifact_vault = artifact_vault
@@ -288,12 +290,23 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # SIP-0097 §6.3: correction-protocol collaborator. store_artifact stays
         # an executor-supplied late-bound callable (artifact plumbing is §6.7
         # executor residual, residual-but-watched).
+        # 1.7.5 recovery extraction map §4 step 5: the repair half, composed here beside
+        # the runner that drives it and handed in, with its own injectable override. It
+        # borrows the runner's `_dispatch_protocol_step` — the one seam that creates task
+        # runs and emits the SIP-0087 task events, so correction repairs stay visible in
+        # the Prefect UI. The lambda defers the lookup until the runner below exists.
+        self._correction_repair = correction_repair or CorrectionRepair(
+            dispatch_step=lambda *args, **kw: self._correction_runner._dispatch_protocol_step(
+                *args, **kw
+            ),
+        )
         self._correction_runner = correction_runner or CorrectionRunner(
             cycle_registry=cycle_registry,
             artifact_vault=artifact_vault,
             event_bus=event_bus,
             task_dispatcher=self._task_dispatcher,
             store_artifact=lambda *args, **kw: self._store_artifact(*args, **kw),
+            correction_repair=self._correction_repair,
         )
         # 1.7.5 recovery extraction map §4 step 2: the accepted-patch collaborator, built
         # where CorrectionRunner is and with the same injectable override. It holds no

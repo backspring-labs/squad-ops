@@ -9,6 +9,7 @@ Part of Phase 2.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -1311,3 +1312,68 @@ class TestThePatchAcceptanceCollaboratorIsBuiltWhereItIsCalled:
         acceptance._enforce_compliance_budget([], None, None, {})
         assert await acceptance._reexecute_repaired_suite("run_1") == "retested"
         assert calls == ["evidence", "budget"]
+
+
+class TestTheCorrectionRepairCollaboratorIsBuiltWhereItIsCalled:
+    """#1152 step 5: the repair half of the correction protocol left the runner.
+
+    Composed at the executor's seam beside `CorrectionRunner` and handed in, so there is
+    one construction path and one override — not a collaborator that builds itself inside
+    the method that needs it.
+    """
+
+    def _executor(self, reply_router, **kw):
+        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+
+        return DispatchedFlowExecutor(
+            cycle_registry=AsyncMock(),
+            artifact_vault=AsyncMock(),
+            queue=reply_router.bind(AsyncMock()),
+            squad_profile=AsyncMock(),
+            reply_router=reply_router,
+            **kw,
+        )
+
+    def test_the_override_reaches_the_runner_that_drives_it(self, reply_router):
+        """Bug caught: the executor builds a default and the runner builds a second one.
+
+        Two `CorrectionRepair` instances would both "work" — the protocol would dispatch
+        repairs through whichever the runner held — while an injected override silently
+        did nothing, which is the shape that makes a swapped policy untestable.
+        """
+        from adapters.cycles.correction_repair import CorrectionRepair
+
+        override = CorrectionRepair(dispatch_step=AsyncMock())
+        executor = self._executor(reply_router, correction_repair=override)
+
+        assert executor._correction_repair is override
+        assert executor._correction_runner._correction_repair is override
+
+    async def test_the_dispatch_seam_is_looked_up_at_call_time(self, reply_router):
+        """Bug caught: the collaborator captures `_dispatch_protocol_step` as a bound
+        method at construction, so anything that replaces it afterwards is bypassed.
+
+        That seam owns task-run creation and the SIP-0087 task events, and it is what the
+        correction-context golden patches to capture every envelope crossing it. A
+        captured reference keeps calling the original — the repair still dispatches, the
+        golden still diffs, and it diffs the *real* envelope against the stub's. Failing
+        loudly here is the point: the next collaborator that borrows a method must borrow
+        it late.
+        """
+        executor = self._executor(reply_router)
+        runner = executor._correction_runner
+        seen: list = []
+
+        async def _patched(envelope, *args, **kwargs):
+            seen.append(envelope)
+            return SimpleNamespace(outputs={"artifacts": []})
+
+        runner._dispatch_protocol_step = _patched
+
+        result = await executor._correction_repair._dispatch_step("envelope-sentinel")
+
+        assert seen == ["envelope-sentinel"], (
+            "the repair reached the original dispatch, not the replacement — the "
+            "collaborator captured a bound method instead of looking it up"
+        )
+        assert result.outputs == {"artifacts": []}

@@ -391,3 +391,17 @@ legitimately and must never be refunded. The signatures ride the `CORRECTION_COM
 event, not only a log line — "converged in 3" and "converged in 3 after two empty emissions"
 must not read the same, and #998 adds *which* nothing, because the two shapes have opposite
 remedies. *Lives in:* protocol block 5 (the emission judged).
+
+## 38. A collaborator that borrows a method borrows it late
+
+`CorrectionRepair` takes `CorrectionRunner._dispatch_protocol_step` as a **lambda**, not as
+the bound method, and `PatchAcceptance` takes the executor's SIP-0100 helpers the same way.
+A reference captured at construction keeps calling the original past any replacement — and
+that seam is exactly what the correction-context golden patches to capture every envelope
+crossing it, so an eagerly-captured reference would leave the repair dispatching for real
+while the golden diffed the real envelope against the stub's. Found by that golden during
+#1152 step 5, which is the only reason it was loud rather than silent. The pattern this
+follows is `store_artifact=lambda *args, **kw: self._store_artifact(...)` on
+`CorrectionRunner` itself (SIP-0097 §6.3, "executor residual, residual-but-watched"): a
+collaborator holds no ports it does not own, and borrows the rest late. *Lives in:* the
+executor's and the runner's constructors.

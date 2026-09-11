@@ -67,7 +67,10 @@ _ALLOWLIST: set[tuple[str, str]] = {
     # remains for a different reason — #971's `emission_status` marker, above.)
     ("adapters/cycles/patch_acceptance.py", "failed"),
     ("adapters/cycles/patch_acceptance.py", "error"),
-    ("adapters/cycles/correction_runner.py", "failed"),
+    # The repair half of the protocol left the runner with #1152 step 5; the entry moved
+    # with the code, and the runner's own went with it — verified dead by deleting it and
+    # re-running, rather than left as a rule about a comparison that is no longer there.
+    ("adapters/cycles/correction_repair.py", "failed"),
     # External Ollama model-pull job status — a vendor vocabulary, not a domain enum.
     ("src/squadops/cli/commands/models.py", "failed"),
     # window_state() returns a duty-window lifecycle token ("active"/

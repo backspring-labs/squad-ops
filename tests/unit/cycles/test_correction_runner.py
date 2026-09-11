@@ -2825,7 +2825,7 @@ class TestResolveRepairTarget:
         MUST be in the target (the #531/#532 win), AND — because the failing test
         file can have its own bug (pf-21's client fixture) — the failed task's
         artifacts are unioned in, drift first."""
-        from adapters.cycles.correction_runner import _resolve_repair_target
+        from adapters.cycles.correction_repair import _resolve_repair_target
 
         failure_evidence = {
             "interface_drift": [
@@ -2872,7 +2872,7 @@ class TestResolveRepairTarget:
     def test_drift_dedups_when_failing_artifact_is_also_drifted(self):
         """If the failing check's artifact IS one of the drifted files, it appears
         once — no duplicate target entry."""
-        from adapters.cycles.correction_runner import _resolve_repair_target
+        from adapters.cycles.correction_repair import _resolve_repair_target
 
         evidence = {
             "interface_drift": [
@@ -2890,7 +2890,7 @@ class TestResolveRepairTarget:
         implementation surface as the no-drift RC2 branch — else the repair edits only
         the drifted file + the failing test and the real validation bug in routes.py is
         never fixed (the pf-27 non-convergence wall)."""
-        from adapters.cycles.correction_runner import _resolve_repair_target
+        from adapters.cycles.correction_repair import _resolve_repair_target
 
         evidence = {
             "interface_drift": [
@@ -2920,7 +2920,7 @@ class TestResolveRepairTarget:
         """Backward-compat: drift present but no implementation_artifacts key (author
         mode / non-build corrections) → the target is exactly drift ∪ failed artifacts,
         the pre-pf-27 union (empty scoped surface adds nothing)."""
-        from adapters.cycles.correction_runner import _resolve_repair_target
+        from adapters.cycles.correction_repair import _resolve_repair_target
 
         evidence = {"interface_drift": [{"file": "backend/models.py", "instruction": "fix"}]}
         failed_inputs = {"expected_artifacts": ["backend/tests/test_runs.py"]}
@@ -2930,7 +2930,7 @@ class TestResolveRepairTarget:
     def test_no_drift_falls_back_to_failed_task_artifacts(self):
         """Absent interface drift, the target is byte-identical to today —
         the failed task's own artifacts/focus/description."""
-        from adapters.cycles.correction_runner import _resolve_repair_target
+        from adapters.cycles.correction_repair import _resolve_repair_target
 
         failed_inputs = {
             "expected_artifacts": ["qa_handoff.md"],
@@ -2949,7 +2949,7 @@ class TestResolveRepairTarget:
         in the source under test, not the test file) unions the failing test artifact
         with the plan's implementation source that shares its top-level package —
         reaching backend/main.py (the /api-prefix fix) while excluding frontend."""
-        from adapters.cycles.correction_runner import _resolve_repair_target
+        from adapters.cycles.correction_repair import _resolve_repair_target
 
         failed_inputs = {
             "expected_artifacts": ["backend/tests/test_runs.py"],
@@ -2982,7 +2982,7 @@ class TestResolveRepairTarget:
     def test_no_drift_without_surface_is_byte_identical(self):
         """Backward-compat: no implementation_artifacts key → target is exactly the
         failed task's own artifacts (the pre-RC2 #531 behavior)."""
-        from adapters.cycles.correction_runner import _resolve_repair_target
+        from adapters.cycles.correction_repair import _resolve_repair_target
 
         failed_inputs = {
             "expected_artifacts": ["backend/tests/test_runs.py"],
@@ -2999,7 +2999,7 @@ class TestResolveRepairTarget:
     def test_no_drift_frontend_failure_scopes_to_frontend_only(self):
         """Package-scoping is symmetric: a frontend test failure retargets frontend
         source and leaves backend untouched (blast-radius containment both ways)."""
-        from adapters.cycles.correction_runner import _resolve_repair_target
+        from adapters.cycles.correction_repair import _resolve_repair_target
 
         failed_inputs = {
             "expected_artifacts": ["frontend/src/tests/flows.test.jsx"],
@@ -3026,7 +3026,7 @@ class TestResolveRepairTarget:
         (routes.py), which then never enters the target → non-convergence. Ordering:
         drifted source first, failed artifact, then scoped source; frontend stays out
         (package-scoped); focus/description unset (#448)."""
-        from adapters.cycles.correction_runner import _resolve_repair_target
+        from adapters.cycles.correction_repair import _resolve_repair_target
 
         evidence = {"interface_drift": [{"file": "backend/models.py", "instruction": "fix fields"}]}
         failed_inputs = {
@@ -3041,7 +3041,7 @@ class TestResolveRepairTarget:
     def test_no_drift_scoped_source_dedups_against_failed_artifact(self):
         """If a surface file is also a failed artifact it appears once, failed
         artifact first (order preserved)."""
-        from adapters.cycles.correction_runner import _resolve_repair_target
+        from adapters.cycles.correction_repair import _resolve_repair_target
 
         failed_inputs = {
             "expected_artifacts": ["backend/main.py"],
@@ -3063,7 +3063,7 @@ class TestResolveRepairTarget:
     def test_missing_or_fileless_drift_falls_back(self, evidence):
         """Robustness: no usable drift evidence → fall back to the failed task's
         artifacts, never crash or return an empty retarget."""
-        from adapters.cycles.correction_runner import _resolve_repair_target
+        from adapters.cycles.correction_repair import _resolve_repair_target
 
         artifacts, focus, _ = _resolve_repair_target(evidence, {"expected_artifacts": ["a.py"]})
         assert artifacts == ["a.py"]
@@ -3131,7 +3131,7 @@ class TestProbeOwnedRepairTarget:
         """The shk-2 replay. Both repairs targeted main.py + the suite and the loop
         reproduced the identical 500; routes.py must now LEAD the target while the
         drifted file and the failing suite still ride."""
-        from adapters.cycles.correction_runner import _resolve_repair_target
+        from adapters.cycles.correction_repair import _resolve_repair_target
 
         evidence = self._evidence(
             [
@@ -3149,7 +3149,7 @@ class TestProbeOwnedRepairTarget:
         pf-24/pf-27 package union anchors on ``tests/`` and matches no ``backend/``
         source, so before the language fallback the target was exactly what shk-2's
         repairs emitted — main.py + the suite, with routes.py unreachable."""
-        from adapters.cycles.correction_runner import _resolve_repair_target
+        from adapters.cycles.correction_repair import _resolve_repair_target
 
         evidence = self._evidence(
             [{"check": "tests_pass", "status": "failed"}],
@@ -3168,7 +3168,7 @@ class TestProbeOwnedRepairTarget:
     def test_language_fallback_does_not_fire_when_packages_match(self):
         """pf-24's tight rule is strictly narrower and must keep winning — the fallback
         exists for the empty case only, not as a general widening."""
-        from adapters.cycles.correction_runner import _resolve_repair_target
+        from adapters.cycles.correction_repair import _resolve_repair_target
 
         artifacts, _, _ = _resolve_repair_target(
             {},
@@ -3185,7 +3185,7 @@ class TestProbeOwnedRepairTarget:
     def test_frontend_suite_failure_stays_on_the_frontend_side(self):
         """The mirror case: a root-level frontend suite must reach views and never
         backend source — the language line, not the directory tree, is the bound."""
-        from adapters.cycles.correction_runner import _resolve_repair_target
+        from adapters.cycles.correction_repair import _resolve_repair_target
 
         artifacts, _, _ = _resolve_repair_target(
             {},
@@ -3202,7 +3202,7 @@ class TestProbeOwnedRepairTarget:
     def test_mixed_language_anchors_widen_nothing(self):
         """Anchors straddling both sides exclude nothing, so 'scoping' would be a
         rename for 'take everything' — stay silent rather than widen blindly."""
-        from adapters.cycles.correction_runner import _resolve_repair_target
+        from adapters.cycles.correction_repair import _resolve_repair_target
 
         artifacts, _, _ = _resolve_repair_target(
             {},
@@ -3217,7 +3217,7 @@ class TestProbeOwnedRepairTarget:
         """The RC2 branch: a behavioral failure with no drift at all. Without probe
         resolution this returned only the suite (scoped source empty), which is the
         blind loop in a plainer form."""
-        from adapters.cycles.correction_runner import _resolve_repair_target
+        from adapters.cycles.correction_repair import _resolve_repair_target
 
         evidence = self._evidence([{"check": "vc-probe-runs-join", "status": "failed"}])
         artifacts, focus, description = _resolve_repair_target(
@@ -3234,7 +3234,7 @@ class TestProbeOwnedRepairTarget:
     def test_multiple_failing_probes_on_one_slot_name_it_once(self):
         """shk-2 failed four probes, all owned by routes.py — the repair envelope
         must not list the same file four times."""
-        from adapters.cycles.correction_runner import _resolve_repair_target
+        from adapters.cycles.correction_repair import _resolve_repair_target
 
         evidence = self._evidence(
             [
@@ -3251,7 +3251,7 @@ class TestProbeOwnedRepairTarget:
         booted — blaming an endpoint for a boot failure would aim every repair at the
         first route in the contract. routes.py still arrives via the language fallback,
         but BEHIND the failed artifact rather than leading it."""
-        from adapters.cycles.correction_runner import _resolve_repair_target
+        from adapters.cycles.correction_repair import _resolve_repair_target
 
         evidence = self._evidence(
             [
@@ -3265,7 +3265,7 @@ class TestProbeOwnedRepairTarget:
     def test_unmapped_probe_id_adds_nothing(self):
         """A failing check that is not a probe (or a probe the contract map does not
         cover) must not promote a slot to the front of the target."""
-        from adapters.cycles.correction_runner import _resolve_repair_target
+        from adapters.cycles.correction_repair import _resolve_repair_target
 
         evidence = self._evidence([{"check": "vc-suite-passes", "status": "failed"}])
         artifacts, _, _ = _resolve_repair_target(evidence, self._inputs())
@@ -3284,7 +3284,7 @@ class TestProbeOwnedRepairTarget:
         """Author mode, probe-less contracts, and malformed wire rows must degrade to
         the pre-#688 ordering rather than raise — a correction path that raises here
         strands the run."""
-        from adapters.cycles.correction_runner import _resolve_repair_target
+        from adapters.cycles.correction_repair import _resolve_repair_target
 
         evidence = self._evidence([{"check": "vc-probe-runs", "status": "failed"}])
         artifacts, _, _ = _resolve_repair_target(evidence, self._inputs(**inputs_over))
@@ -3294,7 +3294,7 @@ class TestProbeOwnedRepairTarget:
         """The probe path and the criterion token are rendered from the same manifest,
         but a hand-authored contract may differ by a trailing slash — a formatting
         difference must not silently drop the defect site."""
-        from adapters.cycles.correction_runner import _resolve_repair_target
+        from adapters.cycles.correction_repair import _resolve_repair_target
 
         probes = [
             {
@@ -3739,7 +3739,7 @@ class TestFrontendBuildProvenanceTargeting:
 
     def test_failing_frontend_build_row_widens_target_to_frontend_source(self):
         # The fay-8 shape, replayed: backend qa.test reports, frontend is broken.
-        from adapters.cycles.correction_runner import _resolve_repair_target
+        from adapters.cycles.correction_repair import _resolve_repair_target
 
         evidence = {
             "validation_result": {
@@ -3763,7 +3763,7 @@ class TestFrontendBuildProvenanceTargeting:
         # fay-3's shape: real backend test failures, frontend fine — the
         # backend-bounded RC2 scope must stay exactly as it is (no frontend
         # noise diluting the repair).
-        from adapters.cycles.correction_runner import _resolve_repair_target
+        from adapters.cycles.correction_repair import _resolve_repair_target
 
         evidence = {
             "validation_result": {
@@ -3780,7 +3780,7 @@ class TestFrontendBuildProvenanceTargeting:
     def test_widening_applies_on_the_drift_branch_too(self):
         # Drift and a broken frontend can co-occur; the widening must not be
         # lost to the drift branch's earlier return.
-        from adapters.cycles.correction_runner import _resolve_repair_target
+        from adapters.cycles.correction_repair import _resolve_repair_target
 
         evidence = {
             "interface_drift": [
@@ -3802,7 +3802,7 @@ class TestFrontendBuildProvenanceTargeting:
 
     def test_skipped_frontend_build_row_does_not_widen(self):
         # A not-executed row (#306 Node-absent skip shape) is not a failure.
-        from adapters.cycles.correction_runner import _resolve_repair_target
+        from adapters.cycles.correction_repair import _resolve_repair_target
 
         evidence = {
             "validation_result": {
@@ -4191,7 +4191,7 @@ class TestOwnershipVeto:
     """
 
     def test_dev_step_loses_qa_owned_suite_but_keeps_app_files(self):
-        from adapters.cycles.correction_runner import _apply_ownership_veto
+        from adapters.cycles.correction_repair import _apply_ownership_veto
 
         target = [
             "__tests__/api_runs.test.ts",
@@ -4203,7 +4203,7 @@ class TestOwnershipVeto:
         assert result == ["app/api/runs/route.ts", "app/runs/new/page.tsx"]
 
     def test_own_role_step_keeps_its_own_artifacts(self):
-        from adapters.cycles.correction_runner import _apply_ownership_veto
+        from adapters.cycles.correction_repair import _apply_ownership_veto
 
         target = ["__tests__/api_runs.test.ts"]
         result = _apply_ownership_veto(target, "qa.test", "qa", ["__tests__/api_runs.test.ts"])
@@ -4214,7 +4214,7 @@ class TestOwnershipVeto:
         """development.develop has no own-artifact table entry — its default
         chain already runs under the producing role, so the veto must no-op
         even when its own artifacts ride the target."""
-        from adapters.cycles.correction_runner import _apply_ownership_veto
+        from adapters.cycles.correction_repair import _apply_ownership_veto
 
         target = ["app/api/runs/route.ts", "lib/store_use.ts"]
         result = _apply_ownership_veto(
@@ -4227,7 +4227,7 @@ class TestOwnershipVeto:
         """A dev-chain target consisting ONLY of qa-owned artifacts means the
         locus classifier missed an own-artifact case — the veto still holds
         the boundary (empty target) rather than handing the suite across."""
-        from adapters.cycles.correction_runner import _apply_ownership_veto
+        from adapters.cycles.correction_repair import _apply_ownership_veto
 
         result = _apply_ownership_veto(
             ["__tests__/api_runs.test.ts"], "qa.test", "dev", ["__tests__/api_runs.test.ts"]
@@ -4394,7 +4394,7 @@ class TestOwnershipVetoWiring(TestCorrectionRunnerStandalone):
         own-artifact repair re-authoring its own suite (the #568 locus path)
         must pass through untouched — filtering it would make every qa-side
         suite repair a silent no-op."""
-        from adapters.cycles.correction_runner import _apply_emission_ownership_veto
+        from adapters.cycles.correction_repair import _apply_emission_ownership_veto
         from squadops.cycles.task_plan import own_artifact_role
 
         owner = own_artifact_role("qa.test")
@@ -4413,7 +4413,7 @@ class TestOwnershipVetoWiring(TestCorrectionRunnerStandalone):
         """#1014 scope guard: task types with no own-artifact owner are
         untouched, mirroring the targeting veto exactly — filtering there
         would silently drop legitimate repairs for every default-chain task."""
-        from adapters.cycles.correction_runner import _apply_emission_ownership_veto
+        from adapters.cycles.correction_repair import _apply_emission_ownership_veto
 
         arts = [{"name": "__tests__/x.test.ts", "content": "t", "type": "test"}]
         kept = _apply_emission_ownership_veto(
@@ -4657,7 +4657,7 @@ class TestSuiteProbeFailuresReachTheOwningSlot:
         }
 
     def test_an_app_contract_observation_is_a_failed_probe(self):
-        from adapters.cycles.correction_runner import _failed_probe_ids
+        from adapters.cycles.correction_repair import _failed_probe_ids
 
         ev = self._evidence(
             self._observation("app_contract", "vc-probe-api-runs-join"),
@@ -4672,7 +4672,7 @@ class TestSuiteProbeFailuresReachTheOwningSlot:
         assert [i for i in _failed_probe_ids(ev) if i != "tests_pass"] == ["vc-probe-api-runs-join"]
 
     def test_http_probe_rows_still_lead_and_join_with_suite_observations(self):
-        from adapters.cycles.correction_runner import _failed_probe_ids
+        from adapters.cycles.correction_repair import _failed_probe_ids
 
         ev = self._evidence(self._observation("app_contract", "vc-probe-api-runs-join"))
         ev["validation_result"]["checks"].append({"check": "vc-probe-api-runs", "status": "failed"})
@@ -4685,7 +4685,7 @@ class TestSuiteProbeFailuresReachTheOwningSlot:
         """Roll 4 (`cyc_a38814afc16d`), rounds 2–3: the decision named the join handler,
         the target listed all seven files, the repair emitted the create route. Now the
         target is the owning slot plus the failed task's own artifacts — nothing else."""
-        from adapters.cycles.correction_runner import _resolve_repair_target
+        from adapters.cycles.correction_repair import _resolve_repair_target
 
         ev = self._evidence(self._observation("app_contract", "vc-probe-api-runs-join"))
         target, _, _ = _resolve_repair_target(ev, self._nextjs_inputs())
@@ -4702,7 +4702,7 @@ class TestSuiteProbeFailuresReachTheOwningSlot:
         """The narrowing withholds the fallback only when there is a site to narrow to.
         A suite-only failure with no probe echo still reaches the source under test
         through the #688 language fallback — package scoping matches nothing here."""
-        from adapters.cycles.correction_runner import _resolve_repair_target
+        from adapters.cycles.correction_repair import _resolve_repair_target
 
         ev = {
             "validation_result": {
@@ -4716,7 +4716,7 @@ class TestSuiteProbeFailuresReachTheOwningSlot:
     def test_drift_files_still_ride_beside_the_narrowed_target(self):
         """pf-21: a co-occurring interface drift names a real defect too; narrowing withholds
         only the no-evidence fallback, never named evidence."""
-        from adapters.cycles.correction_runner import _resolve_repair_target
+        from adapters.cycles.correction_repair import _resolve_repair_target
 
         ev = self._evidence(self._observation("app_contract", "vc-probe-api-runs-join"))
         ev["interface_drift"] = [
@@ -4758,7 +4758,7 @@ class TestAnalyzerImplicatedFilesAreVerifiedBeforeUse:
     }
 
     def test_a_verified_claim_narrows_the_target(self):
-        from adapters.cycles.correction_runner import _resolve_repair_target
+        from adapters.cycles.correction_repair import _resolve_repair_target
 
         target, _, _ = _resolve_repair_target(
             self.SUITE_FAIL,
@@ -4770,7 +4770,7 @@ class TestAnalyzerImplicatedFilesAreVerifiedBeforeUse:
     def test_an_unverifiable_claim_is_dropped_and_the_surface_is_what_it_was(self):
         """#968's shape: a confident path the workspace does not contain. It must not
         become the target — and its presence must not remove the fallback either."""
-        from adapters.cycles.correction_runner import (
+        from adapters.cycles.correction_repair import (
             _resolve_repair_target,
             _verified_implicated_files,
         )
@@ -4783,7 +4783,7 @@ class TestAnalyzerImplicatedFilesAreVerifiedBeforeUse:
     def test_deterministic_site_evidence_outranks_the_analyzer(self):
         """A failing probe's owning slot is contract data; the analyzer's file is a claim.
         When both exist the slot wins and the claim is not consulted."""
-        from adapters.cycles.correction_runner import _resolve_repair_target
+        from adapters.cycles.correction_repair import _resolve_repair_target
 
         inputs = {
             **self.INPUTS,
@@ -4822,7 +4822,7 @@ class TestAnalyzerImplicatedFilesAreVerifiedBeforeUse:
         assert "app/api/runs/route.ts" not in target
 
     def test_the_analysis_reaches_the_resolver_through_the_locus_step(self):
-        from adapters.cycles.correction_runner import _locus_and_repair_target
+        from adapters.cycles.correction_repair import _locus_and_repair_target
 
         _, expected, _, _ = _locus_and_repair_target(
             "qa.test", self.SUITE_FAIL, dict(self.INPUTS), {"implicated_files": ["app/page.tsx"]}
@@ -4834,7 +4834,7 @@ class TestAnalyzerImplicatedFilesAreVerifiedBeforeUse:
         "analysis", [None, {}, {"implicated_files": []}, {"implicated_files": None}]
     )
     def test_no_claim_changes_nothing(self, analysis):
-        from adapters.cycles.correction_runner import _resolve_repair_target
+        from adapters.cycles.correction_repair import _resolve_repair_target
 
         with_claim, _, _ = _resolve_repair_target(self.SUITE_FAIL, dict(self.INPUTS), analysis)
         without, _, _ = _resolve_repair_target(self.SUITE_FAIL, dict(self.INPUTS))
@@ -4883,7 +4883,7 @@ class TestQaRepairReachesFills:
         return inputs
 
     def test_fill_observations_are_read_per_file_and_slot(self):
-        from adapters.cycles.correction_runner import _fill_observations
+        from adapters.cycles.correction_repair import _fill_observations
 
         assert _fill_observations(self._evidence()) == [
             {
@@ -4896,7 +4896,7 @@ class TestQaRepairReachesFills:
         assert _fill_observations({}) == []
 
     def test_the_own_artifact_target_is_the_failing_slots_shell(self):
-        from adapters.cycles.correction_runner import _locus_and_repair_target
+        from adapters.cycles.correction_repair import _locus_and_repair_target
         from squadops.cycles.failure_evidence import FailureLocus
 
         locus, expected, focus, description = _locus_and_repair_target(
@@ -4907,7 +4907,7 @@ class TestQaRepairReachesFills:
         assert (focus, description) == ("qa", "author the suite")
 
     def test_without_the_scaffold_the_target_is_the_declared_file_as_before(self):
-        from adapters.cycles.correction_runner import _locus_and_repair_target
+        from adapters.cycles.correction_repair import _locus_and_repair_target
 
         _, expected, _, _ = _locus_and_repair_target(
             "qa.test", self._evidence(), self._inputs(with_scaffold=False)
@@ -4915,7 +4915,7 @@ class TestQaRepairReachesFills:
         assert expected == ["__tests__/runs.test.ts"]
 
     def test_an_app_contract_failure_never_takes_the_qa_branch(self):
-        from adapters.cycles.correction_runner import _locus_and_repair_target
+        from adapters.cycles.correction_repair import _locus_and_repair_target
         from squadops.cycles.failure_evidence import FailureLocus
 
         locus, expected, _, _ = _locus_and_repair_target(
@@ -4925,7 +4925,7 @@ class TestQaRepairReachesFills:
         assert self._SHELL not in expected
 
     def test_the_qa_repair_receives_the_current_shells_and_the_failing_slots(self):
-        from adapters.cycles.correction_runner import _qa_scaffold_repair_inputs
+        from adapters.cycles.correction_repair import _qa_scaffold_repair_inputs
 
         failed_result = MagicMock()
         failed_result.outputs = {
@@ -4950,7 +4950,7 @@ class TestQaRepairReachesFills:
         ids=["foreign-role", "no-scaffold"],
     )
     def test_presence_keyed_nothing_otherwise(self, role, with_scaffold):
-        from adapters.cycles.correction_runner import _qa_scaffold_repair_inputs
+        from adapters.cycles.correction_repair import _qa_scaffold_repair_inputs
 
         out = _qa_scaffold_repair_inputs(
             role, self._inputs(with_scaffold=with_scaffold), MagicMock(outputs={}), self._evidence()
@@ -4984,7 +4984,7 @@ class TestOwnArtifactNeverNarrows:
     }
 
     def test_the_own_artifact_rides_but_does_not_narrow(self):
-        from adapters.cycles.correction_runner import _apply_ownership_veto, _resolve_repair_target
+        from adapters.cycles.correction_repair import _apply_ownership_veto, _resolve_repair_target
 
         target, _, _ = _resolve_repair_target(
             self.SUITE_FAIL,
@@ -5008,7 +5008,7 @@ class TestOwnArtifactNeverNarrows:
     def test_a_foreign_implicated_file_still_narrows(self):
         """The #1015-A analyzer half is untouched where it belongs: a claim on a file
         someone else owns narrows exactly as before."""
-        from adapters.cycles.correction_runner import _resolve_repair_target
+        from adapters.cycles.correction_repair import _resolve_repair_target
 
         target, _, _ = _resolve_repair_target(
             self.SUITE_FAIL,
@@ -5021,7 +5021,7 @@ class TestOwnArtifactNeverNarrows:
         ]
 
     def test_own_and_foreign_together_narrow_on_the_foreign_file_only(self):
-        from adapters.cycles.correction_runner import _resolve_repair_target
+        from adapters.cycles.correction_repair import _resolve_repair_target
 
         target, _, _ = _resolve_repair_target(
             self.SUITE_FAIL,
@@ -5095,14 +5095,14 @@ class TestQaOwnedDefectRouting:
     }
 
     def test_roll_3_routes_to_the_qa_repair_targeting_only_the_defective_suite(self, caplog):
-        from adapters.cycles.correction_runner import _locus_and_repair_target
+        from adapters.cycles.correction_repair import _locus_and_repair_target
         from squadops.cycles.failure_evidence import FailureLocus
         from squadops.cycles.task_plan import QA_TEST_REPAIR_STEPS, repair_steps_for
 
         evidence = self._evidence_from_report(
             "1-6-5-react-roll-3-round-0-test_report.md", probe_failed=True
         )
-        with caplog.at_level("INFO", logger="adapters.cycles.correction_runner"):
+        with caplog.at_level("INFO", logger="adapters.cycles.correction_repair"):
             locus, target, focus, description = _locus_and_repair_target(
                 "qa.test",
                 evidence,
@@ -5124,7 +5124,7 @@ class TestQaOwnedDefectRouting:
         assert "test_join_and_leave_run:69" in routed[0]
 
     def test_roll_6s_app_frame_failure_stays_on_the_dev_chain(self):
-        from adapters.cycles.correction_runner import _locus_and_repair_target
+        from adapters.cycles.correction_repair import _locus_and_repair_target
         from squadops.cycles.failure_evidence import FailureLocus
         from squadops.cycles.task_plan import REPAIR_TASK_STEPS, repair_steps_for
 
@@ -5142,7 +5142,7 @@ class TestQaOwnedDefectRouting:
     def test_a_defect_file_outside_the_expected_artifacts_is_still_the_target(self):
         """The stamped file names the artifact; when the plan's expected list does not
         carry it (a suite the author added), the defect file itself is the target."""
-        from adapters.cycles.correction_runner import _locus_and_repair_target
+        from adapters.cycles.correction_repair import _locus_and_repair_target
         from squadops.cycles.failure_evidence import FailureLocus
 
         evidence = self._evidence_from_report(
@@ -5160,7 +5160,7 @@ class TestAbsentAnchorRouting:
     """#1123 (2): the repair target is the suite that asserted an undeclared anchor."""
 
     def test_the_suite_is_the_target_and_the_readout_line_is_logged(self, caplog):
-        from adapters.cycles.correction_runner import _locus_and_repair_target
+        from adapters.cycles.correction_repair import _locus_and_repair_target
         from squadops.cycles.failure_evidence import FailureLocus
 
         evidence = {
@@ -5198,7 +5198,7 @@ class TestAbsentAnchorRouting:
             "subtask_focus": "suites",
             "subtask_description": "d",
         }
-        with caplog.at_level("INFO", logger="adapters.cycles.correction_runner"):
+        with caplog.at_level("INFO", logger="adapters.cycles.correction_repair"):
             locus, target, _, _ = _locus_and_repair_target("qa.test", evidence, inputs, None)
 
         assert locus == FailureLocus.OWN_ARTIFACT
@@ -5679,7 +5679,7 @@ class TestRepairBriefReadout(TestCorrectionRunnerStandalone):
         import logging
 
         runner, _registry, _vault, _bus = self._make_runner(self._responder)
-        with caplog.at_level(logging.INFO, logger="adapters.cycles.correction_runner"):
+        with caplog.at_level(logging.INFO, logger="adapters.cycles.correction_repair"):
             await runner.run_correction_protocol(
                 run_id="run_001",
                 cycle=cycle,
@@ -6085,7 +6085,7 @@ class TestADisputedGenericOwnArtifactRouteFallsThroughToTheDevChain:
     _INPUTS = {"expected_artifacts": ["__tests__/api_runs.test.ts"]}
 
     def _resolve(self, decision):
-        from adapters.cycles.correction_runner import _locus_and_repair_target
+        from adapters.cycles.correction_repair import _locus_and_repair_target
 
         return _locus_and_repair_target(
             "qa.test", self._EVIDENCE, dict(self._INPUTS), None, decision
@@ -6131,7 +6131,7 @@ class TestADisputedGenericOwnArtifactRouteFallsThroughToTheDevChain:
         less true. Disputing it sent a `qa.test` re-emission to the dev chain, where the
         ownership veto emptied the target and logged "the locus classifier missed an
         own-artifact case". Only the `tests_pass`-row signal is disputable."""
-        from adapters.cycles.correction_runner import _locus_and_repair_target
+        from adapters.cycles.correction_repair import _locus_and_repair_target
 
         evidence = {
             "emission_failure": {"reason": "no_fenced_blocks", "response_chars": 0},
