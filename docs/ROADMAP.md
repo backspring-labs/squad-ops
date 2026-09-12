@@ -22,7 +22,11 @@ Each even-minor consumer sits strictly behind the release that earns its trust: 
 
 ## Release Timeline
 
-### v1.7.4 (2026-09-09) — Current — the recovery half
+### v1.7.5 (2026-09-12) — Current — the three closures
+
+**v1.7.5 — the three closures**, the fifth patch line of 1.7 and the close of the line: the runtime API composed from a config value rather than at import (#286), every comms and filesystem binding entering through its factory with its selector required (#301), CI importing what each composition root *composes at startup* under the lock its image installs (#637), seventeen LLM call sites collapsed to one recording seam (#929, #1206), and the accepted-patch path, outcome router, correction protocol and repair half extracted from the executor into `PatchAcceptance` and `CorrectionRepair` with every golden byte-identical (#1152). Evidence: a pre-registered two-arm set on frozen deploy `8fd30eb8`, **zero drift under `src/` or `adapters/` to the tag**, one image set across all nine rolls — **FastAPI+React 4 of 6, Next.js+TS 3 of 3, functional 7 of 9**, 159/161 criteria, boot audit PASS 9/9, P0 9/9, zero framing re-rolls, and the bar held at **zero contentless emissions across 167**. The shakeout loop exited at round 1 where deploy A took four. Stated at the cut: the experimental gate was **not met as written** — four of five diagnostics reached their seam, `contentless-builder` did not because #1372's aimed retry recovers the builder before correction, the owner ruled the line closes anyway (plan §3.9a), and **F1 (#1374) is therefore unexercised on any deploy carrying #1372**. Record: `docs/plans/1-7-5-verification-set-record.md`.
+
+### v1.7.4 (2026-09-09) — the recovery half
 
 **The fourth patch line of 1.7: the recovery path, and the request that feeds it.** Ten pack rows
 land on the loop that runs after something fails — the retired handoff leaves the framework and,
@@ -660,7 +664,7 @@ The following areas are identified for future work but do not block 1.0 readines
 
 *As of 2026-09-07 (v1.7.3):*
 
-- **Framework version**: 1.7.4
+- **Framework version**: 1.7.5
 - **SIPs**: 65 implemented, 9 accepted (SIP-0088, 0090–0093, 0101, 0102, 0104, 0105), 20 deprecated (registry)
 - **Tests**: 9,500+ passing in the regression suite (all of `tests/unit`, #1316)
 - **Python source**: ~61,000 lines (src + adapters; ~88,000 test lines, ~119,000 doc lines)

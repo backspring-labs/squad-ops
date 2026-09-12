@@ -5,6 +5,72 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.7.5] — 2026-09-12
+
+**The three closures — the fifth patch line of 1.7, and the close of the line.** Plan:
+`docs/plans/1-7-5-plan.md` (rev 5, amended §3.9a). Record:
+`docs/plans/1-7-5-verification-set-record.md`.
+
+1.7.5 makes the remaining ports real at start-up and through the LLM call path, and proves the
+recovery path still behaves after the code that runs it was taken apart.
+
+**Start-up truth.** The runtime API is composed from a config value rather than at import
+(#286); every comms and filesystem binding enters through its factory with its selector
+*required*, no schema default and no factory default (#301); and CI imports each composition
+root under the lock its own image installs (#637). The last one grew a second step during the
+line, and the reason is in the record: importing a root is not enough, because roots import
+their factories lazily, so the job now imports what each root *composes at startup*.
+
+**Invocation truth.** Seventeen call sites become one seam: `_llm_call` is the only place the
+framework calls `chat_stream_with_usage`, and every call records what it spent (#929, #1206).
+The deployed tree's call-site count is printed in each roll's identity block, and it reads 1.
+
+**Recovery structural integrity.** The accepted-patch path, the outcome router, the correction
+protocol and the repair half leave `DispatchedFlowExecutor` for named collaborators —
+`PatchAcceptance` and `CorrectionRepair` — and the run's mutable state gets a name and its
+substructures (#1152, via #1482–#1486, #1490, #1491). No behavioural change rides any of it:
+every golden is byte-identical, none regenerated.
+
+**The measurement-correction prelude**, which had to land before anything could be measured:
+one three-state vocabulary for every record field — `observed` / `asked_none` / `unaskable`
+(#1445); a banked failed emission carries its attempt, so a record counts emissions rather than
+artifacts (#1436); the sandbox image is named for what it ships (#1197); a framing run stops
+reporting `blocked_unverified` for checks it cannot subject (#1428); the fill-mode qa
+declaration becomes `LOW`, not `NONE` (#1434); an environment skip does not erase a criterion
+another producer executed and passed (#1406); baseline stylesheets for both skeletons (#906,
+#1463) and the QA build workspace that must admit them (#1476); interface coherence across an
+entity's own endpoints (#820); a qa suite's mock of the frozen API client honouring its declared
+surface (#668); and a failed frontend build that says why (#1468, #1472, #1475).
+
+**Found by the line's own shakeout, and named because it is a closure finding.** Both arms of
+deploy B's first pair died in two seconds on `cycles create` with HTTP 500: the comms factory
+imported `A2AServerAdapter` at module scope, only `agent.lock` ships the `a2a` SDK, and
+`_init_cycle_subsystem`'s broad `except` turned it into one log line behind a passing health
+check. The server is a local import now (#1494), a runtime API that cannot bind its cycle ports
+refuses to start (#1495), and #637's guard was extended to catch the class.
+
+**Ops and tooling.** A weekly Docker reclaim on the backup timer's pattern (#1465); memory
+containment for the Spark with a doctor check swap cannot fool (#1178); the deployment database
+refuses the test role at the server (#1180); the framework's pipeline invariants machine-checked
+(#1492); and the release package's screenshots become two commands and a guard rule, after
+v1.7.0–v1.7.4 each shipped an empty `assets/` (#1500).
+
+**Validated by a pre-registered two-arm verification set** on frozen deploy `8fd30eb8` (HEAD
+pinned at `1e6ac721`), **zero drift under `src/` or `adapters/` between the deploy and the
+tag**, and one image set across all nine rolls. FastAPI+React **4 of 6**, Next.js+TS **3 of 3** —
+**functional 7 of 9**, 159/161 criteria, boot audit PASS 9/9, P0 held 9/9, zero framing
+re-rolls. The line's bar held: **zero contentless emissions across 167**. The shakeout loop
+exited at **round 1** where deploy A took four.
+
+**Stated at the cut, not implied.** The experimental gate was **not met as written**: four of
+the five diagnostics reached their seam, and `contentless-builder` did not — #1372's aimed retry
+recovers the builder before correction, so the readout's second conjunct is unproducible, and it
+read YES on 1.7.4 only because that deploy predated the fix by eight hours. The owner ruled the
+line closes anyway; plan §3.9a records it. Consequently **F1 (#1374) is unexercised on any
+deploy carrying #1372**, and that diagnostic's two-run budget stands at one. The fill hypothesis
+holds with its ceiling named — one of three Next.js rolls spent its entire completion budget.
+Both rejections are one defect, filed as #1501.
+
 ## [1.7.4] — 2026-09-09
 
 **The recovery half — the fourth patch line of 1.7.** Plan: `docs/plans/1-7-4-plan.md` (rev 3).
