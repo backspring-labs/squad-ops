@@ -63,19 +63,43 @@ def previous_tag(tag: str) -> str | None:
 #: main" commit whose subject mentions a PR number is not that PR merging again (#1369 —
 #: the v1.7.3 package listed #1328 twice).
 _MERGE_SUBJECT = re.compile(r"^Merge pull request #(\d+)\b")
+#: The subject GitHub writes for a SQUASH-merged pull request: the PR title with its number
+#: appended. Both shapes have to be read, because the repository uses both — v1.7.3..v1.7.4
+#: holds 33 merge commits and v1.7.4..v1.7.5 holds none and 50 squash subjects. Reading only
+#: the merge shape made the v1.7.5 preview report **0 PRs** for a 50-commit range, which
+#: would have shipped a release page with an empty PR table and an empty `Closes` column —
+#: caught only because step 7 says to read the preview before writing (#1076's lesson).
+#:
+#: The number is the LAST parenthesised one: a squash subject often carries the issue it
+#: closes too, as in `refactor(runtime): … (#286) (#1478)`, where #1478 is the PR.
+_SQUASH_SUBJECT = re.compile(r"\(#(\d+)\)\s*$")
 
 
 def merged_pr_numbers(subjects: list[str]) -> list[str]:
-    """The PR numbers a list of merge-commit subjects names, each once, newest first."""
-    return list(
-        dict.fromkeys(m.group(1) for s in subjects if (m := _MERGE_SUBJECT.match(s.strip())))
-    )
+    """The PR numbers a list of commit subjects names, each once, newest first.
+
+    Reads both merge shapes — ``Merge pull request #N from …`` and a squash's trailing
+    ``(#N)`` — because the repository has used both across the 1.7 line.
+    """
+    numbers = []
+    for subject in subjects:
+        subject = subject.strip()
+        if match := _MERGE_SUBJECT.match(subject):
+            numbers.append(match.group(1))
+        elif match := _SQUASH_SUBJECT.search(subject):
+            numbers.append(match.group(1))
+    return list(dict.fromkeys(numbers))
 
 
 def merged_prs(previous: str | None, tag: str) -> list[dict]:
     """PRs merged in the range, newest first, with their linked issues."""
     span = f"{previous}..{tag}" if previous else tag
-    subjects = run("git", "log", "--merges", "--format=%s", span).splitlines()
+    # `--first-parent`, and NOT `--merges`. A squash-merged PR leaves an ordinary commit, so
+    # `--merges` misses it entirely — that is what made the v1.7.5 preview read 0 PRs over a
+    # 50-commit range. But dropping the restriction altogether walks INTO each merged branch
+    # and counts its internal commits too, which took the v1.7.3..v1.7.4 range from 33 to 77.
+    # First-parent is the main line: exactly one subject per landing, whichever shape it took.
+    subjects = run("git", "log", "--first-parent", "--format=%s", span).splitlines()
     numbers = merged_pr_numbers(subjects)
     prs: list[dict] = []
     for number in numbers:
