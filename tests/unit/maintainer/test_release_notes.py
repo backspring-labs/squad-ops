@@ -347,6 +347,29 @@ class TestSipTransitionsAreTheFrontmattersNotThePaths:
             {"sip": "SIP-New-Idea", "from": None, "to": "proposed"}
         ]
 
+    def test_a_squash_merged_pr_is_named_by_its_trailing_number(self):
+        """What bug would this catch? The one that shipped. The repository switched to
+        squash merges during 1.7.4, `merged_prs` read only `Merge pull request #N`, and the
+        v1.7.4 package went out listing 33 of its 58 PRs. The v1.7.5 preview read **0 of
+        50** — an empty PR table and an empty `Closes` column on the release page."""
+        subjects = [
+            "chore(release): 1.7.4 — the recovery half (#1440)",
+            "Merge pull request #1329 from backspring-labs/x",
+            # The issue AND the PR: the trailing number is the PR.
+            "refactor(runtime): the app is composed from a config value (#286) (#1478)",
+        ]
+        assert build_release_package.merged_pr_numbers(subjects) == ["1440", "1329", "1478"]
+
+    def test_a_pr_number_that_is_not_at_the_end_does_not_name_a_landing(self):
+        """A subject may mention a PR without being that PR landing (#1369 — the v1.7.3
+        package listed #1328 twice). Anchoring to the trailing parenthesis is what keeps the
+        squash shape from re-introducing exactly that duplicate."""
+        subjects = [
+            "merge main — the v1.7.2 release package (#1328), which the guard requires",
+            "docs: mention (#999) in passing and end with prose",
+        ]
+        assert build_release_package.merged_pr_numbers(subjects) == []
+
     def test_only_github_merge_subjects_name_a_pr_and_each_once(self):
         subjects = [
             "Merge pull request #1329 from backspring-labs/x",
