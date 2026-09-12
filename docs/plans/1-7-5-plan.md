@@ -356,8 +356,56 @@ And the three gates 1.7.4 kept apart, so "landed" never stands in for "proven":
 | gate | criterion |
 |---|---|
 | **implementation** | every §3.2, §3.3, §3.4 row merged and §3.5's core; §3.6's rows merged or dropped by a plan revision that names the destination (§5); both design artifacts merged before the first closure PR; both host preconditions recorded before deploy A |
-| **experimental** | **L1 holds**; the fill hypothesis holds; **every one of the five diagnostics reached its seam on the pinned deploy** and the untouched-file invariant read true on the absent-suite diagnostic — no amendment; a "not reached" after the two-run budget is a closure finding that stops the line; the rewind invariant is CI-only by declaration and is not counted among the five |
+| **experimental** | **L1 holds**; the fill hypothesis holds; **every one of the five diagnostics reached its seam on the pinned deploy** and the untouched-file invariant read true on the absent-suite diagnostic — no amendment; a "not reached" after the two-run budget is a closure finding that stops the line; the rewind invariant is CI-only by declaration and is not counted among the five. **AMENDED 2026-09-11 — see §3.9a; the gate was NOT met as written and the owner ruled the line closes anyway.** |
 | **evidence** | every field §4 names is populated on every counted record in the three-state vocabulary, with its unaskable state declared; the record reconstructs every counted/void/reset boundary from per-round evidence; deploy-to-tag drift named item by item, expected zero |
+
+### 3.9a Post-hoc amendment to the experimental gate (2026-09-11)
+
+**The gate was not met as written.** Four of the five diagnostics reached their seam; six of
+the seven fault-seams did. `contentless-builder` did not, and its second budgeted run was
+started and then discarded, so **the budget stands at one run, not two**. The owner ruled the
+line closes anyway. Recorded here rather than only in the record, because the record is
+superseded at the next cut and this gate's own text says "no amendment" — a clause that means
+nothing if the amendment lives somewhere that disappears.
+
+**Why the seam could not be reached.** The readout is a compound — *the contentless builder
+attempt entered correction **and** the builder's repair was verified.* Only the first half is
+producible on this deploy:
+
+* **R1 (#1372) was reached**, with its evidence: `Retryable failure for …builder.assemble
+  (attempt 1), retrying — signature=unextractable response_chars=48 completion_tokens=469`,
+  then `emission retry feedback appended … appendix_chars=971 expected_files=1`.
+* The retry then recovers on attempt 2, so the builder never enters correction, so **F1
+  (#1374) cannot be reached** — `framework_rows_rederived` and `builder_patch_verifications`
+  both empty.
+
+The fault is **first-attempt-only by design** (`fault_injection.py:283` — "the recovery under
+test is what the loop composes and retries from the empty attempt, not the builder exhausting
+its retries"), so attempt 2 carries no fault and succeeds.
+
+**Why this is an instrument defect and not a closure finding.** The same diagnostic read YES
+on 1.7.4, and the timeline says why: the 1.7.4 diagnostics ran on `4ce18165` (09-08 01:24 ET),
+about eight hours before `9240209d` (09-08 09:10 ET) — #1372/#1414, which gave **every
+producer, the builder included**, the aimed retry — and were never re-run on the pinned deploy.
+**Deploy B is the first deploy on which this diagnostic has ever run with that retry present.**
+#1372 is a 1.7.4 fix. Nothing 1.7.5 shipped caused it, and the half of the seam the recovery
+extraction could have broken was reached.
+
+**What the line therefore does not cover, stated plainly:** **F1 (#1374) — "no false corrected
+result is composed from a contentless builder attempt" — is unexercised on any deploy carrying
+#1372.** The counted rolls did not exercise it either; the same retry stands between a
+contentless builder attempt and correction there too.
+
+**The remedy, owed and not done:** re-register the readout — split R1 from F1, or key F1 on a
+fault that survives the retry (one firing on every attempt, so the builder reaches
+`max_task_retries` → `SEMANTIC_FAILURE` → correction). Tracked on #1374.
+
+**The general lesson, which is the part worth carrying forward.** A diagnostic's readout is
+written against a framework and can outlive it: a fix that makes the loop recover EARLIER can
+make a seam registered downstream of the old recovery point unreachable, and the readout then
+reports NO for a system that got better. Before calling a "not reached" a regression, check the
+same diagnostic's previous line — and check whether the deploy those earlier diagnostics ran on
+actually carried the fixes of its own tag.
 
 ### 3.10 Merge discipline
 
