@@ -239,7 +239,7 @@ procedure costs: six consecutive releases tagged but never advertised.
 | 4 | ROADMAP timeline entry |
 | 5 | SIP promotion sweep — promote what is genuinely implemented; a phased or umbrella SIP with open children stays `accepted`, with the gap named |
 | 6 | `git tag vX.Y.Z && git push origin vX.Y.Z` — the Release publishes itself from the CHANGELOG section (`.github/workflows/release.yml`, #1061) |
-| 7 | **Capture the release package** — `python scripts/maintainer/build_release_package.py <version> --cycle <cycle-id> --project <project>` to PREVIEW, read the cycle evidence, then re-run with `--write` and commit `site/content/releases/vX.Y.Z/` |
+| 7 | **Capture the screenshots, then the package** — `capture_delivered_app.py` and `capture_prefect_run.py` into `assets/` first, then `build_release_package.py <version> --cycle <id>:<role> --showcase <id>:<reason>` to PREVIEW, read the cycle evidence, then re-run with `--write` and commit `site/content/releases/vX.Y.Z/` |
 
 Steps 1–3 are guarded by `tests/unit/architecture/test_docs_version_sync.py`, and step 6's
 Release is now automated on tag push. Step 5 is checked by the `SIP sweep:` line a
@@ -255,9 +255,35 @@ A step with that record needs removing, not restating (#1061).
 
 **Step 7 is capture, not query.** Cycle evidence lives in a running deploy and is
 unrecoverable once it moves, so the package is snapshotted at the cut and committed —
-the site renders it and never re-derives it. Screenshots (Prefect run, delivered app) go
-into that release's `assets/` before the script runs. It reads the tag range, so it must
+the site renders it and never re-derives it. It reads the tag range, so it must
 follow step 6.
+
+**The screenshots are two commands, not a note.** They go into `assets/` **before** the
+builder runs, because it globs that directory:
+
+```bash
+python scripts/dev/capture_delivered_app.py --cycle <cyc> --run <IMPL run> --version X.Y.Z \
+    --seed-file examples/<prd>/screenshot_seed.json --id-from /runs --route '/:delivered-app-run-list' …
+python scripts/dev/capture_prefect_run.py --cycle <cyc> --version X.Y.Z \
+    --label prefect-flow-run-<what-it-shows>
+```
+
+The first rebuilds the delivered tree from the vault and boots it; the second photographs the
+flow-run timeline, which is the only view where a correction round is legible at a glance.
+Both refuse to produce something misleading — a run that has not finished, a seeded state the
+app rejected. Each filename becomes its caption on the page, so name them as captions. This
+was prose from 2026-08-10 and **v1.7.0 through v1.7.4 each shipped an empty `assets/`** — the
+#789/#1061 shape, which is why it is now two commands and rule 3 of
+`check_release_packages.py`.
+
+**Name each cycle's role, and say which one the pictures are of.** `--cycle <id>:<role>` takes
+`counted`, `shakeout`, `diagnostic` or `void`; without it a fault-injected diagnostic's
+`rejected` reads on the page as a failed roll (v1.7.4 shipped 12 rows with no role).
+`--showcase <id>:<reason>` names the run the screenshots show and why — the page cites many
+cycles and shows one, and which one is a judgement that changes per release. The guard takes
+**no view on which cycle**; it only refuses an unexplained choice, because "the representative
+run" reliably resolves to a clean one picked by somebody with an interest in the release
+looking good.
 
 **Read step 7's preview before writing it.** The capture needs a running runtime API, a
 current `squadops login`, and the right `--project`; when any is missing the package can

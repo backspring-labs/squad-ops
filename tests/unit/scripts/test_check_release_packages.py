@@ -24,12 +24,48 @@ _spec.loader.exec_module(guard)
 REAL = REPO_ROOT / "site" / "content" / "releases"
 
 
-def _write_package(releases: Path, tag: str, cycles: list[dict] | None) -> None:
+def _write_package(
+    releases: Path,
+    tag: str,
+    cycles: list[dict] | None,
+    screenshots: list[str] | None = None,
+    showcase: dict | None = None,
+    on_disk: list[str] | None = None,
+) -> None:
     target = releases / tag
     target.mkdir(parents=True)
     (target / "index.md").write_text(f"# {tag}\n", encoding="utf-8")
     package = {"version": tag[1:], "tag": tag, "cycles": cycles}
+    if screenshots is not None:
+        package["screenshots"] = screenshots
+    if showcase is not None:
+        package["showcase"] = showcase
+    # `on_disk` defaults to exactly what the package names, so a test only says otherwise
+    # when the mismatch IS the thing under test.
+    assets = target / "assets"
+    assets.mkdir()
+    for name in (screenshots or []) if on_disk is None else on_disk:
+        (assets / name).write_bytes(b"\x89PNG\r\n\x1a\n")
     (target / "package.yaml").write_text(yaml.safe_dump(package), encoding="utf-8")
+
+
+_GOOD_CYCLE = {
+    "cycle_id": "cyc_show",
+    "captured": True,
+    "verdict": "accepted",
+    "run_count": 2,
+    "verified": ["acceptance:x"],
+}
+_SHOWCASE = {"cycle_id": "cyc_show", "reason": "the counted roll with the most recovery"}
+
+
+def _screenshot_package(releases: Path, **kw) -> list[str]:
+    """A v1.7.5 package that satisfies rules 1 and 2, so only rule 3 can fail it."""
+    kw.setdefault("cycles", [_GOOD_CYCLE])
+    kw.setdefault("screenshots", ["delivered-app-run-list.png"])
+    kw.setdefault("showcase", _SHOWCASE)
+    _write_package(releases, "v1.7.5", **kw)
+    return guard.package_problems("v1.7.5", releases)
 
 
 # --- the real tree --------------------------------------------------------------------
@@ -119,6 +155,10 @@ def test_an_absent_row_beside_a_captured_one_is_allowed(tmp_path):
                 "run_count": 2,
             },
         ],
+        # Rule 3 applies at this tag too, so an otherwise-complete package needs its
+        # screenshot and the line saying which run is on screen.
+        screenshots=["delivered-app-run-list.png"],
+        showcase={"cycle_id": "cyc_bbbbbbbbbbbb", "reason": "the only captured roll"},
     )
     assert guard.package_problems("v1.8.0", tmp_path) == []
 
@@ -168,3 +208,86 @@ def test_a_tag_before_the_site_existed_is_not_asked_for_a_package(tmp_path):
     real tag list failed on all four of them, which would have kept main red forever."""
     assert guard.package_problems("v0.1.4", releases=tmp_path) == []
     assert guard.package_problems("v1.0.0", releases=tmp_path) != []
+
+
+# --- rule 3: the release shows something, and says what it is showing -----------------
+#
+# What bug would these catch? The one with a five-release record: v1.7.0 through v1.7.4
+# each shipped an EMPTY assets/ while cut step 7 asked for screenshots in prose, and
+# nothing reported it. Plus the two ways a screenshot can be present and still mislead —
+# a file the page names but does not have, and a picture of a run the page never says is
+# a picture of.
+
+
+def test_a_release_from_the_floor_with_no_screenshots_fails_naming_both_commands(tmp_path):
+    problems = _screenshot_package(tmp_path, screenshots=[], showcase=None)
+    assert len(problems) == 1
+    assert "carries no screenshot" in problems[0]
+    assert "capture_delivered_app.py" in problems[0]
+    assert "capture_prefect_run.py" in problems[0]
+
+
+def test_an_earlier_release_with_no_screenshots_still_passes(tmp_path):
+    """v1.7.4 shipped empty and is not retroactively a failure — the rule starts at 1.7.5."""
+    _write_package(tmp_path, "v1.7.4", [_GOOD_CYCLE], screenshots=[])
+    assert guard.package_problems("v1.7.4", tmp_path) == []
+
+
+def test_a_named_screenshot_missing_from_assets_fails(tmp_path):
+    problems = _screenshot_package(
+        tmp_path, screenshots=["gone.png", "here.png"], on_disk=["here.png"]
+    )
+    assert len(problems) == 1
+    assert "gone.png" in problems[0] and "here.png" not in problems[0]
+    assert "broken image" in problems[0]
+
+
+def test_screenshots_with_no_showcase_fail(tmp_path):
+    problems = _screenshot_package(tmp_path, showcase={})
+    assert len(problems) == 1
+    assert "no `showcase.cycle_id`" in problems[0]
+
+
+def test_a_showcase_the_evidence_table_does_not_cite_fails(tmp_path):
+    problems = _screenshot_package(
+        tmp_path, showcase={"cycle_id": "cyc_elsewhere", "reason": "looks nice"}
+    )
+    assert len(problems) == 1
+    assert "cyc_elsewhere" in problems[0]
+    assert "does not cite" in problems[0]
+
+
+@pytest.mark.parametrize("reason", ["", "   ", None])
+def test_a_showcase_without_a_reason_fails(tmp_path, reason):
+    """`--showcase cyc:` cannot reach here, but a hand-edited package can. The reason is
+    the whole point of the rule: it is what makes a judgement auditable."""
+    problems = _screenshot_package(tmp_path, showcase={"cycle_id": "cyc_show", "reason": reason})
+    assert len(problems) == 1
+    assert "carries no reason" in problems[0]
+
+
+def test_a_complete_showcase_passes(tmp_path):
+    assert _screenshot_package(tmp_path) == []
+
+
+def test_the_rule_takes_no_view_on_which_cycle_is_shown(tmp_path):
+    """A clean roll and a heavily-repaired one are equally acceptable subjects — the guard
+    constrains the silence, not the answer."""
+    two = [
+        _GOOD_CYCLE,
+        {
+            "cycle_id": "cyc_other",
+            "captured": True,
+            "verdict": "accepted",
+            "run_count": 2,
+            "verified": ["acceptance:x"],
+        },
+    ]
+    for chosen in ("cyc_show", "cyc_other"):
+        releases = tmp_path / chosen
+        assert (
+            _screenshot_package(
+                releases, cycles=two, showcase={"cycle_id": chosen, "reason": "because"}
+            )
+            == []
+        )

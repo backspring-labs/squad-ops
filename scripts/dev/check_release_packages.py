@@ -24,6 +24,12 @@ the packaging convention and are not releases in this sense):
    and a positive run count. A row with ``captured: true`` and every field null is the
    #1076 shape and fails by name. Rows recorded absent WITH a reason are disclosure, not
    evidence; they are allowed beside a captured row, never instead of one.
+3. From ``v1.7.5``: ``assets/`` carries at least one screenshot, every screenshot the
+   package names exists on disk, and ``showcase`` says which cycle is on screen and
+   why. v1.7.0-v1.7.4 each shipped an empty ``assets/`` while step 7 asked for them in
+   prose. The rule takes NO view on WHICH cycle to show — that judgement is the
+   maintainer's and changes per release — only that the page states it, because an
+   unexplained screenshot invites the flattering pick.
 
 Usage:
     python scripts/dev/check_release_packages.py            # every semver tag in the repo
@@ -50,6 +56,10 @@ CYCLE_EVIDENCE_SINCE = (1, 6, 2)
 #: capture script; they are releases in git only, and no package will ever be written for
 #: them. Everything from here is checked.
 PACKAGED_SINCE = (1, 0, 0)
+#: The first release expected to carry screenshots. v1.7.0-v1.7.4 each shipped an EMPTY
+#: ``assets/`` while cut step 7 asked for them in prose — the #789/#1061 shape, a manual
+#: step that reads as done because nothing reports its absence. From here it is checked.
+SHOWCASE_SINCE = (1, 7, 5)
 
 CAPTURE_COMMAND = (
     "python scripts/maintainer/build_release_package.py {version} --cycle <cycle-id> "
@@ -113,6 +123,12 @@ def package_problems(tag: str, releases: Path = RELEASES) -> list[str]:
         problems.append(f"{tag}: {rel}/package.yaml names tag {package.get('tag')!r}, not {tag}")
     if version >= CYCLE_EVIDENCE_SINCE:
         problems.extend(_cycle_evidence_problems(tag, rel, capture, package.get("cycles") or []))
+    # Rule 3 only speaks once rule 2 is satisfied. A package whose cycle evidence is missing
+    # or hollow is broken at a more basic level, and "it also has no screenshots" is noise
+    # beside that — worse, rule 3's showcase check asks which cited cycle is on screen, a
+    # question with no answer while the citations themselves are wrong.
+    if version >= SHOWCASE_SINCE and not problems:
+        problems.extend(_screenshot_problems(tag, rel, version_text, target, package))
     return problems
 
 
@@ -146,6 +162,65 @@ def _cycle_evidence_problems(tag: str, rel: str, capture: str, cycles: list) -> 
                 f"with nothing captured. Re-capture with a running runtime API, a current "
                 f"`squadops login` and the right --project:\n    {capture}"
             )
+    return problems
+
+
+def _screenshot_problems(
+    tag: str, rel: str, version_text: str, target: Path, package: dict
+) -> list[str]:
+    """Rule 3: the release shows something, the files it names exist, and it says which
+    cycle is on screen and why.
+
+    **The guard takes no view on WHICH cycle.** Choosing the run to show is a judgement that
+    belongs to the person cutting the release and changes per release — the one worth showing
+    for a recovery release is not the one worth showing for a feature release. What cannot be
+    left to judgement is whether the page SAYS what was chosen: an unexplained screenshot
+    invites the flattering pick, because "representative" reliably resolves to a clean run
+    chosen by someone with an interest in the release looking good.
+
+    So this is the same shape as the three-state evidence vocabulary and ``--cycle <id>:<role>``
+    — it constrains the silence, not the answer.
+    """
+    shots = package.get("screenshots") or []
+    if not shots:
+        return [
+            f"{tag}: {rel}/assets/ carries no screenshot — cut step 7 asks for the delivered "
+            f"app and the Prefect run, and v1.7.0-v1.7.4 each shipped an empty assets/ while "
+            f"the checklist said otherwise. Capture them:\n"
+            f"    python scripts/dev/capture_delivered_app.py --cycle <cyc> --run <impl run> "
+            f"--version {version_text} --route ...\n"
+            f"    python scripts/dev/capture_prefect_run.py --cycle <cyc> "
+            f"--version {version_text} --label prefect-flow-run"
+        ]
+
+    problems: list[str] = []
+    # A package naming a file that is not there renders a broken image on the release page,
+    # and the page is the artifact nobody re-reads after the cut.
+    missing = [name for name in shots if not (target / "assets" / name).is_file()]
+    if missing:
+        problems.append(
+            f"{tag}: {rel}/package.yaml names screenshot(s) that are not in assets/: "
+            f"{', '.join(missing)} — the page would render a broken image"
+        )
+
+    showcase = package.get("showcase") or {}
+    cited = {row.get("cycle_id") for row in (package.get("cycles") or [])}
+    if not showcase.get("cycle_id"):
+        problems.append(
+            f"{tag}: {rel}/package.yaml has screenshots but no `showcase.cycle_id` — the page "
+            f"shows a run without saying which one. Pass --showcase <cycle-id>:<reason>"
+        )
+    elif showcase["cycle_id"] not in cited:
+        problems.append(
+            f"{tag}: showcase names cycle {showcase['cycle_id']}, which is not in this "
+            f"package's cycles: — the screenshots would be of a run the evidence table does "
+            f"not cite"
+        )
+    if showcase.get("cycle_id") and not str(showcase.get("reason") or "").strip():
+        problems.append(
+            f"{tag}: showcase cycle {showcase['cycle_id']} carries no reason — say why this "
+            f"run is the one on screen, or the choice cannot be audited"
+        )
     return problems
 
 
