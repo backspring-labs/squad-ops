@@ -1865,41 +1865,57 @@ SEAM_READOUTS: dict[str, tuple[str, tuple[str, ...], Callable[[dict], tuple[bool
             value_at(rec, "loop_texture.refunded_rounds", []),
         ),
     ),
-    # 1.7.4 plan §3.1: the contentless-builder sequence. YES = the contentless attempt
-    # entered correction and the builder's own repair was verified (steps 1, 2, 5); the
-    # evidence carries the rows and the retry facts for steps 3, 4 and 6, which are read
-    # by F1's and R1's own fields (pre-#1372 the builder has no retry, and the evidence
-    # says so rather than the readout hiding it).
+    # #1506: the contentless-builder sequence is two seams read on their own evidence. Since
+    # #1372 the builder retries a contentless emission with its fact, so one first-attempt
+    # fault reaches R1 and can never reach F1 — the retry recovers attempt 2 before the task
+    # fails into correction. The 1.7.5 compound readout (correction entered AND a builder
+    # patch verified) read NO on a deploy where R1 had held, for a reason the readout could
+    # not say.
+    #
+    # R1 (first-attempt fault). YES = the executor aimed a retry at the builder, the builder's
+    # handler rendered the emission-shape fact into it, and the retry's emission was accepted:
+    # no second builder retry and no builder repair on the patch path. A blind retry, a retry
+    # that failed again, or a builder that ended in correction is the seam reached and R1 not
+    # holding, and the evidence names which.
     "builder_emission_contentless": (
-        "F1/R1: the contentless builder attempt entered correction and the builder's repair "
-        "was verified",
+        "R1: the contentless builder attempt was retried with its emission-shape fact, and "
+        "the retry's emission was accepted",
+        (
+            "loop_texture.emission_retries",
+            "loop_texture.retried_with_fact",
+            "loop_texture.retried_blind",
+        ),
+        lambda rec: _builder_retry_reading(rec),
+    ),
+    # F1 (all-emission-attempts fault). YES = the builder entered correction and the accepted
+    # patch path re-derived its framework rows from the patched set — the line
+    # `PatchAcceptance` logs (#1374). A refused builder repair derives no rows and is not the
+    # seam reached; the evidence carries the rows and the retries it took to get there.
+    "builder_emission_contentless_all_attempts": (
+        "F1: the builder, contentless through its emission retries, entered correction and "
+        "its accepted patch's framework rows were re-derived from the patched set",
         (
             "correction_rounds",
             "loop_texture.patch_verifications",
-            "typed_checks.required_files_rows",
             "loop_texture.framework_rows_rederived",
+            "typed_checks.required_files_rows",
             "loop_texture.emission_retries",
-            "loop_texture.retried_with_fact",
         ),
         lambda rec: (
-            (value_at(rec, "correction_rounds", 0)) >= 1
-            and any(
-                "builder.assemble" in v and "status=passed" in v
-                for v in value_at(rec, "loop_texture.patch_verifications", [])
-            ),
+            (value_at(rec, "correction_rounds", 0) or 0) >= 1
+            and bool(_builder_lines(value_at(rec, "loop_texture.framework_rows_rederived", []))),
             {
                 "correction_rounds": value_at(rec, "correction_rounds", 0),
-                "builder_patch_verifications": [
-                    v
-                    for v in value_at(rec, "loop_texture.patch_verifications", [])
-                    if "builder.assemble" in v
-                ],
-                "required_files_rows": _required_files_rows(rec),
+                "builder_patch_verifications": _builder_lines(
+                    value_at(rec, "loop_texture.patch_verifications", [])
+                ),
                 "framework_rows_rederived": value_at(
                     rec, "loop_texture.framework_rows_rederived", []
                 ),
-                "emission_retries": value_at(rec, "loop_texture.emission_retries", []),
-                "retried_with_fact": value_at(rec, "loop_texture.retried_with_fact", []),
+                "required_files_rows": _required_files_rows(rec),
+                "builder_emission_retries": _builder_lines(
+                    value_at(rec, "loop_texture.emission_retries", [])
+                ),
             },
         ),
     ),
@@ -1958,6 +1974,46 @@ def seam_readouts(faults, rec: dict) -> dict[str, dict]:
             "unaskable": unaskable,
         }
     return out
+
+
+#: The builder's two names in the logs: its task id suffix on the executor's lines, its
+#: handler name on the agent's. Read from the code that writes them (TaskType.BUILDER_ASSEMBLE,
+#: `BuilderAssembleHandler._handler_name`), never from a stack.
+_BUILDER_TASK = "builder.assemble"
+_BUILDER_HANDLER = "builder_assemble_handler"
+_RETRY_ATTEMPT = re.compile(r"\(attempt (\d+)\)")
+
+
+def _builder_lines(lines: Any) -> list[str]:
+    """The lines about the builder's task, by its task id suffix."""
+    return [line for line in (lines or []) if _BUILDER_TASK in line]
+
+
+def _builder_retry_reading(rec: Mapping[str, Any]) -> tuple[bool, dict[str, Any]]:
+    """R1 (#1372, #1506): the builder's aimed retry carried its fact and its emission held."""
+    retries = _builder_lines(value_at(rec, "loop_texture.emission_retries", []))
+    attempts = sorted(
+        int(m.group(1)) for line in retries if (m := _RETRY_ATTEMPT.search(line)) is not None
+    )
+    with_fact = [
+        line
+        for line in value_at(rec, "loop_texture.retried_with_fact", []) or []
+        if _BUILDER_HANDLER in line
+    ]
+    blind = [
+        line
+        for line in value_at(rec, "loop_texture.retried_blind", []) or []
+        if _BUILDER_HANDLER in line
+    ]
+    repaired = _builder_lines(value_at(rec, "loop_texture.patch_verifications", []))
+    reached = bool(retries) and bool(with_fact) and attempts == [1] and not blind and not repaired
+    return reached, {
+        "builder_emission_retries": retries,
+        "retry_attempts": attempts,
+        "retried_with_fact": with_fact,
+        "retried_blind": blind,
+        "builder_patch_verifications": repaired,
+    }
 
 
 def _required_files_rows(rec: Mapping[str, Any]) -> Any:
