@@ -734,6 +734,15 @@ Named here so they are not the next §6a. None blocks the plan; each has a home 
 
 ## 10. Revision history
 
+- **Amendment (2026-09-12, with the 1.8 plan)** — §3.9a's remedy ("tracked on #1374") pointed at
+  an issue that had closed on 2026-09-08 with no comment; the remedy is now **#1506**, placed in
+  the 1.8 plan's prelude (`docs/plans/1-8-0-plan.md` §3.2) as two readouts, F1 keyed on the
+  `ALL_EMISSION_ATTEMPTS` fault scope. The items §5 and §6 re-placed to "the 1.8 rider" are
+  placed there by name: #579 lands; #567 and #353 go to 1.9 by decision (1.8 plan §6, §8
+  decision 7); #1444 is its first extraction (§3.1); #598 lands as a rendering (§3.2); the
+  Scoped Code Revision design review is its opening step with a named reviewer (§3.1). The
+  recovery extraction map's three methods "named out" (map §4), left unowned when #1152
+  closed, are **#1507**, 1.9's.
 - **Rev 5 (2026-09-09, with the design artifacts' PR)** — the two design artifacts are the
   acceptance source and the plan places and sequences (§3.1, §3.3, §3.5); the extraction's
   proof corrected — the replay corpus is replayed through checks, not the executor, so it

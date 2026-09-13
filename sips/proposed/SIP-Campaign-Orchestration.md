@@ -10,6 +10,8 @@ created_at: '2026-07-04T00:00:00Z'
 ## Status
 Proposed
 
+**Targets: v2.0 — the headline** (retargeted from v1.8 by the owner, 2026-09-12; recorded in `docs/plans/1-8-0-plan.md` §8 decision 1 and the ROADMAP's 1.8/2.0 rows: 1.8 carries Scoped Code Revision and the scorecard's slice, the 1.x line closes on 1.8 and its 1.9 stabilization tail, and 2.0 opens on Campaign. The continuation policy consumes the *shipped* `CycleAssessment`; the completion boundary it lands through is extracted in 1.9 (#1507); #316 moves with it; the 1.8 lineage seam is what the objective envelope replaces. The paragraph below is the superseded 2026-08-03/08-07 placement, kept as the record.)
+
 **Targets:** v1.8 (Lane M headline — **retargeted from v1.6, 2026-08-03**, per
 `docs/plans/post-1-4-roadmap-reconciliation.md`: the 1.4 cut moved the deferred
 squad-authored-manifest rung into v1.6 as the Lane M headline, and the trust ladder —
