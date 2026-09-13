@@ -16,6 +16,12 @@ edge reads as a named diff rather than a surprise.
 Bug caught: a prompt that renders different bytes, hashes differently against the manifest,
 or loses a declared variable because the shared parser differs from the copy it replaced.
 
+**Keyed by the file's bytes, so editing a prompt never touches this golden.** Each stored
+asset's reading is kept under the sha256 of the file it was read from. An edited or new
+asset is simply not compared; a parser change on an asset whose bytes are unchanged fails.
+The edge inputs are fixed strings and are always compared. Prompt edits are frequent, and a
+pin that forced a regeneration on each one would be regenerated until it pinned nothing.
+
 Regenerate only for a DELIBERATE behaviour change, in the PR that makes it:
     UPDATE_FRONTMATTER_GOLDENS=1 pytest tests/unit/prompts/test_frontmatter_characterization.py
 """
@@ -130,6 +136,7 @@ def _observe(tmp_path: Path) -> dict[str, Any]:
     for path in sorted(_FRAGMENTS.rglob("*.md")):
         rel = path.relative_to(_FRAGMENTS).as_posix()
         observed["fragments"][rel] = {
+            "file_sha": hashlib.sha256(path.read_bytes()).hexdigest(),
             **_repository_reading(repo, path),
             "strict": _strict_reading(path.read_text()),
         }
@@ -138,6 +145,7 @@ def _observe(tmp_path: Path) -> dict[str, Any]:
     for path in sorted(_TEMPLATES.glob("*.md")):
         raw = path.read_text()
         observed["templates"][path.stem] = {
+            "file_sha": hashlib.sha256(path.read_bytes()).hexdigest(),
             **_template_reading(adapter, path.stem, raw),
             "strict": _strict_reading(raw),
         }
@@ -170,17 +178,24 @@ def test_every_reader_matches_the_pre_extraction_golden(tmp_path):
         return
 
     golden = json.loads(_GOLDEN.read_text())
+    assert sorted(observed["edges"]) == sorted(golden["edges"])
+    compared = 0
     for section in ("fragments", "templates", "edges"):
-        assert sorted(observed[section]) == sorted(golden[section]), (
-            f"{section}: the set of inputs changed — a new prompt asset needs the golden "
-            "regenerated deliberately"
-        )
         for key, reading in observed[section].items():
-            assert reading == golden[section][key], (
-                f"{section}/{key}: a frontmatter reader changed what it returns. If the change "
-                "is DELIBERATE, regenerate the golden in the same PR so it reads as a "
-                "behaviour change, never as a refactor side effect."
+            pinned = golden[section].get(key)
+            if pinned is None or pinned.get("file_sha") != reading.get("file_sha"):
+                continue  # a new or edited asset: its bytes were never pinned
+            compared += 1
+            assert reading == pinned, (
+                f"{section}/{key}: a frontmatter reader changed what it returns for bytes that "
+                "did not change. If the change is DELIBERATE, regenerate the golden in the same "
+                "PR so it reads as a behaviour change, never as a refactor side effect."
             )
+    # Every asset edited since the capture drops out; if nearly all have, the pin is hollow.
+    assert compared >= len(golden["edges"]) + 20, (
+        f"only {compared} readings still compare — most pinned assets have been edited since "
+        "the capture. Regenerate from the current parser to re-pin the tree."
+    )
 
 
 def test_the_golden_covers_the_tree_and_is_not_hollow(tmp_path):
