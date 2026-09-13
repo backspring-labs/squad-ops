@@ -29,6 +29,7 @@ import hashlib
 import json
 import logging
 import os
+import shutil
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
@@ -47,6 +48,7 @@ pytestmark = [pytest.mark.domain_capabilities]
 _GOLDEN_PATH = Path(__file__).parent / "goldens" / "qa_dev_handle_characterization.json"
 _FIXTURES = Path(__file__).resolve().parents[3] / "fixtures"
 _SHELL = "__tests__/scaffold/vc-probe-api-runs.scaffold.test.ts"
+_JS_TOOLS = frozenset({"tsc", "npm", "npx", "node"})
 _LOGGERS = (
     "squadops.capabilities.handlers.cycle.qa_test",
     "squadops.capabilities.handlers.cycle.develop",
@@ -138,6 +140,16 @@ async def _run(handler, responses, inputs, monkeypatch, caplog, suite=None) -> d
 
     monkeypatch.setattr(
         "squadops.capabilities.handlers.test_runner.run_build_validation", _fake_build_validation
+    )
+    # The typed checks that shell out (tsc, the npm frontend build) skip as
+    # `missing_tooling` where the tool is absent and execute where it is present, so the
+    # same code banks different rows on a box without Node and on CI, which has it. Pin
+    # the tooling absent so the golden describes the handler, not the machine.
+    real_which = shutil.which
+    monkeypatch.setattr(
+        shutil,
+        "which",
+        lambda name, *a, **kw: None if name in _JS_TOOLS else real_which(name, *a, **kw),
     )
     ctx, calls = _context(*responses)
     with caplog.at_level(logging.INFO):
