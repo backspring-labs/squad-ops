@@ -54,7 +54,7 @@ def role_of(branch: str) -> str | None:
     """`nostromo/parker/fix-thing` -> `parker`. Anything else -> None."""
     if not branch.startswith(CREW_PREFIX):
         return None
-    rest = branch[len(CREW_PREFIX):]
+    rest = branch[len(CREW_PREFIX) :]
     role, sep, _ = rest.partition("/")
     return role if sep and role else None
 
@@ -64,7 +64,9 @@ def violations(files: list[str], role: str, rules: dict) -> list[str]:
     for pattern in rules.get("universal_forbidden", []):
         for f in files:
             if matches(f, pattern):
-                out.append(f"{f} — no crew role may change this (it is part of the boundary itself)")
+                out.append(
+                    f"{f} — no crew role may change this (it is part of the boundary itself)"
+                )
 
     spec = rules["roles"][role]
     if "allowed" in spec:
@@ -87,13 +89,19 @@ def violations(files: list[str], role: str, rules: dict) -> list[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--branch", required=True, help="pull request head ref")
     ap.add_argument("--rules", type=Path, default=DEFAULT_RULES)
-    ap.add_argument("--authors", nargs="*", default=None,
-                    help="commit author emails on this pull request")
-    ap.add_argument("--expected-author", default=None,
-                    help="the bot email this role's commits must carry; derived by the workflow")
+    ap.add_argument(
+        "--authors", nargs="*", default=None, help="commit author emails on this pull request"
+    )
+    ap.add_argument(
+        "--expected-author",
+        default=None,
+        help="the bot email this role's commits must carry; derived by the workflow",
+    )
     src = ap.add_mutually_exclusive_group(required=True)
     src.add_argument("--files-from", help="file of newline-separated paths, or - for stdin")
     src.add_argument("--files", nargs="*", help="paths directly")
@@ -119,7 +127,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if role not in rules.get("roles", {}):
         # Fail closed. A namespace with no declared boundary is an unreviewed boundary.
-        print(f"FAIL: branch {args.branch} names crew role '{role}', which has no rules in {args.rules}")
+        print(
+            f"FAIL: branch {args.branch} names crew role '{role}', which has no rules in {args.rules}"
+        )
         print("      Add its boundary before using the namespace, or rename the branch.")
         return 1
 
@@ -132,7 +142,9 @@ def main(argv: list[str] | None = None) -> int:
         for v in found:
             print(f"  {v}")
         print(f"\n{role}'s boundary is declared in {args.rules}.")
-        print("If the work genuinely belongs outside it, it belongs to a different role — hand it off")
+        print(
+            "If the work genuinely belongs outside it, it belongs to a different role — hand it off"
+        )
         print("rather than widening the boundary. Widening is an owner decision.\n")
     else:
         print(f"ok: {len(files)} changed file(s) are inside {role}'s boundary")
@@ -145,9 +157,15 @@ def main(argv: list[str] | None = None) -> int:
             for a in wrong:
                 print(f"  {a}")
             print(f"\n  expected: {args.expected_author}")
-            print("\nThe ruleset controls who may push to this namespace; the commit author is a separate")
-            print("field. A mismatch means the launcher did not export the author variables, so the commit")
-            print("is attributed to whatever identity the host holds. Fix the launcher, not the history.")
+            print(
+                "\nThe ruleset controls who may push to this namespace; the commit author is a separate"
+            )
+            print(
+                "field. A mismatch means the launcher did not export the author variables, so the commit"
+            )
+            print(
+                "is attributed to whatever identity the host holds. Fix the launcher, not the history."
+            )
         else:
             print(f"ok: all commits authored by {args.expected_author}")
     elif args.authors is not None:
