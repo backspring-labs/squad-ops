@@ -514,11 +514,13 @@ cannot carry these, 1.8 does not cut, and the plan says so rather than re-placin
 
 ## 6. Re-placements by name — nothing silently carried
 
-Thirty open issues after the two this plan filed. **Twenty-two are in this release** (§3.1–§3.7:
+Thirty open issues after the two this plan filed. **Twenty are in this release** (§3.1–§3.7):
 #1444, #1149, #1443, #176, #1506, #1501, #1499, #80, #579, #598, #1213, #1448, #1449, #1039,
-#1177, #1176, #1408, #1412, #414 (answered by the review), and the rails' and headlines' own
-work; #1469 stays blocked on the corpus #1468 is now producing and is read at the cut). The
-eight that are not:
+#414 (answered by the review), #1177, #1176, #1408, #1412, and #1469 — which stays blocked on the
+corpus #1468 is now producing and is read at the cut, not closed by it. Of the twenty, **sixteen
+close by the cut**: fourteen by code or by verify-then-close, #414 by the review's ruling, #1177
+on the box; three are experiments or diagnoses that close with an answer if the answer is
+terminal (#1176, #1408, #1412); #1469 stays open by design. The ten that are not in the release:
 
 **#1507 — 1.9, the stabilization minor.** The executor's `execute_cycle` (396), `execute_run`
 (325) and `_reject_invalid_plan_before_workload_gate` (301): the completion boundary Campaign
@@ -714,7 +716,9 @@ Named here so they are not the next line's §6a. Each has a home above or a fix 
   a composition-root *selector* in 2.1 (with only a NoOp there is nothing to select — the
   selector arrives with the first real adapter, per the composition-roots standard) and 2.1/2.2
   rows on the ROADMAP beyond naming 2.1 inside the 2.0 row. No change to the headlines, the set,
-  the gates' substance or the rulings.
+  the gates' substance or the rulings. **Count corrected after the push:** §6 read twenty-two in
+  the release and eight out; the lists say twenty and ten, and sixteen of the twenty close by
+  the cut.
 - **Rev 2 (2026-09-12, the same evening)** — the owner's rulings on decisions 1–3 recorded:
   Campaign Orchestration to **2.0 as its headline** (rev 1 recommended the next even minor),
   Cross-Cycle Memory to **2.2** (rev 1 recommended 2.0), Scoped Code Revision and the scorecard
