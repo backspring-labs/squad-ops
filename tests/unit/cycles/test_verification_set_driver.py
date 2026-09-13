@@ -2806,3 +2806,77 @@ class TestTheEmissionCountBehindTheBankedArtifacts:
         assert unaskable.state == driver.UNASKABLE
         assert "no attempt marker" in unaskable.reason
         assert "UNASKABLE" in driver._show(unaskable)
+
+
+class TestTheRecordCarriesTheCyclesCodeLineage:
+    """#80: every roll record carries the framework version, commit and request profile the
+    cycle row says created the cycle — observed on the record, beside the set config's typed
+    `frozen_deploy_commit`, which nothing could check before (#1296).
+
+    Enters at `collect`, the call a roll makes after it drives the cycle. Bug caught: a
+    record that reads an empty lineage as an answer on a cycle created before the columns
+    existed, or a query that fails the whole record on such a deploy."""
+
+    def _collect(self, driver, tmp_path, monkeypatch, lineage_row: str) -> dict:
+        import yaml
+
+        def fake_psql(query: str) -> str:
+            if "from cycle_runs where cycle_id" in query:
+                return "1|implementation|completed||run_abc|1800"
+            if "to_jsonb(c)->>'framework_version'" in query:
+                return lineage_row
+            return ""
+
+        monkeypatch.setattr(driver, "psql", fake_psql)
+        monkeypatch.setattr(driver, "artifact_dirs", lambda cfg, c, r: [])
+        p = tmp_path / "set.yaml"
+        p.write_text(
+            yaml.safe_dump(
+                {
+                    "name": "t",
+                    "project": "group_run",
+                    "squad_profile": "full-38",
+                    "request_profile": "validated-fullstack",
+                    "gate_name": "g",
+                    "gate_notes": "g",
+                    "launch_notes": "r {roll}/{n}",
+                    "shakeout_notes": "s",
+                    "n_rolls": 2,
+                }
+            )
+        )
+        return driver.collect(driver.load_set_config(p), "cyc_test")
+
+    def test_a_stamped_cycle_is_observed_and_rendered(self, driver, tmp_path, monkeypatch):
+        rec = self._collect(driver, tmp_path, monkeypatch, "1.8.0|072672ef|validated-fullstack")
+
+        assert driver.value_at(rec, "lineage.framework_version") == "1.8.0"
+        assert driver.value_at(rec, "lineage.framework_git_sha") == "072672ef"
+        assert driver.value_at(rec, "lineage.request_profile") == "validated-fullstack"
+        rec["stack"] = "fullstack_fastapi_react"
+        cfg = driver.load_set_config(tmp_path / "set.yaml")
+        assert (
+            "**Code, from the cycle record** framework `1.8.0` · commit `072672ef` · "
+            "request profile `validated-fullstack`"
+        ) in driver.render(cfg, "roll 1", rec)
+
+    def test_a_cycle_from_before_the_columns_is_unaskable_not_empty(
+        self, driver, tmp_path, monkeypatch
+    ):
+        """A pre-1040 deploy: `to_jsonb` answers empty strings for columns the row lacks."""
+        rec = self._collect(driver, tmp_path, monkeypatch, "||validated-fullstack")
+
+        for field in ("framework_version", "framework_git_sha"):
+            ev = driver.evidence_at(rec, f"lineage.{field}")
+            assert ev.state == driver.UNASKABLE
+            assert "created before #80" in ev.reason
+        assert driver.value_at(rec, "lineage.request_profile") == "validated-fullstack"
+
+    def test_a_stamped_cycle_whose_image_had_no_commit_is_asked_none(
+        self, driver, tmp_path, monkeypatch
+    ):
+        """The version was stamped, so the commit was asked; the image built without the
+        deploy script recorded none. That is an answer, not an unaskable field."""
+        rec = self._collect(driver, tmp_path, monkeypatch, "1.8.0||validated-fullstack")
+
+        assert driver.evidence_at(rec, "lineage.framework_git_sha").state == driver.ASKED_NONE

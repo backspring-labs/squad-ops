@@ -231,6 +231,10 @@ UNASKABLE_REASONS: dict[str, str] = {
         "never in the runtime-api window this field reads — the stored fact is "
         "loop_texture.fill_merge_evidence[].self_eval_fills (#1445 finding)"
     ),
+    "cycle_predates_code_lineage": (
+        "the cycle record carries no framework version — it was created before #80 or on a "
+        "deploy without migration 1040, so neither the version nor the commit was stamped"
+    ),
     "no_attempt_stamp": (
         "the banked artifacts carry no attempt marker (a pre-#1436 record), so two failed "
         "attempts of one task cannot be told from one attempt that banked two files — the "
@@ -333,11 +337,17 @@ EVIDENCE_FIELDS: dict[str, tuple[str, ...]] = {
     "typed_checks.required_files_rows": ("no_implementation_run", "filtered_at_typed_check_seam"),
     # deploy identity: one entry per probe the set config declares
     "loaded_checks.*": ("probe_could_not_run",),
+    # #80: the code and configuration the cycle record says created the cycle — observed on
+    # the record, beside the set config's typed `frozen_deploy_commit`. An empty commit on a
+    # stamped record is an answer: the image recorded none.
+    "lineage.framework_version": ("cycle_predates_code_lineage",),
+    "lineage.framework_git_sha": ("cycle_predates_code_lineage",),
+    "lineage.request_profile": (),
 }
 
 #: The record keys whose members are evidence fields — the wiring test asserts every
 #: member of these is registered and every registered field of these is produced.
-EVIDENCE_GROUPS = ("loop_texture", "typed_checks", "loaded_checks")
+EVIDENCE_GROUPS = ("loop_texture", "typed_checks", "loaded_checks", "lineage")
 #: Record metadata that lives beside evidence fields without being one.
 _NOT_EVIDENCE = {"loop_texture.log_window"}
 
@@ -1223,6 +1233,14 @@ def collect(cfg: SetConfig, cycle_id: str) -> dict:
     snapshot = psql(
         f"select coalesce(squad_profile_snapshot_ref,'') from cycle_registry where cycle_id='{cycle_id}';"
     )
+    lineage = cycle_lineage(
+        psql(
+            "select coalesce(to_jsonb(c)->>'framework_version','')||'|'||"
+            "coalesce(to_jsonb(c)->>'framework_git_sha','')||'|'||"
+            "coalesce(to_jsonb(c)->>'request_profile','') "
+            f"from cycle_registry c where c.cycle_id='{cycle_id}';"
+        )
+    )
     emissions = emissions_from_stamps(banked_metadata)
     context = {
         "no_implementation_run": impl is None,
@@ -1234,6 +1252,7 @@ def collect(cfg: SetConfig, cycle_id: str) -> dict:
     return {
         "cycle_id": cycle_id,
         "squad_profile_snapshot_ref": snapshot,
+        "lineage": lineage,
         "runs": runs,
         "gate_decisions": [
             dict(zip(("gate", "decision", "decided_by"), g.split("|"), strict=False)) for g in gates
@@ -1271,6 +1290,25 @@ def collect(cfg: SetConfig, cycle_id: str) -> dict:
         "wall_clock_seconds": sum(r["seconds"] for r in runs),
         "impl_run_id": impl["run_id"] if impl else None,
     }
+
+
+def cycle_lineage(raw: str) -> dict:
+    """The ``lineage`` group from the cycle row's ``version|commit|profile`` (#80).
+
+    Read through ``to_jsonb`` by ``collect`` so a deploy from before migration 1040 answers
+    with empty strings instead of failing the query: a driver newer than the deploy it reads
+    must still write the record, and say the lineage is unaskable there.
+    """
+    version, commit, profile = ([*raw.split("|"), "", "", ""])[:3]
+    return with_states(
+        "lineage",
+        {
+            "framework_version": version.strip(),
+            "framework_git_sha": commit.strip(),
+            "request_profile": profile.strip(),
+        },
+        {"cycle_predates_code_lineage": not version.strip()},
+    )
 
 
 def boot_audit(cfg: SetConfig, cycle_id: str, impl_run: str) -> dict:
@@ -2849,6 +2887,13 @@ def render(cfg: SetConfig, title: str, rec: dict) -> str:
         f"`{cfg.frozen_deploy_commit or rec.get('deploy', {}).get('head') or '?'}` · "
         f"config `{(rec.get('config_hash') or cfg.expected_config_hash_prefix or '?')[:12]}` · "
         f"squad snapshot `{(rec.get('squad_profile_snapshot_ref') or '?')[:12]}`",
+        "",
+        # #80: what the cycle record says created it, observed — beside the typed deploy pin
+        # above, so the two can be read against each other.
+        f"**Code, from the cycle record** framework "
+        f"{_show_at(rec, 'lineage.framework_version', lambda v: f'`{v}`')} · commit "
+        f"{_show_at(rec, 'lineage.framework_git_sha', lambda v: f'`{v}`')} · request profile "
+        f"{_show_at(rec, 'lineage.request_profile', lambda v: f'`{v}`')}",
         "",
         "## Headline",
         "",

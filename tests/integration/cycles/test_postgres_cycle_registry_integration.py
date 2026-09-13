@@ -197,6 +197,25 @@ class TestFullCycleCRUD:
             await registry.create_run(run)
 
 
+class TestCodeLineageRoundTrip:
+    """#80 against real Postgres: migration 1040's columns exist, take the stamp, and read
+    back as None for a cycle that carries none. The unit test's rows are dicts, so only this
+    proves the INSERT's column list and the table agree."""
+
+    @pytest.mark.parametrize(
+        ("version", "sha"),
+        [("1.8.0", "072672ef-dirty"), (None, None)],
+        ids=["stamped", "unstamped"],
+    )
+    async def test_the_lineage_round_trips(self, registry, version, sha):
+        cycle = _make_cycle(framework_version=version, framework_git_sha=sha)
+        await registry.create_cycle(cycle)
+
+        fetched = await registry.get_cycle(cycle.cycle_id)
+
+        assert (fetched.framework_version, fetched.framework_git_sha) == (version, sha)
+
+
 class TestFullRunLifecycle:
     """create → running → paused → running → completed (Plan §3.3 item 2)."""
 

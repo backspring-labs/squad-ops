@@ -237,6 +237,11 @@ class CycleResponse(BaseModel):
     execution_overrides: dict = Field(default_factory=dict)
     expected_artifact_types: list[str] = Field(default_factory=list)
     experiment_context: dict = Field(default_factory=dict)
+    # Lineage (#80): which configuration and which code created the cycle. None on a cycle
+    # created before the field existed.
+    request_profile: str | None = None
+    framework_version: str | None = None
+    framework_git_sha: str | None = None
     notes: str | None = None
     status: str  # Derived CycleStatus
     runs: list[RunResponse] = Field(default_factory=list)

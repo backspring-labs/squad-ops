@@ -25,8 +25,10 @@ export DOCKER_BUILDKIT=1
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 cd "$REPO_ROOT"
 
-# Derive source hash for Docker cache busting (invalidates source layers on new commits)
-SOURCE_HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+# Derive source hash for Docker cache busting (invalidates source layers on new commits).
+# #80: the runtime-api image also records it on every cycle, so a build from uncommitted
+# changes to what the images copy is marked -dirty rather than claiming a clean commit.
+SOURCE_HASH=$("$REPO_ROOT/scripts/dev/ops/source_hash.sh")
 export SOURCE_HASH
 
 # Shared secret-provisioning helpers (agent client secret, #326/#371).

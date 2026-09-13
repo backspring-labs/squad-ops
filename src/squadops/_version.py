@@ -17,6 +17,7 @@ come from" is a concern of its own regardless.
 
 from __future__ import annotations
 
+import os
 import re
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _pkg_version
@@ -47,3 +48,25 @@ def resolve_version() -> str:
         return _pkg_version("squadops")
     except PackageNotFoundError:
         return "unknown"
+
+
+#: The image-level variable the runtime-api Dockerfile sets from its ``SOURCE_HASH`` build
+#: argument (#80). An image variable like ``SQUADOPS_BASE_PATH``, not a ``SQUADOPS__*``
+#: config setting: it is a fact about the build, and nothing configures it.
+GIT_SHA_ENV = "SQUADOPS_GIT_SHA"
+
+
+def resolve_git_sha() -> str | None:
+    """The commit this process's image was built from, or ``None`` when that is unknown (#80).
+
+    ``rebuild_and_deploy.sh`` derives it from ``git rev-parse --short HEAD`` and marks a build
+    from uncommitted image paths with ``-dirty``, so a record never claims a commit its code
+    does not match. ``unknown`` is the build argument's own default, meaning the image was
+    built without the script; it reads as ``None`` rather than as a commit named "unknown".
+
+    No source-checkout fallback, unlike ``resolve_version``: an image carries no ``.git``,
+    and a process run from a checkout would report the checkout's HEAD whatever its working
+    tree holds, which is the claim the dirty marker exists to refuse.
+    """
+    value = os.environ.get(GIT_SHA_ENV, "").strip()
+    return value if value and value != "unknown" else None

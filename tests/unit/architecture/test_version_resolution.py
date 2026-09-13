@@ -81,3 +81,42 @@ class TestResolutionOrder:
             f"metadata fallback returned {resolved!r}; a deployed image resolves its "
             "version this way and has no pyproject.toml to fall back to"
         )
+
+
+class TestGitSha:
+    """#80: the commit a cycle records comes from the image, and unknown stays unknown.
+
+    Bug caught: a record naming a commit its code does not match. The runtime-api image
+    carries ``SQUADOPS_GIT_SHA`` from the deploy script; an image built without the script
+    carries the build argument's default, ``unknown``, which must not reach a cycle record
+    as though it were a commit."""
+
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            ("072672ef", "072672ef"),
+            ("072672ef-dirty", "072672ef-dirty"),
+            ("unknown", None),
+            ("", None),
+            ("  ", None),
+        ],
+    )
+    def test_the_image_variable_is_read_and_unknown_is_none(self, monkeypatch, value, expected):
+        from squadops._version import GIT_SHA_ENV, resolve_git_sha
+
+        monkeypatch.setenv(GIT_SHA_ENV, value)
+        assert resolve_git_sha() == expected
+
+    def test_a_process_without_the_variable_records_none(self, monkeypatch):
+        from squadops._version import GIT_SHA_ENV, resolve_git_sha
+
+        monkeypatch.delenv(GIT_SHA_ENV, raising=False)
+        assert resolve_git_sha() is None
+
+    def test_the_runtime_image_sets_the_variable_from_the_build_argument(self):
+        """The Dockerfile is the only writer. Without the ENV line every cycle records None
+        while every test above still passes."""
+        from squadops._version import GIT_SHA_ENV
+
+        dockerfile = (REPO / "src" / "squadops" / "api" / "runtime" / "Dockerfile").read_text()
+        assert f"ENV {GIT_SHA_ENV}=${{SOURCE_HASH}}" in dockerfile

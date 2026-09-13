@@ -178,6 +178,75 @@ class TestCreateCycle:
         assert resp.status_code == 422
 
 
+class TestCreateCycleCodeLineage:
+    """#80: which code created a cycle, stamped at the create route and read back.
+
+    Enters at ``POST /api/v1/projects/{project}/cycles``, the route ``squadops cycles create``
+    calls, and asserts what reaches the registry. Bug caught: the fields existing on the
+    model and in the table while the route never sets them, so every record reads unknown and
+    the scorecard's benchmark registry has no code lineage to slice by."""
+
+    def _create(self, client) -> None:
+        resp = client.post(
+            "/api/v1/projects/hello_squad/cycles",
+            json={"squad_profile_id": "full", "request_profile": "selftest"},
+        )
+        assert resp.status_code == 200, resp.text
+
+    def test_the_route_stamps_the_version_and_the_image_commit(
+        self, client, mock_cycle_registry, monkeypatch
+    ):
+        import squadops
+
+        monkeypatch.setenv("SQUADOPS_GIT_SHA", "072672ef")
+        self._create(client)
+
+        (cycle,) = mock_cycle_registry.create_cycle.call_args[0]
+        assert cycle.framework_version == squadops.__version__
+        assert cycle.framework_git_sha == "072672ef"
+        assert cycle.request_profile == "selftest"
+
+    @pytest.mark.parametrize("image_value", [None, "unknown"], ids=["unset", "build-default"])
+    def test_an_image_without_a_commit_records_none(
+        self, client, mock_cycle_registry, monkeypatch, image_value
+    ):
+        if image_value is None:
+            monkeypatch.delenv("SQUADOPS_GIT_SHA", raising=False)
+        else:
+            monkeypatch.setenv("SQUADOPS_GIT_SHA", image_value)
+        self._create(client)
+
+        (cycle,) = mock_cycle_registry.create_cycle.call_args[0]
+        assert cycle.framework_git_sha is None
+
+    def test_the_detail_response_carries_the_lineage(self, client, mock_cycle_registry):
+        """``request_profile`` was stored since migration 007 and never returned, so no
+        reader of the API could see which profile a cycle ran."""
+        mock_cycle_registry.get_cycle.return_value = Cycle(
+            cycle_id="cyc_001",
+            project_id="hello_squad",
+            created_at=NOW,
+            created_by="system",
+            prd_ref=None,
+            squad_profile_id="full",
+            squad_profile_snapshot_ref="sha256:abc",
+            task_flow_policy=TaskFlowPolicy(mode="sequential"),
+            build_strategy="fresh",
+            request_profile="selftest",
+            framework_version="1.7.5",
+            framework_git_sha="072672ef-dirty",
+        )
+        mock_cycle_registry.list_runs.return_value = []
+
+        body = client.get("/api/v1/projects/hello_squad/cycles/cyc_001").json()
+
+        assert (body["request_profile"], body["framework_version"], body["framework_git_sha"]) == (
+            "selftest",
+            "1.7.5",
+            "072672ef-dirty",
+        )
+
+
 class TestListCycles:
     def test_returns_list(self, client):
         resp = client.get("/api/v1/projects/hello_squad/cycles")
