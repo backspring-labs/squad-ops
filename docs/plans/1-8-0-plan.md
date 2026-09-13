@@ -1,7 +1,9 @@
 # 1.8.0 — plan
 
-**Revision 2, 2026-09-12.** Rev 1 was written the day the 1.7 line closed; rev 2 the same
-evening, recording the owner's rulings on §8 decisions 1–3 (§10). Written from the ROADMAP's 1.8 row
+**Revision 4, 2026-09-13.** Rev 1 was written the day the 1.7 line closed; rev 2 the same
+evening, recording the owner's rulings on §8 decisions 1–3; rev 3 on a written tightening
+review; rev 4 on the final notes of the Scoped Code Revision design review, which accepted that
+SIP with required revision as SIP-0107 (§3.1, §10). Written from the ROADMAP's 1.8 row
 and the reconciliation that wrote it (`docs/plans/post-1-5-roadmap-reconciliation.md`), the
 1.7.5 plan (`docs/plans/1-7-5-plan.md` §3.9a, §5, §6, §7 step 14, §8), the 1.7.5 record
 (`docs/plans/1-7-5-verification-set-record.md` §5, §7, §9), the 1.6.0 plan's "Owed to 1.8"
@@ -40,7 +42,7 @@ produces, stated once:
 
 | lane | headline | what it is | its proof |
 |---|---|---|---|
-| **M — the loop** | **Scoped Code Revision** (PR #1325, rev 2) | for an existing artifact the agent describes the smallest reliable revision; the framework realizes it under an explicit write grant, preserves every byte outside the accepted range, and verifies exactly the tree it persists | the draft's own §39: zero outside-grant change, zero restoration, candidate identity equals persisted identity, on **N** live repair transactions across both stacks and every producer lane, N fixed before roll 1 (§4) |
+| **M — the loop** | **Scoped Code Revision** (**SIP-0107**, accepted 2026-09-13 at rev 4; on main when PR #1325 merges) | for an existing artifact the agent describes the smallest reliable revision; the framework realizes it under an explicit write grant, preserves every byte outside the accepted range, and verifies exactly the tree it persists | the SIP's own §39: zero outside-grant change, preservation proved by reconstruction, zero restoration, `verified_revision_id == persisted_revision_id`, on **N successful** scoped transactions across qa and dev on both stacks with builder cells declared, N fixed before any transaction that can count is observed (§4) — adopted here as a release gate (§3.9) |
 | **S — the judgement** | **Cycle Evaluation Scorecard, the 1.8 slice** (`sips/proposed/SIP-Cycle-Evaluation-Scorecard.md`, to be revised before review) | `CycleAssessment` as a projection over the `CycleOutcome` seam; **one** failure-attribution registry shared with the vocabularies the code already has; a benchmark registry over the stored counted rolls; the squad-versus-single-model comparison harness | every counted record of this release carries an assessment whose every dimension cites evidence that resolves; the historical corpus re-graded deterministically; **one pre-registered comparison window closed with its result stated, whichever way it goes** |
 
 **Moved off the row, by the owner's ruling.** *Campaign Orchestration* is **2.0's headline** —
@@ -90,8 +92,8 @@ Rules carried from the 1.7 lines without discount:
 ### 2.1 Lane M — the loop stops re-emitting what the framework can preserve
 
 The correction contract today is whole-file re-emission: a repair that changes three lines
-re-authors every other line and gives each a fresh chance to be wrong. The draft on PR #1325
-(rev 2, 2026-09-07) separates four things the pipeline conflates — authorization (a
+re-authors every other line and gives each a fresh chance to be wrong. The SIP on PR #1325
+(SIP-0107, accepted 2026-09-13 at rev 4) separates four things the pipeline conflates — authorization (a
 `WriteGrant`), intent, resolution to an exact source range, and composition of the candidate
 tree — and makes the existing artifact's contract a version-bound revision transaction:
 replace, insert or remove against a structural target, an exact anchored target (#1213's
@@ -206,27 +208,38 @@ adopt Atlas. It does not promote a SIP on the strength of its own work except by
 
 ### 3.1 Preconditions — the opening step, and before the first code PR
 
-**The Scoped Code Revision design review — this plan's opening step, not a step beside it.**
+**The Scoped Code Revision design review — this plan's opening step, not a step beside it.
+Held 2026-09-13: accepted with required revision.**
 
 - *Reviewer:* the owner, named here because the 1.7.4 plan's "beside this line" produced zero
-  reviews across a whole line.
+  reviews across a whole line. The owner accepted the draft on written final review notes.
 - *Outcome vocabulary, fixed:* **accepted** / **accepted with required revision** (the revisions
-  named, folded into rev 3 on the PR before acceptance) / **rejected and reframed** (the plan is
-  revised in the open; the lane's headline is then re-decided, not defaulted).
-- *What the review must answer* — the draft's own §43, plus two the plan adds:
-  1. reference representation (§43.1) and resolver selection per stack (§43.2) — the SIP
-     specifies behaviour, not the library; the review names who picks the library and when;
-  2. whole-file fallback policy for scaffold-owned files (§43.3) — the draft prefers the
-     stronger policy; a ruling;
-  3. `move` as a primitive (§43.4) — decided on repair evidence, not vocabulary completeness;
-  4. correction-budget semantics (§43.5, §22) — **and #414 is answered here**: the draft's
-     budget default and #414's priority-reserve option 2 touch one pool; the review rules on
-     both or names why they are separate;
-  5. the rollout's stack order (§38 step 5–6) against the counted-roll history: React is six of
-     nine counted rolls and the demo arm, Next.js is where the slot-body path already ships.
-- *Gate:* a completed decision recorded on the PR, then `update_sip_status.py … accepted` —
-  **acceptance before the branch**. The feature's first PR does not open until the SIP has a
-  number.
+  named and folded into the SIP on its PR before acceptance — its rev 4) / **rejected and
+  reframed** (the plan is revised in the open; the lane's headline is then re-decided, not
+  defaulted).
+- *What the review answered* — the draft's own §43, plus the two the plan added; each ruling is
+  recorded under its question in SIP-0107 §43:
+  1. reference representation (§43.1) stays implementation-owned; no resolver library in the
+     SIP (§43.2) — the first structural-stack PR chooses it, and also orders the React stack's
+     Python and JSX resolvers, which the review did not;
+  2. whole-file fallback (§43.3) — the stronger policy: explicit fallback authority beyond a
+     whole-file grant, never for scaffold-owned files unless the task replaces the scaffold;
+  3. `move` (§43.4) — not in 1.8; `remove` + `insert` in one transaction;
+  4. correction-budget semantics (§43.5, §22) — one correction pool, #1372's retry separately
+     bounded. **#414's shape is ruled** — a reserve, if adopted, is a reservation inside the one
+     pool — **and its adoption is not**: it is decided in the Lane M PR that implements the
+     SIP's §22, or re-placed by name (§6);
+  5. the stack order (§43.6) — React first for the structural path, Next.js second.
+- *Required revisions, folded as the SIP's rev 4:* one rollout sequence with candidate identity
+  first; N counts successful scoped transactions only, fixed before any transaction that can
+  count is observed, beside a separate all-attempt integrity reading; coverage qa and dev on
+  both stacks with builder cells declared; preservation proved by reconstruction; a formatter
+  effect is a recorded revision or does not run; automatic regrant bounded by a plan-bound
+  ceiling; explicit whole-file fallback authority. This plan takes the matching revisions in its
+  own rev 4 (§3.3, §3.4, §3.9, §4, §7, §8, §10).
+- *Gate:* the decision recorded on PR #1325, then `update_sip_status.py … accepted` run there —
+  **SIP-0107**. **Acceptance before the branch:** it lands on main when PR #1325 merges, and the
+  feature's first PR does not open before that.
 
 **The scorecard SIP, rev 2, then its review.** Written before review because rev 1 does not
 describe the slice (§2.2). Rev 2 must: narrow the normative text to the four slice
@@ -285,24 +298,27 @@ the #1506 readouts get their first reading here and their counted reading on dep
 
 ### 3.3 Lane M — Scoped Code Revision
 
-After acceptance (§3.1) and #1444. **The SIP is the acceptance source; this table places and
-sequences its §38 rollout.** One PR per step, in this order, because each step's proof is the
-previous step's invariant still holding:
+After acceptance lands on main (§3.1) and #1444. **The SIP is the acceptance source; this table
+places its §38 rollout, which since the SIP's rev 4 is one authoritative sequence.** One PR per
+step, in this order, because each step's proof is the previous step's invariant still holding:
 
-| step | what lands (draft §38) | how it is proven |
+| step | what lands (SIP §38) | how it is proven |
 |---|---|---|
-| 1 | **the QA slot-body path generalised** — `verification_scaffold_fill` lifted into one revision-transaction type: grant carried, candidate identity assigned, `materialize(…, authorization=)` wired; the QA lane keeps working throughout | the Next.js fill fixtures byte-identical through; the fill-merge evidence (#999) unchanged on the checkpoint |
-| 2 | **candidate identity** — `compute_revision_id` taken after materialization and compared at storage (§20); may land first, it is one call | `verified_revision_id == persisted_revision_id` in the evidence of every stored patch on the pair |
+| 1 | **candidate identity** — `compute_revision_id` taken after materialization, recorded as the candidate's identity and compared before storage (§20); an integrity improvement to the existing accepted-patch path that every later step inherits | `verified_revision_id == persisted_revision_id` in the evidence of every stored patch on the pair |
+| 2 | **the QA slot-body path generalised** — `verification_scaffold_fill` lifted into one revision-transaction type: grant carried, `materialize(…, authorization=)` wired, step 1's identity inherited; the QA lane keeps working throughout | the Next.js fill fixtures byte-identical through; the fill-merge evidence (#999) unchanged on the checkpoint |
 | 3 | **the dev grant** — `WriteGrant.for_dev_fill` propagated into the dev repair path so every lane carries an enforced grant (the draft's §3.3: today it is defined and unused, the largest exposure) | a dev repair outside its grant refused with evidence, at the same seams as QA and builder (§39.6); **a dev-lane fault is registered for it** (§4) |
 | 4 | **exact anchored targets** inside the grant, strict uniqueness — **#1213 closes here** | a multi-match anchor fails rather than choosing (§39.5); the #451 fixture |
-| 5 | **structural read and addressing** for the first stack (the review's ruling, §3.1 item 5), then replace / insert / remove with the preservation assertion (§17) | zero changed bytes outside accepted ranges (§39.2); zero restoration and an empty observed set on a scaffolded artifact (§39.3) |
-| 6 | **the second stack**, equivalent semantics across different slot granularity (§39.7) | the same criteria on the other stack's fixtures |
-| 7 | **the default** — scoped revision the normal path for supported existing artifacts, legacy whole-file emission the explicit fallback (§9.4) with the review's §43.3 policy | **gated by §39.8's N live transactions** — the counted set and diagnostics of §4 decide it; if N is not met at the cut, the SIP stays `accepted` with step 7 named open (SIP-0102 precedent) and the cut record says so |
+| 5 | **structural read and addressing** on **React**, the first stack by the review's ruling (SIP §43.6), then replace / insert / remove with the preservation proof (§17) | preservation by reconstruction — the candidate reproduced from the base by exactly the accepted edits (§39.2); zero restoration and an empty observed set on a scaffolded artifact (§39.3) |
+| 6 | **Next.js, the second stack** — equivalent semantics across different slot granularity (§39.7) | the same criteria on the other stack's fixtures |
+| 7 | **the default** — scoped revision the normal path for supported existing artifacts, legacy whole-file emission the explicitly authorized fallback (SIP §9.4) | **gated by §39.8's N successful scoped transactions** (§4). **An unmet N blocks the 1.8.0 cut** (§3.9): it is a failed experimental gate, not an open step. Once N is met, step 7 may move to 1.8.1 for capacity by a plan revision in the open, and the SIP then stays `accepted` with the flip named open (SIP-0102 precedent) |
 
-**The core and the tail, for the cut.** Steps 1–5 on the first stack are the **core** — one
-lane's transactions end to end, verified and persisted by identity; step 6 the second stack;
-step 7 the flip. A core left incomplete stops the line. Step 6 and 7 re-place by name (§5) to
-1.8.1 with the reason, and the SIP's status follows the evidence, never the calendar.
+**The core and the tail, for the cut.** Steps 1–4 establish the stack-independent transaction
+machinery; step 5 proves the structural path end to end on React. **Together they are the
+core.** Step 6 adds the structural path on Next.js; step 7 flips the default. Scoped
+transactions on Next.js do not wait for step 6 — the anchored and region modes of steps 2–4
+reach it — so §4's coverage of both stacks stays reachable if step 6 is re-placed. A core left
+incomplete stops the line. Steps 6 and 7 re-place by name (§5) to 1.8.1 with the reason — step
+7 only once N is met — and the SIP's status follows the evidence, never the calendar.
 
 **Non-droppable.** The core.
 
@@ -315,7 +331,7 @@ After rev 2's acceptance (§3.1). Four deliverables, one PR each unless a seam f
 | a | **`CycleAssessment`** as a pure projection over `CycleOutcome` in `src/squadops/cycles/` beside `cycle_outcome.py`: the four dimensions (outcome, quality, coordination, efficiency) with **measurable indicators each of which is a reference into the record** — verdict and criteria coverage, correction rounds and re-dispatches, contentless emissions and refunds, framing re-rolls, tokens and wall-clock from the generation records (#929 made every call visible); computed on read, never stored as truth; **no agent in the path** | an architecture test: the projection performs no I/O and reads only `CycleOutcome` and the record; every dimension's evidence refs resolve on every 1.7.5 record |
 | b | **one failure-attribution registry** — the SIP's seven categories become derivations over the vocabularies that exist (§2.2), declared in one registry with governance attributes in the #730 shape (declaration required, drift-guarded), and the plan-rejection classes, winnability classes, `FailureEvidenceCategory`, `FailureLocus` and the movement tokens each map to exactly one attribution id | a drift test that fails on a vocabulary value with no mapping; **no new string literal for a failure class anywhere else** |
 | c | **the benchmark registry** — the counted rolls 1.6.3 through 1.7.5 (seventy-nine, from the stored per-roll records and the vault) re-graded deterministically, with each row carrying its lineage (#80's fields where they exist, the set's pins where they do not); replay-first, no new cycle (SIP-0101's records are an input, not a completion) | the re-graded 1.7.5 rows agree with the record's headline table; the preflight step (§7) states which of the seventy-nine are re-gradeable and why the rest are not |
-| d | **the comparison harness** — the verification-set driver gains an *arm* axis (squad profile × request profile × model) and the pre-registration a comparison section; the **single-model arm** is what rev 2 defined; **one pre-registered squad-versus-single-model window** on `group_run`, N declared before roll 1, both arms on the same frozen deploy, graded by (a) with attribution from (b) | the window closes with its result stated in the record whichever way it goes — a negative never blocks the cut; an unrun window blocks it **only while (d) is in 1.8.0's scope at the loop set's pre-registration** (§3.9, §4.2) |
+| d | **the comparison harness** — the verification-set driver gains an *arm* axis (squad profile × request profile × model) and the pre-registration a comparison section; the **single-model arm** is what rev 2 defined; **one squad-versus-single-model comparison** on `group_run`, **designed in the loop set's pre-registration before any roll of either arm is observed** — the squad arm's rolls from the loop set, inclusion rules, N per arm, dimensions, cost normalization (§4.2) — with the single-model arm run after the loop set closes on the same frozen deploy, both graded by (a) with attribution from (b) | the window closes with its result stated in the record whichever way it goes — a negative never blocks the cut; an unrun window blocks it **only while (d) is in 1.8.0's scope at the loop set's pre-registration** (§3.9, §4.2) |
 
 **Dependency distinction.** (a) and (b) are the judgement contract 2.0 consumes — Campaign's
 prerequisite. (c) and (d) test and accumulate evidence *about* that contract; Campaign does not
@@ -331,7 +347,7 @@ move to 2.0 with the Campaign that would run them (§8 decision 4).
 
 **Non-droppable.** (a) and (b) — a 1.8 without an assessment over honest evidence has a false
 thesis. (c) and (d) may move to 1.8.1, together or independently, by a plan revision in the open
-made **before the loop set's pre-registration is committed** (§5, §7 step 9); after that commit
+made **before the loop set's pre-registration is committed** (§5, §7 step 8); after that commit
 the cut criteria are fixed and do not move.
 
 ### 3.5 The rails — two, not three
@@ -378,7 +394,7 @@ Three items, deliberately: the headlines take the capacity the 1.7 lines gave to
 | #598 | 1.7.1, 1.7.4 §6a, 1.7.5 (reversed to the 1.8 lane), 1.8.0 | **4** — lands as a rendering (§3.2) |
 | #1213, #1176, #1122 | 1.7.3 §6, 1.7.4 §6, 1.7.5 §6, 1.8.0 | **4** each — #1213 closes with §3.3 step 4; #1176 is an experiment (§3.7); **#1122 not scheduled** (§6) |
 | #80, #949, #950, #194, #1039, #1031 | held "in the 1.8 lane" by 1.7.0 §3.1, 1.7.3, 1.7.4, 1.7.5; 1.8.0 | **5** each — #80 and #1039 land; #949, #950, #194, #1031 disposed of by name (§6) |
-| #414, #557, #316 | "at design review" in every 1.7 plan; 1.8.0 | **5** each — #414 answered inside the SCR review; #557 stays; #316 moves with Campaign |
+| #414, #557, #316 | "at design review" in every 1.7 plan; 1.8.0 | **5** each — #414's shape ruled at the SCR review, its adoption decided with the SIP's §22 implementation (§6); #557 stays; #316 moves with Campaign |
 | #1443, #1444, #1448, #1449 | 1.7.5, 1.8.0 | **2** each |
 | #1469, #1499, #1501, #1506, #1507 | 1.8.0 | **1** each |
 
@@ -393,12 +409,13 @@ the cut follows its own evidence:
 | gate | criterion |
 |---|---|
 | **implementation** | both SIPs accepted before their first feature PR; #1444 merged before §3.3 step 1; every §3.2 row merged and read on the pair; §3.3's core merged; §3.4 (a) and (b) merged, (c) and (d) merged or dropped by a plan revision naming the destination; §3.5's two rails merged; §3.6 merged or dropped |
-| **experimental** | **L1 holds**; **§39.8's N scoped repair transactions observed across both stacks and every producer lane with zero** outside-grant changes, post-verification drops, identity mismatches, preservation violations, or restorations on a successful scoped transaction — N fixed in the pre-registration, its diagnostic share stated (§4); **the #598 prediction holds**; **every registered diagnostic reaches its seam on the pinned deploy**, F1 included; **the comparison window closed with its result stated, if (d) is in 1.8.0's scope at the loop set's pre-registration** — a negative result never blocks the cut; an unrun window blocks it while (d) is in scope, and is not a criterion once (d) has been re-placed to 1.8.1 by a plan revision in the open before that commit (§3.4, §5); a falsified prediction or an unreached seam stops the set and the plan is revised in the open, not amended after |
+| **experimental** | **L1 holds**; **SIP-0107 §39.8's N successful scoped transactions across the declared coverage** — qa and dev on both stacks, each builder cell as declared — **and all-attempt integrity on every attempted transaction** (zero outside-grant changes, post-verification drops, verified/persisted identity mismatches, preservation violations, partial acceptances, over-ceiling regrants, unauthorized whole-file fallbacks, and restorations on a successful scoped transaction), N fixed in the loop set's pre-registration before the first diagnostic launch with its per-cell diagnostic share stated (§4). **This is a release gate adopting the SIP's N, not an extra SIP criterion:** in the SIP an unmet N holds back the default flip; here it also blocks the cut; **the #598 prediction holds**; **every registered diagnostic reaches its seam on the pinned deploy**, F1 included; **the comparison window closed with its result stated, if (d) is in 1.8.0's scope at the loop set's pre-registration** — a negative result never blocks the cut; an unrun window blocks it while (d) is in scope, and is not a criterion once (d) has been re-placed to 1.8.1 by a plan revision in the open before that commit (§3.4, §5); a falsified prediction or an unreached seam stops the set and the plan is revised in the open, not amended after |
 | **evidence** | every counted record carries a `CycleAssessment` whose attribution is a registry id and whose every dimension cites evidence that resolves; every field in the three-state vocabulary; the record reconstructs every counted/void/reset boundary from per-round evidence; deploy-to-tag drift named item by item, expected zero under `src/` and `adapters/`; the package captured with its screenshots — the showcase this release is **a scoped repair**, a delivered app plus the flow-run timeline where the correction round is legible, chosen and explained per rule 3 |
 
 **The SIP sweep at the cut, stated now so the sweep does not read silence as shipped:** Scoped
-Code Revision → `implemented` if §38 steps 1–7 land and §39 holds; otherwise `accepted` with the
-open steps named (SIP-0102 precedent). The scorecard → `implemented` if rev 2 narrowed its
+Code Revision (SIP-0107) → `implemented` if §38 steps 1–7 land and §39 holds; otherwise
+`accepted` with the open steps named (SIP-0102 precedent) — which covers a re-placed step 6 or
+7, never an unmet N: that fails the experimental gate, and the cut does not happen on it. The scorecard → `implemented` if rev 2 narrowed its
 normative text to the slice and (a)–(d) land; if (c) or (d) moved to 1.8.1, `accepted` with
 exactly that named — and 1.8.1's plan says it carries a measurement window (the 1.6.3 precedent)
 rather than reading as a fix line. SIP-0105 amended by #598, status unchanged. Nothing else moves; §6 names what stays.
@@ -419,7 +436,7 @@ amendment.
 
 ## 4. The verification set — the loop's set, then the comparison window
 
-Two windows, kept separable so a red in one never reads as the other's.
+Two windows, registered together and run apart, so a red in one never reads as the other's.
 
 ### 4.1 The loop's set — 6 + 3 on one frozen deploy, the fifth consecutive at that size
 
@@ -431,15 +448,18 @@ other reading is measured through, and because the headline changes what a repai
 
 | claim | method | falsified by | what a clean set proves |
 |---|---|---|---|
-| **the revision invariant** (Scoped Code Revision §39.8): across every attempted repair transaction — counted rolls and diagnostics together — zero outside-grant changes, zero post-verification drops, zero candidate/persisted identity mismatches, zero preservation violations, zero restorations on a successful scoped transaction; **at least N scoped transactions observed**, N fixed before roll 1 | the per-repair readout: which resolver each transaction used (structural / anchored / region / whole-file), non-execution counted beside failure, per lane, per stack | one of the five defect classes on any transaction; **or fewer than N transactions, which is a budget failure the record states, not a pass** | that the contract holds where it was exercised — on this deploy, these stacks, these lanes — and nothing about repairs no roll or diagnostic produced |
+| **the revision invariant** (SIP-0107 §39.8), two readings: **all-attempt integrity** across every attempted transaction — counted rolls and diagnostics together, successful or refused — zero outside-grant changes, post-verification drops, verified/persisted identity mismatches, preservation violations (by reconstruction), partial acceptances, over-ceiling regrants and unauthorized whole-file fallbacks, and zero restorations on a successful scoped transaction; and **success-path readiness**, at least **N successful scoped transactions** across the declared cells, N fixed in the pre-registration before the first diagnostic launch | the per-repair readout: which resolver each transaction used (structural / anchored / region / whole-file with its typed reasons), successes counted apart from attempts, non-execution counted beside failure, per cell | one of the defect classes on any transaction; **or fewer than N successful transactions, which fails the experimental gate and blocks the cut (§3.9)** | that the contract holds where it was exercised — on this deploy, these stacks, these lanes — and nothing about repairs no roll or diagnostic produced |
 | **the rendered packaging** (#598): zero `container_packaging` findings on the accepted emission of every counted roll | the check's rows per roll | one finding on an accepted emission | that the rendering is what the boot audit builds and that the builder no longer authors it on this deploy |
 
-**The budget the first prediction actually needs, stated before roll 1.** 1.7.5's nine counted
+**The budget the first prediction actually needs, stated before the first diagnostic launch.** 1.7.5's nine counted
 rolls attempted five repair rounds in total, all on two rolls, both in the qa lane on one stack.
 A counted set of the same shape yields roughly that again. So N is met by construction only if
-the diagnostics supply the rest, and the pre-registration must table it: for each lane (qa,
-dev, builder) on each stack, the fault that forces a repair, the transactions it is expected
-to produce, and the sum against N. **A dev-lane fault does not exist today** — the registry
+the diagnostics supply the rest, and the pre-registration must table it: for each required
+cell — qa and dev on React and on Next.js — the fault that forces a repair and the successful
+transactions it is expected to produce; each builder cell with its forcing fault or as
+unaskable with its reason (the builder's grant is the fill slots it repackages, and #598
+changes what it authors); and the sum against N. Only successful scoped transactions count: a
+diagnostic that forces a refusal proves fail-closed behaviour and adds nothing to N. **A dev-lane fault does not exist today** — the registry
 (`fault_injection.py:252–:299`) carries three `qa.test` faults, one `qa.test_repair`, one
 `builder.assemble` and one `data.analyze_failure` — so one is registered in the prelude from a
 shape a real roll produced (1.6.3's join-probe response floor failure, `participants` as bare
@@ -471,13 +491,19 @@ set; a good result never stops it early; a stop in one arm does not stop the oth
 
 ### 4.2 The comparison window — the scorecard's first question
 
-A **separate pre-registration**, after the loop's set closes and on the same frozen deploy if
-nothing has moved (else on its own, with the drift named): the squad arm is the loop set's own
-React rolls where the pins allow, the single-model arm is what rev 2 defined, N per arm
-declared, both graded by `CycleAssessment` with attribution from the one registry. The
-question is pre-registered in the record's words — *at equal scaffolding and declared cost, does
-the squad's assessment exceed the single model's on outcome and quality, and at what efficiency
-cost?* — and the answer is stated whichever way it goes. **A negative is a result; it is 2.0's
+**Registered with the loop set, run after it.** The comparison is designed in the loop set's
+pre-registration (§7 step 8), before any roll of either arm is observed: which of the loop
+set's React rolls constitute the squad arm, the inclusion and exclusion rules, N per arm, the
+comparison dimensions, the cost normalization, and the single-model arm as the scorecard SIP's
+rev 2 defines it. The single-model arm runs after the loop set closes, on the same frozen
+deploy if nothing has moved (else with the drift named); both arms are graded by
+`CycleAssessment` with attribution from the one registry. Registering before observing keeps
+the comparison prospective; running the arms separately keeps each run's red its own. If the
+scorecard SIP's rev 2 is not accepted with the single-model arm defined by that commit, (d)
+moves to 1.8.1 at it (§3.4, §5), and 1.8.1 registers a fresh squad arm rather than reusing
+rolls already observed. The question is pre-registered in the record's words — *at equal
+scaffolding and declared cost, does the squad's assessment exceed the single model's on outcome
+and quality, and at what efficiency cost?* — and the answer is stated whichever way it goes. **A negative is a result; it is 2.0's
 problem and the thesis's, not this cut's. An unrun window blocks the cut while (d) is in 1.8.0's
 scope; once (d) has been re-placed to 1.8.1 in the open, before the loop set's pre-registration,
 the window is 1.8.1's criterion and not this cut's (§3.4, §3.9).**
@@ -494,8 +520,8 @@ rendered packaging, and #1499 as texture — three against a ceiling of six to e
 headline's prediction has the width of six; **CI-verified issues** — #1444, #1501, #1506, #80,
 #579, #1448, #1449, #1039, #1213 (closing with step 4), the lineage seam — ten, inside ten to
 fifteen; plus two design reviews, two acceptances, one SIP amendment
-(#598), three verify-then-closes, the baseline, and the comparison window's own
-pre-registration.
+(#598), three verify-then-closes, the baseline, and the comparison's design inside the
+loop set's pre-registration.
 
 **Calibration, as counts:** 1.6.0, the last even minor, carried two headlines from plan to tag
 across two weeks and then needed six patch lines; the 1.7 line cut six releases in eleven
@@ -504,8 +530,9 @@ days. This plan's headlines are each larger than 1.6's individual tracks. The li
 
 **If capacity forces a drop**, in this order, each to 1.8.1 by a plan revision in the open — and
 for §3.4 (c) and (d) **before the loop set's pre-registration is committed**, so the cut criteria
-never move after roll 1:
-§3.4 (d) the comparison window → (c) the benchmark registry → §3.3 step 7 → step 6 → §3.6 in
+never move after the first diagnostic launch:
+§3.4 (d) the comparison window → (c) the benchmark registry → §3.3 step 7 (only once N is met — an unmet N is a failed gate,
+not a capacity drop) → step 6 → §3.6 in
 reverse (#1039, #1449, #1448). **Non-droppable:** the prelude (§3.2), #1444, §3.3's core,
 §3.4 (a) and (b), the two rails (§3.5), the verify-then-closes and the two reviews. If capacity
 cannot carry these, 1.8 does not cut, and the plan says so rather than re-placing a headline.
@@ -516,11 +543,13 @@ cannot carry these, 1.8 does not cut, and the plan says so rather than re-placin
 
 Thirty open issues after the two this plan filed. **Twenty are in this release** (§3.1–§3.7):
 #1444, #1149, #1443, #176, #1506, #1501, #1499, #80, #579, #598, #1213, #1448, #1449, #1039,
-#414 (answered by the review), #1177, #1176, #1408, #1412, and #1469 — which stays blocked on the
-corpus #1468 is now producing and is read at the cut, not closed by it. Of the twenty, **sixteen
-close by the cut**: fourteen by code or by verify-then-close, #414 by the review's ruling, #1177
-on the box; three are experiments or diagnoses that close with an answer if the answer is
-terminal (#1176, #1408, #1412); #1469 stays open by design. The ten that are not in the release:
+#414 (its shape ruled by the review), #1177, #1176, #1408, #1412, and #1469 — which stays blocked on the
+corpus #1468 is now producing and is read at the cut, not closed by it. Of the twenty, **fifteen
+close by the cut**: fourteen by code or by verify-then-close, and #1177 on the box. Four close
+with an answer if the answer is terminal: #414, whose shape the design review ruled (a reserve,
+if adopted, is a reservation inside the one correction pool) and whose adoption it left to the
+Lane M PR that implements the SIP's §22; and the experiments or diagnoses #1176, #1408 and
+#1412. #1469 stays open by design. The ten that are not in the release:
 
 **#1507 — 1.9, the stabilization minor.** The executor's `execute_cycle` (396), `execute_run`
 (325) and `_reject_invalid_plan_before_workload_gate` (301): the completion boundary Campaign
@@ -576,10 +605,11 @@ SIPs that carry open parts), so the sweep at the cut does not read silence as sh
 
 1. **This plan**, on its own PR, with the ROADMAP's 1.8 row pointing here and the 1.7.5 plan
    §10 amendment. Merges on the owner's review, with §8's rulings recorded in rev 2.
-2. **The Scoped Code Revision design review** — the owner, the fixed vocabulary, the draft's §43
-   plus #414 and the stack order; its outcome on PR #1325; **acceptance** (`update_sip_status.py`
-   … `accepted`, the number assigned, the branch not before). In parallel: **the scorecard SIP
-   rev 2**, then its review and acceptance.
+2. **The Scoped Code Revision design review — held 2026-09-13**: accepted with required
+   revision; the SIP's rev 4 folds the revisions and the §43 rulings; `update_sip_status.py …
+   accepted` run on PR #1325 — **SIP-0107**; the acceptance lands when that PR merges, and the
+   branch not before. In parallel: **the scorecard SIP rev 2**, then its review and acceptance —
+   done, with the single-model arm defined, by step 8's commit if (d) is to stay in 1.8.0.
 3. **Verify-then-close** #1149, #1443; #176's recipe 2 waits for the idle box. **#1444**, the
    first extraction, harvested first.
 4. **The prelude** (§3.2), one PR each in order — #1506 and #1501 first, #598 last (its SIP-0105
@@ -591,14 +621,19 @@ SIPs that carry open parts), so the sweep at the cut does not read silence as sh
    (§3.6) riding in CI beside them. Each SIP amended in place where implementation diverges.
 7. **Deploy B; the shakeout loop** to the exit rule, budget three pairs — a red belongs to the
    headlines, because nothing else that can move runtime behaviour is on this deploy.
-8. **The seven diagnostics on the pinned deploy**, two-run budget each. A seam not reached stops
-   the line here.
-9. **Pre-register the loop's set** — pins from the last shakeout; N fixed with its diagnostic
-   share tabled; every field's producer and unaskable state as schema properties; **the scope of
-   §3.4 (c) and (d) fixed at this commit** — after it the cut criteria do not move.
+8. **Pre-register the loop's set, on the frozen deploy, before any diagnostic launches** — pins
+   from the last shakeout; **N**, counting successful scoped transactions only, with its per-cell
+   diagnostic share tabled and each builder cell declared; every field's producer and unaskable
+   state as schema properties; **the comparison's design** (§4.2); **the scope of §3.4 (c) and
+   (d) fixed at this commit** — after it the cut criteria do not move, and only diagnostic
+   readings are appended. If the deploy moves after this commit, the commit is void and re-made,
+   and no transaction from the superseded deploy counts toward N.
+9. **The seven diagnostics on the pinned deploy**, two-run budget each, their readings appended
+   to the pre-registration. A seam not reached stops the line here.
 10. **Counted set 6 + 3** — no merges to main while it is open; the boundary reading at each roll.
-11. **Pre-register and run the comparison window** (§4.2) — the same discipline; nothing merges.
-    If (d) was re-placed to 1.8.1 before step 9's commit, this step is 1.8.1's.
+11. **Run the single-model arm** of the comparison registered at step 8 (§4.2) — the same
+    discipline; nothing merges. If (d) was re-placed to 1.8.1 before step 8's commit, this step
+    is 1.8.1's.
 12. **Close both; the live reads and the idle box** — #1177, #176 recipe 2, #1176's gate,
     #1408, #1412 — after, never between.
 13. **The preliminary measurement conclusion**: §3.9's three gates read against the frozen
@@ -610,8 +645,10 @@ SIPs that carry open parts), so the sweep at the cut does not read silence as sh
     open on Campaign.
 
 The key property of this order: acceptance precedes every feature branch; the prelude and the
-headlines are on different deploys with a checkpoint pair between; the diagnostics that supply
-most of N run on the deploy the numbers come from; and the two windows never share a red.
+headlines are on different deploys with a checkpoint pair between; N and the comparison's design
+are committed before any transaction or roll that could count toward either is observed; the
+diagnostics that supply most of N run on the deploy the numbers come from; and the two windows
+never share a red.
 
 ---
 
@@ -628,14 +665,15 @@ most of N run on the deploy the numbers come from; and the two windows never sha
 3. **Scoped Code Revision and the scorecard slice are the two headlines, by lane.** **Ruled by
    the owner, 2026-09-12.** Rev 1's alternative — the row as written, the scorecard and
    Campaign — is closed by the ruling. The loop's loss mode is measured and current (§1), the
-   design is in hand at 1,143 lines with its acceptance criteria written, and Campaign's policy
+   design is accepted (SIP-0107, 2026-09-13) with its acceptance criteria written, and Campaign's policy
    has nothing principled to continue on until the grades exist.
 4. **The scorecard's 1.8 slice is headless and mechanical**: no console page (SIP-0069's, later),
    no recommendations, no agent in the assessment path, the four internal eval packs to 2.0
    with the Campaign that would run them. Rev 2 narrows the SIP's normative text to match, so
    the SIP can be `implemented` at this cut rather than staying `accepted` for a page.
-5. **The single-model arm is rev 2's to define, and the comparison window is a separate
-   pre-registration** from the loop's set, so a defect in either is attributable to one. Its
+5. **The single-model arm is rev 2's to define, and the comparison is designed in the loop set's
+   pre-registration and run after it** — prospective, because no squad-arm roll is observed
+   before its design is committed, and separable, because each run's red is its own. Its
    result never blocks the cut; its absence does **only while (d) is in 1.8.0's scope at the loop
    set's pre-registration** — (d) may be re-placed to 1.8.1 before that commit (§3.4, §5).
 6. **#598 lands as a SIP-0105 amendment plus the rendering, in the prelude, roll-verified** —
@@ -649,10 +687,14 @@ most of N run on the deploy the numbers come from; and the two windows never sha
    applies from v1.7.5 forward). Packages are immutable evidence. **Recommendation: annotate,
    do not regenerate** — a one-line note on the page naming the count and the fix, because a
    regenerated page would claim a capture the deploy can no longer supply. The owner rules.
-10. **#414 is answered inside the Scoped Code Revision review**, not left at design review a
-    sixth time: the draft's §22 and #414's priority reserve draw on one pool.
-11. **N for the revision invariant is fixed at pre-registration with its diagnostic share
-    tabled** — the 1.7.5 evidence says a counted set alone cannot reach any honest N.
+10. **#414's shape was ruled inside the Scoped Code Revision review** — one correction pool, and
+    a reserve, if adopted, is a reservation inside it. Whether to adopt the reserve is decided in
+    the Lane M PR that implements the SIP's §22, or re-placed by name; it is not left at design
+    review a sixth time.
+11. **N for the revision invariant counts successful scoped transactions only, and is fixed in
+    the loop set's pre-registration before the first diagnostic launch** with its per-cell
+    diagnostic share tabled — the 1.7.5 evidence says a counted set alone cannot reach any
+    honest N, and fixing N after the diagnostics would choose it with its evidence in hand.
 12. **When the memory recall port ships — 2.1, not this one — its NoOp
     answers empty rather than raising** (§3.5): `NoOpMemoryPort` today raises
     `NotImplementedError` on every call, a guard against accidental use, not an inert port.
@@ -701,6 +743,26 @@ Named here so they are not the next line's §6a. Each has a home above or a fix 
 
 ## 10. Revision history
 
+- **Rev 4 (2026-09-13)** — on the final notes of the Scoped Code Revision design review, which
+  **accepted the SIP with required revision** (SIP-0107, its rev 4, on PR #1325; §3.1). The plan
+  takes the revisions that are its own. **Sequencing fixed:** rev 3 ran the seven diagnostics
+  before fixing N, so transactions that count toward N were observed before N was chosen; N and
+  the comparison's design are now committed in the loop set's pre-registration before the first
+  diagnostic launch (§7 steps 8–11, §8 decision 11). **Comparison made prospective:** rev 3
+  registered the comparison after the loop set closed while drawing its squad arm from those
+  rolls; the squad arm is now registered before any of its rolls is observed (§3.4, §4.2, §8
+  decision 5). **Made singular:** one Lane M sequence, candidate identity first, steps 1–4 the
+  stack-independent machinery and step 5 the structural path on React, together the core (§3.3).
+  **Made exact:** N counts successful scoped transactions only, beside an all-attempt integrity
+  reading; coverage is qa and dev on both stacks with builder cells declared; an unmet N blocks
+  the cut as a release gate adopting the SIP's N, while a met N lets step 7 move for capacity
+  (§3.3, §3.9, §4.1, §5). **Stale references fixed:** the header and the headline table called
+  the plan and the draft rev 2, and §3.1 still expected revisions "folded into rev 3". **Found
+  while applying:** the review ruled #414's shape but not its adoption, so #414 moves from the
+  sixteen that close by the cut to the four that close with a terminal answer — fifteen close
+  (§3.8, §6, §8 decision 10); and §5 let step 6 drop while §3.9 required both stacks, which holds
+  because the anchored and region modes of steps 2–4 reach Next.js without it (§3.3). No change
+  to the headlines, the rulings of rev 2, the rails, or the set's size.
 - **Rev 3 (2026-09-12, later the same evening)** — on a written tightening review of rev 2, six
   of its ten points taken. **One contradiction fixed:** §3.4 and §5 made the comparison window
   droppable to 1.8.1 while §3.9 and §4.2 said an unrun window blocks the cut; now an unrun window
