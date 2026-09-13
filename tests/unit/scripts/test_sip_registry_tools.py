@@ -148,6 +148,67 @@ def test_audit_reports_prose_in_a_file_date_field(tmp_path, monkeypatch):
     assert findings[0]["file"] == "sips/implemented/SIP-0007-Thing.md"
 
 
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        # SIP-0020 after #1144: the first line of a two-line created_at replaced, the
+        # continuation left behind.
+        (
+            "---\ntitle: T\ncreated_at: '2025-12-07T19:51:00Z'\n  deployment (deploy existing)\n"
+            "updated_at: '2025-12-07T19:51:00Z'\n---\n# T\n",
+            "while parsing a block mapping",
+        ),
+        # A block that parses to something other than a mapping has no fields to check.
+        ("---\n- a\n- b\n---\n# T\n", "frontmatter is a list, not a mapping"),
+        # A hand-authored draft with no frontmatter is legitimate (#770), not a parse error.
+        ("# SIP: Draft\n\n**Status:** Proposed\n", None),
+        ("---\ntitle: T\nstatus: proposed\n---\n# T\n", None),
+    ],
+)
+def test_frontmatter_parse_error_tells_a_broken_block_from_an_absent_one(tmp_path, text, expected):
+    path = tmp_path / "SIP-Thing.md"
+    path.write_text(text, encoding="utf-8")
+
+    error = audit.frontmatter_parse_error(path)
+
+    if expected is None:
+        assert error is None
+    else:
+        assert error is not None and expected in error
+
+
+def test_audit_reports_frontmatter_it_cannot_parse(tmp_path, monkeypatch):
+    """Before this check the audit read SIP-0020's broken block as "no metadata" and skipped
+    every consistency check on the file, so the defect sat in a green regression gate from
+    2026-09-02 to 2026-09-13. The indexed draft with no frontmatter beside it is not a finding."""
+    root = _sip_tree(tmp_path, monkeypatch)
+    (root / "sips" / "deprecated" / "SIP-0020-Thing.md").write_text(
+        "---\ntitle: Thing\nstatus: deprecated\nsip_number: 20\nsip_uid: 'u20'\n"
+        "created_at: '2025-12-07T19:51:00Z'\n  deployment (deploy existing)\n"
+        "updated_at: '2025-12-07T19:51:00Z'\n---\n# SIP-020: Thing\n",
+        encoding="utf-8",
+    )
+    (root / "sips" / "proposed" / "SIP-Draft.md").write_text(
+        "# SIP: Draft\n\n**Status:** Proposed\n", encoding="utf-8"
+    )
+    (root / "sips" / "registry.yaml").write_text(
+        "last_assigned: 20\nsips:\n"
+        "- sip_number: 20\n  sip_uid: 'u20'\n  title: Thing\n  status: deprecated\n"
+        "  path: sips/deprecated/SIP-0020-Thing.md\n"
+        "  created_at: '2025-12-07T19:51:00Z'\n  updated_at: '2025-12-07T19:51:00Z'\n"
+        "- sip_number: null\n  sip_uid: 'ud'\n  title: Draft\n  status: proposed\n"
+        "  path: sips/proposed/SIP-Draft.md\n  created_at: null\n  updated_at: null\n",
+        encoding="utf-8",
+    )
+
+    findings = audit.audit_registry()["issues"]["data_quality"]
+
+    assert [(f["type"], f["file"]) for f in findings] == [
+        ("unparseable_frontmatter", "sips/deprecated/SIP-0020-Thing.md")
+    ]
+    assert "while parsing a block mapping" in findings[0]["message"]
+
+
 def test_acceptance_updates_an_indexed_proposals_row_instead_of_appending():
     """With proposals indexed, an unconditional append made every acceptance a duplicate uid."""
     registry = {
