@@ -1,0 +1,2746 @@
+{
+ "edges": {
+  "crlf": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "6ccaa6415b5ee449e3c5c716f57b4608ebe3b780f5aa6b077bc5d8eee5d961f9",
+     "version": "1"
+    }
+   },
+   "adapter_version": {
+    "ok": "1"
+   },
+   "extract_content_sha": "6ccaa6415b5ee449e3c5c716f57b4608ebe3b780f5aa6b077bc5d8eee5d961f9",
+   "parse_fragment": {
+    "ok": {
+     "fragment_id": "crlf",
+     "layer": "identity",
+     "roles": [
+      "*"
+     ],
+     "sha256_hash": "6ccaa6415b5ee449e3c5c716f57b4608ebe3b780f5aa6b077bc5d8eee5d961f9",
+     "version": "0.9.21"
+    }
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "c7f37cfe2bd17c6331179ea9f3fbe4ad368794f69d1a28c7456cf4301f3bf169",
+     "optional": [],
+     "required": []
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "a"
+    ]
+   }
+  },
+  "empty": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+     "version": "1"
+    }
+   },
+   "adapter_version": {
+    "ok": "1"
+   },
+   "extract_content_sha": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "parse_fragment": {
+    "ok": {
+     "fragment_id": "empty",
+     "layer": "identity",
+     "roles": [
+      "*"
+     ],
+     "sha256_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+     "version": "0.9.21"
+    }
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+     "optional": [],
+     "required": []
+    }
+   },
+   "strict": {
+    "error": "missing YAML frontmatter (expected --- delimiters)",
+    "keys": null
+   }
+  },
+  "empty_header": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "6ccaa6415b5ee449e3c5c716f57b4608ebe3b780f5aa6b077bc5d8eee5d961f9",
+     "version": "1"
+    }
+   },
+   "adapter_version": {
+    "ok": "1"
+   },
+   "extract_content_sha": "6ccaa6415b5ee449e3c5c716f57b4608ebe3b780f5aa6b077bc5d8eee5d961f9",
+   "parse_fragment": {
+    "raises": "AttributeError"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "421dc617d921c24f41441973d8476605718a14a5c2228b8344cc1d6d816e8d39",
+     "optional": [],
+     "required": []
+    }
+   },
+   "strict": {
+    "error": "YAML frontmatter is not a mapping",
+    "keys": null
+   }
+  },
+  "invalid_yaml": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "6ccaa6415b5ee449e3c5c716f57b4608ebe3b780f5aa6b077bc5d8eee5d961f9",
+     "version": "1"
+    }
+   },
+   "adapter_version": {
+    "ok": "1"
+   },
+   "extract_content_sha": "6ccaa6415b5ee449e3c5c716f57b4608ebe3b780f5aa6b077bc5d8eee5d961f9",
+   "parse_fragment": {
+    "ok": {
+     "fragment_id": "invalid_yaml",
+     "layer": "identity",
+     "roles": [
+      "*"
+     ],
+     "sha256_hash": "6ccaa6415b5ee449e3c5c716f57b4608ebe3b780f5aa6b077bc5d8eee5d961f9",
+     "version": "0.9.21"
+    }
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "421dc617d921c24f41441973d8476605718a14a5c2228b8344cc1d6d816e8d39",
+     "optional": [],
+     "required": []
+    }
+   },
+   "strict": {
+    "error": "invalid YAML frontmatter: <the YAML error>",
+    "keys": null
+   }
+  },
+  "leading_blank_line": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "d9d17abdd7364abb982bffea2ddb4e17f34cc41b96982ca0d41e1537a89c1427",
+     "version": "1"
+    }
+   },
+   "adapter_version": {
+    "ok": "1"
+   },
+   "extract_content_sha": "d9d17abdd7364abb982bffea2ddb4e17f34cc41b96982ca0d41e1537a89c1427",
+   "parse_fragment": {
+    "ok": {
+     "fragment_id": "leading_blank_line",
+     "layer": "identity",
+     "roles": [
+      "*"
+     ],
+     "sha256_hash": "d9d17abdd7364abb982bffea2ddb4e17f34cc41b96982ca0d41e1537a89c1427",
+     "version": "0.9.21"
+    }
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "a6ae43eb46f65226d5e42aec12b07ca92332c9ef98d59f5a46323f7906a2e5a4",
+     "optional": [],
+     "required": []
+    }
+   },
+   "strict": {
+    "error": "missing YAML frontmatter (expected --- delimiters)",
+    "keys": null
+   }
+  },
+  "list_header": {
+   "adapter_resolve": {
+    "raises": "AttributeError"
+   },
+   "adapter_version": {
+    "raises": "AttributeError"
+   },
+   "extract_content_sha": "6ccaa6415b5ee449e3c5c716f57b4608ebe3b780f5aa6b077bc5d8eee5d961f9",
+   "parse_fragment": {
+    "raises": "AttributeError"
+   },
+   "renderer_contract": {
+    "raises": "AttributeError"
+   },
+   "strict": {
+    "error": "YAML frontmatter is not a mapping",
+    "keys": null
+   }
+  },
+  "no_block": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "1b1835cc4c0004ea593c0edc27fa57339df36bb0b07d98a15f8a1ec0f7223a3f",
+     "version": "1"
+    }
+   },
+   "adapter_version": {
+    "ok": "1"
+   },
+   "extract_content_sha": "1b1835cc4c0004ea593c0edc27fa57339df36bb0b07d98a15f8a1ec0f7223a3f",
+   "parse_fragment": {
+    "ok": {
+     "fragment_id": "no_block",
+     "layer": "identity",
+     "roles": [
+      "*"
+     ],
+     "sha256_hash": "1b1835cc4c0004ea593c0edc27fa57339df36bb0b07d98a15f8a1ec0f7223a3f",
+     "version": "0.9.21"
+    }
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "3ecf1a531c5d6f23c7e4c3df0eb27a65916507326e92360bd6057b859d518690",
+     "optional": [],
+     "required": []
+    }
+   },
+   "strict": {
+    "error": "missing YAML frontmatter (expected --- delimiters)",
+    "keys": null
+   }
+  },
+  "no_newline_after_close": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "884ce889efe72ac1fdc4ee990eb1a2ff2609ebbc196c9b8c933a69e10558e1ab",
+     "version": "1"
+    }
+   },
+   "adapter_version": {
+    "ok": "1"
+   },
+   "extract_content_sha": "884ce889efe72ac1fdc4ee990eb1a2ff2609ebbc196c9b8c933a69e10558e1ab",
+   "parse_fragment": {
+    "ok": {
+     "fragment_id": "no_newline_after_close",
+     "layer": "identity",
+     "roles": [
+      "*"
+     ],
+     "sha256_hash": "884ce889efe72ac1fdc4ee990eb1a2ff2609ebbc196c9b8c933a69e10558e1ab",
+     "version": "0.9.21"
+    }
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "884ce889efe72ac1fdc4ee990eb1a2ff2609ebbc196c9b8c933a69e10558e1ab",
+     "optional": [],
+     "required": []
+    }
+   },
+   "strict": {
+    "error": "missing YAML frontmatter (expected --- delimiters)",
+    "keys": null
+   }
+  },
+  "scalar_header": {
+   "adapter_resolve": {
+    "raises": "AttributeError"
+   },
+   "adapter_version": {
+    "raises": "AttributeError"
+   },
+   "extract_content_sha": "6ccaa6415b5ee449e3c5c716f57b4608ebe3b780f5aa6b077bc5d8eee5d961f9",
+   "parse_fragment": {
+    "raises": "AttributeError"
+   },
+   "renderer_contract": {
+    "raises": "AttributeError"
+   },
+   "strict": {
+    "error": "YAML frontmatter is not a mapping",
+    "keys": null
+   }
+  },
+  "second_block_in_body": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "3b585adb84fa1a6c03ee7f16035b53d761f4fbbab9b1f21d2b10e659ee8140fc",
+     "version": "1"
+    }
+   },
+   "adapter_version": {
+    "ok": "1"
+   },
+   "extract_content_sha": "3b585adb84fa1a6c03ee7f16035b53d761f4fbbab9b1f21d2b10e659ee8140fc",
+   "parse_fragment": {
+    "ok": {
+     "fragment_id": "second_block_in_body",
+     "layer": "identity",
+     "roles": [
+      "*"
+     ],
+     "sha256_hash": "3b585adb84fa1a6c03ee7f16035b53d761f4fbbab9b1f21d2b10e659ee8140fc",
+     "version": "0.9.21"
+    }
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "0e0cc6037f8d4dc70f0b641cf34491f763d2d77dee3cd9cee7ec01965939aaa8",
+     "optional": [],
+     "required": []
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "a"
+    ]
+   }
+  },
+  "text_before_block": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "df16e72f154d880f4a9a73532bfaa43645c3d4f78dbbc086c788d24de85fbd43",
+     "version": "1"
+    }
+   },
+   "adapter_version": {
+    "ok": "1"
+   },
+   "extract_content_sha": "df16e72f154d880f4a9a73532bfaa43645c3d4f78dbbc086c788d24de85fbd43",
+   "parse_fragment": {
+    "ok": {
+     "fragment_id": "text_before_block",
+     "layer": "identity",
+     "roles": [
+      "*"
+     ],
+     "sha256_hash": "df16e72f154d880f4a9a73532bfaa43645c3d4f78dbbc086c788d24de85fbd43",
+     "version": "0.9.21"
+    }
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "df267e21d73889f01ad83b7f48418891b037e92482f834938b0951c4261022e2",
+     "optional": [],
+     "required": []
+    }
+   },
+   "strict": {
+    "error": "missing YAML frontmatter (expected --- delimiters)",
+    "keys": null
+   }
+  },
+  "trailing_space_fences": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "6ccaa6415b5ee449e3c5c716f57b4608ebe3b780f5aa6b077bc5d8eee5d961f9",
+     "version": "1"
+    }
+   },
+   "adapter_version": {
+    "ok": "1"
+   },
+   "extract_content_sha": "6ccaa6415b5ee449e3c5c716f57b4608ebe3b780f5aa6b077bc5d8eee5d961f9",
+   "parse_fragment": {
+    "ok": {
+     "fragment_id": "trailing_space_fences",
+     "layer": "identity",
+     "roles": [
+      "*"
+     ],
+     "sha256_hash": "6ccaa6415b5ee449e3c5c716f57b4608ebe3b780f5aa6b077bc5d8eee5d961f9",
+     "version": "0.9.21"
+    }
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "421dc617d921c24f41441973d8476605718a14a5c2228b8344cc1d6d816e8d39",
+     "optional": [],
+     "required": []
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "a"
+    ]
+   }
+  },
+  "valid": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "f56532a3259fee64e2016737c5885df5e2b513c8ad00ad828557ceed0520837d",
+     "version": "2"
+    }
+   },
+   "adapter_version": {
+    "ok": "2"
+   },
+   "extract_content_sha": "f56532a3259fee64e2016737c5885df5e2b513c8ad00ad828557ceed0520837d",
+   "parse_fragment": {
+    "ok": {
+     "fragment_id": "valid",
+     "layer": "identity",
+     "roles": [
+      "*"
+     ],
+     "sha256_hash": "f56532a3259fee64e2016737c5885df5e2b513c8ad00ad828557ceed0520837d",
+     "version": "2"
+    }
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "fecb54a6dc747bab2c5872849722c84c81c0cf17aa6acbd194bcdf2342532fb9",
+     "optional": [],
+     "required": [
+      "a"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "required_variables",
+     "version"
+    ]
+   }
+  }
+ },
+ "fragments": {
+  "roles/comms/identity.md": {
+   "extract_content_sha": "297f1a1be3bb46fa2a63335ef241a0588864f62872348447de4234302f8beaf1",
+   "parse_fragment": {
+    "ok": {
+     "fragment_id": "identity",
+     "layer": "identity",
+     "roles": [
+      "comms"
+     ],
+     "sha256_hash": "297f1a1be3bb46fa2a63335ef241a0588864f62872348447de4234302f8beaf1",
+     "version": "1.0.0"
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "fragment_id",
+     "layer",
+     "roles",
+     "version"
+    ]
+   }
+  },
+  "roles/data/identity.md": {
+   "extract_content_sha": "944e8d7f2c7a21c216ec8375045d17e0932b47cfbfba6a53d0f0bd1e53e0070b",
+   "parse_fragment": {
+    "ok": {
+     "fragment_id": "identity",
+     "layer": "identity",
+     "roles": [
+      "data"
+     ],
+     "sha256_hash": "944e8d7f2c7a21c216ec8375045d17e0932b47cfbfba6a53d0f0bd1e53e0070b",
+     "version": "0.8.5"
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "fragment_id",
+     "layer",
+     "roles",
+     "version"
+    ]
+   }
+  },
+  "roles/dev/identity.md": {
+   "extract_content_sha": "82082e8890e558c5d01acff4c17a6edff347c1825b47a63342ee11bdcf37c491",
+   "parse_fragment": {
+    "ok": {
+     "fragment_id": "identity",
+     "layer": "identity",
+     "roles": [
+      "dev"
+     ],
+     "sha256_hash": "82082e8890e558c5d01acff4c17a6edff347c1825b47a63342ee11bdcf37c491",
+     "version": "0.8.5"
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "fragment_id",
+     "layer",
+     "roles",
+     "version"
+    ]
+   }
+  },
+  "roles/lead/identity.md": {
+   "extract_content_sha": "78f697582553d699d8834e4d4317f3bfc7f6167690a08f0e52b7fee5165bc13c",
+   "parse_fragment": {
+    "ok": {
+     "fragment_id": "identity",
+     "layer": "identity",
+     "roles": [
+      "lead"
+     ],
+     "sha256_hash": "78f697582553d699d8834e4d4317f3bfc7f6167690a08f0e52b7fee5165bc13c",
+     "version": "0.8.5"
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "fragment_id",
+     "layer",
+     "roles",
+     "version"
+    ]
+   }
+  },
+  "roles/qa/identity.md": {
+   "extract_content_sha": "00e5e4102d6ecd694ecc9fab21bca402ac24bc8df0bdec92ff1c2cf42a8b8be9",
+   "parse_fragment": {
+    "ok": {
+     "fragment_id": "identity",
+     "layer": "identity",
+     "roles": [
+      "qa"
+     ],
+     "sha256_hash": "00e5e4102d6ecd694ecc9fab21bca402ac24bc8df0bdec92ff1c2cf42a8b8be9",
+     "version": "0.8.5"
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "fragment_id",
+     "layer",
+     "roles",
+     "version"
+    ]
+   }
+  },
+  "roles/strat/identity.md": {
+   "extract_content_sha": "18d9e4cd5fa35355758704d54a70c32471bb942d1fdfd9df600758ffb1574cdc",
+   "parse_fragment": {
+    "ok": {
+     "fragment_id": "identity",
+     "layer": "identity",
+     "roles": [
+      "strat"
+     ],
+     "sha256_hash": "18d9e4cd5fa35355758704d54a70c32471bb942d1fdfd9df600758ffb1574cdc",
+     "version": "0.8.5"
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "fragment_id",
+     "layer",
+     "roles",
+     "version"
+    ]
+   }
+  },
+  "shared/constraints/constraints.global.md": {
+   "extract_content_sha": "c0b24622cc533ee27e767f618513354bcad62192f24f0968d14d64a8ac23dba0",
+   "parse_fragment": {
+    "ok": {
+     "fragment_id": "constraints.global",
+     "layer": "constraints",
+     "roles": [
+      "*"
+     ],
+     "sha256_hash": "c0b24622cc533ee27e767f618513354bcad62192f24f0968d14d64a8ac23dba0",
+     "version": "0.8.5"
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "fragment_id",
+     "layer",
+     "roles",
+     "version"
+    ]
+   }
+  },
+  "shared/identity/identity.md": {
+   "extract_content_sha": "e3b676277d17256943809316aa99c8db7686f2036aec0ae6b7073d16f3b2448b",
+   "parse_fragment": {
+    "ok": {
+     "fragment_id": "identity",
+     "layer": "identity",
+     "roles": [
+      "*"
+     ],
+     "sha256_hash": "e3b676277d17256943809316aa99c8db7686f2036aec0ae6b7073d16f3b2448b",
+     "version": "0.8.5"
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "fragment_id",
+     "layer",
+     "roles",
+     "version"
+    ]
+   }
+  },
+  "shared/lifecycle/lifecycle.agent_start.md": {
+   "extract_content_sha": "f9e4844dd25e11609e3fcef7c03ffb4b07647026b45893af5a38c653626f6c90",
+   "parse_fragment": {
+    "ok": {
+     "fragment_id": "lifecycle.agent_start",
+     "layer": "lifecycle",
+     "roles": [
+      "*"
+     ],
+     "sha256_hash": "f9e4844dd25e11609e3fcef7c03ffb4b07647026b45893af5a38c653626f6c90",
+     "version": "0.8.5"
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "fragment_id",
+     "layer",
+     "roles",
+     "version"
+    ]
+   }
+  },
+  "shared/lifecycle/lifecycle.task_complete.md": {
+   "extract_content_sha": "662c6121db4d6651abfa4c31c030ee2e66434e7171a54b54be8d6efc52fcb59c",
+   "parse_fragment": {
+    "ok": {
+     "fragment_id": "lifecycle.task_complete",
+     "layer": "lifecycle",
+     "roles": [
+      "*"
+     ],
+     "sha256_hash": "662c6121db4d6651abfa4c31c030ee2e66434e7171a54b54be8d6efc52fcb59c",
+     "version": "0.8.5"
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "fragment_id",
+     "layer",
+     "roles",
+     "version"
+    ]
+   }
+  },
+  "shared/task_type/task_type.data.analyze_failure.md": {
+   "extract_content_sha": "e1f6e8f83c98935f547def59a6ab4e2f0d09f2bbf50afe9989fa0c5d71cec241",
+   "parse_fragment": {
+    "ok": {
+     "fragment_id": "task_type.data.analyze_failure",
+     "layer": "task_type",
+     "roles": [
+      "data"
+     ],
+     "sha256_hash": "e1f6e8f83c98935f547def59a6ab4e2f0d09f2bbf50afe9989fa0c5d71cec241",
+     "version": "1.1.0"
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "fragment_id",
+     "layer",
+     "roles",
+     "version"
+    ]
+   }
+  },
+  "shared/task_type/task_type.data.classify_unresolved.md": {
+   "extract_content_sha": "b12c4999a342420ea61188dc11e9a5a0bd9a9686d90790b2339c82dc0b855571",
+   "parse_fragment": {
+    "ok": {
+     "fragment_id": "task_type.data.classify_unresolved",
+     "layer": "task_type",
+     "roles": [
+      "data"
+     ],
+     "sha256_hash": "b12c4999a342420ea61188dc11e9a5a0bd9a9686d90790b2339c82dc0b855571",
+     "version": "0.9.18"
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "fragment_id",
+     "layer",
+     "roles",
+     "version"
+    ]
+   }
+  },
+  "shared/task_type/task_type.data.gather_evidence.md": {
+   "extract_content_sha": "7e6664b842c2cd68dbe75a36ea55ef83f39ed71874cb78111d4dd74ba77ceae1",
+   "parse_fragment": {
+    "ok": {
+     "fragment_id": "task_type.data.gather_evidence",
+     "layer": "task_type",
+     "roles": [
+      "data"
+     ],
+     "sha256_hash": "7e6664b842c2cd68dbe75a36ea55ef83f39ed71874cb78111d4dd74ba77ceae1",
+     "version": "0.9.18"
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "fragment_id",
+     "layer",
+     "roles",
+     "version"
+    ]
+   }
+  },
+  "shared/task_type/task_type.data.research_context.md": {
+   "extract_content_sha": "93946735beb140bdfaa3a8f9b6a4f8d4c2681c49dcbbc6b418ab07222a4af2f4",
+   "parse_fragment": {
+    "ok": {
+     "fragment_id": "task_type.data.research_context",
+     "layer": "task_type",
+     "roles": [
+      "data"
+     ],
+     "sha256_hash": "93946735beb140bdfaa3a8f9b6a4f8d4c2681c49dcbbc6b418ab07222a4af2f4",
+     "version": "0.9.16"
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "fragment_id",
+     "layer",
+     "roles",
+     "version"
+    ]
+   }
+  },
+  "shared/task_type/task_type.development.author_manifest.md": {
+   "extract_content_sha": "e6a38b3698a2ddee73e712af8489e50167e83395a251765a1991960d42bde8d1",
+   "parse_fragment": {
+    "ok": {
+     "fragment_id": "task_type.development.author_manifest",
+     "layer": "task_type",
+     "roles": [
+      "dev"
+     ],
+     "sha256_hash": "e6a38b3698a2ddee73e712af8489e50167e83395a251765a1991960d42bde8d1",
+     "version": "1.6.0"
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "fragment_id",
+     "layer",
+     "roles",
+     "version"
+    ]
+   }
+  },
+  "shared/task_type/task_type.development.design_plan.md": {
+   "extract_content_sha": "260bc70b3cc5c73beb7e6618afb5dae8206a8de9b8fc55527525c9ca84fb0e7f",
+   "parse_fragment": {
+    "ok": {
+     "fragment_id": "task_type.development.design_plan",
+     "layer": "task_type",
+     "roles": [
+      "dev"
+     ],
+     "sha256_hash": "260bc70b3cc5c73beb7e6618afb5dae8206a8de9b8fc55527525c9ca84fb0e7f",
+     "version": "0.9.16"
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "fragment_id",
+     "layer",
+     "roles",
+     "version"
+    ]
+   }
+  },
+  "shared/task_type/task_type.development.propose_plan_tasks.md": {
+   "extract_content_sha": "d5819454bf31ef93f03101db4ed6541487776def55bdc13b9d6638de516bef5a",
+   "parse_fragment": {
+    "ok": {
+     "fragment_id": "task_type.development.propose_plan_tasks",
+     "layer": "task_type",
+     "roles": [
+      "dev"
+     ],
+     "sha256_hash": "d5819454bf31ef93f03101db4ed6541487776def55bdc13b9d6638de516bef5a",
+     "version": "0.9.21"
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "fragment_id",
+     "layer",
+     "roles",
+     "version"
+    ]
+   }
+  },
+  "shared/task_type/task_type.governance.closeout_decision.md": {
+   "extract_content_sha": "3f4cdc05de385cb8ae22c3fcbe85eee5861a84f7bd1202c29f42d7505558e97b",
+   "parse_fragment": {
+    "ok": {
+     "fragment_id": "task_type.governance.closeout_decision",
+     "layer": "task_type",
+     "roles": [
+      "lead"
+     ],
+     "sha256_hash": "3f4cdc05de385cb8ae22c3fcbe85eee5861a84f7bd1202c29f42d7505558e97b",
+     "version": "0.9.18"
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "fragment_id",
+     "layer",
+     "roles",
+     "version"
+    ]
+   }
+  },
+  "shared/task_type/task_type.governance.correction_decision.md": {
+   "extract_content_sha": "5c265c612f8262a016392ec929ced75e7cbe576afa3c26e3d0d5de5bbe87a5e3",
+   "parse_fragment": {
+    "ok": {
+     "fragment_id": "task_type.governance.correction_decision",
+     "layer": "task_type",
+     "roles": [
+      "lead"
+     ],
+     "sha256_hash": "5c265c612f8262a016392ec929ced75e7cbe576afa3c26e3d0d5de5bbe87a5e3",
+     "version": "1.1.0"
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "fragment_id",
+     "layer",
+     "roles",
+     "version"
+    ]
+   }
+  },
+  "shared/task_type/task_type.governance.define_done.md": {
+   "extract_content_sha": "7e9a5144762828089f7ec8fdfcc6ad661fa0dcf4dd962bad3160227f826b6e08",
+   "parse_fragment": {
+    "ok": {
+     "fragment_id": "task_type.governance.define_done",
+     "layer": "task_type",
+     "roles": [
+      "lead"
+     ],
+     "sha256_hash": "7e9a5144762828089f7ec8fdfcc6ad661fa0dcf4dd962bad3160227f826b6e08",
+     "version": "1.0.0"
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "fragment_id",
+     "layer",
+     "roles",
+     "version"
+    ]
+   }
+  },
+  "shared/task_type/task_type.governance.incorporate_feedback.md": {
+   "extract_content_sha": "831e10765076ac397a765b1c0dc6f27afe377c6b1a1cd569b84a7d988d4d3219",
+   "parse_fragment": {
+    "ok": {
+     "fragment_id": "task_type.governance.incorporate_feedback",
+     "layer": "task_type",
+     "roles": [
+      "lead"
+     ],
+     "sha256_hash": "831e10765076ac397a765b1c0dc6f27afe377c6b1a1cd569b84a7d988d4d3219",
+     "version": "0.9.16"
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "fragment_id",
+     "layer",
+     "roles",
+     "version"
+    ]
+   }
+  },
+  "shared/task_type/task_type.governance.prepare_plan_authoring_brief.md": {
+   "extract_content_sha": "f3ebec88fc45159c24cb365e6f85897a54560fa43455f90a6e6ee795f8063d21",
+   "parse_fragment": {
+    "ok": {
+     "fragment_id": "task_type.governance.prepare_plan_authoring_brief",
+     "layer": "task_type",
+     "roles": [
+      "lead"
+     ],
+     "sha256_hash": "f3ebec88fc45159c24cb365e6f85897a54560fa43455f90a6e6ee795f8063d21",
+     "version": "0.9.20"
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "fragment_id",
+     "layer",
+     "roles",
+     "version"
+    ]
+   }
+  },
+  "shared/task_type/task_type.governance.publish_handoff.md": {
+   "extract_content_sha": "91af4ac066ce276fb60d7a049321c9f2743e5e32da671de40c9c7476fab0d28a",
+   "parse_fragment": {
+    "ok": {
+     "fragment_id": "task_type.governance.publish_handoff",
+     "layer": "task_type",
+     "roles": [
+      "lead"
+     ],
+     "sha256_hash": "91af4ac066ce276fb60d7a049321c9f2743e5e32da671de40c9c7476fab0d28a",
+     "version": "0.9.18"
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "fragment_id",
+     "layer",
+     "roles",
+     "version"
+    ]
+   }
+  },
+  "shared/task_type/task_type.governance.review_plan.md": {
+   "extract_content_sha": "561a7f5a11532a9dd9d4197c94cda4904d33662c0a8101b7364243458d9c8331",
+   "parse_fragment": {
+    "ok": {
+     "fragment_id": "task_type.governance.review_plan",
+     "layer": "task_type",
+     "roles": [
+      "lead"
+     ],
+     "sha256_hash": "561a7f5a11532a9dd9d4197c94cda4904d33662c0a8101b7364243458d9c8331",
+     "version": "0.9.16"
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "fragment_id",
+     "layer",
+     "roles",
+     "version"
+    ]
+   }
+  },
+  "shared/task_type/task_type.governance.review_plan_manifest.md": {
+   "extract_content_sha": "61fb51f1c2234034860ddb7cf8956630c1468fc2194e61c084de7421ae2c693d",
+   "parse_fragment": {
+    "ok": {
+     "fragment_id": "task_type.governance.review_plan_manifest",
+     "layer": "task_type",
+     "roles": [
+      "lead"
+     ],
+     "sha256_hash": "61fb51f1c2234034860ddb7cf8956630c1468fc2194e61c084de7421ae2c693d",
+     "version": "0.9.20"
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "fragment_id",
+     "layer",
+     "roles",
+     "version"
+    ]
+   }
+  },
+  "shared/task_type/task_type.qa.assess_outcomes.md": {
+   "extract_content_sha": "0c2996dafaab4a3884865d108cfef782e04a534e2582c62b5951f7e4588a9040",
+   "parse_fragment": {
+    "ok": {
+     "fragment_id": "task_type.qa.assess_outcomes",
+     "layer": "task_type",
+     "roles": [
+      "qa"
+     ],
+     "sha256_hash": "0c2996dafaab4a3884865d108cfef782e04a534e2582c62b5951f7e4588a9040",
+     "version": "0.9.18"
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "fragment_id",
+     "layer",
+     "roles",
+     "version"
+    ]
+   }
+  },
+  "shared/task_type/task_type.qa.define_test_strategy.md": {
+   "extract_content_sha": "51e353106e276a8486f9f01d1755830d7ad531cc891bc6f30525e08232286d5e",
+   "parse_fragment": {
+    "ok": {
+     "fragment_id": "task_type.qa.define_test_strategy",
+     "layer": "task_type",
+     "roles": [
+      "qa"
+     ],
+     "sha256_hash": "51e353106e276a8486f9f01d1755830d7ad531cc891bc6f30525e08232286d5e",
+     "version": "0.9.16"
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "fragment_id",
+     "layer",
+     "roles",
+     "version"
+    ]
+   }
+  },
+  "shared/task_type/task_type.qa.propose_plan_tasks.md": {
+   "extract_content_sha": "29afbccefd6c8d7d69777cb05609f35d53f45d5f37f674ffc549c22fd941484f",
+   "parse_fragment": {
+    "ok": {
+     "fragment_id": "task_type.qa.propose_plan_tasks",
+     "layer": "task_type",
+     "roles": [
+      "qa"
+     ],
+     "sha256_hash": "29afbccefd6c8d7d69777cb05609f35d53f45d5f37f674ffc549c22fd941484f",
+     "version": "0.9.21"
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "fragment_id",
+     "layer",
+     "roles",
+     "version"
+    ]
+   }
+  },
+  "shared/task_type/task_type.qa.test.md": {
+   "extract_content_sha": "2838be1da898892a8d6a3165d6d15d9a3a69fb3dd3f872059588f5c3de02b28f",
+   "parse_fragment": {
+    "ok": {
+     "fragment_id": "task_type.qa.test",
+     "layer": "task_type",
+     "roles": [
+      "qa"
+     ],
+     "sha256_hash": "2838be1da898892a8d6a3165d6d15d9a3a69fb3dd3f872059588f5c3de02b28f",
+     "version": "0.9.24"
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "fragment_id",
+     "layer",
+     "roles",
+     "version"
+    ]
+   }
+  },
+  "shared/task_type/task_type.qa.validate_refinement.md": {
+   "extract_content_sha": "e70bd45dae754aa767dae813acaf6e4c11acb11dbfd56d3e555762b09d9eea8a",
+   "parse_fragment": {
+    "ok": {
+     "fragment_id": "task_type.qa.validate_refinement",
+     "layer": "task_type",
+     "roles": [
+      "qa"
+     ],
+     "sha256_hash": "e70bd45dae754aa767dae813acaf6e4c11acb11dbfd56d3e555762b09d9eea8a",
+     "version": "0.9.16"
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "fragment_id",
+     "layer",
+     "roles",
+     "version"
+    ]
+   }
+  },
+  "shared/task_type/task_type.strategy.frame_objective.md": {
+   "extract_content_sha": "dd3af8522585bfa382665ea7b599208d0af8a4643701d2096fc145071257c0f8",
+   "parse_fragment": {
+    "ok": {
+     "fragment_id": "task_type.strategy.frame_objective",
+     "layer": "task_type",
+     "roles": [
+      "strat"
+     ],
+     "sha256_hash": "dd3af8522585bfa382665ea7b599208d0af8a4643701d2096fc145071257c0f8",
+     "version": "0.9.16"
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "fragment_id",
+     "layer",
+     "roles",
+     "version"
+    ]
+   }
+  },
+  "shared/task_type/task_type.strategy.propose_plan_guidance.md": {
+   "extract_content_sha": "b1fbebc9aad1a56370f5320dd4d3733c5b0487b73b7676044bb30498bdf966e0",
+   "parse_fragment": {
+    "ok": {
+     "fragment_id": "task_type.strategy.propose_plan_guidance",
+     "layer": "task_type",
+     "roles": [
+      "strat"
+     ],
+     "sha256_hash": "b1fbebc9aad1a56370f5320dd4d3733c5b0487b73b7676044bb30498bdf966e0",
+     "version": "0.9.21"
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "fragment_id",
+     "layer",
+     "roles",
+     "version"
+    ]
+   }
+  }
+ },
+ "templates": {
+  "request.builder_assemble.build_assemble": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "8807fc15e81fd13214e3313daa6193675d7d17fa516081b3a93b06fed7fd093f",
+     "version": "4"
+    }
+   },
+   "adapter_version": {
+    "ok": "4"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "0bd1a34392387ca152a0583e73175925b9d64b78a93b48ff6342e93e92508bbb",
+     "optional": [
+      "contract_expectations",
+      "prior_outputs",
+      "task_section",
+      "task_tags"
+     ],
+     "required": [
+      "prd",
+      "source_files"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "optional_variables",
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.chat_response": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "6fd5939bd77889d3510fa94527df208e3d2813a80001df9d57a4d684f180051f",
+     "version": "1"
+    }
+   },
+   "adapter_version": {
+    "ok": "1"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "eac98bc1c7560015129eee2c6566632585a684aa10ac7a8230dd53cc255b07f7",
+     "optional": [
+      "memory_context",
+      "status_context"
+     ],
+     "required": [
+      "user_message"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "optional_variables",
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.cycle_emission_retry_feedback": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "afecf527f1607301aa3c530401944b605ed72d9722d5bfa30ac77ffb5ea8de77",
+     "version": "1"
+    }
+   },
+   "adapter_version": {
+    "ok": "1"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "2cbc38dc214855d8da8828f553afcbc38fdfdadaaa15519d3b28a4ae7c5ee163",
+     "optional": [],
+     "required": [
+      "expected_files",
+      "reason_line"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.cycle_repair_app_traceback_appendix": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "0b8e90c17ef86ac1d7b8361df09d8e19b2bc1ae31fe61723ad6b7ff533b0d3ed",
+     "version": "1"
+    }
+   },
+   "adapter_version": {
+    "ok": "1"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "092cf9b4e45fdf465721edbcdc9438a9458dc60342f9b721cd04e5ac7c2a3666",
+     "optional": [],
+     "required": [
+      "traceback_blocks"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "optional_variables",
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.cycle_repair_contract_expectations_appendix": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "ee4acbd16c23926a3c40f6fec97ef9989f91869689659ef45b5681fab8b6d39b",
+     "version": "1"
+    }
+   },
+   "adapter_version": {
+    "ok": "1"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "e5b814f66bf5deaf5dbf9d2d87ba66cee92de3776c6121919f14c1d29778c2dd",
+     "optional": [],
+     "required": [
+      "expectations"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.cycle_repair_loop_state": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "1dbf8e0fe880f0b7aae6074319acb54e0ceccca10748060b778f84d1818d593f",
+     "version": "1"
+    }
+   },
+   "adapter_version": {
+    "ok": "1"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "661ffdca254140f4807dda4d32dbf5a53d0f543fa8e7f04b822ca3dff096c908",
+     "optional": [
+      "persistence_note"
+     ],
+     "required": [
+      "attempt",
+      "max_attempts"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "optional_variables",
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.cycle_repair_task": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "ec34c12150f0ca5377029ff7b12a062bdb3af9dc389d808fab021576a8ef9d2f",
+     "version": "6"
+    }
+   },
+   "adapter_version": {
+    "ok": "6"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "03fc1210690bc4acdfba535bea5e644894d4e24f4407e0c8d0102678d42ecf59",
+     "optional": [
+      "acceptance_criteria",
+      "app_traceback_section",
+      "client_surface_section",
+      "contract_expectations",
+      "dom_anchor_section",
+      "expected_artifacts",
+      "failing_cases_section",
+      "fill_only_section",
+      "frozen_surface_section",
+      "loop_state",
+      "prior_outputs",
+      "qa_fill_mode_section",
+      "subtask_description",
+      "subtask_focus"
+     ],
+     "required": [
+      "correction_decision",
+      "failed_task_type",
+      "failure_summary",
+      "prd",
+      "role"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "optional_variables",
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.cycle_task_base": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "65be4c3739137d435c539c5d0a1fec0779259ba5d2af468f9ad94cd8ca13c205",
+     "version": "1"
+    }
+   },
+   "adapter_version": {
+    "ok": "1"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "21fff08a1b401f15a9d6f1aa0c646bbb74f37392edaf45118c13dd2fdfaa6efc",
+     "optional": [
+      "prior_outputs"
+     ],
+     "required": [
+      "prd",
+      "role"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "optional_variables",
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.data_analyze_failure": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "43b71e8dd9099ea6eca161d59e4f5fed8c2b20f896ffa141ffd27a0dba42bd3d",
+     "version": "1"
+    }
+   },
+   "adapter_version": {
+    "ok": "1"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "2e8efc7b49f842df8e4b953e97ab873ba4f25851a9d61398dc123062d10e4b45",
+     "optional": [
+      "failure_evidence"
+     ],
+     "required": [
+      "prd"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "optional_variables",
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.design_revision_request_appendix": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "586258992c2cdfba570a0bdf926653dfe6d4502c3f08facf265367d73d7dc240",
+     "version": "1"
+    }
+   },
+   "adapter_version": {
+    "ok": "1"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "49819c16542623c61140f63ec299642f15927d4dce0db12ccc3380b1a14ce67b",
+     "optional": [],
+     "required": [
+      "reviewer_notes"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.development_author_manifest": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "b2ec46c1879c56edeb96875e3dcea60c6ff7cbfe179c7741aee3ab4d9b85121d",
+     "version": "1"
+    }
+   },
+   "adapter_version": {
+    "ok": "1"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "aa4d3dc569cef373da9f63bcbb89cd9d550debf4bf377c8061f815e5207b1b25",
+     "optional": [
+      "authoring_rules_section",
+      "prior_outputs",
+      "rejection_context_section",
+      "time_budget_section"
+     ],
+     "required": [
+      "prd",
+      "stack"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "optional_variables",
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.development_develop.code_generate": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "fa0dbdaea851b733f9251dc2be2da73f9763ea6a6da3fc41a6af06219a2457d1",
+     "version": "1"
+    }
+   },
+   "adapter_version": {
+    "ok": "1"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "23684d0747a6fe4251dc9573a4c7e81a0212eebb93c9b734e795d0e4e9ecad48",
+     "optional": [
+      "fill_only_section",
+      "impl_plan",
+      "prior_outputs",
+      "strategy"
+     ],
+     "required": [
+      "example_structure",
+      "file_structure_guidance",
+      "prd"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "optional_variables",
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.development_develop.focused_build_task": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "eec76435a54d2ca6b025e03483ff80ed1b239c8e07ebe08557856cae6dc8427c",
+     "version": "1"
+    }
+   },
+   "adapter_version": {
+    "ok": "1"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "c9cbbeffd161e754895cd82a29902b8b0be3541015dac7c38dec8fdf290e0d13",
+     "optional": [
+      "contract_expectations",
+      "description",
+      "fill_only_section",
+      "narrative_criteria",
+      "prior_artifacts"
+     ],
+     "required": [
+      "expected_files",
+      "focus",
+      "prd"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "optional_variables",
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.development_develop_error_contract_appendix": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "31a385056a44fc171084e010b430d3c844ee0f7138ae15ea084e9ecaea39df20",
+     "version": "1"
+    }
+   },
+   "adapter_version": {
+    "ok": "1"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "e930e881046605104e3d259a4958160ae5787248dc0c0700684ce9176964a72f",
+     "optional": [],
+     "required": [
+      "error_lines"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "optional_variables",
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.development_develop_fill_only_appendix": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "88ccaf14e3f5109fca58502b435ae6cbd82f9203e089e63268c6ceb6d3b9f434",
+     "version": "6"
+    }
+   },
+   "adapter_version": {
+    "ok": "6"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "83bc9bc32232480178ea984f021e1a250bc6f0bc1511194ef1f807fb20d82124",
+     "optional": [
+      "error_contract",
+      "frozen_surface",
+      "model_surface",
+      "response_surface",
+      "testid_surface"
+     ],
+     "required": [
+      "stack"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "optional_variables",
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.development_develop_fill_only_appendix_nextjs_ts": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "3bc220870f462976784e4ccad71d00a2d28c4838f52e38ad5346b9547518f0d0",
+     "version": "3"
+    }
+   },
+   "adapter_version": {
+    "ok": "3"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "5e78c341e472b3e79ccdfee89b93b603228bdcd2f136f3133a4f26b8db928d3c",
+     "optional": [
+      "error_contract",
+      "frozen_surface",
+      "model_surface",
+      "response_surface",
+      "testid_surface"
+     ],
+     "required": [
+      "stack"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "optional_variables",
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.development_develop_frozen_surface_appendix": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "b3b43add08b0850392ee5f86f088913a790e70d36cce8bde6a924823c0f6316e",
+     "version": "2"
+    }
+   },
+   "adapter_version": {
+    "ok": "2"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "eaca674595baadccd4fc772c5fb517fb81fa686b0f95a6e6dca2d5990926be55",
+     "optional": [],
+     "required": [
+      "frozen_lines"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "optional_variables",
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.development_develop_model_surface_appendix": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "1835b715527a3dd0a76e1a64594d8cb81306cc0c6df187952a5600d5600e09c1",
+     "version": "1"
+    }
+   },
+   "adapter_version": {
+    "ok": "1"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "a1b2ce8c3731ada96133cbf25f68628400bcb399fd344ce95bde4b6ddcbf7a30",
+     "optional": [],
+     "required": [
+      "surface_lines"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "optional_variables",
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.development_develop_narrative_criteria_appendix": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "3f1f528a6e2f9cbc47d49088d56e26a689f40576ececafc211c33c9c5ec1acc1",
+     "version": "1"
+    }
+   },
+   "adapter_version": {
+    "ok": "1"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "973f792660c9418e55fd876e4c48b0f07a40744a7d042bc2163f8a1ce4b1993c",
+     "optional": [],
+     "required": [
+      "criteria"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "optional_variables",
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.development_develop_prior_artifacts_appendix": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "f49813e0799662f21f18a550fc7a20b49fc8e2aaaa5cb7d63b4a9c1ca23aca3e",
+     "version": "1"
+    }
+   },
+   "adapter_version": {
+    "ok": "1"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "72c548412736de8d68ab8a035b1a63726ef09ef31a40523ee77c5eb8354ab4ec",
+     "optional": [],
+     "required": [
+      "artifacts"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "optional_variables",
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.development_develop_response_surface_appendix": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "ba5602318beefada3103e958915b4fcbc95bd59b2f9e149aa80538f3914f800e",
+     "version": "2"
+    }
+   },
+   "adapter_version": {
+    "ok": "2"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "aab975423044d5ae21a598d3568b07afc1b0fefd191d0e1f2c1984f7ac4a439e",
+     "optional": [],
+     "required": [
+      "response_lines"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "optional_variables",
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.development_develop_testid_surface_appendix": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "bc9f0b1f1a05ed6ba6de20a496e02006d7f1f01d6f32e8a9140875fc26dd5951",
+     "version": "1"
+    }
+   },
+   "adapter_version": {
+    "ok": "1"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "9228a3154a61f3b27a1a4b9cc8858e7176873ad977ff2c2952af969068fd4ae6",
+     "optional": [],
+     "required": [
+      "testid_lines"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "optional_variables",
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.development_propose_plan_tasks": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "9c1b5d3b649caf961155adef30a4fa446e689be7de7ebb3dcfc699568c5eb598",
+     "version": "4"
+    }
+   },
+   "adapter_version": {
+    "ok": "4"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "e4f1849df050ae6a2be7fd183196a95a5ded9066164cbc9a46f1cf8ce6a3db2c",
+     "optional": [
+      "authoring_rules_section",
+      "bind_criteria_section",
+      "builder_section",
+      "frozen_surface_section",
+      "prd",
+      "rejection_context_section",
+      "roles_section",
+      "typed_acceptance_vocabulary"
+     ],
+     "required": [
+      "brief_content",
+      "planning_content",
+      "proposal_id",
+      "source_brief_id"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "optional_variables",
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.governance_correction_decision": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "a18308c232d6a3e682d0ed246fc9983e61db10dd2bb3a0b3e161e5d32c1948a6",
+     "version": "4"
+    }
+   },
+   "adapter_version": {
+    "ok": "4"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "1b264e7d3d5bdeb32392a36f5c0d6aac844bf38f176322de096a231128ab0d54",
+     "optional": [
+      "failure_analysis",
+      "refuted_source_claims"
+     ],
+     "required": [
+      "prd"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "optional_variables",
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.governance_incorporate_feedback": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "0f65497d3410650cfe8a2148f68f11bc8555315287b3def486641377bc019e86",
+     "version": "1"
+    }
+   },
+   "adapter_version": {
+    "ok": "1"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "8fe0f912fc5a136a8357e06bac5677128ee17bf1987965be36d14b02b10c5dde",
+     "optional": [
+      "artifact_contents",
+      "prior_outputs",
+      "refinement_instructions",
+      "time_budget_section"
+     ],
+     "required": [
+      "prd",
+      "role"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "optional_variables",
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.governance_review_plan_manifest": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "ab96c8b08d8fa9e57b80623627adc8be87439328e0b86f89ad06ac61033d2ee5",
+     "version": "2"
+    }
+   },
+   "adapter_version": {
+    "ok": "2"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "460fea1ee8d14e9e7505f61d56c775aadbcc1c09ac867768b3c6975bf7b219e2",
+     "optional": [
+      "builder_example",
+      "builder_guideline",
+      "roles_section",
+      "summary_builder_line",
+      "task_types_section"
+     ],
+     "required": [
+      "cycle_id",
+      "planning_content",
+      "prd",
+      "prd_coverage_discipline",
+      "prd_hash",
+      "project_id",
+      "total_tasks_expr",
+      "typed_acceptance_section"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "optional_variables",
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.manifest_authoring_rules_appendix": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "3355d78e092b7e12e90910ab8adb9be9713e295a7b1d137d651ca9ecaa7203db",
+     "version": "2"
+    }
+   },
+   "adapter_version": {
+    "ok": "2"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "cd5e15458dc2f836ffed47d50a5bfb2e292e49219cf82a6dadd7efa70a1e3eac",
+     "optional": [],
+     "required": []
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.manifest_revision_feedback": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "66906884a3756e6afc2d97e877698a79b85371482144a8fdd0320177a679f47a",
+     "version": "1"
+    }
+   },
+   "adapter_version": {
+    "ok": "1"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "7f3a04e31ca5b348e99a16cbce0d7a2eb8f959c3b08a2bc919d861e2eb1bf462",
+     "optional": [],
+     "required": [
+      "findings"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.manifest_revision_request_appendix": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "91ec5137a20feaa7ea155630814c75743eef1e8f3d917476b549bdf1555e5920",
+     "version": "1"
+    }
+   },
+   "adapter_version": {
+    "ok": "1"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "c12c4483696c8113625cc5693223dc9e1e95edc9bc21bc313b86d78de4c8b563",
+     "optional": [
+      "prior_manifest"
+     ],
+     "required": [
+      "reviewer_notes"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "optional_variables",
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.plan_authoring_rules_appendix": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "fb4909abcfbb3c822639bcf54f6706b3dd7f4b3709d66bb9945a30f52c4749d3",
+     "version": "5"
+    }
+   },
+   "adapter_version": {
+    "ok": "5"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "a26cfd77171dd282eb57c015060dc33112074f60e0bcdd3e586014e3e5986de7",
+     "optional": [],
+     "required": []
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.plan_bind_criteria_appendix": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "43c3273b6b53e8b802ba64e054cdd160250d0acfc81627e3b5aba8ba55ced418",
+     "version": "2"
+    }
+   },
+   "adapter_version": {
+    "ok": "2"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "9429dbdd3bd5d17d0b00e1a714bbaefc8272327155ffc2920e07d0baa1bc7dbd",
+     "optional": [],
+     "required": [
+      "criteria_index"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "optional_variables",
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.plan_frozen_surface_appendix": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "9fb3da50e3d519e8ac3a963458a58983df76f30a580b62865348679f456b44eb",
+     "version": "2"
+    }
+   },
+   "adapter_version": {
+    "ok": "2"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "e04505b7beadbfd3586c155f2b6ec234f02815554f4ec226043f43208e95bf80",
+     "optional": [],
+     "required": [
+      "frozen_surface_index"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "optional_variables",
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.plan_reroll_rejected_plan_appendix": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "8a6707b9ebe7c993c4d11aded61a89e2c7a91944cbc54e103a51c748a60ddf47",
+     "version": "1"
+    }
+   },
+   "adapter_version": {
+    "ok": "1"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "4e10a348fb3a86b09ae95598e854acf122d43224c3efb5fdf89ed79fd7b38196",
+     "optional": [],
+     "required": [
+      "rejected_plan_yaml"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.plan_reroll_rejection_appendix": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "ead9cfd3cae100467a5e9ac8400229bf3c9f85808e5287cb5fdba91cd2df9e70",
+     "version": "1"
+    }
+   },
+   "adapter_version": {
+    "ok": "1"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "a69fd880123b67fc49a139c6789317386f955b20bf948da1cdceebe166addf75",
+     "optional": [
+      "rejected_plan_section"
+     ],
+     "required": [
+      "rejection_reasons"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "optional_variables",
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.planning_task_base": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "0868f75ac9dd2b9e63b0201e399e7fc2ba3394bfd127eb9e1a91db5981195e2c",
+     "version": "3"
+    }
+   },
+   "adapter_version": {
+    "ok": "3"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "cd75edf466ed49f17441998b1a56adb4ca883a2bf03dfa2d5b9b5bb52701456f",
+     "optional": [
+      "authoring_rules_section",
+      "prior_outputs",
+      "rejection_context_section",
+      "target_stack_section",
+      "time_budget_section"
+     ],
+     "required": [
+      "prd",
+      "role"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "optional_variables",
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.qa_propose_plan_tasks": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "b4c26af98f2b127d260dbc401f29b114c0de2720cd734485ef50e508fcb9301f",
+     "version": "3"
+    }
+   },
+   "adapter_version": {
+    "ok": "3"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "0a9e0a1e54c273a26e805980f214ce78353138dcc0119ed3a885db13181071c9",
+     "optional": [
+      "authoring_rules_section",
+      "bind_criteria_section",
+      "builder_section",
+      "frozen_surface_section",
+      "prd",
+      "rejection_context_section",
+      "roles_section",
+      "typed_acceptance_vocabulary"
+     ],
+     "required": [
+      "brief_content",
+      "planning_content",
+      "proposal_id",
+      "source_brief_id"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "optional_variables",
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.qa_test.test_validate": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "343198dc8d2d0a7ba278ae10d4c4877514bb01c99f9fdf39fa8d425a97f942b1",
+     "version": "2"
+    }
+   },
+   "adapter_version": {
+    "ok": "2"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "8ce687874b25bdbe891e9a93e866fc0a582e54df28fbbe4e10c55bb0b9821ace",
+     "optional": [
+      "prior_outputs",
+      "source_files",
+      "validation_plan"
+     ],
+     "required": [
+      "prd",
+      "test_supplement"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "optional_variables",
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.qa_test_assembly_notes_appendix": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "234204864d9413bd2ffa7744e42711a57d1611868ff3da3ccfec5a38c1f94f48",
+     "version": "1"
+    }
+   },
+   "adapter_version": {
+    "ok": "1"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "d97f9a47d4c036434a30970d167bcdbe6f4d1b01f3d14d937bdbddecc149f98f",
+     "optional": [],
+     "required": [
+      "artifact_id",
+      "notes"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "optional_variables",
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.qa_test_behavior_contract_appendix": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "2b5c737afb9bba50e277eca85364006c74f15ca4d2279d5e7acc861ccf23f30a",
+     "version": "1"
+    }
+   },
+   "adapter_version": {
+    "ok": "1"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "4932044dafe24aed0f43878231ac7343e7580a556147a3613cb5d0582709a1f8",
+     "optional": [],
+     "required": [
+      "behavior_lines"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "optional_variables",
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.qa_test_client_surface_appendix": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "1f40c9b58aa30131bde1cbe128b5d0df0c455fd427fa5a4d80d301c2d9221db0",
+     "version": "1"
+    }
+   },
+   "adapter_version": {
+    "ok": "1"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "b6a8358c647bc6e7968b81792061c406ee2c5d7039ae86f1059d5324c5d9f9dd",
+     "optional": [],
+     "required": [
+      "client_lines"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "optional_variables",
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.qa_test_dom_anchor_appendix": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "a1c4d68966fa7ab04f7c50b885bb87a6988edf652e48f167fd41922f88695fc4",
+     "version": "1"
+    }
+   },
+   "adapter_version": {
+    "ok": "1"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "03d598ba04266a43a2eb6f4926f0ebe71ffe0a9be535c8671f91aad2bb37c6ec",
+     "optional": [],
+     "required": [
+      "testid_lines"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "optional_variables",
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.qa_test_fill_mode_appendix": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "7859032b0b1c7f1a5f1b35474b066958e313a0aea63212b99e916634e9eaeeb4",
+     "version": "4"
+    }
+   },
+   "adapter_version": {
+    "ok": "4"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "01243a5f2372a32c497bd0c4590ed95326889ef5c849a36e78834e64ed2cf706",
+     "optional": [
+      "additive_files",
+      "error_envelope"
+     ],
+     "required": [
+      "shell_files",
+      "slot_lines"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "optional_variables",
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.qa_test_frozen_surface_appendix": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "1f6894d571785e822d17611c7c24f1625c484f5c78f3969db417f73afba86791",
+     "version": "1"
+    }
+   },
+   "adapter_version": {
+    "ok": "1"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "724acadd3c31a3749f2caf09339d542e31e2d9bd8c4fc9a5879fc2791632b8f6",
+     "optional": [],
+     "required": [
+      "frozen_lines"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.qa_test_repair_failing_cases_appendix": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "dd0e9774aeb99d1908e0b521b28addf3f0b105027dc7abcf1b6039dcb1a9c2c9",
+     "version": "1"
+    }
+   },
+   "adapter_version": {
+    "ok": "1"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "5bf98be874c7dbb960bd0c2cf46528b354b5f858c6db9c9ef0361be561dee2ba",
+     "optional": [],
+     "required": [
+      "case_count",
+      "case_lines"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "optional_variables",
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.qa_test_repair_fill_appendix": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "498ed1c7f05f339719823b5aecc8e7a760c1659670abdf9856a3d7f5ddb75b25",
+     "version": "1"
+    }
+   },
+   "adapter_version": {
+    "ok": "1"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "cb960c664a886a5ce3cb68731cd7ee13f968a80c21eb4451b8dce9aed0bfedfa",
+     "optional": [],
+     "required": [
+      "failed_slot_lines"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.qa_test_retained_cases_appendix": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "f5e8ed6f7cbc8bbf2ac0670d1dd9f7ed5af1b3f11c017e90b901cdd5f47beac9",
+     "version": "1"
+    }
+   },
+   "adapter_version": {
+    "ok": "1"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "23760aa35addc6d1615ab369c3b0e9ab072bd62238b738ac34587e2a86607d6a",
+     "optional": [],
+     "required": [
+      "case_count",
+      "case_lines"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "optional_variables",
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.qa_test_self_eval_fill_appendix": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "40deed7830bf3a7632afcb2255332f581dad14b0247137329253095eb2ac6ce8",
+     "version": "1"
+    }
+   },
+   "adapter_version": {
+    "ok": "1"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "eb8ccb49300eff27d318efd3a0388de1e268b2d3564ea2bf2c0c1fc102270b51",
+     "optional": [],
+     "required": [
+      "unfilled_slot_lines"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.repair_task_base": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "27dfae90d9ccbc83bec53e0e17c37f8f45d881b264fdd3ddaec3e081c56924b7",
+     "version": "1"
+    }
+   },
+   "adapter_version": {
+    "ok": "1"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "572463bb35fd00527b02e002b74118c963be56f4c2e4effcd3a94935f1826bd8",
+     "optional": [
+      "prior_outputs",
+      "verification_context"
+     ],
+     "required": [
+      "prd",
+      "role"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "optional_variables",
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.strategy_propose_plan_guidance": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "e8b0449ad8820cadb77c42866c57b33f8a305d7c2092ccaea14562c97ec00001",
+     "version": "3"
+    }
+   },
+   "adapter_version": {
+    "ok": "3"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "19120187b73a6880a32470617a5d1d4926fa61c6472c675a7011fbf170c48f62",
+     "optional": [
+      "authoring_rules_section",
+      "prd",
+      "rejection_context_section",
+      "roles_section"
+     ],
+     "required": [
+      "brief_content",
+      "guidance_id",
+      "planning_content",
+      "source_brief_id"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "optional_variables",
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  },
+  "request.target_stack_section": {
+   "adapter_resolve": {
+    "ok": {
+     "content_hash": "9eeb3343740e158033fc7b5dcf3303b09c22ad51bf1ea839eed9cd656da711a1",
+     "version": "1"
+    }
+   },
+   "adapter_version": {
+    "ok": "1"
+   },
+   "renderer_contract": {
+    "ok": {
+     "body_sha": "645ca9865898fdd872cb77516edff4d0835e4d8b5272640c9d7417caaae00e4a",
+     "optional": [],
+     "required": [
+      "stack",
+      "stack_narrative"
+     ]
+    }
+   },
+   "strict": {
+    "error": null,
+    "keys": [
+     "required_variables",
+     "template_id",
+     "version"
+    ]
+   }
+  }
+ }
+}
