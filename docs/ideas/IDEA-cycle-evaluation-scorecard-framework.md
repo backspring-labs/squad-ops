@@ -3,7 +3,7 @@
 - Status: Draft
 - Type: Standards Track
 - Created: 2026-02-27
-- Target Release: 1.1+
+- Target Release: 1.1+ — **superseded 2026-09-13**: the proposal this idea became, `sips/proposed/SIP-Cycle-Evaluation-Scorecard.md` (rev 2), targets v1.8 as its Lane S headline, with a narrower, mechanical slice. This document stays the source of the philosophy.
 - Owner: SquadOps Core
 - Depends On: Cycle, Pulse, Task, RCA, Telemetry, Console Perspectives
 - Related: WarmBoot, Pulse Checks, operator console, model-profile evaluation, benchmark harness
