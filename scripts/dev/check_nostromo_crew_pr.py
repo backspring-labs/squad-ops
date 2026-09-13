@@ -34,7 +34,7 @@ import fnmatch
 import sys
 from pathlib import Path
 
-DEFAULT_RULES = Path(".github/nostromo-path-boundaries.yml")
+DEFAULT_RULES = Path(".github/nostromo-crew-boundaries.yml")
 CREW_PREFIX = "nostromo/"
 
 
