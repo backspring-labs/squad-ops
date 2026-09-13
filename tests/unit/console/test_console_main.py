@@ -102,7 +102,12 @@ class TestConsoleMain:
         missing parameter and a 500 from an unconfigured stub all mean the mount is
         there, and distinguishing them is the auth BFF suite's job, not this one's.
         """
-        transport = ASGITransport(app=app)
+        # An unconfigured stub raises inside the app. By default the in-process transport
+        # re-raises that instead of answering 500, so the test passed only when an earlier
+        # test in the same worker had configured the auth BFF — and failed alone, or whenever
+        # the suite's split across workers moved it. Returning the app's 500 as a response is
+        # what the docstring above already counts as mounted.
+        transport = ASGITransport(app=app, raise_app_exceptions=False)
         async with AsyncClient(transport=transport, base_url="http://testserver") as client:
             resp = await client.get(path)
 
