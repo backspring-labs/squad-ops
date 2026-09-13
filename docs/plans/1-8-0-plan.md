@@ -26,9 +26,17 @@ been ruled 1.8's by the owner twice (the 1.7.4 plan §1; the 1.7.5 plan rev 2, 2
 Its design review, which the 1.7.4 plan said would run "beside" that line, never opened.
 
 So this plan carries **two headlines, one per lane** — **ruled by the owner on 2026-09-12**
-(§8, decisions 1–3): Campaign Orchestration becomes **2.0's headline**, Cross-Cycle Memory
-moves to **2.2**, and the 1.x line closes on this release and its stabilization tail so that
-2.0 opens on Campaign.
+(§8, decisions 1–3; the rationale is §2.3 and is not re-argued after it). The ladder the ruling
+produces, stated once:
+
+- **1.8 bounds edits and makes outcomes judgeable** — Scoped Code Revision, and the scorecard's
+  mechanical judgement contract; the lineage seam and the pre-memory baseline land as rails.
+- **1.9 closes the 1.x line** — the cycle-completion boundary extracted (#1507) and the named
+  debts retired; that boundary is **2.0's entry condition** (§6).
+- **2.0 continues on its own** — Campaign Orchestration, the first consumer allowed to act on
+  `CycleAssessment`; its continuation policy never reads raw checks.
+- **2.1 installs memory's inert rail; 2.2 activates cross-cycle recall** — after 2.1 re-reads
+  Phase 1's proving workload against the recurrence evidence of that day.
 
 | lane | headline | what it is | its proof |
 |---|---|---|---|
@@ -41,8 +49,8 @@ behind the grades its continuation policy consumes, the ROADMAP's own ordering r
 scorecard must read rather than reinvent. *Cross-Cycle Memory* moves to **2.2**, on evidence
 the row did not have: its seed corpus at the plan gate has dried up (§2.3). What 1.8 keeps of
 it is the part that cannot wait — the pre-memory baseline (B1) that 1.6 recorded the inputs
-for is finally emitted. The recall port moves with its mechanism to the release before 2.2, so
-1.8 does not ship a port with no consumer for two even minors (§2.3).
+for is finally emitted. The recall port moves with its mechanism to **2.1**, so 1.8 does not
+ship a port with no consumer for two even minors (§2.3).
 
 Rules carried from the 1.7 lines without discount:
 
@@ -154,8 +162,9 @@ reconciliation actually protected: one cycle-lineage identity. That identity exi
 code — inert detection walks a same-(project, squad profile, request profile) series
 (`src/squadops/cycles/inert_detection.py:45`, `INERT_LOOKBACK_CYCLES = 10`) — and the scorecard
 would otherwise invent a second one. §3.5 extracts it as a named seam that inert detection and
-the scorecard both read; Campaign's objective envelope replaces its *implementation* in 2.0,
-not its consumers. **What the 2.0 row loses, stated:** its former pillars — Capability-Backed
+the scorecard both read — **a stable consumer contract, not provisional architecture**: Campaign
+in 2.0 may enrich the derivation behind that seam with its objective envelope; it introduces no
+second lineage concept and asks no consumer to migrate. **What the 2.0 row loses, stated:** its former pillars — Capability-Backed
 Agents, Self-Improvement and the Test Bay — sequence behind Campaign, by the 2.0 plan.
 
 **Cross-Cycle Memory → 2.2; the baseline here, the rails with the mechanism.** *Ruled by the
@@ -165,7 +174,10 @@ made durable in 1.6 (B1, #809): thirteen `rejection_record.json` artifacts in th
 2026-08-10 to 2026-08-23. **None has been written since.** 1.6.2's success-status
 single-sourcing (#1067, #1070 part A, merged 2026-08-24) removed the class that produced most
 of them, and every counted set since — 1.6.3 through 1.7.5, seventy-nine rolls — reports zero
-framing re-rolls. Phase 1's seed corpus, on this workload, is empty. The recurrence that *does*
+framing re-rolls. Phase 1's seed corpus, on this workload, is empty. **That zero says the
+original Phase-1 proving workload is no longer active; it does not say cross-cycle memory has no
+value** — and B1 preserves the result so 2.1 can revalidate the proving workload rather than
+manufacture a baseline retrospectively. The recurrence that *does*
 happen now is in the correction loop (a suite re-authoring its failing set; a repair rewriting
 a file), which the memory SIP's own §13 question 3 calls a Phase 1.5 extension "once the metric
 exists" and which the Lane M headline addresses structurally. So 1.8 emits the baseline from the
@@ -177,7 +189,10 @@ no consumer is the #1312 shape (required, read by nothing), and the two seams th
 protect the design — one lineage identity and one failure vocabulary — ship in 1.8 for the
 scorecard's sake regardless. The port, its inert NoOp and the call site through
 `plan_rejection_context` (`src/squadops/capabilities/context_assembly.py:119`, declared on six
-task types on main) belong to the release before 2.2.
+task types on main) belong to **2.1**, which also owes one more thing: **a re-read of Phase 1's
+value hypothesis against the recurrence evidence available at the 2.1 cut** — the mechanism may
+still be right while the original metric, recurrence of plan-validation rejection classes, is no
+longer the best workload for proving it.
 
 **What this release does not do, stated here rather than implied.** It does not build
 Campaign's continuation policy or Continuum surface, memory's recall port or its adapters, the
@@ -300,7 +315,13 @@ After rev 2's acceptance (§3.1). Four deliverables, one PR each unless a seam f
 | a | **`CycleAssessment`** as a pure projection over `CycleOutcome` in `src/squadops/cycles/` beside `cycle_outcome.py`: the four dimensions (outcome, quality, coordination, efficiency) with **measurable indicators each of which is a reference into the record** — verdict and criteria coverage, correction rounds and re-dispatches, contentless emissions and refunds, framing re-rolls, tokens and wall-clock from the generation records (#929 made every call visible); computed on read, never stored as truth; **no agent in the path** | an architecture test: the projection performs no I/O and reads only `CycleOutcome` and the record; every dimension's evidence refs resolve on every 1.7.5 record |
 | b | **one failure-attribution registry** — the SIP's seven categories become derivations over the vocabularies that exist (§2.2), declared in one registry with governance attributes in the #730 shape (declaration required, drift-guarded), and the plan-rejection classes, winnability classes, `FailureEvidenceCategory`, `FailureLocus` and the movement tokens each map to exactly one attribution id | a drift test that fails on a vocabulary value with no mapping; **no new string literal for a failure class anywhere else** |
 | c | **the benchmark registry** — the counted rolls 1.6.3 through 1.7.5 (seventy-nine, from the stored per-roll records and the vault) re-graded deterministically, with each row carrying its lineage (#80's fields where they exist, the set's pins where they do not); replay-first, no new cycle (SIP-0101's records are an input, not a completion) | the re-graded 1.7.5 rows agree with the record's headline table; the preflight step (§7) states which of the seventy-nine are re-gradeable and why the rest are not |
-| d | **the comparison harness** — the verification-set driver gains an *arm* axis (squad profile × request profile × model) and the pre-registration a comparison section; the **single-model arm** is what rev 2 defined; **one pre-registered squad-versus-single-model window** on `group_run`, N declared before roll 1, both arms on the same frozen deploy, graded by (a) with attribution from (b) | the window closes with its result stated in the record whichever way it goes — a negative does not block the cut; an unrun window does (§3.9) |
+| d | **the comparison harness** — the verification-set driver gains an *arm* axis (squad profile × request profile × model) and the pre-registration a comparison section; the **single-model arm** is what rev 2 defined; **one pre-registered squad-versus-single-model window** on `group_run`, N declared before roll 1, both arms on the same frozen deploy, graded by (a) with attribution from (b) | the window closes with its result stated in the record whichever way it goes — a negative never blocks the cut; an unrun window blocks it **only while (d) is in 1.8.0's scope at the loop set's pre-registration** (§3.9, §4.2) |
+
+**Dependency distinction.** (a) and (b) are the judgement contract 2.0 consumes — Campaign's
+prerequisite. (c) and (d) test and accumulate evidence *about* that contract; Campaign does not
+depend on their completion, and neither does the cut's thesis. That is why (a) and (b) are
+non-droppable, why (c) and (d) can move to 1.8.1 (§5), and why an unrun window blocks the cut
+only while it is in scope (§3.9).
 
 **Out of the slice, named so silence is not read as shipped:** the console Scorecard page
 (SIP-0069's, later), rule-based recommendations, profile-weighting, any LLM in the assessment
@@ -309,22 +330,24 @@ Tool Executor" packs are rev 2's to keep or move, and this plan's recommendation
 move to 2.0 with the Campaign that would run them (§8 decision 4).
 
 **Non-droppable.** (a) and (b) — a 1.8 without an assessment over honest evidence has a false
-thesis. (c) and (d) drop in that order (§5) to 1.8.1 with the reason.
+thesis. (c) and (d) may move to 1.8.1, together or independently, by a plan revision in the open
+made **before the loop set's pre-registration is committed** (§5, §7 step 9); after that commit
+the cut criteria are fixed and do not move.
 
 ### 3.5 The rails — two, not three
 
 | rail | what lands | the rule it follows |
 |---|---|---|
-| **the lineage seam** | `series_for(cycle) -> SeriesKey` extracted from `inert_detection.py` into one module; inert detection and `CycleAssessment`'s baseline comparison read it; Campaign's objective envelope replaces the implementation in 2.0 | intention 1 (one cycle-lineage identity); the mirror rule on the extraction (what inert detection's walk produced and who read it) |
-| **the B1 baseline, emitted** | `emit_rejection_baseline.py` run over the thirteen recorded cycles and every counted roll since, committed beside this plan's record as the pre-memory picture — recurrence per class per cycle, and time-to-resolution — with the post-1.6.2 emptiness stated as a finding, not hidden as a zero | intention 5; the 1.6.0 plan's B1 |
+| **the lineage seam** | `series_for(cycle) -> SeriesKey` extracted from `inert_detection.py` into one module; inert detection and `CycleAssessment`'s baseline comparison read it — a stable consumer contract; Campaign in 2.0 may enrich the derivation behind it with its objective envelope, and no consumer migrates | intention 1 (one cycle-lineage identity); the mirror rule on the extraction (what inert detection's walk produced and who read it) |
+| **the B1 baseline, emitted** | `emit_rejection_baseline.py` run over the thirteen recorded cycles and every counted roll since, committed beside this plan's record as the pre-memory picture — recurrence per class per cycle, and time-to-resolution — with the post-1.6.2 emptiness stated as a finding, not hidden as a zero — a finding about the proving workload, not about memory's value (§2.3) | intention 5; the 1.6.0 plan's B1 |
 
-**The recall port is not a 1.8 rail** (§2.3, §8 decision 2). When it ships — the release before
-2.2 — it follows `docs/architecture/composition-roots.md` §8 (a factory with a required
-selector once a real adapter exists; until then the root injects the NoOp explicitly), its NoOp
-answers *empty* rather than raising (`NoOpMemoryPort`, `adapters/noop/ports.py:81`, raises —
-a guard against accidental use, not an inert port), and its call site extends the source
-feeding `plan_rejection_context` with the rendered prompt pinned byte-identical under the NoOp.
-Written here so the constraint survives this plan's supersession; the SIP carries it too.
+**The recall port is 2.1's, not a 1.8 rail** (§2.3, §8 decision 2). Its constraints — an inert
+NoOp that answers *empty* (`NoOpMemoryPort`, `adapters/noop/ports.py:81`, raises: a guard
+against accidental use, not an inert port); the root injecting it explicitly until a real
+adapter earns a factory and a required selector (`docs/architecture/composition-roots.md` §8);
+the call site extending `plan_rejection_context`'s source with the rendered prompt pinned
+byte-identical under the NoOp — are recorded in the SIP's placement note so they survive this
+plan's supersession.
 
 ### 3.6 The hardening list — CI-verified, in neither deploy's cycle path
 
@@ -370,14 +393,15 @@ the cut follows its own evidence:
 | gate | criterion |
 |---|---|
 | **implementation** | both SIPs accepted before their first feature PR; #1444 merged before §3.3 step 1; every §3.2 row merged and read on the pair; §3.3's core merged; §3.4 (a) and (b) merged, (c) and (d) merged or dropped by a plan revision naming the destination; §3.5's two rails merged; §3.6 merged or dropped |
-| **experimental** | **L1 holds**; **§39.8's N scoped repair transactions observed across both stacks and every producer lane with zero** outside-grant changes, post-verification drops, identity mismatches, preservation violations, or restorations on a successful scoped transaction — N fixed in the pre-registration, its diagnostic share stated (§4); **the #598 prediction holds**; **every registered diagnostic reaches its seam on the pinned deploy**, F1 included; **the comparison window closed with its result stated** — a negative result does not block the cut, an unrun window does; a falsified prediction or an unreached seam stops the set and the plan is revised in the open, not amended after |
+| **experimental** | **L1 holds**; **§39.8's N scoped repair transactions observed across both stacks and every producer lane with zero** outside-grant changes, post-verification drops, identity mismatches, preservation violations, or restorations on a successful scoped transaction — N fixed in the pre-registration, its diagnostic share stated (§4); **the #598 prediction holds**; **every registered diagnostic reaches its seam on the pinned deploy**, F1 included; **the comparison window closed with its result stated, if (d) is in 1.8.0's scope at the loop set's pre-registration** — a negative result never blocks the cut; an unrun window blocks it while (d) is in scope, and is not a criterion once (d) has been re-placed to 1.8.1 by a plan revision in the open before that commit (§3.4, §5); a falsified prediction or an unreached seam stops the set and the plan is revised in the open, not amended after |
 | **evidence** | every counted record carries a `CycleAssessment` whose attribution is a registry id and whose every dimension cites evidence that resolves; every field in the three-state vocabulary; the record reconstructs every counted/void/reset boundary from per-round evidence; deploy-to-tag drift named item by item, expected zero under `src/` and `adapters/`; the package captured with its screenshots — the showcase this release is **a scoped repair**, a delivered app plus the flow-run timeline where the correction round is legible, chosen and explained per rule 3 |
 
 **The SIP sweep at the cut, stated now so the sweep does not read silence as shipped:** Scoped
 Code Revision → `implemented` if §38 steps 1–7 land and §39 holds; otherwise `accepted` with the
 open steps named (SIP-0102 precedent). The scorecard → `implemented` if rev 2 narrowed its
-normative text to the slice and (a)–(d) land; otherwise `accepted` with the gap named.
-SIP-0105 amended by #598, status unchanged. Nothing else moves; §6 names what stays.
+normative text to the slice and (a)–(d) land; if (c) or (d) moved to 1.8.1, `accepted` with
+exactly that named — and 1.8.1's plan says it carries a measurement window (the 1.6.3 precedent)
+rather than reading as a fix line. SIP-0105 amended by #598, status unchanged. Nothing else moves; §6 names what stays.
 
 ### 3.10 Merge discipline
 
@@ -454,7 +478,9 @@ declared, both graded by `CycleAssessment` with attribution from the one registr
 question is pre-registered in the record's words — *at equal scaffolding and declared cost, does
 the squad's assessment exceed the single model's on outcome and quality, and at what efficiency
 cost?* — and the answer is stated whichever way it goes. **A negative is a result; it is 2.0's
-problem and the thesis's, not this cut's. An unrun window is a gap that blocks the cut.**
+problem and the thesis's, not this cut's. An unrun window blocks the cut while (d) is in 1.8.0's
+scope; once (d) has been re-placed to 1.8.1 in the open, before the loop set's pre-registration,
+the window is 1.8.1's criterion and not this cut's (§3.4, §3.9).**
 
 **Drift the record must declare:** intended zero under `src/` and `adapters/` — the tag is the
 measured deploy plus the pre-registrations, the records, the baseline and the package.
@@ -476,7 +502,9 @@ across two weeks and then needed six patch lines; the 1.7 line cut six releases 
 days. This plan's headlines are each larger than 1.6's individual tracks. The line closes when
 §3.9 holds, and the calendar does not vote.
 
-**If capacity forces a drop**, in this order, each to 1.8.1 by a plan revision in the open:
+**If capacity forces a drop**, in this order, each to 1.8.1 by a plan revision in the open — and
+for §3.4 (c) and (d) **before the loop set's pre-registration is committed**, so the cut criteria
+never move after roll 1:
 §3.4 (d) the comparison window → (c) the benchmark registry → §3.3 step 7 → step 6 → §3.6 in
 reverse (#1039, #1449, #1448). **Non-droppable:** the prelude (§3.2), #1444, §3.3's core,
 §3.4 (a) and (b), the two rails (§3.5), the verify-then-closes and the two reviews. If capacity
@@ -495,7 +523,10 @@ eight that are not:
 **#1507 — 1.9, the stabilization minor.** The executor's `execute_cycle` (396), `execute_run`
 (325) and `_reject_invalid_plan_before_workload_gate` (301): the completion boundary Campaign
 lands through in 2.0, extracted under the 1.7.5 map's rules before anything builds on it.
-Not beside a loop headline.
+Not beside a loop headline. **Handed to the 1.9 plan as its exit criterion and to the 2.0 plan
+as its entry condition:** the 1.9 line leaves one named, extracted cycle-completion boundary
+through which Campaign can observe terminal state and request continuation. Campaign does not
+begin by decomposing the executor.
 
 **#567 and #353 — 1.9 by decision, their sixth plan.** The fenced parser's CommonMark engine
 sits under the emission path every roll runs through, and the headline changes what a repair
@@ -561,9 +592,11 @@ SIPs that carry open parts), so the sweep at the cut does not read silence as sh
 8. **The seven diagnostics on the pinned deploy**, two-run budget each. A seam not reached stops
    the line here.
 9. **Pre-register the loop's set** — pins from the last shakeout; N fixed with its diagnostic
-   share tabled; every field's producer and unaskable state as schema properties.
+   share tabled; every field's producer and unaskable state as schema properties; **the scope of
+   §3.4 (c) and (d) fixed at this commit** — after it the cut criteria do not move.
 10. **Counted set 6 + 3** — no merges to main while it is open; the boundary reading at each roll.
 11. **Pre-register and run the comparison window** (§4.2) — the same discipline; nothing merges.
+    If (d) was re-placed to 1.8.1 before step 9's commit, this step is 1.8.1's.
 12. **Close both; the live reads and the idle box** — #1177, #176 recipe 2, #1176's gate,
     #1408, #1412 — after, never between.
 13. **The preliminary measurement conclusion**: §3.9's three gates read against the frozen
@@ -582,19 +615,14 @@ most of N run on the deploy the numbers come from; and the two windows never sha
 
 ## 8. Decisions made by recommendation — the owner overrules, not fills in
 
-1. **Campaign Orchestration → 2.0, as its headline; its lineage rail ships here** (§2.3, §3.5).
-   **Ruled by the owner, 2026-09-12** — further than rev 1's recommendation (the next even
-   minor): the 1.x line closes on 1.8 and its 1.9 tail, and 2.0 opens on Campaign. Rev 1's
-   alternative (accept Campaign now and ship its Phase 1 as the rail) is closed by the ruling.
-   **Consequence, stated:** 2.0's former pillars — Capability-Backed Agents, Self-Improvement
-   and the Test Bay — sequence behind Campaign, by the 2.0 plan; the ROADMAP's 2.0 row is
-   rewritten in this PR.
-2. **Cross-Cycle Memory → 2.2; the B1 baseline ships here; the recall port does not** (§2.3,
-   §3.5). **Ruled by the owner, 2026-09-12** — further than rev 1's 2.0. The evidence is the
-   empty seed corpus since 2026-08-23 and seventy-nine rolls with zero framing re-rolls. The
-   port moves with its mechanism to the release before 2.2, by this plan's reading of the
-   rails-before-mechanism rule (one release ahead, not three); the two seams that protect the
-   design — one lineage identity, one failure vocabulary — ship in 1.8 for the scorecard.
+1. **Campaign Orchestration → 2.0 as its headline; its lineage rail in 1.8. Ruled by the owner,
+   2026-09-12.** Rationale §2.3; the rail §3.5; the 2.0 entry condition §6. Rev 1's alternative
+   (accept Campaign now, its Phase 1 as the rail) is closed. The former 2.0 pillars sequence
+   behind Campaign in the 2.0 plan; the ROADMAP's 2.0 row is rewritten in this PR.
+2. **Cross-Cycle Memory → 2.2; its integration rail → 2.1; the B1 baseline in 1.8. Ruled by the
+   owner, 2026-09-12.** Evidence and rationale §2.3, which also states what the post-1.6.2 zero
+   does and does not say; the rail's constraints §3.5. 2.1 re-reads Phase 1's proving workload
+   before 2.2 activates the mechanism.
 3. **Scoped Code Revision and the scorecard slice are the two headlines, by lane.** **Ruled by
    the owner, 2026-09-12.** Rev 1's alternative — the row as written, the scorecard and
    Campaign — is closed by the ruling. The loop's loss mode is measured and current (§1), the
@@ -606,7 +634,8 @@ most of N run on the deploy the numbers come from; and the two windows never sha
    the SIP can be `implemented` at this cut rather than staying `accepted` for a page.
 5. **The single-model arm is rev 2's to define, and the comparison window is a separate
    pre-registration** from the loop's set, so a defect in either is attributable to one. Its
-   result never blocks the cut; its absence does.
+   result never blocks the cut; its absence does **only while (d) is in 1.8.0's scope at the loop
+   set's pre-registration** — (d) may be re-placed to 1.8.1 before that commit (§3.4, §5).
 6. **#598 lands as a SIP-0105 amendment plus the rendering, in the prelude, roll-verified** —
    the owner's 1.7.5 ruling executed, not re-opened. The builder's role contract (SIP-0071) is
    amended in the same PR that stops it authoring the files.
@@ -622,7 +651,7 @@ most of N run on the deploy the numbers come from; and the two windows never sha
     sixth time: the draft's §22 and #414's priority reserve draw on one pool.
 11. **N for the revision invariant is fixed at pre-registration with its diagnostic share
     tabled** — the 1.7.5 evidence says a counted set alone cannot reach any honest N.
-12. **When the memory recall port ships — the release before 2.2, not this one — its NoOp
+12. **When the memory recall port ships — 2.1, not this one — its NoOp
     answers empty rather than raising** (§3.5): `NoOpMemoryPort` today raises
     `NotImplementedError` on every call, a guard against accidental use, not an inert port.
     Recorded here and in the SIP so it survives this plan.
@@ -652,7 +681,7 @@ Named here so they are not the next line's §6a. Each has a home above or a fix 
 - **The B1 baseline was recorded and never emitted**, and its inputs stop on 2026-08-23. Emitted
   in §3.5; the emptiness is decision 2's evidence.
 - **`plan_rejection_context` is declared on six task types on main**, not the three the
-  reconciliation counted in August — the recall call site, when it ships before 2.2, has twice
+  reconciliation counted in August — the recall call site, when it ships in 2.1, has twice
   the reach the design assumed, and its wiring test must enumerate all six.
 - **No dev-lane fault exists**, so Scoped Code Revision's largest exposure (the unused
   `WriteGrant.for_dev_fill`) has no diagnostic today. Registered in the prelude (§4.1).
@@ -670,6 +699,22 @@ Named here so they are not the next line's §6a. Each has a home above or a fix 
 
 ## 10. Revision history
 
+- **Rev 3 (2026-09-12, later the same evening)** — on a written tightening review of rev 2, six
+  of its ten points taken. **One contradiction fixed:** §3.4 and §5 made the comparison window
+  droppable to 1.8.1 while §3.9 and §4.2 said an unrun window blocks the cut; now an unrun window
+  blocks only while (d) is in 1.8.0's scope at the loop set's pre-registration, the scope of (c)
+  and (d) is fixed at that commit (§7 step 9), and the sweep names 1.8.1 as a measurement patch
+  line when they move. **Made explicit:** (a)/(b) are Campaign's prerequisite and (c)/(d) are
+  evidence about it (§3.4); the memory rail's home is **2.1**, which also re-reads Phase 1's
+  proving workload (§2.3, §3.5); the 1.9 completion-boundary extraction is 2.0's entry condition
+  (§6); the lineage seam is a stable contract whose derivation Campaign enriches, not an
+  implementation it replaces (§2.3, §3.5); the post-1.6.2 zero is a finding about the proving
+  workload, not about memory's value (§2.3, §3.5). **Compressed:** a ladder block in the opening,
+  §8 decisions 1–2 reduced to pointers at §2.3, §3.5's restatement cut. Declined from the review:
+  a composition-root *selector* in 2.1 (with only a NoOp there is nothing to select — the
+  selector arrives with the first real adapter, per the composition-roots standard) and 2.1/2.2
+  rows on the ROADMAP beyond naming 2.1 inside the 2.0 row. No change to the headlines, the set,
+  the gates' substance or the rulings.
 - **Rev 2 (2026-09-12, the same evening)** — the owner's rulings on decisions 1–3 recorded:
   Campaign Orchestration to **2.0 as its headline** (rev 1 recommended the next even minor),
   Cross-Cycle Memory to **2.2** (rev 1 recommended 2.0), Scoped Code Revision and the scorecard
