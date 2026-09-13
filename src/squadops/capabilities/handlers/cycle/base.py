@@ -50,6 +50,7 @@ if TYPE_CHECKING:
 from squadops.capabilities.handlers.cycle.validation import (
     ValidationResult,
     _build_typed_check_evaluation_artifact,
+    _classify_file,
 )
 from squadops.capabilities.handlers.emission_log import log_emission_shape
 from squadops.capabilities.handlers.fault_injection import inject as inject_fault
@@ -113,6 +114,42 @@ def _framework_injected_criteria(
                     TypedCheck(check=check_name, params=params, severity=spec.blocking_default)
                 )
     return injected
+
+
+class SelfEvalFollowup:
+    """What a self-evaluation follow-up emission means to the handler that asked for it (#1444).
+
+    The default is whole-file emission: nothing is added to the follow-up prompt, the
+    response is extracted as fenced files, and every file is kept, typed by its name. A
+    handler whose output has another shape overrides only the steps that differ — the qa
+    handler's scaffold fill folds fills into its merged shells and refuses a rewrite of one —
+    so ``_CycleTaskHandler._self_evaluate`` is one loop, not a copy per handler.
+    """
+
+    async def prompt_suffix(self, context: ExecutionContext, evidence_extra: dict[str, Any]) -> str:
+        """Text appended to the follow-up prompt; empty for whole-file emission."""
+        return ""
+
+    def absorb(
+        self,
+        content: str,
+        artifacts: list[dict],
+        evidence_extra: dict[str, Any],
+        pass_number: int,
+    ) -> tuple[str, list[dict]]:
+        """Take what this shape handles out of the follow-up, returning the text left for
+        file extraction and the artifact set after it."""
+        return content, artifacts
+
+    def artifact_for(self, file_rec: dict[str, str]) -> dict[str, Any] | None:
+        """The artifact one extracted file becomes, or None to discard it."""
+        artifact_type, media_type = _classify_file(file_rec["filename"])
+        return {
+            "name": file_rec["filename"],
+            "content": file_rec["content"],
+            "media_type": media_type,
+            "type": artifact_type,
+        }
 
 
 class _CycleTaskHandler(CapabilityHandler):
@@ -745,6 +782,195 @@ class _CycleTaskHandler(CapabilityHandler):
 
         evidence.setdefault("self_eval_merge_log", []).extend(merge_log)
         return list(by_name.values())
+
+    async def _self_evaluate(
+        self,
+        context: ExecutionContext,
+        inputs: dict[str, Any],
+        *,
+        validation: ValidationResult,
+        artifacts: list[dict],
+        evidence_extra: dict[str, Any],
+        typed_error_counts: dict[str, int],
+        transcript: tuple[str, str, str],
+        chat_kwargs: dict[str, Any],
+        started: float,
+        rendered: object | None,
+        followup: SelfEvalFollowup,
+    ) -> tuple[ValidationResult, list[dict]]:
+        """Re-ask until validation passes or the passes run out (SIP-0086; register entry 39).
+
+        Called on a failed validation. Each pass replays the whole transcript — system,
+        the original user prompt, the first response, the follow-up — with the first
+        call's kwargs, lets ``followup`` take what its output shape handles, merges the
+        extracted files and re-validates the MERGED set (RC-7). ``typed_error_counts`` is
+        the caller's, shared across passes and dropped with the ``handle()`` that owns it
+        (#670 / RC-9b). Returns the final validation and artifact set; banks the pass
+        count as ``self_eval_passes``.
+        """
+        from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
+
+        system_prompt, user_prompt, content = transcript
+        max_self_eval = inputs.get("resolved_config", {}).get("max_self_eval_passes", 1)
+        self_eval_count = 0
+
+        while not validation.passed and self_eval_count < max_self_eval:
+            self_eval_count += 1
+            followup_prompt = self._build_self_eval_prompt(validation, artifacts)
+            followup_prompt += await followup.prompt_suffix(context, evidence_extra)
+
+            try:
+                _, followup_content = await self._llm_call(
+                    context,
+                    [
+                        ChatMessage(role="system", content=system_prompt),
+                        ChatMessage(role="user", content=user_prompt),
+                        ChatMessage(role="assistant", content=content),
+                        ChatMessage(role="user", content=followup_prompt),
+                    ],
+                    chat_kwargs,
+                    inputs=inputs,
+                    started=started,
+                    shape_label=f"{self._handler_name}:self_eval",
+                    rendered=rendered,
+                    attempt=self_eval_count + 1,
+                )
+            except LLMError as exc:
+                logger.warning(
+                    "Self-eval LLM call failed for %s: %s",
+                    self._handler_name,
+                    exc,
+                )
+                break
+
+            source, artifacts = followup.absorb(
+                followup_content, artifacts, evidence_extra, self_eval_count
+            )
+            new_artifacts = [
+                artifact
+                for f in extract_fenced_files(source)
+                if (artifact := followup.artifact_for(f)) is not None
+            ]
+            artifacts = self._merge_artifacts(artifacts, new_artifacts, evidence_extra)
+            validation = await self._validate_output(
+                inputs, artifacts, typed_error_counts=typed_error_counts
+            )
+
+        evidence_extra["self_eval_passes"] = self_eval_count
+        return validation, artifacts
+
+    def _no_fenced_blocks_result(
+        self,
+        start_time: float,
+        inputs: dict[str, Any],
+        content: str,
+        response: ChatMessage,
+        chat_kwargs: dict[str, Any],
+    ) -> HandlerResult:
+        """The failure for a response with nothing extractable (#566, #1372; entry 45).
+
+        The raw response is logged and stored as ``build_warnings.md``, and
+        ``emission_failure`` carries what was written, so the executor's retry tells the
+        model its own output instead of re-rolling blind and the locus classifier reads a
+        producing-side signal.
+        """
+        from squadops.cycles.emission_integrity import no_fenced_blocks_failure
+
+        self._log_no_fenced_blocks(content)
+        return self._fail_result(
+            start_time,
+            inputs,
+            "No valid fenced code blocks found",
+            outputs={
+                "artifacts": [
+                    {
+                        "name": "build_warnings.md",
+                        "content": content,
+                        "media_type": "text/markdown",
+                        "type": "document",
+                    }
+                ],
+                "emission_failure": no_fenced_blocks_failure(
+                    len(content),
+                    inputs.get("expected_artifacts"),
+                    completion_tokens=response.completion_tokens,
+                    completion_cap=chat_kwargs.get("max_tokens"),
+                    content=content,
+                ),
+            },
+        )
+
+    @staticmethod
+    def _validation_record(validation: ValidationResult) -> dict[str, Any]:
+        """The validation as banked evidence: the same five fields on every producer."""
+        return {
+            "passed": validation.passed,
+            "checks": validation.checks,
+            "missing_components": validation.missing_components,
+            "coverage_ratio": validation.coverage_ratio,
+            "summary": validation.summary,
+        }
+
+    @staticmethod
+    def _prompt_provenance(assembled: Any, rendered: Any) -> dict[str, Any]:
+        """Prompt provenance for artifact traceability (SIP-0084 §10)."""
+        provenance: dict[str, Any] = {
+            "system_prompt_bundle_hash": assembled.assembly_hash,
+        }
+        if rendered is not None:
+            provenance["request_template_id"] = rendered.template_id
+            provenance["request_template_version"] = rendered.template_version
+            provenance["request_render_hash"] = rendered.render_hash
+            provenance["prompt_environment"] = "production"
+        return provenance
+
+    @staticmethod
+    def _attach_outcome(
+        outputs: dict[str, Any],
+        validation: ValidationResult,
+        evidence_extra: dict[str, Any],
+    ) -> None:
+        """Classify the outcome and attach the validation evidence on BOTH branches.
+
+        A validation failure is a SEMANTIC_FAILURE of the work product (SIP-0086 Phase 6).
+        ``validation_result`` rides the passing branch too (#597, #1271; entry 46): the
+        ledger supersedes per ``(check_id, subject)``, so a check that only ever appears
+        when it fails can never be superseded by its own later pass.
+        """
+        from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
+
+        if validation.passed:
+            outputs["outcome_class"] = TaskOutcome.SUCCESS
+        else:
+            outputs["outcome_class"] = TaskOutcome.SEMANTIC_FAILURE
+            outputs["failure_classification"] = FailureClassification.WORK_PRODUCT
+        if "validation_result" in evidence_extra:
+            outputs["validation_result"] = evidence_extra["validation_result"]
+
+    def _finish(
+        self,
+        start_time: float,
+        inputs: dict[str, Any],
+        outputs: dict[str, Any],
+        validation: ValidationResult,
+        evidence_extra: dict[str, Any],
+    ) -> HandlerResult:
+        """The result of a generation that produced something: evidence, then the verdict."""
+        duration_ms = (time.perf_counter() - start_time) * 1000
+        evidence = HandlerEvidence.create(
+            handler_name=self._handler_name,
+            task_type=self._task_type,
+            duration_ms=duration_ms,
+            inputs_hash=self._hash_dict(inputs),
+            outputs_hash=self._hash_dict(outputs),
+            metadata=evidence_extra if evidence_extra else None,
+        )
+        return HandlerResult(
+            success=validation.passed,
+            outputs=outputs,
+            _evidence=evidence,
+            error=validation.summary if not validation.passed else None,
+        )
 
     async def handle(
         self,

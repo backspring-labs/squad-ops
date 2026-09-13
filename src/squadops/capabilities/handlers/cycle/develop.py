@@ -12,10 +12,7 @@ from squadops.capabilities.development_profiles import (
     effective_development_profile,
     get_development_profile,
 )
-from squadops.capabilities.handlers.base import (
-    HandlerEvidence,
-    HandlerResult,
-)
+from squadops.capabilities.handlers.base import HandlerResult
 from squadops.capabilities.handlers.prompt_guard import _guard_prompt_size
 from squadops.llm.exceptions import LLMError
 from squadops.llm.models import ChatMessage
@@ -24,7 +21,7 @@ from squadops.tasks.task_types import TaskType
 if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
 
-from squadops.capabilities.handlers.cycle.base import _CycleTaskHandler
+from squadops.capabilities.handlers.cycle.base import SelfEvalFollowup, _CycleTaskHandler
 from squadops.capabilities.handlers.cycle.validation import (
     ValidationResult,
     _classify_file,
@@ -534,35 +531,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         )
 
         if not extracted:
-            from squadops.cycles.emission_integrity import no_fenced_blocks_failure
-
-            self._log_no_fenced_blocks(content)
-            return self._fail_result(
-                start_time,
-                inputs,
-                "No valid fenced code blocks found",
-                outputs={
-                    "artifacts": [
-                        {
-                            "name": "build_warnings.md",
-                            "content": content,
-                            "media_type": "text/markdown",
-                            "type": "document",
-                        },
-                    ],
-                    # #566: marker for the executor's aimed retry + the
-                    # correction loop's failure-locus classifier.
-                    "emission_failure": no_fenced_blocks_failure(
-                        len(content),
-                        inputs.get("expected_artifacts"),
-                        completion_tokens=response.completion_tokens,
-                        completion_cap=chat_kwargs.get("max_tokens"),
-                        # #1372: the shape rides the marker, so the retry is told what it
-                        # wrote rather than asked again.
-                        content=content,
-                    ),
-                },
-            )
+            return self._no_fenced_blocks_result(start_time, inputs, content, response, chat_kwargs)
 
         # Build artifact list from extracted files
         artifacts = []
@@ -589,65 +558,23 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
                 inputs, artifacts, typed_error_counts=typed_error_counts
             )
 
-            # Self-evaluation loop (Phase 7)
+            # Self-evaluation loop (Phase 7) — the shared loop, whole-file follow-ups.
             if not validation.passed:
-                max_self_eval = resolved_config.get("max_self_eval_passes", 1)
-                self_eval_count = 0
+                validation, artifacts = await self._self_evaluate(
+                    context,
+                    inputs,
+                    validation=validation,
+                    artifacts=artifacts,
+                    evidence_extra=evidence_extra,
+                    typed_error_counts=typed_error_counts,
+                    transcript=(system_prompt, user_prompt, content),
+                    chat_kwargs=chat_kwargs,
+                    started=start_time,
+                    rendered=rendered,
+                    followup=SelfEvalFollowup(),
+                )
 
-                while not validation.passed and self_eval_count < max_self_eval:
-                    self_eval_count += 1
-                    followup_prompt = self._build_self_eval_prompt(validation, artifacts)
-
-                    try:
-                        _, followup_content = await self._llm_call(
-                            context,
-                            [
-                                ChatMessage(role="system", content=system_prompt),
-                                ChatMessage(role="user", content=user_prompt),
-                                ChatMessage(role="assistant", content=content),
-                                ChatMessage(role="user", content=followup_prompt),
-                            ],
-                            chat_kwargs,
-                            inputs=inputs,
-                            started=start_time,
-                            shape_label=f"{self._handler_name}:self_eval",
-                            rendered=rendered,
-                            attempt=self_eval_count + 1,
-                        )
-                    except LLMError as exc:
-                        logger.warning(
-                            "Self-eval LLM call failed for %s: %s",
-                            self._handler_name,
-                            exc,
-                        )
-                        break
-
-                    new_extracted = extract_fenced_files(followup_content)
-                    new_artifacts = [
-                        {
-                            "name": f["filename"],
-                            "content": f["content"],
-                            "media_type": _classify_file(f["filename"])[1],
-                            "type": _classify_file(f["filename"])[0],
-                        }
-                        for f in new_extracted
-                    ]
-                    artifacts = self._merge_artifacts(artifacts, new_artifacts, evidence_extra)
-
-                    # RC-7: validate merged artifact set
-                    validation = await self._validate_output(
-                        inputs, artifacts, typed_error_counts=typed_error_counts
-                    )
-
-                evidence_extra["self_eval_passes"] = self_eval_count
-
-            evidence_extra["validation_result"] = {
-                "passed": validation.passed,
-                "checks": validation.checks,
-                "missing_components": validation.missing_components,
-                "coverage_ratio": validation.coverage_ratio,
-                "summary": validation.summary,
-            }
+            evidence_extra["validation_result"] = self._validation_record(validation)
 
             # Issue #114: emit per-task typed-check evaluation artifact when
             # any typed checks ran, so the SIP-0092 gate evaluator can
@@ -663,44 +590,13 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         else:
             validation = ValidationResult(passed=True, summary="Validation disabled")
 
-        # SIP-0084 §10: build prompt provenance for artifact traceability
-        provenance: dict[str, Any] = {
-            "system_prompt_bundle_hash": assembled.assembly_hash,
-        }
-        if rendered is not None:
-            provenance["request_template_id"] = rendered.template_id
-            provenance["request_template_version"] = rendered.template_version
-            provenance["request_render_hash"] = rendered.render_hash
-            provenance["prompt_environment"] = "production"
-
         outputs: dict[str, Any] = {
             "summary": f"[dev] Generated {len(artifacts)} source file(s)",
             "role": self._role,
             "artifacts": artifacts,
-            "prompt_provenance": provenance,
+            "prompt_provenance": self._prompt_provenance(assembled, rendered),
         }
-
-        # Phase 6: Outcome classification
-        if validation.passed:
-            from squadops.cycles.task_outcome import TaskOutcome
-
-            outputs["outcome_class"] = TaskOutcome.SUCCESS
-        else:
-            from squadops.cycles.task_outcome import (
-                FailureClassification,
-                TaskOutcome,
-            )
-
-            outputs["outcome_class"] = TaskOutcome.SEMANTIC_FAILURE
-            outputs["failure_classification"] = FailureClassification.WORK_PRODUCT
-
-        # #597: validation evidence rides BOTH branches. It was failure-only, so a
-        # PASSING dev task recorded no rows into the run ledger and contract
-        # criteria bound only to dev tasks could never be credited — pf-38's green
-        # roll reported 3/6 criteria verified where 6/6 had passing evidence (the
-        # qa handler has always populated this on success; the two diverged here).
-        if "validation_result" in evidence_extra:
-            outputs["validation_result"] = evidence_extra["validation_result"]
+        self._attach_outcome(outputs, validation, evidence_extra)
 
         # #431: generated-vs-stored accounting (primary response; a self-eval
         # merge changes artifacts, and the stats stay honest against the
@@ -721,22 +617,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
 
         outputs["source_containment"] = assess_source_containment(artifacts)
 
-        duration_ms = (time.perf_counter() - start_time) * 1000
-        evidence = HandlerEvidence.create(
-            handler_name=self._handler_name,
-            task_type=self._task_type,
-            duration_ms=duration_ms,
-            inputs_hash=self._hash_dict(inputs),
-            outputs_hash=self._hash_dict(outputs),
-            metadata=evidence_extra if evidence_extra else None,
-        )
-
-        return HandlerResult(
-            success=validation.passed,
-            outputs=outputs,
-            _evidence=evidence,
-            error=validation.summary if not validation.passed else None,
-        )
+        return self._finish(start_time, inputs, outputs, validation, evidence_extra)
 
     async def _build_dev_prompt(
         self,

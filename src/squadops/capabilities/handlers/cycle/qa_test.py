@@ -11,7 +11,7 @@ import tempfile
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from squadops.capabilities.app_invocation import AppInvocation
 from squadops.capabilities.development_profiles import (
@@ -38,7 +38,7 @@ from squadops.tasks.task_types import TaskType
 if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
 
-from squadops.capabilities.handlers.cycle.base import _CycleTaskHandler
+from squadops.capabilities.handlers.cycle.base import SelfEvalFollowup, _CycleTaskHandler
 from squadops.capabilities.handlers.cycle.fill_mode_brief import (
     render_fill_mode_section,
     render_self_eval_fill_section,
@@ -165,6 +165,196 @@ def _qa_owned_for(inputs: dict[str, Any]) -> Callable[[str], bool]:
     return lambda path: is_qa_test_path_for_stack(path, stack)
 
 
+class _WholeFileTests(SelfEvalFollowup):
+    """``qa.test`` authoring whole suite files — its output with no verification scaffold.
+
+    Every step here is the identity or nothing, and that is the point (#1444): the fill
+    shape below overrides exactly the steps where fill mode differs, so those differences
+    live in one unit instead of as branches on ``verification_scaffold`` through
+    ``handle()``. The selector is ``QATestHandler._output_shape`` — the same answer the
+    reasoning declaration reads (register entry 44).
+    """
+
+    scaffold_bound = False
+
+    def __init__(self, handler: QATestHandler, inputs: dict[str, Any]) -> None:
+        self._handler = handler
+        self._inputs = inputs
+
+    async def prompt_section(self, context: ExecutionContext) -> str:
+        """The block this shape adds to the user prompt; none for whole files."""
+        return ""
+
+    def split(self, content: str) -> str:
+        """The part of the emission that file extraction reads."""
+        return content
+
+    @property
+    def fill_count(self) -> int:
+        return 0
+
+    @property
+    def duplicate_count(self) -> int:
+        return 0
+
+    def has_fills(self) -> bool:
+        return False
+
+    def merge(self, artifacts: list[dict], evidence_extra: dict[str, Any]) -> list[dict]:
+        """The artifact set after this shape's merge; unchanged for whole files."""
+        return artifacts
+
+    def artifact_for(self, file_rec: dict[str, str]) -> dict[str, Any] | None:
+        # Every file a qa emission extracts is a test, whatever its name.
+        return {
+            "name": file_rec["filename"],
+            "content": file_rec["content"],
+            "media_type": _classify_file(file_rec["filename"])[1],
+            "type": "test",
+        }
+
+    def append_evidence(
+        self, outputs: dict[str, Any], test_result: Any, artifacts: list[dict]
+    ) -> None:
+        """Evidence this shape banks after the probes; none for whole files."""
+        return None
+
+
+class _ScaffoldFill(_WholeFileTests):
+    """``qa.test`` under a verification scaffold: fills merged into frozen shells (SIP-0104).
+
+    Holds the fill state one ``handle()`` accumulates — the fill emission, the merged
+    shells, the merge evidence — so a self-evaluation pass folds into the state the
+    primary merge left and the scaffold evidence reads the final merge (register entries
+    41–43). The steps it delegates stay on the handler, where their own tests reach them.
+    """
+
+    scaffold_bound = True
+
+    def __init__(self, handler: QATestHandler, inputs: dict[str, Any]) -> None:
+        super().__init__(handler, inputs)
+        self._scaffold = inputs["verification_scaffold"]
+        self._emission: Any = None
+        self._merged_suite_files: list[dict[str, Any]] = []
+        self._merge_evidence: dict[str, Any] = {}
+        self._shell_paths: set[str] = set()
+
+    async def prompt_section(self, context: ExecutionContext) -> str:
+        # SIP-0104 P3: the FILL MODE block rides both prompt paths.
+        return await self._handler._fill_mode_section(context, self._inputs)
+
+    def split(self, content: str) -> str:
+        from squadops.capabilities.verification_scaffold_fill import (
+            parse_fill_emission,
+            strip_fill_blocks,
+        )
+
+        # Fill fences would otherwise extract as files named "slot-…" — the fill
+        # protocol and the additive-file surface must not compete for bytes.
+        self._emission = parse_fill_emission(content)
+        return strip_fill_blocks(content)
+
+    @property
+    def fill_count(self) -> int:
+        return len(self._emission.fills) if self._emission else 0
+
+    @property
+    def duplicate_count(self) -> int:
+        return len(self._emission.duplicates) if self._emission else 0
+
+    def has_fills(self) -> bool:
+        return bool(self._emission and self._emission.fills)
+
+    def _merge_into(self, artifacts: list[dict], evidence_extra: dict[str, Any]) -> list[dict]:
+        artifacts, self._merged_suite_files, self._merge_evidence = (
+            self._handler._merge_fill_artifacts(
+                self._scaffold,
+                self._emission,
+                artifacts,
+                self._handler._app_invocation(self._inputs),
+            )
+        )
+        self._shell_paths = {m["filename"] for m in self._merged_suite_files}
+        evidence_extra["fill_merge"] = self._merge_evidence
+        return artifacts
+
+    def merge(self, artifacts: list[dict], evidence_extra: dict[str, Any]) -> list[dict]:
+        # SIP-0104 P3: merge fills into the scaffold. The merged shells join the stored
+        # artifacts, which is also the set the suite runs on (#1109); shell-path rewrites
+        # are dropped and recorded, and the merged shell paths guard the self-eval pass.
+        return self._merge_into(artifacts, evidence_extra)
+
+    async def prompt_suffix(self, context: ExecutionContext, evidence_extra: dict[str, Any]) -> str:
+        return await self._handler._self_eval_fill_section(
+            context, self._scaffold, evidence_extra.get("fill_merge")
+        )
+
+    def absorb(
+        self,
+        content: str,
+        artifacts: list[dict],
+        evidence_extra: dict[str, Any],
+        pass_number: int,
+    ) -> tuple[str, list[dict]]:
+        # 1.6.5 C (#947): the self-eval's fills go through the SAME merge gate as the
+        # primary's — phantom tables (#1087) and element kinds (#1094) included — instead
+        # of extracting as files named "slot-…" that the shell guard then discards.
+        from squadops.capabilities.verification_scaffold_fill import (
+            apply_followup_fills,
+            parse_fill_emission,
+            strip_fill_blocks,
+        )
+
+        followup_fills = parse_fill_emission(content)
+        source = strip_fill_blocks(content)
+        if followup_fills.fills:
+            folded = apply_followup_fills(
+                self._emission or parse_fill_emission(""),
+                followup_fills,
+                (evidence_extra.get("fill_merge") or {}).get("dispositions", []),
+            )
+            self._emission = folded.emission
+            artifacts = self._merge_into(artifacts, evidence_extra)
+            evidence_extra.setdefault("self_eval_fills", []).append(
+                {
+                    "pass": pass_number,
+                    "applied": list(folded.applied),
+                    "skipped_filled": list(folded.skipped_filled),
+                }
+            )
+            logger.info(
+                "%s self_eval fills: applied=%s skipped_filled=%s counts=%s",
+                self._handler._handler_name,
+                list(folded.applied),
+                list(folded.skipped_filled),
+                self._merge_evidence["counts"],
+            )
+        return source, artifacts
+
+    def artifact_for(self, file_rec: dict[str, str]) -> dict[str, Any] | None:
+        # SIP-0104 P3: a self-eval pass must not rewrite merged shells either — the slot
+        # protocol is the only shell surface.
+        if file_rec["filename"] in self._shell_paths:
+            return None
+        return super().artifact_for(file_rec)
+
+    def append_evidence(
+        self, outputs: dict[str, Any], test_result: Any, artifacts: list[dict]
+    ) -> None:
+        # SIP-0104 P5: classify shell failures, correlate them with the probe rows just
+        # appended, and bank the summary. After the probes on purpose — correlation joins
+        # on the shared criterion id.
+        self._handler._append_scaffold_evidence(
+            outputs,
+            test_result,
+            self._merged_suite_files,
+            self._merge_evidence,
+            self._scaffold,
+            artifacts,
+            self._handler._app_invocation(self._inputs),
+        )
+
+
 class QATestHandler(_CycleTaskHandler):
     """Build handler: generates test files from validation plan + source (D1).
 
@@ -177,6 +367,23 @@ class QATestHandler(_CycleTaskHandler):
     _task_type = TaskType.QA_TEST
     _role = "qa"
     _artifact_name = "test_output"  # overridden by multi-file output
+
+    #: This capability's outputs by ``_output_shape`` — whole suite files, or fills under
+    #: a verification scaffold. A table, so a third shape is a row (#1444; entry 44).
+    _SHAPES: ClassVar[dict[str | None, type[_WholeFileTests]]] = {
+        None: _WholeFileTests,
+        "fill": _ScaffoldFill,
+    }
+
+    def _output_shape(self, inputs: dict[str, Any]) -> str | None:
+        """#1285: which of ``qa.test``'s two outputs this generation produces.
+
+        ``verification_scaffold`` is what puts the author in fill mode. The capability
+        answers this itself rather than shared code reading the input for everyone (the
+        manifest-authoring stage's enforced input contract is why), and the same answer
+        selects the reasoning declaration and the shape that parses the emission.
+        """
+        return "fill" if inputs.get("verification_scaffold") else None
 
     def validate_inputs(self, inputs: dict[str, Any], contract=None) -> list[str]:
         errors = super().validate_inputs(inputs, contract)
@@ -1287,9 +1494,12 @@ class QATestHandler(_CycleTaskHandler):
                 capability_name,
             )
 
-        # SIP-0104 P3: fill mode rides both prompt paths, presence-gated on the
-        # scaffold input — absent input renders nothing and stays byte-identical.
-        fill_section = await self._fill_mode_section(context, inputs)
+        # The output this generation produces (#1285, #1444): whole suite files, or fills
+        # under a verification scaffold. Every step where the two differ is the shape's.
+        shape = self._SHAPES[self._output_shape(inputs)](self, inputs)
+
+        # SIP-0104 P3: fill mode rides both prompt paths; a whole-file task adds nothing.
+        fill_section = await shape.prompt_section(context)
         if fill_section:
             user_prompt = f"{user_prompt}\n{fill_section}"
 
@@ -1342,7 +1552,7 @@ class QATestHandler(_CycleTaskHandler):
             self._task_type,
             agent_overrides=agent_overrides,
             model_name=model_name,
-            output_shape="fill" if inputs.get("verification_scaffold") else None,
+            output_shape=self._output_shape(inputs),
         )
         chat_kwargs.update(reasoning_kwargs(reasoning))
 
@@ -1366,22 +1576,8 @@ class QATestHandler(_CycleTaskHandler):
             logger.warning("LLM call failed for %s: %s", self._handler_name, exc)
             return self._fail_result(start_time, inputs, str(exc))
 
-        scaffold_input = inputs.get("verification_scaffold")
-        fill_emission = None
-        extraction_source = content
-        if scaffold_input:
-            from squadops.capabilities.verification_scaffold_fill import (
-                parse_fill_emission,
-                strip_fill_blocks,
-            )
-
-            # Fill fences would otherwise extract as files named "slot-…" — the fill
-            # protocol and the additive-file surface must not compete for bytes.
-            fill_emission = parse_fill_emission(content)
-            extraction_source = strip_fill_blocks(content)
-
         extracted = extract_fenced_files(
-            extraction_source, expected_artifacts=inputs.get("expected_artifacts")
+            shape.split(content), expected_artifacts=inputs.get("expected_artifacts")
         )
         # #924: the three outcomes below are indistinguishable afterwards, and P3 renders
         # a REJECTED fill as the same failing state as a MISSING one — so "the author
@@ -1393,43 +1589,14 @@ class QATestHandler(_CycleTaskHandler):
             "%s emission parse: fills=%d duplicate_slots=%d extracted_files=%d "
             "expected=%s scaffold_bound=%s",
             self._handler_name,
-            len(fill_emission.fills) if fill_emission else 0,
-            len(fill_emission.duplicates) if fill_emission else 0,
+            shape.fill_count,
+            shape.duplicate_count,
             len(extracted),
             inputs.get("expected_artifacts"),
-            bool(scaffold_input),
+            shape.scaffold_bound,
         )
-        if not extracted and not (fill_emission and fill_emission.fills):
-            from squadops.cycles.emission_integrity import no_fenced_blocks_failure
-
-            self._log_no_fenced_blocks(content)
-            return self._fail_result(
-                start_time,
-                inputs,
-                "No valid fenced code blocks found",
-                outputs={
-                    "artifacts": [
-                        {
-                            "name": "build_warnings.md",
-                            "content": content,
-                            "media_type": "text/markdown",
-                            "type": "document",
-                        }
-                    ],
-                    # #566: machine-readable marker — the executor's retry path
-                    # turns it into aimed feedback; the correction loop's locus
-                    # classifier reads it as a test-artifact-locus signal.
-                    "emission_failure": no_fenced_blocks_failure(
-                        len(content),
-                        inputs.get("expected_artifacts"),
-                        completion_tokens=response.completion_tokens,
-                        completion_cap=chat_kwargs.get("max_tokens"),
-                        # #1372: the shape rides the marker, so the retry is told what it
-                        # wrote rather than asked again.
-                        content=content,
-                    ),
-                },
-            )
+        if not extracted and not shape.has_fills():
+            return self._no_fenced_blocks_result(start_time, inputs, content, response, chat_kwargs)
 
         artifacts = [
             {
@@ -1445,20 +1612,7 @@ class QATestHandler(_CycleTaskHandler):
         evidence_extra: dict[str, Any] = {}
         output_validation_enabled = resolved_config.get("output_validation", False)
 
-        # SIP-0104 P3: merge fills into the scaffold. The merged shells join BOTH the
-        # stored artifacts and the suite-execution set; shell-path rewrites are dropped
-        # and recorded. shell_drop_paths also guards the self-eval merge below.
-        shell_drop_paths: set[str] = set()
-        if scaffold_input:
-            artifacts, merged_suite_files, fill_merge_evidence = self._merge_fill_artifacts(
-                scaffold_input, fill_emission, artifacts, self._app_invocation(inputs)
-            )
-            merged_names = {m["filename"] for m in merged_suite_files}
-            shell_drop_paths = merged_names
-            extracted = [
-                f for f in extracted if f["filename"] not in merged_names
-            ] + merged_suite_files
-            evidence_extra["fill_merge"] = fill_merge_evidence
+        artifacts = shape.merge(artifacts, evidence_extra)
 
         # #670 / RC-9b: shared across self-eval passes so per-criterion
         # evaluator-error counts accumulate (2-strikes escalation), dev parity
@@ -1490,105 +1644,19 @@ class QATestHandler(_CycleTaskHandler):
                     validation.missing_components,
                     validation.summary,
                 )
-                max_self_eval = resolved_config.get("max_self_eval_passes", 1)
-                self_eval_count = 0
-
-                while not validation.passed and self_eval_count < max_self_eval:
-                    self_eval_count += 1
-                    followup_prompt = self._build_self_eval_prompt(validation, artifacts)
-                    if scaffold_input:
-                        followup_prompt += await self._self_eval_fill_section(
-                            context, scaffold_input, evidence_extra.get("fill_merge")
-                        )
-
-                    try:
-                        _, followup_content = await self._llm_call(
-                            context,
-                            [
-                                ChatMessage(role="system", content=system_prompt),
-                                ChatMessage(role="user", content=user_prompt),
-                                ChatMessage(role="assistant", content=content),
-                                ChatMessage(role="user", content=followup_prompt),
-                            ],
-                            chat_kwargs,
-                            inputs=inputs,
-                            started=start_time,
-                            shape_label=f"{self._handler_name}:self_eval",
-                            rendered=rendered,
-                            attempt=self_eval_count + 1,
-                        )
-                    except LLMError as exc:
-                        logger.warning(
-                            "Self-eval LLM call failed for %s: %s",
-                            self._handler_name,
-                            exc,
-                        )
-                        break
-
-                    followup_source = followup_content
-                    if scaffold_input:
-                        # 1.6.5 C (#947): the self-eval's fills go through the SAME merge
-                        # gate as the primary's — phantom tables (#1087) and element kinds
-                        # (#1094) included — instead of extracting as files named "slot-…"
-                        # that the shell guard then discards.
-                        from squadops.capabilities.verification_scaffold_fill import (
-                            apply_followup_fills,
-                            parse_fill_emission,
-                            strip_fill_blocks,
-                        )
-
-                        followup_fills = parse_fill_emission(followup_source)
-                        followup_source = strip_fill_blocks(followup_source)
-                        if followup_fills.fills:
-                            folded = apply_followup_fills(
-                                fill_emission or parse_fill_emission(""),
-                                followup_fills,
-                                (evidence_extra.get("fill_merge") or {}).get("dispositions", []),
-                            )
-                            fill_emission = folded.emission
-                            artifacts, merged_suite_files, fill_merge_evidence = (
-                                self._merge_fill_artifacts(
-                                    scaffold_input,
-                                    fill_emission,
-                                    artifacts,
-                                    self._app_invocation(inputs),
-                                )
-                            )
-                            shell_drop_paths = {m["filename"] for m in merged_suite_files}
-                            evidence_extra["fill_merge"] = fill_merge_evidence
-                            evidence_extra.setdefault("self_eval_fills", []).append(
-                                {
-                                    "pass": self_eval_count,
-                                    "applied": list(folded.applied),
-                                    "skipped_filled": list(folded.skipped_filled),
-                                }
-                            )
-                            logger.info(
-                                "%s self_eval fills: applied=%s skipped_filled=%s counts=%s",
-                                self._handler_name,
-                                list(folded.applied),
-                                list(folded.skipped_filled),
-                                fill_merge_evidence["counts"],
-                            )
-                    new_extracted = extract_fenced_files(followup_source)
-                    new_artifacts = [
-                        {
-                            "name": f["filename"],
-                            "content": f["content"],
-                            "media_type": _classify_file(f["filename"])[1],
-                            "type": "test",
-                        }
-                        for f in new_extracted
-                        # SIP-0104 P3: a self-eval pass must not rewrite merged shells
-                        # either — the slot protocol is the only shell surface.
-                        if f["filename"] not in shell_drop_paths
-                    ]
-                    artifacts = self._merge_artifacts(artifacts, new_artifacts, evidence_extra)
-                    validation = await self._validate_output(
-                        inputs, artifacts, typed_error_counts=typed_error_counts
-                    )
-
-                evidence_extra["self_eval_passes"] = self_eval_count
+                validation, artifacts = await self._self_evaluate(
+                    context,
+                    inputs,
+                    validation=validation,
+                    artifacts=artifacts,
+                    evidence_extra=evidence_extra,
+                    typed_error_counts=typed_error_counts,
+                    transcript=(system_prompt, user_prompt, content),
+                    chat_kwargs=chat_kwargs,
+                    started=start_time,
+                    rendered=rendered,
+                    followup=shape,
+                )
         else:
             validation = ValidationResult(passed=True, summary="Validation disabled")
 
@@ -1702,13 +1770,7 @@ class QATestHandler(_CycleTaskHandler):
                 passed_count = sum(1 for c in validation.checks if c.get("passed"))
                 validation.coverage_ratio = passed_count / len(validation.checks)
 
-            evidence_extra["validation_result"] = {
-                "passed": validation.passed,
-                "checks": validation.checks,
-                "missing_components": validation.missing_components,
-                "coverage_ratio": validation.coverage_ratio,
-                "summary": validation.summary,
-            }
+            evidence_extra["validation_result"] = self._validation_record(validation)
 
             # Issue #114: emit per-task typed-check evaluation artifact for
             # the gate evaluator. Same shape/semantics as the dev handler.
@@ -1728,16 +1790,6 @@ class QATestHandler(_CycleTaskHandler):
         else:
             test_suffix = f", tests not run: {test_result.error}" if test_result.error else ""
 
-        # SIP-0084 §10: build prompt provenance for artifact traceability
-        provenance: dict[str, Any] = {
-            "system_prompt_bundle_hash": assembled.assembly_hash,
-        }
-        if rendered is not None:
-            provenance["request_template_id"] = rendered.template_id
-            provenance["request_template_version"] = rendered.template_version
-            provenance["request_render_hash"] = rendered.render_hash
-            provenance["prompt_environment"] = "production"
-
         outputs: dict[str, Any] = {
             "summary": f"[qa] Generated {len(artifacts) - 1} test file(s){test_suffix}",
             "role": self._role,
@@ -1752,36 +1804,12 @@ class QATestHandler(_CycleTaskHandler):
                 "source_file_count": test_result.source_file_count,
                 "summary": test_result.summary,
             },
-            "prompt_provenance": provenance,
+            "prompt_provenance": self._prompt_provenance(assembled, rendered),
         }
 
-        # Phase 6: Outcome classification
-        if validation.passed:
-            from squadops.cycles.task_outcome import TaskOutcome
-
-            outputs["outcome_class"] = TaskOutcome.SUCCESS
-        else:
-            from squadops.cycles.task_outcome import (
-                FailureClassification,
-                TaskOutcome,
-            )
-
-            outputs["outcome_class"] = TaskOutcome.SEMANTIC_FAILURE
-            outputs["failure_classification"] = FailureClassification.WORK_PRODUCT
-
-        # #1271: validation evidence rides BOTH branches, exactly as #597 made it on the
-        # dev surface. It was failure-only here, so a PASSING qa task handed the ledger
-        # nothing: `normalize_task_checks` reads `validation_result.checks` and nothing
-        # else, and aggregation supersedes per (check_id, subject) — so a check that only
-        # ever appears when it FAILS can never be superseded by its own later pass. React
-        # roll 5 was rejected on the first attempt's six failed rows while the re-authored
-        # suite passed all eight with identical identities (#1271).
-        #
-        # #597's own comment recorded that "the qa handler has always populated this on
-        # success". It did not, and the claim outlived the fix it was written beside by
-        # five weeks — which is the argument for the parity test rather than the comment.
-        if "validation_result" in evidence_extra:
-            outputs["validation_result"] = evidence_extra["validation_result"]
+        # Phase 6: outcome classification, and the validation evidence on BOTH branches
+        # (#597, #1271 — register entry 46).
+        self._attach_outcome(outputs, validation, evidence_extra)
 
         # #407: record the fullstack frontend build as a first-class SIP-0096
         # check on BOTH the pass and fail paths. run_build_validation folds a
@@ -1801,36 +1829,10 @@ class QATestHandler(_CycleTaskHandler):
         await self._append_contract_probe_rows(inputs, outputs)
         self._fail_task_on_failing_probes(outputs)
 
-        # SIP-0104 P5: classify shell failures, correlate with the probe rows just
-        # appended, and bank the evidence summary. After the probes on purpose —
-        # correlation joins on the shared criterion id.
-        if scaffold_input:
-            self._append_scaffold_evidence(
-                outputs,
-                test_result,
-                merged_suite_files,
-                fill_merge_evidence,
-                scaffold_input,
-                artifacts,
-                self._app_invocation(inputs),
-            )
+        # SIP-0104 P5: the scaffold evidence, after the probes (register entry 43).
+        shape.append_evidence(outputs, test_result, artifacts)
 
-        duration_ms = (time.perf_counter() - start_time) * 1000
-        evidence = HandlerEvidence.create(
-            handler_name=self._handler_name,
-            task_type=self._task_type,
-            duration_ms=duration_ms,
-            inputs_hash=self._hash_dict(inputs),
-            outputs_hash=self._hash_dict(outputs),
-            metadata=evidence_extra if evidence_extra else None,
-        )
-
-        return HandlerResult(
-            success=validation.passed,
-            outputs=outputs,
-            _evidence=evidence,
-            error=validation.summary if not validation.passed else None,
-        )
+        return self._finish(start_time, inputs, outputs, validation, evidence_extra)
 
     async def _build_qa_prompt(
         self,
