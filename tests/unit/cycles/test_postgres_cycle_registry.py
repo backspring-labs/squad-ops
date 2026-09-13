@@ -127,6 +127,8 @@ def _cycle_row(**overrides):
         "expected_artifact_types": [],
         "experiment_context": {},
         "request_profile": None,
+        "framework_version": None,
+        "framework_git_sha": None,
         "notes": None,
         "cancelled": False,
     }
@@ -247,6 +249,33 @@ class TestPostgresCycleRegistry:
         assert "request_profile" in sql
         args = conn.execute.call_args[0][1:]
         assert args[14] == "selftest"  # $15
+
+    async def test_create_cycle_persists_code_lineage(self, registry, conn):
+        """#80: catches the INSERT dropping the version or commit a cycle was created on."""
+        conn.execute.return_value = None
+
+        await registry.create_cycle(
+            replace(_CYCLE, framework_version="1.7.5", framework_git_sha="072672ef-dirty")
+        )
+
+        sql = conn.execute.call_args[0][0]
+        assert "framework_version, framework_git_sha" in sql
+        args = conn.execute.call_args[0][1:]
+        assert (args[15], args[16]) == ("1.7.5", "072672ef-dirty")  # $16, $17
+
+    @pytest.mark.parametrize(
+        ("version", "sha"),
+        [("1.7.5", "072672ef"), (None, None)],
+        ids=["stamped", "created-before-80"],
+    )
+    async def test_get_cycle_reads_code_lineage(self, registry, conn, version, sha):
+        """#80: a stamped row reads back; a row from before the columns reads as unknown,
+        never as an empty string a reader could take for a value."""
+        conn.fetchrow.return_value = _cycle_row(framework_version=version, framework_git_sha=sha)
+
+        cycle = await registry.get_cycle("cyc_001")
+
+        assert (cycle.framework_version, cycle.framework_git_sha) == (version, sha)
 
     async def test_get_cycle_reads_request_profile(self, registry, conn):
         """Catches _row_to_cycle not mapping the request_profile column back."""

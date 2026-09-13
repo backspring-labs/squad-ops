@@ -378,6 +378,13 @@ class Cycle:
     # before this field existed.
     request_profile: str | None = None
 
+    # Code lineage (#80): the framework version and the commit of the runtime-api that
+    # created the cycle, stamped once at creation. The request profile above says which
+    # configuration; these say which code. None for cycles created before the fields
+    # existed, and for a commit the image did not record — unknown, never a guess.
+    framework_version: str | None = None
+    framework_git_sha: str | None = None
+
     notes: str | None = None
 
     # Operator cancellation flag. When True, derived status is CANCELLED

@@ -8,6 +8,8 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends
 
+from squadops import __version__ as SQUADOPS_VERSION
+from squadops._version import resolve_git_sha
 from squadops.api.cycle_schemas import (
     CycleCreateRequest,
     CycleCreateResponse,
@@ -366,6 +368,10 @@ async def create_cycle(
         expected_artifact_types=tuple(body.expected_artifact_types),
         experiment_context=body.experiment_context,
         request_profile=body.request_profile,
+        # #80: which code created the cycle — read here, at creation, so the record
+        # carries the deploy that actually served the request.
+        framework_version=SQUADOPS_VERSION,
+        framework_git_sha=resolve_git_sha(),
         notes=body.notes,
     )
 
