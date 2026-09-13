@@ -1,0 +1,56 @@
+name: nostromo crew checks
+
+# Runs on every pull request and ALWAYS reports a status. There is deliberately no
+# job-level `if:` — a required check that reports "skipped" can leave a pull request
+# waiting for a status that never arrives. The script decides, and returns success
+# immediately for any branch that is not a Nostromo crew branch.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  crew:
+    name: nostromo crew checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Gather what this pull request changes and who authored it
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        # The API rather than `git diff`: no history to fetch, and identical behaviour for
+        # a pull request opened from a fork.
+        run: |
+          set -euo pipefail
+          gh pr view "$PR" --json files   --jq '.files[].path'            > changed-files.txt
+          gh pr view "$PR" --json commits --jq '.commits[].authors[].email' | sort -u > authors.txt
+          : > expected-author.txt
+
+          # Derive the expected bot identity from GitHub rather than restating it here.
+          # One fact, one owner: the bot account is the source and this repository is not a copy.
+          role="$(printf '%s' "$HEAD_REF" | awk -F/ '$1=="nostromo" && NF>2 {print $2}')"
+          if [ -n "$role" ]; then
+            gh api "/users/nostromo-$role%5Bbot%5D" \
+              --jq '"\(.id)+\(.login)@users.noreply.github.com"' > expected-author.txt || : > expected-author.txt
+          fi
+
+      - name: Check the crew contract
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet pyyaml
+          args=(--branch "$HEAD_REF" --files-from changed-files.txt)
+          if [ -s expected-author.txt ]; then
+            args+=(--expected-author "$(cat expected-author.txt)")
+          fi
+          if [ -s authors.txt ]; then
+            mapfile -t authors < authors.txt
+            args+=(--authors "${authors[@]}")
+          fi
+          python3 scripts/dev/check_nostromo_crew_pr.py "${args[@]}"
