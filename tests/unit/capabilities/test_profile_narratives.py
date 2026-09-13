@@ -25,28 +25,41 @@ from squadops.capabilities.handlers.build_profiles import (
 
 pytestmark = [pytest.mark.domain_capabilities]
 
-# sha256 of each pre-move inline literal (narrative alone).
+# sha256 of each narrative. The three legacy profiles still carry their pre-#452 inline
+# literal byte-for-byte. The two stack narratives changed DELIBERATELY in #1312: each
+# ended with a sentence telling the builder what the QA handoff document must contain
+# ("CORS configuration notes", "the build command, the start command, and the port") —
+# which is exactly what the notes' exclusion list now names as already supplied, derived
+# from the environment contract itself. Leaving them would have instructed the builder to
+# restate the one thing it is told not to.
 _PINNED_NARRATIVE = {
     "python_cli_builder": "2d7b8b77bcf66751d99eec4baeed9ac044007b4b07dcc7d9fa36b294bee2ad2e",
     "static_web_builder": "c6582150bb6af350f93ac00e7e8ad028bad8d5935e3ce56f0cc999d84ff652eb",
     "web_app_builder": "3e11df5924d41749d00fb6b8a22e281eb4e775af206d560a70d144e6a0ec21fe",
-    "fullstack_fastapi_react": "2250e64354f268bdc605e05137a3d61bd7de7e9116c5c1b648a5f8a6444b4639",
-    "nextjs_ts": "8a541ffcd4077959770018cfb17eeba5e7ab584fca6ac34061ad4373b7cdf053",
+    # changed 2026-09-08 (#1312) — handoff sentence removed
+    "fullstack_fastapi_react": "c210a3bb5690d90403efcae6570d373d672e9c396eba1e18186ebb2e2119f6b0",
+    # changed 2026-09-08 (#1312) — handoff sentence removed
+    "nextjs_ts": "35b96ba8f6b543be4fd315710566fb060d72030b13422bfce120c5abb5d2a96e",
 }
 
-# sha256 of each pre-move COMPOSED full_system_prompt — the seam the builder
-# handler actually consumes (narrative + required/optional/qa_handoff blocks),
-# so composition changes cannot hide behind a stable narrative.
+# sha256 of each COMPOSED full_system_prompt — the seam the builder handler actually
+# consumes (narrative + required/optional/notes blocks), so composition changes cannot
+# hide behind a stable narrative.
+# EVERY composed prompt changed in #1312: `qa_handoff.md` left the required-files list on
+# all five profiles, its NON-NEGOTIABLE section block and skeleton are gone, and the two
+# stacks gained the notes block with the exclusion list derived from their own contracts.
+# Re-pinned 2026-09-08 so the diff shows the prompt change honestly, which is what this
+# gate is for.
 _PINNED_COMPOSED = {
-    "python_cli_builder": "321140533889cb25f8ce0817de680ffce5c2f38412c7464f28c5162ffd0b6cc6",
-    "static_web_builder": "10d0efbc5c8c158529b37e5d1da66a49e9fe3a55de9ed75109f471ed55ec3a1f",
-    "web_app_builder": "b242252619ccc82c6fc081b6d657a41903174274ca387e576e9171cb878a6e1b",
-    "fullstack_fastapi_react": "748c4e740fafe63f39cc94eec91d1e842050dcf5d1e070919e6f0680402b1957",
+    "python_cli_builder": "f2e15c6fcf6f339097ec9c049a9b9456de25c23c30dda5afeacfee8ab5975515",
+    "static_web_builder": "52204d16d144f9eb4ecff1fa50a6df685d59b367bc53d754f3d01a748e0e120a",
+    "web_app_builder": "835c0d5d5d55e91ad27adb97989f3821b47019cd6597368734be6560efe8d678",
+    "fullstack_fastapi_react": "bb278dd81ffd764ce82dd94d39a53698b0e8527bd14866950aba3a23142e35d1",
     # #838: nextjs_ts has NO pre-move inline literal — it was authored for stack #2,
     # after the #452 externalization. Its pin therefore establishes a baseline rather
     # than verifying a move, which is the same guarantee going forward: a change to
     # this prompt shows honestly in the diff instead of arriving as a silent edit.
-    "nextjs_ts": "5d8855d96521e1098b191421f20f43dba9c1f729a05df5b0eb601082336e6dda",
+    "nextjs_ts": "bcfcd88b1f88c71a064ed8301b1befa2f6af2eb072e276b57578453cccbd25bc",
 }
 
 

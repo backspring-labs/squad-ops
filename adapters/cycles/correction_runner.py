@@ -33,17 +33,15 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from hashlib import sha256
 from typing import TYPE_CHECKING, Any
 
+from adapters.cycles.correction_repair import CorrectionRepair
 from adapters.cycles.execution_errors import _ExecutionError
 from squadops.capabilities.context_assembly import (
-    REPAIR_CONTEXT_CONTRACT,
-    forwarded_failed_artifacts,
-    manifest_surface_fragments,
-    repair_forwarded_inputs,
     retest_forwarded_inputs,
 )
 from squadops.cycles.agent_config import resolve_agent_config
@@ -58,7 +56,6 @@ from squadops.cycles.correction_signature import (
 from squadops.cycles.failure_evidence import build_failure_evidence, compose_failure_trigger
 from squadops.cycles.models import ArtifactRef
 from squadops.cycles.plan_delta import PlanDelta
-from squadops.cycles.scaffold_enforcement import name_producer
 from squadops.cycles.task_outcome import CorrectionTermination, CorrectionTerminationReason
 from squadops.events.types import EventType
 from squadops.tasks.models import TaskEnvelope, TaskResultStatus
@@ -84,460 +81,83 @@ _CORRECTION_STEP_OUTPUT_BUCKET: dict[str, str] = {
 }
 
 
-def _top_level_package(path: str) -> str:
-    """First path segment of a repo-relative artifact path.
-
-    ``backend/tests/x.py`` → ``backend``; a bare filename is its own package.
-    """
-    head, _, _ = str(path).strip().lstrip("./").partition("/")
-    return head
+#: A repository-relative path as it appears inside prose: at least one slash, a file
+#: extension, no whitespace. Deliberately narrow — the point is to find the file names a
+#: claim is ABOUT, not to parse English.
+_PROSE_PATH = re.compile(r"[\w.\-/@]*[\w\-]+/[\w.\-/@]*[\w\-]+\.[A-Za-z0-9]{1,6}")
 
 
-def _scope_to_shared_packages(candidates: list[str], anchors: list[str]) -> list[str]:
-    """Keep ``candidates`` whose top-level package matches some ``anchor``'s.
-
-    RC2 (pf-24) blast-radius control: a failing ``backend/tests/…`` test retargets
-    ``backend/…`` source but leaves ``frontend/…`` untouched, so a backend failure
-    can never regress frontend source. No anchors → nothing (the caller falls back
-    to the failed artifacts alone).
-    """
-    anchor_pkgs = {_top_level_package(a) for a in anchors if a}
-    if not anchor_pkgs:
-        return []
-    return [c for c in candidates if c and _top_level_package(c) in anchor_pkgs]
-
-
-def _scope_to_shared_language(candidates: list[str], anchors: list[str]) -> list[str]:
-    """Keep ``candidates`` on the same side of the frontend/backend line as ``anchors``.
-
-    The guarantee RC2 was actually written to give — "a backend failure can never
-    regress frontend source" — expressed against the source language instead of the
-    directory tree, so it holds wherever the suite was authored.
-    """
-    from squadops.cycles.acceptance_check_spec import is_frontend_source
-
-    anchor_sides = {is_frontend_source(a) for a in anchors if a}
-    if len(anchor_sides) != 1:
-        # No anchors, or anchors straddling both sides — nothing is excluded, so
-        # scoping would not be bounding anything. Stay silent rather than widen.
-        return []
-    side = anchor_sides.pop()
-    return [c for c in candidates if c and is_frontend_source(c) is side]
-
-
-def _scoped_implementation_surface(candidates: list[str], anchors: list[str]) -> list[str]:
-    """The implementation source a failure in ``anchors`` may legitimately retarget.
-
-    Package scoping first — pf-24's rule, unchanged whenever it matches anything.
-    When it comes back EMPTY the anchor was uninformative, not exclusive, and #688
-    measured what that costs: shk-2's qa suite was authored at root-level ``tests/``,
-    so its anchor package was ``tests``, ``backend/routes.py`` was filtered out, and
-    the correction loop had no route to app source at all. fay-16…19 authored
-    ``backend/tests/…``, which matched — so whether pf-24 and pf-27 worked at all
-    depended on where the squad happened to put its tests.
-
-    So the empty case falls back to the language boundary, which bounds the blast
-    radius the way RC2 intended (a backend failure still cannot reach frontend
-    source) without depending on the authored layout. A non-empty package match is
-    strictly narrower, so it keeps winning.
-    """
-    scoped = _scope_to_shared_packages(candidates, anchors)
-    if scoped:
-        return scoped
-    widened = _scope_to_shared_language(candidates, anchors)
-    if widened:
-        logger.info(
-            "correction_repair_target: package scoping matched nothing for anchors %s — "
-            "falling back to same-language implementation source %s (#688)",
-            ", ".join(anchors),
-            ", ".join(widened),
-        )
-    return widened
-
-
-def _frontend_build_failed(failure_evidence: Any) -> bool:
-    """#650 (fay-8): the failed task's validation shows the frontend build failing.
-
-    A failing ``frontend_build`` row places the defect in frontend source no
-    matter which task reported it — the check runs inside the backend qa.test
-    task, so ownership-anchored targeting never reaches the broken view.
-    """
-    from squadops.cycles.check_registry import CHECK_FRONTEND_BUILD
-
-    if not isinstance(failure_evidence, dict):
-        return False
-    checks = (failure_evidence.get("validation_result") or {}).get("checks") or []
-    return any(
-        isinstance(row, dict)
-        and row.get("check") == CHECK_FRONTEND_BUILD
-        and row.get("passed") is False
-        for row in checks
-    )
-
-
-def _widen_target_for_frontend_build(
-    target: list[str], failure_evidence: Any, failed_inputs: dict[str, Any]
-) -> list[str]:
-    """#650 minimal provenance targeting: a failing ``frontend_build`` unions the
-    plan's frontend implementation source into the repair target.
-
-    fay-8 (cyc_7f5f1b8b1790): five correction rounds, four identical
-    ``frontend_build`` failures, every repair emitted backend/test files only —
-    RC2's package scoping is deliberately conservative (``backend/tests/*`` →
-    ``backend/*``, never ``frontend/*``), which is exactly the trap: the loop
-    polished a passing backend while the build-breaking view sat outside every
-    target. The general provenance-driven scope seam stays deferred (1.5);
-    this widens exactly the measured case, derived from the same
-    ``implementation_artifacts`` surface RC2 already threads.
-    """
-    if not _frontend_build_failed(failure_evidence):
-        return target
-    # #822: which files are views is the CONTRACT's answer, not a directory prefix. This read
-    # `p.startswith("frontend/")` — stack #1's layout stated as a property of views. A stack
-    # that builds at the project root would union nothing, and the fay-8 trap this function
-    # exists to close would reopen intact for it. Same authoring-independent relation
-    # `_probe_owned_slots` uses (#688), one criterion over.
-    view_slots = [p for p in (failed_inputs.get("contract_view_slots") or []) if isinstance(p, str)]
-    return list(dict.fromkeys([*target, *view_slots]))
-
-
-def _failed_probe_ids(failure_evidence: Any) -> list[str]:
-    """Ids of the behavioral probes that FAILED, in evidence order (#688).
-
-    Probe rows enter ``validation_result.checks`` from ``probe_check_rows`` with
-    ``check`` == ``criterion_id`` == the probe id and a ``status`` of
-    passed/failed/skipped. Only ``failed`` counts: ``skipped`` means the subject
-    never booted, which indicts no particular endpoint.
-    """
-    if not isinstance(failure_evidence, dict):
-        return []
-    evidence = failure_evidence if isinstance(failure_evidence, dict) else {}
-    rows = (evidence.get("validation_result") or {}).get("checks") or []
-    ids = [
-        str(row.get("check"))
-        for row in rows
-        if isinstance(row, dict) and row.get("status") == "failed" and row.get("check")
-    ]
-    # #1015: the same probe failing INSIDE the suite. A scaffold shell is bound to a
-    # probe id, and when its frozen assertion fails the scaffold evidence classifies
-    # that as ``app_contract`` with ``criterion_id`` = the probe id — structured data,
-    # not the analyzer's prose. The 1.6.3 set's three reds all failed this way, on
-    # ``vc-probe-api-runs-join``, and never as an HTTP probe row; so the #688 chain to
-    # the owning slot started from an empty list every round. Fill-layer and
-    # generator-layer observations carry no criterion and indict no endpoint.
-    from squadops.cycles.scaffold_evidence import CLASS_APP_CONTRACT
-
-    summary = failure_evidence.get("scaffold_evidence")
-    observations = (summary.get("observations") or []) if isinstance(summary, dict) else []
-    for obs in observations:
-        if (
-            isinstance(obs, dict)
-            and obs.get("failure_class") == CLASS_APP_CONTRACT
-            and obs.get("criterion_id")
-            and str(obs["criterion_id"]) not in ids
-        ):
-            ids.append(str(obs["criterion_id"]))
-    return ids
-
-
-def _probe_owned_slots(failure_evidence: Any, failed_inputs: dict[str, Any]) -> list[str]:
-    """Fill-slot files owning the endpoints whose behavioral probes failed (#688).
-
-    The deterministic chain the shk-2 loss chain needed and did not have:
-    failed probe row → the probe's declared ``METHOD /path`` → the contract's
-    endpoint→fill-slot map → the file that owns the failing endpoint.
-
-    shk-2 (cyc_88162ecfd895): ``vc-probe-runs`` answered 500 because
-    ``backend/routes.py`` used ``RunEvent`` without importing it. Both repairs
-    emitted ``backend/main.py`` (named by interface-drift evidence) plus the
-    failed qa task's own suite, and never ``routes.py`` — the target set could
-    not name the defect site, so the loop reproduced the identical 500 and
-    exhausted. This resolution names it from contract data alone, independent of
-    the drift evidence and of where the squad chose to put its tests.
-
-    Empty whenever the inputs are absent (author mode, probe-less contracts,
-    pre-#688 envelopes) or no probe failed — the caller's target is then
-    byte-identical to its prior behavior.
-    """
-    owners = failed_inputs.get("contract_endpoint_owners") or {}
-    probes = failed_inputs.get("contract_probes") or []
-    if not owners or not probes:
-        return []
-    failed_ids = _failed_probe_ids(failure_evidence)
-    if not failed_ids:
-        return []
-
-    from squadops.cycles.verification_contract import Probe
-
-    tokens_by_id: dict[str, str] = {}
-    for raw in probes:
-        try:
-            probe = Probe.from_dict(raw)
-        except ValueError:  # a malformed row indicts nothing; it must not raise here
-            continue
-        token = probe.endpoint_token()
-        if token:
-            tokens_by_id[probe.id] = token
-
-    slots: list[str] = []
-    for probe_id in failed_ids:
-        owner = owners.get(tokens_by_id.get(probe_id, ""))
-        if owner and owner not in slots:
-            slots.append(owner)
-    if slots:
-        logger.info(
-            "correction_repair_target: probe-owned fill slots %s (failed probes: %s)",
-            ", ".join(slots),
-            ", ".join(failed_ids),
-        )
-    return slots
-
-
-def _fill_observations(failure_evidence: Any) -> list[dict[str, str]]:
-    """The scaffold evidence's fill-layer observations, one per (file, slot) (#970).
-
-    ``classify_shell_failures`` attributes an assertion failure inside a slot region
-    to the FILL layer with the slot id and the shell path — structured data, the
-    same source #1015 reads app-contract observations from. These are the sites an
-    own-artifact qa repair can reach: the shell files, addressed by slot.
-    """
-    if not isinstance(failure_evidence, dict):
-        return []
-    from squadops.cycles.scaffold_evidence import CLASS_FILL
-
-    summary = failure_evidence.get("scaffold_evidence")
-    observations = (summary.get("observations") or []) if isinstance(summary, dict) else []
-    seen: set[tuple[str, str]] = set()
-    out: list[dict[str, str]] = []
-    for obs in observations:
-        if not isinstance(obs, dict) or obs.get("failure_class") != CLASS_FILL:
-            continue
-        key = (str(obs.get("file") or ""), str(obs.get("slot_id") or ""))
-        if not key[0] or key in seen:
-            continue
-        seen.add(key)
-        out.append({"file": key[0], "slot_id": key[1], "detail": str(obs.get("detail") or "")})
-    return out
-
-
-def _qa_scaffold_repair_inputs(
-    role: str, failed_inputs: dict[str, Any], failed_result: Any, failure_evidence: Any
-) -> dict[str, Any]:
-    """What a qa repair of a scaffold-bound task needs to reach a fill (#970, 1.6.5 D).
-
-    Presence-keyed: only a qa-role step repairing a task that carried the scaffold
-    receives anything. The scaffold rides as the task was authored against it
-    (pristine shells, manifest, tables, element kinds) plus ``current_files`` — the
-    failed task's stored artifacts at shell paths, i.e. the shells WITH the fills the
-    task merged — so the repair can replace one slot and keep every other byte for
-    byte; ``repair_slots`` names the failing slots for the brief.
-    """
-    scaffold_input = failed_inputs.get("verification_scaffold")
-    if role != "qa" or not isinstance(scaffold_input, dict):
-        return {}
-    shell_paths = {str(f.get("name")) for f in (scaffold_input.get("files") or [])}
-    artifacts = (getattr(failed_result, "outputs", None) or {}).get("artifacts") or []
-    current_files = [
-        {"name": str(a["name"]), "content": str(a.get("content") or "")}
-        for a in artifacts
-        if isinstance(a, dict) and a.get("name") in shell_paths
-    ]
-    return {
-        "verification_scaffold": {**scaffold_input, "current_files": current_files},
-        "repair_slots": _fill_observations(failure_evidence),
-    }
-
-
-def _empty_emission_signature(result: Any) -> list[str]:
-    """The #998 signature a repair step's handler put on its ``emission_failure`` marker,
-    as a zero-or-one-element list so the caller can ``extend`` without branching."""
-    marker = (getattr(result, "outputs", None) or {}).get("emission_failure")
-    if isinstance(marker, dict) and marker.get("signature"):
-        return [str(marker["signature"])]
-    return []
-
-
-def _narrowed_or_scoped(
-    probe_slots: list[str], failed_inputs: dict[str, Any], failed_artifacts: list[str]
-) -> list[str]:
-    """The implementation surface a repair may reach — narrowed when the defect site is known.
-
-    **#1015 part A, the narrowing.** When a failing probe resolves to the slot that owns
-    its endpoint, that slot IS the target and the language-wide surface is not appended.
-    The 1.6.3 set measured the alternative: with the join route in a seven-file "you may
-    emit" list, roll 1's round 2 and roll 4's rounds 2–3 repaired the create route while
-    the decision text named the join handler, and the loop spent its budget beside the
-    defect. Minimality and the attempt counter (#1015 B/C) were in force and did not
-    help a repair aimed at the wrong file. Drift files and the failed task's own
-    artifacts still ride (pf-21: they carry real defects too); only the fallback that
-    exists for the case of *no* site evidence is withheld when site evidence exists.
-
-    With no probe-owned slot the surface is what it was: package scoping, then the
-    #688 language fallback.
-    """
-    if probe_slots:
-        logger.info(
-            "correction_repair_target: narrowed to the slot(s) owning the failing probe(s) — "
-            "%s; the language-wide surface is withheld (#1015)",
-            ", ".join(probe_slots),
-        )
-        return []
-    return _scoped_implementation_surface(
-        failed_inputs.get("implementation_artifacts", []) or [], failed_artifacts
-    )
-
-
-def _verified_implicated_files(
+def refuted_source_claims(
     failure_analysis: dict[str, Any] | None, failed_inputs: dict[str, Any]
-) -> list[str]:
-    """The analyzer's ``implicated_files``, kept only where the workspace agrees (#968).
+) -> list[dict[str, str]]:
+    """Claims in the analyzer's PROSE that name a file the workspace does not have (#968).
 
-    The analyzer's file claims are prose-adjacent — #968 counted three false ones in a
-    single roll, one of them carried verbatim into the correction decision. The cheapest
-    mechanical check is whether the named path is a file the failed task's envelope knows
-    about at all: an implementation artifact, one of its own expected artifacts, or a
-    contract-owned slot. A path outside that set is not a defect site the loop can act
-    on, and is dropped with a log line rather than aimed at.
+    ``_verified_implicated_files`` already refutes the structured half — the file list —
+    and drops what the workspace cannot confirm. The prose half travelled unchecked, and
+    the prose is what the correction decision inherits: SIP-0104 P6 roll 6 carried round
+    1's diagnosis word for word into a decision that instructed the squad to "correct the
+    store imports" that line 3 of the named file already had right. Three false factual
+    claims in one roll, and the subject oscillated app → tests → app on identical evidence.
+
+    The cheap mechanical question is the one #968 asks for: a claim about source has to be
+    about source that exists. A sentence naming a path the failed task's envelope does not
+    know is not a defect site the loop can act on, and the decision is told so instead of
+    inheriting it.
+
+    Returns one entry per refuted path — the path, and the sentence that named it — so the
+    decision prompt can quote what was refuted rather than merely counting it. Deliberately
+    NOT a rewrite of the analysis: the analyzer's text stands as it was written, and the
+    contradiction rides beside it.
     """
     if not isinstance(failure_analysis, dict):
-        return []
-    claimed = [str(f) for f in (failure_analysis.get("implicated_files") or []) if f]
-    if not claimed:
         return []
     known: set[str] = set()
     for key in ("implementation_artifacts", "expected_artifacts"):
         known.update(str(x) for x in (failed_inputs.get(key) or []) if x)
     known.update(str(x) for x in (failed_inputs.get("contract_endpoint_owners") or {}).values())
-    verified = [f for f in dict.fromkeys(claimed) if f in known]
-    dropped = [f for f in claimed if f not in known]
-    if dropped:
-        logger.info(
-            "correction_repair_target: analyzer implicated %s but the workspace has no such "
-            "file — dropped, not aimed at (#968)",
-            ", ".join(dropped),
-        )
-    return verified
+    if not known:
+        # Nothing to check against. Refuting every path here would indict a whole analysis
+        # on missing inputs, which is the opposite of the failure this guards.
+        return []
+    known_basenames = {p.rsplit("/", 1)[-1] for p in known}
+
+    prose: list[str] = []
+    summary = failure_analysis.get("analysis_summary")
+    if isinstance(summary, str):
+        prose.append(summary)
+    for factor in failure_analysis.get("contributing_factors") or []:
+        if isinstance(factor, str):
+            prose.append(factor)
+
+    refuted: dict[str, str] = {}
+    for text in prose:
+        for sentence in re.split(r"(?<=[.!?])\s+", text):
+            for match in _PROSE_PATH.finditer(sentence):
+                path = match.group(0)
+                if path in known or path.rsplit("/", 1)[-1] in known_basenames:
+                    continue
+                refuted.setdefault(path, sentence.strip())
+    return [{"path": path, "claim": claim} for path, claim in refuted.items()]
 
 
-def _resolve_repair_target(
-    failure_evidence: Any,
-    failed_inputs: dict[str, Any],
-    failure_analysis: dict[str, Any] | None = None,
-) -> tuple[list[str], str | None, str | None]:
-    """Choose ``(expected_artifacts, focus, description)`` for a patch-path repair.
+def _attach_refuted_claims(
+    corr_inputs: dict[str, Any], analysis_outputs: dict[str, Any], envelope: Any
+) -> None:
+    """Ride the refutation beside the analysis the decision inherits (#968).
 
-    #531: the target defaults to the *failed task's own* artifacts — but the
-    ``tests_pass`` check lives on the qa test task, so anchoring there regenerates
-    the tests (the symptom) while the drifted source (the cause) is never rewritten
-    and the loop can't converge. When the correction carries deterministic
-    interface-drift evidence (an AST diff, not the free-text ``affected_task_types``),
-    the drifted files ARE part of the target so the dev repair rewrites the source.
-
-    pf-21 (cyc_2aac58b9f03d): drift is not always the *whole* story — the failing
-    check's OWN artifact can carry an independent bug too (there: models.py drift
-    AND a broken pytest ``client`` fixture in the test file). #532 targeted the
-    drift files EXCLUSIVELY, orphaning that file so the loop re-patched already-fixed
-    source every attempt and never touched the real test bug → non-convergence. So
-    when drift is present, target the UNION (drift files first, then the failed
-    task's artifacts): the drifted source is always in the set (no masking — the
-    cause is always fixable, the #531/#532 win holds), and the failing artifact's
-    own bug is fixable too.
-
-    pf-24 (cyc_38415226ad82) — RC2: a ``tests_pass``/probe failure with NO interface
-    drift (a behavioral/runtime bug — there a missing ``/api`` router prefix in
-    main.py) has its fix in the *source under test*, which the failing qa.test does
-    NOT own (its artifacts are the test files). Anchoring on the failed task then
-    edits only the test and the loop exhausts. So with no drift, extend the target
-    with the plan's implementation source (``implementation_artifacts``, threaded
-    onto qa.test envelopes by task_plan) that shares a top-level package with a
-    failing artifact — ``backend/tests/*`` failure → ``backend/*`` source, never
-    ``frontend/*`` (package-scoping bounds the blast radius). Absent that surface
-    (author mode, non-build corrections) the target is byte-identical to the #531
-    fallback below.
-
-    shk-2 (cyc_88162ecfd895) — #688: every surface above is *indirect*. The drift branch
-    names whatever files the drift evidence happened to name; the package-scoped union
-    reaches app source only when the failed qa task's own artifacts share a top-level
-    package with it. Both missed a one-line defect in ``backend/routes.py`` — drift
-    pointed at ``backend/main.py``, and the suite was authored at root-level ``tests/``,
-    so the scoped union came back empty (it matches on ``backend/tests/…``, which is what
-    fay-16…19 happened to author: the reach depended on an authoring coincidence). Two
-    changes, one per half of that:
-
-    * The target now LEADS with the fill slots that own the FAILING PROBES' endpoints,
-      resolved from contract data (``_probe_owned_slots``). Drift files and the failed
-      task's own artifacts still ride — they carry real defects too, the pf-21 lesson —
-      but they can no longer displace the defect site.
-    * The scoped implementation surface falls back from package to language when the
-      package anchor matches nothing (``_scoped_implementation_surface``), so a
-      SUITE-ONLY failure — one with no probe evidence to resolve — can still reach the
-      source under test on a root-level-``tests/`` layout.
+    The analyzer's text is NOT rewritten: an analysis silently edited is a second
+    unverifiable claim, and the point is that the decision can see both what was asserted
+    and what the workspace says about it.
     """
-    probe_slots = _probe_owned_slots(failure_evidence, failed_inputs)
-    drift = failure_evidence.get("interface_drift") if isinstance(failure_evidence, dict) else None
-    drift_files = sorted(
-        {d["file"] for d in (drift or []) if isinstance(d, dict) and d.get("file")}
-    )
-    failed_artifacts = failed_inputs.get("expected_artifacts", []) or []
-    if drift_files:
-        # Union, drift first, de-duplicated preserving order. The instructional "how"
-        # is NOT authored here — it is the interface-drift `instruction`, already a
-        # managed/authored asset surfaced into the repair prompt's failure summary
-        # as the "INTERFACE CONFORMANCE" section, plus the failure summary itself for
-        # the failing artifact's bug. So focus/description stay unset (no inline
-        # prompt content — CLAUDE.md #448); the named artifacts + that instruction
-        # redirect the repair onto both the drifted source and the failing file.
-        # pf-27 (cyc_d01810b2922f): a ``tests_pass`` failure can CO-OCCUR with
-        # interface drift on a scaffold-FROZEN file (there: backend/main.py — its
-        # /health route + the repair's own un-restored inline routes), which pins the
-        # target to this drift branch. But the behavioral fix still lives in the
-        # fill-slot source under test (routes.py), which is neither a drift file nor
-        # the failing qa.test's own artifact — so without the same package-scoped
-        # implementation surface the no-drift branch already unions (RC2), the repair
-        # edits only the drifted file + the test and NEVER reaches routes.py →
-        # non-convergence. Union it here too; empty surface (author mode) → the scoped
-        # set is empty and the target is byte-identical to the pre-pf-27 union.
-        scoped_source = _narrowed_or_scoped(probe_slots, failed_inputs, failed_artifacts)
-        target = list(
-            dict.fromkeys([*probe_slots, *drift_files, *failed_artifacts, *scoped_source])
-        )
-        target = _widen_target_for_frontend_build(target, failure_evidence, failed_inputs)
-        return (target, None, None)
-    # RC2 no-drift path: union the failing task's own artifacts with the
-    # package-scoped implementation surface so a behavioral failure can reach the
-    # source under test. Empty surface → byte-identical to the #531 fallback
-    # (failed_artifacts, focus, description).
-    # #1015 part A, the analyzer's half: consulted only when no deterministic site
-    # evidence exists (no failing probe resolved to a slot, no drift). Verified entries
-    # narrow the target exactly as a probe-owned slot does; none → the surface is what
-    # it was.
-    analysis_files = (
-        _verified_implicated_files(failure_analysis, failed_inputs) if not probe_slots else []
-    )
-    # #1120: the failed task's OWN artifacts are never a narrowing site. They already ride
-    # the target as failed_artifacts and the ownership veto (#884) decides who may touch
-    # them; letting one of them withhold the language-wide surface left a dev-role
-    # repair of a qa-side failure with an EMPTY target (stack #1, cyc_3cde35fa5204:
-    # the analyzer named the failing jsx suite, the veto removed it, every round was
-    # refunded). Sites that narrow are files someone else owns.
-    own = {str(f) for f in failed_artifacts}
-    own_only = [f for f in analysis_files if f in own]
-    analysis_files = [f for f in analysis_files if f not in own]
-    if own_only and not analysis_files:
-        logger.info(
-            "correction_repair_target: the analyzer implicated only the failed task's own "
-            "artifact(s) %s — not a narrowing site; the surface is what it was (#1120)",
-            ", ".join(own_only),
-        )
-    scoped_source = _narrowed_or_scoped(
-        [*probe_slots, *analysis_files], failed_inputs, failed_artifacts
-    )
-    target = list(dict.fromkeys([*probe_slots, *analysis_files, *failed_artifacts, *scoped_source]))
-    target = _widen_target_for_frontend_build(target, failure_evidence, failed_inputs)
-    return (
-        target,
-        failed_inputs.get("subtask_focus"),
-        failed_inputs.get("subtask_description"),
+    refuted = refuted_source_claims(analysis_outputs, getattr(envelope, "inputs", None) or {})
+    if not refuted:
+        return
+    corr_inputs["refuted_source_claims"] = refuted
+    logger.warning(
+        "analyzer_claim_refuted task=%s paths=%s — the workspace has no such file; the "
+        "decision is told rather than inheriting it (#968)",
+        getattr(envelope, "task_id", "?"),
+        ", ".join(entry["path"] for entry in refuted),
     )
 
 
@@ -550,6 +170,7 @@ def _inject_deterministic_evidence(
     scaffold_enforcement_carry: list[str] | None,
     bound_record: Any = None,
     repair_rejections: list[str] | None = None,
+    stored_artifacts: list[tuple[str, Any]] | None = None,
 ) -> None:
     """Deterministic authoritative-evidence injection for the correction chain.
 
@@ -610,6 +231,19 @@ def _inject_deterministic_evidence(
     if repair_rejections:
         failure_evidence["prior_repair_rejections"] = list(repair_rejections)
 
+    # #995: what this task had already emitted before the round being analysed. A task
+    # killed by the wall clock has a history, and the result the executor holds is only
+    # its last read — V7 roll 1's two substantive emissions were erased and the analysis
+    # named a mechanism the logs disprove. Same transport as the two above, same reason:
+    # the loop must be TOLD rather than left to infer from an absence.
+    from squadops.cycles.failure_evidence import prior_emission_history
+
+    history = prior_emission_history(
+        str(getattr(envelope, "task_id", "") or ""), stored_artifacts or ()
+    )
+    if history:
+        failure_evidence["prior_emissions"] = history
+
     expectations = expectation_lines((envelope.inputs or {}).get("acceptance_criteria"))
     if expectations:
         failure_evidence["contract_expectations"] = expectations
@@ -621,267 +255,6 @@ def _inject_deterministic_evidence(
     model_lines = model_surface_instructions(interface_manifest)
     if model_lines:
         failure_evidence["model_surface"] = model_lines
-
-
-def _locus_and_repair_target(
-    failed_task_type: str,
-    failure_evidence: Any,
-    failed_inputs: dict[str, Any],
-    failure_analysis: dict[str, Any] | None = None,
-) -> tuple[str, list[str], str | None, str | None]:
-    """#568: classify the failure locus and choose the repair target for it.
-
-    Returns ``(locus, expected_artifacts, focus, description)``. An
-    OWN_ARTIFACT failure (the failed task's own emission is missing or
-    uncollectable) targets the failed task's own contract — pointing
-    ``_resolve_repair_target``'s subject-implementation union at a test
-    re-author would aim it at app source files. Every other locus keeps the
-    existing target resolution unchanged.
-    """
-    from squadops.cycles.failure_evidence import (
-        FailureLocus,
-        absent_anchor_cases,
-        classify_failure_locus,
-        qa_owned_suite_defects,
-    )
-
-    failure_locus = classify_failure_locus(failure_evidence)
-    own_expected = [str(e) for e in (failed_inputs.get("expected_artifacts") or []) if e]
-    # #970 (1.6.5 D): under fill mode the shells are merge products, never in
-    # ``expected_artifacts``, so aiming the own-artifact repair at the plan's declared
-    # file left a failing FILL structurally unreachable — roll 6 of the 1.6.4 set
-    # re-produced ``__tests__/runs.test.ts`` twice while every shell rendered "no
-    # fill received". When the failed task carried the scaffold and the evidence
-    # names fill-layer observations, the target is their shells, by slot.
-    fill_sites = (
-        _fill_observations(failure_evidence) if failed_inputs.get("verification_scaffold") else []
-    )
-    if failure_locus == FailureLocus.OWN_ARTIFACT and fill_sites:
-        shells = list(dict.fromkeys(site["file"] for site in fill_sites))
-        logger.info(
-            "correction_repair_locus: own_artifact — %s re-fills slot(s) %s in %s (#970)",
-            failed_task_type,
-            ", ".join(site["slot_id"] or "?" for site in fill_sites),
-            ", ".join(shells),
-        )
-        return (
-            failure_locus,
-            shells,
-            failed_inputs.get("subtask_focus"),
-            failed_inputs.get("subtask_description"),
-        )
-    # #1130: the suite raised in its own frame in a file the stack says is the qa role's
-    # (1.6.5 roll 3: ``TestClient.delete(json=…)`` in ``backend/tests/test_runs.py``,
-    # sent to the dev chain 3/3 rounds). The target is THAT file — the failed task's
-    # other suites, if any, were not the defect and are not re-authored.
-    qa_defects = qa_owned_suite_defects(failure_evidence)
-    if failure_locus == FailureLocus.OWN_ARTIFACT and qa_defects:
-        defect_files = list(dict.fromkeys(str(d["file"]) for d in qa_defects if d.get("file")))
-        target = [f for f in own_expected if f in defect_files] or defect_files
-        logger.info(
-            "correction_repair_locus: own_artifact — qa_owned_routed: %s raised %s in its own "
-            "frame (%s); %s re-authors %s (#1130)",
-            ", ".join(defect_files),
-            ", ".join(sorted({str(d.get("exception") or "?") for d in qa_defects})),
-            "; ".join(f"{d.get('title') or d.get('file')}:{d.get('line')}" for d in qa_defects[:5]),
-            failed_task_type,
-            ", ".join(target),
-        )
-        return (
-            failure_locus,
-            target,
-            failed_inputs.get("subtask_focus"),
-            failed_inputs.get("subtask_description"),
-        )
-    # #1123: a failing case asserted an anchor no view declares — the suite that made
-    # the assertion is the target, not the views a dev repair would bend toward it.
-    anchor_cases = absent_anchor_cases(failure_evidence)
-    if failure_locus == FailureLocus.OWN_ARTIFACT and anchor_cases:
-        defect_files = list(dict.fromkeys(str(c["file"]) for c in anchor_cases if c.get("file")))
-        target = [f for f in own_expected if f in defect_files] or defect_files or own_expected
-        logger.info(
-            "correction_repair_locus: own_artifact — absent_anchor_routed: %s asserted "
-            "undeclared anchor(s) %s; %s re-authors %s (#1123)",
-            ", ".join(defect_files) or "?",
-            ", ".join(sorted({a for c in anchor_cases for a in c.get("absent_anchors", [])})),
-            failed_task_type,
-            ", ".join(target),
-        )
-        return (
-            failure_locus,
-            target,
-            failed_inputs.get("subtask_focus"),
-            failed_inputs.get("subtask_description"),
-        )
-    if failure_locus == FailureLocus.OWN_ARTIFACT and own_expected:
-        logger.info(
-            "correction_repair_locus: own_artifact — %s re-produces %s",
-            failed_task_type,
-            ", ".join(own_expected),
-        )
-        return (
-            failure_locus,
-            own_expected,
-            failed_inputs.get("subtask_focus"),
-            failed_inputs.get("subtask_description"),
-        )
-    expected, focus, description = _resolve_repair_target(
-        failure_evidence, failed_inputs, failure_analysis
-    )
-    return (failure_locus, expected, focus, description)
-
-
-def _log_repair_brief(
-    task_type: str,
-    role: str,
-    failure_evidence: Any,
-    targets: list[str],
-    evidence_from: str = "?",
-) -> None:
-    """#1123: the set's R4 readout — how many failing cases a qa repair brief carries (the
-    brief renders exactly the ``failing_cases`` rows on the failed task's ``tests_pass``
-    row). Logged for the qa role only; a dev repair has no case list to scope.
-
-    **``from=`` and ``tests_pass_rows=`` (#1276).** The count alone cannot be read: a brief
-    carrying zero cases is correct when the failed result had no behavioural evidence to
-    carry, and is the #1273 defect when the result *did* and a refunded round re-briefed
-    from the repair's own empty emission instead. The two are told apart by which result
-    the evidence was built from and whether that result carried a ``tests_pass`` row at
-    all — both known here, neither on the line the 1.7.1 record was read from.
-    """
-    if role != "qa":
-        return
-    from squadops.cycles.failure_evidence import failing_cases_from_evidence
-
-    evidence = failure_evidence if isinstance(failure_evidence, dict) else {}
-    rows = (evidence.get("validation_result") or {}).get("checks") or []
-    tests_pass_rows = sum(
-        1 for row in rows if isinstance(row, dict) and row.get("check") == "tests_pass"
-    )
-    logger.info(
-        "correction_repair_brief: %s carries %d failing case(s) for %s from=%s tests_pass_rows=%d",
-        task_type,
-        len(failing_cases_from_evidence(failure_evidence)),
-        ", ".join(targets) or "?",
-        evidence_from,
-        tests_pass_rows,
-    )
-
-
-def _apply_ownership_veto(
-    target: list[str],
-    failed_task_type: str,
-    step_role: str,
-    failed_own_artifacts: list[str],
-) -> list[str]:
-    """#884: a repair step may not receive another role's artifacts.
-
-    ``_resolve_repair_target`` unions the failed task's own artifacts into
-    every target (the pf-21 lesson: the failing artifact can carry its own
-    bug) — but when the repair chain runs under a DIFFERENT role than the one
-    that produced those artifacts, handing them over invites a guidance-less
-    cross-role rewrite: roll 14's resume #3/#4 (#884) had the dev chain
-    rewrite the qa suite into a live-fetch version, and its page rewrites
-    shipped a compile break that blocked the verdict. Ownership comes from
-    the own-artifact repair table (``own_artifact_role``); task types without
-    an entry are already repaired by their own role and pass through
-    untouched. If the veto empties the target, the locus classifier missed an
-    own-artifact case — logged as such, and the repair proceeds empty rather
-    than handing the artifacts across the boundary.
-    """
-    from squadops.cycles.task_plan import own_artifact_role
-
-    owner = own_artifact_role(failed_task_type)
-    if owner is None or step_role == owner:
-        return target
-    own = {str(a) for a in failed_own_artifacts if a}
-    if not own:
-        return target
-    stripped = [t for t in target if t not in own]
-    if len(stripped) != len(target):
-        removed = [t for t in target if t in own]
-        logger.info(
-            "correction_repair_target: ownership veto (#884) — %s-owned %s removed "
-            "from %s-role repair target",
-            owner,
-            ", ".join(removed),
-            step_role,
-        )
-        if not stripped:
-            logger.warning(
-                "correction_repair_target: ownership veto emptied the %s-role target for "
-                "failed %s — the locus classifier missed an own-artifact case (#884)",
-                step_role,
-                failed_task_type,
-            )
-    return stripped
-
-
-def _apply_emission_ownership_veto(
-    artifacts: list[dict[str, Any]],
-    failed_task_type: str,
-    step_role: str,
-    failed_own_artifacts: list[str],
-    test_file_patterns: tuple[str, ...],
-) -> list[dict[str, Any]]:
-    """#1014: the emission-side completion of #884's targeting veto.
-
-    #884 edits the repair *brief* — but the failing suite is in the step's
-    context as evidence, and a model can rewrite what it can see: V38 slot 6's
-    dev repairs emitted a full rewrite of the qa-owned suite on all three
-    rounds, storage accepted it, and the overlay handed the retest a suite the
-    dev wrote to match his own changes. This is the storage-side half: a step
-    running under a foreign role may not LAND the failed task's own artifacts
-    either, nor anything on the failed task's test-collection surface (basename
-    patterns plus the ``__tests__/`` convention — over-matching is the safe
-    direction here, same rationale as source-set exclusion; a wrongly dropped
-    borderline file merely leaves the original in the tree).
-
-    Applied AFTER the #507 rebase, so the names filtered are the names the
-    overlay would actually supersede — a wrong-directory emission that #507
-    re-homes onto a qa-owned expected path is caught by the post-rebase name.
-    Same-role steps and task types with no declared owner pass through
-    untouched, mirroring the targeting veto's scope exactly.
-    """
-    from squadops.capabilities.development_profiles import matches_test_file_patterns
-    from squadops.cycles.task_plan import own_artifact_role
-
-    owner = own_artifact_role(failed_task_type)
-    if owner is None or step_role == owner:
-        return artifacts
-    own = {str(a) for a in failed_own_artifacts if a}
-    kept: list[dict[str, Any]] = []
-    dropped: list[str] = []
-    for art in artifacts:
-        name = str(art.get("name") or "")
-        if (
-            name in own
-            or matches_test_file_patterns(name, test_file_patterns)
-            or ("__tests__/" in name)
-        ):
-            dropped.append(name)
-        else:
-            kept.append(art)
-    if dropped:
-        logger.info(
-            "correction_repair_emission: ownership veto (#1014) — %s-role step emitted "
-            "%s-owned %s; discarded, never stored",
-            step_role,
-            owner,
-            ", ".join(dropped),
-        )
-    return kept
-
-
-def _repair_step_rows(repair_result: Any) -> list[dict[str, Any]]:
-    """The ``repair_typed_checks`` a repair step banked on its outputs (#1229), as the
-    protocol result carries them (#1256): one entry when the step evaluated any row,
-    none otherwise — a step that emitted nothing, or ran before rule B, contributes
-    nothing rather than an empty environment."""
-    rows = (getattr(repair_result, "outputs", None) or {}).get("repair_typed_checks")
-    if isinstance(rows, dict) and rows.get("checks"):
-        return [rows]
-    return []
 
 
 @dataclass(frozen=True)
@@ -920,6 +293,23 @@ class CorrectionProtocolResult:
     empty_emission_signatures: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True)
+class _Diagnosis:
+    """What the diagnosis step produced, for the four steps after it (map §4 step 4).
+
+    ``correlation_id`` rides here rather than being re-derived: every correction and
+    repair envelope of one chain shares it, so a repair that minted its own would break
+    the lineage a trace is read by. It is the clearest instance of the rule the step
+    boundaries enforce — a later step reaching backward into the diagnosis's locals for
+    it would compile and read fine, and the drift would only show in a trace.
+    """
+
+    failure_evidence: dict[str, Any]
+    analysis_outputs: dict[str, Any]
+    decision_outputs: dict[str, Any]
+    correlation_id: str
+
+
 class CorrectionRunner:
     """Runs the correction protocol for a failed task (SIP-0079 semantics).
 
@@ -936,12 +326,27 @@ class CorrectionRunner:
         *,
         task_dispatcher: TaskDispatcher,
         store_artifact: Callable[..., Awaitable[ArtifactRef]],
+        correction_repair: CorrectionRepair | None = None,
     ) -> None:
         self._cycle_registry = cycle_registry
         self._artifact_vault = artifact_vault
         self._event_bus = event_bus
         self._task_dispatcher = task_dispatcher
         self._store_artifact = store_artifact
+        # 1.7.5 recovery extraction map §4 step 5: the repair half. Composed at the
+        # executor's seam and handed in; the default here is the same shape the executor
+        # uses for this runner itself (SIP-0097 §6.3) so a direct construction still
+        # works. It borrows `_dispatch_protocol_step` rather than owning a dispatch of
+        # its own — that method owns task-run creation and the SIP-0087 task events, so
+        # a second dispatch path would take correction repairs out of the Prefect UI.
+        self._correction_repair = correction_repair or CorrectionRepair(
+            # A lambda, not the bound method: the dispatch seam is patched by the
+            # correction-context golden and by several suites, and a reference captured
+            # here would keep calling the original past the patch — silently, since the
+            # collaborator would still dispatch and the golden would diff the real
+            # envelope against the stub's.
+            dispatch_step=lambda *args, **kw: self._dispatch_protocol_step(*args, **kw)
+        )
 
     async def _store_correction_task_artifacts(
         self,
@@ -1389,6 +794,7 @@ class CorrectionRunner:
         budget_guard: Callable[[], None] | None = None,
         signature_state: dict[str, Any] | None = None,
         repair_rejections: list[str] | None = None,
+        has_accepted_repair: bool = False,
     ) -> CorrectionProtocolResult:
         """Run the correction protocol: analyze → decide → act.
 
@@ -1421,14 +827,136 @@ class CorrectionRunner:
         blind — roll 12's non-compiling repair was rejected honestly and
         nothing downstream was ever told why.
         """
-        from uuid import uuid4
 
         from squadops.cycles.scaffold_enforcement import bound_record_or_none
-        from squadops.cycles.task_plan import CORRECTION_TASK_STEPS, repair_steps_for
 
         # SIP-0100 3.4b: repair emissions are subject to the same frozen-ownership
         # enforcement as regular task storage — None on unbound runs (no-op).
         bound_record = bound_record_or_none(interface_manifest, run_id)
+        # The five protocol steps, each a method consuming the previous step's returned
+        # value (1.7.5 recovery extraction map §4 step 4). The orchestration below reads
+        # as diagnose → resolve → bank-and-terminate → repair → judge, with a typed value
+        # across each arrow — a helper that was shorter only because it read twenty
+        # attributes off ``self`` would not have become structurally better.
+        diagnosis = await self._diagnose(
+            run_id,
+            cycle,
+            envelope,
+            result,
+            correction_attempts,
+            prior_outputs=prior_outputs,
+            all_artifact_refs=all_artifact_refs,
+            stored_artifacts=stored_artifacts,
+            completed_task_ids=completed_task_ids,
+            plan_delta_refs=plan_delta_refs,
+            profile=profile,
+            flow_run_id=flow_run_id,
+            interface_manifest=interface_manifest,
+            artifact_contents=artifact_contents,
+            scaffold_enforcement_carry=scaffold_enforcement_carry,
+            budget_guard=budget_guard,
+            repair_rejections=repair_rejections,
+            bound_record=bound_record,
+        )
+
+        correction_path = self._resolve_correction_path(
+            diagnosis, cycle, run_id, has_accepted_repair=has_accepted_repair
+        )
+
+        await self._bank_delta_and_check_termination(
+            diagnosis,
+            correction_path,
+            envelope,
+            cycle,
+            run_id,
+            correction_attempts,
+            all_artifact_refs=all_artifact_refs,
+            plan_delta_refs=plan_delta_refs,
+            signature_state=signature_state,
+            repair_rejections=repair_rejections,
+        )
+
+        repair = await self._correction_repair.dispatch(
+            correction_path,
+            diagnosis,
+            envelope,
+            result,
+            cycle,
+            run_id,
+            correction_attempts,
+            prior_outputs=prior_outputs,
+            all_artifact_refs=all_artifact_refs,
+            stored_artifacts=stored_artifacts,
+            completed_task_ids=completed_task_ids,
+            plan_delta_refs=plan_delta_refs,
+            profile=profile,
+            flow_run_id=flow_run_id,
+            interface_manifest=interface_manifest,
+            scaffold_enforcement_carry=scaffold_enforcement_carry,
+            budget_guard=budget_guard,
+            bound_record=bound_record,
+        )
+
+        emission_empty = self._correction_repair.judge_emission(repair, correction_attempts)
+
+        # 8. Emit CORRECTION_COMPLETED
+        self._event_bus.emit(
+            EventType.CORRECTION_COMPLETED,
+            entity_type="run",
+            entity_id=run_id,
+            context={"cycle_id": cycle.cycle_id, "run_id": run_id},
+            # Disclosed on the event, not only in a log line: "converged in 3" and
+            # "converged in 3 after two empty emissions" must not read the same.
+            payload={
+                "correction_path": correction_path,
+                "emission_empty": emission_empty,
+                # #998: "converged in 3 after two empty emissions" must also say WHICH
+                # nothing — the two shapes have opposite remedies.
+                "empty_emission_signatures": (
+                    list(repair.empty_signatures) if emission_empty else []
+                ),
+            },
+        )
+
+        return CorrectionProtocolResult(
+            correction_path=correction_path,
+            repair_artifacts=repair.artifacts,
+            repair_typed_checks=tuple(repair.typed_checks),
+            emission_empty=emission_empty,
+            empty_emission_signatures=(tuple(repair.empty_signatures) if emission_empty else ()),
+        )
+
+    async def _diagnose(
+        self,
+        run_id: str,
+        cycle: Cycle,
+        envelope: TaskEnvelope,
+        result: TaskResult,
+        correction_attempts: int,
+        *,
+        prior_outputs: dict[str, Any],
+        all_artifact_refs: list[str],
+        stored_artifacts: list[tuple[str, ArtifactRef]],
+        completed_task_ids: list[str],
+        plan_delta_refs: list[str],
+        profile: Any,
+        flow_run_id: str | None,
+        interface_manifest: Any,
+        artifact_contents: dict[str, str] | None,
+        scaffold_enforcement_carry: list[str] | None,
+        budget_guard: Callable[[], None] | None,
+        repair_rejections: list[str] | None,
+        bound_record: Any,
+    ) -> _Diagnosis:
+        """Step 1 — build the failure evidence and run ``CORRECTION_TASK_STEPS``.
+
+        Each step's outputs are captured in their own bucket (#95): reusing one variable
+        masked the analyzer's classification with defaults at PlanDelta time, because the
+        decision step does not carry those fields forward.
+        """
+        from uuid import uuid4
+
+        from squadops.cycles.task_plan import CORRECTION_TASK_STEPS
 
         # 1. Emit CORRECTION_INITIATED
         self._event_bus.emit(
@@ -1455,6 +983,7 @@ class CorrectionRunner:
             scaffold_enforcement_carry=scaffold_enforcement_carry,
             bound_record=bound_record,
             repair_rejections=repair_rejections,
+            stored_artifacts=stored_artifacts,
         )
 
         # Issue #95: capture each correction step's outputs in its own variable
@@ -1484,9 +1013,16 @@ class CorrectionRunner:
                 "artifact_refs": list(all_artifact_refs),
                 "agent_model": agent_model,
                 "agent_config_overrides": agent_overrides,
+                # 1.7.4 plan §3.1: the cycle's resolved config rides the analysis and
+                # decision envelopes as it does every other cycle task's, so a fault
+                # declared on the cycle reaches the analyzer's emission seam (#968's
+                # diagnostic). Neither handler reads anything else from it — model and
+                # overrides arrive on their own keys above (#110).
+                "resolved_config": cycle.resolved_config(),
             }
             if analysis_outputs:
                 corr_inputs["failure_analysis"] = analysis_outputs
+                _attach_refuted_claims(corr_inputs, analysis_outputs, envelope)
 
             corr_envelope = TaskEnvelope(
                 task_id=corr_task_id,
@@ -1529,7 +1065,31 @@ class CorrectionRunner:
                 analysis_outputs = step_outputs
             elif bucket == "decision":
                 decision_outputs = step_outputs
+        return _Diagnosis(
+            failure_evidence=failure_evidence,
+            analysis_outputs=analysis_outputs,
+            decision_outputs=decision_outputs,
+            correlation_id=corr_correlation_id,
+        )
 
+    def _resolve_correction_path(
+        self,
+        diagnosis: _Diagnosis,
+        cycle: Cycle,
+        run_id: str,
+        *,
+        has_accepted_repair: bool,
+    ) -> str:
+        """Step 2 — the deterministic policy guard, then ``CORRECTION_DECIDED``.
+
+        The model's original rationale stays intact in the decision artifact; an override
+        is disclosed in the event payload rather than silently replacing it (#447).
+        """
+        # What the earlier steps produced, read off the value they returned —
+        # never reached backward into their locals (map §4 step 4).
+        failure_evidence = diagnosis.failure_evidence
+        analysis_outputs = diagnosis.analysis_outputs
+        decision_outputs = diagnosis.decision_outputs
         # 4. Read correction_path — bounded by the deterministic policy guard
         # (#447): `continue` may not discard a required check that executed
         # and failed while this chain's repair slot is unspent. The model's
@@ -1545,6 +1105,10 @@ class CorrectionRunner:
             # work_product rewind dies as a run failure with the repair budget unspent,
             # so the guard substitutes the patch the classification says is possible.
             classification=str(analysis_outputs.get("classification", "")),
+            # #994: a rewind re-authors from the checkpoint, so it cannot preserve a
+            # repair that landed after it. Threaded from the executor, which is the only
+            # place that knows a prior round of THIS task was accepted.
+            has_accepted_repair=has_accepted_repair,
         )
         correction_path = resolution.path
         if resolution.overridden_from:
@@ -1578,7 +1142,35 @@ class CorrectionRunner:
             context={"cycle_id": cycle.cycle_id, "run_id": run_id},
             payload=decided_payload,
         )
+        return correction_path
 
+    async def _bank_delta_and_check_termination(
+        self,
+        diagnosis: _Diagnosis,
+        correction_path: str,
+        envelope: TaskEnvelope,
+        cycle: Cycle,
+        run_id: str,
+        correction_attempts: int,
+        *,
+        all_artifact_refs: list[str],
+        plan_delta_refs: list[str],
+        signature_state: dict[str, Any] | None,
+        repair_rejections: list[str] | None,
+    ) -> None:
+        """Step 3 — store the plan delta, then the progress-aware termination check.
+
+        Order is the contract (#435, 1.5 A4): after the delta is stored, so the decision
+        evidence survives the termination, and before any repair dispatch, so the maximum
+        budget is honoured.
+        """
+        from uuid import uuid4
+
+        # What the earlier steps produced, read off the value they returned —
+        # never reached backward into their locals (map §4 step 4).
+        failure_evidence = diagnosis.failure_evidence
+        analysis_outputs = diagnosis.analysis_outputs
+        decision_outputs = diagnosis.decision_outputs
         # 6. Store plan delta as artifact
         delta = PlanDelta(
             delta_id=uuid4().hex,
@@ -1632,259 +1224,6 @@ class CorrectionRunner:
                 all_artifact_refs=all_artifact_refs,
                 repair_rejections=repair_rejections,
             )
-
-        # 7. Handle patch path: dispatch repair tasks
-        # Repair-step selection is keyed on the failed task's task_type
-        # (authoritative) rather than the LLM-emitted `affected_task_types`
-        # field, which is free-text and previously caused builder failures
-        # (`affected_task_types: ["QA Handoff"]`) to silently route to the
-        # dev repair handler.
-        #
-        # #568: selection is additionally keyed on the deterministic failure
-        # locus — a task whose OWN artifact is missing/uncollectable is repaired
-        # by its own role re-producing that artifact (qa.test → qa.test_repair),
-        # and the repair target is the failed task's own contract, not the
-        # subject-implementation surface (_resolve_repair_target aims repairs at
-        # the SUBJECT and would point a test re-author at app source files).
-        repair_artifacts: list[dict[str, Any]] = []
-        repair_typed_checks: list[dict[str, Any]] = []
-        repair_steps_ran = False
-        empty_signatures: list[str] = []
-        if correction_path == "patch":
-            failed_inputs = envelope.inputs or {}
-            # #667/#663 S2: the anchor surface rides every repair envelope,
-            # re-derived from the manifest under both key variants — the
-            # declaration lives with the registry (REPAIR_CONTEXT_CONTRACT).
-            repair_surfaces = manifest_surface_fragments(
-                REPAIR_CONTEXT_CONTRACT, interface_manifest
-            )
-            (
-                failure_locus,
-                repair_expected_artifacts,
-                repair_focus,
-                repair_description,
-            ) = _locus_and_repair_target(
-                envelope.task_type, failure_evidence, failed_inputs, analysis_outputs
-            )
-
-            for step_idx, (task_type, role) in enumerate(
-                repair_steps_for(envelope.task_type, failure_locus)
-            ):
-                # #884: the target union may carry the failed task's own
-                # artifacts (pf-21); a step running under a foreign role must
-                # not receive them.
-                step_expected_artifacts = _apply_ownership_veto(
-                    repair_expected_artifacts,
-                    envelope.task_type,
-                    role,
-                    [str(e) for e in (failed_inputs.get("expected_artifacts") or [])],
-                )
-                repair_task_id = f"repair-{run_id[:12]}-{correction_attempts:02d}-{task_type}"
-                _log_repair_brief(
-                    task_type,
-                    role,
-                    failure_evidence,
-                    step_expected_artifacts,
-                    evidence_from=envelope.task_id,
-                )
-                resolved = resolve_agent_config(role, profile)
-                agent_id = resolved.agent_id
-                agent_model = resolved.model
-                agent_overrides = resolved.config_overrides
-
-                # Plumb the (retargeted) task contract through to the repair
-                # envelope. Without this the repair handler only sees the PRD +
-                # failure evidence and produces a generic "repair_output.md" rather
-                # than re-emitting the named artifact that must actually be fixed.
-                repair_inputs: dict[str, Any] = {
-                    "prd": cycle.prd_ref,
-                    "failed_task_type": envelope.task_type,
-                    "failure_evidence": failure_evidence,
-                    "failure_analysis": analysis_outputs,
-                    "correction_decision": decision_outputs,
-                    "prior_outputs": prior_outputs,
-                    "artifact_refs": list(all_artifact_refs),
-                    "agent_model": agent_model,
-                    "agent_config_overrides": agent_overrides,
-                    # The repair handler's scaffold fill-only appendix gates on
-                    # resolved_config.build_profile (is_scaffoldable_stack) — without
-                    # this the gate sees an empty profile and silently no-ops, and
-                    # repairs freely rewrite scaffold-owned interface (pf-30:
-                    # attempts 1-3 re-emitted routes.py with relative decorator
-                    # paths against a correct diagnosis). Mirrors the retest
-                    # threading in reexecute_repaired_suite below.
-                    "resolved_config": failed_inputs.get("resolved_config", {}),
-                    "subtask_focus": repair_focus,
-                    "subtask_description": repair_description,
-                    "expected_artifacts": step_expected_artifacts,
-                    "acceptance_criteria": failed_inputs.get("acceptance_criteria", []),
-                    # #1015 part C: the loop's position. Both values were already here
-                    # and simply never crossed into the prompt, so the repair author
-                    # could not tell round 1 from round 3 or know the budget was finite.
-                    "correction_attempt": correction_attempts + 1,
-                    "max_correction_attempts": int(
-                        cycle.resolved_config().get("max_correction_attempts", 3)
-                    ),
-                }
-                # #667: fay-14's first fill complied with the manifest
-                # convention and every repair regenerated the view blind,
-                # stripping the anchors — hence the registry-declared
-                # re-derivation above (presence-keyed: no manifest, no keys).
-                repair_inputs.update(repair_surfaces)
-                # #1229: the typed-acceptance workspace, so the repair can evaluate its
-                # own patch against the tree it lands in, where the toolchain lives.
-                repair_inputs.update(repair_forwarded_inputs(failed_inputs))
-                # #1264: the failed task's own files, so the repair evaluates the failed
-                # task's criteria on the tree the verifier will overlay — not one missing them.
-                repair_inputs.update(forwarded_failed_artifacts(result.outputs))
-                # #970 (1.6.5 D), presence-keyed: the scaffold + the task's current
-                # merged shells + the slots whose fills failed, for a qa repair.
-                repair_inputs.update(
-                    _qa_scaffold_repair_inputs(role, failed_inputs, result, failure_evidence)
-                )
-
-                repair_envelope = TaskEnvelope(
-                    task_id=repair_task_id,
-                    agent_id=agent_id,
-                    cycle_id=cycle.cycle_id,
-                    pulse_id=uuid4().hex,
-                    project_id=cycle.project_id,
-                    task_type=task_type,
-                    correlation_id=corr_correlation_id,
-                    causation_id=envelope.task_id,
-                    trace_id=uuid4().hex,
-                    span_id=uuid4().hex,
-                    inputs=repair_inputs,
-                    metadata={"role": role, "step_index": step_idx},
-                )
-
-                # Dispatch the repair step (task_run creation + task events
-                # live in _dispatch_protocol_step, SIP-0087 B2 — so
-                # correction-driven repairs appear in the Prefect UI).
-                repair_steps_ran = True
-                repair_result = await self._dispatch_protocol_step(
-                    repair_envelope,
-                    run_id,
-                    cycle,
-                    flow_run_id,
-                    prior_outputs=prior_outputs,
-                    all_artifact_refs=all_artifact_refs,
-                    stored_artifacts=stored_artifacts,
-                    completed_task_ids=completed_task_ids,
-                    plan_delta_refs=plan_delta_refs,
-                    # 3.4b: repair emissions get the same frozen-ownership
-                    # enforcement as regular storage (restore + carry signal).
-                    bound_record=bound_record,
-                    enforcement_carry=scaffold_enforcement_carry,
-                    budget_guard=budget_guard,
-                )
-
-                # Collect repair outputs under the role key, matching the
-                # regular fan-in convention (summaries only — `artifacts` are
-                # surfaced to the overlay below, not through prompt context).
-                role_key = repair_envelope.metadata.get("role", "unknown")
-                prior_outputs[role_key] = {
-                    k: v for k, v in (repair_result.outputs or {}).items() if k != "artifacts"
-                }
-
-                # #389: surface the repair's emitted files to the executor for
-                # behavioral patch verification.
-                step_artifacts = (repair_result.outputs or {}).get("artifacts") or []
-                # #1256: the rows this step evaluated on its own patch (rule B) ride the
-                # protocol result to the executor's verifier beside the files.
-                repair_typed_checks.extend(_repair_step_rows(repair_result))
-                # #998: the handler names what kind of nothing it emitted; keep it for
-                # the round's disclosure below.
-                empty_signatures.extend(_empty_emission_signature(repair_result))
-                # #507: re-home repair files onto the failed task's expected
-                # paths before they reach the overlay — a repair emitted under
-                # the wrong directory otherwise lands as a net-new file, patch
-                # verification runs on the un-patched original, and the
-                # validated repair is discarded by re-dispatch.
-                from squadops.capabilities.development_profiles import test_file_patterns_for
-                from squadops.cycles.patch_verification import rebase_artifact_paths
-
-                rebased = rebase_artifact_paths(
-                    [a for a in step_artifacts if isinstance(a, dict)],
-                    failed_inputs.get("expected_artifacts") or [],
-                )
-                # #1014: emission-side ownership veto, post-rebase — a foreign-role
-                # step's emission may not land the failed task's own artifacts or
-                # anything on its test-collection surface (see the veto docstring).
-                # Pattern derivation is failure-isolated like the #870 gate: an
-                # unresolvable capability weakens the veto to its own-set +
-                # ``__tests__/`` halves rather than crashing the protocol.
-                try:
-                    patterns = test_file_patterns_for(failed_inputs.get("resolved_config"))
-                except Exception as exc:
-                    logger.warning("emission ownership veto: pattern surface unavailable: %s", exc)
-                    patterns = ()
-                # #1350: the step's emission names the step. The verifier and the re-store
-                # receive these on the FAILED task's envelope, and the repairing role can
-                # differ from the failed one — the grants must be this step's, not the
-                # failed task's, or a dev repair of a dev slot reads as a QA write to it.
-                repair_artifacts.extend(
-                    name_producer(
-                        _apply_emission_ownership_veto(
-                            rebased,
-                            envelope.task_type,
-                            role,
-                            [str(e) for e in (failed_inputs.get("expected_artifacts") or [])],
-                            patterns,
-                        ),
-                        repair_envelope,
-                    )
-                )
-
-        # #1053: did the repair steps that ran produce anything at all? Judged on
-        # emitted CONTENT, not on the artifact count — a zero-byte file is still a file,
-        # and counting it as an attempt is what spent arm B's budget. `repair_steps_ran`
-        # keeps this distinct from a rewind/continue path, which legitimately emits
-        # nothing and must never be refunded.
-        # #1273: the extraction FALLBACK is not an emission. A repair that returns prose
-        # and no fenced block produces one non-empty `repair_output.md` — which counted as
-        # content, so the round was spent rather than refunded, and the loop then
-        # terminated as `unverifiable` for a file that was never written (Next.js roll 1,
-        # cyc_9be98128f0e9). "Did the repair emit a FILE" is the question; the marker the
-        # extractor stamps is the answer.
-        emission_empty = repair_steps_ran and not any(
-            str(a.get("content") or "").strip()
-            for a in repair_artifacts
-            if isinstance(a, dict) and not a.get("emission_fallback")
-        )
-        if emission_empty:
-            logger.warning(
-                "correction: repair emitted no content on attempt %d (%d artifact(s), all "
-                "empty; signature %s) — the round produced nothing to verify (#1053, #998)",
-                correction_attempts,
-                len(repair_artifacts),
-                ", ".join(empty_signatures) or "unreported",
-            )
-
-        # 8. Emit CORRECTION_COMPLETED
-        self._event_bus.emit(
-            EventType.CORRECTION_COMPLETED,
-            entity_type="run",
-            entity_id=run_id,
-            context={"cycle_id": cycle.cycle_id, "run_id": run_id},
-            # Disclosed on the event, not only in a log line: "converged in 3" and
-            # "converged in 3 after two empty emissions" must not read the same.
-            payload={
-                "correction_path": correction_path,
-                "emission_empty": emission_empty,
-                # #998: "converged in 3 after two empty emissions" must also say WHICH
-                # nothing — the two shapes have opposite remedies.
-                "empty_emission_signatures": list(empty_signatures) if emission_empty else [],
-            },
-        )
-
-        return CorrectionProtocolResult(
-            correction_path=correction_path,
-            repair_artifacts=repair_artifacts,
-            repair_typed_checks=tuple(repair_typed_checks),
-            emission_empty=emission_empty,
-            empty_emission_signatures=tuple(empty_signatures) if emission_empty else (),
-        )
 
     # Artifact types a qa.test task emits *about* its run, not *into* its
     # workspace — excluded from re-execution so the repaired suite matches

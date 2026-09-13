@@ -45,6 +45,7 @@ from squadops.llm.models import ChatMessage
 
 if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
+    from squadops.telemetry.models import PromptLayerMetadata
 
 from squadops.capabilities.handlers.cycle.validation import (
     ValidationResult,
@@ -411,6 +412,19 @@ class _CycleTaskHandler(CapabilityHandler):
         except Exception:
             return None
 
+    def _output_shape(self, inputs: dict[str, Any]) -> str | None:
+        """Which of this capability's outputs this generation produces, or ``None`` (#1285).
+
+        ``None`` for every capability with one output shape, which is all but one — and
+        the reasoning declaration then resolves exactly as it did. A capability that has
+        two answers this itself rather than letting shared code sniff its inputs: the
+        manifest-authoring stage's input contract is enforced
+        (``test_the_author_reads_nothing_outside_its_declared_input_contract``), and
+        reading `verification_scaffold` here for everyone broke it — correctly, because
+        which output a capability produces is the capability's own fact.
+        """
+        return None
+
     def _build_chat_kwargs(self, inputs: dict[str, Any]) -> dict[str, Any]:
         """Build chat() kwargs from agent config overrides (SIP-0075 §3.2).
 
@@ -435,7 +449,10 @@ class _CycleTaskHandler(CapabilityHandler):
         # #927: keyed on the agent's model exactly as the completion clamp is — a
         # task dispatched without one sends no level, as it gets no clamp.
         reasoning = resolve_reasoning_level(
-            self._task_type, agent_overrides=overrides, model_name=agent_model
+            self._task_type,
+            agent_overrides=overrides,
+            model_name=agent_model,
+            output_shape=self._output_shape(inputs),
         )
         if "max_completion_tokens" in overrides:
             kwargs["max_tokens"] = overrides["max_completion_tokens"]
@@ -749,6 +766,13 @@ class _CycleTaskHandler(CapabilityHandler):
         else:
             user_prompt = self._build_user_prompt(prd, prior_outputs, inputs)
 
+        # #1372: one path, every subclass. `develop` and `qa.test` applied the aimed
+        # retry feedback in their own overrides; every handler riding this generic path —
+        # each repair handler among them — re-rolled blind on the same prior, because the
+        # executor threaded a marker nobody rendered. Presence-keyed, so a first attempt
+        # is byte-for-byte what it was.
+        user_prompt = await self._apply_emission_retry_feedback(context, inputs, user_prompt)
+
         assembled = context.ports.prompt_service.get_system_prompt(self._role)
         system_prompt = assembled.content
 
@@ -759,8 +783,30 @@ class _CycleTaskHandler(CapabilityHandler):
 
         chat_kwargs = self._build_chat_kwargs(inputs)
 
+        # #929: the call and everything that must follow it. The generic path's
+        # prompt-layer identity is passed rather than derived — its system layer is
+        # `{role}-system`, not `{role}-cycle-system`, and #929 named re-grouping these
+        # traces a data decision rather than a refactor.
+        from squadops.telemetry.models import PromptLayer, PromptLayerMetadata
+
         try:
-            response = await context.ports.llm.chat_stream_with_usage(messages, **chat_kwargs)
+            response, content = await self._llm_call(
+                context,
+                messages,
+                chat_kwargs,
+                inputs=inputs,
+                started=start_time,
+                apply_fault=True,
+                fault_config=inputs.get("resolved_config"),
+                rendered=rendered,
+                layers=PromptLayerMetadata(
+                    prompt_layer_set_id=f"{self._role}-cycle",
+                    layers=(
+                        PromptLayer(layer_type="system", layer_id=f"{self._role}-system"),
+                        PromptLayer(layer_type="user", layer_id=f"cycle-{self._task_type}"),
+                    ),
+                ),
+            )
         except LLMError as exc:
             logger.warning(
                 "LLM call failed for %s: %s",
@@ -780,72 +826,6 @@ class _CycleTaskHandler(CapabilityHandler):
                 _evidence=evidence,
                 error=str(exc),
             )
-
-        content = response.content
-        llm_duration_ms = (time.perf_counter() - start_time) * 1000
-
-        # #1251: a declared fault transforms the emission HERE, before the shape is logged,
-        # so every readout downstream reads one consistent emission and the log records what
-        # the handler actually got. A normal cycle declares none and this returns the
-        # emission unchanged.
-        content = inject_fault(
-            content,
-            handler_name=self._handler_name,
-            task_id=context.task_id,
-            resolved_config=inputs.get("resolved_config"),
-            inputs=inputs,
-        )
-
-        # #924: unconditional, and deliberately NOT inside the observability block below —
-        # that block is gated on `llm_obs and correlation_context`, so a capture placed
-        # there would go missing in exactly the setups where the emission is unexplained.
-        log_emission_shape(
-            self._handler_name,
-            content,
-            response.completion_tokens,
-            response.reasoning_tokens,
-            response.reasoning_text,
-        )
-
-        # Record LLM generation for LangFuse tracing (SIP-0061 Option B)
-        llm_obs = getattr(context.ports, "llm_observability", None)
-        if llm_obs and context.correlation_context:
-            from squadops.telemetry.models import (
-                PromptLayer,
-                PromptLayerMetadata,
-                build_generation_record,
-            )
-
-            resolved_model = chat_kwargs.get("model", context.ports.llm.default_model)
-            gen_record = build_generation_record(
-                model=resolved_model,
-                prompt_text=user_prompt,
-                response_text=content,
-                latency_ms=llm_duration_ms,
-                usage=response,
-                prompt_name=rendered.template_id if rendered else None,
-                prompt_version=(
-                    int(rendered.template_version)
-                    if rendered and rendered.template_version
-                    else None
-                ),
-                reasoning=chat_kwargs.get("reasoning"),
-            )
-            if response.tokens_per_second:
-                logger.info(
-                    "%s LLM throughput: %.1f t/s (%s tokens)",
-                    self._handler_name,
-                    response.tokens_per_second,
-                    response.completion_tokens,
-                )
-            layers = PromptLayerMetadata(
-                prompt_layer_set_id=f"{self._role}-cycle",
-                layers=(
-                    PromptLayer(layer_type="system", layer_id=f"{self._role}-system"),
-                    PromptLayer(layer_type="user", layer_id=f"cycle-{self._task_type}"),
-                ),
-            )
-            llm_obs.record_generation(context.correlation_context, gen_record, layers)
 
         prd_summary = str(prd)[:80] if prd else "(no PRD)"
 
@@ -870,13 +850,21 @@ class _CycleTaskHandler(CapabilityHandler):
             "emission_stats": emission_stats(len(content), artifacts),
             "prompt_provenance": provenance,
         }
-        if not content.strip():
+        if not content.strip() or not artifacts:
             # #998: an EMPTY emission on the generic path — which every repair handler
             # rides — carried no marker at all, so the correction loop could refund the
             # round (#1053) but never say what kind of nothing it was. Three of the
-            # eleven repair rounds in the 1.6.3 set's reds were exactly this. Only
-            # emptiness is flagged here: a document-producing handler legitimately
-            # emits no fences, and that is not a failure of anything.
+            # eleven repair rounds in the 1.6.3 set's reds were exactly this.
+            #
+            # #1372 widens it from empty to CONTENTLESS. `not artifacts` is the precise
+            # discriminator and not a guess: the default `_build_artifacts_from_content`
+            # wraps any prose into one document artifact, so an empty list can only come
+            # from a handler that overrides it to extract fences — and for those,
+            # extracting nothing IS the failure. The old comment's carve-out ("a
+            # document-producing handler legitimately emits no fences") is preserved by
+            # construction rather than by the `content.strip()` proxy, which flagged a
+            # paragraph of intent as a success and sent it to the correction loop with no
+            # marker and therefore no retry.
             from squadops.cycles.emission_integrity import no_fenced_blocks_failure
 
             outputs["emission_failure"] = no_fenced_blocks_failure(
@@ -884,6 +872,7 @@ class _CycleTaskHandler(CapabilityHandler):
                 inputs.get("expected_artifacts"),
                 completion_tokens=response.completion_tokens,
                 completion_cap=chat_kwargs.get("max_tokens"),
+                content=content,
             )
 
         duration_ms = (time.perf_counter() - start_time) * 1000
@@ -947,6 +936,106 @@ class _CycleTaskHandler(CapabilityHandler):
                 )
         return None
 
+    async def _llm_call(
+        self,
+        context: ExecutionContext,
+        messages: list[ChatMessage],
+        chat_kwargs: dict[str, Any],
+        *,
+        inputs: dict[str, Any],
+        started: float,
+        shape_label: str | None = None,
+        apply_fault: bool = False,
+        fault_config: dict[str, Any] | None = None,
+        record: bool = True,
+        rendered: object | None = None,
+        layers: PromptLayerMetadata | None = None,
+        attempt: int | None = None,
+    ) -> tuple[ChatMessage, str]:
+        """One LLM call and the sequence that must follow it (#929).
+
+        Seventeen call sites is not the problem — each builds a different prompt,
+        parses a different response and fails differently, which is what the port is
+        for. The ~10 lines *wrapped around* each call were the problem: read the
+        content, apply a declared fault, log the emission shape, measure, record the
+        generation. Copy-pasted, so a cross-cutting concern added to the sequence had
+        to be added seventeen times or go dark in sixteen. That is exactly how #924's
+        emission capture ended up covering one seam of thirteen, and how ten of the
+        seventeen seams came to record no generation at all (#1206) — including both
+        self-eval second calls and every impl handler, two of them declared
+        ``ReasoningLevel.HIGH``.
+
+        What stays with the caller: building ``messages`` and ``chat_kwargs``, the
+        prompt-size guard (only develop and qa_test guard, and only their primary
+        call), parsing the response, and ``except LLMError`` — every site returns a
+        different failure (``NEEDS_REPLAN`` outputs, a bare failure, ``None`` so the
+        caller fails the task), so folding the error path in would have to pick one.
+        This owns the success sequence and nothing else; ``LLMError`` propagates.
+
+        ``started`` is the *handler's* start, not the call's: today's latency figures
+        measure from ``handle()`` and this preserves that rather than quietly narrowing
+        what ``latency_ms`` means.
+
+        ``record=False`` has exactly one caller, and it is not an exemption: the
+        manifest-authoring loop records the same generation through the same
+        ``_record_generation``, only *after* its validator has ruled, so the record can
+        carry the verdict (#1172). Recording at call time as well would double-count
+        it. Defaulting to True is the point — a new seam records unless someone opts
+        out in writing, which is the inverse of how ten of them went dark.
+
+        The recorded prompt is the last message's content — the user turn at every
+        primary and the corrective feedback at every re-ask, which is what
+        ``prompt_text`` meant at each of the seven sites that already recorded one.
+        Reading it off ``messages`` rather than taking it as an argument is what stops
+        the two drifting apart.
+        """
+        response = await context.ports.llm.chat_stream_with_usage(messages, **chat_kwargs)
+        content = response.content
+
+        # #1251: a declared fault transforms the emission HERE, before the shape is
+        # logged, so every readout downstream reads one consistent emission and the log
+        # records what the handler actually got. A normal cycle declares none and this
+        # returns the emission unchanged. Five seams are wired for it; the rest pass
+        # ``apply_fault=False`` and stay unreachable by a declaration, as they were.
+        if apply_fault:
+            content = inject_fault(
+                content,
+                handler_name=self._handler_name,
+                task_id=context.task_id,
+                resolved_config=fault_config,
+                inputs=inputs,
+            )
+
+        # #924: unconditional, and deliberately NOT inside the observability gate below
+        # — that gate is ``llm_obs and correlation_context``, so a capture placed there
+        # would go missing in exactly the setups where the emission is unexplained.
+        log_emission_shape(
+            shape_label or self._handler_name,
+            content,
+            response.completion_tokens,
+            response.reasoning_tokens,
+            response.reasoning_text,
+        )
+
+        # #1206: every seam, not the seven that happened to have the line. A record
+        # subset that does not announce itself is worse than an absent one — LangFuse
+        # read 26 of 35 calls on the 2026-08-31 pair and ``gens_per_task`` read exactly
+        # 1.00, which looks like an invariant and was the second call dropped each time.
+        if record:
+            self._record_generation(
+                context,
+                messages[-1].content,
+                content,
+                (time.perf_counter() - started) * 1000,
+                chat_kwargs.get("model"),
+                rendered=rendered,
+                chat_response=response,
+                reasoning=chat_kwargs.get("reasoning"),
+                layers=layers,
+                attempt=attempt,
+            )
+        return response, content
+
     # Prompt-layer naming for _record_generation; BuilderAssembleHandler
     # overrides with "assemble" (its layer set is {role}-assemble).
     _prompt_layer_kind = "build"
@@ -961,6 +1050,9 @@ class _CycleTaskHandler(CapabilityHandler):
         rendered: object | None = None,
         chat_response: ChatMessage | None = None,
         reasoning: str | None = None,
+        layers: PromptLayerMetadata | None = None,
+        attempt: int | None = None,
+        outcome: str | None = None,
     ) -> None:
         """Record LLM generation for LangFuse tracing (SIP-0061).
 
@@ -970,6 +1062,19 @@ class _CycleTaskHandler(CapabilityHandler):
         streaming seam landed. The copy cost it token accounting, prompt-version
         linkage and the configurable layer kind, silently, on every governance
         generation. Add a keyword argument here rather than a second implementation.
+
+        ``layers`` is that rule applied to itself. The generic cycle path names its
+        system layer ``{role}-system``, not ``{role}-cycle-system``, so it cannot be
+        derived from ``_prompt_layer_kind`` the way every other path's is — and #929
+        named re-grouping those traces a data decision rather than a refactor. Passing
+        the identity in preserves it exactly; a second implementation would not have.
+
+        ``attempt`` distinguishes a retry from a first attempt (#1172, #1206). The
+        re-ask and self-eval second calls carry it; a primary that does not retry
+        leaves it ``None`` rather than claiming to be attempt 1 of something.
+        ``outcome`` is what a validator said about the attempt, which only a caller
+        that records *after* validating can know — the manifest-authoring loop is the
+        one such caller, and it had grown a fourth copy of this block to say it.
         """
         if chat_response and chat_response.tokens_per_second:
             logger.info(
@@ -999,8 +1104,10 @@ class _CycleTaskHandler(CapabilityHandler):
                     else None
                 ),
                 reasoning=reasoning,
+                attempt=attempt,
+                outcome=outcome,
             )
-            layers = PromptLayerMetadata(
+            layers = layers or PromptLayerMetadata(
                 prompt_layer_set_id=f"{self._role}-{self._prompt_layer_kind}",
                 layers=(
                     PromptLayer(

@@ -25,6 +25,16 @@ from dataclasses import dataclass
 
 from squadops.sandbox.models import OperationName
 
+#: The one sandbox environment image, named for what it ships — Python 3.12, Node 20, npm 10
+#: — and the SIP-0102 floor it implements, not for the stack that first needed it. Every
+#: registered stack's contract pins this reference and `scripts/dev/build_sandbox_env_image.sh`
+#: reads it from here, so the tag has exactly one source (#1197: the old tag,
+#: `fastapi-react-1.4-dev`, named stack #1 while serving both stacks, and the name landed
+#: verbatim in Next.js boot-audit evidence lines). The tag is part of every contract's
+#: `contract_id()`, so changing it changes the contract hash on every stack — a deliberate
+#: act at a point where a hash change is expected, never mid-set.
+SANDBOX_ENV_IMAGE = "squadops-sandbox-env:py3.12-node20-1.4"
+
 
 @dataclass(frozen=True)
 class EnvironmentContract:
@@ -94,7 +104,7 @@ class EnvironmentContract:
 # step is 102.5's concern; unprovided operations are honest not_run.
 FULLSTACK_FASTAPI_REACT = EnvironmentContract(
     stack="fullstack_fastapi_react",
-    image="squadops-sandbox-env:fastapi-react-1.4-dev",
+    image=SANDBOX_ENV_IMAGE,
     required_tools=(("python", "3.12"), ("node", "20"), ("npm", "10")),
     # Dependencies install INTO the cycle workspace (§4.7: no shared installed
     # state; one-shot containers are disposable, the bind-mounted workspace is
@@ -138,7 +148,7 @@ FULLSTACK_FASTAPI_REACT = EnvironmentContract(
 # application itself cannot start without.
 NEXTJS_TS = EnvironmentContract(
     stack="nextjs_ts",
-    image="squadops-sandbox-env:fastapi-react-1.4-dev",
+    image=SANDBOX_ENV_IMAGE,
     required_tools=(("node", "20"), ("npm", "10")),
     operation_commands=(
         # `npm install`, NOT `npm ci` — the same correction the probe runner's

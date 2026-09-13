@@ -12,6 +12,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from squadops.api.error_handlers import register_domain_error_handlers
 from squadops.api.routes.chat import routes as chat_routes_mod
 from squadops.api.routes.chat.routes import agents_router, router
 from squadops.comms.models import ChatMessage, ChatSession, SessionNotFoundError
@@ -45,6 +46,7 @@ def _setup_app(
     app = FastAPI()
     app.include_router(router)
     app.include_router(agents_router)
+    register_domain_error_handlers(app)  # as the runtime does (#576)
 
     # Store original values for cleanup
     orig_repo = chat_routes_mod._chat_repo

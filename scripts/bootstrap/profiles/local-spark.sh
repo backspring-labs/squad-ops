@@ -35,6 +35,11 @@ run_bootstrap() {
     install_ollama
     configure_ollama_host_binding
 
+    # ── Memory containment (#1178) ─────────────────────────────────
+    # Before the services start: a box with no containment is one oversized allocation
+    # away from a livelock that no amount of later configuration can interrupt.
+    configure_memory_containment "config/profiles/bootstrap/local-spark.yaml"
+
     # ── Python (R5: system Python, R4: still uses .venv) ───────────
     info "=== Python Setup ==="
 

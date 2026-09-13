@@ -8,12 +8,24 @@ from __future__ import annotations
 import subprocess
 import sys
 from datetime import UTC, datetime
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 import squadops.bootstrap.setup.checks as checks_mod
+from squadops.bootstrap.database_isolation import (
+    DEPLOYMENT_DB_NAME,
+    TEST_DB_NAME,
+    TEST_DB_PASSWORD_ENV,
+    TEST_DB_ROLE,
+    database_name_of,
+    with_database,
+)
 from squadops.bootstrap.setup.checks import (
     CheckResult,
+    ConnectionProbe,
     check_auth_token,
     check_docker_service,
     check_nvidia_gpu,
@@ -22,6 +34,7 @@ from squadops.bootstrap.setup.checks import (
     check_platform,
     check_python_version,
     check_system_dep,
+    check_test_database_isolation,
     check_venv_exists,
     run_checks,
 )
@@ -757,3 +770,391 @@ class TestVerificationChecks:
             results = run_checks(_profile(), category="verification")
         assert results and all(r.category == "verification" for r in results)
         assert "verification" in checks_mod.VALID_CATEGORIES
+
+
+class TestMemoryContainment:
+    """#1178. The kernel's OOM killer does not fire during thrash — swap is technically
+    still available — so a memory runaway on the Spark does not produce one dead process
+    and a live box, it produces a box that answers nothing. 2026-08-29: 95 minutes
+    unreachable, ~800 MB free throughout, ended by a power cycle.
+    """
+
+    def _containment(self, **kw):
+        from squadops.bootstrap.setup.profile import MemoryContainment
+
+        base = dict(
+            daemon="earlyoom",
+            package="earlyoom",
+            free_memory_percent=10,
+            free_swap_percent=100,
+            swappiness=10,
+        )
+        base.update(kw)
+        return MemoryContainment(**base)
+
+    def _systemctl(self, *, state: str, exec_start: str = ""):
+        """MainPID reads 0 so `_effective_command` falls back to the declared ExecStart —
+        the fallback path, which is what these cases are about."""
+
+        def fake(*args: str):
+            if args[:1] == ("is-active",):
+                return (0 if state == "active" else 3), state
+            if args[:3] == ("show", "-p", "MainPID"):
+                return 0, "0"
+            if args[0] == "show":
+                return 0, exec_start
+            return 0, ""
+
+        return fake
+
+    @pytest.mark.parametrize(
+        ("exec_start", "expected"),
+        [
+            ("/usr/bin/earlyoom -m 10 -s 100", (10, 100)),
+            ("/usr/bin/earlyoom -m10 -s100", (10, 100)),
+            ("/usr/bin/earlyoom -m 5,2 -s 10,5", (5, 10)),
+            ("/usr/bin/earlyoom -m 10%", (10, None)),
+            ("/usr/bin/earlyoom", (None, None)),
+        ],
+        ids=["spaced", "joined", "kill-pair", "percent-suffix", "no-flags"],
+    )
+    def test_thresholds_are_read_off_the_units_actual_command(self, exec_start, expected):
+        """Read from what the unit RUNS, not from /etc/default: a drop-in or a hand-edited
+        unit changes the former and leaves the latter looking right. Bug caught: a parser
+        that only handles one of the spellings and silently reports no threshold."""
+        assert checks_mod._earlyoom_thresholds(exec_start) == expected
+
+    def test_an_inactive_daemon_fails(self, monkeypatch):
+        """The box's state today. Bug caught: a doctor that reports the gap as fine."""
+        monkeypatch.setattr(checks_mod, "_systemctl", self._systemctl(state="inactive"))
+        monkeypatch.setattr(checks_mod.subprocess, "run", MagicMock(side_effect=OSError))
+
+        results = checks_mod.check_memory_containment(self._containment())
+
+        daemon = next(r for r in results if r.name == "memory:earlyoom")
+        assert daemon.passed is False and daemon.heuristic is False
+        assert "takes the box" in daemon.message
+        assert "apt install earlyoom" in daemon.fix_command
+
+    def test_the_thresholds_are_read_from_the_running_process_not_the_declared_unit(
+        self, monkeypatch, tmp_path
+    ):
+        """The defect this check shipped with, caught the first time it ran on the box.
+
+        Debian's earlyoom unit declares `/usr/bin/earlyoom $EARLYOOM_ARGS` and systemd
+        expands that from an EnvironmentFile at start, so `systemctl show -p ExecStart`
+        NEVER contains the thresholds. Reading it reported "free-swap threshold is unset"
+        against a daemon running with exactly the right ones — a readout that could not see
+        what it was asking about, reporting a real-looking failure. Which is the class this
+        check exists to catch, so it must not be the class this check is.
+        """
+        cmdline = tmp_path / "cmdline"
+        cmdline.write_bytes(b"/usr/bin/earlyoom\x00-m\x0010\x00-s\x00100\x00")
+
+        def fake_systemctl(*args: str):
+            if args[:1] == ("is-active",):
+                return 0, "active"
+            if args[:3] == ("show", "-p", "MainPID"):
+                return 0, "4242"
+            if args[:3] == ("show", "-p", "ExecStart"):
+                # what systemd really returns: the UNEXPANDED declaration
+                return 0, "{ path=/usr/bin/earlyoom ; argv[]=/usr/bin/earlyoom $EARLYOOM_ARGS }"
+            return 0, ""
+
+        monkeypatch.setattr(checks_mod, "_systemctl", fake_systemctl)
+        monkeypatch.setattr(
+            checks_mod, "Path", lambda p: cmdline if p == "/proc/4242/cmdline" else Path(p)
+        )
+        monkeypatch.setattr(checks_mod.subprocess, "run", MagicMock(side_effect=OSError))
+
+        results = checks_mod.check_memory_containment(self._containment())
+
+        swap = next(r for r in results if "swap threshold" in r.name)
+        assert swap.passed is True, swap.message
+
+    def test_an_active_daemon_whose_swap_threshold_can_veto_the_kill_fails(self, monkeypatch):
+        """THE check, and the reason "installed" is not the property that matters.
+
+        earlyoom kills only when available memory AND free swap are both under threshold.
+        The 2026-08-29 livelock ran with 23% of swap free from the cliff to the power
+        cycle, so a stock `-s 10` would have watched the box die without ever firing. A
+        check that stopped at "the daemon is active" would have passed throughout the
+        outage it exists to prevent.
+        """
+        monkeypatch.setattr(
+            checks_mod,
+            "_systemctl",
+            self._systemctl(state="active", exec_start="/usr/bin/earlyoom -m 10 -s 10"),
+        )
+        monkeypatch.setattr(checks_mod.subprocess, "run", MagicMock(side_effect=OSError))
+
+        results = checks_mod.check_memory_containment(self._containment())
+
+        assert next(r for r in results if r.name == "memory:earlyoom").passed is True
+        swap = next(r for r in results if "swap threshold" in r.name)
+        assert swap.passed is False and swap.heuristic is False
+        assert "23% of swap still free" in swap.message
+        assert "-s 100" in swap.fix_command
+
+    def test_a_correctly_configured_daemon_passes(self, monkeypatch):
+        """The over-rejection control: containment that CAN fire is not reported as a gap."""
+        monkeypatch.setattr(
+            checks_mod,
+            "_systemctl",
+            self._systemctl(state="active", exec_start="/usr/bin/earlyoom -m 10 -s 100"),
+        )
+        monkeypatch.setattr(
+            checks_mod.subprocess,
+            "run",
+            MagicMock(return_value=SimpleNamespace(stdout="10\n", returncode=0)),
+        )
+
+        results = checks_mod.check_memory_containment(self._containment())
+
+        assert all(r.passed for r in results), [r.message for r in results if not r.passed]
+
+    def test_swappiness_is_a_warning_never_a_hard_fail(self, monkeypatch):
+        """Lowering swappiness lengthens the runway before thrash; it bounds nothing. It is
+        mitigation, so it discloses without failing the box. Bug caught: a mitigation
+        promoted to containment, which would make a doctor red for the wrong reason."""
+        monkeypatch.setattr(
+            checks_mod,
+            "_systemctl",
+            self._systemctl(state="active", exec_start="/usr/bin/earlyoom -m 10 -s 100"),
+        )
+        monkeypatch.setattr(
+            checks_mod.subprocess,
+            "run",
+            MagicMock(return_value=SimpleNamespace(stdout="60\n", returncode=0)),
+        )
+
+        results = checks_mod.check_memory_containment(self._containment())
+
+        swappiness = next(r for r in results if r.name == "memory:swappiness")
+        assert swappiness.passed is False
+        assert swappiness.heuristic is True, "a mitigation must not hard-fail the box"
+        assert "60" in swappiness.message
+
+    def test_no_systemctl_is_unverifiable_not_a_failure(self, monkeypatch):
+        """On a box without systemd the question cannot be asked. Reporting it as a
+        containment failure would be the "could not be asked read as an answer" defect."""
+        monkeypatch.setattr(checks_mod, "_systemctl", lambda *a: (127, ""))
+
+        results = checks_mod.check_memory_containment(self._containment())
+
+        assert len(results) == 1
+        assert results[0].heuristic is True and "cannot be verified" in results[0].message
+
+    def test_a_profile_declaring_no_containment_is_asked_nothing(self):
+        """Mirrors how the GPU checks gate on an nvidia dependency: a laptop profile makes
+        no claim, so the doctor makes no complaint. Bug caught: dev-mac going red for a
+        daemon it never wanted."""
+        from squadops.bootstrap.setup.profile import load_bootstrap_profile
+
+        assert checks_mod._collect_memory_checks(load_bootstrap_profile("dev-mac")) == []
+        assert checks_mod._collect_memory_checks(load_bootstrap_profile("dev-pc")) == []
+
+    def test_the_spark_profile_declares_containment_that_swap_cannot_veto(self):
+        """The declaration itself is the fix's contract — the bootstrap writes these
+        thresholds and the doctor verifies them, so a drift between the two is a test
+        failure rather than a live incident."""
+        from squadops.bootstrap.setup.profile import load_bootstrap_profile
+
+        containment = load_bootstrap_profile("local-spark").memory_containment
+
+        assert containment is not None
+        assert containment.daemon == "earlyoom"
+        assert containment.free_swap_percent == 100, (
+            "at anything less, free swap can veto the kill — which is why the 2026-08-29 "
+            "livelock ran to a power cycle"
+        )
+        assert checks_mod._collect_memory_checks(load_bootstrap_profile("local-spark"))
+
+
+# ---------------------------------------------------------------------------
+# Database isolation check (#1180): the integration-test role authenticates on its own
+# database AND is refused by the deployment database with the permission error.
+# ---------------------------------------------------------------------------
+
+_REPO_ROOT = Path(__file__).resolve().parents[4]
+_PORT = 5432
+
+
+def _probe_by_database(answers: dict[str, ConnectionProbe]):
+    """A probe that answers per database name — what the server said, keyed by which
+    database the DSN asked for — and records the DSNs it was handed."""
+    asked: list[str] = []
+
+    def probe(dsn: str) -> ConnectionProbe:
+        asked.append(dsn)
+        return answers[database_name_of(dsn)]
+
+    probe.asked = asked  # type: ignore[attr-defined]
+    return probe
+
+
+_ACCEPTED = ConnectionProbe(connected=True)
+_PERMISSION_DENIED = ConnectionProbe(
+    connected=False, sqlstate="42501", error='permission denied for database "squadops"'
+)
+_BAD_PASSWORD = ConnectionProbe(
+    connected=False,
+    sqlstate="28P01",
+    error='password authentication failed for user "squadops_test"',
+)
+_NO_SUCH_DATABASE = ConnectionProbe(
+    connected=False, sqlstate="3D000", error='database "squadops" does not exist'
+)
+_UNREACHABLE = ConnectionProbe(connected=False, error="connection refused", unreachable=True)
+
+
+class TestDatabaseIsolation:
+    def test_refused_with_permission_error_passes(self):
+        """The one shape that is evidence: accepted by its own database, refused by the
+        deployment database with 42501."""
+        probe = _probe_by_database(
+            {TEST_DB_NAME: _ACCEPTED, DEPLOYMENT_DB_NAME: _PERMISSION_DENIED}
+        )
+        result = check_test_database_isolation(port=_PORT, password="pw", probe=probe)
+        assert result.passed is True and result.category == "database"
+        assert TEST_DB_ROLE in result.message and DEPLOYMENT_DB_NAME in result.message
+        # Both probes went out as the test role, in that order, on the profile's port.
+        assert [database_name_of(d) for d in probe.asked] == [TEST_DB_NAME, DEPLOYMENT_DB_NAME]
+        prefix = f"postgresql://{TEST_DB_ROLE}:pw@localhost:{_PORT}/"
+        assert all(d.startswith(prefix) for d in probe.asked)
+
+    def test_role_that_can_connect_to_the_deployment_database_fails_hard(self):
+        """The incident shape. A check that only proved the test database reachable
+        would pass here; this one must go red and name the missing grant."""
+        probe = _probe_by_database({TEST_DB_NAME: _ACCEPTED, DEPLOYMENT_DB_NAME: _ACCEPTED})
+        result = check_test_database_isolation(port=_PORT, password="pw", probe=probe)
+        assert result.passed is False and result.heuristic is False
+        assert "CAN connect" in result.message
+        assert f"REVOKE CONNECT ON DATABASE {DEPLOYMENT_DB_NAME} FROM PUBLIC" in result.message
+        assert result.fix_command is not None
+
+    def test_missing_role_fails_hard_and_never_probes_the_deployment_database(self):
+        """Role absent (Postgres answers 28P01 for a nonexistent role too) → hard fail
+        with the fix. The negative is not attempted: a refusal by the deployment database
+        for the same reason would read as a false pass."""
+        probe = _probe_by_database({TEST_DB_NAME: _BAD_PASSWORD, DEPLOYMENT_DB_NAME: _ACCEPTED})
+        result = check_test_database_isolation(port=_PORT, password="pw", probe=probe)
+        assert result.passed is False and result.heuristic is False
+        assert "cannot authenticate" in result.message
+        assert TEST_DB_PASSWORD_ENV in result.message
+        assert result.fix_command is not None
+        assert [database_name_of(d) for d in probe.asked] == [TEST_DB_NAME]
+
+    @pytest.mark.parametrize(
+        "deployment_answer, sqlstate",
+        [(_NO_SUCH_DATABASE, "3D000"), (_BAD_PASSWORD, "28P01")],
+    )
+    def test_refusal_for_another_reason_is_not_isolation(self, deployment_answer, sqlstate):
+        """Refused, but not by the grant → hard fail. A missing deployment database or a
+        password mismatch between the two probes is not evidence the grant exists."""
+        probe = _probe_by_database({TEST_DB_NAME: _ACCEPTED, DEPLOYMENT_DB_NAME: deployment_answer})
+        result = check_test_database_isolation(port=_PORT, password="pw", probe=probe)
+        assert result.passed is False and result.heuristic is False
+        assert sqlstate in result.message and "not a permission error" in result.message
+
+    def test_missing_test_database_names_it(self):
+        probe = _probe_by_database({TEST_DB_NAME: _NO_SUCH_DATABASE})
+        result = check_test_database_isolation(port=_PORT, password="pw", probe=probe)
+        assert result.passed is False and result.heuristic is False
+        assert f"test database {TEST_DB_NAME!r} does not exist" in result.message
+
+    @pytest.mark.parametrize("password", [None, ""])
+    def test_unset_password_warns_not_fails(self, password):
+        """No POSTGRES_TEST_PASSWORD → unverifiable → heuristic warn (the broker pattern),
+        naming the variable; nothing is probed."""
+        probe = _probe_by_database({})
+        result = check_test_database_isolation(port=_PORT, password=password, probe=probe)
+        assert result.passed is False and result.heuristic is True
+        assert TEST_DB_PASSWORD_ENV in result.message
+        assert probe.asked == []
+
+    def test_unreachable_server_warns_not_fails(self):
+        """Postgres down is the docker category's red; here it is a warning, not a
+        second red for the same cause."""
+        probe = _probe_by_database({TEST_DB_NAME: _UNREACHABLE})
+        result = check_test_database_isolation(port=_PORT, password="pw", probe=probe)
+        assert result.passed is False and result.heuristic is True
+        assert f"localhost:{_PORT}" in result.message
+
+    def test_collect_gates_on_postgres_service_and_uses_its_port(self, monkeypatch):
+        """Runs only when the profile declares postgres (the broker/GPU gating), on the
+        port the profile declares, with the password the CLI's .env load put in the
+        environment."""
+        monkeypatch.setenv(TEST_DB_PASSWORD_ENV, "from-env")
+        with_pg = _profile(
+            docker_services=[DockerService(name="postgres", healthcheck="tcp", port=6543)]
+        )
+        without_pg = _profile(
+            docker_services=[DockerService(name="redis", healthcheck="tcp", port=6379)]
+        )
+        with patch(
+            "squadops.bootstrap.setup.checks.check_test_database_isolation",
+            return_value=CheckResult("database:test-role-isolation", "database", True, "ok"),
+        ) as mock_check:
+            assert checks_mod._collect_database_checks(without_pg) == []
+            mock_check.assert_not_called()
+            results = checks_mod._collect_database_checks(with_pg)
+        assert len(results) == 1
+        mock_check.assert_called_once_with(port=6543, password="from-env")
+
+    def test_database_category_is_registered_and_runnable(self):
+        probe = _probe_by_database(
+            {TEST_DB_NAME: _ACCEPTED, DEPLOYMENT_DB_NAME: _PERMISSION_DENIED}
+        )
+        profile = _profile(
+            docker_services=[DockerService(name="postgres", healthcheck="tcp", port=_PORT)]
+        )
+        with (
+            patch("squadops.bootstrap.setup.checks._probe_connection", probe),
+            patch.dict("os.environ", {TEST_DB_PASSWORD_ENV: "pw"}),
+        ):
+            results = run_checks(profile, category="database")
+        assert [r.category for r in results] == ["database"] and results[0].passed is True
+        assert "database" in checks_mod.VALID_CATEGORIES
+
+
+class TestProvisioningNamesTheSameRole:
+    """The shell that provisions the role, the CI job that proves the grant, the compose
+    file that names the deployment database, and the doctor that verifies the negative
+    must all spell the same names — a rename in one place is the bug this catches."""
+
+    def test_compose_init_script_provisions_what_the_doctor_verifies(self):
+        script = (_REPO_ROOT / "infra" / "00-create-databases.sh").read_text()
+        assert f"CREATE ROLE {TEST_DB_ROLE} LOGIN PASSWORD" in script
+        assert f"CREATE DATABASE {TEST_DB_NAME} OWNER {TEST_DB_ROLE}" in script
+        assert "REVOKE CONNECT ON DATABASE" in script and "FROM PUBLIC" in script
+        assert TEST_DB_PASSWORD_ENV in script
+        # No password literal: the value arrives in the environment or not at all.
+        assert "squadops-test" not in script
+
+    def test_deploy_helper_reads_the_same_variable_and_carries_no_password(self):
+        helper = (_REPO_ROOT / "scripts" / "dev" / "ops" / "ensure_test_database.sh").read_text()
+        assert f'PASSWORD_VAR="{TEST_DB_PASSWORD_ENV}"' in helper
+        assert "infra/00-create-databases.sh" in helper
+        assert "squadops-test" not in helper
+
+    def test_env_example_seeds_the_variable(self):
+        env_example = (_REPO_ROOT / ".env.example").read_text()
+        assert f"\n{TEST_DB_PASSWORD_ENV}=" in env_example
+
+    def test_compose_deployment_database_is_the_one_the_doctor_guards(self):
+        compose = (_REPO_ROOT / "docker-compose.yml").read_text()
+        assert f"POSTGRES_DB: {DEPLOYMENT_DB_NAME}\n" in compose
+
+    def test_ci_runs_the_suite_as_the_test_role_on_the_test_database(self):
+        ci = (_REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text()
+        assert f"POSTGRES_URL: postgresql://{TEST_DB_ROLE}:" in ci
+        assert f"POSTGRES_DB: {DEPLOYMENT_DB_NAME}\n" in ci
+        assert "scripts/dev/ops/ensure_test_database.sh" in ci
+
+    def test_with_database_keeps_role_host_and_port(self):
+        dsn = with_database(
+            "postgresql://squadops_test:pw@db.local:6543/squadops_test?sslmode=disable",
+            "squadops",
+        )
+        assert dsn == "postgresql://squadops_test:pw@db.local:6543/squadops?sslmode=disable"

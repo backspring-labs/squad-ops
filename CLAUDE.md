@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 SquadOps is a multi-agent orchestration framework for software development. It uses a hexagonal architecture (ports & adapters) with dependency injection for testability.
 
-**Framework Version**: 1.7.2 (single-sourced from `pyproject.toml`; installed metadata is the
+**Framework Version**: 1.7.5 (single-sourced from `pyproject.toml`; installed metadata is the
 install-time copy and is used only when no source tree is present — #1089)
 **Python Requirement**: 3.12 everywhere — containers, CI and dev (#237). Production ran 3.11 until 2026-08-31 while CI tested on 3.12; the lock files were compiled on 3.11 and CI's constraints on 3.12, which is half of what #1041 was.
 
@@ -239,7 +239,7 @@ procedure costs: six consecutive releases tagged but never advertised.
 | 4 | ROADMAP timeline entry |
 | 5 | SIP promotion sweep — promote what is genuinely implemented; a phased or umbrella SIP with open children stays `accepted`, with the gap named |
 | 6 | `git tag vX.Y.Z && git push origin vX.Y.Z` — the Release publishes itself from the CHANGELOG section (`.github/workflows/release.yml`, #1061) |
-| 7 | **Capture the release package** — `python scripts/maintainer/build_release_package.py <version> --cycle <cycle-id> --project <project>` to PREVIEW, read the cycle evidence, then re-run with `--write` and commit `site/content/releases/vX.Y.Z/` |
+| 7 | **Capture the screenshots, then the package** — `capture_delivered_app.py` and `capture_prefect_run.py` into `assets/` first, then `build_release_package.py <version> --cycle <id>:<role> --showcase <id>:<reason>` to PREVIEW, read the cycle evidence, then re-run with `--write` and commit `site/content/releases/vX.Y.Z/` |
 
 Steps 1–3 are guarded by `tests/unit/architecture/test_docs_version_sync.py`, and step 6's
 Release is now automated on tag push. Step 5 is checked by the `SIP sweep:` line a
@@ -255,9 +255,35 @@ A step with that record needs removing, not restating (#1061).
 
 **Step 7 is capture, not query.** Cycle evidence lives in a running deploy and is
 unrecoverable once it moves, so the package is snapshotted at the cut and committed —
-the site renders it and never re-derives it. Screenshots (Prefect run, delivered app) go
-into that release's `assets/` before the script runs. It reads the tag range, so it must
+the site renders it and never re-derives it. It reads the tag range, so it must
 follow step 6.
+
+**The screenshots are two commands, not a note.** They go into `assets/` **before** the
+builder runs, because it globs that directory:
+
+```bash
+python scripts/dev/capture_delivered_app.py --cycle <cyc> --run <IMPL run> --version X.Y.Z \
+    --seed-file examples/<prd>/screenshot_seed.json --id-from /runs --route '/:delivered-app-run-list' …
+python scripts/dev/capture_prefect_run.py --cycle <cyc> --version X.Y.Z \
+    --label prefect-flow-run-<what-it-shows>
+```
+
+The first rebuilds the delivered tree from the vault and boots it; the second photographs the
+flow-run timeline, which is the only view where a correction round is legible at a glance.
+Both refuse to produce something misleading — a run that has not finished, a seeded state the
+app rejected. Each filename becomes its caption on the page, so name them as captions. This
+was prose from 2026-08-10 and **v1.7.0 through v1.7.4 each shipped an empty `assets/`** — the
+#789/#1061 shape, which is why it is now two commands and rule 3 of
+`check_release_packages.py`.
+
+**Name each cycle's role, and say which one the pictures are of.** `--cycle <id>:<role>` takes
+`counted`, `shakeout`, `diagnostic` or `void`; without it a fault-injected diagnostic's
+`rejected` reads on the page as a failed roll (v1.7.4 shipped 12 rows with no role).
+`--showcase <id>:<reason>` names the run the screenshots show and why — the page cites many
+cycles and shows one, and which one is a judgement that changes per release. The guard takes
+**no view on which cycle**; it only refuses an unexplained choice, because "the representative
+run" reliably resolves to a clean one picked by somebody with an interest in the release
+looking good.
 
 **Read step 7's preview before writing it.** The capture needs a running runtime API, a
 current `squadops login`, and the right `--project`; when any is missing the package can
@@ -296,6 +322,8 @@ v1.6.0 could record zero code drift; v1.6.2 could not, and said so.
 **Branch first**: Always create a feature branch before writing any code for a new feature or SIP implementation. Develop on the branch with incremental commits per phase — not one giant commit at the end. This keeps `main` clean and gives the PR a proper commit history.
 
 **Close issues from PRs**: Every PR body must include `Closes #NNN` (or `Fixes #NNN`) for each issue it fully resolves, so the merge auto-closes them. A bare `(#NNN)` reference does **not** close the issue — that gap left #133/#205 credited-but-open after 1.1.1 (closed 2026-06-29 during the #281 reconcile). If a PR only partially addresses an issue, reference it without `Closes` and say what remains. **Enforced** since 2026-08-26 by `.github/workflows/pr-closure.yml` (#1113 — six 1.6.4 fix PRs shipped without the line): the body must carry `Closes #N` to an *open* issue, or `Refs #N — remaining: …`, or `No issue: …`; `scripts/dev/check_pr_closure.sh` runs the same check locally. The template is `.github/PULL_REQUEST_TEMPLATE.md` (`gh pr create --body-file` bypasses it, which is why the check exists).
+
+**Required checks**: `closing reference present`, `lint + regression`, `scaffold skeleton gate` and — since 2026-09-07 — `integration` (1.7.4 plan §3.1: main's integration job was red for six merges on the 1.7.3 line before anyone read it, 1.7.3 record §4.6; the controlled negative check that proved the block is PR #1376, closed unmerged). A docs-only PR skips the job and GitHub counts the skip as satisfied. Required or not, **read every job of main's run after every merge** — `fresh-venv install`, `release packages captured` and `dependency audit` (#1205: `scripts/dev/audit_dependencies.sh` against `requirements/*.lock`, failing on any advisory not accepted with a reason in `requirements/audit-ignore.txt`) are not required, and a red there is a new regression, never "known rot".
 
 **Ownership before extension (edit-time rule)**: Before adding content, config, or a new pattern to ANY file, check whether an existing seam already owns that concern (`ports/`, a service or module named for it). Use the seam or flag the conflict *before* editing — "the neighboring code does it this way" is never justification. Content edits (prompt text, string blocks, config literals) get the same scrutiny as logic; they are where shortcuts hide. Canonical example: prompt content belongs in `src/squadops/prompts/fragments/` via PromptService, not inline string literals in handlers (#448 — two fixes shipped as inline literals while the fragment system sat unused for build handlers). **The mirror rule on removal:** before deleting or stripping something, say what evidence it produced and who consumed it. #1253 stripped the planner's handoff regexes — correctly — and exposed that they had been the builder task's only typed criteria; the verifier had been living on them, and the next builder repair was discarded unheard (#1255). Owner's ruling of the same shape at the seams: require, don't default.
 

@@ -161,11 +161,61 @@ class RedisConfig(BaseModel):
     db: int = Field(default=0, ge=0, description="Redis database number")
 
 
+class QueueConfig(BaseModel):
+    """The queue transport's selector (#301, composition-roots.md §6.2).
+
+    Named for the PORT it selects, not ``comms.provider``: ``CommsConfig`` holds three
+    independent things — the queue, the A2A transport and Redis — and a selector named for all
+    of them would read as choosing all of them. The vendor's own settings stay under the
+    vendor's key (``comms.rabbitmq.url``), read by the factory when the selector names it.
+    Required with no default (R2): a defaulted selector is a masking fallback.
+    """
+
+    provider: Literal["rabbitmq"] = Field(
+        ..., description="Queue transport selecting the adapter (required, never defaulted)"
+    )
+
+
+class A2AConfig(BaseModel):
+    """The agent-to-agent transport's selector and tunables (#301, §6.3).
+
+    One legal value today, and still required by R2's stated rule: the selector records that
+    this deployment's agent messaging IS the HTTP transport. A second value is added when a
+    root needs one, not speculatively. The two client timeouts that were constructor defaults
+    (``a2a_client.py``) are tunables here with the same defaults (R5).
+    """
+
+    provider: Literal["http"] = Field(
+        ..., description="A2A transport selecting the adapter (required, never defaulted)"
+    )
+    timeout_seconds: float = Field(default=180.0, gt=0, description="A2A request timeout")
+    agent_card_timeout_seconds: float = Field(
+        default=10.0, gt=0, description="Agent-card fetch timeout"
+    )
+
+
 class CommsConfig(BaseModel):
     """Communication services configuration."""
 
+    queue: QueueConfig = Field(..., description="Queue transport selector (required)")
+    a2a: A2AConfig = Field(..., description="A2A transport selector and tunables (required)")
     rabbitmq: RabbitMQConfig = Field(..., description="RabbitMQ configuration")
     redis: RedisConfig = Field(..., description="Redis configuration")
+
+
+class FilesystemToolConfig(BaseModel):
+    """The agent's filesystem adapter selector (#301, §6.4)."""
+
+    provider: Literal["local"] = Field(
+        ..., description="Filesystem adapter selecting the implementation (required)"
+    )
+
+
+class ToolsConfig(BaseModel):
+    """Agent tool adapters (#301, §6.4). Added because no ``tools`` section existed and the
+    agent root bound its filesystem adapter by direct construction."""
+
+    filesystem: FilesystemToolConfig = Field(..., description="Filesystem adapter selector")
 
 
 class SecretsConfig(BaseModel):
@@ -509,6 +559,34 @@ class RuntimeConfig(BaseModel):
     )
 
 
+class DispatchConfig(BaseModel):
+    """The orchestrator's side of a dispatched task (#1147).
+
+    ``task_timeout`` is how long a task may run before the orchestrator calls the agent
+    hung — several LLM calls, file I/O, a whole test-suite execution. It is a different
+    quantity from ``llm.timeout``, which bounds one HTTP call to the model, and until
+    #1147 both were read from ``SQUADOPS__LLM__TIMEOUT``: raising the request timeout for
+    a long qa emission raised the hung-agent detector with it. Unset, it follows
+    ``llm.timeout`` so an existing deploy keeps behaving; set, the two move apart.
+    """
+
+    task_timeout: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Seconds the orchestrator waits for a dispatched task before calling the agent "
+            "hung (SQUADOPS__DISPATCH__TASK_TIMEOUT). None = follow llm.timeout."
+        ),
+    )
+
+    @field_validator("task_timeout", mode="before")
+    @classmethod
+    def _empty_means_unset(cls, value: Any) -> Any:
+        # A compose passthrough of an unset variable arrives as "" — that is "unset",
+        # not a value to coerce.
+        return None if isinstance(value, str) and not value.strip() else value
+
+
 class PrefectConfig(BaseModel):
     """Prefect orchestration configuration."""
 
@@ -772,6 +850,16 @@ class AppConfig(BaseModel):
 
     # LLM
     llm: LLMConfig = Field(description="LLM configuration (required: it names the provider)")
+    tools: ToolsConfig = Field(..., description="Agent tool adapter selectors (required, #301)")
+    dispatch: DispatchConfig = Field(
+        default_factory=DispatchConfig,
+        description="Orchestrator-side dispatch bounds (#1147)",
+    )
+
+    def task_timeout_seconds(self) -> float:
+        """The orchestrator's per-task wait: ``dispatch.task_timeout`` when set, else
+        ``llm.timeout`` — the one place the two are joined (#1147)."""
+        return float(self.dispatch.task_timeout or self.llm.timeout)
 
     # Prompts (SIP-0084)
     prompts: PromptsConfig = Field(

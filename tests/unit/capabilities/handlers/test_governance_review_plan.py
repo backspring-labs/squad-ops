@@ -382,17 +382,22 @@ class TestPRDCoverageDiscipline:
         assert "endpoint_defined" in ext
         assert "import_present" in ext
 
-    def test_extension_includes_qa_handoff_worked_example(self):
-        """The recurring defect this fixes (4 of 5 SIP-0092 gate cycles) was
-        a missing `## Expected Behavior` section check. The worked example
-        must show that exact case so Max can pattern-match against it."""
+    def test_extension_shows_the_worked_example_on_a_document_the_prd_asked_for(self):
+        """The recurring defect this fixes (4 of 5 SIP-0092 gate cycles) was a missing
+        section check, so the example must show the typed-check syntax rather than prose.
+
+        #1312 moved the example off `qa_handoff.md`: that document is retired, and an
+        example over a FRAMEWORK-owned deliverable is how the planner learned to author
+        213 of 213 builder criteria as regexes restating the profile's own sections.
+        """
         ext = GovernanceReviewHandler._MANIFEST_PROMPT_EXTENSION
-        assert "## How to Test" in ext
-        assert "## Expected Behavior" in ext
-        assert "qa_handoff.md" in ext
+        assert "qa_handoff" not in ext
+        assert "README.md" in ext
         # Show the typed-check syntax, not prose
-        assert 'pattern: "## How to Test"' in ext
+        assert 'pattern: "## Configuration"' in ext
         assert "count_min: 1" in ext
+        # And say why the target is a PRD-asked-for document, not a framework one.
+        assert "not yours to cover this way" in ext
 
     def test_extension_warns_against_loose_pattern_matching(self):
         """Pattern-only checks like `how to test|how to run` match running

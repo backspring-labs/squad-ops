@@ -6,12 +6,10 @@ Replaces ConfigSquadProfile for production use with full CRUD support.
 
 from __future__ import annotations
 
-import json
 import logging
 
 import asyncpg
 
-from adapters.jsonb import parse_jsonb
 from squadops.cycles.lifecycle import compute_profile_snapshot_hash
 from squadops.cycles.models import (
     ActiveProfileDeletionError,
@@ -65,7 +63,7 @@ class PostgresSquadProfile(SquadProfilePort):
     # --- CRUD ---
 
     async def create_profile(self, profile: SquadProfile) -> SquadProfile:
-        agents_json = json.dumps(self._agents_to_dicts(profile.agents))
+        agents_json = self._agents_to_dicts(profile.agents)
         try:
             async with self._pool.acquire() as conn:
                 await conn.execute(
@@ -101,9 +99,7 @@ class PostgresSquadProfile(SquadProfilePort):
 
             new_name = name if name is not None else row["name"]
             new_desc = description if description is not None else row["description"]
-            new_agents = (
-                json.dumps(self._agents_to_dicts(agents)) if agents is not None else row["agents"]
-            )
+            new_agents = self._agents_to_dicts(agents) if agents is not None else row["agents"]
             new_version = row["version"] + 1
 
             updated_row = await conn.fetchrow(
@@ -184,7 +180,7 @@ class PostgresSquadProfile(SquadProfilePort):
                         profile.name,
                         profile.description,
                         profile.version,
-                        json.dumps(self._agents_to_dicts(profile.agents)),
+                        self._agents_to_dicts(profile.agents),
                         profile.created_at,
                     )
                     seeded += 1
@@ -226,7 +222,7 @@ class PostgresSquadProfile(SquadProfilePort):
 
     def _row_to_profile(self, row: asyncpg.Record) -> SquadProfile:
         """Reconstruct SquadProfile from asyncpg Record."""
-        agents_data = parse_jsonb(row["agents"])
+        agents_data = row["agents"]
         agents = tuple(
             AgentProfileEntry(
                 agent_id=a["agent_id"],

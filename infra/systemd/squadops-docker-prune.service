@@ -1,0 +1,20 @@
+# TEMPLATE — not a valid unit as committed. __USER__ and __REPO_ROOT__ are substituted by
+# scripts/dev/ops/install_timer.sh, because the user and checkout path differ per machine
+# and a hardcoded one would be wrong everywhere but here.
+#
+# Weekly Docker reclaim (#1465). Installed deliberately rather than by bootstrap, on the
+# same ruling as the backup timer: it writes host systemd units and needs sudo, so a fresh
+# clone should not silently acquire it — only a machine that actually deploys often enough
+# to accrue the garbage.
+[Unit]
+Description=SquadOps Docker disk reclaim
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=__USER__
+ExecStart=/bin/bash __REPO_ROOT__/scripts/dev/ops/prune_docker.sh
+# Never let a reclaim compete with a cycle for the box — same treatment as the backup.
+Nice=10
+IOSchedulingClass=idle

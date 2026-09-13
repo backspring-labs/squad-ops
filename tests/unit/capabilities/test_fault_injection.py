@@ -170,12 +170,24 @@ class TestTheDeclarationIsRefusedRatherThanIgnored:
         assert validate_declaration({}) == ()
 
 
-def _calls_inject(path: Path) -> bool:
+def _wires_the_fault(path: Path) -> bool:
+    """Does this module ask the shared LLM sequence to apply a declared fault?
+
+    #929 moved the injector call itself into ``_CycleTaskHandler._llm_call``, so
+    "calls ``inject()``" now describes exactly one file and says nothing about which
+    capabilities are reachable. The wiring a handler still owns is the argument:
+    ``apply_fault=True`` at its own call site. Read from the tree rather than as a
+    word, so a comment or docstring mentioning it is not mistaken for a seam.
+    """
     tree = ast.parse(path.read_text(encoding="utf-8"))
     return any(
         isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id in {"inject", "inject_fault"}
+        and any(
+            kw.arg == "apply_fault"
+            and isinstance(kw.value, ast.Constant)
+            and kw.value.value is True
+            for kw in node.keywords
+        )
         for node in ast.walk(tree)
     )
 
@@ -186,11 +198,18 @@ def test_every_declared_fault_is_reachable_from_a_wired_seam():
     `INJECTED_TASKS` is what turns an unwired fault into a create-time refusal, so a stale
     entry in it would restore the silent no-op it exists to prevent — the declaration would
     validate and the fault would never fire.
+
+    After #929 the seam is one shared method and the per-handler wiring is the
+    ``apply_fault=True`` argument. That is a *narrower* thing to get wrong than a
+    forgotten ``inject()`` call — and a quieter one, since the four other steps of the
+    sequence still run, so a handler that lost the flag looks entirely healthy.
     """
     wired = [
-        path for path in (_SRC / "capabilities" / "handlers").rglob("*.py") if _calls_inject(path)
+        path
+        for path in (_SRC / "capabilities" / "handlers").rglob("*.py")
+        if _wires_the_fault(path)
     ]
-    assert wired, "no handler calls the injector — every fault declaration is a no-op"
+    assert wired, "no handler asks for fault injection — every declaration is a no-op"
 
     from squadops.tasks.task_types import TaskType
 
@@ -215,8 +234,9 @@ def test_every_declared_fault_is_reachable_from_a_wired_seam():
     }
     missing = sorted(INJECTED_TASKS - capabilities)
     assert not missing, (
-        f"INJECTED_TASKS claims {missing} are wired, but no handler module that calls the "
-        "injector declares them — a fault for those tasks would validate and never fire"
+        f"INJECTED_TASKS claims {missing} are wired, but no handler module passing "
+        "apply_fault=True declares them — a fault for those tasks would validate and "
+        "never fire"
     )
 
 
@@ -433,9 +453,43 @@ _EMISSIONS = {
 }
 
 
-@pytest.mark.parametrize("shape", sorted(_EMISSIONS))
-@pytest.mark.parametrize("name", sorted(FAULTS))
-def test_every_declared_fault_actually_changes_a_representative_emission(name, shape):
+#: Three shapes the failure analyzer actually emits (test_impl_handlers): a bare object, an
+#: object behind a think block, an object inside a fence after a preamble. The analyzer
+#: fault must bite on all three and leave what surrounds the object alone.
+_ANALYSIS_OBJECT = (
+    "{\n"
+    '  "classification": "work_product",\n'
+    '  "analysis_summary": "The leave handler returns 200 for an unknown run.",\n'
+    '  "contributing_factors": ["no lookup before the mutation"],\n'
+    '  "implicated_files": ["backend/routes.py"]\n'
+    "}"
+)
+_ANALYSES = {
+    "a bare object": _ANALYSIS_OBJECT,
+    "behind a think block": "<think>the evidence names routes.py</think>\n" + _ANALYSIS_OBJECT,
+    "fenced after a preamble": "Here is the analysis.\n\n```json\n" + _ANALYSIS_OBJECT + "\n```\n",
+}
+
+
+def _representative_cases():
+    """Every fault against every representative emission OF ITS OWN TASK: a suite for the
+    qa and develop faults, a builder emission for the builder's (the suites carry fences
+    too), an analysis for the analyzer's — a fence-stripping transform proves nothing on
+    JSON and a JSON transform nothing on a suite."""
+    from squadops.tasks.task_types import TaskType
+
+    cases = []
+    for name in sorted(FAULTS):
+        shapes = _ANALYSES if FAULTS[name].task == TaskType.DATA_ANALYZE_FAILURE else _EMISSIONS
+        cases += [
+            pytest.param(name, shape, shapes[shape], id=f"{name}-{shape}")
+            for shape in sorted(shapes)
+        ]
+    return cases
+
+
+@pytest.mark.parametrize(("name", "shape", "content"), _representative_cases())
+def test_every_declared_fault_actually_changes_a_representative_emission(name, shape, content):
     """A fault that returns its input is inert, and `inject` used to log it as APPLIED
     anyway — so the cycle ran on as an ordinary green one while the record said a fault had
     been injected (#1300).
@@ -445,7 +499,6 @@ def test_every_declared_fault_actually_changes_a_representative_emission(name, s
     had nothing to swap on a suite that imports no `userEvent`, and its fallback existed
     only as a comment. This is the derived form — every fault, every representative shape.
     """
-    content = _EMISSIONS[shape]
     assert FAULTS[name].transform(content) != content, (
         f"{name} returned its input unchanged on an emission {shape} — a fault that cannot "
         "bite makes its diagnostic prove nothing"
@@ -640,3 +693,182 @@ class TestTheScopeOfOnce:
             _inject(_SUITE, "task-run_x-m006-qa.test", ["qa_suite_absent"], inputs=self._RETRY)
         record = next(r for r in caplog.records if "fault_injection: APPLIED" in r.message)
         assert "scope=all_emission_attempts" in record.getMessage()
+
+
+class TestTheAnalyzerFaultClaimsAFileNoTreeHas:
+    """1.7.4 plan §3.1 (#968, A1): the claim is refutable by the cheapest source check
+    there is, and the object around it stays the analyzer's own."""
+
+    def _faulted(self, content):
+        return _inject(
+            content, "corr-run_x-00-data.analyze_failure", ["analyzer_false_source_claim"]
+        )
+
+    def test_the_claim_leads_the_prose_and_the_file_leads_the_structured_half(self):
+        import json
+
+        from squadops.capabilities.handlers.fault_injection import INJECTED_CLAIM_FILE
+        from squadops.capabilities.handlers.impl.analyze_failure import FailureAnalysis
+
+        out = json.loads(self._faulted(_ANALYSIS_OBJECT))
+        assert out["classification"] == "work_product", "the object must still validate"
+        assert out["analysis_summary"].startswith(f"The defect is in `{INJECTED_CLAIM_FILE}`")
+        assert out["analysis_summary"].endswith("returns 200 for an unknown run.")
+        assert out["implicated_files"] == [INJECTED_CLAIM_FILE, "backend/routes.py"]
+        assert out["contributing_factors"][-1] == "no lookup before the mutation"
+        FailureAnalysis.model_validate(out)
+
+    def test_what_surrounds_the_object_is_kept_so_the_extractor_sees_its_own_shape(self):
+        out = self._faulted(_ANALYSES["fenced after a preamble"])
+        assert out.startswith("Here is the analysis.\n\n```json\n")
+        assert out.endswith("\n```\n")
+        assert "__squadops_injected_fault__" in out
+        out = self._faulted(_ANALYSES["behind a think block"])
+        assert out.startswith("<think>the evidence names routes.py</think>\n")
+
+    def test_no_object_is_left_unchanged_and_named_inert(self, caplog):
+        """A transform that invented an object would hand the handler an emission no
+        analyzer produced; unchanged is reported as DID NOT BITE (#1300)."""
+        with caplog.at_level("WARNING"):
+            assert self._faulted("no analysis here") == "no analysis here"
+        assert "DID NOT BITE" in caplog.text
+
+    def test_only_round_zero_takes_it(self):
+        """The correction task id carries the round; round 1's analysis must run clean so
+        the diagnostic watches the decision made on the claim, not a loop that never
+        stops being lied to."""
+        assert self._faulted(_ANALYSIS_OBJECT) != _ANALYSIS_OBJECT
+        assert (
+            _inject(
+                _ANALYSIS_OBJECT,
+                "corr-run_x-01-data.analyze_failure",
+                ["analyzer_false_source_claim"],
+            )
+            == _ANALYSIS_OBJECT
+        )
+
+
+class TestTheContentlessBuilderShape:
+    _BUILDER = (
+        "I'll assemble the package now.\n\n"
+        "```dockerfile:Dockerfile\nFROM python:3.12-slim\n```\n\n"
+        "```text:requirements.txt\nfastapi\n```\n"
+    )
+
+    def test_it_keeps_the_builders_own_preamble_and_nothing_else(self):
+        """#1364's shape: 160 tokens, no fence — the builder's own sentence of intent."""
+        out = _inject(
+            self._BUILDER, "task-run_x-m005-builder.assemble", ["builder_emission_contentless"]
+        )
+        assert out == "I'll assemble the package now."
+
+    def test_a_qa_task_is_not_its_target(self):
+        assert (
+            _inject(self._BUILDER, "task-run_x-m006-qa.test", ["builder_emission_contentless"])
+            == self._BUILDER
+        )
+
+
+class TestTheNewSeamsReachTheHandlersTheLiveCycleCalls:
+    """Wiring, not transform (#1251): entered at ``handle()``, the call the executor makes,
+    with the paired control — the same emission and no declaration."""
+
+    def _context(self, task_id, emission):
+        from unittest.mock import AsyncMock, MagicMock
+
+        from squadops.llm.models import ChatMessage
+
+        ctx = MagicMock()
+        ctx.task_id = task_id
+        chat = AsyncMock(return_value=ChatMessage(role="assistant", content=emission))
+        ctx.ports.llm.chat = chat
+        ctx.ports.llm.chat_stream_with_usage = chat
+        ctx.ports.llm.default_model = "test-model"
+        assembled = MagicMock()
+        assembled.content = "system prompt"
+        assembled.assembly_hash = "sha256:test"
+        ctx.ports.prompt_service.get_system_prompt = MagicMock(return_value=assembled)
+        ctx.ports.prompt_service.assemble = MagicMock(return_value=assembled)
+        ctx.ports.prompt_service.assemble_task_only = MagicMock(return_value=assembled)
+        ctx.ports.request_renderer = None
+        ctx.ports.llm_observability = None
+        ctx.correlation_context = None
+        return ctx
+
+    async def _builder(self, declaration):
+        from squadops.capabilities.handlers.cycle_tasks import BuilderAssembleHandler
+
+        emission = (
+            "Assembling.\n\n"
+            "```python:my_app/__main__.py\nfrom .main import main\nmain()\n```\n\n"
+            '```dockerfile:Dockerfile\nFROM python:3.12-slim\nCMD ["python", "-m", "my_app"]\n```\n\n'
+            "```text:requirements.txt\n# none\n```\n\n"
+            "```markdown:qa_handoff.md\n## How to Run\npython -m my_app\n\n"
+            "## How to Test\npytest tests/\n\n## Expected Behavior\nPrints hello\n```\n"
+        )
+        inputs = {
+            "prd": "Build something.",
+            "artifact_contents": {"my_app/main.py": "def main():\n    print('hello')"},
+            "resolved_config": {"build_profile": "python_cli_builder", **declaration},
+        }
+        return await BuilderAssembleHandler().handle(
+            self._context("task-run_x-m005-builder.assemble", emission), inputs
+        )
+
+    async def test_without_a_declaration_the_builder_banks_its_files(self):
+        result = await self._builder({})
+        assert result.success is True
+        assert "Dockerfile" in [a["name"] for a in result.outputs["artifacts"]]
+
+    async def test_with_the_declaration_the_same_emission_reaches_the_builder_contentless(self):
+        """#1364 on demand, now with #1372 landed (pack row 3).
+
+        The attempt still fails at the emission seam, but it is no longer declared a
+        semantic failure outright: the marker is banked and the outcome is left to the
+        executor's D5 fallback, which makes the first attempt a retry re-prompted with
+        the shape fact. This test previously asserted the ABSENCE of the marker and
+        carried the note "#1372 has landed — update this test"; this is that update, and
+        the assertions are inverted rather than deleted so the diagnostic still proves
+        which path the fault takes.
+        """
+        result = await self._builder({DECLARATION_KEY: ["builder_emission_contentless"]})
+        assert result.success is False
+        assert result.error == "No valid fenced code blocks found"
+        assert "outcome_class" not in result.outputs
+        marker = result.outputs["emission_failure"]
+        assert marker["reason"] == "no_fenced_blocks"
+        assert marker["fences"] == {"fill": 0, "path": 0, "plain": 0}
+        assert marker["head"]
+
+    async def _analyzer(self, declaration, task_id="corr-run_x-00-data.analyze_failure"):
+        from squadops.capabilities.handlers.impl.analyze_failure import DataAnalyzeFailureHandler
+
+        inputs = {
+            "prd": "test",
+            "failure_evidence": {"error": "leave returned 200 for an unknown run"},
+            "resolved_config": dict(declaration),
+        }
+        return await DataAnalyzeFailureHandler().handle(
+            self._context(task_id, _ANALYSIS_OBJECT), inputs
+        )
+
+    async def test_without_a_declaration_the_analysis_is_the_models_own(self):
+        result = await self._analyzer({})
+        assert result.success is True
+        assert result.outputs["implicated_files"] == ["backend/routes.py"]
+        assert "__squadops_injected_fault__" not in result.outputs["analysis_summary"]
+
+    async def test_with_the_declaration_the_banked_analysis_carries_the_refuted_claim(self):
+        from squadops.capabilities.handlers.fault_injection import INJECTED_CLAIM_FILE
+
+        result = await self._analyzer({DECLARATION_KEY: ["analyzer_false_source_claim"]})
+        assert result.success is True, "the object still validates — the claim is in the prose"
+        assert result.outputs["implicated_files"][0] == INJECTED_CLAIM_FILE
+        assert result.outputs["analysis_summary"].startswith("The defect is in")
+
+    async def test_round_one_runs_clean(self):
+        result = await self._analyzer(
+            {DECLARATION_KEY: ["analyzer_false_source_claim"]},
+            task_id="corr-run_x-01-data.analyze_failure",
+        )
+        assert result.outputs["implicated_files"] == ["backend/routes.py"]

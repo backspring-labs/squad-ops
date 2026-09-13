@@ -212,3 +212,188 @@ class TestCycleEvidenceCapture:
         got = brp.cycle_evidence(["cyc_1"], "http://api", "proj")[0]
         assert got["captured"] is False
         assert "squadops login" in got["reason"]
+
+
+class TestCycleRoles:
+    """A captured cycle says what it WAS to the release. The v1.7.3 package first shipped one
+    counted roll and would have listed a fault-injected diagnostic's ``rejected`` beside the
+    counted rolls with nothing to tell them apart; a reader of the site would have read a
+    diagnostic that did its job as a failed roll."""
+
+    def test_a_role_is_parsed_from_the_cycle_argument_and_a_bare_id_carries_none(self):
+        brp = build_release_package
+        assert brp.parse_cycle_arg("cyc_1:diagnostic") == ("cyc_1", "diagnostic")
+        assert brp.parse_cycle_arg("cyc_1") == ("cyc_1", None)
+
+    def test_an_unknown_role_is_refused_naming_the_vocabulary(self):
+        with pytest.raises(SystemExit, match="unknown role 'bogus'; one of counted, shakeout"):
+            build_release_package.parse_cycle_arg("cyc_1:bogus")
+
+    def test_the_role_rides_the_evidence_and_the_page_says_what_a_diagnostic_is(self, monkeypatch):
+        brp = build_release_package
+        body = (
+            '{"status": "completed", "runs": [1, 2], "cycle_outcome": {"verdict": "rejected", '
+            '"verified": [], "failed": ["tests_pass"], "required_unmet": [], "unverified": []}}'
+        )
+        monkeypatch.setattr(brp, "run", lambda *a, **k: body)
+        monkeypatch.setattr(brp, "_bearer_token", lambda: "tok")
+        cycles = brp.cycle_evidence(
+            ["cyc_d", "cyc_c"], "http://api", "proj", {"cyc_d": "diagnostic"}
+        )
+        assert cycles[0]["role"] == "diagnostic"
+        assert "role" not in cycles[1]
+        page = brp.render(
+            "1.7.3",
+            "v1.7.3",
+            {
+                "date": "2026-09-07",
+                "narrative": "",
+                "pull_requests": [],
+                "sip_moves": [],
+                "cycles": cycles,
+                "screenshots": [],
+            },
+        )
+        assert "**Role:** diagnostic — fault-injected, non-counting" in page
+        assert brp.cycle_count_line(cycles) == "2 cycles (1 diagnostic)"
+
+    def test_an_absent_cycle_keeps_its_role(self, monkeypatch):
+        brp = build_release_package
+        monkeypatch.setattr(brp, "run", lambda *a, **k: '{"detail": "Not Found"}')
+        monkeypatch.setattr(brp, "_bearer_token", lambda: "tok")
+        got = brp.cycle_evidence(["cyc_v"], "http://api", "proj", {"cyc_v": "void"})[0]
+        assert got["captured"] is False and got["role"] == "void"
+
+
+class TestSipTransitionsAreTheFrontmattersNotThePaths:
+    """#1369: the v1.7.3 package reported three `new → implemented` moves for SIPs that were
+    amended in place under `sips/implemented/`, and listed PR #1328 twice because a
+    "merge main" commit's subject mentioned it."""
+
+    _FM = "---\nsip_uid: {uid}\nsip_number: 58\ntitle: T\nstatus: {status}\n---\n\n# body\n"
+
+    def _fake_run(self, diff_lines, shows):
+        def run(*args, check=True):
+            if args[:3] == ("git", "diff", "--name-status"):
+                return "\n".join(diff_lines)
+            if args[:2] == ("git", "show"):
+                return shows.get(args[2], "")
+            raise AssertionError(f"unexpected command {args}")
+
+        return run
+
+    def test_an_edit_under_a_status_directory_with_the_status_unchanged_is_an_amendment(
+        self, monkeypatch
+    ):
+        path = "sips/implemented/SIP-0058-Capability-Contracts-Reference-Workloads.md"
+        fm = self._FM.format(uid="U58", status="implemented")
+        monkeypatch.setattr(
+            build_release_package,
+            "run",
+            self._fake_run([f"M\t{path}"], {f"v1.7.2:{path}": fm, f"v1.7.3:{path}": fm}),
+        )
+        assert build_release_package.sip_moves("v1.7.2", "v1.7.3") == []
+        assert build_release_package.sip_amendments("v1.7.2", "v1.7.3") == [
+            {"sip": "SIP-0058-Capability-Contracts-Reference-Workloads", "status": "implemented"}
+        ]
+
+    def test_a_promotion_is_one_move_paired_by_uid_across_the_rename(self, monkeypatch):
+        old = "sips/proposed/SIP-Loop-Honesty.md"
+        new = "sips/accepted/SIP-0110-Loop-Honesty.md"
+        monkeypatch.setattr(
+            build_release_package,
+            "run",
+            self._fake_run(
+                [f"D\t{old}", f"A\t{new}"],
+                {
+                    f"v1:{old}": self._FM.format(uid="U110", status="proposed"),
+                    f"v2:{new}": self._FM.format(uid="U110", status="accepted"),
+                },
+            ),
+        )
+        assert build_release_package.sip_moves("v1", "v2") == [
+            {"sip": "SIP-0110-Loop-Honesty", "from": "proposed", "to": "accepted"}
+        ]
+        assert build_release_package.sip_amendments("v1", "v2") == []
+
+    def test_a_status_change_without_a_path_move_is_still_a_move(self, monkeypatch):
+        path = "sips/accepted/SIP-0110-Loop-Honesty.md"
+        monkeypatch.setattr(
+            build_release_package,
+            "run",
+            self._fake_run(
+                [f"M\t{path}"],
+                {
+                    f"v1:{path}": self._FM.format(uid="U110", status="accepted"),
+                    f"v2:{path}": self._FM.format(uid="U110", status="implemented"),
+                },
+            ),
+        )
+        assert build_release_package.sip_moves("v1", "v2") == [
+            {"sip": "SIP-0110-Loop-Honesty", "from": "accepted", "to": "implemented"}
+        ]
+
+    def test_a_registry_edit_and_a_new_proposal_read_correctly(self, monkeypatch):
+        new = "sips/proposed/SIP-New-Idea.md"
+        monkeypatch.setattr(
+            build_release_package,
+            "run",
+            self._fake_run(
+                ["M\tsips/registry.yaml", f"A\t{new}"],
+                {f"v2:{new}": self._FM.format(uid="U9", status="proposed")},
+            ),
+        )
+        assert build_release_package.sip_moves("v1", "v2") == [
+            {"sip": "SIP-New-Idea", "from": None, "to": "proposed"}
+        ]
+
+    def test_a_squash_merged_pr_is_named_by_its_trailing_number(self):
+        """What bug would this catch? The one that shipped. The repository switched to
+        squash merges during 1.7.4, `merged_prs` read only `Merge pull request #N`, and the
+        v1.7.4 package went out listing 33 of its 58 PRs. The v1.7.5 preview read **0 of
+        50** — an empty PR table and an empty `Closes` column on the release page."""
+        subjects = [
+            "chore(release): 1.7.4 — the recovery half (#1440)",
+            "Merge pull request #1329 from backspring-labs/x",
+            # The issue AND the PR: the trailing number is the PR.
+            "refactor(runtime): the app is composed from a config value (#286) (#1478)",
+        ]
+        assert build_release_package.merged_pr_numbers(subjects) == ["1440", "1329", "1478"]
+
+    def test_a_pr_number_that_is_not_at_the_end_does_not_name_a_landing(self):
+        """A subject may mention a PR without being that PR landing (#1369 — the v1.7.3
+        package listed #1328 twice). Anchoring to the trailing parenthesis is what keeps the
+        squash shape from re-introducing exactly that duplicate."""
+        subjects = [
+            "merge main — the v1.7.2 release package (#1328), which the guard requires",
+            "docs: mention (#999) in passing and end with prose",
+        ]
+        assert build_release_package.merged_pr_numbers(subjects) == []
+
+    def test_only_github_merge_subjects_name_a_pr_and_each_once(self):
+        subjects = [
+            "Merge pull request #1329 from backspring-labs/x",
+            "merge main — the v1.7.2 release package (#1328), which the guard requires",
+            "Merge pull request #1328 from backspring-labs/docs/1-7-2-release-package",
+            "Merge branch 'main' into feature/y",
+        ]
+        assert build_release_package.merged_pr_numbers(subjects) == ["1329", "1328"]
+
+    def test_the_page_lists_amendments_apart_from_moves(self):
+        page = build_release_package.render(
+            "1.7.3",
+            "v1.7.3",
+            {
+                "pull_requests": [],
+                "sip_moves": [],
+                "sip_amendments": [{"sip": "SIP-0058-X", "status": "implemented"}],
+                "cycles": [],
+                "screenshots": [],
+                "changelog": "notes",
+                "date": "2026-09-07",
+                "narrative": "",
+            },
+        )
+        assert "## Improvement proposals amended in place" in page
+        assert "| SIP-0058-X | implemented |" in page
+        assert "## Improvement proposals\n" not in page

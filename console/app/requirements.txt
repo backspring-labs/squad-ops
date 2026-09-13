@@ -1,4 +1,9 @@
-fastapi>=0.104.0,<1.0.0
+# The console image tracks the dependency set the rest of the deployment runs
+# (requirements/api.lock pins fastapi 0.135.4 / starlette 1.6.0). Floating to whatever
+# PyPI serves at build time is how #198's incompatibility reached CI before anyone had
+# adopted the version: the lower bound says what is supported, the upper says what has
+# been run. Raise both together when the lock moves.
+fastapi>=0.135.4,<0.142.0
 uvicorn[standard]>=0.24.0,<1.0.0
 httpx>=0.25.0,<1.0.0
 jinja2>=3.1.0,<4.0.0

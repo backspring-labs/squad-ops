@@ -15,7 +15,7 @@ defaults:
     - source
     - test
     - config
-    - qa_handoff
+    - assembly_notes
   build_tasks:
     - development.develop
     - builder.assemble

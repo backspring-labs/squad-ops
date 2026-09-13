@@ -50,8 +50,6 @@ from squadops.capabilities.handlers.cycle.validation import (
     _detect_stubs,
     _is_test_file,
 )
-from squadops.capabilities.handlers.emission_log import log_emission_shape
-from squadops.capabilities.handlers.fault_injection import inject as inject_fault
 from squadops.capabilities.reasoning_policy import reasoning_kwargs, resolve_reasoning_level
 from squadops.cycles.failure_evidence import failing_case_lines
 
@@ -85,6 +83,57 @@ def _frontend_skip_reason(error: str) -> str:
     if "not found" in e or "not installed" in e:
         return NotExecutedReason.MISSING_TOOLING
     return NotExecutedReason.SUBJECT_MISSING
+
+
+#: How much of a failed build's stderr rides on the row. Bounded because it is evidence for
+#: a reader, not a signature input — the whole point of keeping it out of ``reason``.
+_BUILD_STDERR_TAIL = 2048
+
+
+def _frontend_build_row(fb: Any) -> dict[str, Any]:
+    """The ``frontend_build`` check row, for both the failure and the accept path (#1468).
+
+    Single-sourced because it existed twice and BOTH copies dropped the same evidence: a
+    build that RAN AND FAILED recorded only ``passed: False`` — no reason, no exit code, no
+    stderr — while a build that was SKIPPED recorded why. The failure's cause was therefore
+    unrecoverable from any store: the row, the agent log and the vault each had only
+    "frontend build failed (exit 1)" or less.
+
+    Two consequences, measured on the 1.7.5 deploy-A React shakeout (cyc_a20d0a02be67):
+
+    * the run was rejected with ``failed_detail[].reason == ""`` on an application the boot
+      audit then installed, built and booted — a required check refusing a roll for a reason
+      nobody can read;
+    * ``correction_signature._reason_token`` falls back to the bare status when ``reason`` is
+      absent, so every frontend_build failure rendered the identical element
+      ``frontend_build||failed``. An element that cannot vary can never show PROGRESS, so it
+      pins the round-over-round movement at REPEAT however much a repair actually fixed —
+      and the run terminated ``plan_defect`` at round 1 on exactly that signature. It is the
+      #878/#761 collapse, on the one check those fixes did not reach.
+
+    ``reason`` carries the deterministic summary and NOT the stderr, matching ``tests_pass``
+    and the module's rule that evidence text never alters a signature; over-discrimination
+    is the expensive direction (a genuine repeat reading as a shift burns the whole budget).
+    ``exit_code`` is a field ``_reason_token`` already consumes. The stderr rides in
+    ``detail``, which no signature reads.
+
+    ``passed`` stays on every ran-row: ``_frontend_build_failed`` and the #650 target
+    widening key on ``passed is False``, and ``row_is_blocking_failure`` judges by it.
+    """
+    if not fb.ran:
+        return {
+            "check": CHECK_FRONTEND_BUILD,
+            "executed": False,
+            "reason": _frontend_skip_reason(fb.error),
+        }
+    row: dict[str, Any] = {"check": CHECK_FRONTEND_BUILD, "passed": fb.ok}
+    if not fb.ok:
+        row["reason"] = fb.error or f"frontend build failed (exit {fb.exit_code})"
+        row["exit_code"] = fb.exit_code
+        if fb.stderr:
+            tail = fb.stderr[-_BUILD_STDERR_TAIL:]
+            row["detail"] = tail if len(fb.stderr) <= _BUILD_STDERR_TAIL else "..." + tail
+    return row
 
 
 def _authenticity_row(check: str, offenders: list[str], inspected: list[str]) -> dict[str, Any]:
@@ -630,6 +679,42 @@ class QATestHandler(_CycleTaskHandler):
         )
         return rendered.content
 
+    async def _assembly_notes_section(
+        self, context: ExecutionContext, inputs: dict[str, Any]
+    ) -> str:
+        """Render the builder's assembly notes, or "" (#1312).
+
+        The consumer half of the contract that replaced `qa_handoff.md`. The handoff was
+        required of the builder, checked by four surfaces, and read by nothing — so the
+        builder was asked every cycle for a document whose only effect was to fail. Its
+        replacement is optional and is READ: what the builder alone knows about assembling
+        the application reaches the author of its tests.
+
+        Presence-keyed, like every appendix here: absent notes render nothing, and nothing
+        is the expected case. The executor decides WHICH notes (`_resolve_assembly_notes`
+        — never a failed emission, never a repair candidate, latest accepted wins); this
+        renders what it was handed and names the artifact it came from, so a reader of the
+        record can tell which emission the suite was written against.
+        """
+        notes = inputs.get("assembly_notes")
+        if not isinstance(notes, dict):
+            return ""
+        content = str(notes.get("content") or "").strip()
+        artifact_id = str(notes.get("artifact_id") or "").strip()
+        if not content or not artifact_id:
+            # Both halves or neither: notes with no provenance are exactly the stale-file
+            # risk H2 exists to exclude, and an id with no content is a heading over
+            # nothing.
+            return ""
+        renderer = getattr(context.ports, "request_renderer", None)
+        if renderer is None:
+            return ""
+        rendered = await renderer.render(
+            "request.qa_test_assembly_notes_appendix",
+            {"notes": content, "artifact_id": artifact_id},
+        )
+        return rendered.content
+
     async def _frozen_surface_section(
         self, context: ExecutionContext, inputs: dict[str, Any]
     ) -> str:
@@ -1105,15 +1190,7 @@ class QATestHandler(_CycleTaskHandler):
         # #407: frontend build is first-class evidence on this path too.
         fb = test_result.frontend_build
         if fb is not None:
-            if fb.ran:
-                fb_row: dict[str, Any] = {"check": CHECK_FRONTEND_BUILD, "passed": fb.ok}
-            else:
-                fb_row = {
-                    "check": CHECK_FRONTEND_BUILD,
-                    "executed": False,
-                    "reason": _frontend_skip_reason(fb.error),
-                }
-            outputs["validation_result"]["checks"].append(fb_row)
+            outputs["validation_result"]["checks"].append(_frontend_build_row(fb))
 
         # SIP-0098 98.5: probe evidence rides the retest path too — a repaired
         # suite's run must not under-count contract-criterion coverage. The
@@ -1182,6 +1259,9 @@ class QATestHandler(_CycleTaskHandler):
             frozen_section = await self._frozen_surface_section(context, inputs)
             if frozen_section:
                 user_prompt = f"{user_prompt}\n{frozen_section}"
+            assembly_notes_section = await self._assembly_notes_section(context, inputs)
+            if assembly_notes_section:
+                user_prompt = f"{user_prompt}\n{assembly_notes_section}"
             rendered = None
             sources = self._get_source_artifacts(inputs)
         else:
@@ -1254,8 +1334,15 @@ class QATestHandler(_CycleTaskHandler):
             chat_kwargs["model"] = agent_model
         if "temperature" in agent_overrides:
             chat_kwargs["temperature"] = agent_overrides["temperature"]
+        # #1285: which of this capability's two outputs this generation produces. The
+        # handler already knows — `verification_scaffold` is what puts it in fill mode —
+        # and the declaration is about the output, so it is told rather than inferring
+        # from the id alone.
         reasoning = resolve_reasoning_level(
-            self._task_type, agent_overrides=agent_overrides, model_name=model_name
+            self._task_type,
+            agent_overrides=agent_overrides,
+            model_name=model_name,
+            output_shape="fill" if inputs.get("verification_scaffold") else None,
         )
         chat_kwargs.update(reasoning_kwargs(reasoning))
 
@@ -1265,38 +1352,19 @@ class QATestHandler(_CycleTaskHandler):
         ]
 
         try:
-            response = await context.ports.llm.chat_stream_with_usage(messages, **chat_kwargs)
+            response, content = await self._llm_call(
+                context,
+                messages,
+                chat_kwargs,
+                inputs=inputs,
+                started=start_time,
+                apply_fault=True,
+                fault_config=resolved_config,
+                rendered=rendered,
+            )
         except LLMError as exc:
             logger.warning("LLM call failed for %s: %s", self._handler_name, exc)
             return self._fail_result(start_time, inputs, str(exc))
-
-        content = response.content
-        # #1251: the fault applies before the shape is logged — see cycle/base.py.
-        content = inject_fault(
-            content,
-            handler_name=self._handler_name,
-            task_id=context.task_id,
-            resolved_config=resolved_config,
-            inputs=inputs,
-        )
-        log_emission_shape(
-            self._handler_name,
-            content,
-            response.completion_tokens,
-            response.reasoning_tokens,
-            response.reasoning_text,
-        )
-        llm_duration_ms = (time.perf_counter() - start_time) * 1000
-        self._record_generation(
-            context,
-            user_prompt,
-            content,
-            llm_duration_ms,
-            model_name,
-            rendered=rendered,
-            chat_response=response,
-            reasoning=reasoning,
-        )
 
         scaffold_input = inputs.get("verification_scaffold")
         fill_emission = None
@@ -1356,6 +1424,9 @@ class QATestHandler(_CycleTaskHandler):
                         inputs.get("expected_artifacts"),
                         completion_tokens=response.completion_tokens,
                         completion_cap=chat_kwargs.get("max_tokens"),
+                        # #1372: the shape rides the marker, so the retry is told what it
+                        # wrote rather than asked again.
+                        content=content,
                     ),
                 },
             )
@@ -1431,14 +1502,20 @@ class QATestHandler(_CycleTaskHandler):
                         )
 
                     try:
-                        followup_response = await context.ports.llm.chat_stream_with_usage(
+                        _, followup_content = await self._llm_call(
+                            context,
                             [
                                 ChatMessage(role="system", content=system_prompt),
                                 ChatMessage(role="user", content=user_prompt),
                                 ChatMessage(role="assistant", content=content),
                                 ChatMessage(role="user", content=followup_prompt),
                             ],
-                            **chat_kwargs,
+                            chat_kwargs,
+                            inputs=inputs,
+                            started=start_time,
+                            shape_label=f"{self._handler_name}:self_eval",
+                            rendered=rendered,
+                            attempt=self_eval_count + 1,
                         )
                     except LLMError as exc:
                         logger.warning(
@@ -1448,14 +1525,7 @@ class QATestHandler(_CycleTaskHandler):
                         )
                         break
 
-                    log_emission_shape(
-                        f"{self._handler_name}:self_eval",
-                        followup_response.content,
-                        followup_response.completion_tokens,
-                        followup_response.reasoning_tokens,
-                        followup_response.reasoning_text,
-                    )
-                    followup_source = followup_response.content
+                    followup_source = followup_content
                     if scaffold_input:
                         # 1.6.5 C (#947): the self-eval's fills go through the SAME merge
                         # gate as the primary's — phantom tables (#1087) and element kinds
@@ -1723,16 +1793,8 @@ class QATestHandler(_CycleTaskHandler):
         # failure-path validation_result assignment.
         fb = test_result.frontend_build
         if fb is not None:
-            if fb.ran:
-                fb_row: dict[str, Any] = {"check": CHECK_FRONTEND_BUILD, "passed": fb.ok}
-            else:
-                fb_row = {
-                    "check": CHECK_FRONTEND_BUILD,
-                    "executed": False,
-                    "reason": _frontend_skip_reason(fb.error),
-                }
             vr = outputs.setdefault("validation_result", {})
-            vr.setdefault("checks", []).append(fb_row)
+            vr.setdefault("checks", []).append(_frontend_build_row(fb))
 
         # SIP-0098 98.5: execute seeded behavioral probes and append their rows
         # (both verdict paths, like frontend_build above — additive evidence).

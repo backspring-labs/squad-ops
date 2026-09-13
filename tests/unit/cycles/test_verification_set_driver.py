@@ -36,6 +36,8 @@ _COUNTING_SETS: dict[str, dict[str, int]] = {
     "1-7-1": {"nextjs": 2, "fastapi-react": 6},
     "1-7-2": {"nextjs": 3, "fastapi-react": 6},
     "1-7-3": {"nextjs": 3, "fastapi-react": 6},
+    "1-7-4": {"nextjs": 3, "fastapi-react": 6},
+    "1-7-5": {"nextjs": 3, "fastapi-react": 6},
 }
 _ARM_STACK = {"nextjs": "nextjs_ts", "fastapi-react": "fullstack_fastapi_react"}
 _COUNTING_SET_FILES = [
@@ -752,7 +754,7 @@ class TestReadoutsByReason:
         )
         monkeypatch.setattr(driver, "artifact_dirs", lambda *a, **k: [art])
         out = driver.typed_checks_by_check(object(), "cyc", "run")
-        assert out["assertion_kinds_match_rows"] == {
+        assert driver.value_at(out, "assertion_kinds_match_rows") == {
             "failed": {"file_not_found": 1},
             "skipped": {},
         }
@@ -780,8 +782,9 @@ class TestReadoutsByReason:
         )
         monkeypatch.setattr(driver, "artifact_dirs", lambda *a, **k: [art])
         out = driver.typed_checks_by_check(object(), "cyc", "run")
-        assert out["undefined_names_rows"]["skipped"] == {"unsupported_stack_or_syntax": 5}
-        assert out["undefined_names_rows"]["failed"] == {}
+        rows = driver.value_at(out, "undefined_names_rows")
+        assert rows["skipped"] == {"unsupported_stack_or_syntax": 5}
+        assert rows["failed"] == {}
 
     def test_a_row_with_no_reason_is_named_unstated_not_dropped(
         self, driver, tmp_path, monkeypatch
@@ -800,7 +803,7 @@ class TestReadoutsByReason:
         )
         monkeypatch.setattr(driver, "artifact_dirs", lambda *a, **k: [art])
         out = driver.typed_checks_by_check(object(), "cyc", "run")
-        assert out["additive_containment_rows"]["failed"] == {"unstated": 1}
+        assert driver.value_at(out, "additive_containment_rows")["failed"] == {"unstated": 1}
 
     def test_an_unverifiable_verdict_is_counted_by_its_own_reason(self, driver):
         """Next.js roll 1's `unverifiable_toolchain_absent: 1` came from an absent FILE (a
@@ -962,7 +965,7 @@ class TestTheRecordNamesTheDeployItObserved:
             "correction_rounds": 0,
             "framing_runs": 1,
             "framing_rerolls": 0,
-            "failed_emissions_banked": 0,
+            "failed_emission_artifacts_banked": 0,
             "ended_without_implementation": False,
         }
         rec.update(extra)
@@ -1078,7 +1081,7 @@ class TestAFaultDeclarationSurvivesTheSetConfig:
         cfg = self._cfg(driver, tmp_path, ["qa_suite_absent"])
         monkeypatch.setattr(driver, "psql", lambda *a, **k: "0")
         monkeypatch.setattr(driver, "sh", lambda *a, **k: "")
-        problems = driver.preflight(cfg, counting=True)
+        problems = driver.preflight(cfg, counting=True, identity={})
         refusals = [p for p in problems if "fault injection" in p]
         assert refusals, "a counting roll declaring a fault must be refused"
         assert "(qa_suite_absent)" in refusals[0]
@@ -1229,7 +1232,7 @@ class TestL8ReadsTheExtractorNotTheStoredName:
         the line and the readout would be blind again, with every unit test above green."""
         seen: list[str] = []
 
-        def fake_docker_logs(container: str, since: str) -> list[str]:
+        def fake_docker_logs(container: str, since: str, until: str | None = None) -> list[str]:
             seen.append(container)
             return [
                 "noise line",
@@ -1487,3 +1490,1242 @@ class TestFillMergeEvidenceIsReadFromTheTree:
         monkeypatch.setattr(driver, "artifact_dirs", lambda *a, **k: sorted(tree.glob("art_*")))
         monkeypatch.setattr(driver, "REPO", tree)
         assert driver.fill_merge_evidence(None, "cyc", "run") == []
+
+
+class TestRetryFeedbackIsReadFromBothWindows:
+    """1.7.4 plan §3.1 (#1372, R1): the field exists before the fix, so the pre-registration
+    has a producer to check. The executor aims a retry in the runtime-api window; whether
+    the handler rendered the fact into the prompt is logged only in the agent's window —
+    the #1276 shape again, where a readout keyed on the wrong container read nothing."""
+
+    _AIMED = (
+        "2026-09-08 01:02:03,004 - adapters.cycles.dispatched_flow_executor - INFO - "
+        "Retryable failure for task-run_x-m004-qa.test (attempt 1), retrying — "
+        "signature=unextractable response_chars=148 completion_tokens=114 completion_cap=6000"
+    )
+    _APPENDED = (
+        "2026-09-08 01:02:05,006 - squadops.capabilities.handlers.cycle.base - INFO - "
+        "emission retry feedback appended for development_develop_handler: "
+        "signature=unextractable appendix_chars=412 expected_files=2"
+    )
+    _BLIND = (
+        "2026-09-08 01:02:05,006 - squadops.capabilities.handlers.cycle.base - WARNING - "
+        "emission retry feedback NOT appended for qa_test_handler (no request_renderer) — "
+        "this retry re-rolls blind on the same prior; signature=empty"
+    )
+    _SHAPE = (
+        "2026-09-08 01:02:04,000 - squadops.capabilities.handlers.emission_log - INFO - "
+        "qa_test_handler emission shape: chars=148 completion_tokens=114 "
+        "fences={'fill': 0, 'path': 0, 'plain': 0} head=\"I'll examine\""
+    )
+
+    def test_the_aimed_retry_is_banked_from_the_executor_window_as_the_whole_fact(self, driver):
+        out = driver.texture_from_logs([self._AIMED, "INFO - Dispatched task task-a (x) to y"])
+        assert out["emission_retries"] == [self._AIMED[self._AIMED.find("Retryable failure") :]]
+
+    def test_appended_and_blind_are_told_apart_and_a_shape_line_is_neither(self, driver):
+        out = driver.texture_from_retry_feedback([self._APPENDED, self._BLIND, self._SHAPE])
+        assert out["retried_with_fact"] == [
+            "emission retry feedback appended for development_develop_handler: "
+            "signature=unextractable appendix_chars=412 expected_files=2"
+        ]
+        assert out["retried_blind"] == [
+            "emission retry feedback NOT appended for qa_test_handler (no request_renderer) — "
+            "this retry re-rolls blind on the same prior; signature=empty"
+        ]
+
+    def test_both_windows_keep_the_lines_the_field_reads(self, driver, monkeypatch):
+        """Bug caught: a producer whose lines the window filter drops reads as zero forever
+        — `empty_repair_emissions` did exactly that for two 1.7.1 rolls (#1276)."""
+        assert driver._agent_lines_of_interest([self._APPENDED, self._BLIND, "noise"]) == [
+            self._APPENDED,
+            self._BLIND,
+        ]
+        monkeypatch.setattr(
+            driver, "docker_logs", lambda container, since, until=None: [self._AIMED, "noise"]
+        )
+        assert driver.runtime_log_window("2026-09-08T00:00:00Z") == [self._AIMED]
+
+    def test_no_lines_is_neither_with_fact_nor_blind(self, driver):
+        assert driver.texture_from_retry_feedback([]) == {
+            "retried_with_fact": [],
+            "retried_blind": [],
+        }
+
+
+class TestB1IsAFieldNotAGrep:
+    """1.7.3 record §2: B1 ("no stored qa suite names a fixture table for a non-root entity")
+    was read by a grep over 43 stored suites because the driver produced no field for it —
+    the #1285 shape, a declared readout with no producer. The reference manifest declares
+    `RunEvent` (root — returned as a single object) and `Participant` (a shape)."""
+
+    @staticmethod
+    def _manifest(stack: str) -> str:
+        import yaml
+
+        return yaml.safe_dump(manifest_dict_for_stack(stack))
+
+    def test_a_suite_on_the_root_table_holds_and_one_on_a_shape_is_named(self, driver):
+        react = self._manifest("fullstack_fastapi_react")
+        held = driver.non_root_fixture_tables(
+            react, [("backend/tests/test_runs.py", "from backend.store import run_event_store\n")]
+        )
+        assert held["root_entities"] == ["RunEvent"]
+        assert held["non_root_entities"] == ["Participant"]
+        assert held["mentions"] == [] and held["suites_read"] == 1
+        broken = driver.non_root_fixture_tables(
+            react, [("backend/tests/test_runs.py", "participant_store.clear()\n")]
+        )
+        assert broken["mentions"] == [
+            {
+                "suite": "backend/tests/test_runs.py",
+                "entity": "Participant",
+                "form": "participant_store",
+            }
+        ]
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "expect(all(TABLES.Participant)).toHaveLength(1)",
+            "insert(TABLES['Participant'], { id: 'p' })",
+            'reset(); all(TABLES["Participant"])',
+        ],
+    )
+    def test_every_nextjs_form_of_a_shape_table_is_a_mention(self, driver, text):
+        out = driver.non_root_fixture_tables(self._manifest("nextjs_ts"), [("t.test.ts", text)])
+        assert [(m["entity"], m["form"]) for m in out["mentions"]] == [
+            ("Participant", "TABLES.Participant")
+        ]
+
+    def test_a_longer_identifier_that_starts_with_the_shapes_name_is_not_a_mention(self, driver):
+        """`TABLES.Participants` and `participant_stores` are other identifiers; a substring
+        read would name a suite that never touched the shape's table."""
+        out = driver.non_root_fixture_tables(
+            self._manifest("nextjs_ts"),
+            [("t.test.ts", "all(TABLES.Participants); all(TABLES.RunEvent); participant_stores")],
+        )
+        assert out["mentions"] == []
+
+    def test_no_manifest_is_a_refusal_not_a_hold(self, driver):
+        out = driver.non_root_fixture_tables(None, [("t.test.ts", "all(TABLES.Participant)")])
+        assert out["mentions"] is None and out["suites_read"] == 1
+        assert "refused" in out
+        assert driver._b1_words(out).startswith("REFUSED")
+        assert driver._b1_words({"suites_read": 4, "mentions": []}) == "4 / none"
+        assert driver._b1_words(None) == "—"
+
+    def test_the_vault_reader_takes_every_stored_version_of_the_qa_authored_suites_only(
+        self, driver, tmp_path, monkeypatch
+    ):
+        """The denominator is the qa author's suites (first emission and repairs, every
+        stored version); a scaffold-owned conftest or a qa-authored non-suite file is not."""
+        import json
+        import types
+
+        root = tmp_path / "data" / "artifacts" / "p" / "cyc_1" / "run_1"
+        rows = [
+            ("art_1", "backend/tests/test_runs.py", "qa.test", "v1"),
+            ("art_2", "backend/tests/test_runs.py", "qa.test_repair", "v2"),
+            ("art_3", "conftest.py", "scaffold.expand", "scaffold"),
+            ("art_4", "qa_handoff_notes.md", "qa.test", "notes"),
+            ("art_5", "tests/runs.test.ts", "qa.test", "ts"),
+            # The React frontend suites are .jsx — the first rule missed them and read 39
+            # of the 1.7.3 record's 43 suites.
+            ("art_6", "frontend/src/__tests__/runs.test.jsx", "qa.test", "jsx"),
+            # A qa repair that patched a dev file (#1350's shape) is not a suite.
+            ("art_7", "backend/routes.py", "qa.test_repair", "routes"),
+        ]
+        for art, filename, producer, body in rows:
+            d = root / art
+            d.mkdir(parents=True)
+            (d / "body").write_text(body)
+            (d / "metadata.json").write_text(
+                json.dumps(
+                    {
+                        "filename": filename,
+                        "metadata": {"producing_task_type": producer},
+                        "vault_uri": str((d / "body").relative_to(tmp_path)),
+                    }
+                )
+            )
+        monkeypatch.setattr(driver, "REPO", tmp_path)
+        cfg = types.SimpleNamespace(project="p")
+        assert driver._stored_qa_suites(cfg, "cyc_1", "run_1") == [
+            ("backend/tests/test_runs.py", "v1"),
+            ("backend/tests/test_runs.py", "v2"),
+            ("tests/runs.test.ts", "ts"),
+            ("frontend/src/__tests__/runs.test.jsx", "jsx"),
+        ]
+
+
+class TestTheNewFaultsAreReadBySeams:
+    """1.7.4 plan §3.1: the contentless-builder and analyzer faults, each read by the seam
+    its claim names, never by "the fault fired" (#1310)."""
+
+    @staticmethod
+    def _rec(*, correction_rounds=0, typed_checks=None, **texture):
+        return {
+            "correction_rounds": correction_rounds,
+            "loop_texture": texture,
+            "typed_checks": typed_checks or {},
+        }
+
+    _BUILDER_PASSED = (
+        "patch_verification task=task-run_x-m005-builder.assemble status=passed reason= checks=3"
+    )
+    _BUILDER_REFUSED = "patch_verification task=task-run_x-m005-builder.assemble status=failed reason=required_files checks=3"
+
+    def test_the_builder_seam_is_the_builders_own_verified_repair(self, driver):
+        """A correction round on some OTHER task, or a refused builder repair, is not the
+        loop recovering the contentless attempt."""
+        out = driver.seam_readouts(
+            ("builder_emission_contentless",),
+            self._rec(correction_rounds=1, patch_verifications=[self._BUILDER_PASSED]),
+        )["builder_emission_contentless"]
+        assert out["reached"] is True
+        assert out["evidence"]["builder_patch_verifications"] == [self._BUILDER_PASSED]
+        qa_only = "patch_verification task=task-run_x-m006-qa.test status=passed reason= checks=2"
+        for texture in (
+            dict(correction_rounds=1, patch_verifications=[qa_only]),
+            dict(correction_rounds=1, patch_verifications=[self._BUILDER_REFUSED]),
+            dict(correction_rounds=0, patch_verifications=[self._BUILDER_PASSED]),
+        ):
+            rec = self._rec(**texture)
+            assert (
+                driver.seam_readouts(("builder_emission_contentless",), rec)[
+                    "builder_emission_contentless"
+                ]["reached"]
+                is False
+            )
+
+    def test_the_builder_evidence_carries_the_rows_and_the_retry_facts(self, driver):
+        rec = self._rec(
+            correction_rounds=1,
+            patch_verifications=[self._BUILDER_PASSED],
+            emission_retries=["Retryable failure for task-run_x-m005-builder.assemble (attempt 1)"],
+            retried_with_fact=[],
+            typed_checks={"by_check": {"required_files": {"passed": {"executed": 1}}}},
+        )
+        ev = driver.seam_readouts(("builder_emission_contentless",), rec)[
+            "builder_emission_contentless"
+        ]["evidence"]
+        assert ev["required_files_rows"] == {"passed": {"executed": 1}}
+        assert len(ev["emission_retries"]) == 1 and ev["retried_with_fact"] == []
+
+    def test_the_analyzer_seam_is_the_decision_and_an_inherited_claim_is_named(self, driver):
+        held = self._rec(
+            decision_inherited_claims=[{"artifact": "art_9", "inherited": False}],
+            analyzer_claims_dropped=["correction_repair_target: analyzer implicated x — dropped"],
+        )
+        out = driver.seam_readouts(("analyzer_false_source_claim",), held)[
+            "analyzer_false_source_claim"
+        ]
+        assert out["reached"] is True
+        assert out["evidence"]["refuted_by_workspace_check"] == [
+            "correction_repair_target: analyzer implicated x — dropped"
+        ]
+        inherited = self._rec(
+            decision_inherited_claims=[
+                {"artifact": "art_9", "inherited": True},
+                {"artifact": "art_12", "inherited": False},
+            ]
+        )
+        out = driver.seam_readouts(("analyzer_false_source_claim",), inherited)[
+            "analyzer_false_source_claim"
+        ]
+        assert out["reached"] is False
+        assert [d["artifact"] for d in out["evidence"]["decisions"] if d["inherited"]] == ["art_9"]
+        # No decision stored at all: the seam was never reached, whatever the fault did.
+        assert (
+            driver.seam_readouts(("analyzer_false_source_claim",), self._rec())[
+                "analyzer_false_source_claim"
+            ]["reached"]
+            is False
+        )
+
+    def test_the_runtime_window_banks_verifications_and_dropped_claims_as_facts(self, driver):
+        dropped = (
+            "PFX correction_repair_target: analyzer implicated backend/__squadops_injected_fault__.py "
+            "but the workspace has no such file — dropped, not aimed at (#968)"
+        )
+        out = driver.texture_from_logs([f"PFX {self._BUILDER_PASSED}", dropped])
+        assert out["patch_verifications"] == [self._BUILDER_PASSED]
+        assert out["analyzer_claims_dropped"] == [dropped[len("PFX ") :]]
+
+    def test_decisions_are_read_from_the_vault_by_the_marker(self, driver, tmp_path, monkeypatch):
+        import json
+        import types
+
+        root = tmp_path / "data" / "artifacts" / "p" / "cyc_1" / "run_1"
+        for art, filename, body in (
+            (
+                "art_1",
+                "correction_decision.md",
+                '{"decision_rationale": "repair __squadops_injected_fault__.py"}',
+            ),
+            ("art_2", "correction_decision.md", '{"decision_rationale": "repair routes.py"}'),
+            ("art_3", "failure_analysis.md", '{"analysis_summary": "__squadops_injected_fault__"}'),
+        ):
+            d = root / art
+            d.mkdir(parents=True)
+            (d / "body").write_text(body)
+            (d / "metadata.json").write_text(
+                json.dumps(
+                    {"filename": filename, "vault_uri": str((d / "body").relative_to(tmp_path))}
+                )
+            )
+        monkeypatch.setattr(driver, "REPO", tmp_path)
+        out = driver._decision_inherited_claims(
+            types.SimpleNamespace(project="p"), "cyc_1", "run_1"
+        )
+        assert out == [
+            {
+                "artifact": "art_1",
+                "inherited": True,
+                "echoes": [],
+                "foreign_affected_task_types": [],
+            },
+            {
+                "artifact": "art_2",
+                "inherited": False,
+                "echoes": [],
+                "foreign_affected_task_types": [],
+            },
+        ]
+
+    def test_the_marker_the_driver_reads_is_the_one_the_framework_writes(self, driver):
+        from squadops.capabilities.handlers.fault_injection import INJECTED_CLAIM_MARKER
+
+        assert driver._INJECTED_CLAIM_MARKER == INJECTED_CLAIM_MARKER
+
+
+class TestPrefectLoopOverrunsAreRead:
+    """#330: the loop-starvation failure mode is read per cycle rather than known about."""
+
+    _LINE = (
+        "07:05:11.718 | WARNING | prefect.server.services.scheduler - Scheduler took "
+        "4021.211806 seconds to run, which is longer than its loop interval of 60.0 seconds."
+    )
+
+    def test_overruns_are_counted_per_service_with_the_worst(self, driver):
+        late = self._LINE.replace("scheduler - Scheduler", "late_runs - MarkLateRuns").replace(
+            "4021.211806", "12613.0"
+        )
+        out = driver.prefect_loop_overruns([self._LINE, self._LINE, late, "INFO other"])
+        assert out["overruns"] == 3
+        assert out["by_service"] == {
+            "late_runs": {"count": 1, "worst_seconds": 12613.0},
+            "scheduler": {"count": 2, "worst_seconds": 4021.211806},
+        }
+
+    def test_a_quiet_window_reads_as_zero_not_absent(self, driver):
+        assert driver.prefect_loop_overruns([]) == {"overruns": 0, "by_service": {}}
+
+    def test_the_window_keeps_only_overrun_lines(self, driver, monkeypatch):
+        monkeypatch.setattr(
+            driver, "docker_logs", lambda c, s, until=None: [self._LINE, "INFO healthy"]
+        )
+        assert driver.prefect_log_window("2026-09-08T00:00:00Z") == [self._LINE]
+
+
+class TestF1HasAProducerBeforeRollOne:
+    """1.7.4 plan preamble: every registered readout maps to a typed field before the set
+    opens. The contentless-builder diagnostic on deploy A showed `typed_checks.by_check`
+    carries no `required_files` row for the re-derived patch row — the executor composes
+    it into the corrected result and stores no evaluation artifact — so F1's field is the
+    executor's own line, kept by the runtime window and banked as a fact."""
+
+    _LINE = (
+        "2026-09-08 06:16:33,216 INFO adapters.cycles.dispatched_flow_executor: patch "
+        "task=task-run_fed2c9cc-m004-builder.assemble re-derived required_files on the "
+        "patched set: passed=True missing=- (no rows; #1318, #1364)"
+    )
+
+    def test_the_rederived_row_is_banked_as_a_fact(self, driver):
+        out = driver.texture_from_logs([self._LINE, "INFO noise"])
+        assert out["framework_rows_rederived"] == [self._LINE[self._LINE.index("patch task=") :]]
+
+    def test_the_runtime_window_keeps_the_line(self, driver, monkeypatch):
+        monkeypatch.setattr(
+            driver, "docker_logs", lambda c, s, until=None: [self._LINE, "INFO noise"]
+        )
+        assert driver.runtime_log_window("2026-09-08T00:00:00Z") == [self._LINE]
+
+    def test_the_builder_readout_carries_it(self, driver):
+        rec = {
+            "correction_rounds": 1,
+            "typed_checks": {},
+            "loop_texture": {
+                "patch_verifications": [
+                    "patch_verification task=task-run_x-m005-builder.assemble status=passed reason= checks=3"
+                ],
+                "framework_rows_rederived": [self._LINE[self._LINE.index("patch task=") :]],
+            },
+        }
+        ev = driver.seam_readouts(("builder_emission_contentless",), rec)[
+            "builder_emission_contentless"
+        ]["evidence"]
+        assert ev["framework_rows_rederived"] == [self._LINE[self._LINE.index("patch task=") :]]
+
+
+class TestTheA1ReadoutSeesTheClaimsSubstance:
+    """The analyzer diagnostic on deploy A (cyc_1063c4dca548, 2026-09-08 07:16Z): the
+    round-0 decision carried the refuted claim in substance and no marker. A readout keyed
+    on the marker read it as not inherited — its own miss, found by the diagnostic."""
+
+    _REAL_DECISION = json.dumps(
+        {
+            "correction_path": "patch",
+            "decision_rationale": (
+                "The failure is a structural absence where the model entered deliberation "
+                "mode instead of emitting the required test artifact, but the root cause is "
+                "also an injected backend fault preventing endpoint verification. A `patch` "
+                "path is necessary to inject specific repair tasks that force the emission of "
+                "the missing `backend/tests/test_runs.py` file with the required content and "
+                "address the missing router registration to allow the tests to function."
+            ),
+            "affected_task_types": ["qa.test", "backend"],
+        }
+    )
+
+    def test_the_real_decision_reads_as_absorbed_without_the_marker(self, driver):
+        r = driver._decision_reading(self._REAL_DECISION)
+        assert r["inherited"] is False
+        assert r["echoes"] == ["injected backend fault", "router registration"]
+        assert r["foreign_affected_task_types"] == ["backend"]
+
+    def test_a_clean_decision_reads_clean_and_the_marker_still_counts(self, driver):
+        clean = json.dumps(
+            {"decision_rationale": "re-emit the suite", "affected_task_types": ["qa.test"]}
+        )
+        assert driver._decision_reading(clean) == {
+            "inherited": False,
+            "echoes": [],
+            "foreign_affected_task_types": [],
+        }
+        marked = json.dumps({"decision_rationale": "fix backend/__squadops_injected_fault__.py"})
+        assert driver._decision_reading(marked)["inherited"] is True
+        # The own-frame chain's decision (cyc_a26c6828482c) said "injected" of the fault call
+        # it could see in the suite — not the analyzer's claim.
+        own_frame = json.dumps({"decision_rationale": "the suite carries an injected fault call"})
+        assert driver._decision_reading(own_frame)["echoes"] == []
+
+    def test_foreign_task_types_alone_do_not_falsify_a1(self, driver):
+        """The contentless-builder diagnostic's decision — no analyzer fault declared —
+        carried `builder`, `assembler`, `data`, `qa_handoff` in affected_task_types: the
+        lead's habit (D1's texture), not the injected claim's leak."""
+        rec = {
+            "correction_rounds": 1,
+            "loop_texture": {
+                "decision_inherited_claims": [
+                    {
+                        "artifact": "a",
+                        "inherited": False,
+                        "echoes": [],
+                        "foreign_affected_task_types": ["builder", "assembler"],
+                    }
+                ]
+            },
+        }
+        out = driver.seam_readouts(("analyzer_false_source_claim",), rec)[
+            "analyzer_false_source_claim"
+        ]
+        assert out["reached"] is True
+
+    def test_the_readout_is_false_on_substance_alone(self, driver):
+        rec = {
+            "correction_rounds": 1,
+            "loop_texture": {
+                "decision_inherited_claims": [
+                    {
+                        "artifact": "art_bd2bec36ef94",
+                        "inherited": False,
+                        "echoes": ["injected"],
+                        "foreign_affected_task_types": ["backend"],
+                    }
+                ]
+            },
+        }
+        out = driver.seam_readouts(("analyzer_false_source_claim",), rec)[
+            "analyzer_false_source_claim"
+        ]
+        assert out["reached"] is False
+        held = {
+            "correction_rounds": 1,
+            "loop_texture": {
+                "decision_inherited_claims": [
+                    {
+                        "artifact": "a",
+                        "inherited": False,
+                        "echoes": [],
+                        "foreign_affected_task_types": [],
+                    }
+                ]
+            },
+        }
+        assert (
+            driver.seam_readouts(("analyzer_false_source_claim",), held)[
+                "analyzer_false_source_claim"
+            ]["reached"]
+            is True
+        )
+
+
+class TestTheLogWindowIsBoundedAtBothEnds:
+    """The deploy A re-render of the contentless-builder record (cyc_ceef5581bfd1) carried
+    the analyzer diagnostic's qa retries as its own: `docker logs --since` with no end
+    reads every later cycle. The window ends at the cycle's last run plus a grace."""
+
+    def test_docker_logs_passes_the_end_bound_only_when_given(self, driver, monkeypatch):
+        calls = []
+
+        class _P:
+            stdout = "a\n"
+            stderr = ""
+
+        monkeypatch.setattr(driver.subprocess, "run", lambda args, **kw: calls.append(args) or _P())
+        driver.docker_logs("c", "2026-09-08T05:30:00Z")
+        driver.docker_logs("c", "2026-09-08T05:30:00Z", "2026-09-08T06:27:00Z")
+        assert calls[0] == ["docker", "logs", "--since", "2026-09-08T05:30:00Z", "c"]
+        assert calls[1] == [
+            "docker",
+            "logs",
+            "--since",
+            "2026-09-08T05:30:00Z",
+            "--until",
+            "2026-09-08T06:27:00Z",
+            "c",
+        ]
+
+    def test_the_end_is_the_last_runs_finish_plus_grace_or_none_while_a_run_is_open(
+        self, driver, monkeypatch
+    ):
+        monkeypatch.setattr(driver, "psql", lambda q: "2026-09-08T06:25:49Z|0")
+        assert driver.cycle_log_until("cyc_x") == driver.log_since(
+            driver.datetime(2026, 9, 8, 6, 26, 49, tzinfo=driver.UTC)
+        )
+        monkeypatch.setattr(driver, "psql", lambda q: "2026-09-08T06:25:49Z|1")
+        assert driver.cycle_log_until("cyc_x") is None
+        monkeypatch.setattr(driver, "psql", lambda q: "")
+        assert driver.cycle_log_until("cyc_x") is None
+
+    def test_the_texture_records_its_window(self, driver, monkeypatch):
+        monkeypatch.setattr(driver, "docker_logs", lambda c, s, u=None: [])
+        monkeypatch.setattr(driver, "_fill_rejections", lambda *a: [])
+        monkeypatch.setattr(driver, "fill_merge_evidence", lambda *a: [])
+        monkeypatch.setattr(driver, "_stored_artifact_names", lambda *a: [])
+        monkeypatch.setattr(driver, "_decision_inherited_claims", lambda *a: [])
+        out = driver.loop_texture(
+            None, "cyc_x", None, "2026-09-08T05:30:00Z", until="2026-09-08T06:27:00Z"
+        )
+        assert out["log_window"] == {
+            "since": "2026-09-08T05:30:00Z",
+            "until": "2026-09-08T06:27:00Z",
+        }
+
+
+class TestNonExecutionIsCountedWhereverItHappens:
+    """The React checkpoint on deploy B (`cyc_dd3068d22f2c`) is the launch-time bug.
+
+    Its qa repair verification came back `status=passed` carrying
+    `skips=missing_tooling:3` — three `frontend_compiles` rows that never ran, which
+    demoted three already-passed `vc-view-compiles-*` criteria to unverified. The record
+    read `non-execution by skip reason: 0`, because the readout only looked at
+    verifications that came back `unverifiable`. A skip that rides a PASSING verification
+    is the one a reader most needs, and it was the one the instrument could not see.
+    """
+
+    _PASSED_WITH_SKIPS = (
+        "patch_verification task=task-run_737ff76b-m006-qa.test task_type=qa.test "
+        "status=passed reason= checks=16 failed=- decided_by_agent=0 agent_rows=11 "
+        "agent_executed=11 skips=missing_tooling:3"
+    )
+    _UNVERIFIABLE = (
+        "patch_verification task=task-b task_type=development.develop status=unverifiable "
+        "reason=no_executed_blocking_checks checks=3 failed=- decided_by_agent=0 "
+        "agent_rows=0 agent_executed=0 skips=file_not_found:2"
+    )
+
+    def test_a_skip_on_a_passing_verification_is_counted(self, driver):
+        out = driver.texture_from_logs([self._PASSED_WITH_SKIPS, self._UNVERIFIABLE])
+        assert out["no_execution_by_skip_reason"] == {"missing_tooling": 3, "file_not_found": 2}
+        assert out["no_execution_on_passed_verifications"] == {"missing_tooling": 3}
+
+    def test_the_passing_half_is_reported_apart_so_the_unverifiable_reading_survives(self, driver):
+        """#1261's reading is the unverifiable one; widening the first field must not
+        erase the distinction, or a toolchain gap on a passing verification and a repair
+        that earned no verdict become the same number."""
+        out = driver.texture_from_logs([self._UNVERIFIABLE])
+        assert out["no_execution_by_skip_reason"] == {"file_not_found": 2}
+        assert out["no_execution_on_passed_verifications"] == {}
+
+    def test_a_verification_with_no_skips_reads_as_zero_not_absent(self, driver):
+        clean = (
+            "patch_verification task=task-c task_type=qa.test status=passed reason= "
+            "checks=4 failed=- decided_by_agent=0 agent_rows=4 agent_executed=4 skips=-"
+        )
+        out = driver.texture_from_logs([clean])
+        assert out["no_execution_by_skip_reason"] == {}
+        assert out["no_execution_on_passed_verifications"] == {}
+
+
+class TestTheCriteriaShortfallIsNamed:
+    """`21 / 24` beside an empty unevidenced list, and the record could not say which
+    three criteria were lost or why (the React checkpoint on deploy B again: three
+    `vc-view-compiles-*` criteria carried a row and were not credited). The framework
+    derives `criteria_unverified`/`criteria_adverse` on its own summary (#945, #1021);
+    the driver reads the stored JSON and has to derive the same subtraction.
+    """
+
+    _SUMMARY = {
+        "criteria_total": ["vc-a", "vc-b", "vc-view-compiles-runs-list-view", "vc-d"],
+        "criteria_verified": ["vc-a", "vc-b"],
+        "criteria_unevidenced": ["vc-d"],
+    }
+
+    def test_the_shortfall_is_named_and_split_by_whether_a_row_was_produced(self, driver):
+        assert driver._criteria_unverified(self._SUMMARY) == [
+            "vc-view-compiles-runs-list-view",
+            "vc-d",
+        ]
+
+    def test_an_empty_contract_yields_no_shortfall_rather_than_raising(self, driver):
+        assert driver._criteria_unverified({}) == []
+
+    def test_the_record_names_the_adverse_criteria_instead_of_leaving_a_subtraction(
+        self, driver, tmp_path
+    ):
+        holder = TestTheRecordNamesTheDeployItObserved()
+        cfg = holder._cfg(driver, tmp_path)
+        rec = holder._rec(
+            criteria_verified=21,
+            criteria_total=24,
+            criteria_unevidenced=[],
+            criteria_adverse=["vc-view-compiles-runs-list-view"],
+        )
+        out = driver.render(cfg, "shakeout (non-counting)", rec)
+        assert "vc-view-compiles-runs-list-view" in out
+        assert "criteria NOT verified" in out
+
+
+class TestH1ReadsEveryRequiredFileNotTheHandoffs:
+    """H1 (1.7.4) is "no counted roll is rejected or blocked on the handoff", and its own
+    blind spot is that a NEW required file the profile derives fails identically under a
+    different name — a record listing only the handoff would read as the bar holding while
+    a different deliverable rejected every roll. #1312 put `required=` on the row and on
+    the executor's line so the readout can name the whole declared set.
+    """
+
+    _LINE = (
+        "patch task=task-run_1-m004-builder.assemble re-derived required_files on the "
+        "patched set: passed=True required=Dockerfile,start.sh missing=- (the failed "
+        "attempt carried the row; #1318, #1364)"
+    )
+
+    def test_every_declared_file_is_named(self, driver):
+        out = driver.texture_from_logs([self._LINE])
+        assert out["required_files_declared"] == ["Dockerfile", "start.sh"]
+
+    def test_a_roll_with_no_such_row_reads_empty_not_absent(self, driver):
+        out = driver.texture_from_logs(["something else entirely"])
+        assert out["required_files_declared"] == []
+
+    def test_a_line_without_the_field_contributes_nothing(self, driver):
+        """Pre-#1312 lines carry `missing=` and no `required=`; the readout must not
+        invent a set from them."""
+        old = (
+            "patch task=t re-derived required_files on the patched set: passed=False "
+            "missing=qa_handoff.md (the failed attempt carried the row; #1318, #1364)"
+        )
+        assert driver.texture_from_logs([old])["required_files_declared"] == []
+
+
+class TestALoadedCheckIsAskedWhereItSaysAndAnsweredBeforeLaunch:
+    """#1425: three 1.7.4 probes named containers that do not exist.
+
+    `loaded_checks` keyed on the container, so a second probe for one service needed a
+    distinct key; the suffix invented for that (`bob-1-7-4`) was then docker-exec'd as
+    `squadops-bob-1-7-4`. Every launch recorded `ERROR: No such container` beside the
+    probes that did run, and a whole checkpoint pair was read as clean with three of its
+    surfaces never verified. Two halves: the probe names its service explicitly and an
+    unknown one is refused at load, and preflight refuses to launch on a probe that could
+    not run — an unasked question, which in the record is indistinguishable from an
+    answered one.
+    """
+
+    def _cfg(self, driver, tmp_path, checks):
+        import yaml
+
+        p = tmp_path / "set.yaml"
+        p.write_text(
+            yaml.safe_dump(
+                {
+                    "name": "t",
+                    "project": "group_run",
+                    "squad_profile": "full-38",
+                    "request_profile": "validated-fullstack",
+                    "gate_name": "g",
+                    "gate_notes": "g",
+                    "launch_notes": "r {roll}/{n}",
+                    "shakeout_notes": "s",
+                    "n_rolls": 2,
+                    "loaded_checks": checks,
+                }
+            )
+        )
+        return driver.load_set_config(p)
+
+    def _execs(self, driver, monkeypatch, cfg):
+        """Run deploy_identity against a stubbed docker, returning (argv seen, identity)."""
+        seen = []
+
+        class _Proc:
+            returncode = 0
+            stdout = "answered"
+            stderr = ""
+
+        def fake_run(argv, **kwargs):
+            seen.append(argv)
+            return _Proc()
+
+        monkeypatch.setattr(driver.subprocess, "run", fake_run)
+        monkeypatch.setattr(driver, "sh", lambda *a, **k: "")
+        return seen, driver.deploy_identity(cfg)
+
+    def test_a_probe_naming_a_container_that_does_not_exist_is_refused_at_load(
+        self, driver, tmp_path
+    ):
+        with pytest.raises(SystemExit, match=r"unknown services \['bob-1-7-4'\]"):
+            self._cfg(driver, tmp_path, {"bob-1-7-4": "print(1)"})
+
+    def test_a_mapping_probe_naming_a_container_that_does_not_exist_is_refused_too(
+        self, driver, tmp_path
+    ):
+        """The explicit shape must not become the way to smuggle a bad service back in."""
+        with pytest.raises(SystemExit, match=r"unknown services \['nope'\]"):
+            self._cfg(driver, tmp_path, {"faults": {"service": "nope", "source": "print(1)"}})
+
+    def test_a_named_probe_is_asked_in_its_service_and_recorded_under_its_name(
+        self, driver, tmp_path, monkeypatch
+    ):
+        """Two probes for one container: the record must distinguish them, and both must
+        reach `bob` rather than a container named after the question."""
+        cfg = self._cfg(
+            driver,
+            tmp_path,
+            {
+                "builder-fault-seam": {"service": "bob", "source": "print('a')"},
+                "builder-pack": {"service": "bob", "source": "print('b')"},
+            },
+        )
+        seen, ids = self._execs(driver, monkeypatch, cfg)
+        assert [a[2] for a in seen] == ["squadops-bob", "squadops-bob"]
+        assert [a[-1] for a in seen] == ["print('a')", "print('b')"]
+        assert ids["builder-fault-seam:loaded"] == "answered"
+        assert ids["builder-pack:loaded"] == "answered"
+
+    def test_the_bare_shape_still_reads_its_key_as_the_service(self, driver, tmp_path, monkeypatch):
+        """Every set through 1.7.3 is written this way; their records must stay reproducible."""
+        cfg = self._cfg(driver, tmp_path, {"eve": "print('x')"})
+        seen, ids = self._execs(driver, monkeypatch, cfg)
+        assert [a[2] for a in seen] == ["squadops-eve"]
+        assert ids["eve:loaded"] == "answered"
+
+    def test_a_mapping_probe_missing_its_source_is_named(self, driver, tmp_path):
+        with pytest.raises(SystemExit, match="loaded_checks\\[faults\\] is missing source"):
+            self._cfg(driver, tmp_path, {"faults": {"service": "bob"}})
+
+    def _clean_environment(self, driver, monkeypatch):
+        monkeypatch.setattr(driver, "psql", lambda *a, **k: "0")
+        monkeypatch.setattr(driver, "sh", lambda *a, **k: "")
+
+    def test_a_probe_that_could_not_run_stops_the_launch(self, driver, tmp_path, monkeypatch):
+        self._clean_environment(driver, monkeypatch)
+        cfg = self._cfg(driver, tmp_path, {"eve": "print(1)"})
+        problems = driver.preflight(
+            cfg,
+            counting=False,
+            identity={
+                "eve:loaded": "ERROR: Error response from daemon: No such container: squadops-eve",
+                "bob:loaded": "True True",
+            },
+        )
+        assert len(problems) == 1
+        assert "LOADED CHECK DID NOT RUN (1)" in problems[0]
+        assert "eve:loaded" in problems[0] and "No such container" in problems[0]
+        assert "bob:loaded" not in problems[0]
+
+    def test_a_deploy_whose_probes_all_answered_launches(self, driver, tmp_path, monkeypatch):
+        """The control: the guard must key on the failure to run, not on probe output —
+        a probe printing `False` is a reading, and a reading is not a blocker."""
+        self._clean_environment(driver, monkeypatch)
+        cfg = self._cfg(driver, tmp_path, {"eve": "print(1)"})
+        problems = driver.preflight(
+            cfg, counting=False, identity={"eve:loaded": "False False", "head": "abc1234"}
+        )
+        assert problems == []
+
+    def test_the_shakeout_judges_the_identity_it_records(self, driver, tmp_path, monkeypatch):
+        """Wiring, entered where the driver is actually launched (#1250/#1256): preflight
+        ran BEFORE the identity was taken, so nothing could have refused on it. Asserts the
+        launch is stopped and no cycle is created."""
+        self._clean_environment(driver, monkeypatch)
+        cfg = self._cfg(driver, tmp_path, {"eve": "print(1)"})
+        judged = {"eve:loaded": "ERROR: exit 1", "head": "abc1234"}
+        monkeypatch.setattr(driver, "deploy_identity", lambda c: judged)
+        monkeypatch.setattr(
+            driver, "_run_cycle", lambda *a, **k: pytest.fail("launched on an unverified deploy")
+        )
+        assert driver.cmd_shakeout(cfg, dry_run=False) == 2
+
+    @pytest.mark.parametrize("filename", sorted(p.name for p in _SETS.glob("*.yaml")))
+    def test_every_committed_probe_names_a_deployed_service(self, driver, filename):
+        """Broader than the change that prompted it: every set on disk, counting arms,
+        A/B arms and diagnostics alike — the defect reached two files because nothing
+        looked at the rest."""
+        cfg = driver.load_set_config(_SETS / filename)
+        assert all(c.service in driver.DEPLOY_SERVICES for c in cfg.loaded_checks)
+
+
+class TestFailedEmissionBankingIsReportedAsArtifactsNotEmissions:
+    """#1431 was a label defect; #1436 is why it is fixed as one.
+
+    #971 banks every artifact of a failed emission and the readout called the total
+    "failed emissions banked" — one failed `qa.test` banking its suite, its test_report
+    and its evaluation row read as 3. The first fix grouped on `task_id` to derive an
+    emission count, and round 2's Next.js half falsified it: two failed ATTEMPTS of one
+    task, 6.3 s apart, each banking one `build_warnings.md`, collapsed to 1 — an
+    under-count on exactly the contentless-emission behaviour L1 tracks. Through 1.7.4 the
+    banked metadata carried no attempt marker, so the emission count was not derivable
+    from what is stored; the readout reports the artifacts it actually counts and says so.
+    Since #1436 the banking seam stamps the attempt, and the emission count is a SECOND
+    field that is exact when every artifact is stamped and `unaskable` — never a number —
+    when any is not (#1445's vocabulary). These tests build pre-stamp records.
+    """
+
+    def _cycle(self, driver, tmp_path, monkeypatch, artifacts):
+        dirs = []
+        for i, (task_id, filename) in enumerate(artifacts):
+            art = tmp_path / f"art_{i:012x}"
+            art.mkdir()
+            (art / "metadata.json").write_text(
+                json.dumps(
+                    {
+                        "filename": filename,
+                        "metadata": {"task_id": task_id, "emission_status": "failed"},
+                    }
+                )
+            )
+            dirs.append(art)
+
+        def fake_psql(query: str) -> str:
+            if "from cycle_runs where cycle_id" in query:
+                return "1|implementation|completed||run_abc|1800"
+            return ""
+
+        monkeypatch.setattr(driver, "psql", fake_psql)
+        monkeypatch.setattr(driver, "artifact_dirs", lambda cfg, c, r: dirs)
+        import yaml
+
+        p = tmp_path / "set.yaml"
+        p.write_text(
+            yaml.safe_dump(
+                {
+                    "name": "t",
+                    "project": "group_run",
+                    "squad_profile": "full-38",
+                    "request_profile": "validated-fullstack",
+                    "gate_name": "g",
+                    "gate_notes": "g",
+                    "launch_notes": "r {roll}/{n}",
+                    "shakeout_notes": "s",
+                    "n_rolls": 2,
+                }
+            )
+        )
+        return driver.collect(driver.load_set_config(p), "cyc_test")
+
+    def test_one_emissions_three_artifacts_are_three_artifacts(self, driver, tmp_path, monkeypatch):
+        """`cyc_69d34bc41c20`: one qa.test failure banking suite + report + evaluation."""
+        rec = self._cycle(
+            driver,
+            tmp_path,
+            monkeypatch,
+            [
+                ("task-m005-qa.test", "backend/tests/test_runs.py"),
+                ("task-m005-qa.test", "test_report.md"),
+                ("task-m005-qa.test", "typed_check_evaluation_task_5.json"),
+            ],
+        )
+        assert driver.value_at(rec, "failed_emission_artifacts_banked") == 3
+        # The emission count is a field, but NOT a number on a pre-stamp record: a record
+        # carrying an inferred count beside the artifact count would let a reader pick the
+        # one that flatters the roll; an unaskable field cannot flatter anything.
+        ev = driver.Evidence.read(rec["failed_emissions_banked"])
+        assert ev.state == driver.UNASKABLE
+        assert "no attempt marker" in ev.reason
+
+    def test_two_attempts_of_one_task_are_not_collapsed(self, driver, tmp_path, monkeypatch):
+        """The counter-example that reverted the grouping (`cyc_c45d60c9eb16`): two failed
+        attempts of ONE task, each banking one file. A task-keyed count reports 1 and
+        under-states the failures; the artifact count reports both."""
+        rec = self._cycle(
+            driver,
+            tmp_path,
+            monkeypatch,
+            [
+                ("task-m009-qa.test", "build_warnings.md"),
+                ("task-m009-qa.test", "build_warnings.md"),
+            ],
+        )
+        assert driver.value_at(rec, "failed_emission_artifacts_banked") == 2
+        # Pre-stamp: the two attempts are NOT inferred from timestamps or filenames.
+        assert driver.Evidence.read(rec["failed_emissions_banked"]).state == driver.UNASKABLE
+
+    def test_a_clean_roll_reports_zero(self, driver, tmp_path, monkeypatch):
+        rec = self._cycle(driver, tmp_path, monkeypatch, [])
+        # Asked (the run's artifacts were read) and none — not an unaskable absence. With no
+        # banked artifacts there is nothing missing a stamp, so the emission count is an
+        # answer too.
+        ev = driver.Evidence.read(rec["failed_emission_artifacts_banked"])
+        assert (ev.state, ev.value) == (driver.ASKED_NONE, 0)
+        assert driver.Evidence.read(rec["failed_emissions_banked"]).state == driver.ASKED_NONE
+
+    def test_the_readout_does_not_claim_an_emission_count(self, driver, tmp_path, monkeypatch):
+        """The label is the defect #1431 filed. A readout saying "emissions" over a number
+        that counts artifacts is what made 3 unreadable against another roll's 0."""
+        rec = self._cycle(driver, tmp_path, monkeypatch, [("task-m005-qa.test", "test_report.md")])
+        cfg_path = tmp_path / "set.yaml"
+        cfg = driver.load_set_config(cfg_path)
+        rendered = driver.render(cfg, "shakeout (non-counting)", rec).splitlines()
+        artifacts_line = next(ln for ln in rendered if "banked (#971" in ln)
+        emissions_line = next(ln for ln in rendered if "EMISSIONS banked (#1436" in ln)
+        assert "ARTIFACTS" in artifacts_line
+        # The emissions line of a pre-stamp record is the unaskable state and its reason,
+        # never a number a reader could take for a count.
+        assert "UNASKABLE" in emissions_line and "no attempt marker" in emissions_line
+        assert not emissions_line.split("|")[2].strip().isdigit(), "rendered as a bare count"
+
+
+class TestTheInstrumentMayNotJudgeWithCodeTheDeployNeverRan:
+    """The driver imports `squadops` to compute P0 and B1, so a framework change landing
+    after the deploy would judge a roll against logic the system never ran.
+
+    Docs and driver changes are free — that is what lets an instrument fix land mid-line
+    without a rebuild, and 1.7.4 used it four times. `src/` and `adapters/` are not, and
+    nothing checked it: `frozen_deploy_commit` was typed and never read.
+    """
+
+    def _cfg(self, driver, tmp_path, **overrides):
+        import yaml
+
+        base = {
+            "name": "t",
+            "project": "group_run",
+            "squad_profile": "full-38",
+            "request_profile": "validated-fullstack",
+            "gate_name": "g",
+            "gate_notes": "g",
+            "launch_notes": "r {roll}/{n}",
+            "shakeout_notes": "s",
+            "n_rolls": 2,
+        }
+        base.update(overrides)
+        p = tmp_path / "set.yaml"
+        p.write_text(yaml.safe_dump(base))
+        return driver.load_set_config(p)
+
+    def test_an_unpinned_deploy_commit_is_refused_rather_than_skipped(self, driver, tmp_path):
+        """The check must not quietly not-run when the pin is absent — that is the state
+        every record before this carried, printed as 'typed, not measured'."""
+        problems = driver.framework_drift_problems(self._cfg(driver, tmp_path))
+        assert len(problems) == 1
+        assert "no frozen_deploy_commit" in problems[0]
+
+    def test_an_unresolvable_pin_is_not_read_as_no_drift(self, driver, tmp_path, monkeypatch):
+        """Bug caught: `sh(check=False)` returns empty stdout when git fails, which is
+        byte-identical to a clean diff. A typo'd or unfetched pin would have passed."""
+        monkeypatch.setattr(driver, "sh", lambda cmd, check=True: "")
+        problems = driver.framework_drift_problems(
+            self._cfg(driver, tmp_path, frozen_deploy_commit="deadbeef")
+        )
+        assert len(problems) == 1
+        assert "does not resolve" in problems[0]
+        assert "not the same as passing" in problems[0]
+
+    def test_framework_files_changed_since_the_deploy_stop_the_launch(
+        self, driver, tmp_path, monkeypatch
+    ):
+        def fake_sh(cmd: str, check: bool = True) -> str:
+            if "rev-parse" in cmd:
+                return "abc123"
+            return "src/squadops/capabilities/scaffold.py\nadapters/cycles/correction_runner.py"
+
+        monkeypatch.setattr(driver, "sh", fake_sh)
+        problems = driver.framework_drift_problems(
+            self._cfg(driver, tmp_path, frozen_deploy_commit="abc123")
+        )
+        assert len(problems) == 1
+        assert "FRAMEWORK DRIFT: 2 file(s)" in problems[0]
+        assert "scaffold.py" in problems[0]
+
+    def test_docs_and_driver_changes_are_not_drift(self, driver, tmp_path, monkeypatch):
+        """The control, and the reason the guard is scoped to src/ and adapters/: every
+        1.7.4 instrument fix landed mid-line without a rebuild and must keep doing so."""
+
+        def fake_sh(cmd: str, check: bool = True) -> str:
+            if "rev-parse" in cmd:
+                return "abc123"
+            assert "-- src/ adapters/" in cmd, cmd
+            return ""
+
+        monkeypatch.setattr(driver, "sh", fake_sh)
+        assert (
+            driver.framework_drift_problems(
+                self._cfg(driver, tmp_path, frozen_deploy_commit="abc123")
+            )
+            == []
+        )
+
+    def test_a_shakeout_is_not_subject_to_the_pin(self, driver, tmp_path, monkeypatch):
+        """Shakeouts run on a deploy that is unpinned by definition — the guard belongs to
+        the counted set, and firing it on a shakeout would block the loop that finds the
+        drift in the first place."""
+        monkeypatch.setattr(driver, "psql", lambda *a, **k: "0")
+        monkeypatch.setattr(driver, "sh", lambda *a, **k: "")
+        problems = driver.preflight(
+            self._cfg(driver, tmp_path), counting=False, identity={"eve:loaded": "ok"}
+        )
+        assert problems == []
+
+
+class TestTheThreeStateEvidenceVocabulary:
+    """#1445. A readout that cannot distinguish "did not happen" from "could not be asked"
+    is not evidence (1.7.4 record §9). Three findings on that line were the same defect in
+    different clothes: a probe that could not run recorded like one that answered (#1425),
+    a field labelled in units it did not count (#1431), and an H1 readout that read empty
+    because its producer is structurally filtered — read as "nothing found".
+
+    Each test below names the bug it catches; none asserts that a constant equals itself.
+    """
+
+    def test_a_structurally_silent_producer_reads_unaskable_not_zero(self, driver):
+        """THE defect. `loop_texture.refused_patches` is parsed off the runtime-api window's
+        patch path, which a roll with no correction round never writes. Before #1445 the
+        field read `0` and a reader took it for "no patch was refused"."""
+        ev = driver.evidence_for("loop_texture.refused_patches", 0, {"no_correction_round": True})
+        assert ev.state == driver.UNASKABLE
+        assert "no correction round" in ev.reason
+        assert ev.record() == {"state": "unaskable", "reason": ev.reason}
+        assert "value" not in ev.record(), "an unaskable field must carry no value to misread"
+
+    def test_the_same_field_reads_asked_none_when_the_producer_did_run(self, driver):
+        """The other half: with a correction round and a window, zero refusals is an ANSWER.
+        Bug caught: collapsing both into one state, which loses the distinction #1445 exists
+        to make."""
+        ev = driver.evidence_for(
+            "loop_texture.refused_patches",
+            0,
+            {"no_correction_round": False, "runtime_window_empty": False},
+        )
+        assert ev.state == driver.ASKED_NONE and ev.declared
+
+    def test_an_unrunnable_probe_is_unaskable_not_answered(self, driver):
+        """#1425, entered at the producer: three of seven loaded-check probes named
+        containers that do not exist and errored at EVERY 1.7.4 launch, including the
+        checkpoint pair read as CLEAN — in the raw identity an unasked question and an
+        answered one are both just a string beside the service. The error carries into the
+        reason, so preflight can refuse to launch on it."""
+        evidence = driver.loaded_check_evidence(
+            {
+                "bob_handoff:loaded": "ERROR: No such container: squadops-bob-1-7-4",
+                "eve_reasoning:loaded": "none medium",
+                "runtime_api_rows:loaded": "",
+            }
+        )
+        assert evidence["bob_handoff"]["state"] == driver.UNASKABLE
+        assert "No such container" in evidence["bob_handoff"]["reason"]
+        assert "unasked question" in evidence["bob_handoff"]["reason"]
+        # The probe that answered, and the probe that answered EMPTY, are both askable —
+        # and are three visibly different states, which is the whole point.
+        assert evidence["eve_reasoning"]["state"] == driver.OBSERVED
+        assert evidence["runtime_api_rows"]["state"] == driver.ASKED_NONE
+
+    @pytest.mark.parametrize(
+        ("evidence", "must_show", "must_not_show"),
+        [
+            pytest.param(
+                lambda d: d.Evidence.observed(0),
+                "0",
+                ("UNASKABLE", "none (asked)"),
+                id="observed-zero-is-a-zero",
+            ),
+            pytest.param(
+                lambda d: d.Evidence.asked_none(0),
+                "none (asked)",
+                ("UNASKABLE",),
+                id="asked-none-is-words-not-zero",
+            ),
+            pytest.param(
+                lambda d: d.Evidence.unaskable("the probe could not run"),
+                "UNASKABLE",
+                ("0", "none (asked)"),
+                id="unaskable-is-neither",
+            ),
+            pytest.param(lambda d: None, "not in record", ("UNASKABLE", "0"), id="absent"),
+        ],
+    )
+    def test_render_shows_the_three_states_differently(
+        self, driver, evidence, must_show, must_not_show
+    ):
+        """Bug caught: a summary line folding `unaskable` into a zero or a dash — the shape
+        that let 1.7.4's H1 field read as a bar that held."""
+        shown = driver._show(evidence(driver))
+        assert must_show in shown
+        for absent in must_not_show:
+            assert absent not in shown
+
+    def test_a_formatter_never_receives_an_absence(self, driver):
+        """The structural guarantee behind the test above: `_show`'s formatter is handed an
+        OBSERVED value only, so no caller's `lambda v: f"{len(v)}"` can turn an unaskable
+        field into a count. Bug caught: a formatter that stringifies None into "0"."""
+        seen: list = []
+
+        def fmt(value):
+            seen.append(value)
+            return "FORMATTED"
+
+        assert "FORMATTED" not in driver._show(driver.Evidence.unaskable("r"), fmt)
+        assert "FORMATTED" not in driver._show(driver.Evidence.asked_none([]), fmt)
+        assert driver._show(driver.Evidence.observed([1]), fmt) == "FORMATTED"
+        assert seen == [[1]], "the formatter saw an absence"
+
+    def test_value_at_hands_a_consumer_the_default_for_an_unaskable_field(self, driver):
+        """Bug caught: a consumer reading `rec[...]` and getting the unaskable dict, or a
+        zero, and doing arithmetic on it. The answer is absent, so the default is returned."""
+        rec = {
+            "loop_texture": {
+                "refused_patches": driver.Evidence.unaskable("no correction round").record(),
+                "applied_patches": driver.Evidence.observed([{"task": "t"}]).record(),
+                "retests": driver.Evidence.asked_none([]).record(),
+            }
+        }
+        assert driver.value_at(rec, "loop_texture.refused_patches", "absent") == "absent"
+        assert driver.value_at(rec, "loop_texture.applied_patches") == [{"task": "t"}]
+        assert driver.value_at(rec, "loop_texture.never_registered", "absent") == "absent"
+        # `asked_none` DOES hand back its typed empty: the question was asked and the
+        # answer is "none", so a consumer that iterates gets an empty list rather than a
+        # sentinel. Only an absent answer falls back to the default.
+        assert driver.value_at(rec, "loop_texture.retests", "absent") == []
+
+    @pytest.mark.parametrize(
+        "state",
+        [
+            pytest.param(lambda d: d.Evidence.observed({"a": 1}), id="observed"),
+            pytest.param(lambda d: d.Evidence.asked_none([]), id="asked_none"),
+            pytest.param(lambda d: d.Evidence.unaskable("a reason"), id="unaskable"),
+        ],
+    )
+    def test_the_record_shape_round_trips(self, driver, state):
+        """Bug caught: a state that survives `render` but not a re-read of the stored JSON —
+        which is exactly how a re-rendered record loses what it knew (the 1.7.4 hollow
+        re-render, record §5)."""
+        original = state(driver)
+        back = driver.Evidence.read(original.record())
+        assert (back.state, back.value, back.reason) == (
+            original.state,
+            original.value,
+            original.reason,
+        )
+        assert back.declared, "a field written in the vocabulary is declared, never inferred"
+
+    def test_a_pre_1445_bare_value_is_marked_inferred_not_declared(self, driver):
+        """Every stored record through 1.7.4 carries bare values. Reading one must say the
+        state was INFERRED — a bare `0` cannot tell whether it was asked. Bug caught: a
+        re-render of a 1.7.4 record presenting inferred states as declarations."""
+        inferred = driver.Evidence.read(0)
+        assert (inferred.state, inferred.declared) == (driver.ASKED_NONE, False)
+        assert "state inferred" in driver._show(inferred)
+        assert "state inferred" not in driver._show(driver.Evidence.asked_none(0))
+
+    def test_an_unregistered_field_is_refused_not_defaulted(self, driver):
+        """The registry is the schema, not a summary of it. Bug caught: a new readout added
+        without stating when its producer is silent — it would render as always-askable and
+        its empty value would read as an answer, which is the defect this issue fixes."""
+        with pytest.raises(driver.UnregisteredEvidenceField) as excinfo:
+            driver.with_states("loop_texture", {"a_brand_new_readout": []}, {})
+        assert "EVIDENCE_FIELDS" in str(excinfo.value)
+
+        # ...and a registered one is rendered rather than refused.
+        rendered = driver.with_states("loop_texture", {"refused_patches": []}, {})
+        assert rendered["refused_patches"]["state"] in driver.EVIDENCE_STATES
+
+    def test_every_registered_condition_resolves_to_a_reason(self, driver):
+        """Bug caught: a condition registered against a field with no entry in
+        UNASKABLE_REASONS — it raises KeyError at render time, i.e. mid-set, on the one roll
+        where the producer was actually silent."""
+        for path, conditions in driver.EVIDENCE_FIELDS.items():
+            for condition in conditions:
+                reason = driver.unaskable_reason(condition)
+                assert reason and "{detail}" not in reason, (path, condition)
+
+    def test_the_registry_renders_the_table_a_preregistration_cites(self, driver):
+        """The schema property, not prose: every registered field appears with its
+        conditions. Bug caught: a pre-registration that has to describe unaskable states in
+        paragraphs, which is the loose convention #1445 replaces."""
+        table = driver.registry_table()
+        for path in driver.EVIDENCE_FIELDS:
+            assert f"`{path}`" in table
+        assert table.startswith("| field | unaskable when | reads |")
+
+
+class TestTheEmissionCountBehindTheBankedArtifacts:
+    """#1436 with #1445: artifacts and emissions are separate numbers, both true — and the
+    emission count is UNASKABLE, never inferred, on a record whose banked artifacts predate
+    the attempt stamp."""
+
+    _TASK = "task-run_7190a025-m009-qa.test"
+
+    def test_three_artifacts_of_one_attempt_are_one_emission(self, driver):
+        """The 1.7.4 round-2 React shape: one qa.test failure banking its suite, its report
+        and its evaluation row — three files 42 ms apart, ONE emission."""
+        banked = [{"task_id": self._TASK, "attempt": 1} for _ in range(3)]
+        assert driver.emissions_from_stamps(banked) == 1
+
+    def test_two_attempts_one_file_each_are_two_emissions(self, driver):
+        """The counter-example that reverted #1432's grouping (`cyc_c45d60c9eb16`): two
+        `build_warnings.md` 6.3 s apart, two ATTEMPTS. Keyed on task_id alone this read 1 —
+        an under-count on exactly the contentless-emission behaviour the L1 bar tracks."""
+        banked = [{"task_id": self._TASK, "attempt": 1}, {"task_id": self._TASK, "attempt": 2}]
+        assert driver.emissions_from_stamps(banked) == 2
+
+    def test_one_unstamped_artifact_makes_the_whole_count_underivable(self, driver):
+        """Bug caught: a partially-stamped record counted as if every artifact were stamped
+        — a number that is wrong in an unknowable direction. None is the honest answer, and
+        the registry turns it into `unaskable`."""
+        assert driver.emissions_from_stamps([{"task_id": self._TASK}]) is None
+        assert (
+            driver.emissions_from_stamps(
+                [{"task_id": self._TASK}, {"task_id": self._TASK, "attempt": 2}]
+            )
+            is None
+        )
+
+    def test_no_banked_artifacts_is_zero_emissions_not_underivable(self, driver):
+        """Nothing was banked, so nothing is missing a stamp: the question was asked and the
+        answer is none. Bug caught: a clean roll reading `unaskable` and losing the fact that
+        it banked nothing."""
+        assert driver.emissions_from_stamps([]) == 0
+
+    def test_the_field_is_registered_so_it_can_never_read_as_a_bare_zero(self, driver):
+        """The registry is what turns an underivable count into `unaskable` rather than 0
+        (#1445). Bug caught: the field added to the record without its conditions."""
+        assert driver.EVIDENCE_FIELDS["failed_emissions_banked"] == (
+            "no_implementation_run",
+            "no_attempt_stamp",
+        )
+        unaskable = driver.evidence_for("failed_emissions_banked", None, {"no_attempt_stamp": True})
+        assert unaskable.state == driver.UNASKABLE
+        assert "no attempt marker" in unaskable.reason
+        assert "UNASKABLE" in driver._show(unaskable)

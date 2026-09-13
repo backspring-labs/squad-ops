@@ -137,7 +137,8 @@ def test_an_unknown_stack_owns_no_qa_namespace():
 def test_the_reference_stack_still_answers_exactly_what_it_did():
     manifest = _manifest()
 
-    assert len(expand(manifest)) == 19
+    # 20 since #1463: the tree gained the frozen frontend/src/index.css.
+    assert len(expand(manifest)) == 20
     assert fill_slot_paths(manifest) == (
         "backend/routes.py",
         "frontend/src/views/RunsListView.jsx",

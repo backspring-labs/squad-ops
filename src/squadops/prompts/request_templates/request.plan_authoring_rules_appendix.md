@@ -1,6 +1,6 @@
 ---
 template_id: request.plan_authoring_rules_appendix
-version: "4"
+version: "5"
 required_variables: []
 ---
 ## PLAN SHAPE RULES (authoritative — a plan that breaks one is rejected)
@@ -39,11 +39,15 @@ only. A regex against source prescribes another author's stylistic choices — q
 identifier spelling — and rejects correct code. Verify source with the structural checks
 instead.
 
-**no-regex-on-the-handoff** — Do not author `regex_match` against `qa_handoff.md`. Its
-required sections are the build profile's and are checked by section name in any order;
-a pattern over its headings prescribes a word order the builder's own template does not
-use, and is dropped at dispatch. Name the sections the builder must cover in the task's
-description instead.
+**do-not-author-derived-checks** — Do not author a typed check the framework injects or a
+profile derives. Those checks are bound for you, from declarations you never see: the test
+harness boundary from the scaffold's own entry modules, the contract assertions and
+assertion kinds from the bound contract, the anchor and containment gates from the stack,
+the required-files floor from the build profile. Authoring one adds a second row with the
+same name over the same file — the evidence double-counts, and your row's parameters are a
+guess at a fact the framework holds exactly. They are withheld from the vocabulary above
+for that reason, and any that reach dispatch are dropped with the rule named. Author what
+only you can decide: prose intent, and the coverage floors the vocabulary offers.
 
 **commands-must-run-here** — An error-severity `command_exit_zero` uses one of the
 safelisted forms, against a file type that tool accepts. The safelist is the entire

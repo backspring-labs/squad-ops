@@ -246,7 +246,7 @@ class RunCompletion:
         # and no shipped profile declares required_checks — so this computes
         # `accepted` with zero recorded evidence and discloses it in the report.
         # Phase 2 wires the producers and per-profile required lists (the throttle).
-        summary = self._aggregate_verification(cycle, ledger, run_status, contract)
+        summary = self._aggregate_verification(cycle, ledger, run_status, contract, plan=plan)
 
         # SIP-0096 Phase 3 (§10): persist the run's verdict as durable structured
         # evidence so the CycleOutcome roll-up can read it back — until now the
@@ -290,8 +290,17 @@ class RunCompletion:
         ledger: RunLedger | None,
         run_status: RunStatus,
         contract: Any | None = None,
+        plan: list[TaskEnvelope] | None = None,
     ) -> RunVerificationSummary:
         """Run the SIP-0096 aggregation over the ledger against the cycle's required set.
+
+        ``plan`` (#1428) is the run's planned task envelopes. A run owes only the declared
+        checks its planned task types can produce a subject for
+        (``checks_a_run_can_subject``): a framing run emits no source, suite or required
+        files, so it owes none of the three the fullstack profile requires and reports them
+        as required-but-not-owed instead of `blocked_unverified`. Derived from the PLAN, not
+        from what executed — a run that aborted before its qa task still owes `tests_pass`.
+        Without a plan the declared set is used as-is (the conservative reading).
 
         Requiredness comes only from the cycle's explicit ``required_checks``
         declaration, read through the #426 single merge (``resolved_config()``,
@@ -309,10 +318,17 @@ class RunCompletion:
         it to `blocked_unverified`.
         """
         required_check_ids: tuple[str, ...] = ()
+        required_not_owed: tuple[str, ...] = ()
         if cycle is not None:
             declared = cycle.resolved_config().get("required_checks")
             if declared:
                 required_check_ids = tuple(declared)
+        if plan is not None and required_check_ids:
+            from squadops.cycles.check_registry import checks_a_run_can_subject
+
+            can_subject = checks_a_run_can_subject(e.task_type for e in plan)
+            required_not_owed = tuple(c for c in required_check_ids if c not in can_subject)
+            required_check_ids = tuple(c for c in required_check_ids if c in can_subject)
         results = ledger.check_results if ledger else ()
         run_succeeded = run_status is RunStatus.COMPLETED
         # SIP-0098 #508: a bound contract supplies the coverage denominator — every
@@ -326,14 +342,17 @@ class RunCompletion:
             required_check_ids,
             run_succeeded=run_succeeded,
             contract_criteria=contract_criteria,
+            required_not_owed=required_not_owed,
         )
         logger.info(
-            "Verification integrity: verdict=%s executed=%d passed=%d unverified=%d required_unmet=%d",
+            "Verification integrity: verdict=%s executed=%d passed=%d unverified=%d "
+            "required_unmet=%d required_not_owed=%s",
             summary.verdict.value,
             summary.executed_count,
             summary.passed_count,
             len(summary.unverified),
             len(summary.required_unmet),
+            ",".join(summary.required_not_owed) or "-",
         )
         return summary
 

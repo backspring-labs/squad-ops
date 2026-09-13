@@ -485,8 +485,8 @@ class TestAcceptPatch:
         )
 
     def _failed_builder_result_1318(self):
-        """The 1.7.2 roll-1 shape: the builder omitted its handoff, so BOTH the framework
-        spine row and the typed criterion failed on the pre-patch tree."""
+        """The 1.7.2 roll-1 shape, on the post-#1312 contract: the builder omitted a
+        declared deliverable, so the framework spine row failed on the pre-patch tree."""
         return TaskResult(
             task_id="task_5",
             status="FAILED",
@@ -501,16 +501,7 @@ class TestAcceptPatch:
                 ],
                 "validation_result": {
                     "checks": [
-                        {"check": "required_files", "passed": False, "missing": ["qa_handoff.md"]},
-                        {
-                            "check": "acceptance:sections_present",
-                            "severity": "error",
-                            "status": "failed",
-                            "reason": "file_not_found",
-                            "criterion_id": "handoff-sections:qa_handoff.md",
-                            "params": {"file": "qa_handoff.md", "sections": ["## How to Test"]},
-                            "passed": False,
-                        },
+                        {"check": "required_files", "passed": False, "missing": ["start.sh"]},
                     ]
                 },
                 "outcome_class": TaskOutcome.SEMANTIC_FAILURE,
@@ -527,14 +518,18 @@ class TestAcceptPatch:
             self._builder_envelope(),
             inputs={
                 "resolved_config": {},
-                "expected_artifacts": ["Dockerfile", "qa_handoff.md"],
+                # #1312: the deliverable set IS the builder repair's blocking criterion
+                # now that the handoff's `sections_present` row is retired. `start.sh`
+                # stands where `qa_handoff.md` stood in the 1.7.2 roll-1 shape: declared,
+                # not emitted, supplied by the patch.
+                "expected_artifacts": ["Dockerfile", "start.sh"],
                 "acceptance_criteria": [
                     TypedCheck(
-                        check="sections_present",
-                        params={"file": "qa_handoff.md", "sections": ["## How to Test"]},
-                        severity="error",
-                        description="handoff sections",
-                        id="handoff-sections:qa_handoff.md",
+                        check="container_packaging",
+                        params={"file": "Dockerfile"},
+                        severity="warning",
+                        description="packaging findings",
+                        id="packaging:Dockerfile",
                     )
                 ],
             },
@@ -563,7 +558,7 @@ class TestAcceptPatch:
             contentless,
             [
                 {"name": "Dockerfile", "content": "FROM python:3.12\n"},
-                {"name": "qa_handoff.md", "content": "# QA Handoff\n## How to Test\nrun pytest\n"},
+                {"name": "start.sh", "content": "#!/bin/sh\nexec uvicorn backend.main:app\n"},
             ],
             holder,
         )
@@ -585,10 +580,28 @@ class TestAcceptPatch:
         carrying no rows is not handed a `required_files` row it never emits."""
         import dataclasses as _dc
 
+        from squadops.cycles.implementation_plan import TypedCheck
+
+        # Its own blocking criterion, because #1312's deliverable row is guarded by
+        # `emits_required_files` and a dev task therefore has none — without a criterion
+        # of its own the repair would be `no_executed_blocking_checks`, which is a
+        # different verdict and would not test what this test names.
         dev = _dc.replace(
             self._builder_envelope_1318(),
             task_type="development.develop",
             metadata={"role": "dev"},
+            inputs={
+                "resolved_config": {},
+                "expected_artifacts": ["README.md"],
+                "acceptance_criteria": [
+                    TypedCheck(
+                        check="regex_match",
+                        params={"file": "README.md", "pattern": "## Configuration"},
+                        severity="error",
+                        description="documents its configuration",
+                    )
+                ],
+            },
         )
         contentless = TaskResult(
             task_id="task_5",
@@ -600,10 +613,7 @@ class TestAcceptPatch:
         action = await executor._try_accept_patch(
             dev,
             contentless,
-            [
-                {"name": "Dockerfile", "content": "FROM python:3.12\n"},
-                {"name": "qa_handoff.md", "content": "# QA Handoff\n## How to Test\nrun pytest\n"},
-            ],
+            [{"name": "README.md", "content": "# App\n\n## Configuration\nSet PORT.\n"}],
             holder,
         )
         assert action == "accept_patch"
@@ -632,12 +642,7 @@ class TestAcceptPatch:
         action = await executor._try_accept_patch(
             self._builder_envelope_1318(),
             failed,
-            [
-                {
-                    "name": "qa_handoff.md",
-                    "content": "# QA Handoff\n## How to Test\nrun pytest\n",
-                }
-            ],
+            [{"name": "start.sh", "content": "#!/bin/sh\nexec uvicorn backend.main:app\n"}],
             holder,
         )
         assert action == "accept_patch"
@@ -648,17 +653,12 @@ class TestAcceptPatch:
         spine = [r for r in rows if r.get("check") == "required_files"]
         assert spine and spine[0]["passed"] is True, rows
         assert spine[0]["missing"] == []
-
-        # The typed row carries the criterion id the failed row carried.
-        typed = [r for r in rows if r.get("check") == "acceptance:sections_present"]
-        assert typed, rows
-        assert typed[0]["criterion_id"] == "handoff-sections:qa_handoff.md"
-        assert typed[0]["status"] == "passed"
+        assert spine[0]["required"] == ["Dockerfile", "start.sh"]
 
         # The failed attempt's evidence artifact is not re-stored (no retest ran).
         names = {a.get("name") for a in corrected.outputs["artifacts"]}
         assert "typed_check_evaluation_task_4.json" not in names
-        assert "qa_handoff.md" in names
+        assert "start.sh" in names
 
         # The verdict over the sequence the executor records (failed, then corrected).
         ledger = [
@@ -674,7 +674,9 @@ class TestAcceptPatch:
         """The floor: superseding must not launder a deliverable the patch never wrote.
 
         Same shape, but the patch touches only the Dockerfile — the re-derived spine row
-        must report the handoff still missing rather than crediting the task.
+        must report the startup script still missing rather than crediting the task, and
+        since #1312 the deliverable row is also the repair's own blocking criterion, so
+        the patch is rejected rather than accepted with a failing row.
         """
         holder: dict = {}
         await executor._try_accept_patch(
@@ -692,7 +694,7 @@ class TestAcceptPatch:
             if r.get("check") == "required_files"
         ]
         assert spine and spine[0]["passed"] is False
-        assert spine[0]["missing"] == ["qa_handoff.md"]
+        assert spine[0]["missing"] == ["start.sh"]
 
     async def test_verified_patch_accepted_with_corrected_result(self, executor):
         """Bug caught: verified repairs re-dispatched into a re-roll — the
@@ -1160,6 +1162,48 @@ class TestEmissionRetryFeedbackThreading:
         assert "emission_retry_feedback" not in attempts[2]
         assert attempts[1]["prior_attempts"] == 1 and attempts[2]["prior_attempts"] == 2
 
+    async def test_each_failed_attempt_banks_its_artifacts_under_its_own_attempt(
+        self, executor, mock_queue, mock_registry, mock_vault, cycle
+    ):
+        """#1436, entered at execute_run — the caller the live cycle uses. Two failed
+        attempts of one task each emit a file; the vault must receive attempt 1 for the
+        first bank and attempt 2 for the second, so a record can count EMISSIONS rather than
+        artifacts. Bug caught: the stamp read from the wrong seam (the retry counter, which
+        only counts retryable failures, or a stamp taken after `_handle_task_outcome`
+        incremented it) — either makes the two banks read as the same attempt or skips 1."""
+        import dataclasses
+
+        mock_registry.get_cycle.return_value = dataclasses.replace(
+            cycle, execution_overrides={"max_task_retries": 3}
+        )
+        emitted = [
+            {
+                "name": "build_warnings.md",
+                "content": "I'll analyze the app first.",
+                "type": "document",
+            }
+        ]
+        responses = {
+            0: ("FAILED", {"artifacts": emitted}, "transient"),
+            1: ("FAILED", {"artifacts": emitted}, "transient"),
+        }
+        mock_queue.reply_router.responder = _scripted_responder(responses)
+
+        with patch(
+            "adapters.cycles.dispatched_flow_executor.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        banked = [
+            call.args[0]
+            for call in mock_vault.store.await_args_list
+            if call.args[0].metadata.get("emission_status") == "failed"
+        ]
+        assert len(banked) == 2, [r.filename for r in banked]
+        assert {r.metadata["task_id"] for r in banked} == {banked[0].metadata["task_id"]}
+        assert [r.metadata["attempt"] for r in banked] == [1, 2]
+
     async def test_plain_retryable_failure_adds_no_marker(
         self, executor, mock_queue, mock_registry
     ):
@@ -1366,7 +1410,7 @@ class TestAcceptPatchStructurallyUnevaluable:
                 status=PATCH_UNVERIFIABLE, reason="evaluator_error:function_defined"
             )
 
-        import adapters.cycles.dispatched_flow_executor as ex_mod
+        import adapters.cycles.patch_acceptance as ex_mod
 
         monkeypatch.setattr(ex_mod, "verify_patched_artifacts", _broken_evaluator)
         executor._correction_runner.reexecute_repaired_suite = AsyncMock(
@@ -1587,7 +1631,7 @@ class TestRepairRejectionCarry:
 
     def test_the_carry_is_bounded(self):
         """Bug caught: an unbounded carry growing into the prompt budget."""
-        from adapters.cycles.dispatched_flow_executor import _record_repair_rejection
+        from adapters.cycles.patch_acceptance import _record_repair_rejection
 
         carry: dict = {}
         for n in range(5):
@@ -1730,7 +1774,7 @@ class TestRetestIsKeyedOnWhatThePatchContains:
         """Not the artifact's `type`: a repair's files are typed by extension, so the
         repaired `backend/tests/test_runs.py` arrives as `code` and a type-keyed rule
         would miss the very case this fixes."""
-        from adapters.cycles.dispatched_flow_executor import _repaired_suite_files
+        from adapters.cycles.patch_acceptance import _repaired_suite_files
 
         assert _repaired_suite_files([{"name": self._SUITE, "type": "code"}], self._CONFIG) == [
             self._SUITE
@@ -1835,10 +1879,10 @@ class TestTheTerminationNamesWhichAbsence:
         )
         with (
             patch(
-                "adapters.cycles.dispatched_flow_executor.verify_patched_artifacts",
+                "adapters.cycles.patch_acceptance.verify_patched_artifacts",
                 AsyncMock(return_value=verification),
             ),
-            caplog.at_level(logging.WARNING, logger="adapters.cycles.dispatched_flow_executor"),
+            caplog.at_level(logging.WARNING, logger="adapters.cycles.patch_acceptance"),
         ):
             action = await executor._try_accept_patch(
                 self._qa_envelope(),
@@ -1870,10 +1914,10 @@ class TestTheTerminationNamesWhichAbsence:
         )
         with (
             patch(
-                "adapters.cycles.dispatched_flow_executor.verify_patched_artifacts",
+                "adapters.cycles.patch_acceptance.verify_patched_artifacts",
                 AsyncMock(return_value=verification),
             ),
-            caplog.at_level(logging.WARNING, logger="adapters.cycles.dispatched_flow_executor"),
+            caplog.at_level(logging.WARNING, logger="adapters.cycles.patch_acceptance"),
         ):
             await executor._try_accept_patch(
                 self._qa_envelope(),
@@ -2211,3 +2255,174 @@ class TestTheExecutorStampsTheReAttemptMarker:
         await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
 
         assert all(not s.get("prior_attempts") for s in seen)
+
+
+class TestTheContractSaysWhichFrameworkRowsAreOwed:
+    """#1374: two void counted rolls on two lines were one mechanism patched twice.
+
+    The accepted-patch seam composed a corrected result from the failed attempt's rows
+    plus whatever the verifier produced, so a framework row survived only if some earlier
+    stage happened to write one. #1318 re-derived `required_files` when the attempt had
+    CARRIED it — 1.7.2 roll 1, a booting app rejected on the pre-patch row. #1364 found
+    the next shape, a contentless attempt carrying no rows at all — 1.7.3 roll 1, a
+    booting app read `blocked_unverified`. What a task owes is its contract's statement;
+    its attempt's history is not evidence about it.
+    """
+
+    def test_the_builder_owes_the_deliverable_row_and_the_qa_author_the_test_spine(self):
+        from squadops.cycles.check_registry import framework_rows_owed
+
+        assert framework_rows_owed("builder.assemble") == ("required_files",)
+        assert framework_rows_owed("builder.assemble_repair") == ("required_files",)
+        assert framework_rows_owed("qa.test") == (
+            "tests_pass",
+            "no_stub_fallback_tests",
+            "no_self_mocking_tests",
+        )
+
+    def test_a_task_type_that_owes_nothing_is_handed_nothing(self):
+        """The other half of #1318's rule stands: a dev task is never handed a spine row
+        it does not emit. Inventing one would credit a check the task never ran."""
+        from squadops.cycles.check_registry import framework_rows_owed
+
+        assert framework_rows_owed("development.develop") == ()
+        assert framework_rows_owed("not.a.task.type") == ()
+
+    def test_the_producing_stage_is_named_for_every_owed_row(self):
+        """The log line and the seam table read this. A row whose producer is 'unknown'
+        is a row nobody can be held to."""
+        from squadops.cycles.check_registry import framework_row_producer, framework_rows_owed
+
+        owed = set(framework_rows_owed("builder.assemble")) | set(framework_rows_owed("qa.test"))
+        assert owed
+        assert all(framework_row_producer(check) != "unknown" for check in owed)
+
+    def test_frontend_build_is_not_owed_by_anyone(self):
+        """Deliberate: it is stack-conditional — the criteria pack emits
+        `vc-frontend-builds` only where a frontend exists — so declaring it owed would
+        manufacture a gap on every backend-only cycle, the same false-negative class in
+        the other direction."""
+        from squadops.cycles.check_registry import framework_rows_owed
+
+        assert "frontend_build" not in framework_rows_owed("qa.test")
+
+
+class TestAnOwedRowIsDerivedOnceAndAGapIsNamed:
+    """The seam's two remaining behaviours, entered at `_try_accept_patch`."""
+
+    def _builder_envelope(self):
+        from squadops.tasks.models import TaskEnvelope
+
+        return TaskEnvelope(
+            task_id="task_7",
+            agent_id="bob",
+            cycle_id="cyc_001",
+            pulse_id="p",
+            project_id="hello_squad",
+            task_type="builder.assemble",
+            correlation_id="corr",
+            causation_id=None,
+            trace_id="t",
+            span_id="s",
+            inputs={"resolved_config": {}, "expected_artifacts": ["Dockerfile"]},
+            metadata={"role": "builder"},
+        )
+
+    def _contentless(self):
+        return TaskResult(
+            task_id="task_7",
+            status="FAILED",
+            outputs={"artifacts": [], "validation_result": {"checks": []}},
+            error="no fenced blocks",
+        )
+
+    async def test_the_row_appears_exactly_once(self, executor):
+        """Deriving beside a row the verifier already produced would put two
+        `required_files` rows on one subject, and the ledger supersedes on
+        `(check_id, subject, criterion_id)` — a duplicate is a coin flip about which
+        value is final."""
+        holder: dict = {}
+        action = await executor._try_accept_patch(
+            self._builder_envelope(),
+            self._contentless(),
+            [{"name": "Dockerfile", "content": "FROM python:3.12\n"}],
+            holder,
+        )
+        assert action == "accept_patch"
+        rows = holder["patched_result"].outputs["validation_result"]["checks"]
+        assert len([r for r in rows if r.get("check") == "required_files"]) == 1
+
+
+class TestTheAcceptedRepairFactReachesTheCorrectionPolicy:
+    """#994's wiring half. The guard is only as good as the fact it is handed, and the
+    executor's loop is the only place that knows a prior round of this task was accepted —
+    a guard that always reads `False` would be the #1289 shape: computed, threaded, inert.
+    """
+
+    def _envelope(self):
+        from squadops.tasks.models import TaskEnvelope
+
+        return TaskEnvelope(
+            task_id="task_dev_2",
+            agent_id="neo",
+            cycle_id="cyc_001",
+            pulse_id="p",
+            project_id="hello_squad",
+            task_type="development.develop",
+            correlation_id="corr",
+            causation_id=None,
+            trace_id="t",
+            span_id="s",
+            inputs={"resolved_config": {}},
+            metadata={"role": "dev"},
+        )
+
+    async def _capture(self, executor, cycle, accepted: set[str]) -> dict:
+        import contextlib
+
+        from adapters.cycles.execution_errors import _ExecutionError
+
+        seen: dict = {}
+
+        async def _fake(*_a, **kw):
+            seen.update(kw)
+            raise _ExecutionError("stop here — the flag is what this asserts")
+
+        executor._correction_runner.run_correction_protocol = _fake
+        with contextlib.suppress(_ExecutionError, AttributeError, KeyError, TypeError):
+            await executor._handle_task_outcome(
+                result=TaskResult(
+                    task_id="task_dev_2",
+                    status="FAILED",
+                    outputs={"outcome_class": TaskOutcome.SEMANTIC_FAILURE},
+                    error="failed",
+                ),
+                envelope=self._envelope(),
+                enriched_envelope=None,
+                cycle=cycle,
+                run_id="run_1",
+                task_attempt_counts={},
+                consecutive_failures=0,
+                correction_counter={"n": 0},
+                correction_signature_state={},
+                scaffold_enforcement_carry=[],
+                prior_outputs={},
+                all_artifact_refs=[],
+                stored_artifacts=[],
+                completed_task_ids=[],
+                plan_delta_refs=[],
+                profile=None,
+                flow_run_id=None,
+                patched_result_holder={},
+                interface_manifest=None,
+                accepted_repair_task_ids=accepted,
+            )
+        return seen
+
+    async def test_a_task_with_an_accepted_repair_is_reported_as_such(self, executor, cycle):
+        seen = await self._capture(executor, cycle, {"task_dev_2"})
+        assert seen.get("has_accepted_repair") is True
+
+    async def test_a_task_without_one_is_not(self, executor, cycle):
+        seen = await self._capture(executor, cycle, {"some_other_task"})
+        assert seen.get("has_accepted_repair") is False

@@ -374,17 +374,22 @@ def _parse_env_overrides(prefix: str = "SQUADOPS__", strict: bool = False) -> di
                     )
                 continue
 
-            try:
-                coerced_value = _coerce_value(value, path_info.field_type, path_info.enum_class)
-            except ValueError as e:
-                if strict:
-                    raise ConfigValidationError(
-                        f"Invalid value for {path_info.dot_path}: {e}",
-                        field=path_info.dot_path,
-                        expected=str(path_info.field_type.__name__),
-                    ) from e
-                logger.warning(f"Invalid value for {path_info.dot_path}: {e}, using as string")
-                coerced_value = value
+            if value.strip() == "" and path_info.is_optional:
+                # #1147: a compose passthrough of an unset variable arrives as "" — for an
+                # optional field that is "unset", not a value to coerce (and no warning).
+                coerced_value: Any = None
+            else:
+                try:
+                    coerced_value = _coerce_value(value, path_info.field_type, path_info.enum_class)
+                except ValueError as e:
+                    if strict:
+                        raise ConfigValidationError(
+                            f"Invalid value for {path_info.dot_path}: {e}",
+                            field=path_info.dot_path,
+                            expected=str(path_info.field_type.__name__),
+                        ) from e
+                    logger.warning(f"Invalid value for {path_info.dot_path}: {e}, using as string")
+                    coerced_value = value
 
             current = overrides
             for segment in path_info.tuple_path[:-1]:

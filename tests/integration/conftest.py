@@ -12,6 +12,14 @@ import pytest
 import pytest_asyncio
 import requests
 
+from adapters.persistence.pool import create_pool
+from squadops.bootstrap.database_isolation import (
+    DEPLOYMENT_DB_NAME,
+    TEST_DB_NAME,
+    database_name_of,
+    test_role_dsn,
+)
+
 # ---------------------------------------------------------------------------
 # SIP-0061: LangFuse env-var gating for contract/integration/resilience tests
 # ---------------------------------------------------------------------------
@@ -87,22 +95,22 @@ def load_test_config():
     return config
 
 
-# --- Integration-test database isolation (#1099) -------------------------------------
+# --- Integration-test database isolation (#1099, #1180) ------------------------------
 # These suites TRUNCATE cycle tables. They previously defaulted to the *deployment*
 # database (`…/squadops`), so `pytest tests/integration` destroyed real cycle history —
 # on 2026-08-30 it emptied `cycle_gate_decisions`, and only a stale-teardown FK error
 # stopped it taking `cycle_registry` and `cycle_runs` too. The destructive fixtures are
 # correct; pointing them at live data was the defect. So the database name is a seam
 # with one owner and a guard, not a literal repeated in each test module.
+#
+# #1180 put the enforcement under the guard: the suite connects as `squadops_test`, a
+# role that owns `squadops_test` and nothing else, and the deployment database refuses
+# it at the server (REVOKE CONNECT … FROM PUBLIC). The names come from the module the
+# doctor check and the provisioning drift test read, so the three cannot disagree. The
+# password below is `.env.example`'s POSTGRES_TEST_PASSWORD, the same dev default the
+# deployment password gets; env and test_config.env still win.
 
-DEPLOYMENT_DB_NAME = "squadops"
-TEST_DB_NAME = "squadops_test"
-DEFAULT_TEST_POSTGRES_URL = f"postgresql://squadops:squadops-dev@localhost:5432/{TEST_DB_NAME}"
-
-
-def _db_name(dsn: str) -> str:
-    """Database name from a DSN, ignoring any ?query suffix."""
-    return dsn.rsplit("/", 1)[-1].split("?", 1)[0]
+DEFAULT_TEST_POSTGRES_URL = test_role_dsn("squadops-test")
 
 
 def integration_postgres_dsn() -> str:
@@ -113,7 +121,7 @@ def integration_postgres_dsn() -> str:
     a DSN literal in a test module.
     """
     dsn = load_test_config()["POSTGRES_URL"]
-    if _db_name(dsn) == DEPLOYMENT_DB_NAME:
+    if database_name_of(dsn) == DEPLOYMENT_DB_NAME:
         raise RuntimeError(
             f"Refusing to run destructive integration tests against the deployment "
             f"database {DEPLOYMENT_DB_NAME!r} (DSN: {dsn}). These fixtures delete from "
@@ -131,7 +139,7 @@ def _guard_against_deployment_database():
     still cannot reach live data — the guard is not opt-in.
     """
     dsn = load_test_config()["POSTGRES_URL"]
-    if _db_name(dsn) == DEPLOYMENT_DB_NAME:
+    if database_name_of(dsn) == DEPLOYMENT_DB_NAME:
         pytest.exit(
             f"ABORTED: POSTGRES_URL points at the deployment database "
             f"{DEPLOYMENT_DB_NAME!r}. Integration fixtures delete cycle data. "
@@ -140,24 +148,14 @@ def _guard_against_deployment_database():
         )
 
 
-def ensure_test_database() -> str:
-    """Create the test database if absent; return its DSN. Idempotent."""
-    dsn = integration_postgres_dsn()
-    import psycopg2  # already a test dep via the runtime stack
-    from psycopg2 import sql
-
-    admin = dsn.rsplit("/", 1)[0] + "/postgres"
-    conn = psycopg2.connect(admin)
-    try:
-        conn.autocommit = True
-        with conn.cursor() as cur:
-            cur.execute("select 1 from pg_database where datname = %s", (TEST_DB_NAME,))
-            if not cur.fetchone():
-                cur.execute(sql.SQL("create database {}").format(sql.Identifier(TEST_DB_NAME)))
-    finally:
-        conn.close()
-    return dsn
-
+# The test database is provisioned, not created by the suite: `ensure_test_database()`
+# used to CREATE DATABASE as the DSN's role, which the test role deliberately cannot do
+# (no CREATEDB). Nothing called it since the #1099 rewrite, and it imported psycopg2,
+# which tests/requirements.txt does not carry. The bootstrap and deploy paths (and CI)
+# run infra/00-create-databases.sh instead; `squadops doctor --check database` reports a
+# missing role or database, and every Postgres suite here fails to authenticate loudly.
+# The role in use is TEST_DB_ROLE; test_deployment_database_unreachable.py asserts the
+# deployment database refuses it.
 
 # --- #242: in CI, a missing service is a FAILURE, not a skip -------------------------
 # The health check below skips when a service is absent, which is right for a laptop
@@ -471,15 +469,11 @@ def check_required_services():
     yield
 
 
-@pytest.fixture(scope="session")
-def event_loop():
-    """Create an instance of the default event loop for the test session."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
-
-
-@pytest_asyncio.fixture(scope="session")
+# #580: the second copy of the deprecated ``event_loop`` override lived here, and it is
+# what the session-scoped async fixture below actually ran on. pytest-asyncio's
+# replacement is ``loop_scope`` on the fixture itself — declared where the need is rather
+# than by shadowing a library fixture, which is what made the two copies possible.
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def ensure_agents_running_fixture():
     """Ensure agent containers are running and healthy before integration tests"""
     print("🤖 Ensuring agent containers are running...")
@@ -635,7 +629,6 @@ async def clean_database(postgres_container):
     Clean database state before and after each test.
     Ensures proper test isolation by resetting all tables used in integration tests.
     """
-    import asyncpg
 
     # Get connection URL
     postgres_url = postgres_container.get_connection_url()
@@ -643,7 +636,7 @@ async def clean_database(postgres_container):
         postgres_url = postgres_url.replace("postgresql+psycopg2://", "postgresql://")
 
     # Create connection pool for cleanup
-    db_pool = await asyncpg.create_pool(postgres_url, min_size=1, max_size=3)
+    db_pool = await create_pool(postgres_url, min_size=1, max_size=3)
 
     try:
         async with db_pool.acquire() as conn:
@@ -945,7 +938,6 @@ def retry_on_network_error(max_retries: int = 3, delay: float = 1.0, backoff: fl
     """
 
     def decorator(func):
-        import asyncio
         import functools
 
         @functools.wraps(func)

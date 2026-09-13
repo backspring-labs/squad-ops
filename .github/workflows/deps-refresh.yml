@@ -1,0 +1,71 @@
+# #1204: nothing refreshed ci-constraints.txt — the head of the dependency chain since
+# #1203, the file every image installs from — and the documented manual cadence ran
+# essentially never in six months. This workflow is the trigger with an owner: on a
+# schedule and on demand it re-resolves tests/requirements.txt on the CI target
+# (ubuntu x86_64 / Python 3.12 — the box is aarch64 and must not write this file),
+# recompiles the locks against the new constraint, and pushes a branch for review.
+#
+# It pushes a branch rather than opening the PR: a PR created by GITHUB_TOKEN does not
+# trigger the CI workflows that must judge it (lint + regression, integration, the
+# dependency audit, the drift tests). The maintainer opens the PR from the branch
+# (`gh pr create --head deps/refresh-<date>`), which runs everything.
+name: deps refresh
+
+on:
+  schedule:
+    - cron: "17 6 * * 1"  # Mondays 06:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    name: re-resolve ci-constraints.txt and the locks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Re-resolve the CI set on a clean venv
+        # The same shape ci-constraints.txt's header documents: a fresh install of
+        # tests/requirements.txt (no constraint — that is the point), frozen.
+        run: |
+          python -m venv "$RUNNER_TEMP/fresh"
+          "$RUNNER_TEMP/fresh/bin/pip" install --upgrade pip
+          "$RUNNER_TEMP/fresh/bin/pip" install -e . -r tests/requirements.txt
+          {
+            sed -n '1,/^$/p' ci-constraints.txt | grep '^#'
+            echo "# Re-resolved by .github/workflows/deps-refresh.yml on $(date -u +%Y-%m-%d) (#1204)."
+            "$RUNNER_TEMP/fresh/bin/pip" freeze --exclude-editable | grep -v '^squadops' | grep -vi '^pip-audit\|^pip-tools'
+          } > ci-constraints.txt.new
+          mv ci-constraints.txt.new ci-constraints.txt
+
+      - name: Recompile the locks against the new constraint
+        run: |
+          pip install pip-tools
+          ./scripts/maintainer/update_deps.sh
+
+      - name: The drift tests must agree before a branch is pushed
+        run: |
+          pip install -e . -r tests/requirements.txt -c ci-constraints.txt
+          pytest tests/unit/architecture/test_dependency_drift.py -q
+
+      - name: Push the refresh branch
+        run: |
+          if git diff --quiet -- ci-constraints.txt requirements/; then
+            echo "nothing moved"; exit 0
+          fi
+          branch="deps/refresh-$(date -u +%Y%m%d)"
+          git config user.name "deps-refresh"
+          git config user.email "deps-refresh@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add ci-constraints.txt requirements/
+          git commit -m "deps: refresh ci-constraints.txt and the locks ($(date -u +%Y-%m-%d), #1204)" \
+            -m "Re-resolved on the CI target by .github/workflows/deps-refresh.yml. Open the PR with: gh pr create --head $branch"
+          git push --force origin "$branch"
+          echo "pushed $branch — open the PR: gh pr create --head $branch --base main"

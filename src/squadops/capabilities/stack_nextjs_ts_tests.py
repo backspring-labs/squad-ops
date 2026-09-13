@@ -465,7 +465,13 @@ def _shell_source(behavior: _Behavior, *, store_symbols: tuple[str, ...]) -> str
         # was not, so the pre-V7 shakedown produced `ReferenceError: TABLES is not defined`
         # in six of eight shells. The comment that used to sit here said "keep this in step
         # with the vocabulary the appendix teaches", which is a request, not a mechanism —
-        # `test_shell_imports_every_symbol_the_fill_brief_teaches` is the mechanism.
+        # `test_every_store_symbol_the_appendix_teaches_is_imported_by_the_shell`
+        # (tests/unit/capabilities/test_fill_vocabulary_is_in_scope.py) is the
+        # mechanism, and it guards itself: it asserts the extractor still detects
+        # both symbols that have actually shipped defects, so it cannot pass
+        # vacuously by narrowing. Its sibling checks the store exports what the
+        # shell imports — fixing this line by importing more is only correct if
+        # the store provides it, or the whole suite stops compiling.
         f"import {{ {', '.join(store_symbols)} }} from '@/lib/store'",
     ]
     for route_file in route_files:

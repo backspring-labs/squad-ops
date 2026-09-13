@@ -9,6 +9,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from squadops.api.error_handlers import register_domain_error_handlers
 from squadops.api.routes.cycles.projects import router
 from squadops.cycles.models import Project, ProjectNotFoundError
 
@@ -26,6 +27,7 @@ def mock_project_registry():
 def client(mock_project_registry, monkeypatch):
     app = FastAPI()
     app.include_router(router)
+    register_domain_error_handlers(app)  # as the runtime does (#576)
     import squadops.api.runtime.deps as deps_mod
 
     monkeypatch.setattr(deps_mod, "_project_registry", mock_project_registry)

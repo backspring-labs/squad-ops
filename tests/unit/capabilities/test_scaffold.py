@@ -18,6 +18,7 @@ import pytest
 import yaml
 
 from squadops.capabilities import scaffold, stack_fastapi_react
+from squadops.capabilities.baseline_stylesheet import BASELINE_CSS
 from squadops.capabilities.handlers.build_profiles import get_profile
 from squadops.capabilities.scaffold import InterfaceManifest, expand
 
@@ -1383,3 +1384,59 @@ def test_the_scaffold_emission_guard_refuses_a_shell_in_application_source():
     ):
         with pytest.raises(vse.ScaffoldValidationError, match="outside the stack's qa test"):
             vse.emit_verification_scaffold(manifest)
+
+
+# --------------------------------------------------------------------------- #
+# The baseline stylesheet (#1463)
+# --------------------------------------------------------------------------- #
+
+
+def test_the_stylesheet_is_emitted_and_the_frozen_entry_point_imports_it():
+    """Two co-dependent facts, pinned together because either alone is broken.
+
+    The stylesheet only reaches a page through ``main.jsx``'s import, and the import only
+    resolves because the expander emits the file. Emit without the import and every
+    delivered app is unstyled while every test still passes; import without the emit and
+    ``vite build`` fails on a missing module — a whole roll lost to a one-line omission.
+    The #868 lesson (tie co-dependent facts in one pin), and the stack #2 pin's twin.
+    """
+    files = _by_name(expand(_group_run_manifest()))
+
+    assert "frontend/src/index.css" in files
+    assert "import './index.css'\n" in files["frontend/src/main.jsx"], (
+        "the frozen entry point must import the stylesheet — an unimported index.css is "
+        "dead bytes in every delivered app"
+    )
+
+
+def test_the_stylesheet_is_frozen_never_a_fill_slot():
+    """Presentation is scaffold-owned. If index.css ever lands in the fill set it becomes
+    author-editable, which reintroduces exactly the per-roll variance the deterministic
+    scaffold exists to remove — and silently, since an author-written stylesheet still
+    builds.
+    """
+    from squadops.capabilities.scaffold import fill_slot_paths
+
+    assert "frontend/src/index.css" not in fill_slot_paths(_group_run_manifest())
+
+
+def test_both_stacks_emit_the_same_stylesheet_bytes():
+    """The invariant the shared module exists to hold (#1463).
+
+    Stack #2 shipped this sheet first and stack #1 went without one for two releases,
+    because the fix was written per stack. Two copies is how a delivered app's presentation
+    floor comes to differ by stack for a reason nobody chose — so the sheet is one constant
+    and this asserts both expanders still reach it. A future edit to one stack's copy is a
+    failure here rather than a divergence nobody sees until two apps sit side by side.
+
+    It also extends stack #2's element-selector pin to stack #1 for free: identical bytes
+    cannot have class selectors on one stack and not the other.
+    """
+    from tests.unit.capabilities._stack_fixtures import manifest_for_stack
+
+    react = _by_name(expand(manifest_for_stack("fullstack_fastapi_react")))[
+        "frontend/src/index.css"
+    ]
+    nextjs = _by_name(expand(manifest_for_stack("nextjs_ts")))["app/globals.css"]
+
+    assert react == nextjs == BASELINE_CSS

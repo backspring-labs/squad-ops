@@ -443,3 +443,46 @@ These diagnostics provide enough observability to answer "Why did this cycle rou
 6. Build profile selection is driven entirely by cycle request profile configuration — no hardcoded profile logic in handler code.
 7. No framework code references agent instance names ("Bob", "Neo", etc.) — only roles.
 8. Alias/fallback routing decisions are emitted in structured task diagnostics for every `development.build` execution (see section 9).
+
+---
+
+## 11. Post-acceptance amendment — the QA handoff artifact is retired (2026-09-08)
+
+**What changed.** §5.2's `qa_handoff_expectations`, the `qa_handoff` required deliverable
+in every build profile, its section constants, the `sections_present` criterion bound onto
+the builder task, and the `qa_handoff_emitted` diagnostic are **removed**. §10's success
+criterion 2 — *"Every `builder.build` task emits a `qa_handoff` artifact with all required
+sections present"* — is **withdrawn**, not merely unimplemented.
+
+In its place the builder may emit **`assembly_notes.md`**: optional builder-to-qa context
+carrying only assembly facts the stack's deterministic contracts do not already supply.
+It is optional by construction, and — unlike the handoff — it is **read**: the qa test
+author receives it as a presence-keyed prompt appendix naming the artifact it came from.
+
+**The evidence.** §10's criterion 2 assumed a consumer that never arrived: `QABuildValidateHandler`
+was to parse the required sections and validate from them. Nothing in the shipped system
+ever read the document's content. Measured across 22 cycles that ran a builder task
+(2026-09-02 → 09-05), the handoff was produced 20 times and missing twice, and both misses
+were *substitutions*: the builder emitted `.env.example` and `docker-compose.yaml` —
+completing the packaging archetype — and dropped the report. The analyzer confirmed the
+handoff's substance was present in the reply as prose; only the file was never written.
+The document was simultaneously over-verified (213 of 213 builder criteria in the last 40
+stored plans pointed at it) and under-contracted at emission (one line in a required-files
+list, competing with a narrative about packaging).
+
+A required artifact with no consumer is a generator: it produces failures, not information.
+
+**Who ruled it.** #1312, opened on the 1.7.2 line with the rate measured from the artifact
+vault; placed by the owner as the 1.7.4 pack's leading row alongside #1254, and implemented
+in one PR for a stated atomic invariant — there must never be an intermediate main in which
+the requirement is gone but the replacement consumer contract is incomplete.
+
+**What replaced the checks it carried.** The builder's blocking criterion at patch
+verification is now its declared deliverable set (`required_files`, derived from the build
+profile through the same rule the emission seam uses), because `sections_present` had been
+the only blocking typed criterion a builder task owned and removing it would have returned
+every builder repair to `unverifiable / no_typed_criteria` — the #1255 defect that
+criterion was introduced to fix.
+
+`ArtifactType.QA_HANDOFF` remains as a historical constant so rows banked before 1.7.4
+keep the label they were written with.

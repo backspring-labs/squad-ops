@@ -5,6 +5,172 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.7.5] — 2026-09-12
+
+**The three closures — the fifth patch line of 1.7, and the close of the line.** Plan:
+`docs/plans/1-7-5-plan.md` (rev 5, amended §3.9a). Record:
+`docs/plans/1-7-5-verification-set-record.md`.
+
+1.7.5 makes the remaining ports real at start-up and through the LLM call path, and proves the
+recovery path still behaves after the code that runs it was taken apart.
+
+**Start-up truth.** The runtime API is composed from a config value rather than at import
+(#286); every comms and filesystem binding enters through its factory with its selector
+*required*, no schema default and no factory default (#301); and CI imports each composition
+root under the lock its own image installs (#637). The last one grew a second step during the
+line, and the reason is in the record: importing a root is not enough, because roots import
+their factories lazily, so the job now imports what each root *composes at startup*.
+
+**Invocation truth.** Seventeen call sites become one seam: `_llm_call` is the only place the
+framework calls `chat_stream_with_usage`, and every call records what it spent (#929, #1206).
+The deployed tree's call-site count is printed in each roll's identity block, and it reads 1.
+
+**Recovery structural integrity.** The accepted-patch path, the outcome router, the correction
+protocol and the repair half leave `DispatchedFlowExecutor` for named collaborators —
+`PatchAcceptance` and `CorrectionRepair` — and the run's mutable state gets a name and its
+substructures (#1152, via #1482–#1486, #1490, #1491). No behavioural change rides any of it:
+every golden is byte-identical, none regenerated.
+
+**The measurement-correction prelude**, which had to land before anything could be measured:
+one three-state vocabulary for every record field — `observed` / `asked_none` / `unaskable`
+(#1445); a banked failed emission carries its attempt, so a record counts emissions rather than
+artifacts (#1436); the sandbox image is named for what it ships (#1197); a framing run stops
+reporting `blocked_unverified` for checks it cannot subject (#1428); the fill-mode qa
+declaration becomes `LOW`, not `NONE` (#1434); an environment skip does not erase a criterion
+another producer executed and passed (#1406); baseline stylesheets for both skeletons (#906,
+#1463) and the QA build workspace that must admit them (#1476); interface coherence across an
+entity's own endpoints (#820); a qa suite's mock of the frozen API client honouring its declared
+surface (#668); and a failed frontend build that says why (#1468, #1472, #1475).
+
+**Found by the line's own shakeout, and named because it is a closure finding.** Both arms of
+deploy B's first pair died in two seconds on `cycles create` with HTTP 500: the comms factory
+imported `A2AServerAdapter` at module scope, only `agent.lock` ships the `a2a` SDK, and
+`_init_cycle_subsystem`'s broad `except` turned it into one log line behind a passing health
+check. The server is a local import now (#1494), a runtime API that cannot bind its cycle ports
+refuses to start (#1495), and #637's guard was extended to catch the class.
+
+**Ops and tooling.** A weekly Docker reclaim on the backup timer's pattern (#1465); memory
+containment for the Spark with a doctor check swap cannot fool (#1178); the deployment database
+refuses the test role at the server (#1180); the framework's pipeline invariants machine-checked
+(#1492); and the release package's screenshots become two commands and a guard rule, after
+v1.7.0–v1.7.4 each shipped an empty `assets/` (#1500).
+
+**Validated by a pre-registered two-arm verification set** on frozen deploy `8fd30eb8` (HEAD
+pinned at `1e6ac721`), **zero drift under `src/` or `adapters/` between the deploy and the
+tag**, and one image set across all nine rolls. FastAPI+React **4 of 6**, Next.js+TS **3 of 3** —
+**functional 7 of 9**, 159/161 criteria, boot audit PASS 9/9, P0 held 9/9, zero framing
+re-rolls. The line's bar held: **zero contentless emissions across 167**. The shakeout loop
+exited at **round 1** where deploy A took four.
+
+**Stated at the cut, not implied.** The experimental gate was **not met as written**: four of
+the five diagnostics reached their seam, and `contentless-builder` did not — #1372's aimed retry
+recovers the builder before correction, so the readout's second conjunct is unproducible, and it
+read YES on 1.7.4 only because that deploy predated the fix by eight hours. The owner ruled the
+line closes anyway; plan §3.9a records it. Consequently **F1 (#1374) is unexercised on any
+deploy carrying #1372**, and that diagnostic's two-run budget stands at one. The fill hypothesis
+holds with its ceiling named — one of three Next.js rolls spent its entire completion budget.
+Both rejections are one defect, filed as #1501.
+
+## [1.7.4] — 2026-09-09
+
+**The recovery half — the fourth patch line of 1.7.** Plan: `docs/plans/1-7-4-plan.md` (rev 3).
+Record: `docs/plans/1-7-4-verification-set-record.md`.
+
+Ten pack rows on the recovery path, and the request that fed it. The retired `qa_handoff.md`
+leaves the framework *and* the request: #1312/#1254 replace it with optional assembly notes and a
+consumer contract, and #1430 finishes SIP-0098 §6.7 by stopping the group_run PRD naming it in
+seven places — a document the framework had dropped and the request kept demanding, so the framing
+role wrote it into every definition of done. Framework rows are owed by contract rather than by
+task (#1374); the builder retries a contentless emission *with its fact* (#1372); a rewind is not
+a repair (#994); the locus classifier answers by task-type property (#1054); an accepted repair is
+not disputed by the classifier that preceded it (#936/#933); and a capability with two output
+shapes declares one reasoning level per shape (#1285).
+
+Validated by a pre-registered two-set verification run on frozen deploy `dfe9a6f2` (HEAD pinned at
+`be2e9dea`), **zero image drift across all nine rolls**. FastAPI+React **4 of 6** functional;
+Next.js+TS **3 of 3**. **Functional App Yield 7 of 9, zero human interventions.** Every accepted
+roll credited all of its criteria; no roll anywhere carried an unevidenced criterion; both
+rejections named the criterion they lost.
+
+**The line's bar was amended before the set opened, not after.** L1 breached in the shakeouts, and
+the owner's ruling — recorded as the pre-registration's sixth §3a entry — split it: blocking on a
+contentless emission that is *not recovered*, tracked otherwise. The set read **7 contentless of
+160 emissions**, all seven on one Next.js roll that recovered fully through five correction rounds
+to accepted, 16/16, functional. No counted roll was lost to one.
+
+Stated at the cut, not implied: **the diagnostics were not re-run on the pinned deploy** (plan step
+10), so L2, L4, L7, L8 and A1 were proven on earlier deploys and not on the one the numbers come
+from — the experimental gate is amended on the owner's ruling, and the record §4 names exactly what
+is and is not covered. R1 and D1, the two invariants the pack could plausibly have regressed, both
+have live readings on the pinned deploy. #1406 recurred on one roll, demoting nothing, and that
+roll's coverage figure is never quoted as whole.
+
+The instrument was fixed five times while the line ran, each time because a readout could not tell
+*did not happen* from *could not be asked*: three loaded-check probes had never run and recorded
+like probes that answered (#1425); a field counted artifacts and called them emissions (#1431, and
+the first fix for it was falsified within the hour and reverted, #1436); and the driver, which
+imports framework modules to judge P0 and B1, could have judged a roll with code the deploy never
+ran (#1438 — `frozen_deploy_commit` had been typed and read by nothing).
+
+## [1.7.3] — 2026-09-07
+
+**Boundaries — the third patch line of 1.7.** Plan: `docs/plans/1-7-3-plan.md` (rev 4). Record:
+`docs/plans/1-7-3-verification-set-record.md`.
+
+Validated by a pre-registered two-set verification run on frozen deploy `933aed95` (HEAD pinned
+at `dcf69d3e`), **zero code drift between the deploy and the tag** — `933aed95..dcf69d3e` is the
+pinned pre-registration under `docs/`, and the tag adds only the record and the release commit.
+FastAPI+React **5 of 6** functional (roll 1 rejected for the builder's own omission of the
+handoff, #1312's shape, declared before roll 1); Next.js+TS **3 of 3**. **The line's bar
+held: 0 contentless qa first attempts across 163 emissions.** One counted roll was void before
+the set restarted (#1364, §0 of the record). Every diagnostic seam was reached on the pinned
+deploy's predecessor (deploy C = D minus #1364), and the record says which.
+
+### The list — sixteen items, every one CI-verified
+
+**Preconditions (4).** #1316 the regression gate runs all of `tests/unit` with a reasoned
+exclusion list and a coverage guard. #1311/#1330 L8 read as two claims and every banked log line
+the whole fact. #1310 fault scope — the absent-suite fault applies to every emission attempt and
+a diagnostic is read by the seam it reached. #1323 write grants enforced where the executor admits
+producer bytes into a tree it evaluates.
+
+**The structural block (8).** #922 `capability_id` → `task_type`, `dev_capability` →
+`development_profile`, with a retired-spellings guard. #559 `TaskType` — strings at the boundary,
+constants at the core, properties over identity, tables over chains; a task-type literal outside
+the enum fails CI. #377 `RunStatus` is the run's only status vocabulary inward of the Prefect
+adapter. #381 `TaskResult.status` is the enum, normalised at the wire; the enum-shadow guard scans
+`adapters/`. #1241 the dead ACI executor deleted. #154 the boundary guard covers every package with
+declared composition roots; the NoOp observability port is a domain null object; the secrets
+factory leaves the config loader. #218 `docs/architecture/api-route-lanes.md` — three lanes, no
+v2, enforced by a test that enumerates every registered router. #219 the chat routes on `/api/v1`.
+
+**The behavioural block (5).** #305 `network_status` retired — the heartbeat verdict is computed,
+never stored (migration 1150). #225 the comms agent is `joi`. #999 `fill_merge_evidence.json`
+beside `test_report.md`. #1087/#1112 the store hands the qa author root tables only, on both
+stacks; projections by field containment.
+
+**Added under the line's delegation (3, plan rev 4 §9).** #1351 the router restore re-homes the
+route paths it strips a prefix from — half a statement was a file FastAPI refuses. #1359
+`assertion_kinds_match` reads a `typeof` assertion by its literal's value — a correct Next.js
+suite had been refused every round. #1364 the accepted patch of a contentless builder attempt
+still gets its `required_files` row — the roll-up had read a booting app as `blocked_unverified`.
+
+### What the line found
+
+Nothing attributable to the sixteen items. Seven defects in the harness and its instrument, each
+fixed on the line: #1347 the emission-retry marker rode every later dispatch; #1350 a repair's
+grants were the failed task's, not the repairing step's; #1352 the Python own-frame fault was a
+`NameError` the emission seam's own check refused — L7 on a pytest suite had never been exercised;
+the driver's L4 readout was wired to the #1129 exclusion, not the refund (#1362); migration 1150
+altered a table only `init.sql` creates, and main's integration job was red for six merges before
+it was read (#1357, with a guard that a migration may only alter a table a migration creates).
+
+### Instrument
+
+The driver reads a diagnostic by the seam it reached (`seam_reached`), carries `refunded_rounds`,
+`placeholder_strips`, `stored_under_placeholder`, `emission_tokens_by_handler` and
+`fill_merge_evidence`; a driver-only fix re-renders a kept record from its stored identity.
+
 ## [1.7.2] — 2026-09-06
 
 **Loop Honesty — the second patch line of 1.7.** Plan: `docs/plans/1-7-2-plan.md`. Record:

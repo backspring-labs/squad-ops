@@ -1575,3 +1575,45 @@ class TestValidateCheckApplicability:
         plan = self._plan_with_qa_artifacts('\n      - "__tests__/helpers.py"')
         assert len(plan.validate_check_applicability(self._CONFIG)) == 1
         assert len(plan.validate_check_applicability(self._NEXTJS_CONFIG)) == 1
+
+
+class TestTheAuthoredOrderHonoursDependsOn:
+    """#578: `depends_on` was validated and never used to order execution — tasks run in
+    authored list order. The plan is refused when that order contradicts its own
+    declarations; a self-dependency is a cycle."""
+
+    @staticmethod
+    def _plan(tasks: str) -> str:
+        return (
+            "version: 1\nproject_id: test\ncycle_id: cyc_test\nprd_hash: abc\ntasks:\n"
+            + tasks
+            + "summary:\n  total_tasks: 2\n"
+        )
+
+    @staticmethod
+    def _task(index: int, deps: list[int]) -> str:
+        return (
+            f"  - task_index: {index}\n    task_type: development.develop\n    role: dev\n"
+            f"    focus: t{index}\n    description: test\n    depends_on: {deps}\n"
+        )
+
+    def test_a_dependency_listed_after_its_dependent_is_refused(self):
+        with pytest.raises(ValueError, match="listed after it"):
+            ImplementationPlan.from_yaml(self._plan(self._task(0, [1]) + self._task(1, [])))
+
+    def test_the_same_graph_in_a_consistent_order_is_accepted(self):
+        plan = ImplementationPlan.from_yaml(self._plan(self._task(1, []) + self._task(0, [1])))
+        assert [t.task_index for t in plan.tasks] == [1, 0]
+
+    def test_a_self_dependency_is_a_cycle(self):
+        with pytest.raises(ValueError, match="Dependency cycle"):
+            ImplementationPlan.from_yaml(self._plan(self._task(0, [0]) + self._task(1, [])))
+
+    def test_a_long_chain_does_not_hit_the_recursion_limit(self):
+        """The old recursive DFS would raise RecursionError on a chain this deep."""
+        n = 3000
+        tasks = "".join(self._task(i, [i - 1] if i else []) for i in range(n))
+        plan = ImplementationPlan.from_yaml(
+            self._plan(tasks).replace("total_tasks: 2", f"total_tasks: {n}")
+        )
+        assert len(plan.tasks) == n

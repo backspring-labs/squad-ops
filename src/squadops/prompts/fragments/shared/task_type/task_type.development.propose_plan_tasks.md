@@ -67,8 +67,8 @@ informational only. The user prompt lists the vocabulary with examples
 
 - `field_present` for model fields
 - `import_present` for module/symbol wiring
-- `regex_match` for DOCUMENT artifacts only (`.md`/`.txt`/`.rst`, e.g.
-  handoff section headers). Never author a regex against a source file —
+- `regex_match` for DOCUMENT artifacts only (`.md`/`.txt`/`.rst`, e.g. a
+  README's configuration section). Never author a regex against a source file —
   it prescribes stylistic choices (quote style, identifier names) the
   implementation is free to make differently, and plan validation
   REJECTS it. Verify source files with the AST/behavioral checks below.

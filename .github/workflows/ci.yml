@@ -139,6 +139,128 @@ jobs:
           print(f"{len(profiles)} request profiles, prompt fragment manifest present")
           EOF
 
+  lock-install-import:
+    # #637 (1.7.5 plan §3.3 step 3; the 1.7.0 plan §6.2 criterion 3): each composition root
+    # imports under the EXACT dependency set its image installs, with an empty environment.
+    # Two things this catches that nothing else here does:
+    #   * a root that does work at import — load_config() at module scope was the #286 defect,
+    #     and no job could have caught it because no job imported the root;
+    #   * a lock missing a dependency the metadata happens to declare — the #636 class, a
+    #     container dead at registration. `--no-deps -e .` is what makes that visible: the
+    #     LOCK decides every dependency and the editable install only registers the package,
+    #     so metadata cannot pull in what the lock forgot. (The images run `pip install -e .`
+    #     with resolution after the lock; against a complete lock the two are identical.)
+    # `install-smoke` above is the other half — metadata alone must yield a working package;
+    # this is the locks alone yielding a starting root. Ungated, like it: the DOA class is
+    # worth two minutes on every push. The dev-venv guard (tests/unit/architecture/
+    # test_composition_roots.py) makes the same import under whatever the developer has
+    # installed; this makes it under what ships — #1478 went red on exactly that gap.
+    name: lock-install import
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - lock: api
+            root: squadops.api.runtime.main
+            # What this root's STARTUP imports, as opposed to what its module does. The
+            # roots import their adapter factories lazily, inside the init functions, so
+            # `import <root>` never reaches them — which is how #301's module-scope
+            # `a2a` import shipped: main imported fine under api.lock and
+            # `_init_cycle_subsystem` then swallowed the ModuleNotFoundError into a log
+            # line, leaving a healthy container that answered 500 on every cycle create
+            # (deploy B, 2026-09-11). Named per lock because the two images differ.
+            composes: adapters.comms.factory adapters.cycles.factory adapters.llm.factory
+          - lock: agent
+            root: squadops.agents.entrypoint
+            composes: adapters.comms.factory adapters.llm.factory
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install requirements/${{ matrix.lock }}.lock into a fresh venv, the way the image does
+        run: |
+          python -m venv "$RUNNER_TEMP/lock-${{ matrix.lock }}"
+          "$RUNNER_TEMP/lock-${{ matrix.lock }}/bin/pip" install --upgrade pip
+          "$RUNNER_TEMP/lock-${{ matrix.lock }}/bin/pip" install -r "requirements/${{ matrix.lock }}.lock"
+          "$RUNNER_TEMP/lock-${{ matrix.lock }}/bin/pip" install --no-deps -e .
+
+      - name: ${{ matrix.root }} imports with an empty environment
+        # env -i: no SQUADOPS__*, no .env, nothing from the runner. A root that needs any of
+        # it to import is doing composition at import time (composition-roots.md R3).
+        run: |
+          env -i "$RUNNER_TEMP/lock-${{ matrix.lock }}/bin/python" -c "import ${{ matrix.root }}"
+
+      - name: what ${{ matrix.root }} composes at startup also imports under this lock
+        # The guard's reach, one level in. A root that imports its factories lazily passes
+        # the step above while carrying a module the lock cannot satisfy — the failure
+        # then lands at startup, inside a broad `except`, as a log line under a container
+        # reporting healthy. Same venv, same empty environment; one module at a time so
+        # the failure names which.
+        run: |
+          for module in ${{ matrix.composes }}; do
+            echo "-- $module"
+            env -i "$RUNNER_TEMP/lock-${{ matrix.lock }}/bin/python" -c "import $module"
+          done
+
+  console-fastapi-next:
+    # #198 (1.7.5 plan §3.6): the console suite on the FIRST fastapi past the cap that was
+    # applied to it. The cap existed because 26 tests failed at >= 0.136 and the reading
+    # was that the console's router graph had become cyclic. It had not — two harness
+    # facts produced every failure, and the app imports and answers clean on 0.141. The
+    # cap is gone, and this is what stops it being needed again: `lint + regression`
+    # already runs these tests on the pinned fastapi, so the pair is "green on what we
+    # run, and green on what we would drift to".
+    #
+    # Unpinned on purpose. A pin here would test a version nobody is about to install and
+    # would go stale silently; floating means the job tells us the day a new release
+    # breaks the console, which is the only useful moment to hear it.
+    name: console on the next fastapi
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the console's test surface on the newest fastapi
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install "fastapi>=0.136" pytest pytest-asyncio httpx itsdangerous python-multipart pyyaml
+
+      - name: The console suite is green on the newest fastapi
+        run: |
+          python -c "import fastapi, starlette; print('fastapi', fastapi.__version__, 'starlette', starlette.__version__)"
+          pytest tests/unit/console -q
+
+  dependency-audit:
+    # #1205: nothing scanned the pins for advisories, and since #1203 every image installs
+    # the same set — a CVE in any pinned package lands in the runtime API and all six
+    # agents at once. The audit runs against requirements/*.lock (what the images install),
+    # never the dev venv or ci-constraints.txt (the #1041 lesson), through the same script
+    # a developer runs. It FAILS on any advisory not accepted in
+    # requirements/audit-ignore.txt, where each accepted id carries its reason and the
+    # issue that retires it — a decision on the record, not a report nobody reads.
+    name: dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pip-audit
+        run: pip install "pip-audit>=2.7.0"
+      - name: Audit the lock files the images install
+        run: ./scripts/dev/audit_dependencies.sh
+
   integration:
     # #242: nothing ran tests/integration/ on PRs, so four independent breakages sat in
     # test_pulse_check_e2e.py unnoticed (#211) and sixteen tests failed on every run of
@@ -152,23 +274,32 @@ jobs:
     #   * The run asserts a floor on tests actually executed, so a collection error or a
     #     conftest change that quietly empties the suite fails instead of passing.
     #
-    # POSTGRES_URL names squadops_test, never the deployment database (#1099).
+    # POSTGRES_URL names squadops_test, never the deployment database (#1099), and the
+    # suite connects as the squadops_test role, which the deployment database refuses
+    # at the server (#1180) — provisioned below by the same script the box runs.
     name: integration
     needs: changes
-    # Safe to skip as a whole: `integration` is NOT a required status check (required
-    # are `closing reference present`, `lint + regression`, `scaffold skeleton gate`),
-    # so a skipped run cannot block a merge. The required lanes stay unconditional —
-    # `lint + regression` in particular, which is what catches doc-adjacent breakage
-    # like the generated typed-check menu drifting from the registry.
+    # REQUIRED since 2026-09-07 (1.7.4 plan §3.1): `integration` joins `closing reference
+    # present`, `lint + regression` and `scaffold skeleton gate` as a required status
+    # check on main, after this job sat red for six merges on the 1.7.3 line with nothing
+    # to block them (1.7.3 record §4.6). A red run blocks the merge — proved by the
+    # controlled negative check, PR #1376, closed unmerged. On docs-only changes the job
+    # is skipped by the `if:` below; GitHub reports a job skipped by its conditional as
+    # satisfied for required checks, so a docs-only PR still merges. The required lanes
+    # stay unconditional — `lint + regression` in particular, which is what catches
+    # doc-adjacent breakage like the generated typed-check menu drifting from the registry.
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     services:
       postgres:
         image: postgres:15
+        # The same shape as docker-compose.yml: POSTGRES_DB is the deployment database,
+        # owned by the superuser squadops. The test role and its database are provisioned
+        # by the "Provision the integration-test role" step, not by this image (#1180).
         env:
           POSTGRES_USER: squadops
           POSTGRES_PASSWORD: squadops-dev
-          POSTGRES_DB: squadops_test
+          POSTGRES_DB: squadops
         ports: ["5432:5432"]
         options: >-
           --health-cmd "pg_isready -U squadops"
@@ -200,7 +331,7 @@ jobs:
       # and the job would have gone green having executed nothing — which the floor check
       # below caught on the first run, doing exactly its job.
       SKIP_AGENT_CHECK: "1"
-      POSTGRES_URL: postgresql://squadops:squadops-dev@localhost:5432/squadops_test
+      POSTGRES_URL: postgresql://squadops_test:squadops-test@localhost:5432/squadops_test
       RABBITMQ_USER: squadops
       RABBITMQ_PASSWORD: squadops-dev
     steps:
@@ -220,6 +351,17 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .
           pip install -r tests/requirements.txt -c ci-constraints.txt
+
+      - name: Provision the integration-test role (#1180)
+        # On a box the compose init script provisions squadops_test at initdb; a service
+        # container has no init mount, so the deploy-path helper runs that same script
+        # against it here — infra/00-create-databases.sh, the SQL the deploy applies. The
+        # suite then runs as the test role, and test_deployment_database_unreachable.py
+        # asserts the deployment database refuses it: the grant is proven on every push.
+        env:
+          CONTAINER: ${{ job.services.postgres.id }}
+          POSTGRES_TEST_PASSWORD: squadops-test
+        run: ./scripts/dev/ops/ensure_test_database.sh
 
       - name: Integration suite (real services, serviceless tests included)
         run: |

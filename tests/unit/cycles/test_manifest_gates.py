@@ -23,6 +23,7 @@ from squadops.cycles.manifest_gates import (
     PROOF_CONTRACT_DERIVES,
     PROOF_ERROR_SHAPE,
     PROOF_EXPANDS,
+    PROOF_INTERFACE_COHERENT,
     PROOF_PARSES,
     PROOF_STATUS_DECLARED,
     PROOF_TESTID_COVERAGE,
@@ -532,3 +533,124 @@ decisions:
         measured against would be the wrong rule — the same guard `_status_findings`
         states in its own docstring."""
         assert self._findings() == []
+
+
+class TestInterfaceCoherence:
+    """#820 — SIP-0103 §3.3's third bullet, deferred to 1.7 by name. A closed-surface proof
+    over the manifest's own declarations: one entity, one parameter name, across every
+    endpoint that addresses a member of it.
+
+    The motivating instance is PR #565, "rename group_run path param `{id}` → `{run_id}`":
+    the declaration said one thing on one endpoint and another elsewhere, the implementation
+    wrote the model's prior, and the contract enforced the declaration.
+    """
+
+    def _with_paths(self, *paths: str) -> str:
+        data = _reference_dict()
+        template = dict(data["api"]["endpoints"][0])
+        endpoints = []
+        for i, path in enumerate(paths):
+            ep = dict(template)
+            ep["path"] = path
+            ep["method"] = "GET"
+            ep["summary"] = f"endpoint {i}"
+            ep.pop("request", None)
+            ep.pop("success_status", None)
+            endpoints.append(ep)
+        data["api"]["endpoints"] = endpoints
+        return _as_yaml(data)
+
+    def test_one_collection_named_two_ways_is_reported(self):
+        """The #565 shape: `/runs/{id}` beside `/runs/{run_id}`. Bug caught: the class the
+        SIP declared normative and nothing has ever checked."""
+        findings = assess_winnability(self._with_paths("/runs/{id}", "/runs/{run_id}"))
+
+        coherence = [f for f in findings if f.proof == PROOF_INTERFACE_COHERENT]
+        assert len(coherence) == 1
+        detail = coherence[0].detail
+        assert "`{id}`" in detail and "`{run_id}`" in detail  # names both spellings
+        assert "runs" in detail  # names the collection
+        assert "/runs/{id}" in detail  # names where to look
+
+    def test_the_finding_is_advisory_and_rejects_nothing(self):
+        """1.7.5 plan §8 decision 4: a new proof lands reporting-only and is promoted on the
+        evidence its own findings produce. Bug caught: a proof that quietly moves the
+        rejection surface in the release that introduces it — which would change what a
+        counted roll's verdict means mid-line."""
+        from squadops.cycles.authoring_failure import assess_authoring_outcome
+
+        outcome = assess_authoring_outcome(self._with_paths("/runs/{id}", "/runs/{run_id}"))
+
+        advisory = [f for f in outcome.findings if f.proof == PROOF_INTERFACE_COHERENT]
+        assert advisory and all(f.advisory for f in advisory)
+        assert outcome.rejected is False, "an advisory finding must not reject the manifest"
+        assert outcome.advisory_findings == tuple(advisory)
+        # ...and it stays out of the authoring-defect baseline, which counts blocking work.
+        assert PROOF_INTERFACE_COHERENT not in str(outcome.class_counts())
+        assert outcome.class_counts() == {}
+
+    def test_a_consistent_interface_reports_nothing(self):
+        """The over-rejection control at the unit level."""
+        findings = assess_winnability(
+            self._with_paths("/runs/{run_id}", "/runs/{run_id}/participants")
+        )
+
+        assert PROOF_INTERFACE_COHERENT not in _proofs(findings)
+
+    def test_different_collections_may_use_the_same_parameter_name(self):
+        """`/runs/{id}` and `/games/{id}` are coherent — each collection names its own
+        member. Bug caught: keying on the parameter name instead of the collection, which
+        would flag every manifest that uses `{id}` twice."""
+        findings = assess_winnability(self._with_paths("/runs/{id}", "/games/{id}"))
+
+        assert PROOF_INTERFACE_COHERENT not in _proofs(findings)
+
+    def test_a_nested_parameter_is_read_under_its_own_collection(self):
+        """`/runs/{run_id}/participants/{participant_id}` declares two collections, each
+        coherent. Bug caught: flattening the path and comparing every parameter to every
+        other, which would call correct nesting a defect."""
+        findings = assess_winnability(
+            self._with_paths(
+                "/runs/{run_id}/participants/{participant_id}",
+                "/runs/{run_id}",
+            )
+        )
+
+        assert PROOF_INTERFACE_COHERENT not in _proofs(findings)
+
+    @pytest.mark.parametrize(
+        "path",
+        ["/{id}", "/runs/{run_id}/{sub_id}"],
+        ids=["parameter-first", "parameter-after-parameter"],
+    )
+    def test_a_parameter_with_no_collection_before_it_is_skipped(self, path):
+        """A parameter that follows no literal segment identifies a member of nothing
+        nameable, so it is skipped rather than guessed at. Bug caught: inventing a
+        collection from an adjacent parameter and reporting a defect about it."""
+        findings = assess_winnability(self._with_paths(path, "/runs/{run_id}"))
+
+        assert PROOF_INTERFACE_COHERENT not in _proofs(findings)
+
+
+def test_every_real_manifest_is_interface_coherent():
+    """The over-rejection control, against real emissions rather than fixtures (the standing
+    rule). Every manifest the squad actually authored and every manifest a shipped roll was
+    measured against must produce zero findings — a proof that flags them is wrong about the
+    rule. Covers the reference manifest, both authored fixtures, and every
+    `interface_manifest.yaml` in the artifact vault.
+    """
+    root = Path(__file__).resolve().parents[3]
+    manifests = [
+        _REFERENCE,
+        *sorted((root / "tests" / "fixtures" / "authored_v4").glob("interface_manifest*.y*ml")),
+    ]
+    manifests += sorted((root / "data" / "artifacts").glob("*/*/*/art_*/interface_manifest.yaml"))
+    assert len(manifests) >= 3, "the control needs real manifests to be a control"
+
+    flagged = []
+    for path in manifests:
+        findings = assess_winnability(path.read_text(encoding="utf-8"))
+        if PROOF_INTERFACE_COHERENT in _proofs(findings):
+            flagged.append(str(path.relative_to(root)))
+
+    assert not flagged, f"the proof flags manifests that shipped: {flagged}"

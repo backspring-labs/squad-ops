@@ -11,6 +11,7 @@ Covers:
 
 from __future__ import annotations
 
+from functools import partial
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -21,6 +22,7 @@ from squadops.capabilities.handlers.planning_tasks import (
     DataResearchContextHandler,
     DevelopmentDesignPlanHandler,
     GovernanceIncorporateFeedbackHandler,
+    GovernanceMergePlanHandler,
     GovernanceReviewPlanHandler,
     QADefineTestStrategyHandler,
     QAValidateRefinementHandler,
@@ -33,6 +35,21 @@ from squadops.capabilities.handlers.planning_tasks import (
 from squadops.llm.exceptions import LLMError
 
 pytestmark = [pytest.mark.domain_capabilities]
+
+
+def _borrowed(ctx):
+    """The two halves of the LLM sequence ``produce_plan`` borrows from its caller (#929).
+
+    The service is stateless by design — every dependency is passed in — and after the
+    extraction that includes the call itself and the generation record, so the loop
+    cannot reach for the port or rebuild the record on its own. Bound from the handler
+    that drives it in production.
+    """
+    handler = GovernanceMergePlanHandler()
+    return {
+        "call": partial(handler._llm_call, ctx, inputs={}),
+        "record": partial(handler._record_generation, ctx),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -533,6 +550,7 @@ class TestPRDCoverageDisciplineReachesManifestPrompt:
             role="lead",
             handler_name="test_harness",
             chat_kwargs={},
+            **_borrowed(ctx),
         )
 
         calls = ctx.ports.llm.chat_stream_with_usage.call_args_list
@@ -942,6 +960,7 @@ class TestProduceManifestIdentifierRewrite:
             role="lead",
             handler_name="test_harness",
             chat_kwargs={},
+            **_borrowed(ctx),
         )
 
     async def test_rewrites_fabricated_identifiers(self):
@@ -1015,6 +1034,7 @@ class TestProduceManifestRetry:
             role="lead",
             handler_name="test_harness",
             chat_kwargs={},
+            **_borrowed(ctx),
         )
 
     async def test_valid_manifest_on_first_attempt_no_retry(self):
@@ -1162,11 +1182,11 @@ class TestProduceManifestRetry:
         # Summary template includes total_builder_tasks
         assert "total_builder_tasks: P" in user_prompt
         assert "total_tasks: N+M+P" in user_prompt
-        # "Put QA handoff last" is removed since builder owns handoff now
         assert "Put QA handoff last" not in user_prompt
 
     async def test_builder_guidance_absent_when_builder_role_missing(self):
-        """Squads without a builder role get the legacy QA-handoff-last guideline."""
+        """A squad without a builder gets no builder row, no builder total, and — since
+        #1312 retired the handoff — no ordering guideline about it either."""
         ctx = _make_context(_VALID_MANIFEST_YAML)
         await self._call_produce(ctx, profile_roles=["dev", "qa", "lead"])
 
@@ -1174,7 +1194,7 @@ class TestProduceManifestRetry:
         assert "task_type: builder.assemble" not in user_prompt
         assert "total_builder_tasks" not in user_prompt
         assert "total_tasks: N+M" in user_prompt
-        assert "Put QA handoff last" in user_prompt
+        assert "QA handoff" not in user_prompt
 
 
 # ---------------------------------------------------------------------------

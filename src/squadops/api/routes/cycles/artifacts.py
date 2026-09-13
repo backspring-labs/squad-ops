@@ -10,14 +10,12 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from squadops.api.cycle_schemas import BaselinePromoteRequest
 from squadops.api.middleware.auth import require_scopes
-from squadops.api.routes.cycles.errors import handle_cycle_error
 from squadops.api.routes.cycles.mapping import artifact_to_response
 from squadops.auth.models import Scope
 from squadops.cycles.models import (
     ArtifactRef,
     BaselineNotAllowedError,
     BuildStrategy,
-    CycleError,
     PromotionStatus,
     ValidationError,
 )
@@ -45,69 +43,63 @@ async def ingest_artifact(
     """Ingest an artifact via multipart/form-data (T16)."""
     from squadops.api.runtime.deps import get_artifact_vault
 
-    try:
-        content = await file.read()
-        if len(content) > _MAX_UPLOAD_BYTES:
-            raise HTTPException(
-                status_code=413,
-                detail={
-                    "error": {
-                        "code": "PAYLOAD_TOO_LARGE",
-                        "message": f"File exceeds {_MAX_UPLOAD_BYTES} byte limit",
-                        "details": None,
-                    }
-                },
-            )
-
-        artifact_id = f"art_{uuid.uuid4().hex[:12]}"
-        content_hash = hashlib.sha256(content).hexdigest()
-
-        ref = ArtifactRef(
-            artifact_id=artifact_id,
-            project_id=project_id,
-            artifact_type=artifact_type,
-            filename=filename,
-            content_hash=content_hash,
-            size_bytes=len(content),
-            media_type=media_type,
-            created_at=datetime.now(UTC),
-        )
-
-        vault = get_artifact_vault()
-        stored = await vault.store(ref, content)
-
-        # SIP-0077: artifact.stored
-        from squadops.api.runtime.deps import get_cycle_event_bus
-        from squadops.events.types import EventType
-
-        get_cycle_event_bus().emit(
-            EventType.ARTIFACT_STORED,
-            entity_type="artifact",
-            entity_id=stored.artifact_id,
-            context={"project_id": project_id},
-            payload={
-                "artifact_type": stored.artifact_type,
-                "filename": stored.filename,
-                "size_bytes": stored.size_bytes,
-                "content_hash": stored.content_hash,
+    content = await file.read()
+    if len(content) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail={
+                "error": {
+                    "code": "PAYLOAD_TOO_LARGE",
+                    "message": f"File exceeds {_MAX_UPLOAD_BYTES} byte limit",
+                    "details": None,
+                }
             },
         )
 
-        return artifact_to_response(stored)
-    except CycleError as e:
-        raise handle_cycle_error(e) from e
+    artifact_id = f"art_{uuid.uuid4().hex[:12]}"
+    content_hash = hashlib.sha256(content).hexdigest()
+
+    ref = ArtifactRef(
+        artifact_id=artifact_id,
+        project_id=project_id,
+        artifact_type=artifact_type,
+        filename=filename,
+        content_hash=content_hash,
+        size_bytes=len(content),
+        media_type=media_type,
+        created_at=datetime.now(UTC),
+    )
+
+    vault = get_artifact_vault()
+    stored = await vault.store(ref, content)
+
+    # SIP-0077: artifact.stored
+    from squadops.api.runtime.deps import get_cycle_event_bus
+    from squadops.events.types import EventType
+
+    get_cycle_event_bus().emit(
+        EventType.ARTIFACT_STORED,
+        entity_type="artifact",
+        entity_id=stored.artifact_id,
+        context={"project_id": project_id},
+        payload={
+            "artifact_type": stored.artifact_type,
+            "filename": stored.filename,
+            "size_bytes": stored.size_bytes,
+            "content_hash": stored.content_hash,
+        },
+    )
+
+    return artifact_to_response(stored)
 
 
 @router.get("/artifacts/{artifact_id}", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
 async def get_artifact_metadata(artifact_id: str):
     from squadops.api.runtime.deps import get_artifact_vault
 
-    try:
-        vault = get_artifact_vault()
-        ref = await vault.get_metadata(artifact_id)
-        return artifact_to_response(ref)
-    except CycleError as e:
-        raise handle_cycle_error(e) from e
+    vault = get_artifact_vault()
+    ref = await vault.get_metadata(artifact_id)
+    return artifact_to_response(ref)
 
 
 @router.get(
@@ -116,18 +108,15 @@ async def get_artifact_metadata(artifact_id: str):
 async def download_artifact(artifact_id: str):
     from squadops.api.runtime.deps import get_artifact_vault
 
-    try:
-        vault = get_artifact_vault()
-        ref, content = await vault.retrieve(artifact_id)
-        from fastapi.responses import Response
+    vault = get_artifact_vault()
+    ref, content = await vault.retrieve(artifact_id)
+    from fastapi.responses import Response
 
-        return Response(
-            content=content,
-            media_type=ref.media_type,
-            headers={"Content-Disposition": f'attachment; filename="{ref.filename}"'},
-        )
-    except CycleError as e:
-        raise handle_cycle_error(e) from e
+    return Response(
+        content=content,
+        media_type=ref.media_type,
+        headers={"Content-Disposition": f'attachment; filename="{ref.filename}"'},
+    )
 
 
 @router.post(
@@ -137,29 +126,26 @@ async def promote_artifact(artifact_id: str):
     """Promote an artifact to cycle-scoped canonical status (SIP-0076 §9.5)."""
     from squadops.api.runtime.deps import get_artifact_vault
 
-    try:
-        vault = get_artifact_vault()
-        promoted = await vault.promote_artifact(artifact_id)
+    vault = get_artifact_vault()
+    promoted = await vault.promote_artifact(artifact_id)
 
-        # SIP-0077: artifact.promoted
-        from squadops.api.runtime.deps import get_cycle_event_bus
-        from squadops.events.types import EventType
+    # SIP-0077: artifact.promoted
+    from squadops.api.runtime.deps import get_cycle_event_bus
+    from squadops.events.types import EventType
 
-        get_cycle_event_bus().emit(
-            EventType.ARTIFACT_PROMOTED,
-            entity_type="artifact",
-            entity_id=promoted.artifact_id,
-            context={"project_id": promoted.project_id} if promoted.project_id else {},
-            payload={
-                "artifact_type": promoted.artifact_type,
-                "filename": promoted.filename,
-                "promotion_status": promoted.promotion_status,
-            },
-        )
+    get_cycle_event_bus().emit(
+        EventType.ARTIFACT_PROMOTED,
+        entity_type="artifact",
+        entity_id=promoted.artifact_id,
+        context={"project_id": promoted.project_id} if promoted.project_id else {},
+        payload={
+            "artifact_type": promoted.artifact_type,
+            "filename": promoted.filename,
+            "promotion_status": promoted.promotion_status,
+        },
+    )
 
-        return artifact_to_response(promoted)
-    except CycleError as e:
-        raise handle_cycle_error(e) from e
+    return artifact_to_response(promoted)
 
 
 @router.get(
@@ -172,21 +158,18 @@ async def list_project_artifacts(
 ):
     from squadops.api.runtime.deps import get_artifact_vault
 
-    try:
-        if promotion_status is not None and promotion_status not in _VALID_PROMOTION_STATUSES:
-            raise ValidationError(
-                f"Invalid promotion_status filter: {promotion_status!r}. "
-                f"Valid values: {sorted(_VALID_PROMOTION_STATUSES)}"
-            )
-        vault = get_artifact_vault()
-        refs = await vault.list_artifacts(
-            project_id=project_id,
-            artifact_type=artifact_type,
-            promotion_status=promotion_status,
+    if promotion_status is not None and promotion_status not in _VALID_PROMOTION_STATUSES:
+        raise ValidationError(
+            f"Invalid promotion_status filter: {promotion_status!r}. "
+            f"Valid values: {sorted(_VALID_PROMOTION_STATUSES)}"
         )
-        return [artifact_to_response(r) for r in refs]
-    except CycleError as e:
-        raise handle_cycle_error(e) from e
+    vault = get_artifact_vault()
+    refs = await vault.list_artifacts(
+        project_id=project_id,
+        artifact_type=artifact_type,
+        promotion_status=promotion_status,
+    )
+    return [artifact_to_response(r) for r in refs]
 
 
 @router.get(
@@ -200,21 +183,18 @@ async def list_cycle_artifacts(
 ):
     from squadops.api.runtime.deps import get_artifact_vault
 
-    try:
-        if promotion_status is not None and promotion_status not in _VALID_PROMOTION_STATUSES:
-            raise ValidationError(
-                f"Invalid promotion_status filter: {promotion_status!r}. "
-                f"Valid values: {sorted(_VALID_PROMOTION_STATUSES)}"
-            )
-        vault = get_artifact_vault()
-        refs = await vault.list_artifacts(
-            project_id=project_id,
-            cycle_id=cycle_id,
-            promotion_status=promotion_status,
+    if promotion_status is not None and promotion_status not in _VALID_PROMOTION_STATUSES:
+        raise ValidationError(
+            f"Invalid promotion_status filter: {promotion_status!r}. "
+            f"Valid values: {sorted(_VALID_PROMOTION_STATUSES)}"
         )
-        return [artifact_to_response(r) for r in refs]
-    except CycleError as e:
-        raise handle_cycle_error(e) from e
+    vault = get_artifact_vault()
+    refs = await vault.list_artifacts(
+        project_id=project_id,
+        cycle_id=cycle_id,
+        promotion_status=promotion_status,
+    )
+    return [artifact_to_response(r) for r in refs]
 
 
 @router.get(
@@ -229,22 +209,19 @@ async def list_run_artifacts(
 ):
     from squadops.api.runtime.deps import get_artifact_vault
 
-    try:
-        if promotion_status is not None and promotion_status not in _VALID_PROMOTION_STATUSES:
-            raise ValidationError(
-                f"Invalid promotion_status filter: {promotion_status!r}. "
-                f"Valid values: {sorted(_VALID_PROMOTION_STATUSES)}"
-            )
-        vault = get_artifact_vault()
-        refs = await vault.list_artifacts(
-            project_id=project_id,
-            cycle_id=cycle_id,
-            run_id=run_id,
-            promotion_status=promotion_status,
+    if promotion_status is not None and promotion_status not in _VALID_PROMOTION_STATUSES:
+        raise ValidationError(
+            f"Invalid promotion_status filter: {promotion_status!r}. "
+            f"Valid values: {sorted(_VALID_PROMOTION_STATUSES)}"
         )
-        return [artifact_to_response(r) for r in refs]
-    except CycleError as e:
-        raise handle_cycle_error(e) from e
+    vault = get_artifact_vault()
+    refs = await vault.list_artifacts(
+        project_id=project_id,
+        cycle_id=cycle_id,
+        run_id=run_id,
+        promotion_status=promotion_status,
+    )
+    return [artifact_to_response(r) for r in refs]
 
 
 @router.post(
@@ -255,32 +232,29 @@ async def promote_baseline(project_id: str, artifact_type: str, body: BaselinePr
     """Promote an artifact as baseline (T6: enforcement here, not in vault)."""
     from squadops.api.runtime.deps import get_artifact_vault, get_cycle_registry
 
-    try:
-        vault = get_artifact_vault()
+    vault = get_artifact_vault()
 
-        # T6: Business policy enforcement at route level
-        # Check if any cycle for this project uses fresh build strategy
-        # (simplified: just check the artifact's cycle if available)
-        ref = await vault.get_metadata(body.artifact_id)
-        if ref.cycle_id:
-            registry = get_cycle_registry()
-            cycle = await registry.get_cycle(ref.cycle_id)
-            if cycle.build_strategy == BuildStrategy.FRESH.value:
-                raise BaselineNotAllowedError(
-                    "Cannot promote baseline for a fresh build strategy cycle"
-                )
-
-        # D6/D16: Only promoted artifacts can be baselines (read authoritative vault state)
-        if ref.promotion_status != PromotionStatus.PROMOTED:
-            raise ValidationError(
-                "Only promoted artifacts can be set as baselines. "
-                f"Artifact {body.artifact_id} has promotion_status={ref.promotion_status!r}"
+    # T6: Business policy enforcement at route level
+    # Check if any cycle for this project uses fresh build strategy
+    # (simplified: just check the artifact's cycle if available)
+    ref = await vault.get_metadata(body.artifact_id)
+    if ref.cycle_id:
+        registry = get_cycle_registry()
+        cycle = await registry.get_cycle(ref.cycle_id)
+        if cycle.build_strategy == BuildStrategy.FRESH.value:
+            raise BaselineNotAllowedError(
+                "Cannot promote baseline for a fresh build strategy cycle"
             )
 
-        await vault.set_baseline(project_id, artifact_type, body.artifact_id)
-        return {"status": "ok", "project_id": project_id, "artifact_type": artifact_type}
-    except CycleError as e:
-        raise handle_cycle_error(e) from e
+    # D6/D16: Only promoted artifacts can be baselines (read authoritative vault state)
+    if ref.promotion_status != PromotionStatus.PROMOTED:
+        raise ValidationError(
+            "Only promoted artifacts can be set as baselines. "
+            f"Artifact {body.artifact_id} has promotion_status={ref.promotion_status!r}"
+        )
+
+    await vault.set_baseline(project_id, artifact_type, body.artifact_id)
+    return {"status": "ok", "project_id": project_id, "artifact_type": artifact_type}
 
 
 @router.get(
@@ -290,16 +264,13 @@ async def promote_baseline(project_id: str, artifact_type: str, body: BaselinePr
 async def get_baseline(project_id: str, artifact_type: str):
     from squadops.api.runtime.deps import get_artifact_vault
 
-    try:
-        vault = get_artifact_vault()
-        ref = await vault.get_baseline(project_id, artifact_type)
-        if ref is None:
-            from squadops.cycles.models import ArtifactNotFoundError
+    vault = get_artifact_vault()
+    ref = await vault.get_baseline(project_id, artifact_type)
+    if ref is None:
+        from squadops.cycles.models import ArtifactNotFoundError
 
-            raise ArtifactNotFoundError(f"No baseline for {artifact_type} in project {project_id}")
-        return artifact_to_response(ref)
-    except CycleError as e:
-        raise handle_cycle_error(e) from e
+        raise ArtifactNotFoundError(f"No baseline for {artifact_type} in project {project_id}")
+    return artifact_to_response(ref)
 
 
 @router.get(
@@ -308,9 +279,6 @@ async def get_baseline(project_id: str, artifact_type: str):
 async def list_baselines(project_id: str):
     from squadops.api.runtime.deps import get_artifact_vault
 
-    try:
-        vault = get_artifact_vault()
-        baselines = await vault.list_baselines(project_id)
-        return {k: artifact_to_response(v) for k, v in baselines.items()}
-    except CycleError as e:
-        raise handle_cycle_error(e) from e
+    vault = get_artifact_vault()
+    baselines = await vault.list_baselines(project_id)
+    return {k: artifact_to_response(v) for k, v in baselines.items()}

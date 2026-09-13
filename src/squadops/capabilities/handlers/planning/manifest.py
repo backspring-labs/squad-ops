@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import logging
 import time
+from functools import partial
 from typing import TYPE_CHECKING, Any
 
 import yaml
@@ -113,7 +114,7 @@ class DevelopmentAuthorManifestHandler(_PlanningTaskHandler):
             return None, feedback.content
 
         accepted, last_yaml, last_error = await retry_yaml_call(
-            llm=context.ports.llm,
+            call=partial(self._llm_call, context, inputs=inputs, started=start_time),
             chat_kwargs=self._build_chat_kwargs(inputs),
             system_prompt=assembled.content,
             user_prompt=rendered.content,
@@ -318,7 +319,10 @@ def _findings_lines(outcome: AuthoringOutcome) -> str:
     manifest that had three (the same reason ``assess_winnability`` accumulates rather than
     short-circuits).
     """
-    return "\n".join(f"- **{f.proof}** — {f.detail}" for f in outcome.findings)
+    return "\n".join(
+        f"- **{f.proof}**{' (advisory — not a rejection)' if f.advisory else ''} — {f.detail}"
+        for f in outcome.findings
+    )
 
 
 def _summary(outcome: AuthoringOutcome) -> str:

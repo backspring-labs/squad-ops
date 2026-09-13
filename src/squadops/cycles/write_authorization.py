@@ -100,7 +100,7 @@ class WriteGrant:
         """#649: assembly re-packages the accepted fill files — that is its whole
         writable surface. It may not author source (fay-7's uninstructed
         ``start.py``) nor write the QA namespace; undeclared non-source paths
-        (``qa_handoff.md``, reports) pass through as deliverables."""
+        (``assembly_notes.md``, reports) pass through as deliverables."""
         return cls(producer=producer, stage="builder", writable=ownership.fill_slots)
 
 

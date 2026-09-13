@@ -1,6 +1,6 @@
 ---
 template_id: request.builder_assemble.build_assemble
-version: "3"
+version: "4"
 required_variables:
   - prd
   - source_files
@@ -39,15 +39,9 @@ RUN pip install -r requirements.txt
 CMD ["python", "-m", "myapp"]
 ```
 
-```markdown:qa_handoff.md
-## How to Run
-docker build -t myapp . && docker run -p 8000:8000 myapp
-
-## How to Test
-pytest
-
-## Expected Behavior
-Service responds with HTTP 200 on GET /health.
+```markdown:assembly_notes.md
+The image runs as UID 1000 and the data directory must be writable by it; a
+read-only mount makes every write endpoint return 500.
 ```
 ````
 
@@ -61,12 +55,14 @@ Output that does NOT use this exact `<language>:<filepath>` header will be rejec
 
 ## Which files to produce
 
-The exact set of required and optional files for this build, plus the
-`qa_handoff.md` required sections, is given in the system prompt for the
-build profile. Produce exactly that set — no more, no less.
+The exact set of required and optional files for this build is given in the
+system prompt for the build profile. Produce every required file. Produce an
+optional one only when it earns its place.
+
+`assembly_notes.md` is the optional file to be most careful with. It carries
+only what the test author cannot already have — the system prompt lists what
+the stack's contracts already supply, and restating any of it is worse than
+writing nothing. Omitting the file is a complete answer.
 
 Where a Contract Expectations block appears above, every one of its checks is
-evaluated against your output exactly as written. The `qa_handoff.md` sections
-are the profile's own set, checked by section name in any order — no pattern
-over the handoff's headings is applied to this task, so write the headings in
-the convention above and put the effort into the bodies.
+evaluated against your output exactly as written.

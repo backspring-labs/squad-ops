@@ -91,6 +91,43 @@ REASONING_BY_TASK_TYPE: dict[str, str] = {
     TaskType.GOVERNANCE_CLOSEOUT_DECISION: ReasoningLevel.HIGH,
 }
 
+#: A capability whose OUTPUT SHAPE differs by emission mode declares one level per shape.
+#: #1285: `qa.test` is two output shapes under one id. In **fill mode** the shells, the
+#: contract and the envelope are all in the prompt and the answer is a fixed format —
+#: transcription, and #924 measured 5,727 completion tokens with the channel on against
+#: 413 with it off for the same eight fill fences. In **authoring mode** the suite is
+#: written from a PRD and a workspace, choosing what to assert, against which surface, in
+#: what order — an argument, and with the channel off the model returned a sentence of
+#: intent and stopped (fourteen attempts across the 1.7.1 counted rolls, five of seven
+#: rolls shaped by it; live: 1 usable emission of 6 with `think: false`, 6 of 6 with it on).
+#:
+#: #1268 moved the capability to MEDIUM for the shape that was failing, which was right and
+#: is why the authoring level below is unchanged. It also made fill mode pay for a channel
+#: it does not use — so #1285 declared fill mode NONE.
+#:
+#: #1434 (1.7.5): NONE was a category error on this module's own definition. ``NONE`` is
+#: the level for a transcription — an output the prompt already contains — and a fill is
+#: synthesis under a scaffold: the model reads the shells and writes bodies. The 1.7.4
+#: line measured the cost of the misdeclaration on the fill shape: three of five
+#: fill-mode qa rolls produced a working suite in one emission at ~3,943 tokens, and two
+#: produced a sentence of intent and nothing else (2 of 24 and 7 of 35 contentless
+#: emissions), each recovered through correction rounds (1.7.4 record §3, Q1). ``LOW`` is
+#: the minimum honest declaration for a shaped output; on Ollama's boolean wire it maps to
+#: ``think: true`` — #1268's six-in-six — and on a provider with an effort dial it asks
+#: for the cheapest reasoning rather than none. #924's token saving is given up on this
+#: provider and kept as a declaration another provider can honour. Ruled by the owner
+#: 2026-09-09 (1.7.5 plan §8, decision 2); the line's one live hypothesis reads whether a
+#: contentless fill-mode first attempt recurs under the pinned configuration.
+#:
+#: This is deliberately NOT a second table keyed on a mitigation (the #925 shape this
+#: module's docstring warns about). It is the same declaration the table above already
+#: makes — *the level is about the output* — applied to a capability that has two outputs.
+#: One row per shape, read whole, beside the single-shape rows.
+REASONING_BY_OUTPUT_SHAPE: dict[tuple[str, str], str] = {
+    (TaskType.QA_TEST, "fill"): ReasoningLevel.LOW,
+    (TaskType.QA_TEST_REPAIR, "fill"): ReasoningLevel.LOW,
+}
+
 #: The ``config_overrides`` key an agent profile uses to override the declaration.
 REASONING_OVERRIDE_KEY = "reasoning"
 
@@ -99,8 +136,18 @@ class UndeclaredReasoningLevel(LookupError):
     """A capability generates without declaring how much reasoning it wants."""
 
 
-def default_reasoning_level(task_type: str) -> str:
-    """The level ``task_type`` declares. Raises for a capability that declares none."""
+def default_reasoning_level(task_type: str, *, output_shape: str | None = None) -> str:
+    """The level ``task_type`` declares for ``output_shape``. Raises when it declares none.
+
+    ``output_shape`` is the capability's own name for which of its outputs this generation
+    produces — ``"fill"`` for `qa.test` under a verification scaffold. Absent or unknown,
+    the capability's single declaration applies, so every caller that has one output shape
+    stays exactly as it was (#1285).
+    """
+    if output_shape is not None:
+        shaped = REASONING_BY_OUTPUT_SHAPE.get((task_type, output_shape))
+        if shaped is not None:
+            return shaped
     try:
         return REASONING_BY_TASK_TYPE[task_type]
     except KeyError:
@@ -115,6 +162,7 @@ def resolve_reasoning_level(
     *,
     agent_overrides: Mapping[str, Any],
     model_name: str | None,
+    output_shape: str | None = None,
 ) -> str | None:
     """The level to send for one generation, or ``None`` to send nothing.
 
@@ -124,7 +172,9 @@ def resolve_reasoning_level(
     override's value is validated where profiles are (``validate_agent_entries``),
     not re-checked here.
     """
-    level = agent_overrides.get(REASONING_OVERRIDE_KEY, default_reasoning_level(task_type))
+    level = agent_overrides.get(
+        REASONING_OVERRIDE_KEY, default_reasoning_level(task_type, output_shape=output_shape)
+    )
     spec = get_model_spec(model_name) if model_name else None
     if spec is None or spec.reasoning_control == ReasoningControl.NONE:
         return None

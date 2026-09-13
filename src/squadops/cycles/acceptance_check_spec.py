@@ -457,6 +457,15 @@ CHECK_ADDITIVE_CONTAINMENT = "additive_containment"
 # promised. Plan-time injected per suite file with the inventory as self-contained
 # params, the way the contract-assertion and kind gates are (#629, #1153).
 CHECK_DOM_ANCHOR_QUERIES = "dom_anchor_queries"
+# #668, the data-fetch half: a suite's mock of the frozen API client honours the client's
+# declared surface — its imports and mock factory name only what the client exports, an
+# assertion on the call matches its signature, and a stub beneath the client sees the
+# prefix it adds and carries the envelope it unwraps. Plan-time bound per suite file
+# with the stack's declaration (``ScaffoldStack.client_surface``) as self-contained
+# params. REPORTING-ONLY this line (``blocking_default="warning"``, the #598 shape):
+# findings are banked on the evaluation artifact; promotion is a separate call on the
+# counts the rolls produce (1.7.5 plan §3.2 row 7).
+CHECK_CLIENT_MOCK_SURFACE = "client_mock_surface"
 
 # #822: the per-view bundler check. Named here because `VerificationContract.view_slots`
 # filters on it to identify a stack's view files for repair targeting — the same
@@ -473,15 +482,6 @@ CHECK_FRONTEND_COMPILES = "frontend_compiles"
 # unbuilt below), are the owner's separate calls (1.7.1 plan §6).
 CHECK_CONTAINER_PACKAGING = "container_packaging"
 
-# #1255: the handoff document carries the build profile's required sections. Bound at plan
-# time onto the builder task that owns the document (``task_plan._handoff_section_criteria``)
-# with the profile's sections as self-contained params, the way the contract-assertion, kind
-# and anchor gates are — never authored. The rule is ``capabilities.handoff_sections``, the
-# same one the builder handler's validation applies, so the emission seam, the repair's own
-# evaluation and runtime-api's verifier all read one fact. Before this, a builder task had no
-# typed criterion over its handoff at all once #1252 stripped the plan's regexes, and the
-# repair of a missing section was ``unverifiable / no_typed_criteria`` — discarded unheard.
-CHECK_SECTIONS_PRESENT = "sections_present"
 #: The recipe an emission is recognised by: a file named ``Dockerfile`` at any depth, or
 #: ``Dockerfile.<variant>``. Container vocabulary, not a stack's — both stacks package with
 #: one, and the builder emits it under this name on every profile.
@@ -584,6 +584,11 @@ DECLARED_COVERAGE_GAPS: dict[str, dict[str, str]] = {
         "A pytest suite exercises HTTP endpoints through TestClient and renders no DOM; "
         "the anchor contract is a frontend-suite surface.",
     ),
+    CHECK_CLIENT_MOCK_SURFACE: dict.fromkeys(
+        (".py",),
+        "A pytest suite reaches the backend through TestClient and imports no frontend "
+        "client; the client surface is a frontend-suite concern.",
+    ),
     CHECK_ADDITIVE_CONTAINMENT: dict.fromkeys(
         (".py",),
         "A pytest suite runs the application in-process through TestClient, so a "
@@ -618,6 +623,24 @@ def framework_file_scoped_checks() -> dict[str, frozenset[str]]:
         and spec.required_params == frozenset({"file"})
         and spec.applicable_extensions
     }
+
+
+def derived_check_names() -> frozenset[str]:
+    """Every check the framework injects or a profile derives — none of them authorable.
+
+    #1254: the planner authored `harness_boundary` on 25 qa tasks and `regex_match` over
+    the builder's handoff on 213 of 213 builder criteria across the last 40 stored plans,
+    each restating a fact the framework already held exactly. The rendered vocabulary
+    withholds these (`render_typed_acceptance_vocabulary`), the planning brief now names
+    them as already covered, and dispatch strips any that arrive anyway — three surfaces,
+    one source, which is this.
+
+    Wider than :func:`framework_injected_checks`, deliberately: that answers "what does the
+    emission seam inject for this scope", and so is filtered to single-`file` checks of one
+    scope. This answers "what may an author not write", which is every flagged check
+    regardless of scope or parameter shape.
+    """
+    return frozenset(name for name, spec in CHECK_SPECS.items() if spec.framework_injected)
 
 
 def framework_injected_checks(scope: str) -> tuple[str, ...]:
@@ -799,6 +822,13 @@ CHECK_SPECS: dict[str, CheckSpec] = {
         param_types={"file": str, "entry_modules": list, "client_ctor": str},
         requires_stack_context=True,
         path_params=frozenset({"file"}),
+        # #1254: the planner authored this on 25 of the last 40 stored plans' qa tasks,
+        # and dispatch injects it on every bound qa suite anyway — both 1.7.1 React
+        # shakeouts carried the row TWICE on `backend/tests/test_runs.py`. The boundary is
+        # the scaffold's fact (which entry modules exist is `ScaffoldStack`'s declaration),
+        # so it is derived, never authored; flagging it here withholds it from the rendered
+        # vocabulary and makes the strip below self-enforcing.
+        framework_injected=True,
         example={
             "file": "backend/tests/test_runs.py",
             "entry_modules": ["backend.main", "app.main"],
@@ -1089,31 +1119,52 @@ CHECK_SPECS: dict[str, CheckSpec] = {
         replayable=True,
         blocking_default="error",
     ),
-    CHECK_SECTIONS_PRESENT: CheckSpec(
-        name=CHECK_SECTIONS_PRESENT,
-        applicable_extensions=frozenset({".md"}),
-        required_params=frozenset({"file", "sections"}),
-        param_types={"file": str, "sections": list},
+    CHECK_CLIENT_MOCK_SURFACE: CheckSpec(
+        name=CHECK_CLIENT_MOCK_SURFACE,
+        applicable_extensions=frozenset({".jsx", ".tsx", ".js", ".ts"}),
+        required_params=frozenset({"file", "client"}),
+        param_types={"file": str, "client": dict},
         path_params=frozenset({"file"}),
         framework_injected=True,
         example={
-            "file": "qa_handoff.md",
-            "sections": ["## How to Run", "## How to Test", "## Expected Behavior"],
+            "file": "frontend/src/tests/RunDetailView.test.jsx",
+            "client": {
+                "path": "frontend/src/api.js",
+                "module_specifier": "(?:\\.\\./|\\./)+api(?:\\.js)?",
+                "exports": [
+                    {"name": "ApiError", "kind": "class", "params": ["code", "message", "status"]},
+                    {"name": "apiFetch", "kind": "function", "params": ["path", "options = {}"]},
+                ],
+                "path_prefix": "/api",
+                "error_envelope_key": "error",
+                "default_export": None,
+            },
         },
         notes=(
-            "Bound by the framework onto the builder task that owns the handoff document, "
-            "with the build profile's required sections as params; never authored. A section "
-            "is present when any of its phrasings appears anywhere in the document, in any "
-            "order (`capabilities.handoff_sections` — the builder handler's own rule, so the "
-            "emission seam and the repair verifier cannot disagree). Each failure names the "
-            "sections missing. Runs anywhere: pure text, no toolchain."
+            "Bound by the planner onto every bound qa.test frontend suite file when the "
+            "stack declares a frozen API client (`ScaffoldStack.client_surface`); never "
+            "authored. REPORTING-ONLY: six rules over the suite's own bytes against the "
+            "declaration — an import or a mock factory naming what the client does not "
+            "export (a `default` the client lacks, an invented call), a factory that "
+            "provides none of the client's calls, an assertion on the call with a shape it "
+            "never takes (a method name first, the client's own prefix on the path, too "
+            "many positional arguments), a `fetch` stub beneath the client asserted "
+            "without the prefix the client adds, and a non-2xx stub body without the "
+            "envelope key the client unwraps (#668: fay-14's dev repair mocked a `default` "
+            "export, its qa repair stubbed `{error_code, message}` under a client reading "
+            "`{error: {code, message}}`). Findings are banked with line numbers; the "
+            "warning severity keeps them out of the verdict, the correction signature and "
+            "the repair loop. A stack declaring no client binds nothing; a row without the "
+            "declaration skips."
         ),
-        failure_ownership=OWNERSHIP_PRODUCT,
+        failure_ownership=OWNERSHIP_SUITE,
         qa_available=True,
-        signature_participation=True,
-        outcome_contribution=True,
+        # Reporting-only: it never fails a task, so a chain's identity must not read it.
+        signature_participation=False,
+        # Advisory rows are not ledger inputs (verification_normalize); banked elsewhere.
+        outcome_contribution=False,
         replayable=True,
-        blocking_default="error",
+        blocking_default="warning",
     ),
     CHECK_ADDITIVE_CONTAINMENT: CheckSpec(
         name=CHECK_ADDITIVE_CONTAINMENT,
@@ -1396,6 +1447,29 @@ def render_typed_acceptance_vocabulary() -> str:
             out.append(f"    {key}: {_format_example_value(value)}")
         out.append("    severity: error")
         out.append("  ```")
+        out.append("")
+    # #1254: the loop above WITHHOLDS the derived checks (#689) and, until now, said
+    # nothing about them — so an author who had seen `harness_boundary` in a stored plan
+    # had no way to learn it was not theirs to write. It was authored on 25 of the last 40
+    # plans' qa tasks while dispatch injected it on every one, and both 1.7.1 React
+    # shakeouts carried the row twice on the same file. Named here, in the one place the
+    # vocabulary is rendered, so all three consumers (both proposers and the sole author)
+    # get the omission as a statement rather than a silence.
+    derived = sorted(derived_check_names())
+    if derived:
+        out.append("### Already checked for you — do not author these")
+        out.append("")
+        out.append(
+            "The framework binds "
+            + ", ".join(f"`{name}`" for name in derived)
+            + " itself, on every artifact they apply to, from declarations you never "
+            "see: the scaffold's own entry modules, the bound contract's assertions, the "
+            "stack's anchor and containment rules, the build profile's deliverables. That "
+            "is why they are absent above. Authoring one adds a second row over the same "
+            "file whose parameters are a guess at a fact the framework holds exactly — it "
+            "is dropped at dispatch with the rule named, and the evidence would otherwise "
+            "double-count."
+        )
         out.append("")
     return "\n".join(out).rstrip() + "\n"
 

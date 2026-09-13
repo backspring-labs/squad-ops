@@ -24,7 +24,6 @@ from squadops.llm.models import ChatMessage
 if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
 
-from squadops.capabilities.handlers.emission_log import log_emission_shape
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +86,12 @@ class _PlanningTaskHandler(_CycleTaskHandler):
     Subclasses set ``_handler_name``, ``_task_type``, ``_role``,
     and ``_artifact_name``.
     """
+
+    #: #929: the identity the deleted inline block spelled out — ``{role}-planning`` /
+    #: ``{role}-planning-system`` / ``planning-{task_type}``. Pinned rather than left at
+    #: the base's ``"build"``, because moving these traces would be a data change
+    #: disguised as a refactor (the same trap #938 set for governance).
+    _prompt_layer_kind = "planning"
 
     _request_template_id = "request.planning_task_base"
 
@@ -248,8 +253,19 @@ class _PlanningTaskHandler(_CycleTaskHandler):
 
         chat_kwargs = self._build_chat_kwargs(inputs)
 
+        # #929: the call and the sequence that must follow it. This module carried the
+        # second inline copy of the record block — a third prompt-layer identity beside
+        # the generic path's and ``_record_generation``'s. It collapses because
+        # ``_prompt_layer_kind = "planning"`` reproduces its ids exactly.
         try:
-            response = await context.ports.llm.chat_stream_with_usage(messages, **chat_kwargs)
+            response, content = await self._llm_call(
+                context,
+                messages,
+                chat_kwargs,
+                inputs=inputs,
+                started=start_time,
+                rendered=rendered,
+            )
         except LLMError as exc:
             logger.warning(
                 "LLM call failed for %s: %s",
@@ -269,55 +285,6 @@ class _PlanningTaskHandler(_CycleTaskHandler):
                 _evidence=evidence,
                 error=str(exc),
             )
-
-        content = response.content
-        log_emission_shape(
-            self._handler_name,
-            content,
-            response.completion_tokens,
-            response.reasoning_tokens,
-            response.reasoning_text,
-        )
-        llm_duration_ms = (time.perf_counter() - start_time) * 1000
-
-        # Record LLM generation for LangFuse tracing (SIP-0061 Option B)
-        llm_obs = getattr(context.ports, "llm_observability", None)
-        if llm_obs and context.correlation_context:
-            from squadops.telemetry.models import (
-                PromptLayer,
-                PromptLayerMetadata,
-                build_generation_record,
-            )
-
-            resolved_model = chat_kwargs.get("model", context.ports.llm.default_model)
-            gen_record = build_generation_record(
-                model=resolved_model,
-                prompt_text=user_prompt,
-                response_text=content,
-                latency_ms=llm_duration_ms,
-                usage=response,
-                prompt_name=rendered.template_id if rendered else None,
-                prompt_version=(
-                    int(rendered.template_version)
-                    if rendered and rendered.template_version
-                    else None
-                ),
-                reasoning=chat_kwargs.get("reasoning"),
-            )
-            layers = PromptLayerMetadata(
-                prompt_layer_set_id=f"{self._role}-planning",
-                layers=(
-                    PromptLayer(
-                        layer_type="system",
-                        layer_id=f"{self._role}-planning-system",
-                    ),
-                    PromptLayer(
-                        layer_type="user",
-                        layer_id=f"planning-{self._task_type}",
-                    ),
-                ),
-            )
-            llm_obs.record_generation(context.correlation_context, gen_record, layers)
 
         doc_summary = _content_summary(content) or "(empty document)"
 

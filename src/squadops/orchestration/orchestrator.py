@@ -9,10 +9,10 @@ Part of SIP-0.8.8 Phase 6.
 from __future__ import annotations
 
 import logging
-import uuid
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from squadops.core.lineage import new_id, new_span_id, new_trace_id
 from squadops.orchestration.handler_executor import HandlerExecutor
 from squadops.orchestration.handler_registry import HandlerRegistry
 from squadops.tasks.models import TaskEnvelope, TaskResult, TaskResultStatus
@@ -351,20 +351,21 @@ class AgentOrchestrator:
         Returns:
             TaskEnvelope ready for submission
         """
-        task_id = f"task-{uuid.uuid4().hex[:12]}"
-        cycle = cycle_id or f"cycle-{uuid.uuid4().hex[:8]}"
+        task_id = new_id("task")
+        cycle = cycle_id or new_id("cycle")
 
         return TaskEnvelope(
             task_id=task_id,
             agent_id=agent_id or "orchestrator",
             cycle_id=cycle,
-            pulse_id=f"pulse-{uuid.uuid4().hex[:8]}",
+            pulse_id=new_id("pulse"),
             project_id="default",
             task_type=task_type,
             inputs=inputs,
             correlation_id=f"corr-{cycle}",
             causation_id=f"cause-{task_id}",
-            trace_id=f"trace-{task_id}",
-            span_id=f"span-{task_id}",
+            # #575: a real trace context, not a task-derived string
+            trace_id=new_trace_id(),
+            span_id=new_span_id(),
             metadata=metadata or {},
         )

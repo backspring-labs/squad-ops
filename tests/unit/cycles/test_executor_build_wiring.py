@@ -9,6 +9,7 @@ Part of Phase 2.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -1221,3 +1222,158 @@ class TestPlanningContextThreading:
         )
 
         assert "artifact_contents" not in enriched.inputs["prior_outputs"]
+
+
+class TestThePatchAcceptanceCollaboratorIsBuiltWhereItIsCalled:
+    """#1152 step 2: the accepted-patch path left the executor for a collaborator.
+
+    A wiring test rather than a construction assertion (CLAUDE.md "a changed seam needs
+    a wiring test"): these enter at `_try_accept_patch`, which is where the outcome
+    router calls it on a live cycle, and assert what reaches the collaborator. Asserting
+    only that `__init__` assigns an attribute would stay green if the delegation were
+    dropped — the whole 511-line path would simply never run, and every existing
+    executor test would still pass because they all mock the verifier.
+    """
+
+    def _executor(self, reply_router, **kw):
+        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+
+        return DispatchedFlowExecutor(
+            cycle_registry=AsyncMock(),
+            artifact_vault=AsyncMock(),
+            queue=reply_router.bind(AsyncMock()),
+            squad_profile=AsyncMock(),
+            reply_router=reply_router,
+            **kw,
+        )
+
+    async def test_the_override_is_what_the_outcome_router_reaches(self, reply_router):
+        """Bug caught: the executor builds a default and ignores the injected one.
+
+        The override is how a test — and, later, a different acceptance policy — swaps
+        the path. A constructor that assigned the default unconditionally would leave
+        every override silently inert, which is the shape #1157's require-don't-default
+        ruling exists for one seam over.
+        """
+        from adapters.cycles.patch_acceptance import PatchAcceptance
+
+        seen: list[tuple] = []
+
+        class _Recording(PatchAcceptance):
+            def __init__(self):
+                pass
+
+            async def accept(self, envelope, result, repair_artifacts, holder, **kwargs):
+                seen.append((envelope, repair_artifacts, kwargs))
+                return "accept_patch"
+
+        override = _Recording()
+        executor = self._executor(reply_router, patch_acceptance=override)
+        assert executor._patch_acceptance is override
+
+        action = await executor._try_accept_patch(
+            "envelope-sentinel",
+            "result-sentinel",
+            [{"name": "a.py"}],
+            {},
+            run_id="run_1",
+            correction_attempts=2,
+        )
+
+        assert action == "accept_patch"
+        assert len(seen) == 1
+        envelope, artifacts, kwargs = seen[0]
+        assert envelope == "envelope-sentinel"
+        assert artifacts == [{"name": "a.py"}]
+        # Every keyword the router passes reaches the collaborator: the run-lived records
+        # arrive at call time, never on the instance, so one collaborator serves every run.
+        assert kwargs["run_id"] == "run_1"
+        assert kwargs["correction_attempts"] == 2
+
+    async def test_the_default_borrows_the_executors_own_enforcement_and_retest(self, reply_router):
+        """Bug caught: the collaborator grows its own copy of an executor helper.
+
+        `_emit_scaffold_integrity_evidence` is *already* duplicated on CorrectionRunner;
+        a third copy here would be the same defect a third time. The default composition
+        must reach the executor's methods and the correction runner's retest, not
+        reimplement them — so these assert identity of effect, by calling through.
+        """
+        executor = self._executor(reply_router)
+        acceptance = executor._patch_acceptance
+
+        executor._enforce_frozen_ownership = lambda *a, **k: ("enforced", ["dropped"])
+        executor._emit_scaffold_integrity_evidence = lambda *a, **k: calls.append("evidence")
+        executor._enforce_compliance_budget = lambda *a, **k: calls.append("budget")
+        executor._correction_runner.reexecute_repaired_suite = AsyncMock(return_value="retested")
+        calls: list[str] = []
+
+        assert acceptance._enforce_frozen_ownership("x", None, None) == ("enforced", ["dropped"])
+        acceptance._emit_integrity_evidence(None, None)
+        acceptance._enforce_compliance_budget([], None, None, {})
+        assert await acceptance._reexecute_repaired_suite("run_1") == "retested"
+        assert calls == ["evidence", "budget"]
+
+
+class TestTheCorrectionRepairCollaboratorIsBuiltWhereItIsCalled:
+    """#1152 step 5: the repair half of the correction protocol left the runner.
+
+    Composed at the executor's seam beside `CorrectionRunner` and handed in, so there is
+    one construction path and one override — not a collaborator that builds itself inside
+    the method that needs it.
+    """
+
+    def _executor(self, reply_router, **kw):
+        from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
+
+        return DispatchedFlowExecutor(
+            cycle_registry=AsyncMock(),
+            artifact_vault=AsyncMock(),
+            queue=reply_router.bind(AsyncMock()),
+            squad_profile=AsyncMock(),
+            reply_router=reply_router,
+            **kw,
+        )
+
+    def test_the_override_reaches_the_runner_that_drives_it(self, reply_router):
+        """Bug caught: the executor builds a default and the runner builds a second one.
+
+        Two `CorrectionRepair` instances would both "work" — the protocol would dispatch
+        repairs through whichever the runner held — while an injected override silently
+        did nothing, which is the shape that makes a swapped policy untestable.
+        """
+        from adapters.cycles.correction_repair import CorrectionRepair
+
+        override = CorrectionRepair(dispatch_step=AsyncMock())
+        executor = self._executor(reply_router, correction_repair=override)
+
+        assert executor._correction_repair is override
+        assert executor._correction_runner._correction_repair is override
+
+    async def test_the_dispatch_seam_is_looked_up_at_call_time(self, reply_router):
+        """Bug caught: the collaborator captures `_dispatch_protocol_step` as a bound
+        method at construction, so anything that replaces it afterwards is bypassed.
+
+        That seam owns task-run creation and the SIP-0087 task events, and it is what the
+        correction-context golden patches to capture every envelope crossing it. A
+        captured reference keeps calling the original — the repair still dispatches, the
+        golden still diffs, and it diffs the *real* envelope against the stub's. Failing
+        loudly here is the point: the next collaborator that borrows a method must borrow
+        it late.
+        """
+        executor = self._executor(reply_router)
+        runner = executor._correction_runner
+        seen: list = []
+
+        async def _patched(envelope, *args, **kwargs):
+            seen.append(envelope)
+            return SimpleNamespace(outputs={"artifacts": []})
+
+        runner._dispatch_protocol_step = _patched
+
+        result = await executor._correction_repair._dispatch_step("envelope-sentinel")
+
+        assert seen == ["envelope-sentinel"], (
+            "the repair reached the original dispatch, not the replacement — the "
+            "collaborator captured a bound method instead of looking it up"
+        )
+        assert result.outputs == {"artifacts": []}

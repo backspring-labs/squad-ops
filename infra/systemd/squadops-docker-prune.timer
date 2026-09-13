@@ -1,0 +1,15 @@
+[Unit]
+Description=Weekly SquadOps Docker disk reclaim
+
+[Timer]
+# Sunday 04:30 local — after the 04:00 backup rather than beside it, so a reclaim never
+# competes with the dump it would be worst to slow down. Weekly, not nightly: the garbage
+# accrues per DEPLOY (~10 dangling images each), not per day, and the cache cap bounds a
+# week of growth to a few GB.
+OnCalendar=Sun *-*-* 04:30:00
+# The Spark has hard-halted five times; a missed window must still run on next boot.
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

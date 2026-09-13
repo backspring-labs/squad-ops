@@ -102,5 +102,35 @@ ollama_models:
   - name: "qwen3.6:27b"
     required: true
 
+# #1178: memory-pressure containment. This box has none — systemd-oomd inactive and not
+# installed, no earlyoom, no MemoryMax on the serving unit — and the kernel's OOM killer
+# does not fire during thrash, because swap is technically still available. So a memory
+# runaway does not produce one dead process and a live box; it produces a box that pages
+# in and out indefinitely and answers nothing. On 2026-08-29 that was 95 minutes
+# unreachable with ~800 MB free throughout, ended by a power cycle.
+#
+# `earlyoom` rather than systemd-oomd: it acts on AVAILABLE memory before thrash begins,
+# which is this failure mode, where systemd-oomd keys on PSI and can act too late on a
+# unified-memory box whose GPU allocation it cannot see.
+#
+# `free_swap_percent: 100` is the setting the incident forced, and the reason a default
+# install would not have helped. earlyoom kills when available memory AND free swap are
+# both under threshold; that livelock ran with 23% of swap still free from the cliff
+# (17:50) to the power cycle (~19:25), so any swap-gated threshold would never have
+# fired. At 100 swap cannot veto the kill.
+#
+# `free_memory_percent: 10` is upstream's default, kept rather than invented: 10% of
+# 121 GiB is ~12 GiB of headroom, and the incident's cliff was at 0.65% free, so it fires
+# far in advance of thrash. Tune it here — one declaration the bootstrap and the doctor
+# both read.
+memory_containment:
+  daemon: earlyoom
+  package: earlyoom
+  free_memory_percent: 10
+  free_swap_percent: 100
+  # Prefer reclaiming pages to swapping them. Mitigation, not containment: it lengthens
+  # the runway, it does not bound anything. The box shipped at the 60 default.
+  swappiness: 10
+
 deployment_profile: local
 squad_profile: full

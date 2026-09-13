@@ -343,6 +343,12 @@ DEVELOPMENT_PROFILES: dict[str, DevelopmentProfile] = {
             "index.html",
             "tsconfig.json",
             "tsconfig.node.json",
+            # #1476: the frozen baseline stylesheet, imported by the frozen entry point
+            # (frontend/src/main.jsx). It is a build INPUT excluded by source_filter — the
+            # same class as index.html — not source under test, which is why it is a
+            # basename here and `.css` is NOT added to source_filter. 1.7.5's first three
+            # deploys failed frontend_build on every half for its absence.
+            "index.css",
         ),
         max_completion_tokens=12000,
         test_timeout_seconds=180,
@@ -443,6 +449,9 @@ DEVELOPMENT_PROFILES: dict[str, DevelopmentProfile] = {
             "tsconfig.json",
             "next.config.mjs",
             "vitest.config.ts",
+            # #1476: the frozen baseline stylesheet imported first by app/layout.tsx. A build
+            # input, not source under test — see the fullstack profile's note.
+            "globals.css",
         ),
         max_completion_tokens=12000,
         test_timeout_seconds=180,

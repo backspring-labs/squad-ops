@@ -12,7 +12,6 @@ from squadops.capabilities.handlers.base import (
     HandlerEvidence,
     HandlerResult,
 )
-from squadops.capabilities.handoff_sections import missing_sections
 from squadops.llm.exceptions import LLMError
 from squadops.llm.models import ChatMessage
 from squadops.tasks.task_types import TaskType
@@ -20,12 +19,13 @@ from squadops.tasks.task_types import TaskType
 if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
 
+from squadops.capabilities.assembly_notes import ASSEMBLY_NOTES_DOCUMENT
 from squadops.capabilities.handlers.cycle.base import _CycleTaskHandler
 from squadops.capabilities.handlers.cycle.validation import (
     _classify_file,
 )
-from squadops.capabilities.handlers.emission_log import log_emission_shape
 from squadops.capabilities.reasoning_policy import reasoning_kwargs, resolve_reasoning_level
+from squadops.cycles.models import ArtifactType
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ class BuilderAssembleHandler(_CycleTaskHandler):
 
     Takes source code produced by the dev role (from artifact_contents)
     and assembles it into deployable artifacts: packaging, entrypoints,
-    Dockerfile, startup scripts, and qa_handoff.md.
+    Dockerfile, startup scripts, and — optionally — its assembly notes.
     """
 
     _handler_name = "builder_assemble_handler"
@@ -59,20 +59,21 @@ class BuilderAssembleHandler(_CycleTaskHandler):
     def _validate_builder_output(
         extracted: list[dict],
         profile: Any,
-        required_sections: tuple[str, ...],
         task_required_files: tuple[str, ...] | list[str] | None = None,
     ) -> str | None:
-        """Validate builder output: qa_handoff, sections, required files.
+        """Validate builder output: every required deployment file was emitted.
 
         Issue #107: when `task_required_files` is provided and non-empty,
         the active task's expected_artifacts are the source of truth for
         what must be emitted (framing decomposed builder work and the
         active task only owns a subset of the profile's defaults). When
         omitted/empty, falls back to `profile.required_files` to preserve
-        single-task builder behavior. The qa_handoff section check is
-        skipped when `qa_handoff.md` is not in scope, otherwise the builder
-        role would be forced to emit a full qa_handoff in every builder
-        task even if framing routed it to a different task.
+        single-task builder behavior.
+
+        #1312: the handoff document and its section rule are gone. What replaced them —
+        `assembly_notes.md` — is OPTIONAL by construction, so it has no validation here:
+        a file the builder may legitimately omit cannot be a completeness check, and
+        making it one would rebuild the generator this issue removed.
 
         Returns an error message string if validation fails, None if OK.
         """
@@ -83,22 +84,6 @@ class BuilderAssembleHandler(_CycleTaskHandler):
         )
 
         extracted_basenames = {os.path.basename(f["filename"]) for f in extracted}
-
-        if "qa_handoff.md" in effective_required:
-            qa_handoff_content = None
-            for file_rec in extracted:
-                if os.path.basename(file_rec["filename"]) == "qa_handoff.md":
-                    qa_handoff_content = file_rec["content"]
-                    break
-
-            if qa_handoff_content is None:
-                return "qa_handoff.md not found in builder output"
-
-            # #1255: one rule, shared with the ``sections_present`` criterion the framework
-            # binds onto this task — this validation is the backstop, not a second rule.
-            missing = missing_sections(qa_handoff_content, required_sections)
-            if missing:
-                return f"qa_handoff.md missing required sections: {missing}"
 
         missing_files = [rf for rf in effective_required if rf not in extracted_basenames]
         if missing_files:
@@ -242,13 +227,13 @@ class BuilderAssembleHandler(_CycleTaskHandler):
             "Use tagged fenced code blocks with the language and path "
             "separated by a colon, for example:\n"
             "```dockerfile:Dockerfile\n<content>\n```\n"
-            "```markdown:qa_handoff.md\n<content>\n```\n\n"
+            "```markdown:assembly_notes.md\n<content>\n```\n\n"
             "File path rules:\n"
             "- File paths must use forward slashes, no colons, no spaces.\n"
             "- Do NOT re-emit source files that the developer already wrote.\n"
             "- Only emit NEW files needed for packaging and deployment.\n"
-            "- The required and optional file list, plus qa_handoff.md required "
-            "sections, is given in the system prompt — produce exactly that set."
+            "- The required and optional file list is given in the system prompt — "
+            "produce every required file, and an optional one only when it earns its place."
         )
         return "\n".join(parts)
 
@@ -258,7 +243,7 @@ class BuilderAssembleHandler(_CycleTaskHandler):
     ) -> tuple[list[dict], list[dict], str | None]:
         """Deduplicate by full path and classify files into artifacts.
 
-        Returns (deduped_extracted, artifacts, qa_handoff_content).
+        Returns (deduped_extracted, artifacts, assembly_notes_content).
         """
         import os
 
@@ -275,18 +260,18 @@ class BuilderAssembleHandler(_CycleTaskHandler):
             extracted = [extracted[i] for i in deduped_indices]
 
         artifacts = []
-        qa_handoff_content = None
+        assembly_notes_content = None
         for file_rec in extracted:
             filename = file_rec["filename"]
             basename = os.path.basename(filename)
-            if basename == "qa_handoff.md":
-                qa_handoff_content = file_rec["content"]
+            if basename == ASSEMBLY_NOTES_DOCUMENT:
+                assembly_notes_content = file_rec["content"]
                 artifacts.append(
                     {
                         "name": filename,
                         "content": file_rec["content"],
                         "media_type": "text/markdown",
-                        "type": "qa_handoff",
+                        "type": ArtifactType.ASSEMBLY_NOTES,
                     }
                 )
             else:
@@ -299,7 +284,7 @@ class BuilderAssembleHandler(_CycleTaskHandler):
                         "type": artifact_type,
                     }
                 )
-        return extracted, artifacts, qa_handoff_content
+        return extracted, artifacts, assembly_notes_content
 
     def _get_assembly_inputs(self, inputs: dict[str, Any]) -> dict[str, str]:
         """Get all source/config artifacts for assembly (D8 — static, not capability-driven).
@@ -336,10 +321,7 @@ class BuilderAssembleHandler(_CycleTaskHandler):
         context: ExecutionContext,
         inputs: dict[str, Any],
     ) -> HandlerResult:
-        from squadops.capabilities.handlers.build_profiles import (
-            QA_HANDOFF_REQUIRED_SECTIONS,
-            get_profile,
-        )
+        from squadops.capabilities.handlers.build_profiles import get_profile
         from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
         from squadops.cycles.check_registry import required_files_row
         from squadops.cycles.emission_integrity import emission_stats
@@ -403,6 +385,10 @@ class BuilderAssembleHandler(_CycleTaskHandler):
         rendered, user_prompt = await self._build_assembly_prompt(
             context, prd, prior_outputs, sources, task_tags, inputs
         )
+        # #1372: the builder now has a retry path (see the zero-extraction branch below),
+        # so it must also render what that retry carries — a marker threaded to a handler
+        # that never renders it is the #1289 shape, computed and silently dropped.
+        user_prompt = await self._apply_emission_retry_feedback(context, inputs, user_prompt)
 
         assembled = context.ports.prompt_service.get_system_prompt(self._role)
         # Issue #107: scope the profile prompt to this task's required
@@ -431,58 +417,73 @@ class BuilderAssembleHandler(_CycleTaskHandler):
         builder_kwargs.update(reasoning_kwargs(reasoning))
 
         try:
-            response = await context.ports.llm.chat_stream_with_usage(messages, **builder_kwargs)
+            # The fault is wired for 1.7.4's contentless-builder diagnostic (#1364's
+            # shape on demand); the declaration reaches here on ``resolved_config``.
+            response, content = await self._llm_call(
+                context,
+                messages,
+                builder_kwargs,
+                inputs=inputs,
+                started=start_time,
+                apply_fault=True,
+                fault_config=resolved_config,
+                rendered=rendered,
+            )
         except LLMError as exc:
             logger.warning("LLM call failed for %s: %s", self._handler_name, exc)
             return self._fail_result(start_time, inputs, str(exc))
-
-        content = response.content
-        log_emission_shape(
-            self._handler_name,
-            content,
-            response.completion_tokens,
-            response.reasoning_tokens,
-            response.reasoning_text,
-        )
-        llm_duration_ms = (time.perf_counter() - start_time) * 1000
-
-        # Record LLM generation for LangFuse tracing
-        resolved_model = agent_model or context.ports.llm.default_model
-        self._record_generation(
-            context,
-            user_prompt,
-            content,
-            llm_duration_ms,
-            resolved_model,
-            rendered=rendered,
-            chat_response=response,
-            reasoning=reasoning,
-        )
 
         # Step 5: Parse fenced code blocks
         extracted = extract_fenced_files(content)
 
         if not extracted:
-            from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
+            from squadops.cycles.emission_integrity import no_fenced_blocks_failure
 
             self._log_no_fenced_blocks(content)
+            # #1372: the builder had NO emission-retry path. Every other producer that
+            # extracts fences banks the `emission_failure` marker here and leaves the
+            # outcome to the executor's D5 fallback, which makes the first attempt a
+            # RETRYABLE_FAILURE re-prompted with its own emission-shape fact; the builder
+            # instead declared SEMANTIC_FAILURE outright and went straight to a correction
+            # round. 1.7.3 counted roll 1 is the case: 160 tokens, no fences, and a
+            # correction round spent on an emission nobody had told the model was empty.
+            # A retry is cheaper than a repair and better aimed, and #998's signatures
+            # already exist for exactly this class.
+            #
+            # The classification is not lost, only deferred: D5 escalates to
+            # SEMANTIC_FAILURE once the retries are spent, so a builder that cannot emit
+            # still reaches correction — with one retry's evidence in front of it.
             return self._fail_result(
                 start_time,
                 inputs,
                 "No valid fenced code blocks found",
-                outcome_class=TaskOutcome.SEMANTIC_FAILURE,
-                failure_classification=FailureClassification.WORK_PRODUCT,
+                outputs={
+                    "artifacts": [
+                        {
+                            "name": "build_warnings.md",
+                            "content": content,
+                            "media_type": "text/markdown",
+                            "type": "document",
+                        },
+                    ],
+                    "emission_failure": no_fenced_blocks_failure(
+                        len(content),
+                        inputs.get("expected_artifacts"),
+                        completion_tokens=response.completion_tokens,
+                        completion_cap=builder_kwargs.get("max_tokens"),
+                        content=content,
+                    ),
+                },
             )
 
         # Step 6: Deduplicate and classify. Runs before validation (#419) so
         # typed acceptance evaluates the exact artifact set that ships.
-        extracted, artifacts, qa_handoff_content = self._dedup_and_classify(extracted)
+        extracted, artifacts, assembly_notes_content = self._dedup_and_classify(extracted)
 
-        # Step 7: profile/task-scoped required-files + qa_handoff sections
+        # Step 7: profile/task-scoped required files
         validation_error = self._validate_builder_output(
             extracted,
             profile,
-            QA_HANDOFF_REQUIRED_SECTIONS,
             task_required_files=task_required_files or None,
         )
 
@@ -567,7 +568,7 @@ class BuilderAssembleHandler(_CycleTaskHandler):
                 "resolved_handler": self._handler_name,
                 "build_profile": profile_name,
                 "source_files_count": len(sources),
-                "qa_handoff_present": qa_handoff_content is not None,
+                "assembly_notes_present": assembly_notes_content is not None,
                 "qa_validation_errors": qa_validation_errors,
                 "missing_required_files": [],
                 "resolved_tags": task_tags,

@@ -457,3 +457,48 @@ class TestGetCurrentActivity:
         assert result["task_id"] == "t1" and result["cycle_id"] == "cyc-1"
         assert result["started_at"] == started.isoformat()
         assert result["ended_at"] is None
+
+
+class TestRabbitMQManagementUrlIsParsedNotSplit:
+    """#574: the former ``replace("amqp://", "").split("@")`` broke on a vhost path, an
+    ``@`` inside the password and an ``amqps://`` scheme — and built basic auth by hand
+    beside an httpx client that owns it."""
+
+    @pytest.mark.parametrize(
+        ("url", "expected_auth"),
+        [
+            ("amqp://guest:guest@rabbitmq:5672/", ("guest", "guest")),
+            ("amqp://svc:p%40ss%25w@rabbitmq:5672/squad", ("svc", "p@ss%w")),
+            ("amqps://svc:secret@broker.internal:5671/%2Fprod", ("svc", "secret")),
+            ("amqp://rabbitmq:5672/", None),
+        ],
+    )
+    def test_the_host_and_credentials_survive_vhosts_and_special_characters(
+        self, url, expected_auth
+    ):
+        from squadops.api.runtime.health_checker import management_api_for
+
+        mgmt_url, auth = management_api_for(url)
+        host = url.split("@")[-1].split(":")[0] if "@" in url else url.split("//")[1].split(":")[0]
+        assert mgmt_url == f"http://{host}:15672/api/overview"
+        assert auth == expected_auth
+
+    def test_a_url_with_no_host_yields_no_probe(self):
+        from squadops.api.runtime.health_checker import management_api_for
+
+        assert management_api_for("amqp://") is None
+
+    async def test_the_probe_sends_httpx_auth_not_a_hand_built_header(self, checker, mock_config):
+        mock_config.comms.rabbitmq.url = "amqp://svc:p%40ss@rabbitmq:5672/squad"
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.json.return_value = {"rabbitmq_version": "3.13.1"}
+        checker._http_client = MagicMock()
+        checker._http_client.get = AsyncMock(return_value=resp)
+
+        out = await checker.check_rabbitmq()
+
+        checker._http_client.get.assert_awaited_once_with(
+            "http://rabbitmq:15672/api/overview", auth=("svc", "p@ss")
+        )
+        assert out["status"] == "online" and out["version"] == "3.13.1"

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
@@ -22,7 +23,6 @@ from squadops.tasks.task_types import TaskType
 
 if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
-from squadops.capabilities.handlers.emission_log import log_emission_shape
 from squadops.capabilities.handlers.planning.base import _PlanningTaskHandler
 
 logger = logging.getLogger(__name__)
@@ -95,20 +95,28 @@ class GovernanceReviewPlanHandler(_PlanningTaskHandler):
         ]
         chat_kwargs = self._build_chat_kwargs(inputs)
 
+        # #1206: the retry records its own generation. ``started`` is this call's own
+        # clock — the primary's belongs to ``super().handle()`` and is already spent,
+        # and a retry billed against it would report a latency it did not take.
+        # Deliberately no fault: a declaration aimed at this handler transforms the
+        # primary emission, and applying it again here would corrupt the corrective
+        # re-prompt the fault exists to observe.
+        started = time.perf_counter()
         try:
-            response = await context.ports.llm.chat_stream_with_usage(messages, **chat_kwargs)
+            _, content = await self._llm_call(
+                context,
+                messages,
+                chat_kwargs,
+                inputs=inputs,
+                started=started,
+                shape_label=f"{self._handler_name}:frontmatter_retry",
+                attempt=2,
+            )
         except LLMError as exc:
             logger.warning("assess_readiness: frontmatter-retry LLM call failed: %s", exc)
             return None
 
-        log_emission_shape(
-            f"{self._handler_name}:frontmatter_retry",
-            response.content if response else None,
-            getattr(response, "completion_tokens", None),
-            getattr(response, "reasoning_tokens", None),
-            getattr(response, "reasoning_text", None),
-        )
-        return response.content if response and response.content else None
+        return content or None
 
     _FRONTMATTER_RETRY_INSTRUCTION = (
         "Your previous response did not include the required YAML frontmatter. "

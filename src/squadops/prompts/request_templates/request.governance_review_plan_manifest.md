@@ -1,6 +1,6 @@
 ---
 template_id: request.governance_review_plan_manifest
-version: "1"
+version: "2"
 required_variables:
   - prd
   - planning_content
@@ -14,7 +14,6 @@ optional_variables:
   - roles_section
   - task_types_section
   - builder_guideline
-  - qa_handoff_guideline
   - builder_example
   - summary_builder_line
 ---
@@ -39,7 +38,7 @@ Decomposition guidelines:
 - Separate UI shell/routing from individual view components
 - Put integration config (CORS, proxy, requirements) in its own task
 - Put tests after the code they test
-{{builder_guideline}}{{qa_handoff_guideline}}{{typed_acceptance_section}}
+{{builder_guideline}}{{typed_acceptance_section}}
 {{prd_coverage_discipline}}
 Output ONLY the manifest as a YAML code block with filename tag. The first three fields below are pre-filled with the cycle's authoritative values — copy them verbatim, do not invent or modify them:
 ```yaml:implementation_plan.yaml

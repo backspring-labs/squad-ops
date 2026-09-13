@@ -92,11 +92,11 @@ class PrefectTaskAdapter(TaskRegistryPort):
     async def _ensure_pool(self) -> asyncpg.Pool:
         """Ensure connection pool is established."""
         if self._pool is None:
-            import asyncpg
+            from adapters.persistence.pool import create_pool
 
             if not self._connection_string:
                 raise TaskError("connection_string is required for PrefectTaskAdapter")
-            self._pool = await asyncpg.create_pool(self._connection_string)
+            self._pool = await create_pool(self._connection_string)
         return self._pool
 
     async def initialize(self) -> None:
@@ -224,7 +224,7 @@ class PrefectTaskAdapter(TaskRegistryPort):
                     task.delegated_to,
                     task.pid,
                     task.phase,
-                    json.dumps(metrics),
+                    metrics,
                     now,
                 )
 
@@ -261,7 +261,7 @@ class PrefectTaskAdapter(TaskRegistryPort):
                 async with pool.acquire() as conn:
                     await conn.execute(
                         f"UPDATE {self._table_name} SET metrics = $1 WHERE task_id = $2",
-                        json.dumps(metrics),
+                        metrics,
                         task_id,
                     )
                 logger.debug(f"Linked Prefect flow run {flow_run_id} to task {task_id}")
@@ -305,7 +305,7 @@ class PrefectTaskAdapter(TaskRegistryPort):
                     inputs["prefect_flow_run_id"] = flow_run_id
                     await conn.execute(
                         "UPDATE cycle SET inputs = $1 WHERE cycle_id = $2",
-                        json.dumps(inputs),
+                        inputs,
                         cycle_id,
                     )
 
@@ -372,7 +372,7 @@ class PrefectTaskAdapter(TaskRegistryPort):
                     metrics = json.loads(metrics)
                 metrics["result"] = result
                 updates.append(f"metrics = ${param_idx}")
-                params.append(json.dumps(metrics))
+                params.append(metrics)
                 param_idx += 1
 
         return updates, params
@@ -462,7 +462,7 @@ class PrefectTaskAdapter(TaskRegistryPort):
                     metrics["prefect_state"] = prefect_state
                     await conn.execute(
                         f"UPDATE {self._table_name} SET metrics = $1 WHERE task_id = $2",
-                        json.dumps(metrics),
+                        metrics,
                         task_id,
                     )
                 logger.debug(f"Updated Prefect state reference for task {task_id}: {prefect_state}")

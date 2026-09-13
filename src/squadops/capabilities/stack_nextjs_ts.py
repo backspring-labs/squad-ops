@@ -36,6 +36,7 @@ from collections.abc import Collection
 from typing import TYPE_CHECKING, Any
 
 from squadops.capabilities.app_invocation import AppInvocation
+from squadops.capabilities.baseline_stylesheet import BASELINE_CSS
 from squadops.capabilities.success_status import success_status_for
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only, avoids a scaffold import cycle
@@ -465,7 +466,9 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
 }
 """
 
-_LAYOUT = """export const metadata = { title: 'app' }
+_LAYOUT = """import './globals.css'
+
+export const metadata = { title: 'app' }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -610,6 +613,7 @@ def expand_nextjs_ts(manifest: InterfaceManifest) -> list[dict[str, str]]:
         {"name": "lib/errors.ts", "content": _errors_source(manifest)},
         {"name": "lib/api.ts", "content": _API_CLIENT},
         {"name": "app/layout.tsx", "content": _LAYOUT},
+        {"name": "app/globals.css", "content": BASELINE_CSS},
         {"name": "__tests__/harness.test.ts", "content": _harness_test_source(manifest)},
     ]
     for path, endpoints in _route_groups(manifest).items():

@@ -2325,3 +2325,85 @@ class TestThePlaceholderPrefixIsStrippedWhenItCannotBeRight:
                 self._BODY % "path/backend/tests/test_runs.py", ["backend/tests/test_runs.py"]
             )
         assert any("fence path placeholder" in m for m in caplog.messages)
+
+
+class TestTheAssemblyNotesReachTheTestAuthor:
+    """#1312 / H2: the consumer half of the contract that replaced `qa_handoff.md`.
+
+    The handoff was required of the builder, checked by four surfaces, and read by
+    nothing — so the builder was asked every cycle for a document whose only possible
+    effect was to fail. Its replacement is optional and IS read, and these enter at
+    `QATestHandler.handle` with a renderer over the real assets, asserting on the prompt
+    the model was actually sent. A carry nothing renders is a carry that changes nothing.
+    """
+
+    _NOTES = {
+        "content": (
+            "The image runs as UID 1000 and /data must be writable by it; a read-only "
+            "mount makes every write endpoint return 500."
+        ),
+        "artifact_id": "art_9f3c21ab77de",
+    }
+
+    def _renderer(self):
+        from adapters.prompts.factory import create_prompt_asset_source
+        from squadops.prompts.renderer import RequestTemplateRenderer
+
+        return RequestTemplateRenderer(create_prompt_asset_source(provider="filesystem"))
+
+    async def _prompt_for(self, mock_context, qa_inputs, extra):
+        mock_context.ports.request_renderer = self._renderer()
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
+            return_value=ChatMessage(role="assistant", content=LLM_TEST_FILE_RESPONSE),
+        )
+        await QATestHandler().handle(
+            mock_context,
+            {
+                **qa_inputs,
+                "subtask_focus": "the runs suite",
+                "expected_artifacts": ["tests/test_main.py"],
+                **extra,
+            },
+        )
+        sent = mock_context.ports.llm.chat_stream_with_usage.await_args.args[0]
+        return "\n".join(str(m.content) for m in sent)
+
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
+    async def test_the_notes_and_their_provenance_are_in_the_prompt(
+        self, _mock_run, mock_context, qa_inputs
+    ):
+        prompt = await self._prompt_for(mock_context, qa_inputs, {"assembly_notes": self._NOTES})
+        assert "read-only\nmount" in prompt or "read-only mount" in prompt
+        assert "art_9f3c21ab77de" in prompt, (
+            "the appendix must name the artifact it came from — a reader of the record "
+            "cannot otherwise tell which emission the suite was written against"
+        )
+
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
+    async def test_no_notes_renders_no_block(self, _mock_run, mock_context, qa_inputs):
+        """The expected case, and the control: the file is optional, so most runs carry
+        none and the prompt is byte-for-byte what it was."""
+        prompt = await self._prompt_for(mock_context, qa_inputs, {})
+        assert "ASSEMBLY NOTES FROM THE BUILDER" not in prompt
+
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
+    async def test_notes_without_provenance_render_nothing(
+        self, _mock_run, mock_context, qa_inputs
+    ):
+        """Both halves or neither. Notes with no artifact id are exactly the stale-file
+        risk H2 exists to exclude — the test author cannot tell a current note from one
+        an earlier attempt wrote, and the record cannot say either."""
+        prompt = await self._prompt_for(
+            mock_context, qa_inputs, {"assembly_notes": {"content": "something"}}
+        )
+        assert "ASSEMBLY NOTES FROM THE BUILDER" not in prompt
+
+    @patch(_RUN_TESTS_PATH, return_value=_MOCK_TEST_RESULT_PASSED)
+    async def test_an_empty_notes_body_renders_nothing(self, _mock_run, mock_context, qa_inputs):
+        """A heading over nothing tells the test author a fact exists and then shows none."""
+        prompt = await self._prompt_for(
+            mock_context,
+            qa_inputs,
+            {"assembly_notes": {"content": "   ", "artifact_id": "art_1"}},
+        )
+        assert "ASSEMBLY NOTES FROM THE BUILDER" not in prompt

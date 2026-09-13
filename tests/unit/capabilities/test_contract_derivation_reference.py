@@ -82,11 +82,27 @@ _MANIFEST = _REPO / "examples" / "03_group_run" / "interface_manifest.yaml"
 #   app REJECTED (an assertion on an empty phantom table), never let a broken one pass, so
 #   the 1.4 FAY figure (6/6) carries no qualification — every app that passed under it
 #   passes under this one. v11 stays in the fixtures directory as that form's record.
+# * v13 (2026-09-09, #1463) differs from v12 in exactly two ``frozen`` entries: a new
+#   ``frontend/src/index.css``, and the sha256 of ``frontend/src/main.jsx``, which now
+#   imports it. Classified **reference_defect** — the pinned reference describes a skeleton
+#   that no longer exists, found by a deliberate scaffold change rather than a deriver one,
+#   the same shape as v11 and v12. Stack #1 had shipped no stylesheet at all while stack #2
+#   had one since #906, so a delivered app's presentation floor differed by stack for a
+#   reason nobody chose. The retrospective obligation is met by statement: the sheet adds no
+#   check and changes no criterion (``behavioral``, ``capabilities``, ``fill_files`` and
+#   ``skeleton`` are byte-identical to v12), and presentation is not what the window
+#   measured — so the 1.4 FAY figure (6/6) carries no qualification. It cannot make a broken
+#   app pass, and the only way it could reject a working one is by failing to compile, which
+#   the sandbox build disproves. v12 stays in the fixtures directory as that form's record.
 _EVIDENCE_CONTRACT = (
     _REPO / "tests" / "fixtures" / "reference_contract" / "contract_v9_art_4f368ea08799.yaml"
 )
 _CONTRACT = (
-    _REPO / "tests" / "fixtures" / "reference_contract" / "contract_v12_root_tables_1087.yaml"
+    _REPO
+    / "tests"
+    / "fixtures"
+    / "reference_contract"
+    / "contract_v13_baseline_stylesheet_1463.yaml"
 )
 
 # The ingested artifacts, by content hash. Measured 2026-08-07 against the vault:
@@ -96,7 +112,7 @@ _CONTRACT = (
 # run against. A change here is a change to the evidence base, not a refactor.
 _MANIFEST_SHA256 = "52d8ea7e204e0ceca9c94a60a7b10f18a24519e594ce5c51654674b82a15a826"
 _EVIDENCE_CONTRACT_SHA256 = "7622f570c949fe9504bfebdcd0562e77e78b4d8bff54d9d670001b7f6482e6fe"
-_CONTRACT_SHA256 = "2a03cc48efb68e80b38ce0eb17a3cb2e5267c8248920cacc1ab1667dd3369d11"
+_CONTRACT_SHA256 = "ee3d8a05e54cb0de16de690ca77a31c6f75b2ff31427de67a4a4324684aa56a5"
 
 
 def _sha256(path: Path) -> str:
@@ -180,8 +196,11 @@ def test_the_current_form_differs_from_the_evidence_contract_only_as_classified(
     * #1127 (``reference_defect``): the frozen harness ``frontend/src/test-setup.js`` moved,
       because it now registers ``afterEach(cleanup)``;
     * #1087 (``reference_defect``): the frozen store ``backend/store.py`` moved, because it
-      now exports one store per root-persisted entity and names the shapes that have none
-      — two ``frozen`` entries, no other.
+      now exports one store per root-persisted entity and names the shapes that have none;
+    * #1463 (``reference_defect``): ``frontend/src/index.css`` is ADDED and
+      ``frontend/src/main.jsx`` moved to import it — the skeleton had no stylesheet at all.
+
+    Three moved ``frozen`` entries and one added, no other, and nothing outside ``frozen``.
     """
     v9 = yaml.safe_load(_EVIDENCE_CONTRACT.read_text(encoding="utf-8"))
     current = yaml.safe_load(_CONTRACT.read_text(encoding="utf-8"))
@@ -195,17 +214,34 @@ def test_the_current_form_differs_from_the_evidence_contract_only_as_classified(
                 "participants",
             ]
 
+    # Compared by path rather than positionally (#1463): the current form may ADD a frozen
+    # file, which a strict zip reads as every later entry having moved.
+    v9_frozen = {e["path"]: e["sha256"] for e in v9["frozen"]}
+    current_frozen = {e["path"]: e["sha256"] for e in current["frozen"]}
+
+    assert sorted(set(current_frozen) - set(v9_frozen)) == ["frontend/src/index.css"]
+    assert not set(v9_frozen) - set(current_frozen), "a frozen file was dropped, not classified"
+
     moved = [
-        (old["path"], old["sha256"], new["sha256"])
-        for old, new in zip(v9["frozen"], current["frozen"], strict=True)
-        if old != new
+        (path, v9_frozen[path], sha)
+        for path, sha in current_frozen.items()
+        if path in v9_frozen and v9_frozen[path] != sha
     ]
-    assert [path for path, _, _ in moved] == ["backend/store.py", "frontend/src/test-setup.js"]
+    assert sorted(path for path, _, _ in moved) == [
+        "backend/store.py",
+        "frontend/src/main.jsx",
+        "frontend/src/test-setup.js",
+    ]
     expanded = {
         f["name"]: f["content"]
         for f in expand(InterfaceManifest.from_yaml(_MANIFEST.read_text(encoding="utf-8")))
     }
-    for path, _v9_sha, current_sha in moved:
+    # Every divergence is checked against what the expander emits TODAY, added included —
+    # a classified entry whose sha nobody re-derives is a second pin that can rot.
+    for path, _v9_sha, current_sha in [
+        *moved,
+        ("frontend/src/index.css", None, current_frozen["frontend/src/index.css"]),
+    ]:
         emitted = expanded[path]
         assert hashlib.sha256(emitted.encode()).hexdigest() == current_sha, path
     # #1127: the harness unmounts between tests.
@@ -216,5 +252,10 @@ def test_the_current_form_differs_from_the_evidence_contract_only_as_classified(
     assert "run_event_store: dict[str, RunEvent]" in store
     assert "participant_store" not in store
     assert "never rows themselves: Participant" in store
+    # #1463: the sheet exists and the frozen entry point imports it. Both, because either
+    # alone is a different broken state — dead bytes, or a build that fails on a missing
+    # module.
+    assert expanded["frontend/src/index.css"].startswith("/* Baseline presentation.")
+    assert "import './index.css'\n" in expanded["frontend/src/main.jsx"]
     current["frozen"] = v9["frozen"]
     assert current == v9

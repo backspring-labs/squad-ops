@@ -1021,3 +1021,182 @@ def test_a_framework_check_without_a_criterion_keeps_the_two_part_identity():
     assert s.verdict is RunVerdict.ACCEPTED
     assert s.verified == ("tests_pass",)
     assert (s.executed_count, s.passed_count) == (1, 1)
+
+
+class TestTheUntouchedFileRule:
+    """#1406: an environment skip is "we could not look here", not "the earlier look is
+    void". Before this, a repair's patch verification re-asked every criterion riding the
+    overlay — including another role's — and answered them where its own toolchain lives,
+    which for the runtime-api is nowhere; `criteria_passed - criteria_adverse` then dropped
+    criteria that had executed-and-passed at emission.
+    """
+
+    VIEWS = (
+        "vc-view-compiles-run-create-view",
+        "vc-view-compiles-run-detail-view",
+        "vc-view-compiles-runs-list-view",
+    )
+
+    def _passed(self, criterion_id: str, subject: str) -> CheckResult:
+        return CheckResult(
+            check_id="acceptance:frontend_compiles",
+            status=ResultStatus.PASSED,
+            subject=subject,
+            criterion_id=criterion_id,
+        )
+
+    def _skipped(self, criterion_id: str, subject: str, reason=None) -> CheckResult:
+        return CheckResult(
+            check_id="acceptance:frontend_compiles",
+            status=ResultStatus.SKIPPED,
+            reason=reason or NotExecutedReason.MISSING_TOOLING,
+            subject=subject,
+            criterion_id=criterion_id,
+        )
+
+    def test_the_real_case_credits_all_three_views_again(self):
+        """`cyc_dd3068d22f2c` / `run_737ff76bcdc4` — the 1.7.4 deploy-B React checkpoint,
+        accepted with boot PASS and 21 of 24 criteria. Reconstructed from its stored
+        artifacts: three `development.develop` tasks (task_index 1, 2, 3) each
+        executed-and-passed one `vc-view-compiles-*` criterion in the dev container, and the
+        qa repair's patch verification skipped all three at the runtime-api with
+        `missing_tooling`. Every one of the three was dropped from an accepted, booting
+        delivery."""
+        dev_subjects = {
+            "vc-view-compiles-run-create-view": "task-run_737ff76b-m001-development.develop",
+            "vc-view-compiles-run-detail-view": "task-run_737ff76b-m003-development.develop",
+            "vc-view-compiles-runs-list-view": "task-run_737ff76b-m002-development.develop",
+        }
+        qa_repair = "task-run_737ff76b-m006-qa.test"
+        results = [self._passed(cid, subject) for cid, subject in dev_subjects.items()]
+        results += [self._skipped(cid, qa_repair) for cid in self.VIEWS]
+
+        summary = aggregate_verification(results, contract_criteria=self.VIEWS)
+
+        assert summary.criteria_verified == tuple(sorted(self.VIEWS)), "the 21-of-24 defect"
+        assert summary.criteria_coverage == (3, 3)
+        assert summary.criteria_kept_over_environment_skip == tuple(sorted(self.VIEWS))
+        assert summary.criteria_unverified == ()
+
+    def test_the_same_producer_re_verifying_and_skipping_still_demotes(self):
+        """The half that MUST keep demoting: when the patch touched the file, the row is
+        recorded under the same subject, so the producer's own final state is a skip. Bug
+        caught: crediting a criterion whose file was rewritten and never re-checked —
+        exactly the false green this rule must not create."""
+        subject = "task-run_737ff76b-m001-development.develop"
+        results = [
+            self._passed("vc-view-compiles-run-detail-view", subject),
+            self._skipped("vc-view-compiles-run-detail-view", subject),
+        ]
+
+        summary = aggregate_verification(
+            results, contract_criteria=["vc-view-compiles-run-detail-view"]
+        )
+
+        assert summary.criteria_verified == ()
+        assert summary.criteria_kept_over_environment_skip == ()
+
+    def test_a_skip_with_nothing_else_vouching_still_demotes(self):
+        """A criterion only ever skipped is not credited — the rule restores credit that an
+        execution earned, and can never invent one. Bug caught: a skip read as a pass."""
+        results = [self._skipped("vc-view-compiles-runs-list-view", "task-a")]
+
+        summary = aggregate_verification(
+            results, contract_criteria=["vc-view-compiles-runs-list-view"]
+        )
+
+        assert summary.criteria_verified == ()
+        assert summary.criteria_kept_over_environment_skip == ()
+        assert "vc-view-compiles-runs-list-view" in summary.criteria_unverified
+
+    def test_a_real_failure_from_another_subject_still_demotes(self):
+        """The rule is about NOT-EXECUTED rows only. An executed-and-FAILED row from any
+        subject is real adverse evidence and must keep demoting. Bug caught: widening the
+        rule to every non-passing row, which would credit a criterion that genuinely
+        failed somewhere."""
+        results = [
+            self._passed("vc-routes-compiles", "task-dev"),
+            CheckResult(
+                check_id="acceptance:frontend_compiles",
+                status=ResultStatus.FAILED,
+                subject="task-qa",
+                criterion_id="vc-routes-compiles",
+            ),
+        ]
+
+        summary = aggregate_verification(results, contract_criteria=["vc-routes-compiles"])
+
+        assert summary.criteria_verified == ()
+        assert summary.criteria_kept_over_environment_skip == ()
+
+    @pytest.mark.parametrize(
+        ("reason", "kept"),
+        [
+            pytest.param(NotExecutedReason.MISSING_TOOLING, True, id="missing_tooling-is-the-env"),
+            pytest.param(
+                NotExecutedReason.UNSUPPORTED_STACK, True, id="unsupported_stack-is-the-env"
+            ),
+            pytest.param(
+                NotExecutedReason.SUBJECT_MISSING, False, id="subject_missing-is-the-tree"
+            ),
+            pytest.param(NotExecutedReason.IMPORT_ERROR, False, id="import_error-is-the-artifact"),
+            pytest.param(
+                NotExecutedReason.CONFIG_DISABLED, False, id="config_disabled-is-a-choice"
+            ),
+        ],
+    )
+    def test_only_an_environment_incapacity_is_excused(self, reason, kept):
+        """The narrow boundary. `missing_tooling` and `unsupported_stack` say the
+        environment could not look; `subject_missing` and `import_error` say something about
+        the tree, and `config_disabled` is a deliberate policy choice. Bug caught: excusing
+        an absent FILE — the #1259 shape, where another role's missing artifact would start
+        crediting itself."""
+        results = [
+            self._passed("vc-routes-compiles", "task-dev"),
+            self._skipped("vc-routes-compiles", "task-qa", reason=reason),
+        ]
+
+        summary = aggregate_verification(results, contract_criteria=["vc-routes-compiles"])
+
+        assert bool(summary.criteria_verified) is kept
+        assert bool(summary.criteria_kept_over_environment_skip) is kept
+
+    def test_an_evaluator_gap_is_never_excused(self):
+        """#423: an authored criterion the evaluator cannot deliver is contract-bound
+        enforcement that must keep blocking, even when its reason names a toolchain. Bug
+        caught: the rule quietly disarming the evaluator-gap disclosure."""
+        results = [
+            self._passed("vc-routes-compiles", "task-dev"),
+            CheckResult(
+                check_id="acceptance:frontend_compiles",
+                status=ResultStatus.SKIPPED,
+                reason=NotExecutedReason.MISSING_TOOLING,
+                subject="task-qa",
+                criterion_id="vc-routes-compiles",
+                evidence_gap=True,
+            ),
+        ]
+
+        summary = aggregate_verification(results, contract_criteria=["vc-routes-compiles"])
+
+        assert summary.criteria_verified == ()
+        assert summary.criteria_kept_over_environment_skip == ()
+        assert any(u.required for u in summary.unverified), "the evaluator gap still blocks"
+
+    def test_the_rule_is_disclosed_in_the_run_report(self):
+        """Silence is not green, in either direction: a coverage figure that counts
+        differently than the run before it says so. Bug caught: credit restored invisibly,
+        leaving a reader unable to audit which criteria the rule touched."""
+        from squadops.cycles.run_report_builder import _build_verification_lines
+
+        results = [
+            self._passed("vc-view-compiles-run-detail-view", "task-dev"),
+            self._skipped("vc-view-compiles-run-detail-view", "task-qa"),
+        ]
+        summary = aggregate_verification(
+            results, contract_criteria=["vc-view-compiles-run-detail-view"]
+        )
+
+        text = "\n".join(_build_verification_lines(summary))
+        assert "#1406" in text
+        assert "vc-view-compiles-run-detail-view" in text

@@ -32,6 +32,7 @@ from squadops.cycles.manifest_gates import (
     PROOF_CONTRACT_DERIVES,
     PROOF_DECISION_RECORD,
     PROOF_EXPANDS,
+    PROOF_INTERFACE_COHERENT,
     PROOF_LINT,
     PROOF_PARSES,
     PROOF_SCAFFOLD_READY,
@@ -86,6 +87,11 @@ _PROOF_CLASS: dict[str, str] = {
     PROOF_SOURCE_PRD: AUTHORING_DEFECT,
     PROOF_DECISION_RECORD: AUTHORING_DEFECT,
     PROOF_TESTID_COVERAGE: AUTHORING_DEFECT,
+    # #820: an interface the author made incoherent with itself — one entity identified two
+    # ways across its own endpoints. Advisory, so it never reaches `class_counts`; classified
+    # anyway, because a promoted proof must not need a second decision about whose defect it
+    # is.
+    PROOF_INTERFACE_COHERENT: AUTHORING_DEFECT,
     PROOF_STATUS_DECLARED: AUTHORING_DEFECT,
     PROOF_EXPANDS: AUTHORING_DEFECT,
     # #838: the author wrote another stack's name. Classified as an authoring defect
@@ -117,6 +123,10 @@ class ClassifiedFinding:
     detail: str
     failure_class: str
     ownership: str
+    #: #820: reported, never a rejection. Rides with the rest so the author still sees it
+    #: and the record still counts it — apart, so a baseline of authoring defects is not
+    #: inflated by a proof that blocks nothing.
+    advisory: bool = False
 
 
 @dataclass(frozen=True)
@@ -128,14 +138,29 @@ class AuthoringOutcome:
     open_questions: tuple[str, ...] = field(default_factory=tuple)
 
     @property
+    def blocking_findings(self) -> tuple[ClassifiedFinding, ...]:
+        """The findings that must be fixed before proceeding."""
+        return tuple(f for f in self.findings if not f.advisory)
+
+    @property
+    def advisory_findings(self) -> tuple[ClassifiedFinding, ...]:
+        """#820: reported for the author and the record, blocking nothing."""
+        return tuple(f for f in self.findings if f.advisory)
+
+    @property
     def rejected(self) -> bool:
-        """True when a gate found something that must be fixed before proceeding."""
-        return bool(self.findings)
+        """True when a gate found something that must be fixed before proceeding.
+
+        An advisory finding (#820) is not one: a proof lands reporting-only and is promoted
+        on the evidence its own findings produce, so it must not move the rejection surface
+        in the release that introduces it.
+        """
+        return bool(self.blocking_findings)
 
     def class_counts(self) -> dict[str, int]:
         """Occurrences per class — the shape B1's baseline accumulates across cycles."""
         counts: dict[str, int] = {}
-        for f in self.findings:
+        for f in self.blocking_findings:
             counts[f.failure_class] = counts.get(f.failure_class, 0) + 1
         if self.open_questions:
             counts[PRD_INSUFFICIENCY] = len(self.open_questions)
@@ -167,6 +192,7 @@ def classify_finding(finding: WinnabilityFinding) -> ClassifiedFinding:
         detail=finding.detail,
         failure_class=failure_class,
         ownership=CLASS_OWNERSHIP[failure_class],
+        advisory=finding.advisory,
     )
 
 

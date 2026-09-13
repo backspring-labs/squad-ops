@@ -18,13 +18,14 @@ import json
 import logging
 import os
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
+from adapters.cycles.correction_repair import CorrectionRepair
 from adapters.cycles.correction_runner import CorrectionRunner
 from adapters.cycles.execution_errors import (
     _CancellationError,
@@ -32,6 +33,7 @@ from adapters.cycles.execution_errors import (
     _PausedError,
     _RecruitmentRejectedError,
 )
+from adapters.cycles.patch_acceptance import PatchAcceptance
 from adapters.cycles.pulse_boundary_runner import PulseBoundaryRunner
 from adapters.cycles.run_completion import RunCompletion, resolve_terminal_outcome
 from adapters.cycles.task_dispatcher import TaskDispatcher
@@ -44,20 +46,14 @@ from squadops.capabilities.context_assembly import (
     manifest_surface_fragments,
     wrapup_evidence_applies,
 )
-from squadops.cycles.acceptance_evaluation import resolve_check_stack
 from squadops.cycles.agent_config import build_agent_resolver
 from squadops.cycles.build_completeness import compute_missing_required_files
-from squadops.cycles.check_registry import (
-    CHECK_REQUIRED_FILES,
-    required_files_row,
-)
 from squadops.cycles.checkpoint import RunCheckpoint
 from squadops.cycles.contract_derivation import (
     CONTRACT_ARTIFACT_TYPE,
     SEEDED_MANIFEST_FILENAME,
     is_interface_manifest,
 )
-from squadops.cycles.correction_signature import REPAIR_REFUSED_MARKER
 from squadops.cycles.failure_evidence import failing_cases_from_evidence
 from squadops.cycles.frozen_check_validation import frozen_check_violations
 from squadops.cycles.manifest_authoring import (
@@ -74,17 +70,6 @@ from squadops.cycles.models import (
     RunStatus,
 )
 from squadops.cycles.naming import flow_run_name
-from squadops.cycles.patch_verification import (
-    EXECUTED_IN_RUNTIME_API,
-    FILE_ABSENT_REASONS,
-    PATCH_PASSED,
-    PATCH_UNVERIFIABLE,
-    STRUCTURALLY_UNEVALUABLE_REASONS,
-    overlay_artifacts,
-    skip_reasons,
-    supersede_evidence_artifacts,
-    verify_patched_artifacts,
-)
 from squadops.cycles.rejection_baseline import (
     REJECTION_ARTIFACT_TYPE,
     REJECTION_FILENAME,
@@ -93,7 +78,6 @@ from squadops.cycles.rejection_baseline import (
 from squadops.cycles.run_ledger import RunLedger
 from squadops.cycles.scaffold_integrity_evidence import (
     STAGE_FAILED_EMISSION,
-    STAGE_PATCH_VERIFICATION,
 )
 from squadops.cycles.task_outcome import TaskOutcome
 from squadops.cycles.task_plan import generate_task_plan, inject_contract_inputs
@@ -105,7 +89,10 @@ from squadops.runtime.admission import admit_participants, release_participants
 from squadops.runtime.focus_reaper import release_owner_leases
 from squadops.runtime.recruitment import reserve_buffer_decision
 from squadops.tasks.models import TaskEnvelope, TaskResult, TaskResultStatus
-from squadops.tasks.task_types import emits_required_files, fails_without_correction
+from squadops.tasks.task_types import (
+    TaskType,
+    fails_without_correction,
+)
 from squadops.telemetry.context import use_correlation_context
 from squadops.telemetry.models import CorrelationContext
 
@@ -130,47 +117,6 @@ logger = logging.getLogger(__name__)
 #: #870: per-entry and per-task bounds on the rejected-repair record — evidence for a
 #: prompt block, not a transcript. Three entries covers every correction attempt any
 #: profile currently budgets; 500 chars keeps a verbose check reason from bloating it.
-_REPAIR_REJECTION_ENTRY_LIMIT = 3
-_REPAIR_REJECTION_CHAR_LIMIT = 500
-
-
-def correction_is_deadlocked(
-    verification_status: str, verification_reason: str | None, *, retest_decides: bool
-) -> bool:
-    """True when no further round could ever produce a verdict (#1221).
-
-    The invariant: **a repair loop must never re-dispatch a task whose verification
-    cannot, even in principle, return a verdict.** pf-47/pf-49 asserted exactly that and
-    implemented it for one task type — its `retest_decides` escape needs a `test_result`,
-    which only ``qa.test`` produces. A ``development.develop`` repair has none, so on a
-    stack whose criteria cannot execute in this environment (runtime-api has no node, so
-    stack #2's compile checks skip) every dev repair is refused unheard and the loop
-    spends its whole budget learning nothing. `cyc_05abfc7c1f00` burned all three rounds
-    on `app/api/runs/route.ts`, re-dispatching an identical task after two identical
-    unverifiable verdicts.
-
-    Terminating does not fix the inability to verify — the checks belong where their
-    toolchain exists, which is a larger change deliberately taken after the 1.7.0 cut.
-    It replaces three rounds of silence with one named reason.
-    """
-    return (
-        verification_status == PATCH_UNVERIFIABLE
-        and verification_reason in STRUCTURALLY_UNEVALUABLE_REASONS
-        and not retest_decides
-    )
-
-
-def _record_repair_rejection(carry: dict[str, list[str]] | None, task_id: str, entry: str) -> None:
-    """Append a rejected-repair fact to the run-lived carry (#870), bounded.
-
-    ``None`` carry (legacy call paths, tests) is a no-op — recording evidence is
-    additive and must never fail the acceptance path it documents.
-    """
-    if carry is None:
-        return
-    entries = carry.setdefault(task_id, [])
-    entries.append(entry[:_REPAIR_REJECTION_CHAR_LIMIT])
-    del entries[:-_REPAIR_REJECTION_ENTRY_LIMIT]
 
 
 def refund_empty_emission_attempt(
@@ -193,33 +139,6 @@ def refund_empty_emission_attempt(
     correction_counter["empty_refunds"] = refunds + 1
     correction_counter["n"] = attempt
     return True
-
-
-def _repaired_suite_files(
-    patched_artifacts: Sequence[Mapping[str, Any]], resolved_config: Mapping[str, Any]
-) -> list[str]:
-    """The patched files this stack's runner would collect as a suite (#1269).
-
-    Read through the stack's declared test-file conventions
-    (``test_file_patterns_for``/``matches_test_file_patterns``, #846) rather than through
-    the artifact's ``type``: a repair's files are typed by extension, so a repaired
-    ``backend/tests/test_runs.py`` arrives as ``code`` and a ``type``-keyed rule would
-    miss exactly the case this exists for.
-    """
-    from squadops.capabilities.development_profiles import (
-        matches_test_file_patterns,
-        test_file_patterns_for,
-    )
-
-    patterns = test_file_patterns_for(resolved_config)
-    if not patterns:
-        return []
-    return [
-        name
-        for artifact in patched_artifacts
-        if isinstance(artifact, Mapping) and (name := str(artifact.get("name") or ""))
-        if matches_test_file_patterns(name, patterns)
-    ]
 
 
 def record_task_evidence(ledger: RunLedger, task_result, task_id: str) -> None:
@@ -246,6 +165,179 @@ def record_task_evidence(ledger: RunLedger, task_result, task_id: str) -> None:
             ledger.record_check_result(check_result)
     except Exception:
         logger.warning("Verification-evidence recording failed", exc_info=True)
+
+
+#: #1312: who is given the builder's assembly notes. The test author, and only the test
+#: author — the qa repair renders no such appendix, and threading an input no handler
+#: reads is how the old handoff got its shape (required, produced, consumed by nothing).
+#: A set rather than a branch, so adding the repair later is a row here plus its renderer
+#: (CLAUDE.md: tables over chains).
+_ASSEMBLY_NOTES_READERS: frozenset[str] = frozenset({TaskType.QA_TEST})
+
+
+@dataclasses.dataclass(frozen=True)
+class _CorrectionRound:
+    """What one correction round is, once its protocol has answered (map §4 step 3).
+
+    ``max_attempts`` rides along because the refund in block 4 is bounded against the
+    same number block 3 checked the budget against — reading the config twice would let
+    the two disagree if a resolved value ever became per-round.
+    """
+
+    protocol: Any
+    attempt: int
+    max_attempts: int
+
+
+#: The run's own mutable execution state, named (1.7.5 recovery extraction map §4 step 6).
+#:
+#: `_execute_sequential` opened with sixteen bare locals, and every collaborator it called
+#: took the six or ten of them it happened to need as positional arguments. The cost was
+#: not length: it was that "what a run is, while it runs" existed only as the intersection
+#: of a dozen parameter lists, so a new holder was another argument on another signature
+#: and nothing said where it belonged.
+#:
+#: Three rules keep this from becoming a bag of everything, and they are the reason it is
+#: substructures rather than one flat namespace:
+#:
+#: * **Only run-lived mutable execution state.** Ports and services are the executor's,
+#:   bound at construction, and are not here. Task-local values are `_execute_task`'s
+#:   parameters and locals, and are not here either.
+#: * **Every field carries its owner and the issue that introduced it.** A field whose
+#:   provenance nobody can state is a field nobody can retire.
+#: * **A method takes the substructure it reads**, never the whole object — so no
+#:   collaborator gains access to all run state merely because the object exists.
+
+
+@dataclasses.dataclass
+class _Produced:
+    """What the run has emitted so far, in the three shapes its consumers read."""
+
+    #: Role-keyed summaries threaded into every later task's prompt context.
+    prior_outputs: dict[str, Any] = dataclasses.field(default_factory=dict)
+    #: Every stored artifact id, in store order.
+    all_artifact_refs: list[str] = dataclasses.field(default_factory=list)
+    #: (id, ref) pairs — the build pre-resolution surface; appended last-wins on filename.
+    stored_artifacts: list[tuple[str, ArtifactRef]] = dataclasses.field(default_factory=list)
+
+
+@dataclasses.dataclass
+class _CheckpointProgress:
+    """SIP-0079 checkpoint/resume state: what is done, and what a resume may skip."""
+
+    completed_task_ids: list[str] = dataclasses.field(default_factory=list)
+    plan_delta_refs: list[str] = dataclasses.field(default_factory=list)
+    skip_task_ids: set[str] = dataclasses.field(default_factory=set)
+
+
+@dataclasses.dataclass
+class _Routing:
+    """SIP-0079 Phase 3 outcome-routing state."""
+
+    #: Reset on every success; the fail-fast counter.
+    consecutive_failures: int = 0
+    #: Per-task attempt count — the D5 fallback table's input.
+    task_attempt_counts: dict[str, int] = dataclasses.field(default_factory=dict)
+
+
+@dataclasses.dataclass
+class _Correction:
+    """The correction chain's run-lived state.
+
+    Grouped because they are read together and by the same collaborators: the counter
+    bounds the chain, the signature state decides whether it is progressing, the carry
+    tells the next round why the last repair was refused, and the accepted ids stop a
+    rewind discarding known-good state.
+    """
+
+    #: #374: run-level correction count, a holder because a `patch` re-runs the failed
+    #: check inside dispatch_with_retry and must bump on each inner-loop correction.
+    counter: dict[str, int] = dataclasses.field(default_factory=lambda: {"n": 0})
+    #: #435 (1.5 A4): chain signature state keyed by failed task id — an exact adjacent
+    #: repeat with structural candidates both times terminates as `plan_defect`.
+    signature_state: dict[str, Any] = dataclasses.field(default_factory=dict)
+    #: #870: what happened to each task's PREVIOUS repair, so the next round is told
+    #: rather than re-deriving the failure blind.
+    rejection_carry: dict[str, list[str]] = dataclasses.field(default_factory=dict)
+    #: #994: task ids whose repair was accepted and stored this run — a rewind after one
+    #: discards known-good state, so the correction policy is told.
+    accepted_repair_task_ids: set[str] = dataclasses.field(default_factory=set)
+
+
+@dataclasses.dataclass
+class _Ownership:
+    """SIP-0100 scaffold-ownership state: what is frozen, what was rejected, what it cost.
+
+    Grouped for the same reason: the bound record decides an enforcement, the carry tells
+    the next attempt its edit was rejected instead of letting it fight the restore
+    silently, and the counter is the only thing bounding a producer that keeps writing
+    another producer's slot.
+    """
+
+    #: SIP-0100 2.4: frozen paths + bytes, bound once per run. None on unbound/legacy runs.
+    bound_record: Any = None
+    #: SIP-0100 3.4b (restore+signal): instructions from prior attempts' frozen-path
+    #: restores, surfaced in the next correction attempt's failure_evidence.
+    enforcement_carry: list[str] = dataclasses.field(default_factory=list)
+    #: SIP-0100 3.4a: contract-compliance circuit breaker, SEPARATE from the convergence
+    #: counter — cross-lane emissions are dropped, so they fail no task on their own.
+    compliance_counter: dict[str, int] = dataclasses.field(default_factory=lambda: {"n": 0})
+
+
+@dataclasses.dataclass
+class _Cadence:
+    """SIP-0070 cadence tracking — how far into the current interval the run is.
+
+    Run-lived and mutable, so it belongs in ``RunState``; it is not in the map's list of
+    holders only because it is declared after ``setup_pulse_context`` rather than at the
+    top with the others. The pulse *configuration* beside it (``_PulseContext``) is
+    derived once and never changes, so by the same rule it is NOT here.
+    """
+
+    task_count: int = 0
+    started: float = 0.0
+    interval_id: int = 1
+
+
+@dataclasses.dataclass(frozen=True)
+class _PulseContext:
+    """SIP-0070 pulse configuration, derived once per run from applied_defaults.
+
+    Frozen and outside ``RunState`` deliberately: it is run-*invariant*, and the rule for
+    what goes in the state object is mutable execution state. A reader can tell the two
+    apart by which class it came from, which is the point of keeping them separate.
+    """
+
+    milestone_bindings: Any
+    cadence_suites: Any
+    has_checks: bool
+    cadence: Any
+    engine: Any
+
+
+@dataclasses.dataclass
+class _Budget:
+    """SIP-0079 RC-8 / #511: the run's time contract and when it started."""
+
+    seconds: float | None
+    started: float
+
+
+@dataclasses.dataclass
+class RunState:
+    """Everything mutable that belongs to the run rather than to a task."""
+
+    budget: _Budget
+    produced: _Produced = dataclasses.field(default_factory=_Produced)
+    checkpoint: _CheckpointProgress = dataclasses.field(default_factory=_CheckpointProgress)
+    routing: _Routing = dataclasses.field(default_factory=_Routing)
+    correction: _Correction = dataclasses.field(default_factory=_Correction)
+    ownership: _Ownership = dataclasses.field(default_factory=_Ownership)
+    cadence: _Cadence = dataclasses.field(default_factory=_Cadence)
+    #: #796: in authored mode the contract comes into being mid-run, the moment the
+    #: authoring stage lands a manifest; every task dispatched after that binds to it.
+    #: Empty for seeded runs, whose contract was pinned at creation.
+    authored: tuple[Any, Any] = (None, None)
 
 
 class DispatchedFlowExecutor(FlowExecutionPort):
@@ -278,6 +370,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         correction_runner: CorrectionRunner | None = None,
         pulse_boundary_runner: PulseBoundaryRunner | None = None,
         task_dispatcher: TaskDispatcher | None = None,
+        patch_acceptance: PatchAcceptance | None = None,
+        correction_repair: CorrectionRepair | None = None,
     ) -> None:
         self._cycle_registry = cycle_registry
         self._artifact_vault = artifact_vault
@@ -347,12 +441,42 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # SIP-0097 §6.3: correction-protocol collaborator. store_artifact stays
         # an executor-supplied late-bound callable (artifact plumbing is §6.7
         # executor residual, residual-but-watched).
+        # 1.7.5 recovery extraction map §4 step 5: the repair half, composed here beside
+        # the runner that drives it and handed in, with its own injectable override. It
+        # borrows the runner's `_dispatch_protocol_step` — the one seam that creates task
+        # runs and emits the SIP-0087 task events, so correction repairs stay visible in
+        # the Prefect UI. The lambda defers the lookup until the runner below exists.
+        self._correction_repair = correction_repair or CorrectionRepair(
+            dispatch_step=lambda *args, **kw: self._correction_runner._dispatch_protocol_step(
+                *args, **kw
+            ),
+        )
         self._correction_runner = correction_runner or CorrectionRunner(
             cycle_registry=cycle_registry,
             artifact_vault=artifact_vault,
             event_bus=event_bus,
             task_dispatcher=self._task_dispatcher,
             store_artifact=lambda *args, **kw: self._store_artifact(*args, **kw),
+            correction_repair=self._correction_repair,
+        )
+        # 1.7.5 recovery extraction map §4 step 2: the accepted-patch collaborator, built
+        # where CorrectionRunner is and with the same injectable override. It holds no
+        # ports — the three SIP-0100 enforcement helpers and the retest are late-bound
+        # callables, so this creates no second dependency-construction path (map's opening
+        # constraint) and no third copy of `_emit_scaffold_integrity_evidence`.
+        self._patch_acceptance = patch_acceptance or PatchAcceptance(
+            reexecute_repaired_suite=(
+                lambda *args, **kw: self._correction_runner.reexecute_repaired_suite(*args, **kw)
+            ),
+            enforce_frozen_ownership=lambda *args, **kw: self._enforce_frozen_ownership(
+                *args, **kw
+            ),
+            emit_integrity_evidence=lambda *args, **kw: self._emit_scaffold_integrity_evidence(
+                *args, **kw
+            ),
+            enforce_compliance_budget=lambda *args, **kw: self._enforce_compliance_budget(
+                *args, **kw
+            ),
         )
         # SIP-0097 §6.2: pulse-boundary collaborator (boundary verification +
         # bounded repair loop). LLM observability is event-emission-only per
@@ -1488,6 +1612,65 @@ class DispatchedFlowExecutor(FlowExecutionPort):
 
         return contents
 
+    async def _resolve_assembly_notes(
+        self, stored_artifacts: list[tuple[str, Any]]
+    ) -> dict[str, str] | None:
+        """The builder's `assembly_notes.md`, with the id of the artifact it came from.
+
+        #1312 replaced a required document nobody read with an optional one the test
+        author is given. H2 is what makes that safe to rely on, and it is a correctness
+        invariant rather than something counted rolls assure: **the notes the qa prompt
+        carries are the current builder's, or there are none.**
+
+        Three rules, all of them the reason this does not simply read
+        ``artifact_contents``:
+
+        * A **failed** emission is never notes (#971) — the same unconditional rule the
+          workspace composer applies. A builder attempt that failed its checks may still
+          have written a notes file; rendering it would hand the test author a fact from
+          an emission the framework rejected.
+        * A **repair candidate** is not notes either: it is unaccepted by construction.
+        * **The latest accepted emission wins**, so a re-take supersedes what it replaced.
+          A stale notes file from an earlier attempt is the one shape that would be worse
+          than no notes at all — the test author cannot tell that it is stale, and the
+          appendix names an artifact id precisely so a reader of the record can.
+
+        Returns ``None`` when the builder emitted none, which is the expected case: the
+        file is optional and silence is a complete answer.
+        """
+        from squadops.capabilities.assembly_notes import ASSEMBLY_NOTES_DOCUMENT
+        from squadops.cycles.task_plan import REPAIR_TASK_TYPES
+
+        latest: tuple[str, Any] | None = None
+        for art_id, ref in stored_artifacts:
+            if PurePosixPath(str(ref.filename)).name != ASSEMBLY_NOTES_DOCUMENT:
+                continue
+            if ref.metadata.get("emission_status") == "failed":
+                continue
+            if ref.metadata.get("producing_task_type", "") in REPAIR_TASK_TYPES:
+                continue
+            latest = (art_id, ref)
+        if latest is None:
+            return None
+        art_id, ref = latest
+        try:
+            _ref, content_bytes = await self._artifact_vault.retrieve(art_id)
+        except Exception:
+            logger.warning("assembly notes %s could not be retrieved", art_id, exc_info=True)
+            return None
+        text = content_bytes.decode(errors="replace").strip()
+        if not text:
+            # An empty file is not context. Rendering the heading over nothing would tell
+            # the test author a fact exists and then show none.
+            return None
+        logger.info(
+            "assembly_notes threaded artifact=%s filename=%s chars=%d",
+            art_id,
+            ref.filename,
+            len(text),
+        )
+        return {"content": text, "artifact_id": art_id}
+
     async def _execute_sequential(
         self,
         plan: list[TaskEnvelope],
@@ -1507,60 +1690,19 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         SIP-0070: evaluates pulse verification at cadence closes and
         milestone boundaries.  Phase 2: FAIL = run FAILED (no repair).
         """
-        prior_outputs: dict[str, Any] = {}
-        all_artifact_refs: list[str] = []
-        # Track stored artifacts with their refs for build pre-resolution
-        stored_artifacts: list[tuple[str, ArtifactRef]] = []
-
-        # SIP-0100 2.4: bind the run's scaffold ownership once (frozen paths + bytes) so a
-        # producing task cannot clobber a scaffold-frozen file at artifact storage (pf-26).
-        # None for unbound/legacy runs → no enforcement (plan §10).
-        bound_record = self._build_bound_record_for_run(interface_manifest, run_id)
-
-        # #796: in authored mode the contract does not exist when the plan is generated —
-        # the squad has not designed anything yet. It comes into being mid-run, the moment
-        # the authoring stage lands a manifest, and every task dispatched after that point
-        # binds to it. Empty for seeded runs, whose contract was pinned at creation.
-        authored: tuple[Any, Any] = (None, None)
-
-        # SIP-0079: Checkpoint/resume state tracking
-        completed_task_ids: list[str] = []
-        plan_delta_refs: list[str] = []
-        skip_task_ids: set[str] = set()
-
-        # SIP-0079 Phase 3: Outcome routing state
-        consecutive_failures: int = 0
-        # #374: run-level correction count as a mutable holder. A `patch` re-runs the
-        # failed check via dispatch_with_retry's "continue", so the count must bump on
-        # each inner-loop correction (not just once per outer iteration) to bound it
-        # (max_correction_attempts) and keep corr-/plan_delta- ids unique across re-runs.
-        correction_counter: dict[str, int] = {"n": 0}
-        # #435 (1.5 A4): run-lived correction-chain signature state, keyed by
-        # failed task id — the runner compares adjacent rounds and terminates
-        # plan_defect on an exact repeat with structural candidates both times.
-        correction_signature_state: dict[str, Any] = {}
-        # SIP-0100 3.4b (restore+signal): run-lived instruction carry — frozen-path
-        # restores on the repair path append here; the next correction attempt's
-        # failure_evidence surfaces them so the loop is TOLD the edit was rejected
-        # instead of silently fighting the restore.
-        scaffold_enforcement_carry: list[str] = []
-        # #870: run-lived rejected-repair record, keyed by failed task id. A repair
-        # that patch verification or the behavioral retest rejects was previously
-        # discarded with only "patch_retest status=FAILED" in the log — the next
-        # correction round re-analyzed the task blind to WHY the last repair was
-        # rejected (roll 12: a non-compiling repair, and nothing downstream was ever
-        # told it didn't compile). Same transport as scaffold_enforcement_carry.
-        repair_rejection_carry: dict[str, list[str]] = {}
-        # SIP-0100 3.4a: run-level contract-compliance counter, SEPARATE from the convergence
-        # counter (D6) — cross-lane (unauthorized-slot) emissions don't fail a task on their own,
-        # so this bounded budget is the only thing that stops a producer chronically writing
-        # another producer's slot. Frozen re-emission is the tolerated 2.4 baseline (not counted).
-        compliance_counter: dict[str, int] = {"n": 0}
-        task_attempt_counts: dict[str, int] = {}
-
-        # SIP-0079: Time budget enforcement (RC-8)
-        time_budget = cycle.resolved_config().get("time_budget_seconds")
-        run_start_time = time.monotonic()
+        # #1152 step 6: the run's own mutable state, constructed once and passed down.
+        # Sixteen bare locals lived here, and "what a run is, while it runs" existed only
+        # as the intersection of a dozen parameter lists — see ``RunState`` above for the
+        # three rules that keep it from becoming a bag of everything.
+        state = RunState(
+            budget=_Budget(
+                seconds=cycle.resolved_config().get("time_budget_seconds"),
+                started=time.monotonic(),
+            ),
+            ownership=_Ownership(
+                bound_record=self._build_bound_record_for_run(interface_manifest, run_id)
+            ),
+        )
 
         # #511: the budget gates EVERY dispatch lane. The main task loop checks
         # it in _check_task_preconditions, but correction-chain dispatches
@@ -1572,10 +1714,13 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # dispatch choke point. In-flight work still completes — the semantic
         # is "no NEW dispatch past expiry", identical to the main loop's.
         def _budget_guard() -> None:
-            if time_budget is not None and (time.monotonic() - run_start_time) >= time_budget:
+            if (
+                state.budget.seconds is not None
+                and (time.monotonic() - state.budget.started) >= state.budget.seconds
+            ):
                 raise _ExecutionError(
-                    f"Time budget exhausted ({time_budget}s) at correction-chain dispatch "
-                    f"after {len(completed_task_ids)} tasks"
+                    f"Time budget exhausted ({state.budget.seconds}s) at correction-chain dispatch "
+                    f"after {len(state.checkpoint.completed_task_ids)} tasks"
                 )
 
         # SIP-0079: Resume from checkpoint — restore prior state. Self-resume
@@ -1597,28 +1742,28 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 checkpoint,
                 run_id,
                 cycle,
-                skip_task_ids,
-                prior_outputs,
-                completed_task_ids,
-                plan_delta_refs,
-                all_artifact_refs,
-                stored_artifacts,
+                state.checkpoint.skip_task_ids,
+                state.produced.prior_outputs,
+                state.checkpoint.completed_task_ids,
+                state.checkpoint.plan_delta_refs,
+                state.produced.all_artifact_refs,
+                state.produced.stored_artifacts,
             )
 
         # #683 (SIP-0096 §14): wrap-up tasks consume the CycleOutcome — inject
-        # the structured evidence ONCE per wrap-up run into prior_outputs, so
+        # the structured evidence ONCE per wrap-up run into state.produced.prior_outputs, so
         # every wrap-up prompt shows the basis (summary) and the closeout
         # handler enforces the ceiling (raw dict). Data only; best-effort — a
         # failed derivation is disclosed by absence and the handler fails
         # closed to an inconclusive ceiling.
-        await self._inject_wrapup_evidence(plan, cycle, prior_outputs)
+        await self._inject_wrapup_evidence(plan, cycle, state.produced.prior_outputs)
 
         # Seed from prior plan artifacts for build-only runs (§2.3)
         if seed_artifact_refs:
             await self._seed_prior_artifacts(
                 seed_artifact_refs,
-                stored_artifacts,
-                all_artifact_refs,
+                state.produced.stored_artifacts,
+                state.produced.all_artifact_refs,
             )
 
         # Build role → agent_id resolver for repair task dispatch
@@ -1628,254 +1773,39 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # SIP-0070: Parse pulse checks + cadence policy from applied_defaults
         # ------------------------------------------------------------------
         pulse_ctx = self._pulse_boundary_runner.setup_pulse_context(cycle, plan, obs_ctx)
-        milestone_bindings = pulse_ctx["milestone_bindings"]
-        cadence_suites = pulse_ctx["cadence_suites"]
-        has_pulse_checks = pulse_ctx["has_pulse_checks"]
-        cadence = pulse_ctx["cadence"]
-        engine = pulse_ctx["engine"]
-
-        # Cadence tracking state
-        cadence_task_count = 0
-        cadence_start_time = time.monotonic()
-        cadence_interval_id = 1
+        pulse = _PulseContext(
+            milestone_bindings=pulse_ctx["milestone_bindings"],
+            cadence_suites=pulse_ctx["cadence_suites"],
+            has_checks=pulse_ctx["has_pulse_checks"],
+            cadence=pulse_ctx["cadence"],
+            engine=pulse_ctx["engine"],
+        )
+        state.cadence.started = time.monotonic()
 
         for task_idx, envelope in enumerate(plan):
-            if await self._check_task_preconditions(
-                run_id, envelope, skip_task_ids, time_budget, run_start_time, completed_task_ids
-            ):
-                continue
-
-            # Enrich envelope with chain context and dispatch
-            authored_contract, authored_manifest = authored
-            enriched = await self._enrich_envelope(
+            await self._execute_task(
+                state,
                 envelope,
-                prior_outputs,
-                all_artifact_refs,
-                stored_artifacts,
-                interface_manifest=interface_manifest or authored_manifest,
-                run_derived_contract=authored_contract,
-            )
-
-            # SIP-0087: executor owns Prefect task-run creation so task_run_id
-            # is available for contextvar scoping + heartbeat before the
-            # agent starts emitting logs.
-            task_run_id = await self._task_dispatcher.create_task_run_if_enabled(
-                flow_run_id, envelope
-            )
-
-            # SIP-0077: task.dispatched event (bridge now only reads terminal
-            # state from context; creation already happened above).
-            self._cycle_event_bus.emit(
-                EventType.TASK_DISPATCHED,
-                entity_type="task",
-                entity_id=envelope.task_id,
-                context={
-                    "cycle_id": cycle.cycle_id,
-                    "run_id": run_id,
-                    "flow_run_id": flow_run_id or "",
-                    "task_run_id": task_run_id or "",
-                },
-                payload={
-                    "task_type": envelope.task_type,
-                    "task_name": build_task_name(envelope),
-                },
-            )
-
-            # Dispatch + retry loop for retryable failures (SIP-0079).
-            # Routing stays here (§6.1): the dispatcher receives the outcome
-            # decision as a closure over this loop's orchestration state and
-            # only acts on the returned action token.
-            # Loop-scoped values bind as defaults: fixed at definition time,
-            # exactly like the old per-call parameter passing (and B023-safe).
-            # SIP-0096 §6.4 (Phase 2): holds the latest failed result so the abort
-            # path — where the correction protocol raises from *inside*
-            # dispatch_with_retry before it can return — can still record the
-            # failing task's verification evidence. The #276-class evidence (a
-            # failed/not-executed qa.test that triggers the abort) is exactly what
-            # must survive, or a failed run reads as "0 verified" instead of red.
-            _last_failed_result: dict[str, Any] = {}
-
-            async def _route_outcome(
-                result,
-                _envelope=envelope,
-                _enriched=enriched,
-                _consecutive_failures=consecutive_failures,
-                _holder=_last_failed_result,
-            ):
-                # #1323: authorize BEFORE holding. The held result is the base the repair
-                # overlay is built from (``_try_accept_patch``) and the source the triage
-                # bank stores (#971) — both must see the same authorized set, or a path
-                # the producer may not write is admitted here and the repair that fixes
-                # it is refused at storage for touching it.
-                result = await self._admit_failed_emission(
-                    result,
-                    _envelope,
-                    cycle,
-                    run_id,
-                    all_artifact_refs,
-                    bound_record=bound_record,
-                    compliance_counter=compliance_counter,
-                )
-                _holder["result"] = result
-                action = await self._handle_task_outcome(
-                    result=result,
-                    envelope=_envelope,
-                    enriched_envelope=_enriched,
-                    cycle=cycle,
-                    run_id=run_id,
-                    task_attempt_counts=task_attempt_counts,
-                    consecutive_failures=_consecutive_failures,
-                    correction_counter=correction_counter,
-                    correction_signature_state=correction_signature_state,
-                    scaffold_enforcement_carry=scaffold_enforcement_carry,
-                    prior_outputs=prior_outputs,
-                    all_artifact_refs=all_artifact_refs,
-                    stored_artifacts=stored_artifacts,
-                    completed_task_ids=completed_task_ids,
-                    plan_delta_refs=plan_delta_refs,
-                    profile=profile,
-                    flow_run_id=flow_run_id,
-                    patched_result_holder=_holder,
-                    interface_manifest=interface_manifest,
-                    budget_guard=_budget_guard,
-                    repair_rejection_carry=repair_rejection_carry,
-                    bound_record=bound_record,
-                    compliance_counter=compliance_counter,
-                )
-                if action in ("continue", "accept_patch"):
-                    # #379: this attempt failed — re-dispatched ("continue") or
-                    # superseded by a verified patch ("accept_patch", #389). Record
-                    # its evidence now so the ledger honestly holds the
-                    # failed→passed history; aggregation supersedes it to the final
-                    # state per (check_id, subject). Self-filtering: a transport retry
-                    # carries no validation_result/test_result → nothing is recorded.
-                    _record_task_evidence(result)
-                return action
-
-            def _record_task_evidence(task_result, _envelope=envelope) -> None:
-                # ``_envelope`` is bound as a default (B023) so it captures THIS
-                # iteration's task, matching _route_outcome. The body is shared with the
-                # fan-out path (#1148) — see ``record_task_evidence``.
-                record_task_evidence(ledger, task_result, _envelope.task_id)
-
-            try:
-                task_succeeded, result = await self._task_dispatcher.dispatch_with_retry(
-                    enriched,
-                    envelope,
-                    cycle,
-                    run_id,
-                    flow_run_id=flow_run_id,
-                    task_run_id=task_run_id,
-                    handle_task_outcome=_route_outcome,
-                )
-            except Exception:
-                # Correction aborted (raised inside dispatch_with_retry). Record the
-                # final failed result before the run unwinds, then re-raise — recording
-                # is additive and never alters the abort's control flow.
-                _record_task_evidence(_last_failed_result.get("result"))
-                raise
-
-            # #389: a verified patch supersedes the failed result — swap before
-            # recording/collection so the ledger and artifact store see the
-            # corrected outputs (repaired artifacts + executed-passed checks).
-            patched = _last_failed_result.pop("patched_result", None)
-            if patched is not None:
-                result = patched
-
-            # Every non-abort completion — success AND corrected-failure
-            # (break_correction) — records its final result here; the abort path
-            # above is the only other producer, so no task is double-recorded.
-            _record_task_evidence(result)
-
-            if not task_succeeded:
-                # #374: reaching here means the correction returned break_correction —
-                # i.e. governance chose "continue" (advance without repair). A `patch`
-                # now returns "continue", re-running the failed check inside
-                # dispatch_with_retry, so it never lands here. The correction count is
-                # bumped on the shared holder inside _handle_task_outcome, not here.
-                consecutive_failures = 0
-
-            if not task_succeeded:
-                # Correction "continue"/"patch" handled — skip to next task
-                continue
-
-            # Reset consecutive failures on success
-            consecutive_failures = 0
-
-            # Collect artifacts + checkpoint after successful task; a checkpoint
-            # that closes a role phase is a replay boundary and survives pruning
-            # (SIP-0101 Slice 2)
-            await self._collect_artifacts_and_checkpoint(
-                result=result,
-                envelope=envelope,
+                task_idx=task_idx,
+                plan=plan,
                 cycle=cycle,
                 run_id=run_id,
-                prior_outputs=prior_outputs,
-                all_artifact_refs=all_artifact_refs,
-                stored_artifacts=stored_artifacts,
-                completed_task_ids=completed_task_ids,
-                plan_delta_refs=plan_delta_refs,
-                bound_record=bound_record,
-                compliance_counter=compliance_counter,
-                retain_checkpoint=self._is_phase_boundary(plan, task_idx),
+                flow_run_id=flow_run_id,
+                profile=profile,
+                run_root=run_root,
+                obs_ctx=obs_ctx,
+                ledger=ledger,
+                interface_manifest=interface_manifest,
+                agent_resolver=agent_resolver,
+                pulse=pulse,
+                budget_guard=_budget_guard,
             )
-
-            # #796: the authoring stage may have just stored a manifest. Derive here — after
-            # collection, before the next dispatch — so the very next task binds.
-            authored = await self._bind_authored_manifest(cycle, run_id, stored_artifacts, authored)
-
-            # ----------------------------------------------------------
-            # SIP-0070: Pulse boundary evaluation (after task, before gate)
-            # ----------------------------------------------------------
-            if has_pulse_checks and engine is not None:
-                cadence_task_count += 1
-                cadence_closed = self._pulse_boundary_runner.evaluate_pulse_boundaries(
-                    task_idx=task_idx,
-                    plan=plan,
-                    cadence_task_count=cadence_task_count,
-                    cadence_start_time=cadence_start_time,
-                    cadence=cadence,
-                )
-                await self._pulse_boundary_runner.run_pulse_evaluations(
-                    task_idx=task_idx,
-                    milestone_bindings=milestone_bindings,
-                    cadence_suites=cadence_suites,
-                    cadence_closed=cadence_closed,
-                    cadence_interval_id=cadence_interval_id,
-                    run_id=run_id,
-                    cycle=cycle,
-                    obs_ctx=obs_ctx,
-                    engine=engine,
-                    envelope=envelope,
-                    prior_outputs=prior_outputs,
-                    stored_artifacts=stored_artifacts,
-                    all_artifact_refs=all_artifact_refs,
-                    flow_run_id=flow_run_id,
-                    agent_resolver=agent_resolver,
-                    run_root=run_root,
-                    ledger=ledger,
-                )
-
-                if cadence_closed:
-                    cadence_interval_id += 1
-                    cadence_task_count = 0
-                    cadence_start_time = time.monotonic()
-
-            # Post-task gate check (runs after verification)
-            if self._is_gate_boundary(cycle, envelope.task_type):
-                await self._handle_gate(
-                    run_id,
-                    cycle,
-                    envelope.task_type,
-                    stored_artifacts=stored_artifacts,
-                    profile=profile,
-                )
 
         # #291: deliverable-completeness gate. The per-task builder validator
         # (#107) only enforces the *active* task's required files; a required
         # file that framing spread across tasks — or that no single task owns —
         # is never checked, so a run can ship green without the Dockerfile its
-        # own profile mandates (#276). The loop is done, so stored_artifacts now
+        # own profile mandates (#276). The loop is done, so state.produced.stored_artifacts now
         # holds the complete emitted set — the only point where the deliverable
         # is fully known. Missing → fail the run (FAILED, via _ExecutionError →
         # resolve_terminal_outcome). The per-task required_files *evidence* the
@@ -1883,12 +1813,288 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # in-loop builder failure is disclosed even though this gate is only
         # reached when every task succeeded.
         resolved_config = cycle.resolved_config()
-        deficiency = compute_missing_required_files(plan, stored_artifacts, resolved_config)
+        deficiency = compute_missing_required_files(
+            plan, state.produced.stored_artifacts, resolved_config
+        )
         if deficiency is not None:
             profile_name, missing = deficiency
             raise _ExecutionError(
                 f"Build deliverable incomplete: build profile {profile_name!r} requires files "
                 f"the run never emitted. Missing required files: {missing}."
+            )
+
+    async def _execute_task(
+        self,
+        state: RunState,
+        envelope: TaskEnvelope,
+        *,
+        task_idx: int,
+        plan: list[TaskEnvelope],
+        cycle: Cycle,
+        run_id: str,
+        flow_run_id: str | None,
+        profile: SquadProfile | None,
+        run_root: str,
+        obs_ctx: Any,
+        ledger: RunLedger,
+        interface_manifest: Any,
+        agent_resolver: Any,
+        pulse: _PulseContext,
+        budget_guard: Callable[[], None],
+    ) -> None:
+        """One task of the plan: preconditions, enrich, dispatch-with-retry, route the
+        outcome, collect, bind, evaluate pulse boundaries, check the gate.
+
+        Everything mutable it touches is on ``state``; everything else is run-invariant
+        and arrives as a parameter. That split is the point of the step — a reader can
+        tell what survives this task from what merely configures it by which side of the
+        signature it came from (1.7.5 recovery extraction map §4 step 6).
+        """
+        if await self._check_task_preconditions(
+            run_id,
+            envelope,
+            state.checkpoint.skip_task_ids,
+            state.budget.seconds,
+            state.budget.started,
+            state.checkpoint.completed_task_ids,
+        ):
+            # A precondition declined this task (skipped on resume, cancelled, or past
+            # the time budget). In the loop this was `continue`; as a method it is the
+            # same statement — this task is done, the run moves on.
+            return
+
+        # Enrich envelope with chain context and dispatch
+        authored_contract, authored_manifest = state.authored
+        enriched = await self._enrich_envelope(
+            envelope,
+            state.produced.prior_outputs,
+            state.produced.all_artifact_refs,
+            state.produced.stored_artifacts,
+            interface_manifest=interface_manifest or authored_manifest,
+            run_derived_contract=authored_contract,
+        )
+
+        # SIP-0087: executor owns Prefect task-run creation so task_run_id
+        # is available for contextvar scoping + heartbeat before the
+        # agent starts emitting logs.
+        task_run_id = await self._task_dispatcher.create_task_run_if_enabled(flow_run_id, envelope)
+
+        # SIP-0077: task.dispatched event (bridge now only reads terminal
+        # state from context; creation already happened above).
+        self._cycle_event_bus.emit(
+            EventType.TASK_DISPATCHED,
+            entity_type="task",
+            entity_id=envelope.task_id,
+            context={
+                "cycle_id": cycle.cycle_id,
+                "run_id": run_id,
+                "flow_run_id": flow_run_id or "",
+                "task_run_id": task_run_id or "",
+            },
+            payload={
+                "task_type": envelope.task_type,
+                "task_name": build_task_name(envelope),
+            },
+        )
+
+        # Dispatch + retry loop for retryable failures (SIP-0079).
+        # Routing stays here (§6.1): the dispatcher receives the outcome
+        # decision as a closure over this loop's orchestration state and
+        # only acts on the returned action token.
+        # Loop-scoped values bind as defaults: fixed at definition time,
+        # exactly like the old per-call parameter passing (and B023-safe).
+        # SIP-0096 §6.4 (Phase 2): holds the latest failed result so the abort
+        # path — where the correction protocol raises from *inside*
+        # dispatch_with_retry before it can return — can still record the
+        # failing task's verification evidence. The #276-class evidence (a
+        # failed/not-executed qa.test that triggers the abort) is exactly what
+        # must survive, or a failed run reads as "0 verified" instead of red.
+        _last_failed_result: dict[str, Any] = {}
+
+        async def _route_outcome(
+            result,
+            _envelope=envelope,
+            _enriched=enriched,
+            _consecutive_failures=state.routing.consecutive_failures,
+            _holder=_last_failed_result,
+        ):
+            # #1323: authorize BEFORE holding. The held result is the base the repair
+            # overlay is built from (``_try_accept_patch``) and the source the triage
+            # bank stores (#971) — both must see the same authorized set, or a path
+            # the producer may not write is admitted here and the repair that fixes
+            # it is refused at storage for touching it.
+            result = await self._admit_failed_emission(
+                result,
+                _envelope,
+                cycle,
+                run_id,
+                state.produced.all_artifact_refs,
+                bound_record=state.ownership.bound_record,
+                compliance_counter=state.ownership.compliance_counter,
+            )
+            _holder["result"] = result
+            action = await self._handle_task_outcome(
+                result=result,
+                envelope=_envelope,
+                enriched_envelope=_enriched,
+                cycle=cycle,
+                run_id=run_id,
+                task_attempt_counts=state.routing.task_attempt_counts,
+                consecutive_failures=_consecutive_failures,
+                correction_counter=state.correction.counter,
+                correction_signature_state=state.correction.signature_state,
+                scaffold_enforcement_carry=state.ownership.enforcement_carry,
+                prior_outputs=state.produced.prior_outputs,
+                all_artifact_refs=state.produced.all_artifact_refs,
+                stored_artifacts=state.produced.stored_artifacts,
+                completed_task_ids=state.checkpoint.completed_task_ids,
+                plan_delta_refs=state.checkpoint.plan_delta_refs,
+                profile=profile,
+                flow_run_id=flow_run_id,
+                patched_result_holder=_holder,
+                interface_manifest=interface_manifest,
+                budget_guard=budget_guard,
+                repair_rejection_carry=state.correction.rejection_carry,
+                bound_record=state.ownership.bound_record,
+                compliance_counter=state.ownership.compliance_counter,
+                accepted_repair_task_ids=state.correction.accepted_repair_task_ids,
+            )
+            if action == "accept_patch":
+                # #994: remember that THIS task now has accepted, stored repaired
+                # state. A later round's rewind re-authors from the checkpoint and
+                # cannot preserve it, so the guard needs the fact and this loop is
+                # the only place that holds it.
+                state.correction.accepted_repair_task_ids.add(_envelope.task_id)
+            if action in ("continue", "accept_patch"):
+                # #379: this attempt failed — re-dispatched ("continue") or
+                # superseded by a verified patch ("accept_patch", #389). Record
+                # its evidence now so the ledger honestly holds the
+                # failed→passed history; aggregation supersedes it to the final
+                # state per (check_id, subject). Self-filtering: a transport retry
+                # carries no validation_result/test_result → nothing is recorded.
+                _record_task_evidence(result)
+            return action
+
+        def _record_task_evidence(task_result, _envelope=envelope) -> None:
+            # ``_envelope`` is bound as a default (B023) so it captures THIS
+            # iteration's task, matching _route_outcome. The body is shared with the
+            # fan-out path (#1148) — see ``record_task_evidence``.
+            record_task_evidence(ledger, task_result, _envelope.task_id)
+
+        try:
+            task_succeeded, result = await self._task_dispatcher.dispatch_with_retry(
+                enriched,
+                envelope,
+                cycle,
+                run_id,
+                flow_run_id=flow_run_id,
+                task_run_id=task_run_id,
+                handle_task_outcome=_route_outcome,
+            )
+        except Exception:
+            # Correction aborted (raised inside dispatch_with_retry). Record the
+            # final failed result before the run unwinds, then re-raise — recording
+            # is additive and never alters the abort's control flow.
+            _record_task_evidence(_last_failed_result.get("result"))
+            raise
+
+        # #389: a verified patch supersedes the failed result — swap before
+        # recording/collection so the ledger and artifact store see the
+        # corrected outputs (repaired artifacts + executed-passed checks).
+        patched = _last_failed_result.pop("patched_result", None)
+        if patched is not None:
+            result = patched
+
+        # Every non-abort completion — success AND corrected-failure
+        # (break_correction) — records its final result here; the abort path
+        # above is the only other producer, so no task is double-recorded.
+        _record_task_evidence(result)
+
+        if not task_succeeded:
+            # #374: reaching here means the correction returned break_correction —
+            # i.e. governance chose "continue" (advance without repair). A `patch`
+            # now returns "continue", re-running the failed check inside
+            # dispatch_with_retry, so it never lands here. The correction count is
+            # bumped on the shared holder inside _handle_task_outcome, not here.
+            state.routing.consecutive_failures = 0
+
+        if not task_succeeded:
+            # Correction "continue"/"patch" handled — this task is done for now, and the
+            # run moves on. (Was `continue` when this was a loop body.)
+            return
+
+        # Reset consecutive failures on success
+        state.routing.consecutive_failures = 0
+
+        # Collect artifacts + checkpoint after successful task; a checkpoint
+        # that closes a role phase is a replay boundary and survives pruning
+        # (SIP-0101 Slice 2)
+        await self._collect_artifacts_and_checkpoint(
+            result=result,
+            envelope=envelope,
+            cycle=cycle,
+            run_id=run_id,
+            prior_outputs=state.produced.prior_outputs,
+            all_artifact_refs=state.produced.all_artifact_refs,
+            stored_artifacts=state.produced.stored_artifacts,
+            completed_task_ids=state.checkpoint.completed_task_ids,
+            plan_delta_refs=state.checkpoint.plan_delta_refs,
+            bound_record=state.ownership.bound_record,
+            compliance_counter=state.ownership.compliance_counter,
+            retain_checkpoint=self._is_phase_boundary(plan, task_idx),
+        )
+
+        # #796: the authoring stage may have just stored a manifest. Derive here — after
+        # collection, before the next dispatch — so the very next task binds.
+        state.authored = await self._bind_authored_manifest(
+            cycle, run_id, state.produced.stored_artifacts, state.authored
+        )
+
+        # ----------------------------------------------------------
+        # SIP-0070: Pulse boundary evaluation (after task, before gate)
+        # ----------------------------------------------------------
+        if pulse.has_checks and pulse.engine is not None:
+            state.cadence.task_count += 1
+            cadence_closed = self._pulse_boundary_runner.evaluate_pulse_boundaries(
+                task_idx=task_idx,
+                plan=plan,
+                cadence_task_count=state.cadence.task_count,
+                cadence_start_time=state.cadence.started,
+                cadence=pulse.cadence,
+            )
+            await self._pulse_boundary_runner.run_pulse_evaluations(
+                task_idx=task_idx,
+                milestone_bindings=pulse.milestone_bindings,
+                cadence_suites=pulse.cadence_suites,
+                cadence_closed=cadence_closed,
+                cadence_interval_id=state.cadence.interval_id,
+                run_id=run_id,
+                cycle=cycle,
+                obs_ctx=obs_ctx,
+                engine=pulse.engine,
+                envelope=envelope,
+                prior_outputs=state.produced.prior_outputs,
+                stored_artifacts=state.produced.stored_artifacts,
+                all_artifact_refs=state.produced.all_artifact_refs,
+                flow_run_id=flow_run_id,
+                agent_resolver=agent_resolver,
+                run_root=run_root,
+                ledger=ledger,
+            )
+
+            if cadence_closed:
+                state.cadence.interval_id += 1
+                state.cadence.task_count = 0
+                state.cadence.started = time.monotonic()
+
+        # Post-task gate check (runs after verification)
+        if self._is_gate_boundary(cycle, envelope.task_type):
+            await self._handle_gate(
+                run_id,
+                cycle,
+                envelope.task_type,
+                stored_artifacts=state.produced.stored_artifacts,
+                profile=profile,
             )
 
     # ------------------------------------------------------------------
@@ -2629,6 +2835,14 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 if artifact_contents:
                     extra_inputs["artifact_contents"] = artifact_contents
 
+        # #1312 / H2: the builder's optional notes reach the test author here, paired with
+        # the producing artifact's id, and only through the presence-keyed appendix — the
+        # curated `artifact_contents` above never carried the old handoff to qa either.
+        if envelope.task_type in _ASSEMBLY_NOTES_READERS:
+            notes = await self._resolve_assembly_notes(stored_artifacts)
+            if notes:
+                extra_inputs["assembly_notes"] = notes
+
         if contract.acceptance_workspace:
             # #643: the typed-acceptance workspace rides separately from the
             # curated prompt context — evaluation needs the full accepted tree
@@ -2880,6 +3094,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         repair_rejection_carry: dict[str, list[str]] | None = None,
         bound_record: Any = None,
         compliance_counter: dict[str, int] | None = None,
+        accepted_repair_task_ids: set[str] | None = None,
     ) -> str:
         """Route a failed task outcome. Returns an action string.
 
@@ -2909,6 +3124,87 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 exhausted, so a repair that never converges fails the run)
         """
         outcome = (result.outputs or {}).get("outcome_class") if result.outputs else None
+
+        # The four steps this router has always run, in order — the blocks its own comment
+        # headers already named, each now a method taking what it consumes and returning
+        # what it produces (1.7.5 recovery extraction map §4 step 3). No condition is
+        # reordered and no block's decision moved.
+        #
+        # The parameter lists stay long on purpose. Most of what blocks 3 and 4 need is
+        # run-lived state — the stored artifacts, the artifact refs, the completed ids,
+        # the plan deltas — and `RunState` (map §4 step 6) is what gives that a shape.
+        # Inventing a second carrier for it here would put the same values in two shapes
+        # and make the tail a merge rather than a move.
+        self._carry_facts_to_the_next_attempt(result, envelope, enriched_envelope)
+
+        action = self._classify_unhandled_outcome(
+            outcome,
+            result,
+            envelope,
+            cycle,
+            task_attempt_counts,
+            enriched_envelope=enriched_envelope,
+        )
+        if action is not None:
+            return action
+
+        round_ = await self._dispatch_correction_protocol(
+            result,
+            envelope,
+            cycle,
+            run_id,
+            correction_counter=correction_counter,
+            correction_signature_state=correction_signature_state,
+            scaffold_enforcement_carry=scaffold_enforcement_carry,
+            prior_outputs=prior_outputs,
+            all_artifact_refs=all_artifact_refs,
+            stored_artifacts=stored_artifacts,
+            completed_task_ids=completed_task_ids,
+            plan_delta_refs=plan_delta_refs,
+            profile=profile,
+            flow_run_id=flow_run_id,
+            enriched_envelope=enriched_envelope,
+            interface_manifest=interface_manifest,
+            budget_guard=budget_guard,
+            repair_rejection_carry=repair_rejection_carry,
+            accepted_repair_task_ids=accepted_repair_task_ids,
+        )
+
+        return await self._route_correction_path(
+            round_,
+            result,
+            envelope,
+            run_id,
+            cycle=cycle,
+            correction_counter=correction_counter,
+            patched_result_holder=patched_result_holder,
+            prior_outputs=prior_outputs,
+            all_artifact_refs=all_artifact_refs,
+            stored_artifacts=stored_artifacts,
+            completed_task_ids=completed_task_ids,
+            plan_delta_refs=plan_delta_refs,
+            profile=profile,
+            flow_run_id=flow_run_id,
+            enriched_envelope=enriched_envelope,
+            budget_guard=budget_guard,
+            interface_manifest=interface_manifest,
+            repair_rejection_carry=repair_rejection_carry,
+            bound_record=bound_record,
+            compliance_counter=compliance_counter,
+        )
+
+    def _carry_facts_to_the_next_attempt(
+        self,
+        result: TaskResult,
+        envelope: TaskEnvelope,
+        enriched_envelope: TaskEnvelope | None,
+    ) -> None:
+        """Block 1 — stamp the attempt and thread what this one exposed onto the next.
+
+        Mutates the envelopes and returns nothing: the carry IS the output. Both are
+        stamped because the retry loop re-dispatches the enriched one and the base one
+        carries the evidence parity.
+        """
 
         # #1260: whatever happens next — a retry, or a re-dispatch after a refused patch —
         # the attempt that follows must still cover the cases this one exposed. A
@@ -2957,6 +3253,23 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 ", ".join(str(c.get("name") or c.get("title") or "?") for c in retained),
             )
 
+    def _classify_unhandled_outcome(
+        self,
+        outcome: Any,
+        result: TaskResult,
+        envelope: TaskEnvelope,
+        cycle: Cycle,
+        task_attempt_counts: dict[str, int],
+        *,
+        enriched_envelope: TaskEnvelope | None,
+    ) -> str | None:
+        """Block 2 — the D5 fallback table, BLOCKED, the aimed retry, and D9.
+
+        Returns ``"continue"`` when the caller must re-dispatch, or ``None`` when the
+        outcome goes on to correction. Raises ``_PausedError`` (BLOCKED is a pause, not
+        an outcome) and ``_ExecutionError`` (D9: correcting the statement of what "done"
+        means is how a cycle talks itself into a lower bar).
+        """
         # D5 fallback table: classify unclassified failures
         if outcome is None:
             task_attempt_counts[envelope.task_id] = task_attempt_counts.get(envelope.task_id, 0) + 1
@@ -3009,7 +3322,36 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             raise _ExecutionError(
                 f"Definition-of-done task {envelope.task_id} failed (no correction): {result.error}"
             )
+        return None
 
+    async def _dispatch_correction_protocol(
+        self,
+        result: TaskResult,
+        envelope: TaskEnvelope,
+        cycle: Cycle,
+        run_id: str,
+        *,
+        correction_counter: dict[str, int],
+        correction_signature_state: dict[str, Any],
+        scaffold_enforcement_carry: list[str],
+        prior_outputs: dict[str, Any],
+        all_artifact_refs: list[str],
+        stored_artifacts: list[tuple[str, ArtifactRef]],
+        completed_task_ids: list[str],
+        plan_delta_refs: list[str],
+        profile: Any,
+        flow_run_id: str | None,
+        enriched_envelope: TaskEnvelope | None,
+        interface_manifest: Any,
+        budget_guard: Callable[[], None] | None,
+        repair_rejection_carry: dict[str, list[str]] | None,
+        accepted_repair_task_ids: set[str] | None,
+    ) -> _CorrectionRound:
+        """Block 3 — the budget, then the protocol.
+
+        Raises ``_ExecutionError`` when the run's correction budget is exhausted, so a
+        repair that never converges fails the run rather than looping.
+        """
         # Trigger correction protocol
         max_corrections = cycle.resolved_config().get("max_correction_attempts", 2)
 
@@ -3051,6 +3393,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             # #870: what happened to this task's PREVIOUS repair, so analysis and the
             # next repair are told instead of re-deriving the failure blind.
             repair_rejections=(repair_rejection_carry or {}).get(envelope.task_id),
+            # #994: whether an earlier round of this task already had a repair accepted
+            # and stored — the fact the rewind guard needs and only this loop holds.
+            has_accepted_repair=envelope.task_id in (accepted_repair_task_ids or set()),
             # RC3 (pf-23): re-resolve the workspace from the LIVE stored_artifacts
             # instead of the enriched envelope's copy captured once at the original
             # dispatch. stored_artifacts accumulates each attempt's repair outputs
@@ -3067,8 +3412,43 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 )
             ),
         )
-        correction_path = protocol.correction_path
+        return _CorrectionRound(protocol=protocol, attempt=attempt, max_attempts=max_corrections)
 
+    async def _route_correction_path(
+        self,
+        round_: _CorrectionRound,
+        result: TaskResult,
+        envelope: TaskEnvelope,
+        run_id: str,
+        *,
+        cycle: Cycle,
+        correction_counter: dict[str, int],
+        patched_result_holder: dict[str, Any] | None,
+        prior_outputs: dict[str, Any],
+        all_artifact_refs: list[str],
+        stored_artifacts: list[tuple[str, ArtifactRef]],
+        completed_task_ids: list[str],
+        plan_delta_refs: list[str],
+        profile: Any,
+        flow_run_id: str | None,
+        enriched_envelope: TaskEnvelope | None,
+        budget_guard: Callable[[], None] | None,
+        interface_manifest: Any,
+        repair_rejection_carry: dict[str, list[str]] | None,
+        bound_record: Any,
+        compliance_counter: dict[str, int] | None,
+    ) -> str:
+        """Block 4 — refund an empty emission, then act on the protocol's answer.
+
+        The four-way dispatch keeps its ``if``/``elif``: it is keyed on the protocol's
+        *answer*, not on a task type, so "tables over chains" (which is about type-keyed
+        dispatch) does not apply and a table would add a lookup between the decision and
+        the action it names.
+        """
+        protocol = round_.protocol
+        attempt = round_.attempt
+        max_corrections = round_.max_attempts
+        correction_path = protocol.correction_path
         # #1053: an emission containing nothing is not an attempt at the fix. Arm B of
         # the 2026-08-23 pair banked `repair_output.md` at ZERO bytes on two of three
         # rounds while its diagnosis stayed correct and stable, and each was billed as a
@@ -3152,453 +3532,17 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         result: TaskResult,
         repair_artifacts: list[dict[str, Any]],
         patched_result_holder: dict[str, Any] | None,
-        *,
-        run_id: str = "",
-        cycle: Cycle | None = None,
-        correction_attempts: int = 0,
-        prior_outputs: dict[str, Any] | None = None,
-        all_artifact_refs: list[str] | None = None,
-        stored_artifacts: list[tuple[str, ArtifactRef]] | None = None,
-        completed_task_ids: list[str] | None = None,
-        plan_delta_refs: list[str] | None = None,
-        profile: Any = None,
-        flow_run_id: str | None = None,
-        enriched_envelope: TaskEnvelope | None = None,
-        budget_guard: Callable[[], None] | None = None,
-        interface_manifest: Any = None,
-        repair_rejection_carry: dict[str, list[str]] | None = None,
-        repair_typed_checks: Sequence[dict[str, Any]] = (),
-        bound_record: Any = None,
-        compliance_counter: dict[str, int] | None = None,
+        **kwargs: Any,
     ) -> str:
-        """Behaviorally verify a patch (#389); return "accept_patch" or "continue".
+        """Delegate to the ``PatchAcceptance`` collaborator (map §4 step 2).
 
-        Verification itself is the pure ``patch_verification`` module; this
-        method only assembles its inputs from the failed task and renders the
-        corrected result. Any non-pass (failed, unverifiable, no repair
-        artifacts, no holder) falls back to the pre-#389 re-dispatch path —
-        conservative by construction, never a false accept.
-
-        #456: typed criteria are necessary but not sufficient when the failed
-        task carries behavioral evidence — ``tests_pass`` is synthesized from
-        the task's executed ``test_result``, so a patched result that keeps the
-        stale pre-repair ``test_result`` records the failure as the check's
-        final state no matter what the typed rows say. When the failed outputs
-        carry a ``test_result``, the repaired suite is re-executed in the QA
-        agent's environment (via the correction runner) and the corrected
-        result takes the retest's fresh behavioral evidence. A retest that
-        fails — or can't run — falls back to "continue", same as a typed miss.
+        Kept as a method rather than inlined at the one call site: the outcome router
+        reads as ``patch → _try_accept_patch`` and every executor test enters here, so
+        the delegation is the seam that made moving 511 lines out a non-event.
         """
-        if not repair_artifacts or patched_result_holder is None:
-            return "continue"
-
-        # #1323: the verified set must be the set that will be stored. Storage enforces the
-        # producer's grants (``_collect_artifacts_and_checkpoint``); verification did not,
-        # so a repair that rewrote a path the producer may not write was verified on the
-        # overlay WITH the file, reported passed, and had the file dropped at storage —
-        # the failing row superseded, the defect still in the tree (1.7.2 React roll 1,
-        # ``docker/serve.py``). Enforce here with the same grants, before the overlay.
-        #
-        # #1350: "the same grants" are the REPAIRING step's, which every repair artifact
-        # names for itself (``name_producer`` in the correction runner) — the failed task's
-        # grants judged a dev repair of a dev slot as a QA write to it and refused the
-        # patch (``cyc_375bdea6e140``). An artifact naming no producer is refused loudly:
-        # judged under the failed task's grants it would be that defect again, silently.
-        if bound_record is not None:
-            from squadops.cycles.scaffold_enforcement import named_producer
-
-            unnamed = [
-                str(a.get("name") or a.get("path") or "(unnamed)")
-                for a in repair_artifacts
-                if named_producer(a) is None
-            ]
-            if unnamed:
-                raise _ExecutionError(
-                    f"patch authorization task={envelope.task_id}: {len(unnamed)} repaired "
-                    f"path(s) name no producer ({', '.join(unnamed)}) — a repair's grants are "
-                    "the repairing step's, and the correction runner names that step on every "
-                    "repair emission (#1350)"
-                )
-            repair_artifacts, dropped = self._enforce_frozen_ownership(
-                repair_artifacts, bound_record, envelope, stage=STAGE_PATCH_VERIFICATION
-            )
-            for record in dropped:
-                self._emit_scaffold_integrity_evidence(record, envelope)
-            if dropped:
-                logger.warning(
-                    "patch authorization task=%s: %d repaired path(s) dropped before "
-                    "verification, %d retained — %s (#1323)",
-                    envelope.task_id,
-                    len(dropped),
-                    len(repair_artifacts),
-                    ", ".join(str(r.normalized_path) for r in dropped),
-                )
-                if compliance_counter is not None and cycle is not None:
-                    self._enforce_compliance_budget(dropped, cycle, envelope, compliance_counter)
-            if not repair_artifacts:
-                logger.warning(
-                    "patch_verification task=%s refused: every repaired path was one the "
-                    "producer may not write — nothing to verify (#1323)",
-                    envelope.task_id,
-                )
-                return "continue"
-
-        resolved_config = (envelope.inputs or {}).get("resolved_config") or {}
-        criteria = (envelope.inputs or {}).get("acceptance_criteria") or []
-        patched_artifacts = overlay_artifacts(
-            (result.outputs or {}).get("artifacts") or [], repair_artifacts
+        return await self._patch_acceptance.accept(
+            envelope, result, repair_artifacts, patched_result_holder, **kwargs
         )
-        # #643: verify against the accepted workspace tree, not just the task's
-        # own files — module_imports and the #591 import pre-gate need the
-        # scaffold siblings present or a correct repair can never be accepted
-        # (fay-1: both candidates rejected in a routes.py-only workspace).
-        # Workspace rides as a separate base: patched_artifacts is what an
-        # accepted patch RE-STORES (#389 swap below), and the tree must never
-        # be re-stored under the repaired task's type.
-        workspace_files = ((enriched_envelope or envelope).inputs or {}).get(
-            "acceptance_workspace_files"
-        ) or {}
-        # #870: the criteria OWNED by the files the repair rewrote, derived from the
-        # canonical contract emission (M0a: emission equals the pinned artifact).
-        # Presence-keyed on the manifest like every other manifest surface; a
-        # derivation failure disables the gate rather than the verification.
-        file_owned: list[Any] = []
-        if interface_manifest is not None:
-            try:
-                from squadops.capabilities.scaffold_contract import emit_contract_dict
-                from squadops.cycles.implementation_plan import resolve_criteria_for_files
-                from squadops.cycles.verification_contract import VerificationContract
-
-                file_owned = resolve_criteria_for_files(
-                    VerificationContract.from_dict(emit_contract_dict(interface_manifest)),
-                    [a.get("name") for a in patched_artifacts if isinstance(a, dict)],
-                )
-            except Exception as exc:
-                logger.warning("patch file-owned gate unavailable: %s", exc)
-        if file_owned:
-            logger.info(
-                "patch file-owned gate: %d criteria own the repaired files (task=%s)",
-                len(file_owned),
-                envelope.task_id,
-            )
-        verification = await verify_patched_artifacts(
-            criteria,
-            patched_artifacts,
-            workspace_files=workspace_files,
-            stack=resolve_check_stack(resolved_config),
-            typed_acceptance_enabled=resolved_config.get("typed_acceptance", True),
-            command_acceptance_enabled=resolved_config.get("command_acceptance_checks", True),
-            file_owned_criteria=file_owned,
-            # #1229: what the repair executed on its own patch, in its own container —
-            # carried on the protocol result (#1256). ``result`` here is the FAILED task's;
-            # reading the rows off it found none in every live round (cyc_c6db3ffc1f4e).
-            agent_checks=repair_typed_checks,
-            # #1264: the repair's own files, not the overlay's (which carries the failed
-            # task's artifacts too) — what #1259's absent-file rule is keyed on.
-            repaired=[a.get("name") for a in repair_artifacts if isinstance(a, dict)],
-        )
-        # pf-33: name the failed checks — "status=failed reason= checks=7" forced
-        # a by-hand artifact replay to learn WHICH check rejected the patch.
-        # (#870: the rows are PatchCheckRecord dataclasses; the original dict-shaped
-        # comprehension matched nothing and logged "failed=-" on every rejection.)
-        failed_records = [
-            record
-            for record in verification.checks
-            if record.severity == "error" and record.status in ("failed", "error")
-        ]
-        failed_checks = [record.check for record in failed_records]
-        agent_rows = [r for r in verification.checks if r.executed_in != EXECUTED_IN_RUNTIME_API]
-        # #1276: why nothing executed, not just that nothing did. "unverifiable /
-        # no_executed_blocking_checks" reads as an absent toolchain and is equally
-        # produced by an absent FILE — the 1.7.1 Next.js roll 1 shape, where the R7
-        # readout could not tell the two apart because the line carried neither reason.
-        logger.info(
-            "patch_verification task=%s task_type=%s status=%s reason=%s checks=%d failed=%s "
-            "decided_by_agent=%d agent_rows=%d agent_executed=%d skips=%s",
-            envelope.task_id,
-            envelope.task_type,
-            verification.status,
-            verification.reason or "",
-            len(verification.checks),
-            ",".join(failed_checks) or "-",
-            verification.decided_by_agent,
-            len(agent_rows),
-            sum(1 for r in agent_rows if r.status in ("passed", "failed")),
-            skip_reasons(verification.checks) or "-",
-        )
-        # pf-47/pf-49: when a task's checks are structurally unevaluable (a frontend
-        # test file — every AST check skips by design), "unverifiable" is not caution,
-        # it is a deterministic repair deadlock: no repair can EVER produce an executed
-        # verdict, so the loop burns its whole budget rejecting repairs unheard. The
-        # behavioral retest below re-runs the actual failing suite against the patched
-        # workspace — stronger evidence than the checks it stands in for — so for
-        # exactly these reasons, and only with behavioral evidence to re-run, the
-        # retest verdict decides alone. Evaluator errors, parse failures, and real
-        # check failures keep failing closed, unchanged.
-        retest_decides = (
-            verification.status == PATCH_UNVERIFIABLE
-            and verification.reason in STRUCTURALLY_UNEVALUABLE_REASONS
-            and isinstance((result.outputs or {}).get("test_result"), dict)
-        )
-        if retest_decides:
-            logger.info(
-                "patch_verification task=%s structurally unevaluable (%s) — "
-                "behavioral retest decides",
-                envelope.task_id,
-                verification.reason,
-            )
-        # #1221: structurally unevaluable AND no behavioral evidence to stand in for the
-        # checks is a deadlock, not a rejection. pf-47/pf-49 named this exactly — "no
-        # repair can EVER produce an executed verdict, so the loop burns its whole budget
-        # rejecting repairs unheard" — and answered it with `retest_decides`, which needs
-        # a `test_result` only `qa.test` produces. A `development.develop` repair has
-        # none, so on a stack whose criteria cannot execute here (runtime-api has no node,
-        # so stack #2's compile checks skip) every dev repair is refused unheard.
-        # cyc_05abfc7c1f00 spent all three rounds on `app/api/runs/route.ts` this way,
-        # re-dispatching an identical task after two identical unverifiable verdicts.
-        #
-        # Terminating is not a fix for the inability to verify — the toolchain belongs
-        # where the checks can run, which is #1221's option C and deliberately after the
-        # cut. It stops the waste and, more importantly, replaces three rounds of silence
-        # with one named reason a reader can act on.
-        unrepairable_here = correction_is_deadlocked(
-            verification.status, verification.reason, retest_decides=retest_decides
-        )
-        if verification.status != PATCH_PASSED and not retest_decides:
-            # #870: tell the next round WHY this repair was rejected — the named
-            # failed checks with reasons, not just a status in the log.
-            failed_detail = "; ".join(
-                f"{record.check}: {record.reason or 'failed'}" for record in failed_records
-            )
-            _record_repair_rejection(
-                repair_rejection_carry,
-                envelope.task_id,
-                f"correction attempt {correction_attempts}: {REPAIR_REFUSED_MARKER} "
-                f"({verification.reason or 'failed checks'})"
-                + (f" — {failed_detail}" if failed_detail else ""),
-            )
-            if unrepairable_here:
-                # #1273: say WHICH absence this was. `no_executed_blocking_checks` is
-                # produced by an absent toolchain AND by an absent file — every row
-                # skipping `file_not_found` because the repair wrote prose instead of the
-                # file — and the two have opposite remedies. Next.js roll 1 terminated
-                # under the toolchain wording for a file that was never written.
-                absent_files = sorted(
-                    {
-                        str((record.params or {}).get("file"))
-                        for record in verification.checks
-                        if record.reason in FILE_ABSENT_REASONS
-                        and (record.params or {}).get("file")
-                    }
-                )
-                logger.warning(
-                    "correction_terminated_unverifiable task=%s task_type=%s reason=%s — %s; "
-                    "further rounds cannot produce a verdict (#1221, #1273)",
-                    envelope.task_id,
-                    envelope.task_type,
-                    verification.reason,
-                    (
-                        "every check that could decide names a file the repair did not "
-                        f"write ({', '.join(absent_files)})"
-                        if absent_files
-                        else "no check owning the repaired files can execute in this "
-                        "environment and the task carries no behavioral evidence to "
-                        "decide instead"
-                    ),
-                )
-                return "break_correction"
-            return "continue"
-
-        corrected_outputs = dict(result.outputs or {})
-
-        # #456: behavioral-evidence-backed task — re-execute the repaired
-        # suite before accepting; fresh test_result supersedes the stale one.
-        #
-        # #1269: keyed on what the PATCH CONTAINS, not on the failed result already
-        # carrying a `test_result`. A qa.test that failed at EMISSION never had one — it
-        # emitted a preamble and no fenced block — so the repair that finally produced the
-        # suite was accepted on typed rows alone, no retest ran, and `tests_pass` and
-        # `frontend_build` ended `subject_missing`: the run blocked with the delivered app
-        # booting fine (React roll 2, cyc_9c085ec2e9e5). The evidence families synthesised
-        # from `test_result` can only ever be produced by running the suite, so the
-        # question is whether there IS a suite to run — which the patch answers.
-        #
-        # Owner's ruling (2026-09-03): key on the patch rather than on a per-task-type
-        # evidence-contract table. The artifacts already carry the fact, and a table would
-        # be a second home for it. "Will the runner discover this?" is the stack's own
-        # question, asked through the stack's own declared conventions (#846).
-        retest_rows: list[dict[str, Any]] = []
-        # None means "no retest ran" — distinct from a retest that produced no
-        # artifacts, which supersede_evidence_artifacts treats the same way (drop).
-        retest_evidence: list[dict[str, Any]] | None = None
-        repaired_suites = _repaired_suite_files(patched_artifacts, resolved_config)
-        if isinstance(corrected_outputs.get("test_result"), dict) or repaired_suites:
-            if cycle is None:
-                logger.warning(
-                    "patch_verification task=%s carries test_result but no retest "
-                    "context — falling back to re-dispatch",
-                    envelope.task_id,
-                )
-                return "continue"
-            # The retest needs the dispatch-time workspace: artifact_contents
-            # is added by _enrich_envelope and never exists on the base
-            # envelope (3.11: the retest instant-failed input validation
-            # because it was built from the un-enriched envelope).
-            retest_result = await self._correction_runner.reexecute_repaired_suite(
-                run_id,
-                cycle,
-                enriched_envelope if enriched_envelope is not None else envelope,
-                patched_artifacts,
-                correction_attempts,
-                prior_outputs=prior_outputs if prior_outputs is not None else {},
-                all_artifact_refs=all_artifact_refs if all_artifact_refs is not None else [],
-                stored_artifacts=stored_artifacts if stored_artifacts is not None else [],
-                completed_task_ids=completed_task_ids if completed_task_ids is not None else [],
-                plan_delta_refs=plan_delta_refs if plan_delta_refs is not None else [],
-                profile=profile,
-                flow_run_id=flow_run_id,
-                budget_guard=budget_guard,
-            )
-            retest_outputs = (retest_result.outputs or {}) if retest_result else {}
-            fresh_test_result = retest_outputs.get("test_result")
-            retest_passed = (
-                retest_result is not None
-                and retest_result.status == TaskResultStatus.SUCCEEDED
-                and isinstance(fresh_test_result, dict)
-                and fresh_test_result.get("tests_passed") is True
-            )
-            # #870: the retest's own verdict text — previously only a bare
-            # status; roll 12's non-compiling repair died as "status=FAILED
-            # passed=False" and nothing downstream ever learned it didn't build.
-            retest_validation_rows = (retest_outputs.get("validation_result") or {}).get(
-                "checks"
-            ) or []
-            failing_rows = "; ".join(
-                f"{row.get('check', '?')}: {row.get('reason') or 'failed'}"
-                for row in retest_validation_rows
-                if isinstance(row, dict) and row.get("passed") is False
-            )
-            retest_reason = str(
-                (retest_outputs.get("validation_result") or {}).get("summary")
-                or (fresh_test_result or {}).get("summary")
-                or (retest_result.error if retest_result else "")
-                or ""
-            )
-            if failing_rows:
-                retest_reason = (
-                    f"{retest_reason} [{failing_rows}]" if retest_reason else failing_rows
-                )
-            logger.info(
-                "patch_retest task=%s status=%s passed=%s reason=%s",
-                envelope.task_id,
-                retest_result.status if retest_result else "not_dispatched",
-                retest_passed,
-                retest_reason or "-",
-            )
-            if not retest_passed:
-                _record_repair_rejection(
-                    repair_rejection_carry,
-                    envelope.task_id,
-                    f"correction attempt {correction_attempts}: repaired suite retest "
-                    f"FAILED — {retest_reason or 'no verdict detail'}",
-                )
-                return "continue"
-            corrected_outputs["test_result"] = fresh_test_result
-            retest_validation = retest_outputs.get("validation_result")
-            if isinstance(retest_validation, dict):
-                retest_rows = [
-                    row for row in retest_validation.get("checks", []) if isinstance(row, dict)
-                ]
-            # #1111: the passing retest is what the task stores. Without this the
-            # failed run's test_report.md and typed-check evaluation were re-stored
-            # under the task id seconds AFTER the retest banked its passing report —
-            # and the next analysis read the failure (1.6.5 FastAPI+React roll 1).
-            retest_evidence = retest_outputs.get("artifacts")
-
-        # #1111, generalized by #1318: the failed attempt's own evidence must never be
-        # re-stored under the repaired task, whether or not a behavioral retest ran. Gated
-        # inside the retest branch it only covered tasks with a suite; a builder task has
-        # none, so 1.7.2 roll 1 re-stored the pre-patch typed-check evaluation eleven
-        # milliseconds before the patch's own file landed — same evaluated_at, same
-        # workspace revision, and the triage read the failure. A retest's fresh evidence
-        # replaces; with no retest the stale file is dropped, because the corrected result
-        # already carries the patch verification's rows.
-        supersession = supersede_evidence_artifacts(patched_artifacts, retest_evidence)
-        patched_artifacts = supersession.artifacts
-        if supersession.replaced or supersession.dropped:
-            logger.info(
-                "patch task=%s failed-attempt evidence superseded: replaced=%s dropped=%s "
-                "(retest=%s) (#1111/#1318)",
-                envelope.task_id,
-                ",".join(supersession.replaced) or "-",
-                ",".join(supersession.dropped) or "-",
-                "yes" if retest_evidence is not None else "no",
-            )
-
-        corrected_outputs["artifacts"] = patched_artifacts
-        # #1318: the ledger supersedes on ``(check_id, subject, criterion_id)``, so a
-        # framework-spine row the patch verification never reproduces keeps the FAILED
-        # attempt's value as the run's final state. Nothing but the builder handler writes
-        # ``required_files``, so on 1.7.2 roll 1 the patch supplied ``qa_handoff.md``,
-        # ``patch_verification`` passed, and the run was still rejected on the pre-patch row.
-        # Re-derive it from the PATCHED set through the handler's own rule — for the task
-        # types whose emission carries the row by contract (``emits_required_files``: the
-        # builder's), or when the failed attempt actually emitted it. Never invent evidence
-        # for a task type that never carries the check. #1364: a CONTENTLESS builder attempt
-        # carries no rows at all, so "only when it carried one" left the required check with
-        # no executed row anywhere — the accepted patch supplied the files, the app booted,
-        # and the roll-up read ``subject_missing`` → ``blocked_unverified`` (1.7.3 roll 1).
-        spine_rows: list[dict[str, Any]] = []
-        failed_rows = ((result.outputs or {}).get("validation_result") or {}).get("checks") or []
-        expected_artifacts = (envelope.inputs or {}).get("expected_artifacts") or []
-        carried_required_files = any(
-            isinstance(row, Mapping) and row.get("check") == CHECK_REQUIRED_FILES
-            for row in failed_rows
-        )
-        owes_required_files = carried_required_files or emits_required_files(envelope.task_type)
-        if expected_artifacts and owes_required_files:
-            spine_rows.append(
-                required_files_row(
-                    [PurePosixPath(str(name)).name for name in expected_artifacts if name],
-                    [a.get("name") for a in patched_artifacts if isinstance(a, dict)],
-                )
-            )
-            logger.info(
-                "patch task=%s re-derived %s on the patched set: passed=%s missing=%s "
-                "(the failed attempt carried %s; #1318, #1364)",
-                envelope.task_id,
-                CHECK_REQUIRED_FILES,
-                spine_rows[-1]["passed"],
-                ",".join(spine_rows[-1]["missing"]) or "-",
-                "the row" if carried_required_files else "no rows",
-            )
-        elif carried_required_files:
-            logger.warning(
-                "patch task=%s carried a %s failure but the task declares no "
-                "expected_artifacts — the pre-patch row will decide (#1318)",
-                envelope.task_id,
-                CHECK_REQUIRED_FILES,
-            )
-        prior_validation = corrected_outputs.get("validation_result")
-        corrected_outputs["validation_result"] = {
-            **(prior_validation if isinstance(prior_validation, dict) else {}),
-            "passed": True,
-            "patch_verified": True,
-            # #734 Slice A: the repair-acceptance verdict names the workspace
-            # tree it verified against (verify_patched_artifacts computes it
-            # from the exact mapping it materialized).
-            "workspace_revision_id": verification.workspace_revision_id,
-            "checks": [r.to_check_row() for r in verification.checks] + retest_rows + spine_rows,
-        }
-        corrected_outputs.pop("outcome_class", None)
-        patched_result_holder["patched_result"] = dataclasses.replace(
-            result,
-            status=TaskResultStatus.SUCCEEDED,
-            outputs=corrected_outputs,
-            error=None,
-            outcome_class=None,
-        )
-        return "accept_patch"
 
     def _build_bound_record_for_run(self, interface_manifest: Any, run_id: str) -> Any:
         """SIP-0100 2.4: build the bound scaffold record (frozen paths + bytes) for a scaffold-bound
@@ -4226,16 +4170,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                             parsed_plan.validate_builder_floor(cycle.resolved_config()),
                         )
                     )
-                    # #1252: a regex over the handoff's headings restates the profile's
-                    # own section check in a brittle form; the 1.7.1 React shakeout spent
-                    # two of three correction rounds on heading word order. Rejected here
-                    # with the rule named, for a free framing re-roll.
-                    errors.extend(
-                        classifier.collect(
-                            "validate_handoff_criteria",
-                            parsed_plan.validate_handoff_criteria(),
-                        )
-                    )
             elif (
                 ref.filename == SEEDED_MANIFEST_FILENAME or artifact_type == MANIFEST_ARTIFACT_TYPE
             ):
@@ -4384,7 +4318,12 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # rejected — but logged so the pass is never silent (a warning check can't
         # block a build per RC-9, so it must not kill the cycle at plan validation).
         if parsed_plan is not None:
-            soft = parsed_plan.soft_criteria_violations(contract)
+            # #1254: reported beside the tolerated criteria, never fatal — the rule is
+            # taught in the vocabulary and enforced by the dispatch strip; a framing
+            # re-roll for a row dispatch drops would cost half an hour for nothing.
+            soft = parsed_plan.soft_criteria_violations(contract) + [
+                f"tolerated (derived): {note}" for note in parsed_plan.validate_derived_criteria()
+            ]
             if soft:
                 logger.warning(
                     "Plan for gate %r on run %s: tolerated %d soft criteria "
@@ -4526,8 +4465,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # style-lottery regex costs seconds at the gate, not an hour of
         # correction budget mid-implementation.
         errors += plan.validate_criteria_scope()
-        # #1252: same seam again — a regex over the handoff's headings.
-        errors += plan.validate_handoff_criteria()
         # #426: same seam again — a builder task without a build_profile is
         # refused by generate_task_plan anyway, but only after the gate
         # approved the plan and the implementation run was admitted.
@@ -4568,8 +4505,15 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         envelope: TaskEnvelope,
         producing_task_type: str | None = None,
         emission_status: str | None = None,
+        attempt: int | None = None,
     ) -> ArtifactRef:
         """Store a task output artifact in the vault.
+
+        ``attempt`` (#1436) is the 1-based attempt of the task that produced this
+        artifact — stamped by the banking seam so two failed attempts of one task are
+        never read as one attempt that banked two files (the ``task_id`` alone cannot
+        tell them apart, and a timestamp cluster is a heuristic in an evidence
+        instrument).
 
         ``emission_status`` (#971) marks an emission that did NOT pass. It is
         provenance, not a type: ``producing_task_type`` stays truthful, because a
@@ -4589,6 +4533,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             metadata["producing_task_type"] = producing_task_type
         if emission_status:
             metadata["emission_status"] = emission_status
+        if attempt is not None:
+            metadata["attempt"] = attempt
         ref = ArtifactRef(
             artifact_id=f"art_{uuid4().hex[:12]}",
             project_id=cycle.project_id,
@@ -4694,6 +4640,14 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         artifacts = (getattr(result, "outputs", None) or {}).get("artifacts") or []
         if not artifacts:
             return
+        # #1436: the attempt this emission belongs to. ``prior_attempts`` is #1304's stamp —
+        # every handled outcome increments it AFTER the bank runs (``_route_outcome`` admits
+        # and banks, then ``_handle_task_outcome`` stamps) — so at banking time it counts the
+        # attempts already handled and this one is the next. Read off the envelope rather
+        # than re-derived from timestamps or artifact counts: round 2 of the 1.7.4 line had
+        # three artifacts 42 ms apart that were one emission and two artifacts 6.3 s apart
+        # that were two attempts, and no clustering rule tells those apart on a slow write.
+        attempt = int((getattr(envelope, "inputs", None) or {}).get("prior_attempts") or 0) + 1
         new_refs: list[str] = []
         try:
             for art in artifacts:
@@ -4704,6 +4658,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     envelope,
                     producing_task_type=envelope.task_type,
                     emission_status="failed",
+                    attempt=attempt,
                 )
                 new_refs.append(ref.artifact_id)
             if new_refs:

@@ -1,0 +1,11 @@
+# Advisories the dependency audit (#1205) is told to ignore — each with the reason and
+# the issue that retires it. An entry here is a decision, not a default: pip-audit fails
+# the build on any advisory NOT listed, so a new one blocks until it is fixed or
+# accepted here in writing. Format: one advisory id per line; `#` comments.
+#
+# The 2026-09-08 refresh (#1204) moved cryptography to 50.0.1 and pyasn1 to 0.6.4, which
+# retired PYSEC-2026-3552 and PYSEC-2026-3455/3456/3457. What remains:
+
+# ecdsa 0.19.2 — NO fix version published (via python-jose on the auth boundary). Stays
+# listed until python-jose is retired or ecdsa ships a fix; revisited at every refresh.
+PYSEC-2026-1325

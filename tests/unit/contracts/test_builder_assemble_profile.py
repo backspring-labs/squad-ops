@@ -46,11 +46,11 @@ class TestBuilderAssembleProfileLoads:
         assert gate["name"] == "plan-review"
         assert "governance.review" in gate["after_task_types"]
 
-    def test_includes_qa_handoff_artifact_type(self):
+    def test_includes_the_assembly_notes_artifact_type(self):
         """builder-assemble.yaml includes qa_handoff in expected_artifact_types."""
         profile = load_profile("builder-assemble")
         types = profile.defaults["expected_artifact_types"]
-        assert "qa_handoff" in types
+        assert "assembly_notes" in types
 
     def test_includes_build_profile(self):
         """builder-assemble.yaml specifies build_profile in defaults."""

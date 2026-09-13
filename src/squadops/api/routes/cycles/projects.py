@@ -8,10 +8,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import PlainTextResponse
 
 from squadops.api.middleware.auth import require_scopes
-from squadops.api.routes.cycles.errors import handle_cycle_error
 from squadops.api.routes.cycles.mapping import project_to_response
 from squadops.auth.models import Scope
-from squadops.cycles.models import CycleError
 
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
 
@@ -20,24 +18,18 @@ router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
 async def list_projects():
     from squadops.api.runtime.deps import get_project_registry
 
-    try:
-        registry = get_project_registry()
-        projects = await registry.list_projects()
-        return [project_to_response(p) for p in projects]
-    except CycleError as e:
-        raise handle_cycle_error(e) from e
+    registry = get_project_registry()
+    projects = await registry.list_projects()
+    return [project_to_response(p) for p in projects]
 
 
 @router.get("/{project_id}", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
 async def get_project(project_id: str):
     from squadops.api.runtime.deps import get_project_registry
 
-    try:
-        registry = get_project_registry()
-        project = await registry.get_project(project_id)
-        return project_to_response(project)
-    except CycleError as e:
-        raise handle_cycle_error(e) from e
+    registry = get_project_registry()
+    project = await registry.get_project(project_id)
+    return project_to_response(project)
 
 
 @router.get("/{project_id}/prd-content", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
@@ -49,11 +41,8 @@ async def get_project_prd_content(project_id: str):
     """
     from squadops.api.runtime.deps import get_project_registry
 
-    try:
-        registry = get_project_registry()
-        project = await registry.get_project(project_id)
-    except CycleError as e:
-        raise handle_cycle_error(e) from e
+    registry = get_project_registry()
+    project = await registry.get_project(project_id)
 
     if not project.prd_path:
         raise HTTPException(404, detail="No PRD file configured for this project")

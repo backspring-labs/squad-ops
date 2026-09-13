@@ -13,6 +13,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote, urlparse
 
 import asyncpg
 import httpx
@@ -24,6 +25,30 @@ from squadops.ports.runtime.state import RuntimeStatePort
 from squadops.runtime.lifecycle_status import runtime_status_from_lifecycle
 
 logger = logging.getLogger(__name__)
+
+
+#: The management API listens beside AMQP on 15672 (amqps → 5671 has the same
+#: management port; TLS on the management side is the operator's proxy, not ours).
+_RABBITMQ_MANAGEMENT_PORT = 15672
+
+
+def management_api_for(rmq_url: str) -> tuple[str, tuple[str, str] | None] | None:
+    """The management-API overview URL and credentials for an AMQP URL, or None when the
+    URL names no host (#574).
+
+    ``urllib.parse`` owns the userinfo/host/vhost split that the former
+    ``replace("amqp://", "").split("@")`` got wrong on a vhost path, an ``@`` inside the
+    password, and an ``amqps://`` scheme; the credentials come back percent-decoded.
+    """
+    parsed = urlparse(rmq_url)
+    if not parsed.hostname:
+        return None
+    auth = (
+        (unquote(parsed.username or ""), unquote(parsed.password or ""))
+        if parsed.username is not None
+        else None
+    )
+    return f"http://{parsed.hostname}:{_RABBITMQ_MANAGEMENT_PORT}/api/overview", auth
 
 
 class HealthChecker:
@@ -398,20 +423,14 @@ class HealthChecker:
         """Check RabbitMQ via management API."""
         try:
             rmq_url = self._config.comms.rabbitmq.url
-            # Extract credentials and host from amqp URL
-            url_parts = rmq_url.replace("amqp://", "").split("@")
             version = "Unknown"
             notes = "API responding"
-            if len(url_parts) == 2:
-                import base64
-
-                creds = url_parts[0]
-                host_port = url_parts[1].split("/")[0]
-                mgmt_url = f"http://{host_port.replace(':5672', ':15672')}/api/overview"
-                auth_string = base64.b64encode(creds.encode()).decode()
-                resp = await self._client.get(
-                    mgmt_url, headers={"Authorization": f"Basic {auth_string}"}
-                )
+            mgmt = management_api_for(rmq_url)
+            if mgmt is not None:
+                mgmt_url, auth = mgmt
+                # #574: httpx owns basic auth; the credentials arrive URL-decoded, so a
+                # password with '@' or '%' in it is sent as the operator wrote it.
+                resp = await self._client.get(mgmt_url, auth=auth)
                 if resp.status_code == 200:
                     data = resp.json()
                     version = data.get("rabbitmq_version", "Unknown")

@@ -22,7 +22,56 @@ Each even-minor consumer sits strictly behind the release that earns its trust: 
 
 ## Release Timeline
 
-### v1.7.2 (2026-09-06) — Current — Loop Honesty
+### v1.7.5 (2026-09-12) — Current — the three closures
+
+**v1.7.5 — the three closures**, the fifth patch line of 1.7 and the close of the line: the runtime API composed from a config value rather than at import (#286), every comms and filesystem binding entering through its factory with its selector required (#301), CI importing what each composition root *composes at startup* under the lock its image installs (#637), seventeen LLM call sites collapsed to one recording seam (#929, #1206), and the accepted-patch path, outcome router, correction protocol and repair half extracted from the executor into `PatchAcceptance` and `CorrectionRepair` with every golden byte-identical (#1152). Evidence: a pre-registered two-arm set on frozen deploy `8fd30eb8`, **zero drift under `src/` or `adapters/` to the tag**, one image set across all nine rolls — **FastAPI+React 4 of 6, Next.js+TS 3 of 3, functional 7 of 9**, 159/161 criteria, boot audit PASS 9/9, P0 9/9, zero framing re-rolls, and the bar held at **zero contentless emissions across 167**. The shakeout loop exited at round 1 where deploy A took four. Stated at the cut: the experimental gate was **not met as written** — four of five diagnostics reached their seam, `contentless-builder` did not because #1372's aimed retry recovers the builder before correction, the owner ruled the line closes anyway (plan §3.9a), and **F1 (#1374) is therefore unexercised on any deploy carrying #1372**. Record: `docs/plans/1-7-5-verification-set-record.md`.
+
+### v1.7.4 (2026-09-09) — the recovery half
+
+**The fourth patch line of 1.7: the recovery path, and the request that feeds it.** Ten pack rows
+land on the loop that runs after something fails — the retired handoff leaves the framework and,
+in #1430, the request as well, finishing SIP-0098 §6.7 seven references at a time; framework rows
+are owed by contract not by task (#1374); the builder retries a contentless emission with its fact
+(#1372); a rewind is not a repair (#994); the locus classifier answers by task-type property
+(#1054); an accepted repair is not disputed by the classifier before it (#936/#933); and a
+capability with two output shapes declares one reasoning level per shape (#1285).
+
+Evidence: a pre-registered two-set run on frozen deploy `dfe9a6f2`, zero image drift across nine
+rolls — **FastAPI+React 4 of 6, Next.js+TS 3 of 3, Functional App Yield 7 of 9 with zero human
+interventions**. The bar was amended *before* the set opened: L1 blocks on an unrecovered
+contentless emission and tracks the rest, and the one roll that breached it (7 of 35) recovered
+through five correction rounds to accepted and functional. Named at the cut rather than implied:
+the diagnostics were **not** re-run on the pinned deploy, so L2/L4/L7/L8 and A1 rest on earlier
+deploys — R1 and D1, the invariants the pack touched, have live pinned-deploy readings. Record:
+`docs/plans/1-7-4-verification-set-record.md`.
+
+### v1.7.3 (2026-09-07) — Boundaries
+
+**The third patch line of 1.7, and the one that staffs the list.** Sixteen boundary items every 1.7
+plan had scheduled and no line had taken: the identifier renamed for what it is (#922, #559 —
+strings at the boundary, constants at the core, properties over identity, tables over chains),
+one status vocabulary inward of the Prefect adapter (#377, #381), the dead executor gone (#1241),
+the hexagonal boundary guarded for every package with declared composition roots (#154), the
+runtime-api URL surface owned by one standard and enforced by one test (#218, #219), the heartbeat
+verdict computed rather than stored (#305), the comms agent named (#225), the qa fill's evidence
+persisted (#999), the qa author handed root tables only (#1087/#1112) — plus three added under
+the line's delegation because each was a known way for a counted roll to fail on the harness
+rather than the squad: the router restore re-homes the paths it strips (#1351), the kind gate
+reads `typeof` by its value (#1359), and a contentless builder attempt's accepted patch gets its
+spine row (#1364).
+
+**Validated by the 1.7.2 set re-registered with no new pack** (`docs/plans/1-7-3-verification-set-record.md`):
+frozen deploy `933aed95`, HEAD `dcf69d3e`, zero code drift to the tag. FastAPI+React **5 of 6**
+functional, Next.js+TS **3 of 3**; the line's bar held — 0 contentless qa first attempts
+across 163 emissions. **Nothing the set found traces to the list.** Seven harness and
+instrument defects were found and fixed on the line (#1347, #1350, #1352, #1351, #1359, #1364,
+#1362's readout), two of which the previous line had misread; one counted roll was void on #1364
+before the set restarted, by the 1.7.2 precedent. Every diagnostic seam was reached on the pinned
+deploy's predecessor — L7 on a pytest suite for the first time. Next: 1.7.4, Loop Honesty's
+second half (#1312 with #1254 leading; the builder's short first emission on two of six counted
+React rolls is its evidence), then 1.7.5 closes the 1.7 line with Composition Root.
+
+### v1.7.2 (2026-09-06) — Loop Honesty
 
 **The second patch line of 1.7.** The pack is the recovery path: what the loop does *after* a
 failure, and whether its own record of that is true. The line opens with **#1268** — on the 1.7.0
@@ -78,7 +127,7 @@ nothing (#1312); nine unit-test directories sit outside the regression gate (#13
 
 **It took six rolls to get there, and that is the more useful record.** Rolls 3–5 produced five rejections across four distinct causes, every one a real defect the shakeouts surfaced: an import gate that refused valid Python (#1211), a crashed app that left an empty boot reason because its container was `--rm` (#1214), a test importing an undeclared npm package (#1217), a probe failure that rejected a run and asked nobody to fix it (#1223), and a dev repair that could never be verified being retried until the budget ran out (#1221). Three of the four original causes were emission defects a check should have caught, and **all three sat on the JS/TS side** — which is why a coverage gap is now declared with its reason or CI fails (#1216), and why 1.7.1's Stack Seams pack leads with #939.
 
-**Stated at the cut, not implied:** `.ts` emissions still have no unresolved-name guard (#939 — declared in `docs/architecture/typed-check-menu.md`); dev repairs on `nextjs_ts` still cannot be *verified* where their toolchain is absent, only failed fast (#1221 option C); LangFuse holds roughly three-quarters of generations (#1206, folded into #929); and prompts are not replayable from telemetry, ~70% discarded at storage. **Atlas is not adopted** — the A/B returned a negative (0 accepted plans of 44 emissions across 14 configurations) and SIP-0106 stays `accepted` with its open phases named rather than promoted.
+**Stated at the cut, not implied:** `.ts` emissions still have no unresolved-name guard (#939 — declared in `docs/architecture/typed-check-menu.md`); dev repairs on `nextjs_ts` still cannot be *verified* where their toolchain is absent, only failed fast (#1221 option C); LangFuse holds roughly three-quarters of generations (#1206, folded into #929); and prompts are not replayable from telemetry, ~70% discarded at storage. **Atlas is not adopted** — the A/B returned a negative (0 accepted plans of 44 emissions across 14 configurations) and SIP-0106 stayed `accepted` at this cut with its open phases named rather than promoted. **Superseded 2026-09-08:** its last two open children closed, their dispositions became SIP-0106 §1.2e/§1.2f, and the SIP was promoted to `implemented` — the design landed; Atlas is still not adopted.
 
 ### v1.6.6 (2026-08-28) — the React-arm patch line
 
@@ -613,10 +662,10 @@ The following areas are identified for future work but do not block 1.0 readines
 
 ## Stats
 
-*As of 2026-09-03 (v1.7.1):*
+*As of 2026-09-07 (v1.7.3):*
 
-- **Framework version**: 1.7.2
+- **Framework version**: 1.7.5
 - **SIPs**: 65 implemented, 9 accepted (SIP-0088, 0090–0093, 0101, 0102, 0104, 0105), 20 deprecated (registry)
-- **Tests**: 8,600+ passing in the regression suite
+- **Tests**: 9,500+ passing in the regression suite (all of `tests/unit`, #1316)
 - **Python source**: ~61,000 lines (src + adapters; ~88,000 test lines, ~119,000 doc lines)
 - **~6 months** from initial repo (2025-09-20) to 1.0.0 release (2026-03-10)

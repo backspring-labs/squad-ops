@@ -74,8 +74,19 @@ def required_files_row(required: Iterable[str], emitted: Iterable[str]) -> dict[
     from pathlib import PurePosixPath
 
     have = {PurePosixPath(str(name)).name for name in emitted if name}
-    missing = [str(item) for item in required if str(item) not in have]
-    return {"check": CHECK_REQUIRED_FILES, "passed": not missing, "missing": missing}
+    required_names = [str(item) for item in required]
+    missing = [item for item in required_names if item not in have]
+    # `required` rides the row so the evidence says what was asked for, not only what was
+    # absent. H1 (1.7.4) is "no counted roll is rejected on the handoff", and a readout
+    # built from `missing` alone cannot tell that bar from its own blind spot: a NEW
+    # required file the profile derives fails identically under a different name, and a
+    # record listing only misses would read as the bar holding.
+    return {
+        "check": CHECK_REQUIRED_FILES,
+        "passed": not missing,
+        "missing": missing,
+        "required": required_names,
+    }
 
 
 FRAMEWORK_CHECKS: dict[str, FrameworkCheck] = {
@@ -101,6 +112,180 @@ FRAMEWORK_CHECKS: dict[str, FrameworkCheck] = {
         required_tooling=(TOOL_NODE,),
     ),
 }
+
+
+#: Which framework spine rows a task type owes BY CONTRACT, and which stage's rule
+#: produces each. #1374: the accepted-patch path composed a corrected result from the
+#: failed attempt's rows plus whatever the verifier produced, so a framework row was
+#: present only if some earlier stage happened to write one — and each miss was patched
+#: with a narrower gate. #1318 (1.7.2 roll 1) re-derived `required_files` only when the
+#: failed attempt had CARRIED it; #1364 (1.7.3 roll 1) found the next shape, a contentless
+#: attempt that carried no rows at all, and both void counted rolls were booting apps.
+#:
+#: A table, so the next shape is a row here rather than a third gate: what a task owes is
+#: its contract's statement, never its attempt's history.
+#:
+#: `frontend_build` is deliberately absent. It is stack-conditional — the criteria pack
+#: emits `vc-frontend-builds` only where a frontend exists — so declaring it owed would
+#: manufacture a gap on every backend-only cycle, which is the same false-negative class
+#: in the other direction.
+_FRAMEWORK_ROWS_OWED: tuple[tuple[str, str, str], ...] = (
+    (CHECK_REQUIRED_FILES, "emits_required_files", "derived from the patched set"),
+    (CHECK_TESTS_PASS, "authors_qa_suite", "the retest"),
+    (CHECK_NO_STUB_FALLBACK_TESTS, "authors_qa_suite", "the retest"),
+    (CHECK_NO_SELF_MOCKING_TESTS, "authors_qa_suite", "the retest"),
+)
+
+
+#: Which task-type property provides each framework check's SUBJECT — the thing the check
+#: executes on. #1428: a run owes only the required checks its own task types can produce a
+#: subject for. Every FRAMING run (author_manifest, define_test_strategy, the plan-authoring
+#: brief, merge_plan, review_plan) emits no source, no suite and no required files, so the
+#: three checks the fullstack profile requires had no subject BY CONSTRUCTION and every
+#: framing run reported `blocked_unverified` — a disclosure that fires on 100% of framing
+#: runs carries no information, and a genuine harness failure there was indistinguishable
+#: from the baseline. This table is the run-level twin of `_FRAMEWORK_ROWS_OWED` (the
+#: accepted-patch seam's "who owes the row"); it answers "who can subject the check" and it
+#: DOES name `frontend_build`, because the question differs: the owed table must not
+#: manufacture a gap on a backend-only cycle, whereas here the profile is what makes
+#: `frontend_build` stack-conditional (only the fullstack profile requires it) and this
+#: table only narrows what the profile declared to the runs that can answer it.
+_CHECK_SUBJECT_PROVIDER: tuple[tuple[str, str], ...] = (
+    (CHECK_REQUIRED_FILES, "emits_required_files"),
+    (CHECK_TESTS_PASS, "authors_qa_suite"),
+    (CHECK_NO_STUB_FALLBACK_TESTS, "authors_qa_suite"),
+    (CHECK_NO_SELF_MOCKING_TESTS, "authors_qa_suite"),
+    (CHECK_FRONTEND_BUILD, "authors_source"),
+)
+
+
+def checks_a_run_can_subject(task_types: Iterable[object]) -> frozenset[str]:
+    """The framework checks at least one of ``task_types`` can produce a subject for (#1428).
+
+    Read at run finalization over the run's PLANNED task types — never over the ones that
+    executed, or a run that aborted before its qa task would stop owing `tests_pass` and
+    read clean. A profile's declared required set intersected with this is what the run
+    owes; the remainder is disclosed as required-but-not-owed, never silently dropped
+    (§6.6.3: silence is not green, and a check the profile requires is named on every run).
+    """
+    from squadops.tasks import task_types as _tt
+
+    types = tuple(task_types)
+    return frozenset(
+        check
+        for check, predicate in _CHECK_SUBJECT_PROVIDER
+        if any(getattr(_tt, predicate)(t) for t in types)
+    )
+
+
+def framework_rows_owed(task_type: object) -> tuple[str, ...]:
+    """The framework spine rows this task type owes, by contract (#1374).
+
+    Read at the accepted-patch seam: every owed row must be present in the corrected
+    result — derived there when the rule can derive it, taken from the retest when the
+    retest is the producing stage — or the patch is not accepted. "Absent" is the state
+    SIP-0096 reads as `subject_missing`, and it blocked two counted rolls whose apps
+    booted.
+    """
+    from squadops.tasks import task_types as _tt
+
+    return tuple(
+        check
+        for check, predicate, _stage in _FRAMEWORK_ROWS_OWED
+        if getattr(_tt, predicate)(task_type)
+    )
+
+
+@dataclass(frozen=True)
+class OwedRow:
+    """One framework row a task type owes, and what became of it at the patch seam.
+
+    ``disposition`` is the whole point: "absent" has four meanings here and they read
+    differently in a record. *produced* — the stage that owes it wrote one. *derived* —
+    re-derived from the patched set by this module's own rule. *undeclared* — owed, but
+    nothing declared the set to check against, so the pre-patch state decides (#1318).
+    *not_derivable* — owed, not produced, and no rule here can derive it: the state
+    SIP-0096 reads as ``subject_missing``, which put two booting apps at
+    ``blocked_unverified`` (#1364, #1374).
+    """
+
+    check_id: str
+    producer: str
+    disposition: str
+    row: dict[str, Any] | None = None
+
+
+#: The four dispositions ``compose_owed_framework_rows`` returns. Named rather than
+#: spelled inline at each comparison, because a caller that mistypes one gets silence.
+OWED_PRODUCED = "produced"
+OWED_DERIVED = "derived"
+OWED_UNDECLARED = "undeclared"
+OWED_NOT_DERIVABLE = "not_derivable"
+
+
+def compose_owed_framework_rows(
+    task_type: object,
+    *,
+    produced: Iterable[str],
+    expected_artifacts: Iterable[str],
+    patched_names: Iterable[str],
+) -> list[OwedRow]:
+    """Every framework row ``task_type`` owes by contract, resolved against the patched set.
+
+    The composition half of ``framework_rows_owed()``, which owns the "who owes what"
+    half beside it. #1374: the accepted-patch seam composed a corrected result from the
+    failed attempt's rows plus whatever the verifier produced, so a framework row
+    survived only if some earlier stage happened to write one — two void counted rolls on
+    two lines were that one mechanism, patched twice with a narrower gate each time
+    (#1318, then #1364). **The contract says what a task owes; its attempt's history does
+    not.**
+
+    ``produced`` is the set of check ids the corrected result already carries — the
+    verification's rows plus the retest's. ``tests_pass`` belongs in it whenever the
+    result carries a ``test_result``, because ``verification_normalize`` skips the
+    failure-only row and synthesises the check from the richer ``test_result`` on a green
+    run; a caller keyed on the row alone would refuse every retested qa patch.
+
+    **Reported, not refused.** A ``not_derivable`` row is named for the record to count,
+    not turned into a rejection: every measured instance is a ``required_files`` row this
+    function now derives unconditionally, and refusing on the unmeasured half would change
+    what a verdict means inside a measurement window. Promoting it is a separate,
+    deliberate call with evidence behind it.
+    """
+    from pathlib import PurePosixPath
+
+    have = set(produced)
+    declared = [str(name) for name in expected_artifacts if name]
+    emitted = list(patched_names)
+    outcomes: list[OwedRow] = []
+    for check_id in framework_rows_owed(task_type):
+        producer = framework_row_producer(check_id)
+        if check_id in have:
+            outcomes.append(OwedRow(check_id, producer, OWED_PRODUCED))
+        elif check_id == CHECK_REQUIRED_FILES and not declared:
+            # Nothing declared: there is no set to check the patched tree against, and
+            # inventing a passing row would credit a deliverable nobody named.
+            outcomes.append(OwedRow(check_id, producer, OWED_UNDECLARED))
+        elif check_id == CHECK_REQUIRED_FILES:
+            outcomes.append(
+                OwedRow(
+                    check_id,
+                    producer,
+                    OWED_DERIVED,
+                    required_files_row([PurePosixPath(name).name for name in declared], emitted),
+                )
+            )
+        else:
+            outcomes.append(OwedRow(check_id, producer, OWED_NOT_DERIVABLE))
+    return outcomes
+
+
+def framework_row_producer(check_id: str) -> str:
+    """Which stage's rule writes ``check_id`` — for the log line and the seam table."""
+    for check, _predicate, stage in _FRAMEWORK_ROWS_OWED:
+        if check == check_id:
+            return stage
+    return "unknown"
 
 
 def is_framework_check(check_id: str) -> bool:

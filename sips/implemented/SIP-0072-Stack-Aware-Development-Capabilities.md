@@ -576,3 +576,26 @@ spellings out of live code and config.
 
 **Ruled by.** Issue #922 and the 1.7.3 plan §3.2 step 1 (merged 2026-09-06).
 
+
+### 10b. The QA handoff leaves both stack profiles (2026-09-08)
+
+**What changed.** `qa_handoff.md` is no longer in `fullstack_fastapi_react`'s or
+`nextjs_ts`'s `required_files`, the validation rule "must include startup and test
+instructions for both stacks" is gone, and both profile narratives lose the sentence
+telling the builder what the handoff must contain — CORS notes on stack #1, the build
+command / start command / port on stack #2. Success criteria 6 and 9 above, which assert
+the profile produces `qa_handoff.md`, are **withdrawn**: what those two profiles now
+produce is a multi-stage Dockerfile, and optionally `assembly_notes.md`.
+
+**Why the narratives changed too.** Each ended by asking the builder to restate exactly
+what the replacement's exclusion list names as *already supplied* — the start command and
+the port are the environment contract's own declarations, threaded to the test author in
+full. Leaving them would have instructed the builder to write the one thing it is told to
+omit.
+
+**Evidence and reasoning:** SIP-0071 §11 carries the measurement (20 of 22 cycles produced
+the document, both misses substitutions, no consumer anywhere) and the replacement's
+definition. This section records only what it means for the two stack profiles this SIP
+owns.
+
+**Ruled by.** Issue #1312 with #1254, the 1.7.4 plan §3.2 row 1 (one PR, atomic invariant).

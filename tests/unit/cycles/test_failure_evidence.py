@@ -936,3 +936,171 @@ class TestAbsentAnchorCases:
         }
         assert absent_anchor_cases(evidence) == []
         assert absent_anchor_cases("not evidence") == []
+
+
+class TestATimeoutSaysWhatEndedTheTaskAndWhatItHadDone:
+    """#995, V7 window roll 1 (`cyc_8b569ce34074` / `run_29b53b6e3d4b`).
+
+    The final `development.develop` attempt produced two substantive emissions — 7,516
+    completion tokens at 02:00 and 5,322 at 02:08, three path fences each, each rejected
+    by `frontend_compiles` for a real defect — and was then killed by the 1800s task
+    timeout, most plausibly mid-stream in a third self-eval call. The banked analysis
+    said the model *"produced zero response characters … a complete generation drop … no
+    output was emitted"* and classified it `execution`. Two rounds of real work were
+    erased, and the named mechanism is one the logs disprove.
+
+    The empty final read is not the task's behaviour. These are the two facts that say so.
+    """
+
+    def _envelope(self, task_id="task-run_29b53b6e-m002-development.develop"):
+        from squadops.tasks.models import TaskEnvelope
+
+        return TaskEnvelope(
+            task_id=task_id,
+            agent_id="neo",
+            cycle_id="cyc_8b569ce34074",
+            pulse_id="p",
+            project_id="group_run",
+            task_type="development.develop",
+            correlation_id="c",
+            causation_id=None,
+            trace_id="t",
+            span_id="s",
+            inputs={},
+            metadata={"role": "dev"},
+        )
+
+    def _timed_out(self, task_id="task-run_29b53b6e-m002-development.develop"):
+        from squadops.tasks.models import TaskResult
+
+        return TaskResult(
+            task_id=task_id,
+            status="FAILED",
+            error="Timed out waiting for agent neo after 1800.0s",
+            outputs={
+                "task_timeout": {
+                    "seconds": 1800.0,
+                    "agent_id": "neo",
+                    "task_type": "development.develop",
+                }
+            },
+        )
+
+    def test_the_timeout_is_a_fact_in_the_evidence_not_only_a_sentence(self):
+        from squadops.cycles.failure_evidence import build_failure_evidence
+
+        evidence = build_failure_evidence(
+            self._envelope(), self._timed_out(), prior_plan_deltas_count=0
+        )
+        assert evidence["task_timeout"]["seconds"] == 1800.0
+        assert evidence["task_timeout"]["agent_id"] == "neo"
+
+    def test_a_result_that_did_not_time_out_carries_no_such_key(self):
+        """Presence-keyed: an ordinary failure must read exactly as it did, or every
+        rejection starts claiming a clock it never hit."""
+        from squadops.cycles.failure_evidence import build_failure_evidence
+        from squadops.tasks.models import TaskResult
+
+        evidence = build_failure_evidence(
+            self._envelope(),
+            TaskResult(task_id="t", status="FAILED", error="checks failed", outputs={}),
+            prior_plan_deltas_count=0,
+        )
+        assert "task_timeout" not in evidence
+
+
+class TestThePriorEmissionsAreRead:
+    """The other half of #995: N rounds happened, and here is what they were."""
+
+    def _ref(self, name, size, task_id, status="failed"):
+        from datetime import UTC, datetime
+
+        from squadops.cycles.models import ArtifactRef
+
+        return ArtifactRef(
+            artifact_id=f"art_{name}",
+            project_id="group_run",
+            artifact_type="code",
+            filename=name,
+            content_hash="h",
+            size_bytes=size,
+            media_type="text/plain",
+            created_at=datetime.now(UTC),
+            metadata={"producing_task_id": task_id, "emission_status": status},
+        )
+
+    def test_the_tasks_own_emissions_are_reported_newest_last(self):
+        from squadops.cycles.failure_evidence import prior_emission_history
+
+        history = prior_emission_history(
+            "task_2",
+            [
+                ("a1", self._ref("app/page.tsx", 7516, "task_2")),
+                ("a2", self._ref("app/page.tsx", 5322, "task_2")),
+            ],
+        )
+        assert [h["size_bytes"] for h in history] == [7516, 5322]
+        assert {h["emission_status"] for h in history} == {"failed"}
+
+    def test_another_tasks_emissions_are_not_this_tasks_history(self):
+        """The whole point is to describe THIS task. Attributing a neighbour's rounds to
+        it would replace one wrong story with another."""
+        from squadops.cycles.failure_evidence import prior_emission_history
+
+        history = prior_emission_history(
+            "task_2", [("a1", self._ref("backend/routes.py", 900, "task_7"))]
+        )
+        assert history == []
+
+    def test_a_task_with_no_banked_emissions_reads_empty_not_absent(self):
+        from squadops.cycles.failure_evidence import prior_emission_history
+
+        assert prior_emission_history("task_2", []) == []
+
+
+class TestTheDecisionCanDisputeASuiteSideRead:
+    """#1054: arm A of the 2026-08-23 paired validation (`cyc_181c9572bef2`) exhausted its
+    budget without the application ever being repaired.
+
+    Round 0's decision was unambiguous — *"route handlers instantiating a local shadow
+    store instead of importing the scaffold-provided global"*, with
+    `affected_task_types: ["backend_route_implementation", "store_module_integration"]` —
+    and all three repairs dispatched `qa.test_repair` against the same suite file. The
+    route handlers were never emitted, the suite was rewritten three times, and the real,
+    correctly diagnosed defect survived the whole arc. Arm B on the identical deploy
+    dispatched a dev repair on round 0 and emitted seven route/page files.
+
+    The field is model-authored, which is why #1015 part A was deferred on the #968/#788
+    caveat. Unanimity is the whole safety argument: a decision that mentions the suite
+    NOWHERE is the only shape that disputes a suite-side read.
+    """
+
+    def _dispute(self, labels):
+        from squadops.cycles.failure_evidence import decision_disputes_own_artifact
+
+        return decision_disputes_own_artifact({"affected_task_types": labels})
+
+    def test_arm_as_own_labels_dispute_the_read(self):
+        assert self._dispute(["backend_route_implementation", "store_module_integration"])
+
+    def test_one_suite_side_label_is_enough_to_abstain(self):
+        """The 1.7.4 React checkpoint's decision wrote exactly this for a genuine
+        test-mock defect. A rule firing on "any non-suite label" would have misrouted it,
+        which is the test-gaming hole the locus guard exists to keep shut."""
+        assert not self._dispute(["frontend", "testing"])
+
+    def test_the_tokens_match_the_vocabulary_the_lead_actually_writes(self):
+        """`TaskType` values never appear in this field — the lead writes prose-ish
+        labels — so the match is on substrings of what it does write."""
+        for label in ("qa_test_authoring", "test_suite_isolation", "assertion_fixes", "mock_setup"):
+            assert not self._dispute([label]), label
+
+    def test_an_empty_or_absent_field_disputes_nothing(self):
+        """Absence is not disagreement. A decision that named nothing must leave the
+        conservative default exactly where it was."""
+        from squadops.cycles.failure_evidence import decision_disputes_own_artifact
+
+        assert not self._dispute([])
+        assert not decision_disputes_own_artifact({})
+        assert not decision_disputes_own_artifact(None)
+        assert not decision_disputes_own_artifact("patch")

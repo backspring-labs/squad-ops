@@ -59,11 +59,48 @@ def previous_tag(tag: str) -> str | None:
     return tags[index + 1] if index + 1 < len(tags) else None
 
 
+#: The subject GitHub writes for a merged pull request. Only these name a PR: a "merge
+#: main" commit whose subject mentions a PR number is not that PR merging again (#1369 —
+#: the v1.7.3 package listed #1328 twice).
+_MERGE_SUBJECT = re.compile(r"^Merge pull request #(\d+)\b")
+#: The subject GitHub writes for a SQUASH-merged pull request: the PR title with its number
+#: appended. Both shapes have to be read, because the repository uses both — v1.7.3..v1.7.4
+#: holds 33 merge commits and v1.7.4..v1.7.5 holds none and 50 squash subjects. Reading only
+#: the merge shape made the v1.7.5 preview report **0 PRs** for a 50-commit range, which
+#: would have shipped a release page with an empty PR table and an empty `Closes` column —
+#: caught only because step 7 says to read the preview before writing (#1076's lesson).
+#:
+#: The number is the LAST parenthesised one: a squash subject often carries the issue it
+#: closes too, as in `refactor(runtime): … (#286) (#1478)`, where #1478 is the PR.
+_SQUASH_SUBJECT = re.compile(r"\(#(\d+)\)\s*$")
+
+
+def merged_pr_numbers(subjects: list[str]) -> list[str]:
+    """The PR numbers a list of commit subjects names, each once, newest first.
+
+    Reads both merge shapes — ``Merge pull request #N from …`` and a squash's trailing
+    ``(#N)`` — because the repository has used both across the 1.7 line.
+    """
+    numbers = []
+    for subject in subjects:
+        subject = subject.strip()
+        if match := _MERGE_SUBJECT.match(subject):
+            numbers.append(match.group(1))
+        elif match := _SQUASH_SUBJECT.search(subject):
+            numbers.append(match.group(1))
+    return list(dict.fromkeys(numbers))
+
+
 def merged_prs(previous: str | None, tag: str) -> list[dict]:
     """PRs merged in the range, newest first, with their linked issues."""
     span = f"{previous}..{tag}" if previous else tag
-    subjects = run("git", "log", "--merges", "--format=%s", span).splitlines()
-    numbers = [m.group(1) for s in subjects if (m := re.search(r"#(\d+)", s))]
+    # `--first-parent`, and NOT `--merges`. A squash-merged PR leaves an ordinary commit, so
+    # `--merges` misses it entirely — that is what made the v1.7.5 preview read 0 PRs over a
+    # 50-commit range. But dropping the restriction altogether walks INTO each merged branch
+    # and counts its internal commits too, which took the v1.7.3..v1.7.4 range from 33 to 77.
+    # First-parent is the main line: exactly one subject per landing, whichever shape it took.
+    subjects = run("git", "log", "--first-parent", "--format=%s", span).splitlines()
+    numbers = merged_pr_numbers(subjects)
     prs: list[dict] = []
     for number in numbers:
         raw = run(
@@ -101,32 +138,89 @@ def merged_prs(previous: str | None, tag: str) -> list[dict]:
     return prs
 
 
-def sip_moves(previous: str | None, tag: str) -> list[dict]:
-    """Proposals that changed lifecycle status in the range.
+_FRONTMATTER_FIELD = re.compile(r"^(sip_uid|status):\s*'?\"?([^'\"\n]*)", re.M)
 
-    A promotion is a delete from one status directory and an add to another, so
-    the same stem appearing on both sides is a transition rather than two edits.
+
+def _sip_frontmatter(ref: str, path: str) -> dict[str, str] | None:
+    """The proposal's ``status`` and ``sip_uid`` at ``ref`` — the lifecycle fact itself,
+    which lives in the frontmatter ``update_sip_status.py`` stamps — or None when the
+    file is absent at that ref."""
+    text = run("git", "show", f"{ref}:{path}", check=False)
+    if not text:
+        return None
+    head = text[3:].split("\n---", 1)[0] if text.startswith("---") else ""
+    return {key: value.strip() for key, value in _FRONTMATTER_FIELD.findall(head)}
+
+
+def _sip_transitions(previous: str | None, tag: str) -> list[dict]:
+    """Every proposal touched in the range with its status before and after.
+
+    #1369: the v1.7.3 package reported three SIPs as ``new → implemented`` because they
+    were *modified* under ``sips/implemented/`` — amended in place on that line — and the
+    old reading took a modified file under a status directory as an arrival there. The
+    transition is the frontmatter's ``status`` at each end of the range, never the path's
+    presence in the diff; a promotion renames the file (it gains its number), so the two
+    sides are paired by ``sip_uid``, the identity ``update_sip_status.py`` keeps.
     """
     if not previous:
         return []
     lines = run("git", "diff", "--name-status", f"{previous}..{tag}", "--", "sips/").splitlines()
-    removed: dict[str, str] = {}
-    added: dict[str, str] = {}
+    before: dict[str, tuple[str, str]] = {}  # sip_uid -> (stem, status) at previous
+    after: dict[str, tuple[str, str]] = {}  # sip_uid -> (stem, status) at tag
     for line in lines:
         parts = line.split("\t")
         if len(parts) < 2:
             continue
-        code, path = parts[0], parts[-1]
-        bits = Path(path).parts
-        # Proposals only — a .gitkeep or a registry edit is not a lifecycle move.
-        if len(bits) < 3 or not path.endswith(".md"):
-            continue
-        status, stem = bits[1], Path(path).stem
-        (removed if code.startswith("D") else added)[stem] = status
-    moves = []
-    for stem, to_status in sorted(added.items()):
-        moves.append({"sip": stem, "from": removed.get(stem), "to": to_status})
-    return moves
+        code = parts[0]
+        # A rename is a delete of the old path and an add of the new one.
+        paths = parts[1:] if code.startswith("R") else [parts[-1]] * 2
+        old_path, new_path = paths[0], paths[-1]
+        for ref, path, side in ((previous, old_path, before), (tag, new_path, after)):
+            bits = Path(path).parts
+            # Proposals only — a .gitkeep or a registry edit is not a lifecycle move.
+            if len(bits) < 3 or not path.endswith(".md"):
+                continue
+            if (code.startswith("A") and side is before) or (
+                code.startswith("D") and side is after
+            ):
+                continue
+            fm = _sip_frontmatter(ref, path)
+            if fm is None:
+                continue
+            uid = fm.get("sip_uid") or f"path:{Path(path).stem}"
+            side[uid] = (Path(path).stem, fm.get("status") or bits[1])
+    transitions = []
+    for uid in sorted(set(before) | set(after), key=lambda u: (after.get(u) or before[u])[0]):
+        stem_before, status_before = before.get(uid, (None, None))
+        stem_after, status_after = after.get(uid, (None, None))
+        transitions.append(
+            {
+                "sip": stem_after or stem_before,
+                "from": status_before,
+                "to": status_after,
+                "in_place": status_before == status_after and status_after is not None,
+            }
+        )
+    return transitions
+
+
+def sip_moves(previous: str | None, tag: str) -> list[dict]:
+    """Proposals whose lifecycle status changed in the range (frontmatter, not path)."""
+    return [
+        {"sip": t["sip"], "from": t["from"], "to": t["to"]}
+        for t in _sip_transitions(previous, tag)
+        if not t["in_place"]
+    ]
+
+
+def sip_amendments(previous: str | None, tag: str) -> list[dict]:
+    """Proposals edited in the range whose status did not change — amended in place,
+    listed apart so an amendment of an implemented SIP never reads as a promotion."""
+    return [
+        {"sip": t["sip"], "status": t["to"]}
+        for t in _sip_transitions(previous, tag)
+        if t["in_place"]
+    ]
 
 
 def changelog_section(version: str) -> str:
@@ -139,9 +233,12 @@ def changelog_section(version: str) -> str:
     return match.group(1).strip() if match else ""
 
 
-def _absent(cycle_id: str, reason: str) -> dict:
+def _absent(cycle_id: str, reason: str, role: str | None = None) -> dict:
     """A cycle whose evidence could not be captured, WITH why — never a silent gap."""
-    return {"cycle_id": cycle_id, "captured": False, "reason": reason}
+    entry = {"cycle_id": cycle_id, "captured": False, "reason": reason}
+    if role:
+        entry["role"] = role
+    return entry
 
 
 def _bearer_token() -> str:
@@ -159,7 +256,54 @@ def _bearer_token() -> str:
         return ""
 
 
-def cycle_evidence(cycle_ids: list[str], api: str, project: str) -> list[dict]:
+#: What a captured cycle WAS to the release — the page must say it, or a fault-injected
+#: diagnostic's `rejected` reads as a failed roll. Named on the command line as
+#: ``--cycle <id>:<role>``; a bare id is allowed for older captures and carries no role.
+CYCLE_ROLES = ("counted", "shakeout", "diagnostic", "void")
+_ROLE_NOTES = {
+    "counted": "",
+    "shakeout": " — non-counting: the deploy's shakeout, read for seam findings",
+    "diagnostic": (
+        " — fault-injected, non-counting: its verdict is not a verdict about the squad (#1251)"
+    ),
+    "void": " — void: the roll was stopped and the set restarted (the record's §0)",
+}
+
+
+def parse_cycle_arg(arg: str) -> tuple[str, str | None]:
+    """``cyc_x`` → (``cyc_x``, None); ``cyc_x:diagnostic`` → (``cyc_x``, ``diagnostic``).
+    An unknown role is refused naming the vocabulary — a typo would otherwise ship a page
+    that labels a diagnostic as nothing at all."""
+    cycle_id, sep, role = arg.partition(":")
+    if not sep:
+        return cycle_id, None
+    if role not in CYCLE_ROLES:
+        raise SystemExit(f"--cycle {arg}: unknown role {role!r}; one of {', '.join(CYCLE_ROLES)}")
+    return cycle_id, role
+
+
+def parse_showcase_arg(arg: str) -> tuple[str, str]:
+    """``--showcase <cycle-id>:<reason>`` — which run the screenshots are of, and why.
+
+    The reason is required and deliberately free text. Choosing the run to show is a
+    judgement that changes per release: the roll worth showing for a recovery release is the
+    one that recovered, and for a feature release it is the one that built the feature. What
+    is NOT left to judgement is saying so — an unexplained screenshot invites the flattering
+    pick, because "the representative run" reliably resolves to a clean one chosen by
+    somebody with an interest in the release looking good.
+    """
+    cycle_id, sep, reason = arg.partition(":")
+    if not sep or not reason.strip():
+        raise SystemExit(
+            f"--showcase {arg}: needs <cycle-id>:<reason> — say why this run is the one on "
+            "screen, or the choice cannot be audited later"
+        )
+    return cycle_id.strip(), reason.strip()
+
+
+def cycle_evidence(
+    cycle_ids: list[str], api: str, project: str, roles: dict[str, str] | None = None
+) -> list[dict]:
     """Verification roll-up per named cycle, or a recorded reason it is absent.
 
         Absence is disclosed, never silently omitted — an unreachable API and a cycle that
@@ -182,7 +326,9 @@ def cycle_evidence(cycle_ids: list[str], api: str, project: str) -> list[dict]:
     """
     evidence = []
     token = _bearer_token()
+    roles = roles or {}
     for cycle_id in cycle_ids:
+        role = roles.get(cycle_id)
         url = f"{api}/api/v1/projects/{project}/cycles/{cycle_id}"
         args = ["curl", "-s", "--max-time", "10"]
         if token:
@@ -193,7 +339,7 @@ def cycle_evidence(cycle_ids: list[str], api: str, project: str) -> list[dict]:
             data = json.loads(raw)
         except (json.JSONDecodeError, TypeError):
             evidence.append(
-                _absent(cycle_id, f"runtime API at {api} did not answer at capture time")
+                _absent(cycle_id, f"runtime API at {api} did not answer at capture time", role)
             )
             continue
         if not isinstance(data, dict) or "cycle_outcome" not in data:
@@ -204,16 +350,20 @@ def cycle_evidence(cycle_ids: list[str], api: str, project: str) -> list[dict]:
                     f"runtime API at {api} returned no cycle roll-up"
                     + (f" ({detail})" if detail else "")
                     + (" — no cached CLI token; run `squadops login`" if not token else ""),
+                    role,
                 )
             )
             continue
         outcome = data.get("cycle_outcome") or {}
         if outcome.get("verdict") is None:
-            evidence.append(_absent(cycle_id, f"cycle {cycle_id} carries no verification roll-up"))
+            evidence.append(
+                _absent(cycle_id, f"cycle {cycle_id} carries no verification roll-up", role)
+            )
             continue
         evidence.append(
             {
                 "cycle_id": cycle_id,
+                **({"role": role} if role else {}),
                 "captured": True,
                 "status": data.get("status"),
                 "verdict": outcome.get("verdict"),
@@ -227,6 +377,57 @@ def cycle_evidence(cycle_ids: list[str], api: str, project: str) -> list[dict]:
             }
         )
     return evidence
+
+
+def cycle_count_line(cycles: list[dict]) -> str:
+    """``9 cycles`` — and, when any carries a role, ``22 cycles (9 counted, 6 shakeout, …)``."""
+    by_role: dict[str, int] = {}
+    for cycle in cycles:
+        if cycle.get("role"):
+            by_role[cycle["role"]] = by_role.get(cycle["role"], 0) + 1
+    line = f"{len(cycles)} cycles"
+    if by_role:
+        parts = [f"{by_role[r]} {r}" for r in CYCLE_ROLES if r in by_role]
+        line += f" ({', '.join(parts)})"
+    return line
+
+
+def _sip_link(stem: str, current: set[str]) -> str:
+    # A proposal is renamed when it is promoted (it gains its number), so a historical
+    # move often names a file that no longer exists. The move is the fact and stays
+    # recorded either way; the link is a convenience and is emitted only when the page
+    # is actually there.
+    return f"[{stem}](../../design/sips/{stem}.md)" if stem in current else stem
+
+
+def _sip_sections(package: dict) -> list[str]:
+    """The lifecycle moves and, apart from them, the in-place amendments (#1369)."""
+    out: list[str] = []
+    current = {path.stem for path in (REPO_ROOT / "sips").glob("*/*.md")}
+    moves = package["sip_moves"]
+    if moves:
+        out += ["## Improvement proposals", "", "| Proposal | From | To |", "|---|---|---|"]
+        for move in moves:
+            out.append(
+                f"| {_sip_link(move['sip'], current)} | {move['from'] or 'new'} | "
+                f"{move['to'] or 'removed'} |"
+            )
+        out.append("")
+    amendments = package.get("sip_amendments") or []
+    if amendments:
+        out += [
+            "## Improvement proposals amended in place",
+            "",
+            "No lifecycle change — each was edited under the status it already had "
+            "(a post-acceptance amendment, CLAUDE.md step 5a).",
+            "",
+            "| Proposal | Status |",
+            "|---|---|",
+        ]
+        for amendment in amendments:
+            out.append(f"| {_sip_link(amendment['sip'], current)} | {amendment['status']} |")
+        out.append("")
+    return out
 
 
 def render(version: str, tag: str, package: dict) -> str:
@@ -260,22 +461,7 @@ def render(version: str, tag: str, package: dict) -> str:
             out.append(f"| {link} | {pr['title']} | {closes or '—'} |")
         out.append("")
 
-    moves = package["sip_moves"]
-    if moves:
-        out += ["## Improvement proposals", "", "| Proposal | From | To |", "|---|---|---|"]
-        # A proposal is renamed when it is promoted (it gains its number), so a
-        # historical move often names a file that no longer exists. The move is
-        # the fact and stays recorded either way; the link is a convenience and
-        # is emitted only when the page is actually there.
-        current = {path.stem for path in (REPO_ROOT / "sips").glob("*/*.md")}
-        for move in moves:
-            label = (
-                f"[{move['sip']}](../../design/sips/{move['sip']}.md)"
-                if move["sip"] in current
-                else move["sip"]
-            )
-            out.append(f"| {label} | {move['from'] or 'new'} | {move['to']} |")
-        out.append("")
+    out += _sip_sections(package)
 
     cycles = package["cycles"]
     if cycles:
@@ -292,7 +478,12 @@ def render(version: str, tag: str, package: dict) -> str:
                 ]
                 continue
             out += [
-                f"**Verdict:** `{cycle.get('verdict')}` · **Runs:** {cycle.get('run_count')}",
+                f"**Verdict:** `{cycle.get('verdict')}` · **Runs:** {cycle.get('run_count')}"
+                + (
+                    f" · **Role:** {cycle['role']}{_ROLE_NOTES.get(cycle['role'], '')}"
+                    if cycle.get("role")
+                    else ""
+                ),
                 "",
                 "| | Checks |",
                 "|---|---|",
@@ -306,6 +497,10 @@ def render(version: str, tag: str, package: dict) -> str:
     shots = package["screenshots"]
     if shots:
         out += ["## Screenshots", ""]
+        show = package.get("showcase") or {}
+        if show.get("cycle_id"):
+            role = f" ({show['role']})" if show.get("role") else ""
+            out += [f"Of cycle `{show['cycle_id']}`{role} — {show['reason']}.", ""]
         for shot in shots:
             caption = Path(shot).stem.replace("-", " ").replace("_", " ")
             out += [f"![{caption}](assets/{Path(shot).name})", f"*{caption}*", ""]
@@ -323,6 +518,11 @@ def main() -> int:
         default=[],
         help="cycle id representing this release; repeatable",
     )
+    parser.add_argument(
+        "--showcase",
+        metavar="CYCLE:REASON",
+        help="which cycle the screenshots are of, and why it is the one shown",
+    )
     parser.add_argument("--api", default="http://localhost:8001", help="runtime API base URL")
     parser.add_argument("--project", default="group_run", help="project the --cycle ids belong to")
     parser.add_argument(
@@ -336,9 +536,27 @@ def main() -> int:
     args = parser.parse_args()
 
     version = args.version.lstrip("v")
+    parsed = [parse_cycle_arg(a) for a in args.cycle]
+    cycle_ids = [c for c, _ in parsed]
+    cycle_roles = {c: r for c, r in parsed if r}
     tag = f"v{version}"
     previous = args.previous or previous_tag(tag)
     target = RELEASES / tag
+
+    showcase: dict[str, str] = {}
+    if args.showcase:
+        showcase_id, reason = parse_showcase_arg(args.showcase)
+        # A screenshot of a run the page does not cite is a picture with no evidence behind
+        # it — the reader cannot check the verdict of the thing they are looking at.
+        if showcase_id not in cycle_ids:
+            raise SystemExit(
+                f"--showcase {showcase_id}: not among the --cycle ids "
+                f"({', '.join(cycle_ids) or 'none given'}) — the screenshots would be of a run "
+                "the evidence table does not cite"
+            )
+        showcase = {"cycle_id": showcase_id, "reason": reason}
+        if cycle_roles.get(showcase_id):
+            showcase["role"] = cycle_roles[showcase_id]
 
     assets = target / "assets"
     screenshots = sorted(
@@ -354,8 +572,12 @@ def main() -> int:
         "narrative": changelog_section(version),
         "pull_requests": merged_prs(previous, tag),
         "sip_moves": sip_moves(previous, tag),
-        "cycles": cycle_evidence(args.cycle, args.api, args.project) if args.cycle else [],
+        "sip_amendments": sip_amendments(previous, tag),
+        "cycles": (
+            cycle_evidence(cycle_ids, args.api, args.project, cycle_roles) if cycle_ids else []
+        ),
         "screenshots": screenshots,
+        "showcase": showcase,
     }
 
     page = render(version, tag, package)
@@ -365,7 +587,8 @@ def main() -> int:
         print(page)
         print(
             f"\n--- {len(package['pull_requests'])} PRs, {len(package['sip_moves'])} SIP moves, "
-            f"{len(package['cycles'])} cycles, {len(screenshots)} screenshots ---"
+            f"{len(package['sip_amendments'])} SIP amendments in place, "
+            f"{cycle_count_line(package['cycles'])}, {len(screenshots)} screenshots ---"
         )
         # An empty Closes cell has two causes — the PR closed nothing, or it only quoted
         # the syntax. Naming the quoted ones makes the difference readable here, which is

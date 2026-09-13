@@ -20,15 +20,34 @@ Two regression anchors live here:
 
 from __future__ import annotations
 
+from functools import partial
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from squadops.capabilities.handlers._plan_authoring_service import produce_plan
-from squadops.capabilities.handlers.planning_tasks import GovernanceReviewPlanHandler
+from squadops.capabilities.handlers.planning_tasks import (
+    GovernanceMergePlanHandler,
+    GovernanceReviewPlanHandler,
+)
 from squadops.cycles.implementation_plan import ImplementationPlan
 
 pytestmark = [pytest.mark.domain_capabilities]
+
+
+def _borrowed(ctx):
+    """The two halves of the LLM sequence ``produce_plan`` borrows from its caller (#929).
+
+    The service is stateless by design — every dependency is passed in — and after the
+    extraction that includes the call itself and the generation record, so the loop
+    cannot reach for the port or rebuild the record on its own. Bound from the handler
+    that drives it in production.
+    """
+    handler = GovernanceMergePlanHandler()
+    return {
+        "call": partial(handler._llm_call, ctx, inputs={}),
+        "record": partial(handler._record_generation, ctx),
+    }
 
 
 # A valid implementation_plan.yaml payload the seeded LLM returns. Three
@@ -166,6 +185,7 @@ async def test_produce_plan_returns_parseable_manifest_artifact(seeded_inputs):
         role="lead",
         handler_name="test_harness",
         chat_kwargs={},
+        **_borrowed(ctx),
     )
 
     assert artifact is not None, "service must return an artifact for a valid seeded response"
@@ -204,6 +224,7 @@ async def test_produce_plan_authoritative_identifiers_overwrite_seeded_values(
         role="lead",
         handler_name="test_harness",
         chat_kwargs={},
+        **_borrowed(ctx),
     )
 
     assert artifact is not None
@@ -228,6 +249,7 @@ async def test_produce_plan_returns_none_when_llm_response_unparseable(seeded_in
         role="lead",
         handler_name="test_harness",
         chat_kwargs={},
+        **_borrowed(ctx),
     )
 
     assert artifact is None
@@ -250,6 +272,7 @@ async def test_produce_plan_returns_none_when_llm_call_raises(seeded_inputs):
         role="lead",
         handler_name="test_harness",
         chat_kwargs={},
+        **_borrowed(ctx),
     )
 
     assert artifact is None
@@ -343,6 +366,7 @@ async def test_produce_plan_renders_manifest_template(seeded_inputs):
         role="lead",
         handler_name="test_harness",
         chat_kwargs={},
+        **_borrowed(ctx),
     )
 
     assert artifact is not None
@@ -389,6 +413,7 @@ async def test_produce_plan_assembles_system_prompt_with_task_type(seeded_inputs
         role="lead",
         handler_name="test_harness",
         chat_kwargs={},
+        **_borrowed(ctx),
     )
 
     assert artifact is not None
@@ -423,6 +448,7 @@ async def test_produce_plan_inline_fallback_when_renderer_absent(seeded_inputs):
         role="lead",
         handler_name="test_harness",
         chat_kwargs={},
+        **_borrowed(ctx),
     )
 
     # The fallback still produces a parseable manifest. This is the contract
@@ -470,6 +496,7 @@ async def test_produce_plan_filters_builder_assemble_by_squad_capability():
         role="lead",
         handler_name="test_harness",
         chat_kwargs={},
+        **_borrowed(ctx_no_builder),
     )
     no_builder_render = str(ctx_no_builder.ports.request_renderer.render.call_args_list[0])
     assert "builder.assemble" not in no_builder_render
@@ -485,6 +512,7 @@ async def test_produce_plan_filters_builder_assemble_by_squad_capability():
         role="lead",
         handler_name="test_harness",
         chat_kwargs={},
+        **_borrowed(ctx_builder),
     )
     builder_render = str(ctx_builder.ports.request_renderer.render.call_args_list[0])
     assert "builder.assemble" in builder_render
@@ -560,6 +588,7 @@ async def _render_vars_for(profile_roles, resolved_config):
         role="lead",
         handler_name="test_harness",
         chat_kwargs={},
+        **_borrowed(ctx),
     )
     call = ctx.ports.request_renderer.render.call_args_list[0]
     return call.args[1]
@@ -647,6 +676,7 @@ async def test_sole_author_prompt_carries_the_criteria_and_frozen_indexes(seeded
         role="lead",
         handler_name="test",
         chat_kwargs={},
+        **_borrowed(ctx),
     )
     assert result is not None
 
@@ -673,6 +703,7 @@ async def test_author_mode_prompt_is_unchanged_without_a_contract(seeded_inputs)
         role="lead",
         handler_name="test",
         chat_kwargs={},
+        **_borrowed(ctx),
     )
 
     prompt = _rendered_prompt(ctx)
@@ -701,6 +732,7 @@ async def test_an_empty_index_is_not_rendered_as_an_empty_section(seeded_inputs)
         role="lead",
         handler_name="test",
         chat_kwargs={},
+        **_borrowed(ctx),
     )
 
     prompt = _rendered_prompt(ctx)
@@ -738,6 +770,7 @@ async def test_sole_author_prompt_carries_the_plan_authoring_rules(seeded_inputs
         role="lead",
         handler_name="test",
         chat_kwargs={},
+        **_borrowed(ctx),
     )
 
     prompt = _rendered_prompt(ctx)
@@ -765,6 +798,7 @@ async def test_the_rules_precede_the_cycle_specific_surfaces(seeded_inputs):
         role="lead",
         handler_name="test",
         chat_kwargs={},
+        **_borrowed(ctx),
     )
 
     prompt = _rendered_prompt(ctx)
@@ -774,33 +808,37 @@ async def test_the_rules_precede_the_cycle_specific_surfaces(seeded_inputs):
 
 
 async def test_builder_guideline_and_example_carry_the_profile_floor():
-    """#890: rolls 15/16 both reproduced the builder example's
-    expected_artifacts verbatim — qa_handoff.md only, no Dockerfile — so the
-    example must SHOW the profile's required-files floor (the same list
-    validate_builder_floor rejects on), not hedge it in description prose."""
+    """#890: rolls 15/16 both reproduced the builder example's expected_artifacts
+    verbatim, so the example must SHOW the profile's required-files floor (the same list
+    validate_builder_floor rejects on), not hedge it in description prose.
+
+    #1312 shrank that floor to `Dockerfile` on both stacks — the handoff left it — which
+    makes the reproduce-verbatim habit harmless where it used to demand a document."""
     variables = await _render_vars_for(
         ["lead", "dev", "qa", "builder"],
         {"implementation_plan": True, "build_profile": "nextjs_ts"},
     )
 
-    assert "Dockerfile, qa_handoff.md" in variables["builder_guideline"]
+    assert "Dockerfile" in variables["builder_guideline"]
+    assert "qa_handoff" not in variables["builder_guideline"]
     assert "floor" in variables["builder_guideline"]
     assert '- "Dockerfile"' in variables["builder_example"]
-    assert '- "qa_handoff.md"' in variables["builder_example"]
+    # #1254: the example's acceptance_criteria are PROSE — every typed check a builder
+    # emission earns is the framework's or the profile's.
+    assert "check:" not in variables["builder_example"]
 
 
 async def test_unknown_profile_keeps_generic_example():
-    """A profile the registry cannot resolve renders no floor line and the
-    example falls back to the pre-#890 qa_handoff.md shape — the offer gate
-    and #426's nets own the misconfiguration, not this surface."""
+    """A profile the registry cannot resolve renders no floor line and the example falls
+    back to a generic single-artifact shape — the offer gate and #426's nets own the
+    misconfiguration, not this surface."""
     variables = await _render_vars_for(
         ["lead", "dev", "qa", "builder"],
         {"implementation_plan": True, "build_profile": "no_such_profile"},
     )
 
     assert "floor" not in variables["builder_guideline"]
-    assert '- "qa_handoff.md"' in variables["builder_example"]
-    assert '- "Dockerfile"' not in variables["builder_example"]
+    assert '- "Dockerfile"' in variables["builder_example"]
 
 
 # ---------------------------------------------------------------------------
@@ -854,6 +892,7 @@ async def test_every_manifest_attempt_is_recorded_with_its_verdict(seeded_inputs
         role="lead",
         handler_name="test_harness",
         chat_kwargs={"model": "test-model", "reasoning": "high"},
+        **_borrowed(ctx),
     )
 
     assert artifact is not None, "the second attempt seeds a valid manifest"
@@ -877,6 +916,7 @@ async def test_recorded_attempt_carries_usage_and_reasoning(seeded_inputs):
         role="lead",
         handler_name="test_harness",
         chat_kwargs={"model": "test-model", "reasoning": "high"},
+        **_borrowed(ctx),
     )
 
     assert len(captured) == 1
@@ -901,6 +941,7 @@ async def test_authoring_survives_a_failing_observability_port(seeded_inputs):
         role="lead",
         handler_name="test_harness",
         chat_kwargs={},
+        **_borrowed(ctx),
     )
 
     assert artifact is not None, "a broken recorder must not lose a valid plan"

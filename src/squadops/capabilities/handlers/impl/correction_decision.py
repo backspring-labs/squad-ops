@@ -27,7 +27,6 @@ from squadops.tasks.task_types import TaskType
 if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
 
-from squadops.capabilities.handlers.emission_log import log_emission_shape
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +40,37 @@ _VALID_CORRECTION_PATHS = ("continue", "patch", "rewind", "abort")
 # would have chosen if it were available — the field is non-operative
 # and exists only to drive the M3 justification gate.
 _VALID_PLAN_CHANGE_CANDIDATES = ("none", "add_task", "tighten_acceptance", "other")
+
+
+def _refuted_block(inputs: dict[str, Any]) -> str:
+    """The analysis's refuted file claims, as a block the decision cannot miss (#968).
+
+    SIP-0104 P6 roll 6 carried round 1's diagnosis into the decision word for word, and
+    the decision instructed the squad to "correct the store imports" that line 3 of the
+    named file already had right. Three false factual claims in one roll, and the subject
+    oscillated app → tests → app on identical evidence with no convergence.
+
+    The analysis is printed unedited — a silently rewritten analysis is a second
+    unverifiable claim — and this contradicts it in place, naming the sentence and the
+    file the workspace does not have. Empty string when nothing was refuted, so a sound
+    analysis renders exactly as it did.
+    """
+    refuted = inputs.get("refuted_source_claims") or []
+    entries = [e for e in refuted if isinstance(e, dict) and e.get("path")]
+    if not entries:
+        return ""
+    lines = "\n".join(
+        f"- `{e['path']}` — no such file in this workspace. The analysis says: "
+        f'"{str(e.get("claim") or "").strip()}"'
+        for e in entries
+    )
+    return (
+        "\n\n## Refuted by the workspace (authoritative — the analysis above is NOT)\n\n"
+        f"{lines}\n\n"
+        "These files do not exist in the tree this failure came from, so any reasoning "
+        "that rests on them is unsound. Do not carry those statements into your decision "
+        "or your rationale, and do not aim a repair at these paths."
+    )
 
 
 class GovernanceCorrectionDecisionHandler(_CycleTaskHandler):
@@ -70,6 +100,7 @@ class GovernanceCorrectionDecisionHandler(_CycleTaskHandler):
                 variables["failure_analysis"] = (
                     f"\n\n## Failure Analysis\n\n{json.dumps(failure_analysis, indent=2)}"
                 )
+            variables["refuted_source_claims"] = _refuted_block(inputs)
             rendered = await renderer.render(
                 "request.governance_correction_decision",
                 variables,
@@ -81,6 +112,9 @@ class GovernanceCorrectionDecisionHandler(_CycleTaskHandler):
                 user_parts.append(
                     f"\n\n## Failure Analysis\n\n{json.dumps(failure_analysis, indent=2)}"
                 )
+            refuted = _refuted_block(inputs)
+            if refuted:
+                user_parts.append(refuted)
             user_prompt = "\n".join(user_parts)
 
         # System prompt is the task_type fragment ALONE — no role
@@ -105,7 +139,13 @@ class GovernanceCorrectionDecisionHandler(_CycleTaskHandler):
         chat_kwargs = self._build_chat_kwargs(inputs)
 
         try:
-            response = await context.ports.llm.chat_stream_with_usage(messages, **chat_kwargs)
+            _, content = await self._llm_call(
+                context,
+                messages,
+                chat_kwargs,
+                inputs=inputs,
+                started=start_time,
+            )
         except LLMError as exc:
             logger.warning("LLM call failed for %s: %s", self._handler_name, exc)
             duration_ms = (time.perf_counter() - start_time) * 1000
@@ -117,15 +157,6 @@ class GovernanceCorrectionDecisionHandler(_CycleTaskHandler):
             )
             return HandlerResult(success=False, outputs={}, _evidence=evidence, error=str(exc))
 
-        content = response.content
-        log_emission_shape(
-            self._handler_name,
-            content,
-            response.completion_tokens,
-            response.reasoning_tokens,
-            response.reasoning_text,
-        )
-
         # #1008: one bounded re-ask when extraction fails (V38 shakedown truncation).
         async def _reask(feedback: str) -> str:
             retry_messages = [
@@ -133,15 +164,16 @@ class GovernanceCorrectionDecisionHandler(_CycleTaskHandler):
                 ChatMessage(role="assistant", content=content),
                 ChatMessage(role="user", content=feedback),
             ]
-            retry = await context.ports.llm.chat_stream_with_usage(retry_messages, **chat_kwargs)
-            log_emission_shape(
-                f"{self._handler_name}:json_reask",
-                retry.content,
-                retry.completion_tokens,
-                retry.reasoning_tokens,
-                retry.reasoning_text,
+            _, retry_content = await self._llm_call(
+                context,
+                retry_messages,
+                chat_kwargs,
+                inputs=inputs,
+                started=start_time,
+                shape_label=f"{self._handler_name}:json_reask",
+                attempt=2,
             )
-            return retry.content
+            return retry_content
 
         # Parse JSON decision. Tolerates <think> blocks, code fences,
         # and prose preamble. Falls back to a structured `abort`

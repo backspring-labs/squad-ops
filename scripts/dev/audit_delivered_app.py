@@ -167,6 +167,24 @@ async def _run_ui_data_path(files: dict[str, str], stack: str, base_url: str) ->
     return failures
 
 
+#: The most of a judged response a failure line carries — enough to see the shape that
+#: was returned (an error envelope, a partial object, HTML), bounded so a record stays a
+#: record. Every character past it is replaced by a count.
+RESPONSE_EXCERPT_CHARS = 600
+
+
+def response_excerpt(text: str, payload: object) -> str:
+    """The judged response, compact and bounded (#1324): the JSON re-serialised with
+    sorted keys when it parsed, otherwise the raw text repr'd and marked non-JSON."""
+    if payload is not None:
+        body = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+    else:
+        body = f"(non-JSON) {text!r}"
+    if len(body) > RESPONSE_EXCERPT_CHARS:
+        return f"{body[:RESPONSE_EXCERPT_CHARS]}… (+{len(body) - RESPONSE_EXCERPT_CHARS} chars)"
+    return body
+
+
 async def _run_probes(contract: VerificationContract, base_url: str) -> list[str]:
     """Issue every contract probe over HTTP, in order, sharing the capture
     context (#651 — join/leave resolve the id the create captured); return
@@ -200,13 +218,20 @@ async def _run_probes(contract: VerificationContract, base_url: str) -> list[str
             # more permissive of the two judges of one contract.
             failure = evaluate_expectations(probe.expect, resp.status_code, payload)
             if failure is not None:
-                failures.append(f"probe {probe.id}: {failure}")
+                # #1324: keep the response the judgment was made on. The delivered app is
+                # gone by the time anyone reads the record, so a failure line that names
+                # only the missing keys cannot be root-caused (1.7.2 counted roll 1).
+                failures.append(
+                    f"probe {probe.id}: {failure} — response {resp.status_code}: "
+                    f"{response_excerpt(resp.text, payload)}"
+                )
                 continue
             if probe.capture:
                 captured, missing_key = capture_probe_values(probe, payload)
                 if missing_key is not None:
                     failures.append(
-                        f"probe {probe.id}: capture key {missing_key!r} missing from response"
+                        f"probe {probe.id}: capture key {missing_key!r} missing from response "
+                        f"— response {resp.status_code}: {response_excerpt(resp.text, payload)}"
                     )
                     continue
                 context.update(captured)

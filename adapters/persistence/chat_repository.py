@@ -6,14 +6,12 @@ All methods are async and use the shared asyncpg pool.
 
 from __future__ import annotations
 
-import json
 import logging
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import asyncpg
 
-from adapters.jsonb import parse_jsonb
 from squadops.comms.models import ChatMessage, ChatSession, SessionNotFoundError
 
 logger = logging.getLogger(__name__)
@@ -48,7 +46,7 @@ class ChatRepository:
                 session.agent_id,
                 session.user_id,
                 session.started_at,
-                json.dumps(session.metadata),
+                session.metadata,
             )
         return session
 
@@ -124,7 +122,7 @@ class ChatRepository:
                 message.role,
                 message.content,
                 message.created_at,
-                json.dumps(message.metadata),
+                message.metadata,
             )
         return message
 
@@ -161,7 +159,7 @@ class ChatRepository:
             ended_at=row["ended_at"],
             # `or {}`: a nullable metadata column decodes to None — coerce to {}
             # (preserved from the old _parse_jsonb None branch).
-            metadata=parse_jsonb(row["metadata"]) or {},
+            metadata=row["metadata"] or {},
         )
 
     def _assemble_message(self, row: Any) -> ChatMessage:
@@ -172,5 +170,5 @@ class ChatRepository:
             role=row["role"],
             content=row["content"],
             created_at=row["created_at"],
-            metadata=parse_jsonb(row["metadata"]) or {},
+            metadata=row["metadata"] or {},
         )

@@ -20,6 +20,7 @@ import hashlib
 import json
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from graphlib import CycleError, TopologicalSorter
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
@@ -189,10 +190,6 @@ class PlanSummary:
     total_qa_tasks: int
     total_tasks: int
     estimated_layers: list[str] = field(default_factory=list)
-
-
-#: The builder's handoff document (#1252): its sections are the build profile's fact.
-HANDOFF_DOCUMENT = "qa_handoff.md"
 
 
 @dataclass(frozen=True)
@@ -535,30 +532,6 @@ class ImplementationPlan:
             self._regex_on_source_message(task, target)
             for task, criterion, target in self._regex_on_source_criteria()
             if criterion.severity == "error"
-        ]
-
-    def validate_handoff_criteria(self) -> list[str]:
-        """#1252: no ``regex_match`` over the builder's handoff document.
-
-        The handoff's required sections are the build profile's fact, checked by the
-        builder handler by name and in any order. A regex the planner phrases fresh each
-        cycle over those headings polices how the builder restated a fact it never saw:
-        the 1.7.1 React shakeout ``cyc_8118588858a6`` spent two of three correction rounds
-        on the word order of two headings (``## .*(Backend|Server|API).*(Run|Start|Setup|
-        Launch)`` against the template's own ``## How to Run the Backend``). Rejected here
-        with the rule named, so the author is taught; ``task_plan._applicable_acceptance``
-        strips any that reach dispatch as the deterministic backstop.
-        """
-        return [
-            f"task {task.task_index} ({task.task_type}): regex_match on "
-            f"{criterion.params.get('file')} ({criterion.params.get('pattern')!r}) — the "
-            "handoff's sections are the build profile's, checked by name in any order; "
-            "name the sections in the task description instead (rule no-regex-on-the-handoff)"
-            for task in self.tasks
-            for criterion in task.acceptance_criteria
-            if isinstance(criterion, TypedCheck)
-            and criterion.check == "regex_match"
-            and str(criterion.params.get("file", "")).split("/")[-1] == HANDOFF_DOCUMENT
         ]
 
     def validate_command_checks(self) -> list[str]:
@@ -1006,6 +979,37 @@ class ImplementationPlan:
             f"typed criteria for covered files"
         )
 
+    def validate_derived_criteria(self) -> list[str]:
+        """#1254: typed checks the framework injects or a profile derives are not the
+        author's to write — reported, never fatal.
+
+        The planner authored `harness_boundary` on 25 of the last 40 stored plans' qa
+        tasks while dispatch injected it on every bound qa suite; both 1.7.1 React
+        shakeouts carried the row twice on `backend/tests/test_runs.py`. The duplicate is
+        not dangerous — the injected row is the one whose parameters are right — it is
+        *doubled evidence* and an author spending attention on a decision that is not
+        available to it.
+
+        **Deliberately not a rejection.** A framing re-roll costs half an hour, and this
+        slip appears on most plans; rejecting would spend that on a row dispatch drops in
+        a microsecond. The vocabulary now names these as already covered, the appendix
+        states the rule, and `task_plan._applicable_acceptance` strips what still arrives.
+        This method exists so the rule has a validator to be *bound* to in
+        `plan_authoring_rules.AUTHOR_FACING`, and so a caller can log the audit trail.
+        """
+        from squadops.cycles.acceptance_check_spec import derived_check_names
+
+        derived = derived_check_names()
+        return [
+            f"task {task.task_index} ({task.task_type}): {criterion.check} on "
+            f"{criterion.params.get('file', '-')} is derived by the framework, not "
+            "authored — the injected row is the one that runs, and this one only "
+            "doubles the evidence (rule do-not-author-derived-checks)"
+            for task in self.tasks
+            for criterion in task.acceptance_criteria
+            if isinstance(criterion, TypedCheck) and criterion.check in derived
+        ]
+
     def soft_criteria_violations(self, contract: VerificationContract | None = None) -> list[str]:
         """Warning/info-severity structural criteria violations that are TOLERATED,
         not rejected — regex-on-source (#464) and, when a contract is given (bind
@@ -1165,29 +1169,38 @@ def resolve_criteria_for_files(
 
 
 def _check_dependency_dag(tasks: list[PlanTask]) -> None:
-    """Validate that task dependencies form a DAG (no cycles).
+    """Validate that task dependencies form a DAG and that the authored order honours it.
+
+    #578: ``graphlib.TopologicalSorter`` owns cycle detection (``prepare()`` raises
+    ``CycleError``; iterative, so a deep chain cannot hit the recursion limit the old
+    hand-rolled DFS could). The second check is the decision the same issue asked for:
+    ``depends_on`` was validated and never used to order execution — the plan's tasks
+    are materialised in authored list order. The framework does not reorder; it refuses a
+    plan whose order contradicts its own declared dependencies, so a task never runs
+    before something it says it needs. A proposer that wants an order writes that order.
 
     Raises:
-        ValueError: If a dependency cycle is detected.
+        ValueError: If a dependency cycle is detected, or a task depends on a task that
+            is listed after it.
     """
-    # Build adjacency list
-    adj: dict[int, list[int]] = {t.task_index: list(t.depends_on) for t in tasks}
-    visited: set[int] = set()
-    in_stack: set[int] = set()
+    graph = {t.task_index: set(t.depends_on) for t in tasks}
+    try:
+        TopologicalSorter(graph).prepare()
+    except CycleError as exc:
+        # graphlib names the cycle's nodes in exc.args[1]; the last one closes the loop.
+        nodes = exc.args[1] if len(exc.args) > 1 else ()
+        involved = nodes[-1] if nodes else "?"
+        raise ValueError(f"Dependency cycle detected involving task_index {involved}") from exc
 
-    def _visit(node: int) -> None:
-        if node in in_stack:
-            raise ValueError(f"Dependency cycle detected involving task_index {node}")
-        if node in visited:
-            return
-        in_stack.add(node)
-        for dep in adj.get(node, []):
-            _visit(dep)
-        in_stack.remove(node)
-        visited.add(node)
-
+    position = {t.task_index: pos for pos, t in enumerate(tasks)}
     for task in tasks:
-        _visit(task.task_index)
+        for dep in task.depends_on:
+            if position[dep] > position[task.task_index]:
+                raise ValueError(
+                    f"Task {task.task_index} depends on task_index {dep}, which is listed "
+                    f"after it: tasks run in authored order, so the order must honour "
+                    f"depends_on (#578)"
+                )
 
 
 def _serialize_acceptance_criterion(c: str | TypedCheck) -> str | dict:

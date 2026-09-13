@@ -24,7 +24,6 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from squadops.capabilities.handlers.emission_log import log_emission_shape
 from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
 from squadops.llm.exceptions import LLMError
 from squadops.llm.models import ChatMessage
@@ -105,7 +104,7 @@ async def contract_surface_sections(renderer: Any, inputs: dict[str, Any]) -> st
 
 
 async def retry_yaml_call(
-    llm: Any,
+    call: Callable[..., Awaitable[tuple[Any, str]]],
     chat_kwargs: dict[str, Any],
     system_prompt: str,
     user_prompt: str,
@@ -127,6 +126,11 @@ async def retry_yaml_call(
     ``None`` if all attempts failed; ``last_yaml`` carries the most
     recent raw YAML for diagnostic logging.
 
+    ``call`` is the calling handler's ``_llm_call`` with its context, inputs and
+    start time already bound (#929). This loop is one of the two seams that lives
+    in a module-level function rather than on a handler, so it takes the sequence
+    as a callable instead of reaching for the port itself — which is what left it
+    recording nothing at all until #1206.
     """
     messages: list[ChatMessage] = [
         ChatMessage(role="system", content=system_prompt),
@@ -137,7 +141,9 @@ async def retry_yaml_call(
 
     for attempt in range(1, max_attempts + 1):
         try:
-            response = await llm.chat_stream_with_usage(messages, **chat_kwargs)
+            _, content = await call(
+                messages, chat_kwargs, shape_label=handler_name, attempt=attempt
+            )
         except LLMError as exc:
             logger.warning(
                 "%s: LLM call failed on attempt %d/%d (%s)",
@@ -152,14 +158,6 @@ async def retry_yaml_call(
             messages = messages[:2]
             continue
 
-        content = response.content
-        log_emission_shape(
-            handler_name,
-            content,
-            response.completion_tokens,
-            response.reasoning_tokens,
-            response.reasoning_text,
-        )
         # Each handler tells us which filename to expect via the
         # closure in parse_and_validate; this layer just hands over the
         # raw YAML or None.

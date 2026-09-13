@@ -1354,7 +1354,7 @@ class TestCorrectionDeadlockIsNotRetried:
 
     @staticmethod
     def _deadlocked(status, reason, retest=False):
-        from adapters.cycles.dispatched_flow_executor import correction_is_deadlocked
+        from adapters.cycles.patch_acceptance import correction_is_deadlocked
 
         return correction_is_deadlocked(status, reason, retest_decides=retest)
 

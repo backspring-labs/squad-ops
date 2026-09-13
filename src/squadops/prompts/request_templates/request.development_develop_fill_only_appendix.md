@@ -30,8 +30,13 @@ the fixed slots** — never to rebuild, rewire, or regenerate the scaffold.
 - Do NOT change route **paths, methods, decorators, or signatures** in `backend/routes.py`.
 - Do NOT edit entry / config / wiring files: `backend/main.py`, `backend/models.py`,
   `backend/errors.py`, `frontend/src/main.jsx`, `frontend/src/App.jsx`,
-  `frontend/src/api.js`, `vite.config.js`, `package.json`, `index.html`, or the
-  requirements/manifest files.
+  `frontend/src/index.css`, `frontend/src/api.js`, `vite.config.js`, `package.json`,
+  `index.html`, or the requirements/manifest files.
+- **Presentation is already handled.** `frontend/src/index.css` styles ordinary elements —
+  headings, lists, tables, forms, inputs, buttons — so plain semantic markup comes out
+  looking right with no effort from you. Write `<ul><li>`, `<table>`, `<form>`, `<button>`
+  rather than nested `<div>`s, and do not add stylesheets, CSS frameworks, or `className`
+  design systems; there is no styling task in this build.
 - Do NOT rewire `App.jsx`'s import/route graph, rename or move views, or add/remove files.
 
 {{error_contract}}

@@ -79,6 +79,12 @@ services:
       PREFECT_SERVER_API_PORT: '4200'
       PREFECT_API_DATABASE_CONNECTION_URL: postgresql+asyncpg://squadops:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}@postgres:5432/squadops
       PREFECT_SERVER_ANALYTICS_ENABLED: 'false'
+      # #330: the flow-run notification service was one of the six loop services that
+      # starved during heavy cycles, and the only one doing nothing here — no notification
+      # block is configured, and the two it ever logged were DNS failures to an
+      # unresolvable host. Off. The others (scheduler, late runs, cancellation cleanup)
+      # stay on; the driver now reads their overruns per cycle (`prefect_loop_overruns`).
+      PREFECT_API_SERVICES_FLOW_RUN_NOTIFICATIONS_ENABLED: 'false'
     depends_on:
       postgres:
         condition: service_healthy
@@ -107,6 +113,13 @@ services:
   squadops-keycloak:
     image: quay.io/keycloak/keycloak:24.0.5
     container_name: squadops-keycloak
+    # #581: Keycloak ships no curl/wget; bash's /dev/tcp says the port answers.
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8080' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 40s
     restart: unless-stopped
     command: start-dev --import-realm
     environment:
@@ -134,6 +147,13 @@ services:
   # LOCAL DEV / CI ONLY — hardcoded secrets below are NOT production-grade.
   langfuse:
     container_name: squadops-langfuse
+    # #581
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/public/health >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
     image: langfuse/langfuse:2
     restart: unless-stopped
     environment:
@@ -189,7 +209,16 @@ services:
       # LLM (SIP-0066: cycle task handlers)
       SQUADOPS__LLM__MODEL: "llama3.1:8b"
       SQUADOPS__LLM__TIMEOUT: ${SQUADOPS__LLM__TIMEOUT:-180}
+      # #560: audit records (SIP-0062) leave the application stream for their own rotating
+      # JSONL sink on the mounted ./data/audit; unset, they share stdout as before.
+      SQUADOPS_AUDIT_LOG_PATH: /app/data/audit/runtime-api.jsonl
+      # #1147: the orchestrator's per-task wait, apart from the request timeout above;
+      # unset (empty) follows SQUADOPS__LLM__TIMEOUT.
+      SQUADOPS__DISPATCH__TASK_TIMEOUT: ${SQUADOPS__DISPATCH__TASK_TIMEOUT:-}
       SQUADOPS__LLM__PROVIDER: ollama  # required, never defaulted (#1157); the switch PR changes it (SIP-0106 §5)
+      SQUADOPS__COMMS__QUEUE__PROVIDER: rabbitmq  # required, never defaulted (#301)
+      SQUADOPS__COMMS__A2A__PROVIDER: http  # required, never defaulted (#301)
+      SQUADOPS__TOOLS__FILESYSTEM__PROVIDER: local  # required, never defaulted (#301)
       # Duty-transition scheduler (SIP-0089 §2.4). runtime-api is the single
       # central writer of agent mode (D16) — keep this enabled on exactly one
       # runtime-api instance (no leader election yet).
@@ -197,6 +226,7 @@ services:
       SQUADOPS__RUNTIME__SCHEDULER__POLL_INTERVAL_SECONDS: "10"
     volumes:
       - ./data/artifacts:/app/data/artifacts
+      - ./data/audit:/app/data/audit  # #560: the audit sink
     networks:
     - squadnet
     extra_hosts:
@@ -248,6 +278,9 @@ services:
       SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_SECRET: secret://agent_client_secret
       SQUADOPS__LLM__TIMEOUT: ${SQUADOPS__LLM__TIMEOUT:-180}
       SQUADOPS__LLM__PROVIDER: ollama  # required, never defaulted (#1157); the switch PR changes it (SIP-0106 §5)
+      SQUADOPS__COMMS__QUEUE__PROVIDER: rabbitmq  # required, never defaulted (#301)
+      SQUADOPS__COMMS__A2A__PROVIDER: http  # required, never defaulted (#301)
+      SQUADOPS__TOOLS__FILESYSTEM__PROVIDER: local  # required, never defaulted (#301)
     volumes:
       - max_memory_data:/app/data/memory_db
     depends_on:
@@ -303,6 +336,9 @@ services:
       SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_SECRET: secret://agent_client_secret
       SQUADOPS__LLM__TIMEOUT: ${SQUADOPS__LLM__TIMEOUT:-180}
       SQUADOPS__LLM__PROVIDER: ollama  # required, never defaulted (#1157); the switch PR changes it (SIP-0106 §5)
+      SQUADOPS__COMMS__QUEUE__PROVIDER: rabbitmq  # required, never defaulted (#301)
+      SQUADOPS__COMMS__A2A__PROVIDER: http  # required, never defaulted (#301)
+      SQUADOPS__TOOLS__FILESYSTEM__PROVIDER: local  # required, never defaulted (#301)
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -377,6 +413,9 @@ services:
       SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_SECRET: secret://agent_client_secret
       SQUADOPS__LLM__TIMEOUT: ${SQUADOPS__LLM__TIMEOUT:-180}
       SQUADOPS__LLM__PROVIDER: ollama  # required, never defaulted (#1157); the switch PR changes it (SIP-0106 §5)
+      SQUADOPS__COMMS__QUEUE__PROVIDER: rabbitmq  # required, never defaulted (#301)
+      SQUADOPS__COMMS__A2A__PROVIDER: http  # required, never defaulted (#301)
+      SQUADOPS__TOOLS__FILESYSTEM__PROVIDER: local  # required, never defaulted (#301)
     volumes:
       - ./docker-compose.yml:/app/docker-compose.yml
       - /var/run/docker.sock:/var/run/docker.sock
@@ -434,6 +473,9 @@ services:
       SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_SECRET: secret://agent_client_secret
       SQUADOPS__LLM__TIMEOUT: ${SQUADOPS__LLM__TIMEOUT:-180}
       SQUADOPS__LLM__PROVIDER: ollama  # required, never defaulted (#1157); the switch PR changes it (SIP-0106 §5)
+      SQUADOPS__COMMS__QUEUE__PROVIDER: rabbitmq  # required, never defaulted (#301)
+      SQUADOPS__COMMS__A2A__PROVIDER: http  # required, never defaulted (#301)
+      SQUADOPS__TOOLS__FILESYSTEM__PROVIDER: local  # required, never defaulted (#301)
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -487,6 +529,9 @@ services:
       SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_SECRET: secret://agent_client_secret
       SQUADOPS__LLM__TIMEOUT: ${SQUADOPS__LLM__TIMEOUT:-180}
       SQUADOPS__LLM__PROVIDER: ollama  # required, never defaulted (#1157); the switch PR changes it (SIP-0106 §5)
+      SQUADOPS__COMMS__QUEUE__PROVIDER: rabbitmq  # required, never defaulted (#301)
+      SQUADOPS__COMMS__A2A__PROVIDER: http  # required, never defaulted (#301)
+      SQUADOPS__TOOLS__FILESYSTEM__PROVIDER: local  # required, never defaulted (#301)
     volumes:
       - data_memory_data:/app/data/memory_db
     depends_on:
@@ -544,6 +589,9 @@ services:
       SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_SECRET: secret://agent_client_secret
       SQUADOPS__LLM__TIMEOUT: ${SQUADOPS__LLM__TIMEOUT:-180}
       SQUADOPS__LLM__PROVIDER: ollama  # required, never defaulted (#1157); the switch PR changes it (SIP-0106 §5)
+      SQUADOPS__COMMS__QUEUE__PROVIDER: rabbitmq  # required, never defaulted (#301)
+      SQUADOPS__COMMS__A2A__PROVIDER: http  # required, never defaulted (#301)
+      SQUADOPS__TOOLS__FILESYSTEM__PROVIDER: local  # required, never defaulted (#301)
     volumes:
       - bob_memory_data:/app/data/memory_db
     depends_on:
@@ -603,6 +651,9 @@ services:
       SQUADOPS_PROFILE: "${SQUADOPS_PROFILE:?Run bootstrap first}"
       SQUADOPS__SECRETS__PROVIDER: docker_secret
       SQUADOPS__LLM__PROVIDER: ollama  # required, never defaulted (#1157)
+      SQUADOPS__COMMS__QUEUE__PROVIDER: rabbitmq  # required, never defaulted (#301)
+      SQUADOPS__COMMS__A2A__PROVIDER: http  # required, never defaulted (#301)
+      SQUADOPS__TOOLS__FILESYSTEM__PROVIDER: local  # required, never defaulted (#301)
       SQUADOPS__DB__URL: postgresql://squadops:secret://db_password@postgres:5432/squadops
       SQUADOPS__COMMS__RABBITMQ__URL: amqp://squadops:secret://rabbitmq_password@rabbitmq:5672/
       SQUADOPS__COMMS__REDIS__URL: redis://redis:6379/0
@@ -752,6 +803,12 @@ services:
   prometheus:
     image: prom/prometheus:latest
     container_name: squadops-prometheus
+    # #581
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9090/-/healthy >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
@@ -769,6 +826,12 @@ services:
   grafana:
     image: grafana/grafana:latest
     container_name: squadops-grafana
+    # #581
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:3000/api/health >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin123

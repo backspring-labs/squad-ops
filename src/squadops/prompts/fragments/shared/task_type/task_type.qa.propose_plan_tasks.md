@@ -69,7 +69,7 @@ Each task you propose must:
 Prefer **typed checks** for qa assertions:
 
 - `regex_match` for DOCUMENT artifacts only (`.md`/`.txt`/`.rst` — e.g.
-  `file: qa_handoff.md`, `pattern: "## How to Test"`). NEVER against a
+  `file: README.md`, `pattern: "## Configuration"`). NEVER against a
   source or test file — that prescribes stylistic choices and is REJECTED
   by plan validation, failing the whole plan. Test-file behavior is
   verified by executing the suite, not by pattern-matching it.
@@ -79,7 +79,10 @@ Prefer **typed checks** for qa assertions:
   <file>`, `pyflakes <file>`. Any other command is REJECTED at plan
   validation, because a command the environment cannot run fails identically
   on every correction attempt. Do NOT reach for the test runner here; the
-  suite is executed by the required `tests_pass` check. **TypeScript has no
+  suite is executed by the required `tests_pass` check, and do NOT reach for
+  `python -m py_compile` over a suite you are authoring — `unterminated_source`
+  and `undefined_names` are injected on every `.py` emission and already say it.
+  **TypeScript has no
   form here** — `node --check` rejects `.ts`/`.tsx` before parsing them. Do
   not substitute another tool; the frontend build type-checks it.
 - `import_present` to verify a test file imports the production module

@@ -32,13 +32,13 @@ from typing import Any
 from squadops.cycles.acceptance_check_spec import (
     CHECK_ADDITIVE_CONTAINMENT,
     CHECK_ASSERTION_KINDS,
+    CHECK_CLIENT_MOCK_SURFACE,
     CHECK_CONTAINER_PACKAGING,
     CHECK_CONTRACT_ASSERTIONS,
     CHECK_DECLARED_IMPORTS,
     CHECK_DOM_ANCHOR_QUERIES,
     CHECK_ENDPOINT_DEFINED,
     CHECK_FILL_SLOT_SIGNATURE,
-    CHECK_SECTIONS_PRESENT,
     CHECK_SPECS,
     CHECK_UNDEFINED_NAMES,
     CHECK_UNTERMINATED_SOURCE,
@@ -2126,14 +2126,16 @@ class DomAnchorQueriesCheck(BaseCheck):
         return CheckOutcome.passed(file=rel, findings=[], **observations)
 
 
-@register_check(CHECK_SECTIONS_PRESENT)
-class SectionsPresentCheck(BaseCheck):
-    """#1255: a markdown document carries every required section, by name, in any order.
+@register_check(CHECK_CLIENT_MOCK_SURFACE)
+class ClientMockSurfaceCheck(BaseCheck):
+    """#668: a frontend suite's mock of the frozen API client honours its declared surface.
 
-    ``sections`` are the build profile's (the framework binds them onto the builder task
-    that owns the handoff); the rule is ``handoff_sections.missing_sections`` — the same
-    one the builder handler's validation applies. An empty ``sections`` judges nothing
-    and skips."""
+    ``client`` is the stack's declaration the planner bound (``ClientSurface.as_params``);
+    the rules and the banked observations are ``client_mock_surface``'s (pure over the
+    bytes). Reporting-only: the planner binds it at warning severity, so a failure here
+    is banked, never blocking. A row without a declaration — a stack that freezes no
+    client, or a hand-authored row — skips: it judged nothing. The check reads the suite
+    and the params only; a tree that lacks the client file changes nothing."""
 
     async def evaluate(
         self,
@@ -2142,12 +2144,16 @@ class SectionsPresentCheck(BaseCheck):
         *,
         stack: str | None = None,
     ) -> CheckOutcome:
-        from squadops.capabilities.handoff_sections import missing_sections
+        from squadops.capabilities.client_mock_surface import (
+            mock_surface_findings,
+            mock_surface_observations,
+        )
+        from squadops.capabilities.client_surface import ClientSurface
 
         rel = str(params["file"])
-        sections = [str(s) for s in (params.get("sections") or []) if str(s).strip()]
-        if not sections:
-            return CheckOutcome.skipped(reason="no_sections_declared", file=rel)
+        surface = ClientSurface.from_params(params.get("client"))
+        if surface is None:
+            return CheckOutcome.skipped(reason="no_client_surface", file=rel)
         try:
             target = _safe_resolve(rel, workspace_root)
         except _SafetyError as exc:
@@ -2159,15 +2165,18 @@ class SectionsPresentCheck(BaseCheck):
         except OSError:
             return CheckOutcome.error(reason="file_unreadable")
 
-        missing = missing_sections(content, sections)
-        if missing:
+        observations = mock_surface_observations(content, surface)
+        findings = mock_surface_findings(content, surface)
+        if findings:
+            rules = sorted({f.rule for f in findings})
             return CheckOutcome.failed(
-                reason=f"missing section(s): {', '.join(missing)}",
+                reason=f"{len(findings)} client mock finding(s): {', '.join(rules)}",
                 file=rel,
-                missing=missing,
-                sections=sections,
+                client=surface.path,
+                findings=[{"rule": f.rule, "line": f.line, "detail": f.detail} for f in findings],
+                **observations,
             )
-        return CheckOutcome.passed(file=rel, missing=[], sections=sections)
+        return CheckOutcome.passed(file=rel, client=surface.path, findings=[], **observations)
 
 
 @register_check(CHECK_ADDITIVE_CONTAINMENT)

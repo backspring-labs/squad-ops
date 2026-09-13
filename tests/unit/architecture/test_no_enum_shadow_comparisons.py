@@ -59,10 +59,18 @@ _ALLOWLIST: set[tuple[str, str]] = {
     # attempt) — a string field's own vocabulary, not a status enum.
     ("adapters/cycles/dispatched_flow_executor.py", "failed"),
     # CheckOutcome / PatchCheckRecord status vocabulary (passed/failed/skipped/error)
-    # evaluated executor-side and by the correction runner — same coincidence as the
-    # src/ patch_verification entries above.
-    ("adapters/cycles/dispatched_flow_executor.py", "error"),
-    ("adapters/cycles/correction_runner.py", "failed"),
+    # evaluated by the accepted-patch path and by the correction runner — same
+    # coincidence as the src/ patch_verification entries above. The executor held these
+    # until #1152 step 2 moved the path to `patch_acceptance.py`; the entries moved with
+    # the code, and the executor's `"error"` entry went with them rather than staying
+    # behind as a rule about a comparison that is no longer there. (Its `"failed"` entry
+    # remains for a different reason — #971's `emission_status` marker, above.)
+    ("adapters/cycles/patch_acceptance.py", "failed"),
+    ("adapters/cycles/patch_acceptance.py", "error"),
+    # The repair half of the protocol left the runner with #1152 step 5; the entry moved
+    # with the code, and the runner's own went with it — verified dead by deleting it and
+    # re-running, rather than left as a rule about a comparison that is no longer there.
+    ("adapters/cycles/correction_repair.py", "failed"),
     # External Ollama model-pull job status — a vendor vocabulary, not a domain enum.
     ("src/squadops/cli/commands/models.py", "failed"),
     # window_state() returns a duty-window lifecycle token ("active"/

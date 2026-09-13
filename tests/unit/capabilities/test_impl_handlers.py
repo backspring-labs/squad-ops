@@ -984,3 +984,67 @@ class TestFailureSummaryEnforcementBlock:
             {"validation_result": {"summary": "x"}}, None
         )
         assert "FROZEN OWNERSHIP" not in _format_failure_summary({"scaffold_enforcement": []}, None)
+
+
+class TestTheDecisionIsToldWhatTheWorkspaceRefutes:
+    """#968's consumer half: a refutation threaded into a prompt nobody renders is the
+    #1289 shape — computed, carried, inert. Entered at the handler, asserting the prompt
+    the model was actually sent.
+    """
+
+    _REFUTED = [
+        {
+            "path": "backend/__squadops_injected_fault__.py",
+            "claim": (
+                "The handlers in backend/__squadops_injected_fault__.py declare a local "
+                "shadow store array instead of importing the frozen module."
+            ),
+        }
+    ]
+
+    def _renderer(self):
+        from adapters.prompts.factory import create_prompt_asset_source
+        from squadops.prompts.renderer import RequestTemplateRenderer
+
+        return RequestTemplateRenderer(create_prompt_asset_source(provider="filesystem"))
+
+    async def _prompt(self, mock_context, extra):
+        from squadops.capabilities.handlers.impl.correction_decision import (
+            GovernanceCorrectionDecisionHandler,
+        )
+
+        mock_context.ports.request_renderer = self._renderer()
+        mock_context.ports.llm.chat_stream_with_usage = AsyncMock(
+            return_value=ChatMessage(
+                role="assistant",
+                content='{"correction_path": "patch", "decision_rationale": "fix it"}',
+            ),
+        )
+        await GovernanceCorrectionDecisionHandler().handle(
+            mock_context,
+            {
+                "prd": "build it",
+                "failure_analysis": {"analysis_summary": "something about a file"},
+                **extra,
+            },
+        )
+        sent = mock_context.ports.llm.chat_stream_with_usage.await_args.args[0]
+        return "\n".join(str(m.content) for m in sent)
+
+    async def test_the_refuted_path_and_its_sentence_reach_the_prompt(self, mock_context):
+        prompt = await self._prompt(mock_context, {"refuted_source_claims": self._REFUTED})
+        assert "Refuted by the workspace" in prompt
+        assert "backend/__squadops_injected_fault__.py" in prompt
+        assert "shadow store array" in prompt
+        assert "do not aim a repair at these paths" in prompt
+
+    async def test_the_analysis_itself_is_printed_unedited(self, mock_context):
+        """The analysis is NOT rewritten. A silently edited analysis is a second
+        unverifiable claim, and the decision needs to see both what was asserted and what
+        the workspace says about it."""
+        prompt = await self._prompt(mock_context, {"refuted_source_claims": self._REFUTED})
+        assert "something about a file" in prompt
+
+    async def test_a_sound_analysis_renders_exactly_as_before(self, mock_context):
+        prompt = await self._prompt(mock_context, {})
+        assert "Refuted by the workspace" not in prompt

@@ -1,15 +1,15 @@
 ---
-status: accepted
+status: implemented
 title: Atlas Provider Adapter — Config-Selected Inference Providers Behind a Conformance
   Gate
 author: SquadOps Architecture
 created_at: '2026-08-08T00:00:00Z'
 sip_number: 106
-updated_at: '2026-08-28T10:14:01.266818Z'
+updated_at: '2026-09-08T08:25:52.841253Z'
 ---
 # SIP-0106: Atlas Provider Adapter — Config-Selected Inference Providers Behind a Conformance Gate
 
-**Status:** Accepted
+**Status:** Implemented
 **Authors:** SquadOps Architecture
 **Created:** 2026-08-08
 **Revision:** 2 (2026-08-28 — §10.2 settled against a live Atlas on the Spark; §3.1/§4.1/§5 revised on owner rulings; Appendix B measured, not documented. Rev 1: 2026-08-08 draft; §2.0 corrected 2026-08-15)
@@ -216,6 +216,9 @@ drops … **Verify before scheduling it, not after.**" A feasibility probe there
 new pre-registration. If it fails, this SIP's provider work still stands on Ollama alone and the
 A/B question closes for want of a second engine.
 
+**Superseded in part by §1.2e (2026-08-30):** the feasibility probe ran, the platform question
+is answered, and the arm is parked on measurement. Read §1.2e before acting on this section.
+
 ### 1.2c A trap this SIP names cost the box 95 minutes (2026-08-29)
 
 Appendix C.5 trap 1 — both engines resident at once — is not only a measurement hazard on the
@@ -255,6 +258,167 @@ every-LLM-seam-captures check on the grounds that it was off the production path
 that would otherwise have outlived the file it named.
 
 **Who ruled it.** Owner, 2026-08-31, authorising #944 in the pre-shakeout batch.
+
+### 1.2e P6's arm was built, measured, and is parked (owner ruling, 2026-08-30)
+
+**What changed.** §1.2b called the hedge and made P6 non-optional, and it still reads as though
+that arm is live. It is not. §3.5a's gating unknown — "vLLM's maturity on DGX Spark's GB10 Grace
+Blackwell / ARM64 platform is **unverified here**" — is now answered, and the answer separates
+two things the deferral bundled: the *platform* is fine, and the *engine* is not competitive on
+this workload. The arm is parked on measurement, not on a blocker.
+
+**The platform question is answered: vLLM runs on GB10.** Upstream `vllm/vllm-openai:latest`
+(vLLM 0.28.0, transformers 5.15.1) serves `Qwen/Qwen3.8-27B-FP8`: 28.51 GiB weights, 55.58 GiB
+KV cache, 792,576 tokens, 24× concurrency at 32K, ~7 min load. The GPU reports capability
+(12,1) = sm_121; the build ships sm_120 cubins, which run on it. **Live port conformance 14/14**
+— §3.6's actual gate, not the fixture-based unit tier. The deploy switches cleanly:
+`docker-compose.vllm.yml`, 8/8 healthy, `provider=vllm` verified in-container, `arm.sh V` and
+`arm.sh A` both exercised.
+
+**An earlier conclusion is retracted here.** "vLLM does not support Qwen3.8" came from testing
+only `nvcr.io/nvidia/vllm:25.09-py3` (vLLM 0.10.1.1, transformers 4.55.2), eighteen minor
+versions behind, and generalising from one image to the project.
+
+**Why it is parked — two measurements, both against it.**
+
+Decode rate on the real framing workload, each engine's own reporting:
+
+| arm | quantization | decode |
+|---|---|---:|
+| Ollama (production) | Q4_K_M (4-bit) | 23.6–36.8 t/s |
+| vLLM | FP8 (8-bit) | 7.8 t/s |
+| vLLM | NVFP4 (4-bit) | 10.8 t/s |
+
+The obvious explanation — FP8 is twice the weight bytes of Q4_K_M on a bandwidth-bound box —
+**does not survive the test**: at equal 4-bit precision vLLM is still ~2.5× slower. Halving the
+bytes bought ~1.4×, not the ~2× predicted. Two likelier limiters, both from the startup log:
+DeepGemm auto-disabled on Blackwell for `model_type=qwen3_5_text` (falling back to CUTLASS), and
+FlashAttention 2. There is also a workload-shape mismatch — vLLM reported `Running: 1 reqs` with
+24× concurrency headroom idle, because SquadOps dispatches one task at a time.
+
+Plan authoring, replaying the stored `merge_plan` prompt through `ImplementationPlan.from_yaml`
+— the handler's own gate, same harness as the Ollama controls:
+
+| replay | completion | reasoning | finish | verdict |
+|---|---:|---:|---|---|
+| 1 | 14,336 | **14,336** | `length` | rejected — no plan emitted |
+| 2 | 13,643 | 10,380 | `stop` | rejected — malformed YAML |
+| 3 | 14,336 | **14,336** | `length` | rejected — no plan emitted |
+
+**0/3**, against Ollama's **5/5** on the identical prompt and budget. Two of three spent the
+*entire* budget on thinking and emitted nothing. The reasoning parser is working correctly and
+attributes those tokens cleanly; the model simply does not stop thinking. **This is the blocking
+measurement.** Throughput is the smaller half, and a reader who takes only the table above will
+draw the wrong conclusion about what a faster engine would buy.
+
+**What is unchanged.** Everything §1.2b lists as already in place stays in the tree and stays
+inert under §4: `adapters/llm/vllm.py`, the factory's `provider == "vllm"` branch, the schema
+value, `docker-compose.vllm.yml` and the conformance coverage. Parked is not deleted; the arm is
+re-armed by a measurement, not a rebuild. §1.2b's outstanding list is closed except for the
+verification sets and pre-registration, which were never reached.
+
+**What would reopen it.** A serving recipe that moves the throughput number **and** a replay
+that clears the plan-authoring gate. **#1408** is that gate for the Qwen3.8-Flash-Next NVFP4
+recipe, which reports 48.7 t/s single-stream and therefore addresses only the first half; the
+replay is pre-registered there and runs before any re-arm. §1.2c's trap binds that work too —
+the recipe budgets 94.87 GiB GPU allocation plus a 26 GiB host reserve on a 121 GiB box, so the
+arms cannot coexist.
+
+**Who ruled it.** Owner, 2026-08-30. Recorded until now only in `docs/plans/1-7-0-cut-record.md`
+§5a — superseded at its cut — and on #1184.
+
+### 1.2f The `local-spark` bootstrap never installs Atlas, and will not (2026-09-08)
+
+**What changed.** Nothing was built; that is the amendment. #1158 was filed as the P4/P5
+prerequisite and carried four deliverables. Three landed:
+
+- **container-reachable** — verified live (`squadops-max → host.docker.internal:8888 → 200`);
+- **the live-verification facts** — measured 2026-08-28 and recorded in Appendix B and §10.2's
+  table, including the new fact 6 (per-request reasoning control) that #927's adapter mapping
+  needed;
+- **the AGPLv3-vs-commercial deployment decision** — recorded in §1.1's owner rulings rather
+  than left for a profile to make silently.
+
+The fourth — an `atlas` entry in the `local-spark` bootstrap profile with a service unit and a
+`squadops doctor local-spark --check llm` that knows about it — was never built. `atlas` appears
+nowhere in `scripts/bootstrap/`, `config/profiles/bootstrap/local-spark.yaml`, or the doctor.
+
+**Why it stays unbuilt.** §1.2a rules Atlas **not adopted**, and the item's own framing — "the
+prerequisite of P4's opening and P5's run" — describes a gate that has already opened, run and
+returned a negative. A bootstrap entry serves a provider a deploy points at; nothing points at
+Atlas.
+
+**Not adopted is not rejected, and the distinction is load-bearing.** What SquadOps owns landed
+and works: the adapter is merged and conformance-passing, the engine was stood up on the Spark,
+served 44 emissions across 14 serve configurations, and the integration was exercised end to
+end. The failure is not a limit of the integration and not a judgement that Atlas is unsuitable.
+
+**Corrected 2026-09-08, same day, before this text had stood a day.** As first written this
+section said "the blocker is a defect in the vendor's engine." That was an inference, not a
+finding, and it does not hold uniformly. The record supports a narrower claim, and the
+difference decides what can honestly be sent to a vendor. What follows replaces it.
+
+**Established, and model-independent.** These are facts about the engine's control surface and
+hold whatever model is loaded:
+
+- **Four documented controls do not take effect.** `--content-loop-watchdog false` is accepted
+  with correct syntax per `--help` and leaves the startup line unchanged; `ATLAS_CONTENT_LOOP_WATCHDOG`
+  was confirmed set on the container with no behavioural change; the per-request
+  `repetition_detection` object the help says "still outranks this" had none at `min_count: 64`
+  against a default of 3; and `--content-loop-min-repeats 64`, the vendor's own documented remedy
+  for "short-period repetitive (code, tables)" output, had none either.
+- **`simhash_semantic_loop` has no control surface at all** — no CLI flag, no env var, absent
+  from `--help`.
+
+**Observed, but not established as defects.** Each was seen under one model on one build:
+
+- **The guard fires on legitimately repetitive YAML.** This may be a guard calibrated for a
+  content shape unlike ours — working as designed and badly tuned — rather than broken.
+- **The rollback rewinds mid-token**, so `depends_on: []` emerges as `depend0]` and the severed
+  output *becomes* the validator's "malformed YAML". This is the most defect-shaped observation
+  and still rests on a single configuration family.
+
+**Two confounds that remain open, named because closing them is cheap and nobody has.**
+
+- **No supported model was ever served.** `Qwen/Qwen3.8-27B-FP8` is absent from the
+  supported-model table of the shipped image's README, the GitHub README and the GB10 Deployment
+  Guide. §1.2a's R11 reproduced the outcome on the NVFP4 checkpoint and concluded unsupported
+  status "is not an available explanation" — but R11 closes the **kernel-path** question (the
+  audit covered NVFP4, the A/B served FP8), not the model-support one, because the NVFP4 build of
+  that same model is equally unlisted. Both configurations are one unlisted model in two
+  quantizations.
+- **The build was never matched to the recipe's.** The A/B ran `avarok/atlas-gb10:latest` built
+  2026-08-15; the recipe annotates itself "tested on binary main 680b3a568". Nobody verified
+  those are the same build, so a version mismatch sits under all fourteen configurations.
+
+**What would settle it, in one session.** Serve one model from the supported table and send the
+same repetitive-YAML prompt. Misbehaviour there makes it an engine defect and the report is
+strong; correct behaviour makes it an unsupported-model interaction and the ask becomes a
+support question, which is both different and likelier to be answered. **The control-surface
+half stands either way** and is reportable on its own.
+
+**So the unblock path runs through a diagnosis, not straight to a bug report.** The A/B record's
+disposition (§8) said a report on `simhash_semantic_loop` was "worth filing regardless of
+adoption"; it was never filed. **#1412** now carries the diagnosis first and the report behind
+it. If the guard becomes controllable and the model reaches the supported table, adoption is a
+measurement again rather than a redesign: the seam, the adapter and the conformance suite are
+already in the tree and inert per §4.
+
+**The dependency runs the other way from how a reader might take it.** The 1.7.4 plan says the
+line "does not adopt Atlas (SIP-0106 stays accepted and not adopted until #301)". #301
+(Composition Root) is a **precondition** of any adoption, not a trigger for one: P4/P5's
+negative stands on its own measurements and would not be overturned by the composition root
+landing. #301 removes an obstacle to switching providers in general; it says nothing about
+whether this provider is worth switching to.
+
+**What this costs, stated plainly.** Standing Atlas up again is a manual serve script on the
+box, as it was throughout the A/B. That is the right cost for an engine no deploy points at
+today, and it is why the item is closed rather than carried forward through further lines. It is
+a small cost precisely because the integration landed — what a retry needs is the box and a
+serve script, not new code.
+
+**What would change it.** A diagnosis and, if it lands there, a vendor fix (#1412) that lets
+P4/P5 be re-run and their negative overturned. Not a bootstrap entry.
 
 ## 2. Problem Statement
 

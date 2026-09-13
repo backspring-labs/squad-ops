@@ -72,6 +72,8 @@ source "${SCRIPT_DIR}/lib/python_setup.sh"
 source "${SCRIPT_DIR}/lib/brew_install.sh"
 # shellcheck source=lib/apt_install.sh
 source "${SCRIPT_DIR}/lib/apt_install.sh"
+# shellcheck source=lib/memory_containment.sh
+source "${SCRIPT_DIR}/lib/memory_containment.sh"
 # shellcheck source=lib/docker_setup.sh
 source "${SCRIPT_DIR}/lib/docker_setup.sh"
 # shellcheck source=lib/ollama_setup.sh
@@ -118,6 +120,20 @@ run_bootstrap || {
     # but may set DOCKER_OK=0 on docker failure
     true
 }
+
+# ---------------------------------------------------------------------------
+# Integration-test database isolation (#1180)
+# ---------------------------------------------------------------------------
+# The squadops_test role and database, and the grant that keeps the test role out of the
+# deployment database. The compose init script provisions them only on a fresh volume;
+# this runs the same script against the running container, so a box bootstrapped before
+# the role existed gets it too. Single-sourced with rebuild_and_deploy.sh (the #371
+# shape). Non-fatal but loud — the doctor below reports the negative.
+if [[ "$SKIP_DOCKER" != "1" && "$DOCKER_OK" == "1" ]]; then
+    info "Provisioning the integration-test database role..."
+    bash "${PROJECT_ROOT}/scripts/dev/ops/ensure_test_database.sh" \
+        || warn "Test-database provisioning failed — 'squadops doctor ${PROFILE} --check database' will say what is missing (#1180)"
+fi
 
 # ---------------------------------------------------------------------------
 # Extensibility hook — source user-local customizations if present

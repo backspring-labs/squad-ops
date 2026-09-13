@@ -497,3 +497,89 @@ class TestEdgeCases:
         profile = load_bootstrap_profile("dev-mac")
         with pytest.raises(AttributeError):
             profile.name = "changed"
+
+
+class TestMemoryContainmentDeclaration:
+    """#1178: the profile is the one home for the thresholds the bootstrap writes and the
+    doctor verifies, so a partial or out-of-range declaration must fail at load."""
+
+    def _data(self, minimal_profile_data, containment):
+        data = dict(minimal_profile_data)
+        if containment is not None:
+            data["memory_containment"] = containment
+        return data
+
+    def test_absent_means_the_profile_makes_no_claim(
+        self, tmp_profile_dir, write_profile, minimal_profile_data
+    ):
+        write_profile("no-containment", minimal_profile_data)
+        profile = load_bootstrap_profile("no-containment", profiles_dir=tmp_profile_dir)
+
+        assert profile.memory_containment is None
+
+    def test_a_full_declaration_loads(self, tmp_profile_dir, write_profile, minimal_profile_data):
+        write_profile(
+            "with-containment",
+            self._data(
+                minimal_profile_data,
+                {
+                    "daemon": "earlyoom",
+                    "package": "earlyoom",
+                    "free_memory_percent": 10,
+                    "free_swap_percent": 100,
+                    "swappiness": 10,
+                },
+            ),
+        )
+        containment = load_bootstrap_profile(
+            "with-containment", profiles_dir=tmp_profile_dir
+        ).memory_containment
+
+        assert containment.daemon == "earlyoom"
+        assert (containment.free_memory_percent, containment.free_swap_percent) == (10, 100)
+        assert containment.swappiness == 10
+
+    @pytest.mark.parametrize(
+        "missing", ["daemon", "package", "free_memory_percent", "free_swap_percent"]
+    )
+    def test_a_partial_declaration_is_refused(
+        self, tmp_profile_dir, write_profile, minimal_profile_data, missing
+    ):
+        """Bug caught: a threshold defaulting silently. The thresholds are the whole point —
+        an earlyoom at its stock swap threshold would not have fired during the 2026-08-29
+        livelock at all."""
+        containment = {
+            "daemon": "earlyoom",
+            "package": "earlyoom",
+            "free_memory_percent": 10,
+            "free_swap_percent": 100,
+        }
+        del containment[missing]
+        write_profile("partial", self._data(minimal_profile_data, containment))
+
+        with pytest.raises(BootstrapProfileError, match=missing):
+            load_bootstrap_profile("partial", profiles_dir=tmp_profile_dir)
+
+    @pytest.mark.parametrize(
+        "value", [-1, 101, "100", True], ids=["negative", "over-100", "string", "bool"]
+    )
+    def test_a_threshold_that_is_not_a_percentage_is_refused(
+        self, tmp_profile_dir, write_profile, minimal_profile_data, value
+    ):
+        """Bug caught: `free_swap_percent: "100"` loading fine and the doctor comparing a
+        string to an int forever after."""
+        write_profile(
+            "bad-threshold",
+            self._data(
+                minimal_profile_data,
+                {
+                    "daemon": "earlyoom",
+                    "package": "earlyoom",
+                    "free_memory_percent": 10,
+                    "free_swap_percent": value,
+                },
+            ),
+        )
+
+        with pytest.raises(BootstrapProfileError, match="free_swap_percent"):
+            load_bootstrap_profile("bad-threshold", profiles_dir=tmp_profile_dir)

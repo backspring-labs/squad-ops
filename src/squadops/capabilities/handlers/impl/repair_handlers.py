@@ -856,8 +856,8 @@ class BuilderAssembleRepairHandler(_RepairPromptMixin, _CycleTaskHandler):
     """Correction-loop repair handler for failed builder.assemble tasks.
 
     Mirrors `DevelopmentCorrectionRepairHandler` but routed to the builder
-    role so packaging/handoff failures (e.g. qa_handoff.md missing
-    required sections, missing requirements.txt or package.json) get
+    role so packaging failures (e.g. a missing Dockerfile, requirements.txt
+    or package.json) get
     repaired by the builder role with the build-profile system prompt
     rather than by the dev role with the dev system prompt — the dev
     role has no useful context for builder.assemble outputs and simply
@@ -890,6 +890,13 @@ class QATestRepairHandler(_RepairPromptMixin, _CycleTaskHandler):
 
     _handler_name = "qa_test_repair_handler"
     _task_type = TaskType.QA_TEST_REPAIR
+
+    def _output_shape(self, inputs: dict[str, Any]) -> str | None:
+        """#1285: a qa repair of a scaffold-bound task re-fills declared slots — the same
+        transcription shape the fill brief has, and the same one #924 measured at 413
+        completion tokens against 5,727 with the channel on."""
+        return "fill" if inputs.get("verification_scaffold") else None
+
     _role = "qa"
     _artifact_name = "repair_output.md"
 
