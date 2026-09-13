@@ -14,7 +14,8 @@ import re
 from pathlib import Path
 
 import pytest
-import yaml
+
+from squadops.prompts.frontmatter import read_frontmatter
 
 TEMPLATES_DIR = (
     Path(__file__).parent.parent.parent.parent
@@ -24,7 +25,6 @@ TEMPLATES_DIR = (
     / "request_templates"
 )
 
-_FRONTMATTER_PATTERN = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.MULTILINE | re.DOTALL)
 _PLACEHOLDER_PATTERN = re.compile(r"\{\{(\w+)\}\}")
 
 
@@ -32,14 +32,7 @@ def _load_all_templates() -> list[tuple[str, dict, str]]:
     """Load all template files, returning (filename, header, body) tuples."""
     templates = []
     for path in sorted(TEMPLATES_DIR.glob("*.md")):
-        raw = path.read_text(encoding="utf-8")
-        match = _FRONTMATTER_PATTERN.match(raw)
-        if match:
-            header = yaml.safe_load(match.group(1)) or {}
-            body = raw[match.end() :]
-        else:
-            header = {}
-            body = raw
+        header, body = read_frontmatter(path.read_text(encoding="utf-8"))
         templates.append((path.name, header, body))
     return templates
 

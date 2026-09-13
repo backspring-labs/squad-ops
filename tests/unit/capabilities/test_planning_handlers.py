@@ -712,6 +712,33 @@ class TestGovernanceAssessReadinessValidation:
         # Both LLM call and retry call should have happened.
         assert ctx.ports.llm.chat_stream_with_usage.await_count == 2
 
+    @pytest.mark.parametrize(
+        ("content", "error"),
+        [
+            (
+                "---\nreadiness: [go\n---\n\n## Body\n",
+                "Planning artifact has invalid YAML frontmatter: ",
+            ),
+            (
+                "---\n- go\n- 4\n---\n\n## Body\n",
+                "Planning artifact YAML frontmatter is not a mapping",
+            ),
+        ],
+        ids=["invalid-yaml", "not-a-mapping"],
+    )
+    async def test_a_present_but_malformed_header_fails_with_the_handlers_wording(
+        self, content, error
+    ):
+        """#579: the shared strict parser reports a kind and a message; this handler words
+        the two it can reach its own way. Bug caught: the kinds swapped, so an operator reads
+        "has YAML frontmatter is not a mapping". No retry: the block is present."""
+        ctx = _make_context(content)
+        result = await GovernanceReviewPlanHandler().handle(ctx, {"prd": "Build a widget"})
+
+        assert result.success is False
+        assert result.error.startswith(error)
+        assert ctx.ports.llm.chat_stream_with_usage.await_count == 1
+
     async def test_missing_frontmatter_retry_recovers_when_llm_complies(self):
         """Retry succeeds → handler proceeds with the recovered content."""
         recovered = "---\nreadiness: go\nsufficiency_score: 4\n---\n\n## Body\n"

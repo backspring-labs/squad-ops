@@ -16,11 +16,10 @@ import logging
 import re
 from typing import TYPE_CHECKING
 
-import yaml
-
 from squadops.ports.prompts.asset_source import PromptAssetSourcePort
 from squadops.prompts.asset_models import RenderedRequest, ResolvedAsset
 from squadops.prompts.exceptions import TemplateMissingVariableError
+from squadops.prompts.frontmatter import read_frontmatter
 
 if TYPE_CHECKING:
     from squadops.prompts.cache import CyclePromptCache
@@ -29,12 +28,6 @@ logger = logging.getLogger(__name__)
 
 # Pattern for {{variable}} placeholders in templates
 _PLACEHOLDER_PATTERN = re.compile(r"\{\{(\w+)\}\}")
-
-# Pattern for YAML frontmatter
-_FRONTMATTER_PATTERN = re.compile(
-    r"^---\s*\n(.*?)\n---\s*\n",
-    re.MULTILINE | re.DOTALL,
-)
 
 
 def _parse_template_contract(content: str) -> tuple[str, set[str], set[str]]:
@@ -45,16 +38,7 @@ def _parse_template_contract(content: str) -> tuple[str, set[str], set[str]]:
         If no frontmatter is present, all {{placeholders}} in the body
         are treated as optional.
     """
-    match = _FRONTMATTER_PATTERN.match(content)
-    if not match:
-        return content, set(), set()
-
-    try:
-        header = yaml.safe_load(match.group(1)) or {}
-    except yaml.YAMLError:
-        header = {}
-
-    body = content[match.end() :]
+    header, body = read_frontmatter(content)
     required = set(header.get("required_variables", []))
     optional = set(header.get("optional_variables", []))
 

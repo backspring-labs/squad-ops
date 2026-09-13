@@ -9,22 +9,14 @@ default — all deployments use it unless explicitly switched to Langfuse.
 from __future__ import annotations
 
 import logging
-import re
 from pathlib import Path
-
-import yaml
 
 from squadops.ports.prompts.asset_source import PromptAssetSourcePort
 from squadops.prompts.asset_models import AssetVersionInfo, ResolvedAsset
 from squadops.prompts.exceptions import PromptAssetNotFoundError
+from squadops.prompts.frontmatter import read_frontmatter
 
 logger = logging.getLogger(__name__)
-
-# Regex for parsing YAML frontmatter in template files
-_FRONTMATTER_PATTERN = re.compile(
-    r"^---\s*\n(.*?)\n---\s*\n",
-    re.MULTILINE | re.DOTALL,
-)
 
 
 class FilesystemPromptAssetAdapter(PromptAssetSourcePort):
@@ -78,18 +70,10 @@ class FilesystemPromptAssetAdapter(PromptAssetSourcePort):
 
         raw = file_path.read_text(encoding="utf-8")
 
-        # Parse optional YAML frontmatter
-        version = "1"
-        match = _FRONTMATTER_PATTERN.match(raw)
-        if match:
-            try:
-                header = yaml.safe_load(match.group(1)) or {}
-            except yaml.YAMLError:
-                header = {}
-            version = str(header.get("version", "1"))
-            content = raw[match.end() :].strip()
-        else:
-            content = raw.strip()
+        # Optional YAML frontmatter: the version, and the body after the block.
+        header, body = read_frontmatter(raw)
+        version = str(header.get("version", "1"))
+        content = body.strip()
 
         content_hash = ResolvedAsset.compute_hash(content)
 
@@ -105,15 +89,8 @@ class FilesystemPromptAssetAdapter(PromptAssetSourcePort):
         # Check templates first, then fragments
         template_path = self._templates_path / f"{asset_id}.md"
         if template_path.exists():
-            raw = template_path.read_text(encoding="utf-8")
-            version = "1"
-            match = _FRONTMATTER_PATTERN.match(raw)
-            if match:
-                try:
-                    header = yaml.safe_load(match.group(1)) or {}
-                except yaml.YAMLError:
-                    header = {}
-                version = str(header.get("version", "1"))
+            header, _ = read_frontmatter(template_path.read_text(encoding="utf-8"))
+            version = str(header.get("version", "1"))
             return AssetVersionInfo(
                 asset_id=asset_id,
                 version=version,

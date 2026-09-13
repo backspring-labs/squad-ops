@@ -5,7 +5,6 @@ Implements the PromptRepository port using the macOS/POSIX filesystem.
 """
 
 import logging
-import re
 from pathlib import Path
 
 import yaml
@@ -16,6 +15,7 @@ from squadops.prompts.exceptions import (
     HashMismatchError,
     ManifestValidationError,
 )
+from squadops.prompts.frontmatter import read_frontmatter, split_frontmatter
 from squadops.prompts.models import ManifestFragment, PromptFragment, PromptManifest
 
 logger = logging.getLogger(__name__)
@@ -39,12 +39,6 @@ class FileSystemPromptRepository(PromptRepository):
         └── qa/
     """
 
-    # Regex for parsing fragment header block
-    HEADER_PATTERN = re.compile(
-        r"^---\s*\n(.*?)\n---\s*\n",
-        re.MULTILINE | re.DOTALL,
-    )
-
     @classmethod
     def extract_content(cls, raw_content: str) -> str:
         """Return a fragment's hashable body: everything after the YAML
@@ -55,10 +49,8 @@ class FileSystemPromptRepository(PromptRepository):
         runtime integrity check, the manifest regenerator, and the tests so the
         manifest sha256 can't drift between them (see issue #195).
         """
-        header_match = cls.HEADER_PATTERN.match(raw_content)
-        if header_match:
-            return raw_content[header_match.end() :].strip()
-        return raw_content.strip()
+        _, body = split_frontmatter(raw_content)
+        return body.strip()
 
     @classmethod
     def hash_fragment_file(cls, path: Path) -> str:
@@ -199,18 +191,7 @@ class FileSystemPromptRepository(PromptRepository):
         with open(path, encoding="utf-8") as f:
             raw_content = f.read()
 
-        # Try to parse header
-        header_match = self.HEADER_PATTERN.match(raw_content)
-
-        if header_match:
-            # Parse YAML header
-            header_yaml = header_match.group(1)
-            try:
-                header = yaml.safe_load(header_yaml)
-            except yaml.YAMLError:
-                header = {}
-        else:
-            header = {}
+        header, _ = read_frontmatter(raw_content)
 
         # Content (and its hash) come from the shared canonical extractor.
         content = self.extract_content(raw_content)

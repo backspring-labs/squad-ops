@@ -7,19 +7,18 @@ Verifies that all 7 planning/refinement prompt fragments:
 - Assembler can resolve them via task_type parameter
 """
 
-import re
 from pathlib import Path
 
 import pytest
 import yaml
 
 from adapters.prompts.filesystem import FileSystemPromptRepository
+from squadops.prompts.frontmatter import split_frontmatter
 
 pytestmark = [pytest.mark.domain_capabilities]
 
 FRAGMENTS_DIR = Path(__file__).resolve().parents[3] / "src" / "squadops" / "prompts" / "fragments"
 
-HEADER_PATTERN = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.MULTILINE | re.DOTALL)
 
 PLANNING_FRAGMENTS = [
     {
@@ -95,11 +94,9 @@ def _load_fragment(rel_path: str) -> tuple[dict, str]:
     """Load a fragment file and return (header_dict, content_after_frontmatter)."""
     full_path = FRAGMENTS_DIR / rel_path
     raw = full_path.read_text(encoding="utf-8")
-    m = HEADER_PATTERN.match(raw)
-    assert m, f"No YAML frontmatter in {rel_path}"
-    header = yaml.safe_load(m.group(1))
-    content = raw[m.end() :].strip()
-    return header, content
+    header_text, body = split_frontmatter(raw)
+    assert header_text is not None, f"No YAML frontmatter in {rel_path}"
+    return yaml.safe_load(header_text), body.strip()
 
 
 def _load_manifest() -> dict:

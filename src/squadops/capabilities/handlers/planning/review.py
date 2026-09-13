@@ -7,12 +7,9 @@ authors the plan), with the frontmatter-retry recovery path.
 from __future__ import annotations
 
 import logging
-import re
 import time
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any
-
-import yaml
 
 from squadops.capabilities.handlers.base import (
     HandlerResult,
@@ -24,10 +21,15 @@ from squadops.tasks.task_types import TaskType
 if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
 from squadops.capabilities.handlers.planning.base import _PlanningTaskHandler
+from squadops.prompts.frontmatter import (
+    NOT_MAPPING,
+    FrontmatterError,
+    parse_frontmatter,
+    split_frontmatter,
+)
 
 logger = logging.getLogger(__name__)
 
-_FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 _VALID_READINESS = {"go", "revise", "no-go"}
 
 
@@ -145,8 +147,7 @@ class GovernanceReviewPlanHandler(_PlanningTaskHandler):
         # Now: retry once with a corrective prompt; if the retry still
         # omits frontmatter, fail the task so the cycle's correction
         # loop can fire instead of papering over it.
-        m = _FRONTMATTER_RE.match(content)
-        if not m:
+        if split_frontmatter(content)[0] is None:
             retry_content = await self._retry_without_frontmatter(context, inputs, content)
             if retry_content is not None:
                 content = retry_content
@@ -158,9 +159,8 @@ class GovernanceReviewPlanHandler(_PlanningTaskHandler):
                 new_artifacts = [{**artifacts[0], "content": content}, *artifacts[1:]]
                 new_outputs = {**result.outputs, "artifacts": new_artifacts}
                 result = replace(result, outputs=new_outputs)
-                m = _FRONTMATTER_RE.match(content)
 
-            if not m:
+            if split_frontmatter(content)[0] is None:
                 logger.warning(
                     "assess_readiness: LLM omitted YAML frontmatter on initial "
                     "response and retry; failing task to surface the gap"
@@ -176,21 +176,19 @@ class GovernanceReviewPlanHandler(_PlanningTaskHandler):
                 )
 
         try:
-            fm = yaml.safe_load(m.group(1))
-        except yaml.YAMLError as exc:
+            fm, _ = parse_frontmatter(content)
+        except FrontmatterError as exc:
+            # The block is present (checked above), so the error is invalid YAML or a
+            # non-mapping header; the wording is this handler's own.
             return HandlerResult(
                 success=False,
                 outputs={},
                 _evidence=result._evidence,
-                error=f"Planning artifact has invalid YAML frontmatter: {exc}",
-            )
-
-        if not isinstance(fm, dict):
-            return HandlerResult(
-                success=False,
-                outputs={},
-                _evidence=result._evidence,
-                error="Planning artifact YAML frontmatter is not a mapping",
+                error=(
+                    f"Planning artifact {exc}"
+                    if exc.kind == NOT_MAPPING
+                    else f"Planning artifact has {exc}"
+                ),
             )
 
         # Validate readiness field — default to "revise" if missing/invalid

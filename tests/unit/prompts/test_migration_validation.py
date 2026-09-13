@@ -420,8 +420,6 @@ class TestCapabilitySupplementNotInTemplates:
 class TestTemplateContractCompleteness:
     """Every template must declare its contract in frontmatter."""
 
-    _FRONTMATTER_PATTERN = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.MULTILINE | re.DOTALL)
-
     @pytest.mark.parametrize(
         "template_file",
         sorted(TEMPLATES_DIR.glob("*.md")),
@@ -435,19 +433,18 @@ class TestTemplateContractCompleteness:
         a prose-only asset has no placeholders and therefore nothing to declare, and
         demanding a variable there would only invite an invented one. Every placeholder
         that IS used must still be declared, which is the actual contract."""
-        import re
 
-        import yaml
+        from squadops.prompts.frontmatter import read_frontmatter, split_frontmatter
 
         content = template_file.read_text()
-        match = self._FRONTMATTER_PATTERN.match(content)
-        assert match, f"{template_file.name}: no YAML frontmatter found"
-
-        header = yaml.safe_load(match.group(1)) or {}
+        assert split_frontmatter(content)[0] is not None, (
+            f"{template_file.name}: no YAML frontmatter found"
+        )
+        header, body = read_frontmatter(content)
         declared = set(header.get("required_variables") or []) | set(
             header.get("optional_variables") or []
         )
-        used = set(re.findall(r"\{\{(\w+)\}\}", content[match.end() :]))
+        used = set(re.findall(r"\{\{(\w+)\}\}", body))
         undeclared = sorted(used - declared)
         assert not undeclared, (
             f"{template_file.name}: placeholder(s) {undeclared} used but not declared in "
