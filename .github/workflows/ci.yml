@@ -20,11 +20,17 @@ concurrency:
 
 jobs:
   changes:
-    # Decides whether the integration lane has anything to say about this PR. Its own
-    # job because GitHub starts a job's `services:` BEFORE its steps run — a filter
-    # step inside `integration` would still pay for Postgres, Redis and RabbitMQ, which
-    # is most of that lane's 6.9 minutes. The decision has to happen in a job that owns
-    # no services, and `integration` has to be skipped as a whole.
+    # Decides whether this PR changed anything but prose. Its own job because GitHub
+    # starts a job's `services:` BEFORE its steps run — a filter step inside
+    # `integration` would still pay for Postgres, Redis and RabbitMQ, which is most of
+    # that lane's 6.9 minutes. The decision has to happen in a job that owns no services.
+    #
+    # `code=false` (a prose-only diff) skips every lane prose cannot reach: integration,
+    # the fresh-venv install, the lock-install imports, the console on the next fastapi,
+    # the dependency audit and the scaffold skeleton gate. `lint + regression` still runs,
+    # as the prose lane — the tests a document can break — and the release-package and
+    # closure checks run as always. The classifier is scripts/dev/classify_ci_diff.sh, an
+    # allow-list of prose tested in tests/unit/scripts/test_classify_ci_diff.py.
     name: relevant changes
     runs-on: ubuntu-latest
     outputs:
@@ -45,19 +51,19 @@ jobs:
           git fetch --quiet origin "${{ github.base_ref }}"
           changed="$(git diff --name-only "$base"...HEAD)"
           echo "changed files:"; echo "$changed" | sed 's/^/  /'
-          # Docs-only means every path is prose. Anything else — source, tests, CI,
-          # requirements, config — runs the lane. Deliberately inverted: the default
-          # is to RUN, and only an all-prose diff opts out, so a path nobody thought
-          # about is covered rather than silently exempt.
-          if echo "$changed" | grep -qvE '^(docs/|sips/|README\.md$|CHANGELOG\.md$|CLAUDE\.md$|.*\.md$)'; then
-            echo "code=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "code=false" >> "$GITHUB_OUTPUT"
-            echo "docs-only diff — skipping the integration lane"
+          # Prose-only means every path is on the allow-list. Anything else — source,
+          # tests, CI, requirements, config, a prompt asset that happens to be `.md` —
+          # is code. Deliberately inverted: the default is to RUN, and only an all-prose
+          # diff opts out, so a path nobody thought about is covered, not exempt.
+          verdict="$(printf '%s\n' "$changed" | bash scripts/dev/classify_ci_diff.sh)"
+          echo "$verdict" >> "$GITHUB_OUTPUT"
+          if [ "$verdict" = "code=false" ]; then
+            echo "prose-only diff — running the prose lane and skipping the lanes prose cannot reach"
           fi
 
   test:
     name: lint + regression
+    needs: changes
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -80,6 +86,7 @@ jobs:
           pip install -r tests/requirements.txt -c ci-constraints.txt
 
       - name: Set up Node
+        if: needs.changes.outputs.code == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -88,16 +95,27 @@ jobs:
       # globals the qa image does, read from the same file, so the roll-replay tests
       # execute here instead of skipping — CI tests what ships (#1041's rule).
       - name: Install the qa image's npm globals
+        if: needs.changes.outputs.code == 'true'
         run: npm install -g --no-audit --no-fund $(grep -vE '^\s*#|^\s*$' agents/instances/qa/npm-global-packages.txt)
 
       - name: Prompt-fragment manifest is in sync
+        if: needs.changes.outputs.code == 'true'
         run: python scripts/dev/regen_fragment_manifest.py --check
 
       # Runs `ruff check .` + `ruff format --check .` (lint + format, fail-stop) +
       # the test-quality lint + the full unit regression suite. The repo-wide
       # format sweep landed in #196, so the format check is now gated here.
       - name: Regression suite (ruff check + format + test-quality lint + pytest)
+        if: needs.changes.outputs.code == 'true'
         run: bash scripts/dev/run_regression_tests.sh
+
+      # A prose-only diff runs the tests a document can break — the docs-version sync, the
+      # SIP registry audit, the site's SIP links, the route-lane and typed-check-menu
+      # documents, the verification-set configs, the release notes — and not the 10,000
+      # that read no prose. Selection and its traced floor: scripts/dev/run_prose_lane.sh.
+      - name: Prose lane (the tests a prose-only diff can break)
+        if: needs.changes.outputs.code != 'true'
+        run: bash scripts/dev/run_prose_lane.sh
 
   install-smoke:
     # #582: until 1.7.1 the package declared no runtime dependencies, so a bare
@@ -108,6 +126,10 @@ jobs:
     # import, a working console script and the data assets the code reads at runtime.
     # ci-constraints.txt only holds it to the versions CI tests (#1041); it adds nothing.
     name: fresh-venv install
+    needs: changes
+    # Skipped on a prose-only diff (see `changes`): nothing this lane builds or imports is
+    # prose. Pushes to main always run it.
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -156,6 +178,10 @@ jobs:
     # test_composition_roots.py) makes the same import under whatever the developer has
     # installed; this makes it under what ships — #1478 went red on exactly that gap.
     name: lock-install import
+    needs: changes
+    # Skipped on a prose-only diff (see `changes`): nothing this lane builds or imports is
+    # prose. Pushes to main always run it.
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -220,6 +246,10 @@ jobs:
     # would go stale silently; floating means the job tells us the day a new release
     # breaks the console, which is the only useful moment to hear it.
     name: console on the next fastapi
+    needs: changes
+    # Skipped on a prose-only diff (see `changes`): nothing this lane builds or imports is
+    # prose. Pushes to main always run it.
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -249,6 +279,10 @@ jobs:
     # requirements/audit-ignore.txt, where each accepted id carries its reason and the
     # issue that retires it — a decision on the record, not a report nobody reads.
     name: dependency audit
+    needs: changes
+    # Skipped on a prose-only diff (see `changes`): nothing this lane builds or imports is
+    # prose. Pushes to main always run it.
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -285,8 +319,8 @@ jobs:
     # to block them (1.7.3 record §4.6). A red run blocks the merge — proved by the
     # controlled negative check, PR #1376, closed unmerged. On docs-only changes the job
     # is skipped by the `if:` below; GitHub reports a job skipped by its conditional as
-    # satisfied for required checks, so a docs-only PR still merges. The required lanes
-    # stay unconditional — `lint + regression` in particular, which is what catches
+    # satisfied for required checks, so a docs-only PR still merges. `lint + regression`
+    # is never skipped: on a prose-only diff it runs the prose lane, which is what catches
     # doc-adjacent breakage like the generated typed-check menu drifting from the registry.
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
@@ -428,6 +462,12 @@ jobs:
     # agents). SIP-0098 phase 98.2 hangs its lint / bare-skeleton / reference-fill
     # contract jobs off this same gate, so a skeleton or template edit re-proves both.
     name: scaffold skeleton gate
+    needs: changes
+    # REQUIRED, and skipped on a prose-only diff: the skeleton is expanded from the
+    # interface manifest and the templates, none of which is prose. GitHub reports a job
+    # skipped by its conditional as satisfied for a required check — the same mechanism
+    # `integration` has relied on since 1.7.4. Pushes to main always run it.
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
